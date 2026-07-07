@@ -1,0 +1,319 @@
+#!/usr/bin/env node
+// jEditor test suite: boots the real app in headless Chromium and exercises
+// sorting, selection identity, EXIF-based lossless rotation, the bulk-rotate
+// race regression, and the standalone (file://) build.
+//
+// Requires a Chromium-based browser. Resolution order:
+//   1. CHROME_PATH env var
+//   2. Known local Chromium paths
+//   3. Installed Google Chrome (playwright channel)
+
+const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const { chromium } = require('playwright-core');
+const { createServer } = require('../scripts/serve.js');
+
+const ROOT = path.join(__dirname, '..');
+
+function launchOptions() {
+    const candidates = [
+        process.env.CHROME_PATH,
+        '/opt/pw-browsers/chromium',
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/google-chrome',
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+    ].filter(Boolean);
+    for (const p of candidates) {
+        if (fs.existsSync(p)) return { executablePath: p, args: ['--no-sandbox'] };
+    }
+    return { channel: 'chrome', args: ['--no-sandbox'] };
+}
+
+let passed = 0, failed = 0;
+function check(name, ok, detail = '') {
+    if (ok) { passed++; console.log(`  ok    ${name}`); }
+    else { failed++; console.log(`  FAIL  ${name}${detail ? ' — ' + detail : ''}`); }
+}
+
+// Shared in-page helpers, injected into every test page.
+const PAGE_HELPERS = `
+    // A fake FileSystemFileHandle backed by in-memory bytes.
+    window.makeHandle = (name, bytes, type) => {
+        const h = {
+            kind: 'file', name, writes: 0,
+            bytes: new Uint8Array(bytes),
+            getFile: async () => new File([h.bytes], name, { type, lastModified: Date.now() }),
+            createWritable: async () => ({
+                write: async (blob) => { h.bytes = new Uint8Array(await blob.arrayBuffer()); h.writtenType = blob.type; h.writes++; },
+                close: async () => {}
+            }),
+            queryPermission: async () => 'granted',
+            requestPermission: async () => 'granted'
+        };
+        return h;
+    };
+    window.makeFakeFile = (name, bytes, type, size, mtime) => {
+        const handle = makeHandle(name, bytes, type);
+        return { name, handle, size: size ?? bytes.length, lastModified: mtime ?? Date.now() };
+    };
+    // Minimal JPEG byte stream: SOI + (optional segments) + SOS + EOI.
+    window.makeJpegBytes = (segments = []) => {
+        const parts = [[0xFF, 0xD8], ...segments.map(s => [...s]), [0xFF, 0xDA, 0x00, 0x02], [0xFF, 0xD9]];
+        return parts.flat();
+    };
+    window.readOrientation = (bytes) => {
+        const view = new DataView(new Uint8Array(bytes).buffer);
+        const loc = app.findJpegOrientation(view);
+        if (!loc || loc.insert) return null;
+        return view.getUint16(loc.valueOffset, loc.littleEndian);
+    };
+`;
+
+async function newPage(browser, url) {
+    const page = await browser.newPage();
+    const issues = { errors: [], failedRequests: [] };
+    page.on('pageerror', e => issues.errors.push('PAGEERROR: ' + e.message));
+    page.on('console', m => { if (m.type() === 'error') issues.errors.push('CONSOLE: ' + m.text()); });
+    page.on('requestfailed', r => issues.failedRequests.push(r.url()));
+    page.on('response', r => { if (r.status() >= 400) issues.failedRequests.push(r.status() + ' ' + r.url()); });
+    await page.goto(url, { waitUntil: 'networkidle' });
+    await page.evaluate(PAGE_HELPERS);
+    return { page, issues };
+}
+
+(async () => {
+    // Build the standalone file first so we can test it too
+    execSync('node scripts/build-standalone.js', { cwd: ROOT, stdio: 'inherit' });
+
+    const server = createServer();
+    await new Promise(r => server.listen(0, r));
+    const baseUrl = `http://localhost:${server.address().port}`;
+
+    const browser = await chromium.launch(launchOptions());
+
+    // ---- 1. Boot: served app loads clean ----
+    console.log('boot (http)');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        check('no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        check('no failed requests', issues.failedRequests.length === 0, issues.failedRequests.join('; '));
+        check('Cropper library loaded', await page.evaluate(() => typeof Cropper !== 'undefined'));
+        check('app initialized', await page.evaluate(() => typeof app !== 'undefined'));
+        await page.close();
+    }
+
+    // ---- 2. Sort + selection identity ----
+    console.log('sort & selection identity');
+    {
+        const { page } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            // Tiny real PNG so thumbnail loading works without errors
+            const canvas = document.createElement('canvas');
+            canvas.width = 2; canvas.height = 1;
+            const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+            const png = new Uint8Array(await blob.arrayBuffer());
+
+            app.files = [
+                makeFakeFile('b.png', png, 'image/png', 200, 2000),
+                makeFakeFile('a.png', png, 'image/png', 300, 1000),
+                makeFakeFile('c.png', png, 'image/png', 100, 3000)
+            ];
+            const [b, a, c] = app.files;
+            app.currentFile = b;
+            app.selection = new Set([b, c]);
+            app.renderGrid();
+            app.renderThumbnails();
+
+            const sel = document.getElementById('sort-mode');
+            sel.value = 'size_asc';
+            sel.dispatchEvent(new Event('change'));
+
+            const gridClasses = [...document.getElementById('grid-view').children].map(el =>
+                `${el._file.name}:${el.classList.contains('selected') ? 'S' : '-'}${el.classList.contains('active') ? 'A' : '-'}`);
+
+            return {
+                order: app.files.map(f => f.name).join(','),
+                current: app.currentFile.name,
+                selection: [...app.selection].map(f => f.name).sort().join(','),
+                gridClasses: gridClasses.join(' ')
+            };
+        });
+        check('size sort order', r.order === 'c.png,b.png,a.png', r.order);
+        check('current photo follows sort', r.current === 'b.png', r.current);
+        check('selection follows sort', r.selection === 'b.png,c.png', r.selection);
+        check('grid classes track files', r.gridClasses === 'c.png:S- b.png:SA a.png:--', r.gridClasses);
+        await page.close();
+    }
+
+    // ---- 3. EXIF orientation unit tests ----
+    console.log('EXIF orientation');
+    {
+        const { page } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            // Four CW quarter turns must return to the start for all 8 values
+            out.groupCycles = [1, 2, 3, 4, 5, 6, 7, 8].every(o => {
+                let x = o;
+                for (let i = 0; i < 4; i++) x = app.composeOrientation(x, 90);
+                return x === o;
+            });
+            out.cw = [app.composeOrientation(1, 90), app.composeOrientation(6, 90), app.composeOrientation(3, 90)].join(',');
+            out.ccw = app.composeOrientation(1, -90);
+            out.r180 = app.composeOrientation(1, 180);
+
+            // Patch path: JPEG with EXIF orientation 3 rotated CW -> 8
+            const withExif = makeJpegBytes([app.buildOrientationExif(3)]);
+            const patched = app.rotateJpegLossless(new Uint8Array(withExif).buffer, 90);
+            out.patched = readOrientation(new Uint8Array(await patched.arrayBuffer()));
+
+            // Insert path: JPEG without EXIF gets a new APP1 with orientation 6
+            const bare = makeJpegBytes();
+            const inserted = app.rotateJpegLossless(new Uint8Array(bare).buffer, 90);
+            const insertedBytes = new Uint8Array(await inserted.arrayBuffer());
+            out.inserted = readOrientation(insertedBytes);
+            out.insertedStillJpeg = insertedBytes[0] === 0xFF && insertedBytes[1] === 0xD8;
+            return out;
+        });
+        check('orientation group cycles (4×90° = identity)', r.groupCycles);
+        check('CW composition 1→6→3→8', r.cw === '6,3,8', r.cw);
+        check('CCW composition 1→8', r.ccw === 8, String(r.ccw));
+        check('180° composition 1→3', r.r180 === 3, String(r.r180));
+        check('patches existing EXIF orientation (3 + 90° = 8)', r.patched === 8, String(r.patched));
+        check('inserts EXIF into bare JPEG (orientation 6)', r.inserted === 6, String(r.inserted));
+        check('inserted file still starts with SOI', r.insertedStillJpeg);
+        await page.close();
+    }
+
+    // ---- 4. Lossless rotation end-to-end + bulk race regression ----
+    console.log('rotation pipeline');
+    {
+        const { page } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const jpegA = makeFakeFile('a.jpg', makeJpegBytes(), 'image/jpeg');
+            const jpegB = makeFakeFile('b.jpg', makeJpegBytes(), 'image/jpeg');
+            app.files = [jpegA, jpegB];
+            app.viewMode = 'grid';
+            app.dirHandle = null;
+
+            // Single lossless rotation
+            await app.rotateImage(jpegA, 90, true);
+            out.aOrientation = readOrientation(jpegA.handle.bytes);
+            out.aWrites = jpegA.handle.writes;
+            out.aType = jpegA.handle.writtenType;
+            out.aSizeUpdated = jpegA.size === jpegA.handle.bytes.length;
+
+            // Race regression: selecting another photo mid-bulk-rotate must NOT rotate it
+            app.selection = new Set([jpegA]);
+            const pending = app.rotateBulk(90);
+            app.selection.clear();
+            app.selection.add(jpegB); // simulates clicking another photo while rotating
+            await pending;
+            out.bWrites = jpegB.handle.writes;
+            out.aWritesAfterBulk = jpegA.handle.writes;
+            out.loadingHidden = document.getElementById('loading-indicator').classList.contains('hidden');
+            return out;
+        });
+        check('JPEG rotated losslessly via EXIF (orientation 6)', r.aOrientation === 6, String(r.aOrientation));
+        check('written as image/jpeg', r.aType === 'image/jpeg', String(r.aType));
+        check('sort metadata refreshed after save', r.aSizeUpdated);
+        check('bulk rotate: photo clicked mid-rotation is untouched', r.bWrites === 0, `writes=${r.bWrites}`);
+        check('bulk rotate: selected photo was rotated', r.aWritesAfterBulk === 2, `writes=${r.aWritesAfterBulk}`);
+        check('loading indicator cleared', r.loadingHidden);
+        await page.close();
+    }
+
+    // ---- 5. Non-JPEG fallback: PNG re-encode preserves type, swaps dimensions ----
+    console.log('PNG rotation fallback');
+    {
+        const { page } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 2; canvas.height = 1;
+            const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+            const png = new Uint8Array(await blob.arrayBuffer());
+            const file = makeFakeFile('p.png', png, 'image/png');
+            app.files = [file];
+            app.viewMode = 'grid';
+            app.dirHandle = null;
+
+            await app.rotateImage(file, 90, true);
+            const bitmap = await createImageBitmap(new Blob([file.handle.bytes]));
+            const gif = makeFakeFile('g.gif', png, 'image/gif');
+            await app.rotateImage(gif, 90, true);
+            return {
+                type: file.handle.writtenType,
+                dims: `${bitmap.width}x${bitmap.height}`,
+                gifWrites: gif.handle.writes
+            };
+        });
+        check('PNG stays PNG', r.type === 'image/png', String(r.type));
+        check('dimensions swapped (2x1 → 1x2)', r.dims === '1x2', r.dims);
+        check('GIF rotation refused (would lose animation)', r.gifWrites === 0, `writes=${r.gifWrites}`);
+        await page.close();
+    }
+
+    // ---- 6. Adaptive glass: regions follow their own background band ----
+    console.log('adaptive glass');
+    {
+        const { page } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const makeImg = (topColor, bottomColor) => new Promise(res => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 50; canvas.height = 50;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = topColor; ctx.fillRect(0, 0, 50, 25);
+                ctx.fillStyle = bottomColor; ctx.fillRect(0, 25, 50, 25);
+                const img = new Image();
+                img.onload = () => res(img);
+                img.src = canvas.toDataURL();
+            });
+
+            const cls = () => ['glass-light-top', 'glass-light-bottom']
+                .map(c => document.body.classList.contains(c) ? '1' : '0').join('');
+
+            app.analyzeImageBrightness(await makeImg('#111', '#fff'));
+            const darkTopBrightBottom = cls();
+            app.analyzeImageBrightness(await makeImg('#fff', '#111'));
+            const brightTopDarkBottom = cls();
+            app.analyzeImageBrightness(await makeImg('#111', '#111'));
+            const allDark = cls();
+            return { darkTopBrightBottom, brightTopDarkBottom, allDark };
+        });
+        check('bright bottom → light glass only at bottom', r.darkTopBrightBottom === '01', r.darkTopBrightBottom);
+        check('bright top → light glass only at top', r.brightTopDarkBottom === '10', r.brightTopDarkBottom);
+        check('dark photo → dark glass everywhere', r.allDark === '00', r.allDark);
+        await page.close();
+    }
+
+    // ---- 7. file:// — direct open and standalone build ----
+    console.log('file:// support');
+    for (const [label, target] of [
+        ['app/index.html', path.join(ROOT, 'app', 'index.html')],
+        ['standalone.html', path.join(ROOT, 'standalone.html')]
+    ]) {
+        const { page, issues } = await newPage(browser, 'file://' + target);
+        const r = await page.evaluate(() => ({
+            cropper: typeof Cropper !== 'undefined',
+            app: typeof app !== 'undefined',
+            dropZoneVisible: !document.getElementById('drop-zone').classList.contains('hidden'),
+            fsApi: typeof window.showDirectoryPicker
+        }));
+        check(`${label}: no JS errors`, issues.errors.length === 0, issues.errors.join('; '));
+        check(`${label}: Cropper + app loaded`, r.cropper && r.app);
+        check(`${label}: drop zone shown`, r.dropZoneVisible);
+        if (label === 'standalone.html') {
+            check('standalone: no network requests fail', issues.failedRequests.length === 0, issues.failedRequests.join('; '));
+        }
+        console.log(`  info  ${label}: showDirectoryPicker is ${r.fsApi}`);
+        await page.close();
+    }
+
+    await browser.close();
+    server.close();
+
+    console.log(`\n${passed} passed, ${failed} failed`);
+    process.exit(failed === 0 ? 0 : 1);
+})().catch(e => { console.error(e); process.exit(1); });

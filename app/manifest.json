@@ -1,0 +1,29 @@
+{
+  "name": "jEditor",
+  "short_name": "jEditor",
+  "description": "Minimalist, High-Performance Image Editor",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#0c0c0c",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
