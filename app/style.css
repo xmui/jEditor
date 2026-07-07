@@ -14,10 +14,49 @@
         inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
     /* Top highlight */
     --glass-highlight: inset 0 1px 0 0 rgba(255, 255, 255, 0.15);
-    --backdrop-filter: blur(24px) saturate(140%);
+    --backdrop-filter: blur(28px) saturate(180%);
     /* Smoother blur */
     --control-bg: rgba(30, 30, 30, 0.6);
     --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+    /* Adaptive glass: the photo's top and bottom bands are sampled
+       independently (see analyzeImageBrightness), so the header glass and
+       the bottom control glass each flip dark/light to match what is
+       actually behind them. */
+    --glass-dark-bg: rgba(16, 16, 18, 0.72);
+    --glass-dark-border: rgba(255, 255, 255, 0.10);
+    --glass-dark-text: #f4f4f5;
+    --glass-light-bg: rgba(250, 250, 252, 0.86);
+    --glass-light-border: rgba(0, 0, 0, 0.12);
+    --glass-light-text: #17171a;
+
+    /* Region defaults: dark glass */
+    --glass-top-bg: var(--glass-dark-bg);
+    --glass-top-border: var(--glass-dark-border);
+    --glass-top-text: var(--glass-dark-text);
+    --glass-top-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+    --glass-bottom-bg: var(--glass-dark-bg);
+    --glass-bottom-border: var(--glass-dark-border);
+    --glass-bottom-text: var(--glass-dark-text);
+    --glass-bottom-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+    --strip-bg: rgba(0, 0, 0, 0.35);
+}
+
+/* Bright image band behind the header → light glass on top surfaces */
+body.glass-light-top {
+    --glass-top-bg: var(--glass-light-bg);
+    --glass-top-border: var(--glass-light-border);
+    --glass-top-text: var(--glass-light-text);
+    --glass-top-shadow: none;
+}
+
+/* Bright image band behind the controls → light glass on bottom surfaces */
+body.glass-light-bottom {
+    --glass-bottom-bg: var(--glass-light-bg);
+    --glass-bottom-border: var(--glass-light-border);
+    --glass-bottom-text: var(--glass-light-text);
+    --glass-bottom-shadow: none;
+    --strip-bg: rgba(255, 255, 255, 0.40);
 }
 
 body,
@@ -45,16 +84,17 @@ body.light-theme {
     --control-bg: rgba(255, 255, 255, 0.8);
 }
 
-body.light-theme .drop-content h1,
-body.light-theme .header-controls button {
+body.light-theme .drop-content h1 {
     color: #111;
 }
 
-body.light-theme .sort-control select {
-    color: #111;
+/* The <option> popup doesn't inherit glass styling — match it to the region */
+.sort-control select option {
+    background: #1a1a1a;
+    color: #fff;
 }
 
-body.light-theme .sort-control select option {
+body.glass-light-top .sort-control select option {
     background: #fff;
     color: #000;
 }
@@ -208,19 +248,20 @@ header {
 }
 
 .file-info {
-    background: var(--glass-bg);
+    background: var(--glass-top-bg);
     backdrop-filter: var(--backdrop-filter);
     -webkit-backdrop-filter: var(--backdrop-filter);
-    border: 1px solid var(--glass-border);
+    border: 1px solid var(--glass-top-border);
     box-shadow: var(--glass-shadow);
-    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    color: var(--glass-top-text);
+    text-shadow: var(--glass-top-shadow);
     padding: 8px 16px;
     border-radius: 20px;
     font-size: 14px;
     display: flex;
     gap: 12px;
-    opacity: 0.9;
     pointer-events: auto;
+    transition: background 0.35s ease, color 0.35s ease, border-color 0.35s ease;
 }
 
 #file-name {
@@ -228,20 +269,15 @@ header {
 }
 
 #file-count {
-    color: #e0e0e0;
+    color: inherit;
+    opacity: 0.75;
     font-weight: 500;
-    transition: color 0.3s ease;
-}
-
-body.light-theme #file-count {
-    color: #222;
-    font-weight: 600;
 }
 
 .sort-control {
     margin-left: 12px;
     padding-left: 12px;
-    border-left: 1px solid var(--glass-border);
+    border-left: 1px solid var(--glass-top-border);
     display: flex;
     align-items: center;
 }
@@ -249,7 +285,7 @@ body.light-theme #file-count {
 .sort-control select {
     background: transparent;
     border: none;
-    color: #eee;
+    color: inherit;
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
@@ -313,12 +349,8 @@ body.light-theme #file-count {
     left: 50%;
     transform: translateX(-50%);
     display: flex;
-    gap: 12px;
-    background: var(--glass-bg);
-    padding: 12px;
-    border-radius: 24px;
-    border: 1px solid var(--glass-border);
-    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    background: var(--glass-bottom-bg);
+    border: 1px solid var(--glass-bottom-border);
     box-shadow: var(--glass-shadow);
     backdrop-filter: var(--backdrop-filter);
     -webkit-backdrop-filter: var(--backdrop-filter);
@@ -327,13 +359,13 @@ body.light-theme #file-count {
     border-radius: 9999px;
     padding: 8px 16px;
     gap: 8px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: background 0.35s ease, border-color 0.35s ease,
+        transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
     pointer-events: none;
     /* Let clicks pass through */
 }
 
 .controls:hover {
-    background: rgba(30, 30, 30, 0.75);
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
     transform: translateX(-50%) translateY(-2px);
 }
@@ -342,12 +374,11 @@ body.light-theme #file-count {
 .controls>* {
     background: transparent;
     border: none;
-    color: var(--text-color);
-    /* Use theme text color for better contrast */
+    color: var(--glass-bottom-text);
     padding: 8px;
     border-radius: 8px;
     cursor: pointer;
-    transition: background 0.2s, color 0.2s;
+    transition: background 0.2s, color 0.35s ease;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -360,7 +391,7 @@ body.light-theme #file-count {
     width: 1px;
     height: 16px;
     /* Shorter than button height */
-    background: var(--glass-border);
+    background: var(--glass-bottom-border);
     /* Use border color for subtlety */
     margin: 0 4px;
     padding: 0 !important;
@@ -369,9 +400,8 @@ body.light-theme #file-count {
 }
 
 .controls button:hover {
-    background: rgba(125, 125, 125, 0.2);
+    background: rgba(125, 125, 125, 0.25);
     /* Works on both light/dark */
-    color: var(--text-color);
 }
 
 .controls button:active {
@@ -381,7 +411,10 @@ body.light-theme #file-count {
 /* Thumbnails */
 .thumbnails {
     height: 80px;
-    background: rgba(0, 0, 0, 0.3);
+    background: var(--strip-bg);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    transition: background 0.35s ease;
     display: flex;
     align-items: center;
     overflow-x: auto;
@@ -586,16 +619,17 @@ body.light-theme #file-count {
     position: absolute;
     bottom: 20px;
     right: 20px;
-    background: var(--glass-bg);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid var(--glass-border);
+    background: var(--glass-bottom-bg);
+    color: var(--glass-bottom-text);
+    backdrop-filter: var(--backdrop-filter);
+    -webkit-backdrop-filter: var(--backdrop-filter);
+    border: 1px solid var(--glass-bottom-border);
     padding: 10px 20px;
     border-radius: 30px;
     z-index: 60;
     display: flex;
     align-items: center;
-    transition: opacity 0.3s, transform 0.3s;
+    transition: opacity 0.3s, transform 0.3s, background 0.35s ease, color 0.35s ease;
 }
 
 .grid-controls.hidden {
@@ -617,17 +651,19 @@ body.light-theme #file-count {
 }
 
 .header-controls button {
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    color: #fff;
+    background: var(--glass-top-bg);
+    border: 1px solid var(--glass-top-border);
+    color: var(--glass-top-text);
     padding: 8px;
     border-radius: 8px;
     cursor: pointer;
-    backdrop-filter: blur(12px);
+    backdrop-filter: var(--backdrop-filter);
+    -webkit-backdrop-filter: var(--backdrop-filter);
+    transition: background 0.35s ease, color 0.35s ease, border-color 0.35s ease;
 }
 
 .header-controls button:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(125, 125, 125, 0.35);
 }
 
 /* Selection Bar */

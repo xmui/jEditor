@@ -1,0 +1,25 @@
+name: Release
+
+# Tag a commit (e.g. `git tag v1.2.0 && git push --tags`) to publish a release
+# with standalone.html attached — the download-and-double-click build.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/build-standalone.js
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: standalone.html
+          generate_release_notes: true

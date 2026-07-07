@@ -31,29 +31,31 @@
 
         <!-- Loading Indicator -->
         <div id="loading-indicator" class="hidden" style="
-            position: fixed; 
-            top: 20px; 
-            right: 20px; 
-            transform: none; 
-            background: rgba(20, 20, 20, 0.9); 
-            border: 1px solid rgba(255,255,255,0.1);
-            backdrop-filter: blur(10px);
-            padding: 10px 20px; 
-            border-radius: 999px; 
-            z-index: 2000; 
-            pointer-events: none; 
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            transform: none;
+            background: var(--glass-top-bg);
+            color: var(--glass-top-text);
+            border: 1px solid var(--glass-top-border);
+            backdrop-filter: var(--backdrop-filter);
+            -webkit-backdrop-filter: var(--backdrop-filter);
+            padding: 10px 20px;
+            border-radius: 999px;
+            z-index: 2000;
+            pointer-events: none;
             display: flex;
             align-items: center;
             gap: 10px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
             <div class="loader-spinner" style="
-                width: 14px; 
-                height: 14px; 
-                border: 2px solid rgba(255,255,255,0.3); 
-                border-top-color: #fff; 
-                border-radius: 50%; 
+                width: 14px;
+                height: 14px;
+                border: 2px solid rgba(125,125,125,0.35);
+                border-top-color: currentColor;
+                border-radius: 50%;
                 animation: spin 1s linear infinite;"></div>
-            <h2 id="loading-text" style="font-size: 14px; font-weight: 500; margin: 0; color: #fff;">Processing...</h2>
+            <h2 id="loading-text" style="font-size: 14px; font-weight: 500; margin: 0; color: inherit;">Processing...</h2>
         </div>
 
         <!-- Main Interface (Hidden initially) -->
@@ -233,7 +235,8 @@
     </div>
 
     <script>
-        if ('serviceWorker' in navigator) {
+        // Service workers aren't available on file:// (standalone build)
+        if ('serviceWorker' in navigator && location.protocol !== 'file:') {
             navigator.serviceWorker.register('sw.js');
         }
     </script>

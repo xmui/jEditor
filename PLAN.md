@@ -47,20 +47,33 @@ the actual file objects.
 
 ## Roadmap to "actually good"
 
-### Phase A — correctness foundation (recommended next)
-1. **Kill index-based state entirely.** Make the file object the unit of
-   identity: `selection: Set<file>`, `currentFile` instead of `currentIndex`.
-   Every remaining "wrong photo" class of bug disappears. (~half-day refactor.)
-2. **Lossless JPEG rotation.** Today every 90° rotate decodes → canvas →
-   re-encodes JPEG at 0.95, degrading quality on each click and stripping EXIF.
-   Rotate by rewriting the EXIF orientation tag when possible, or re-encode
-   only once on save. This also makes bulk rotation near-instant (no pixel
-   work at all).
-3. **Preserve file type on save.** PNG/WebP currently survive by accident of
-   `fileData.type`; add an explicit type map and keep PNG lossless.
-4. **A test harness.** The smoke test used on this branch (headless Chromium +
-   static server) should live in the repo (`npm test`) so regressions like the
-   init crash can't ship again.
+### Phase A — correctness foundation ✅ DONE
+1. ✅ **Index-based state eliminated.** `currentFile` + `selection: Set<file>`;
+   grid/strip DOM nodes carry direct file references. No index can ever go
+   stale again.
+2. ✅ **Lossless JPEG rotation.** 90° rotations patch the EXIF orientation
+   flag (or insert a minimal EXIF segment) — no decode, no re-encode, no
+   quality loss, near-instant bulk rotation. Non-JPEGs fall back to canvas
+   (PNG stays pixel-lossless); GIF edits are refused rather than silently
+   flattening animations.
+3. ✅ **File type preserved on save** via an explicit extension→MIME map for
+   both rotation fallback and crop.
+4. ✅ **Test harness in-repo**: `npm test` boots the real app in headless
+   Chromium — 34 checks covering boot, sort/selection identity, EXIF
+   orientation math, the bulk-rotate race regression, PNG/GIF handling,
+   adaptive glass, and `file://`/standalone operation. CI runs it on every
+   push.
+
+### Also shipped alongside Phase A
+- **Download-and-run**: `npm run build` produces a self-contained
+  `standalone.html` that works double-clicked from disk (File System Access
+  API is available on `file://` in Chrome/Edge, so saving works too). Tagged
+  releases attach it automatically via GitHub Actions.
+- **Adaptive liquid glass**: the brightness sampler now measures the top and
+  bottom bands of the photo separately; header and control surfaces flip
+  between dark/light glass independently, with hysteresis to prevent
+  flicker, stronger blur/saturation, and readable text everywhere (the crop
+  toolbar and loading pill included).
 
 ### Phase B — performance
 1. **Thumbnail decode in a worker** (`OffscreenCanvas` + `createImageBitmap`

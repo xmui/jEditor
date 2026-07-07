@@ -1,9 +1,9 @@
 const app = {
     dirHandle: null,
-    files: [], // Array of { name, handle, rotation: 0 } 
-    currentIndex: 0,
+    files: [], // Array of { name, handle, size, lastModified, rotation }
+    currentFile: null, // The file object currently displayed — files are identified by object, never by index
     viewMode: 'single', // 'single' or 'grid'
-    selection: new Set(), // Set of indices
+    selection: new Set(), // Set of file objects
     readOnlyMode: false, // When true, saving is disabled (legacy drag-drop)
     cropState: { // State for cropping (Cropper.js owns the rest)
         active: false
@@ -244,8 +244,8 @@ const app = {
     },
 
     updateImageTransform() {
-        if (!this.files[this.currentIndex]) return;
-        const r = this.files[this.currentIndex].rotation || 0;
+        if (!this.currentFile) return;
+        const r = this.currentFile.rotation || 0;
 
         this.elements.currentImage.style.transform =
             `translate(${this.panX}px, ${this.panY}px) rotate(${r}deg) scale(${this.zoom})`;
@@ -391,7 +391,7 @@ const app = {
 
                 this.renderThumbnails();
                 this.renderGrid(); // Prepare grid
-                this.loadIndex(0);
+                this.loadFile(this.files[0]);
             } else {
                 alert('No images found.');
                 this.elements.dropZone.classList.remove('hidden');
@@ -513,13 +513,142 @@ const app = {
         return /\.(jpg|jpeg|png|webp|gif)$/i.test(name);
     },
 
+    getCurrentIndex() {
+        return this.files.indexOf(this.currentFile);
+    },
+
+    // Output format when a file must be re-encoded (crop, or non-JPEG rotation)
+    getSaveFormat(name) {
+        if (/\.png$/i.test(name)) return { type: 'image/png', quality: undefined }; // lossless
+        if (/\.webp$/i.test(name)) return { type: 'image/webp', quality: 0.95 };
+        return { type: 'image/jpeg', quality: 0.95 };
+    },
+
+    // ---- Lossless JPEG rotation (EXIF orientation) ----
+    //
+    // Rotating a JPEG by decoding + re-encoding degrades quality on every
+    // click and is slow. Instead we rewrite the EXIF orientation flag: a
+    // byte-level patch with no decode at all. Browsers, OSes and photo apps
+    // apply the flag when displaying.
+
+    // Composing a 90° clockwise rotation onto each EXIF orientation value.
+    // Values 1-8 form the dihedral group D4: 1→6→3→8→1 (pure rotations),
+    // 2→7→4→5→2 (mirrored variants).
+    ORIENTATION_ROTATE_CW: { 1: 6, 2: 7, 3: 8, 4: 5, 5: 2, 6: 3, 7: 4, 8: 1 },
+
+    composeOrientation(current, deg) {
+        let o = (current >= 1 && current <= 8) ? current : 1;
+        const steps = (((deg / 90) % 4) + 4) % 4;
+        for (let i = 0; i < steps; i++) o = this.ORIENTATION_ROTATE_CW[o];
+        return o;
+    },
+
+    // Locate the EXIF orientation value in a JPEG buffer.
+    // Returns { valueOffset, littleEndian } if the tag exists,
+    // { insert: true } if the JPEG has no EXIF segment at all,
+    // or null if this isn't a patchable JPEG (caller falls back to re-encode).
+    findJpegOrientation(view) {
+        if (view.byteLength < 4 || view.getUint16(0) !== 0xFFD8) return null;
+        let offset = 2;
+        while (offset + 4 <= view.byteLength) {
+            const marker = view.getUint16(offset);
+            if ((marker & 0xFF00) !== 0xFF00) return null; // corrupt stream
+            // Reached image data without seeing an EXIF segment
+            if (marker === 0xFFDA || marker === 0xFFD9) return { insert: true };
+            const size = view.getUint16(offset + 2); // includes the two length bytes
+            if (size < 2) return null;
+            if (marker === 0xFFE1 && offset + 10 <= view.byteLength &&
+                view.getUint32(offset + 4) === 0x45786966 /* 'Exif' */ &&
+                view.getUint16(offset + 8) === 0x0000) {
+                const tiff = offset + 10;
+                if (tiff + 8 > view.byteLength) return null;
+                const bo = view.getUint16(tiff);
+                let littleEndian;
+                if (bo === 0x4949) littleEndian = true;       // 'II'
+                else if (bo === 0x4D4D) littleEndian = false; // 'MM'
+                else return null;
+                if (view.getUint16(tiff + 2, littleEndian) !== 0x002A) return null;
+                const ifd0 = tiff + view.getUint32(tiff + 4, littleEndian);
+                if (ifd0 + 2 > view.byteLength) return null;
+                const count = view.getUint16(ifd0, littleEndian);
+                for (let i = 0; i < count; i++) {
+                    const entry = ifd0 + 2 + i * 12;
+                    if (entry + 12 > view.byteLength) return null;
+                    if (view.getUint16(entry, littleEndian) === 0x0112) {
+                        if (view.getUint16(entry + 2, littleEndian) !== 3) return null; // not SHORT
+                        return { valueOffset: entry + 8, littleEndian };
+                    }
+                }
+                // EXIF exists but has no orientation tag. Adding an entry means
+                // shifting every offset in the IFD — not worth it; re-encode.
+                return null;
+            }
+            offset += 2 + size;
+        }
+        return null;
+    },
+
+    // Minimal APP1 segment: "Exif\0\0" + TIFF header + one-entry IFD0 (Orientation)
+    buildOrientationExif(orientation) {
+        const buf = new ArrayBuffer(36); // 2 marker + 2 length + 6 'Exif\0\0' + 26 TIFF
+        const v = new DataView(buf);
+        let p = 0;
+        v.setUint16(p, 0xFFE1); p += 2;
+        v.setUint16(p, 34); p += 2;      // segment length (everything except the marker)
+        v.setUint32(p, 0x45786966); p += 4; // 'Exif'
+        v.setUint16(p, 0x0000); p += 2;
+        v.setUint16(p, 0x4D4D); p += 2;  // big-endian TIFF
+        v.setUint16(p, 0x002A); p += 2;
+        v.setUint32(p, 8); p += 4;       // IFD0 offset
+        v.setUint16(p, 1); p += 2;       // entry count
+        v.setUint16(p, 0x0112); p += 2;  // Orientation tag
+        v.setUint16(p, 3); p += 2;       // type SHORT
+        v.setUint32(p, 1); p += 4;       // value count
+        v.setUint16(p, orientation); p += 2;
+        v.setUint16(p, 0); p += 2;       // value padding
+        v.setUint32(p, 0); p += 4;       // next IFD: none
+        return new Uint8Array(buf);
+    },
+
+    // Returns a rotated JPEG Blob without re-encoding, or null if the file
+    // can't be patched (caller falls back to canvas re-encode).
+    rotateJpegLossless(buffer, deg) {
+        const view = new DataView(buffer);
+        const loc = this.findJpegOrientation(view);
+        if (!loc) return null;
+        if (loc.insert) {
+            const seg = this.buildOrientationExif(this.composeOrientation(1, deg));
+            const bytes = new Uint8Array(buffer);
+            return new Blob([bytes.subarray(0, 2), seg, bytes.subarray(2)], { type: 'image/jpeg' });
+        }
+        const current = view.getUint16(loc.valueOffset, loc.littleEndian);
+        view.setUint16(loc.valueOffset, this.composeOrientation(current, deg), loc.littleEndian);
+        return new Blob([buffer], { type: 'image/jpeg' });
+    },
+
+    // Fallback rotation: decode → rotate on canvas → re-encode in the file's
+    // own format. createImageBitmap applies any EXIF orientation, so the
+    // output is upright pixels with no EXIF (orientation 1 implied).
+    async rotateByReencoding(fileData, name, normalizedDeg) {
+        const bitmap = await createImageBitmap(fileData);
+        try {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const is90or270 = normalizedDeg === 90 || normalizedDeg === 270;
+            canvas.width = is90or270 ? bitmap.height : bitmap.width;
+            canvas.height = is90or270 ? bitmap.width : bitmap.height;
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.rotate(normalizedDeg * Math.PI / 180);
+            ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+            const { type, quality } = this.getSaveFormat(name);
+            return await new Promise(r => canvas.toBlob(r, type, quality));
+        } finally {
+            bitmap.close();
+        }
+    },
+
     sortFiles(render = true) {
         const mode = this.sortMode;
-
-        // Selection and currentIndex are index-based; remember the actual file
-        // objects so we can remap after the order changes.
-        const currentFile = this.files[this.currentIndex];
-        const selectedFiles = new Set([...this.selection].map(i => this.files[i]).filter(Boolean));
 
         this.files.sort((a, b) => {
             let valA, valB;
@@ -543,21 +672,15 @@ const app = {
             }
         });
 
-        // Remap current photo and selection to their new positions
-        if (currentFile) {
-            const newIdx = this.files.indexOf(currentFile);
-            if (newIdx !== -1) this.currentIndex = newIdx;
-        }
-        this.selection = new Set(
-            this.files.map((f, i) => (selectedFiles.has(f) ? i : -1)).filter(i => i !== -1)
-        );
-
+        // Selection and currentFile hold file objects, so nothing to remap —
+        // the same photos stay selected/active regardless of order.
         if (render) {
             this.renderThumbnails();
             this.renderGrid();
             this.updateActiveThumbnail();
             this.updateSelectionUI();
-            this.elements.fileCount.textContent = `${this.currentIndex + 1} / ${this.files.length}`;
+            const idx = this.getCurrentIndex();
+            if (idx !== -1) this.elements.fileCount.textContent = `${idx + 1} / ${this.files.length}`;
         }
     },
 
@@ -585,41 +708,50 @@ const app = {
     analyzeImageBrightness(img) {
         if (!img || !img.width || !img.height) return;
 
-        // Create a small canvas to analyze
+        // Sample the image at 50x50 and measure three zones: the whole image
+        // (drives the global theme) plus the top and bottom bands, which sit
+        // behind the header glass and the control glass respectively. Each
+        // glass region adapts to what is actually behind it.
+        const SIZE = 50;
+        const BAND = 13; // ~top/bottom quarter of the image
+
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        canvas.width = 50;
-        canvas.height = 50;
-
-        // Draw image resized
-        ctx.drawImage(img, 0, 0, 50, 50);
+        canvas.width = SIZE;
+        canvas.height = SIZE;
+        ctx.drawImage(img, 0, 0, SIZE, SIZE);
 
         try {
-            const imageData = ctx.getImageData(0, 0, 50, 50);
-            const data = imageData.data;
-            let r, g, b, avg;
-            let colorSum = 0;
+            const data = ctx.getImageData(0, 0, SIZE, SIZE).data;
+            let total = 0, top = 0, bottom = 0;
 
-            for (let x = 0, len = data.length; x < len; x += 4) {
-                r = data[x];
-                g = data[x + 1];
-                b = data[x + 2];
-
-                // Calculate perceived brightness
-                avg = Math.floor((r * 0.299) + (g * 0.587) + (b * 0.114));
-                colorSum += avg;
+            for (let y = 0; y < SIZE; y++) {
+                let rowSum = 0;
+                for (let x = 0; x < SIZE; x++) {
+                    const i = (y * SIZE + x) * 4;
+                    // Perceived brightness
+                    rowSum += (data[i] * 0.299) + (data[i + 1] * 0.587) + (data[i + 2] * 0.114);
+                }
+                total += rowSum;
+                if (y < BAND) top += rowSum;
+                if (y >= SIZE - BAND) bottom += rowSum;
             }
 
-            const brightness = Math.floor(colorSum / (50 * 50));
-            // Threshold for creating contrast (if > 128, it's bright)
-            // Using slightly higher threshold to prefer dark theme
-            const isBright = brightness > 140;
+            const avgTotal = total / (SIZE * SIZE);
+            const avgTop = top / (BAND * SIZE);
+            const avgBottom = bottom / (BAND * SIZE);
 
-            if (isBright) {
-                document.body.classList.add('light-theme');
-            } else {
-                document.body.classList.remove('light-theme');
-            }
+            // Hysteresis: don't flip a region's theme on borderline photos —
+            // it must cross clearly into the other zone to switch.
+            const body = document.body;
+            const setWithHysteresis = (cls, value) => {
+                if (value > 150) body.classList.add(cls);
+                else if (value < 120) body.classList.remove(cls);
+                // 120–150: keep whatever it was
+            };
+            setWithHysteresis('light-theme', avgTotal);
+            setWithHysteresis('glass-light-top', avgTop);
+            setWithHysteresis('glass-light-bottom', avgBottom);
         } catch (e) {
             console.warn('Cannot analyze image brightness (CORS or error)', e);
         }
@@ -642,23 +774,23 @@ const app = {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
                     const div = entry.target;
-                    const index = parseInt(div.dataset.index);
                     // Load small thumbnail as bg image
-                    this.loadStripThumbnail(index, div);
+                    this.loadStripThumbnail(div._file, div);
                     stripObserver.unobserve(div);
                 }
             });
         }, { root: this.elements.thumbnailStrip, margin: '200px' });
 
-        this.files.forEach((file, index) => {
+        this.files.forEach((file) => {
             const div = document.createElement('div');
             div.className = 'thumb-item';
-            div.dataset.index = index;
+            div._file = file;
+            file._stripEl = div;
             // Placeholder color still useful while loading
             div.style.backgroundColor = '#222';
 
             div.onclick = () => {
-                this.loadIndex(index);
+                this.loadFile(file);
                 this.setView('single');
             };
             frag.appendChild(div);
@@ -668,8 +800,8 @@ const app = {
         this.updateActiveThumbnail();
     },
 
-    async loadStripThumbnail(index, div, force = false) {
-        if (!this.files[index]) return;
+    async loadStripThumbnail(file, div, force = false) {
+        if (!file) return;
         try {
             // Reuse the internal logic effectively but target the div background or an img inside
             // To keep style simple, let's add an img inside
@@ -680,14 +812,14 @@ const app = {
             img.style.pointerEvents = 'none'; // let click pass to div
             div.appendChild(img);
 
-            await this.loadImageThumbnail(index, img, force);
+            await this.loadImageThumbnail(file, img, force);
         } catch (e) { /* ignore */ }
     },
 
     updateActiveThumbnail() {
         const thumbs = this.elements.thumbnailStrip.children;
         for (let i = 0; i < thumbs.length; i++) {
-            if (i === this.currentIndex) {
+            if (thumbs[i]._file === this.currentFile) {
                 thumbs[i].classList.add('active');
                 thumbs[i].scrollIntoView({ block: 'nearest', inline: 'center' });
             } else {
@@ -704,15 +836,15 @@ const app = {
         const observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 const img = entry.target;
-                const index = parseInt(img.dataset.index);
-                const file = this.files[index];
+                const file = img._file;
+                if (!file) return;
 
                 if (entry.isIntersecting) {
                     file.isVisible = true; // Mark as visible
                     // Hyper-Parallel Load: 50ms pulse
                     if (file.loadTimeout) clearTimeout(file.loadTimeout);
                     file.loadTimeout = setTimeout(() => {
-                        this.loadImageThumbnail(index, img);
+                        this.loadImageThumbnail(file, img);
                         file.loadTimeout = null;
                         this.cleanupObjectURLs();
                     }, 50);
@@ -728,24 +860,25 @@ const app = {
         }, { root: null, rootMargin: '500px' });
         this.elements.gridView._observer = observer; // Stash for refreshThumbnailUI
 
-        this.files.forEach((file, index) => {
+        this.files.forEach((file) => {
             const div = document.createElement('div');
             div.className = 'grid-item';
-            div.dataset.index = index;
+            div._file = file;
+            file._gridEl = div;
 
             // Use canvas for grid to reduce memory (no large Image element retaining full blob)
             // Or just img with small src.
             const img = document.createElement('img');
-            img.dataset.index = index;
+            img._file = file;
             img.alt = file.name;
             img.loading = "lazy"; // Native lazy load as backup
             img.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PC9zdmc+';
 
             div.appendChild(img);
 
-            div.onclick = (e) => this.handleGridClick(e, index);
+            div.onclick = (e) => this.handleGridClick(e, file);
             div.ondblclick = () => {
-                this.loadIndex(index);
+                this.loadFile(file);
                 this.setView('single');
             };
 
@@ -754,9 +887,8 @@ const app = {
         });
     },
 
-    async loadImageThumbnail(index, imgElement, force = false) {
-        if (!this.files[index]) return;
-        const fileEntry = this.files[index];
+    async loadImageThumbnail(fileEntry, imgElement, force = false) {
+        if (!fileEntry) return;
 
         // Track elements that need this thumbnail
         if (!fileEntry._thumbWaiters) fileEntry._thumbWaiters = [];
@@ -814,40 +946,37 @@ const app = {
     },
 
 
-    handleGridClick(e, index) {
+    handleGridClick(e, file) {
         if (e.ctrlKey || e.metaKey) {
-            this.toggleSelection(index);
+            this.toggleSelection(file);
         } else if (e.shiftKey) {
-            // Range selection
-            // Find closest selected or current
-            // For now simple shift: from currentIndex to this index
-            const start = Math.min(this.currentIndex, index);
-            const end = Math.max(this.currentIndex, index);
+            // Range selection: from the current photo to the clicked one
+            const idx = this.files.indexOf(file);
+            const anchor = this.getCurrentIndex();
+            const start = Math.min(anchor === -1 ? idx : anchor, idx);
+            const end = Math.max(anchor === -1 ? idx : anchor, idx);
             this.selection.clear();
-            for (let i = start; i <= end; i++) this.selection.add(i);
+            for (let i = start; i <= end; i++) this.selection.add(this.files[i]);
             this.updateSelectionUI();
         } else {
-            // Single select. Don't loadIndex() here — that decodes the
+            // Single select. Don't loadFile() here — that decodes the
             // full-resolution image into the hidden single view on every
             // grid click. Double-click / Enter opens the photo.
-            this.currentIndex = index;
-            const file = this.files[index];
-            if (file) {
-                this.elements.fileName.textContent = file.name;
-                this.elements.fileCount.textContent = `${index + 1} / ${this.files.length}`;
-            }
+            this.currentFile = file;
+            this.elements.fileName.textContent = file.name;
+            this.elements.fileCount.textContent = `${this.files.indexOf(file) + 1} / ${this.files.length}`;
             this.selection.clear();
-            this.selection.add(index);
+            this.selection.add(file);
             this.updateSelectionUI();
             this.updateActiveThumbnail();
         }
     },
 
-    toggleSelection(index) {
-        if (this.selection.has(index)) {
-            this.selection.delete(index);
+    toggleSelection(file) {
+        if (this.selection.has(file)) {
+            this.selection.delete(file);
         } else {
-            this.selection.add(index);
+            this.selection.add(file);
         }
         this.updateSelectionUI();
     },
@@ -860,11 +989,8 @@ const app = {
     updateSelectionUI() {
         const gridItems = this.elements.gridView.children;
         for (let i = 0; i < gridItems.length; i++) {
-            gridItems[i].classList.toggle('selected', this.selection.has(i));
-            gridItems[i].classList.toggle('active', i === this.currentIndex);
-            // Also update rotation visual if needed (not implemented in grid items CSS transform yet, only img src usually)
-            // But if we want to show rotation in grid, we need to transform the IMG.
-            // We'll trust the thumbnail reload.
+            gridItems[i].classList.toggle('selected', this.selection.has(gridItems[i]._file));
+            gridItems[i].classList.toggle('active', gridItems[i]._file === this.currentFile);
         }
 
         if (this.selection.size > 0) {
@@ -895,16 +1021,17 @@ const app = {
             iconSingle.classList.remove('hidden');
 
             // Ensure selection UI is correct
-            if (this.selection.size === 0 && this.currentIndex >= 0) {
-                this.selection.add(this.currentIndex);
+            if (this.selection.size === 0 && this.currentFile) {
+                this.selection.add(this.currentFile);
             }
             this.updateSelectionUI();
 
             // Scroll to current
-            if (this.files[this.currentIndex]) {
+            const currentEl = this.currentFile && this.currentFile._gridEl;
+            if (currentEl) {
                 // setTimeout to allow layout
                 setTimeout(() => {
-                    this.elements.gridView.children[this.currentIndex]?.scrollIntoView({ block: 'center' });
+                    currentEl.scrollIntoView({ block: 'center' });
                 }, 10);
             }
 
@@ -918,22 +1045,28 @@ const app = {
             iconGrid.classList.remove('hidden');
             iconSingle.classList.add('hidden');
             this.selection.clear(); // Clear selection on enter single? Or keep?
-            // Usually keeping is confusing if you just want to flip. Let's keep but only active is `currentIndex`.
+            // Usually keeping is confusing if you just want to flip. Let's keep but only active is `currentFile`.
             this.elements.selectionBar.classList.add('hidden');
 
-            this.loadIndex(this.currentIndex);
+            if (this.currentFile) this.loadFile(this.currentFile);
         }
     },
 
-    async loadIndex(index) {
+    loadIndex(index) {
+        if (this.files.length === 0) return;
         if (index < 0) index = this.files.length - 1;
         if (index >= this.files.length) index = 0;
+        return this.loadFile(this.files[index]);
+    },
+
+    async loadFile(file) {
+        if (!file) return;
 
         // Token guards against out-of-order async loads during rapid navigation
         const loadToken = (this._loadToken = (this._loadToken || 0) + 1);
 
-        this.currentIndex = index;
-        const file = this.files[this.currentIndex];
+        this.currentFile = file;
+        const index = this.files.indexOf(file);
 
         this.elements.fileName.textContent = file.name;
         this.elements.fileCount.textContent = `${index + 1} / ${this.files.length}`;
@@ -1017,7 +1150,7 @@ const app = {
         const loadedThumbs = this.files.filter(f => f.thumbnailUrl).length;
         const loadedFull = this.files.filter(f => f.fullImageUrl).length;
 
-        const cur = this.currentIndex;
+        const cur = this.getCurrentIndex();
         const windowSizeFull = 10;
         const windowSizeThumb = 150; // Increased buffer for modern RAM
 
@@ -1058,21 +1191,24 @@ const app = {
     },
 
     navigate(direction) {
-        let newIndex = this.currentIndex + direction;
+        if (this.files.length === 0) return;
+        let newIndex = this.getCurrentIndex() + direction;
         if (newIndex < 0) newIndex = this.files.length - 1;
         if (newIndex >= this.files.length) newIndex = 0;
 
-        // In Single View, loadIndex handles the display
-        this.loadIndex(newIndex);
+        const file = this.files[newIndex];
+
+        // In Single View, loadFile handles the display
+        this.loadFile(file);
 
         // In Grid View, we must also update the selection and scroll
         if (this.viewMode === 'grid') {
             this.selection.clear();
-            this.selection.add(newIndex);
+            this.selection.add(file);
             this.updateSelectionUI();
 
             // Scroll into view
-            const item = this.elements.gridView.children[newIndex];
+            const item = file._gridEl;
             if (item) {
                 // Determine if we need to scroll
                 const rect = item.getBoundingClientRect();
@@ -1217,6 +1353,9 @@ const app = {
             case 's':
                 this.setView('single');
                 break;
+            case 'c':
+                this.enterCrop();
+                break;
         }
     },
 
@@ -1229,25 +1368,27 @@ const app = {
     },
 
     rotateCurrent(deg) {
-        this.rotateImage(this.currentIndex, deg);
+        this.rotateImage(this.currentFile, deg);
     },
 
-    refreshThumbnailUI(index) {
+    refreshThumbnailUI(file) {
+        if (!file) return;
+
         // 1. Refresh Strip Item
-        const stripDiv = this.elements.thumbnailStrip.querySelector(`.thumb-item[data-index="${index}"]`);
-        if (stripDiv) {
+        const stripDiv = file._stripEl;
+        if (stripDiv && stripDiv.isConnected) {
             stripDiv.innerHTML = '';
-            this.loadStripThumbnail(index, stripDiv, true);
+            this.loadStripThumbnail(file, stripDiv, true);
         }
 
         // 2. Refresh Grid Item
-        const gridDiv = this.elements.gridView.querySelector(`.grid-item[data-index="${index}"]`);
-        if (gridDiv) {
+        const gridDiv = file._gridEl;
+        if (gridDiv && gridDiv.isConnected) {
             gridDiv.innerHTML = '';
             // Recreate Image
             const img = document.createElement('img');
-            img.dataset.index = index;
-            img.alt = this.files[index].name;
+            img._file = file;
+            img.alt = file.name;
             img.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PC9zdmc+';
             gridDiv.appendChild(img);
 
@@ -1256,27 +1397,24 @@ const app = {
             if (gridObserver) gridObserver.observe(img);
 
             // Force reload
-            this.loadImageThumbnail(index, img, true);
+            this.loadImageThumbnail(file, img, true);
         }
     },
 
     async rotateBulk(deg) {
         if (this.selection.size === 0) return;
 
-        // Snapshot the selected FILES now. Set iterators see items added during
+        // Snapshot the selection NOW. Set iterators see items added during
         // iteration, so iterating this.selection live while awaiting would
-        // rotate photos the user clicks mid-operation. Snapshotting file
-        // objects (not indices) also survives a re-sort while rotating.
-        const filesToRotate = [...this.selection].map(i => this.files[i]).filter(Boolean);
-        const indexOf = (file) => this.files.indexOf(file);
+        // rotate photos the user clicks mid-operation.
+        const filesToRotate = [...this.selection];
 
         // Concurrency Guard: If already rotating, wait or queue
         if (this.isBulkRotating) {
             // We'll trust the individual file pendingRotation logic for now,
             // but we MUST not let this call clear the loading indicator.
             for (const file of filesToRotate) {
-                const idx = indexOf(file);
-                if (idx !== -1) this.rotateImage(idx, deg, true);
+                this.rotateImage(file, deg, true);
             }
             return;
         }
@@ -1285,20 +1423,15 @@ const app = {
         this.elements.loading.classList.remove('hidden');
         if (this.elements.loadingText) this.elements.loadingText.textContent = `Rotating ${filesToRotate.length} images...`;
 
-        // Process sequentially to avoid memory spikes / file locks
+        // Process sequentially to avoid memory spikes / file locks.
+        // rotateImage refreshes each thumbnail after its save, so no extra
+        // refresh pass (which would decode every image a second time).
         for (const file of filesToRotate) {
-            const idx = indexOf(file);
-            if (idx !== -1) await this.rotateImage(idx, deg, true); // true = skip UI reload per item
+            await this.rotateImage(file, deg, true); // true = skip single-view UI updates
         }
 
-        // Final refresh of all selected items
-        filesToRotate.forEach(file => {
-            const idx = indexOf(file);
-            if (idx !== -1) this.refreshThumbnailUI(idx);
-        });
-
         if (this.viewMode === 'single') {
-            this.loadIndex(this.currentIndex);
+            this.loadFile(this.currentFile);
         }
 
         this.elements.loading.classList.add('hidden');
@@ -1307,15 +1440,19 @@ const app = {
         this.log("Bulk rotation finished");
     },
 
-    async rotateImage(index, deg, skipUI = false) {
-        const fileEntry = this.files[index];
+    async rotateImage(fileEntry, deg, skipUI = false) {
         if (!fileEntry) return;
+
+        if (/\.gif$/i.test(fileEntry.name)) {
+            this.showToast('GIF rotation is not supported (animation would be lost)');
+            return;
+        }
 
         // Optimistic UI Update: immediately update rotation visually
         if (!skipUI) {
             fileEntry.rotation = (fileEntry.rotation || 0) + deg;
             // Only update current view if we are still looking at this image
-            if (this.viewMode === 'single' && this.files[this.currentIndex] === fileEntry) {
+            if (this.viewMode === 'single' && this.currentFile === fileEntry) {
                 this.updateImageTransform();
             }
         }
@@ -1346,19 +1483,20 @@ const app = {
 
                 // HARDENING: Fresh handle check
                 const fileData = await fileEntry.handle.getFile();
-                const bitmap = await createImageBitmap(fileData);
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                const is90or270 = normalizedDeg === 90 || normalizedDeg === 270;
 
-                canvas.width = is90or270 ? bitmap.height : bitmap.width;
-                canvas.height = is90or270 ? bitmap.width : bitmap.height;
+                // Fast path for JPEGs: patch the EXIF orientation flag.
+                // No decode, no re-encode, no quality loss — near-instant.
+                let blob = null;
+                if (/\.jpe?g$/i.test(fileEntry.name)) {
+                    try {
+                        blob = this.rotateJpegLossless(await fileData.arrayBuffer(), normalizedDeg);
+                    } catch (e) {
+                        this.log('Lossless rotation unavailable, re-encoding: ' + e.message);
+                    }
+                }
 
-                ctx.translate(canvas.width / 2, canvas.height / 2);
-                ctx.rotate(normalizedDeg * Math.PI / 180);
-                ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
-
-                const blob = await new Promise(r => canvas.toBlob(r, fileData.type || 'image/jpeg', 0.95));
+                // Fallback: canvas re-encode (PNG stays pixel-lossless)
+                if (!blob) blob = await this.rotateByReencoding(fileData, fileEntry.name, normalizedDeg);
                 if (!blob) throw new Error('Blob conversion failed');
 
                 // Re-verify permission
@@ -1378,21 +1516,18 @@ const app = {
                 if (fileEntry.fullImageUrl) URL.revokeObjectURL(fileEntry.fullImageUrl);
                 delete fileEntry.fullImageUrl;
 
-                // Refresh Thumbnail ALWAYS (re-resolve index in case order changed)
-                const liveIndex = this.files.indexOf(fileEntry);
-                if (liveIndex !== -1) this.refreshThumbnailUI(liveIndex);
+                // Refresh sort metadata — the write changed both
+                const newFileData = await fileEntry.handle.getFile();
+                fileEntry.size = newFileData.size;
+                fileEntry.lastModified = newFileData.lastModified;
+
+                // Refresh Thumbnail ALWAYS
+                this.refreshThumbnailUI(fileEntry);
 
                 // Update Single View ONLY if still active on this file
-                if (!skipUI && this.viewMode === 'single' && this.files[this.currentIndex] === fileEntry) {
-                    const newFileData = await fileEntry.handle.getFile();
+                if (!skipUI && this.viewMode === 'single' && this.currentFile === fileEntry) {
                     const newUrl = URL.createObjectURL(newFileData);
                     fileEntry.fullImageUrl = newUrl;
-
-                    // Fade swap for smoothness
-                    // We don't need a fade out if we just updated the source, 
-                    // but we do need to reset the transform if the underlying image is now rotated 
-                    // (which it is, we saved it).
-                    // Actually, since we reset fileEntry.rotation = 0, updating transform is correct.
 
                     // Disable transition to prevent "spin back" glitch when swapping source and resetting transform
                     this.elements.currentImage.style.transition = 'none';
@@ -1403,22 +1538,17 @@ const app = {
                     // Force Layout
                     void this.elements.currentImage.offsetWidth;
 
-                    // Restore transition logic (matches loadIndex behavior, maybe don't even need to restore aggressively if we rely on next interaction?)
-                    // But if user zooms/pans immediately, we might want it back.
-                    // Actually, let's restore it in a timeout or on next interaction
                     setTimeout(() => {
                         this.elements.currentImage.style.transition = 'transform 0.3s ease';
                     }, 50);
                 }
-
-                bitmap.close();
             }
         } catch (err) {
             console.error('Rotation failed:', err);
             fileEntry.pendingRotation = 0;
             // Roll back the optimistic preview so the screen matches the file on disk
             fileEntry.rotation = 0;
-            if (this.viewMode === 'single' && this.files[this.currentIndex] === fileEntry) {
+            if (this.viewMode === 'single' && this.currentFile === fileEntry) {
                 this.updateImageTransform();
             }
             this.showToast("Rotation failed: File may be in use");
@@ -1439,6 +1569,10 @@ const app = {
             return;
         }
         if (this.cropState.active) return;
+        if (this.currentFile && /\.gif$/i.test(this.currentFile.name)) {
+            this.showToast('Cropping GIFs is not supported (animation would be lost)');
+            return;
+        }
         if (this.viewMode !== 'single') this.setView('single');
         this.zoom = 1;
         this.panX = 0;
@@ -1449,10 +1583,7 @@ const app = {
         document.querySelector('.controls').classList.add('hidden');
         document.getElementById('thumbnail-strip').classList.add('hidden');
 
-        // 2. Hide Overlay (legacy cleanup)
-        if (this.elements.cropOverlay) this.elements.cropOverlay.classList.add('hidden');
-
-        // 3. Initialize Cropper
+        // 2. Initialize Cropper
         const image = this.elements.currentImage;
 
         // Destroy existing if any
@@ -1504,28 +1635,31 @@ const app = {
             toolbar = document.createElement('div');
             toolbar.id = 'cropper-toolbar';
             toolbar.style.cssText = `
-                position: fixed; 
-                bottom: 20px; 
-                left: 50%; 
-                transform: translateX(-50%); 
-                z-index: 2000; 
-                display: flex; 
-                gap: 12px; 
-                background: rgba(20, 20, 20, 0.9);
+                position: fixed;
+                bottom: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                z-index: 2000;
+                display: flex;
+                gap: 12px;
+                background: var(--glass-bottom-bg);
+                color: var(--glass-bottom-text);
                 padding: 12px 24px;
                 border-radius: 999px;
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                backdrop-filter: blur(20px);
+                border: 1px solid var(--glass-bottom-border);
+                backdrop-filter: var(--backdrop-filter);
+                -webkit-backdrop-filter: var(--backdrop-filter);
                 box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+                transition: background 0.35s ease, color 0.35s ease;
             `;
 
             toolbar.innerHTML = `
-                <button id="cropper-cancel" style="color: #fff; background: transparent; border: none; font-size: 14px; cursor: pointer; padding: 8px 16px;">Cancel</button>
-                <div style="width: 1px; background: rgba(255,255,255,0.2); margin: 4px 0;"></div>
-                <button id="cropper-rotate-left" style="color: #fff; background: transparent; border: none; font-size: 18px; cursor: pointer; padding: 8px 12px;" title="Rotate Left">↺</button>
-                <button id="cropper-rotate-right" style="color: #fff; background: transparent; border: none; font-size: 18px; cursor: pointer; padding: 8px 12px;" title="Rotate Right">↻</button>
-                <div style="width: 1px; background: rgba(255,255,255,0.2); margin: 4px 0;"></div>
-                <button id="cropper-save" style="color: #000; background: #fff; border: none; font-size: 14px; font-weight: 600; cursor: pointer; padding: 8px 24px; border-radius: 999px;">Save</button>
+                <button id="cropper-cancel" style="color: inherit; background: transparent; border: none; font-size: 14px; cursor: pointer; padding: 8px 16px;">Cancel</button>
+                <div style="width: 1px; background: var(--glass-bottom-border); margin: 4px 0;"></div>
+                <button id="cropper-rotate-left" style="color: inherit; background: transparent; border: none; font-size: 18px; cursor: pointer; padding: 8px 12px;" title="Rotate Left">↺</button>
+                <button id="cropper-rotate-right" style="color: inherit; background: transparent; border: none; font-size: 18px; cursor: pointer; padding: 8px 12px;" title="Rotate Right">↻</button>
+                <div style="width: 1px; background: var(--glass-bottom-border); margin: 4px 0;"></div>
+                <button id="cropper-save" style="color: #fff; background: var(--accent-color); border: none; font-size: 14px; font-weight: 600; cursor: pointer; padding: 8px 24px; border-radius: 999px;">Save</button>
             `;
             document.body.appendChild(toolbar);
 
@@ -1545,10 +1679,12 @@ const app = {
 
         try {
             const canvas = this.cropper.getCroppedCanvas();
-            const fileEntry = this.files[this.currentIndex];
-            const fileData = await fileEntry.handle.getFile();
+            const fileEntry = this.currentFile;
+            if (!fileEntry) throw new Error('No file selected');
 
-            const blob = await new Promise(r => canvas.toBlob(r, fileData.type || 'image/jpeg', 0.95));
+            const { type, quality } = this.getSaveFormat(fileEntry.name);
+            const blob = await new Promise(r => canvas.toBlob(r, type, quality));
+            if (!blob) throw new Error('Encoding failed');
 
             // Re-verify permission
             if (this.dirHandle) {
@@ -1561,9 +1697,11 @@ const app = {
             await writable.write(blob);
             await writable.close();
 
-            this.refreshThumbnailUI(this.currentIndex);
+            this.refreshThumbnailUI(fileEntry);
             if (fileEntry.fullImageUrl) URL.revokeObjectURL(fileEntry.fullImageUrl);
             const newFileData = await fileEntry.handle.getFile();
+            fileEntry.size = newFileData.size;
+            fileEntry.lastModified = newFileData.lastModified;
             const newUrl = URL.createObjectURL(newFileData);
             fileEntry.fullImageUrl = newUrl;
 
