@@ -64,6 +64,20 @@ the actual file objects.
    adaptive glass, and `file://`/standalone operation. CI runs it on every
    push.
 
+### Also shipped: instant previews (v1.3.0)
+- **Rotation preview is decoupled from the disk write.** Clicking rotate
+  CSS-rotates every preview of that photo instantly; requests stack
+  (right+right = 180° shown immediately, right+left cancels). A per-file
+  queue drains to disk in the background. Because EXIF rotation changes no
+  pixels, cached preview bitmaps stay valid — a lag counter per preview
+  compensates with CSS, so nothing is ever re-read or re-decoded after a
+  rotation. Single view scale-fits at odd quarter turns.
+- **Stacked toasts**: every rotation batch gets its own progress pill;
+  overlapping operations stack under each other instead of overwriting.
+- **Versioning discipline**: `app/version.js` is the single source of truth
+  (start screen, service-worker cache name, package.json via
+  `npm run bump x.y.z`); the test suite fails on version drift.
+
 ### Also shipped alongside Phase A
 - **Download-and-run**: `npm run build` produces a self-contained
   `standalone.html` that works double-clicked from disk (File System Access

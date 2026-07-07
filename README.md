@@ -1,9 +1,9 @@
-# jEditor 1.2
+# jEditor
 
-jEditor is a minimalist, high-performance local photo viewer and editor optimized for bulk rotation and precise cropping. Everything runs in your browser; files are read and written directly on your disk — nothing is uploaded anywhere.
+jEditor is a minimalist, high-performance local photo viewer and editor optimized for bulk rotation and precise cropping. Everything runs in your browser; files are read and written directly on your disk — nothing is uploaded anywhere. The current version is shown on the start screen and in [Releases](../../releases).
 
 ## ✨ Features
-- **Instant lossless rotation**: JPEGs rotate by patching the EXIF orientation flag — no re-encoding, no quality loss, hundreds of photos in seconds.
+- **Instant lossless rotation**: JPEGs rotate by patching the EXIF orientation flag — no re-encoding, no quality loss. Previews rotate the moment you click, rotations stack (two clicks = 180°), and saves happen silently in the background.
 - **Precise cropping**: Cropper.js-powered crop with rotate, saved back to the original file in its original format (PNG stays lossless).
 - **Adaptive liquid-glass UI**: the header and control surfaces sample the photo behind them and flip between dark and light glass to stay readable.
 - **Memory optimized**: lazy thumbnails and object-URL recycling handle 1000+ photo folders.
@@ -35,11 +35,14 @@ Then:
 ## 🛠 Development
 ```bash
 npm install
-npm start        # serve app/ at http://localhost:3000
-npm test         # headless-Chromium test suite (needs Chrome; set CHROME_PATH if not found)
-npm run build    # regenerate standalone.html
+npm start          # serve app/ at http://localhost:3000
+npm test           # headless-Chromium test suite (needs Chrome; set CHROME_PATH if not found)
+npm run build      # regenerate standalone.html
+npm run bump 1.x.y # bump the version (app/version.js + package.json)
 ```
-The app itself is dependency-free vanilla JS in `app/` (Cropper.js is vendored). Tagging a release (`git tag v1.x.y && git push --tags`) builds and attaches `standalone.html` automatically.
+The app itself is dependency-free vanilla JS in `app/` (Cropper.js is vendored).
+
+**Every update gets a version number**: bump with `npm run bump`, commit, then `git tag v1.x.y && git push --tags` — CI builds `standalone.html` and attaches it to a GitHub Release automatically. The version appears on the app's start screen, and the test suite fails if `app/version.js` and `package.json` ever disagree.
 
 Windows users without Node can run `start.bat` to serve the app locally instead.
 
