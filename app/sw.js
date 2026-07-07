@@ -1,9 +1,12 @@
-const CACHE_NAME = 'jeditor-v1.2.0';
+importScripts('./version.js');
+
+const CACHE_NAME = 'jeditor-v' + APP_VERSION;
 const ASSETS = [
     './',
     './index.html',
     './style.css',
     './script.js',
+    './version.js',
     './cropper.min.js',
     './cropper.min.css',
     './icon.png',

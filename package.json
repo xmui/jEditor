@@ -1,12 +1,13 @@
 {
   "name": "jeditor",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "description": "Minimalist local photo viewer with instant lossless rotation and cropping",
   "scripts": {
     "start": "node scripts/serve.js",
     "build": "node scripts/build-standalone.js",
-    "test": "node test/run.js"
+    "test": "node test/run.js",
+    "bump": "node scripts/bump-version.js"
   },
   "devDependencies": {
     "playwright-core": "^1.45.0"

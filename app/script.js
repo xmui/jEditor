@@ -41,7 +41,13 @@ const app = {
 
     init() {
         // Debug
-        this.log('App Initializing...');
+        this.log('App Initializing... v' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'dev'));
+
+        // Show the version on the start screen
+        const title = document.getElementById('app-title');
+        if (title && typeof APP_VERSION !== 'undefined') {
+            title.textContent = 'jEditor ' + APP_VERSION;
+        }
 
         // Drag and Drop
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -169,7 +175,7 @@ const app = {
             this.elements.loading.classList.remove('hidden');
             this.elements.dropZone.classList.add('hidden');
 
-            this.showToast('Scanning folder...', 0);
+            this.showToast('Scanning folder...', 0, 'scan');
             await this.scanDirectory(dirHandle);
 
             await this.finalizeLoad();
@@ -245,10 +251,21 @@ const app = {
 
     updateImageTransform() {
         if (!this.currentFile) return;
-        const r = this.currentFile.rotation || 0;
+        const img = this.elements.currentImage;
+        const r = this.getDisplayRotation(this.currentFile, 'full');
 
-        this.elements.currentImage.style.transform =
-            `translate(${this.panX}px, ${this.panY}px) rotate(${r}deg) scale(${this.zoom})`;
+        // At odd quarter-turns the CSS-rotated image would overflow the
+        // container (layout still sees the unrotated box) — scale it to fit.
+        let fit = 1;
+        if (((r % 180) + 180) % 180 === 90) {
+            const cw = this.elements.imageContainer.clientWidth;
+            const ch = this.elements.imageContainer.clientHeight;
+            const w = img.offsetWidth, h = img.offsetHeight;
+            if (cw && ch && w && h) fit = Math.min(cw / h, ch / w);
+        }
+
+        img.style.transform =
+            `translate(${this.panX}px, ${this.panY}px) rotate(${r}deg) scale(${this.zoom * fit})`;
     },
 
     handlePanStart(e) {
@@ -313,7 +330,7 @@ const app = {
             const items = [...e.dataTransfer.items];
             if (!items || items.length === 0) throw new Error('No items dropped.');
 
-            this.showToast(`Processing ${items.length} items...`, 2000);
+            this.showToast(`Processing ${items.length} items...`, 2000, 'scan');
             this.log(`Processing ${items.length} items...`);
 
             // Try modern File System Access API first (supports writing)
@@ -382,7 +399,7 @@ const app = {
             this.sortFiles(false); // pass false to avoid re-rendering twice
 
             if (this.files.length > 0) {
-                this.showToast(`Loaded ${this.files.length} images.`, 3000);
+                this.showToast(`Loaded ${this.files.length} images.`, 3000, 'scan');
                 this.elements.mainInterface.classList.remove('hidden');
 
                 // Force focus settings
@@ -460,7 +477,7 @@ const app = {
 
     async scanDirectory(dirHandle) {
         try {
-            this.showToast('Scanning folder...', 0);
+            this.showToast('Scanning folder...', 0, 'scan');
             for await (const entry of dirHandle.values()) {
                 if (entry.kind === 'file' && this.isImage(entry.name)) {
                     // Check for duplicates to allow Refresh
@@ -474,7 +491,7 @@ const app = {
                         });
                     }
                     if (this.files.length % 50 === 0) {
-                        this.showToast(`Found ${this.files.length} images...`, 0);
+                        this.showToast(`Found ${this.files.length} images...`, 0, 'scan');
                     }
                 } else if (entry.kind === 'directory') {
                     await this.scanDirectory(entry);
@@ -497,13 +514,13 @@ const app = {
 
             if (this.files.length > oldLength) {
                 this.sortFiles();
-                this.showToast(`Found ${this.files.length - oldLength} new photos`, 3000);
+                this.showToast(`Found ${this.files.length - oldLength} new photos`, 3000, 'scan');
             } else {
-                this.showToast('Folder is up to date', 2000);
+                this.showToast('Folder is up to date', 2000, 'scan');
             }
         } catch (e) {
             console.error('Refresh failed:', e);
-            this.showToast('Refresh failed');
+            this.showToast('Refresh failed', 3000, 'scan');
         } finally {
             this.elements.loading.classList.add('hidden');
         }
@@ -515,6 +532,26 @@ const app = {
 
     getCurrentIndex() {
         return this.files.indexOf(this.currentFile);
+    },
+
+    // Degrees of CSS rotation a preview needs on top of its cached bitmap:
+    // rotation already saved to disk but not baked into that bitmap (lag),
+    // plus rotation currently being written, plus rotation still queued.
+    getDisplayRotation(file, kind) {
+        if (!file) return 0;
+        const lag = (kind === 'thumb' ? file.thumbLag : file.fullLag) || 0;
+        return lag + (file.savingRotation || 0) + (file.pendingRotation || 0);
+    },
+
+    // Instantly rotate every on-screen preview of a file via CSS
+    applyPreviewRotation(file) {
+        const angle = this.getDisplayRotation(file, 'thumb');
+        const transform = angle ? `rotate(${angle}deg)` : '';
+        const gridImg = file._gridEl && file._gridEl.querySelector('img');
+        if (gridImg) gridImg.style.transform = transform;
+        const stripImg = file._stripEl && file._stripEl.querySelector('img');
+        if (stripImg) stripImg.style.transform = transform;
+        if (this.currentFile === file) this.updateImageTransform();
     },
 
     // Output format when a file must be re-encoded (crop, or non-JPEG rotation)
@@ -810,6 +847,7 @@ const app = {
             img.style.height = '100%';
             img.style.objectFit = 'cover';
             img.style.pointerEvents = 'none'; // let click pass to div
+            img.style.transition = 'transform 0.15s ease'; // snappy rotation previews
             div.appendChild(img);
 
             await this.loadImageThumbnail(file, img, force);
@@ -900,6 +938,7 @@ const app = {
             const url = fileEntry.thumbnailUrl;
             fileEntry._thumbWaiters.forEach(img => { img.src = url; });
             fileEntry._thumbWaiters = [];
+            this.applyPreviewRotation(fileEntry);
             return;
         }
 
@@ -907,15 +946,26 @@ const app = {
         fileEntry.isLoading = true;
 
         try {
+            // Don't read mid-save; the queue is quick (EXIF patch)
+            while (fileEntry.isBusy) await new Promise(r => setTimeout(r, 30));
+
+            // Bytes read now include everything saved so far; any save that
+            // lands while we decode shows up in the delta below.
+            const savedAtRead = fileEntry._savedRotationTotal || 0;
+            const finishThumb = (url) => {
+                fileEntry.thumbnailUrl = url;
+                fileEntry.thumbLag = (fileEntry._savedRotationTotal || 0) - savedAtRead;
+                fileEntry._thumbWaiters.forEach(img => { img.src = url; });
+                fileEntry._thumbWaiters = [];
+                fileEntry.isLoading = false;
+                this.applyPreviewRotation(fileEntry);
+            };
+
             const fileData = await fileEntry.handle.getFile();
 
             // Fast Path: If image is already reasonably small, just use it
             if (fileData.size < 200 * 1024) {
-                const url = URL.createObjectURL(fileData);
-                fileEntry.thumbnailUrl = url;
-                fileEntry._thumbWaiters.forEach(img => { img.src = url; });
-                fileEntry._thumbWaiters = [];
-                fileEntry.isLoading = false;
+                finishThumb(URL.createObjectURL(fileData));
                 return;
             }
 
@@ -928,11 +978,7 @@ const app = {
             ctx.drawImage(bitmap, 0, 0);
 
             canvas.toBlob(blob => {
-                const url = URL.createObjectURL(blob);
-                fileEntry.thumbnailUrl = url;
-                fileEntry._thumbWaiters.forEach(img => { img.src = url; });
-                fileEntry._thumbWaiters = [];
-                fileEntry.isLoading = false;
+                finishThumb(URL.createObjectURL(blob));
                 bitmap.close(); // Explicitly close bitmap
             }, 'image/jpeg', 0.8);
 
@@ -1074,15 +1120,10 @@ const app = {
         // Prepare for swap: fast fade out
         this.elements.currentImage.style.opacity = '0';
 
-        // Reset zoom/pan/rotation
+        // Reset zoom/pan (rotation display is per-file via getDisplayRotation)
         this.zoom = 1;
         this.panX = 0;
         this.panY = 0;
-        // Do not reset file.rotation here?
-        // Wait, if we navigated, we want to see the stored state? 
-        // file.rotation = 0; // We keep temporary unsaved rotation? No, usually reset on navigate if unsaved.
-        // The user complained about weirdness. If they rotated, then navigated, the saving happens in background.
-        // The new file should start at 0 rotation (unless it has saved rotation property, which we reset to 0 in save).
 
         // CRITICAL FIX: Kill transition immediately to prevent "spin back" or "float"
         this.elements.currentImage.style.transition = 'none';
@@ -1095,9 +1136,14 @@ const app = {
         try {
             let url = file.fullImageUrl;
             if (!url) {
+                // Don't read mid-save; the rotation queue is quick
+                while (file.isBusy) await new Promise(r => setTimeout(r, 30));
+                const savedAtRead = file._savedRotationTotal || 0;
                 const fileData = await file.handle.getFile();
                 url = URL.createObjectURL(fileData);
                 file.fullImageUrl = url;
+                // Fresh bytes: lag is only whatever gets saved after this read
+                file.fullLag = (file._savedRotationTotal || 0) - savedAtRead;
             }
 
             // Small delay for DOM to register opacity 0
@@ -1112,10 +1158,13 @@ const app = {
             // { once: true } so these don't pile up across navigations.
             img.addEventListener('error', async () => {
                 console.warn('Recovering revoked full-size blob for:', file.name);
+                const savedAtRead = file._savedRotationTotal || 0;
                 const freshData = await file.handle.getFile();
                 const freshUrl = URL.createObjectURL(freshData);
                 file.fullImageUrl = freshUrl;
+                file.fullLag = (file._savedRotationTotal || 0) - savedAtRead;
                 img.src = freshUrl;
+                this.updateImageTransform();
             }, { once: true });
 
             img.src = url;
@@ -1130,6 +1179,8 @@ const app = {
 
             if (this._loadToken !== loadToken) return;
 
+            // fullLag may have changed if the URL was freshly created
+            this.updateImageTransform();
             this.analyzeImageBrightness(img);
 
             img.style.transition = 'transform 0.3s ease';
@@ -1182,11 +1233,14 @@ const app = {
         const file = this.files[index];
 
         if (file.fullImageUrl) return; // Already cached
+        if (file.isBusy || file.pendingRotation) return; // Mid-rotation; load on demand later
 
         try {
+            const savedAtRead = file._savedRotationTotal || 0;
             const fileData = await file.handle.getFile();
             const url = URL.createObjectURL(fileData);
             file.fullImageUrl = url;
+            file.fullLag = (file._savedRotationTotal || 0) - savedAtRead;
         } catch (e) { /* ignore */ }
     },
 
@@ -1220,20 +1274,34 @@ const app = {
         }
     },
 
-    showToast(message, duration = 3000) {
-        let toast = document.getElementById('toast-notification');
+    // Stacking toasts: each message gets its own pill; concurrent operations
+    // stack vertically instead of overwriting each other. Passing the same
+    // `key` updates an existing toast in place (progress → done), and
+    // duration 0 keeps a toast up until it is updated with a duration.
+    showToast(message, duration = 3000, key = null) {
+        let stack = document.getElementById('toast-stack');
+        if (!stack) {
+            stack = document.createElement('div');
+            stack.id = 'toast-stack';
+            document.body.appendChild(stack);
+        }
+
+        let toast = key ? stack.querySelector(`[data-key="${CSS.escape(key)}"]`) : null;
         if (!toast) {
             toast = document.createElement('div');
-            toast.id = 'toast-notification';
-            document.body.appendChild(toast);
+            toast.className = 'toast';
+            if (key) toast.dataset.key = key;
+            stack.appendChild(toast);
+            // Let layout settle so the enter transition plays
+            requestAnimationFrame(() => toast.classList.add('visible'));
         }
         toast.textContent = message;
-        toast.classList.add('visible');
 
-        if (this.toastTimeout) clearTimeout(this.toastTimeout);
+        if (toast._timer) clearTimeout(toast._timer);
         if (duration > 0) {
-            this.toastTimeout = setTimeout(() => {
+            toast._timer = setTimeout(() => {
                 toast.classList.remove('visible');
+                setTimeout(() => toast.remove(), 300);
             }, duration);
         }
     },
@@ -1401,85 +1469,89 @@ const app = {
         }
     },
 
+    // ---- Rotation engine ----
+    //
+    // The preview is decoupled from the disk write. A rotation request:
+    //   1. bumps file.pendingRotation and instantly CSS-rotates every preview
+    //      of that file (grid tile, strip thumb, single view) — repeated
+    //      clicks stack naturally (90 + 90 shows 180 immediately);
+    //   2. a per-file queue drains pendingRotation to disk in the background.
+    //
+    // Saving an EXIF rotation doesn't change any pixels, so cached preview
+    // bitmaps stay valid: we track how far each cached bitmap "lags" behind
+    // the disk (thumbLag / fullLag) and keep compensating with CSS. Nothing
+    // is re-read or re-decoded after a rotation — that's what makes it snappy.
+    // Lags reset to 0 whenever a preview is regenerated from fresh disk bytes.
+
     async rotateBulk(deg) {
         if (this.selection.size === 0) return;
 
-        // Snapshot the selection NOW. Set iterators see items added during
-        // iteration, so iterating this.selection live while awaiting would
-        // rotate photos the user clicks mid-operation.
-        const filesToRotate = [...this.selection];
+        // Snapshot the selection NOW: photos the user clicks or selects while
+        // this batch is saving must never join it.
+        const snapshot = [...this.selection];
+        const filesToRotate = snapshot.filter(f => !/\.gif$/i.test(f.name));
+        const skippedGifs = snapshot.length - filesToRotate.length;
+        if (skippedGifs > 0) this.showToast(`Skipped ${skippedGifs} GIF${skippedGifs > 1 ? 's' : ''} (rotation would lose animation)`);
+        if (filesToRotate.length === 0) return;
 
-        // Concurrency Guard: If already rotating, wait or queue
-        if (this.isBulkRotating) {
-            // We'll trust the individual file pendingRotation logic for now,
-            // but we MUST not let this call clear the loading indicator.
-            for (const file of filesToRotate) {
-                this.rotateImage(file, deg, true);
-            }
-            return;
-        }
-
-        this.isBulkRotating = true;
-        this.elements.loading.classList.remove('hidden');
-        if (this.elements.loadingText) this.elements.loadingText.textContent = `Rotating ${filesToRotate.length} images...`;
-
-        // Process sequentially to avoid memory spikes / file locks.
-        // rotateImage refreshes each thumbnail after its save, so no extra
-        // refresh pass (which would decode every image a second time).
+        // Instant preview on every selected photo, before any disk work
         for (const file of filesToRotate) {
-            await this.rotateImage(file, deg, true); // true = skip single-view UI updates
+            file.pendingRotation = (file.pendingRotation || 0) + deg;
+            this.applyPreviewRotation(file);
         }
 
-        if (this.viewMode === 'single') {
-            this.loadFile(this.currentFile);
+        // Each batch gets its own toast; overlapping batches stack in the UI
+        const toastKey = 'rotate-batch-' + (this._batchSeq = (this._batchSeq || 0) + 1);
+        const label = `${filesToRotate.length} photo${filesToRotate.length > 1 ? 's' : ''}`;
+        this.showToast(`Rotating ${label}…`, 0, toastKey);
+
+        // Drain sequentially to avoid memory spikes; files already being
+        // saved by another batch are awaited, not double-processed.
+        let ok = true;
+        for (const file of filesToRotate) {
+            ok = (await this.processRotationQueue(file)) && ok;
         }
 
-        this.elements.loading.classList.add('hidden');
-        if (this.elements.loadingText) this.elements.loadingText.textContent = 'Processing...';
-        this.isBulkRotating = false;
-        this.log("Bulk rotation finished");
+        this.showToast(ok ? `Rotated ${label} ${deg > 0 ? 'right' : 'left'}` : `Some photos failed to rotate`, 2000, toastKey);
+        this.log('Bulk rotation finished');
     },
 
-    async rotateImage(fileEntry, deg, skipUI = false) {
-        if (!fileEntry) return;
+    rotateImage(fileEntry, deg) {
+        if (!fileEntry) return Promise.resolve(false);
 
         if (/\.gif$/i.test(fileEntry.name)) {
             this.showToast('GIF rotation is not supported (animation would be lost)');
-            return;
+            return Promise.resolve(false);
         }
 
-        // Optimistic UI Update: immediately update rotation visually
-        if (!skipUI) {
-            fileEntry.rotation = (fileEntry.rotation || 0) + deg;
-            // Only update current view if we are still looking at this image
-            if (this.viewMode === 'single' && this.currentFile === fileEntry) {
-                this.updateImageTransform();
-            }
-        }
+        // Instant, stacking preview; the save happens in the background
+        fileEntry.pendingRotation = (fileEntry.pendingRotation || 0) + deg;
+        this.applyPreviewRotation(fileEntry);
 
-        // Queue the rotation
-        if (!fileEntry.pendingRotation) fileEntry.pendingRotation = 0;
-        fileEntry.pendingRotation += deg;
+        return this.processRotationQueue(fileEntry);
+    },
 
-        // UNIFIED LOCK: Wait if either rotating or saving
-        if (fileEntry.isBusy) return;
+    // One save queue per file. Returns the in-flight promise if the file is
+    // already being saved, so concurrent callers await the same drain.
+    processRotationQueue(fileEntry) {
+        if (fileEntry._rotationQueue) return fileEntry._rotationQueue;
+        fileEntry._rotationQueue = this.drainRotationQueue(fileEntry)
+            .finally(() => { fileEntry._rotationQueue = null; });
+        return fileEntry._rotationQueue;
+    },
+
+    async drainRotationQueue(fileEntry) {
         fileEntry.isBusy = true;
-
-        // UI Indicator (Non-blocking)
-        if (!skipUI) {
-            this.elements.loading.classList.remove('hidden');
-            if (this.elements.loadingText) this.elements.loadingText.textContent = 'Saving...';
-        }
-
         try {
-            // Process ALL queued rotations for this file
+            // Process ALL queued rotations for this file (more may arrive
+            // while a write is in flight — the loop picks them up)
             while (fileEntry.pendingRotation !== 0) {
                 const currentDeg = fileEntry.pendingRotation;
                 fileEntry.pendingRotation = 0;
+                fileEntry.savingRotation = currentDeg;
 
-                // Normalize
                 const normalizedDeg = ((currentDeg % 360) + 360) % 360;
-                if (normalizedDeg === 0) continue;
+                if (normalizedDeg === 0) { fileEntry.savingRotation = 0; continue; }
 
                 // HARDENING: Fresh handle check
                 const fileData = await fileEntry.handle.getFile();
@@ -1510,56 +1582,33 @@ const app = {
                 await writable.write(blob);
                 await writable.close();
 
-                // Reset internal rotation as file is saved
-                fileEntry.rotation = 0;
-                // Invalidate URLs
-                if (fileEntry.fullImageUrl) URL.revokeObjectURL(fileEntry.fullImageUrl);
-                delete fileEntry.fullImageUrl;
-
                 // Refresh sort metadata — the write changed both
                 const newFileData = await fileEntry.handle.getFile();
                 fileEntry.size = newFileData.size;
                 fileEntry.lastModified = newFileData.lastModified;
 
-                // Refresh Thumbnail ALWAYS
-                this.refreshThumbnailUI(fileEntry);
-
-                // Update Single View ONLY if still active on this file
-                if (!skipUI && this.viewMode === 'single' && this.currentFile === fileEntry) {
-                    const newUrl = URL.createObjectURL(newFileData);
-                    fileEntry.fullImageUrl = newUrl;
-
-                    // Disable transition to prevent "spin back" glitch when swapping source and resetting transform
-                    this.elements.currentImage.style.transition = 'none';
-
-                    this.elements.currentImage.src = newUrl;
-                    this.updateImageTransform(); // Will see rotation=0
-
-                    // Force Layout
-                    void this.elements.currentImage.offsetWidth;
-
-                    setTimeout(() => {
-                        this.elements.currentImage.style.transition = 'transform 0.3s ease';
-                    }, 50);
-                }
+                // The cached previews still show pre-save pixels; they now lag
+                // the disk by currentDeg more. On-screen totals are unchanged,
+                // so nothing needs repainting, reloading or re-decoding.
+                fileEntry.thumbLag = (fileEntry.thumbLag || 0) + currentDeg;
+                fileEntry.fullLag = (fileEntry.fullLag || 0) + currentDeg;
+                // Running total of saved rotation — preview loaders snapshot
+                // this around their disk read to compute an exact lag even if
+                // a save lands while they are decoding.
+                fileEntry._savedRotationTotal = (fileEntry._savedRotationTotal || 0) + currentDeg;
+                fileEntry.savingRotation = 0;
             }
+            return true;
         } catch (err) {
             console.error('Rotation failed:', err);
+            // Roll back the optimistic preview so the screen matches disk
             fileEntry.pendingRotation = 0;
-            // Roll back the optimistic preview so the screen matches the file on disk
-            fileEntry.rotation = 0;
-            if (this.viewMode === 'single' && this.currentFile === fileEntry) {
-                this.updateImageTransform();
-            }
-            this.showToast("Rotation failed: File may be in use");
+            fileEntry.savingRotation = 0;
+            this.applyPreviewRotation(fileEntry);
+            this.showToast('Rotation failed: File may be in use');
+            return false;
         } finally {
             fileEntry.isBusy = false;
-            // Hide loading only if NO other files are busy? 
-            // Simplified: Hide it. If another starts, it will show again.
-            // Or better: check if any are busy.
-            if (!this.files.some(f => f.isBusy)) {
-                this.elements.loading.classList.add('hidden');
-            }
         }
     },
     // Crop Logic
@@ -1697,6 +1746,12 @@ const app = {
             await writable.write(blob);
             await writable.close();
 
+            // The crop bakes all pixels upright — reset rotation bookkeeping
+            fileEntry.pendingRotation = 0;
+            fileEntry.savingRotation = 0;
+            fileEntry.thumbLag = 0;
+            fileEntry.fullLag = 0;
+
             this.refreshThumbnailUI(fileEntry);
             if (fileEntry.fullImageUrl) URL.revokeObjectURL(fileEntry.fullImageUrl);
             const newFileData = await fileEntry.handle.getFile();
@@ -1709,6 +1764,7 @@ const app = {
             // cropper.replace() here would re-render the whole cropper just to destroy it.
             this.cancelCrop();
             this.elements.currentImage.src = newUrl;
+            this.updateImageTransform();
 
             this.showToast("Image saved successfully");
 

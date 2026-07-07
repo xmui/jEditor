@@ -101,6 +101,14 @@ async function newPage(browser, url) {
         check('no failed requests', issues.failedRequests.length === 0, issues.failedRequests.join('; '));
         check('Cropper library loaded', await page.evaluate(() => typeof Cropper !== 'undefined'));
         check('app initialized', await page.evaluate(() => typeof app !== 'undefined'));
+
+        const pkgVersion = require(path.join(ROOT, 'package.json')).version;
+        const v = await page.evaluate(() => ({
+            appVersion: typeof APP_VERSION !== 'undefined' ? APP_VERSION : null,
+            title: document.getElementById('app-title')?.textContent || ''
+        }));
+        check('APP_VERSION matches package.json', v.appVersion === pkgVersion, `${v.appVersion} vs ${pkgVersion}`);
+        check('version shown on start screen', v.title === `jEditor ${pkgVersion}`, v.title);
         await page.close();
     }
 
@@ -222,6 +230,69 @@ async function newPage(browser, url) {
         check('bulk rotate: photo clicked mid-rotation is untouched', r.bWrites === 0, `writes=${r.bWrites}`);
         check('bulk rotate: selected photo was rotated', r.aWritesAfterBulk === 2, `writes=${r.aWritesAfterBulk}`);
         check('loading indicator cleared', r.loadingHidden);
+        await page.close();
+    }
+
+    // ---- 4b. Snappy previews: instant stacking, background saves, no re-decode ----
+    console.log('instant previews & stacking');
+    {
+        const { page } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const f = makeFakeFile('stack.jpg', makeJpegBytes(), 'image/jpeg');
+            app.files = [f];
+            app.viewMode = 'grid';
+            app.dirHandle = null;
+
+            // Two rapid clicks: preview must show 180° immediately, before any save lands
+            const p1 = app.rotateImage(f, 90);
+            const p2 = app.rotateImage(f, 90);
+            out.instantPreview = app.getDisplayRotation(f, 'thumb');
+            await Promise.all([p1, p2]);
+            out.diskOrientation = readOrientation(f.handle.bytes);     // 1 +90 +90 → 3
+            out.previewAfterSave = app.getDisplayRotation(f, 'thumb'); // still 180 via lag
+            out.lag = f.thumbLag;
+            out.settled = (f.pendingRotation || 0) === 0 && (f.savingRotation || 0) === 0;
+
+            // Right then left cancels out on screen instantly and nets zero on disk
+            const g = makeFakeFile('netzero.jpg', makeJpegBytes(), 'image/jpeg');
+            app.files = [f, g];
+            const q = app.rotateImage(g, 90);
+            app.rotateImage(g, -90);
+            out.netZeroInstant = app.getDisplayRotation(g, 'thumb');
+            await q;
+            out.netZeroDisk = readOrientation(g.handle.bytes); // 6 then back to 1
+            out.netZeroPreview = app.getDisplayRotation(g, 'thumb');
+            return out;
+        });
+        check('two quick rotates preview 180° instantly', r.instantPreview === 180, String(r.instantPreview));
+        check('disk lands at orientation 3 (180°)', r.diskOrientation === 3, String(r.diskOrientation));
+        check('preview unchanged after save (no reload)', r.previewAfterSave === 180 && r.lag === 180, `${r.previewAfterSave}/${r.lag}`);
+        check('queue fully drained', r.settled);
+        check('right+left cancels instantly on screen', r.netZeroInstant === 0, String(r.netZeroInstant));
+        check('right+left nets zero on disk', r.netZeroDisk === 1 && r.netZeroPreview === 0, `${r.netZeroDisk}/${r.netZeroPreview}`);
+        await page.close();
+    }
+
+    // ---- 4c. Stacked toasts ----
+    console.log('stacked toasts');
+    {
+        const { page } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            app.showToast('Rotating 3 photos…', 0, 'op1');
+            app.showToast('Rotating 5 photos…', 0, 'op2');
+            const stacked = document.querySelectorAll('#toast-stack .toast').length;
+            const texts = [...document.querySelectorAll('#toast-stack .toast')].map(t => t.textContent);
+            app.showToast('Rotated 3 photos', 60, 'op1'); // update in place, then auto-dismiss
+            const stillStacked = document.querySelectorAll('#toast-stack .toast').length;
+            const updatedText = document.querySelector('#toast-stack [data-key="op1"]').textContent;
+            await new Promise(r => setTimeout(r, 600));
+            const afterDismiss = document.querySelectorAll('#toast-stack .toast').length;
+            return { stacked, texts, stillStacked, updatedText, afterDismiss };
+        });
+        check('two concurrent operations stack', r.stacked === 2, JSON.stringify(r.texts));
+        check('progress toast updates in place', r.stillStacked === 2 && r.updatedText === 'Rotated 3 photos', r.updatedText);
+        check('finished toast dismisses, sticky one stays', r.afterDismiss === 1, String(r.afterDismiss));
         await page.close();
     }
 
