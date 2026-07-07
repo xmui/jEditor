@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>jEditor | High-Performance Image Editor</title>
+    <meta name="description" content="A minimalist, high-performance image editor with bulk rotation and cropping.">
+    <meta name="theme-color" content="#0c0c0c">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" href="icon.png">
+    <link rel="apple-touch-icon" href="icon.png">
+    <script src="cropper.min.js"></script>
+    <link rel="stylesheet" href="cropper.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="app">
+        <!-- Empty State / Drop Zone -->
+        <div id="drop-zone" class="drop-zone">
+            <div class="drop-content">
+                <img src="icon.png"
+                    style="width: 80px; height: 80px; border-radius: 16px; margin-bottom: 1.5rem; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                <h1>jEditor 1.1.2</h1>
+                <button id="btn-browse-folder" class="browse-btn">Open Folder</button>
+                <p class="drop-hint">or drag and drop images here</p>
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loading-indicator" class="hidden" style="
+            position: fixed; 
+            top: 20px; 
+            right: 20px; 
+            transform: none; 
+            background: rgba(20, 20, 20, 0.9); 
+            border: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            padding: 10px 20px; 
+            border-radius: 999px; 
+            z-index: 2000; 
+            pointer-events: none; 
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+            <div class="loader-spinner" style="
+                width: 14px; 
+                height: 14px; 
+                border: 2px solid rgba(255,255,255,0.3); 
+                border-top-color: #fff; 
+                border-radius: 50%; 
+                animation: spin 1s linear infinite;"></div>
+            <h2 id="loading-text" style="font-size: 14px; font-weight: 500; margin: 0; color: #fff;">Processing...</h2>
+        </div>
+
+        <!-- Main Interface (Hidden initially) -->
+        <div id="main-interface" class="interface hidden">
+
+            <!-- Top Bar -->
+            <header>
+                <div class="file-info">
+                    <span id="file-name">filename.jpg</span>
+                    <span id="file-count">1 / 50</span>
+                    <div class="sort-control">
+                        <select id="sort-mode" title="Sort By">
+                            <option value="name_asc">Name (A-Z)</option>
+                            <option value="name_desc">Name (Z-A)</option>
+                            <option value="date_desc">Newest First</option>
+                            <option value="date_asc">Oldest First</option>
+                            <option value="size_desc">Largest First</option>
+                            <option value="size_asc">Smallest First</option>
+                        </select>
+                    </div>
+                </div>
+                <!-- View Toggle & Actions -->
+                <div class="header-controls">
+                    <button id="btn-refresh" class="icon-btn" title="Refresh Folder (R)">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M23 4v6h-6"></path>
+                            <path d="M1 20v-6h6"></path>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                        </svg>
+                    </button>
+                    <button id="btn-toggle-fit" class="icon-btn" title="Toggle Thumbnail Fit">
+                        <!-- Icon for Fit/Fill -->
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                            <circle cx="12" cy="12" r="3" />
+                        </svg>
+                    </button>
+                    <button id="btn-toggle-view" class="icon-btn" title="Toggle View (Space)">
+                        <svg class="icon-grid" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="14" width="7" height="7"></rect>
+                            <rect x="3" y="14" width="7" height="7"></rect>
+                        </svg>
+                        <svg class="icon-single hidden" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        </svg>
+                    </button>
+                    <button id="btn-crop" title="Crop Image">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"></path>
+                            <path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"></path>
+                        </svg>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Main Image Area -->
+            <main id="main-view">
+                <div id="image-container" class="image-contain hidden">
+                    <img id="current-image" src="" alt="Current Image">
+
+
+
+                    <!-- Controls (Floating) -->
+                    <div class="controls">
+                        <button id="btn-prev" title="Previous (Left Arrow)">
+                            <svg viewBox="0 0 24 24" width="24" height="24">
+                                <path fill="currentColor"
+                                    d="M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z" />
+                            </svg>
+                        </button>
+                        <button id="btn-rotate-left" title="Rotate Left">
+                            <svg viewBox="0 0 24 24" width="24" height="24">
+                                <path fill="currentColor"
+                                    d="M13,3A9,9 0 0,0 4,12H1L4.89,15.89L4.96,16.03L9,12H6A7,7 0 0,1 13,5A7,7 0 0,1 20,12A7,7 0 0,1 13,19C11.07,19 9.32,18.2 8,16.9L6.58,18.32C8.24,19.97 10.5,21 13,21A9,9 0 0,0 22,12A9,9 0 0,0 13,3Z" />
+                            </svg>
+                        </button>
+
+                        <button id="btn-rotate-right" title="Rotate Right">
+                            <svg viewBox="0 0 24 24" width="24" height="24">
+                                <path fill="currentColor"
+                                    d="M16.89,15.89L23,12H20A9,9 0 0,0 11,3A9,9 0 0,0 2,12A9,9 0 0,0 11,21C13.5,21 15.76,19.97 17.42,18.32L16,16.9C14.68,18.2 12.93,19 11,19A7,7 0 0,1 4,12A7,7 0 0,1 11,5A7,7 0 0,1 18,12H15L16.89,15.89Z" />
+                            </svg>
+                        </button>
+                        <button id="btn-next" title="Next (Right Arrow)">
+                            <svg viewBox="0 0 24 24" width="24" height="24">
+                                <path fill="currentColor"
+                                    d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z" />
+                            </svg>
+                        </button>
+                        <div class="control-divider"></div>
+                        <button id="btn-crop-float" title="Crop & Rotate">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"></path>
+                                <path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"></path>
+                            </svg>
+                        </button>
+                        <button id="btn-toggle-strip" title="Toggle Film Strip">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                <line x1="3" y1="9" x2="21" y2="9" />
+                                <line x1="9" y1="21" x2="9" y2="9" />
+                                <line x1="15" y1="21" x2="15" y2="9" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </main>
+
+            <!-- Grid View (Initially Hidden) -->
+            <div id="grid-view" class="grid-view hidden">
+                <!-- Grid items injected here -->
+            </div>
+
+            <!-- Grid Controls (Bottom Slider) -->
+            <div id="grid-controls" class="grid-controls hidden">
+                <div class="slider-group">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="14" width="7" height="7"></rect>
+                        <rect x="3" y="14" width="7" height="7"></rect>
+                    </svg>
+                    <input type="range" id="grid-size-slider" min="80" max="400" value="150" step="10">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="14" width="7" height="7"></rect>
+                        <rect x="3" y="14" width="7" height="7"></rect>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Selection Actions (Floating, visible when selection > 0) -->
+            <div id="selection-bar" class="selection-bar hidden">
+                <span id="selection-count">0 items selected</span>
+                <button id="btn-rotate-left-bulk">Rotate Left</button>
+                <button id="btn-rotate-right-bulk">Rotate Right</button>
+                <button id="btn-clear-selection">Clear</button>
+            </div>
+
+
+
+            <!-- Thumbnail Strip -->
+            <div id="thumbnail-strip" class="thumbnails">
+                <!-- Items injected here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- DEBUG CONSOLE -->
+    <div id="debug-console" style="
+        position: fixed; 
+        bottom: 0; 
+        left: 0; 
+        width: 100%; 
+        height: 150px; 
+        background: rgba(0,0,0,0.85); 
+        color: #0f0; 
+        font-family: monospace; 
+        font-size: 12px; 
+        padding: 10px; 
+        overflow-y: auto; 
+        z-index: 9999; 
+        pointer-events: none;
+        display: none;">
+        <div>Debug Console (Press F2 to Toggle)</div>
+        <div id="debug-log"></div>
+    </div>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+    </script>
+    <script src="script.js"></script>
+</body>
+
+</html>
