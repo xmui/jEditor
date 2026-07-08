@@ -64,6 +64,24 @@ the actual file objects.
    adaptive glass, and `file://`/standalone operation. CI runs it on every
    push.
 
+### Also shipped: fast grid scrolling (v1.4.0)
+- **Root cause of the mid-grid lag fixed**: the cleanup logic revoked any
+  thumbnail >150 positions from the *current photo* (which stays at #1 while
+  you scroll), so scrolling to the middle destroyed and re-decoded
+  thumbnails in a loop. Thumbnails (~10–30 KB each) are now kept for the
+  whole session; only full-size images get trimmed.
+- **Thumbnails generate in a Web Worker** (decode + downscale + encode all
+  off the main thread) through a priority queue — scrolling never competes
+  with image processing. Visible tiles jump the queue.
+- **Whole-folder precache**: right after a folder loads, every thumbnail is
+  generated in the background (with a progress pill for big folders), so
+  scrolling anywhere only assigns already-cached object URLs.
+- Tiles are no longer blanked when they leave the viewport; cached thumbs
+  paint synchronously on re-render; `content-visibility: auto` skips
+  offscreen tile rendering; transparency-safe PNG thumbs; the old
+  "<200 KB files are their own thumbnail" path (which decoded full-res
+  images in tiles) now only applies below 50 KB.
+
 ### Also shipped: instant previews (v1.3.0)
 - **Rotation preview is decoupled from the disk write.** Clicking rotate
   CSS-rotates every preview of that photo instantly; requests stack

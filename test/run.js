@@ -326,6 +326,63 @@ async function newPage(browser, url) {
         await page.close();
     }
 
+    // ---- 5b. Thumbnail pipeline: worker generation, caching, precache ----
+    console.log('thumbnail pipeline');
+    {
+        const { page } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+
+            // Noisy PNG well above the fast-path threshold forces real generation
+            const canvas = document.createElement('canvas');
+            canvas.width = 900; canvas.height = 600;
+            const ctx = canvas.getContext('2d');
+            const noise = ctx.createImageData(900, 600);
+            for (let i = 0; i < noise.data.length; i++) noise.data[i] = (Math.random() * 256) | 0;
+            ctx.putImageData(noise, 0, 0);
+            const big = await new Promise(res => canvas.toBlob(res, 'image/png'));
+            out.originalSize = big.size;
+            const bytes = new Uint8Array(await big.arrayBuffer());
+
+            const file = makeFakeFile('big.png', bytes, 'image/png');
+            app.files = [file];
+
+            out.workerAvailable = !!app.getThumbWorker();
+
+            const url = await app.ensureThumbnail(file, { urgent: true });
+            out.urlSet = file.thumbnailUrl === url && url.startsWith('blob:');
+            const thumb = await (await fetch(url)).blob();
+            out.thumbSize = thumb.size;
+            out.thumbType = thumb.type;
+            const bmp = await createImageBitmap(thumb);
+            out.thumbWidth = bmp.width;
+
+            // Cache hit: same URL, resolved instantly
+            out.cached = (await app.ensureThumbnail(file, { urgent: true })) === url;
+
+            // Precache generates the rest in the background
+            const file2 = makeFakeFile('big2.png', bytes, 'image/png');
+            app.files = [file, file2];
+            app.precacheThumbnails();
+            await app.ensureThumbnail(file2, {});
+            out.precached = !!file2.thumbnailUrl;
+
+            // Grid re-render paints cached thumbs synchronously (no observer round-trip)
+            app.renderGrid();
+            const tileImgs = [...document.querySelectorAll('#grid-view .grid-item img')];
+            out.instantPaint = tileImgs.every(img => img.src.startsWith('blob:'));
+            return out;
+        });
+        check('worker available (off-main-thread generation)', r.workerAvailable);
+        check('thumbnail downscaled to 320px', r.thumbWidth === 320, String(r.thumbWidth));
+        check('thumbnail much smaller than original', r.thumbSize < r.originalSize / 3, `${r.thumbSize} vs ${r.originalSize}`);
+        check('PNG stays PNG (transparency-safe)', r.thumbType === 'image/png', r.thumbType);
+        check('second request is a cache hit', r.cached && r.urlSet);
+        check('precache fills remaining files', r.precached);
+        check('re-render paints cached thumbs immediately', r.instantPaint);
+        await page.close();
+    }
+
     // ---- 6. Adaptive glass: regions follow their own background band ----
     console.log('adaptive glass');
     {
@@ -375,6 +432,23 @@ async function newPage(browser, url) {
         check(`${label}: no JS errors`, issues.errors.length === 0, issues.errors.join('; '));
         check(`${label}: Cropper + app loaded`, r.cropper && r.app);
         check(`${label}: drop zone shown`, r.dropZoneVisible);
+
+        // Thumbnail generation must also work from file:// (blob worker or fallback)
+        const thumbOk = await page.evaluate(async () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 500; canvas.height = 400;
+            const ctx = canvas.getContext('2d');
+            const noise = ctx.createImageData(500, 400);
+            for (let i = 0; i < noise.data.length; i++) noise.data[i] = (Math.random() * 256) | 0;
+            ctx.putImageData(noise, 0, 0);
+            const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+            const bytes = new Uint8Array(await blob.arrayBuffer());
+            const file = makeFakeFile('t.png', bytes, 'image/png');
+            app.files = [file];
+            const url = await app.ensureThumbnail(file, { urgent: true }).catch(() => null);
+            return !!url && !!file.thumbnailUrl;
+        });
+        check(`${label}: thumbnails generate`, thumbOk);
         if (label === 'standalone.html') {
             check('standalone: no network requests fail', issues.failedRequests.length === 0, issues.failedRequests.join('; '));
         }

@@ -581,6 +581,9 @@ header {
     cursor: pointer;
     border: 3px solid transparent;
     transition: transform 0.1s;
+    /* Skip layout/paint for tiles far outside the viewport */
+    content-visibility: auto;
+    contain-intrinsic-size: var(--grid-item-size, 150px) var(--grid-item-size, 150px);
 }
 
 .grid-item:hover {
