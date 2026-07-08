@@ -31,7 +31,10 @@ const app = {
         selectionCount: document.getElementById('selection-count'),
         btnToggleView: document.getElementById('btn-toggle-view'),
         btnCrop: document.getElementById('btn-crop'),
-        btnCropFloat: document.getElementById('btn-crop-float'),
+        btnInfo: document.getElementById('btn-info'),
+        infoPanel: document.getElementById('info-panel'),
+        infoList: document.getElementById('info-list'),
+        statusBar: document.getElementById('status-bar'),
         loadingText: document.getElementById('loading-text'),
         gridControls: document.getElementById('grid-controls'),
         gridSizeSlider: document.getElementById('grid-size-slider'),
@@ -93,7 +96,9 @@ const app = {
 
         // Crop Controls
         if (this.elements.btnCrop) this.elements.btnCrop.addEventListener('click', () => this.enterCrop());
-        if (this.elements.btnCropFloat) this.elements.btnCropFloat.addEventListener('click', () => this.enterCrop());
+
+        // File Info
+        if (this.elements.btnInfo) this.elements.btnInfo.addEventListener('click', () => this.toggleInfoPanel());
 
         // Keyboard
         this.bindKeyboard();
@@ -409,6 +414,10 @@ const app = {
                 this.renderThumbnails();
                 this.renderGrid(); // Prepare grid
                 this.loadFile(this.files[0]);
+
+                // Warm the entire preview cache in the background so grid
+                // scrolling only ever hits already-generated thumbnails
+                this.precacheThumbnails();
             } else {
                 alert('No images found.');
                 this.elements.dropZone.classList.remove('hidden');
@@ -475,16 +484,19 @@ const app = {
         }
     },
 
-    async scanDirectory(dirHandle) {
+    async scanDirectory(dirHandle, prefix = '') {
         try {
             this.showToast('Scanning folder...', 0, 'scan');
             for await (const entry of dirHandle.values()) {
                 if (entry.kind === 'file' && this.isImage(entry.name)) {
+                    const relPath = prefix + entry.name;
                     // Check for duplicates to allow Refresh
-                    if (!this.files.some(f => f.name === entry.name)) {
+                    if (!this.files.some(f => (f.relPath || f.name) === relPath)) {
                         const fileData = await entry.getFile();
                         this.files.push({
                             name: entry.name,
+                            relPath: relPath,
+                            parentDir: dirHandle,
                             handle: entry,
                             size: fileData.size,
                             lastModified: fileData.lastModified
@@ -494,7 +506,7 @@ const app = {
                         this.showToast(`Found ${this.files.length} images...`, 0, 'scan');
                     }
                 } else if (entry.kind === 'directory') {
-                    await this.scanDirectory(entry);
+                    await this.scanDirectory(entry, prefix + entry.name + '/');
                 }
             }
         } catch (e) {
@@ -514,6 +526,7 @@ const app = {
 
             if (this.files.length > oldLength) {
                 this.sortFiles();
+                this.precacheThumbnails();
                 this.showToast(`Found ${this.files.length - oldLength} new photos`, 3000, 'scan');
             } else {
                 this.showToast('Folder is up to date', 2000, 'scan');
@@ -541,6 +554,183 @@ const app = {
         if (!file) return 0;
         const lag = (kind === 'thumb' ? file.thumbLag : file.fullLag) || 0;
         return lag + (file.savingRotation || 0) + (file.pendingRotation || 0);
+    },
+
+    // ---- File info ----
+
+    // Full display path of a file: root folder + relative path when known
+    getDisplayPath(file) {
+        if (!file) return '';
+        const rel = file.relPath || file.name;
+        return this.dirHandle ? `${this.dirHandle.name}/${rel}` : rel;
+    },
+
+    // Subtle always-on chip in the bottom-left with location + file name
+    updateStatusBar() {
+        const el = this.elements.statusBar;
+        if (!el) return;
+        if (!this.currentFile) {
+            el.classList.add('hidden');
+            return;
+        }
+        el.classList.remove('hidden');
+        el.textContent = this.getDisplayPath(this.currentFile);
+    },
+
+    formatBytes(n) {
+        if (!(n >= 0)) return '—';
+        if (n < 1024) return `${n} B`;
+        if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+        return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+    },
+
+    // Read Make / Model / DateTimeOriginal from a JPEG's EXIF block.
+    // Returns { make, model, dateTaken: Date|null } or null.
+    readJpegExifInfo(buffer) {
+        try {
+            const view = new DataView(buffer);
+            if (view.byteLength < 4 || view.getUint16(0) !== 0xFFD8) return null;
+
+            let offset = 2;
+            let tiff = -1;
+            while (offset + 4 <= view.byteLength) {
+                const marker = view.getUint16(offset);
+                if ((marker & 0xFF00) !== 0xFF00 || marker === 0xFFDA || marker === 0xFFD9) break;
+                const size = view.getUint16(offset + 2);
+                if (size < 2) break;
+                if (marker === 0xFFE1 && offset + 10 <= view.byteLength &&
+                    view.getUint32(offset + 4) === 0x45786966 && view.getUint16(offset + 8) === 0) {
+                    tiff = offset + 10;
+                    break;
+                }
+                offset += 2 + size;
+            }
+            if (tiff === -1) return null;
+
+            const bo = view.getUint16(tiff);
+            const le = bo === 0x4949;
+            if (!le && bo !== 0x4D4D) return null;
+            if (view.getUint16(tiff + 2, le) !== 0x002A) return null;
+
+            const readAscii = (entry) => {
+                const count = view.getUint32(entry + 4, le);
+                if (count === 0 || count > 512) return null;
+                const at = count <= 4 ? entry + 8 : tiff + view.getUint32(entry + 8, le);
+                if (at + count > view.byteLength) return null;
+                let s = '';
+                for (let i = 0; i < count; i++) {
+                    const c = view.getUint8(at + i);
+                    if (c === 0) break;
+                    s += String.fromCharCode(c);
+                }
+                return s.trim() || null;
+            };
+
+            const scanIfd = (ifd, wanted, out) => {
+                if (ifd + 2 > view.byteLength) return;
+                const count = view.getUint16(ifd, le);
+                for (let i = 0; i < count; i++) {
+                    const entry = ifd + 2 + i * 12;
+                    if (entry + 12 > view.byteLength) return;
+                    const tag = view.getUint16(entry, le);
+                    if (wanted.includes(tag)) out[tag] = entry;
+                }
+            };
+
+            const ifd0 = {};
+            scanIfd(tiff + view.getUint32(tiff + 4, le), [0x010F, 0x0110, 0x8769], ifd0);
+
+            const result = {
+                make: ifd0[0x010F] ? readAscii(ifd0[0x010F]) : null,
+                model: ifd0[0x0110] ? readAscii(ifd0[0x0110]) : null,
+                dateTaken: null
+            };
+
+            if (ifd0[0x8769]) {
+                const exifIfd = {};
+                scanIfd(tiff + view.getUint32(ifd0[0x8769] + 8, le), [0x9003], exifIfd);
+                if (exifIfd[0x9003]) {
+                    const raw = readAscii(exifIfd[0x9003]); // "YYYY:MM:DD HH:MM:SS"
+                    const m = raw && raw.match(/^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+                    if (m) result.dateTaken = new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+                }
+            }
+            return result;
+        } catch (e) {
+            return null;
+        }
+    },
+
+    // EXIF metadata cached per file; only the file head is read
+    async getExifInfo(file) {
+        if (file._exif !== undefined) return file._exif;
+        file._exif = null;
+        if (/\.jpe?g$/i.test(file.name)) {
+            try {
+                const fileData = await file.handle.getFile();
+                const head = await fileData.slice(0, 256 * 1024).arrayBuffer();
+                file._exif = this.readJpegExifInfo(head);
+            } catch (e) { /* leave null */ }
+        }
+        return file._exif;
+    },
+
+    toggleInfoPanel(forceOpen = null) {
+        const panel = this.elements.infoPanel;
+        if (!panel) return;
+        const open = forceOpen !== null ? forceOpen : panel.classList.contains('hidden');
+        panel.classList.toggle('hidden', !open);
+        this._infoOpen = open;
+        if (open) this.fillInfoPanel(this.currentFile);
+    },
+
+    async fillInfoPanel(file) {
+        const list = this.elements.infoList;
+        if (!list || !file) return;
+        const token = (this._infoToken = (this._infoToken || 0) + 1);
+
+        const rows = [];
+        rows.push(['Name', file.name]);
+        rows.push(['Location', this.getDisplayPath(file)]);
+        rows.push(['Type', (file.name.match(/\.(\w+)$/) || [, '?'])[1].toUpperCase()]);
+        rows.push(['Size', this.formatBytes(file.size)]);
+        rows.push(['Modified', file.lastModified ? new Date(file.lastModified).toLocaleString() : '—']);
+
+        const render = () => {
+            if (token !== this._infoToken) return; // superseded by newer fill
+            list.innerHTML = '';
+            rows.forEach(([k, v]) => {
+                const dt = document.createElement('dt');
+                dt.textContent = k;
+                const dd = document.createElement('dd');
+                dd.textContent = v == null ? '—' : v;
+                list.appendChild(dt);
+                list.appendChild(dd);
+            });
+        };
+        render(); // paint the cheap fields immediately
+
+        // Dimensions: reuse the already-decoded single-view image if it's this file
+        try {
+            let dims = null;
+            const img = this.elements.currentImage;
+            if (this.currentFile === file && img.naturalWidth > 0 && this.viewMode === 'single') {
+                dims = `${img.naturalWidth} × ${img.naturalHeight}`;
+            } else {
+                const bmp = await createImageBitmap(await file.handle.getFile());
+                dims = `${bmp.width} × ${bmp.height}`;
+                bmp.close();
+            }
+            rows.splice(3, 0, ['Dimensions', dims]);
+        } catch (e) { /* skip dimensions */ }
+
+        const exif = await this.getExifInfo(file);
+        if (exif) {
+            if (exif.dateTaken) rows.push(['Taken', exif.dateTaken.toLocaleString()]);
+            const camera = [exif.make, exif.model].filter(Boolean).join(' ');
+            if (camera) rows.push(['Camera', camera]);
+        }
+        render();
     },
 
     // Instantly rotate every on-screen preview of a file via CSS
@@ -722,6 +912,9 @@ const app = {
     },
 
     cleanupURLs() {
+        // Drop queued thumbnail work for the folder being replaced
+        if (this._thumbQueue) this._thumbQueue.length = 0;
+
         // Revoke all existing object URLs to free memory
         if (this.files) {
             this.files.forEach(file => {
@@ -870,32 +1063,18 @@ const app = {
     renderGrid() {
         this.elements.gridView.innerHTML = '';
 
-        // Use viewport as root (null) to ensure it triggers correctly even if container sizing is tricky
+        // Tiles load once and keep their thumbnail; leaving the viewport no
+        // longer blanks them (re-decoding on re-entry was a scroll-jank source)
         const observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
+                if (!entry.isIntersecting) return;
                 const img = entry.target;
                 const file = img._file;
                 if (!file) return;
-
-                if (entry.isIntersecting) {
-                    file.isVisible = true; // Mark as visible
-                    // Hyper-Parallel Load: 50ms pulse
-                    if (file.loadTimeout) clearTimeout(file.loadTimeout);
-                    file.loadTimeout = setTimeout(() => {
-                        this.loadImageThumbnail(file, img);
-                        file.loadTimeout = null;
-                        this.cleanupObjectURLs();
-                    }, 50);
-                } else {
-                    file.isVisible = false; // Mark as hidden
-                    if (file.loadTimeout) {
-                        clearTimeout(file.loadTimeout);
-                        file.loadTimeout = null;
-                    }
-                    img.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg==';
-                }
+                observer.unobserve(img);
+                this.loadImageThumbnail(file, img); // urgent: jumps the precache queue
             });
-        }, { root: null, rootMargin: '500px' });
+        }, { root: null, rootMargin: '1000px' });
         this.elements.gridView._observer = observer; // Stash for refreshThumbnailUI
 
         this.files.forEach((file) => {
@@ -904,13 +1083,21 @@ const app = {
             div._file = file;
             file._gridEl = div;
 
-            // Use canvas for grid to reduce memory (no large Image element retaining full blob)
-            // Or just img with small src.
             const img = document.createElement('img');
             img._file = file;
             img.alt = file.name;
-            img.loading = "lazy"; // Native lazy load as backup
-            img.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PC9zdmc+';
+            img.loading = 'lazy';
+            img.decoding = 'async';
+
+            if (file.thumbnailUrl) {
+                // Cached: paint immediately, no observer round-trip
+                img.src = file.thumbnailUrl;
+                const angle = this.getDisplayRotation(file, 'thumb');
+                if (angle) img.style.transform = `rotate(${angle}deg)`;
+            } else {
+                img.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PC9zdmc+';
+                observer.observe(img);
+            }
 
             div.appendChild(img);
 
@@ -921,8 +1108,177 @@ const app = {
             };
 
             this.elements.gridView.appendChild(div);
-            observer.observe(img);
         });
+    },
+
+    // ---- Thumbnail pipeline ----
+    //
+    // Thumbnails are generated in a Web Worker (decode + downscale + encode
+    // all happen off the main thread) through a small priority queue, so
+    // scrolling never competes with image processing. After a folder loads,
+    // every thumbnail is pre-generated in the background, and cached
+    // thumbnails are kept for the whole session — scrolling anywhere in the
+    // grid only ever assigns already-generated object URLs.
+
+    THUMB_WIDTH: 320,
+    THUMB_CONCURRENCY: 4,
+    THUMB_FAST_PATH_BYTES: 50 * 1024, // files this small serve as their own thumbnail
+
+    getThumbWorker() {
+        if (this._thumbWorkerFailed) return null;
+        if (this._thumbWorker) return this._thumbWorker;
+        try {
+            if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') {
+                throw new Error('Worker/OffscreenCanvas unavailable');
+            }
+            const src = `self.onmessage = async (e) => {
+                const { id, file, targetWidth, type } = e.data;
+                try {
+                    const bitmap = await createImageBitmap(file, { resizeWidth: targetWidth, resizeQuality: 'medium' });
+                    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+                    canvas.getContext('2d').drawImage(bitmap, 0, 0);
+                    bitmap.close();
+                    const blob = await canvas.convertToBlob(type === 'image/png' ? { type } : { type: 'image/jpeg', quality: 0.8 });
+                    self.postMessage({ id, blob });
+                } catch (err) {
+                    self.postMessage({ id, error: String((err && err.message) || err) });
+                }
+            };`;
+            this._thumbWorker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+            this._thumbJobs = new Map();
+            this._thumbWorker.onmessage = (e) => {
+                const job = this._thumbJobs.get(e.data.id);
+                if (!job) return;
+                this._thumbJobs.delete(e.data.id);
+                if (e.data.blob) job.resolve(e.data.blob);
+                else job.reject(new Error(e.data.error));
+            };
+            this._thumbWorker.onerror = () => {
+                this._thumbWorkerFailed = true;
+                const jobs = this._thumbJobs;
+                this._thumbJobs = new Map();
+                jobs.forEach(j => j.reject(new Error('thumbnail worker crashed')));
+            };
+        } catch (e) {
+            this._thumbWorkerFailed = true;
+            this._thumbWorker = null;
+        }
+        return this._thumbWorker;
+    },
+
+    async generateThumbnailBlob(fileData) {
+        // Keep alpha-capable formats as PNG so transparency doesn't go black
+        const outType = /png|webp|gif/i.test(fileData.type || '') ? 'image/png' : 'image/jpeg';
+
+        const worker = this.getThumbWorker();
+        if (worker) {
+            try {
+                return await new Promise((resolve, reject) => {
+                    const id = (this._thumbSeq = (this._thumbSeq || 0) + 1);
+                    this._thumbJobs.set(id, { resolve, reject });
+                    worker.postMessage({ id, file: fileData, targetWidth: this.THUMB_WIDTH, type: outType });
+                });
+            } catch (e) {
+                this.log('Thumbnail worker failed, using main thread: ' + e.message);
+            }
+        }
+
+        // Main-thread fallback
+        const bitmap = await createImageBitmap(fileData, { resizeWidth: this.THUMB_WIDTH });
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = bitmap.width;
+            canvas.height = bitmap.height;
+            canvas.getContext('2d').drawImage(bitmap, 0, 0);
+            return await new Promise(r => canvas.toBlob(r, outType, 0.8));
+        } finally {
+            bitmap.close();
+        }
+    },
+
+    // Queue thumbnail generation. Urgent requests (visible tiles) jump the
+    // queue ahead of background pre-caching. Returns a promise for the URL.
+    ensureThumbnail(fileEntry, { urgent = false, force = false } = {}) {
+        if (!force) {
+            if (fileEntry.thumbnailUrl) return Promise.resolve(fileEntry.thumbnailUrl);
+            if (fileEntry._thumbPromise) {
+                if (urgent) this.promoteThumbJob(fileEntry);
+                return fileEntry._thumbPromise;
+            }
+        }
+
+        if (!this._thumbQueue) this._thumbQueue = [];
+        const job = { fileEntry };
+        fileEntry._thumbPromise = new Promise((resolve, reject) => {
+            job.resolve = resolve;
+            job.reject = reject;
+        });
+        fileEntry._thumbPromise.catch(() => { }); // consumers may not await
+
+        if (urgent) this._thumbQueue.unshift(job);
+        else this._thumbQueue.push(job);
+        this.pumpThumbQueue();
+        return fileEntry._thumbPromise;
+    },
+
+    promoteThumbJob(fileEntry) {
+        const q = this._thumbQueue || [];
+        const i = q.findIndex(j => j.fileEntry === fileEntry);
+        if (i > 0) q.unshift(q.splice(i, 1)[0]);
+    },
+
+    pumpThumbQueue() {
+        this._thumbActive = this._thumbActive || 0;
+        while (this._thumbActive < this.THUMB_CONCURRENCY && this._thumbQueue && this._thumbQueue.length) {
+            const job = this._thumbQueue.shift();
+            this._thumbActive++;
+            this.runThumbJob(job).finally(() => {
+                this._thumbActive--;
+                this.pumpThumbQueue();
+            });
+        }
+    },
+
+    async runThumbJob(job) {
+        const fileEntry = job.fileEntry;
+        try {
+            // Don't read mid-save; the rotation queue is quick (EXIF patch)
+            while (fileEntry.isBusy) await new Promise(r => setTimeout(r, 30));
+
+            // Bytes read now include everything saved so far; any save that
+            // lands while we decode shows up in the lag delta below.
+            const savedAtRead = fileEntry._savedRotationTotal || 0;
+            const fileData = await fileEntry.handle.getFile();
+
+            const blob = fileData.size <= this.THUMB_FAST_PATH_BYTES
+                ? fileData
+                : await this.generateThumbnailBlob(fileData);
+            if (!blob) throw new Error('Thumbnail encode failed');
+
+            if (fileEntry.thumbnailUrl) URL.revokeObjectURL(fileEntry.thumbnailUrl);
+            fileEntry.thumbnailUrl = URL.createObjectURL(blob);
+            fileEntry.thumbLag = (fileEntry._savedRotationTotal || 0) - savedAtRead;
+            fileEntry._thumbPromise = null;
+            this.deliverThumbnail(fileEntry);
+            job.resolve(fileEntry.thumbnailUrl);
+        } catch (e) {
+            fileEntry._thumbPromise = null;
+            console.error('Thumbnail error:', e);
+            const fallback = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjx0ZXh0IHg9IjEwIiB5PSIyMCIgZm9udC1zaXplPSIyMCI+4pqcPC90ZXh0Pjwvc3ZnPg==';
+            (fileEntry._thumbWaiters || []).forEach(img => { img.src = fallback; });
+            fileEntry._thumbWaiters = [];
+            job.reject(e);
+        }
+    },
+
+    deliverThumbnail(fileEntry) {
+        const url = fileEntry.thumbnailUrl;
+        (fileEntry._thumbWaiters || []).forEach(img => {
+            img.decoding = 'async';
+            img.src = url;
+        });
+        fileEntry._thumbWaiters = [];
+        this.applyPreviewRotation(fileEntry);
     },
 
     async loadImageThumbnail(fileEntry, imgElement, force = false) {
@@ -935,60 +1291,35 @@ const app = {
         }
 
         if (!force && fileEntry.thumbnailUrl) {
-            const url = fileEntry.thumbnailUrl;
-            fileEntry._thumbWaiters.forEach(img => { img.src = url; });
-            fileEntry._thumbWaiters = [];
-            this.applyPreviewRotation(fileEntry);
+            this.deliverThumbnail(fileEntry);
             return;
         }
 
-        if (!force && fileEntry.isLoading) return;
-        fileEntry.isLoading = true;
+        await this.ensureThumbnail(fileEntry, { urgent: true, force }).catch(() => { });
+    },
 
-        try {
-            // Don't read mid-save; the queue is quick (EXIF patch)
-            while (fileEntry.isBusy) await new Promise(r => setTimeout(r, 30));
+    // Pre-generate every thumbnail in the background right after a folder
+    // loads, so scrolling the grid only ever hits the cache.
+    precacheThumbnails() {
+        const missing = this.files.filter(f => !f.thumbnailUrl && !f._thumbPromise);
+        if (missing.length === 0) return;
 
-            // Bytes read now include everything saved so far; any save that
-            // lands while we decode shows up in the delta below.
-            const savedAtRead = fileEntry._savedRotationTotal || 0;
-            const finishThumb = (url) => {
-                fileEntry.thumbnailUrl = url;
-                fileEntry.thumbLag = (fileEntry._savedRotationTotal || 0) - savedAtRead;
-                fileEntry._thumbWaiters.forEach(img => { img.src = url; });
-                fileEntry._thumbWaiters = [];
-                fileEntry.isLoading = false;
-                this.applyPreviewRotation(fileEntry);
-            };
-
-            const fileData = await fileEntry.handle.getFile();
-
-            // Fast Path: If image is already reasonably small, just use it
-            if (fileData.size < 200 * 1024) {
-                finishThumb(URL.createObjectURL(fileData));
-                return;
-            }
-
-            // Standard Path: Downscale for performance
-            const bitmap = await createImageBitmap(fileData, { resizeWidth: 300 });
-            const canvas = document.createElement('canvas');
-            canvas.width = bitmap.width;
-            canvas.height = bitmap.height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(bitmap, 0, 0);
-
-            canvas.toBlob(blob => {
-                finishThumb(URL.createObjectURL(blob));
-                bitmap.close(); // Explicitly close bitmap
-            }, 'image/jpeg', 0.8);
-
-        } catch (e) {
-            fileEntry.isLoading = false;
-            console.error('Thumbnail error:', e);
-            const fallback = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjx0ZXh0IHg9IjEwIiB5PSIyMCIgZm9udC1zaXplPSIyMCI+4pqcPC90ZXh0Pjwvc3ZnPg==';
-            fileEntry._thumbWaiters.forEach(img => { img.src = fallback; });
-            fileEntry._thumbWaiters = [];
-        }
+        const total = missing.length;
+        const showProgress = total >= 30;
+        let done = 0;
+        missing.forEach(file => {
+            this.ensureThumbnail(file, { urgent: false })
+                .catch(() => { })
+                .finally(() => {
+                    done++;
+                    if (!showProgress) return;
+                    if (done === total) {
+                        this.showToast(`All ${total} previews ready`, 2000, 'precache');
+                    } else if (done % 50 === 0) {
+                        this.showToast(`Preparing previews ${done}/${total}…`, 0, 'precache');
+                    }
+                });
+        });
     },
 
 
@@ -1011,6 +1342,8 @@ const app = {
             this.currentFile = file;
             this.elements.fileName.textContent = file.name;
             this.elements.fileCount.textContent = `${this.files.indexOf(file) + 1} / ${this.files.length}`;
+            this.updateStatusBar();
+            if (this._infoOpen) this.fillInfoPanel(file);
             this.selection.clear();
             this.selection.add(file);
             this.updateSelectionUI();
@@ -1116,6 +1449,8 @@ const app = {
 
         this.elements.fileName.textContent = file.name;
         this.elements.fileCount.textContent = `${index + 1} / ${this.files.length}`;
+        this.updateStatusBar();
+        if (this._infoOpen) this.fillInfoPanel(file);
 
         // Prepare for swap: fast fade out
         this.elements.currentImage.style.opacity = '0';
@@ -1191,41 +1526,32 @@ const app = {
             this.elements.currentImage.style.opacity = '1';
         }
 
-        // Preload neighbors
+        // Preload neighbors, trim far-away full-size images
         this.preloadImage(index + 1);
         this.preloadImage(index - 1);
+        this.cleanupObjectURLs();
     },
 
     cleanupObjectURLs() {
-        // High-Water Mark: Only cleanup if we are over a certain count to avoid thrashing
-        const loadedThumbs = this.files.filter(f => f.thumbnailUrl).length;
-        const loadedFull = this.files.filter(f => f.fullImageUrl).length;
-
+        // Thumbnails are small (≈10–30 KB each) and are kept for the whole
+        // session. The old distance-based revocation measured distance from
+        // the CURRENT photo — scrolling to the middle of a large grid kept
+        // destroying and regenerating thumbnails in a loop, which was the
+        // main source of scroll lag. Only full-size images get trimmed.
         const cur = this.getCurrentIndex();
         const windowSizeFull = 10;
-        const windowSizeThumb = 150; // Increased buffer for modern RAM
 
-        // Only cleanup if we are pushing limits
-        if (loadedFull > windowSizeFull || loadedThumbs > windowSizeThumb) {
-            this.files.forEach((f, i) => {
-                // NEVER revoke if image is visible in grid or main view
-                if (f.isVisible) return;
+        const loadedFull = this.files.filter(f => f.fullImageUrl).length;
+        if (loadedFull <= windowSizeFull) return;
 
-                const dist = Math.abs(i - cur);
-
-                // Never revoke the CURRENT view window or immediate neighbors
-                if (dist < 15) return;
-
-                if (dist > windowSizeFull && f.fullImageUrl) {
-                    URL.revokeObjectURL(f.fullImageUrl);
-                    delete f.fullImageUrl;
-                }
-                if (dist > windowSizeThumb && f.thumbnailUrl) {
-                    URL.revokeObjectURL(f.thumbnailUrl);
-                    delete f.thumbnailUrl;
-                }
-            });
-        }
+        this.files.forEach((f, i) => {
+            if (f === this.currentFile) return;
+            const dist = Math.abs(i - cur);
+            if (dist > windowSizeFull && f.fullImageUrl) {
+                URL.revokeObjectURL(f.fullImageUrl);
+                delete f.fullImageUrl;
+            }
+        });
     },
 
     async preloadImage(index) {
@@ -1423,6 +1749,9 @@ const app = {
                 break;
             case 'c':
                 this.enterCrop();
+                break;
+            case 'i':
+                this.toggleInfoPanel();
                 break;
         }
     },

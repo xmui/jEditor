@@ -581,6 +581,9 @@ header {
     cursor: pointer;
     border: 3px solid transparent;
     transition: transform 0.1s;
+    /* Skip layout/paint for tiles far outside the viewport */
+    content-visibility: auto;
+    contain-intrinsic-size: var(--grid-item-size, 150px) var(--grid-item-size, 150px);
 }
 
 .grid-item:hover {
@@ -605,14 +608,23 @@ header {
     /* Snappy rotation previews */
 }
 
-/* Header Controls */
+/* Header Controls — one glass pill, matching the bottom controls */
 .header-controls {
     position: absolute;
     right: 20px;
     top: 1rem;
     pointer-events: auto;
     display: flex;
-    gap: 10px;
+    align-items: center;
+    gap: 4px;
+    background: var(--glass-top-bg);
+    border: 1px solid var(--glass-top-border);
+    border-radius: 9999px;
+    padding: 6px 10px;
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: var(--backdrop-filter);
+    -webkit-backdrop-filter: var(--backdrop-filter);
+    transition: background 0.35s ease, border-color 0.35s ease;
 }
 
 .grid-controls {
@@ -651,19 +663,20 @@ header {
 }
 
 .header-controls button {
-    background: var(--glass-top-bg);
-    border: 1px solid var(--glass-top-border);
+    background: transparent;
+    border: none;
     color: var(--glass-top-text);
     padding: 8px;
-    border-radius: 8px;
+    border-radius: 999px;
     cursor: pointer;
-    backdrop-filter: var(--backdrop-filter);
-    -webkit-backdrop-filter: var(--backdrop-filter);
-    transition: background 0.35s ease, color 0.35s ease, border-color 0.35s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s, color 0.35s ease;
 }
 
 .header-controls button:hover {
-    background: rgba(125, 125, 125, 0.35);
+    background: rgba(125, 125, 125, 0.3);
 }
 
 /* Selection Bar */
@@ -973,6 +986,77 @@ header {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s;
+}
+
+/* Always-on path chip: bottom-left, small and quiet. Sits away from the
+   nav controls (bottom-center), grid controls (bottom-right) and toasts
+   (top-right), so it never fights anything for space. */
+.status-bar {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    max-width: 42vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    letter-spacing: 0.01em;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: var(--glass-bottom-bg);
+    color: var(--glass-bottom-text);
+    border: 1px solid var(--glass-bottom-border);
+    backdrop-filter: blur(16px) saturate(160%);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    opacity: 0.8;
+    z-index: 55;
+    pointer-events: none;
+    transition: background 0.35s ease, color 0.35s ease;
+}
+
+/* File Info panel — drops down from the header pill */
+.info-panel {
+    position: absolute;
+    top: 64px;
+    right: 20px;
+    width: 270px;
+    background: var(--glass-top-bg);
+    color: var(--glass-top-text);
+    border: 1px solid var(--glass-top-border);
+    border-radius: 16px;
+    padding: 14px 16px;
+    backdrop-filter: var(--backdrop-filter);
+    -webkit-backdrop-filter: var(--backdrop-filter);
+    box-shadow: var(--glass-shadow);
+    z-index: 70;
+    font-size: 12px;
+    transition: background 0.35s ease, color 0.35s ease;
+}
+
+.info-panel h3 {
+    margin: 0 0 10px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.55;
+    font-weight: 600;
+}
+
+.info-panel dl {
+    margin: 0;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 5px 14px;
+}
+
+.info-panel dt {
+    opacity: 0.55;
+}
+
+.info-panel dd {
+    margin: 0;
+    text-align: right;
+    overflow-wrap: anywhere;
 }
 
 /* Toast Notifications — stacked: each concurrent operation gets its own

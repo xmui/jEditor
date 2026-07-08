@@ -326,6 +326,142 @@ async function newPage(browser, url) {
         await page.close();
     }
 
+    // ---- 5a. File info: status chip, info panel, EXIF metadata ----
+    console.log('file info');
+    {
+        const { page } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+
+            // Build a JPEG with a full EXIF block: Make, ExifIFD → DateTimeOriginal
+            const buildExifJpeg = (make, dateStr) => {
+                const makeBytes = [...make].map(c => c.charCodeAt(0)).concat([0]);
+                const dateBytes = [...dateStr].map(c => c.charCodeAt(0)).concat([0]); // 20 bytes
+                const makeOff = 38;                       // after header+IFD0
+                const exifIfdOff = makeOff + makeBytes.length;
+                const dateOff = exifIfdOff + 2 + 12 + 4;
+                const tiffLen = dateOff + dateBytes.length;
+                const buf = new ArrayBuffer(tiffLen);
+                const v = new DataView(buf);
+                v.setUint16(0, 0x4D4D);                   // big-endian
+                v.setUint16(2, 0x002A);
+                v.setUint32(4, 8);                        // IFD0 at 8
+                v.setUint16(8, 2);                        // 2 entries
+                let e = 10;
+                v.setUint16(e, 0x010F); v.setUint16(e + 2, 2); // Make, ASCII
+                v.setUint32(e + 4, makeBytes.length); v.setUint32(e + 8, makeOff);
+                e += 12;
+                v.setUint16(e, 0x8769); v.setUint16(e + 2, 4); // ExifIFD pointer, LONG
+                v.setUint32(e + 4, 1); v.setUint32(e + 8, exifIfdOff);
+                v.setUint32(e + 12, 0);                   // next IFD
+                makeBytes.forEach((b, i) => v.setUint8(makeOff + i, b));
+                v.setUint16(exifIfdOff, 1);               // ExifIFD: 1 entry
+                const d = exifIfdOff + 2;
+                v.setUint16(d, 0x9003); v.setUint16(d + 2, 2); // DateTimeOriginal, ASCII
+                v.setUint32(d + 4, dateBytes.length); v.setUint32(d + 8, dateOff);
+                v.setUint32(d + 12, 0);
+                dateBytes.forEach((b, i) => v.setUint8(dateOff + i, b));
+
+                const tiff = new Uint8Array(buf);
+                const payloadLen = 6 + tiff.length;
+                const seg = [0xFF, 0xE1, (payloadLen + 2) >> 8, (payloadLen + 2) & 0xFF,
+                    0x45, 0x78, 0x69, 0x66, 0x00, 0x00, ...tiff];
+                return [0xFF, 0xD8, ...seg, 0xFF, 0xDA, 0x00, 0x02, 0xFF, 0xD9];
+            };
+
+            const jpegBytes = buildExifJpeg('TestCam Inc.', '2024:06:15 13:45:00');
+            const info = app.readJpegExifInfo(new Uint8Array(jpegBytes).buffer);
+            out.make = info && info.make;
+            out.taken = info && info.dateTaken &&
+                `${info.dateTaken.getFullYear()}-${info.dateTaken.getMonth() + 1}-${info.dateTaken.getDate()}`;
+
+            // Status chip shows location + name for the current file
+            const canvas = document.createElement('canvas');
+            canvas.width = 4; canvas.height = 4;
+            const png = new Uint8Array(await (await new Promise(res => canvas.toBlob(res, 'image/png'))).arrayBuffer());
+            const file = makeFakeFile('photo.png', png, 'image/png');
+            file.relPath = 'vacation/photo.png';
+            app.dirHandle = { name: 'Photos' };
+            app.files = [file];
+            document.getElementById('main-interface').classList.remove('hidden');
+            await app.loadFile(file);
+            const chip = document.getElementById('status-bar');
+            out.chipVisible = !chip.classList.contains('hidden');
+            out.chipText = chip.textContent;
+
+            // Info panel opens and lists name + formatted size
+            app.toggleInfoPanel(true);
+            await new Promise(r => setTimeout(r, 200));
+            out.panelOpen = !document.getElementById('info-panel').classList.contains('hidden');
+            out.panelText = document.getElementById('info-list').textContent;
+            return out;
+        });
+        check('EXIF Make parsed', r.make === 'TestCam Inc.', String(r.make));
+        check('EXIF DateTimeOriginal parsed', r.taken === '2024-6-15', String(r.taken));
+        check('status chip visible with full path', r.chipVisible && r.chipText === 'Photos/vacation/photo.png', r.chipText);
+        check('info panel opens', r.panelOpen);
+        check('info panel lists name, location and size', r.panelText.includes('photo.png') &&
+            r.panelText.includes('Photos/vacation') && /\d+ B|KB|MB/.test(r.panelText), r.panelText);
+        await page.close();
+    }
+
+    // ---- 5b. Thumbnail pipeline: worker generation, caching, precache ----
+    console.log('thumbnail pipeline');
+    {
+        const { page } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+
+            // Noisy PNG well above the fast-path threshold forces real generation
+            const canvas = document.createElement('canvas');
+            canvas.width = 900; canvas.height = 600;
+            const ctx = canvas.getContext('2d');
+            const noise = ctx.createImageData(900, 600);
+            for (let i = 0; i < noise.data.length; i++) noise.data[i] = (Math.random() * 256) | 0;
+            ctx.putImageData(noise, 0, 0);
+            const big = await new Promise(res => canvas.toBlob(res, 'image/png'));
+            out.originalSize = big.size;
+            const bytes = new Uint8Array(await big.arrayBuffer());
+
+            const file = makeFakeFile('big.png', bytes, 'image/png');
+            app.files = [file];
+
+            out.workerAvailable = !!app.getThumbWorker();
+
+            const url = await app.ensureThumbnail(file, { urgent: true });
+            out.urlSet = file.thumbnailUrl === url && url.startsWith('blob:');
+            const thumb = await (await fetch(url)).blob();
+            out.thumbSize = thumb.size;
+            out.thumbType = thumb.type;
+            const bmp = await createImageBitmap(thumb);
+            out.thumbWidth = bmp.width;
+
+            // Cache hit: same URL, resolved instantly
+            out.cached = (await app.ensureThumbnail(file, { urgent: true })) === url;
+
+            // Precache generates the rest in the background
+            const file2 = makeFakeFile('big2.png', bytes, 'image/png');
+            app.files = [file, file2];
+            app.precacheThumbnails();
+            await app.ensureThumbnail(file2, {});
+            out.precached = !!file2.thumbnailUrl;
+
+            // Grid re-render paints cached thumbs synchronously (no observer round-trip)
+            app.renderGrid();
+            const tileImgs = [...document.querySelectorAll('#grid-view .grid-item img')];
+            out.instantPaint = tileImgs.every(img => img.src.startsWith('blob:'));
+            return out;
+        });
+        check('worker available (off-main-thread generation)', r.workerAvailable);
+        check('thumbnail downscaled to 320px', r.thumbWidth === 320, String(r.thumbWidth));
+        check('thumbnail much smaller than original', r.thumbSize < r.originalSize / 3, `${r.thumbSize} vs ${r.originalSize}`);
+        check('PNG stays PNG (transparency-safe)', r.thumbType === 'image/png', r.thumbType);
+        check('second request is a cache hit', r.cached && r.urlSet);
+        check('precache fills remaining files', r.precached);
+        check('re-render paints cached thumbs immediately', r.instantPaint);
+        await page.close();
+    }
+
     // ---- 6. Adaptive glass: regions follow their own background band ----
     console.log('adaptive glass');
     {
@@ -375,6 +511,23 @@ async function newPage(browser, url) {
         check(`${label}: no JS errors`, issues.errors.length === 0, issues.errors.join('; '));
         check(`${label}: Cropper + app loaded`, r.cropper && r.app);
         check(`${label}: drop zone shown`, r.dropZoneVisible);
+
+        // Thumbnail generation must also work from file:// (blob worker or fallback)
+        const thumbOk = await page.evaluate(async () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 500; canvas.height = 400;
+            const ctx = canvas.getContext('2d');
+            const noise = ctx.createImageData(500, 400);
+            for (let i = 0; i < noise.data.length; i++) noise.data[i] = (Math.random() * 256) | 0;
+            ctx.putImageData(noise, 0, 0);
+            const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+            const bytes = new Uint8Array(await blob.arrayBuffer());
+            const file = makeFakeFile('t.png', bytes, 'image/png');
+            app.files = [file];
+            const url = await app.ensureThumbnail(file, { urgent: true }).catch(() => null);
+            return !!url && !!file.thumbnailUrl;
+        });
+        check(`${label}: thumbnails generate`, thumbOk);
         if (label === 'standalone.html') {
             check('standalone: no network requests fail', issues.failedRequests.length === 0, issues.failedRequests.join('; '));
         }
