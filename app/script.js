@@ -31,7 +31,6 @@ const app = {
         selectionCount: document.getElementById('selection-count'),
         btnToggleView: document.getElementById('btn-toggle-view'),
         btnCrop: document.getElementById('btn-crop'),
-        btnCropFloat: document.getElementById('btn-crop-float'),
         loadingText: document.getElementById('loading-text'),
         gridControls: document.getElementById('grid-controls'),
         gridSizeSlider: document.getElementById('grid-size-slider'),
@@ -93,7 +92,6 @@ const app = {
 
         // Crop Controls
         if (this.elements.btnCrop) this.elements.btnCrop.addEventListener('click', () => this.enterCrop());
-        if (this.elements.btnCropFloat) this.elements.btnCropFloat.addEventListener('click', () => this.enterCrop());
 
         // Keyboard
         this.bindKeyboard();
