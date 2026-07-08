@@ -109,6 +109,14 @@
                             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                         </svg>
                     </button>
+                    <button id="btn-info" title="File Info (I)">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="12" y1="16" x2="12" y2="12" />
+                            <line x1="12" y1="8" x2="12.01" y2="8" />
+                        </svg>
+                    </button>
                     <button id="btn-toggle-strip" title="Toggle Film Strip">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
@@ -204,6 +212,15 @@
             <div id="thumbnail-strip" class="thumbnails">
                 <!-- Items injected here -->
             </div>
+
+            <!-- File Info Panel (I) -->
+            <div id="info-panel" class="info-panel hidden">
+                <h3>File Info</h3>
+                <dl id="info-list"></dl>
+            </div>
+
+            <!-- Always-on path chip (bottom-left, subtle) -->
+            <div id="status-bar" class="status-bar hidden"></div>
         </div>
     </div>
 
