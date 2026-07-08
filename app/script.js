@@ -31,6 +31,10 @@ const app = {
         selectionCount: document.getElementById('selection-count'),
         btnToggleView: document.getElementById('btn-toggle-view'),
         btnCrop: document.getElementById('btn-crop'),
+        btnInfo: document.getElementById('btn-info'),
+        infoPanel: document.getElementById('info-panel'),
+        infoList: document.getElementById('info-list'),
+        statusBar: document.getElementById('status-bar'),
         loadingText: document.getElementById('loading-text'),
         gridControls: document.getElementById('grid-controls'),
         gridSizeSlider: document.getElementById('grid-size-slider'),
@@ -92,6 +96,9 @@ const app = {
 
         // Crop Controls
         if (this.elements.btnCrop) this.elements.btnCrop.addEventListener('click', () => this.enterCrop());
+
+        // File Info
+        if (this.elements.btnInfo) this.elements.btnInfo.addEventListener('click', () => this.toggleInfoPanel());
 
         // Keyboard
         this.bindKeyboard();
@@ -477,16 +484,19 @@ const app = {
         }
     },
 
-    async scanDirectory(dirHandle) {
+    async scanDirectory(dirHandle, prefix = '') {
         try {
             this.showToast('Scanning folder...', 0, 'scan');
             for await (const entry of dirHandle.values()) {
                 if (entry.kind === 'file' && this.isImage(entry.name)) {
+                    const relPath = prefix + entry.name;
                     // Check for duplicates to allow Refresh
-                    if (!this.files.some(f => f.name === entry.name)) {
+                    if (!this.files.some(f => (f.relPath || f.name) === relPath)) {
                         const fileData = await entry.getFile();
                         this.files.push({
                             name: entry.name,
+                            relPath: relPath,
+                            parentDir: dirHandle,
                             handle: entry,
                             size: fileData.size,
                             lastModified: fileData.lastModified
@@ -496,7 +506,7 @@ const app = {
                         this.showToast(`Found ${this.files.length} images...`, 0, 'scan');
                     }
                 } else if (entry.kind === 'directory') {
-                    await this.scanDirectory(entry);
+                    await this.scanDirectory(entry, prefix + entry.name + '/');
                 }
             }
         } catch (e) {
@@ -544,6 +554,183 @@ const app = {
         if (!file) return 0;
         const lag = (kind === 'thumb' ? file.thumbLag : file.fullLag) || 0;
         return lag + (file.savingRotation || 0) + (file.pendingRotation || 0);
+    },
+
+    // ---- File info ----
+
+    // Full display path of a file: root folder + relative path when known
+    getDisplayPath(file) {
+        if (!file) return '';
+        const rel = file.relPath || file.name;
+        return this.dirHandle ? `${this.dirHandle.name}/${rel}` : rel;
+    },
+
+    // Subtle always-on chip in the bottom-left with location + file name
+    updateStatusBar() {
+        const el = this.elements.statusBar;
+        if (!el) return;
+        if (!this.currentFile) {
+            el.classList.add('hidden');
+            return;
+        }
+        el.classList.remove('hidden');
+        el.textContent = this.getDisplayPath(this.currentFile);
+    },
+
+    formatBytes(n) {
+        if (!(n >= 0)) return '—';
+        if (n < 1024) return `${n} B`;
+        if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+        return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+    },
+
+    // Read Make / Model / DateTimeOriginal from a JPEG's EXIF block.
+    // Returns { make, model, dateTaken: Date|null } or null.
+    readJpegExifInfo(buffer) {
+        try {
+            const view = new DataView(buffer);
+            if (view.byteLength < 4 || view.getUint16(0) !== 0xFFD8) return null;
+
+            let offset = 2;
+            let tiff = -1;
+            while (offset + 4 <= view.byteLength) {
+                const marker = view.getUint16(offset);
+                if ((marker & 0xFF00) !== 0xFF00 || marker === 0xFFDA || marker === 0xFFD9) break;
+                const size = view.getUint16(offset + 2);
+                if (size < 2) break;
+                if (marker === 0xFFE1 && offset + 10 <= view.byteLength &&
+                    view.getUint32(offset + 4) === 0x45786966 && view.getUint16(offset + 8) === 0) {
+                    tiff = offset + 10;
+                    break;
+                }
+                offset += 2 + size;
+            }
+            if (tiff === -1) return null;
+
+            const bo = view.getUint16(tiff);
+            const le = bo === 0x4949;
+            if (!le && bo !== 0x4D4D) return null;
+            if (view.getUint16(tiff + 2, le) !== 0x002A) return null;
+
+            const readAscii = (entry) => {
+                const count = view.getUint32(entry + 4, le);
+                if (count === 0 || count > 512) return null;
+                const at = count <= 4 ? entry + 8 : tiff + view.getUint32(entry + 8, le);
+                if (at + count > view.byteLength) return null;
+                let s = '';
+                for (let i = 0; i < count; i++) {
+                    const c = view.getUint8(at + i);
+                    if (c === 0) break;
+                    s += String.fromCharCode(c);
+                }
+                return s.trim() || null;
+            };
+
+            const scanIfd = (ifd, wanted, out) => {
+                if (ifd + 2 > view.byteLength) return;
+                const count = view.getUint16(ifd, le);
+                for (let i = 0; i < count; i++) {
+                    const entry = ifd + 2 + i * 12;
+                    if (entry + 12 > view.byteLength) return;
+                    const tag = view.getUint16(entry, le);
+                    if (wanted.includes(tag)) out[tag] = entry;
+                }
+            };
+
+            const ifd0 = {};
+            scanIfd(tiff + view.getUint32(tiff + 4, le), [0x010F, 0x0110, 0x8769], ifd0);
+
+            const result = {
+                make: ifd0[0x010F] ? readAscii(ifd0[0x010F]) : null,
+                model: ifd0[0x0110] ? readAscii(ifd0[0x0110]) : null,
+                dateTaken: null
+            };
+
+            if (ifd0[0x8769]) {
+                const exifIfd = {};
+                scanIfd(tiff + view.getUint32(ifd0[0x8769] + 8, le), [0x9003], exifIfd);
+                if (exifIfd[0x9003]) {
+                    const raw = readAscii(exifIfd[0x9003]); // "YYYY:MM:DD HH:MM:SS"
+                    const m = raw && raw.match(/^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+                    if (m) result.dateTaken = new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+                }
+            }
+            return result;
+        } catch (e) {
+            return null;
+        }
+    },
+
+    // EXIF metadata cached per file; only the file head is read
+    async getExifInfo(file) {
+        if (file._exif !== undefined) return file._exif;
+        file._exif = null;
+        if (/\.jpe?g$/i.test(file.name)) {
+            try {
+                const fileData = await file.handle.getFile();
+                const head = await fileData.slice(0, 256 * 1024).arrayBuffer();
+                file._exif = this.readJpegExifInfo(head);
+            } catch (e) { /* leave null */ }
+        }
+        return file._exif;
+    },
+
+    toggleInfoPanel(forceOpen = null) {
+        const panel = this.elements.infoPanel;
+        if (!panel) return;
+        const open = forceOpen !== null ? forceOpen : panel.classList.contains('hidden');
+        panel.classList.toggle('hidden', !open);
+        this._infoOpen = open;
+        if (open) this.fillInfoPanel(this.currentFile);
+    },
+
+    async fillInfoPanel(file) {
+        const list = this.elements.infoList;
+        if (!list || !file) return;
+        const token = (this._infoToken = (this._infoToken || 0) + 1);
+
+        const rows = [];
+        rows.push(['Name', file.name]);
+        rows.push(['Location', this.getDisplayPath(file)]);
+        rows.push(['Type', (file.name.match(/\.(\w+)$/) || [, '?'])[1].toUpperCase()]);
+        rows.push(['Size', this.formatBytes(file.size)]);
+        rows.push(['Modified', file.lastModified ? new Date(file.lastModified).toLocaleString() : '—']);
+
+        const render = () => {
+            if (token !== this._infoToken) return; // superseded by newer fill
+            list.innerHTML = '';
+            rows.forEach(([k, v]) => {
+                const dt = document.createElement('dt');
+                dt.textContent = k;
+                const dd = document.createElement('dd');
+                dd.textContent = v == null ? '—' : v;
+                list.appendChild(dt);
+                list.appendChild(dd);
+            });
+        };
+        render(); // paint the cheap fields immediately
+
+        // Dimensions: reuse the already-decoded single-view image if it's this file
+        try {
+            let dims = null;
+            const img = this.elements.currentImage;
+            if (this.currentFile === file && img.naturalWidth > 0 && this.viewMode === 'single') {
+                dims = `${img.naturalWidth} × ${img.naturalHeight}`;
+            } else {
+                const bmp = await createImageBitmap(await file.handle.getFile());
+                dims = `${bmp.width} × ${bmp.height}`;
+                bmp.close();
+            }
+            rows.splice(3, 0, ['Dimensions', dims]);
+        } catch (e) { /* skip dimensions */ }
+
+        const exif = await this.getExifInfo(file);
+        if (exif) {
+            if (exif.dateTaken) rows.push(['Taken', exif.dateTaken.toLocaleString()]);
+            const camera = [exif.make, exif.model].filter(Boolean).join(' ');
+            if (camera) rows.push(['Camera', camera]);
+        }
+        render();
     },
 
     // Instantly rotate every on-screen preview of a file via CSS
@@ -1155,6 +1342,8 @@ const app = {
             this.currentFile = file;
             this.elements.fileName.textContent = file.name;
             this.elements.fileCount.textContent = `${this.files.indexOf(file) + 1} / ${this.files.length}`;
+            this.updateStatusBar();
+            if (this._infoOpen) this.fillInfoPanel(file);
             this.selection.clear();
             this.selection.add(file);
             this.updateSelectionUI();
@@ -1260,6 +1449,8 @@ const app = {
 
         this.elements.fileName.textContent = file.name;
         this.elements.fileCount.textContent = `${index + 1} / ${this.files.length}`;
+        this.updateStatusBar();
+        if (this._infoOpen) this.fillInfoPanel(file);
 
         // Prepare for swap: fast fade out
         this.elements.currentImage.style.opacity = '0';
@@ -1558,6 +1749,9 @@ const app = {
                 break;
             case 'c':
                 this.enterCrop();
+                break;
+            case 'i':
+                this.toggleInfoPanel();
                 break;
         }
     },
