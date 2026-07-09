@@ -109,6 +109,38 @@ async function newPage(browser, url) {
 }
 
 (async () => {
+    // ---- 0. PWA static checks: manifest, icons, service worker assets ----
+    console.log('PWA manifest & assets');
+    {
+        const APP = path.join(ROOT, 'app');
+        const pngSize = (p) => {
+            const b = fs.readFileSync(p);
+            return `${b.readUInt32BE(16)}x${b.readUInt32BE(20)}`;
+        };
+        const manifest = JSON.parse(fs.readFileSync(path.join(APP, 'manifest.json'), 'utf8'));
+        check('manifest is installable (standalone + start_url + id)',
+            manifest.display === 'standalone' && manifest.start_url === './' && manifest.id === './');
+
+        let iconsOk = true, iconDetail = [];
+        for (const icon of manifest.icons) {
+            const p = path.join(APP, icon.src);
+            const ok = fs.existsSync(p) && pngSize(p) === icon.sizes;
+            if (!ok) iconsOk = false;
+            iconDetail.push(`${icon.src}=${fs.existsSync(p) ? pngSize(p) : 'MISSING'} (declared ${icon.sizes})`);
+        }
+        check('manifest icons exist with truthful sizes', iconsOk, iconDetail.join('; '));
+        check('has a maskable icon', manifest.icons.some(i => (i.purpose || '').includes('maskable')));
+
+        // Every asset the service worker precaches must actually exist,
+        // otherwise cache.addAll rejects and the PWA never works offline
+        const sw = fs.readFileSync(path.join(APP, 'sw.js'), 'utf8');
+        const assets = [...sw.matchAll(/'\.\/([^']+)'/g)].map(m => m[1]);
+        const missing = assets.filter(a => a !== '' && !fs.existsSync(path.join(APP, a)));
+        check('all service-worker precache assets exist', missing.length === 0, missing.join(', '));
+        check('service worker cache version follows app version',
+            sw.includes("importScripts('./version.js')") && sw.includes('APP_VERSION'));
+    }
+
     // Build the standalone file first so we can test it too
     execSync('node scripts/build-standalone.js', { cwd: ROOT, stdio: 'inherit' });
 

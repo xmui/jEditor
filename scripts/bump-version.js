@@ -24,4 +24,4 @@ pkg.version = version;
 fs.writeFileSync(pkgFile, JSON.stringify(pkg, null, 2) + '\n');
 
 console.log(`Version bumped to ${version} (app/version.js + package.json).`);
-console.log(`Tag with: git tag v${version} && git push --tags  → publishes a release with standalone.html`);
+console.log('Commit and merge to main — the Release workflow tags and publishes automatically.');
