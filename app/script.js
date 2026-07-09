@@ -32,6 +32,14 @@ const app = {
         btnToggleView: document.getElementById('btn-toggle-view'),
         btnCrop: document.getElementById('btn-crop'),
         btnInfo: document.getElementById('btn-info'),
+        btnMore: document.getElementById('btn-more'),
+        btnFullscreen: document.getElementById('btn-fullscreen'),
+        btnCustomize: document.getElementById('btn-customize'),
+        headerControls: document.getElementById('header-controls'),
+        customizePanel: document.getElementById('customize-panel'),
+        customizeList: document.getElementById('customize-list'),
+        stripResize: document.getElementById('strip-resize'),
+        taskList: document.getElementById('task-list'),
         infoPanel: document.getElementById('info-panel'),
         infoList: document.getElementById('info-list'),
         statusBar: document.getElementById('status-bar'),
@@ -172,6 +180,36 @@ const app = {
 
         // Any pointer interaction stops a running slideshow
         document.addEventListener('pointerdown', () => this.stopSlideshow());
+
+        // Header pill: More expander, fullscreen, customize
+        this.elements.btnMore.addEventListener('click', () => {
+            this.elements.headerControls.classList.toggle('expanded');
+        });
+        this.elements.btnFullscreen.addEventListener('click', () => this.toggleFullscreen());
+        this.elements.btnCustomize.addEventListener('click', () => this.toggleCustomizePanel());
+        document.getElementById('cust-vertical').addEventListener('change', (e) => {
+            this.uiPrefs.vertical = e.target.checked;
+            this.saveUiPrefs();
+            this.applyUiPrefs();
+        });
+        document.getElementById('cust-scale').addEventListener('input', (e) => {
+            this.uiPrefs.scale = parseFloat(e.target.value);
+            this.saveUiPrefs();
+            this.applyUiPrefs();
+        });
+        document.getElementById('cust-reset').addEventListener('click', () => {
+            this.uiPrefs = this.defaultUiPrefs();
+            this.saveUiPrefs();
+            this.applyUiPrefs();
+            this.renderCustomizePanel();
+        });
+
+        this.initStripResize();
+
+        // Apply saved layout (order, hidden buttons, orientation, scale,
+        // strip height, thumbnail fit)
+        this.loadUiPrefs();
+        this.applyUiPrefs();
     },
 
     async verifyPermission(fileHandle, readWrite) {
@@ -210,10 +248,9 @@ const app = {
             this.dirHandle = dirHandle;
             this.readOnlyMode = false; // Modern API supports writing
 
-            this.elements.loading.classList.remove('hidden');
+            this.beginTask('scan', 'Scanning folder…');
             this.elements.dropZone.classList.add('hidden');
 
-            this.showToast('Scanning folder...', 0, 'scan');
             await this.scanDirectory(dirHandle);
 
             await this.finalizeLoad();
@@ -227,7 +264,7 @@ const app = {
             console.error('Browse folder error:', err);
             alert('Error loading folder: ' + err.message);
             this.elements.dropZone.classList.remove('hidden');
-            this.elements.loading.classList.add('hidden');
+            this.endTask('scan');
         }
     },
 
@@ -252,22 +289,262 @@ const app = {
         }
     },
 
+    // ---- UI customization ----
+    //
+    // Every header control can be shown in the pill, tucked into the "More"
+    // section, or hidden entirely; the order is drag-reorderable in the
+    // Customize panel. Orientation (horizontal/vertical), UI scale, film
+    // strip height and thumbnail fit are all preferences too. Everything
+    // persists in localStorage under 'jeditor.ui'.
+
+    HC_LABELS: {
+        info: 'File Info',
+        view: 'Toggle View',
+        refresh: 'Refresh Folder',
+        crop: 'Crop',
+        fit: 'Thumbnail Fit',
+        strip: 'Film Strip',
+        fullscreen: 'Fullscreen',
+        customize: 'Customize'
+    },
+
+    defaultUiPrefs() {
+        return {
+            order: ['info', 'view', 'refresh', 'crop', 'fit', 'strip', 'fullscreen', 'customize'],
+            placement: { // 'main' | 'more' | 'hidden'
+                info: 'main', view: 'main', refresh: 'main', crop: 'main',
+                fit: 'more', strip: 'more', fullscreen: 'more', customize: 'more'
+            },
+            vertical: false,
+            scale: 1,
+            stripHeight: 80,
+            thumbContain: true // fit whole image in tiles by default
+        };
+    },
+
+    loadUiPrefs() {
+        this.uiPrefs = this.defaultUiPrefs();
+        try {
+            const saved = JSON.parse(localStorage.getItem('jeditor.ui') || 'null');
+            if (saved) {
+                if (Array.isArray(saved.order)) {
+                    // keep unknown-key safety: only accept known keys, append missing
+                    const known = this.uiPrefs.order;
+                    this.uiPrefs.order = saved.order.filter(k => known.includes(k))
+                        .concat(known.filter(k => !saved.order.includes(k)));
+                }
+                if (saved.placement) {
+                    for (const k of Object.keys(this.uiPrefs.placement)) {
+                        if (['main', 'more', 'hidden'].includes(saved.placement[k])) {
+                            this.uiPrefs.placement[k] = saved.placement[k];
+                        }
+                    }
+                }
+                if (typeof saved.vertical === 'boolean') this.uiPrefs.vertical = saved.vertical;
+                if (saved.scale >= 0.8 && saved.scale <= 1.6) this.uiPrefs.scale = saved.scale;
+                if (saved.stripHeight >= 50 && saved.stripHeight <= 240) this.uiPrefs.stripHeight = saved.stripHeight;
+                if (typeof saved.thumbContain === 'boolean') this.uiPrefs.thumbContain = saved.thumbContain;
+            }
+        } catch (e) { /* corrupted prefs → defaults */ }
+    },
+
+    saveUiPrefs() {
+        try { localStorage.setItem('jeditor.ui', JSON.stringify(this.uiPrefs)); } catch (e) { /* private mode */ }
+    },
+
+    headerButton(key) {
+        return this.elements.headerControls.querySelector(`[data-hc="${key}"]`);
+    },
+
+    applyUiPrefs() {
+        const p = this.uiPrefs || (this.uiPrefs = this.defaultUiPrefs());
+        const container = this.elements.headerControls;
+
+        // Reorder buttons (More button stays last)
+        p.order.forEach(key => {
+            const btn = this.headerButton(key);
+            if (btn) container.insertBefore(btn, this.elements.btnMore);
+        });
+        // Placement classes
+        let hasMore = false;
+        p.order.forEach(key => {
+            const btn = this.headerButton(key);
+            if (!btn) return;
+            const place = p.placement[key] || 'main';
+            btn.classList.toggle('hidden', place === 'hidden');
+            btn.classList.toggle('hc-extra', place === 'more');
+            if (place === 'more') hasMore = true;
+        });
+        // No overflow items → no expander
+        this.elements.btnMore.classList.toggle('hidden', !hasMore);
+
+        container.classList.toggle('vertical', !!p.vertical);
+        document.documentElement.style.setProperty('--ui-scale', p.scale);
+        document.documentElement.style.setProperty('--strip-height', `${p.stripHeight}px`);
+
+        this.elements.gridView.classList.toggle('thumb-contain', !!p.thumbContain);
+        this.elements.thumbnailStrip.classList.toggle('thumb-contain', !!p.thumbContain);
+    },
+
+    toggleCustomizePanel() {
+        const panel = this.elements.customizePanel;
+        const open = panel.classList.contains('hidden');
+        panel.classList.toggle('hidden', !open);
+        if (open) this.renderCustomizePanel();
+    },
+
+    renderCustomizePanel() {
+        const list = this.elements.customizeList;
+        list.innerHTML = '';
+        document.getElementById('cust-vertical').checked = !!this.uiPrefs.vertical;
+        document.getElementById('cust-scale').value = this.uiPrefs.scale;
+
+        this.uiPrefs.order.forEach(key => {
+            const li = document.createElement('li');
+            li.draggable = true;
+            li.dataset.key = key;
+
+            const grip = document.createElement('span');
+            grip.className = 'cust-grip';
+            grip.textContent = '≡';
+            const name = document.createElement('span');
+            name.className = 'cust-name';
+            name.textContent = this.HC_LABELS[key] || key;
+            const sel = document.createElement('select');
+            [['main', 'Shown'], ['more', 'In More'], ['hidden', 'Hidden']].forEach(([v, l]) => {
+                const o = document.createElement('option');
+                o.value = v;
+                o.textContent = l;
+                sel.appendChild(o);
+            });
+            sel.value = this.uiPrefs.placement[key] || 'main';
+            sel.onchange = () => {
+                this.uiPrefs.placement[key] = sel.value;
+                this.saveUiPrefs();
+                this.applyUiPrefs();
+            };
+
+            li.appendChild(grip);
+            li.appendChild(name);
+            li.appendChild(sel);
+
+            li.addEventListener('dragstart', (e) => {
+                this._dragKey = key;
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            li.addEventListener('dragover', (e) => e.preventDefault());
+            li.addEventListener('drop', (e) => {
+                e.preventDefault();
+                if (!this._dragKey || this._dragKey === key) return;
+                const order = this.uiPrefs.order;
+                order.splice(order.indexOf(this._dragKey), 1);
+                order.splice(order.indexOf(key), 0, this._dragKey);
+                this._dragKey = null;
+                this.saveUiPrefs();
+                this.applyUiPrefs();
+                this.renderCustomizePanel();
+            });
+
+            list.appendChild(li);
+        });
+    },
+
+    // ---- Film strip resize (drag the top edge) ----
+
+    initStripResize() {
+        const handle = this.elements.stripResize;
+        if (!handle) return;
+        let startY = 0, startH = 0, dragging = false;
+        handle.addEventListener('mousedown', (e) => {
+            dragging = true;
+            startY = e.clientY;
+            startH = this.uiPrefs.stripHeight;
+            document.body.style.cursor = 'ns-resize';
+            e.preventDefault();
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (!dragging) return;
+            this.setStripHeight(startH + (startY - e.clientY));
+        });
+        window.addEventListener('mouseup', () => {
+            if (!dragging) return;
+            dragging = false;
+            document.body.style.cursor = '';
+            this.saveUiPrefs();
+        });
+    },
+
+    setStripHeight(px) {
+        this.uiPrefs.stripHeight = Math.max(50, Math.min(240, Math.round(px)));
+        document.documentElement.style.setProperty('--strip-height', `${this.uiPrefs.stripHeight}px`);
+    },
+
     toggleThumbnailFit() {
-        this.elements.gridView.classList.toggle('thumb-contain');
-        this.elements.thumbnailStrip.classList.toggle('thumb-contain');
-        // Optional: flash notification
-        // this.showToast('Thumbnail mode toggled', 1000);
+        this.uiPrefs.thumbContain = !this.uiPrefs.thumbContain;
+        this.saveUiPrefs();
+        this.applyUiPrefs();
+    },
+
+    // ---- Task registry ----
+    //
+    // Every background job registers here. The pill (top-right) shows a
+    // spinner plus the most recent task; hovering it lists every task.
+
+    beginTask(key, label) {
+        if (!this._tasks) this._tasks = new Map();
+        this._tasks.delete(key); // re-inserting moves it to "most recent"
+        this._tasks.set(key, label);
+        this.renderTasks();
+    },
+
+    updateTask(key, label) {
+        if (this._tasks && this._tasks.has(key)) {
+            this._tasks.set(key, label);
+            this.renderTasks();
+        } else {
+            this.beginTask(key, label);
+        }
+    },
+
+    endTask(key) {
+        if (this._tasks && this._tasks.delete(key)) this.renderTasks();
+    },
+
+    renderTasks() {
+        const pill = this.elements.loading;
+        const labelEl = this.elements.loadingText;
+        const labels = [...(this._tasks || new Map()).values()];
+        if (labels.length === 0) {
+            pill.classList.add('hidden');
+            return;
+        }
+        pill.classList.remove('hidden');
+        const current = labels[labels.length - 1];
+        labelEl.textContent = labels.length > 1 ? `${current} (+${labels.length - 1})` : current;
+
+        const list = this.elements.taskList;
+        if (list) {
+            list.innerHTML = '';
+            labels.forEach(l => {
+                const row = document.createElement('div');
+                row.className = 'task-row';
+                const spin = document.createElement('span');
+                spin.className = 'task-spinner';
+                const txt = document.createElement('span');
+                txt.textContent = l;
+                row.appendChild(spin);
+                row.appendChild(txt);
+                list.appendChild(row);
+            });
+        }
     },
 
     toggleThumbnailStrip() {
         const strip = this.elements.thumbnailStrip;
-        if (strip.classList.contains('hidden')) {
-            strip.classList.remove('hidden');
-            this.elements.btnToggleStrip.style.opacity = '1';
-        } else {
-            strip.classList.add('hidden');
-            this.elements.btnToggleStrip.style.opacity = '0.5';
-        }
+        const show = strip.classList.contains('hidden');
+        strip.classList.toggle('hidden', !show);
+        if (this.elements.stripResize) this.elements.stripResize.classList.toggle('hidden', !show);
+        this.elements.btnToggleStrip.style.opacity = show ? '1' : '0.5';
         this.elements.btnToggleStrip.blur(); // Release focus to restore keyboard shortcuts
     },
 
@@ -355,11 +632,7 @@ const app = {
             this.files = [];
             this.dirHandle = null;
 
-            if (this.elements.loading) {
-                this.elements.loading.classList.remove('hidden');
-            } else {
-                console.warn('Loading element missing in DOM');
-            }
+            this.beginTask('scan', 'Loading dropped items…');
 
             if (this.elements.dropZone) {
                 this.elements.dropZone.classList.add('hidden');
@@ -368,7 +641,7 @@ const app = {
             const items = [...e.dataTransfer.items];
             if (!items || items.length === 0) throw new Error('No items dropped.');
 
-            this.showToast(`Processing ${items.length} items...`, 2000, 'scan');
+            this.updateTask('scan', `Processing ${items.length} items…`);
             this.log(`Processing ${items.length} items...`);
 
             // Try modern File System Access API first (supports writing)
@@ -425,7 +698,7 @@ const app = {
             console.error('Drop error:', err);
             alert('Error loading: ' + err.message);
             this.elements.dropZone.classList.remove('hidden');
-            this.elements.loading.classList.add('hidden');
+            this.endTask('scan');
         } finally {
             this.isLoading = false;
         }
@@ -437,7 +710,7 @@ const app = {
             this.sortFiles(false); // pass false to avoid re-rendering twice
 
             if (this.files.length > 0) {
-                this.showToast(`Loaded ${this.files.length} images.`, 3000, 'scan');
+                this.showToast(`Loaded ${this.files.length} images.`, 3000);
                 this.elements.mainInterface.classList.remove('hidden');
 
                 // Force focus settings
@@ -460,7 +733,7 @@ const app = {
             alert(`Error: ${err.message || err}`);
             this.elements.dropZone.classList.remove('hidden');
         } finally {
-            this.elements.loading.classList.add('hidden');
+            this.endTask('scan');
             this.isLoading = false;
         }
     },
@@ -519,7 +792,7 @@ const app = {
 
     async scanDirectory(dirHandle, prefix = '') {
         try {
-            this.showToast('Scanning folder...', 0, 'scan');
+            this.updateTask('scan', 'Scanning folder…');
             for await (const entry of dirHandle.values()) {
                 if (entry.kind === 'file' && this.isImage(entry.name)) {
                     const relPath = prefix + entry.name;
@@ -536,7 +809,7 @@ const app = {
                         });
                     }
                     if (this.files.length % 50 === 0) {
-                        this.showToast(`Found ${this.files.length} images...`, 0, 'scan');
+                        this.updateTask('scan', `Scanning folder… ${this.files.length} images`);
                     }
                 } else if (entry.kind === 'directory') {
                     // Skip our own working folders
@@ -552,8 +825,7 @@ const app = {
     async refreshFolder() {
         if (!this.dirHandle) return;
         this.log('Manual Refresh Started');
-        this.elements.loading.classList.remove('hidden');
-        this.elements.loadingText.textContent = 'Scanning for new photos...';
+        this.beginTask('scan', 'Scanning for new photos…');
 
         try {
             const oldLength = this.files.length;
@@ -562,15 +834,15 @@ const app = {
             if (this.files.length > oldLength) {
                 this.sortFiles();
                 this.precacheThumbnails();
-                this.showToast(`Found ${this.files.length - oldLength} new photos`, 3000, 'scan');
+                this.showToast(`Found ${this.files.length - oldLength} new photos`, 3000);
             } else {
-                this.showToast('Folder is up to date', 2000, 'scan');
+                this.showToast('Folder is up to date', 2000);
             }
         } catch (e) {
             console.error('Refresh failed:', e);
-            this.showToast('Refresh failed', 3000, 'scan');
+            this.showToast('Refresh failed');
         } finally {
-            this.elements.loading.classList.add('hidden');
+            this.endTask('scan');
         }
     },
 
@@ -1372,6 +1644,7 @@ const app = {
 
         const total = missing.length;
         const showProgress = total >= 30;
+        if (showProgress) this.beginTask('precache', `Preparing previews 0/${total}`);
         let done = 0;
         missing.forEach(file => {
             this.ensureThumbnail(file, { urgent: false })
@@ -1380,9 +1653,10 @@ const app = {
                     done++;
                     if (!showProgress) return;
                     if (done === total) {
-                        this.showToast(`All ${total} previews ready`, 2000, 'precache');
-                    } else if (done % 50 === 0) {
-                        this.showToast(`Preparing previews ${done}/${total}…`, 0, 'precache');
+                        this.endTask('precache');
+                        this.showToast(`All ${total} previews ready`, 2000);
+                    } else if (done % 25 === 0) {
+                        this.updateTask('precache', `Preparing previews ${done}/${total}`);
                     }
                 });
         });
@@ -1461,6 +1735,7 @@ const app = {
             this.elements.gridView.classList.remove('hidden');
             this.elements.thumbnailStrip.parentElement.querySelector('.controls').classList.add('hidden'); // Hide float controls
             this.elements.thumbnailStrip.classList.add('hidden');
+            if (this.elements.stripResize) this.elements.stripResize.classList.add('hidden');
             this.elements.gridControls.classList.remove('hidden');
             iconGrid.classList.add('hidden');
             iconSingle.classList.remove('hidden');
@@ -1486,6 +1761,7 @@ const app = {
             this.elements.gridView.classList.add('hidden');
             this.elements.thumbnailStrip.parentElement.querySelector('.controls').classList.remove('hidden');
             this.elements.thumbnailStrip.classList.remove('hidden');
+            if (this.elements.stripResize) this.elements.stripResize.classList.remove('hidden');
             this.elements.gridControls.classList.add('hidden');
             iconGrid.classList.remove('hidden');
             iconSingle.classList.add('hidden');
@@ -1920,10 +2196,11 @@ const app = {
             this.applyPreviewRotation(file);
         }
 
-        // Each batch gets its own toast; overlapping batches stack in the UI
-        const toastKey = 'rotate-batch-' + (this._batchSeq = (this._batchSeq || 0) + 1);
+        // Each batch is its own task; overlapping batches stack in the
+        // task pill (hover it to see every running task)
+        const taskKey = 'rotate-batch-' + (this._batchSeq = (this._batchSeq || 0) + 1);
         const label = `${filesToRotate.length} photo${filesToRotate.length > 1 ? 's' : ''}`;
-        this.showToast(`Rotating ${label}…`, 0, toastKey);
+        this.beginTask(taskKey, `Rotating ${label}…`);
 
         // Drain sequentially to avoid memory spikes; files already being
         // saved by another batch are awaited, not double-processed.
@@ -1932,7 +2209,8 @@ const app = {
             ok = (await this.processRotationQueue(file)) && ok;
         }
 
-        this.showToast(ok ? `Rotated ${label} ${deg > 0 ? 'right' : 'left'}` : `Some photos failed to rotate`, 2000, toastKey);
+        this.endTask(taskKey);
+        this.showToast(ok ? `Rotated ${label} ${deg > 0 ? 'right' : 'left'}` : 'Some photos failed to rotate', 2000);
         this.log('Bulk rotation finished');
     },
 
@@ -2001,8 +2279,16 @@ const app = {
                     }
                 }
 
-                // Fallback: canvas re-encode (PNG stays pixel-lossless)
-                if (!blob) blob = await this.rotateByReencoding(fileData, fileEntry.name, normalizedDeg);
+                // Fallback: canvas re-encode (PNG stays pixel-lossless).
+                // Slow path, so it registers in the task pill.
+                if (!blob) {
+                    this.beginTask('rot:' + fileEntry.name, `Rotating ${fileEntry.name}…`);
+                    try {
+                        blob = await this.rotateByReencoding(fileData, fileEntry.name, normalizedDeg);
+                    } finally {
+                        this.endTask('rot:' + fileEntry.name);
+                    }
+                }
                 if (!blob) throw new Error('Blob conversion failed');
 
                 // Re-verify permission
@@ -2210,7 +2496,7 @@ const app = {
     async ensureDatesTaken() {
         const missing = this.files.filter(f => f.dateTaken === undefined);
         if (!missing.length) return;
-        this.showToast('Reading capture dates…', 0, 'taken');
+        this.beginTask('taken', 'Reading capture dates…');
         let i = 0;
         const workers = Array.from({ length: 8 }, async () => {
             while (i < missing.length) {
@@ -2220,7 +2506,7 @@ const app = {
             }
         });
         await Promise.all(workers);
-        this.showToast('Capture dates loaded', 1500, 'taken');
+        this.endTask('taken');
     },
 
     // ---- Rename ----
@@ -2487,14 +2773,15 @@ const app = {
                     failed++;
                     console.error('Export failed:', f.name, e);
                 }
-                this.showToast(`Exporting ${done + failed}/${list.length}…`, 0, 'export');
+                this.updateTask('export', `Exporting ${done + failed}/${list.length}`);
             }
+            this.endTask('export');
             this.showToast(
-                failed ? `Exported ${done}, ${failed} failed` : `Exported ${done} to "jEditor Export"`,
-                3000, 'export'
+                failed ? `Exported ${done}, ${failed} failed` : `Exported ${done} to "jEditor Export"`
             );
         } catch (e) {
-            this.showToast('Export failed: ' + e.message, 3000, 'export');
+            this.endTask('export');
+            this.showToast('Export failed: ' + e.message);
         }
     },
 
@@ -2629,6 +2916,7 @@ const app = {
         // 1. Hide Controls & Strip
         document.querySelector('.controls').classList.add('hidden');
         document.getElementById('thumbnail-strip').classList.add('hidden');
+        if (this.elements.stripResize) this.elements.stripResize.classList.add('hidden');
 
         // 2. Initialize Cropper
         const image = this.elements.currentImage;
@@ -2674,6 +2962,7 @@ const app = {
         // Restore main UI visibility
         document.querySelector('.controls')?.classList.remove('hidden');
         document.getElementById('thumbnail-strip')?.classList.remove('hidden');
+        if (this.elements.stripResize) this.elements.stripResize.classList.remove('hidden');
     },
 
     showCropperToolbar() {
@@ -2721,8 +3010,7 @@ const app = {
     async saveCrop() {
         if (!this.cropper) return;
 
-        this.elements.loading.classList.remove('hidden');
-        if (this.elements.loadingText) this.elements.loadingText.textContent = 'Saving...';
+        this.beginTask('crop-save', 'Saving crop…');
 
         try {
             const canvas = this.cropper.getCroppedCanvas();
@@ -2779,7 +3067,7 @@ const app = {
             console.error(err);
             this.showToast("Failed to save image");
         } finally {
-            this.elements.loading.classList.add('hidden');
+            this.endTask('crop-save');
         }
     },
 

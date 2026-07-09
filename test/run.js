@@ -595,6 +595,86 @@ async function newPage(browser, url) {
         await page.close();
     }
 
+    // ---- 5d. UI customization, task pill, strip/status layout ----
+    console.log('UI customization & task pill');
+    {
+        const { page } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            localStorage.removeItem('jeditor.ui');
+
+            // Default pill: info, view, refresh, crop visible; rest in "More"
+            const hc = document.getElementById('header-controls');
+            const visible = [...hc.querySelectorAll('[data-hc]')]
+                .filter(b => !b.classList.contains('hc-extra') && !b.classList.contains('hidden'))
+                .map(b => b.dataset.hc);
+            out.defaultMain = visible.join(',');
+            const extras = [...hc.querySelectorAll('.hc-extra')].map(b => b.dataset.hc);
+            out.defaultExtras = extras.join(',');
+            out.extrasHiddenCollapsed = getComputedStyle(document.getElementById('btn-toggle-fit')).display === 'none';
+            document.getElementById('btn-more').click();
+            out.extrasShownExpanded = getComputedStyle(document.getElementById('btn-toggle-fit')).display !== 'none';
+
+            // Placement + order + vertical + scale via prefs
+            app.uiPrefs.placement.fullscreen = 'main';
+            app.uiPrefs.placement.refresh = 'hidden';
+            app.uiPrefs.order = ['crop', 'info', 'view', 'refresh', 'fit', 'strip', 'fullscreen', 'customize'];
+            app.uiPrefs.vertical = true;
+            app.uiPrefs.scale = 1.2;
+            app.saveUiPrefs();
+            app.applyUiPrefs();
+            out.reordered = [...hc.querySelectorAll('[data-hc]')].map(b => b.dataset.hc).slice(0, 2).join(',');
+            out.refreshHidden = document.getElementById('btn-refresh').classList.contains('hidden');
+            out.fullscreenMain = !document.getElementById('btn-fullscreen').classList.contains('hc-extra');
+            out.vertical = hc.classList.contains('vertical');
+            out.persisted = JSON.parse(localStorage.getItem('jeditor.ui')).scale === 1.2;
+            out.scaleApplied = getComputedStyle(hc).zoom;
+
+            // Thumbnail fit contain by default
+            localStorage.removeItem('jeditor.ui');
+            app.loadUiPrefs();
+            app.applyUiPrefs();
+            out.containDefault = document.getElementById('grid-view').classList.contains('thumb-contain');
+
+            // Strip height + in-flow status bar (no overlap possible)
+            app.setStripHeight(120);
+            out.stripVar = getComputedStyle(document.documentElement).getPropertyValue('--strip-height').trim();
+            out.statusInFlow = ['static', 'relative'].includes(getComputedStyle(document.getElementById('status-bar')).position);
+
+            // Info icon actually has its dot
+            out.infoDot = document.getElementById('btn-info').innerHTML.includes('cy="8"');
+
+            // Task pill: current task + hover list, stacking
+            app.beginTask('t1', 'Rotating 3 photos…');
+            app.beginTask('t2', 'Exporting 2/5');
+            const pill = document.getElementById('loading-indicator');
+            out.pillVisible = !pill.classList.contains('hidden');
+            out.pillLabel = document.getElementById('loading-text').textContent;
+            out.taskRows = document.querySelectorAll('#task-list .task-row').length;
+            app.endTask('t1');
+            out.afterOneEnd = document.getElementById('loading-text').textContent;
+            app.endTask('t2');
+            out.pillHidden = pill.classList.contains('hidden');
+            return out;
+        });
+        check('default main controls: info, view, refresh, crop', r.defaultMain === 'info,view,refresh,crop', r.defaultMain);
+        check('extras live in More (fit, strip, fullscreen, customize)', r.defaultExtras === 'fit,strip,fullscreen,customize', r.defaultExtras);
+        check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
+        check('reorder + hide + promote via prefs', r.reordered === 'crop,info' && r.refreshHidden && r.fullscreenMain,
+            JSON.stringify({ o: r.reordered, h: r.refreshHidden, f: r.fullscreenMain }));
+        check('vertical pill + scale + persistence', r.vertical && r.persisted && parseFloat(r.scaleApplied) === 1.2,
+            JSON.stringify({ v: r.vertical, p: r.persisted, z: r.scaleApplied }));
+        check('thumbnail fit (contain) on by default', r.containDefault);
+        check('strip height adjustable, status bar in flow below strip', r.stripVar === '120px' && r.statusInFlow,
+            JSON.stringify({ s: r.stripVar, flow: r.statusInFlow }));
+        check('info icon has its dot', r.infoDot);
+        check('task pill shows current task with count', r.pillVisible && r.pillLabel === 'Exporting 2/5 (+1)' && r.taskRows === 2,
+            JSON.stringify({ l: r.pillLabel, rows: r.taskRows }));
+        check('task pill updates and clears', r.afterOneEnd === 'Exporting 2/5' && r.pillHidden,
+            JSON.stringify({ a: r.afterOneEnd, hid: r.pillHidden }));
+        await page.close();
+    }
+
     // ---- 6. Adaptive glass: regions follow their own background band ----
     console.log('adaptive glass');
     {
