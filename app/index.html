@@ -71,8 +71,10 @@
                         <select id="sort-mode" title="Sort By">
                             <option value="name_asc">Name (A-Z)</option>
                             <option value="name_desc">Name (Z-A)</option>
-                            <option value="date_desc">Newest First</option>
-                            <option value="date_asc">Oldest First</option>
+                            <option value="date_desc">Newest Modified</option>
+                            <option value="date_asc">Oldest Modified</option>
+                            <option value="taken_desc">Newest Taken</option>
+                            <option value="taken_asc">Oldest Taken</option>
                             <option value="size_desc">Largest First</option>
                             <option value="size_asc">Smallest First</option>
                         </select>
@@ -203,6 +205,9 @@
                 <span id="selection-count">0 items selected</span>
                 <button id="btn-rotate-left-bulk">Rotate Left</button>
                 <button id="btn-rotate-right-bulk">Rotate Right</button>
+                <button id="btn-batch-rename">Rename…</button>
+                <button id="btn-export">Export…</button>
+                <button id="btn-trash" class="danger">Delete</button>
                 <button id="btn-clear-selection">Clear</button>
             </div>
 

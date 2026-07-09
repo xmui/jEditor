@@ -988,6 +988,71 @@ header {
     transition: opacity 0.2s;
 }
 
+/* Right-click context menu */
+#context-menu {
+    position: fixed;
+    z-index: 3000;
+    min-width: 200px;
+    background: rgba(24, 24, 26, 0.95);
+    color: #f0f0f0;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 6px;
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+}
+
+#context-menu button {
+    background: transparent;
+    border: none;
+    color: inherit;
+    text-align: left;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: var(--font-family);
+}
+
+#context-menu button:hover {
+    background: rgba(255, 255, 255, 0.09);
+}
+
+#context-menu button.danger {
+    color: #ff7b72;
+}
+
+#context-menu .ctx-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 4px 8px;
+}
+
+/* Rubber-band selection rectangle */
+.rubber-band {
+    position: fixed;
+    z-index: 80;
+    border: 1px solid var(--accent-color);
+    background: rgba(37, 99, 235, 0.12);
+    border-radius: 2px;
+    pointer-events: none;
+}
+
+.selection-bar button.danger {
+    background: rgba(180, 40, 40, 0.55);
+}
+
+.selection-bar button.danger:hover {
+    background: rgba(180, 40, 40, 0.8);
+}
+
+#file-name:hover {
+    text-decoration: underline;
+}
+
 /* Always-on path chip: bottom-left, small and quiet. Sits away from the
    nav controls (bottom-center), grid controls (bottom-right) and toasts
    (top-right), so it never fights anything for space. */

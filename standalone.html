@@ -14,7 +14,7 @@
     <script>
 // Single source of truth for the app version. Bump with:  npm run bump 1.x.y
 // (keeps package.json in sync and busts the service worker cache)
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 
 </script>
     <script>
@@ -1031,6 +1031,71 @@ header {
     transition: opacity 0.2s;
 }
 
+/* Right-click context menu */
+#context-menu {
+    position: fixed;
+    z-index: 3000;
+    min-width: 200px;
+    background: rgba(24, 24, 26, 0.95);
+    color: #f0f0f0;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 6px;
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+}
+
+#context-menu button {
+    background: transparent;
+    border: none;
+    color: inherit;
+    text-align: left;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: var(--font-family);
+}
+
+#context-menu button:hover {
+    background: rgba(255, 255, 255, 0.09);
+}
+
+#context-menu button.danger {
+    color: #ff7b72;
+}
+
+#context-menu .ctx-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 4px 8px;
+}
+
+/* Rubber-band selection rectangle */
+.rubber-band {
+    position: fixed;
+    z-index: 80;
+    border: 1px solid var(--accent-color);
+    background: rgba(37, 99, 235, 0.12);
+    border-radius: 2px;
+    pointer-events: none;
+}
+
+.selection-bar button.danger {
+    background: rgba(180, 40, 40, 0.55);
+}
+
+.selection-bar button.danger:hover {
+    background: rgba(180, 40, 40, 0.8);
+}
+
+#file-name:hover {
+    text-decoration: underline;
+}
+
 /* Always-on path chip: bottom-left, small and quiet. Sits away from the
    nav controls (bottom-center), grid controls (bottom-right) and toasts
    (top-right), so it never fights anything for space. */
@@ -1192,8 +1257,10 @@ header {
                         <select id="sort-mode" title="Sort By">
                             <option value="name_asc">Name (A-Z)</option>
                             <option value="name_desc">Name (Z-A)</option>
-                            <option value="date_desc">Newest First</option>
-                            <option value="date_asc">Oldest First</option>
+                            <option value="date_desc">Newest Modified</option>
+                            <option value="date_asc">Oldest Modified</option>
+                            <option value="taken_desc">Newest Taken</option>
+                            <option value="taken_asc">Oldest Taken</option>
                             <option value="size_desc">Largest First</option>
                             <option value="size_asc">Smallest First</option>
                         </select>
@@ -1324,6 +1391,9 @@ header {
                 <span id="selection-count">0 items selected</span>
                 <button id="btn-rotate-left-bulk">Rotate Left</button>
                 <button id="btn-rotate-right-bulk">Rotate Right</button>
+                <button id="btn-batch-rename">Rename…</button>
+                <button id="btn-export">Export…</button>
+                <button id="btn-trash" class="danger">Delete</button>
                 <button id="btn-clear-selection">Clear</button>
             </div>
 
@@ -1457,6 +1527,9 @@ const app = {
         // Bulk Controls
         document.getElementById('btn-rotate-left-bulk').addEventListener('click', () => this.rotateBulk(-90));
         document.getElementById('btn-rotate-right-bulk').addEventListener('click', () => this.rotateBulk(90));
+        document.getElementById('btn-batch-rename').addEventListener('click', () => this.batchRename([...this.selection]));
+        document.getElementById('btn-export').addEventListener('click', () => this.exportCopies([...this.selection]));
+        document.getElementById('btn-trash').addEventListener('click', () => this.moveToTrash([...this.selection]));
         document.getElementById('btn-clear-selection').addEventListener('click', () => this.clearSelection());
         document.getElementById('btn-refresh').addEventListener('click', () => this.refreshFolder());
 
@@ -1503,11 +1576,41 @@ const app = {
             document.documentElement.style.setProperty('--grid-item-size', `${size}px`);
         });
 
-        // Sort Control
-        this.elements.sortModeSelect.addEventListener('change', (e) => {
+        // Sort Control (persisted; capture-date sort loads EXIF dates first)
+        this.elements.sortModeSelect.addEventListener('change', async (e) => {
             this.sortMode = e.target.value;
+            try { localStorage.setItem('jeditor.sortMode', this.sortMode); } catch (err) { /* private mode */ }
+            if (this.sortMode.startsWith('taken')) await this.ensureDatesTaken();
             this.sortFiles();
         });
+        try {
+            const saved = localStorage.getItem('jeditor.sortMode');
+            if (saved && this.elements.sortModeSelect.querySelector(`option[value="${saved}"]`)) {
+                this.sortMode = saved;
+                this.elements.sortModeSelect.value = saved;
+            }
+        } catch (err) { /* private mode */ }
+
+        // Click the filename to rename
+        this.elements.fileName.style.cursor = 'pointer';
+        this.elements.fileName.title = 'Click to rename';
+        this.elements.fileName.addEventListener('click', () => this.promptRename());
+
+        // Ctrl+wheel zooms the grid
+        this.elements.gridView.addEventListener('wheel', (e) => {
+            if (!e.ctrlKey) return;
+            e.preventDefault();
+            const slider = this.elements.gridSizeSlider;
+            const next = Math.max(80, Math.min(400, parseInt(slider.value, 10) - Math.sign(e.deltaY) * 20));
+            slider.value = next;
+            document.documentElement.style.setProperty('--grid-item-size', `${next}px`);
+        }, { passive: false });
+
+        this.initContextMenu();
+        this.initRubberBand();
+
+        // Any pointer interaction stops a running slideshow
+        document.addEventListener('pointerdown', () => this.stopSlideshow());
     },
 
     async verifyPermission(fileHandle, readWrite) {
@@ -1875,6 +1978,8 @@ const app = {
                         this.showToast(`Found ${this.files.length} images...`, 0, 'scan');
                     }
                 } else if (entry.kind === 'directory') {
+                    // Skip our own working folders
+                    if (entry.name === '.jeditor-trash' || entry.name === 'jEditor Export') continue;
                     await this.scanDirectory(entry, prefix + entry.name + '/');
                 }
             }
@@ -2258,6 +2363,9 @@ const app = {
             } else if (mode.startsWith('size')) {
                 valA = a.size || 0;
                 valB = b.size || 0;
+            } else if (mode.startsWith('taken')) {
+                valA = a.dateTaken ?? a.lastModified ?? 0;
+                valB = b.dateTaken ?? b.lastModified ?? 0;
             }
 
             if (typeof valA === 'string') {
@@ -2446,38 +2554,56 @@ const app = {
         }, { root: null, rootMargin: '1000px' });
         this.elements.gridView._observer = observer; // Stash for refreshThumbnailUI
 
-        this.files.forEach((file) => {
-            const div = document.createElement('div');
-            div.className = 'grid-item';
-            div._file = file;
-            file._gridEl = div;
-
-            const img = document.createElement('img');
-            img._file = file;
-            img.alt = file.name;
-            img.loading = 'lazy';
-            img.decoding = 'async';
-
-            if (file.thumbnailUrl) {
-                // Cached: paint immediately, no observer round-trip
-                img.src = file.thumbnailUrl;
-                const angle = this.getDisplayRotation(file, 'thumb');
-                if (angle) img.style.transform = `rotate(${angle}deg)`;
-            } else {
-                img.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PC9zdmc+';
-                observer.observe(img);
+        // Chunked render: big folders paint the first screenfuls immediately
+        // and append the rest during idle time.
+        const CHUNK = 500;
+        const token = (this._gridRenderToken = (this._gridRenderToken || 0) + 1);
+        const renderChunk = (start) => {
+            if (token !== this._gridRenderToken) return; // superseded re-render
+            const frag = document.createDocumentFragment();
+            const end = Math.min(start + CHUNK, this.files.length);
+            for (let i = start; i < end; i++) {
+                frag.appendChild(this.makeGridTile(this.files[i], observer));
             }
+            this.elements.gridView.appendChild(frag);
+            if (end < this.files.length) {
+                if (typeof requestIdleCallback === 'function') requestIdleCallback(() => renderChunk(end));
+                else setTimeout(() => renderChunk(end), 16);
+            }
+        };
+        renderChunk(0);
+    },
 
-            div.appendChild(img);
+    makeGridTile(file, observer) {
+        const div = document.createElement('div');
+        div.className = 'grid-item';
+        div._file = file;
+        file._gridEl = div;
 
-            div.onclick = (e) => this.handleGridClick(e, file);
-            div.ondblclick = () => {
-                this.loadFile(file);
-                this.setView('single');
-            };
+        const img = document.createElement('img');
+        img._file = file;
+        img.alt = file.name;
+        img.loading = 'lazy';
+        img.decoding = 'async';
 
-            this.elements.gridView.appendChild(div);
-        });
+        if (file.thumbnailUrl) {
+            // Cached: paint immediately, no observer round-trip
+            img.src = file.thumbnailUrl;
+            const angle = this.getDisplayRotation(file, 'thumb');
+            if (angle) img.style.transform = `rotate(${angle}deg)`;
+        } else {
+            img.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PC9zdmc+';
+            observer.observe(img);
+        }
+
+        div.appendChild(img);
+
+        div.onclick = (e) => this.handleGridClick(e, file);
+        div.ondblclick = () => {
+            this.loadFile(file);
+            this.setView('single');
+        };
+        return div;
     },
 
     // ---- Thumbnail pipeline ----
@@ -2619,9 +2745,19 @@ const app = {
             const savedAtRead = fileEntry._savedRotationTotal || 0;
             const fileData = await fileEntry.handle.getFile();
 
-            const blob = fileData.size <= this.THUMB_FAST_PATH_BYTES
-                ? fileData
-                : await this.generateThumbnailBlob(fileData);
+            let blob;
+            if (fileData.size <= this.THUMB_FAST_PATH_BYTES) {
+                blob = fileData;
+            } else {
+                // Persistent cache: reopening a folder skips regeneration.
+                // The key includes size+mtime, so edits invalidate naturally.
+                const cacheKey = `${fileEntry.relPath || fileEntry.name}|${fileData.size}|${fileData.lastModified}`;
+                blob = await this.idbGetThumb(cacheKey);
+                if (!blob) {
+                    blob = await this.generateThumbnailBlob(fileData);
+                    if (blob) this.idbPutThumb(cacheKey, blob);
+                }
+            }
             if (!blob) throw new Error('Thumbnail encode failed');
 
             if (fileEntry.thumbnailUrl) URL.revokeObjectURL(fileEntry.thumbnailUrl);
@@ -3025,6 +3161,22 @@ const app = {
         // Global safety check: if we are not in main interface, ignore
         if (this.elements.mainInterface.classList.contains('hidden')) return;
 
+        // Escape closes an open context menu before anything else
+        if (e.key === 'Escape' && document.getElementById('context-menu')) {
+            e.preventDefault();
+            this.closeContextMenu();
+            return;
+        }
+
+        // Undo last edit
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+            e.preventDefault();
+            this.undo();
+            return;
+        }
+
+        this.stopSlideshow();
+
         // Crop blocking
         if (this.cropState.active) {
             if (e.key === 'Escape' || e.key === 'Esc') {
@@ -3121,6 +3273,15 @@ const app = {
                 break;
             case 'i':
                 this.toggleInfoPanel();
+                break;
+            case 'f':
+                this.toggleFullscreen();
+                break;
+            case 'Delete':
+                e.preventDefault();
+                this.moveToTrash(this.viewMode === 'grid' && this.selection.size
+                    ? [...this.selection]
+                    : [this.currentFile]);
                 break;
         }
     },
@@ -3240,6 +3401,7 @@ const app = {
 
     async drainRotationQueue(fileEntry) {
         fileEntry.isBusy = true;
+        let undoCaptured = false;
         try {
             // Process ALL queued rotations for this file (more may arrive
             // while a write is in flight — the loop picks them up)
@@ -3253,13 +3415,26 @@ const app = {
 
                 // HARDENING: Fresh handle check
                 const fileData = await fileEntry.handle.getFile();
+                const originalBuf = await fileData.arrayBuffer();
+
+                // One undo entry per rotation gesture (Blob snapshots the
+                // buffer, so the in-place EXIF patch below can't touch it)
+                if (!undoCaptured) {
+                    this.pushUndo({
+                        type: 'bytes',
+                        file: fileEntry,
+                        blob: new Blob([originalBuf], { type: fileData.type }),
+                        label: 'rotation'
+                    });
+                    undoCaptured = true;
+                }
 
                 // Fast path for JPEGs: patch the EXIF orientation flag.
                 // No decode, no re-encode, no quality loss — near-instant.
                 let blob = null;
                 if (/\.jpe?g$/i.test(fileEntry.name)) {
                     try {
-                        blob = this.rotateJpegLossless(await fileData.arrayBuffer(), normalizedDeg);
+                        blob = this.rotateJpegLossless(originalBuf, normalizedDeg);
                     } catch (e) {
                         this.log('Lossless rotation unavailable, re-encoding: ' + e.message);
                     }
@@ -3309,6 +3484,570 @@ const app = {
             fileEntry.isBusy = false;
         }
     },
+    // ---- Undo ----
+    UNDO_LIMIT: 10,
+
+    pushUndo(entry) {
+        if (!this._undoStack) this._undoStack = [];
+        this._undoStack.push(entry);
+        while (this._undoStack.length > this.UNDO_LIMIT) this._undoStack.shift();
+    },
+
+    async undo() {
+        const entry = (this._undoStack || []).pop();
+        if (!entry) {
+            this.showToast('Nothing to undo');
+            return;
+        }
+        try {
+            if (entry.type === 'bytes') {
+                const f = entry.file;
+                if (f._rotationQueue) await f._rotationQueue;
+                f.pendingRotation = 0;
+                f.savingRotation = 0;
+                const writable = await f.handle.createWritable();
+                await writable.write(entry.blob);
+                await writable.close();
+                await this.afterFileChanged(f);
+                this.showToast(`Undid ${entry.label} on ${f.name}`);
+            } else if (entry.type === 'rename') {
+                await this.renameFile(entry.file, entry.oldName, { skipUndo: true });
+                this.showToast('Rename undone');
+            } else if (entry.type === 'batch-rename') {
+                for (const it of entry.items) {
+                    await this.renameFile(it.file, it.oldName, { skipUndo: true });
+                }
+                this.showToast(`Batch rename undone (${entry.items.length} files)`);
+                this.sortFiles();
+            } else if (entry.type === 'trash') {
+                for (const it of entry.items) await this.restoreFromTrash(it);
+                this.sortFiles();
+                this.showToast(`Restored ${entry.items.length} photo${entry.items.length > 1 ? 's' : ''}`);
+            }
+        } catch (e) {
+            console.error('Undo failed:', e);
+            this.showToast('Undo failed: ' + e.message);
+        }
+    },
+
+    // A file's bytes changed outside the rotation pipeline (undo/restore):
+    // reset rotation bookkeeping and regenerate previews from disk.
+    async afterFileChanged(f) {
+        const newData = await f.handle.getFile();
+        f.size = newData.size;
+        f.lastModified = newData.lastModified;
+        f.pendingRotation = 0;
+        f.savingRotation = 0;
+        f.thumbLag = 0;
+        f.fullLag = 0;
+        f._exif = undefined;
+        f.dateTaken = undefined;
+        if (f.fullImageUrl) {
+            URL.revokeObjectURL(f.fullImageUrl);
+            delete f.fullImageUrl;
+        }
+        this.refreshThumbnailUI(f);
+        this.applyPreviewRotation(f);
+        if (this.currentFile === f && this.viewMode === 'single') this.loadFile(f);
+        if (this._infoOpen && this.currentFile === f) this.fillInfoPanel(f);
+    },
+
+    // ---- Trash (safe delete) ----
+
+    async moveToTrash(files) {
+        const list = files.filter(Boolean);
+        if (!list.length) return;
+        if (!this.dirHandle) {
+            this.showToast('Deleting requires opening a folder (not loose files)');
+            return;
+        }
+        const undoItems = [];
+        try {
+            const trashDir = await this.dirHandle.getDirectoryHandle('.jeditor-trash', { create: true });
+            for (const f of list) {
+                try {
+                    if (f._rotationQueue) await f._rotationQueue;
+                    const data = await f.handle.getFile();
+                    let trashName = f.name;
+                    try {
+                        await trashDir.getFileHandle(trashName);
+                        trashName = `${Date.now()}_${f.name}`; // avoid collision
+                    } catch (e) { /* name is free */ }
+                    const th = await trashDir.getFileHandle(trashName, { create: true });
+                    const w = await th.createWritable();
+                    await w.write(data);
+                    await w.close();
+                    await (f.parentDir || this.dirHandle).removeEntry(f.name);
+                    undoItems.push({ file: f, trashDir, trashName });
+                    this.removeFileFromApp(f);
+                } catch (e) {
+                    console.error('Trash failed for', f.name, e);
+                    this.showToast(`Couldn't delete ${f.name}`);
+                }
+            }
+        } catch (e) {
+            console.error('Trash unavailable:', e);
+            this.showToast('Delete failed: ' + e.message);
+        }
+        if (undoItems.length) {
+            this.pushUndo({ type: 'trash', items: undoItems });
+            this.showToast(`Moved ${undoItems.length} to .jeditor-trash — Ctrl+Z to restore`, 4000);
+        }
+    },
+
+    removeFileFromApp(f) {
+        const idx = this.files.indexOf(f);
+        if (idx === -1) return;
+        const wasCurrent = this.currentFile === f;
+        this.files.splice(idx, 1);
+        this.selection.delete(f);
+        if (f._gridEl) f._gridEl.remove();
+        if (f._stripEl) f._stripEl.remove();
+
+        if (this.files.length === 0) {
+            this.currentFile = null;
+            this.updateStatusBar();
+            this.elements.mainInterface.classList.add('hidden');
+            this.elements.dropZone.classList.remove('hidden');
+        } else if (wasCurrent) {
+            const next = this.files[Math.min(idx, this.files.length - 1)];
+            if (this.viewMode === 'single') {
+                this.loadFile(next);
+            } else {
+                this.currentFile = next;
+                this.updateStatusBar();
+            }
+        }
+        this.updateSelectionUI();
+        const ci = this.getCurrentIndex();
+        if (ci !== -1) this.elements.fileCount.textContent = `${ci + 1} / ${this.files.length}`;
+    },
+
+    async restoreFromTrash(item) {
+        const { file, trashDir, trashName } = item;
+        const th = await trashDir.getFileHandle(trashName);
+        const data = await th.getFile();
+        const dest = file.parentDir || this.dirHandle;
+        const nh = await dest.getFileHandle(file.name, { create: true });
+        const w = await nh.createWritable();
+        await w.write(data);
+        await w.close();
+        await trashDir.removeEntry(trashName);
+        file.handle = nh;
+        const nd = await nh.getFile();
+        file.size = nd.size;
+        file.lastModified = nd.lastModified;
+        this.files.push(file);
+        if (this.elements.mainInterface.classList.contains('hidden') && this.files.length) {
+            this.elements.mainInterface.classList.remove('hidden');
+            this.elements.dropZone.classList.add('hidden');
+        }
+    },
+
+    // ---- Capture-date sort support ----
+
+    async ensureDatesTaken() {
+        const missing = this.files.filter(f => f.dateTaken === undefined);
+        if (!missing.length) return;
+        this.showToast('Reading capture dates…', 0, 'taken');
+        let i = 0;
+        const workers = Array.from({ length: 8 }, async () => {
+            while (i < missing.length) {
+                const f = missing[i++];
+                const exif = await this.getExifInfo(f);
+                f.dateTaken = (exif && exif.dateTaken) ? exif.dateTaken.getTime() : (f.lastModified || 0);
+            }
+        });
+        await Promise.all(workers);
+        this.showToast('Capture dates loaded', 1500, 'taken');
+    },
+
+    // ---- Rename ----
+
+    async renameFile(file, newName, { skipUndo = false } = {}) {
+        newName = (newName || '').trim();
+        if (!file || !newName || newName === file.name) return false;
+        if (/[\\/:*?"<>|]/.test(newName)) {
+            this.showToast('Name contains invalid characters');
+            return false;
+        }
+        const ext = (file.name.match(/\.\w+$/) || [''])[0];
+        if (!/\.\w+$/.test(newName)) newName += ext;
+        if (!this.isImage(newName)) {
+            this.showToast('Keep an image file extension');
+            return false;
+        }
+        const oldName = file.name;
+        const dir = file.parentDir || this.dirHandle;
+        try {
+            if (file._rotationQueue) await file._rotationQueue;
+            // Refuse to overwrite an existing file
+            if (dir) {
+                let exists = false;
+                try { await dir.getFileHandle(newName); exists = true; } catch (e) { /* free */ }
+                if (exists) {
+                    this.showToast(`"${newName}" already exists`);
+                    return false;
+                }
+            }
+            if (typeof file.handle.move === 'function') {
+                await file.handle.move(newName);
+            } else if (dir) {
+                const data = await file.handle.getFile();
+                const nh = await dir.getFileHandle(newName, { create: true });
+                const w = await nh.createWritable();
+                await w.write(data);
+                await w.close();
+                await dir.removeEntry(oldName);
+                file.handle = nh;
+            } else {
+                throw new Error('No folder access');
+            }
+            file.name = newName;
+            if (file.relPath) file.relPath = file.relPath.replace(/[^/]+$/, newName);
+            if (!skipUndo) this.pushUndo({ type: 'rename', file, oldName });
+
+            if (this.currentFile === file) {
+                this.elements.fileName.textContent = newName;
+                this.updateStatusBar();
+                if (this._infoOpen) this.fillInfoPanel(file);
+            }
+            const gridImg = file._gridEl && file._gridEl.querySelector('img');
+            if (gridImg) gridImg.alt = newName;
+            return true;
+        } catch (e) {
+            console.error('Rename failed:', e);
+            this.showToast('Rename failed: ' + e.message);
+            return false;
+        }
+    },
+
+    promptRename(file = this.currentFile) {
+        if (!file) return;
+        const newName = prompt('Rename file:', file.name);
+        if (newName !== null) {
+            this.renameFile(file, newName).then(ok => {
+                if (ok) this.showToast(`Renamed to ${file.name}`);
+            });
+        }
+    },
+
+    async batchRename(files) {
+        const list = files.filter(Boolean)
+            .sort((a, b) => this.files.indexOf(a) - this.files.indexOf(b));
+        if (list.length === 0) return;
+        if (list.length === 1) { this.promptRename(list[0]); return; }
+
+        const pattern = prompt(
+            `Rename ${list.length} files.\n{n} = number, {name} = original name:`,
+            'photo_{n}'
+        );
+        if (!pattern) return;
+        if (!pattern.includes('{n}')) {
+            this.showToast('The pattern needs {n} to keep names unique');
+            return;
+        }
+        const pad = String(list.length).length;
+        const items = [];
+        let n = 1;
+        for (const f of list) {
+            const ext = (f.name.match(/\.\w+$/) || [''])[0];
+            const base = f.name.replace(/\.\w+$/, '');
+            const newName = pattern
+                .replaceAll('{n}', String(n).padStart(pad, '0'))
+                .replaceAll('{name}', base) + ext;
+            const oldName = f.name;
+            if (await this.renameFile(f, newName, { skipUndo: true })) {
+                items.push({ file: f, oldName });
+            }
+            n++;
+        }
+        if (items.length) {
+            this.pushUndo({ type: 'batch-rename', items });
+            this.showToast(`Renamed ${items.length} files — Ctrl+Z to undo`);
+            this.sortFiles();
+        }
+    },
+
+    // ---- Persistent thumbnail cache (IndexedDB) ----
+
+    idb() {
+        if (this._idbPromise !== undefined) return this._idbPromise;
+        this._idbPromise = new Promise((resolve) => {
+            try {
+                const req = indexedDB.open('jeditor', 1);
+                req.onupgradeneeded = () => req.result.createObjectStore('thumbs');
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => resolve(null);
+            } catch (e) {
+                resolve(null);
+            }
+        });
+        return this._idbPromise;
+    },
+
+    async idbGetThumb(key) {
+        const db = await this.idb();
+        if (!db) return null;
+        return new Promise((res) => {
+            try {
+                const req = db.transaction('thumbs', 'readonly').objectStore('thumbs').get(key);
+                req.onsuccess = () => res(req.result || null);
+                req.onerror = () => res(null);
+            } catch (e) {
+                res(null);
+            }
+        });
+    },
+
+    async idbPutThumb(key, blob) {
+        const db = await this.idb();
+        if (!db) return;
+        try {
+            db.transaction('thumbs', 'readwrite').objectStore('thumbs').put(blob, key);
+        } catch (e) { /* cache is best-effort */ }
+    },
+
+    // ---- Fullscreen & slideshow ----
+
+    toggleFullscreen() {
+        if (document.fullscreenElement) {
+            document.exitFullscreen();
+        } else {
+            document.documentElement.requestFullscreen().catch(() => this.showToast('Fullscreen was blocked'));
+        }
+    },
+
+    startSlideshow() {
+        this.stopSlideshow();
+        this.setView('single');
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(() => { });
+        }
+        this._slideshowTimer = setInterval(() => this.navigate(1), 3000);
+        this.showToast('Slideshow started — press any key to stop', 2500);
+    },
+
+    stopSlideshow() {
+        if (this._slideshowTimer) {
+            clearInterval(this._slideshowTimer);
+            this._slideshowTimer = null;
+        }
+    },
+
+    // ---- Rubber-band selection in the grid ----
+
+    initRubberBand() {
+        const grid = this.elements.gridView;
+        let band = null, startX = 0, startY = 0, active = false;
+
+        grid.addEventListener('mousedown', (e) => {
+            if (e.button !== 0 || e.target !== grid) return; // background only
+            active = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            this._bandBase = (e.ctrlKey || e.metaKey) ? new Set(this.selection) : new Set();
+            band = document.createElement('div');
+            band.className = 'rubber-band';
+            document.body.appendChild(band);
+            e.preventDefault();
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!active || !band) return;
+            const x1 = Math.min(startX, e.clientX), y1 = Math.min(startY, e.clientY);
+            const x2 = Math.max(startX, e.clientX), y2 = Math.max(startY, e.clientY);
+            band.style.left = x1 + 'px';
+            band.style.top = y1 + 'px';
+            band.style.width = (x2 - x1) + 'px';
+            band.style.height = (y2 - y1) + 'px';
+            if (this._bandRaf) return;
+            this._bandRaf = requestAnimationFrame(() => {
+                this._bandRaf = null;
+                const sel = new Set(this._bandBase);
+                for (const el of grid.children) {
+                    const r = el.getBoundingClientRect();
+                    if (r.right > x1 && r.left < x2 && r.bottom > y1 && r.top < y2) sel.add(el._file);
+                }
+                this.selection = sel;
+                this.updateSelectionUI();
+            });
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (!active) return;
+            active = false;
+            if (band) { band.remove(); band = null; }
+        });
+    },
+
+    // ---- Export copies ----
+
+    async exportCopies(files) {
+        const list = files.filter(Boolean);
+        if (!list.length) return;
+        if (!this.dirHandle) {
+            this.showToast('Export requires opening a folder');
+            return;
+        }
+        const input = prompt(
+            `Export ${list.length} cop${list.length > 1 ? 'ies' : 'y'} to "jEditor Export".\nMax edge in px (blank = original size):`, ''
+        );
+        if (input === null) return;
+        const maxEdge = parseInt(input, 10) || 0;
+
+        try {
+            const dir = await this.dirHandle.getDirectoryHandle('jEditor Export', { create: true });
+            let done = 0, failed = 0;
+            for (const f of list) {
+                try {
+                    const data = await f.handle.getFile();
+                    let out = data;
+                    if (maxEdge > 0) {
+                        const bmp = await createImageBitmap(data);
+                        const scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
+                        if (scale < 1) {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = Math.round(bmp.width * scale);
+                            canvas.height = Math.round(bmp.height * scale);
+                            canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+                            const { type, quality } = this.getSaveFormat(f.name);
+                            out = await new Promise(r => canvas.toBlob(r, type, quality));
+                        }
+                        bmp.close();
+                    }
+                    if (!out) throw new Error('encode failed');
+                    const h = await dir.getFileHandle(f.name, { create: true });
+                    const w = await h.createWritable();
+                    await w.write(out);
+                    await w.close();
+                    done++;
+                } catch (e) {
+                    failed++;
+                    console.error('Export failed:', f.name, e);
+                }
+                this.showToast(`Exporting ${done + failed}/${list.length}…`, 0, 'export');
+            }
+            this.showToast(
+                failed ? `Exported ${done}, ${failed} failed` : `Exported ${done} to "jEditor Export"`,
+                3000, 'export'
+            );
+        } catch (e) {
+            this.showToast('Export failed: ' + e.message, 3000, 'export');
+        }
+    },
+
+    // ---- Context menu ----
+
+    initContextMenu() {
+        document.addEventListener('contextmenu', (e) => {
+            if (this.cropState.active) return;
+            if (this.elements.mainInterface.classList.contains('hidden')) return;
+            const tile = e.target.closest && e.target.closest('.grid-item');
+            const inSingle = this.viewMode === 'single' && e.target.closest && e.target.closest('#image-container');
+            const inGridBg = this.viewMode === 'grid' && e.target === this.elements.gridView;
+            if (!tile && !inSingle && !inGridBg) return;
+            e.preventDefault();
+            this.openContextMenu(this.buildContextItems(tile, inSingle), e.clientX, e.clientY);
+        });
+        window.addEventListener('click', () => this.closeContextMenu());
+        window.addEventListener('scroll', () => this.closeContextMenu(), true);
+        window.addEventListener('resize', () => this.closeContextMenu());
+    },
+
+    buildContextItems(tile, inSingle) {
+        if (tile) {
+            const file = tile._file;
+            if (!this.selection.has(file)) {
+                this.currentFile = file;
+                this.selection = new Set([file]);
+                this.updateSelectionUI();
+                this.updateStatusBar();
+            }
+            const sel = [...this.selection];
+            if (sel.length > 1) {
+                return [
+                    [`Rotate ${sel.length} Left`, () => this.rotateBulk(-90)],
+                    [`Rotate ${sel.length} Right`, () => this.rotateBulk(90)],
+                    ['—'],
+                    ['Batch Rename…', () => this.batchRename(sel)],
+                    ['Export Copies…', () => this.exportCopies(sel)],
+                    ['—'],
+                    [`Move ${sel.length} to Trash`, () => this.moveToTrash(sel), true]
+                ];
+            }
+            return [
+                ['Open', () => { this.loadFile(file); this.setView('single'); }],
+                ['—'],
+                ['Rotate Left', () => this.rotateImage(file, -90)],
+                ['Rotate Right', () => this.rotateImage(file, 90)],
+                ['Crop', () => { this.loadFile(file); this.setView('single'); this.enterCrop(); }],
+                ['—'],
+                ['Rename…', () => this.promptRename(file)],
+                ['File Info', () => { this.toggleInfoPanel(true); }],
+                ['Export Copy…', () => this.exportCopies([file])],
+                ['—'],
+                ['Move to Trash', () => this.moveToTrash([file]), true]
+            ];
+        }
+        if (inSingle) {
+            const file = this.currentFile;
+            return [
+                ['Rotate Left', () => this.rotateImage(file, -90)],
+                ['Rotate Right', () => this.rotateImage(file, 90)],
+                ['Crop', () => this.enterCrop()],
+                ['—'],
+                ['Rename…', () => this.promptRename(file)],
+                ['File Info', () => this.toggleInfoPanel(true)],
+                ['Export Copy…', () => this.exportCopies([file])],
+                ['—'],
+                ['Fullscreen', () => this.toggleFullscreen()],
+                ['Start Slideshow', () => this.startSlideshow()],
+                ['—'],
+                ['Move to Trash', () => this.moveToTrash([file]), true]
+            ];
+        }
+        return [
+            ['Select All', () => { this.selection = new Set(this.files); this.updateSelectionUI(); }],
+            ['Clear Selection', () => this.clearSelection()],
+            ['—'],
+            ['Start Slideshow', () => this.startSlideshow()],
+            ['Fullscreen', () => this.toggleFullscreen()]
+        ];
+    },
+
+    openContextMenu(items, x, y) {
+        this.closeContextMenu();
+        const menu = document.createElement('div');
+        menu.id = 'context-menu';
+        items.forEach(([label, action, danger]) => {
+            if (label === '—') {
+                const hr = document.createElement('div');
+                hr.className = 'ctx-divider';
+                menu.appendChild(hr);
+                return;
+            }
+            const btn = document.createElement('button');
+            btn.textContent = label;
+            if (danger) btn.classList.add('danger');
+            btn.onclick = (ev) => {
+                ev.stopPropagation();
+                this.closeContextMenu();
+                action();
+            };
+            menu.appendChild(btn);
+        });
+        document.body.appendChild(menu);
+        const r = menu.getBoundingClientRect();
+        menu.style.left = Math.min(x, window.innerWidth - r.width - 8) + 'px';
+        menu.style.top = Math.min(y, window.innerHeight - r.height - 8) + 'px';
+    },
+
+    closeContextMenu() {
+        const menu = document.getElementById('context-menu');
+        if (menu) menu.remove();
+    },
+
     // Crop Logic
     enterCrop() {
         if (typeof Cropper === 'undefined') {
@@ -3432,6 +4171,15 @@ const app = {
             const { type, quality } = this.getSaveFormat(fileEntry.name);
             const blob = await new Promise(r => canvas.toBlob(r, type, quality));
             if (!blob) throw new Error('Encoding failed');
+
+            // Capture pre-crop bytes for undo
+            const before = await fileEntry.handle.getFile();
+            this.pushUndo({
+                type: 'bytes',
+                file: fileEntry,
+                blob: new Blob([await before.arrayBuffer()], { type: before.type }),
+                label: 'crop'
+            });
 
             // Re-verify permission
             if (this.dirHandle) {
