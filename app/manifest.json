@@ -1,14 +1,19 @@
 {
   "name": "jEditor",
   "short_name": "jEditor",
-  "description": "Minimalist, High-Performance Image Editor",
-  "start_url": "index.html",
+  "description": "Minimalist local photo viewer with instant lossless rotation and cropping",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#0c0c0c",
-  "theme_color": "#2563eb",
+  "theme_color": "#0c0c0c",
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
   "icons": [
     {
-      "src": "icon.png",
+      "src": "icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
@@ -20,10 +25,10 @@
       "purpose": "any"
     },
     {
-      "src": "icon.png",
-      "sizes": "1024x1024",
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "maskable"
     }
   ]
 }

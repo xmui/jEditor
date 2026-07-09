@@ -10,6 +10,8 @@ const ASSETS = [
     './cropper.min.js',
     './cropper.min.css',
     './icon.png',
+    './icon-192.png',
+    './icon-maskable-512.png',
     './manifest.json'
 ];
 
