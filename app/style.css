@@ -1076,11 +1076,12 @@ header {
     transition: background 0.35s ease, color 0.35s ease;
 }
 
-/* Task pill (top-right): spinner + current task; hover lists all tasks */
+/* Task pill (top-LEFT — the header controls own the top-right corner):
+   spinner + current task; hover lists all tasks */
 .task-pill {
     position: fixed;
     top: 20px;
-    right: 20px;
+    left: 20px;
     background: var(--glass-top-bg);
     color: var(--glass-top-text);
     border: 1px solid var(--glass-top-border);
@@ -1122,7 +1123,7 @@ header {
     display: none;
     position: absolute;
     top: calc(100% + 6px);
-    right: 0;
+    left: 0;
     min-width: 240px;
     flex-direction: column;
     gap: 6px;
@@ -1336,15 +1337,17 @@ header {
 }
 
 /* Toast Notifications — stacked: each concurrent operation gets its own
-   pill, new ones appearing under the ones already showing */
+   pill, new ones appearing under the ones already showing. Top-LEFT under
+   the task pill, keeping the whole right edge free for the header controls
+   (including vertical-pill mode). */
 #toast-stack {
     position: fixed;
     top: 72px;
-    /* below the loading pill */
-    right: 24px;
+    /* below the task pill */
+    left: 20px;
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
+    align-items: flex-start;
     gap: 8px;
     z-index: 9999;
     pointer-events: none;
