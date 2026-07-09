@@ -9,7 +9,10 @@ jEditor is a minimalist, high-performance local photo viewer and editor optimize
 - **Memory optimized**: lazy thumbnails and object-URL recycling handle 1000+ photo folders.
 
 ## 🚀 Just want to use it?
-Download **`standalone.html`** (from the [Releases page](../../releases) or the repo root) and double-click it. It opens in Chrome or Edge and works immediately — no server, no install. All features including saving work from the local file.
+
+**Option A — Install as an app (PWA).** Open the hosted app (GitHub Pages: `https://<owner>.github.io/jEditor/`) in Chrome or Edge and click the **Install** icon in the address bar. You get a standalone desktop app with its own window and icon that also works offline. *(One-time repo setup: Settings → Pages → Source: "GitHub Actions".)*
+
+**Option B — Single file.** Download **`standalone.html`** from the [Releases page](../../releases) and double-click it. No server, no install — all features including saving work straight from the local file.
 
 Then:
 1. **Open**: Click *Open Folder* (or drag and drop a folder/images in).
@@ -42,7 +45,9 @@ npm run bump 1.x.y # bump the version (app/version.js + package.json)
 ```
 The app itself is dependency-free vanilla JS in `app/` (Cropper.js is vendored).
 
-**Every update gets a version number**: bump with `npm run bump`, commit, then `git tag v1.x.y && git push --tags` — CI builds `standalone.html` and attaches it to a GitHub Release automatically. The version appears on the app's start screen, and the test suite fails if `app/version.js` and `package.json` ever disagree.
+**Releases are automatic**: bump with `npm run bump 1.x.y`, commit, merge to `main` — the Release workflow tags `v1.x.y`, builds `standalone.html`, and publishes the GitHub Release by itself (it can also be run manually from the Actions tab). Merging to `main` also redeploys the PWA to GitHub Pages. The version appears on the app's start screen, and the test suite fails if `app/version.js` and `package.json` ever disagree.
+
+If you change `app/icon.png`, run `node scripts/make-icons.js` to regenerate the PWA launcher icons.
 
 Windows users without Node can run `start.bat` to serve the app locally instead.
 
