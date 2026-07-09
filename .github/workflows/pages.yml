@@ -5,7 +5,9 @@ name: Deploy PWA to GitHub Pages
 # address bar — installing gives a standalone desktop app with offline
 # support (service worker precaches all assets).
 #
-# One-time setup: repo Settings → Pages → Source: "GitHub Actions".
+# The configure-pages step below tries to enable Pages automatically on the
+# first run. If that fails with a permissions error, enable it once by hand:
+# repo Settings → Pages → Source: "GitHub Actions", then re-run the workflow.
 on:
   push:
     branches: [main]
@@ -29,6 +31,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: app
