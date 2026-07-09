@@ -69,6 +69,31 @@ const PAGE_HELPERS = `
         if (!loc || loc.insert) return null;
         return view.getUint16(loc.valueOffset, loc.littleEndian);
     };
+    // Fake FileSystemDirectoryHandle backed by Maps
+    window.makeDir = (name) => {
+        const dirs = new Map(), files = new Map();
+        const dir = {
+            kind: 'directory', name, _files: files, _dirs: dirs,
+            getDirectoryHandle: async (n, o) => {
+                if (!dirs.has(n)) {
+                    if (!o || !o.create) { const e = new Error('nf'); e.name = 'NotFoundError'; throw e; }
+                    dirs.set(n, makeDir(n));
+                }
+                return dirs.get(n);
+            },
+            getFileHandle: async (n, o) => {
+                if (!files.has(n)) {
+                    if (!o || !o.create) { const e = new Error('nf'); e.name = 'NotFoundError'; throw e; }
+                    files.set(n, makeHandle(n, [], 'image/jpeg'));
+                }
+                return files.get(n);
+            },
+            removeEntry: async (n) => { files.delete(n); },
+            queryPermission: async () => 'granted',
+            requestPermission: async () => 'granted'
+        };
+        return dir;
+    };
 `;
 
 async function newPage(browser, url) {
@@ -459,6 +484,194 @@ async function newPage(browser, url) {
         check('second request is a cache hit', r.cached && r.urlSet);
         check('precache fills remaining files', r.precached);
         check('re-render paints cached thumbs immediately', r.instantPaint);
+        await page.close();
+    }
+
+    // ---- 5c. Triage suite: undo, trash, rename, sort persistence, menus ----
+    console.log('triage suite');
+    {
+        const { page } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            document.getElementById('main-interface').classList.remove('hidden');
+
+            // --- Undo a rotation ---
+            const a = makeFakeFile('a.jpg', makeJpegBytes(), 'image/jpeg');
+            const originalLen = a.handle.bytes.length;
+            app.files = [a];
+            app.viewMode = 'grid';
+            app.dirHandle = null;
+            await app.rotateImage(a, 90);
+            out.rotated = readOrientation(a.handle.bytes) === 6;
+            await app.undo();
+            out.undoneLen = a.handle.bytes.length === originalLen;
+            out.undoneOrientation = readOrientation(a.handle.bytes); // null: EXIF gone again
+
+            // --- Trash + restore ---
+            const root = makeDir('Photos');
+            const f1 = makeFakeFile('one.jpg', makeJpegBytes(), 'image/jpeg');
+            const f2 = makeFakeFile('two.jpg', makeJpegBytes(), 'image/jpeg');
+            f1.parentDir = root; f2.parentDir = root;
+            root._files.set('one.jpg', f1.handle);
+            root._files.set('two.jpg', f2.handle);
+            app.dirHandle = root;
+            app.files = [f1, f2];
+            app.currentFile = f1;
+            await app.moveToTrash([f1]);
+            const trash = await root.getDirectoryHandle('.jeditor-trash');
+            out.trashedCount = app.files.length;                    // 1
+            out.inTrash = trash._files.size;                        // 1
+            out.removedFromRoot = !root._files.has('one.jpg');
+            await app.undo();
+            out.restoredCount = app.files.length;                   // 2
+            out.trashEmpty = trash._files.size === 0;
+            out.backInRoot = root._files.has('one.jpg');
+
+            // --- Batch rename + undo ---
+            // move() renames the directory entry too, like the real FS API
+            const mkMove = (h) => async function (n) {
+                root._files.delete(this.name);
+                this.name = n;
+                root._files.set(n, this);
+            };
+            f1.handle.move = mkMove(f1.handle);
+            f2.handle.move = mkMove(f2.handle);
+            window.prompt = () => 'trip_{n}';
+            await app.batchRename([f1, f2]);
+            out.renamed = app.files.map(f => f.name).sort().join(',');
+            await app.undo();
+            out.renameUndone = app.files.map(f => f.name).sort().join(',');
+
+            // --- Sort persistence ---
+            localStorage.removeItem('jeditor.sortMode');
+            const sel = document.getElementById('sort-mode');
+            sel.value = 'size_desc';
+            sel.dispatchEvent(new Event('change'));
+            await new Promise(r2 => setTimeout(r2, 50));
+            out.persisted = localStorage.getItem('jeditor.sortMode');
+
+            // --- Capture-date sort ---
+            f1.dateTaken = new Date(2020, 0, 1).getTime();
+            f2.dateTaken = new Date(2024, 0, 1).getTime();
+            app.sortMode = 'taken_desc';
+            app.sortFiles(false);
+            out.takenOrder = app.files.map(f => f.name).join(',');
+
+            // --- Export copies (original size) ---
+            window.prompt = () => '';
+            await app.exportCopies([f2]);
+            const exp = await root.getDirectoryHandle('jEditor Export');
+            out.exported = exp._files.size === 1;
+
+            // --- Context menu ---
+            let clicked = false;
+            app.openContextMenu([['Do Thing', () => { clicked = true; }], ['—'], ['Other', () => { }]], 20, 20);
+            const menu = document.getElementById('context-menu');
+            out.menuButtons = menu.querySelectorAll('button').length;   // 2
+            out.menuDividers = menu.querySelectorAll('.ctx-divider').length; // 1
+            menu.querySelector('button').click();
+            out.menuActionRan = clicked;
+            out.menuClosed = !document.getElementById('context-menu');
+
+            // --- Ctrl+wheel grid zoom ---
+            const before = document.getElementById('grid-size-slider').value;
+            document.getElementById('grid-view').dispatchEvent(
+                new WheelEvent('wheel', { ctrlKey: true, deltaY: -100, cancelable: true }));
+            out.zoomChanged = document.getElementById('grid-size-slider').value !== before;
+
+            return out;
+        });
+        check('rotation applied then undone (bytes restored)', r.rotated && r.undoneLen && r.undoneOrientation === null,
+            JSON.stringify({ len: r.undoneLen, o: r.undoneOrientation }));
+        check('trash removes from folder and app', r.trashedCount === 1 && r.inTrash === 1 && r.removedFromRoot);
+        check('undo restores from trash', r.restoredCount === 2 && r.trashEmpty && r.backInRoot);
+        check('batch rename applies pattern', r.renamed === 'trip_1.jpg,trip_2.jpg', r.renamed);
+        check('batch rename undo restores names', r.renameUndone === 'one.jpg,two.jpg', r.renameUndone);
+        check('sort mode persisted to localStorage', r.persisted === 'size_desc', String(r.persisted));
+        check('capture-date sort orders by dateTaken', r.takenOrder === 'two.jpg,one.jpg', r.takenOrder);
+        check('export writes a copy to jEditor Export', r.exported);
+        check('context menu renders and runs actions', r.menuButtons === 2 && r.menuDividers === 1 && r.menuActionRan && r.menuClosed);
+        check('ctrl+wheel zooms the grid', r.zoomChanged);
+        await page.close();
+    }
+
+    // ---- 5d. UI customization, task pill, strip/status layout ----
+    console.log('UI customization & task pill');
+    {
+        const { page } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            localStorage.removeItem('jeditor.ui');
+
+            // Default pill: info, view, refresh, crop visible; rest in "More"
+            const hc = document.getElementById('header-controls');
+            const visible = [...hc.querySelectorAll('[data-hc]')]
+                .filter(b => !b.classList.contains('hc-extra') && !b.classList.contains('hidden'))
+                .map(b => b.dataset.hc);
+            out.defaultMain = visible.join(',');
+            const extras = [...hc.querySelectorAll('.hc-extra')].map(b => b.dataset.hc);
+            out.defaultExtras = extras.join(',');
+            out.extrasHiddenCollapsed = getComputedStyle(document.getElementById('btn-toggle-fit')).display === 'none';
+            document.getElementById('btn-more').click();
+            out.extrasShownExpanded = getComputedStyle(document.getElementById('btn-toggle-fit')).display !== 'none';
+
+            // Placement + order + vertical + scale via prefs
+            app.uiPrefs.placement.fullscreen = 'main';
+            app.uiPrefs.placement.refresh = 'hidden';
+            app.uiPrefs.order = ['crop', 'info', 'view', 'refresh', 'fit', 'strip', 'fullscreen', 'customize'];
+            app.uiPrefs.vertical = true;
+            app.uiPrefs.scale = 1.2;
+            app.saveUiPrefs();
+            app.applyUiPrefs();
+            out.reordered = [...hc.querySelectorAll('[data-hc]')].map(b => b.dataset.hc).slice(0, 2).join(',');
+            out.refreshHidden = document.getElementById('btn-refresh').classList.contains('hidden');
+            out.fullscreenMain = !document.getElementById('btn-fullscreen').classList.contains('hc-extra');
+            out.vertical = hc.classList.contains('vertical');
+            out.persisted = JSON.parse(localStorage.getItem('jeditor.ui')).scale === 1.2;
+            out.scaleApplied = getComputedStyle(hc).zoom;
+
+            // Thumbnail fit contain by default
+            localStorage.removeItem('jeditor.ui');
+            app.loadUiPrefs();
+            app.applyUiPrefs();
+            out.containDefault = document.getElementById('grid-view').classList.contains('thumb-contain');
+
+            // Strip height + in-flow status bar (no overlap possible)
+            app.setStripHeight(120);
+            out.stripVar = getComputedStyle(document.documentElement).getPropertyValue('--strip-height').trim();
+            out.statusInFlow = ['static', 'relative'].includes(getComputedStyle(document.getElementById('status-bar')).position);
+
+            // Info icon actually has its dot
+            out.infoDot = document.getElementById('btn-info').innerHTML.includes('cy="8"');
+
+            // Task pill: current task + hover list, stacking
+            app.beginTask('t1', 'Rotating 3 photos…');
+            app.beginTask('t2', 'Exporting 2/5');
+            const pill = document.getElementById('loading-indicator');
+            out.pillVisible = !pill.classList.contains('hidden');
+            out.pillLabel = document.getElementById('loading-text').textContent;
+            out.taskRows = document.querySelectorAll('#task-list .task-row').length;
+            app.endTask('t1');
+            out.afterOneEnd = document.getElementById('loading-text').textContent;
+            app.endTask('t2');
+            out.pillHidden = pill.classList.contains('hidden');
+            return out;
+        });
+        check('default main controls: info, view, refresh, crop', r.defaultMain === 'info,view,refresh,crop', r.defaultMain);
+        check('extras live in More (fit, strip, fullscreen, customize)', r.defaultExtras === 'fit,strip,fullscreen,customize', r.defaultExtras);
+        check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
+        check('reorder + hide + promote via prefs', r.reordered === 'crop,info' && r.refreshHidden && r.fullscreenMain,
+            JSON.stringify({ o: r.reordered, h: r.refreshHidden, f: r.fullscreenMain }));
+        check('vertical pill + scale + persistence', r.vertical && r.persisted && parseFloat(r.scaleApplied) === 1.2,
+            JSON.stringify({ v: r.vertical, p: r.persisted, z: r.scaleApplied }));
+        check('thumbnail fit (contain) on by default', r.containDefault);
+        check('strip height adjustable, status bar in flow below strip', r.stripVar === '120px' && r.statusInFlow,
+            JSON.stringify({ s: r.stripVar, flow: r.statusInFlow }));
+        check('info icon has its dot', r.infoDot);
+        check('task pill shows current task with count', r.pillVisible && r.pillLabel === 'Exporting 2/5 (+1)' && r.taskRows === 2,
+            JSON.stringify({ l: r.pillLabel, rows: r.taskRows }));
+        check('task pill updates and clears', r.afterOneEnd === 'Exporting 2/5' && r.pillHidden,
+            JSON.stringify({ a: r.afterOneEnd, hid: r.pillHidden }));
         await page.close();
     }
 

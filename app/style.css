@@ -410,7 +410,7 @@ header {
 
 /* Thumbnails */
 .thumbnails {
-    height: 80px;
+    height: var(--strip-height, 80px);
     background: var(--strip-bg);
     backdrop-filter: blur(20px) saturate(160%);
     -webkit-backdrop-filter: blur(20px) saturate(160%);
@@ -438,9 +438,9 @@ header {
 }
 
 .thumb-item {
-    height: 60px;
-    width: 60px;
-    min-width: 60px;
+    height: calc(var(--strip-height, 80px) - 20px);
+    width: calc(var(--strip-height, 80px) - 20px);
+    min-width: calc(var(--strip-height, 80px) - 20px);
     border-radius: 6px;
     overflow: hidden;
     cursor: pointer;
@@ -988,30 +988,306 @@ header {
     transition: opacity 0.2s;
 }
 
-/* Always-on path chip: bottom-left, small and quiet. Sits away from the
-   nav controls (bottom-center), grid controls (bottom-right) and toasts
-   (top-right), so it never fights anything for space. */
+/* Right-click context menu */
+#context-menu {
+    position: fixed;
+    z-index: 3000;
+    min-width: 200px;
+    background: rgba(24, 24, 26, 0.95);
+    color: #f0f0f0;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 6px;
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+}
+
+#context-menu button {
+    background: transparent;
+    border: none;
+    color: inherit;
+    text-align: left;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: var(--font-family);
+}
+
+#context-menu button:hover {
+    background: rgba(255, 255, 255, 0.09);
+}
+
+#context-menu button.danger {
+    color: #ff7b72;
+}
+
+#context-menu .ctx-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 4px 8px;
+}
+
+/* Rubber-band selection rectangle */
+.rubber-band {
+    position: fixed;
+    z-index: 80;
+    border: 1px solid var(--accent-color);
+    background: rgba(37, 99, 235, 0.12);
+    border-radius: 2px;
+    pointer-events: none;
+}
+
+.selection-bar button.danger {
+    background: rgba(180, 40, 40, 0.55);
+}
+
+.selection-bar button.danger:hover {
+    background: rgba(180, 40, 40, 0.8);
+}
+
+#file-name:hover {
+    text-decoration: underline;
+}
+
+/* Always-on path chip: its own slim row at the very bottom, BELOW the film
+   strip, so the two never overlap. */
 .status-bar {
-    position: absolute;
-    bottom: 12px;
-    left: 12px;
-    max-width: 42vw;
+    align-self: flex-start;
+    flex-shrink: 0;
+    margin: 5px 12px 7px;
+    max-width: 60vw;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 11px;
     letter-spacing: 0.01em;
-    padding: 5px 12px;
+    padding: 4px 12px;
     border-radius: 999px;
     background: var(--glass-bottom-bg);
     color: var(--glass-bottom-text);
     border: 1px solid var(--glass-bottom-border);
-    backdrop-filter: blur(16px) saturate(160%);
-    -webkit-backdrop-filter: blur(16px) saturate(160%);
-    opacity: 0.8;
+    opacity: 0.85;
     z-index: 55;
     pointer-events: none;
     transition: background 0.35s ease, color 0.35s ease;
+}
+
+/* Task pill (top-right): spinner + current task; hover lists all tasks */
+.task-pill {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: var(--glass-top-bg);
+    color: var(--glass-top-text);
+    border: 1px solid var(--glass-top-border);
+    backdrop-filter: var(--backdrop-filter);
+    -webkit-backdrop-filter: var(--backdrop-filter);
+    padding: 10px 20px;
+    border-radius: 999px;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: background 0.35s ease, color 0.35s ease;
+}
+
+.task-pill h2 {
+    font-size: 13px;
+    font-weight: 500;
+    margin: 0;
+    color: inherit;
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.loader-spinner,
+.task-spinner {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    border: 2px solid rgba(125, 125, 125, 0.35);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.task-list {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 240px;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--glass-top-bg);
+    border: 1px solid var(--glass-top-border);
+    border-radius: 14px;
+    padding: 10px 14px;
+    backdrop-filter: var(--backdrop-filter);
+    -webkit-backdrop-filter: var(--backdrop-filter);
+    box-shadow: var(--glass-shadow);
+}
+
+.task-pill:hover .task-list {
+    display: flex;
+}
+
+.task-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+/* UI scale applies to the floating control surfaces */
+.header-controls,
+.controls,
+.grid-controls,
+.selection-bar {
+    zoom: var(--ui-scale, 1);
+}
+
+/* Header pill: overflow ("More") section + vertical orientation */
+.header-controls .hc-extra {
+    display: none;
+}
+
+.header-controls.expanded .hc-extra:not(.hidden) {
+    display: flex;
+}
+
+.header-controls.expanded .hc-more {
+    opacity: 0.55;
+}
+
+.header-controls.vertical {
+    flex-direction: column;
+    border-radius: 24px;
+    padding: 10px 6px;
+}
+
+/* Customize panel */
+.customize-panel {
+    position: absolute;
+    top: 64px;
+    right: 20px;
+    width: 260px;
+    background: var(--glass-top-bg);
+    color: var(--glass-top-text);
+    border: 1px solid var(--glass-top-border);
+    border-radius: 16px;
+    padding: 14px 16px;
+    backdrop-filter: var(--backdrop-filter);
+    -webkit-backdrop-filter: var(--backdrop-filter);
+    box-shadow: var(--glass-shadow);
+    z-index: 75;
+    font-size: 12px;
+    pointer-events: auto;
+}
+
+.customize-panel h3 {
+    margin: 0 0 10px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.55;
+    font-weight: 600;
+}
+
+.customize-panel ul {
+    list-style: none;
+    margin: 0 0 10px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.customize-panel li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    border-radius: 8px;
+    cursor: grab;
+}
+
+.customize-panel li:hover {
+    background: rgba(125, 125, 125, 0.15);
+}
+
+.cust-grip {
+    opacity: 0.45;
+    cursor: grab;
+}
+
+.cust-name {
+    flex: 1;
+}
+
+.customize-panel select {
+    background: transparent;
+    color: inherit;
+    border: 1px solid rgba(125, 125, 125, 0.35);
+    border-radius: 6px;
+    font-size: 11px;
+    padding: 2px 4px;
+}
+
+.customize-panel select option {
+    background: #1a1a1a;
+    color: #fff;
+}
+
+.cust-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 8px 0;
+}
+
+.cust-row input[type="range"] {
+    width: 120px;
+    accent-color: var(--accent-color);
+}
+
+#cust-reset {
+    width: 100%;
+    margin-top: 4px;
+    background: rgba(125, 125, 125, 0.18);
+    border: none;
+    color: inherit;
+    padding: 7px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+#cust-reset:hover {
+    background: rgba(125, 125, 125, 0.3);
+}
+
+/* Film strip resize handle (drag up/down) */
+.strip-resize {
+    height: 5px;
+    flex-shrink: 0;
+    cursor: ns-resize;
+    z-index: 56;
+    background: transparent;
+    transition: background 0.2s;
+}
+
+.strip-resize:hover {
+    background: rgba(125, 125, 125, 0.35);
 }
 
 /* File Info panel — drops down from the header pill */

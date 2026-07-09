@@ -30,33 +30,11 @@
             </div>
         </div>
 
-        <!-- Loading Indicator -->
-        <div id="loading-indicator" class="hidden" style="
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            transform: none;
-            background: var(--glass-top-bg);
-            color: var(--glass-top-text);
-            border: 1px solid var(--glass-top-border);
-            backdrop-filter: var(--backdrop-filter);
-            -webkit-backdrop-filter: var(--backdrop-filter);
-            padding: 10px 20px;
-            border-radius: 999px;
-            z-index: 2000;
-            pointer-events: none;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-            <div class="loader-spinner" style="
-                width: 14px;
-                height: 14px;
-                border: 2px solid rgba(125,125,125,0.35);
-                border-top-color: currentColor;
-                border-radius: 50%;
-                animation: spin 1s linear infinite;"></div>
-            <h2 id="loading-text" style="font-size: 14px; font-weight: 500; margin: 0; color: inherit;">Processing...</h2>
+        <!-- Task pill: spinner + current task; hover reveals every active task -->
+        <div id="loading-indicator" class="task-pill hidden">
+            <div class="loader-spinner"></div>
+            <h2 id="loading-text">Processing...</h2>
+            <div id="task-list" class="task-list"></div>
         </div>
 
         <!-- Main Interface (Hidden initially) -->
@@ -71,32 +49,29 @@
                         <select id="sort-mode" title="Sort By">
                             <option value="name_asc">Name (A-Z)</option>
                             <option value="name_desc">Name (Z-A)</option>
-                            <option value="date_desc">Newest First</option>
-                            <option value="date_asc">Oldest First</option>
+                            <option value="date_desc">Newest Modified</option>
+                            <option value="date_asc">Oldest Modified</option>
+                            <option value="taken_desc">Newest Taken</option>
+                            <option value="taken_asc">Oldest Taken</option>
                             <option value="size_desc">Largest First</option>
                             <option value="size_asc">Smallest First</option>
                         </select>
                     </div>
                 </div>
-                <!-- View Toggle & Actions -->
-                <div class="header-controls">
-                    <button id="btn-refresh" class="icon-btn" title="Refresh Folder (R)">
+                <!-- View Toggle & Actions.
+                     Order/visibility is driven by uiPrefs (Customize panel);
+                     data-hc names each control. Default main row:
+                     info, view, refresh, crop — the rest live in "More". -->
+                <div class="header-controls" id="header-controls">
+                    <button id="btn-info" data-hc="info" title="File Info (I)">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <path d="M23 4v6h-6"></path>
-                            <path d="M1 20v-6h6"></path>
-                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="12" y1="16" x2="12" y2="11.5" />
+                            <circle cx="12" cy="8" r="0.5" fill="currentColor" />
                         </svg>
                     </button>
-                    <button id="btn-toggle-fit" class="icon-btn" title="Toggle Thumbnail Fit">
-                        <!-- Icon for Fit/Fill -->
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <rect x="3" y="3" width="18" height="18" rx="2" />
-                            <circle cx="12" cy="12" r="3" />
-                        </svg>
-                    </button>
-                    <button id="btn-toggle-view" class="icon-btn" title="Toggle View (Space)">
+                    <button id="btn-toggle-view" data-hc="view" class="icon-btn" title="Toggle View (Space)">
                         <svg class="icon-grid" width="20" height="20" viewBox="0 0 24 24" fill="none"
                             stroke="currentColor" stroke-width="2">
                             <rect x="3" y="3" width="7" height="7"></rect>
@@ -109,15 +84,29 @@
                             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                         </svg>
                     </button>
-                    <button id="btn-info" title="File Info (I)">
+                    <button id="btn-refresh" data-hc="refresh" class="icon-btn" title="Refresh Folder (R)">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
-                            <circle cx="12" cy="12" r="10" />
-                            <line x1="12" y1="16" x2="12" y2="12" />
-                            <line x1="12" y1="8" x2="12.01" y2="8" />
+                            <path d="M23 4v6h-6"></path>
+                            <path d="M1 20v-6h6"></path>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
                         </svg>
                     </button>
-                    <button id="btn-toggle-strip" title="Toggle Film Strip">
+                    <button id="btn-crop" data-hc="crop" title="Crop Image (C)">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"></path>
+                            <path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"></path>
+                        </svg>
+                    </button>
+                    <button id="btn-toggle-fit" data-hc="fit" class="icon-btn" title="Toggle Thumbnail Fit">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                            <circle cx="12" cy="12" r="3" />
+                        </svg>
+                    </button>
+                    <button id="btn-toggle-strip" data-hc="strip" title="Toggle Film Strip">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
                             <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
@@ -126,13 +115,48 @@
                             <line x1="15" y1="21" x2="15" y2="9" />
                         </svg>
                     </button>
-                    <button id="btn-crop" title="Crop Image (C)">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                    <button id="btn-fullscreen" data-hc="fullscreen" title="Fullscreen (F)">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
-                            <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"></path>
-                            <path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"></path>
+                            <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"></path>
                         </svg>
                     </button>
+                    <button id="btn-customize" data-hc="customize" title="Customize Controls">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <line x1="4" y1="21" x2="4" y2="14"></line>
+                            <line x1="4" y1="10" x2="4" y2="3"></line>
+                            <line x1="12" y1="21" x2="12" y2="12"></line>
+                            <line x1="12" y1="8" x2="12" y2="3"></line>
+                            <line x1="20" y1="21" x2="20" y2="16"></line>
+                            <line x1="20" y1="12" x2="20" y2="3"></line>
+                            <line x1="1" y1="14" x2="7" y2="14"></line>
+                            <line x1="9" y1="8" x2="15" y2="8"></line>
+                            <line x1="17" y1="16" x2="23" y2="16"></line>
+                        </svg>
+                    </button>
+                    <button id="btn-more" class="hc-more" title="More controls">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                            <circle cx="5" cy="12" r="1.8" />
+                            <circle cx="12" cy="12" r="1.8" />
+                            <circle cx="19" cy="12" r="1.8" />
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Customize Controls panel -->
+                <div id="customize-panel" class="customize-panel hidden">
+                    <h3>Customize Controls</h3>
+                    <ul id="customize-list"></ul>
+                    <div class="cust-row">
+                        <label for="cust-vertical">Vertical pill</label>
+                        <input type="checkbox" id="cust-vertical">
+                    </div>
+                    <div class="cust-row">
+                        <label for="cust-scale">UI size</label>
+                        <input type="range" id="cust-scale" min="0.8" max="1.6" step="0.1" value="1">
+                    </div>
+                    <button id="cust-reset">Reset layout</button>
                 </div>
             </header>
 
@@ -203,12 +227,16 @@
                 <span id="selection-count">0 items selected</span>
                 <button id="btn-rotate-left-bulk">Rotate Left</button>
                 <button id="btn-rotate-right-bulk">Rotate Right</button>
+                <button id="btn-batch-rename">Rename…</button>
+                <button id="btn-export">Export…</button>
+                <button id="btn-trash" class="danger">Delete</button>
                 <button id="btn-clear-selection">Clear</button>
             </div>
 
 
 
-            <!-- Thumbnail Strip -->
+            <!-- Thumbnail Strip (drag the top edge to resize) -->
+            <div id="strip-resize" class="strip-resize" title="Drag to resize film strip"></div>
             <div id="thumbnail-strip" class="thumbnails">
                 <!-- Items injected here -->
             </div>

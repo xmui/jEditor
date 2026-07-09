@@ -14,7 +14,7 @@
     <script>
 // Single source of truth for the app version. Bump with:  npm run bump 1.x.y
 // (keeps package.json in sync and busts the service worker cache)
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.7.0';
 
 </script>
     <script>
@@ -453,7 +453,7 @@ header {
 
 /* Thumbnails */
 .thumbnails {
-    height: 80px;
+    height: var(--strip-height, 80px);
     background: var(--strip-bg);
     backdrop-filter: blur(20px) saturate(160%);
     -webkit-backdrop-filter: blur(20px) saturate(160%);
@@ -481,9 +481,9 @@ header {
 }
 
 .thumb-item {
-    height: 60px;
-    width: 60px;
-    min-width: 60px;
+    height: calc(var(--strip-height, 80px) - 20px);
+    width: calc(var(--strip-height, 80px) - 20px);
+    min-width: calc(var(--strip-height, 80px) - 20px);
     border-radius: 6px;
     overflow: hidden;
     cursor: pointer;
@@ -1031,30 +1031,306 @@ header {
     transition: opacity 0.2s;
 }
 
-/* Always-on path chip: bottom-left, small and quiet. Sits away from the
-   nav controls (bottom-center), grid controls (bottom-right) and toasts
-   (top-right), so it never fights anything for space. */
+/* Right-click context menu */
+#context-menu {
+    position: fixed;
+    z-index: 3000;
+    min-width: 200px;
+    background: rgba(24, 24, 26, 0.95);
+    color: #f0f0f0;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 6px;
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+}
+
+#context-menu button {
+    background: transparent;
+    border: none;
+    color: inherit;
+    text-align: left;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: var(--font-family);
+}
+
+#context-menu button:hover {
+    background: rgba(255, 255, 255, 0.09);
+}
+
+#context-menu button.danger {
+    color: #ff7b72;
+}
+
+#context-menu .ctx-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 4px 8px;
+}
+
+/* Rubber-band selection rectangle */
+.rubber-band {
+    position: fixed;
+    z-index: 80;
+    border: 1px solid var(--accent-color);
+    background: rgba(37, 99, 235, 0.12);
+    border-radius: 2px;
+    pointer-events: none;
+}
+
+.selection-bar button.danger {
+    background: rgba(180, 40, 40, 0.55);
+}
+
+.selection-bar button.danger:hover {
+    background: rgba(180, 40, 40, 0.8);
+}
+
+#file-name:hover {
+    text-decoration: underline;
+}
+
+/* Always-on path chip: its own slim row at the very bottom, BELOW the film
+   strip, so the two never overlap. */
 .status-bar {
-    position: absolute;
-    bottom: 12px;
-    left: 12px;
-    max-width: 42vw;
+    align-self: flex-start;
+    flex-shrink: 0;
+    margin: 5px 12px 7px;
+    max-width: 60vw;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 11px;
     letter-spacing: 0.01em;
-    padding: 5px 12px;
+    padding: 4px 12px;
     border-radius: 999px;
     background: var(--glass-bottom-bg);
     color: var(--glass-bottom-text);
     border: 1px solid var(--glass-bottom-border);
-    backdrop-filter: blur(16px) saturate(160%);
-    -webkit-backdrop-filter: blur(16px) saturate(160%);
-    opacity: 0.8;
+    opacity: 0.85;
     z-index: 55;
     pointer-events: none;
     transition: background 0.35s ease, color 0.35s ease;
+}
+
+/* Task pill (top-right): spinner + current task; hover lists all tasks */
+.task-pill {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: var(--glass-top-bg);
+    color: var(--glass-top-text);
+    border: 1px solid var(--glass-top-border);
+    backdrop-filter: var(--backdrop-filter);
+    -webkit-backdrop-filter: var(--backdrop-filter);
+    padding: 10px 20px;
+    border-radius: 999px;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: background 0.35s ease, color 0.35s ease;
+}
+
+.task-pill h2 {
+    font-size: 13px;
+    font-weight: 500;
+    margin: 0;
+    color: inherit;
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.loader-spinner,
+.task-spinner {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    border: 2px solid rgba(125, 125, 125, 0.35);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.task-list {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 240px;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--glass-top-bg);
+    border: 1px solid var(--glass-top-border);
+    border-radius: 14px;
+    padding: 10px 14px;
+    backdrop-filter: var(--backdrop-filter);
+    -webkit-backdrop-filter: var(--backdrop-filter);
+    box-shadow: var(--glass-shadow);
+}
+
+.task-pill:hover .task-list {
+    display: flex;
+}
+
+.task-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+/* UI scale applies to the floating control surfaces */
+.header-controls,
+.controls,
+.grid-controls,
+.selection-bar {
+    zoom: var(--ui-scale, 1);
+}
+
+/* Header pill: overflow ("More") section + vertical orientation */
+.header-controls .hc-extra {
+    display: none;
+}
+
+.header-controls.expanded .hc-extra:not(.hidden) {
+    display: flex;
+}
+
+.header-controls.expanded .hc-more {
+    opacity: 0.55;
+}
+
+.header-controls.vertical {
+    flex-direction: column;
+    border-radius: 24px;
+    padding: 10px 6px;
+}
+
+/* Customize panel */
+.customize-panel {
+    position: absolute;
+    top: 64px;
+    right: 20px;
+    width: 260px;
+    background: var(--glass-top-bg);
+    color: var(--glass-top-text);
+    border: 1px solid var(--glass-top-border);
+    border-radius: 16px;
+    padding: 14px 16px;
+    backdrop-filter: var(--backdrop-filter);
+    -webkit-backdrop-filter: var(--backdrop-filter);
+    box-shadow: var(--glass-shadow);
+    z-index: 75;
+    font-size: 12px;
+    pointer-events: auto;
+}
+
+.customize-panel h3 {
+    margin: 0 0 10px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.55;
+    font-weight: 600;
+}
+
+.customize-panel ul {
+    list-style: none;
+    margin: 0 0 10px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.customize-panel li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    border-radius: 8px;
+    cursor: grab;
+}
+
+.customize-panel li:hover {
+    background: rgba(125, 125, 125, 0.15);
+}
+
+.cust-grip {
+    opacity: 0.45;
+    cursor: grab;
+}
+
+.cust-name {
+    flex: 1;
+}
+
+.customize-panel select {
+    background: transparent;
+    color: inherit;
+    border: 1px solid rgba(125, 125, 125, 0.35);
+    border-radius: 6px;
+    font-size: 11px;
+    padding: 2px 4px;
+}
+
+.customize-panel select option {
+    background: #1a1a1a;
+    color: #fff;
+}
+
+.cust-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 8px 0;
+}
+
+.cust-row input[type="range"] {
+    width: 120px;
+    accent-color: var(--accent-color);
+}
+
+#cust-reset {
+    width: 100%;
+    margin-top: 4px;
+    background: rgba(125, 125, 125, 0.18);
+    border: none;
+    color: inherit;
+    padding: 7px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+#cust-reset:hover {
+    background: rgba(125, 125, 125, 0.3);
+}
+
+/* Film strip resize handle (drag up/down) */
+.strip-resize {
+    height: 5px;
+    flex-shrink: 0;
+    cursor: ns-resize;
+    z-index: 56;
+    background: transparent;
+    transition: background 0.2s;
+}
+
+.strip-resize:hover {
+    background: rgba(125, 125, 125, 0.35);
 }
 
 /* File Info panel — drops down from the header pill */
@@ -1151,33 +1427,11 @@ header {
             </div>
         </div>
 
-        <!-- Loading Indicator -->
-        <div id="loading-indicator" class="hidden" style="
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            transform: none;
-            background: var(--glass-top-bg);
-            color: var(--glass-top-text);
-            border: 1px solid var(--glass-top-border);
-            backdrop-filter: var(--backdrop-filter);
-            -webkit-backdrop-filter: var(--backdrop-filter);
-            padding: 10px 20px;
-            border-radius: 999px;
-            z-index: 2000;
-            pointer-events: none;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-            <div class="loader-spinner" style="
-                width: 14px;
-                height: 14px;
-                border: 2px solid rgba(125,125,125,0.35);
-                border-top-color: currentColor;
-                border-radius: 50%;
-                animation: spin 1s linear infinite;"></div>
-            <h2 id="loading-text" style="font-size: 14px; font-weight: 500; margin: 0; color: inherit;">Processing...</h2>
+        <!-- Task pill: spinner + current task; hover reveals every active task -->
+        <div id="loading-indicator" class="task-pill hidden">
+            <div class="loader-spinner"></div>
+            <h2 id="loading-text">Processing...</h2>
+            <div id="task-list" class="task-list"></div>
         </div>
 
         <!-- Main Interface (Hidden initially) -->
@@ -1192,32 +1446,29 @@ header {
                         <select id="sort-mode" title="Sort By">
                             <option value="name_asc">Name (A-Z)</option>
                             <option value="name_desc">Name (Z-A)</option>
-                            <option value="date_desc">Newest First</option>
-                            <option value="date_asc">Oldest First</option>
+                            <option value="date_desc">Newest Modified</option>
+                            <option value="date_asc">Oldest Modified</option>
+                            <option value="taken_desc">Newest Taken</option>
+                            <option value="taken_asc">Oldest Taken</option>
                             <option value="size_desc">Largest First</option>
                             <option value="size_asc">Smallest First</option>
                         </select>
                     </div>
                 </div>
-                <!-- View Toggle & Actions -->
-                <div class="header-controls">
-                    <button id="btn-refresh" class="icon-btn" title="Refresh Folder (R)">
+                <!-- View Toggle & Actions.
+                     Order/visibility is driven by uiPrefs (Customize panel);
+                     data-hc names each control. Default main row:
+                     info, view, refresh, crop — the rest live in "More". -->
+                <div class="header-controls" id="header-controls">
+                    <button id="btn-info" data-hc="info" title="File Info (I)">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <path d="M23 4v6h-6"></path>
-                            <path d="M1 20v-6h6"></path>
-                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="12" y1="16" x2="12" y2="11.5" />
+                            <circle cx="12" cy="8" r="0.5" fill="currentColor" />
                         </svg>
                     </button>
-                    <button id="btn-toggle-fit" class="icon-btn" title="Toggle Thumbnail Fit">
-                        <!-- Icon for Fit/Fill -->
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <rect x="3" y="3" width="18" height="18" rx="2" />
-                            <circle cx="12" cy="12" r="3" />
-                        </svg>
-                    </button>
-                    <button id="btn-toggle-view" class="icon-btn" title="Toggle View (Space)">
+                    <button id="btn-toggle-view" data-hc="view" class="icon-btn" title="Toggle View (Space)">
                         <svg class="icon-grid" width="20" height="20" viewBox="0 0 24 24" fill="none"
                             stroke="currentColor" stroke-width="2">
                             <rect x="3" y="3" width="7" height="7"></rect>
@@ -1230,15 +1481,29 @@ header {
                             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                         </svg>
                     </button>
-                    <button id="btn-info" title="File Info (I)">
+                    <button id="btn-refresh" data-hc="refresh" class="icon-btn" title="Refresh Folder (R)">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
-                            <circle cx="12" cy="12" r="10" />
-                            <line x1="12" y1="16" x2="12" y2="12" />
-                            <line x1="12" y1="8" x2="12.01" y2="8" />
+                            <path d="M23 4v6h-6"></path>
+                            <path d="M1 20v-6h6"></path>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
                         </svg>
                     </button>
-                    <button id="btn-toggle-strip" title="Toggle Film Strip">
+                    <button id="btn-crop" data-hc="crop" title="Crop Image (C)">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"></path>
+                            <path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"></path>
+                        </svg>
+                    </button>
+                    <button id="btn-toggle-fit" data-hc="fit" class="icon-btn" title="Toggle Thumbnail Fit">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                            <circle cx="12" cy="12" r="3" />
+                        </svg>
+                    </button>
+                    <button id="btn-toggle-strip" data-hc="strip" title="Toggle Film Strip">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
                             <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
@@ -1247,13 +1512,48 @@ header {
                             <line x1="15" y1="21" x2="15" y2="9" />
                         </svg>
                     </button>
-                    <button id="btn-crop" title="Crop Image (C)">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                    <button id="btn-fullscreen" data-hc="fullscreen" title="Fullscreen (F)">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
-                            <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"></path>
-                            <path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"></path>
+                            <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"></path>
                         </svg>
                     </button>
+                    <button id="btn-customize" data-hc="customize" title="Customize Controls">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <line x1="4" y1="21" x2="4" y2="14"></line>
+                            <line x1="4" y1="10" x2="4" y2="3"></line>
+                            <line x1="12" y1="21" x2="12" y2="12"></line>
+                            <line x1="12" y1="8" x2="12" y2="3"></line>
+                            <line x1="20" y1="21" x2="20" y2="16"></line>
+                            <line x1="20" y1="12" x2="20" y2="3"></line>
+                            <line x1="1" y1="14" x2="7" y2="14"></line>
+                            <line x1="9" y1="8" x2="15" y2="8"></line>
+                            <line x1="17" y1="16" x2="23" y2="16"></line>
+                        </svg>
+                    </button>
+                    <button id="btn-more" class="hc-more" title="More controls">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                            <circle cx="5" cy="12" r="1.8" />
+                            <circle cx="12" cy="12" r="1.8" />
+                            <circle cx="19" cy="12" r="1.8" />
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Customize Controls panel -->
+                <div id="customize-panel" class="customize-panel hidden">
+                    <h3>Customize Controls</h3>
+                    <ul id="customize-list"></ul>
+                    <div class="cust-row">
+                        <label for="cust-vertical">Vertical pill</label>
+                        <input type="checkbox" id="cust-vertical">
+                    </div>
+                    <div class="cust-row">
+                        <label for="cust-scale">UI size</label>
+                        <input type="range" id="cust-scale" min="0.8" max="1.6" step="0.1" value="1">
+                    </div>
+                    <button id="cust-reset">Reset layout</button>
                 </div>
             </header>
 
@@ -1324,12 +1624,16 @@ header {
                 <span id="selection-count">0 items selected</span>
                 <button id="btn-rotate-left-bulk">Rotate Left</button>
                 <button id="btn-rotate-right-bulk">Rotate Right</button>
+                <button id="btn-batch-rename">Rename…</button>
+                <button id="btn-export">Export…</button>
+                <button id="btn-trash" class="danger">Delete</button>
                 <button id="btn-clear-selection">Clear</button>
             </div>
 
 
 
-            <!-- Thumbnail Strip -->
+            <!-- Thumbnail Strip (drag the top edge to resize) -->
+            <div id="strip-resize" class="strip-resize" title="Drag to resize film strip"></div>
             <div id="thumbnail-strip" class="thumbnails">
                 <!-- Items injected here -->
             </div>
@@ -1401,6 +1705,14 @@ const app = {
         btnToggleView: document.getElementById('btn-toggle-view'),
         btnCrop: document.getElementById('btn-crop'),
         btnInfo: document.getElementById('btn-info'),
+        btnMore: document.getElementById('btn-more'),
+        btnFullscreen: document.getElementById('btn-fullscreen'),
+        btnCustomize: document.getElementById('btn-customize'),
+        headerControls: document.getElementById('header-controls'),
+        customizePanel: document.getElementById('customize-panel'),
+        customizeList: document.getElementById('customize-list'),
+        stripResize: document.getElementById('strip-resize'),
+        taskList: document.getElementById('task-list'),
         infoPanel: document.getElementById('info-panel'),
         infoList: document.getElementById('info-list'),
         statusBar: document.getElementById('status-bar'),
@@ -1457,6 +1769,9 @@ const app = {
         // Bulk Controls
         document.getElementById('btn-rotate-left-bulk').addEventListener('click', () => this.rotateBulk(-90));
         document.getElementById('btn-rotate-right-bulk').addEventListener('click', () => this.rotateBulk(90));
+        document.getElementById('btn-batch-rename').addEventListener('click', () => this.batchRename([...this.selection]));
+        document.getElementById('btn-export').addEventListener('click', () => this.exportCopies([...this.selection]));
+        document.getElementById('btn-trash').addEventListener('click', () => this.moveToTrash([...this.selection]));
         document.getElementById('btn-clear-selection').addEventListener('click', () => this.clearSelection());
         document.getElementById('btn-refresh').addEventListener('click', () => this.refreshFolder());
 
@@ -1503,11 +1818,71 @@ const app = {
             document.documentElement.style.setProperty('--grid-item-size', `${size}px`);
         });
 
-        // Sort Control
-        this.elements.sortModeSelect.addEventListener('change', (e) => {
+        // Sort Control (persisted; capture-date sort loads EXIF dates first)
+        this.elements.sortModeSelect.addEventListener('change', async (e) => {
             this.sortMode = e.target.value;
+            try { localStorage.setItem('jeditor.sortMode', this.sortMode); } catch (err) { /* private mode */ }
+            if (this.sortMode.startsWith('taken')) await this.ensureDatesTaken();
             this.sortFiles();
         });
+        try {
+            const saved = localStorage.getItem('jeditor.sortMode');
+            if (saved && this.elements.sortModeSelect.querySelector(`option[value="${saved}"]`)) {
+                this.sortMode = saved;
+                this.elements.sortModeSelect.value = saved;
+            }
+        } catch (err) { /* private mode */ }
+
+        // Click the filename to rename
+        this.elements.fileName.style.cursor = 'pointer';
+        this.elements.fileName.title = 'Click to rename';
+        this.elements.fileName.addEventListener('click', () => this.promptRename());
+
+        // Ctrl+wheel zooms the grid
+        this.elements.gridView.addEventListener('wheel', (e) => {
+            if (!e.ctrlKey) return;
+            e.preventDefault();
+            const slider = this.elements.gridSizeSlider;
+            const next = Math.max(80, Math.min(400, parseInt(slider.value, 10) - Math.sign(e.deltaY) * 20));
+            slider.value = next;
+            document.documentElement.style.setProperty('--grid-item-size', `${next}px`);
+        }, { passive: false });
+
+        this.initContextMenu();
+        this.initRubberBand();
+
+        // Any pointer interaction stops a running slideshow
+        document.addEventListener('pointerdown', () => this.stopSlideshow());
+
+        // Header pill: More expander, fullscreen, customize
+        this.elements.btnMore.addEventListener('click', () => {
+            this.elements.headerControls.classList.toggle('expanded');
+        });
+        this.elements.btnFullscreen.addEventListener('click', () => this.toggleFullscreen());
+        this.elements.btnCustomize.addEventListener('click', () => this.toggleCustomizePanel());
+        document.getElementById('cust-vertical').addEventListener('change', (e) => {
+            this.uiPrefs.vertical = e.target.checked;
+            this.saveUiPrefs();
+            this.applyUiPrefs();
+        });
+        document.getElementById('cust-scale').addEventListener('input', (e) => {
+            this.uiPrefs.scale = parseFloat(e.target.value);
+            this.saveUiPrefs();
+            this.applyUiPrefs();
+        });
+        document.getElementById('cust-reset').addEventListener('click', () => {
+            this.uiPrefs = this.defaultUiPrefs();
+            this.saveUiPrefs();
+            this.applyUiPrefs();
+            this.renderCustomizePanel();
+        });
+
+        this.initStripResize();
+
+        // Apply saved layout (order, hidden buttons, orientation, scale,
+        // strip height, thumbnail fit)
+        this.loadUiPrefs();
+        this.applyUiPrefs();
     },
 
     async verifyPermission(fileHandle, readWrite) {
@@ -1546,10 +1921,9 @@ const app = {
             this.dirHandle = dirHandle;
             this.readOnlyMode = false; // Modern API supports writing
 
-            this.elements.loading.classList.remove('hidden');
+            this.beginTask('scan', 'Scanning folder…');
             this.elements.dropZone.classList.add('hidden');
 
-            this.showToast('Scanning folder...', 0, 'scan');
             await this.scanDirectory(dirHandle);
 
             await this.finalizeLoad();
@@ -1563,7 +1937,7 @@ const app = {
             console.error('Browse folder error:', err);
             alert('Error loading folder: ' + err.message);
             this.elements.dropZone.classList.remove('hidden');
-            this.elements.loading.classList.add('hidden');
+            this.endTask('scan');
         }
     },
 
@@ -1588,22 +1962,262 @@ const app = {
         }
     },
 
+    // ---- UI customization ----
+    //
+    // Every header control can be shown in the pill, tucked into the "More"
+    // section, or hidden entirely; the order is drag-reorderable in the
+    // Customize panel. Orientation (horizontal/vertical), UI scale, film
+    // strip height and thumbnail fit are all preferences too. Everything
+    // persists in localStorage under 'jeditor.ui'.
+
+    HC_LABELS: {
+        info: 'File Info',
+        view: 'Toggle View',
+        refresh: 'Refresh Folder',
+        crop: 'Crop',
+        fit: 'Thumbnail Fit',
+        strip: 'Film Strip',
+        fullscreen: 'Fullscreen',
+        customize: 'Customize'
+    },
+
+    defaultUiPrefs() {
+        return {
+            order: ['info', 'view', 'refresh', 'crop', 'fit', 'strip', 'fullscreen', 'customize'],
+            placement: { // 'main' | 'more' | 'hidden'
+                info: 'main', view: 'main', refresh: 'main', crop: 'main',
+                fit: 'more', strip: 'more', fullscreen: 'more', customize: 'more'
+            },
+            vertical: false,
+            scale: 1,
+            stripHeight: 80,
+            thumbContain: true // fit whole image in tiles by default
+        };
+    },
+
+    loadUiPrefs() {
+        this.uiPrefs = this.defaultUiPrefs();
+        try {
+            const saved = JSON.parse(localStorage.getItem('jeditor.ui') || 'null');
+            if (saved) {
+                if (Array.isArray(saved.order)) {
+                    // keep unknown-key safety: only accept known keys, append missing
+                    const known = this.uiPrefs.order;
+                    this.uiPrefs.order = saved.order.filter(k => known.includes(k))
+                        .concat(known.filter(k => !saved.order.includes(k)));
+                }
+                if (saved.placement) {
+                    for (const k of Object.keys(this.uiPrefs.placement)) {
+                        if (['main', 'more', 'hidden'].includes(saved.placement[k])) {
+                            this.uiPrefs.placement[k] = saved.placement[k];
+                        }
+                    }
+                }
+                if (typeof saved.vertical === 'boolean') this.uiPrefs.vertical = saved.vertical;
+                if (saved.scale >= 0.8 && saved.scale <= 1.6) this.uiPrefs.scale = saved.scale;
+                if (saved.stripHeight >= 50 && saved.stripHeight <= 240) this.uiPrefs.stripHeight = saved.stripHeight;
+                if (typeof saved.thumbContain === 'boolean') this.uiPrefs.thumbContain = saved.thumbContain;
+            }
+        } catch (e) { /* corrupted prefs → defaults */ }
+    },
+
+    saveUiPrefs() {
+        try { localStorage.setItem('jeditor.ui', JSON.stringify(this.uiPrefs)); } catch (e) { /* private mode */ }
+    },
+
+    headerButton(key) {
+        return this.elements.headerControls.querySelector(`[data-hc="${key}"]`);
+    },
+
+    applyUiPrefs() {
+        const p = this.uiPrefs || (this.uiPrefs = this.defaultUiPrefs());
+        const container = this.elements.headerControls;
+
+        // Reorder buttons (More button stays last)
+        p.order.forEach(key => {
+            const btn = this.headerButton(key);
+            if (btn) container.insertBefore(btn, this.elements.btnMore);
+        });
+        // Placement classes
+        let hasMore = false;
+        p.order.forEach(key => {
+            const btn = this.headerButton(key);
+            if (!btn) return;
+            const place = p.placement[key] || 'main';
+            btn.classList.toggle('hidden', place === 'hidden');
+            btn.classList.toggle('hc-extra', place === 'more');
+            if (place === 'more') hasMore = true;
+        });
+        // No overflow items → no expander
+        this.elements.btnMore.classList.toggle('hidden', !hasMore);
+
+        container.classList.toggle('vertical', !!p.vertical);
+        document.documentElement.style.setProperty('--ui-scale', p.scale);
+        document.documentElement.style.setProperty('--strip-height', `${p.stripHeight}px`);
+
+        this.elements.gridView.classList.toggle('thumb-contain', !!p.thumbContain);
+        this.elements.thumbnailStrip.classList.toggle('thumb-contain', !!p.thumbContain);
+    },
+
+    toggleCustomizePanel() {
+        const panel = this.elements.customizePanel;
+        const open = panel.classList.contains('hidden');
+        panel.classList.toggle('hidden', !open);
+        if (open) this.renderCustomizePanel();
+    },
+
+    renderCustomizePanel() {
+        const list = this.elements.customizeList;
+        list.innerHTML = '';
+        document.getElementById('cust-vertical').checked = !!this.uiPrefs.vertical;
+        document.getElementById('cust-scale').value = this.uiPrefs.scale;
+
+        this.uiPrefs.order.forEach(key => {
+            const li = document.createElement('li');
+            li.draggable = true;
+            li.dataset.key = key;
+
+            const grip = document.createElement('span');
+            grip.className = 'cust-grip';
+            grip.textContent = '≡';
+            const name = document.createElement('span');
+            name.className = 'cust-name';
+            name.textContent = this.HC_LABELS[key] || key;
+            const sel = document.createElement('select');
+            [['main', 'Shown'], ['more', 'In More'], ['hidden', 'Hidden']].forEach(([v, l]) => {
+                const o = document.createElement('option');
+                o.value = v;
+                o.textContent = l;
+                sel.appendChild(o);
+            });
+            sel.value = this.uiPrefs.placement[key] || 'main';
+            sel.onchange = () => {
+                this.uiPrefs.placement[key] = sel.value;
+                this.saveUiPrefs();
+                this.applyUiPrefs();
+            };
+
+            li.appendChild(grip);
+            li.appendChild(name);
+            li.appendChild(sel);
+
+            li.addEventListener('dragstart', (e) => {
+                this._dragKey = key;
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            li.addEventListener('dragover', (e) => e.preventDefault());
+            li.addEventListener('drop', (e) => {
+                e.preventDefault();
+                if (!this._dragKey || this._dragKey === key) return;
+                const order = this.uiPrefs.order;
+                order.splice(order.indexOf(this._dragKey), 1);
+                order.splice(order.indexOf(key), 0, this._dragKey);
+                this._dragKey = null;
+                this.saveUiPrefs();
+                this.applyUiPrefs();
+                this.renderCustomizePanel();
+            });
+
+            list.appendChild(li);
+        });
+    },
+
+    // ---- Film strip resize (drag the top edge) ----
+
+    initStripResize() {
+        const handle = this.elements.stripResize;
+        if (!handle) return;
+        let startY = 0, startH = 0, dragging = false;
+        handle.addEventListener('mousedown', (e) => {
+            dragging = true;
+            startY = e.clientY;
+            startH = this.uiPrefs.stripHeight;
+            document.body.style.cursor = 'ns-resize';
+            e.preventDefault();
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (!dragging) return;
+            this.setStripHeight(startH + (startY - e.clientY));
+        });
+        window.addEventListener('mouseup', () => {
+            if (!dragging) return;
+            dragging = false;
+            document.body.style.cursor = '';
+            this.saveUiPrefs();
+        });
+    },
+
+    setStripHeight(px) {
+        this.uiPrefs.stripHeight = Math.max(50, Math.min(240, Math.round(px)));
+        document.documentElement.style.setProperty('--strip-height', `${this.uiPrefs.stripHeight}px`);
+    },
+
     toggleThumbnailFit() {
-        this.elements.gridView.classList.toggle('thumb-contain');
-        this.elements.thumbnailStrip.classList.toggle('thumb-contain');
-        // Optional: flash notification
-        // this.showToast('Thumbnail mode toggled', 1000);
+        this.uiPrefs.thumbContain = !this.uiPrefs.thumbContain;
+        this.saveUiPrefs();
+        this.applyUiPrefs();
+    },
+
+    // ---- Task registry ----
+    //
+    // Every background job registers here. The pill (top-right) shows a
+    // spinner plus the most recent task; hovering it lists every task.
+
+    beginTask(key, label) {
+        if (!this._tasks) this._tasks = new Map();
+        this._tasks.delete(key); // re-inserting moves it to "most recent"
+        this._tasks.set(key, label);
+        this.renderTasks();
+    },
+
+    updateTask(key, label) {
+        if (this._tasks && this._tasks.has(key)) {
+            this._tasks.set(key, label);
+            this.renderTasks();
+        } else {
+            this.beginTask(key, label);
+        }
+    },
+
+    endTask(key) {
+        if (this._tasks && this._tasks.delete(key)) this.renderTasks();
+    },
+
+    renderTasks() {
+        const pill = this.elements.loading;
+        const labelEl = this.elements.loadingText;
+        const labels = [...(this._tasks || new Map()).values()];
+        if (labels.length === 0) {
+            pill.classList.add('hidden');
+            return;
+        }
+        pill.classList.remove('hidden');
+        const current = labels[labels.length - 1];
+        labelEl.textContent = labels.length > 1 ? `${current} (+${labels.length - 1})` : current;
+
+        const list = this.elements.taskList;
+        if (list) {
+            list.innerHTML = '';
+            labels.forEach(l => {
+                const row = document.createElement('div');
+                row.className = 'task-row';
+                const spin = document.createElement('span');
+                spin.className = 'task-spinner';
+                const txt = document.createElement('span');
+                txt.textContent = l;
+                row.appendChild(spin);
+                row.appendChild(txt);
+                list.appendChild(row);
+            });
+        }
     },
 
     toggleThumbnailStrip() {
         const strip = this.elements.thumbnailStrip;
-        if (strip.classList.contains('hidden')) {
-            strip.classList.remove('hidden');
-            this.elements.btnToggleStrip.style.opacity = '1';
-        } else {
-            strip.classList.add('hidden');
-            this.elements.btnToggleStrip.style.opacity = '0.5';
-        }
+        const show = strip.classList.contains('hidden');
+        strip.classList.toggle('hidden', !show);
+        if (this.elements.stripResize) this.elements.stripResize.classList.toggle('hidden', !show);
+        this.elements.btnToggleStrip.style.opacity = show ? '1' : '0.5';
         this.elements.btnToggleStrip.blur(); // Release focus to restore keyboard shortcuts
     },
 
@@ -1691,11 +2305,7 @@ const app = {
             this.files = [];
             this.dirHandle = null;
 
-            if (this.elements.loading) {
-                this.elements.loading.classList.remove('hidden');
-            } else {
-                console.warn('Loading element missing in DOM');
-            }
+            this.beginTask('scan', 'Loading dropped items…');
 
             if (this.elements.dropZone) {
                 this.elements.dropZone.classList.add('hidden');
@@ -1704,7 +2314,7 @@ const app = {
             const items = [...e.dataTransfer.items];
             if (!items || items.length === 0) throw new Error('No items dropped.');
 
-            this.showToast(`Processing ${items.length} items...`, 2000, 'scan');
+            this.updateTask('scan', `Processing ${items.length} items…`);
             this.log(`Processing ${items.length} items...`);
 
             // Try modern File System Access API first (supports writing)
@@ -1761,7 +2371,7 @@ const app = {
             console.error('Drop error:', err);
             alert('Error loading: ' + err.message);
             this.elements.dropZone.classList.remove('hidden');
-            this.elements.loading.classList.add('hidden');
+            this.endTask('scan');
         } finally {
             this.isLoading = false;
         }
@@ -1773,7 +2383,7 @@ const app = {
             this.sortFiles(false); // pass false to avoid re-rendering twice
 
             if (this.files.length > 0) {
-                this.showToast(`Loaded ${this.files.length} images.`, 3000, 'scan');
+                this.showToast(`Loaded ${this.files.length} images.`, 3000);
                 this.elements.mainInterface.classList.remove('hidden');
 
                 // Force focus settings
@@ -1796,7 +2406,7 @@ const app = {
             alert(`Error: ${err.message || err}`);
             this.elements.dropZone.classList.remove('hidden');
         } finally {
-            this.elements.loading.classList.add('hidden');
+            this.endTask('scan');
             this.isLoading = false;
         }
     },
@@ -1855,7 +2465,7 @@ const app = {
 
     async scanDirectory(dirHandle, prefix = '') {
         try {
-            this.showToast('Scanning folder...', 0, 'scan');
+            this.updateTask('scan', 'Scanning folder…');
             for await (const entry of dirHandle.values()) {
                 if (entry.kind === 'file' && this.isImage(entry.name)) {
                     const relPath = prefix + entry.name;
@@ -1872,9 +2482,11 @@ const app = {
                         });
                     }
                     if (this.files.length % 50 === 0) {
-                        this.showToast(`Found ${this.files.length} images...`, 0, 'scan');
+                        this.updateTask('scan', `Scanning folder… ${this.files.length} images`);
                     }
                 } else if (entry.kind === 'directory') {
+                    // Skip our own working folders
+                    if (entry.name === '.jeditor-trash' || entry.name === 'jEditor Export') continue;
                     await this.scanDirectory(entry, prefix + entry.name + '/');
                 }
             }
@@ -1886,8 +2498,7 @@ const app = {
     async refreshFolder() {
         if (!this.dirHandle) return;
         this.log('Manual Refresh Started');
-        this.elements.loading.classList.remove('hidden');
-        this.elements.loadingText.textContent = 'Scanning for new photos...';
+        this.beginTask('scan', 'Scanning for new photos…');
 
         try {
             const oldLength = this.files.length;
@@ -1896,15 +2507,15 @@ const app = {
             if (this.files.length > oldLength) {
                 this.sortFiles();
                 this.precacheThumbnails();
-                this.showToast(`Found ${this.files.length - oldLength} new photos`, 3000, 'scan');
+                this.showToast(`Found ${this.files.length - oldLength} new photos`, 3000);
             } else {
-                this.showToast('Folder is up to date', 2000, 'scan');
+                this.showToast('Folder is up to date', 2000);
             }
         } catch (e) {
             console.error('Refresh failed:', e);
-            this.showToast('Refresh failed', 3000, 'scan');
+            this.showToast('Refresh failed');
         } finally {
-            this.elements.loading.classList.add('hidden');
+            this.endTask('scan');
         }
     },
 
@@ -2258,6 +2869,9 @@ const app = {
             } else if (mode.startsWith('size')) {
                 valA = a.size || 0;
                 valB = b.size || 0;
+            } else if (mode.startsWith('taken')) {
+                valA = a.dateTaken ?? a.lastModified ?? 0;
+                valB = b.dateTaken ?? b.lastModified ?? 0;
             }
 
             if (typeof valA === 'string') {
@@ -2446,38 +3060,56 @@ const app = {
         }, { root: null, rootMargin: '1000px' });
         this.elements.gridView._observer = observer; // Stash for refreshThumbnailUI
 
-        this.files.forEach((file) => {
-            const div = document.createElement('div');
-            div.className = 'grid-item';
-            div._file = file;
-            file._gridEl = div;
-
-            const img = document.createElement('img');
-            img._file = file;
-            img.alt = file.name;
-            img.loading = 'lazy';
-            img.decoding = 'async';
-
-            if (file.thumbnailUrl) {
-                // Cached: paint immediately, no observer round-trip
-                img.src = file.thumbnailUrl;
-                const angle = this.getDisplayRotation(file, 'thumb');
-                if (angle) img.style.transform = `rotate(${angle}deg)`;
-            } else {
-                img.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PC9zdmc+';
-                observer.observe(img);
+        // Chunked render: big folders paint the first screenfuls immediately
+        // and append the rest during idle time.
+        const CHUNK = 500;
+        const token = (this._gridRenderToken = (this._gridRenderToken || 0) + 1);
+        const renderChunk = (start) => {
+            if (token !== this._gridRenderToken) return; // superseded re-render
+            const frag = document.createDocumentFragment();
+            const end = Math.min(start + CHUNK, this.files.length);
+            for (let i = start; i < end; i++) {
+                frag.appendChild(this.makeGridTile(this.files[i], observer));
             }
+            this.elements.gridView.appendChild(frag);
+            if (end < this.files.length) {
+                if (typeof requestIdleCallback === 'function') requestIdleCallback(() => renderChunk(end));
+                else setTimeout(() => renderChunk(end), 16);
+            }
+        };
+        renderChunk(0);
+    },
 
-            div.appendChild(img);
+    makeGridTile(file, observer) {
+        const div = document.createElement('div');
+        div.className = 'grid-item';
+        div._file = file;
+        file._gridEl = div;
 
-            div.onclick = (e) => this.handleGridClick(e, file);
-            div.ondblclick = () => {
-                this.loadFile(file);
-                this.setView('single');
-            };
+        const img = document.createElement('img');
+        img._file = file;
+        img.alt = file.name;
+        img.loading = 'lazy';
+        img.decoding = 'async';
 
-            this.elements.gridView.appendChild(div);
-        });
+        if (file.thumbnailUrl) {
+            // Cached: paint immediately, no observer round-trip
+            img.src = file.thumbnailUrl;
+            const angle = this.getDisplayRotation(file, 'thumb');
+            if (angle) img.style.transform = `rotate(${angle}deg)`;
+        } else {
+            img.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PC9zdmc+';
+            observer.observe(img);
+        }
+
+        div.appendChild(img);
+
+        div.onclick = (e) => this.handleGridClick(e, file);
+        div.ondblclick = () => {
+            this.loadFile(file);
+            this.setView('single');
+        };
+        return div;
     },
 
     // ---- Thumbnail pipeline ----
@@ -2619,9 +3251,19 @@ const app = {
             const savedAtRead = fileEntry._savedRotationTotal || 0;
             const fileData = await fileEntry.handle.getFile();
 
-            const blob = fileData.size <= this.THUMB_FAST_PATH_BYTES
-                ? fileData
-                : await this.generateThumbnailBlob(fileData);
+            let blob;
+            if (fileData.size <= this.THUMB_FAST_PATH_BYTES) {
+                blob = fileData;
+            } else {
+                // Persistent cache: reopening a folder skips regeneration.
+                // The key includes size+mtime, so edits invalidate naturally.
+                const cacheKey = `${fileEntry.relPath || fileEntry.name}|${fileData.size}|${fileData.lastModified}`;
+                blob = await this.idbGetThumb(cacheKey);
+                if (!blob) {
+                    blob = await this.generateThumbnailBlob(fileData);
+                    if (blob) this.idbPutThumb(cacheKey, blob);
+                }
+            }
             if (!blob) throw new Error('Thumbnail encode failed');
 
             if (fileEntry.thumbnailUrl) URL.revokeObjectURL(fileEntry.thumbnailUrl);
@@ -2675,6 +3317,7 @@ const app = {
 
         const total = missing.length;
         const showProgress = total >= 30;
+        if (showProgress) this.beginTask('precache', `Preparing previews 0/${total}`);
         let done = 0;
         missing.forEach(file => {
             this.ensureThumbnail(file, { urgent: false })
@@ -2683,9 +3326,10 @@ const app = {
                     done++;
                     if (!showProgress) return;
                     if (done === total) {
-                        this.showToast(`All ${total} previews ready`, 2000, 'precache');
-                    } else if (done % 50 === 0) {
-                        this.showToast(`Preparing previews ${done}/${total}…`, 0, 'precache');
+                        this.endTask('precache');
+                        this.showToast(`All ${total} previews ready`, 2000);
+                    } else if (done % 25 === 0) {
+                        this.updateTask('precache', `Preparing previews ${done}/${total}`);
                     }
                 });
         });
@@ -2764,6 +3408,7 @@ const app = {
             this.elements.gridView.classList.remove('hidden');
             this.elements.thumbnailStrip.parentElement.querySelector('.controls').classList.add('hidden'); // Hide float controls
             this.elements.thumbnailStrip.classList.add('hidden');
+            if (this.elements.stripResize) this.elements.stripResize.classList.add('hidden');
             this.elements.gridControls.classList.remove('hidden');
             iconGrid.classList.add('hidden');
             iconSingle.classList.remove('hidden');
@@ -2789,6 +3434,7 @@ const app = {
             this.elements.gridView.classList.add('hidden');
             this.elements.thumbnailStrip.parentElement.querySelector('.controls').classList.remove('hidden');
             this.elements.thumbnailStrip.classList.remove('hidden');
+            if (this.elements.stripResize) this.elements.stripResize.classList.remove('hidden');
             this.elements.gridControls.classList.add('hidden');
             iconGrid.classList.remove('hidden');
             iconSingle.classList.add('hidden');
@@ -3025,6 +3671,22 @@ const app = {
         // Global safety check: if we are not in main interface, ignore
         if (this.elements.mainInterface.classList.contains('hidden')) return;
 
+        // Escape closes an open context menu before anything else
+        if (e.key === 'Escape' && document.getElementById('context-menu')) {
+            e.preventDefault();
+            this.closeContextMenu();
+            return;
+        }
+
+        // Undo last edit
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+            e.preventDefault();
+            this.undo();
+            return;
+        }
+
+        this.stopSlideshow();
+
         // Crop blocking
         if (this.cropState.active) {
             if (e.key === 'Escape' || e.key === 'Esc') {
@@ -3122,6 +3784,15 @@ const app = {
             case 'i':
                 this.toggleInfoPanel();
                 break;
+            case 'f':
+                this.toggleFullscreen();
+                break;
+            case 'Delete':
+                e.preventDefault();
+                this.moveToTrash(this.viewMode === 'grid' && this.selection.size
+                    ? [...this.selection]
+                    : [this.currentFile]);
+                break;
         }
     },
 
@@ -3198,10 +3869,11 @@ const app = {
             this.applyPreviewRotation(file);
         }
 
-        // Each batch gets its own toast; overlapping batches stack in the UI
-        const toastKey = 'rotate-batch-' + (this._batchSeq = (this._batchSeq || 0) + 1);
+        // Each batch is its own task; overlapping batches stack in the
+        // task pill (hover it to see every running task)
+        const taskKey = 'rotate-batch-' + (this._batchSeq = (this._batchSeq || 0) + 1);
         const label = `${filesToRotate.length} photo${filesToRotate.length > 1 ? 's' : ''}`;
-        this.showToast(`Rotating ${label}…`, 0, toastKey);
+        this.beginTask(taskKey, `Rotating ${label}…`);
 
         // Drain sequentially to avoid memory spikes; files already being
         // saved by another batch are awaited, not double-processed.
@@ -3210,7 +3882,8 @@ const app = {
             ok = (await this.processRotationQueue(file)) && ok;
         }
 
-        this.showToast(ok ? `Rotated ${label} ${deg > 0 ? 'right' : 'left'}` : `Some photos failed to rotate`, 2000, toastKey);
+        this.endTask(taskKey);
+        this.showToast(ok ? `Rotated ${label} ${deg > 0 ? 'right' : 'left'}` : 'Some photos failed to rotate', 2000);
         this.log('Bulk rotation finished');
     },
 
@@ -3240,6 +3913,7 @@ const app = {
 
     async drainRotationQueue(fileEntry) {
         fileEntry.isBusy = true;
+        let undoCaptured = false;
         try {
             // Process ALL queued rotations for this file (more may arrive
             // while a write is in flight — the loop picks them up)
@@ -3253,20 +3927,41 @@ const app = {
 
                 // HARDENING: Fresh handle check
                 const fileData = await fileEntry.handle.getFile();
+                const originalBuf = await fileData.arrayBuffer();
+
+                // One undo entry per rotation gesture (Blob snapshots the
+                // buffer, so the in-place EXIF patch below can't touch it)
+                if (!undoCaptured) {
+                    this.pushUndo({
+                        type: 'bytes',
+                        file: fileEntry,
+                        blob: new Blob([originalBuf], { type: fileData.type }),
+                        label: 'rotation'
+                    });
+                    undoCaptured = true;
+                }
 
                 // Fast path for JPEGs: patch the EXIF orientation flag.
                 // No decode, no re-encode, no quality loss — near-instant.
                 let blob = null;
                 if (/\.jpe?g$/i.test(fileEntry.name)) {
                     try {
-                        blob = this.rotateJpegLossless(await fileData.arrayBuffer(), normalizedDeg);
+                        blob = this.rotateJpegLossless(originalBuf, normalizedDeg);
                     } catch (e) {
                         this.log('Lossless rotation unavailable, re-encoding: ' + e.message);
                     }
                 }
 
-                // Fallback: canvas re-encode (PNG stays pixel-lossless)
-                if (!blob) blob = await this.rotateByReencoding(fileData, fileEntry.name, normalizedDeg);
+                // Fallback: canvas re-encode (PNG stays pixel-lossless).
+                // Slow path, so it registers in the task pill.
+                if (!blob) {
+                    this.beginTask('rot:' + fileEntry.name, `Rotating ${fileEntry.name}…`);
+                    try {
+                        blob = await this.rotateByReencoding(fileData, fileEntry.name, normalizedDeg);
+                    } finally {
+                        this.endTask('rot:' + fileEntry.name);
+                    }
+                }
                 if (!blob) throw new Error('Blob conversion failed');
 
                 // Re-verify permission
@@ -3309,6 +4004,571 @@ const app = {
             fileEntry.isBusy = false;
         }
     },
+    // ---- Undo ----
+    UNDO_LIMIT: 10,
+
+    pushUndo(entry) {
+        if (!this._undoStack) this._undoStack = [];
+        this._undoStack.push(entry);
+        while (this._undoStack.length > this.UNDO_LIMIT) this._undoStack.shift();
+    },
+
+    async undo() {
+        const entry = (this._undoStack || []).pop();
+        if (!entry) {
+            this.showToast('Nothing to undo');
+            return;
+        }
+        try {
+            if (entry.type === 'bytes') {
+                const f = entry.file;
+                if (f._rotationQueue) await f._rotationQueue;
+                f.pendingRotation = 0;
+                f.savingRotation = 0;
+                const writable = await f.handle.createWritable();
+                await writable.write(entry.blob);
+                await writable.close();
+                await this.afterFileChanged(f);
+                this.showToast(`Undid ${entry.label} on ${f.name}`);
+            } else if (entry.type === 'rename') {
+                await this.renameFile(entry.file, entry.oldName, { skipUndo: true });
+                this.showToast('Rename undone');
+            } else if (entry.type === 'batch-rename') {
+                for (const it of entry.items) {
+                    await this.renameFile(it.file, it.oldName, { skipUndo: true });
+                }
+                this.showToast(`Batch rename undone (${entry.items.length} files)`);
+                this.sortFiles();
+            } else if (entry.type === 'trash') {
+                for (const it of entry.items) await this.restoreFromTrash(it);
+                this.sortFiles();
+                this.showToast(`Restored ${entry.items.length} photo${entry.items.length > 1 ? 's' : ''}`);
+            }
+        } catch (e) {
+            console.error('Undo failed:', e);
+            this.showToast('Undo failed: ' + e.message);
+        }
+    },
+
+    // A file's bytes changed outside the rotation pipeline (undo/restore):
+    // reset rotation bookkeeping and regenerate previews from disk.
+    async afterFileChanged(f) {
+        const newData = await f.handle.getFile();
+        f.size = newData.size;
+        f.lastModified = newData.lastModified;
+        f.pendingRotation = 0;
+        f.savingRotation = 0;
+        f.thumbLag = 0;
+        f.fullLag = 0;
+        f._exif = undefined;
+        f.dateTaken = undefined;
+        if (f.fullImageUrl) {
+            URL.revokeObjectURL(f.fullImageUrl);
+            delete f.fullImageUrl;
+        }
+        this.refreshThumbnailUI(f);
+        this.applyPreviewRotation(f);
+        if (this.currentFile === f && this.viewMode === 'single') this.loadFile(f);
+        if (this._infoOpen && this.currentFile === f) this.fillInfoPanel(f);
+    },
+
+    // ---- Trash (safe delete) ----
+
+    async moveToTrash(files) {
+        const list = files.filter(Boolean);
+        if (!list.length) return;
+        if (!this.dirHandle) {
+            this.showToast('Deleting requires opening a folder (not loose files)');
+            return;
+        }
+        const undoItems = [];
+        try {
+            const trashDir = await this.dirHandle.getDirectoryHandle('.jeditor-trash', { create: true });
+            for (const f of list) {
+                try {
+                    if (f._rotationQueue) await f._rotationQueue;
+                    const data = await f.handle.getFile();
+                    let trashName = f.name;
+                    try {
+                        await trashDir.getFileHandle(trashName);
+                        trashName = `${Date.now()}_${f.name}`; // avoid collision
+                    } catch (e) { /* name is free */ }
+                    const th = await trashDir.getFileHandle(trashName, { create: true });
+                    const w = await th.createWritable();
+                    await w.write(data);
+                    await w.close();
+                    await (f.parentDir || this.dirHandle).removeEntry(f.name);
+                    undoItems.push({ file: f, trashDir, trashName });
+                    this.removeFileFromApp(f);
+                } catch (e) {
+                    console.error('Trash failed for', f.name, e);
+                    this.showToast(`Couldn't delete ${f.name}`);
+                }
+            }
+        } catch (e) {
+            console.error('Trash unavailable:', e);
+            this.showToast('Delete failed: ' + e.message);
+        }
+        if (undoItems.length) {
+            this.pushUndo({ type: 'trash', items: undoItems });
+            this.showToast(`Moved ${undoItems.length} to .jeditor-trash — Ctrl+Z to restore`, 4000);
+        }
+    },
+
+    removeFileFromApp(f) {
+        const idx = this.files.indexOf(f);
+        if (idx === -1) return;
+        const wasCurrent = this.currentFile === f;
+        this.files.splice(idx, 1);
+        this.selection.delete(f);
+        if (f._gridEl) f._gridEl.remove();
+        if (f._stripEl) f._stripEl.remove();
+
+        if (this.files.length === 0) {
+            this.currentFile = null;
+            this.updateStatusBar();
+            this.elements.mainInterface.classList.add('hidden');
+            this.elements.dropZone.classList.remove('hidden');
+        } else if (wasCurrent) {
+            const next = this.files[Math.min(idx, this.files.length - 1)];
+            if (this.viewMode === 'single') {
+                this.loadFile(next);
+            } else {
+                this.currentFile = next;
+                this.updateStatusBar();
+            }
+        }
+        this.updateSelectionUI();
+        const ci = this.getCurrentIndex();
+        if (ci !== -1) this.elements.fileCount.textContent = `${ci + 1} / ${this.files.length}`;
+    },
+
+    async restoreFromTrash(item) {
+        const { file, trashDir, trashName } = item;
+        const th = await trashDir.getFileHandle(trashName);
+        const data = await th.getFile();
+        const dest = file.parentDir || this.dirHandle;
+        const nh = await dest.getFileHandle(file.name, { create: true });
+        const w = await nh.createWritable();
+        await w.write(data);
+        await w.close();
+        await trashDir.removeEntry(trashName);
+        file.handle = nh;
+        const nd = await nh.getFile();
+        file.size = nd.size;
+        file.lastModified = nd.lastModified;
+        this.files.push(file);
+        if (this.elements.mainInterface.classList.contains('hidden') && this.files.length) {
+            this.elements.mainInterface.classList.remove('hidden');
+            this.elements.dropZone.classList.add('hidden');
+        }
+    },
+
+    // ---- Capture-date sort support ----
+
+    async ensureDatesTaken() {
+        const missing = this.files.filter(f => f.dateTaken === undefined);
+        if (!missing.length) return;
+        this.beginTask('taken', 'Reading capture dates…');
+        let i = 0;
+        const workers = Array.from({ length: 8 }, async () => {
+            while (i < missing.length) {
+                const f = missing[i++];
+                const exif = await this.getExifInfo(f);
+                f.dateTaken = (exif && exif.dateTaken) ? exif.dateTaken.getTime() : (f.lastModified || 0);
+            }
+        });
+        await Promise.all(workers);
+        this.endTask('taken');
+    },
+
+    // ---- Rename ----
+
+    async renameFile(file, newName, { skipUndo = false } = {}) {
+        newName = (newName || '').trim();
+        if (!file || !newName || newName === file.name) return false;
+        if (/[\\/:*?"<>|]/.test(newName)) {
+            this.showToast('Name contains invalid characters');
+            return false;
+        }
+        const ext = (file.name.match(/\.\w+$/) || [''])[0];
+        if (!/\.\w+$/.test(newName)) newName += ext;
+        if (!this.isImage(newName)) {
+            this.showToast('Keep an image file extension');
+            return false;
+        }
+        const oldName = file.name;
+        const dir = file.parentDir || this.dirHandle;
+        try {
+            if (file._rotationQueue) await file._rotationQueue;
+            // Refuse to overwrite an existing file
+            if (dir) {
+                let exists = false;
+                try { await dir.getFileHandle(newName); exists = true; } catch (e) { /* free */ }
+                if (exists) {
+                    this.showToast(`"${newName}" already exists`);
+                    return false;
+                }
+            }
+            if (typeof file.handle.move === 'function') {
+                await file.handle.move(newName);
+            } else if (dir) {
+                const data = await file.handle.getFile();
+                const nh = await dir.getFileHandle(newName, { create: true });
+                const w = await nh.createWritable();
+                await w.write(data);
+                await w.close();
+                await dir.removeEntry(oldName);
+                file.handle = nh;
+            } else {
+                throw new Error('No folder access');
+            }
+            file.name = newName;
+            if (file.relPath) file.relPath = file.relPath.replace(/[^/]+$/, newName);
+            if (!skipUndo) this.pushUndo({ type: 'rename', file, oldName });
+
+            if (this.currentFile === file) {
+                this.elements.fileName.textContent = newName;
+                this.updateStatusBar();
+                if (this._infoOpen) this.fillInfoPanel(file);
+            }
+            const gridImg = file._gridEl && file._gridEl.querySelector('img');
+            if (gridImg) gridImg.alt = newName;
+            return true;
+        } catch (e) {
+            console.error('Rename failed:', e);
+            this.showToast('Rename failed: ' + e.message);
+            return false;
+        }
+    },
+
+    promptRename(file = this.currentFile) {
+        if (!file) return;
+        const newName = prompt('Rename file:', file.name);
+        if (newName !== null) {
+            this.renameFile(file, newName).then(ok => {
+                if (ok) this.showToast(`Renamed to ${file.name}`);
+            });
+        }
+    },
+
+    async batchRename(files) {
+        const list = files.filter(Boolean)
+            .sort((a, b) => this.files.indexOf(a) - this.files.indexOf(b));
+        if (list.length === 0) return;
+        if (list.length === 1) { this.promptRename(list[0]); return; }
+
+        const pattern = prompt(
+            `Rename ${list.length} files.\n{n} = number, {name} = original name:`,
+            'photo_{n}'
+        );
+        if (!pattern) return;
+        if (!pattern.includes('{n}')) {
+            this.showToast('The pattern needs {n} to keep names unique');
+            return;
+        }
+        const pad = String(list.length).length;
+        const items = [];
+        let n = 1;
+        for (const f of list) {
+            const ext = (f.name.match(/\.\w+$/) || [''])[0];
+            const base = f.name.replace(/\.\w+$/, '');
+            const newName = pattern
+                .replaceAll('{n}', String(n).padStart(pad, '0'))
+                .replaceAll('{name}', base) + ext;
+            const oldName = f.name;
+            if (await this.renameFile(f, newName, { skipUndo: true })) {
+                items.push({ file: f, oldName });
+            }
+            n++;
+        }
+        if (items.length) {
+            this.pushUndo({ type: 'batch-rename', items });
+            this.showToast(`Renamed ${items.length} files — Ctrl+Z to undo`);
+            this.sortFiles();
+        }
+    },
+
+    // ---- Persistent thumbnail cache (IndexedDB) ----
+
+    idb() {
+        if (this._idbPromise !== undefined) return this._idbPromise;
+        this._idbPromise = new Promise((resolve) => {
+            try {
+                const req = indexedDB.open('jeditor', 1);
+                req.onupgradeneeded = () => req.result.createObjectStore('thumbs');
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => resolve(null);
+            } catch (e) {
+                resolve(null);
+            }
+        });
+        return this._idbPromise;
+    },
+
+    async idbGetThumb(key) {
+        const db = await this.idb();
+        if (!db) return null;
+        return new Promise((res) => {
+            try {
+                const req = db.transaction('thumbs', 'readonly').objectStore('thumbs').get(key);
+                req.onsuccess = () => res(req.result || null);
+                req.onerror = () => res(null);
+            } catch (e) {
+                res(null);
+            }
+        });
+    },
+
+    async idbPutThumb(key, blob) {
+        const db = await this.idb();
+        if (!db) return;
+        try {
+            db.transaction('thumbs', 'readwrite').objectStore('thumbs').put(blob, key);
+        } catch (e) { /* cache is best-effort */ }
+    },
+
+    // ---- Fullscreen & slideshow ----
+
+    toggleFullscreen() {
+        if (document.fullscreenElement) {
+            document.exitFullscreen();
+        } else {
+            document.documentElement.requestFullscreen().catch(() => this.showToast('Fullscreen was blocked'));
+        }
+    },
+
+    startSlideshow() {
+        this.stopSlideshow();
+        this.setView('single');
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(() => { });
+        }
+        this._slideshowTimer = setInterval(() => this.navigate(1), 3000);
+        this.showToast('Slideshow started — press any key to stop', 2500);
+    },
+
+    stopSlideshow() {
+        if (this._slideshowTimer) {
+            clearInterval(this._slideshowTimer);
+            this._slideshowTimer = null;
+        }
+    },
+
+    // ---- Rubber-band selection in the grid ----
+
+    initRubberBand() {
+        const grid = this.elements.gridView;
+        let band = null, startX = 0, startY = 0, active = false;
+
+        grid.addEventListener('mousedown', (e) => {
+            if (e.button !== 0 || e.target !== grid) return; // background only
+            active = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            this._bandBase = (e.ctrlKey || e.metaKey) ? new Set(this.selection) : new Set();
+            band = document.createElement('div');
+            band.className = 'rubber-band';
+            document.body.appendChild(band);
+            e.preventDefault();
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!active || !band) return;
+            const x1 = Math.min(startX, e.clientX), y1 = Math.min(startY, e.clientY);
+            const x2 = Math.max(startX, e.clientX), y2 = Math.max(startY, e.clientY);
+            band.style.left = x1 + 'px';
+            band.style.top = y1 + 'px';
+            band.style.width = (x2 - x1) + 'px';
+            band.style.height = (y2 - y1) + 'px';
+            if (this._bandRaf) return;
+            this._bandRaf = requestAnimationFrame(() => {
+                this._bandRaf = null;
+                const sel = new Set(this._bandBase);
+                for (const el of grid.children) {
+                    const r = el.getBoundingClientRect();
+                    if (r.right > x1 && r.left < x2 && r.bottom > y1 && r.top < y2) sel.add(el._file);
+                }
+                this.selection = sel;
+                this.updateSelectionUI();
+            });
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (!active) return;
+            active = false;
+            if (band) { band.remove(); band = null; }
+        });
+    },
+
+    // ---- Export copies ----
+
+    async exportCopies(files) {
+        const list = files.filter(Boolean);
+        if (!list.length) return;
+        if (!this.dirHandle) {
+            this.showToast('Export requires opening a folder');
+            return;
+        }
+        const input = prompt(
+            `Export ${list.length} cop${list.length > 1 ? 'ies' : 'y'} to "jEditor Export".\nMax edge in px (blank = original size):`, ''
+        );
+        if (input === null) return;
+        const maxEdge = parseInt(input, 10) || 0;
+
+        try {
+            const dir = await this.dirHandle.getDirectoryHandle('jEditor Export', { create: true });
+            let done = 0, failed = 0;
+            for (const f of list) {
+                try {
+                    const data = await f.handle.getFile();
+                    let out = data;
+                    if (maxEdge > 0) {
+                        const bmp = await createImageBitmap(data);
+                        const scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
+                        if (scale < 1) {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = Math.round(bmp.width * scale);
+                            canvas.height = Math.round(bmp.height * scale);
+                            canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+                            const { type, quality } = this.getSaveFormat(f.name);
+                            out = await new Promise(r => canvas.toBlob(r, type, quality));
+                        }
+                        bmp.close();
+                    }
+                    if (!out) throw new Error('encode failed');
+                    const h = await dir.getFileHandle(f.name, { create: true });
+                    const w = await h.createWritable();
+                    await w.write(out);
+                    await w.close();
+                    done++;
+                } catch (e) {
+                    failed++;
+                    console.error('Export failed:', f.name, e);
+                }
+                this.updateTask('export', `Exporting ${done + failed}/${list.length}`);
+            }
+            this.endTask('export');
+            this.showToast(
+                failed ? `Exported ${done}, ${failed} failed` : `Exported ${done} to "jEditor Export"`
+            );
+        } catch (e) {
+            this.endTask('export');
+            this.showToast('Export failed: ' + e.message);
+        }
+    },
+
+    // ---- Context menu ----
+
+    initContextMenu() {
+        document.addEventListener('contextmenu', (e) => {
+            if (this.cropState.active) return;
+            if (this.elements.mainInterface.classList.contains('hidden')) return;
+            const tile = e.target.closest && e.target.closest('.grid-item');
+            const inSingle = this.viewMode === 'single' && e.target.closest && e.target.closest('#image-container');
+            const inGridBg = this.viewMode === 'grid' && e.target === this.elements.gridView;
+            if (!tile && !inSingle && !inGridBg) return;
+            e.preventDefault();
+            this.openContextMenu(this.buildContextItems(tile, inSingle), e.clientX, e.clientY);
+        });
+        window.addEventListener('click', () => this.closeContextMenu());
+        window.addEventListener('scroll', () => this.closeContextMenu(), true);
+        window.addEventListener('resize', () => this.closeContextMenu());
+    },
+
+    buildContextItems(tile, inSingle) {
+        if (tile) {
+            const file = tile._file;
+            if (!this.selection.has(file)) {
+                this.currentFile = file;
+                this.selection = new Set([file]);
+                this.updateSelectionUI();
+                this.updateStatusBar();
+            }
+            const sel = [...this.selection];
+            if (sel.length > 1) {
+                return [
+                    [`Rotate ${sel.length} Left`, () => this.rotateBulk(-90)],
+                    [`Rotate ${sel.length} Right`, () => this.rotateBulk(90)],
+                    ['—'],
+                    ['Batch Rename…', () => this.batchRename(sel)],
+                    ['Export Copies…', () => this.exportCopies(sel)],
+                    ['—'],
+                    [`Move ${sel.length} to Trash`, () => this.moveToTrash(sel), true]
+                ];
+            }
+            return [
+                ['Open', () => { this.loadFile(file); this.setView('single'); }],
+                ['—'],
+                ['Rotate Left', () => this.rotateImage(file, -90)],
+                ['Rotate Right', () => this.rotateImage(file, 90)],
+                ['Crop', () => { this.loadFile(file); this.setView('single'); this.enterCrop(); }],
+                ['—'],
+                ['Rename…', () => this.promptRename(file)],
+                ['File Info', () => { this.toggleInfoPanel(true); }],
+                ['Export Copy…', () => this.exportCopies([file])],
+                ['—'],
+                ['Move to Trash', () => this.moveToTrash([file]), true]
+            ];
+        }
+        if (inSingle) {
+            const file = this.currentFile;
+            return [
+                ['Rotate Left', () => this.rotateImage(file, -90)],
+                ['Rotate Right', () => this.rotateImage(file, 90)],
+                ['Crop', () => this.enterCrop()],
+                ['—'],
+                ['Rename…', () => this.promptRename(file)],
+                ['File Info', () => this.toggleInfoPanel(true)],
+                ['Export Copy…', () => this.exportCopies([file])],
+                ['—'],
+                ['Fullscreen', () => this.toggleFullscreen()],
+                ['Start Slideshow', () => this.startSlideshow()],
+                ['—'],
+                ['Move to Trash', () => this.moveToTrash([file]), true]
+            ];
+        }
+        return [
+            ['Select All', () => { this.selection = new Set(this.files); this.updateSelectionUI(); }],
+            ['Clear Selection', () => this.clearSelection()],
+            ['—'],
+            ['Start Slideshow', () => this.startSlideshow()],
+            ['Fullscreen', () => this.toggleFullscreen()]
+        ];
+    },
+
+    openContextMenu(items, x, y) {
+        this.closeContextMenu();
+        const menu = document.createElement('div');
+        menu.id = 'context-menu';
+        items.forEach(([label, action, danger]) => {
+            if (label === '—') {
+                const hr = document.createElement('div');
+                hr.className = 'ctx-divider';
+                menu.appendChild(hr);
+                return;
+            }
+            const btn = document.createElement('button');
+            btn.textContent = label;
+            if (danger) btn.classList.add('danger');
+            btn.onclick = (ev) => {
+                ev.stopPropagation();
+                this.closeContextMenu();
+                action();
+            };
+            menu.appendChild(btn);
+        });
+        document.body.appendChild(menu);
+        const r = menu.getBoundingClientRect();
+        menu.style.left = Math.min(x, window.innerWidth - r.width - 8) + 'px';
+        menu.style.top = Math.min(y, window.innerHeight - r.height - 8) + 'px';
+    },
+
+    closeContextMenu() {
+        const menu = document.getElementById('context-menu');
+        if (menu) menu.remove();
+    },
+
     // Crop Logic
     enterCrop() {
         if (typeof Cropper === 'undefined') {
@@ -3329,6 +4589,7 @@ const app = {
         // 1. Hide Controls & Strip
         document.querySelector('.controls').classList.add('hidden');
         document.getElementById('thumbnail-strip').classList.add('hidden');
+        if (this.elements.stripResize) this.elements.stripResize.classList.add('hidden');
 
         // 2. Initialize Cropper
         const image = this.elements.currentImage;
@@ -3374,6 +4635,7 @@ const app = {
         // Restore main UI visibility
         document.querySelector('.controls')?.classList.remove('hidden');
         document.getElementById('thumbnail-strip')?.classList.remove('hidden');
+        if (this.elements.stripResize) this.elements.stripResize.classList.remove('hidden');
     },
 
     showCropperToolbar() {
@@ -3421,8 +4683,7 @@ const app = {
     async saveCrop() {
         if (!this.cropper) return;
 
-        this.elements.loading.classList.remove('hidden');
-        if (this.elements.loadingText) this.elements.loadingText.textContent = 'Saving...';
+        this.beginTask('crop-save', 'Saving crop…');
 
         try {
             const canvas = this.cropper.getCroppedCanvas();
@@ -3432,6 +4693,15 @@ const app = {
             const { type, quality } = this.getSaveFormat(fileEntry.name);
             const blob = await new Promise(r => canvas.toBlob(r, type, quality));
             if (!blob) throw new Error('Encoding failed');
+
+            // Capture pre-crop bytes for undo
+            const before = await fileEntry.handle.getFile();
+            this.pushUndo({
+                type: 'bytes',
+                file: fileEntry,
+                blob: new Blob([await before.arrayBuffer()], { type: before.type }),
+                label: 'crop'
+            });
 
             // Re-verify permission
             if (this.dirHandle) {
@@ -3470,7 +4740,7 @@ const app = {
             console.error(err);
             this.showToast("Failed to save image");
         } finally {
-            this.elements.loading.classList.add('hidden');
+            this.endTask('crop-save');
         }
     },
 

@@ -1,6 +1,6 @@
 {
   "name": "jeditor",
-  "version": "1.5.0",
+  "version": "1.7.0",
   "private": true,
   "description": "Minimalist local photo viewer with instant lossless rotation and cropping",
   "scripts": {
