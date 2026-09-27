@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Bumps the app version everywhere it lives:
 //   npm run bump 1.3.1
-// Updates app/version.js (UI + service worker cache) and package.json.
+// Updates app/version.js (UI + service worker cache), package.json and
+// package-lock.json.
 
 const fs = require('fs');
 const path = require('path');
@@ -23,5 +24,14 @@ const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8'));
 pkg.version = version;
 fs.writeFileSync(pkgFile, JSON.stringify(pkg, null, 2) + '\n');
 
-console.log(`Version bumped to ${version} (app/version.js + package.json).`);
+// Keep the lockfile's copy in step so `npm install` doesn't dirty the tree
+const lockFile = path.join(ROOT, 'package-lock.json');
+if (fs.existsSync(lockFile)) {
+    const lock = JSON.parse(fs.readFileSync(lockFile, 'utf8'));
+    lock.version = version;
+    if (lock.packages && lock.packages['']) lock.packages[''].version = version;
+    fs.writeFileSync(lockFile, JSON.stringify(lock, null, 2) + '\n');
+}
+
+console.log(`Version bumped to ${version} (app/version.js, package.json, package-lock.json).`);
 console.log('Commit and merge to main — the Release workflow tags and publishes automatically.');

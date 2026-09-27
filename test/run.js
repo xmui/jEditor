@@ -69,6 +69,85 @@ const PAGE_HELPERS = `
         if (!loc || loc.insert) return null;
         return view.getUint16(loc.valueOffset, loc.littleEndian);
     };
+    // Real, decodable JPEG with optional metadata: EXIF (Make "TestCam" +
+    // DateTimeOriginal, no Orientation — like a scanner), JFIF DPI, an
+    // ICC_PROFILE segment, and XMP carrying tiff:Orientation.
+    window.makeRealJpeg = async (w, h, { exif = false, dpi = 0, icc = false, color = '#3a7', xmpOrientation = 0 } = {}) => {
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const g = c.getContext('2d');
+        g.fillStyle = color; g.fillRect(0, 0, w, h);
+        const bytes = new Uint8Array(await (await new Promise(r => c.toBlob(r, 'image/jpeg', 0.95))).arrayBuffer());
+        const segs = ImageMeta.jpegSegments(bytes);
+        const body = bytes.subarray(segs.find(s => s.marker !== 0xE0).start);
+        const seg = (marker, payload) => {
+            const len = payload.length + 2;
+            return [0xFF, marker, len >> 8, len & 0xFF, ...payload];
+        };
+        const ascii = (t) => [...t].map(ch => ch.charCodeAt(0));
+        const parts = [[0xFF, 0xD8]];
+        if (dpi) parts.push(seg(0xE0, [...ascii('JFIF'), 0, 1, 2, 1, dpi >> 8, dpi & 0xFF, dpi >> 8, dpi & 0xFF, 0, 0]));
+        if (exif) {
+            const make = [...ascii('TestCam'), 0];
+            const date = [...ascii('2024:06:15 13:45:00'), 0];
+            const makeOff = 38, exifOff = makeOff + make.length, dateOff = exifOff + 18;
+            const t = new DataView(new ArrayBuffer(dateOff + date.length));
+            t.setUint16(0, 0x4D4D); t.setUint16(2, 42); t.setUint32(4, 8); t.setUint16(8, 2);
+            t.setUint16(10, 0x010F); t.setUint16(12, 2); t.setUint32(14, make.length); t.setUint32(18, makeOff);
+            t.setUint16(22, 0x8769); t.setUint16(24, 4); t.setUint32(26, 1); t.setUint32(30, exifOff);
+            t.setUint32(34, 0);
+            make.forEach((b, i) => t.setUint8(makeOff + i, b));
+            t.setUint16(exifOff, 1);
+            t.setUint16(exifOff + 2, 0x9003); t.setUint16(exifOff + 4, 2);
+            t.setUint32(exifOff + 6, date.length); t.setUint32(exifOff + 10, dateOff);
+            t.setUint32(exifOff + 14, 0);
+            date.forEach((b, i) => t.setUint8(dateOff + i, b));
+            parts.push(seg(0xE1, [...ascii('Exif'), 0, 0, ...new Uint8Array(t.buffer)]));
+        }
+        if (xmpOrientation) {
+            parts.push(seg(0xE1, [...ascii('http://ns.adobe.com/xap/1.0/'), 0,
+                ...ascii('<x:xmpmeta><rdf:Description tiff:Orientation="' + xmpOrientation + '"/></x:xmpmeta>')]));
+        }
+        if (icc) parts.push(seg(0xE2, [...ascii('ICC_PROFILE'), 0, 1, 1, ...new Array(128).fill(0)]));
+        const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0) + body.length);
+        let o = 0;
+        for (const p of parts) { out.set(p, o); o += p.length; }
+        out.set(body, o);
+        return out;
+    };
+    // Real PNG with a pHYs chunk (DPI) right after IHDR
+    window.makeRealPng = async (w, h, dpi) => {
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').fillRect(0, 0, w, h);
+        const png = new Uint8Array(await (await new Promise(r => c.toBlob(r, 'image/png'))).arrayBuffer());
+        const table = Array.from({ length: 256 }, (_, n) => {
+            let x = n;
+            for (let k = 0; k < 8; k++) x = x & 1 ? 0xEDB88320 ^ (x >>> 1) : x >>> 1;
+            return x >>> 0;
+        });
+        const crc = (bytes) => {
+            let x = 0xFFFFFFFF;
+            for (const b of bytes) x = table[(x ^ b) & 0xFF] ^ (x >>> 8);
+            return (x ^ 0xFFFFFFFF) >>> 0;
+        };
+        const ppm = Math.round(dpi / 0.0254);
+        const typeAndData = new Uint8Array(13);
+        typeAndData.set([0x70, 0x48, 0x59, 0x73]); // 'pHYs'
+        const tv = new DataView(typeAndData.buffer);
+        tv.setUint32(4, ppm); tv.setUint32(8, ppm); typeAndData[12] = 1;
+        const chunk = new Uint8Array(21);
+        const cv = new DataView(chunk.buffer);
+        cv.setUint32(0, 9);
+        chunk.set(typeAndData, 4);
+        cv.setUint32(17, crc(typeAndData));
+        const ihdrEnd = 8 + 25;
+        const out = new Uint8Array(png.length + chunk.length);
+        out.set(png.subarray(0, ihdrEnd));
+        out.set(chunk, ihdrEnd);
+        out.set(png.subarray(ihdrEnd), ihdrEnd + chunk.length);
+        return out;
+    };
     // Fake FileSystemDirectoryHandle backed by Maps
     window.makeDir = (name) => {
         const dirs = new Map(), files = new Map();
@@ -156,7 +235,8 @@ async function newPage(browser, url) {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
         check('no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         check('no failed requests', issues.failedRequests.length === 0, issues.failedRequests.join('; '));
-        check('Cropper library loaded', await page.evaluate(() => typeof Cropper !== 'undefined'));
+        check('crop editor + metadata modules loaded', await page.evaluate(() =>
+            typeof CropEditor !== 'undefined' && typeof CropGeom !== 'undefined' && typeof ImageMeta !== 'undefined'));
         check('app initialized', await page.evaluate(() => typeof app !== 'undefined'));
 
         const pkgVersion = require(path.join(ROOT, 'package.json')).version;
@@ -690,7 +770,7 @@ async function newPage(browser, url) {
             return out;
         });
         check('default main controls: info, view, refresh, crop', r.defaultMain === 'info,view,refresh,crop', r.defaultMain);
-        check('extras live in More (fit, strip, fullscreen, customize)', r.defaultExtras === 'fit,strip,fullscreen,customize', r.defaultExtras);
+        check('extras live in More (fit, strip, fullscreen, dupes, keys, customize)', r.defaultExtras === 'fit,strip,fullscreen,dupes,keys,customize', r.defaultExtras);
         check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
         check('reorder + hide + promote via prefs', r.reordered === 'crop,info' && r.refreshHidden && r.fullscreenMain,
             JSON.stringify({ o: r.reordered, h: r.refreshHidden, f: r.fullscreenMain }));
@@ -740,6 +820,442 @@ async function newPage(browser, url) {
         await page.close();
     }
 
+    // ---- 7a. Lossless rotation for scanner JPEGs (EXIF without Orientation) ----
+    console.log('lossless rotation: EXIF without orientation');
+    {
+        const { page } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const jpeg = await makeRealJpeg(40, 20, { exif: true });
+            const blob = app.rotateJpegLossless(jpeg.buffer.slice(0), 90);
+            const bytes = new Uint8Array(await blob.arrayBuffer());
+            out.orientation = readOrientation(bytes);
+            const info = app.readJpegExifInfo(bytes.buffer);
+            out.make = info && info.make;
+            out.taken = !!(info && info.dateTaken);
+            // Compressed image data is untouched (lossless)
+            const tail = (b) => { const s = ImageMeta.jpegSegments(b); return b.subarray(s[s.length - 1].start); };
+            const a = tail(jpeg), b = tail(bytes);
+            out.sameData = a.length === b.length && a.every((v, i) => v === b[i]);
+            const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/jpeg' }));
+            out.dims = `${bmp.width}x${bmp.height}`;
+            // XMP tiff:Orientation follows the EXIF value
+            const xmp = await makeRealJpeg(40, 20, { xmpOrientation: 1 });
+            const xb = new Uint8Array(await app.rotateJpegLossless(xmp.buffer.slice(0), 90).arrayBuffer());
+            out.xmp = /tiff:Orientation="6"/.test(new TextDecoder('latin1').decode(xb));
+
+            // A CMYK original's ICC profile must not be carried onto RGB output
+            const cmyk = await makeRealJpeg(40, 20, { icc: true });
+            const sof = ImageMeta.jpegSegments(cmyk).find(sg => sg.marker === 0xC0);
+            cmyk[sof.start + 9] = 4; // header now says 4 components (parse-level test)
+            const fresh = new Blob([await makeRealJpeg(40, 20, {})], { type: 'image/jpeg' });
+            const moved = new Uint8Array(await (await ImageMeta.transplant(cmyk, fresh, 'image/jpeg', 40, 20)).arrayBuffer());
+            out.cmykSafe = !ImageMeta.canCarryProfile('image/jpeg', cmyk) && !ImageMeta.hasJpegIcc(moved) &&
+                ImageMeta.canCarryProfile('image/jpeg', await makeRealJpeg(40, 20, { icc: true }));
+            return out;
+        });
+        check('orientation tag added to existing EXIF (6)', r.orientation === 6, String(r.orientation));
+        check('other EXIF survives (Make, DateTimeOriginal)', r.make === 'TestCam' && r.taken, String(r.make));
+        check('compressed image data byte-identical', r.sameData);
+        check('browser shows it rotated (40x20 → 20x40)', r.dims === '20x40', r.dims);
+        check('XMP orientation kept in agreement', r.xmp);
+        check('CMYK colour profile not copied onto RGB output', r.cmykSafe);
+        await page.close();
+    }
+
+    // ---- 7b. Crop & Straighten editor ----
+    console.log('crop & straighten');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const ed = CropEditor;
+            const open = async (file) => {
+                app.files = [file];
+                app.currentFile = file;
+                app.viewMode = 'single';
+                document.getElementById('main-interface').classList.remove('hidden');
+                await app.enterCrop();
+            };
+
+            // Regression: rotate, then crop — the crop must keep the rotation
+            const src = await makeRealJpeg(400, 200, { exif: true, dpi: 300, icc: true });
+            const f = makeFakeFile('scan.jpg', src, 'image/jpeg');
+            app.dirHandle = null;
+            await app.rotateImage(f, 90);
+            await open(f);
+            out.editorDims = `${ed.W}x${ed.H}`;
+            ed.setRect({ x0: -100, y0: -200, x1: 50, y1: 200 });
+            await app.saveCrop();
+            const saved = new Uint8Array(f.handle.bytes);
+            const bmp = await createImageBitmap(new Blob([saved], { type: 'image/jpeg' }));
+            out.savedDims = `${bmp.width}x${bmp.height}`;
+            out.closed = !ed.isOpen && !app.cropState.active;
+
+            // Metadata survives the re-encode
+            const info = app.readJpegExifInfo(saved.buffer);
+            out.make = info && info.make;
+            out.taken = !!(info && info.dateTaken);
+            const dpi = ImageMeta.readDpi(saved);
+            out.dpi = dpi && Math.round(dpi.x);
+            out.icc = ImageMeta.hasJpegIcc(saved);
+            out.orientationReset = readOrientation(saved);
+
+            // Undo brings the original (rotated) bytes back
+            await app.undo();
+            out.undone = readOrientation(f.handle.bytes) === 6;
+
+            // Straighten: corners of the result are image, never empty
+            const g = makeFakeFile('red.jpg', await makeRealJpeg(400, 300, { color: '#ff0000' }), 'image/jpeg');
+            await open(g);
+            ed.setAngle(7);
+            out.fitsAt7 = CropGeom.fits(ed.rect, ed.W, ed.H, ed.cs(), 0);
+            await app.saveCrop();
+            const rb = await createImageBitmap(new Blob([g.handle.bytes], { type: 'image/jpeg' }));
+            const c = document.createElement('canvas');
+            c.width = rb.width; c.height = rb.height;
+            const ctx = c.getContext('2d');
+            ctx.drawImage(rb, 0, 0);
+            const px = (x, y) => ctx.getImageData(x, y, 1, 1).data;
+            out.cornersRed = [[0, 0], [rb.width - 1, 0], [0, rb.height - 1], [rb.width - 1, rb.height - 1]]
+                .every(([x, y]) => { const d = px(x, y); return d[0] > 200 && d[1] < 70 && d[2] < 70; });
+            out.straightenedSmaller = rb.width < 400 && rb.height < 300;
+
+            // Rotating the angle back restores what was drawn
+            const h = makeFakeFile('back.jpg', await makeRealJpeg(400, 300, {}), 'image/jpeg');
+            await open(h);
+            const full = { ...ed.rect };
+            ed.setAngle(12);
+            const shrunk = ed.rect.x1 - ed.rect.x0 < full.x1 - full.x0;
+            ed.setAngle(0);
+            out.angleRoundTrip = shrunk && Math.abs(ed.rect.x0 - full.x0) < 1e-6 && Math.abs(ed.rect.y1 - full.y1) < 1e-6;
+
+            // Aspect preset: 8×10 on a landscape photo → 5:4
+            ed.setAspect('4:5');
+            const o = ed.outputRect();
+            out.aspect = o.w / o.h;
+            ed.swapOrientation();
+            const o2 = ed.outputRect();
+            out.swapped = o2.w / o2.h;
+            ed.setAspect('free');
+            ed.selectAll();
+
+            // Level tool: a line 10% off horizontal levels to −5.71°
+            out.level = ed.levelAngle({ x: 0, y: 0 }, { x: 100, y: 10 });
+            out.plumb = ed.levelAngle({ x: 0, y: 0 }, { x: 5, y: 100 });
+
+            // Quarter turn only → lossless EXIF rotation, not a re-encode
+            ed.rotateQuarter(1);
+            await app.saveCrop();
+            await new Promise(res => setTimeout(res, 100));
+            out.quarterLossless = readOrientation(h.handle.bytes) === 6;
+
+            // "Previous" reapplies the last crop
+            const k = makeFakeFile('k.jpg', await makeRealJpeg(400, 300, {}), 'image/jpeg');
+            await open(k);
+            ed.setRect({ x0: -150, y0: -100, x1: 50, y1: 100 });
+            app.rememberCrop(ed.snapshot());
+            ed.reset();
+            ed.usePrevious();
+            out.previous = Math.abs(ed.rect.x0 + 150) < 1e-6 && Math.abs(ed.rect.x1 - 50) < 1e-6;
+            app.cancelCrop();
+
+            // Save & Next opens the editor on the following photo
+            const n1 = makeFakeFile('n1.jpg', await makeRealJpeg(300, 200, {}), 'image/jpeg');
+            const n2 = makeFakeFile('n2.jpg', await makeRealJpeg(300, 200, {}), 'image/jpeg');
+            app.files = [n1, n2];
+            app.currentFile = n1;
+            await app.enterCrop();
+            ed.setRect({ x0: -100, y0: -50, x1: 100, y1: 50 });
+            await app.saveCrop({ next: true });
+            for (let i = 0; i < 100 && !(ed.ready && ed.file === n2); i++) await new Promise(res => setTimeout(res, 20));
+            out.next = app.currentFile === n2 && ed.isOpen && ed.file === n2 && n1.handle.writes === 1;
+            app.cancelCrop();
+
+            // PNG keeps pHYs (DPI) through a crop
+            const p = makeFakeFile('p.png', await makeRealPng(60, 40, 300), 'image/png');
+            await open(p);
+            ed.setRect({ x0: -20, y0: -10, x1: 20, y1: 10 });
+            await app.saveCrop();
+            const pd = ImageMeta.readDpi(p.handle.bytes);
+            out.pngDpi = pd && Math.round(pd.x);
+            out.pngType = p.handle.writtenType;
+            return out;
+        });
+        check('rotate-then-crop: editor sees the rotated photo (200x400)', r.editorDims === '200x400', r.editorDims);
+        check('rotate-then-crop: saved crop keeps the rotation (150x400)', r.savedDims === '150x400', r.savedDims);
+        check('editor closes after save', r.closed);
+        check('crop keeps EXIF (Make, DateTimeOriginal)', r.make === 'TestCam' && r.taken, String(r.make));
+        check('crop keeps DPI (300)', r.dpi === 300, String(r.dpi));
+        check('crop keeps the ICC colour profile', r.icc);
+        check('crop resets EXIF orientation to 1 (pixels baked upright)', r.orientationReset === 1, String(r.orientationReset));
+        check('undo restores the pre-crop file', r.undone);
+        check('straightened crop fits inside the rotated image', r.fitsAt7);
+        check('straightened output has no empty corners', r.cornersRed && r.straightenedSmaller);
+        check('straighten then back to 0° restores the crop', r.angleRoundTrip);
+        check('8×10 preset gives 5:4 on landscape', Math.abs(r.aspect - 1.25) < 0.01, String(r.aspect));
+        check('swap orientation gives 4:5', Math.abs(r.swapped - 0.8) < 0.01, String(r.swapped));
+        check('level tool: near-horizontal line → −5.71°', Math.abs(r.level + 5.71) < 0.01, String(r.level));
+        check('level tool: near-vertical line → plumb (+2.86°)', Math.abs(r.plumb - 2.86) < 0.01, String(r.plumb));
+        check('quarter turn without crop saves losslessly', r.quarterLossless);
+        check('"Previous" reapplies the last crop', r.previous);
+        check('Save & Next moves on and reopens the editor', r.next);
+        check('PNG crop stays PNG and keeps DPI', r.pngType === 'image/png' && r.pngDpi === 300, `${r.pngType} ${r.pngDpi}`);
+        check('crop suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7c. Keyboard shortcuts: exact matching, rebinding, panel ----
+    console.log('keyboard shortcuts');
+    {
+        const { page } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            localStorage.removeItem('jeditor.keys');
+            app.loadKeyBindings();
+            const f = makeFakeFile('a.jpg', await makeRealJpeg(40, 30, {}), 'image/jpeg');
+            app.files = [f];
+            app.currentFile = f;
+            app.dirHandle = null;
+            document.getElementById('main-interface').classList.remove('hidden');
+            app.setView('single');
+            const press = (key, mods = {}, target = window) =>
+                target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...mods }));
+
+            // Ctrl+C is not C
+            press('c', { ctrlKey: true });
+            out.ctrlCIgnored = !app.cropState.active;
+
+            // Rebind: Shift+G → grid view, and it persists
+            app.assignKey('view.grid', 'Shift+G');
+            press('G', { shiftKey: true });
+            out.rebound = app.viewMode === 'grid';
+            out.persisted = JSON.parse(localStorage.getItem('jeditor.keys'))['view.grid'].includes('Shift+G');
+
+            // Conflict: giving I to "Single view" takes it from File Info
+            app.assignKey('view.single', 'I');
+            out.conflictMoved = !app.keyBindings['view.info'].includes('I');
+            press('i');
+            out.newBindingWorks = app.viewMode === 'single';
+
+            // Panel: record a new key with the + button
+            press('?');
+            out.panelOpen = app.isShortcutsOpen();
+            const row = [...document.querySelectorAll('.sc-row')].find(x => x.textContent.startsWith('Fullscreen'));
+            row.querySelector('.sc-add').click();
+            press('k');
+            out.recorded = app.keyBindings['view.fullscreen'].includes('K');
+            // Typing in the filter never triggers shortcuts
+            const filter = document.getElementById('shortcuts-filter');
+            filter.focus();
+            press('g', {}, filter);
+            out.typingSafe = app.viewMode === 'single';
+            press('Escape');
+            out.panelClosed = !app.isShortcutsOpen();
+
+            app.resetKeys();
+            out.reset = app.keyBindings['view.info'].join() === 'I' && app.keyBindings['view.grid'].join() === 'G';
+            out.format = app.formatCombo('Ctrl+Shift+ArrowLeft').replace('⌘', 'Ctrl') + '|' + app.formatCombo('+');
+            return out;
+        });
+        check('Ctrl+C does not start crop', r.ctrlCIgnored);
+        check('rebound key works and persists', r.rebound && r.persisted);
+        check('assigning a used key moves it', r.conflictMoved && r.newBindingWorks);
+        check('? opens the shortcuts panel', r.panelOpen);
+        check('+ records a new key', r.recorded);
+        check('typing in the filter is not a shortcut', r.typingSafe);
+        check('Esc closes the panel', r.panelClosed);
+        check('reset all restores defaults', r.reset);
+        check('key combos format for display', r.format === 'Ctrl + Shift + ←|+', r.format);
+        await page.close();
+    }
+
+    // ---- 7d. Opening a folder, instant navigation, grid & read-only fixes ----
+    console.log('viewer: open, instant navigation, grid, read-only');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const dir = makeDir('Order');
+            for (let i = 1; i <= 4; i++) {
+                const h = makeHandle(`s${i}.jpg`, await makeRealJpeg(300, 200, { color: `hsl(${i * 80},60%,50%)` }), 'image/jpeg');
+                dir._files.set(h.name, h);
+            }
+            dir.values = async function* () { yield* dir._files.values(); };
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            for (let i = 0; i < 50 && app._displayKind !== 'full'; i++) await new Promise(res => setTimeout(res, 20));
+            const img = document.getElementById('current-image');
+            out.visible = !document.getElementById('image-container').classList.contains('hidden') &&
+                img.naturalWidth === 300 && app.viewMode === 'single';
+
+            // Neighbour is pre-decoded: next photo is on screen synchronously
+            const next = app.files[1];
+            for (let i = 0; i < 50 && !(next._decodedEl && next._decodedEl._decoded); i++) await new Promise(res => setTimeout(res, 20));
+            app.navigate(1);
+            out.instant = document.getElementById('current-image') === next._decodedEl && app._displayKind === 'full';
+
+            // Refresh doesn't duplicate
+            await app.refreshFolder();
+            out.noDupes = app.files.length === 4;
+
+            // Grid Up/Down follows the real column count
+            app.setView('grid');
+            document.documentElement.style.setProperty('--grid-item-size', '300px');
+            const cols = getComputedStyle(document.getElementById('grid-view')).gridTemplateColumns.split(' ').length;
+            out.cols = app.getGridColumnCount() === cols;
+
+            // Read-only: edits refused up front
+            app.readOnlyMode = true;
+            const before = app.files[0].handle.writes;
+            const res = await app.rotateImage(app.files[0], 90);
+            out.readOnly = res === false && app.files[0].handle.writes === before &&
+                [...document.querySelectorAll('.toast')].some(t => /read-only/.test(t.textContent));
+            app.readOnlyMode = false;
+            app.selection = new Set([app.files[0]]);
+            app.updateSelectionUI();
+            out.selectionText = document.getElementById('selection-count').textContent;
+            return out;
+        });
+        check('opening a folder shows the photo (no blank screen)', r.visible);
+        check('next photo swaps in instantly (pre-decoded)', r.instant);
+        check('refresh adds no duplicates', r.noDupes);
+        check('grid Up/Down uses the real column count', r.cols);
+        check('read-only photos refuse edits with a message', r.readOnly);
+        check('selection count reads "1 selected"', r.selectionText === '1 selected', r.selectionText);
+        check('viewer suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7e. Screen-sized previews for big scans ----
+    console.log('screen-sized previews');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const edge = app.previewEdge();
+            const big = makeFakeFile('big.jpg', await makeRealJpeg(edge * 2, Math.round(edge * 1.5), { exif: true }), 'image/jpeg');
+            app.files = [big];
+            app.currentFile = big;
+            app.dirHandle = null;
+            document.getElementById('main-interface').classList.remove('hidden');
+            app.setView('single');
+            for (let i = 0; i < 200 && app._displayKind !== 'full'; i++) await new Promise(res => setTimeout(res, 25));
+            const img = document.getElementById('current-image');
+            out.isPreview = img._isPreview === true && Math.max(img.naturalWidth, img.naturalHeight) <= edge;
+            out.origDims = big._dims && big._dims.w === edge * 2;
+            out.cached = !!(await app.idbGet('previews', big._preview.key));
+
+            // Rotation on a preview still shows instantly
+            await app.rotateImage(big, 90);
+            out.rotatedShown = /rotate\(90deg\)/.test(document.getElementById('current-image').style.transform);
+
+            // Zooming past fit swaps in the original
+            app.zoomBy(2);
+            for (let i = 0; i < 200 && document.getElementById('current-image')._isPreview; i++) await new Promise(res => setTimeout(res, 25));
+            const full = document.getElementById('current-image');
+            out.upgraded = !full._isPreview && Math.max(full.naturalWidth, full.naturalHeight) === edge * 2;
+            out.zoomKept = app.zoom === 2 && /scale\(/.test(full.style.transform);
+
+            // Crop still renders at full resolution from the original
+            app.zoomBy(0);
+            await app.enterCrop();
+            out.cropDims = `${CropEditor.W}x${CropEditor.H}`;
+            app.cancelCrop();
+            return { ...out, expectCrop: `${Math.round(edge * 1.5)}x${edge * 2}` };
+        });
+        check('big scan shows a screen-sized preview', r.isPreview);
+        check('original dimensions reported for the preview', r.origDims);
+        check('preview cached in IndexedDB', r.cached);
+        check('rotating a previewed photo shows instantly', r.rotatedShown);
+        check('zooming in swaps to the full-resolution original', r.upgraded && r.zoomKept);
+        check('crop works at original resolution after rotation', r.cropDims === r.expectCrop, `${r.cropDims} vs ${r.expectCrop}`);
+        check('preview suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7f. Duplicate finder & culling ----
+    console.log('duplicates');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            // Deterministic "photo": random blocks from a seed
+            const scene = async (seed, w, h, { brighten = 0, rotate = false } = {}) => {
+                const c = document.createElement('canvas');
+                c.width = rotate ? h : w; c.height = rotate ? w : h;
+                const g = c.getContext('2d');
+                if (rotate) { g.translate(h, 0); g.rotate(Math.PI / 2); }
+                let x = seed;
+                const rnd = () => (x = (x * 1103515245 + 12345) % 2147483648) / 2147483648;
+                g.fillStyle = `hsl(${seed * 50 % 360},40%,${30 + brighten}%)`;
+                g.fillRect(0, 0, w, h);
+                for (let i = 0; i < 14; i++) {
+                    g.fillStyle = `hsl(${rnd() * 360},60%,${20 + rnd() * 50 + brighten}%)`;
+                    g.fillRect(rnd() * w, rnd() * h, w * (0.1 + rnd() * 0.4), h * (0.1 + rnd() * 0.4));
+                }
+                return new Uint8Array(await (await new Promise(res => c.toBlob(res, 'image/jpeg', 0.9))).arrayBuffer());
+            };
+            const dir = makeDir('Order 88');
+            const add = (name, bytes) => { const h = makeHandle(name, bytes, 'image/jpeg'); dir._files.set(name, h); };
+            const a = await scene(7, 600, 400);
+            add('a.jpg', a);
+            add('a_copy.jpg', a.slice());
+            add('a_rescan.jpg', await scene(7, 900, 600, { brighten: 6, rotate: true }));
+            add('b.jpg', await scene(21, 600, 400));
+            add('c.jpg', await scene(42, 600, 400));
+            dir.values = async function* () { yield* dir._files.values(); };
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+
+            const press = (key, mods = {}) =>
+                window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...mods }));
+            press('d');
+            for (let i = 0; i < 200 && !(Dupes.groups && Dupes.groups.length && document.querySelector('.dupe-card')); i++) {
+                await new Promise(res => setTimeout(res, 25));
+            }
+            out.open = Dupes.isOpen;
+            out.groups = Dupes.groups.map(g => g.files.map(f => f.name).sort().join('+'));
+            const g = Dupes.groups[0];
+            out.best = g && g.best.name;
+            out.exact = g && [...g.exact].map(f => f.name).sort().join('+');
+            out.cards = document.querySelectorAll('.dupe-card').length;
+
+            // Distance math: identical → 0, and rotation-invariant
+            const fa = app.files.find(f => f.name === 'a.jpg')._fp;
+            const fr = app.files.find(f => f.name === 'a_rescan.jpg')._fp;
+            const fb = app.files.find(f => f.name === 'b.jpg')._fp;
+            out.dRescan = Dupes.distance(fa, fr);
+            out.dOther = Dupes.distance(fa, fb);
+
+            // Cull: keep suggested (K), trash the rest (Enter)
+            press('k');
+            out.marked = g.marked.size;
+            press('Enter');
+            for (let i = 0; i < 100 && app.files.length !== 3; i++) await new Promise(res => setTimeout(res, 20));
+            out.left = app.files.map(f => f.name).sort().join(',');
+            out.doneMessage = document.getElementById('dupes-stage').textContent;
+            press('Escape');
+            out.closed = !Dupes.isOpen;
+            await app.undo();
+            out.restored = app.files.length === 5;
+            return out;
+        });
+        check('D opens the duplicate finder', r.open);
+        check('finds one group: copy + rotated re-scan', JSON.stringify(r.groups) === '["a.jpg+a_copy.jpg+a_rescan.jpg"]', JSON.stringify(r.groups));
+        console.log(`  info  fingerprint distance: re-scan ${r.dRescan}, unrelated ${r.dOther}`);
+        check('rotation-invariant fingerprint (re-scan close, other far)', r.dRescan <= 9 && r.dOther > 13, `${r.dRescan} / ${r.dOther}`);
+        check('suggests the highest-resolution copy', r.best === 'a_rescan.jpg', String(r.best));
+        check('exact copies flagged', r.exact === 'a.jpg+a_copy.jpg', String(r.exact));
+        check('side-by-side cards rendered', r.cards === 3, String(r.cards));
+        check('K marks all but the suggested keeper', r.marked === 2, String(r.marked));
+        check('Enter trashes marked photos', r.left === 'a_rescan.jpg,b.jpg,c.jpg', r.left);
+        check('finished state reported', /All done/.test(r.doneMessage), r.doneMessage);
+        check('Esc closes; Ctrl+Z restores the trashed duplicates', r.closed && r.restored);
+        check('duplicates suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7. file:// — direct open and standalone build ----
     console.log('file:// support');
     for (const [label, target] of [
@@ -748,13 +1264,13 @@ async function newPage(browser, url) {
     ]) {
         const { page, issues } = await newPage(browser, 'file://' + target);
         const r = await page.evaluate(() => ({
-            cropper: typeof Cropper !== 'undefined',
+            cropper: typeof CropEditor !== 'undefined' && typeof ImageMeta !== 'undefined',
             app: typeof app !== 'undefined',
             dropZoneVisible: !document.getElementById('drop-zone').classList.contains('hidden'),
             fsApi: typeof window.showDirectoryPicker
         }));
         check(`${label}: no JS errors`, issues.errors.length === 0, issues.errors.join('; '));
-        check(`${label}: Cropper + app loaded`, r.cropper && r.app);
+        check(`${label}: crop editor + app loaded`, r.cropper && r.app);
         check(`${label}: drop zone shown`, r.dropZoneVisible);
 
         // Thumbnail generation must also work from file:// (blob worker or fallback)
