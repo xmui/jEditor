@@ -21,10 +21,10 @@ const iconDataUri = 'data:image/png;base64,' +
 // source files aren't interpreted as regex replacement patterns.
 const replacements = [
     // Inline styles and scripts
-    ['<link rel="stylesheet" href="cropper.min.css">', () => `<style>\n${read('cropper.min.css')}\n</style>`],
     ['<link rel="stylesheet" href="style.css">', () => `<style>\n${read('style.css')}\n</style>`],
     ['<script src="version.js"></script>', () => `<script>\n${read('version.js')}\n</script>`],
-    ['<script src="cropper.min.js"></script>', () => `<script>\n${read('cropper.min.js')}\n</script>`],
+    ['<script src="meta.js"></script>', () => `<script>\n${read('meta.js')}\n</script>`],
+    ['<script src="crop.js"></script>', () => `<script>\n${read('crop.js')}\n</script>`],
     ['<script src="script.js"></script>', () => `<script>\n${read('script.js')}\n</script>`],
     // PWA bits don't apply to a local file
     ['<link rel="manifest" href="manifest.json">', () => ''],

@@ -12,8 +12,8 @@
     <link rel="icon" type="image/png" href="icon.png">
     <link rel="apple-touch-icon" href="icon.png">
     <script src="version.js"></script>
-    <script src="cropper.min.js"></script>
-    <link rel="stylesheet" href="cropper.min.css">
+    <script src="meta.js"></script>
+    <script src="crop.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -27,6 +27,7 @@
                 <h1 id="app-title">jEditor</h1>
                 <button id="btn-browse-folder" class="browse-btn">Open Folder</button>
                 <p class="drop-hint">or drag and drop images here</p>
+                <p class="drop-hint">Press <kbd>?</kbd> for keyboard shortcuts</p>
             </div>
         </div>
 
@@ -121,6 +122,13 @@
                             <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"></path>
                         </svg>
                     </button>
+                    <button id="btn-shortcuts" data-hc="keys" title="Keyboard Shortcuts (?)">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="6" width="20" height="12" rx="2" />
+                            <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" />
+                        </svg>
+                    </button>
                     <button id="btn-customize" data-hc="customize" title="Customize Controls">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
@@ -156,6 +164,7 @@
                         <label for="cust-scale">UI size</label>
                         <input type="range" id="cust-scale" min="0.8" max="1.6" step="0.1" value="1">
                     </div>
+                    <button id="cust-shortcuts">Keyboard shortcuts…</button>
                     <button id="cust-reset">Reset layout</button>
                 </div>
             </header>
@@ -252,6 +261,83 @@
         </div>
     </div>
 
+    <!-- Crop & Straighten editor (crop.js) -->
+    <div id="crop-editor" class="crop-editor hidden">
+        <div class="crop-head">
+            <span id="crop-file"></span>
+            <span id="crop-dims" class="crop-dims"></span>
+            <span id="crop-hint" class="crop-hint hidden">Draw a line along a horizon or print edge to level it</span>
+        </div>
+        <div class="crop-stage">
+            <canvas id="crop-canvas"></canvas>
+        </div>
+        <div class="crop-toolbar">
+            <button id="crop-cancel" class="crop-btn" title="Cancel (Esc)">Cancel</button>
+            <span class="crop-sep"></span>
+            <select id="crop-aspect" title="Aspect ratio (A cycles)"></select>
+            <button id="crop-swap" class="crop-btn icon" title="Swap portrait / landscape (X)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="7" width="12" height="14" rx="1.5" />
+                    <path d="M13 3h3a5 5 0 0 1 5 5v3" />
+                    <path d="M18.5 8.5 21 11l2.5-2.5" />
+                </svg>
+            </button>
+            <span class="crop-sep"></span>
+            <button id="crop-rot-left" class="crop-btn icon" title="Rotate left 90° ([)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+                    <path d="M3 3v5h5" />
+                </svg>
+            </button>
+            <button id="crop-rot-right" class="crop-btn icon" title="Rotate right 90° (])">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+                    <path d="M21 3v5h-5" />
+                </svg>
+            </button>
+            <span class="crop-sep"></span>
+            <div class="crop-straighten" title="Straighten — , and . nudge 0.1°, &lt; and &gt; nudge 1°, double-click to zero">
+                <span>Straighten</span>
+                <input type="range" id="crop-angle" min="-45" max="45" step="0.1" value="0">
+                <input type="number" id="crop-angle-num" min="-45" max="45" step="0.1" value="0">
+                <span>°</span>
+            </div>
+            <button id="crop-level" class="crop-btn" title="Level tool: draw along something that should be straight (L)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round">
+                    <path d="M2 17 22 7" />
+                    <circle cx="12" cy="12" r="2.5" />
+                </svg>
+                Level
+            </button>
+            <span class="crop-sep"></span>
+            <button id="crop-previous" class="crop-btn" title="Reuse the previous crop (P)">Previous</button>
+            <button id="crop-reset" class="crop-btn" title="Reset (R)">Reset</button>
+            <span class="crop-sep"></span>
+            <button id="crop-save-next" class="crop-btn" title="Save, then crop the next photo (Shift+Enter)">Save &amp; Next</button>
+            <button id="crop-save" class="crop-btn primary" title="Save (Enter)">Save</button>
+        </div>
+    </div>
+
+    <!-- Keyboard Shortcuts panel (?) -->
+    <div id="shortcuts-panel" class="shortcuts-overlay hidden">
+        <div class="shortcuts-card" role="dialog" aria-label="Keyboard shortcuts">
+            <div class="shortcuts-head">
+                <h3>Keyboard Shortcuts</h3>
+                <input id="shortcuts-filter" type="search" placeholder="Filter…" autocomplete="off">
+                <button id="shortcuts-close" title="Close (Esc)">×</button>
+            </div>
+            <div id="shortcuts-list" class="shortcuts-list"></div>
+            <div class="shortcuts-foot">
+                <span>Click <b>+</b> to add a key, click a key to remove it.</span>
+                <button id="shortcuts-reset">Reset all to defaults</button>
+            </div>
+        </div>
+    </div>
+
     <!-- DEBUG CONSOLE -->
     <div id="debug-console" style="
         position: fixed; 
@@ -268,7 +354,7 @@
         z-index: 9999; 
         pointer-events: none;
         display: none;">
-        <div>Debug Console (Press F2 to Toggle)</div>
+        <div>Debug Console (Ctrl+Shift+D to toggle)</div>
         <div id="debug-log"></div>
     </div>
 

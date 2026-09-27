@@ -5,7 +5,7 @@ const app = {
     viewMode: 'single', // 'single' or 'grid'
     selection: new Set(), // Set of file objects
     readOnlyMode: false, // When true, saving is disabled (legacy drag-drop)
-    cropState: { // State for cropping (Cropper.js owns the rest)
+    cropState: { // True while the Crop & Straighten editor owns the screen (crop.js)
         active: false
     },
     zoom: 1, // Zoom level
@@ -102,9 +102,6 @@ const app = {
         document.getElementById('btn-clear-selection').addEventListener('click', () => this.clearSelection());
         document.getElementById('btn-refresh').addEventListener('click', () => this.refreshFolder());
 
-        // Show Debug Console (Hidden by default, F2 to toggle)
-        // document.getElementById('debug-console').style.display = 'block';
-
         // Crop Controls
         if (this.elements.btnCrop) this.elements.btnCrop.addEventListener('click', () => this.enterCrop());
 
@@ -121,8 +118,6 @@ const app = {
         this.elements.imageContainer.addEventListener('mousedown', (e) => this.handlePanStart(e));
         document.addEventListener('mousemove', (e) => this.handlePanMove(e));
         document.addEventListener('mouseup', () => this.handlePanEnd());
-
-        // Aspect Ratio logic removed (Now part of Cropper.js config if needed)
 
         // Thumbnail Strip Scroll
         this.elements.thumbnailStrip.addEventListener('wheel', (e) => {
@@ -177,6 +172,7 @@ const app = {
 
         this.initContextMenu();
         this.initRubberBand();
+        this.initShortcutsPanel();
 
         // Any pointer interaction stops a running slideshow
         document.addEventListener('pointerdown', () => this.stopSlideshow());
@@ -187,6 +183,11 @@ const app = {
         });
         this.elements.btnFullscreen.addEventListener('click', () => this.toggleFullscreen());
         this.elements.btnCustomize.addEventListener('click', () => this.toggleCustomizePanel());
+        document.getElementById('btn-shortcuts').addEventListener('click', () => this.toggleShortcutsPanel());
+        document.getElementById('cust-shortcuts').addEventListener('click', () => {
+            this.toggleCustomizePanel();
+            this.toggleShortcutsPanel(true);
+        });
         document.getElementById('cust-vertical').addEventListener('change', (e) => {
             this.uiPrefs.vertical = e.target.checked;
             this.saveUiPrefs();
@@ -305,15 +306,16 @@ const app = {
         fit: 'Thumbnail Fit',
         strip: 'Film Strip',
         fullscreen: 'Fullscreen',
+        keys: 'Keyboard Shortcuts',
         customize: 'Customize'
     },
 
     defaultUiPrefs() {
         return {
-            order: ['info', 'view', 'refresh', 'crop', 'fit', 'strip', 'fullscreen', 'customize'],
+            order: ['info', 'view', 'refresh', 'crop', 'fit', 'strip', 'fullscreen', 'keys', 'customize'],
             placement: { // 'main' | 'more' | 'hidden'
                 info: 'main', view: 'main', refresh: 'main', crop: 'main',
-                fit: 'more', strip: 'more', fullscreen: 'more', customize: 'more'
+                fit: 'more', strip: 'more', fullscreen: 'more', keys: 'more', customize: 'more'
             },
             vertical: false,
             scale: 1,
@@ -359,6 +361,10 @@ const app = {
     applyUiPrefs() {
         const p = this.uiPrefs || (this.uiPrefs = this.defaultUiPrefs());
         const container = this.elements.headerControls;
+
+        // Controls added in newer versions go at the end of an older layout
+        const known = this.defaultUiPrefs().order;
+        p.order = p.order.filter(k => known.includes(k)).concat(known.filter(k => !p.order.includes(k)));
 
         // Reorder buttons (More button stays last)
         p.order.forEach(key => {
@@ -567,7 +573,7 @@ const app = {
     updateImageTransform() {
         if (!this.currentFile) return;
         const img = this.elements.currentImage;
-        const r = this.getDisplayRotation(this.currentFile, 'full');
+        const r = this.getDisplayRotation(this.currentFile, this._displayKind === 'thumb' ? 'thumb' : 'full');
 
         // At odd quarter-turns the CSS-rotated image would overflow the
         // container (layout still sees the unrotated box) — scale it to fit.
@@ -719,7 +725,12 @@ const app = {
 
                 this.renderThumbnails();
                 this.renderGrid(); // Prepare grid
-                this.loadFile(this.files[0]);
+                // setView shows the right container and loads the photo;
+                // calling loadFile alone left #image-container hidden, so a
+                // freshly opened folder showed a blank screen.
+                this.selection.clear();
+                this.currentFile = this.files[0];
+                this.setView(this.viewMode);
 
                 // Warm the entire preview cache in the background so grid
                 // scrolling only ever hits already-generated thumbnails
@@ -790,32 +801,48 @@ const app = {
         }
     },
 
-    async scanDirectory(dirHandle, prefix = '') {
+    async scanDirectory(dirHandle, prefix = '', seen = null) {
+        // Paths already loaded (so Refresh only adds new photos). A Set keeps
+        // this O(1) per file — the old array scan was quadratic.
+        if (!seen) seen = new Set(this.files.map(f => f.relPath || f.name));
         try {
             this.updateTask('scan', 'Scanning folder…');
+            const pending = [];
+            const subdirs = [];
             for await (const entry of dirHandle.values()) {
                 if (entry.kind === 'file' && this.isImage(entry.name)) {
                     const relPath = prefix + entry.name;
-                    // Check for duplicates to allow Refresh
-                    if (!this.files.some(f => (f.relPath || f.name) === relPath)) {
-                        const fileData = await entry.getFile();
-                        this.files.push({
-                            name: entry.name,
-                            relPath: relPath,
-                            parentDir: dirHandle,
-                            handle: entry,
-                            size: fileData.size,
-                            lastModified: fileData.lastModified
-                        });
-                    }
-                    if (this.files.length % 50 === 0) {
-                        this.updateTask('scan', `Scanning folder… ${this.files.length} images`);
+                    if (!seen.has(relPath)) {
+                        seen.add(relPath);
+                        pending.push({ entry, relPath });
                     }
                 } else if (entry.kind === 'directory') {
                     // Skip our own working folders
                     if (entry.name === '.jeditor-trash' || entry.name === 'jEditor Export') continue;
-                    await this.scanDirectory(entry, prefix + entry.name + '/');
+                    subdirs.push(entry);
                 }
+            }
+            // Read size/date in parallel batches instead of one at a time
+            const BATCH = 32;
+            for (let i = 0; i < pending.length; i += BATCH) {
+                const batch = pending.slice(i, i + BATCH);
+                const datas = await Promise.all(batch.map(p => p.entry.getFile().catch(() => null)));
+                batch.forEach(({ entry, relPath }, j) => {
+                    const fileData = datas[j];
+                    if (!fileData) return;
+                    this.files.push({
+                        name: entry.name,
+                        relPath,
+                        parentDir: dirHandle,
+                        handle: entry,
+                        size: fileData.size,
+                        lastModified: fileData.lastModified
+                    });
+                });
+                this.updateTask('scan', `Scanning folder… ${this.files.length} images`);
+            }
+            for (const sub of subdirs) {
+                await this.scanDirectory(sub, prefix + sub.name + '/', seen);
             }
         } catch (e) {
             console.warn('Skipping subdirectory due to error:', e);
@@ -844,6 +871,14 @@ const app = {
         } finally {
             this.endTask('scan');
         }
+    },
+
+    // Legacy drag-and-drop gives read-only files. Say so up front instead
+    // of letting an edit run and fail at the save.
+    ensureWritable() {
+        if (!this.readOnlyMode) return true;
+        this.showToast('These photos were opened read-only — use Open Folder to edit and save', 4000);
+        return false;
     },
 
     isImage(name) {
@@ -881,7 +916,7 @@ const app = {
             return;
         }
         el.classList.remove('hidden');
-        el.textContent = this.getDisplayPath(this.currentFile);
+        el.textContent = this.getDisplayPath(this.currentFile) + (this.readOnlyMode ? ' · read-only' : '');
     },
 
     formatBytes(n) {
@@ -1021,7 +1056,9 @@ const app = {
         try {
             let dims = null;
             const img = this.elements.currentImage;
-            if (this.currentFile === file && img.naturalWidth > 0 && this.viewMode === 'single') {
+            if (file._dims) {
+                dims = `${file._dims.w} × ${file._dims.h}`;
+            } else if (this._displayFile === file && this._displayKind === 'full' && img.naturalWidth > 0) {
                 dims = `${img.naturalWidth} × ${img.naturalHeight}`;
             } else {
                 const bmp = await createImageBitmap(await file.handle.getFile());
@@ -1113,9 +1150,9 @@ const app = {
                         return { valueOffset: entry + 8, littleEndian };
                     }
                 }
-                // EXIF exists but has no orientation tag. Adding an entry means
-                // shifting every offset in the IFD — not worth it; re-encode.
-                return null;
+                // EXIF exists but has no orientation tag (typical for
+                // scanners): the tag gets added by relocating IFD0.
+                return { relocate: { marker: 0xE1, start: offset, end: offset + 2 + size } };
             }
             offset += 2 + size;
         }
@@ -1150,21 +1187,41 @@ const app = {
         const view = new DataView(buffer);
         const loc = this.findJpegOrientation(view);
         if (!loc) return null;
+        let bytes = new Uint8Array(buffer);
+        let orientation;
         if (loc.insert) {
-            const seg = this.buildOrientationExif(this.composeOrientation(1, deg));
-            const bytes = new Uint8Array(buffer);
-            return new Blob([bytes.subarray(0, 2), seg, bytes.subarray(2)], { type: 'image/jpeg' });
+            orientation = this.composeOrientation(1, deg);
+            const seg = this.buildOrientationExif(orientation);
+            const out = new Uint8Array(bytes.length + seg.length);
+            out.set(bytes.subarray(0, 2), 0);
+            out.set(seg, 2);
+            out.set(bytes.subarray(2), 2 + seg.length);
+            bytes = out;
+        } else if (loc.relocate) {
+            orientation = this.composeOrientation(1, deg);
+            bytes = ImageMeta.insertExifOrientation(bytes, loc.relocate, orientation);
+            if (!bytes) return null;
+        } else {
+            const current = view.getUint16(loc.valueOffset, loc.littleEndian);
+            orientation = this.composeOrientation(current, deg);
+            view.setUint16(loc.valueOffset, orientation, loc.littleEndian);
         }
-        const current = view.getUint16(loc.valueOffset, loc.littleEndian);
-        view.setUint16(loc.valueOffset, this.composeOrientation(current, deg), loc.littleEndian);
-        return new Blob([buffer], { type: 'image/jpeg' });
+        // Keep an XMP tiff:Orientation (Lightroom writes one) in agreement
+        const segs = ImageMeta.jpegSegments(bytes) || [];
+        segs.filter(sg => ImageMeta.isXmpSeg(bytes, sg))
+            .forEach(sg => ImageMeta.patchXmpOrientation(bytes, sg, orientation));
+        return new Blob([bytes], { type: 'image/jpeg' });
     },
 
     // Fallback rotation: decode → rotate on canvas → re-encode in the file's
     // own format. createImageBitmap applies any EXIF orientation, so the
     // output is upright pixels with no EXIF (orientation 1 implied).
     async rotateByReencoding(fileData, name, normalizedDeg) {
-        const bitmap = await createImageBitmap(fileData);
+        const { type, quality } = this.getSaveFormat(name);
+        const bitmap = await createImageBitmap(fileData, {
+            imageOrientation: 'from-image',
+            colorSpaceConversion: ImageMeta.canCarryProfile(type) ? 'none' : 'default'
+        });
         try {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
@@ -1174,8 +1231,10 @@ const app = {
             ctx.translate(canvas.width / 2, canvas.height / 2);
             ctx.rotate(normalizedDeg * Math.PI / 180);
             ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
-            const { type, quality } = this.getSaveFormat(name);
-            return await new Promise(r => canvas.toBlob(r, type, quality));
+            const blob = await new Promise(r => canvas.toBlob(r, type, quality));
+            if (!blob) return null;
+            const original = new Uint8Array(await fileData.arrayBuffer());
+            return ImageMeta.transplant(original, blob, type, canvas.width, canvas.height);
         } finally {
             bitmap.close();
         }
@@ -1236,8 +1295,10 @@ const app = {
                     URL.revokeObjectURL(file.fullImageUrl);
                     delete file.fullImageUrl;
                 }
+                delete file._decodedEl;
             });
         }
+        this._decodedFiles = new Set();
         if (this.elements.currentImage.src && this.elements.currentImage.src.startsWith('blob:')) {
             // We don't want to revoke the src if it's currently being used by a file.fullImageUrl 
             // that we want to keep. But since we clear all fullImageUrls above, it is safe.
@@ -1277,24 +1338,31 @@ const app = {
                 if (y >= SIZE - BAND) bottom += rowSum;
             }
 
-            const avgTotal = total / (SIZE * SIZE);
-            const avgTop = top / (BAND * SIZE);
-            const avgBottom = bottom / (BAND * SIZE);
-
-            // Hysteresis: don't flip a region's theme on borderline photos —
-            // it must cross clearly into the other zone to switch.
-            const body = document.body;
-            const setWithHysteresis = (cls, value) => {
-                if (value > 150) body.classList.add(cls);
-                else if (value < 120) body.classList.remove(cls);
-                // 120–150: keep whatever it was
+            const vals = {
+                total: total / (SIZE * SIZE),
+                top: top / (BAND * SIZE),
+                bottom: bottom / (BAND * SIZE)
             };
-            setWithHysteresis('light-theme', avgTotal);
-            setWithHysteresis('glass-light-top', avgTop);
-            setWithHysteresis('glass-light-bottom', avgBottom);
+            this.applyGlass(vals);
+            return vals;
         } catch (e) {
             console.warn('Cannot analyze image brightness (CORS or error)', e);
+            return null;
         }
+    },
+
+    applyGlass(vals) {
+        // Hysteresis: don't flip a region's theme on borderline photos —
+        // it must cross clearly into the other zone to switch.
+        const body = document.body;
+        const setWithHysteresis = (cls, value) => {
+            if (value > 150) body.classList.add(cls);
+            else if (value < 120) body.classList.remove(cls);
+            // 120–150: keep whatever it was
+        };
+        setWithHysteresis('light-theme', vals.total);
+        setWithHysteresis('glass-light-top', vals.top);
+        setWithHysteresis('glass-light-bottom', vals.bottom);
     },
 
 
@@ -1319,7 +1387,7 @@ const app = {
                     stripObserver.unobserve(div);
                 }
             });
-        }, { root: this.elements.thumbnailStrip, margin: '200px' });
+        }, { root: this.elements.thumbnailStrip, rootMargin: '0px 400px' });
 
         this.files.forEach((file) => {
             const div = document.createElement('div');
@@ -1329,10 +1397,7 @@ const app = {
             // Placeholder color still useful while loading
             div.style.backgroundColor = '#222';
 
-            div.onclick = () => {
-                this.loadFile(file);
-                this.setView('single');
-            };
+            div.onclick = () => this.openSingle(file);
             frag.appendChild(div);
             stripObserver.observe(div);
         });
@@ -1432,10 +1497,7 @@ const app = {
         div.appendChild(img);
 
         div.onclick = (e) => this.handleGridClick(e, file);
-        div.ondblclick = () => {
-            this.loadFile(file);
-            this.setView('single');
-        };
+        div.ondblclick = () => this.openSingle(file);
         return div;
     },
 
@@ -1597,6 +1659,7 @@ const app = {
             fileEntry.thumbnailUrl = URL.createObjectURL(blob);
             fileEntry.thumbLag = (fileEntry._savedRotationTotal || 0) - savedAtRead;
             fileEntry._thumbPromise = null;
+            fileEntry._thumbStale = false;
             this.deliverThumbnail(fileEntry);
             job.resolve(fileEntry.thumbnailUrl);
         } catch (e) {
@@ -1679,15 +1742,10 @@ const app = {
             // Single select. Don't loadFile() here — that decodes the
             // full-resolution image into the hidden single view on every
             // grid click. Double-click / Enter opens the photo.
-            this.currentFile = file;
-            this.elements.fileName.textContent = file.name;
-            this.elements.fileCount.textContent = `${this.files.indexOf(file) + 1} / ${this.files.length}`;
-            this.updateStatusBar();
-            if (this._infoOpen) this.fillInfoPanel(file);
+            this.setCurrent(file);
             this.selection.clear();
             this.selection.add(file);
             this.updateSelectionUI();
-            this.updateActiveThumbnail();
         }
     },
 
@@ -1714,10 +1772,16 @@ const app = {
 
         if (this.selection.size > 0) {
             this.elements.selectionBar.classList.remove('hidden');
-            this.elements.selectionCount.textContent = `${this.selection.size} items selected`;
+            this.elements.selectionCount.textContent = `${this.selection.size} selected`;
         } else {
             this.elements.selectionBar.classList.add('hidden');
         }
+    },
+
+    // Show one photo large (setView loads it)
+    openSingle(file) {
+        this.currentFile = file;
+        this.setView('single');
     },
 
     toggleView() {
@@ -1780,106 +1844,198 @@ const app = {
         return this.loadFile(this.files[index]);
     },
 
+    // Make `file` the current photo: header, counter, status chip, info
+    // panel and film strip — everything except the big image.
+    setCurrent(file) {
+        this.currentFile = file;
+        this.elements.fileName.textContent = file.name;
+        this.elements.fileCount.textContent = `${this.files.indexOf(file) + 1} / ${this.files.length}`;
+        this.updateStatusBar();
+        if (this._infoOpen) this.fillInfoPanel(file);
+        this.updateActiveThumbnail();
+    },
+
+    // ---- Single-view display pipeline ----
+    //
+    // Navigating must never show a blank frame. The photos either side of
+    // the current one are decoded ahead of time into detached <img>
+    // elements, so stepping to them is a DOM swap with no decode at all. A
+    // photo that isn't ready yet shows its cached thumbnail immediately and
+    // upgrades to full resolution the moment its decode finishes.
+
+    DECODE_RADIUS: 1, // neighbours kept decoded each side (full-res scans are large)
+
+    // Decode a file's full-size image into a detached element (deduped).
+    decodeFull(file) {
+        const cached = file._decodedEl;
+        if (cached && cached._url === file.fullImageUrl) return Promise.resolve(cached);
+        if (file._decodePromise) return file._decodePromise;
+        const p = (async () => {
+            // Don't read mid-save; the rotation queue is quick
+            while (file.isBusy) await new Promise(r => setTimeout(r, 30));
+            if (!file.fullImageUrl) {
+                const savedAtRead = file._savedRotationTotal || 0;
+                const data = await file.handle.getFile();
+                file.fullImageUrl = URL.createObjectURL(data);
+                // Fresh bytes: lag is only whatever gets saved after this read
+                file.fullLag = (file._savedRotationTotal || 0) - savedAtRead;
+            }
+            const url = file.fullImageUrl;
+            const el = new Image();
+            el.decoding = 'async';
+            el.draggable = false;
+            el.alt = file.name;
+            el.src = url;
+            el._url = url;
+            try {
+                await el.decode();
+                el._decoded = true;
+            } catch (e) {
+                el._decoded = false; // undecodable file: still shown (as broken)
+            }
+            if (file.fullImageUrl === url) {
+                file._decodedEl = el;
+                if (!this._decodedFiles) this._decodedFiles = new Set();
+                this._decodedFiles.add(file);
+            }
+            return el;
+        })();
+        file._decodePromise = p;
+        p.catch(() => { }).finally(() => {
+            if (file._decodePromise === p) file._decodePromise = null;
+        });
+        return p;
+    },
+
+    dropDecoded(file) {
+        delete file._decodedEl;
+        if (this._decodedFiles) this._decodedFiles.delete(file);
+    },
+
+    // Put an element on screen as the single-view image. kind is 'full' or
+    // 'thumb' (a placeholder, which carries the thumbnail's rotation lag).
+    swapDisplay(el, kind, file) {
+        const cur = this.elements.currentImage;
+        if (el !== cur) {
+            cur.removeAttribute('id');
+            el.id = 'current-image';
+            cur.replaceWith(el);
+            this.elements.currentImage = el;
+        }
+        this._displayKind = kind;
+        this._displayFile = file;
+        if (kind === 'thumb') this.sizePlaceholder(el, file);
+        el.style.transition = 'none'; // no spin/float from the previous photo's transform
+        el.style.opacity = '1';
+        this.updateImageTransform();
+        requestAnimationFrame(() => { el.style.transition = ''; });
+    },
+
+    // A thumbnail is only 320px wide; size it like the full image will be
+    sizePlaceholder(el, file) {
+        const box = this.elements.imageContainer;
+        const cw = box.clientWidth, ch = box.clientHeight;
+        const nw = el.naturalWidth, nh = el.naturalHeight;
+        if (!cw || !ch || !nw || !nh) return;
+        const aspect = nw / nh;
+        let w = cw, h = cw / aspect;
+        if (h > ch) { h = ch; w = ch * aspect; }
+        if (file && file._dims && file._dims.w < w) { w = file._dims.w; h = w / aspect; }
+        el.style.width = w + 'px';
+        el.style.height = h + 'px';
+    },
+
     async loadFile(file) {
         if (!file) return;
 
         // Token guards against out-of-order async loads during rapid navigation
         const loadToken = (this._loadToken = (this._loadToken || 0) + 1);
-
-        this.currentFile = file;
-        const index = this.files.indexOf(file);
-
-        this.elements.fileName.textContent = file.name;
-        this.elements.fileCount.textContent = `${index + 1} / ${this.files.length}`;
-        this.updateStatusBar();
-        if (this._infoOpen) this.fillInfoPanel(file);
-
-        // Prepare for swap: fast fade out
-        this.elements.currentImage.style.opacity = '0';
+        this.setCurrent(file);
 
         // Reset zoom/pan (rotation display is per-file via getDisplayRotation)
         this.zoom = 1;
         this.panX = 0;
         this.panY = 0;
+        this.elements.imageContainer.style.cursor = 'default';
 
-        // CRITICAL FIX: Kill transition immediately to prevent "spin back" or "float"
-        this.elements.currentImage.style.transition = 'none';
-
-        // Reset transform immediately
-        this.updateImageTransform();
-
-        this.updateActiveThumbnail();
-
-        try {
-            let url = file.fullImageUrl;
-            if (!url) {
-                // Don't read mid-save; the rotation queue is quick
-                while (file.isBusy) await new Promise(r => setTimeout(r, 30));
-                const savedAtRead = file._savedRotationTotal || 0;
-                const fileData = await file.handle.getFile();
-                url = URL.createObjectURL(fileData);
-                file.fullImageUrl = url;
-                // Fresh bytes: lag is only whatever gets saved after this read
-                file.fullLag = (file._savedRotationTotal || 0) - savedAtRead;
+        const ready = file._decodedEl;
+        if (ready && ready._decoded && ready._url === file.fullImageUrl) {
+            // Preloaded neighbour: on screen this frame
+            this.swapDisplay(ready, 'full', file);
+            this.afterDisplay(file, ready);
+        } else {
+            // Show the cached thumbnail straight away (unless it is being
+            // regenerated after an edit and would show the old pixels)...
+            if (file.thumbnailUrl && !file._thumbStale) {
+                const ph = new Image();
+                ph.draggable = false;
+                ph.alt = file.name;
+                ph.src = file.thumbnailUrl;
+                const showPlaceholder = () => {
+                    if (this._loadToken !== loadToken) return;
+                    if (this._displayFile === file && this._displayKind === 'full') return;
+                    this.swapDisplay(ph, 'thumb', file);
+                    this.applyGlassFor(file, ph);
+                };
+                if (ph.complete && ph.naturalWidth) showPlaceholder();
+                else ph.decode().then(showPlaceholder, () => { });
+            } else {
+                // Nothing cached yet: dim the previous photo while decoding
+                this.elements.currentImage.style.opacity = '0.3';
             }
 
-            // Small delay for DOM to register opacity 0
-            await new Promise(r => requestAnimationFrame(r));
-
-            // A newer navigation superseded this one — let it drive the display
-            if (this._loadToken !== loadToken) return;
-
-            const img = this.elements.currentImage;
-
-            // RECOVERY LOGIC: If image fails to load (due to revoked blob), re-create it once.
-            // { once: true } so these don't pile up across navigations.
-            img.addEventListener('error', async () => {
-                console.warn('Recovering revoked full-size blob for:', file.name);
-                const savedAtRead = file._savedRotationTotal || 0;
-                const freshData = await file.handle.getFile();
-                const freshUrl = URL.createObjectURL(freshData);
-                file.fullImageUrl = freshUrl;
-                file.fullLag = (file._savedRotationTotal || 0) - savedAtRead;
-                img.src = freshUrl;
-                this.updateImageTransform();
-            }, { once: true });
-
-            img.src = url;
-
-            await new Promise(resolve => {
-                if (img.complete && img.naturalWidth > 0) return resolve();
-                img.onload = resolve;
-                img.onerror = resolve;
-            });
-            img.onload = null;
-            img.onerror = null;
-
-            if (this._loadToken !== loadToken) return;
-
-            // fullLag may have changed if the URL was freshly created
-            this.updateImageTransform();
-            this.analyzeImageBrightness(img);
-
-            img.style.transition = 'transform 0.3s ease';
-            img.style.opacity = '1';
-
-        } catch (err) {
-            console.error('Error loading image:', err);
-            this.elements.currentImage.style.opacity = '1';
+            // ...then upgrade to full resolution when the decode lands
+            try {
+                const el = await this.decodeFull(file);
+                if (this._loadToken !== loadToken) return;
+                this.swapDisplay(el, 'full', file);
+                this.afterDisplay(file, el);
+            } catch (err) {
+                console.error('Error loading image:', err);
+                this.elements.currentImage.style.opacity = '1';
+            }
         }
 
-        // Preload neighbors, trim far-away full-size images
-        this.preloadImage(index + 1);
-        this.preloadImage(index - 1);
+        if (this._loadToken !== loadToken) return;
+        this.preloadNeighbours(file);
         this.cleanupObjectURLs();
+    },
+
+    afterDisplay(file, el) {
+        if (el._decoded && el.naturalWidth) {
+            file._dims = { w: el.naturalWidth, h: el.naturalHeight };
+        }
+        this.applyGlassFor(file, el);
+    },
+
+    // Adaptive glass, sampled once per photo and reused on revisits
+    applyGlassFor(file, img) {
+        if (file._glass) this.applyGlass(file._glass);
+        else if (img && img.naturalWidth) file._glass = this.analyzeImageBrightness(img);
+    },
+
+    // Decode the photos either side (wrapping, like navigation does) and
+    // release decoded images that fell out of that window.
+    preloadNeighbours(file) {
+        const n = this.files.length;
+        const i = this.files.indexOf(file);
+        if (i === -1 || n < 2) return;
+        const keep = new Set([file]);
+        for (let d = 1; d <= this.DECODE_RADIUS; d++) {
+            keep.add(this.files[(i + d) % n]);
+            keep.add(this.files[(i - d + n) % n]);
+        }
+        keep.forEach(f => {
+            if (f !== file && !f.isBusy && !f.pendingRotation) this.decodeFull(f).catch(() => { });
+        });
+        (this._decodedFiles || new Set()).forEach(f => {
+            if (!keep.has(f) && this.elements.currentImage !== f._decodedEl) this.dropDecoded(f);
+        });
     },
 
     cleanupObjectURLs() {
         // Thumbnails are small (≈10–30 KB each) and are kept for the whole
-        // session. The old distance-based revocation measured distance from
-        // the CURRENT photo — scrolling to the middle of a large grid kept
-        // destroying and regenerating thumbnails in a loop, which was the
-        // main source of scroll lag. Only full-size images get trimmed.
+        // session. Only full-size images are trimmed.
         const cur = this.getCurrentIndex();
         const windowSizeFull = 10;
 
@@ -1889,55 +2045,45 @@ const app = {
         this.files.forEach((f, i) => {
             if (f === this.currentFile) return;
             const dist = Math.abs(i - cur);
-            if (dist > windowSizeFull && f.fullImageUrl) {
+            if (dist > windowSizeFull && f.fullImageUrl && !f._decodePromise) {
                 URL.revokeObjectURL(f.fullImageUrl);
                 delete f.fullImageUrl;
+                this.dropDecoded(f);
             }
         });
     },
 
-    async preloadImage(index) {
-        if (index < 0 || index >= this.files.length) return;
-        const file = this.files[index];
-
-        if (file.fullImageUrl) return; // Already cached
-        if (file.isBusy || file.pendingRotation) return; // Mid-rotation; load on demand later
-
-        try {
-            const savedAtRead = file._savedRotationTotal || 0;
-            const fileData = await file.handle.getFile();
-            const url = URL.createObjectURL(fileData);
-            file.fullImageUrl = url;
-            file.fullLag = (file._savedRotationTotal || 0) - savedAtRead;
-        } catch (e) { /* ignore */ }
-    },
-
     navigate(direction) {
         if (this.files.length === 0) return;
+        const n = this.files.length;
         let newIndex = this.getCurrentIndex() + direction;
-        if (newIndex < 0) newIndex = this.files.length - 1;
-        if (newIndex >= this.files.length) newIndex = 0;
+        if (Math.abs(direction) > 1) {
+            // Row jumps in the grid stop at the edges instead of wrapping
+            newIndex = Math.max(0, Math.min(n - 1, newIndex));
+        } else {
+            newIndex = (newIndex + n) % n;
+        }
+        this.goTo(this.files[newIndex]);
+    },
 
-        const file = this.files[newIndex];
-
-        // In Single View, loadFile handles the display
-        this.loadFile(file);
-
-        // In Grid View, we must also update the selection and scroll
-        if (this.viewMode === 'grid') {
-            this.selection.clear();
-            this.selection.add(file);
-            this.updateSelectionUI();
-
-            // Scroll into view
-            const item = file._gridEl;
-            if (item) {
-                // Determine if we need to scroll
-                const rect = item.getBoundingClientRect();
-                const containerRect = this.elements.gridView.getBoundingClientRect();
-                if (rect.top < containerRect.top || rect.bottom > containerRect.bottom) {
-                    item.scrollIntoView({ block: 'center', behavior: 'smooth' });
-                }
+    goTo(file) {
+        if (!file) return;
+        if (this.viewMode !== 'grid') {
+            this.loadFile(file);
+            return;
+        }
+        // Grid: select and scroll — no full-resolution decode for a
+        // photo that isn't being shown large
+        this.setCurrent(file);
+        this.selection.clear();
+        this.selection.add(file);
+        this.updateSelectionUI();
+        const item = file._gridEl;
+        if (item) {
+            const rect = item.getBoundingClientRect();
+            const containerRect = this.elements.gridView.getBoundingClientRect();
+            if (rect.top < containerRect.top || rect.bottom > containerRect.bottom) {
+                item.scrollIntoView({ block: 'center', behavior: 'smooth' });
             }
         }
     },
@@ -1974,160 +2120,416 @@ const app = {
         }
     },
 
+    // ---- Keyboard shortcuts ----
+    //
+    // Every shortcut is a named action with default keys. Any of them can be
+    // rebound in the Keyboard Shortcuts panel (?); changes persist in
+    // localStorage under 'jeditor.keys'. Keys match exactly, modifiers
+    // included, so Ctrl+C never triggers C. The crop editor has its own set.
+
+    KEY_ACTIONS: [
+        // [id, context, group, label, default keys]
+        ['nav.prev', 'global', 'Navigate', 'Previous photo', ['ArrowLeft']],
+        ['nav.next', 'global', 'Navigate', 'Next photo', ['ArrowRight']],
+        ['nav.up', 'global', 'Navigate', 'Row up (grid)', ['ArrowUp']],
+        ['nav.down', 'global', 'Navigate', 'Row down (grid)', ['ArrowDown']],
+        ['nav.first', 'global', 'Navigate', 'First photo', ['Home']],
+        ['nav.last', 'global', 'Navigate', 'Last photo', ['End']],
+        ['edit.rotateLeft', 'global', 'Edit', 'Rotate left (whole selection in grid)', ['[', ',', 'Shift+ArrowLeft']],
+        ['edit.rotateRight', 'global', 'Edit', 'Rotate right (whole selection in grid)', [']', '.', 'Shift+ArrowRight']],
+        ['edit.crop', 'global', 'Edit', 'Crop & straighten', ['C']],
+        ['edit.rename', 'global', 'Edit', 'Rename (batch rename in grid)', ['F2']],
+        ['edit.trash', 'global', 'Edit', 'Move to trash', ['Delete']],
+        ['edit.undo', 'global', 'Edit', 'Undo', ['Ctrl+Z']],
+        ['edit.selectAll', 'global', 'Edit', 'Select all (grid)', ['Ctrl+A']],
+        ['view.toggle', 'global', 'View', 'Toggle grid / single view', ['Space']],
+        ['view.grid', 'global', 'View', 'Grid view', ['G']],
+        ['view.single', 'global', 'View', 'Single view', ['S']],
+        ['view.open', 'global', 'View', 'Open photo (grid)', ['Enter']],
+        ['view.back', 'global', 'View', 'Back to grid / clear selection', ['Escape']],
+        ['view.zoomIn', 'global', 'View', 'Zoom in', ['+', '=']],
+        ['view.zoomOut', 'global', 'View', 'Zoom out', ['-']],
+        ['view.zoomFit', 'global', 'View', 'Zoom to fit', ['0']],
+        ['view.info', 'global', 'View', 'File info', ['I']],
+        ['view.fullscreen', 'global', 'View', 'Fullscreen', ['F']],
+        ['view.slideshow', 'global', 'View', 'Slideshow', []],
+        ['app.refresh', 'global', 'App', 'Rescan folder', ['R']],
+        ['app.shortcuts', 'global', 'App', 'Keyboard shortcuts', ['?']],
+        ['app.debug', 'global', 'App', 'Debug console', ['Ctrl+Shift+D']],
+        ['crop.save', 'crop', 'Crop & Straighten', 'Save', ['Enter']],
+        ['crop.saveNext', 'crop', 'Crop & Straighten', 'Save, then crop next photo', ['Shift+Enter']],
+        ['crop.cancel', 'crop', 'Crop & Straighten', 'Cancel', ['Escape']],
+        ['crop.rotateLeft', 'crop', 'Crop & Straighten', 'Rotate left 90°', ['[']],
+        ['crop.rotateRight', 'crop', 'Crop & Straighten', 'Rotate right 90°', [']']],
+        ['crop.angleDown', 'crop', 'Crop & Straighten', 'Straighten −0.1°', [',']],
+        ['crop.angleUp', 'crop', 'Crop & Straighten', 'Straighten +0.1°', ['.']],
+        ['crop.angleDownBig', 'crop', 'Crop & Straighten', 'Straighten −1°', ['<']],
+        ['crop.angleUpBig', 'crop', 'Crop & Straighten', 'Straighten +1°', ['>']],
+        ['crop.angleZero', 'crop', 'Crop & Straighten', 'Straighten back to 0°', ['0']],
+        ['crop.level', 'crop', 'Crop & Straighten', 'Level tool', ['L']],
+        ['crop.aspect', 'crop', 'Crop & Straighten', 'Next aspect ratio', ['A']],
+        ['crop.swap', 'crop', 'Crop & Straighten', 'Swap portrait / landscape', ['X']],
+        ['crop.previous', 'crop', 'Crop & Straighten', 'Reuse previous crop', ['P']],
+        ['crop.selectAll', 'crop', 'Crop & Straighten', 'Select whole image', ['Ctrl+A']],
+        ['crop.reset', 'crop', 'Crop & Straighten', 'Reset', ['R']]
+    ],
+
+    // Handlers return false when the key doesn't apply right now, which
+    // lets the browser's default behaviour through.
+    keyHandlers() {
+        const grid = () => this.viewMode === 'grid';
+        const ed = CropEditor;
+        return {
+            'nav.prev': () => this.navigate(-1),
+            'nav.next': () => this.navigate(1),
+            'nav.up': () => grid() ? this.navigate(-this.getGridColumnCount()) : false,
+            'nav.down': () => grid() ? this.navigate(this.getGridColumnCount()) : false,
+            'nav.first': () => this.goTo(this.files[0]),
+            'nav.last': () => this.goTo(this.files[this.files.length - 1]),
+            'edit.rotateLeft': () => grid() ? this.rotateBulk(-90) : this.rotateCurrent(-90),
+            'edit.rotateRight': () => grid() ? this.rotateBulk(90) : this.rotateCurrent(90),
+            'edit.crop': () => this.enterCrop(),
+            'edit.rename': () => grid() && this.selection.size > 1
+                ? this.batchRename([...this.selection]) : this.promptRename(),
+            'edit.trash': () => this.moveToTrash(grid() && this.selection.size
+                ? [...this.selection] : [this.currentFile]),
+            'edit.undo': () => this.undo(),
+            'edit.selectAll': () => {
+                if (!grid()) return false;
+                this.selection = new Set(this.files);
+                this.updateSelectionUI();
+            },
+            'view.toggle': () => this.toggleView(),
+            'view.grid': () => this.setView('grid'),
+            'view.single': () => this.setView('single'),
+            'view.open': () => grid() ? this.setView('single') : false,
+            'view.back': () => grid() ? this.clearSelection() : this.setView('grid'),
+            'view.zoomIn': () => this.zoomBy(1.25),
+            'view.zoomOut': () => this.zoomBy(0.8),
+            'view.zoomFit': () => this.zoomBy(0),
+            'view.info': () => this.toggleInfoPanel(),
+            'view.fullscreen': () => this.toggleFullscreen(),
+            'view.slideshow': () => this.startSlideshow(),
+            'app.refresh': () => this.refreshFolder(),
+            'app.shortcuts': () => this.toggleShortcutsPanel(),
+            'app.debug': () => this.toggleDebugConsole(),
+            'crop.save': () => this.saveCrop(),
+            'crop.saveNext': () => this.saveCrop({ next: true }),
+            'crop.cancel': () => this.cancelCrop(),
+            'crop.rotateLeft': () => ed.rotateQuarter(-1),
+            'crop.rotateRight': () => ed.rotateQuarter(1),
+            'crop.angleDown': () => ed.nudgeAngle(-0.1),
+            'crop.angleUp': () => ed.nudgeAngle(0.1),
+            'crop.angleDownBig': () => ed.nudgeAngle(-1),
+            'crop.angleUpBig': () => ed.nudgeAngle(1),
+            'crop.angleZero': () => ed.setAngle(0, { flash: true }),
+            'crop.level': () => ed.toggleLevel(),
+            'crop.aspect': () => ed.cycleAspect(),
+            'crop.swap': () => ed.swapOrientation(),
+            'crop.previous': () => ed.usePrevious(),
+            'crop.selectAll': () => ed.selectAll(),
+            'crop.reset': () => ed.reset()
+        };
+    },
+
+    // Normalised combo for a keydown: 'Ctrl+Shift+D', 'Shift+ArrowLeft', 'C',
+    // '?' … Cmd counts as Ctrl. Shift is implied by printable symbols ('?'
+    // already is Shift+/), so it's only named for letters and named keys.
+    comboFromEvent(e) {
+        let k = e.key;
+        if (!k || ['Control', 'Shift', 'Alt', 'Meta', 'CapsLock', 'Dead', 'Unidentified'].includes(k)) return null;
+        const legacy = { ' ': 'Space', Spacebar: 'Space', Esc: 'Escape', Del: 'Delete', Left: 'ArrowLeft', Right: 'ArrowRight', Up: 'ArrowUp', Down: 'ArrowDown' };
+        k = legacy[k] || k;
+        if (k.length === 1) k = k.toUpperCase();
+        const mods = [];
+        if (e.ctrlKey || e.metaKey) mods.push('Ctrl');
+        if (e.altKey) mods.push('Alt');
+        if (e.shiftKey && (k.length > 1 || /^[A-Z]$/.test(k))) mods.push('Shift');
+        return [...mods, k].join('+');
+    },
+
+    formatCombo(combo) {
+        const isMac = /Mac|iPhone|iPad/.test(navigator.platform || '');
+        const names = {
+            ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓',
+            Escape: 'Esc', Delete: 'Del', Ctrl: isMac ? '⌘' : 'Ctrl'
+        };
+        const m = combo.match(/^((?:(?:Ctrl|Alt|Shift)\+)*)(.+)$/);
+        const parts = m ? [...m[1].split('+').filter(Boolean), m[2]] : [combo];
+        return parts.map(p => names[p] || p).join(' + ');
+    },
+
+    loadKeyBindings() {
+        this.keyBindings = {};
+        this.KEY_ACTIONS.forEach(([id, , , , keys]) => { this.keyBindings[id] = [...keys]; });
+        try {
+            const saved = JSON.parse(localStorage.getItem('jeditor.keys') || 'null');
+            if (saved && typeof saved === 'object') {
+                for (const [id, keys] of Object.entries(saved)) {
+                    if (id in this.keyBindings && Array.isArray(keys)) {
+                        this.keyBindings[id] = keys.filter(k => typeof k === 'string' && k);
+                    }
+                }
+            }
+        } catch (e) { /* corrupted → defaults */ }
+        this.buildKeyMaps();
+    },
+
+    saveKeyBindings() {
+        const changed = {};
+        this.KEY_ACTIONS.forEach(([id, , , , keys]) => {
+            if (this.keyBindings[id].join('\n') !== keys.join('\n')) changed[id] = this.keyBindings[id];
+        });
+        try { localStorage.setItem('jeditor.keys', JSON.stringify(changed)); } catch (e) { /* private mode */ }
+        this.buildKeyMaps();
+    },
+
+    buildKeyMaps() {
+        this._keyMaps = { global: new Map(), crop: new Map() };
+        this.KEY_ACTIONS.forEach(([id, ctx]) => {
+            (this.keyBindings[id] || []).forEach(combo => {
+                if (!this._keyMaps[ctx].has(combo)) this._keyMaps[ctx].set(combo, id);
+            });
+        });
+    },
+
+    // Give `combo` to action `id`, taking it away from any other action in
+    // the same context. Returns the label of the action it was taken from.
+    assignKey(id, combo) {
+        const action = this.KEY_ACTIONS.find(a => a[0] === id);
+        if (!action) return null;
+        let takenFrom = null;
+        this.KEY_ACTIONS.forEach(([other, ctx, , label]) => {
+            if (other === id || ctx !== action[1]) return;
+            const keys = this.keyBindings[other];
+            if (keys.includes(combo)) {
+                this.keyBindings[other] = keys.filter(k => k !== combo);
+                takenFrom = label;
+            }
+        });
+        if (!this.keyBindings[id].includes(combo)) this.keyBindings[id].push(combo);
+        this.saveKeyBindings();
+        return takenFrom;
+    },
+
+    removeKey(id, combo) {
+        this.keyBindings[id] = (this.keyBindings[id] || []).filter(k => k !== combo);
+        this.saveKeyBindings();
+    },
+
+    resetKeys(id = null) {
+        this.KEY_ACTIONS.forEach(([aid, , , , keys]) => {
+            if (!id || aid === id) this.keyBindings[aid] = [...keys];
+        });
+        this.saveKeyBindings();
+    },
+
     bindKeyboard() {
-        if (this.boundHandleKey) {
-            window.removeEventListener('keydown', this.boundHandleKey);
-        }
+        this.loadKeyBindings();
+        if (this.boundHandleKey) window.removeEventListener('keydown', this.boundHandleKey);
         this.boundHandleKey = this.handleKey.bind(this);
         window.addEventListener('keydown', this.boundHandleKey);
-        // console.log('Keyboard bound to window');
+        // The shortcut recorder listens first, in the capture phase
+        window.addEventListener('keydown', (e) => this.recordKey(e), true);
+    },
+
+    isTypingTarget(t) {
+        if (!t || !t.tagName) return false;
+        if (t.isContentEditable || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') return true;
+        return t.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button'].includes(t.type);
     },
 
     handleKey(e) {
-        // ALWAYS allow F2 for debug
-        if (e.key === 'F2') {
-            e.preventDefault();
-            const debugEl = document.getElementById('debug-console');
-            if (debugEl) {
-                debugEl.style.display = debugEl.style.display === 'none' ? 'block' : 'none';
-                this.log(debugEl.style.display === 'block' ? 'Console Show' : 'Console Hide');
+        if (this._recordingKey) return;
+
+        // Shortcuts panel is modal: Esc closes it, other keys go to its inputs
+        if (this.isShortcutsOpen()) {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                this.toggleShortcutsPanel(false);
             }
             return;
         }
+        if (this.isTypingTarget(e.target)) {
+            if (e.key === 'Escape') e.target.blur();
+            return;
+        }
 
-        // Global safety check: if we are not in main interface, ignore
-        if (this.elements.mainInterface.classList.contains('hidden')) return;
+        const combo = this.comboFromEvent(e);
+        if (!combo) return;
+        this.stopSlideshow();
 
         // Escape closes an open context menu before anything else
-        if (e.key === 'Escape' && document.getElementById('context-menu')) {
+        if (combo === 'Escape' && document.getElementById('context-menu')) {
             e.preventDefault();
             this.closeContextMenu();
             return;
         }
 
-        // Undo last edit
-        if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+        const context = this.cropState.active ? 'crop' : 'global';
+        const id = this._keyMaps[context].get(combo);
+        if (!id) return;
+        // Only the shortcut list and debug console work from the start screen
+        const onStart = this.elements.mainInterface.classList.contains('hidden');
+        if (onStart && context === 'global' && id !== 'app.shortcuts' && id !== 'app.debug') return;
+        if (context === 'crop' && !CropEditor.ready && id !== 'crop.cancel') {
             e.preventDefault();
-            this.undo();
             return;
         }
 
-        this.stopSlideshow();
+        const handler = this.keyHandlers()[id];
+        if (!handler) return;
+        if (handler(e) === false) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+    },
 
-        // Crop blocking
-        if (this.cropState.active) {
-            if (e.key === 'Escape' || e.key === 'Esc') {
-                e.preventDefault();
-                e.stopPropagation();
-                this.cancelCrop();
-            }
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                e.stopPropagation();
-                this.saveCrop();
-            }
-            return;
+    toggleDebugConsole() {
+        const debugEl = document.getElementById('debug-console');
+        if (!debugEl) return;
+        debugEl.style.display = debugEl.style.display === 'none' ? 'block' : 'none';
+        this.log(debugEl.style.display === 'block' ? 'Console Show' : 'Console Hide');
+    },
+
+    zoomBy(factor) {
+        if (this.viewMode !== 'single' || this.cropState.active) return false;
+        if (factor === 0) {
+            this.resetPan();
+        } else {
+            this.zoom = Math.max(0.1, Math.min(8, this.zoom * factor));
+            if (this.zoom <= 1) { this.panX = 0; this.panY = 0; }
         }
+        this.elements.imageContainer.style.cursor = this.zoom > 1 ? 'grab' : 'default';
+        this.updateImageTransform();
+    },
 
-        // Navigation & Actions
-        switch (e.key) {
-            case 'r':
-            case 'R':
-                e.preventDefault();
-                this.refreshFolder();
-                break;
+    // ---- Keyboard Shortcuts panel ----
 
-            case 'ArrowLeft':
-            case 'Left':
-                e.stopImmediatePropagation();
-                e.preventDefault();
-                if (e.shiftKey) this.rotateCurrent(-90);
-                else this.navigate(-1);
-                break;
+    isShortcutsOpen() {
+        const p = document.getElementById('shortcuts-panel');
+        return !!p && !p.classList.contains('hidden');
+    },
 
-            case 'ArrowRight':
-            case 'Right':
-                e.stopImmediatePropagation();
-                e.preventDefault();
-                if (e.shiftKey) this.rotateCurrent(90);
-                else this.navigate(1);
-                break;
-
-            case 'ArrowUp':
-            case 'Up':
-                if (this.viewMode === 'grid') {
-                    e.preventDefault(); e.stopImmediatePropagation();
-                    this.navigate(-this.getGridColumnCount());
-                }
-                break;
-
-            case 'ArrowDown':
-            case 'Down':
-                if (this.viewMode === 'grid') {
-                    e.preventDefault(); e.stopImmediatePropagation();
-                    this.navigate(this.getGridColumnCount());
-                }
-                break;
-
-            case '[':
-            case ',':
-                this.viewMode === 'grid' ? this.rotateBulk(-90) : this.rotateCurrent(-90);
-                break;
-
-            case ']':
-            case '.':
-                this.viewMode === 'grid' ? this.rotateBulk(90) : this.rotateCurrent(90);
-                break;
-
-            case 'Enter':
-                if (this.viewMode === 'grid') {
-                    e.preventDefault();
-                    this.setView('single');
-                }
-                break;
-
-            case 'Escape':
-            case 'Esc':
-                e.preventDefault();
-                if (this.viewMode === 'single') this.setView('grid');
-                else this.clearSelection();
-                break;
-
-            case ' ':
-            case 'Spacebar':
-                e.preventDefault();
-                this.toggleView();
-                break;
-
-            case 'g':
-                this.setView('grid');
-                break;
-            case 's':
-                this.setView('single');
-                break;
-            case 'c':
-                this.enterCrop();
-                break;
-            case 'i':
-                this.toggleInfoPanel();
-                break;
-            case 'f':
-                this.toggleFullscreen();
-                break;
-            case 'Delete':
-                e.preventDefault();
-                this.moveToTrash(this.viewMode === 'grid' && this.selection.size
-                    ? [...this.selection]
-                    : [this.currentFile]);
-                break;
+    toggleShortcutsPanel(force = null) {
+        const panel = document.getElementById('shortcuts-panel');
+        if (!panel) return;
+        const open = force !== null ? force : panel.classList.contains('hidden');
+        this._recordingKey = null;
+        panel.classList.toggle('hidden', !open);
+        if (open) {
+            this.renderShortcutsPanel();
+            document.getElementById('shortcuts-filter').value = '';
         }
     },
 
+    renderShortcutsPanel() {
+        const list = document.getElementById('shortcuts-list');
+        const filter = (document.getElementById('shortcuts-filter').value || '').trim().toLowerCase();
+        list.innerHTML = '';
+        const groups = new Map();
+        this.KEY_ACTIONS.forEach(a => {
+            const [id, , group, label] = a;
+            const keys = this.keyBindings[id];
+            const text = (label + ' ' + keys.map(k => this.formatCombo(k)).join(' ')).toLowerCase();
+            if (filter && !text.includes(filter)) return;
+            if (!groups.has(group)) groups.set(group, []);
+            groups.get(group).push(a);
+        });
+
+        groups.forEach((actions, group) => {
+            const section = document.createElement('section');
+            const h = document.createElement('h4');
+            h.textContent = group;
+            section.appendChild(h);
+            actions.forEach(([id, , , label, defaults]) => {
+                const row = document.createElement('div');
+                row.className = 'sc-row';
+                const name = document.createElement('span');
+                name.className = 'sc-label';
+                name.textContent = label;
+                const keysEl = document.createElement('span');
+                keysEl.className = 'sc-keys';
+
+                this.keyBindings[id].forEach(combo => {
+                    const kbd = document.createElement('button');
+                    kbd.className = 'sc-key';
+                    kbd.title = 'Remove this key';
+                    kbd.textContent = this.formatCombo(combo);
+                    kbd.onclick = () => { this.removeKey(id, combo); this.renderShortcutsPanel(); };
+                    keysEl.appendChild(kbd);
+                });
+
+                const add = document.createElement('button');
+                add.className = 'sc-add';
+                if (this._recordingKey === id) {
+                    add.textContent = 'Press a key… (Esc cancels)';
+                    add.classList.add('recording');
+                } else {
+                    add.textContent = '+';
+                    add.title = 'Add a key';
+                }
+                add.onclick = () => {
+                    this._recordingKey = this._recordingKey === id ? null : id;
+                    this.renderShortcutsPanel();
+                };
+                keysEl.appendChild(add);
+
+                if (this.keyBindings[id].join('\n') !== defaults.join('\n')) {
+                    const reset = document.createElement('button');
+                    reset.className = 'sc-reset';
+                    reset.title = 'Back to default: ' + (defaults.map(k => this.formatCombo(k)).join(', ') || 'none');
+                    reset.textContent = '↺';
+                    reset.onclick = () => { this.resetKeys(id); this.renderShortcutsPanel(); };
+                    keysEl.appendChild(reset);
+                }
+                row.appendChild(name);
+                row.appendChild(keysEl);
+                section.appendChild(row);
+            });
+            list.appendChild(section);
+        });
+        if (!groups.size) list.textContent = 'No shortcuts match.';
+    },
+
+    // Capture-phase listener: while recording, the next key press becomes
+    // the new binding instead of doing anything else.
+    recordKey(e) {
+        const id = this._recordingKey;
+        if (!id) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (e.key === 'Escape') {
+            this._recordingKey = null;
+            this.renderShortcutsPanel();
+            return;
+        }
+        const combo = this.comboFromEvent(e);
+        if (!combo) return; // a lone modifier: keep waiting for the real key
+        this._recordingKey = null;
+        const takenFrom = this.assignKey(id, combo);
+        if (takenFrom) this.showToast(`${this.formatCombo(combo)} was moved from "${takenFrom}"`, 3000);
+        this.renderShortcutsPanel();
+    },
+
+    initShortcutsPanel() {
+        const panel = document.getElementById('shortcuts-panel');
+        if (!panel) return;
+        document.getElementById('shortcuts-close').addEventListener('click', () => this.toggleShortcutsPanel(false));
+        document.getElementById('shortcuts-reset').addEventListener('click', () => {
+            this.resetKeys();
+            this.renderShortcutsPanel();
+            this.showToast('Shortcuts reset to defaults', 2000);
+        });
+        document.getElementById('shortcuts-filter').addEventListener('input', () => this.renderShortcutsPanel());
+        // Click on the backdrop closes
+        panel.addEventListener('mousedown', (e) => { if (e.target === panel) this.toggleShortcutsPanel(false); });
+    },
+
     getGridColumnCount() {
-        const grid = this.elements.gridView;
-        const width = grid.clientWidth;
-        // From CSS: repeat(auto-fill, minmax(150px, 1fr)) with 16px gap
-        const count = Math.floor((width + 16) / (150 + 16));
+        // Read the resolved track list — tile size follows the slider, so a
+        // hard-coded width sent Up/Down to the wrong photo after resizing
+        const cols = getComputedStyle(this.elements.gridView).gridTemplateColumns;
+        const count = cols && cols !== 'none' ? cols.split(' ').filter(Boolean).length : 1;
         return Math.max(1, count);
     },
 
@@ -2181,6 +2583,7 @@ const app = {
 
     async rotateBulk(deg) {
         if (this.selection.size === 0) return;
+        if (!this.ensureWritable()) return;
 
         // Snapshot the selection NOW: photos the user clicks or selects while
         // this batch is saving must never join it.
@@ -2216,6 +2619,7 @@ const app = {
 
     rotateImage(fileEntry, deg) {
         if (!fileEntry) return Promise.resolve(false);
+        if (!this.ensureWritable()) return Promise.resolve(false);
 
         if (/\.gif$/i.test(fileEntry.name)) {
             this.showToast('GIF rotation is not supported (animation would be lost)');
@@ -2389,10 +2793,14 @@ const app = {
         f.fullLag = 0;
         f._exif = undefined;
         f.dateTaken = undefined;
+        f._dims = undefined;
+        f._glass = undefined;
+        f._thumbStale = true; // cached thumbnail shows the old pixels until regenerated
         if (f.fullImageUrl) {
             URL.revokeObjectURL(f.fullImageUrl);
             delete f.fullImageUrl;
         }
+        this.dropDecoded(f);
         this.refreshThumbnailUI(f);
         this.applyPreviewRotation(f);
         if (this.currentFile === f && this.viewMode === 'single') this.loadFile(f);
@@ -2404,6 +2812,7 @@ const app = {
     async moveToTrash(files) {
         const list = files.filter(Boolean);
         if (!list.length) return;
+        if (!this.ensureWritable()) return;
         if (!this.dirHandle) {
             this.showToast('Deleting requires opening a folder (not loose files)');
             return;
@@ -2571,6 +2980,7 @@ const app = {
 
     promptRename(file = this.currentFile) {
         if (!file) return;
+        if (!this.ensureWritable()) return;
         const newName = prompt('Rename file:', file.name);
         if (newName !== null) {
             this.renameFile(file, newName).then(ok => {
@@ -2583,6 +2993,7 @@ const app = {
         const list = files.filter(Boolean)
             .sort((a, b) => this.files.indexOf(a) - this.files.indexOf(b));
         if (list.length === 0) return;
+        if (!this.ensureWritable()) return;
         if (list.length === 1) { this.promptRename(list[0]); return; }
 
         const pattern = prompt(
@@ -2789,7 +3200,7 @@ const app = {
 
     initContextMenu() {
         document.addEventListener('contextmenu', (e) => {
-            if (this.cropState.active) return;
+            if (this.cropState.active) { e.preventDefault(); return; }
             if (this.elements.mainInterface.classList.contains('hidden')) return;
             const tile = e.target.closest && e.target.closest('.grid-item');
             const inSingle = this.viewMode === 'single' && e.target.closest && e.target.closest('#image-container');
@@ -2825,11 +3236,11 @@ const app = {
                 ];
             }
             return [
-                ['Open', () => { this.loadFile(file); this.setView('single'); }],
+                ['Open', () => this.openSingle(file)],
                 ['—'],
                 ['Rotate Left', () => this.rotateImage(file, -90)],
                 ['Rotate Right', () => this.rotateImage(file, 90)],
-                ['Crop', () => { this.loadFile(file); this.setView('single'); this.enterCrop(); }],
+                ['Crop', () => { this.openSingle(file); this.enterCrop(); }],
                 ['—'],
                 ['Rename…', () => this.promptRename(file)],
                 ['File Info', () => { this.toggleInfoPanel(true); }],
@@ -2896,184 +3307,133 @@ const app = {
         if (menu) menu.remove();
     },
 
-    // Crop Logic
-    enterCrop() {
-        if (typeof Cropper === 'undefined') {
-            this.showToast('Crop library failed to load — check cropper.min.js');
-            return;
-        }
-        if (this.cropState.active) return;
-        if (this.currentFile && /\.gif$/i.test(this.currentFile.name)) {
+    // ---- Crop & Straighten (see crop.js) ----
+
+    async enterCrop() {
+        const file = this.currentFile;
+        if (!file || this.cropState.active) return;
+        if (!this.ensureWritable()) return;
+        if (/\.gif$/i.test(file.name)) {
             this.showToast('Cropping GIFs is not supported (animation would be lost)');
             return;
         }
         if (this.viewMode !== 'single') this.setView('single');
-        this.zoom = 1;
-        this.panX = 0;
-        this.panY = 0;
-        this.updateImageTransform();
-
-        // 1. Hide Controls & Strip
-        document.querySelector('.controls').classList.add('hidden');
-        document.getElementById('thumbnail-strip').classList.add('hidden');
-        if (this.elements.stripResize) this.elements.stripResize.classList.add('hidden');
-
-        // 2. Initialize Cropper
-        const image = this.elements.currentImage;
-
-        // Destroy existing if any
-        if (this.cropper) {
-            this.cropper.destroy();
-        }
-
-        this.cropper = new Cropper(image, {
-            viewMode: 1,
-            dragMode: 'move',
-            background: false,
-            autoCropArea: 1,
-            zoomable: true,
-            rotatable: true,
-            scalable: false,
-            guides: true,
-            center: true,
-            highlight: false,
-            cropBoxMovable: true,
-            cropBoxResizable: true,
-            toggleDragModeOnDblclick: false,
-            ready: () => {
-                this.showCropperToolbar();
-            }
-        });
-
+        // Active from here on: keys go to the editor and rotation is blocked
         this.cropState.active = true;
+        this.stopSlideshow();
+        try {
+            // A rotation still being written must land first — the editor
+            // reads the file from disk so what you crop is what gets saved
+            if (file._rotationQueue) await file._rotationQueue;
+            await CropEditor.open(this, file);
+        } catch (err) {
+            console.error('Crop open failed:', err);
+            this.cancelCrop();
+            this.showToast('Could not open this photo for cropping');
+        }
     },
 
     cancelCrop() {
-        if (this.cropper) {
-            this.cropper.destroy();
-            this.cropper = null;
-        }
+        CropEditor.close();
         this.cropState.active = false;
-
-        // Hide toolbar
-        const toolbar = document.getElementById('cropper-toolbar');
-        if (toolbar) toolbar.classList.add('hidden');
-
-        // Restore main UI visibility
-        document.querySelector('.controls')?.classList.remove('hidden');
-        document.getElementById('thumbnail-strip')?.classList.remove('hidden');
-        if (this.elements.stripResize) this.elements.stripResize.classList.remove('hidden');
     },
 
-    showCropperToolbar() {
-        let toolbar = document.getElementById('cropper-toolbar');
-        if (!toolbar) {
-            toolbar = document.createElement('div');
-            toolbar.id = 'cropper-toolbar';
-            toolbar.style.cssText = `
-                position: fixed;
-                bottom: 20px;
-                left: 50%;
-                transform: translateX(-50%);
-                z-index: 2000;
-                display: flex;
-                gap: 12px;
-                background: var(--glass-bottom-bg);
-                color: var(--glass-bottom-text);
-                padding: 12px 24px;
-                border-radius: 999px;
-                border: 1px solid var(--glass-bottom-border);
-                backdrop-filter: var(--backdrop-filter);
-                -webkit-backdrop-filter: var(--backdrop-filter);
-                box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-                transition: background 0.35s ease, color 0.35s ease;
-            `;
-
-            toolbar.innerHTML = `
-                <button id="cropper-cancel" style="color: inherit; background: transparent; border: none; font-size: 14px; cursor: pointer; padding: 8px 16px;">Cancel</button>
-                <div style="width: 1px; background: var(--glass-bottom-border); margin: 4px 0;"></div>
-                <button id="cropper-rotate-left" style="color: inherit; background: transparent; border: none; font-size: 18px; cursor: pointer; padding: 8px 12px;" title="Rotate Left">↺</button>
-                <button id="cropper-rotate-right" style="color: inherit; background: transparent; border: none; font-size: 18px; cursor: pointer; padding: 8px 12px;" title="Rotate Right">↻</button>
-                <div style="width: 1px; background: var(--glass-bottom-border); margin: 4px 0;"></div>
-                <button id="cropper-save" style="color: #fff; background: var(--accent-color); border: none; font-size: 14px; font-weight: 600; cursor: pointer; padding: 8px 24px; border-radius: 999px;">Save</button>
-            `;
-            document.body.appendChild(toolbar);
-
-            document.getElementById('cropper-cancel').onclick = () => this.cancelCrop();
-            document.getElementById('cropper-save').onclick = () => this.saveCrop();
-            document.getElementById('cropper-rotate-left').onclick = () => this.cropper.rotate(-90);
-            document.getElementById('cropper-rotate-right').onclick = () => this.cropper.rotate(90);
+    getLastCrop() {
+        if (this._lastCrop === undefined) {
+            try { this._lastCrop = JSON.parse(localStorage.getItem('jeditor.lastCrop') || 'null'); } catch (e) { this._lastCrop = null; }
         }
-        toolbar.classList.remove('hidden');
+        return this._lastCrop;
     },
 
-    async saveCrop() {
-        if (!this.cropper) return;
+    rememberCrop(snap) {
+        this._lastCrop = snap;
+        try { localStorage.setItem('jeditor.lastCrop', JSON.stringify(snap)); } catch (e) { /* private mode */ }
+    },
 
+    // Save the crop. With next: step to the following photo and open the
+    // editor again — the fast path through a scan order.
+    async saveCrop({ next = false } = {}) {
+        const ed = CropEditor;
+        if (!ed.isOpen || !ed.ready || ed.busy) return;
+        const file = ed.file;
+        const snap = ed.snapshot();
+
+        const goNext = () => {
+            if (!next) return;
+            if (this.getCurrentIndex() >= this.files.length - 1) {
+                this.showToast('That was the last photo');
+                return;
+            }
+            this.navigate(1);
+            this.enterCrop();
+        };
+
+        // Only quarter turns and no crop: that's a rotation — do it
+        // losslessly through the rotation engine instead of re-encoding
+        if (ed.isIdentity()) {
+            const quarter = ed.q;
+            this.rememberCrop(snap);
+            this.cancelCrop();
+            if (quarter) {
+                const deg = quarter === 3 ? -90 : quarter * 90;
+                this.rotateImage(file, deg);
+                this.showToast(`Rotated ${deg > 0 ? 'right' : 'left'}${Math.abs(deg) === 180 ? ' 180°' : ''}`, 1500);
+            } else {
+                this.showToast('No changes to save', 1500);
+            }
+            goNext();
+            return;
+        }
+
+        ed.busy = true;
         this.beginTask('crop-save', 'Saving crop…');
-
         try {
-            const canvas = this.cropper.getCroppedCanvas();
-            const fileEntry = this.currentFile;
-            if (!fileEntry) throw new Error('No file selected');
+            const { type, quality } = this.getSaveFormat(file.name);
+            const fileData = await file.handle.getFile();
+            const original = new Uint8Array(await fileData.arrayBuffer());
 
-            const { type, quality } = this.getSaveFormat(fileEntry.name);
-            const blob = await new Promise(r => canvas.toBlob(r, type, quality));
-            if (!blob) throw new Error('Encoding failed');
+            const canvas = await ed.renderOutput(fileData, type);
+            const w = canvas.width, h = canvas.height;
+            let blob = await new Promise(r => canvas.toBlob(r, type, quality));
+            canvas.width = canvas.height = 0; // release the full-size buffer now
+            if (!blob) throw new Error('encoding failed');
+            // Keep EXIF (dates, camera), colour profile and DPI
+            blob = await ImageMeta.transplant(original, blob, type, w, h);
 
-            // Capture pre-crop bytes for undo
-            const before = await fileEntry.handle.getFile();
+            if (this.dirHandle) await this.verifyPermission(this.dirHandle, true);
+            else await this.verifyPermission(file.handle, true);
+
+            file.isBusy = true;
+            try {
+                const writable = await file.handle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+            } finally {
+                file.isBusy = false;
+            }
             this.pushUndo({
                 type: 'bytes',
-                file: fileEntry,
-                blob: new Blob([await before.arrayBuffer()], { type: before.type }),
+                file,
+                blob: new Blob([original], { type: fileData.type }),
                 label: 'crop'
             });
+            this.rememberCrop(snap);
 
-            // Re-verify permission
-            if (this.dirHandle) {
-                await this.verifyPermission(this.dirHandle, true);
-            } else {
-                await this.verifyPermission(fileEntry.handle, true);
-            }
+            // The crop bakes everything upright — reset rotation bookkeeping
+            file.pendingRotation = 0;
+            file.savingRotation = 0;
 
-            const writable = await fileEntry.handle.createWritable();
-            await writable.write(blob);
-            await writable.close();
-
-            // The crop bakes all pixels upright — reset rotation bookkeeping
-            fileEntry.pendingRotation = 0;
-            fileEntry.savingRotation = 0;
-            fileEntry.thumbLag = 0;
-            fileEntry.fullLag = 0;
-
-            this.refreshThumbnailUI(fileEntry);
-            if (fileEntry.fullImageUrl) URL.revokeObjectURL(fileEntry.fullImageUrl);
-            const newFileData = await fileEntry.handle.getFile();
-            fileEntry.size = newFileData.size;
-            fileEntry.lastModified = newFileData.lastModified;
-            const newUrl = URL.createObjectURL(newFileData);
-            fileEntry.fullImageUrl = newUrl;
-
-            // Exit crop mode first (destroys the cropper), then swap in the result.
-            // cropper.replace() here would re-render the whole cropper just to destroy it.
+            ed.busy = false;
             this.cancelCrop();
-            this.elements.currentImage.src = newUrl;
-            this.updateImageTransform();
-
-            this.showToast("Image saved successfully");
-
+            await this.afterFileChanged(file);
+            this.showToast(`Saved ${w} × ${h}`, 1800);
+            goNext();
         } catch (err) {
-            console.error(err);
-            this.showToast("Failed to save image");
+            console.error('Crop save failed:', err);
+            this.showToast('Failed to save crop: ' + err.message, 4000);
         } finally {
+            ed.busy = false;
             this.endTask('crop-save');
-        }
-    },
-
-    resetCrop() {
-        if (this.cropper) {
-            this.cropper.reset();
         }
     }
 };
