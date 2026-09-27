@@ -568,12 +568,18 @@ const app = {
         this.elements.imageContainer.style.cursor = this.zoom > 1 ? 'grab' : 'default';
 
         this.updateImageTransform();
+        if (this.zoom > 1) this.ensureFullRes();
     },
 
     updateImageTransform() {
         if (!this.currentFile) return;
         const img = this.elements.currentImage;
-        const r = this.getDisplayRotation(this.currentFile, this._displayKind === 'thumb' ? 'thumb' : 'full');
+        const f = this.currentFile;
+        // Rotation saved to disk after these pixels were read, plus what is
+        // still being written or queued
+        const readAt = this._displayFile === f && img._savedAtRead !== undefined
+            ? img._savedAtRead : (f._savedRotationTotal || 0);
+        const r = ((f._savedRotationTotal || 0) - readAt) + (f.savingRotation || 0) + (f.pendingRotation || 0);
 
         // At odd quarter-turns the CSS-rotated image would overflow the
         // container (layout still sees the unrotated box) — scale it to fit.
@@ -889,13 +895,14 @@ const app = {
         return this.files.indexOf(this.currentFile);
     },
 
-    // Degrees of CSS rotation a preview needs on top of its cached bitmap:
+    // Degrees of CSS rotation a thumbnail needs on top of its cached bitmap:
     // rotation already saved to disk but not baked into that bitmap (lag),
     // plus rotation currently being written, plus rotation still queued.
-    getDisplayRotation(file, kind) {
+    // (The single view tracks the same per displayed element — see
+    // updateImageTransform.)
+    getDisplayRotation(file, kind = 'thumb') {
         if (!file) return 0;
-        const lag = (kind === 'thumb' ? file.thumbLag : file.fullLag) || 0;
-        return lag + (file.savingRotation || 0) + (file.pendingRotation || 0);
+        return (file.thumbLag || 0) + (file.savingRotation || 0) + (file.pendingRotation || 0);
     },
 
     // ---- File info ----
@@ -1296,6 +1303,10 @@ const app = {
                     delete file.fullImageUrl;
                 }
                 delete file._decodedEl;
+                if (file._preview) {
+                    URL.revokeObjectURL(file._preview.url);
+                    delete file._preview;
+                }
             });
         }
         this._decodedFiles = new Set();
@@ -1307,7 +1318,13 @@ const app = {
     },
 
     analyzeImageBrightness(img) {
-        if (!img || !img.width || !img.height) return;
+        const vals = this.measureBrightness(img);
+        if (vals) this.applyGlass(vals);
+        return vals;
+    },
+
+    measureBrightness(img) {
+        if (!img || !img.width || !img.height) return null;
 
         // Sample the image at 50x50 and measure three zones: the whole image
         // (drives the global theme) plus the top and bottom bands, which sit
@@ -1338,13 +1355,11 @@ const app = {
                 if (y >= SIZE - BAND) bottom += rowSum;
             }
 
-            const vals = {
+            return {
                 total: total / (SIZE * SIZE),
                 top: top / (BAND * SIZE),
                 bottom: bottom / (BAND * SIZE)
             };
-            this.applyGlass(vals);
-            return vals;
         } catch (e) {
             console.warn('Cannot analyze image brightness (CORS or error)', e);
             return null;
@@ -1514,16 +1529,43 @@ const app = {
     THUMB_CONCURRENCY: 4,
     THUMB_FAST_PATH_BYTES: 50 * 1024, // files this small serve as their own thumbnail
 
-    getThumbWorker() {
-        if (this._thumbWorkerFailed) return null;
-        if (this._thumbWorker) return this._thumbWorker;
+    // Two workers from one source: 'thumb' (grid thumbnails, lots of small
+    // jobs) and 'preview' (screen-sized single-view images), so a folder's
+    // thumbnail pre-cache never delays the photo you are looking at.
+    getImageWorker(kind = 'thumb') {
+        const failedKey = '_' + kind + 'WorkerFailed', workerKey = '_' + kind + 'Worker';
+        const jobsKey = kind === 'thumb' ? '_thumbJobs' : '_previewJobs';
+        if (this[failedKey]) return null;
+        if (this[workerKey]) return this[workerKey];
         try {
             if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') {
                 throw new Error('Worker/OffscreenCanvas unavailable');
             }
             const src = `self.onmessage = async (e) => {
-                const { id, file, targetWidth, type } = e.data;
+                const { id, file, targetWidth, type, edge } = e.data;
                 try {
+                    if (edge) {
+                        const full = await createImageBitmap(file);
+                        const w = full.width, h = full.height;
+                        if (Math.max(w, h) <= edge * 1.2) {
+                            full.close();
+                            self.postMessage({ id, result: { small: true, w, h } });
+                            return;
+                        }
+                        const k = edge / Math.max(w, h);
+                        const bmp = await createImageBitmap(full, {
+                            resizeWidth: Math.max(1, Math.round(w * k)),
+                            resizeHeight: Math.max(1, Math.round(h * k)),
+                            resizeQuality: 'high'
+                        });
+                        full.close();
+                        const canvas = new OffscreenCanvas(bmp.width, bmp.height);
+                        canvas.getContext('2d').drawImage(bmp, 0, 0);
+                        bmp.close();
+                        const blob = await canvas.convertToBlob({ type, quality: 0.9 });
+                        self.postMessage({ id, result: { blob, w, h } });
+                        return;
+                    }
                     const bitmap = await createImageBitmap(file, { resizeWidth: targetWidth, resizeQuality: 'medium' });
                     const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
                     canvas.getContext('2d').drawImage(bitmap, 0, 0);
@@ -1534,33 +1576,39 @@ const app = {
                     self.postMessage({ id, error: String((err && err.message) || err) });
                 }
             };`;
-            this._thumbWorker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
-            this._thumbJobs = new Map();
-            this._thumbWorker.onmessage = (e) => {
-                const job = this._thumbJobs.get(e.data.id);
+            const worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+            this[jobsKey] = new Map();
+            worker.onmessage = (e) => {
+                const jobs = this[jobsKey];
+                const job = jobs.get(e.data.id);
                 if (!job) return;
-                this._thumbJobs.delete(e.data.id);
-                if (e.data.blob) job.resolve(e.data.blob);
-                else job.reject(new Error(e.data.error));
+                jobs.delete(e.data.id);
+                if (e.data.error) job.reject(new Error(e.data.error));
+                else job.resolve(e.data.result || e.data.blob);
             };
-            this._thumbWorker.onerror = () => {
-                this._thumbWorkerFailed = true;
-                const jobs = this._thumbJobs;
-                this._thumbJobs = new Map();
-                jobs.forEach(j => j.reject(new Error('thumbnail worker crashed')));
+            worker.onerror = () => {
+                this[failedKey] = true;
+                const jobs = this[jobsKey];
+                this[jobsKey] = new Map();
+                jobs.forEach(j => j.reject(new Error(kind + ' worker crashed')));
             };
+            this[workerKey] = worker;
         } catch (e) {
-            this._thumbWorkerFailed = true;
-            this._thumbWorker = null;
+            this[failedKey] = true;
+            this[workerKey] = null;
         }
-        return this._thumbWorker;
+        return this[workerKey];
+    },
+
+    getThumbWorker() {
+        return this.getImageWorker('thumb');
     },
 
     async generateThumbnailBlob(fileData) {
         // Keep alpha-capable formats as PNG so transparency doesn't go black
         const outType = /png|webp|gif/i.test(fileData.type || '') ? 'image/png' : 'image/jpeg';
 
-        const worker = this.getThumbWorker();
+        const worker = this.getImageWorker('thumb');
         if (worker) {
             try {
                 return await new Promise((resolve, reject) => {
@@ -1865,46 +1913,162 @@ const app = {
 
     DECODE_RADIUS: 1, // neighbours kept decoded each side (full-res scans are large)
 
-    // Decode a file's full-size image into a detached element (deduped).
+    // ---- Display sources: screen-sized previews ----
+    //
+    // A 30-megapixel scan takes ~300 ms to decode and ~120 MB of memory,
+    // yet the screen shows ~4 megapixels of it. The single view therefore
+    // shows a screen-sized preview (made in a worker, cached per file
+    // version in IndexedDB) and loads the original only when you zoom past
+    // fit. Edits never use previews: crop and rotation always read the
+    // original file and save it in its own format.
+
+    PREVIEW_CACHE_MAX: 400, // previews kept in IndexedDB (oldest evicted)
+
+    previewEdge() {
+        const dpr = window.devicePixelRatio || 1;
+        return Math.min(4096, Math.max(1600, Math.round(Math.max(screen.width, screen.height) * dpr)));
+    },
+
+    // What to show for `file` at screen size, read from its current bytes:
+    // { url, blob?, isPreview, savedAtRead, w, h } with w×h the original size.
+    getDisplaySource(file) {
+        if (file._sourcePromise) return file._sourcePromise;
+        const p = (async () => {
+            while (file.isBusy) await new Promise(r => setTimeout(r, 30));
+            const savedAtRead = file._savedRotationTotal || 0;
+            const data = await file.handle.getFile();
+            const edge = this.previewEdge();
+            const key = `p|${file.relPath || file.name}|${data.size}|${data.lastModified}|${edge}`;
+            if (file._preview && file._preview.key === key) return file._preview;
+
+            let rec = await this.idbGet('previews', key);
+            if (!rec) {
+                rec = await this.generatePreview(data, edge);
+                if (rec && rec.blob) this.idbPutPreview(key, rec);
+            }
+            if (rec && rec.blob) {
+                if (file._preview) URL.revokeObjectURL(file._preview.url);
+                file._preview = {
+                    key, blob: rec.blob, url: URL.createObjectURL(rec.blob),
+                    isPreview: true, savedAtRead, w: rec.w, h: rec.h
+                };
+                return file._preview;
+            }
+            // Already screen-sized (or no worker): the original is the source
+            return this.getOriginalSource(file, data, savedAtRead);
+        })();
+        file._sourcePromise = p;
+        p.catch(() => { }).finally(() => { if (file._sourcePromise === p) file._sourcePromise = null; });
+        return p;
+    },
+
+    async getOriginalSource(file, data = null, savedAtRead = null) {
+        if (!file.fullImageUrl) {
+            if (!data) {
+                while (file.isBusy) await new Promise(r => setTimeout(r, 30));
+                savedAtRead = file._savedRotationTotal || 0;
+                data = await file.handle.getFile();
+            }
+            file.fullImageUrl = URL.createObjectURL(data);
+            file._fullReadAt = savedAtRead;
+        }
+        return { url: file.fullImageUrl, isPreview: false, savedAtRead: file._fullReadAt };
+    },
+
+    // Worker: decode, downscale to `edge`, encode. { blob, w, h },
+    // { small: true, w, h } when the image is already about screen size,
+    // or null when no worker is available.
+    generatePreview(fileData, edge) {
+        const worker = this.getImageWorker('preview');
+        if (!worker) return Promise.resolve(null);
+        const alpha = /png|webp|gif/i.test(fileData.type || '');
+        return new Promise((resolve) => {
+            const id = (this._thumbSeq = (this._thumbSeq || 0) + 1);
+            this._previewJobs.set(id, { resolve: (d) => resolve(d), reject: () => resolve(null) });
+            worker.postMessage({ id, file: fileData, edge, type: alpha ? 'image/webp' : 'image/jpeg' });
+        });
+    },
+
+    // Decode a file's display source into a detached element (deduped).
     decodeFull(file) {
         const cached = file._decodedEl;
-        if (cached && cached._url === file.fullImageUrl) return Promise.resolve(cached);
+        if (cached) return Promise.resolve(cached);
         if (file._decodePromise) return file._decodePromise;
         const p = (async () => {
-            // Don't read mid-save; the rotation queue is quick
-            while (file.isBusy) await new Promise(r => setTimeout(r, 30));
-            if (!file.fullImageUrl) {
-                const savedAtRead = file._savedRotationTotal || 0;
-                const data = await file.handle.getFile();
-                file.fullImageUrl = URL.createObjectURL(data);
-                // Fresh bytes: lag is only whatever gets saved after this read
-                file.fullLag = (file._savedRotationTotal || 0) - savedAtRead;
-            }
-            const url = file.fullImageUrl;
-            const el = new Image();
-            el.decoding = 'async';
-            el.draggable = false;
-            el.alt = file.name;
-            el.src = url;
-            el._url = url;
-            try {
-                await el.decode();
-                el._decoded = true;
-            } catch (e) {
-                el._decoded = false; // undecodable file: still shown (as broken)
-            }
-            if (file.fullImageUrl === url) {
+            const src = await this.getDisplaySource(file);
+            const el = await this.decodeInto(file, src);
+            // Cache unless the file was edited (and invalidated) meanwhile
+            if (file._sourceGen === p._gen) {
                 file._decodedEl = el;
                 if (!this._decodedFiles) this._decodedFiles = new Set();
                 this._decodedFiles.add(file);
             }
             return el;
         })();
+        p._gen = file._sourceGen;
         file._decodePromise = p;
         p.catch(() => { }).finally(() => {
             if (file._decodePromise === p) file._decodePromise = null;
         });
         return p;
+    },
+
+    async decodeInto(file, src) {
+        const el = new Image();
+        el.decoding = 'async';
+        el.draggable = false;
+        el.alt = file.name;
+        el.src = src.url;
+        el._url = src.url;
+        el._savedAtRead = src.savedAtRead;
+        el._isPreview = !!src.isPreview;
+        try {
+            await el.decode();
+            el._decoded = true;
+        } catch (e) {
+            el._decoded = false; // undecodable file: still shown (as broken)
+        }
+        el._origW = src.w || el.naturalWidth;
+        el._origH = src.h || el.naturalHeight;
+        return el;
+    },
+
+    // Zoomed past fit on a preview: swap in the original for full detail
+    async ensureFullRes() {
+        const el = this.elements.currentImage;
+        const file = this._displayFile;
+        if (!el || !el._isPreview || !file || file !== this.currentFile || this._upgrading === file) return;
+        this._upgrading = file;
+        try {
+            const src = await this.getOriginalSource(file);
+            const full = await this.decodeInto(file, src);
+            if (this.elements.currentImage !== el || !full._decoded) return;
+            this.swapDisplay(full, 'full', file);
+            this.dropDecoded(file);
+            file._decodedEl = full;
+            this._decodedFiles.add(file);
+        } catch (e) {
+            /* stay on the preview */
+        } finally {
+            this._upgrading = null;
+        }
+    },
+
+    // Prepare previews a few photos ahead in the direction of travel, one at
+    // a time, so paging through an order never waits on a decode.
+    warmPreviews(file) {
+        const n = this.files.length;
+        const i = this.files.indexOf(file);
+        if (i === -1 || n < 3) return;
+        const dir = this._navDir || 1;
+        for (let d = 2; d <= 4; d++) {
+            const f = this.files[(i + d * dir + n * 4) % n];
+            if (!f || f._preview || f._warming) continue;
+            f._warming = true;
+            this._warmChain = (this._warmChain || Promise.resolve())
+                .then(() => this.getDisplaySource(f).catch(() => { }))
+                .finally(() => { f._warming = false; });
+        }
     },
 
     dropDecoded(file) {
@@ -1959,7 +2123,7 @@ const app = {
         this.elements.imageContainer.style.cursor = 'default';
 
         const ready = file._decodedEl;
-        if (ready && ready._decoded && ready._url === file.fullImageUrl) {
+        if (ready && ready._decoded) {
             // Preloaded neighbour: on screen this frame
             this.swapDisplay(ready, 'full', file);
             this.afterDisplay(file, ready);
@@ -1971,6 +2135,7 @@ const app = {
                 ph.draggable = false;
                 ph.alt = file.name;
                 ph.src = file.thumbnailUrl;
+                ph._savedAtRead = (file._savedRotationTotal || 0) - (file.thumbLag || 0);
                 const showPlaceholder = () => {
                     if (this._loadToken !== loadToken) return;
                     if (this._displayFile === file && this._displayKind === 'full') return;
@@ -2002,16 +2167,31 @@ const app = {
     },
 
     afterDisplay(file, el) {
-        if (el._decoded && el.naturalWidth) {
-            file._dims = { w: el.naturalWidth, h: el.naturalHeight };
-        }
+        if (el._decoded && el._origW) file._dims = { w: el._origW, h: el._origH };
         this.applyGlassFor(file, el);
+        this.warmPreviews(file);
     },
 
-    // Adaptive glass, sampled once per photo and reused on revisits
+    // Adaptive glass, sampled once per photo and reused on revisits.
+    // Sampling a full-size image costs tens of milliseconds, so it uses the
+    // photo's 320px thumbnail when that is loaded, and otherwise waits until
+    // the new photo has painted.
     applyGlassFor(file, img) {
-        if (file._glass) this.applyGlass(file._glass);
-        else if (img && img.naturalWidth) file._glass = this.analyzeImageBrightness(img);
+        if (file._glass) {
+            this.applyGlass(file._glass);
+            return;
+        }
+        const thumb = file._stripEl && file._stripEl.querySelector('img');
+        if (thumb && thumb.complete && thumb.naturalWidth && thumb.src.startsWith('blob:')) {
+            file._glass = this.analyzeImageBrightness(thumb);
+            return;
+        }
+        if (!img) return;
+        setTimeout(() => {
+            if (file._glass || !img.naturalWidth) return;
+            file._glass = this.measureBrightness(img);
+            if (file._glass && this._displayFile === file) this.applyGlass(file._glass);
+        }, 0);
     },
 
     // Decode the photos either side (wrapping, like navigation does) and
@@ -2039,8 +2219,6 @@ const app = {
         const cur = this.getCurrentIndex();
         const windowSizeFull = 10;
 
-        const loadedFull = this.files.filter(f => f.fullImageUrl).length;
-        if (loadedFull <= windowSizeFull) return;
 
         this.files.forEach((f, i) => {
             if (f === this.currentFile) return;
@@ -2048,13 +2226,19 @@ const app = {
             if (dist > windowSizeFull && f.fullImageUrl && !f._decodePromise) {
                 URL.revokeObjectURL(f.fullImageUrl);
                 delete f.fullImageUrl;
-                this.dropDecoded(f);
+                if (f._decodedEl && !f._decodedEl._isPreview) this.dropDecoded(f);
+            }
+            // Previews are small, but not free; far ones come back from IndexedDB
+            if (dist > 60 && f._preview && !f._sourcePromise) {
+                URL.revokeObjectURL(f._preview.url);
+                delete f._preview;
             }
         });
     },
 
     navigate(direction) {
         if (this.files.length === 0) return;
+        this._navDir = direction < 0 ? -1 : 1;
         const n = this.files.length;
         let newIndex = this.getCurrentIndex() + direction;
         if (Math.abs(direction) > 1) {
@@ -2401,6 +2585,7 @@ const app = {
         }
         this.elements.imageContainer.style.cursor = this.zoom > 1 ? 'grab' : 'default';
         this.updateImageTransform();
+        if (this.zoom > 1) this.ensureFullRes();
     },
 
     // ---- Keyboard Shortcuts panel ----
@@ -2577,7 +2762,8 @@ const app = {
     //
     // Saving an EXIF rotation doesn't change any pixels, so cached preview
     // bitmaps stay valid: we track how far each cached bitmap "lags" behind
-    // the disk (thumbLag / fullLag) and keep compensating with CSS. Nothing
+    // the disk (thumbLag; per element in the single view) and keep
+    // compensating with CSS. Nothing
     // is re-read or re-decoded after a rotation — that's what makes it snappy.
     // Lags reset to 0 whenever a preview is regenerated from fresh disk bytes.
 
@@ -2715,7 +2901,6 @@ const app = {
                 // the disk by currentDeg more. On-screen totals are unchanged,
                 // so nothing needs repainting, reloading or re-decoding.
                 fileEntry.thumbLag = (fileEntry.thumbLag || 0) + currentDeg;
-                fileEntry.fullLag = (fileEntry.fullLag || 0) + currentDeg;
                 // Running total of saved rotation — preview loaders snapshot
                 // this around their disk read to compute an exact lag even if
                 // a save lands while they are decoding.
@@ -2790,7 +2975,6 @@ const app = {
         f.pendingRotation = 0;
         f.savingRotation = 0;
         f.thumbLag = 0;
-        f.fullLag = 0;
         f._exif = undefined;
         f.dateTaken = undefined;
         f._dims = undefined;
@@ -2800,6 +2984,13 @@ const app = {
             URL.revokeObjectURL(f.fullImageUrl);
             delete f.fullImageUrl;
         }
+        if (f._preview) {
+            URL.revokeObjectURL(f._preview.url);
+            delete f._preview;
+        }
+        f._sourceGen = (f._sourceGen || 0) + 1; // in-flight decodes of old bytes won't be cached
+        f._sourcePromise = null;
+        f._decodePromise = null;
         this.dropDecoded(f);
         this.refreshThumbnailUI(f);
         this.applyPreviewRotation(f);
@@ -3033,10 +3224,17 @@ const app = {
         if (this._idbPromise !== undefined) return this._idbPromise;
         this._idbPromise = new Promise((resolve) => {
             try {
-                const req = indexedDB.open('jeditor', 1);
-                req.onupgradeneeded = () => req.result.createObjectStore('thumbs');
+                const req = indexedDB.open('jeditor', 2);
+                req.onupgradeneeded = () => {
+                    const db = req.result;
+                    if (!db.objectStoreNames.contains('thumbs')) db.createObjectStore('thumbs');
+                    if (!db.objectStoreNames.contains('previews')) {
+                        db.createObjectStore('previews').createIndex('t', 't');
+                    }
+                };
                 req.onsuccess = () => resolve(req.result);
                 req.onerror = () => resolve(null);
+                req.onblocked = () => resolve(null);
             } catch (e) {
                 resolve(null);
             }
@@ -3044,12 +3242,12 @@ const app = {
         return this._idbPromise;
     },
 
-    async idbGetThumb(key) {
+    async idbGet(store, key) {
         const db = await this.idb();
         if (!db) return null;
         return new Promise((res) => {
             try {
-                const req = db.transaction('thumbs', 'readonly').objectStore('thumbs').get(key);
+                const req = db.transaction(store, 'readonly').objectStore(store).get(key);
                 req.onsuccess = () => res(req.result || null);
                 req.onerror = () => res(null);
             } catch (e) {
@@ -3058,11 +3256,38 @@ const app = {
         });
     },
 
+    idbGetThumb(key) {
+        return this.idbGet('thumbs', key);
+    },
+
     async idbPutThumb(key, blob) {
         const db = await this.idb();
         if (!db) return;
         try {
             db.transaction('thumbs', 'readwrite').objectStore('thumbs').put(blob, key);
+        } catch (e) { /* cache is best-effort */ }
+    },
+
+    // Previews are ~0.5 MB each, so the store is capped: past the limit the
+    // oldest entries are evicted.
+    async idbPutPreview(key, rec) {
+        const db = await this.idb();
+        if (!db) return;
+        try {
+            const tx = db.transaction('previews', 'readwrite');
+            const store = tx.objectStore('previews');
+            store.put({ blob: rec.blob, w: rec.w, h: rec.h, t: Date.now() }, key);
+            const countReq = store.count();
+            countReq.onsuccess = () => {
+                let excess = countReq.result - this.PREVIEW_CACHE_MAX;
+                if (excess <= 0) return;
+                store.index('t').openKeyCursor().onsuccess = (e) => {
+                    const cur = e.target.result;
+                    if (!cur || excess-- <= 0) return;
+                    store.delete(cur.primaryKey);
+                    cur.continue();
+                };
+            };
         } catch (e) { /* cache is best-effort */ }
     },
 

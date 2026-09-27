@@ -1117,6 +1117,53 @@ async function newPage(browser, url) {
         await page.close();
     }
 
+    // ---- 7e. Screen-sized previews for big scans ----
+    console.log('screen-sized previews');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const edge = app.previewEdge();
+            const big = makeFakeFile('big.jpg', await makeRealJpeg(edge * 2, Math.round(edge * 1.5), { exif: true }), 'image/jpeg');
+            app.files = [big];
+            app.currentFile = big;
+            app.dirHandle = null;
+            document.getElementById('main-interface').classList.remove('hidden');
+            app.setView('single');
+            for (let i = 0; i < 200 && app._displayKind !== 'full'; i++) await new Promise(res => setTimeout(res, 25));
+            const img = document.getElementById('current-image');
+            out.isPreview = img._isPreview === true && Math.max(img.naturalWidth, img.naturalHeight) <= edge;
+            out.origDims = big._dims && big._dims.w === edge * 2;
+            out.cached = !!(await app.idbGet('previews', big._preview.key));
+
+            // Rotation on a preview still shows instantly
+            await app.rotateImage(big, 90);
+            out.rotatedShown = /rotate\(90deg\)/.test(document.getElementById('current-image').style.transform);
+
+            // Zooming past fit swaps in the original
+            app.zoomBy(2);
+            for (let i = 0; i < 200 && document.getElementById('current-image')._isPreview; i++) await new Promise(res => setTimeout(res, 25));
+            const full = document.getElementById('current-image');
+            out.upgraded = !full._isPreview && Math.max(full.naturalWidth, full.naturalHeight) === edge * 2;
+            out.zoomKept = app.zoom === 2 && /scale\(/.test(full.style.transform);
+
+            // Crop still renders at full resolution from the original
+            app.zoomBy(0);
+            await app.enterCrop();
+            out.cropDims = `${CropEditor.W}x${CropEditor.H}`;
+            app.cancelCrop();
+            return { ...out, expectCrop: `${Math.round(edge * 1.5)}x${edge * 2}` };
+        });
+        check('big scan shows a screen-sized preview', r.isPreview);
+        check('original dimensions reported for the preview', r.origDims);
+        check('preview cached in IndexedDB', r.cached);
+        check('rotating a previewed photo shows instantly', r.rotatedShown);
+        check('zooming in swaps to the full-resolution original', r.upgraded && r.zoomKept);
+        check('crop works at original resolution after rotation', r.cropDims === r.expectCrop, `${r.cropDims} vs ${r.expectCrop}`);
+        check('preview suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7. file:// — direct open and standalone build ----
     console.log('file:// support');
     for (const [label, target] of [

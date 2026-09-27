@@ -204,26 +204,22 @@ const CropEditor = {
         this.updateButtons();
         this.resizeCanvas();
 
-        const data = await file.handle.getFile();
-        // Screen-sized working copy; the full-resolution render happens on save
-        const full = await createImageBitmap(data, { imageOrientation: 'from-image' });
+        // Screen-sized working copy — the viewer's cached preview when there
+        // is one (made from the file's current bytes); the full-resolution
+        // render happens on save, from the original.
+        const src = await app.getDisplaySource(file);
         let preview;
-        try {
-            this.W = full.width;
-            this.H = full.height;
-            const maxEdge = Math.min(4096, Math.max(1024,
-                Math.round(Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1))));
-            const k = Math.min(1, maxEdge / Math.max(this.W, this.H));
-            preview = k < 1
-                ? await createImageBitmap(full, {
-                    resizeWidth: Math.max(1, Math.round(this.W * k)),
-                    resizeHeight: Math.max(1, Math.round(this.H * k)),
-                    resizeQuality: 'high'
-                })
-                : full;
-        } finally {
-            if (preview !== full) full.close();
+        if (src.isPreview && src.blob) {
+            preview = await createImageBitmap(src.blob);
+            this.W = src.w;
+            this.H = src.h;
+        } else {
+            const data = await file.handle.getFile();
+            preview = await createImageBitmap(data, { imageOrientation: 'from-image' });
+            this.W = preview.width;
+            this.H = preview.height;
         }
+        const data = await file.handle.getFile();
         if (!this.isOpen || this.file !== file) { preview.close(); return; }
         this.preview = preview;
         this.dpi = ImageMeta.readDpi(new Uint8Array(await data.slice(0, 256 * 1024).arrayBuffer()));
