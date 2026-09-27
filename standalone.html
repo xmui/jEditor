@@ -14,7 +14,7 @@
     <script>
 // Single source of truth for the app version. Bump with:  npm run bump 1.x.y
 // (keeps package.json in sync and busts the service worker cache)
-const APP_VERSION = '1.8.1';
+const APP_VERSION = '1.9.0';
 
 </script>
     <script>
@@ -253,12 +253,27 @@ const ImageMeta = {
 
     // ---- Transplant ----
 
+    // Colour components in a JPEG's frame header (3 = YCbCr, 4 = CMYK/YCCK)
+    jpegComponents(bytes) {
+        const segs = this.jpegSegments(bytes) || [];
+        for (const s of segs) {
+            const m = s.marker;
+            if (m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC && s.end - s.start >= 10) {
+                return bytes[s.start + 9];
+            }
+        }
+        return 0;
+    },
+
     // Should the edit decode without colour conversion? True when the
     // original's colour profile will be copied onto the result, so the
     // pixels must stay in that profile's space (decoding to sRGB and then
-    // re-tagging with, say, Adobe RGB would wash the colours out).
-    canCarryProfile(mime) {
-        return mime === 'image/jpeg' || mime === 'image/png';
+    // re-tagging with, say, Adobe RGB would wash the colours out). A CMYK
+    // JPEG's profile can't describe the RGB output, so it converts instead.
+    canCarryProfile(mime, original = null) {
+        if (mime === 'image/png') return true;
+        if (mime !== 'image/jpeg') return false;
+        return !original || this.jpegComponents(original) !== 4;
     },
 
     // Copy metadata from `original` onto the re-encoded `blob`.
@@ -279,10 +294,12 @@ const ImageMeta = {
         const fSegs = this.jpegSegments(fresh);
         if (!oSegs || !fSegs) return null;
 
+        const cmyk = this.jpegComponents(original) === 4;
         const kept = [];
         for (const s of oSegs) {
             if (!this.isAppOrCom(s.marker)) continue;
             if (!this.keepJpegSeg(original, s)) continue;
+            if (cmyk && s.marker === 0xE2) continue; // CMYK profile ≠ RGB output
             const copy = original.slice(s.start, s.end);
             const cs = { marker: s.marker, start: 0, end: copy.length };
             if (this.isExifSeg(copy, cs)) this.patchExifForBakedPixels(copy, cs, width, height);
@@ -331,6 +348,41 @@ const ImageMeta = {
         let o = 0;
         for (const p of parts) { out.set(p, o); o += p.length; }
         return out;
+    },
+
+    // ---- Pixel size without decoding ----
+
+    // { w, h } as displayed (EXIF orientation 5–8 swaps them), from a JPEG
+    // SOF segment or PNG IHDR in the first bytes of the file, else null.
+    readPixelSize(bytes) {
+        try {
+            const segs = this.jpegSegments(bytes);
+            if (segs) {
+                let orientation = 1;
+                for (const s of segs) {
+                    if (this.isExifSeg(bytes, s)) {
+                        const t = this.exifTiff(bytes, s);
+                        const ifd0 = t && this.readIfd(t, t.view.getUint32(t.tiff + 4, t.le));
+                        const e = ifd0 && ifd0.entries.find(x => x.tag === 0x0112);
+                        if (e) orientation = this.readIntEntry(t, e) || 1;
+                    }
+                    const m = s.marker;
+                    const isSof = m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC;
+                    if (isSof && s.end - s.start >= 9) {
+                        const h = (bytes[s.start + 5] << 8) | bytes[s.start + 6];
+                        const w = (bytes[s.start + 7] << 8) | bytes[s.start + 8];
+                        return orientation >= 5 ? { w: h, h: w } : { w, h };
+                    }
+                }
+                return null;
+            }
+            const chunks = this.pngChunks(bytes);
+            if (chunks && chunks[0] && chunks[0].type === 'IHDR') {
+                const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+                return { w: v.getUint32(chunks[0].data), h: v.getUint32(chunks[0].data + 4) };
+            }
+        } catch (e) { /* unknown */ }
+        return null;
     },
 
     // ---- Resolution (DPI) ----
@@ -598,7 +650,7 @@ const CropEditor = {
             this.H = src.h;
         } else {
             const data = await file.handle.getFile();
-            preview = await createImageBitmap(data, { imageOrientation: 'from-image' });
+            preview = await createImageBitmap(data); // EXIF orientation applied by default
             this.W = preview.width;
             this.H = preview.height;
         }
@@ -817,10 +869,10 @@ const CropEditor = {
     // ---- output ----
 
     // Render the crop at full resolution from the file's own bytes.
-    async renderOutput(fileData, type) {
+    async renderOutput(fileData, type, original = null) {
+        // EXIF orientation is applied by default ('from-image')
         const bmp = await createImageBitmap(fileData, {
-            imageOrientation: 'from-image',
-            colorSpaceConversion: ImageMeta.canCarryProfile(type) ? 'none' : 'default'
+            colorSpaceConversion: ImageMeta.canCarryProfile(type, original) ? 'none' : 'default'
         });
         try {
             if (bmp.width !== this.W || bmp.height !== this.H) {
@@ -1148,6 +1200,440 @@ const CropEditor = {
         }
         const cx = (start.x0 + start.x1) / 2, w = (y1 - y0) * r;
         return { x0: cx - w / 2, x1: cx + w / 2, y0, y1 };
+    }
+};
+
+</script>
+    <script>
+// Duplicate finder and culling view.
+//
+// Scan orders collect the same print scanned twice — often at a different
+// rotation or exposure — plus plain file copies. Two signals:
+//   • exact copies: identical bytes (SHA-256, only for files of equal size)
+//   • near-duplicates: a 64-bit gradient hash (dHash) of each thumbnail,
+//     compared at all four rotations, so a re-scan the other way up still
+//     matches; a loose average-colour check rejects look-alike layouts.
+// Matches are grouped (union-find) and reviewed one group at a time: the
+// copy with the most pixels is suggested as the keeper, the rest can be
+// marked and moved to the trash (Ctrl+Z restores them).
+
+const Dupes = {
+    SENSITIVITY: { strict: 5, normal: 9, loose: 13 }, // max differing bits of 64
+    COLOR_LIMIT: 60, // max average-colour distance (0–441) for a near-duplicate
+
+    isOpen: false,
+
+    el(id) { return document.getElementById(id); },
+
+    init(app) {
+        if (this._inited) return;
+        this._inited = true;
+        this.app = app;
+        this.el('dupes-close').addEventListener('click', () => this.close());
+        this.el('dupes-prev').addEventListener('click', () => this.step(-1));
+        this.el('dupes-next').addEventListener('click', () => this.step(1));
+        this.el('dupes-skip').addEventListener('click', () => this.skip());
+        this.el('dupes-apply').addEventListener('click', () => this.apply());
+        this.el('dupes-keep-best').addEventListener('click', () => this.keepBest());
+        const sens = this.el('dupes-sensitivity');
+        sens.addEventListener('change', () => { sens.blur(); this.scan(); });
+    },
+
+    // ---- fingerprints ----
+
+    popcount(x) {
+        x -= (x >>> 1) & 0x55555555;
+        x = (x & 0x33333333) + ((x >>> 2) & 0x33333333);
+        return (((x + (x >>> 4)) & 0x0F0F0F0F) * 0x01010101) >>> 24;
+    },
+
+    // 9×9 grey grid → 64-bit dHash as [hi, lo] (row gradients, rows 0–7)
+    dhash(g) {
+        let hi = 0, lo = 0;
+        for (let y = 0; y < 8; y++) {
+            for (let x = 0; x < 8; x++) {
+                const bit = g[y * 9 + x] < g[y * 9 + x + 1] ? 1 : 0;
+                const i = y * 8 + x;
+                if (i < 32) hi = (hi | (bit << i)) >>> 0;
+                else lo = (lo | (bit << (i - 32))) >>> 0;
+            }
+        }
+        return [hi, lo];
+    },
+
+    rotateGrid(g) { // 90° clockwise, 9×9
+        const out = new Float32Array(81);
+        for (let y = 0; y < 9; y++) for (let x = 0; x < 9; x++) out[x * 9 + (8 - y)] = g[y * 9 + x];
+        return out;
+    },
+
+    // Fingerprint from pixel data of a 36×36 rendering: dHash at the four
+    // rotations plus the average colour.
+    fingerprintFromPixels(data) {
+        const g = new Float32Array(81);
+        let r = 0, gr = 0, b = 0;
+        for (let y = 0; y < 36; y++) {
+            for (let x = 0; x < 36; x++) {
+                const i = (y * 36 + x) * 4;
+                g[Math.floor(y / 4) * 9 + Math.floor(x / 4)] +=
+                    data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+                r += data[i]; gr += data[i + 1]; b += data[i + 2];
+            }
+        }
+        const hashes = [];
+        let cur = g;
+        for (let k = 0; k < 4; k++) {
+            hashes.push(this.dhash(cur));
+            cur = this.rotateGrid(cur);
+        }
+        const n = 36 * 36;
+        return { hashes, color: [r / n, gr / n, b / n] };
+    },
+
+    async fingerprint(file) {
+        const key = `${file.relPath || file.name}|${file.size}|${file.lastModified}`;
+        if (file._fp && file._fp.key === key) return file._fp;
+        const url = await this.app.ensureThumbnail(file);
+        const blob = await (await fetch(url)).blob();
+        const bmp = await createImageBitmap(blob, { resizeWidth: 36, resizeHeight: 36, resizeQuality: 'high' });
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 36;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(bmp, 0, 0);
+        bmp.close();
+        const fp = this.fingerprintFromPixels(ctx.getImageData(0, 0, 36, 36).data);
+        fp.key = key;
+        file._fp = fp;
+        return fp;
+    },
+
+    // Smallest bit distance between a's upright hash and any rotation of b's
+    distance(a, b) {
+        const [ah, al] = a.hashes[0];
+        let best = 64;
+        for (const [bh, bl] of b.hashes) {
+            best = Math.min(best, this.popcount(ah ^ bh) + this.popcount(al ^ bl));
+        }
+        return best;
+    },
+
+    colorDistance(a, b) {
+        return Math.hypot(a.color[0] - b.color[0], a.color[1] - b.color[1], a.color[2] - b.color[2]);
+    },
+
+    async sha256(file) {
+        if (file._sha && file._sha.size === file.size && file._sha.mtime === file.lastModified) return file._sha.hex;
+        if (!(window.crypto && crypto.subtle)) return null;
+        const buf = await (await file.handle.getFile()).arrayBuffer();
+        const hex = [...new Uint8Array(await crypto.subtle.digest('SHA-256', buf))]
+            .map(b => b.toString(16).padStart(2, '0')).join('');
+        file._sha = { size: file.size, mtime: file.lastModified, hex };
+        return hex;
+    },
+
+    // Pixel size from the file header (JPEG SOF or PNG IHDR) — no decode
+    async pixelSize(file) {
+        if (file._dims) return file._dims;
+        try {
+            const bytes = new Uint8Array(await (await file.handle.getFile()).slice(0, 256 * 1024).arrayBuffer());
+            const d = ImageMeta.readPixelSize(bytes);
+            if (d) file._dims = d;
+            return d;
+        } catch (e) {
+            return null;
+        }
+    },
+
+    // ---- grouping ----
+
+    // Returns groups: [{ files, exact: Set(file) }], each with ≥ 2 files.
+    async findGroups(files, threshold, onProgress = () => { }) {
+        const n = files.length;
+        const parent = files.map((_, i) => i);
+        const find = (i) => { while (parent[i] !== i) i = parent[i] = parent[parent[i]]; return i; };
+        const union = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[b] = a; };
+        const exactOf = new Map(); // file → sha shared with another file
+
+        // Exact copies: hash only files that share a byte size
+        const bySize = new Map();
+        files.forEach((f, i) => {
+            if (!bySize.has(f.size)) bySize.set(f.size, []);
+            bySize.get(f.size).push(i);
+        });
+        for (const idx of bySize.values()) {
+            if (idx.length < 2) continue;
+            const byHash = new Map();
+            for (const i of idx) {
+                const h = await this.sha256(files[i]).catch(() => null);
+                if (!h) continue;
+                if (byHash.has(h)) {
+                    union(byHash.get(h), i);
+                    exactOf.set(files[i], h);
+                    exactOf.set(files[byHash.get(h)], h);
+                } else {
+                    byHash.set(h, i);
+                }
+            }
+        }
+
+        // Near-duplicates
+        const fps = new Array(n);
+        for (let i = 0; i < n; i++) {
+            fps[i] = await this.fingerprint(files[i]).catch(() => null);
+            if (i % 10 === 0) onProgress(i, n);
+        }
+        onProgress(n, n);
+        for (let i = 0; i < n; i++) {
+            if (!fps[i]) continue;
+            for (let j = i + 1; j < n; j++) {
+                if (!fps[j]) continue;
+                if (this.distance(fps[i], fps[j]) <= threshold &&
+                    this.colorDistance(fps[i], fps[j]) <= this.COLOR_LIMIT) {
+                    union(i, j);
+                }
+            }
+            if (i % 200 === 199) await new Promise(r => setTimeout(r, 0)); // stay responsive
+        }
+
+        const groups = new Map();
+        files.forEach((f, i) => {
+            const root = find(i);
+            if (!groups.has(root)) groups.set(root, []);
+            groups.get(root).push(f);
+        });
+        return [...groups.values()]
+            .filter(g => g.length > 1)
+            .map(g => ({ files: g, exact: new Set(g.filter(f => exactOf.has(f) &&
+                g.some(o => o !== f && exactOf.get(o) === exactOf.get(f)))) }));
+    },
+
+    // Keeper suggestion: most pixels, then biggest file, then first in order
+    async rankGroup(group) {
+        for (const f of group.files) await this.pixelSize(f);
+        const px = (f) => f._dims ? f._dims.w * f._dims.h : 0;
+        const order = this.app.files;
+        group.files.sort((a, b) => px(b) - px(a) || (b.size || 0) - (a.size || 0) ||
+            order.indexOf(a) - order.indexOf(b));
+        group.best = group.files[0];
+        group.marked = new Set();
+    },
+
+    // ---- review UI ----
+
+    async open() {
+        this.init(this.app || window.app);
+        if (!this.app.files.length) return;
+        this.isOpen = true;
+        this.el('dupes-panel').classList.remove('hidden');
+        await this.scan();
+    },
+
+    close() {
+        this.isOpen = false;
+        this._scanToken = (this._scanToken || 0) + 1;
+        this.el('dupes-panel').classList.add('hidden');
+        this.el('dupes-stage').innerHTML = '';
+        this.app.endTask('dupes');
+    },
+
+    async scan() {
+        const token = (this._scanToken = (this._scanToken || 0) + 1);
+        const threshold = this.SENSITIVITY[this.el('dupes-sensitivity').value] || this.SENSITIVITY.normal;
+        this.groups = [];
+        this.index = 0;
+        this.trashed = 0;
+        this.renderMessage('Looking for duplicates…');
+        this.app.beginTask('dupes', 'Finding duplicates…');
+        try {
+            const files = [...this.app.files];
+            const groups = await this.findGroups(files, threshold, (i, n) => {
+                if (token === this._scanToken) {
+                    this.app.updateTask('dupes', `Finding duplicates ${i}/${n}`);
+                    this.renderMessage(`Comparing photos… ${i} / ${n}`);
+                }
+            });
+            if (token !== this._scanToken) return;
+            const ignored = this.app._dupesIgnored || new Set();
+            this.groups = groups.filter(g => !ignored.has(this.groupKey(g)));
+            for (const g of this.groups) await this.rankGroup(g);
+            if (token !== this._scanToken) return;
+            this.render();
+        } catch (e) {
+            console.error('Duplicate scan failed:', e);
+            this.renderMessage('Could not finish the duplicate scan: ' + e.message);
+        } finally {
+            if (token === this._scanToken) this.app.endTask('dupes');
+        }
+    },
+
+    groupKey(g) {
+        return g.files.map(f => f.relPath || f.name).sort().join('\n');
+    },
+
+    renderMessage(text) {
+        const stage = this.el('dupes-stage');
+        stage.innerHTML = '';
+        const p = document.createElement('div');
+        p.className = 'dupes-message';
+        p.textContent = text;
+        stage.appendChild(p);
+        this.el('dupes-summary').textContent = '';
+        this.el('dupes-progress').textContent = '';
+        this.setButtons(false);
+    },
+
+    setButtons(on) {
+        ['dupes-prev', 'dupes-next', 'dupes-skip', 'dupes-apply', 'dupes-keep-best'].forEach(id => {
+            this.el(id).disabled = !on;
+        });
+    },
+
+    current() { return this.groups[this.index]; },
+
+    render() {
+        const groups = this.groups;
+        const total = groups.reduce((n, g) => n + g.files.length, 0);
+        if (!groups.length) {
+            this.renderMessage(this.trashed
+                ? `All done — ${this.trashed} duplicate${this.trashed === 1 ? '' : 's'} moved to .jeditor-trash (Ctrl+Z restores).`
+                : 'No duplicates found. Try “Loose” sensitivity to widen the search.');
+            return;
+        }
+        this.index = Math.max(0, Math.min(this.index, groups.length - 1));
+        const g = this.current();
+        this.el('dupes-summary').textContent = `${groups.length} group${groups.length === 1 ? '' : 's'} · ${total} photos`;
+        this.el('dupes-progress').textContent = `Group ${this.index + 1} of ${groups.length}`;
+        this.setButtons(true);
+        this.el('dupes-prev').disabled = this.index === 0;
+        this.el('dupes-next').disabled = this.index === groups.length - 1;
+        this.el('dupes-apply').textContent = g.marked.size
+            ? `Trash ${g.marked.size} & next` : 'Keep all & next';
+
+        const stage = this.el('dupes-stage');
+        stage.innerHTML = '';
+        stage.style.setProperty('--dupe-cols', Math.min(g.files.length, 4));
+        g.files.forEach((f, i) => stage.appendChild(this.card(g, f, i)));
+    },
+
+    card(g, f, i) {
+        const card = document.createElement('div');
+        card.className = 'dupe-card';
+        card.classList.toggle('marked', g.marked.has(f));
+        card.title = 'Click to mark for trash';
+        card.onclick = () => this.toggle(i);
+
+        const frame = document.createElement('div');
+        frame.className = 'dupe-frame';
+        const img = document.createElement('img');
+        img.alt = f.name;
+        img.draggable = false;
+        const rotate = (readAt) => {
+            const r = ((f._savedRotationTotal || 0) - readAt) + (f.savingRotation || 0) + (f.pendingRotation || 0);
+            img.style.transform = r ? `rotate(${r}deg)` : '';
+        };
+        if (f.thumbnailUrl) {
+            img.src = f.thumbnailUrl;
+            rotate((f._savedRotationTotal || 0) - (f.thumbLag || 0));
+        }
+        // Sharpen with the screen-sized preview
+        this.app.getDisplaySource(f).then(src => {
+            if (!img.isConnected && !card.isConnected) return;
+            img.src = src.url;
+            rotate(src.savedAtRead);
+        }).catch(() => { });
+        frame.appendChild(img);
+
+        const badges = document.createElement('div');
+        badges.className = 'dupe-badges';
+        const badge = (text, cls) => {
+            const b = document.createElement('span');
+            b.className = 'dupe-badge ' + cls;
+            b.textContent = text;
+            badges.appendChild(b);
+        };
+        badge(String(i + 1), 'num');
+        if (f === g.best) badge('Suggested keep', 'keep');
+        if (g.exact.has(f)) badge('Exact copy', 'exact');
+        frame.appendChild(badges);
+        const mark = document.createElement('div');
+        mark.className = 'dupe-mark';
+        mark.textContent = 'Trash';
+        frame.appendChild(mark);
+        card.appendChild(frame);
+
+        const meta = document.createElement('div');
+        meta.className = 'dupe-meta';
+        const line = (text, cls = '') => {
+            const d = document.createElement('div');
+            d.className = cls;
+            d.textContent = text;
+            meta.appendChild(d);
+        };
+        line(f.name, 'dupe-name');
+        const bits = [];
+        if (f._dims) bits.push(`${f._dims.w} × ${f._dims.h}`);
+        bits.push(this.app.formatBytes(f.size));
+        if (f.lastModified) bits.push(new Date(f.lastModified).toLocaleDateString());
+        line(bits.join(' · '));
+        const folder = (f.relPath || '').split('/').slice(0, -1).join('/');
+        if (folder) line(folder, 'dupe-folder');
+        card.appendChild(meta);
+        return card;
+    },
+
+    toggle(i) {
+        const g = this.current();
+        const f = g && g.files[i];
+        if (!f) return;
+        if (g.marked.has(f)) g.marked.delete(f);
+        else g.marked.add(f);
+        if (g.marked.size === g.files.length) {
+            g.marked.delete(f);
+            this.app.showToast('Keep at least one photo from each group', 2000);
+        }
+        this.render();
+    },
+
+    keepBest() {
+        const g = this.current();
+        if (!g) return;
+        g.marked = new Set(g.files.filter(f => f !== g.best));
+        this.render();
+    },
+
+    step(dir) {
+        if (!this.groups.length) return;
+        this.index = Math.max(0, Math.min(this.groups.length - 1, this.index + dir));
+        this.render();
+    },
+
+    // "Not duplicates": hide this group for the rest of the session
+    skip() {
+        const g = this.current();
+        if (!g) return;
+        if (!this.app._dupesIgnored) this.app._dupesIgnored = new Set();
+        this.app._dupesIgnored.add(this.groupKey(g));
+        this.groups.splice(this.index, 1);
+        this.render();
+    },
+
+    // Trash the marked photos of this group (if any) and move on
+    async apply() {
+        const g = this.current();
+        if (!g || this._applying) return;
+        this._applying = true;
+        try {
+            const marked = g.files.filter(f => g.marked.has(f));
+            if (marked.length) {
+                const before = this.app.files.length;
+                await this.app.moveToTrash(marked);
+                this.trashed += before - this.app.files.length;
+            }
+            this.groups.splice(this.index, 1);
+            this.render();
+        } finally {
+            this._applying = false;
+        }
     }
 };
 
@@ -2560,6 +3046,232 @@ kbd {
     font-size: 11px;
 }
 
+/* ---- Duplicates review ---- */
+.dupes-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1600;
+    display: flex;
+    flex-direction: column;
+    background: #0b0b0c;
+    color: #f4f4f5;
+}
+
+.dupes-head {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px 8px;
+}
+
+.dupes-head h3 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.dupes-summary {
+    opacity: 0.65;
+    font-size: 13px;
+    flex: 1;
+}
+
+.dupes-sens {
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    opacity: 0.9;
+}
+
+.dupes-sens select {
+    background: rgba(255, 255, 255, 0.06);
+    color: inherit;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    padding: 4px 8px;
+    font-family: var(--font-family);
+}
+
+.dupes-sens select option {
+    background: #1a1a1a;
+}
+
+#dupes-close {
+    background: transparent;
+    border: none;
+    color: inherit;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+#dupes-close:hover {
+    opacity: 1;
+}
+
+.dupes-stage {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(var(--dupe-cols, 2), minmax(0, 1fr));
+    grid-auto-rows: minmax(0, 1fr);
+    gap: 16px;
+    padding: 12px 20px;
+    overflow-y: auto;
+}
+
+.dupes-message {
+    grid-column: 1 / -1;
+    align-self: center;
+    justify-self: center;
+    font-size: 15px;
+    opacity: 0.75;
+    text-align: center;
+    max-width: 480px;
+}
+
+.dupe-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-radius: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+    cursor: pointer;
+    overflow: hidden;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.dupe-card:hover {
+    border-color: rgba(255, 255, 255, 0.25);
+}
+
+.dupe-card.marked {
+    border-color: #ef4444;
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.dupe-frame {
+    position: relative;
+    flex: 1;
+    min-height: 160px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: #050505;
+}
+
+.dupe-frame img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.dupe-card.marked .dupe-frame img {
+    opacity: 0.45;
+}
+
+.dupe-badges {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    display: flex;
+    gap: 6px;
+}
+
+.dupe-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.dupe-badge.keep {
+    background: rgba(22, 163, 74, 0.85);
+    border-color: transparent;
+}
+
+.dupe-badge.exact {
+    background: rgba(37, 99, 235, 0.85);
+    border-color: transparent;
+}
+
+.dupe-mark {
+    display: none;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 999px;
+}
+
+.dupe-card.marked .dupe-mark {
+    display: block;
+}
+
+.dupe-meta {
+    padding: 8px 12px 10px;
+    font-size: 12px;
+    opacity: 0.85;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.dupe-name {
+    font-weight: 600;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dupe-folder {
+    opacity: 0.6;
+}
+
+.dupes-foot {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 20px 18px;
+    zoom: var(--ui-scale, 1);
+}
+
+.dupes-progress {
+    font-size: 13px;
+    opacity: 0.75;
+    font-variant-numeric: tabular-nums;
+}
+
+.dupes-tip {
+    flex: 1;
+    font-size: 12px;
+    opacity: 0.5;
+    text-align: center;
+}
+
+.wip-tag {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 2px 7px;
+    border-radius: 999px;
+    color: #1c1917;
+    background: #fbbf24;
+    cursor: help;
+}
+
 </style>
 </head>
 
@@ -2666,6 +3378,13 @@ kbd {
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
                             <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"></path>
+                        </svg>
+                    </button>
+                    <button id="btn-dupes" data-hc="dupes" title="Find Duplicates (D) — work in progress">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="8" y="8" width="13" height="13" rx="2" />
+                            <path d="M4 16V5a2 2 0 0 1 2-2h11" />
                         </svg>
                     </button>
                     <button id="btn-shortcuts" data-hc="keys" title="Keyboard Shortcuts (?)">
@@ -2865,6 +3584,33 @@ kbd {
             <span class="crop-sep"></span>
             <button id="crop-save-next" class="crop-btn" title="Save, then crop the next photo (Shift+Enter)">Save &amp; Next</button>
             <button id="crop-save" class="crop-btn primary" title="Save (Enter)">Save</button>
+        </div>
+    </div>
+
+    <!-- Duplicates review (dupes.js) -->
+    <div id="dupes-panel" class="dupes-overlay hidden">
+        <div class="dupes-head">
+            <h3>Possible duplicates</h3>
+            <span class="wip-tag" title="Duplicate detection is still being worked on: it can miss some duplicates or group photos that only look alike. Nothing is deleted outright — marked photos go to .jeditor-trash and Ctrl+Z restores them.">WIP</span>
+            <span id="dupes-summary" class="dupes-summary"></span>
+            <label class="dupes-sens">Sensitivity
+                <select id="dupes-sensitivity">
+                    <option value="strict">Strict</option>
+                    <option value="normal" selected>Normal</option>
+                    <option value="loose">Loose</option>
+                </select>
+            </label>
+            <button id="dupes-close" title="Close (Esc)">×</button>
+        </div>
+        <div id="dupes-stage" class="dupes-stage"></div>
+        <div class="dupes-foot">
+            <button id="dupes-prev" class="crop-btn" title="Previous group (←)">← Previous</button>
+            <span id="dupes-progress" class="dupes-progress"></span>
+            <span class="dupes-tip">Click a photo or press 1–9 to mark it · Work in progress: double-check before trashing</span>
+            <button id="dupes-keep-best" class="crop-btn" title="Keep the suggested photo, mark the rest (K)">Keep suggested</button>
+            <button id="dupes-skip" class="crop-btn" title="These aren't duplicates (N)">Not duplicates</button>
+            <button id="dupes-apply" class="crop-btn primary" title="Trash marked photos and go to the next group (Enter)">Keep all &amp; next</button>
+            <button id="dupes-next" class="crop-btn" title="Next group (→)">Next →</button>
         </div>
     </div>
 
@@ -3092,6 +3838,7 @@ const app = {
         this.elements.btnFullscreen.addEventListener('click', () => this.toggleFullscreen());
         this.elements.btnCustomize.addEventListener('click', () => this.toggleCustomizePanel());
         document.getElementById('btn-shortcuts').addEventListener('click', () => this.toggleShortcutsPanel());
+        document.getElementById('btn-dupes').addEventListener('click', () => this.openDupes());
         document.getElementById('cust-shortcuts').addEventListener('click', () => {
             this.toggleCustomizePanel();
             this.toggleShortcutsPanel(true);
@@ -3214,16 +3961,17 @@ const app = {
         fit: 'Thumbnail Fit',
         strip: 'Film Strip',
         fullscreen: 'Fullscreen',
+        dupes: 'Find Duplicates (WIP)',
         keys: 'Keyboard Shortcuts',
         customize: 'Customize'
     },
 
     defaultUiPrefs() {
         return {
-            order: ['info', 'view', 'refresh', 'crop', 'fit', 'strip', 'fullscreen', 'keys', 'customize'],
+            order: ['info', 'view', 'refresh', 'crop', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'customize'],
             placement: { // 'main' | 'more' | 'hidden'
                 info: 'main', view: 'main', refresh: 'main', crop: 'main',
-                fit: 'more', strip: 'more', fullscreen: 'more', keys: 'more', customize: 'more'
+                fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', keys: 'more', customize: 'more'
             },
             vertical: false,
             scale: 1,
@@ -4133,9 +4881,11 @@ const app = {
     // output is upright pixels with no EXIF (orientation 1 implied).
     async rotateByReencoding(fileData, name, normalizedDeg) {
         const { type, quality } = this.getSaveFormat(name);
+        const original = new Uint8Array(await fileData.arrayBuffer());
+        // EXIF orientation is applied by default ('from-image'); passing
+        // that value explicitly throws on older Chrome/Edge
         const bitmap = await createImageBitmap(fileData, {
-            imageOrientation: 'from-image',
-            colorSpaceConversion: ImageMeta.canCarryProfile(type) ? 'none' : 'default'
+            colorSpaceConversion: ImageMeta.canCarryProfile(type, original) ? 'none' : 'default'
         });
         try {
             const canvas = document.createElement('canvas');
@@ -4148,7 +4898,6 @@ const app = {
             ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
             const blob = await new Promise(r => canvas.toBlob(r, type, quality));
             if (!blob) return null;
-            const original = new Uint8Array(await fileData.arrayBuffer());
             return ImageMeta.transplant(original, blob, type, canvas.width, canvas.height);
         } finally {
             bitmap.close();
@@ -5245,6 +5994,7 @@ const app = {
         ['view.info', 'global', 'View', 'File info', ['I']],
         ['view.fullscreen', 'global', 'View', 'Fullscreen', ['F']],
         ['view.slideshow', 'global', 'View', 'Slideshow', []],
+        ['app.dupes', 'global', 'App', 'Find duplicates (WIP)', ['D']],
         ['app.refresh', 'global', 'App', 'Rescan folder', ['R']],
         ['app.shortcuts', 'global', 'App', 'Keyboard shortcuts', ['?']],
         ['app.debug', 'global', 'App', 'Debug console', ['Ctrl+Shift+D']],
@@ -5263,7 +6013,13 @@ const app = {
         ['crop.swap', 'crop', 'Crop & Straighten', 'Swap portrait / landscape', ['X']],
         ['crop.previous', 'crop', 'Crop & Straighten', 'Reuse previous crop', ['P']],
         ['crop.selectAll', 'crop', 'Crop & Straighten', 'Select whole image', ['Ctrl+A']],
-        ['crop.reset', 'crop', 'Crop & Straighten', 'Reset', ['R']]
+        ['crop.reset', 'crop', 'Crop & Straighten', 'Reset', ['R']],
+        ['dupes.next', 'dupes', 'Duplicates (WIP)', 'Next group', ['ArrowRight']],
+        ['dupes.prev', 'dupes', 'Duplicates (WIP)', 'Previous group', ['ArrowLeft']],
+        ['dupes.keepBest', 'dupes', 'Duplicates (WIP)', 'Keep suggested, mark the rest', ['K']],
+        ['dupes.apply', 'dupes', 'Duplicates (WIP)', 'Trash marked & next group', ['Enter']],
+        ['dupes.skip', 'dupes', 'Duplicates (WIP)', 'Not duplicates (skip group)', ['N']],
+        ['dupes.close', 'dupes', 'Duplicates (WIP)', 'Close', ['Escape']]
     ],
 
     // Handlers return false when the key doesn't apply right now, which
@@ -5302,6 +6058,7 @@ const app = {
             'view.info': () => this.toggleInfoPanel(),
             'view.fullscreen': () => this.toggleFullscreen(),
             'view.slideshow': () => this.startSlideshow(),
+            'app.dupes': () => this.openDupes(),
             'app.refresh': () => this.refreshFolder(),
             'app.shortcuts': () => this.toggleShortcutsPanel(),
             'app.debug': () => this.toggleDebugConsole(),
@@ -5320,7 +6077,13 @@ const app = {
             'crop.swap': () => ed.swapOrientation(),
             'crop.previous': () => ed.usePrevious(),
             'crop.selectAll': () => ed.selectAll(),
-            'crop.reset': () => ed.reset()
+            'crop.reset': () => ed.reset(),
+            'dupes.next': () => Dupes.step(1),
+            'dupes.prev': () => Dupes.step(-1),
+            'dupes.keepBest': () => Dupes.keepBest(),
+            'dupes.apply': () => Dupes.apply(),
+            'dupes.skip': () => Dupes.skip(),
+            'dupes.close': () => Dupes.close()
         };
     },
 
@@ -5377,7 +6140,7 @@ const app = {
     },
 
     buildKeyMaps() {
-        this._keyMaps = { global: new Map(), crop: new Map() };
+        this._keyMaps = { global: new Map(), crop: new Map(), dupes: new Map() };
         this.KEY_ACTIONS.forEach(([id, ctx]) => {
             (this.keyBindings[id] || []).forEach(combo => {
                 if (!this._keyMaps[ctx].has(combo)) this._keyMaps[ctx].set(combo, id);
@@ -5458,7 +6221,13 @@ const app = {
             return;
         }
 
-        const context = this.cropState.active ? 'crop' : 'global';
+        const context = this.cropState.active ? 'crop' : (Dupes.isOpen ? 'dupes' : 'global');
+        // Duplicates view: 1–9 mark/unmark the photo with that number
+        if (context === 'dupes' && /^[1-9]$/.test(combo)) {
+            e.preventDefault();
+            Dupes.toggle(parseInt(combo, 10) - 1);
+            return;
+        }
         const id = this._keyMaps[context].get(combo);
         if (!id) return;
         // Only the shortcut list and debug console work from the start screen
@@ -5474,6 +6243,16 @@ const app = {
         if (handler(e) === false) return;
         e.preventDefault();
         e.stopImmediatePropagation();
+    },
+
+    openDupes() {
+        if (!this.dirHandle) {
+            this.showToast('Open a folder to look for duplicates');
+            return;
+        }
+        this.stopSlideshow();
+        Dupes.init(this);
+        Dupes.open();
     },
 
     toggleDebugConsole() {
@@ -5887,6 +6666,7 @@ const app = {
         f.dateTaken = undefined;
         f._dims = undefined;
         f._glass = undefined;
+        f._fp = undefined;
         f._thumbStale = true; // cached thumbnail shows the old pixels until regenerated
         if (f.fullImageUrl) {
             URL.revokeObjectURL(f.fullImageUrl);
@@ -6333,7 +7113,7 @@ const app = {
 
     initContextMenu() {
         document.addEventListener('contextmenu', (e) => {
-            if (this.cropState.active) { e.preventDefault(); return; }
+            if (this.cropState.active || Dupes.isOpen) { e.preventDefault(); return; }
             if (this.elements.mainInterface.classList.contains('hidden')) return;
             const tile = e.target.closest && e.target.closest('.grid-item');
             const inSingle = this.viewMode === 'single' && e.target.closest && e.target.closest('#image-container');
@@ -6403,6 +7183,7 @@ const app = {
             ['Select All', () => { this.selection = new Set(this.files); this.updateSelectionUI(); }],
             ['Clear Selection', () => this.clearSelection()],
             ['—'],
+            ['Find Duplicates… (WIP)', () => this.openDupes()],
             ['Start Slideshow', () => this.startSlideshow()],
             ['Fullscreen', () => this.toggleFullscreen()]
         ];
@@ -6525,7 +7306,7 @@ const app = {
             const fileData = await file.handle.getFile();
             const original = new Uint8Array(await fileData.arrayBuffer());
 
-            const canvas = await ed.renderOutput(fileData, type);
+            const canvas = await ed.renderOutput(fileData, type, original);
             const w = canvas.width, h = canvas.height;
             let blob = await new Promise(r => canvas.toBlob(r, type, quality));
             canvas.width = canvas.height = 0; // release the full-size buffer now

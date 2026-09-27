@@ -14,6 +14,7 @@
     <script src="version.js"></script>
     <script src="meta.js"></script>
     <script src="crop.js"></script>
+    <script src="dupes.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -120,6 +121,13 @@
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
                             <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"></path>
+                        </svg>
+                    </button>
+                    <button id="btn-dupes" data-hc="dupes" title="Find Duplicates (D) — work in progress">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="8" y="8" width="13" height="13" rx="2" />
+                            <path d="M4 16V5a2 2 0 0 1 2-2h11" />
                         </svg>
                     </button>
                     <button id="btn-shortcuts" data-hc="keys" title="Keyboard Shortcuts (?)">
@@ -319,6 +327,33 @@
             <span class="crop-sep"></span>
             <button id="crop-save-next" class="crop-btn" title="Save, then crop the next photo (Shift+Enter)">Save &amp; Next</button>
             <button id="crop-save" class="crop-btn primary" title="Save (Enter)">Save</button>
+        </div>
+    </div>
+
+    <!-- Duplicates review (dupes.js) -->
+    <div id="dupes-panel" class="dupes-overlay hidden">
+        <div class="dupes-head">
+            <h3>Possible duplicates</h3>
+            <span class="wip-tag" title="Duplicate detection is still being worked on: it can miss some duplicates or group photos that only look alike. Nothing is deleted outright — marked photos go to .jeditor-trash and Ctrl+Z restores them.">WIP</span>
+            <span id="dupes-summary" class="dupes-summary"></span>
+            <label class="dupes-sens">Sensitivity
+                <select id="dupes-sensitivity">
+                    <option value="strict">Strict</option>
+                    <option value="normal" selected>Normal</option>
+                    <option value="loose">Loose</option>
+                </select>
+            </label>
+            <button id="dupes-close" title="Close (Esc)">×</button>
+        </div>
+        <div id="dupes-stage" class="dupes-stage"></div>
+        <div class="dupes-foot">
+            <button id="dupes-prev" class="crop-btn" title="Previous group (←)">← Previous</button>
+            <span id="dupes-progress" class="dupes-progress"></span>
+            <span class="dupes-tip">Click a photo or press 1–9 to mark it · Work in progress: double-check before trashing</span>
+            <button id="dupes-keep-best" class="crop-btn" title="Keep the suggested photo, mark the rest (K)">Keep suggested</button>
+            <button id="dupes-skip" class="crop-btn" title="These aren't duplicates (N)">Not duplicates</button>
+            <button id="dupes-apply" class="crop-btn primary" title="Trash marked photos and go to the next group (Enter)">Keep all &amp; next</button>
+            <button id="dupes-next" class="crop-btn" title="Next group (→)">Next →</button>
         </div>
     </div>
 

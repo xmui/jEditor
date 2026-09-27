@@ -233,12 +233,27 @@ const ImageMeta = {
 
     // ---- Transplant ----
 
+    // Colour components in a JPEG's frame header (3 = YCbCr, 4 = CMYK/YCCK)
+    jpegComponents(bytes) {
+        const segs = this.jpegSegments(bytes) || [];
+        for (const s of segs) {
+            const m = s.marker;
+            if (m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC && s.end - s.start >= 10) {
+                return bytes[s.start + 9];
+            }
+        }
+        return 0;
+    },
+
     // Should the edit decode without colour conversion? True when the
     // original's colour profile will be copied onto the result, so the
     // pixels must stay in that profile's space (decoding to sRGB and then
-    // re-tagging with, say, Adobe RGB would wash the colours out).
-    canCarryProfile(mime) {
-        return mime === 'image/jpeg' || mime === 'image/png';
+    // re-tagging with, say, Adobe RGB would wash the colours out). A CMYK
+    // JPEG's profile can't describe the RGB output, so it converts instead.
+    canCarryProfile(mime, original = null) {
+        if (mime === 'image/png') return true;
+        if (mime !== 'image/jpeg') return false;
+        return !original || this.jpegComponents(original) !== 4;
     },
 
     // Copy metadata from `original` onto the re-encoded `blob`.
@@ -259,10 +274,12 @@ const ImageMeta = {
         const fSegs = this.jpegSegments(fresh);
         if (!oSegs || !fSegs) return null;
 
+        const cmyk = this.jpegComponents(original) === 4;
         const kept = [];
         for (const s of oSegs) {
             if (!this.isAppOrCom(s.marker)) continue;
             if (!this.keepJpegSeg(original, s)) continue;
+            if (cmyk && s.marker === 0xE2) continue; // CMYK profile ≠ RGB output
             const copy = original.slice(s.start, s.end);
             const cs = { marker: s.marker, start: 0, end: copy.length };
             if (this.isExifSeg(copy, cs)) this.patchExifForBakedPixels(copy, cs, width, height);
@@ -311,6 +328,41 @@ const ImageMeta = {
         let o = 0;
         for (const p of parts) { out.set(p, o); o += p.length; }
         return out;
+    },
+
+    // ---- Pixel size without decoding ----
+
+    // { w, h } as displayed (EXIF orientation 5–8 swaps them), from a JPEG
+    // SOF segment or PNG IHDR in the first bytes of the file, else null.
+    readPixelSize(bytes) {
+        try {
+            const segs = this.jpegSegments(bytes);
+            if (segs) {
+                let orientation = 1;
+                for (const s of segs) {
+                    if (this.isExifSeg(bytes, s)) {
+                        const t = this.exifTiff(bytes, s);
+                        const ifd0 = t && this.readIfd(t, t.view.getUint32(t.tiff + 4, t.le));
+                        const e = ifd0 && ifd0.entries.find(x => x.tag === 0x0112);
+                        if (e) orientation = this.readIntEntry(t, e) || 1;
+                    }
+                    const m = s.marker;
+                    const isSof = m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC;
+                    if (isSof && s.end - s.start >= 9) {
+                        const h = (bytes[s.start + 5] << 8) | bytes[s.start + 6];
+                        const w = (bytes[s.start + 7] << 8) | bytes[s.start + 8];
+                        return orientation >= 5 ? { w: h, h: w } : { w, h };
+                    }
+                }
+                return null;
+            }
+            const chunks = this.pngChunks(bytes);
+            if (chunks && chunks[0] && chunks[0].type === 'IHDR') {
+                const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+                return { w: v.getUint32(chunks[0].data), h: v.getUint32(chunks[0].data + 4) };
+            }
+        } catch (e) { /* unknown */ }
+        return null;
     },
 
     // ---- Resolution (DPI) ----

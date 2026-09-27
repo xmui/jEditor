@@ -9,6 +9,7 @@ const ASSETS = [
     './version.js',
     './meta.js',
     './crop.js',
+    './dupes.js',
     './icon.png',
     './icon-192.png',
     './icon-maskable-512.png',

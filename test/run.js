@@ -770,7 +770,7 @@ async function newPage(browser, url) {
             return out;
         });
         check('default main controls: info, view, refresh, crop', r.defaultMain === 'info,view,refresh,crop', r.defaultMain);
-        check('extras live in More (fit, strip, fullscreen, keys, customize)', r.defaultExtras === 'fit,strip,fullscreen,keys,customize', r.defaultExtras);
+        check('extras live in More (fit, strip, fullscreen, dupes, keys, customize)', r.defaultExtras === 'fit,strip,fullscreen,dupes,keys,customize', r.defaultExtras);
         check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
         check('reorder + hide + promote via prefs', r.reordered === 'crop,info' && r.refreshHidden && r.fullscreenMain,
             JSON.stringify({ o: r.reordered, h: r.refreshHidden, f: r.fullscreenMain }));
@@ -843,6 +843,15 @@ async function newPage(browser, url) {
             const xmp = await makeRealJpeg(40, 20, { xmpOrientation: 1 });
             const xb = new Uint8Array(await app.rotateJpegLossless(xmp.buffer.slice(0), 90).arrayBuffer());
             out.xmp = /tiff:Orientation="6"/.test(new TextDecoder('latin1').decode(xb));
+
+            // A CMYK original's ICC profile must not be carried onto RGB output
+            const cmyk = await makeRealJpeg(40, 20, { icc: true });
+            const sof = ImageMeta.jpegSegments(cmyk).find(sg => sg.marker === 0xC0);
+            cmyk[sof.start + 9] = 4; // header now says 4 components (parse-level test)
+            const fresh = new Blob([await makeRealJpeg(40, 20, {})], { type: 'image/jpeg' });
+            const moved = new Uint8Array(await (await ImageMeta.transplant(cmyk, fresh, 'image/jpeg', 40, 20)).arrayBuffer());
+            out.cmykSafe = !ImageMeta.canCarryProfile('image/jpeg', cmyk) && !ImageMeta.hasJpegIcc(moved) &&
+                ImageMeta.canCarryProfile('image/jpeg', await makeRealJpeg(40, 20, { icc: true }));
             return out;
         });
         check('orientation tag added to existing EXIF (6)', r.orientation === 6, String(r.orientation));
@@ -850,6 +859,7 @@ async function newPage(browser, url) {
         check('compressed image data byte-identical', r.sameData);
         check('browser shows it rotated (40x20 → 20x40)', r.dims === '20x40', r.dims);
         check('XMP orientation kept in agreement', r.xmp);
+        check('CMYK colour profile not copied onto RGB output', r.cmykSafe);
         await page.close();
     }
 
@@ -1161,6 +1171,88 @@ async function newPage(browser, url) {
         check('zooming in swaps to the full-resolution original', r.upgraded && r.zoomKept);
         check('crop works at original resolution after rotation', r.cropDims === r.expectCrop, `${r.cropDims} vs ${r.expectCrop}`);
         check('preview suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7f. Duplicate finder & culling ----
+    console.log('duplicates');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            // Deterministic "photo": random blocks from a seed
+            const scene = async (seed, w, h, { brighten = 0, rotate = false } = {}) => {
+                const c = document.createElement('canvas');
+                c.width = rotate ? h : w; c.height = rotate ? w : h;
+                const g = c.getContext('2d');
+                if (rotate) { g.translate(h, 0); g.rotate(Math.PI / 2); }
+                let x = seed;
+                const rnd = () => (x = (x * 1103515245 + 12345) % 2147483648) / 2147483648;
+                g.fillStyle = `hsl(${seed * 50 % 360},40%,${30 + brighten}%)`;
+                g.fillRect(0, 0, w, h);
+                for (let i = 0; i < 14; i++) {
+                    g.fillStyle = `hsl(${rnd() * 360},60%,${20 + rnd() * 50 + brighten}%)`;
+                    g.fillRect(rnd() * w, rnd() * h, w * (0.1 + rnd() * 0.4), h * (0.1 + rnd() * 0.4));
+                }
+                return new Uint8Array(await (await new Promise(res => c.toBlob(res, 'image/jpeg', 0.9))).arrayBuffer());
+            };
+            const dir = makeDir('Order 88');
+            const add = (name, bytes) => { const h = makeHandle(name, bytes, 'image/jpeg'); dir._files.set(name, h); };
+            const a = await scene(7, 600, 400);
+            add('a.jpg', a);
+            add('a_copy.jpg', a.slice());
+            add('a_rescan.jpg', await scene(7, 900, 600, { brighten: 6, rotate: true }));
+            add('b.jpg', await scene(21, 600, 400));
+            add('c.jpg', await scene(42, 600, 400));
+            dir.values = async function* () { yield* dir._files.values(); };
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+
+            const press = (key, mods = {}) =>
+                window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...mods }));
+            press('d');
+            for (let i = 0; i < 200 && !(Dupes.groups && Dupes.groups.length && document.querySelector('.dupe-card')); i++) {
+                await new Promise(res => setTimeout(res, 25));
+            }
+            out.open = Dupes.isOpen;
+            out.groups = Dupes.groups.map(g => g.files.map(f => f.name).sort().join('+'));
+            const g = Dupes.groups[0];
+            out.best = g && g.best.name;
+            out.exact = g && [...g.exact].map(f => f.name).sort().join('+');
+            out.cards = document.querySelectorAll('.dupe-card').length;
+
+            // Distance math: identical → 0, and rotation-invariant
+            const fa = app.files.find(f => f.name === 'a.jpg')._fp;
+            const fr = app.files.find(f => f.name === 'a_rescan.jpg')._fp;
+            const fb = app.files.find(f => f.name === 'b.jpg')._fp;
+            out.dRescan = Dupes.distance(fa, fr);
+            out.dOther = Dupes.distance(fa, fb);
+
+            // Cull: keep suggested (K), trash the rest (Enter)
+            press('k');
+            out.marked = g.marked.size;
+            press('Enter');
+            for (let i = 0; i < 100 && app.files.length !== 3; i++) await new Promise(res => setTimeout(res, 20));
+            out.left = app.files.map(f => f.name).sort().join(',');
+            out.doneMessage = document.getElementById('dupes-stage').textContent;
+            press('Escape');
+            out.closed = !Dupes.isOpen;
+            await app.undo();
+            out.restored = app.files.length === 5;
+            return out;
+        });
+        check('D opens the duplicate finder', r.open);
+        check('finds one group: copy + rotated re-scan', JSON.stringify(r.groups) === '["a.jpg+a_copy.jpg+a_rescan.jpg"]', JSON.stringify(r.groups));
+        console.log(`  info  fingerprint distance: re-scan ${r.dRescan}, unrelated ${r.dOther}`);
+        check('rotation-invariant fingerprint (re-scan close, other far)', r.dRescan <= 9 && r.dOther > 13, `${r.dRescan} / ${r.dOther}`);
+        check('suggests the highest-resolution copy', r.best === 'a_rescan.jpg', String(r.best));
+        check('exact copies flagged', r.exact === 'a.jpg+a_copy.jpg', String(r.exact));
+        check('side-by-side cards rendered', r.cards === 3, String(r.cards));
+        check('K marks all but the suggested keeper', r.marked === 2, String(r.marked));
+        check('Enter trashes marked photos', r.left === 'a_rescan.jpg,b.jpg,c.jpg', r.left);
+        check('finished state reported', /All done/.test(r.doneMessage), r.doneMessage);
+        check('Esc closes; Ctrl+Z restores the trashed duplicates', r.closed && r.restored);
+        check('duplicates suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

@@ -1404,3 +1404,229 @@ kbd {
 .drop-hint kbd {
     font-size: 11px;
 }
+
+/* ---- Duplicates review ---- */
+.dupes-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1600;
+    display: flex;
+    flex-direction: column;
+    background: #0b0b0c;
+    color: #f4f4f5;
+}
+
+.dupes-head {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px 8px;
+}
+
+.dupes-head h3 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.dupes-summary {
+    opacity: 0.65;
+    font-size: 13px;
+    flex: 1;
+}
+
+.dupes-sens {
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    opacity: 0.9;
+}
+
+.dupes-sens select {
+    background: rgba(255, 255, 255, 0.06);
+    color: inherit;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    padding: 4px 8px;
+    font-family: var(--font-family);
+}
+
+.dupes-sens select option {
+    background: #1a1a1a;
+}
+
+#dupes-close {
+    background: transparent;
+    border: none;
+    color: inherit;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+#dupes-close:hover {
+    opacity: 1;
+}
+
+.dupes-stage {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(var(--dupe-cols, 2), minmax(0, 1fr));
+    grid-auto-rows: minmax(0, 1fr);
+    gap: 16px;
+    padding: 12px 20px;
+    overflow-y: auto;
+}
+
+.dupes-message {
+    grid-column: 1 / -1;
+    align-self: center;
+    justify-self: center;
+    font-size: 15px;
+    opacity: 0.75;
+    text-align: center;
+    max-width: 480px;
+}
+
+.dupe-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-radius: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+    cursor: pointer;
+    overflow: hidden;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.dupe-card:hover {
+    border-color: rgba(255, 255, 255, 0.25);
+}
+
+.dupe-card.marked {
+    border-color: #ef4444;
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.dupe-frame {
+    position: relative;
+    flex: 1;
+    min-height: 160px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: #050505;
+}
+
+.dupe-frame img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.dupe-card.marked .dupe-frame img {
+    opacity: 0.45;
+}
+
+.dupe-badges {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    display: flex;
+    gap: 6px;
+}
+
+.dupe-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.dupe-badge.keep {
+    background: rgba(22, 163, 74, 0.85);
+    border-color: transparent;
+}
+
+.dupe-badge.exact {
+    background: rgba(37, 99, 235, 0.85);
+    border-color: transparent;
+}
+
+.dupe-mark {
+    display: none;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 999px;
+}
+
+.dupe-card.marked .dupe-mark {
+    display: block;
+}
+
+.dupe-meta {
+    padding: 8px 12px 10px;
+    font-size: 12px;
+    opacity: 0.85;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.dupe-name {
+    font-weight: 600;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dupe-folder {
+    opacity: 0.6;
+}
+
+.dupes-foot {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 20px 18px;
+    zoom: var(--ui-scale, 1);
+}
+
+.dupes-progress {
+    font-size: 13px;
+    opacity: 0.75;
+    font-variant-numeric: tabular-nums;
+}
+
+.dupes-tip {
+    flex: 1;
+    font-size: 12px;
+    opacity: 0.5;
+    text-align: center;
+}
+
+.wip-tag {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 2px 7px;
+    border-radius: 999px;
+    color: #1c1917;
+    background: #fbbf24;
+    cursor: help;
+}

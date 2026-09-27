@@ -215,7 +215,7 @@ const CropEditor = {
             this.H = src.h;
         } else {
             const data = await file.handle.getFile();
-            preview = await createImageBitmap(data, { imageOrientation: 'from-image' });
+            preview = await createImageBitmap(data); // EXIF orientation applied by default
             this.W = preview.width;
             this.H = preview.height;
         }
@@ -434,10 +434,10 @@ const CropEditor = {
     // ---- output ----
 
     // Render the crop at full resolution from the file's own bytes.
-    async renderOutput(fileData, type) {
+    async renderOutput(fileData, type, original = null) {
+        // EXIF orientation is applied by default ('from-image')
         const bmp = await createImageBitmap(fileData, {
-            imageOrientation: 'from-image',
-            colorSpaceConversion: ImageMeta.canCarryProfile(type) ? 'none' : 'default'
+            colorSpaceConversion: ImageMeta.canCarryProfile(type, original) ? 'none' : 'default'
         });
         try {
             if (bmp.width !== this.W || bmp.height !== this.H) {

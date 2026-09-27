@@ -107,6 +107,29 @@ the actual file objects.
   flicker, stronger blur/saturation, and readable text everywhere (the crop
   toolbar and loading pill included).
 
+### Shipped in v1.9.0 — scan-order workflow
+- **Crop & Straighten rebuilt** (Cropper.js removed): reads the photo from
+  disk after any pending rotation lands (fixes rotate-then-crop silently
+  reverting the rotation), level tool, crop constrained to the rotated
+  image, print-size presets, Previous crop, Save & Next.
+- **Metadata kept on re-encode**: EXIF, ICC, DPI, XMP, IPTC (`meta.js`).
+- **Lossless rotation for scanner JPEGs** (EXIF without an Orientation tag).
+- **Instant viewer**: pre-decoded neighbours, screen-sized cached previews,
+  full resolution on zoom.
+- **Keyboard shortcut registry** with a rebinding panel (`?`).
+- **Duplicate finder (WIP)**: exact + rotation-invariant perceptual matches,
+  side-by-side culling.
+- Fixes: blank screen after opening a folder, Ctrl+key shortcuts
+  triggering plain-key actions, grid Up/Down after resizing, quadratic scan.
+
+### Next up
+- Duplicate finder: tune thresholds on real scan orders; compare zoom;
+  remember "not duplicates" across sessions.
+- Replace native `prompt()`/`alert()` dialogs (rename, batch rename,
+  export) with in-app modals.
+- Auto-detect the print on a flatbed scan (find edges → angle + crop).
+- Virtualized grid for 10k+ photo folders.
+
 ### Phase B — performance
 1. **Thumbnail decode in a worker** (`OffscreenCanvas` + `createImageBitmap`
    already used — move the canvas/toBlob step off the main thread) so grid

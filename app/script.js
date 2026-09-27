@@ -184,6 +184,7 @@ const app = {
         this.elements.btnFullscreen.addEventListener('click', () => this.toggleFullscreen());
         this.elements.btnCustomize.addEventListener('click', () => this.toggleCustomizePanel());
         document.getElementById('btn-shortcuts').addEventListener('click', () => this.toggleShortcutsPanel());
+        document.getElementById('btn-dupes').addEventListener('click', () => this.openDupes());
         document.getElementById('cust-shortcuts').addEventListener('click', () => {
             this.toggleCustomizePanel();
             this.toggleShortcutsPanel(true);
@@ -306,16 +307,17 @@ const app = {
         fit: 'Thumbnail Fit',
         strip: 'Film Strip',
         fullscreen: 'Fullscreen',
+        dupes: 'Find Duplicates (WIP)',
         keys: 'Keyboard Shortcuts',
         customize: 'Customize'
     },
 
     defaultUiPrefs() {
         return {
-            order: ['info', 'view', 'refresh', 'crop', 'fit', 'strip', 'fullscreen', 'keys', 'customize'],
+            order: ['info', 'view', 'refresh', 'crop', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'customize'],
             placement: { // 'main' | 'more' | 'hidden'
                 info: 'main', view: 'main', refresh: 'main', crop: 'main',
-                fit: 'more', strip: 'more', fullscreen: 'more', keys: 'more', customize: 'more'
+                fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', keys: 'more', customize: 'more'
             },
             vertical: false,
             scale: 1,
@@ -1225,9 +1227,11 @@ const app = {
     // output is upright pixels with no EXIF (orientation 1 implied).
     async rotateByReencoding(fileData, name, normalizedDeg) {
         const { type, quality } = this.getSaveFormat(name);
+        const original = new Uint8Array(await fileData.arrayBuffer());
+        // EXIF orientation is applied by default ('from-image'); passing
+        // that value explicitly throws on older Chrome/Edge
         const bitmap = await createImageBitmap(fileData, {
-            imageOrientation: 'from-image',
-            colorSpaceConversion: ImageMeta.canCarryProfile(type) ? 'none' : 'default'
+            colorSpaceConversion: ImageMeta.canCarryProfile(type, original) ? 'none' : 'default'
         });
         try {
             const canvas = document.createElement('canvas');
@@ -1240,7 +1244,6 @@ const app = {
             ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
             const blob = await new Promise(r => canvas.toBlob(r, type, quality));
             if (!blob) return null;
-            const original = new Uint8Array(await fileData.arrayBuffer());
             return ImageMeta.transplant(original, blob, type, canvas.width, canvas.height);
         } finally {
             bitmap.close();
@@ -2337,6 +2340,7 @@ const app = {
         ['view.info', 'global', 'View', 'File info', ['I']],
         ['view.fullscreen', 'global', 'View', 'Fullscreen', ['F']],
         ['view.slideshow', 'global', 'View', 'Slideshow', []],
+        ['app.dupes', 'global', 'App', 'Find duplicates (WIP)', ['D']],
         ['app.refresh', 'global', 'App', 'Rescan folder', ['R']],
         ['app.shortcuts', 'global', 'App', 'Keyboard shortcuts', ['?']],
         ['app.debug', 'global', 'App', 'Debug console', ['Ctrl+Shift+D']],
@@ -2355,7 +2359,13 @@ const app = {
         ['crop.swap', 'crop', 'Crop & Straighten', 'Swap portrait / landscape', ['X']],
         ['crop.previous', 'crop', 'Crop & Straighten', 'Reuse previous crop', ['P']],
         ['crop.selectAll', 'crop', 'Crop & Straighten', 'Select whole image', ['Ctrl+A']],
-        ['crop.reset', 'crop', 'Crop & Straighten', 'Reset', ['R']]
+        ['crop.reset', 'crop', 'Crop & Straighten', 'Reset', ['R']],
+        ['dupes.next', 'dupes', 'Duplicates (WIP)', 'Next group', ['ArrowRight']],
+        ['dupes.prev', 'dupes', 'Duplicates (WIP)', 'Previous group', ['ArrowLeft']],
+        ['dupes.keepBest', 'dupes', 'Duplicates (WIP)', 'Keep suggested, mark the rest', ['K']],
+        ['dupes.apply', 'dupes', 'Duplicates (WIP)', 'Trash marked & next group', ['Enter']],
+        ['dupes.skip', 'dupes', 'Duplicates (WIP)', 'Not duplicates (skip group)', ['N']],
+        ['dupes.close', 'dupes', 'Duplicates (WIP)', 'Close', ['Escape']]
     ],
 
     // Handlers return false when the key doesn't apply right now, which
@@ -2394,6 +2404,7 @@ const app = {
             'view.info': () => this.toggleInfoPanel(),
             'view.fullscreen': () => this.toggleFullscreen(),
             'view.slideshow': () => this.startSlideshow(),
+            'app.dupes': () => this.openDupes(),
             'app.refresh': () => this.refreshFolder(),
             'app.shortcuts': () => this.toggleShortcutsPanel(),
             'app.debug': () => this.toggleDebugConsole(),
@@ -2412,7 +2423,13 @@ const app = {
             'crop.swap': () => ed.swapOrientation(),
             'crop.previous': () => ed.usePrevious(),
             'crop.selectAll': () => ed.selectAll(),
-            'crop.reset': () => ed.reset()
+            'crop.reset': () => ed.reset(),
+            'dupes.next': () => Dupes.step(1),
+            'dupes.prev': () => Dupes.step(-1),
+            'dupes.keepBest': () => Dupes.keepBest(),
+            'dupes.apply': () => Dupes.apply(),
+            'dupes.skip': () => Dupes.skip(),
+            'dupes.close': () => Dupes.close()
         };
     },
 
@@ -2469,7 +2486,7 @@ const app = {
     },
 
     buildKeyMaps() {
-        this._keyMaps = { global: new Map(), crop: new Map() };
+        this._keyMaps = { global: new Map(), crop: new Map(), dupes: new Map() };
         this.KEY_ACTIONS.forEach(([id, ctx]) => {
             (this.keyBindings[id] || []).forEach(combo => {
                 if (!this._keyMaps[ctx].has(combo)) this._keyMaps[ctx].set(combo, id);
@@ -2550,7 +2567,13 @@ const app = {
             return;
         }
 
-        const context = this.cropState.active ? 'crop' : 'global';
+        const context = this.cropState.active ? 'crop' : (Dupes.isOpen ? 'dupes' : 'global');
+        // Duplicates view: 1–9 mark/unmark the photo with that number
+        if (context === 'dupes' && /^[1-9]$/.test(combo)) {
+            e.preventDefault();
+            Dupes.toggle(parseInt(combo, 10) - 1);
+            return;
+        }
         const id = this._keyMaps[context].get(combo);
         if (!id) return;
         // Only the shortcut list and debug console work from the start screen
@@ -2566,6 +2589,16 @@ const app = {
         if (handler(e) === false) return;
         e.preventDefault();
         e.stopImmediatePropagation();
+    },
+
+    openDupes() {
+        if (!this.dirHandle) {
+            this.showToast('Open a folder to look for duplicates');
+            return;
+        }
+        this.stopSlideshow();
+        Dupes.init(this);
+        Dupes.open();
     },
 
     toggleDebugConsole() {
@@ -2979,6 +3012,7 @@ const app = {
         f.dateTaken = undefined;
         f._dims = undefined;
         f._glass = undefined;
+        f._fp = undefined;
         f._thumbStale = true; // cached thumbnail shows the old pixels until regenerated
         if (f.fullImageUrl) {
             URL.revokeObjectURL(f.fullImageUrl);
@@ -3425,7 +3459,7 @@ const app = {
 
     initContextMenu() {
         document.addEventListener('contextmenu', (e) => {
-            if (this.cropState.active) { e.preventDefault(); return; }
+            if (this.cropState.active || Dupes.isOpen) { e.preventDefault(); return; }
             if (this.elements.mainInterface.classList.contains('hidden')) return;
             const tile = e.target.closest && e.target.closest('.grid-item');
             const inSingle = this.viewMode === 'single' && e.target.closest && e.target.closest('#image-container');
@@ -3495,6 +3529,7 @@ const app = {
             ['Select All', () => { this.selection = new Set(this.files); this.updateSelectionUI(); }],
             ['Clear Selection', () => this.clearSelection()],
             ['—'],
+            ['Find Duplicates… (WIP)', () => this.openDupes()],
             ['Start Slideshow', () => this.startSlideshow()],
             ['Fullscreen', () => this.toggleFullscreen()]
         ];
@@ -3617,7 +3652,7 @@ const app = {
             const fileData = await file.handle.getFile();
             const original = new Uint8Array(await fileData.arrayBuffer());
 
-            const canvas = await ed.renderOutput(fileData, type);
+            const canvas = await ed.renderOutput(fileData, type, original);
             const w = canvas.width, h = canvas.height;
             let blob = await new Promise(r => canvas.toBlob(r, type, quality));
             canvas.width = canvas.height = 0; // release the full-size buffer now
