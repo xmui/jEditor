@@ -1560,6 +1560,10 @@ kbd {
     border-color: transparent;
 }
 
+.dupe-badge.score {
+    font-variant-numeric: tabular-nums;
+}
+
 .dupe-mark {
     display: none;
     position: absolute;
