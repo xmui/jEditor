@@ -122,6 +122,17 @@ the actual file objects.
 - Fixes: blank screen after opening a folder, Ctrl+key shortcuts
   triggering plain-key actions, grid Up/Down after resizing, quadratic scan.
 
+### Shipped in v1.9.1 — duplicate finder accuracy
+Field report: ~16 of 600 photos grouped with photos that looked nothing
+alike. Reproduced on 340 real photos turned into simulated scan orders:
+the 64-bit hash measured the scanner bed, not the photo, so unrelated
+scans matched, and transitive grouping chained them together (142 of 393
+wrongly grouped). Now: crop to the print, straighten it, compare
+brightness-normalised layout *and* detail maps across rotations and crop
+insets, complete-linkage grouping. Same benchmark: 0 wrongly grouped;
+89 of 95 true duplicates found, including re-scans tilted 3–4° further,
+re-cropped, re-exposed or black & white.
+
 ### Next up
 - Duplicate finder: tune thresholds on real scan orders; compare zoom;
   remember "not duplicates" across sessions.

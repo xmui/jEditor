@@ -1221,12 +1221,14 @@ async function newPage(browser, url) {
             out.exact = g && [...g.exact].map(f => f.name).sort().join('+');
             out.cards = document.querySelectorAll('.dupe-card').length;
 
-            // Distance math: identical → 0, and rotation-invariant
+            // Similarity is rotation-invariant; unrelated photos don't match
             const fa = app.files.find(f => f.name === 'a.jpg')._fp;
             const fr = app.files.find(f => f.name === 'a_rescan.jpg')._fp;
             const fb = app.files.find(f => f.name === 'b.jpg')._fp;
-            out.dRescan = Dupes.distance(fa, fr);
-            out.dOther = Dupes.distance(fa, fb);
+            out.simRescan = Dupes.similarity(fa, fr).map(v => v.toFixed(2)).join('/');
+            out.simOther = Dupes.similarity(fa, fb).map(v => v.toFixed(2)).join('/');
+            out.rescanMatches = Dupes.isMatch(fa, fr, Dupes.SENSITIVITY.normal);
+            out.otherRejected = !Dupes.isMatch(fa, fb, Dupes.SENSITIVITY.loose);
 
             // Cull: keep suggested (K), trash the rest (Enter)
             press('k');
@@ -1243,8 +1245,8 @@ async function newPage(browser, url) {
         });
         check('D opens the duplicate finder', r.open);
         check('finds one group: copy + rotated re-scan', JSON.stringify(r.groups) === '["a.jpg+a_copy.jpg+a_rescan.jpg"]', JSON.stringify(r.groups));
-        console.log(`  info  fingerprint distance: re-scan ${r.dRescan}, unrelated ${r.dOther}`);
-        check('rotation-invariant fingerprint (re-scan close, other far)', r.dRescan <= 9 && r.dOther > 13, `${r.dRescan} / ${r.dOther}`);
+        console.log(`  info  similarity (layout/detail): re-scan ${r.simRescan}, unrelated ${r.simOther}`);
+        check('rotation-invariant match (re-scan matches, other photo does not)', r.rescanMatches && r.otherRejected, `${r.simRescan} / ${r.simOther}`);
         check('suggests the highest-resolution copy', r.best === 'a_rescan.jpg', String(r.best));
         check('exact copies flagged', r.exact === 'a.jpg+a_copy.jpg', String(r.exact));
         check('side-by-side cards rendered', r.cards === 3, String(r.cards));
@@ -1253,6 +1255,80 @@ async function newPage(browser, url) {
         check('finished state reported', /All done/.test(r.doneMessage), r.doneMessage);
         check('Esc closes; Ctrl+Z restores the trashed duplicates', r.closed && r.restored);
         check('duplicates suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7g. Duplicates: scanner beds, tilt, no chaining ----
+    console.log('duplicates: scan-order cases');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            Dupes.init(app);
+            // A "photo": deterministic blocks from a seed
+            const photo = (seed) => {
+                const c = document.createElement('canvas');
+                c.width = 600; c.height = 400;
+                const g = c.getContext('2d');
+                let x = seed;
+                const rnd = () => (x = (x * 1103515245 + 12345) % 2147483648) / 2147483648;
+                g.fillStyle = `hsl(${seed * 50 % 360},40%,35%)`;
+                g.fillRect(0, 0, 600, 400);
+                for (let i = 0; i < 18; i++) {
+                    g.fillStyle = `hsl(${rnd() * 360},60%,${20 + rnd() * 50}%)`;
+                    g.fillRect(rnd() * 600, rnd() * 400, 60 + rnd() * 200, 40 + rnd() * 150);
+                }
+                return c;
+            };
+            // Scan it: a small print on a big white bed, tilted, optionally turned
+            const scan = (src, { tilt = 0, quarter = 0, margin = 0.25 } = {}) => {
+                const W = 1200, H = 900;
+                const c = document.createElement('canvas');
+                c.width = quarter % 2 ? H : W; c.height = quarter % 2 ? W : H;
+                const g = c.getContext('2d');
+                g.fillStyle = '#f4f2ee';
+                g.fillRect(0, 0, c.width, c.height);
+                g.translate(c.width / 2, c.height / 2);
+                g.rotate(quarter * Math.PI / 2 + tilt * Math.PI / 180);
+                const pw = W * (1 - 2 * margin), ph = H * (1 - 2 * margin);
+                g.drawImage(src, -pw / 2, -ph / 2, pw, ph);
+                return Dupes.fingerprintFromCanvas(c);
+            };
+            const A = photo(3), B = photo(11), C = photo(29);
+            const a1 = scan(A, { tilt: -1.5 });
+            const a2 = scan(A, { tilt: 3, quarter: 1, margin: 0.2 }); // re-scan: turned, placed differently
+            const b1 = scan(B, { tilt: 1 });
+            const c1 = scan(C, { tilt: -2 });
+            const sens = Dupes.SENSITIVITY.normal;
+            out.rescan = Dupes.isMatch(a1, a2, sens);
+            out.bedsIgnored = !Dupes.isMatch(a1, b1, sens) && !Dupes.isMatch(b1, c1, sens) && !Dupes.isMatch(a1, c1, Dupes.SENSITIVITY.loose);
+            out.sims = [Dupes.similarity(a1, a2), Dupes.similarity(a1, b1)].map(p => p.map(v => v.toFixed(2)).join('/')).join(' vs ');
+
+            // A featureless frame never near-matches
+            const blank = document.createElement('canvas');
+            blank.width = 600; blank.height = 400;
+            const bg = blank.getContext('2d');
+            bg.fillStyle = '#777'; bg.fillRect(0, 0, 600, 400);
+            out.weak = Dupes.fingerprintFromCanvas(blank).weak;
+
+            // No chaining: x~y and y~z but not x~z must not become one group
+            const files = ['x.jpg', 'y.jpg', 'z.jpg'].map(n => makeFakeFile(n, [1], 'image/jpeg', 1 + n.charCodeAt(0)));
+            const saved = { fp: Dupes.fingerprint, match: Dupes.isMatch };
+            Dupes.fingerprint = async (f) => ({ name: f.name });
+            const rel = new Set(['x.jpg|y.jpg', 'y.jpg|z.jpg']);
+            Dupes.isMatch = (p, q) => rel.has(p.name + '|' + q.name) || rel.has(q.name + '|' + p.name);
+            const groups = await Dupes.findGroups(files, sens);
+            Dupes.fingerprint = saved.fp;
+            Dupes.isMatch = saved.match;
+            out.noChain = groups.length === 1 && groups[0].files.length === 2;
+            return out;
+        });
+        console.log(`  info  bed scans (layout/detail): re-scan ${r.sims}`);
+        check('re-scan turned and re-placed on the bed still matches', r.rescan);
+        check('unrelated prints on a white bed do not match', r.bedsIgnored);
+        check('featureless frames are flagged weak', r.weak);
+        check('look-alikes cannot chain unrelated photos into one group', r.noChain);
+        check('scan-order duplicates: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
