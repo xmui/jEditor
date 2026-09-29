@@ -1,70 +1,96 @@
 # jEditor
 
-jEditor is a minimalist, high-performance local photo viewer and editor optimized for bulk rotation, cropping and straightening — built for working through scan orders fast. Everything runs in your browser; files are read and written directly on your disk — nothing is uploaded anywhere. The current version is shown on the start screen and in [Releases](../../releases).
+A photo viewer for rotating, cropping and straightening folders of photos, built for working through scan orders. It runs in the browser and edits the files on your disk directly. Nothing is uploaded.
 
-## ✨ Features
-- **Instant lossless rotation**: JPEGs rotate by patching the EXIF orientation flag — no re-encoding, no quality loss, including scanner files whose EXIF has no orientation tag yet. Previews rotate the moment you click, rotations stack (two clicks = 180°), and saves happen silently in the background.
-- **Crop & Straighten**: fine straightening (0.1° steps) with a **Level** tool — draw along a horizon or print edge and it snaps level. The crop always stays inside the straightened photo, so there are never empty corners. Print-size presets (4×6, 5×7, 8×10, 11×14, square…), **Previous** reuses the last crop for a batch with the same borders, and **Save & Next** moves straight on to the next photo.
-- **Keeps what matters**: crops keep EXIF (capture date, camera), the ICC colour profile, DPI, XMP and IPTC. Files are saved in their original format; PNG stays lossless.
-- **Instant viewer**: photos either side of the current one are pre-decoded, big scans are shown from a cached screen-sized preview, and the full-resolution original loads when you zoom in. Edits always use the original file.
-- **Find duplicates** *(work in progress)*: spots exact copies and re-scans of the same print — even when turned, re-placed at a different angle on the bed, re-exposed or scanned in black & white — and lets you review them side by side with a match percentage, then trash the extras (Ctrl+Z restores). Scanner-bed and film borders are ignored, so unrelated scans don't match.
-- **Customizable keyboard shortcuts**: press `?` to see every shortcut and rebind any of them.
-- **Adaptive liquid-glass UI**: the header and control surfaces sample the photo behind them and flip between dark and light glass to stay readable.
-- **Memory optimized**: worker-generated thumbnails and previews, cached across sessions, handle 1000+ photo folders.
+It needs Chrome or Edge to save changes, because it uses the File System Access API. Firefox and Safari can view photos but not save.
 
-## 🚀 Just want to use it?
+## Getting it
 
-**Option A — Install as an app (PWA).** Open the hosted app (GitHub Pages: `https://<owner>.github.io/jEditor/`) in Chrome or Edge and click the **Install** icon in the address bar. You get a standalone desktop app with its own window and icon that also works offline. *(One-time repo setup: Settings → Pages → Source: "GitHub Actions".)*
+- **Web app:** open https://xmui.github.io/jEditor/ in Chrome or Edge. Use the install button in the address bar if you want it in its own window. It works offline once installed.
+- **Single file:** download `standalone.html` from [Releases](../../releases) and open it. No server or install needed, and saving works from the local file.
 
-**Option B — Single file.** Download **`standalone.html`** from the [Releases page](../../releases) and double-click it. No server, no install — all features including saving work straight from the local file.
+The version number is shown on the start screen.
 
-Then:
-1. **Open**: Click *Open Folder* (or drag and drop a folder/images in).
-2. **Review**: Arrow keys or `Space` to flip between single and grid view.
-3. **Rotate**: `[` / `]` (or the buttons). In grid view this rotates every selected photo.
-4. **Crop & straighten**: `C`; `L` for the level tool, `,` / `.` to nudge the angle; `Enter` saves, `Shift+Enter` saves and opens the next photo, `Esc` cancels.
-5. Changes are written straight back to your files; `Ctrl+Z` undoes.
+## Using it
 
-> Chrome or Edge required for saving (File System Access API). Firefox/Safari can view but not save.
+1. Click **Open Folder**, or drag a folder onto the window. Subfolders are included.
+2. Move through photos with `←` / `→`. `Space` switches between single view and grid.
+3. Rotate with `[` / `]`. In grid view this rotates every selected photo.
+4. Press `C` to crop and straighten. `Enter` saves, `Shift+Enter` saves and opens the next photo, `Esc` cancels.
+5. `Ctrl+Z` undoes the last rotation, crop, rename or delete.
 
-## ⌨️ Shortcuts
-Press `?` in the app for the full list — every shortcut can be rebound there. The defaults:
+Changes are saved to the original files as you go.
+
+## What it does to your files
+
+- **Rotation.** JPEGs are rotated by changing the EXIF orientation tag, so the image data isn't recompressed. This works on scanner files that have no orientation tag yet. PNG and WebP are re-encoded; PNG stays lossless. GIFs aren't rotated, because that would lose the animation.
+- **Crop and straighten.** The photo is re-encoded in its original format (JPEG at quality 95). EXIF data (capture date, camera), the ICC colour profile, DPI, XMP and IPTC are carried over. The orientation tag is reset, since the pixels are now upright.
+- **Delete.** Photos are moved to a `.jeditor-trash` folder inside the opened folder, not deleted. `Ctrl+Z` restores them. Emptying that folder is up to you.
+- **Export.** Copies go to a `jEditor Export` folder, optionally resized.
+
+Some programs, mostly older print and lab software, ignore the EXIF orientation tag and will show a rotated JPEG the old way round. Cropping writes the rotation into the pixels, so a photo that has been cropped is always upright.
+
+## Crop and straighten
+
+- Straighten in 0.1° steps with the slider or `,` / `.`. With the level tool (`L`), you draw a line along a horizon or the edge of a print and the angle is set from it.
+- The crop box can't extend past the edge of the straightened photo, so there are no empty corners.
+- Aspect presets: 4×6, 5×7, 8×10, 11×14, square, 3:4, 16:9, original and free. `X` swaps portrait and landscape.
+- **Previous** (`P`) applies the last crop again. This is useful when a batch of scans has the same borders.
+- The header shows the output size in pixels, and in inches when the file has a DPI.
+
+## Finding duplicates (work in progress)
+
+Press `D` in a folder. It looks for:
+
+- exact copies (identical file contents), and
+- the same print scanned more than once, including when it was turned, placed at a different angle, cropped slightly differently, exposed differently, or scanned in black and white.
+
+Scanner bed and film borders are ignored when comparing. Matches are shown in groups, side by side, with a match percentage. The copy with the most pixels is suggested as the one to keep. `K` marks the others and `Enter` moves them to the trash.
+
+It can still miss some re-scans or group photos that look alike, so check each group before trashing. The **Sensitivity** setting trades one for the other.
+
+## Keyboard shortcuts
+
+Press `?` in the app to see all of them. Any shortcut can be changed there. The defaults:
 
 | Key | Action |
 |---|---|
-| `←` / `→` | Previous / next photo (`↑` / `↓` move by rows in the grid) |
-| `[` / `]`, `,` / `.`, `Shift` + `←` / `→` | Rotate left / right (whole selection in grid view) |
-| `Space` · `G` · `S` | Toggle grid / single view · grid · single |
-| `C` | Crop & straighten |
-| `+` / `-` / `0` | Zoom in / out / fit |
-| `I` · `F` | File info · fullscreen |
-| `F2` | Rename (batch rename in grid) |
-| `Delete` | Move to `.jeditor-trash` |
-| `Ctrl` + `Z` | Undo |
-| `Ctrl` + `A` | Select all (grid) |
-| `D` | Find duplicates *(work in progress)* |
-| `R` | Rescan folder |
-| `?` | Keyboard shortcuts |
+| `←` `→` | Previous / next photo (`↑` `↓` move by rows in the grid) |
+| `[` `]` or `,` `.` or `Shift+←` `Shift+→` | Rotate left / right |
+| `Space`, `G`, `S` | Toggle view, grid view, single view |
+| `C` | Crop and straighten |
+| `+` `-` `0` | Zoom in, zoom out, fit |
+| `I` | File info |
+| `F` | Fullscreen |
+| `F2` | Rename (batch rename in grid view) |
+| `Delete` | Move to trash |
+| `Ctrl+Z` | Undo |
+| `Ctrl+A` | Select all (grid view) |
+| `D` | Find duplicates |
+| `R` | Rescan the folder |
+| `?` | Show shortcuts |
 
-**In Crop & Straighten:** `Enter` save · `Shift+Enter` save & next · `Esc` cancel · `[` / `]` rotate 90° · `,` / `.` straighten ±0.1° · `<` / `>` ±1° · `0` zero the angle · `L` level tool · `A` next aspect ratio · `X` swap portrait/landscape · `P` previous crop · `R` reset.
+In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `[` `]` rotate 90°, `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset.
 
-**In Find duplicates:** `1`–`9` mark/unmark · `K` keep suggested, mark the rest · `Enter` trash marked & next · `N` not duplicates · `←` / `→` previous / next group · `Esc` close.
+In find duplicates: `1`–`9` mark or unmark a photo, `K` keep the suggested photo and mark the rest, `Enter` trash marked and go to the next group, `N` not duplicates, `←` `→` previous / next group, `Esc` close.
 
-## 🛠 Development
+## Development
+
 ```bash
 npm install
-npm start          # serve app/ at http://localhost:3000
-npm test           # headless-Chromium test suite (needs Chrome; set CHROME_PATH if not found)
-npm run build      # regenerate standalone.html
-npm run bump 1.x.y # bump the version (app/version.js + package.json)
+npm start           # serves app/ at http://localhost:3000
+npm test            # test suite in headless Chromium (set CHROME_PATH if Chrome isn't found)
+npm run build       # rebuilds standalone.html
+npm run bump 1.x.y  # sets the version in app/version.js, package.json and package-lock.json
 ```
-The app itself is dependency-free vanilla JS in `app/`: `script.js` (viewer, grid, rotation, shortcuts), `crop.js` (Crop & Straighten), `meta.js` (JPEG/PNG metadata), `dupes.js` (duplicate finder).
 
-**Releases are automatic**: bump with `npm run bump 1.x.y`, commit, merge to `main` — the Release workflow tags `v1.x.y`, builds `standalone.html`, and publishes the GitHub Release by itself (it can also be run manually from the Actions tab). Merging to `main` also redeploys the PWA to GitHub Pages. The version appears on the app's start screen, and the test suite fails if `app/version.js` and `package.json` ever disagree.
+The app is plain JavaScript with no dependencies, in `app/`:
 
-If you change `app/icon.png`, run `node scripts/make-icons.js` to regenerate the PWA launcher icons.
+- `script.js`: viewer, grid, rotation, file operations, shortcuts
+- `crop.js`: crop and straighten
+- `meta.js`: reading and copying JPEG/PNG metadata
+- `dupes.js`: duplicate finder
 
-Windows users without Node can run `start.bat` to serve the app locally instead.
+To release, bump the version, commit, and merge to `main`. The Release workflow then tags the version, builds `standalone.html` and publishes a GitHub Release, and the Pages workflow deploys the web app. The tests fail if `app/version.js` and `package.json` disagree.
 
----
-*Created with focus on speed and flow.*
+If you change `app/icon.png`, run `node scripts/make-icons.js` to regenerate the app icons. On Windows without Node, `start.bat` serves the app locally.
