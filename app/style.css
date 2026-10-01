@@ -326,6 +326,12 @@ header {
     object-fit: contain;
     transition: transform 0.08s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.05s ease;
     will-change: transform, opacity;
+    user-select: none;
+}
+
+/* Double-click zoom: a smoother move than the wheel's quick steps */
+#current-image.zoom-animate {
+    transition: transform 0.24s cubic-bezier(0.2, 0, 0, 1), opacity 0.05s ease;
 }
 
 .hidden {

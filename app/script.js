@@ -113,6 +113,7 @@ const app = {
 
         // Zoom
         this.elements.imageContainer.addEventListener('wheel', (e) => this.handleZoom(e));
+        this.elements.imageContainer.addEventListener('dblclick', (e) => this.handleDoubleClickZoom(e));
 
         // Pan/Drag
         this.elements.imageContainer.addEventListener('mousedown', (e) => this.handlePanStart(e));
@@ -575,7 +576,7 @@ const app = {
         const delta = -Math.sign(e.deltaY) * 0.1;
         this.zoom += delta;
         if (this.zoom < 0.1) this.zoom = 0.1;
-        if (this.zoom > 5) this.zoom = 5;
+        if (this.zoom > 8) this.zoom = 8;
 
         // Update cursor based on zoom level
         this.elements.imageContainer.style.cursor = this.zoom > 1 ? 'grab' : 'default';
@@ -584,28 +585,77 @@ const app = {
         if (this.zoom > 1) this.ensureFullRes();
     },
 
-    updateImageTransform() {
-        if (!this.currentFile) return;
+    // Double-click: at fit, zoom in to 100% (one photo pixel per screen
+    // pixel, at least 2×) on the spot clicked; zoomed in or out, back to fit
+    handleDoubleClickZoom(e) {
+        if (this.viewMode !== 'single' || this.cropState.active || !this.currentFile) return;
+        if (e.target.closest && e.target.closest('button, input, select, a')) return;
         const img = this.elements.currentImage;
-        const f = this.currentFile;
-        // Rotation saved to disk after these pixels were read, plus what is
-        // still being written or queued
-        const readAt = this._displayFile === f && img._savedAtRead !== undefined
-            ? img._savedAtRead : (f._savedRotationTotal || 0);
-        const r = ((f._savedRotationTotal || 0) - readAt) + (f.savingRotation || 0) + (f.pendingRotation || 0);
+        if (!img.offsetWidth) return;
+        e.preventDefault();
+        if (window.getSelection) window.getSelection().removeAllRanges();
 
-        // At odd quarter-turns the CSS-rotated image would overflow the
-        // container (layout still sees the unrotated box) — scale it to fit.
-        let fit = 1;
-        if (((r % 180) + 180) % 180 === 90) {
-            const cw = this.elements.imageContainer.clientWidth;
-            const ch = this.elements.imageContainer.clientHeight;
-            const w = img.offsetWidth, h = img.offsetHeight;
-            if (cw && ch && w && h) fit = Math.min(cw / h, ch / w);
+        let target = 1;
+        if (Math.abs(this.zoom - 1) < 0.01) {
+            const f = this.currentFile;
+            const fullW = f._dims ? f._dims.w
+                : (this._displayFile === f && this._displayKind === 'full' ? img.naturalWidth : 0);
+            const fit = this.currentFitScale();
+            const oneToOne = fullW ? fullW / (img.offsetWidth * fit) : 0;
+            target = Math.max(2, Math.min(8, oneToOne || 2.5));
         }
 
-        img.style.transform =
-            `translate(${this.panX}px, ${this.panY}px) rotate(${r}deg) scale(${this.zoom * fit})`;
+        if (target === 1) {
+            this.resetPan();
+        } else {
+            // Keep the clicked point under the pointer. Scaling is about the
+            // image's centre, so rotation doesn't change the maths.
+            const rect = img.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+            const dx = Math.max(-rect.width / 2, Math.min(rect.width / 2, e.clientX - cx));
+            const dy = Math.max(-rect.height / 2, Math.min(rect.height / 2, e.clientY - cy));
+            const k = target / this.zoom;
+            this.panX += dx * (1 - k);
+            this.panY += dy * (1 - k);
+            this.zoom = target;
+        }
+
+        // A gentler transition than the wheel's for the big jump
+        img.classList.add('zoom-animate');
+        clearTimeout(this._zoomAnimTimer);
+        this._zoomAnimTimer = setTimeout(() => img.classList.remove('zoom-animate'), 260);
+
+        this.elements.imageContainer.style.cursor = this.zoom > 1 ? 'grab' : 'default';
+        this.updateImageTransform();
+        if (this.zoom > 1) this.ensureFullRes();
+    },
+
+    // CSS rotation on the photo: rotation saved to disk after these pixels
+    // were read, plus what is still being written or queued
+    currentCssRotation() {
+        const img = this.elements.currentImage;
+        const f = this.currentFile;
+        const readAt = this._displayFile === f && img._savedAtRead !== undefined
+            ? img._savedAtRead : (f._savedRotationTotal || 0);
+        return ((f._savedRotationTotal || 0) - readAt) + (f.savingRotation || 0) + (f.pendingRotation || 0);
+    },
+
+    // At odd quarter-turns the CSS-rotated image would overflow the
+    // container (layout still sees the unrotated box): the scale that fits it
+    currentFitScale(r = this.currentCssRotation()) {
+        const img = this.elements.currentImage;
+        if (((r % 180) + 180) % 180 !== 90) return 1;
+        const cw = this.elements.imageContainer.clientWidth;
+        const ch = this.elements.imageContainer.clientHeight;
+        const w = img.offsetWidth, h = img.offsetHeight;
+        return cw && ch && w && h ? Math.min(cw / h, ch / w) : 1;
+    },
+
+    updateImageTransform() {
+        if (!this.currentFile) return;
+        const r = this.currentCssRotation();
+        this.elements.currentImage.style.transform =
+            `translate(${this.panX}px, ${this.panY}px) rotate(${r}deg) scale(${this.zoom * this.currentFitScale(r)})`;
     },
 
     handlePanStart(e) {
