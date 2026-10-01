@@ -5546,45 +5546,57 @@ const app = {
 
     async runThumbJob(job) {
         const fileEntry = job.fileEntry;
-        try {
-            // Don't read mid-save; the rotation queue is quick (EXIF patch)
-            while (fileEntry.isBusy) await new Promise(r => setTimeout(r, 30));
-
-            // Bytes read now include everything saved so far; any save that
-            // lands while we decode shows up in the lag delta below.
-            const savedAtRead = fileEntry._savedRotationTotal || 0;
-            const fileData = await fileEntry.handle.getFile();
-
-            let blob;
-            if (fileData.size <= this.THUMB_FAST_PATH_BYTES) {
-                blob = fileData;
-            } else {
-                // Persistent cache: reopening a folder skips regeneration.
-                // The key includes size+mtime, so edits invalidate naturally.
-                const cacheKey = `${fileEntry.relPath || fileEntry.name}|${fileData.size}|${fileData.lastModified}`;
-                blob = await this.idbGetThumb(cacheKey);
-                if (!blob) {
-                    blob = await this.generateThumbnailBlob(fileData);
-                    if (blob) this.idbPutThumb(cacheKey, blob);
-                }
+        for (let attempt = 0; ; attempt++) {
+            try {
+                await this.makeThumbnail(fileEntry);
+                job.resolve(fileEntry.thumbnailUrl);
+                return;
+            } catch (e) {
+                // A save landing mid-read invalidates the file snapshot: retry once
+                if (attempt === 0) continue;
+                fileEntry._thumbPromise = null;
+                console.error('Thumbnail error:', e);
+                const fallback = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjx0ZXh0IHg9IjEwIiB5PSIyMCIgZm9udC1zaXplPSIyMCI+4pqcPC90ZXh0Pjwvc3ZnPg==';
+                (fileEntry._thumbWaiters || []).forEach(img => { img.src = fallback; });
+                fileEntry._thumbWaiters = [];
+                job.reject(e);
+                return;
             }
-            if (!blob) throw new Error('Thumbnail encode failed');
-
-            if (fileEntry.thumbnailUrl) URL.revokeObjectURL(fileEntry.thumbnailUrl);
-            fileEntry.thumbnailUrl = URL.createObjectURL(blob);
-            fileEntry.thumbLag = (fileEntry._savedRotationTotal || 0) - savedAtRead;
-            fileEntry._thumbPromise = null;
-            fileEntry._thumbStale = false;
-            this.deliverThumbnail(fileEntry);
-            job.resolve(fileEntry.thumbnailUrl);
-        } catch (e) {
-            fileEntry._thumbPromise = null;
-            console.error('Thumbnail error:', e);
-            const fallback = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjx0ZXh0IHg9IjEwIiB5PSIyMCIgZm9udC1zaXplPSIyMCI+4pqcPC90ZXh0Pjwvc3ZnPg==';
-            (fileEntry._thumbWaiters || []).forEach(img => { img.src = fallback; });
-            fileEntry._thumbWaiters = [];
-            job.reject(e);
         }
+    },
+
+    async makeThumbnail(fileEntry) {
+        // Don't read mid-save; the rotation queue is quick (EXIF patch)
+        while (fileEntry.isBusy) await new Promise(r => setTimeout(r, 30));
+
+        // Bytes read now include everything saved so far; any save that
+        // lands while we decode shows up in the lag delta below.
+        const savedAtRead = fileEntry._savedRotationTotal || 0;
+        const fileData = await fileEntry.handle.getFile();
+
+        let blob;
+        if (fileData.size <= this.THUMB_FAST_PATH_BYTES) {
+            // A copy, not the File itself — the File stops being readable
+            // once the photo is rotated
+            blob = new Blob([await fileData.arrayBuffer()], { type: fileData.type });
+        } else {
+            // Persistent cache: reopening a folder skips regeneration.
+            // The key includes size+mtime, so edits invalidate naturally.
+            const cacheKey = `${fileEntry.relPath || fileEntry.name}|${fileData.size}|${fileData.lastModified}`;
+            blob = await this.idbGetThumb(cacheKey);
+            if (!blob) {
+                blob = await this.generateThumbnailBlob(fileData);
+                if (blob) this.idbPutThumb(cacheKey, blob);
+            }
+        }
+        if (!blob) throw new Error('Thumbnail encode failed');
+
+        if (fileEntry.thumbnailUrl) URL.revokeObjectURL(fileEntry.thumbnailUrl);
+        fileEntry.thumbnailUrl = URL.createObjectURL(blob);
+        fileEntry.thumbLag = (fileEntry._savedRotationTotal || 0) - savedAtRead;
+        fileEntry._thumbPromise = null;
+        fileEntry._thumbStale = false;
+        this.deliverThumbnail(fileEntry);
     },
 
     deliverThumbnail(fileEntry) {
@@ -5829,14 +5841,24 @@ const app = {
         return p;
     },
 
+    // A File from getFile() is a snapshot: once the file on disk is written
+    // (a rotation, a crop) reading it fails — and so does any blob URL made
+    // from it, which showed up as a broken image with the file name. So the
+    // displayed original is an in-memory copy of the bytes, remade whenever
+    // the file has changed. (Only screen-sized photos and zoomed-in photos
+    // are shown from the original; big scans use generated previews.)
     async getOriginalSource(file, data = null, savedAtRead = null) {
-        if (!file.fullImageUrl) {
-            if (!data) {
-                while (file.isBusy) await new Promise(r => setTimeout(r, 30));
-                savedAtRead = file._savedRotationTotal || 0;
-                data = await file.handle.getFile();
-            }
-            file.fullImageUrl = URL.createObjectURL(data);
+        if (!data) {
+            while (file.isBusy) await new Promise(r => setTimeout(r, 30));
+            savedAtRead = file._savedRotationTotal || 0;
+            data = await file.handle.getFile();
+        }
+        const version = `${data.size}|${data.lastModified}`;
+        if (!file.fullImageUrl || file._fullVersion !== version) {
+            const copy = new Blob([await data.arrayBuffer()], { type: data.type });
+            if (file.fullImageUrl) URL.revokeObjectURL(file.fullImageUrl);
+            file.fullImageUrl = URL.createObjectURL(copy);
+            file._fullVersion = version;
             file._fullReadAt = savedAtRead;
         }
         return { url: file.fullImageUrl, isPreview: false, savedAtRead: file._fullReadAt };
@@ -5862,8 +5884,21 @@ const app = {
         if (cached) return Promise.resolve(cached);
         if (file._decodePromise) return file._decodePromise;
         const p = (async () => {
-            const src = await this.getDisplaySource(file);
-            const el = await this.decodeInto(file, src);
+            const attempt = async () => {
+                try {
+                    return await this.decodeInto(file, await this.getDisplaySource(file));
+                } catch (e) {
+                    return null; // the file changed or vanished mid-read
+                }
+            };
+            let el = await attempt();
+            if (!el || !el._decoded) {
+                // Usually a save landed while this was loading: read the
+                // file again rather than keep a broken image
+                this.forgetSources(file);
+                el = await attempt();
+            }
+            if (!el || !el._decoded) return el || { _decoded: false }; // unreadable — not cached
             // Cache unless the file was edited (and invalidated) meanwhile
             if (file._sourceGen === p._gen) {
                 file._decodedEl = el;
@@ -5936,6 +5971,19 @@ const app = {
                 .then(() => this.getDisplaySource(f).catch(() => { }))
                 .finally(() => { f._warming = false; });
         }
+    },
+
+    // Drop every cached display source of a file so the next load re-reads it
+    forgetSources(file) {
+        if (file.fullImageUrl) {
+            URL.revokeObjectURL(file.fullImageUrl);
+            delete file.fullImageUrl;
+        }
+        if (file._preview) {
+            URL.revokeObjectURL(file._preview.url);
+            delete file._preview;
+        }
+        file._sourcePromise = null;
     },
 
     dropDecoded(file) {
@@ -6022,6 +6070,13 @@ const app = {
             try {
                 const el = await this.decodeFull(file);
                 if (this._loadToken !== loadToken) return;
+                if (!el._decoded) {
+                    // Keep the thumbnail (or previous photo) up instead of a
+                    // broken-image icon
+                    this.elements.currentImage.style.opacity = '1';
+                    this.showToast(`Couldn't load ${file.name} — the file may be damaged or in use`, 4000);
+                    return;
+                }
                 this.swapDisplay(el, 'full', file);
                 this.afterDisplay(file, el);
                 this.recordLoadTime(performance.now() - loadStart);
@@ -6093,7 +6148,7 @@ const app = {
         // Thumbnails are small (≈10–30 KB each) and are kept for the whole
         // session. Only full-size images are trimmed.
         const cur = this.getCurrentIndex();
-        const windowSizeFull = 10;
+        const windowSizeFull = 4; // in-memory copies of originals (see getOriginalSource)
 
 
         this.files.forEach((f, i) => {

@@ -1364,6 +1364,54 @@ async function newPage(browser, url) {
         await page.close();
     }
 
+    // ---- 7h. Rotating a photo shown from its original file (real disk files) ----
+    console.log('rotate while showing the original file');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            // Real files in the browser's private file system: a File from
+            // getFile() stops being readable once the file is written, like on disk
+            const root = await navigator.storage.getDirectory();
+            try { await root.removeEntry('snap', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await root.getDirectoryHandle('snap', { create: true });
+            for (const [name, color] of [['a.jpg', '#c33'], ['b.jpg', '#36c'], ['c.jpg', '#3a3']]) {
+                const fh = await dir.getFileHandle(name, { create: true });
+                const w = await fh.createWritable();
+                await w.write(new Blob([await makeRealJpeg(1800, 1200, { color })], { type: 'image/jpeg' }));
+                await w.close();
+            }
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            // Rotate straight away, while the photo may still be loading
+            app.rotateCurrent(90);
+            app.rotateCurrent(90);
+            const a = app.files[0];
+            while (a._rotationQueue) await a._rotationQueue;
+            await new Promise(res => setTimeout(res, 300));
+            const ok = () => {
+                const img = document.getElementById('current-image');
+                return img.complete && img.naturalWidth > 0;
+            };
+            out.afterRotate = ok();
+            // Away and back: the photo is loaded again from the changed file
+            app.navigate(1);
+            await new Promise(res => setTimeout(res, 300));
+            app.navigate(1);
+            await new Promise(res => setTimeout(res, 300));
+            app.openSingle(a);
+            for (let i = 0; i < 100 && !(app._displayFile === a && app._displayKind === 'full'); i++) await new Promise(res => setTimeout(res, 20));
+            out.afterReturn = ok() && app._displayFile === a;
+            out.noBroken = ![...document.querySelectorAll('img')].some(i => i.src.startsWith('blob:') && i.complete && i.naturalWidth === 0);
+            return out;
+        });
+        check('photo stays visible when rotated while loading', r.afterRotate);
+        check('rotated photo loads again after navigating away and back', r.afterReturn);
+        check('no broken images anywhere', r.noBroken);
+        check('snapshot suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7. file:// — direct open and standalone build ----
     console.log('file:// support');
     for (const [label, target] of [
