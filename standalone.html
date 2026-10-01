@@ -14,7 +14,7 @@
     <script>
 // Single source of truth for the app version. Bump with:  npm run bump 1.x.y
 // (keeps package.json in sync and busts the service worker cache)
-const APP_VERSION = '1.11.2';
+const APP_VERSION = '1.11.3';
 
 </script>
     <script>
@@ -2794,6 +2794,12 @@ header {
     object-fit: contain;
     transition: transform 0.08s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.05s ease;
     will-change: transform, opacity;
+    user-select: none;
+}
+
+/* Double-click zoom: a smoother move than the wheel's quick steps */
+#current-image.zoom-animate {
+    transition: transform 0.24s cubic-bezier(0.2, 0, 0, 1), opacity 0.05s ease;
 }
 
 .hidden {
@@ -2898,6 +2904,7 @@ header {
 }
 
 .thumb-item {
+    position: relative;
     height: calc(var(--strip-height, 80px) - 20px);
     width: calc(var(--strip-height, 80px) - 20px);
     min-width: calc(var(--strip-height, 80px) - 20px);
@@ -2969,6 +2976,42 @@ header {
 .grid-item.active {
     border-color: #fff;
     /* differ from selected */
+}
+
+/* Spinner over a tile whose thumbnail is still loading. Fades in after a
+   short delay so tiles that load quickly never flash it. */
+.grid-item.thumb-loading::after,
+.thumb-item.thumb-loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 22px;
+    height: 22px;
+    margin: -13px 0 0 -13px;
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    border-top-color: rgba(255, 255, 255, 0.75);
+    border-radius: 50%;
+    opacity: 0;
+    animation: thumb-spinner-in 0.2s ease 0.15s forwards, spin 0.8s linear infinite;
+    pointer-events: none;
+}
+
+.thumb-item.thumb-loading::after {
+    width: 14px;
+    height: 14px;
+    margin: -9px 0 0 -9px;
+}
+
+@keyframes thumb-spinner-in {
+    to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .grid-item.thumb-loading::after,
+    .thumb-item.thumb-loading::after {
+        animation: thumb-spinner-in 0.2s ease 0.15s forwards;
+    }
 }
 
 .grid-item img {
@@ -4884,6 +4927,7 @@ const app = {
 
         // Zoom
         this.elements.imageContainer.addEventListener('wheel', (e) => this.handleZoom(e));
+        this.elements.imageContainer.addEventListener('dblclick', (e) => this.handleDoubleClickZoom(e));
 
         // Pan/Drag
         this.elements.imageContainer.addEventListener('mousedown', (e) => this.handlePanStart(e));
@@ -5346,7 +5390,7 @@ const app = {
         const delta = -Math.sign(e.deltaY) * 0.1;
         this.zoom += delta;
         if (this.zoom < 0.1) this.zoom = 0.1;
-        if (this.zoom > 5) this.zoom = 5;
+        if (this.zoom > 8) this.zoom = 8;
 
         // Update cursor based on zoom level
         this.elements.imageContainer.style.cursor = this.zoom > 1 ? 'grab' : 'default';
@@ -5355,28 +5399,77 @@ const app = {
         if (this.zoom > 1) this.ensureFullRes();
     },
 
-    updateImageTransform() {
-        if (!this.currentFile) return;
+    // Double-click: at fit, zoom in to 100% (one photo pixel per screen
+    // pixel, at least 2×) on the spot clicked; zoomed in or out, back to fit
+    handleDoubleClickZoom(e) {
+        if (this.viewMode !== 'single' || this.cropState.active || !this.currentFile) return;
+        if (e.target.closest && e.target.closest('button, input, select, a')) return;
         const img = this.elements.currentImage;
-        const f = this.currentFile;
-        // Rotation saved to disk after these pixels were read, plus what is
-        // still being written or queued
-        const readAt = this._displayFile === f && img._savedAtRead !== undefined
-            ? img._savedAtRead : (f._savedRotationTotal || 0);
-        const r = ((f._savedRotationTotal || 0) - readAt) + (f.savingRotation || 0) + (f.pendingRotation || 0);
+        if (!img.offsetWidth) return;
+        e.preventDefault();
+        if (window.getSelection) window.getSelection().removeAllRanges();
 
-        // At odd quarter-turns the CSS-rotated image would overflow the
-        // container (layout still sees the unrotated box) — scale it to fit.
-        let fit = 1;
-        if (((r % 180) + 180) % 180 === 90) {
-            const cw = this.elements.imageContainer.clientWidth;
-            const ch = this.elements.imageContainer.clientHeight;
-            const w = img.offsetWidth, h = img.offsetHeight;
-            if (cw && ch && w && h) fit = Math.min(cw / h, ch / w);
+        let target = 1;
+        if (Math.abs(this.zoom - 1) < 0.01) {
+            const f = this.currentFile;
+            const fullW = f._dims ? f._dims.w
+                : (this._displayFile === f && this._displayKind === 'full' ? img.naturalWidth : 0);
+            const fit = this.currentFitScale();
+            const oneToOne = fullW ? fullW / (img.offsetWidth * fit) : 0;
+            target = Math.max(2, Math.min(8, oneToOne || 2.5));
         }
 
-        img.style.transform =
-            `translate(${this.panX}px, ${this.panY}px) rotate(${r}deg) scale(${this.zoom * fit})`;
+        if (target === 1) {
+            this.resetPan();
+        } else {
+            // Keep the clicked point under the pointer. Scaling is about the
+            // image's centre, so rotation doesn't change the maths.
+            const rect = img.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+            const dx = Math.max(-rect.width / 2, Math.min(rect.width / 2, e.clientX - cx));
+            const dy = Math.max(-rect.height / 2, Math.min(rect.height / 2, e.clientY - cy));
+            const k = target / this.zoom;
+            this.panX += dx * (1 - k);
+            this.panY += dy * (1 - k);
+            this.zoom = target;
+        }
+
+        // A gentler transition than the wheel's for the big jump
+        img.classList.add('zoom-animate');
+        clearTimeout(this._zoomAnimTimer);
+        this._zoomAnimTimer = setTimeout(() => img.classList.remove('zoom-animate'), 260);
+
+        this.elements.imageContainer.style.cursor = this.zoom > 1 ? 'grab' : 'default';
+        this.updateImageTransform();
+        if (this.zoom > 1) this.ensureFullRes();
+    },
+
+    // CSS rotation on the photo: rotation saved to disk after these pixels
+    // were read, plus what is still being written or queued
+    currentCssRotation() {
+        const img = this.elements.currentImage;
+        const f = this.currentFile;
+        const readAt = this._displayFile === f && img._savedAtRead !== undefined
+            ? img._savedAtRead : (f._savedRotationTotal || 0);
+        return ((f._savedRotationTotal || 0) - readAt) + (f.savingRotation || 0) + (f.pendingRotation || 0);
+    },
+
+    // At odd quarter-turns the CSS-rotated image would overflow the
+    // container (layout still sees the unrotated box): the scale that fits it
+    currentFitScale(r = this.currentCssRotation()) {
+        const img = this.elements.currentImage;
+        if (((r % 180) + 180) % 180 !== 90) return 1;
+        const cw = this.elements.imageContainer.clientWidth;
+        const ch = this.elements.imageContainer.clientHeight;
+        const w = img.offsetWidth, h = img.offsetHeight;
+        return cw && ch && w && h ? Math.min(cw / h, ch / w) : 1;
+    },
+
+    updateImageTransform() {
+        if (!this.currentFile) return;
+        const r = this.currentCssRotation();
+        this.elements.currentImage.style.transform =
+            `translate(${this.panX}px, ${this.panY}px) rotate(${r}deg) scale(${this.zoom * this.currentFitScale(r)})`;
     },
 
     handlePanStart(e) {
@@ -6258,6 +6351,7 @@ const app = {
             img.style.pointerEvents = 'none'; // let click pass to div
             img.style.transition = 'transform 0.15s ease'; // snappy rotation previews
             div.appendChild(img);
+            if (force || !file.thumbnailUrl) this.showThumbSpinner(div, img);
 
             await this.loadImageThumbnail(file, img, force);
         } catch (e) { /* ignore */ }
@@ -6319,6 +6413,25 @@ const app = {
         renderChunk(0);
     },
 
+    // Transparent stand-in while a tile's thumbnail is on its way
+    BLANK_THUMB: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PC9zdmc+',
+
+    // Spinner on a tile until its image has a real picture (or failed).
+    // Keyed to the image's own load event, so it stays up through decoding
+    // rather than vanishing a beat before the photo appears.
+    showThumbSpinner(tile, img) {
+        const done = () => {
+            if (img.src === this.BLANK_THUMB) return;
+            tile.classList.remove('thumb-loading');
+            img.removeEventListener('load', done);
+            img.removeEventListener('error', done);
+        };
+        tile.classList.add('thumb-loading');
+        img.addEventListener('load', done);
+        img.addEventListener('error', done);
+        if (img.complete && img.naturalWidth && img.src !== this.BLANK_THUMB) done();
+    },
+
     makeGridTile(file, observer) {
         const div = document.createElement('div');
         div.className = 'grid-item';
@@ -6346,11 +6459,12 @@ const app = {
             const angle = this.getDisplayRotation(file, 'thumb');
             if (angle) img.style.transform = `rotate(${angle}deg)`;
         } else {
-            img.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PC9zdmc+';
+            img.src = this.BLANK_THUMB;
             observer.observe(img);
         }
 
         div.appendChild(img);
+        if (!file.thumbnailUrl) this.showThumbSpinner(div, img);
 
         div.onclick = (e) => this.handleGridClick(e, file);
         div.ondblclick = () => this.openSingle(file);
@@ -7775,8 +7889,9 @@ const app = {
             const img = document.createElement('img');
             img._file = file;
             img.alt = file.name;
-            img.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PC9zdmc+';
+            img.src = this.BLANK_THUMB;
             gridDiv.appendChild(img);
+            this.showThumbSpinner(gridDiv, img);
 
             // Re-observe
             const gridObserver = this.elements.gridView._observer;

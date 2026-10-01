@@ -657,6 +657,20 @@ async function newPage(browser, url) {
             app.renderGrid();
             const tileImgs = [...document.querySelectorAll('#grid-view .grid-item img')];
             out.instantPaint = tileImgs.every(img => img.src.startsWith('blob:'));
+            out.cachedNoSpinner = !document.querySelector('#grid-view .grid-item.thumb-loading');
+
+            // A tile still waiting shows a spinner until its picture loads
+            // (on screen: lazy tiles in a hidden grid don't load)
+            document.getElementById('main-interface').classList.remove('hidden');
+            document.getElementById('grid-view').classList.remove('hidden');
+            const file3 = makeFakeFile('big3.png', bytes, 'image/png');
+            app.files = [file, file2, file3];
+            app.renderGrid();
+            const tile3 = file3._gridEl;
+            out.spinnerWhileLoading = tile3.classList.contains('thumb-loading');
+            await app.loadImageThumbnail(file3, tile3.querySelector('img'));
+            for (let i = 0; i < 50 && tile3.classList.contains('thumb-loading'); i++) await new Promise(r => setTimeout(r, 20));
+            out.spinnerCleared = !tile3.classList.contains('thumb-loading');
             return out;
         });
         check('worker available (off-main-thread generation)', r.workerAvailable);
@@ -666,6 +680,9 @@ async function newPage(browser, url) {
         check('second request is a cache hit', r.cached && r.urlSet);
         check('precache fills remaining files', r.precached);
         check('re-render paints cached thumbs immediately', r.instantPaint);
+        check('cached tiles show no loading spinner', r.cachedNoSpinner);
+        check('loading tile shows a spinner, cleared once its thumbnail loads', r.spinnerWhileLoading && r.spinnerCleared,
+            `${r.spinnerWhileLoading}/${r.spinnerCleared}`);
         await page.close();
     }
 
@@ -1305,6 +1322,22 @@ async function newPage(browser, url) {
             await app.enterCrop();
             out.cropDims = `${CropEditor.W}x${CropEditor.H}`;
             app.cancelCrop();
+
+            // Double-click: in to 100% on the clicked spot, again back to fit
+            const view = document.getElementById('current-image');
+            const dbl = (x, y) => view.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: x, clientY: y }));
+            const b0 = view.getBoundingClientRect();
+            // Mouse events carry whole pixels
+            const px = Math.round(b0.left + b0.width * 0.3), py = Math.round(b0.top + b0.height * 0.6);
+            dbl(px, py);
+            const oneToOne = big._dims.w / (view.offsetWidth * app.currentFitScale());
+            out.dblZoom = Math.abs(app.zoom - Math.max(2, Math.min(8, oneToOne))) < 0.01;
+            await new Promise(res => setTimeout(res, 400)); // let the zoom transition finish
+            const b1 = view.getBoundingClientRect();
+            const ux = (px - b0.left) / b0.width, uy = (py - b0.top) / b0.height;
+            out.dblDrift = Math.hypot(b1.left + b1.width * ux - px, b1.top + b1.height * uy - py);
+            dbl(px + 30, py + 30);
+            out.dblFit = app.zoom === 1 && app.panX === 0 && app.panY === 0;
             return { ...out, expectCrop: `${Math.round(edge * 1.5)}x${edge * 2}` };
         });
         check('big scan shows a screen-sized preview', r.isPreview);
@@ -1314,6 +1347,8 @@ async function newPage(browser, url) {
         check('rotating a previewed photo shows instantly', r.rotatedShown);
         check('zooming in swaps to the full-resolution original', r.upgraded && r.zoomKept);
         check('crop works at original resolution after rotation', r.cropDims === r.expectCrop, `${r.cropDims} vs ${r.expectCrop}`);
+        check('double-click zooms to 100% on the clicked spot', r.dblZoom && r.dblDrift < 2, `drift ${r.dblDrift}px`);
+        check('double-click again zooms back to fit', r.dblFit);
         check('preview suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
