@@ -672,8 +672,12 @@ async function newPage(browser, url) {
             };
             f1.handle.move = mkMove(f1.handle);
             f2.handle.move = mkMove(f2.handle);
-            window.prompt = () => 'trip_{n}';
-            await app.batchRename([f1, f2]);
+            Renamer.open(app, [f1, f2]);
+            Renamer.mode = 'new';
+            document.getElementById('rename-pattern').value = 'trip_{#}';
+            document.getElementById('rename-order').value = 'name';
+            await Renamer.refresh();
+            await Renamer.apply();
             out.renamed = app.files.map(f => f.name).sort().join(',');
             await app.undo();
             out.renameUndone = app.files.map(f => f.name).sort().join(',');
@@ -1409,6 +1413,114 @@ async function newPage(browser, url) {
         check('rotated photo loads again after navigating away and back', r.afterReturn);
         check('no broken images anywhere', r.noBroken);
         check('snapshot suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7i. Batch rename ----
+    console.log('batch rename');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            document.getElementById('main-interface').classList.remove('hidden');
+            const root = makeDir('Order');
+            const move = (h) => async function (n) {
+                if (h._failOn === n) throw new Error('locked');
+                root._files.delete(this.name);
+                this.name = n;
+                root._files.set(n, this);
+            };
+            const add = (name, taken) => {
+                const f = makeFakeFile(name, makeJpegBytes(), 'image/jpeg');
+                f.parentDir = root;
+                f.handle.name = name;
+                f.handle.move = move(f.handle);
+                f.dateTaken = taken;
+                root._files.set(name, f.handle);
+                return f;
+            };
+            const files = [add('IMG_0003.jpg', 300), add('IMG_0001.jpg', 100), add('IMG_0002.jpg', 200)];
+            app.dirHandle = root;
+            app.files = [...files];
+            app.sortMode = 'name_asc';
+            app.sortFiles(false);
+            const names = () => app.files.map(f => f.name).sort().join(',');
+            const set = (id, v) => { document.getElementById(id).value = v; };
+            const run = async (opts) => {
+                Renamer.open(app, opts.files || []);
+                Renamer.mode = opts.mode || 'new';
+                Renamer.syncMode();
+                for (const [k, v] of Object.entries(opts.fields || {})) set(k, v);
+                document.getElementById('rename-case').checked = !!opts.matchCase;
+                await Renamer.refresh();
+                return Renamer.rows;
+            };
+
+            // New names numbered by date taken, zero-padded
+            let rows = await run({ fields: { 'rename-pattern': 'Smith_{###}', 'rename-order': 'taken', 'rename-dir': 'asc', 'rename-start': 1, 'rename-step': 1 } });
+            out.preview = rows.map(x => x.oldName + '>' + x.newName).join(' ');
+            out.previewShown = document.querySelectorAll('.rename-row').length === 3;
+            await Renamer.apply();
+            out.renamed = names();
+            out.closed = !Renamer.isOpen;
+
+            // Shift the whole sequence by one (new names overlap old ones)
+            await run({ fields: { 'rename-pattern': 'Smith_{###}', 'rename-order': 'name', 'rename-start': 2 } });
+            await Renamer.apply();
+            out.shifted = names();
+            out.noTempLeft = ![...root._files.keys()].some(n => n.startsWith('.jeditor'));
+
+            // Undo puts the whole batch back
+            await app.undo();
+            out.undone = names();
+
+            // Find & replace on the existing names, with a number token
+            await run({ mode: 'replace', fields: { 'rename-find': 'smith_', 'rename-replace': 'Order88-', 'rename-order': 'name', 'rename-start': 1 } });
+            out.replaceNoCase = Renamer.rows.map(x => x.newName).join(',');
+            await run({ mode: 'replace', matchCase: true, fields: { 'rename-find': 'smith_', 'rename-replace': 'X' } });
+            out.replaceCaseNoMatch = Renamer.rows.every(x => x.newName === x.oldName);
+
+            // {date} token
+            files[0].dateTaken = new Date(2024, 4, 9, 14, 5, 6).getTime();
+            rows = await run({ files: [files[0]], fields: { 'rename-pattern': '{date}_{time}' } });
+            out.dateToken = rows[0].newName;
+
+            // Problems block the rename: duplicates, invalid, clash with another photo
+            rows = await run({ fields: { 'rename-pattern': 'same' } });
+            out.dupBlocked = rows.every(x => /Same name/.test(x.error)) && document.getElementById('rename-apply').disabled &&
+                /add \{###\}/.test(document.getElementById('rename-summary').textContent);
+            rows = await run({ fields: { 'rename-pattern': 'bad:name_{#}' } });
+            out.invalidBlocked = rows.every(x => x.error) && document.getElementById('rename-apply').disabled;
+            const other = app.files.find(f => f.name === 'Smith_002.jpg');
+            rows = await run({ files: [app.files.find(f => f.name === 'Smith_001.jpg')], fields: { 'rename-pattern': 'smith_002' } });
+            out.clashBlocked = /already has this name/.test(rows[0].error || '') && !!other;
+            Renamer.close();
+
+            // Case-only rename works (two passes)
+            const one = app.files.find(f => f.name === 'Smith_001.jpg');
+            out.caseOnly = await app.renameMany([{ file: one, newName: 'SMITH_001.jpg' }]) && one.name === 'SMITH_001.jpg';
+
+            // A failure part-way puts every name back
+            const before = names();
+            const victim = app.files.find(f => f.name === 'Smith_003.jpg');
+            victim.handle._failOn = 'Z_3.jpg';
+            const ok = await app.renameMany(app.files.map((f, i) => ({ file: f, newName: `Z_${i + 1}.jpg` })).sort((a, b) => a.newName.localeCompare(b.newName)));
+            out.rollback = ok === false && names() === before && ![...root._files.keys()].some(n => n.startsWith('.jeditor'));
+            return out;
+        });
+        check('preview numbers by date taken, zero-padded', r.preview === 'IMG_0001.jpg>Smith_001.jpg IMG_0002.jpg>Smith_002.jpg IMG_0003.jpg>Smith_003.jpg' && r.previewShown, r.preview);
+        check('rename applies and closes', r.renamed === 'Smith_001.jpg,Smith_002.jpg,Smith_003.jpg' && r.closed, r.renamed);
+        check('shifting a sequence onto its own names works', r.shifted === 'Smith_002.jpg,Smith_003.jpg,Smith_004.jpg' && r.noTempLeft, r.shifted);
+        check('undo restores the whole batch', r.undone === 'Smith_001.jpg,Smith_002.jpg,Smith_003.jpg', r.undone);
+        check('find & replace (case-insensitive by default)', r.replaceNoCase === 'Order88-001.jpg,Order88-002.jpg,Order88-003.jpg', r.replaceNoCase);
+        check('match case respected', r.replaceCaseNoMatch);
+        check('{date}_{time} from capture date', r.dateToken === '2024-05-09_14-05-06.jpg', r.dateToken);
+        check('duplicate names blocked with a hint', r.dupBlocked);
+        check('invalid characters blocked', r.invalidBlocked);
+        check('clash with another photo blocked', r.clashBlocked);
+        check('case-only rename', r.caseOnly);
+        check('failure part-way puts names back', r.rollback);
+        check('rename suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

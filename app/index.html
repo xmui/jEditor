@@ -15,6 +15,7 @@
     <script src="meta.js"></script>
     <script src="crop.js"></script>
     <script src="dupes.js"></script>
+    <script src="rename.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -354,6 +355,71 @@
             <button id="dupes-skip" class="crop-btn" title="These aren't duplicates (N)">Not duplicates</button>
             <button id="dupes-apply" class="crop-btn primary" title="Trash marked photos and go to the next group (Enter)">Keep all &amp; next</button>
             <button id="dupes-next" class="crop-btn" title="Next group (→)">Next →</button>
+        </div>
+    </div>
+
+    <!-- Batch rename (rename.js) -->
+    <div id="rename-panel" class="shortcuts-overlay hidden">
+        <div class="shortcuts-card rename-card" role="dialog" aria-label="Rename photos">
+            <div class="shortcuts-head">
+                <h3>Rename photos</h3>
+                <button id="rename-close" title="Close (Esc)">×</button>
+            </div>
+            <div class="rename-body">
+                <div class="rename-scope">
+                    <label><input type="radio" name="rename-scope" id="rename-scope-selected"> <span id="rename-scope-selected-label">Selected photos</span></label>
+                    <label><input type="radio" name="rename-scope" id="rename-scope-all"> <span id="rename-scope-all-label">All photos in the folder</span></label>
+                </div>
+                <div class="rename-mode">
+                    <button data-mode="new">New names</button>
+                    <button data-mode="replace">Find &amp; replace</button>
+                </div>
+                <div id="rename-new-fields" class="rename-fields">
+                    <label class="rename-wide">Name
+                        <input id="rename-pattern" type="text" spellcheck="false" autocomplete="off" placeholder="Smith_{###}">
+                    </label>
+                </div>
+                <div id="rename-replace-fields" class="rename-fields hidden">
+                    <label>Find <input id="rename-find" type="text" spellcheck="false" autocomplete="off" placeholder="IMG_"></label>
+                    <label>Replace with <input id="rename-replace" type="text" spellcheck="false" autocomplete="off" placeholder="Smith_"></label>
+                    <label class="rename-check"><input id="rename-case" type="checkbox"> Match case</label>
+                </div>
+                <div class="rename-tokens">
+                    Insert:
+                    <button class="rename-token" data-token="{###}" title="Sequence number; more #s = more digits">{###} number</button>
+                    <button class="rename-token" data-token="{name}" title="The current name">{name}</button>
+                    <button class="rename-token" data-token="{date}" title="Date taken, YYYY-MM-DD">{date}</button>
+                    <button class="rename-token" data-token="{time}" title="Time taken, HH-MM-SS">{time}</button>
+                </div>
+                <div class="rename-fields">
+                    <label>Number in order of
+                        <select id="rename-order">
+                            <option value="current">Current sort</option>
+                            <option value="taken">Date taken</option>
+                            <option value="name">Name</option>
+                            <option value="modified">Date modified</option>
+                            <option value="size">File size</option>
+                        </select>
+                    </label>
+                    <label>
+                        <select id="rename-dir">
+                            <option value="asc">Ascending (oldest / A first)</option>
+                            <option value="desc">Descending (newest / Z first)</option>
+                        </select>
+                    </label>
+                    <label>Start at <input id="rename-start" type="number" value="1"></label>
+                    <label>Step <input id="rename-step" type="number" value="1"></label>
+                </div>
+                <div id="rename-summary" class="rename-summary"></div>
+                <div id="rename-preview" class="rename-preview"></div>
+            </div>
+            <div class="shortcuts-foot">
+                <span>The extension is kept. Ctrl+Z undoes the whole rename.</span>
+                <span class="rename-actions">
+                    <button id="rename-cancel">Cancel</button>
+                    <button id="rename-apply" class="primary">Rename</button>
+                </span>
+            </div>
         </div>
     </div>
 

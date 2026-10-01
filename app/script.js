@@ -2389,7 +2389,7 @@ const app = {
         ['edit.rotateLeft', 'global', 'Edit', 'Rotate left (whole selection in grid)', ['[', ',', 'Shift+ArrowLeft']],
         ['edit.rotateRight', 'global', 'Edit', 'Rotate right (whole selection in grid)', [']', '.', 'Shift+ArrowRight']],
         ['edit.crop', 'global', 'Edit', 'Crop & straighten', ['C']],
-        ['edit.rename', 'global', 'Edit', 'Rename (batch rename in grid)', ['F2']],
+        ['edit.rename', 'global', 'Edit', 'Rename (the selection in grid view)', ['F2']],
         ['edit.trash', 'global', 'Edit', 'Move to trash', ['Delete']],
         ['edit.undo', 'global', 'Edit', 'Undo', ['Ctrl+Z']],
         ['edit.selectAll', 'global', 'Edit', 'Select all (grid)', ['Ctrl+A']],
@@ -2447,8 +2447,7 @@ const app = {
             'edit.rotateLeft': () => grid() ? this.rotateBulk(-90) : this.rotateCurrent(-90),
             'edit.rotateRight': () => grid() ? this.rotateBulk(90) : this.rotateCurrent(90),
             'edit.crop': () => this.enterCrop(),
-            'edit.rename': () => grid() && this.selection.size > 1
-                ? this.batchRename([...this.selection]) : this.promptRename(),
+            'edit.rename': () => this.openRename(grid() && this.selection.size ? [...this.selection] : [this.currentFile]),
             'edit.trash': () => this.moveToTrash(grid() && this.selection.size
                 ? [...this.selection] : [this.currentFile]),
             'edit.undo': () => this.undo(),
@@ -2606,6 +2605,9 @@ const app = {
 
     handleKey(e) {
         if (this._recordingKey) return;
+
+        // The rename tool handles its own keys
+        if (Renamer.isOpen) return;
 
         // Shortcuts panel is modal: Esc closes it, other keys go to its inputs
         if (this.isShortcutsOpen()) {
@@ -3112,11 +3114,9 @@ const app = {
                 await this.renameFile(entry.file, entry.oldName, { skipUndo: true });
                 this.showToast('Rename undone');
             } else if (entry.type === 'batch-rename') {
-                for (const it of entry.items) {
-                    await this.renameFile(it.file, it.oldName, { skipUndo: true });
-                }
-                this.showToast(`Batch rename undone (${entry.items.length} files)`);
-                this.sortFiles();
+                const ok = await this.renameMany(entry.items.map(it => ({ file: it.file, newName: it.oldName })), { skipUndo: true });
+                if (!ok) throw new Error('could not restore the old names');
+                this.showToast(`Rename undone (${entry.items.length} file${entry.items.length === 1 ? '' : 's'})`);
             } else if (entry.type === 'trash') {
                 for (const it of entry.items) await this.restoreFromTrash(it);
                 this.sortFiles();
@@ -3300,30 +3300,8 @@ const app = {
                     return false;
                 }
             }
-            if (typeof file.handle.move === 'function') {
-                await file.handle.move(newName);
-            } else if (dir) {
-                const data = await file.handle.getFile();
-                const nh = await dir.getFileHandle(newName, { create: true });
-                const w = await nh.createWritable();
-                await w.write(data);
-                await w.close();
-                await dir.removeEntry(oldName);
-                file.handle = nh;
-            } else {
-                throw new Error('No folder access');
-            }
-            file.name = newName;
-            if (file.relPath) file.relPath = file.relPath.replace(/[^/]+$/, newName);
+            await this.moveFile(file, newName);
             if (!skipUndo) this.pushUndo({ type: 'rename', file, oldName });
-
-            if (this.currentFile === file) {
-                this.elements.fileName.textContent = newName;
-                this.updateStatusBar();
-                if (this._infoOpen) this.fillInfoPanel(file);
-            }
-            const gridImg = file._gridEl && file._gridEl.querySelector('img');
-            if (gridImg) gridImg.alt = newName;
             return true;
         } catch (e) {
             console.error('Rename failed:', e);
@@ -3332,53 +3310,122 @@ const app = {
         }
     },
 
-    promptRename(file = this.currentFile) {
-        if (!file) return;
-        if (!this.ensureWritable()) return;
-        const newName = prompt('Rename file:', file.name);
-        if (newName !== null) {
-            this.renameFile(file, newName).then(ok => {
-                if (ok) this.showToast(`Renamed to ${file.name}`);
-            });
+    // Rename on disk without checks (callers make sure the name is free)
+    async moveFile(file, newName) {
+        const dir = file.parentDir || this.dirHandle;
+        const oldName = file.name;
+        if (file._rotationQueue) await file._rotationQueue;
+        if (typeof file.handle.move === 'function') {
+            await file.handle.move(newName);
+        } else if (dir) {
+            const data = await file.handle.getFile();
+            const nh = await dir.getFileHandle(newName, { create: true });
+            const w = await nh.createWritable();
+            await w.write(data);
+            await w.close();
+            await dir.removeEntry(oldName);
+            file.handle = nh;
+        } else {
+            throw new Error('No folder access');
         }
+        file.name = newName;
+        if (file.relPath) file.relPath = file.relPath.replace(/[^/]+$/, newName);
+        if (this.currentFile === file) {
+            this.elements.fileName.textContent = newName;
+            this.updateStatusBar();
+            if (this._infoOpen) this.fillInfoPanel(file);
+        }
+        const gridImg = file._gridEl && file._gridEl.querySelector('img');
+        if (gridImg) gridImg.alt = newName;
     },
 
-    async batchRename(files) {
-        const list = files.filter(Boolean)
-            .sort((a, b) => this.files.indexOf(a) - this.files.indexOf(b));
-        if (list.length === 0) return;
-        if (!this.ensureWritable()) return;
-        if (list.length === 1) { this.promptRename(list[0]); return; }
+    // Rename many files at once ([{ file, newName }], names already
+    // validated). New names may overlap old ones — shifting a sequence,
+    // or a case-only change on Windows — so then every file first moves to
+    // a temporary name. If anything fails part-way, all files go back to
+    // their original names. One undo step reverts the whole batch.
+    async renameMany(pairs, { skipUndo = false } = {}) {
+        pairs = pairs.filter(p => p.file && p.newName && p.newName !== p.file.name);
+        if (!pairs.length) return true;
+        if (!this.ensureWritable()) return false;
+        const dirKey = (f) => { const r = f.relPath || f.name; return r.includes('/') ? r.slice(0, r.lastIndexOf('/')) : ''; };
+        const original = new Map(pairs.map(p => [p.file, p.file.name]));
+        const oldNames = new Set(pairs.map(p => dirKey(p.file) + '/' + p.file.name.toLowerCase()));
 
-        const pattern = prompt(
-            `Rename ${list.length} files.\n{n} = number, {name} = original name:`,
-            'photo_{n}'
-        );
-        if (!pattern) return;
-        if (!pattern.includes('{n}')) {
-            this.showToast('The pattern needs {n} to keep names unique');
+        // A target that isn't one of the batch's own names must be free on disk
+        for (const p of pairs) {
+            if (oldNames.has(dirKey(p.file) + '/' + p.newName.toLowerCase())) continue;
+            const dir = p.file.parentDir || this.dirHandle;
+            let exists = false;
+            try { if (dir) { await dir.getFileHandle(p.newName); exists = true; } } catch (e) { /* free */ }
+            if (exists) {
+                this.showToast(`"${p.newName}" already exists — nothing was renamed`, 4000);
+                return false;
+            }
+        }
+
+        const twoPass = pairs.some(p => oldNames.has(dirKey(p.file) + '/' + p.newName.toLowerCase()));
+        const stamp = Date.now().toString(36);
+        const temp = (p, i) => `.jeditor-renaming-${stamp}-${i}${(p.file.name.match(/\.[^.]+$/) || [''])[0]}`;
+        const total = pairs.length * (twoPass ? 2 : 1);
+        let step = 0;
+        const progress = () => {
+            step++;
+            if (step % 20 === 0 || step === total) this.updateTask('rename', `Renaming ${Math.min(step, total)}/${total}`);
+        };
+        this.beginTask('rename', `Renaming 0/${total}`);
+        const touched = new Set();
+        try {
+            if (twoPass) {
+                for (let i = 0; i < pairs.length; i++) {
+                    await this.moveFile(pairs[i].file, temp(pairs[i], i));
+                    touched.add(pairs[i].file);
+                    progress();
+                }
+            }
+            for (const p of pairs) {
+                await this.moveFile(p.file, p.newName);
+                touched.add(p.file);
+                progress();
+            }
+        } catch (err) {
+            console.warn('Batch rename failed, restoring names:', err);
+            // Put everything back: via temporary names, so restored names
+            // can't collide with half-finished ones
+            const back = [...touched];
+            for (let i = 0; i < back.length; i++) {
+                try { await this.moveFile(back[i], `.jeditor-restoring-${stamp}-${i}${(back[i].name.match(/\.[^.]+$/) || [''])[0]}`); } catch (e) { /* keep going */ }
+            }
+            for (const f of back) {
+                try { await this.moveFile(f, original.get(f)); } catch (e) { /* reported below */ }
+            }
+            this.endTask('rename');
+            this.showToast(`Rename failed (${err.message}) — names were put back`, 5000);
+            return false;
+        }
+        this.endTask('rename');
+        if (!skipUndo) {
+            this.pushUndo({ type: 'batch-rename', items: pairs.map(p => ({ file: p.file, oldName: original.get(p.file) })) });
+        }
+        this.sortFiles();
+        return true;
+    },
+
+    openRename(files) {
+        if (!this.ensureWritable()) return;
+        if (!this.dirHandle) {
+            this.showToast('Renaming needs a folder opened with Open Folder');
             return;
         }
-        const pad = String(list.length).length;
-        const items = [];
-        let n = 1;
-        for (const f of list) {
-            const ext = (f.name.match(/\.\w+$/) || [''])[0];
-            const base = f.name.replace(/\.\w+$/, '');
-            const newName = pattern
-                .replaceAll('{n}', String(n).padStart(pad, '0'))
-                .replaceAll('{name}', base) + ext;
-            const oldName = f.name;
-            if (await this.renameFile(f, newName, { skipUndo: true })) {
-                items.push({ file: f, oldName });
-            }
-            n++;
-        }
-        if (items.length) {
-            this.pushUndo({ type: 'batch-rename', items });
-            this.showToast(`Renamed ${items.length} files — Ctrl+Z to undo`);
-            this.sortFiles();
-        }
+        Renamer.open(this, files);
+    },
+
+    promptRename(file = this.currentFile) {
+        if (file) this.openRename([file]);
+    },
+
+    batchRename(files) {
+        this.openRename(files.filter(Boolean));
     },
 
     // ---- Persistent thumbnail cache (IndexedDB) ----
@@ -3617,7 +3664,7 @@ const app = {
                     [`Rotate ${sel.length} Left`, () => this.rotateBulk(-90)],
                     [`Rotate ${sel.length} Right`, () => this.rotateBulk(90)],
                     ['—'],
-                    ['Batch Rename…', () => this.batchRename(sel)],
+                    [`Rename ${sel.length}…`, () => this.openRename(sel)],
                     ['Export Copies…', () => this.exportCopies(sel)],
                     ['—'],
                     [`Move ${sel.length} to Trash`, () => this.moveToTrash(sel), true]
@@ -3658,6 +3705,7 @@ const app = {
             ['Select All', () => { this.selection = new Set(this.files); this.updateSelectionUI(); }],
             ['Clear Selection', () => this.clearSelection()],
             ['—'],
+            ['Rename All…', () => this.openRename([])],
             ['Find Duplicates… (WIP)', () => this.openDupes()],
             ['Start Slideshow', () => this.startSlideshow()],
             ['Fullscreen', () => this.toggleFullscreen()]
