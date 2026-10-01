@@ -9,6 +9,7 @@ const ASSETS = [
     './version.js',
     './meta.js',
     './folder-cache.js',
+    './crop-auto.js',
     './crop.js',
     './dupes.js',
     './rename.js',

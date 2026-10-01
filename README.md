@@ -46,9 +46,15 @@ Some programs, mostly older print and lab software, ignore the EXIF orientation 
 
 ## Crop and straighten
 
-- Straighten in 0.1° steps with the slider or `,` / `.`. With the level tool (`L`), you draw a line along a horizon or the edge of a print and the angle is set from it.
-- The crop box can't extend past the edge of the straightened photo, so there are no empty corners.
-- Aspect presets: 4×6, 5×7, 8×10, 11×14, square, 3:4, 16:9, original and free. `X` swaps portrait and landscape.
+It works like Lightroom or Apple Photos: the crop frame stays in the middle of the screen and the photo moves behind it.
+
+- Drag a corner or edge to resize. When you let go, the view zooms so the crop fills the screen again. Drag a handle past the edge of the screen to zoom out and make the crop bigger. Hold `Shift` to keep the shape, or `Alt` to resize from the centre.
+- Drag inside the frame to move the photo. Drag outside it to rotate.
+- Straighten with the slider, or `,` / `.` in 0.1° steps. The photo turns around the middle of the crop and zooms in just enough to hide the corners, so there are never empty corners.
+- To level something, hold `Ctrl` (`⌘` on a Mac) and draw a line along a horizon or the edge of a print. The level tool (`L`) does the same without the key.
+- **Auto** (`Shift+A`) finds the print on a scan, straightens it and crops to its edges. It needs a plain scanner lid or background around the photo, and it leaves a few pixels' margin so none of the bed shows. Turn on **Every photo** to run Auto on each photo as it opens. With `Shift+Enter` (save and next), a scan order then becomes: check the crop, press `Shift+Enter`, repeat.
+- `Ctrl+Z` inside the editor undoes the last adjustment; `Ctrl+Shift+Z` redoes it.
+- Aspect presets: 4×6, 5×7, 8×10, 11×14, square, 3:4, 16:9, original and free. `X` swaps portrait and landscape. A preset fits inside the current crop, so choosing one after Auto never takes in the bed.
 - **Previous** (`P`) applies the last crop again. This is useful when a batch of scans has the same borders.
 - The header shows the output size in pixels, and in inches when the file has a DPI.
 
@@ -103,7 +109,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `R` | Rescan the folder |
 | `?` | Show shortcuts |
 
-In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `[` `]` rotate 90°, `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset.
+In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
 In find duplicates: `1`–`9` mark or unmark a photo, `K` keep the suggested photo and mark the rest, `Enter` trash marked and go to the next group, `N` not duplicates, `←` `→` previous / next group, `Esc` close.
 
@@ -122,6 +128,7 @@ The app is plain JavaScript with no dependencies, in `app/`:
 
 - `script.js`: viewer, grid, rotation, file operations, shortcuts
 - `crop.js`: crop and straighten
+- `crop-auto.js`: finding the print on a scan (Auto)
 - `meta.js`: reading and copying JPEG/PNG metadata
 - `dupes.js`: duplicate finder
 

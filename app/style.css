@@ -1103,6 +1103,7 @@ header {
 
 .crop-head {
     display: flex;
+    flex-wrap: wrap;
     justify-content: center;
     align-items: center;
     gap: 14px;
@@ -1134,6 +1135,11 @@ header {
     touch-action: none;
 }
 
+.crop-tip {
+    opacity: 0.45;
+    font-size: 12px;
+}
+
 .crop-hint {
     background: rgba(250, 204, 21, 0.14);
     border: 1px solid rgba(250, 204, 21, 0.5);
@@ -1148,10 +1154,9 @@ header {
     align-self: center;
     margin: 10px 16px 18px;
     display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
+    flex-direction: column;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     max-width: calc(100vw - 32px);
     box-sizing: border-box;
     padding: 8px 12px;
@@ -1160,6 +1165,20 @@ header {
     border-radius: 18px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
     zoom: var(--ui-scale, 1);
+}
+
+.crop-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+}
+
+.crop-row-straighten {
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    align-self: stretch;
 }
 
 .crop-btn {
@@ -1194,6 +1213,13 @@ header {
     background: rgba(250, 204, 21, 0.18);
     border-color: rgba(250, 204, 21, 0.55);
     color: #fde68a;
+}
+
+.crop-btn.chip {
+    border-color: rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
+    padding: 5px 11px;
+    font-size: 12px;
 }
 
 .crop-btn.primary {
@@ -1238,9 +1264,48 @@ header {
 }
 
 .crop-straighten input[type="range"] {
-    width: 220px;
-    accent-color: #facc15;
+    width: min(360px, 50vw);
     cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 18px;
+    background: transparent;
+    /* --lo / --hi: the filled part, from 0° to the current angle */
+    --lo: 50%;
+    --hi: 50%;
+}
+
+.crop-straighten input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 2px;
+    background:
+        linear-gradient(rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.7)) 50% 50% / 2px 10px no-repeat,
+        linear-gradient(to right, rgba(255, 255, 255, 0.18) var(--lo), #facc15 var(--lo), #facc15 var(--hi), rgba(255, 255, 255, 0.18) var(--hi));
+}
+
+.crop-straighten input[type="range"]::-moz-range-track {
+    height: 4px;
+    border-radius: 2px;
+    background:
+        linear-gradient(to right, rgba(255, 255, 255, 0.18) var(--lo), #facc15 var(--lo), #facc15 var(--hi), rgba(255, 255, 255, 0.18) var(--hi));
+}
+
+.crop-straighten input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    margin-top: -6px;
+    border-radius: 50%;
+    background: #facc15;
+    border: 2px solid #0b0b0c;
+}
+
+.crop-straighten input[type="range"]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #facc15;
+    border: 2px solid #0b0b0c;
 }
 
 #crop-angle-num {
