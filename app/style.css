@@ -942,6 +942,7 @@ header {
 }
 
 #cust-reset,
+#cust-cleanup,
 #cust-shortcuts {
     width: 100%;
     margin-top: 4px;
@@ -955,6 +956,7 @@ header {
 }
 
 #cust-reset:hover,
+#cust-cleanup:hover,
 #cust-shortcuts:hover {
     background: rgba(125, 125, 125, 0.3);
 }

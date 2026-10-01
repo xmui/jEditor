@@ -674,7 +674,7 @@ async function newPage(browser, url) {
             app.files = [f1, f2];
             app.currentFile = f1;
             await app.moveToTrash([f1]);
-            const trash = await root.getDirectoryHandle('.jeditor-trash');
+            const trash = await (await root.getDirectoryHandle('.jeditor')).getDirectoryHandle('trash');
             out.trashedCount = app.files.length;                    // 1
             out.inTrash = trash._files.size;                        // 1
             out.removedFromRoot = !root._files.has('one.jpg');
@@ -1558,6 +1558,127 @@ async function newPage(browser, url) {
         check('case-only rename', r.caseOnly);
         check('failure part-way puts names back', r.rollback);
         check('rename suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7j. The .jeditor folder: trash, shared thumbnail + duplicate cache, clean up ----
+    console.log('.jeditor folder cache');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const openFolder = () => page.evaluate(async () => {
+            const root = await navigator.storage.getDirectory();
+            const dir = await root.getDirectoryHandle('cacheorder', { create: true });
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            while (app.files.some(f => !f.thumbnailUrl)) await new Promise(res => setTimeout(res, 50));
+            await FolderCache.flush();
+        });
+        // First computer: make a folder of photos big enough to get cached thumbnails
+        await page.evaluate(async () => {
+            const root = await navigator.storage.getDirectory();
+            try { await root.removeEntry('cacheorder', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await root.getDirectoryHandle('cacheorder', { create: true });
+            for (let i = 0; i < 4; i++) {
+                const c = document.createElement('canvas');
+                c.width = 900; c.height = 600;
+                const g = c.getContext('2d');
+                const noise = g.createImageData(900, 600);
+                for (let k = 0; k < noise.data.length; k++) noise.data[k] = (Math.random() * 255) | 0;
+                g.putImageData(noise, 0, 0);
+                g.fillStyle = `hsl(${i * 90},70%,50%)`;
+                g.fillRect(100 + i * 50, 100, 400, 300);
+                const fh = await dir.getFileHandle(`p${i}.jpg`, { create: true });
+                const w = await fh.createWritable();
+                await w.write(await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9)));
+                await w.close();
+            }
+        });
+        await openFolder();
+        const first = await page.evaluate(async () => {
+            const out = {};
+            const dir = await window.showDirectoryPicker();
+            const thumbs = await (await (await dir.getDirectoryHandle('.jeditor')).getDirectoryHandle('cache')).getDirectoryHandle('thumbs');
+            let n = 0;
+            for await (const e of thumbs.values()) n++;
+            out.thumbsSaved = n;
+            out.photosScanned = app.files.length; // .jeditor itself isn't scanned
+            // Duplicate scan saves fingerprints with the folder
+            app.openDupes();
+            while (!(Dupes.groups && document.querySelector('.dupe-card, .dupes-message')) || app._tasks.has('dupes')) await new Promise(r => setTimeout(r, 50));
+            Dupes.close();
+            await new Promise(r => setTimeout(r, 200));
+            const fpFile = await (await (await dir.getDirectoryHandle('.jeditor')).getDirectoryHandle('cache')).getFileHandle('fingerprints.json');
+            out.fingerprintsSaved = Object.keys(JSON.parse(await (await fpFile.getFile()).text()).entries).length;
+            return out;
+        });
+
+        // "Another computer": no browser cache, same folder
+        await page.evaluate(() => new Promise(res => { const r = indexedDB.deleteDatabase('jeditor'); r.onsuccess = r.onerror = r.onblocked = res; }));
+        await page.reload({ waitUntil: 'networkidle' });
+        await page.evaluate(PAGE_HELPERS);
+        await page.evaluate(() => {
+            window._generated = 0;
+            const gen = app.generateThumbnailBlob.bind(app);
+            app.generateThumbnailBlob = (d) => { window._generated++; return gen(d); };
+            window._fpComputed = 0;
+            const fp = Dupes.fingerprintFromCanvas.bind(Dupes);
+            Dupes.fingerprintFromCanvas = (c) => { window._fpComputed++; return fp(c); };
+        });
+        await openFolder();
+        const second = await page.evaluate(async () => {
+            const out = { thumbsGenerated: window._generated };
+            app.openDupes();
+            while (!(Dupes.groups && document.querySelector('.dupe-card, .dupes-message')) || app._tasks.has('dupes')) await new Promise(r => setTimeout(r, 50));
+            Dupes.close();
+            out.fingerprintsComputed = window._fpComputed;
+
+            // Delete goes to .jeditor/trash; undo brings it back
+            const dir = await window.showDirectoryPicker();
+            await app.moveToTrash([app.files[0]]);
+            const trash = await (await dir.getDirectoryHandle('.jeditor')).getDirectoryHandle('trash');
+            let inTrash = 0;
+            for await (const e of trash.values()) inTrash++;
+            out.trashed = inTrash === 1 && app.files.length === 3;
+            await app.undo();
+            out.restored = app.files.length === 4;
+
+            // A changed photo's old cached thumbnail is pruned
+            await app.rotateImage(app.files[0], 90);
+            app.pruneFolderCache();
+            await new Promise(r => setTimeout(r, 400));
+            const thumbs = await (await (await dir.getDirectoryHandle('.jeditor')).getDirectoryHandle('cache')).getDirectoryHandle('thumbs');
+            let n = 0;
+            for await (const e of thumbs.values()) n++;
+            out.prunedTo = n;
+
+            // Clean up removes .jeditor entirely (after confirming)
+            await app.moveToTrash([app.files[1]]);
+            window.confirm = () => true;
+            await app.cleanUpFolder();
+            let gone = false;
+            try { await dir.getDirectoryHandle('.jeditor'); } catch (e) { gone = true; }
+            out.cleanedUp = gone && !(app._undoStack || []).some(e => e.type === 'trash') && app.files.length === 3;
+
+            // Setting off: nothing is written to the folder
+            app.uiPrefs.folderCache = false;
+            app.files.forEach(f => { delete f.thumbnailUrl; });
+            FolderCache.putThumb(app, 'x|1|1', new Blob(['x']));
+            await FolderCache.flush();
+            let created = true;
+            try { await dir.getDirectoryHandle('.jeditor'); } catch (e) { created = false; }
+            out.offWritesNothing = !created;
+            app.uiPrefs.folderCache = true;
+            return out;
+        });
+        check('.jeditor caches a thumbnail per photo', first.thumbsSaved === 4 && first.photosScanned === 4, JSON.stringify(first));
+        check('duplicate fingerprints saved with the folder', first.fingerprintsSaved === 4, String(first.fingerprintsSaved));
+        check('another computer: thumbnails come from the folder', second.thumbsGenerated === 0, String(second.thumbsGenerated));
+        check('another computer: duplicate scan reuses fingerprints', second.fingerprintsComputed === 0, String(second.fingerprintsComputed));
+        check('delete goes to .jeditor/trash; undo restores', second.trashed && second.restored);
+        check('stale cached thumbnail pruned', second.prunedTo === 3, String(second.prunedTo));
+        check('clean up removes .jeditor and its undo steps', second.cleanedUp);
+        check('cache setting off writes nothing', second.offWritesNothing);
+        check('folder cache suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

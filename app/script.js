@@ -194,6 +194,14 @@ const app = {
             this.saveUiPrefs();
             this.applyUiPrefs();
         });
+        document.getElementById('cust-folder-cache').addEventListener('change', (e) => {
+            this.uiPrefs.folderCache = e.target.checked;
+            this.saveUiPrefs();
+        });
+        document.getElementById('cust-cleanup').addEventListener('click', () => {
+            this.toggleCustomizePanel();
+            this.cleanUpFolder();
+        });
         document.getElementById('cust-scale').addEventListener('input', (e) => {
             this.uiPrefs.scale = parseFloat(e.target.value);
             this.saveUiPrefs();
@@ -322,7 +330,8 @@ const app = {
             vertical: false,
             scale: 1,
             stripHeight: 80,
-            thumbContain: true // fit whole image in tiles by default
+            thumbContain: true, // fit whole image in tiles by default
+            folderCache: true // keep thumbnails / duplicate data in the folder's .jeditor
         };
     },
 
@@ -348,6 +357,7 @@ const app = {
                 if (saved.scale >= 0.8 && saved.scale <= 1.6) this.uiPrefs.scale = saved.scale;
                 if (saved.stripHeight >= 50 && saved.stripHeight <= 240) this.uiPrefs.stripHeight = saved.stripHeight;
                 if (typeof saved.thumbContain === 'boolean') this.uiPrefs.thumbContain = saved.thumbContain;
+                if (typeof saved.folderCache === 'boolean') this.uiPrefs.folderCache = saved.folderCache;
             }
         } catch (e) { /* corrupted prefs → defaults */ }
     },
@@ -405,6 +415,7 @@ const app = {
         const list = this.elements.customizeList;
         list.innerHTML = '';
         document.getElementById('cust-vertical').checked = !!this.uiPrefs.vertical;
+        document.getElementById('cust-folder-cache').checked = this.uiPrefs.folderCache !== false;
         document.getElementById('cust-scale').value = this.uiPrefs.scale;
 
         this.uiPrefs.order.forEach(key => {
@@ -818,7 +829,7 @@ const app = {
             const pending = [];
             const subdirs = [];
             for await (const entry of dirHandle.values()) {
-                if (entry.kind === 'file' && this.isImage(entry.name)) {
+                if (entry.kind === 'file' && this.isImage(entry.name) && !entry.name.startsWith('.jeditor-')) {
                     const relPath = prefix + entry.name;
                     if (!seen.has(relPath)) {
                         seen.add(relPath);
@@ -826,7 +837,7 @@ const app = {
                     }
                 } else if (entry.kind === 'directory') {
                     // Skip our own working folders
-                    if (entry.name === '.jeditor-trash' || entry.name === 'jEditor Export') continue;
+                    if (entry.name === FolderCache.DIR || entry.name === FolderCache.LEGACY_TRASH || entry.name === 'jEditor Export') continue;
                     subdirs.push(entry);
                 }
             }
@@ -1775,11 +1786,19 @@ const app = {
             // Persistent cache: reopening a folder skips regeneration.
             // The key includes size+mtime, so edits invalidate naturally.
             const cacheKey = `${fileEntry.relPath || fileEntry.name}|${fileData.size}|${fileData.lastModified}`;
+            // This browser's cache, then the folder's own (.jeditor) — made
+            // on any computer that opened the folder — then generate
             blob = await this.idbGetThumb(cacheKey);
             if (!blob) {
-                blob = await this.generateThumbnailBlob(fileData);
+                blob = await FolderCache.getThumb(this, cacheKey);
                 if (blob) this.idbPutThumb(cacheKey, blob);
+                else {
+                    blob = await this.generateThumbnailBlob(fileData);
+                    if (blob) this.idbPutThumb(cacheKey, blob);
+                }
             }
+            // Keep the folder's copy in step (skipped when it's there)
+            if (blob) FolderCache.putThumb(this, cacheKey, blob);
         }
         if (!blob) throw new Error('Thumbnail encode failed');
 
@@ -1818,6 +1837,37 @@ const app = {
         await this.ensureThumbnail(fileEntry, { urgent: true, force }).catch(() => { });
     },
 
+    // Drop cached thumbnails (in .jeditor) of photos that changed or are gone
+    pruneFolderCache() {
+        if (!FolderCache.enabled(this)) return;
+        const keys = this.files.filter(f => f.size > this.THUMB_FAST_PATH_BYTES)
+            .map(f => `${f.relPath || f.name}|${f.size}|${f.lastModified}`);
+        FolderCache.flush().then(() => FolderCache.prune(this, keys)).catch(() => { });
+    },
+
+    // Remove jEditor's data from the open folder: the trash (deleted photos
+    // go for good) and the cache. For when an order is finished.
+    async cleanUpFolder() {
+        if (!this.dirHandle) return;
+        if (!this.ensureWritable()) return;
+        const inTrash = await FolderCache.trashCount(this);
+        const msg = 'Remove jEditor\'s data from this folder?\n\n' +
+            (inTrash ? `• Empties the trash: ${inTrash} deleted photo${inTrash === 1 ? '' : 's'} will be gone for good.\n` : '') +
+            '• Removes cached thumbnails and duplicate data (they\'re rebuilt when needed).\n\nYour photos are not touched.';
+        if (!window.confirm(msg)) return;
+        this.beginTask('cleanup', 'Cleaning up folder…');
+        try {
+            await FolderCache.cleanUp(this);
+            // Trash undo steps can't be undone any more
+            this._undoStack = (this._undoStack || []).filter(e => e.type !== 'trash');
+            this.showToast(inTrash ? `Folder cleaned up — trash emptied (${inTrash})` : 'Folder cleaned up', 3000);
+        } catch (e) {
+            this.showToast('Clean up failed: ' + e.message, 4000);
+        } finally {
+            this.endTask('cleanup');
+        }
+    },
+
     // Pre-generate every thumbnail in the background right after a folder
     // loads, so scrolling the grid only ever hits the cache.
     precacheThumbnails() {
@@ -1837,6 +1887,7 @@ const app = {
                     if (done === total) {
                         this.endTask('precache');
                         this.showToast(`All ${total} previews ready`, 2000);
+                        this.pruneFolderCache();
                     } else if (done % 25 === 0) {
                         this.updateTask('precache', `Preparing previews ${done}/${total}`);
                     }
@@ -3255,7 +3306,7 @@ const app = {
         }
         const undoItems = [];
         try {
-            const trashDir = await this.dirHandle.getDirectoryHandle('.jeditor-trash', { create: true });
+            const trashDir = await FolderCache.trashDir(this);
             for (const f of list) {
                 try {
                     if (f._rotationQueue) await f._rotationQueue;
@@ -3283,7 +3334,7 @@ const app = {
         }
         if (undoItems.length) {
             this.pushUndo({ type: 'trash', items: undoItems });
-            this.showToast(`Moved ${undoItems.length} to .jeditor-trash — Ctrl+Z to restore`, 4000);
+            this.showToast(`Moved ${undoItems.length} to the trash (.jeditor/trash) — Ctrl+Z to restore`, 4000);
         }
     },
 
@@ -3788,6 +3839,7 @@ const app = {
             ['Clear Selection', () => this.clearSelection()],
             ['—'],
             ['Rename All…', () => this.openRename([])],
+            ['Clean Up Folder…', () => this.cleanUpFolder()],
             ['Find Duplicates… (WIP)', () => this.openDupes()],
             ['Start Slideshow', () => this.startSlideshow()],
             ['Fullscreen', () => this.toggleFullscreen()]

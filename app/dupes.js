@@ -161,6 +161,11 @@ const Dupes = {
         for (let i = 0; i < v.length; i++) {
             norm[i] = Math.max(-127, Math.min(127, Math.round((v[i] - mean) / (std || 1) * this.Q)));
         }
+        return { rots: this.withRotations(norm, n), std };
+    },
+
+    // [map, map turned 90°, 180°, 270°]
+    withRotations(norm, n) {
         const out = [norm];
         let cur = norm;
         for (let k = 0; k < 3; k++) {
@@ -169,7 +174,36 @@ const Dupes = {
             out.push(r);
             cur = r;
         }
-        return { rots: out, std };
+        return out;
+    },
+
+    // Compact form for the folder cache: the upright maps only (rotations
+    // are rebuilt on load), base64
+    serialize(fp) {
+        const parts = [];
+        for (const v of fp.views) parts.push(v.layout[0], v.detail[0]);
+        const bytes = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+        let o = 0;
+        for (const p of parts) { bytes.set(new Uint8Array(p.buffer, p.byteOffset, p.length), o); o += p.length; }
+        let bin = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        return { w: fp.weak ? 1 : 0, d: btoa(bin) };
+    },
+
+    deserialize(entry, key) {
+        const N = this.GRID, M = N * 2;
+        const bin = atob(entry.d);
+        const all = new Int8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) all[i] = (bin.charCodeAt(i) << 24) >> 24;
+        const views = [];
+        let o = 0;
+        for (let k = 0; k < this.INSETS.length; k++) {
+            const layout = all.slice(o, o + N * N); o += N * N;
+            const detail = all.slice(o, o + M * M); o += M * M;
+            views.push({ layout: this.withRotations(layout, N), detail: this.withRotations(detail, M), weak: !!entry.w });
+        }
+        if (o !== all.length) return null;
+        return { views, weak: !!entry.w, key };
     },
 
     // Fingerprint from a canvas holding the photo (normally its thumbnail)
@@ -255,6 +289,15 @@ const Dupes = {
     async fingerprint(file) {
         const key = `${file.relPath || file.name}|${file.size}|${file.lastModified}`;
         if (file._fp && file._fp.key === key) return file._fp;
+        // Saved in the folder by an earlier scan (on any computer)?
+        const saved = (await FolderCache.loadFingerprints(this.app)).get(key);
+        if (saved) {
+            const fp = this.deserialize(saved, key);
+            if (fp) {
+                file._fp = fp;
+                return fp;
+            }
+        }
         const url = await this.app.ensureThumbnail(file);
         const bmp = await createImageBitmap(await (await fetch(url)).blob());
         const canvas = document.createElement('canvas');
@@ -392,6 +435,11 @@ const Dupes = {
             groupOf[gj] = null;
         }
 
+        // Save fingerprints with the folder for the next scan
+        const entries = [];
+        fps.forEach((fp) => { if (fp && fp.key && fp.views) entries.push([fp.key, this.serialize(fp)]); });
+        FolderCache.saveFingerprints(this.app, entries);
+
         return groupOf.filter(g => g && g.length > 1).map(g => {
             const gf = g.map(i => files[i]);
             return {
@@ -502,7 +550,7 @@ const Dupes = {
         const total = groups.reduce((n, g) => n + g.files.length, 0);
         if (!groups.length) {
             this.renderMessage(this.trashed
-                ? `All done — ${this.trashed} duplicate${this.trashed === 1 ? '' : 's'} moved to .jeditor-trash (Ctrl+Z restores).`
+                ? `All done — ${this.trashed} duplicate${this.trashed === 1 ? '' : 's'} moved to the trash (Ctrl+Z restores).`
                 : 'No duplicates found. Try “Loose” sensitivity to widen the search.');
             return;
         }
