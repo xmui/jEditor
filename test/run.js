@@ -615,9 +615,33 @@ async function newPage(browser, url) {
             app.dirHandle = null;
             await app.rotateImage(a, 90);
             out.rotated = readOrientation(a.handle.bytes) === 6;
+            const top = app._undoStack[app._undoStack.length - 1];
+            out.noCopyKept = top.type === 'rotate' && !top.blob && top.deg === 90;
             await app.undo();
-            out.undoneLen = a.handle.bytes.length === originalLen;
-            out.undoneOrientation = readOrientation(a.handle.bytes); // null: EXIF gone again
+            out.undoneOrientation = readOrientation(a.handle.bytes); // rotated back: upright (1)
+            out.undoNotStacked = app._undoStack.length === 0;        // the reverse isn't itself undoable
+
+            // Re-encoded rotations (PNG) keep the original bytes and restore them exactly
+            const pc = document.createElement('canvas');
+            pc.width = 3; pc.height = 2;
+            const pngBytes = new Uint8Array(await (await new Promise(res => pc.toBlob(res, 'image/png'))).arrayBuffer());
+            const pf = makeFakeFile('p.png', pngBytes, 'image/png');
+            app.files = [a, pf];
+            await app.rotateImage(pf, 90);
+            await app.undo();
+            out.pngRestored = pf.handle.bytes.length === pngBytes.length && pf.handle.bytes.every((v, i) => v === pngBytes[i]);
+
+            // Undo memory is capped: big file copies push old ones out
+            const savedCap = app.UNDO_MAX_BYTES;
+            app.UNDO_MAX_BYTES = 1000;
+            app._undoStack = [];
+            for (let i = 0; i < 5; i++) app.pushUndo({ type: 'bytes', file: pf, blob: new Blob([new Uint8Array(400)]) });
+            app.pushUndo({ type: 'rotate', file: a, deg: 90 });
+            out.undoCapped = app.undoBytes() <= 1000 && app._undoStack.length < 6 &&
+                app._undoStack[app._undoStack.length - 1].type === 'rotate';
+            app.UNDO_MAX_BYTES = savedCap;
+            app._undoStack = [];
+            app.files = [a];
 
             // --- Trash + restore ---
             const root = makeDir('Photos');
@@ -693,8 +717,10 @@ async function newPage(browser, url) {
 
             return out;
         });
-        check('rotation applied then undone (bytes restored)', r.rotated && r.undoneLen && r.undoneOrientation === null,
-            JSON.stringify({ len: r.undoneLen, o: r.undoneOrientation }));
+        check('JPEG rotation undone by rotating back (no file copy held)', r.rotated && r.noCopyKept && r.undoneOrientation === 1 && r.undoNotStacked,
+            JSON.stringify({ copy: r.noCopyKept, o: r.undoneOrientation, stacked: !r.undoNotStacked }));
+        check('re-encoded rotation undo restores the exact bytes', r.pngRestored);
+        check('undo memory is capped', r.undoCapped);
         check('trash removes from folder and app', r.trashedCount === 1 && r.inTrash === 1 && r.removedFromRoot);
         check('undo restores from trash', r.restoredCount === 2 && r.trashEmpty && r.backInRoot);
         check('batch rename applies pattern', r.renamed === 'trip_1.jpg,trip_2.jpg', r.renamed);
@@ -1112,6 +1138,11 @@ async function newPage(browser, url) {
             out.readOnly = res === false && app.files[0].handle.writes === before &&
                 [...document.querySelectorAll('.toast')].some(t => /read-only/.test(t.textContent));
             app.readOnlyMode = false;
+            const snap = app.perfSnapshot().join('\n');
+            out.perf = /Undo: \d+ steps/.test(snap) && /Images decoded/.test(snap) && /Photo load/.test(snap);
+            app.toggleDebugConsole();
+            out.perfShown = /Thumbnails:/.test(document.getElementById('debug-perf').textContent);
+            app.toggleDebugConsole();
             app.selection = new Set([app.files[0]]);
             app.updateSelectionUI();
             out.selectionText = document.getElementById('selection-count').textContent;
@@ -1123,6 +1154,7 @@ async function newPage(browser, url) {
         check('grid Up/Down uses the real column count', r.cols);
         check('read-only photos refuse edits with a message', r.readOnly);
         check('selection count reads "1 selected"', r.selectionText === '1 selected', r.selectionText);
+        check('debug console shows a performance readout', r.perf && r.perfShown);
         check('viewer suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

@@ -49,6 +49,12 @@ Scanner bed and film borders are ignored when comparing. Matches are shown in gr
 
 It can still miss some re-scans or group photos that look alike, so check each group before trashing. The **Sensitivity** setting trades one for the other.
 
+## If it gets slow
+
+Press `Ctrl+Shift+D` to open the debug console. The yellow lines at the top show what the app is holding and doing: memory, undo history, images decoded, background work, and how long recent photos took to load. A screenshot of it taken while things are slow is the most useful thing to include in a bug report.
+
+Undo keeps up to 50 steps. Rotations are undone by rotating back, so they don't use memory. Crops keep a copy of the original file so they can be undone, up to 256 MB in total; older crop steps are dropped after that.
+
 ## Keyboard shortcuts
 
 Press `?` in the app to see all of them. Any shortcut can be changed there. The defaults:

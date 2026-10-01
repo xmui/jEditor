@@ -2126,10 +2126,12 @@ const app = {
         this.elements.imageContainer.style.cursor = 'default';
 
         const ready = file._decodedEl;
+        const loadStart = performance.now();
         if (ready && ready._decoded) {
             // Preloaded neighbour: on screen this frame
             this.swapDisplay(ready, 'full', file);
             this.afterDisplay(file, ready);
+            this.recordLoadTime(0);
         } else {
             // Show the cached thumbnail straight away (unless it is being
             // regenerated after an edit and would show the old pixels)...
@@ -2158,6 +2160,7 @@ const app = {
                 if (this._loadToken !== loadToken) return;
                 this.swapDisplay(el, 'full', file);
                 this.afterDisplay(file, el);
+                this.recordLoadTime(performance.now() - loadStart);
             } catch (err) {
                 console.error('Error loading image:', err);
                 this.elements.currentImage.style.opacity = '1';
@@ -2167,6 +2170,12 @@ const app = {
         if (this._loadToken !== loadToken) return;
         this.preloadNeighbours(file);
         this.cleanupObjectURLs();
+    },
+
+    recordLoadTime(ms) {
+        if (!this._loadTimes) this._loadTimes = [];
+        this._loadTimes.push(ms);
+        if (this._loadTimes.length > 20) this._loadTimes.shift();
     },
 
     afterDisplay(file, el) {
@@ -2604,8 +2613,47 @@ const app = {
     toggleDebugConsole() {
         const debugEl = document.getElementById('debug-console');
         if (!debugEl) return;
-        debugEl.style.display = debugEl.style.display === 'none' ? 'block' : 'none';
-        this.log(debugEl.style.display === 'block' ? 'Console Show' : 'Console Hide');
+        const show = debugEl.style.display === 'none';
+        debugEl.style.display = show ? 'block' : 'none';
+        this.log(show ? 'Console Show' : 'Console Hide');
+        clearInterval(this._perfTimer);
+        if (show) {
+            this.updatePerfReadout();
+            this._perfTimer = setInterval(() => this.updatePerfReadout(), 2000);
+        }
+    },
+
+    // What the app is holding and doing right now — for "it got slow" reports
+    perfSnapshot() {
+        const files = this.files || [];
+        const mb = (n) => (n / 1e6).toFixed(0) + ' MB';
+        const previews = files.filter(f => f._preview);
+        const times = this._loadTimes || [];
+        const cur = this.currentFile;
+        const out = [];
+        if (performance.memory) {
+            out.push(`JS heap ${mb(performance.memory.usedJSHeapSize)} of ${mb(performance.memory.jsHeapSizeLimit)}`);
+        }
+        out.push(`Undo: ${(this._undoStack || []).length} steps, ${mb(this.undoBytes())} of file copies`);
+        out.push(`Images decoded: ${(this._decodedFiles || new Set()).size} · originals open: ${files.filter(f => f.fullImageUrl).length} · previews in memory: ${previews.length} (${mb(previews.reduce((n, f) => n + ((f._preview.blob && f._preview.blob.size) || 0), 0))})`);
+        out.push(`Thumbnails: ${files.filter(f => f.thumbnailUrl).length}/${files.length} · queued ${(this._thumbQueue || []).length}`);
+        out.push(`Background: ${[...(this._tasks || new Map()).values()].join('; ') || 'idle'}`);
+        if (times.length) {
+            const avg = times.reduce((a, b) => a + b, 0) / times.length;
+            out.push(`Photo load (last ${times.length}): avg ${avg.toFixed(0)} ms, worst ${Math.max(...times).toFixed(0)} ms`);
+        }
+        if (cur && cur._dims) out.push(`Current photo: ${cur._dims.w} × ${cur._dims.h} (${(cur._dims.w * cur._dims.h / 1e6).toFixed(1)} MP), ${this.formatBytes(cur.size)}`);
+        return out;
+    },
+
+    updatePerfReadout() {
+        const el = document.getElementById('debug-perf');
+        const consoleEl = document.getElementById('debug-console');
+        if (!el || !consoleEl || consoleEl.style.display === 'none') {
+            clearInterval(this._perfTimer);
+            return;
+        }
+        el.textContent = this.perfSnapshot().join('\n');
     },
 
     zoomBy(factor) {
@@ -2863,7 +2911,7 @@ const app = {
 
     async drainRotationQueue(fileEntry) {
         fileEntry.isBusy = true;
-        let undoCaptured = false;
+        let undoEntry = null;
         try {
             // Process ALL queued rotations for this file (more may arrive
             // while a write is in flight — the loop picks them up)
@@ -2879,16 +2927,18 @@ const app = {
                 const fileData = await fileEntry.handle.getFile();
                 const originalBuf = await fileData.arrayBuffer();
 
-                // One undo entry per rotation gesture (Blob snapshots the
-                // buffer, so the in-place EXIF patch below can't touch it)
-                if (!undoCaptured) {
-                    this.pushUndo({
-                        type: 'bytes',
-                        file: fileEntry,
-                        blob: new Blob([originalBuf], { type: fileData.type }),
-                        label: 'rotation'
-                    });
-                    undoCaptured = true;
+                // One undo entry per rotation gesture. A lossless JPEG
+                // rotation is undone by rotating back, so no copy of the file
+                // has to stay in memory (with 30 MB scans, ten copies were
+                // 300 MB). Anything that re-encodes keeps the original bytes;
+                // the Blob snapshots them before the in-place patch below.
+                if (!undoEntry && !fileEntry._undoing) {
+                    const lossless = /\.jpe?g$/i.test(fileEntry.name) &&
+                        this.rotateJpegLossless(originalBuf.slice(0), 90) !== null;
+                    undoEntry = lossless
+                        ? { type: 'rotate', file: fileEntry, deg: 0, label: 'rotation' }
+                        : { type: 'bytes', file: fileEntry, blob: new Blob([originalBuf], { type: fileData.type }), label: 'rotation' };
+                    this.pushUndo(undoEntry);
                 }
 
                 // Fast path for JPEGs: patch the EXIF orientation flag.
@@ -2939,10 +2989,15 @@ const app = {
                 // a save lands while they are decoding.
                 fileEntry._savedRotationTotal = (fileEntry._savedRotationTotal || 0) + currentDeg;
                 fileEntry.savingRotation = 0;
+                if (undoEntry && undoEntry.type === 'rotate') undoEntry.deg += currentDeg;
             }
             return true;
         } catch (err) {
             console.error('Rotation failed:', err);
+            // Nothing was written: drop an undo entry that would undo nothing
+            if (undoEntry && undoEntry.type === 'rotate' && undoEntry.deg === 0) {
+                this._undoStack = (this._undoStack || []).filter(e => e !== undoEntry);
+            }
             // Roll back the optimistic preview so the screen matches disk
             fileEntry.pendingRotation = 0;
             fileEntry.savingRotation = 0;
@@ -2954,12 +3009,19 @@ const app = {
         }
     },
     // ---- Undo ----
-    UNDO_LIMIT: 10,
+    UNDO_LIMIT: 50,
+    UNDO_MAX_BYTES: 256 * 1024 * 1024, // file copies kept for undo (crops, re-encodes)
 
     pushUndo(entry) {
         if (!this._undoStack) this._undoStack = [];
-        this._undoStack.push(entry);
-        while (this._undoStack.length > this.UNDO_LIMIT) this._undoStack.shift();
+        const stack = this._undoStack;
+        stack.push(entry);
+        while (stack.length > this.UNDO_LIMIT ||
+            (stack.length > 1 && this.undoBytes() > this.UNDO_MAX_BYTES)) stack.shift();
+    },
+
+    undoBytes() {
+        return (this._undoStack || []).reduce((n, e) => n + (e.blob ? e.blob.size : 0), 0);
     },
 
     async undo() {
@@ -2979,6 +3041,18 @@ const app = {
                 await writable.close();
                 await this.afterFileChanged(f);
                 this.showToast(`Undid ${entry.label} on ${f.name}`);
+            } else if (entry.type === 'rotate') {
+                const f = entry.file;
+                if (f._rotationQueue) await f._rotationQueue;
+                f._undoing = true; // the reverse rotation isn't itself undoable
+                try {
+                    f.pendingRotation = (f.pendingRotation || 0) - entry.deg;
+                    this.applyPreviewRotation(f);
+                    if (!(await this.processRotationQueue(f))) throw new Error('could not rotate back');
+                } finally {
+                    f._undoing = false;
+                }
+                this.showToast(`Undid rotation on ${f.name}`);
             } else if (entry.type === 'rename') {
                 await this.renameFile(entry.file, entry.oldName, { skipUndo: true });
                 this.showToast('Rename undone');
