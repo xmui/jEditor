@@ -1126,6 +1126,132 @@ async function newPage(browser, url) {
             const pd = ImageMeta.readDpi(p.handle.bytes);
             out.pngDpi = pd && Math.round(pd.x);
             out.pngType = p.handle.writtenType;
+
+            // ---- Frame-centred editing (Lightroom / Photos style) ----
+            // A print on a scanner bed: busy blocks, tilted 3° clockwise
+            const scanJpeg = async (tilt, bed) => {
+                const c = document.createElement('canvas');
+                c.width = 1200; c.height = 900;
+                const g = c.getContext('2d');
+                g.fillStyle = bed; g.fillRect(0, 0, 1200, 900);
+                g.save(); g.translate(560, 430); g.rotate(tilt * Math.PI / 180);
+                let seed = 7;
+                const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+                for (let y = 0; y < 480; y += 40) for (let x = 0; x < 720; x += 40) {
+                    g.fillStyle = `hsl(${Math.floor(rnd() * 360)},55%,${25 + Math.floor(rnd() * 40)}%)`;
+                    g.fillRect(x - 360, y - 240, 40, 40);
+                }
+                g.restore();
+                return new Uint8Array(await (await new Promise(r => c.toBlob(r, 'image/jpeg', 0.92))).arrayBuffer());
+            };
+            const stage = () => document.getElementById('crop-canvas').getBoundingClientRect();
+            const ptr = (type, x, y, mods = {}) => ed.canvas.dispatchEvent(new PointerEvent(type, {
+                clientX: stage().left + x, clientY: stage().top + y, button: 0, pointerId: 1, bubbles: true, ...mods
+            }));
+            const frame = () => {
+                const a = ed.toScreen(ed.rect.x0, ed.rect.y0), b = ed.toScreen(ed.rect.x1, ed.rect.y1);
+                return [a.x, a.y, b.x, b.y];
+            };
+            const sameFrame = (f, g) => f.every((v, i) => Math.abs(v - g[i]) < 0.5);
+
+            // Auto: straightens and crops to the print; no bed in the result
+            const sc = makeFakeFile('scan.jpg', await scanJpeg(3, '#f2f0ec'), 'image/jpeg');
+            await open(sc);
+            out.autoFound = ed.autoDetect({ quiet: true });
+            out.autoAngle = ed.angle;
+            const ao = ed.outputRect();
+            out.autoSize = [ao.w, ao.h];
+            await app.saveCrop();
+            const ab = await createImageBitmap(new Blob([sc.handle.bytes], { type: 'image/jpeg' }));
+            const ac = document.createElement('canvas');
+            ac.width = ab.width; ac.height = ab.height;
+            const actx = ac.getContext('2d');
+            actx.drawImage(ab, 0, 0);
+            // every pixel along the saved edges is print, not the pale bed
+            const edgePx = [];
+            for (let x = 0; x < ab.width; x += 7) edgePx.push([x, 0], [x, ab.height - 1]);
+            for (let y = 0; y < ab.height; y += 7) edgePx.push([0, y], [ab.width - 1, y]);
+            out.autoNoBed = edgePx.every(([x, y]) => {
+                const d = actx.getImageData(x, y, 1, 1).data;
+                return d[0] + d[1] + d[2] < 600;
+            });
+
+            // A photo with no scanner border: Auto declines and changes nothing
+            const plain = makeFakeFile('plain.jpg', await makeRealJpeg(400, 300, { color: '#3366aa' }), 'image/jpeg');
+            await open(plain);
+            const before = JSON.stringify(ed.rect);
+            out.autoDeclines = ed.autoDetect({ quiet: true }) === false && JSON.stringify(ed.rect) === before && ed.angle === 0;
+            app.cancelCrop();
+
+            // Turning pivots on the crop's centre: the same spot on the photo
+            // stays in the middle of the frame
+            const pv = makeFakeFile('pivot.jpg', await scanJpeg(0, '#f2f0ec'), 'image/jpeg');
+            await open(pv);
+            ed.setRect({ x0: 100, y0: -50, x1: 400, y1: 150 });
+            ed.settle(false);
+            const spot = ed.toImage({ x: 250, y: 50 });
+            ed.setAngle(6);
+            const c6 = ed.toImage({ x: (ed.rect.x0 + ed.rect.x1) / 2, y: (ed.rect.y0 + ed.rect.y1) / 2 });
+            out.pivot = Math.hypot(c6.x - spot.x, c6.y - spot.y) < 0.5 && CropGeom.fits(ed.rect, ed.W, ed.H, ed.cs(), 0);
+            ed.setAngle(0);
+
+            // Resting view: the crop fills the stage
+            ed.setRect({ x0: -200, y0: -150, x1: 200, y1: 150 });
+            ed.settle(false);
+            const st0 = stage(), f0 = frame();
+            out.fills = Math.abs((f0[2] - f0[0]) - (st0.width - 2 * ed.PAD)) < 1 || Math.abs((f0[3] - f0[1]) - (st0.height - 2 * ed.PAD)) < 1;
+            out.centred = Math.abs((f0[0] + f0[2]) / 2 - st0.width / 2) < 1 && Math.abs((f0[1] + f0[3]) / 2 - st0.height / 2) < 1;
+
+            // Drag inside: the photo moves, the frame stays
+            const mx = (f0[0] + f0[2]) / 2, my = (f0[1] + f0[3]) / 2;
+            const r0 = { ...ed.rect };
+            ptr('pointerdown', mx, my); ptr('pointermove', mx + 30, my + 20); ptr('pointerup', mx + 30, my + 20);
+            out.panFrameStill = sameFrame(frame(), f0);
+            out.panMovedPhoto = ed.rect.x0 < r0.x0 - 1 && ed.rect.y0 < r0.y0 - 1;
+
+            // Drag outside: rotates; the frame stays put
+            ed.settle(false);
+            const f1 = frame();
+            ptr('pointerdown', f1[2] + 30, my); ptr('pointermove', f1[2] + 30, my + 60); ptr('pointerup', f1[2] + 30, my + 60);
+            out.rotateDrag = ed.angle > 1 && ed.angle < 45;
+            ed.settle(false);
+            out.rotateFrameStill = sameFrame(frame(), f1) || Math.abs((frame()[2] - frame()[0]) - (f1[2] - f1[0])) < 1;
+
+            // Ctrl+drag draws a level line
+            ed.setAngle(0);
+            ed.settle(false);
+            ptr('pointerdown', 100, 100, { ctrlKey: true }); ptr('pointermove', 300, 120, { ctrlKey: true }); ptr('pointerup', 300, 120, { ctrlKey: true });
+            out.ctrlLevel = Math.abs(ed.angle + 5.71) < 0.05;
+
+            // Undo inside the editor; a run of nudges is one step
+            ed.history = []; ed.future = [];
+            ed.setAngle(0);
+            ed.nudgeAngle(0.1); ed.nudgeAngle(0.1); ed.nudgeAngle(0.1);
+            out.nudged = Math.abs(ed.angle - 0.3) < 1e-9;
+            ed.undo();
+            out.undoNudges = ed.angle === 0;
+            ed.redo();
+            out.redo = Math.abs(ed.angle - 0.3) < 1e-9;
+
+            // Resize from a handle, then the view glides back to filling the stage
+            ed.setAngle(0);
+            ed.setRect(ed.fullRect());
+            ed.settle(false);
+            const f2 = frame();
+            ptr('pointerdown', f2[0], f2[1]); ptr('pointermove', f2[0] + 80, f2[1] + 60); ptr('pointerup', f2[0] + 80, f2[1] + 60);
+            out.resized = ed.rect.x0 > -ed.W / 2 + 10 && ed.rect.y0 > -ed.H / 2 + 10;
+            await new Promise(res => setTimeout(res, ed.ANIM_MS + 120));
+            const f3 = frame(), st3 = stage();
+            out.settled = Math.abs((f3[0] + f3[2]) / 2 - st3.width / 2) < 1 && Math.abs((f3[1] + f3[3]) / 2 - st3.height / 2) < 1;
+            app.cancelCrop();
+
+            // "Every photo": Auto runs as the editor opens
+            ed.setAutoEach(true);
+            const sc2 = makeFakeFile('scan2.jpg', await scanJpeg(-2, '#0e0e0e'), 'image/jpeg');
+            await open(sc2);
+            out.autoEach = Math.abs(ed.angle - 2) < 0.15 && ed.history.length === 0;
+            ed.setAutoEach(false);
+            app.cancelCrop();
             return out;
         });
         check('rotate-then-crop: editor sees the rotated photo (200x400)', r.editorDims === '200x400', r.editorDims);
@@ -1147,6 +1273,17 @@ async function newPage(browser, url) {
         check('"Previous" reapplies the last crop', r.previous);
         check('Save & Next moves on and reopens the editor', r.next);
         check('PNG crop stays PNG and keeps DPI', r.pngType === 'image/png' && r.pngDpi === 300, `${r.pngType} ${r.pngDpi}`);
+        check('Auto straightens a tilted print (−3°)', r.autoFound && Math.abs(r.autoAngle + 3) < 0.15, String(r.autoAngle));
+        check('Auto crops to the print (720×480, no bed)', r.autoNoBed && Math.abs(r.autoSize[0] - 720) < 12 && Math.abs(r.autoSize[1] - 480) < 12, JSON.stringify(r.autoSize));
+        check('Auto declines a photo with no scanner border', r.autoDeclines);
+        check('straightening pivots on the crop centre', r.pivot);
+        check('resting view: crop centred and filling the stage', r.fills && r.centred);
+        check('drag inside moves the photo, not the frame', r.panFrameStill && r.panMovedPhoto);
+        check('drag outside the frame rotates', r.rotateDrag && r.rotateFrameStill, String(r.rotateDrag));
+        check('Ctrl+drag draws a level line', r.ctrlLevel);
+        check('editor undo: a run of nudges is one step; redo', r.nudged && r.undoNudges && r.redo);
+        check('handle resize, then the view re-centres', r.resized && r.settled);
+        check('"Every photo" runs Auto as each photo opens', r.autoEach);
         check('crop suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

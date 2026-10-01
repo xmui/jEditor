@@ -14,6 +14,7 @@
     <script src="version.js"></script>
     <script src="meta.js"></script>
     <script src="folder-cache.js"></script>
+    <script src="crop-auto.js"></script>
     <script src="crop.js"></script>
     <script src="dupes.js"></script>
     <script src="rename.js"></script>
@@ -282,58 +283,74 @@
             <span id="crop-file"></span>
             <span id="crop-dims" class="crop-dims"></span>
             <span id="crop-hint" class="crop-hint hidden">Draw a line along a horizon or print edge to level it</span>
+            <span id="crop-tip" class="crop-tip"></span>
         </div>
         <div class="crop-stage">
             <canvas id="crop-canvas"></canvas>
         </div>
         <div class="crop-toolbar">
-            <button id="crop-cancel" class="crop-btn" title="Cancel (Esc)">Cancel</button>
-            <span class="crop-sep"></span>
-            <select id="crop-aspect" title="Aspect ratio (A cycles)"></select>
-            <button id="crop-swap" class="crop-btn icon" title="Swap portrait / landscape (X)">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="7" width="12" height="14" rx="1.5" />
-                    <path d="M13 3h3a5 5 0 0 1 5 5v3" />
-                    <path d="M18.5 8.5 21 11l2.5-2.5" />
-                </svg>
-            </button>
-            <span class="crop-sep"></span>
-            <button id="crop-rot-left" class="crop-btn icon" title="Rotate left 90° ([)">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
-                    <path d="M3 3v5h5" />
-                </svg>
-            </button>
-            <button id="crop-rot-right" class="crop-btn icon" title="Rotate right 90° (])">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
-                    <path d="M21 3v5h-5" />
-                </svg>
-            </button>
-            <span class="crop-sep"></span>
-            <div class="crop-straighten" title="Straighten — , and . nudge 0.1°, &lt; and &gt; nudge 1°, double-click to zero">
-                <span>Straighten</span>
-                <input type="range" id="crop-angle" min="-45" max="45" step="0.1" value="0">
-                <input type="number" id="crop-angle-num" min="-45" max="45" step="0.1" value="0">
-                <span>°</span>
+            <div class="crop-row crop-row-straighten">
+                <div class="crop-straighten" title="Straighten — , and . nudge 0.1°, &lt; and &gt; nudge 1°, double-click to zero">
+                    <span>Straighten</span>
+                    <input type="range" id="crop-angle" min="-45" max="45" step="0.1" value="0">
+                    <input type="number" id="crop-angle-num" min="-45" max="45" step="0.1" value="0">
+                    <span>°</span>
+                </div>
+                <button id="crop-level" class="crop-btn" title="Level tool: draw along something that should be straight (L, or hold Ctrl/⌘ and drag)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round">
+                        <path d="M2 17 22 7" />
+                        <circle cx="12" cy="12" r="2.5" />
+                    </svg>
+                    Level
+                </button>
             </div>
-            <button id="crop-level" class="crop-btn" title="Level tool: draw along something that should be straight (L)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round">
-                    <path d="M2 17 22 7" />
-                    <circle cx="12" cy="12" r="2.5" />
-                </svg>
-                Level
-            </button>
-            <span class="crop-sep"></span>
-            <button id="crop-previous" class="crop-btn" title="Reuse the previous crop (P)">Previous</button>
-            <button id="crop-reset" class="crop-btn" title="Reset (R)">Reset</button>
-            <span class="crop-sep"></span>
-            <button id="crop-save-next" class="crop-btn" title="Save, then crop the next photo (Shift+Enter)">Save &amp; Next</button>
-            <button id="crop-save" class="crop-btn primary" title="Save (Enter)">Save</button>
+            <div class="crop-row">
+                <button id="crop-cancel" class="crop-btn" title="Cancel (Esc)">Cancel</button>
+                <span class="crop-sep"></span>
+                <select id="crop-aspect" title="Aspect ratio (A cycles)"></select>
+                <button id="crop-swap" class="crop-btn icon" title="Swap portrait / landscape (X)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="7" width="12" height="14" rx="1.5" />
+                        <path d="M13 3h3a5 5 0 0 1 5 5v3" />
+                        <path d="M18.5 8.5 21 11l2.5-2.5" />
+                    </svg>
+                </button>
+                <span class="crop-sep"></span>
+                <button id="crop-rot-left" class="crop-btn icon" title="Rotate left 90° ([)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+                        <path d="M3 3v5h5" />
+                    </svg>
+                </button>
+                <button id="crop-rot-right" class="crop-btn icon" title="Rotate right 90° (])">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+                        <path d="M21 3v5h-5" />
+                    </svg>
+                </button>
+                <span class="crop-sep"></span>
+                <button id="crop-auto" class="crop-btn" title="Auto: straighten and crop to the print on a scan (Shift+A)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m3 21 12-12" />
+                        <path d="m13 7 2-2 4 4-2 2" />
+                        <path d="M19 2v3M20.5 3.5h-3M6 4v2M7 5H5M20 14v2M21 15h-2" />
+                    </svg>
+                    Auto
+                </button>
+                <button id="crop-auto-each" class="crop-btn chip" aria-pressed="false"
+                    title="Run Auto on every photo as the editor opens it — handy with Save &amp; Next">Every photo</button>
+                <span class="crop-sep"></span>
+                <button id="crop-previous" class="crop-btn" title="Reuse the previous crop (P)">Previous</button>
+                <button id="crop-reset" class="crop-btn" title="Reset (R)">Reset</button>
+                <span class="crop-sep"></span>
+                <button id="crop-save-next" class="crop-btn" title="Save, then crop the next photo (Shift+Enter)">Save &amp; Next</button>
+                <button id="crop-save" class="crop-btn primary" title="Save (Enter)">Save</button>
+            </div>
         </div>
     </div>
 
