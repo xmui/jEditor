@@ -25,6 +25,7 @@ Changes are saved to the original files as you go.
 
 - **Rotation.** JPEGs are rotated by changing the EXIF orientation tag, so the image data isn't recompressed. This works on scanner files that have no orientation tag yet. PNG and WebP are re-encoded; PNG stays lossless. GIFs aren't rotated, because that would lose the animation.
 - **Crop and straighten.** The photo is re-encoded in its original format (JPEG at quality 95). EXIF data (capture date, camera), the ICC colour profile, DPI, XMP and IPTC are carried over. The orientation tag is reset, since the pixels are now upright.
+- **Rename.** Files are renamed in place. If the new names overlap the old ones (shifting a numbered sequence, say), they go through temporary names first. If a rename fails part-way, every file gets its original name back.
 - **Delete.** Photos are moved to a `.jeditor-trash` folder inside the opened folder, not deleted. `Ctrl+Z` restores them. Emptying that folder is up to you.
 - **Export.** Copies go to a `jEditor Export` folder, optionally resized.
 
@@ -38,6 +39,17 @@ Some programs, mostly older print and lab software, ignore the EXIF orientation 
 - **Previous** (`P`) applies the last crop again. This is useful when a batch of scans has the same borders.
 - The header shows the output size in pixels, and in inches when the file has a DPI.
 
+## Renaming
+
+Press `F2`, use **Rename…** on the selection bar, or right-click the grid background for **Rename All…**. It works on the selected photos or the whole folder.
+
+- **New names** builds names from a pattern, such as `Smith_{###}` → `Smith_001.jpg`, `Smith_002.jpg`, …
+- **Find & replace** changes part of the existing names, such as replacing `IMG_` with `Smith_`.
+
+Patterns can use `{###}` for a sequence number (one digit per `#`), `{name}` for the current name, and `{date}` / `{time}` for when the photo was taken. Numbers follow the order you choose: the current sort, date taken, name, date modified or file size, ascending or descending, from any start number and step.
+
+The preview shows every old and new name before anything changes. Duplicate names, names already used by other files, and characters Windows doesn't allow are flagged, and the rename won't run until they're fixed. The file extension is always kept, and `Ctrl+Z` undoes the whole rename in one step.
+
 ## Finding duplicates (work in progress)
 
 Press `D` in a folder. It looks for:
@@ -48,6 +60,14 @@ Press `D` in a folder. It looks for:
 Scanner bed and film borders are ignored when comparing. Matches are shown in groups, side by side, with a match percentage. The copy with the most pixels is suggested as the one to keep. `K` marks the others and `Enter` moves them to the trash.
 
 It can still miss some re-scans or group photos that look alike, so check each group before trashing. The **Sensitivity** setting trades one for the other.
+
+## If it gets slow
+
+Press `Ctrl+Shift+D` to open the debug console. The yellow lines at the top show what the app is holding and doing: memory, undo history, images decoded, background work, and how long recent photos took to load. A screenshot of it taken while things are slow is the most useful thing to include in a bug report.
+
+It's built and tested for orders of 500–2000 photos. With 2000 scans at 1800×1200: the folder opens and shows the first photo in under half a second, thumbnails take about 20 seconds in the background, rotating all 2000 takes about 8 seconds, renaming them about 2 seconds, and a duplicate scan about 20 seconds. Bigger files take proportionally longer to thumbnail.
+
+Undo keeps up to 50 steps. Rotations are undone by rotating back, so they don't use memory. Crops keep a copy of the original file so they can be undone, up to 256 MB in total; older crop steps are dropped after that.
 
 ## Keyboard shortcuts
 
@@ -62,7 +82,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `+` `-` `0` | Zoom in, zoom out, fit |
 | `I` | File info |
 | `F` | Fullscreen |
-| `F2` | Rename (batch rename in grid view) |
+| `F2` | Rename (the selected photos in grid view) |
 | `Delete` | Move to trash |
 | `Ctrl+Z` | Undo |
 | `Ctrl+A` | Select all (grid view) |

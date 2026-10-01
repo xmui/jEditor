@@ -26,6 +26,7 @@ const replacements = [
     ['<script src="meta.js"></script>', () => `<script>\n${read('meta.js')}\n</script>`],
     ['<script src="crop.js"></script>', () => `<script>\n${read('crop.js')}\n</script>`],
     ['<script src="dupes.js"></script>', () => `<script>\n${read('dupes.js')}\n</script>`],
+    ['<script src="rename.js"></script>', () => `<script>\n${read('rename.js')}\n</script>`],
     ['<script src="script.js"></script>', () => `<script>\n${read('script.js')}\n</script>`],
     // PWA bits don't apply to a local file
     ['<link rel="manifest" href="manifest.json">', () => ''],

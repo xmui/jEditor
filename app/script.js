@@ -1168,6 +1168,46 @@ const app = {
         return null;
     },
 
+    // In-place edits that rotate a JPEG which already has an orientation
+    // tag: [{ position, data }] for the tag (and any XMP tiff:Orientation in
+    // the header), or null when the file needs a full rewrite.
+    async orientationPatch(fileData, deg) {
+        const head = new Uint8Array(await fileData.slice(0, 256 * 1024).arrayBuffer());
+        const view = new DataView(head.buffer);
+        const loc = this.findJpegOrientation(view);
+        if (!loc || loc.valueOffset === undefined) return null;
+        const next = this.composeOrientation(view.getUint16(loc.valueOffset, loc.littleEndian), deg);
+        const tag = new Uint8Array(2);
+        new DataView(tag.buffer).setUint16(0, next, loc.littleEndian);
+        const edits = [{ position: loc.valueOffset, data: tag }];
+        for (const seg of ImageMeta.jpegSegments(head, { partial: true }) || []) {
+            if (!ImageMeta.isXmpSeg(head, seg)) continue;
+            const text = new TextDecoder('latin1').decode(head.subarray(seg.start, seg.end));
+            const re = /tiff:Orientation(="|>)([1-8])/g;
+            let m;
+            while ((m = re.exec(text))) {
+                edits.push({ position: seg.start + m.index + m[0].length - 1, data: new Uint8Array([0x30 + next]) });
+            }
+        }
+        return edits;
+    },
+
+    // Apply edits to a file without rewriting it from script. Returns false
+    // (nothing changed) where positional writes aren't supported.
+    async writeInPlace(handle, edits) {
+        let w;
+        try {
+            w = await handle.createWritable({ keepExistingData: true });
+            for (const e of edits) await w.write({ type: 'write', position: e.position, data: e.data });
+            await w.close();
+            return true;
+        } catch (err) {
+            if (w) { try { await w.abort(); } catch (e) { /* already closed */ } }
+            this.log('In-place write unavailable, rewriting: ' + err.message);
+            return false;
+        }
+    },
+
     // Minimal APP1 segment: "Exif\0\0" + TIFF header + one-entry IFD0 (Orientation)
     buildOrientationExif(orientation) {
         const buf = new ArrayBuffer(36); // 2 marker + 2 length + 6 'Exif\0\0' + 26 TIFF
@@ -1420,6 +1460,7 @@ const app = {
             stripObserver.observe(div);
         });
         this.elements.thumbnailStrip.appendChild(frag);
+        this._activeStripEl = null;
         this.updateActiveThumbnail();
     },
 
@@ -1440,21 +1481,27 @@ const app = {
         } catch (e) { /* ignore */ }
     },
 
+    // Highlight the current photo in the film strip and centre it. Touches
+    // only the old and new thumbnail: looping over every strip item and
+    // scrollIntoView (which re-lays out the page) cost ~100 ms per step in a
+    // 2000-photo folder.
     updateActiveThumbnail() {
-        const thumbs = this.elements.thumbnailStrip.children;
-        for (let i = 0; i < thumbs.length; i++) {
-            if (thumbs[i]._file === this.currentFile) {
-                thumbs[i].classList.add('active');
-                thumbs[i].scrollIntoView({ block: 'nearest', inline: 'center' });
-            } else {
-                thumbs[i].classList.remove('active');
-            }
-        }
+        const strip = this.elements.thumbnailStrip;
+        const el = this.currentFile && this.currentFile._stripEl;
+        if (this._activeStripEl && this._activeStripEl !== el) this._activeStripEl.classList.remove('active');
+        this._activeStripEl = el && el.isConnected ? el : null;
+        if (!this._activeStripEl) return;
+        el.classList.add('active');
+        if (strip.classList.contains('hidden') || !strip.clientWidth) return;
+        const target = el.offsetLeft - (strip.clientWidth - el.offsetWidth) / 2;
+        if (Math.abs(strip.scrollLeft - target) > 1) strip.scrollLeft = target;
     },
 
     // Grid View with Lazy Loading
     renderGrid() {
         this.elements.gridView.innerHTML = '';
+        this._shownSelected = new Set();
+        this._activeGridEl = null;
 
         // Tiles load once and keep their thumbnail; leaving the viewport no
         // longer blanks them (re-decoding on re-entry was a scroll-jank source)
@@ -1495,6 +1542,15 @@ const app = {
         div.className = 'grid-item';
         div._file = file;
         file._gridEl = div;
+        // Tiles are built in chunks: each one starts in the right state
+        if (this.selection.has(file)) {
+            div.classList.add('selected');
+            (this._shownSelected || (this._shownSelected = new Set())).add(file);
+        }
+        if (file === this.currentFile) {
+            div.classList.add('active');
+            this._activeGridEl = div;
+        }
 
         const img = document.createElement('img');
         img._file = file;
@@ -1682,45 +1738,57 @@ const app = {
 
     async runThumbJob(job) {
         const fileEntry = job.fileEntry;
-        try {
-            // Don't read mid-save; the rotation queue is quick (EXIF patch)
-            while (fileEntry.isBusy) await new Promise(r => setTimeout(r, 30));
-
-            // Bytes read now include everything saved so far; any save that
-            // lands while we decode shows up in the lag delta below.
-            const savedAtRead = fileEntry._savedRotationTotal || 0;
-            const fileData = await fileEntry.handle.getFile();
-
-            let blob;
-            if (fileData.size <= this.THUMB_FAST_PATH_BYTES) {
-                blob = fileData;
-            } else {
-                // Persistent cache: reopening a folder skips regeneration.
-                // The key includes size+mtime, so edits invalidate naturally.
-                const cacheKey = `${fileEntry.relPath || fileEntry.name}|${fileData.size}|${fileData.lastModified}`;
-                blob = await this.idbGetThumb(cacheKey);
-                if (!blob) {
-                    blob = await this.generateThumbnailBlob(fileData);
-                    if (blob) this.idbPutThumb(cacheKey, blob);
-                }
+        for (let attempt = 0; ; attempt++) {
+            try {
+                await this.makeThumbnail(fileEntry);
+                job.resolve(fileEntry.thumbnailUrl);
+                return;
+            } catch (e) {
+                // A save landing mid-read invalidates the file snapshot: retry once
+                if (attempt === 0) continue;
+                fileEntry._thumbPromise = null;
+                console.error('Thumbnail error:', e);
+                const fallback = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjx0ZXh0IHg9IjEwIiB5PSIyMCIgZm9udC1zaXplPSIyMCI+4pqcPC90ZXh0Pjwvc3ZnPg==';
+                (fileEntry._thumbWaiters || []).forEach(img => { img.src = fallback; });
+                fileEntry._thumbWaiters = [];
+                job.reject(e);
+                return;
             }
-            if (!blob) throw new Error('Thumbnail encode failed');
-
-            if (fileEntry.thumbnailUrl) URL.revokeObjectURL(fileEntry.thumbnailUrl);
-            fileEntry.thumbnailUrl = URL.createObjectURL(blob);
-            fileEntry.thumbLag = (fileEntry._savedRotationTotal || 0) - savedAtRead;
-            fileEntry._thumbPromise = null;
-            fileEntry._thumbStale = false;
-            this.deliverThumbnail(fileEntry);
-            job.resolve(fileEntry.thumbnailUrl);
-        } catch (e) {
-            fileEntry._thumbPromise = null;
-            console.error('Thumbnail error:', e);
-            const fallback = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjx0ZXh0IHg9IjEwIiB5PSIyMCIgZm9udC1zaXplPSIyMCI+4pqcPC90ZXh0Pjwvc3ZnPg==';
-            (fileEntry._thumbWaiters || []).forEach(img => { img.src = fallback; });
-            fileEntry._thumbWaiters = [];
-            job.reject(e);
         }
+    },
+
+    async makeThumbnail(fileEntry) {
+        // Don't read mid-save; the rotation queue is quick (EXIF patch)
+        while (fileEntry.isBusy) await new Promise(r => setTimeout(r, 30));
+
+        // Bytes read now include everything saved so far; any save that
+        // lands while we decode shows up in the lag delta below.
+        const savedAtRead = fileEntry._savedRotationTotal || 0;
+        const fileData = await fileEntry.handle.getFile();
+
+        let blob;
+        if (fileData.size <= this.THUMB_FAST_PATH_BYTES) {
+            // A copy, not the File itself — the File stops being readable
+            // once the photo is rotated
+            blob = new Blob([await fileData.arrayBuffer()], { type: fileData.type });
+        } else {
+            // Persistent cache: reopening a folder skips regeneration.
+            // The key includes size+mtime, so edits invalidate naturally.
+            const cacheKey = `${fileEntry.relPath || fileEntry.name}|${fileData.size}|${fileData.lastModified}`;
+            blob = await this.idbGetThumb(cacheKey);
+            if (!blob) {
+                blob = await this.generateThumbnailBlob(fileData);
+                if (blob) this.idbPutThumb(cacheKey, blob);
+            }
+        }
+        if (!blob) throw new Error('Thumbnail encode failed');
+
+        if (fileEntry.thumbnailUrl) URL.revokeObjectURL(fileEntry.thumbnailUrl);
+        fileEntry.thumbnailUrl = URL.createObjectURL(blob);
+        fileEntry.thumbLag = (fileEntry._savedRotationTotal || 0) - savedAtRead;
+        fileEntry._thumbPromise = null;
+        fileEntry._thumbStale = false;
+        this.deliverThumbnail(fileEntry);
     },
 
     deliverThumbnail(fileEntry) {
@@ -1814,12 +1882,20 @@ const app = {
         this.updateSelectionUI();
     },
 
+    // Grid highlight: only tiles whose state changed are touched
     updateSelectionUI() {
-        const gridItems = this.elements.gridView.children;
-        for (let i = 0; i < gridItems.length; i++) {
-            gridItems[i].classList.toggle('selected', this.selection.has(gridItems[i]._file));
-            gridItems[i].classList.toggle('active', gridItems[i]._file === this.currentFile);
+        const shown = this._shownSelected || new Set();
+        for (const f of shown) {
+            if (!this.selection.has(f) && f._gridEl) f._gridEl.classList.remove('selected');
         }
+        for (const f of this.selection) {
+            if (f._gridEl && (!shown.has(f) || !f._gridEl.classList.contains('selected'))) f._gridEl.classList.add('selected');
+        }
+        this._shownSelected = new Set(this.selection);
+        const active = this.currentFile && this.currentFile._gridEl;
+        if (this._activeGridEl && this._activeGridEl !== active) this._activeGridEl.classList.remove('active');
+        if (active) active.classList.add('active');
+        this._activeGridEl = active || null;
 
         if (this.selection.size > 0) {
             this.elements.selectionBar.classList.remove('hidden');
@@ -1965,14 +2041,24 @@ const app = {
         return p;
     },
 
+    // A File from getFile() is a snapshot: once the file on disk is written
+    // (a rotation, a crop) reading it fails — and so does any blob URL made
+    // from it, which showed up as a broken image with the file name. So the
+    // displayed original is an in-memory copy of the bytes, remade whenever
+    // the file has changed. (Only screen-sized photos and zoomed-in photos
+    // are shown from the original; big scans use generated previews.)
     async getOriginalSource(file, data = null, savedAtRead = null) {
-        if (!file.fullImageUrl) {
-            if (!data) {
-                while (file.isBusy) await new Promise(r => setTimeout(r, 30));
-                savedAtRead = file._savedRotationTotal || 0;
-                data = await file.handle.getFile();
-            }
-            file.fullImageUrl = URL.createObjectURL(data);
+        if (!data) {
+            while (file.isBusy) await new Promise(r => setTimeout(r, 30));
+            savedAtRead = file._savedRotationTotal || 0;
+            data = await file.handle.getFile();
+        }
+        const version = `${data.size}|${data.lastModified}`;
+        if (!file.fullImageUrl || file._fullVersion !== version) {
+            const copy = new Blob([await data.arrayBuffer()], { type: data.type });
+            if (file.fullImageUrl) URL.revokeObjectURL(file.fullImageUrl);
+            file.fullImageUrl = URL.createObjectURL(copy);
+            file._fullVersion = version;
             file._fullReadAt = savedAtRead;
         }
         return { url: file.fullImageUrl, isPreview: false, savedAtRead: file._fullReadAt };
@@ -1998,8 +2084,21 @@ const app = {
         if (cached) return Promise.resolve(cached);
         if (file._decodePromise) return file._decodePromise;
         const p = (async () => {
-            const src = await this.getDisplaySource(file);
-            const el = await this.decodeInto(file, src);
+            const attempt = async () => {
+                try {
+                    return await this.decodeInto(file, await this.getDisplaySource(file));
+                } catch (e) {
+                    return null; // the file changed or vanished mid-read
+                }
+            };
+            let el = await attempt();
+            if (!el || !el._decoded) {
+                // Usually a save landed while this was loading: read the
+                // file again rather than keep a broken image
+                this.forgetSources(file);
+                el = await attempt();
+            }
+            if (!el || !el._decoded) return el || { _decoded: false }; // unreadable — not cached
             // Cache unless the file was edited (and invalidated) meanwhile
             if (file._sourceGen === p._gen) {
                 file._decodedEl = el;
@@ -2074,6 +2173,19 @@ const app = {
         }
     },
 
+    // Drop every cached display source of a file so the next load re-reads it
+    forgetSources(file) {
+        if (file.fullImageUrl) {
+            URL.revokeObjectURL(file.fullImageUrl);
+            delete file.fullImageUrl;
+        }
+        if (file._preview) {
+            URL.revokeObjectURL(file._preview.url);
+            delete file._preview;
+        }
+        file._sourcePromise = null;
+    },
+
     dropDecoded(file) {
         delete file._decodedEl;
         if (this._decodedFiles) this._decodedFiles.delete(file);
@@ -2126,10 +2238,12 @@ const app = {
         this.elements.imageContainer.style.cursor = 'default';
 
         const ready = file._decodedEl;
+        const loadStart = performance.now();
         if (ready && ready._decoded) {
             // Preloaded neighbour: on screen this frame
             this.swapDisplay(ready, 'full', file);
             this.afterDisplay(file, ready);
+            this.recordLoadTime(0);
         } else {
             // Show the cached thumbnail straight away (unless it is being
             // regenerated after an edit and would show the old pixels)...
@@ -2156,8 +2270,16 @@ const app = {
             try {
                 const el = await this.decodeFull(file);
                 if (this._loadToken !== loadToken) return;
+                if (!el._decoded) {
+                    // Keep the thumbnail (or previous photo) up instead of a
+                    // broken-image icon
+                    this.elements.currentImage.style.opacity = '1';
+                    this.showToast(`Couldn't load ${file.name} — the file may be damaged or in use`, 4000);
+                    return;
+                }
                 this.swapDisplay(el, 'full', file);
                 this.afterDisplay(file, el);
+                this.recordLoadTime(performance.now() - loadStart);
             } catch (err) {
                 console.error('Error loading image:', err);
                 this.elements.currentImage.style.opacity = '1';
@@ -2167,6 +2289,12 @@ const app = {
         if (this._loadToken !== loadToken) return;
         this.preloadNeighbours(file);
         this.cleanupObjectURLs();
+    },
+
+    recordLoadTime(ms) {
+        if (!this._loadTimes) this._loadTimes = [];
+        this._loadTimes.push(ms);
+        if (this._loadTimes.length > 20) this._loadTimes.shift();
     },
 
     afterDisplay(file, el) {
@@ -2220,7 +2348,7 @@ const app = {
         // Thumbnails are small (≈10–30 KB each) and are kept for the whole
         // session. Only full-size images are trimmed.
         const cur = this.getCurrentIndex();
-        const windowSizeFull = 10;
+        const windowSizeFull = 4; // in-memory copies of originals (see getOriginalSource)
 
 
         this.files.forEach((f, i) => {
@@ -2325,7 +2453,7 @@ const app = {
         ['edit.rotateLeft', 'global', 'Edit', 'Rotate left (whole selection in grid)', ['[', ',', 'Shift+ArrowLeft']],
         ['edit.rotateRight', 'global', 'Edit', 'Rotate right (whole selection in grid)', [']', '.', 'Shift+ArrowRight']],
         ['edit.crop', 'global', 'Edit', 'Crop & straighten', ['C']],
-        ['edit.rename', 'global', 'Edit', 'Rename (batch rename in grid)', ['F2']],
+        ['edit.rename', 'global', 'Edit', 'Rename (the selection in grid view)', ['F2']],
         ['edit.trash', 'global', 'Edit', 'Move to trash', ['Delete']],
         ['edit.undo', 'global', 'Edit', 'Undo', ['Ctrl+Z']],
         ['edit.selectAll', 'global', 'Edit', 'Select all (grid)', ['Ctrl+A']],
@@ -2383,8 +2511,7 @@ const app = {
             'edit.rotateLeft': () => grid() ? this.rotateBulk(-90) : this.rotateCurrent(-90),
             'edit.rotateRight': () => grid() ? this.rotateBulk(90) : this.rotateCurrent(90),
             'edit.crop': () => this.enterCrop(),
-            'edit.rename': () => grid() && this.selection.size > 1
-                ? this.batchRename([...this.selection]) : this.promptRename(),
+            'edit.rename': () => this.openRename(grid() && this.selection.size ? [...this.selection] : [this.currentFile]),
             'edit.trash': () => this.moveToTrash(grid() && this.selection.size
                 ? [...this.selection] : [this.currentFile]),
             'edit.undo': () => this.undo(),
@@ -2543,6 +2670,9 @@ const app = {
     handleKey(e) {
         if (this._recordingKey) return;
 
+        // The rename tool handles its own keys
+        if (Renamer.isOpen) return;
+
         // Shortcuts panel is modal: Esc closes it, other keys go to its inputs
         if (this.isShortcutsOpen()) {
             if (e.key === 'Escape') {
@@ -2604,8 +2734,47 @@ const app = {
     toggleDebugConsole() {
         const debugEl = document.getElementById('debug-console');
         if (!debugEl) return;
-        debugEl.style.display = debugEl.style.display === 'none' ? 'block' : 'none';
-        this.log(debugEl.style.display === 'block' ? 'Console Show' : 'Console Hide');
+        const show = debugEl.style.display === 'none';
+        debugEl.style.display = show ? 'block' : 'none';
+        this.log(show ? 'Console Show' : 'Console Hide');
+        clearInterval(this._perfTimer);
+        if (show) {
+            this.updatePerfReadout();
+            this._perfTimer = setInterval(() => this.updatePerfReadout(), 2000);
+        }
+    },
+
+    // What the app is holding and doing right now — for "it got slow" reports
+    perfSnapshot() {
+        const files = this.files || [];
+        const mb = (n) => (n / 1e6).toFixed(0) + ' MB';
+        const previews = files.filter(f => f._preview);
+        const times = this._loadTimes || [];
+        const cur = this.currentFile;
+        const out = [];
+        if (performance.memory) {
+            out.push(`JS heap ${mb(performance.memory.usedJSHeapSize)} of ${mb(performance.memory.jsHeapSizeLimit)}`);
+        }
+        out.push(`Undo: ${(this._undoStack || []).length} steps, ${mb(this.undoBytes())} of file copies`);
+        out.push(`Images decoded: ${(this._decodedFiles || new Set()).size} · originals open: ${files.filter(f => f.fullImageUrl).length} · previews in memory: ${previews.length} (${mb(previews.reduce((n, f) => n + ((f._preview.blob && f._preview.blob.size) || 0), 0))})`);
+        out.push(`Thumbnails: ${files.filter(f => f.thumbnailUrl).length}/${files.length} · queued ${(this._thumbQueue || []).length}`);
+        out.push(`Background: ${[...(this._tasks || new Map()).values()].join('; ') || 'idle'}`);
+        if (times.length) {
+            const avg = times.reduce((a, b) => a + b, 0) / times.length;
+            out.push(`Photo load (last ${times.length}): avg ${avg.toFixed(0)} ms, worst ${Math.max(...times).toFixed(0)} ms`);
+        }
+        if (cur && cur._dims) out.push(`Current photo: ${cur._dims.w} × ${cur._dims.h} (${(cur._dims.w * cur._dims.h / 1e6).toFixed(1)} MP), ${this.formatBytes(cur.size)}`);
+        return out;
+    },
+
+    updatePerfReadout() {
+        const el = document.getElementById('debug-perf');
+        const consoleEl = document.getElementById('debug-console');
+        if (!el || !consoleEl || consoleEl.style.display === 'none') {
+            clearInterval(this._perfTimer);
+            return;
+        }
+        el.textContent = this.perfSnapshot().join('\n');
     },
 
     zoomBy(factor) {
@@ -2824,12 +2993,22 @@ const app = {
         const label = `${filesToRotate.length} photo${filesToRotate.length > 1 ? 's' : ''}`;
         this.beginTask(taskKey, `Rotating ${label}…`);
 
-        // Drain sequentially to avoid memory spikes; files already being
-        // saved by another batch are awaited, not double-processed.
+        // Save a few files at a time (rotations only read file headers now,
+        // so memory stays flat); files already being saved by another batch
+        // are awaited, not double-processed.
         let ok = true;
-        for (const file of filesToRotate) {
-            ok = (await this.processRotationQueue(file)) && ok;
-        }
+        let next = 0, done = 0;
+        const worker = async () => {
+            while (next < filesToRotate.length) {
+                const file = filesToRotate[next++];
+                ok = (await this.processRotationQueue(file)) && ok;
+                done++;
+                if (filesToRotate.length >= 50 && done % 25 === 0) {
+                    this.updateTask(taskKey, `Rotating ${done}/${filesToRotate.length}…`);
+                }
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(4, filesToRotate.length) }, worker));
 
         this.endTask(taskKey);
         this.showToast(ok ? `Rotated ${label} ${deg > 0 ? 'right' : 'left'}` : 'Some photos failed to rotate', 2000);
@@ -2863,7 +3042,7 @@ const app = {
 
     async drainRotationQueue(fileEntry) {
         fileEntry.isBusy = true;
-        let undoCaptured = false;
+        let undoEntry = null;
         try {
             // Process ALL queued rotations for this file (more may arrive
             // while a write is in flight — the loop picks them up)
@@ -2877,53 +3056,63 @@ const app = {
 
                 // HARDENING: Fresh handle check
                 const fileData = await fileEntry.handle.getFile();
-                const originalBuf = await fileData.arrayBuffer();
+                const isJpeg = /\.jpe?g$/i.test(fileEntry.name);
+                const startUndo = (entry) => {
+                    if (undoEntry || fileEntry._undoing) return;
+                    undoEntry = entry;
+                    this.pushUndo(entry);
+                };
+                const verify = () => this.dirHandle
+                    ? this.verifyPermission(this.dirHandle, true)
+                    : this.verifyPermission(fileEntry.handle, true);
 
-                // One undo entry per rotation gesture (Blob snapshots the
-                // buffer, so the in-place EXIF patch below can't touch it)
-                if (!undoCaptured) {
-                    this.pushUndo({
-                        type: 'bytes',
-                        file: fileEntry,
-                        blob: new Blob([originalBuf], { type: fileData.type }),
-                        label: 'rotation'
-                    });
-                    undoCaptured = true;
-                }
-
-                // Fast path for JPEGs: patch the EXIF orientation flag.
-                // No decode, no re-encode, no quality loss — near-instant.
-                let blob = null;
-                if (/\.jpe?g$/i.test(fileEntry.name)) {
-                    try {
-                        blob = this.rotateJpegLossless(originalBuf, normalizedDeg);
-                    } catch (e) {
-                        this.log('Lossless rotation unavailable, re-encoding: ' + e.message);
+                // Fastest path: the JPEG already has an orientation tag, so
+                // only those two bytes change. They're written in place; the
+                // browser copies the rest of the file natively, so nothing
+                // beyond the header is read into memory (big scans, bulk
+                // rotations). Undone by rotating back — no copy kept.
+                let written = false;
+                if (isJpeg) {
+                    const patch = await this.orientationPatch(fileData, normalizedDeg);
+                    if (patch) {
+                        startUndo({ type: 'rotate', file: fileEntry, deg: 0, label: 'rotation' });
+                        await verify();
+                        written = await this.writeInPlace(fileEntry.handle, patch);
                     }
                 }
 
-                // Fallback: canvas re-encode (PNG stays pixel-lossless).
-                // Slow path, so it registers in the task pill.
-                if (!blob) {
-                    this.beginTask('rot:' + fileEntry.name, `Rotating ${fileEntry.name}…`);
-                    try {
-                        blob = await this.rotateByReencoding(fileData, fileEntry.name, normalizedDeg);
-                    } finally {
-                        this.endTask('rot:' + fileEntry.name);
+                if (!written) {
+                    const originalBuf = await fileData.arrayBuffer();
+                    // Lossless rewrite (adds an orientation tag to a JPEG that
+                    // has none — typical scanner output); this doesn't touch
+                    // originalBuf, so it can still serve as the undo copy.
+                    let blob = null;
+                    if (isJpeg) {
+                        try {
+                            blob = this.rotateJpegLossless(originalBuf, normalizedDeg);
+                        } catch (e) {
+                            this.log('Lossless rotation unavailable, re-encoding: ' + e.message);
+                        }
                     }
+                    if (blob) {
+                        startUndo({ type: 'rotate', file: fileEntry, deg: 0, label: 'rotation' });
+                    } else {
+                        // Re-encoding: undo needs the original bytes
+                        startUndo({ type: 'bytes', file: fileEntry, blob: new Blob([originalBuf], { type: fileData.type }), label: 'rotation' });
+                        // Slow path, so it registers in the task pill
+                        this.beginTask('rot:' + fileEntry.name, `Rotating ${fileEntry.name}…`);
+                        try {
+                            blob = await this.rotateByReencoding(fileData, fileEntry.name, normalizedDeg);
+                        } finally {
+                            this.endTask('rot:' + fileEntry.name);
+                        }
+                    }
+                    if (!blob) throw new Error('Blob conversion failed');
+                    await verify();
+                    const writable = await fileEntry.handle.createWritable();
+                    await writable.write(blob);
+                    await writable.close();
                 }
-                if (!blob) throw new Error('Blob conversion failed');
-
-                // Re-verify permission
-                if (this.dirHandle) {
-                    await this.verifyPermission(this.dirHandle, true);
-                } else {
-                    await this.verifyPermission(fileEntry.handle, true);
-                }
-
-                const writable = await fileEntry.handle.createWritable();
-                await writable.write(blob);
-                await writable.close();
 
                 // Refresh sort metadata — the write changed both
                 const newFileData = await fileEntry.handle.getFile();
@@ -2939,10 +3128,15 @@ const app = {
                 // a save lands while they are decoding.
                 fileEntry._savedRotationTotal = (fileEntry._savedRotationTotal || 0) + currentDeg;
                 fileEntry.savingRotation = 0;
+                if (undoEntry && undoEntry.type === 'rotate') undoEntry.deg += currentDeg;
             }
             return true;
         } catch (err) {
             console.error('Rotation failed:', err);
+            // Nothing was written: drop an undo entry that would undo nothing
+            if (undoEntry && undoEntry.type === 'rotate' && undoEntry.deg === 0) {
+                this._undoStack = (this._undoStack || []).filter(e => e !== undoEntry);
+            }
             // Roll back the optimistic preview so the screen matches disk
             fileEntry.pendingRotation = 0;
             fileEntry.savingRotation = 0;
@@ -2954,12 +3148,19 @@ const app = {
         }
     },
     // ---- Undo ----
-    UNDO_LIMIT: 10,
+    UNDO_LIMIT: 50,
+    UNDO_MAX_BYTES: 256 * 1024 * 1024, // file copies kept for undo (crops, re-encodes)
 
     pushUndo(entry) {
         if (!this._undoStack) this._undoStack = [];
-        this._undoStack.push(entry);
-        while (this._undoStack.length > this.UNDO_LIMIT) this._undoStack.shift();
+        const stack = this._undoStack;
+        stack.push(entry);
+        while (stack.length > this.UNDO_LIMIT ||
+            (stack.length > 1 && this.undoBytes() > this.UNDO_MAX_BYTES)) stack.shift();
+    },
+
+    undoBytes() {
+        return (this._undoStack || []).reduce((n, e) => n + (e.blob ? e.blob.size : 0), 0);
     },
 
     async undo() {
@@ -2979,15 +3180,25 @@ const app = {
                 await writable.close();
                 await this.afterFileChanged(f);
                 this.showToast(`Undid ${entry.label} on ${f.name}`);
+            } else if (entry.type === 'rotate') {
+                const f = entry.file;
+                if (f._rotationQueue) await f._rotationQueue;
+                f._undoing = true; // the reverse rotation isn't itself undoable
+                try {
+                    f.pendingRotation = (f.pendingRotation || 0) - entry.deg;
+                    this.applyPreviewRotation(f);
+                    if (!(await this.processRotationQueue(f))) throw new Error('could not rotate back');
+                } finally {
+                    f._undoing = false;
+                }
+                this.showToast(`Undid rotation on ${f.name}`);
             } else if (entry.type === 'rename') {
                 await this.renameFile(entry.file, entry.oldName, { skipUndo: true });
                 this.showToast('Rename undone');
             } else if (entry.type === 'batch-rename') {
-                for (const it of entry.items) {
-                    await this.renameFile(it.file, it.oldName, { skipUndo: true });
-                }
-                this.showToast(`Batch rename undone (${entry.items.length} files)`);
-                this.sortFiles();
+                const ok = await this.renameMany(entry.items.map(it => ({ file: it.file, newName: it.oldName })), { skipUndo: true });
+                if (!ok) throw new Error('could not restore the old names');
+                this.showToast(`Rename undone (${entry.items.length} file${entry.items.length === 1 ? '' : 's'})`);
             } else if (entry.type === 'trash') {
                 for (const it of entry.items) await this.restoreFromTrash(it);
                 this.sortFiles();
@@ -3171,30 +3382,8 @@ const app = {
                     return false;
                 }
             }
-            if (typeof file.handle.move === 'function') {
-                await file.handle.move(newName);
-            } else if (dir) {
-                const data = await file.handle.getFile();
-                const nh = await dir.getFileHandle(newName, { create: true });
-                const w = await nh.createWritable();
-                await w.write(data);
-                await w.close();
-                await dir.removeEntry(oldName);
-                file.handle = nh;
-            } else {
-                throw new Error('No folder access');
-            }
-            file.name = newName;
-            if (file.relPath) file.relPath = file.relPath.replace(/[^/]+$/, newName);
+            await this.moveFile(file, newName);
             if (!skipUndo) this.pushUndo({ type: 'rename', file, oldName });
-
-            if (this.currentFile === file) {
-                this.elements.fileName.textContent = newName;
-                this.updateStatusBar();
-                if (this._infoOpen) this.fillInfoPanel(file);
-            }
-            const gridImg = file._gridEl && file._gridEl.querySelector('img');
-            if (gridImg) gridImg.alt = newName;
             return true;
         } catch (e) {
             console.error('Rename failed:', e);
@@ -3203,53 +3392,122 @@ const app = {
         }
     },
 
-    promptRename(file = this.currentFile) {
-        if (!file) return;
-        if (!this.ensureWritable()) return;
-        const newName = prompt('Rename file:', file.name);
-        if (newName !== null) {
-            this.renameFile(file, newName).then(ok => {
-                if (ok) this.showToast(`Renamed to ${file.name}`);
-            });
+    // Rename on disk without checks (callers make sure the name is free)
+    async moveFile(file, newName) {
+        const dir = file.parentDir || this.dirHandle;
+        const oldName = file.name;
+        if (file._rotationQueue) await file._rotationQueue;
+        if (typeof file.handle.move === 'function') {
+            await file.handle.move(newName);
+        } else if (dir) {
+            const data = await file.handle.getFile();
+            const nh = await dir.getFileHandle(newName, { create: true });
+            const w = await nh.createWritable();
+            await w.write(data);
+            await w.close();
+            await dir.removeEntry(oldName);
+            file.handle = nh;
+        } else {
+            throw new Error('No folder access');
         }
+        file.name = newName;
+        if (file.relPath) file.relPath = file.relPath.replace(/[^/]+$/, newName);
+        if (this.currentFile === file) {
+            this.elements.fileName.textContent = newName;
+            this.updateStatusBar();
+            if (this._infoOpen) this.fillInfoPanel(file);
+        }
+        const gridImg = file._gridEl && file._gridEl.querySelector('img');
+        if (gridImg) gridImg.alt = newName;
     },
 
-    async batchRename(files) {
-        const list = files.filter(Boolean)
-            .sort((a, b) => this.files.indexOf(a) - this.files.indexOf(b));
-        if (list.length === 0) return;
-        if (!this.ensureWritable()) return;
-        if (list.length === 1) { this.promptRename(list[0]); return; }
+    // Rename many files at once ([{ file, newName }], names already
+    // validated). New names may overlap old ones — shifting a sequence,
+    // or a case-only change on Windows — so then every file first moves to
+    // a temporary name. If anything fails part-way, all files go back to
+    // their original names. One undo step reverts the whole batch.
+    async renameMany(pairs, { skipUndo = false } = {}) {
+        pairs = pairs.filter(p => p.file && p.newName && p.newName !== p.file.name);
+        if (!pairs.length) return true;
+        if (!this.ensureWritable()) return false;
+        const dirKey = (f) => { const r = f.relPath || f.name; return r.includes('/') ? r.slice(0, r.lastIndexOf('/')) : ''; };
+        const original = new Map(pairs.map(p => [p.file, p.file.name]));
+        const oldNames = new Set(pairs.map(p => dirKey(p.file) + '/' + p.file.name.toLowerCase()));
 
-        const pattern = prompt(
-            `Rename ${list.length} files.\n{n} = number, {name} = original name:`,
-            'photo_{n}'
-        );
-        if (!pattern) return;
-        if (!pattern.includes('{n}')) {
-            this.showToast('The pattern needs {n} to keep names unique');
+        // A target that isn't one of the batch's own names must be free on disk
+        for (const p of pairs) {
+            if (oldNames.has(dirKey(p.file) + '/' + p.newName.toLowerCase())) continue;
+            const dir = p.file.parentDir || this.dirHandle;
+            let exists = false;
+            try { if (dir) { await dir.getFileHandle(p.newName); exists = true; } } catch (e) { /* free */ }
+            if (exists) {
+                this.showToast(`"${p.newName}" already exists — nothing was renamed`, 4000);
+                return false;
+            }
+        }
+
+        const twoPass = pairs.some(p => oldNames.has(dirKey(p.file) + '/' + p.newName.toLowerCase()));
+        const stamp = Date.now().toString(36);
+        const temp = (p, i) => `.jeditor-renaming-${stamp}-${i}${(p.file.name.match(/\.[^.]+$/) || [''])[0]}`;
+        const total = pairs.length * (twoPass ? 2 : 1);
+        let step = 0;
+        const progress = () => {
+            step++;
+            if (step % 20 === 0 || step === total) this.updateTask('rename', `Renaming ${Math.min(step, total)}/${total}`);
+        };
+        this.beginTask('rename', `Renaming 0/${total}`);
+        const touched = new Set();
+        try {
+            if (twoPass) {
+                for (let i = 0; i < pairs.length; i++) {
+                    await this.moveFile(pairs[i].file, temp(pairs[i], i));
+                    touched.add(pairs[i].file);
+                    progress();
+                }
+            }
+            for (const p of pairs) {
+                await this.moveFile(p.file, p.newName);
+                touched.add(p.file);
+                progress();
+            }
+        } catch (err) {
+            console.warn('Batch rename failed, restoring names:', err);
+            // Put everything back: via temporary names, so restored names
+            // can't collide with half-finished ones
+            const back = [...touched];
+            for (let i = 0; i < back.length; i++) {
+                try { await this.moveFile(back[i], `.jeditor-restoring-${stamp}-${i}${(back[i].name.match(/\.[^.]+$/) || [''])[0]}`); } catch (e) { /* keep going */ }
+            }
+            for (const f of back) {
+                try { await this.moveFile(f, original.get(f)); } catch (e) { /* reported below */ }
+            }
+            this.endTask('rename');
+            this.showToast(`Rename failed (${err.message}) — names were put back`, 5000);
+            return false;
+        }
+        this.endTask('rename');
+        if (!skipUndo) {
+            this.pushUndo({ type: 'batch-rename', items: pairs.map(p => ({ file: p.file, oldName: original.get(p.file) })) });
+        }
+        this.sortFiles();
+        return true;
+    },
+
+    openRename(files) {
+        if (!this.ensureWritable()) return;
+        if (!this.dirHandle) {
+            this.showToast('Renaming needs a folder opened with Open Folder');
             return;
         }
-        const pad = String(list.length).length;
-        const items = [];
-        let n = 1;
-        for (const f of list) {
-            const ext = (f.name.match(/\.\w+$/) || [''])[0];
-            const base = f.name.replace(/\.\w+$/, '');
-            const newName = pattern
-                .replaceAll('{n}', String(n).padStart(pad, '0'))
-                .replaceAll('{name}', base) + ext;
-            const oldName = f.name;
-            if (await this.renameFile(f, newName, { skipUndo: true })) {
-                items.push({ file: f, oldName });
-            }
-            n++;
-        }
-        if (items.length) {
-            this.pushUndo({ type: 'batch-rename', items });
-            this.showToast(`Renamed ${items.length} files — Ctrl+Z to undo`);
-            this.sortFiles();
-        }
+        Renamer.open(this, files);
+    },
+
+    promptRename(file = this.currentFile) {
+        if (file) this.openRename([file]);
+    },
+
+    batchRename(files) {
+        this.openRename(files.filter(Boolean));
     },
 
     // ---- Persistent thumbnail cache (IndexedDB) ----
@@ -3488,7 +3746,7 @@ const app = {
                     [`Rotate ${sel.length} Left`, () => this.rotateBulk(-90)],
                     [`Rotate ${sel.length} Right`, () => this.rotateBulk(90)],
                     ['—'],
-                    ['Batch Rename…', () => this.batchRename(sel)],
+                    [`Rename ${sel.length}…`, () => this.openRename(sel)],
                     ['Export Copies…', () => this.exportCopies(sel)],
                     ['—'],
                     [`Move ${sel.length} to Trash`, () => this.moveToTrash(sel), true]
@@ -3529,6 +3787,7 @@ const app = {
             ['Select All', () => { this.selection = new Set(this.files); this.updateSelectionUI(); }],
             ['Clear Selection', () => this.clearSelection()],
             ['—'],
+            ['Rename All…', () => this.openRename([])],
             ['Find Duplicates… (WIP)', () => this.openDupes()],
             ['Start Slideshow', () => this.startSlideshow()],
             ['Fullscreen', () => this.toggleFullscreen()]

@@ -446,7 +446,11 @@ header {
     cursor: pointer;
     border: 2px solid transparent;
     opacity: 0.6;
-    transition: all 0.2s;
+    transition: opacity 0.2s, border-color 0.2s;
+    flex-shrink: 0;
+    /* Skip layout/paint for thumbnails far outside the strip's view */
+    content-visibility: auto;
+    contain-intrinsic-size: calc(var(--strip-height, 80px) - 20px) calc(var(--strip-height, 80px) - 20px);
 }
 
 .thumb-item:hover {
@@ -1267,7 +1271,8 @@ header {
     font-family: var(--font-family);
 }
 
-#shortcuts-close {
+#shortcuts-close,
+#rename-close {
     background: transparent;
     border: none;
     color: inherit;
@@ -1278,7 +1283,8 @@ header {
     padding: 2px 6px;
 }
 
-#shortcuts-close:hover {
+#shortcuts-close:hover,
+#rename-close:hover {
     opacity: 1;
 }
 
@@ -1633,4 +1639,219 @@ kbd {
     color: #1c1917;
     background: #fbbf24;
     cursor: help;
+}
+
+/* ---- Batch rename ---- */
+.rename-card {
+    width: min(760px, 100%);
+}
+
+.rename-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px 20px;
+    min-height: 0;
+    flex: 1;
+    font-size: 13px;
+}
+
+.rename-scope {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+}
+
+.rename-scope label,
+.rename-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+.rename-mode {
+    display: inline-flex;
+    align-self: flex-start;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    padding: 3px;
+}
+
+.rename-mode button {
+    background: transparent;
+    border: none;
+    color: inherit;
+    padding: 6px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: var(--font-family);
+}
+
+.rename-mode button.active {
+    background: var(--accent-color);
+    color: #fff;
+}
+
+.rename-fields {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px;
+}
+
+.rename-fields label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    opacity: 0.9;
+}
+
+.rename-fields label.rename-wide {
+    flex: 1;
+}
+
+.rename-fields label.rename-check {
+    flex-direction: row;
+    padding-bottom: 6px;
+}
+
+.rename-body input[type="text"],
+.rename-body input[type="number"],
+.rename-body select {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: inherit;
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 13px;
+    font-family: var(--font-family);
+}
+
+.rename-body input[type="text"] {
+    min-width: 220px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.rename-body input[type="number"] {
+    width: 80px;
+}
+
+.rename-body select option {
+    background: #1a1a1a;
+}
+
+.rename-tokens {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    opacity: 0.85;
+}
+
+.rename-token {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px dashed rgba(255, 255, 255, 0.25);
+    color: inherit;
+    border-radius: 6px;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+
+.rename-token:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.rename-summary {
+    font-weight: 600;
+}
+
+.rename-summary.bad {
+    color: #fca5a5;
+}
+
+.rename-preview {
+    flex: 1;
+    min-height: 140px;
+    max-height: 42vh;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 6px 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+}
+
+.rename-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 10px;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.rename-row span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rename-old {
+    opacity: 0.6;
+}
+
+.rename-arrow {
+    opacity: 0.4;
+}
+
+.rename-row.same .rename-new {
+    opacity: 0.5;
+}
+
+.rename-row.bad {
+    color: #fca5a5;
+}
+
+.rename-error {
+    grid-column: 1 / -1;
+    font-family: var(--font-family);
+    font-size: 11px;
+    opacity: 0.9;
+}
+
+.rename-note {
+    padding: 8px 0;
+    opacity: 0.6;
+    font-family: var(--font-family);
+}
+
+.rename-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.rename-actions button {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: inherit;
+    border-radius: 8px;
+    padding: 7px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: var(--font-family);
+}
+
+.rename-actions button.primary {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: #fff;
+    font-weight: 600;
+}
+
+.rename-actions button:disabled {
+    opacity: 0.4;
+    cursor: default;
 }

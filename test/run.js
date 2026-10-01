@@ -45,10 +45,30 @@ const PAGE_HELPERS = `
             kind: 'file', name, writes: 0,
             bytes: new Uint8Array(bytes),
             getFile: async () => new File([h.bytes], name, { type, lastModified: Date.now() }),
-            createWritable: async () => ({
-                write: async (blob) => { h.bytes = new Uint8Array(await blob.arrayBuffer()); h.writtenType = blob.type; h.writes++; },
-                close: async () => {}
-            }),
+            // Like FileSystemFileHandle: whole-file writes, or positional
+            // writes on top of the existing data with keepExistingData
+            createWritable: async (opts) => {
+                let buf = opts && opts.keepExistingData ? new Uint8Array(h.bytes) : new Uint8Array(0);
+                return {
+                    write: async (d) => {
+                        if (d && d.type === 'write') {
+                            const data = new Uint8Array(d.data.buffer ? d.data : await d.data.arrayBuffer());
+                            if (d.position + data.length > buf.length) {
+                                const grown = new Uint8Array(d.position + data.length);
+                                grown.set(buf);
+                                buf = grown;
+                            }
+                            buf.set(data, d.position);
+                            h.inPlaceWrites = (h.inPlaceWrites || 0) + 1;
+                        } else {
+                            buf = new Uint8Array(await d.arrayBuffer());
+                            h.writtenType = d.type;
+                        }
+                    },
+                    close: async () => { h.bytes = buf; h.writes++; },
+                    abort: async () => { }
+                };
+            },
             queryPermission: async () => 'granted',
             requestPermission: async () => 'granted'
         };
@@ -615,9 +635,33 @@ async function newPage(browser, url) {
             app.dirHandle = null;
             await app.rotateImage(a, 90);
             out.rotated = readOrientation(a.handle.bytes) === 6;
+            const top = app._undoStack[app._undoStack.length - 1];
+            out.noCopyKept = top.type === 'rotate' && !top.blob && top.deg === 90;
             await app.undo();
-            out.undoneLen = a.handle.bytes.length === originalLen;
-            out.undoneOrientation = readOrientation(a.handle.bytes); // null: EXIF gone again
+            out.undoneOrientation = readOrientation(a.handle.bytes); // rotated back: upright (1)
+            out.undoNotStacked = app._undoStack.length === 0;        // the reverse isn't itself undoable
+
+            // Re-encoded rotations (PNG) keep the original bytes and restore them exactly
+            const pc = document.createElement('canvas');
+            pc.width = 3; pc.height = 2;
+            const pngBytes = new Uint8Array(await (await new Promise(res => pc.toBlob(res, 'image/png'))).arrayBuffer());
+            const pf = makeFakeFile('p.png', pngBytes, 'image/png');
+            app.files = [a, pf];
+            await app.rotateImage(pf, 90);
+            await app.undo();
+            out.pngRestored = pf.handle.bytes.length === pngBytes.length && pf.handle.bytes.every((v, i) => v === pngBytes[i]);
+
+            // Undo memory is capped: big file copies push old ones out
+            const savedCap = app.UNDO_MAX_BYTES;
+            app.UNDO_MAX_BYTES = 1000;
+            app._undoStack = [];
+            for (let i = 0; i < 5; i++) app.pushUndo({ type: 'bytes', file: pf, blob: new Blob([new Uint8Array(400)]) });
+            app.pushUndo({ type: 'rotate', file: a, deg: 90 });
+            out.undoCapped = app.undoBytes() <= 1000 && app._undoStack.length < 6 &&
+                app._undoStack[app._undoStack.length - 1].type === 'rotate';
+            app.UNDO_MAX_BYTES = savedCap;
+            app._undoStack = [];
+            app.files = [a];
 
             // --- Trash + restore ---
             const root = makeDir('Photos');
@@ -648,8 +692,12 @@ async function newPage(browser, url) {
             };
             f1.handle.move = mkMove(f1.handle);
             f2.handle.move = mkMove(f2.handle);
-            window.prompt = () => 'trip_{n}';
-            await app.batchRename([f1, f2]);
+            Renamer.open(app, [f1, f2]);
+            Renamer.mode = 'new';
+            document.getElementById('rename-pattern').value = 'trip_{#}';
+            document.getElementById('rename-order').value = 'name';
+            await Renamer.refresh();
+            await Renamer.apply();
             out.renamed = app.files.map(f => f.name).sort().join(',');
             await app.undo();
             out.renameUndone = app.files.map(f => f.name).sort().join(',');
@@ -693,8 +741,10 @@ async function newPage(browser, url) {
 
             return out;
         });
-        check('rotation applied then undone (bytes restored)', r.rotated && r.undoneLen && r.undoneOrientation === null,
-            JSON.stringify({ len: r.undoneLen, o: r.undoneOrientation }));
+        check('JPEG rotation undone by rotating back (no file copy held)', r.rotated && r.noCopyKept && r.undoneOrientation === 1 && r.undoNotStacked,
+            JSON.stringify({ copy: r.noCopyKept, o: r.undoneOrientation, stacked: !r.undoNotStacked }));
+        check('re-encoded rotation undo restores the exact bytes', r.pngRestored);
+        check('undo memory is capped', r.undoCapped);
         check('trash removes from folder and app', r.trashedCount === 1 && r.inTrash === 1 && r.removedFromRoot);
         check('undo restores from trash', r.restoredCount === 2 && r.trashEmpty && r.backInRoot);
         check('batch rename applies pattern', r.renamed === 'trip_1.jpg,trip_2.jpg', r.renamed);
@@ -844,6 +894,22 @@ async function newPage(browser, url) {
             const xb = new Uint8Array(await app.rotateJpegLossless(xmp.buffer.slice(0), 90).arrayBuffer());
             out.xmp = /tiff:Orientation="6"/.test(new TextDecoder('latin1').decode(xb));
 
+            // A file that already has an orientation tag is rotated by
+            // writing just those bytes in place (plus the XMP digit)
+            const tagged = await makeRealJpeg(40, 20, { exif: true, xmpOrientation: 1 });
+            const tf = makeFakeFile('t.jpg', tagged, 'image/jpeg');
+            app.files = [tf];
+            app.dirHandle = null;
+            await app.rotateImage(tf, 90);                 // adds the tag: full rewrite
+            const afterFirst = new Uint8Array(tf.handle.bytes);
+            await app.rotateImage(tf, 90);                 // tag exists: in place
+            const afterSecond = tf.handle.bytes;
+            const diff = [];
+            for (let i = 0; i < afterSecond.length; i++) if (afterFirst[i] !== afterSecond[i]) diff.push(i);
+            out.inPlace = tf.handle.inPlaceWrites >= 1 && afterSecond.length === afterFirst.length &&
+                diff.length <= 3 && readOrientation(afterSecond) === 3 &&
+                /tiff:Orientation="3"/.test(new TextDecoder('latin1').decode(afterSecond));
+
             // A CMYK original's ICC profile must not be carried onto RGB output
             const cmyk = await makeRealJpeg(40, 20, { icc: true });
             const sof = ImageMeta.jpegSegments(cmyk).find(sg => sg.marker === 0xC0);
@@ -860,6 +926,7 @@ async function newPage(browser, url) {
         check('browser shows it rotated (40x20 → 20x40)', r.dims === '20x40', r.dims);
         check('XMP orientation kept in agreement', r.xmp);
         check('CMYK colour profile not copied onto RGB output', r.cmykSafe);
+        check('second rotation writes only the orientation bytes in place', r.inPlace);
         await page.close();
     }
 
@@ -1112,6 +1179,11 @@ async function newPage(browser, url) {
             out.readOnly = res === false && app.files[0].handle.writes === before &&
                 [...document.querySelectorAll('.toast')].some(t => /read-only/.test(t.textContent));
             app.readOnlyMode = false;
+            const snap = app.perfSnapshot().join('\n');
+            out.perf = /Undo: \d+ steps/.test(snap) && /Images decoded/.test(snap) && /Photo load/.test(snap);
+            app.toggleDebugConsole();
+            out.perfShown = /Thumbnails:/.test(document.getElementById('debug-perf').textContent);
+            app.toggleDebugConsole();
             app.selection = new Set([app.files[0]]);
             app.updateSelectionUI();
             out.selectionText = document.getElementById('selection-count').textContent;
@@ -1123,6 +1195,7 @@ async function newPage(browser, url) {
         check('grid Up/Down uses the real column count', r.cols);
         check('read-only photos refuse edits with a message', r.readOnly);
         check('selection count reads "1 selected"', r.selectionText === '1 selected', r.selectionText);
+        check('debug console shows a performance readout', r.perf && r.perfShown);
         check('viewer suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -1329,6 +1402,162 @@ async function newPage(browser, url) {
         check('featureless frames are flagged weak', r.weak);
         check('look-alikes cannot chain unrelated photos into one group', r.noChain);
         check('scan-order duplicates: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7h. Rotating a photo shown from its original file (real disk files) ----
+    console.log('rotate while showing the original file');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            // Real files in the browser's private file system: a File from
+            // getFile() stops being readable once the file is written, like on disk
+            const root = await navigator.storage.getDirectory();
+            try { await root.removeEntry('snap', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await root.getDirectoryHandle('snap', { create: true });
+            for (const [name, color] of [['a.jpg', '#c33'], ['b.jpg', '#36c'], ['c.jpg', '#3a3']]) {
+                const fh = await dir.getFileHandle(name, { create: true });
+                const w = await fh.createWritable();
+                await w.write(new Blob([await makeRealJpeg(1800, 1200, { color })], { type: 'image/jpeg' }));
+                await w.close();
+            }
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            // Rotate straight away, while the photo may still be loading
+            app.rotateCurrent(90);
+            app.rotateCurrent(90);
+            const a = app.files[0];
+            while (a._rotationQueue) await a._rotationQueue;
+            await new Promise(res => setTimeout(res, 300));
+            const ok = () => {
+                const img = document.getElementById('current-image');
+                return img.complete && img.naturalWidth > 0;
+            };
+            out.afterRotate = ok();
+            // Away and back: the photo is loaded again from the changed file
+            app.navigate(1);
+            await new Promise(res => setTimeout(res, 300));
+            app.navigate(1);
+            await new Promise(res => setTimeout(res, 300));
+            app.openSingle(a);
+            for (let i = 0; i < 100 && !(app._displayFile === a && app._displayKind === 'full'); i++) await new Promise(res => setTimeout(res, 20));
+            out.afterReturn = ok() && app._displayFile === a;
+            out.noBroken = ![...document.querySelectorAll('img')].some(i => i.src.startsWith('blob:') && i.complete && i.naturalWidth === 0);
+            return out;
+        });
+        check('photo stays visible when rotated while loading', r.afterRotate);
+        check('rotated photo loads again after navigating away and back', r.afterReturn);
+        check('no broken images anywhere', r.noBroken);
+        check('snapshot suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7i. Batch rename ----
+    console.log('batch rename');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            document.getElementById('main-interface').classList.remove('hidden');
+            const root = makeDir('Order');
+            const move = (h) => async function (n) {
+                if (h._failOn === n) throw new Error('locked');
+                root._files.delete(this.name);
+                this.name = n;
+                root._files.set(n, this);
+            };
+            const add = (name, taken) => {
+                const f = makeFakeFile(name, makeJpegBytes(), 'image/jpeg');
+                f.parentDir = root;
+                f.handle.name = name;
+                f.handle.move = move(f.handle);
+                f.dateTaken = taken;
+                root._files.set(name, f.handle);
+                return f;
+            };
+            const files = [add('IMG_0003.jpg', 300), add('IMG_0001.jpg', 100), add('IMG_0002.jpg', 200)];
+            app.dirHandle = root;
+            app.files = [...files];
+            app.sortMode = 'name_asc';
+            app.sortFiles(false);
+            const names = () => app.files.map(f => f.name).sort().join(',');
+            const set = (id, v) => { document.getElementById(id).value = v; };
+            const run = async (opts) => {
+                Renamer.open(app, opts.files || []);
+                Renamer.mode = opts.mode || 'new';
+                Renamer.syncMode();
+                for (const [k, v] of Object.entries(opts.fields || {})) set(k, v);
+                document.getElementById('rename-case').checked = !!opts.matchCase;
+                await Renamer.refresh();
+                return Renamer.rows;
+            };
+
+            // New names numbered by date taken, zero-padded
+            let rows = await run({ fields: { 'rename-pattern': 'Smith_{###}', 'rename-order': 'taken', 'rename-dir': 'asc', 'rename-start': 1, 'rename-step': 1 } });
+            out.preview = rows.map(x => x.oldName + '>' + x.newName).join(' ');
+            out.previewShown = document.querySelectorAll('.rename-row').length === 3;
+            await Renamer.apply();
+            out.renamed = names();
+            out.closed = !Renamer.isOpen;
+
+            // Shift the whole sequence by one (new names overlap old ones)
+            await run({ fields: { 'rename-pattern': 'Smith_{###}', 'rename-order': 'name', 'rename-start': 2 } });
+            await Renamer.apply();
+            out.shifted = names();
+            out.noTempLeft = ![...root._files.keys()].some(n => n.startsWith('.jeditor'));
+
+            // Undo puts the whole batch back
+            await app.undo();
+            out.undone = names();
+
+            // Find & replace on the existing names, with a number token
+            await run({ mode: 'replace', fields: { 'rename-find': 'smith_', 'rename-replace': 'Order88-', 'rename-order': 'name', 'rename-start': 1 } });
+            out.replaceNoCase = Renamer.rows.map(x => x.newName).join(',');
+            await run({ mode: 'replace', matchCase: true, fields: { 'rename-find': 'smith_', 'rename-replace': 'X' } });
+            out.replaceCaseNoMatch = Renamer.rows.every(x => x.newName === x.oldName);
+
+            // {date} token
+            files[0].dateTaken = new Date(2024, 4, 9, 14, 5, 6).getTime();
+            rows = await run({ files: [files[0]], fields: { 'rename-pattern': '{date}_{time}' } });
+            out.dateToken = rows[0].newName;
+
+            // Problems block the rename: duplicates, invalid, clash with another photo
+            rows = await run({ fields: { 'rename-pattern': 'same' } });
+            out.dupBlocked = rows.every(x => /Same name/.test(x.error)) && document.getElementById('rename-apply').disabled &&
+                /add \{###\}/.test(document.getElementById('rename-summary').textContent);
+            rows = await run({ fields: { 'rename-pattern': 'bad:name_{#}' } });
+            out.invalidBlocked = rows.every(x => x.error) && document.getElementById('rename-apply').disabled;
+            const other = app.files.find(f => f.name === 'Smith_002.jpg');
+            rows = await run({ files: [app.files.find(f => f.name === 'Smith_001.jpg')], fields: { 'rename-pattern': 'smith_002' } });
+            out.clashBlocked = /already has this name/.test(rows[0].error || '') && !!other;
+            Renamer.close();
+
+            // Case-only rename works (two passes)
+            const one = app.files.find(f => f.name === 'Smith_001.jpg');
+            out.caseOnly = await app.renameMany([{ file: one, newName: 'SMITH_001.jpg' }]) && one.name === 'SMITH_001.jpg';
+
+            // A failure part-way puts every name back
+            const before = names();
+            const victim = app.files.find(f => f.name === 'Smith_003.jpg');
+            victim.handle._failOn = 'Z_3.jpg';
+            const ok = await app.renameMany(app.files.map((f, i) => ({ file: f, newName: `Z_${i + 1}.jpg` })).sort((a, b) => a.newName.localeCompare(b.newName)));
+            out.rollback = ok === false && names() === before && ![...root._files.keys()].some(n => n.startsWith('.jeditor'));
+            return out;
+        });
+        check('preview numbers by date taken, zero-padded', r.preview === 'IMG_0001.jpg>Smith_001.jpg IMG_0002.jpg>Smith_002.jpg IMG_0003.jpg>Smith_003.jpg' && r.previewShown, r.preview);
+        check('rename applies and closes', r.renamed === 'Smith_001.jpg,Smith_002.jpg,Smith_003.jpg' && r.closed, r.renamed);
+        check('shifting a sequence onto its own names works', r.shifted === 'Smith_002.jpg,Smith_003.jpg,Smith_004.jpg' && r.noTempLeft, r.shifted);
+        check('undo restores the whole batch', r.undone === 'Smith_001.jpg,Smith_002.jpg,Smith_003.jpg', r.undone);
+        check('find & replace (case-insensitive by default)', r.replaceNoCase === 'Order88-001.jpg,Order88-002.jpg,Order88-003.jpg', r.replaceNoCase);
+        check('match case respected', r.replaceCaseNoMatch);
+        check('{date}_{time} from capture date', r.dateToken === '2024-05-09_14-05-06.jpg', r.dateToken);
+        check('duplicate names blocked with a hint', r.dupBlocked);
+        check('invalid characters blocked', r.invalidBlocked);
+        check('clash with another photo blocked', r.clashBlocked);
+        check('case-only rename', r.caseOnly);
+        check('failure part-way puts names back', r.rollback);
+        check('rename suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
