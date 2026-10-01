@@ -249,6 +249,56 @@ async function newPage(browser, url) {
 
     const browser = await chromium.launch(launchOptions());
 
+    // ---- 0b. Web app build (GitHub Pages): one self-contained page ----
+    console.log('web app build');
+    {
+        const os = require('os');
+        const http = require('http');
+        const SITE = fs.mkdtempSync(path.join(os.tmpdir(), 'jeditor-site-'));
+        execSync(`node scripts/build-standalone.js --site "${SITE}"`, { cwd: ROOT, stdio: 'pipe' });
+        const index = fs.readFileSync(path.join(SITE, 'index.html'), 'utf8');
+        check('site page has every script and style inlined', !/<script src=|<link rel="stylesheet"/.test(index) && index.includes('const Renamer'));
+        const swSrc = fs.readFileSync(path.join(SITE, 'sw.js'), 'utf8');
+        const precache = JSON.parse(swSrc.match(/const ASSETS = (\[[^]*?\]);/)[1]);
+        const missing = precache.filter(a => a !== './' && !fs.existsSync(path.join(SITE, a)));
+        check('site service worker precaches only files it has', missing.length === 0 && precache.includes('./index.html'), missing.join(', '));
+
+        const types = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.png': 'image/png' };
+        const siteServer = http.createServer((req, res) => {
+            const p = decodeURIComponent(req.url.split('?')[0]);
+            const f = path.join(SITE, p.endsWith('/') ? 'index.html' : p);
+            fs.readFile(f, (e, d) => {
+                if (e) { res.writeHead(404); return res.end(); }
+                res.writeHead(200, { 'Content-Type': types[path.extname(f)] || 'application/octet-stream' });
+                res.end(d);
+            });
+        });
+        await new Promise(r => siteServer.listen(0, r));
+        const { page, issues } = await newPage(browser, `http://localhost:${siteServer.address().port}/`);
+        const r = await page.evaluate(async () => {
+            const reg = await Promise.race([navigator.serviceWorker.ready, new Promise(res => setTimeout(() => res(null), 8000))]);
+            let cached = [];
+            if (reg) {
+                for (let i = 0; i < 40 && !cached.length; i++) {
+                    const keys = await caches.keys();
+                    if (keys.length) cached = (await (await caches.open(keys[0])).keys()).map(q => new URL(q.url).pathname);
+                    if (!cached.length) await new Promise(res => setTimeout(res, 100));
+                }
+            }
+            return {
+                loaded: typeof app !== 'undefined' && typeof CropEditor !== 'undefined' && typeof Renamer !== 'undefined' && typeof FolderCache !== 'undefined',
+                title: document.getElementById('app-title').textContent,
+                sw: !!reg, cachedIndex: cached.some(p => p.endsWith('/index.html'))
+            };
+        });
+        check('site boots with no errors', issues.errors.length === 0 && issues.failedRequests.length === 0 && r.loaded,
+            issues.errors.concat(issues.failedRequests).join('; '));
+        check('site installs its service worker and caches the page', r.sw && r.cachedIndex, JSON.stringify(r));
+        await page.close();
+        siteServer.close();
+        fs.rmSync(SITE, { recursive: true, force: true });
+    }
+
     // ---- 1. Boot: served app loads clean ----
     console.log('boot (http)');
     {

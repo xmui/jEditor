@@ -1,6 +1,6 @@
 name: Deploy PWA to GitHub Pages
 
-# Hosts the app/ folder at https://<owner>.github.io/<repo>/ on every push
+# Builds the app into _site/ and hosts it at https://<owner>.github.io/<repo>/ on every push
 # to the default branch. Once live, Chrome/Edge show an Install icon in the
 # address bar — installing gives a standalone desktop app with offline
 # support (service worker precaches all assets).
@@ -33,8 +33,11 @@ jobs:
       - uses: actions/configure-pages@v5
         with:
           enablement: true
+      # One self-contained page (scripts and styles inlined), so a browser
+      # can't combine an old index.html with a newer script after a deploy
+      - run: node scripts/build-standalone.js --site _site
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: app
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4

@@ -114,6 +114,7 @@ npm install
 npm start           # serves app/ at http://localhost:3000
 npm test            # test suite in headless Chromium (set CHROME_PATH if Chrome isn't found)
 npm run build       # rebuilds standalone.html
+npm run build:site  # builds the web app into _site/ (what GitHub Pages serves)
 npm run bump 1.x.y  # sets the version in app/version.js, package.json and package-lock.json
 ```
 
@@ -124,6 +125,6 @@ The app is plain JavaScript with no dependencies, in `app/`:
 - `meta.js`: reading and copying JPEG/PNG metadata
 - `dupes.js`: duplicate finder
 
-To release, bump the version, commit, and merge to `main`. The Release workflow then tags the version, builds `standalone.html` and publishes a GitHub Release, and the Pages workflow deploys the web app. The tests fail if `app/version.js` and `package.json` disagree.
+To release, bump the version, commit, and merge to `main`. The Release workflow then tags the version, builds `standalone.html` and publishes a GitHub Release, and the Pages workflow builds and deploys the web app. Both builds inline every script and stylesheet into one page, so a browser never ends up mixing files from two versions. The tests fail if `app/version.js` and `package.json` disagree.
 
 If you change `app/icon.png`, run `node scripts/make-icons.js` to regenerate the app icons. On Windows without Node, `start.bat` serves the app locally.
