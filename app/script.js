@@ -1487,6 +1487,7 @@ const app = {
             img.style.pointerEvents = 'none'; // let click pass to div
             img.style.transition = 'transform 0.15s ease'; // snappy rotation previews
             div.appendChild(img);
+            if (force || !file.thumbnailUrl) this.showThumbSpinner(div, img);
 
             await this.loadImageThumbnail(file, img, force);
         } catch (e) { /* ignore */ }
@@ -1548,6 +1549,25 @@ const app = {
         renderChunk(0);
     },
 
+    // Transparent stand-in while a tile's thumbnail is on its way
+    BLANK_THUMB: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PC9zdmc+',
+
+    // Spinner on a tile until its image has a real picture (or failed).
+    // Keyed to the image's own load event, so it stays up through decoding
+    // rather than vanishing a beat before the photo appears.
+    showThumbSpinner(tile, img) {
+        const done = () => {
+            if (img.src === this.BLANK_THUMB) return;
+            tile.classList.remove('thumb-loading');
+            img.removeEventListener('load', done);
+            img.removeEventListener('error', done);
+        };
+        tile.classList.add('thumb-loading');
+        img.addEventListener('load', done);
+        img.addEventListener('error', done);
+        if (img.complete && img.naturalWidth && img.src !== this.BLANK_THUMB) done();
+    },
+
     makeGridTile(file, observer) {
         const div = document.createElement('div');
         div.className = 'grid-item';
@@ -1575,11 +1595,12 @@ const app = {
             const angle = this.getDisplayRotation(file, 'thumb');
             if (angle) img.style.transform = `rotate(${angle}deg)`;
         } else {
-            img.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PC9zdmc+';
+            img.src = this.BLANK_THUMB;
             observer.observe(img);
         }
 
         div.appendChild(img);
+        if (!file.thumbnailUrl) this.showThumbSpinner(div, img);
 
         div.onclick = (e) => this.handleGridClick(e, file);
         div.ondblclick = () => this.openSingle(file);
@@ -3004,8 +3025,9 @@ const app = {
             const img = document.createElement('img');
             img._file = file;
             img.alt = file.name;
-            img.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PC9zdmc+';
+            img.src = this.BLANK_THUMB;
             gridDiv.appendChild(img);
+            this.showThumbSpinner(gridDiv, img);
 
             // Re-observe
             const gridObserver = this.elements.gridView._observer;

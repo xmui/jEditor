@@ -657,6 +657,20 @@ async function newPage(browser, url) {
             app.renderGrid();
             const tileImgs = [...document.querySelectorAll('#grid-view .grid-item img')];
             out.instantPaint = tileImgs.every(img => img.src.startsWith('blob:'));
+            out.cachedNoSpinner = !document.querySelector('#grid-view .grid-item.thumb-loading');
+
+            // A tile still waiting shows a spinner until its picture loads
+            // (on screen: lazy tiles in a hidden grid don't load)
+            document.getElementById('main-interface').classList.remove('hidden');
+            document.getElementById('grid-view').classList.remove('hidden');
+            const file3 = makeFakeFile('big3.png', bytes, 'image/png');
+            app.files = [file, file2, file3];
+            app.renderGrid();
+            const tile3 = file3._gridEl;
+            out.spinnerWhileLoading = tile3.classList.contains('thumb-loading');
+            await app.loadImageThumbnail(file3, tile3.querySelector('img'));
+            for (let i = 0; i < 50 && tile3.classList.contains('thumb-loading'); i++) await new Promise(r => setTimeout(r, 20));
+            out.spinnerCleared = !tile3.classList.contains('thumb-loading');
             return out;
         });
         check('worker available (off-main-thread generation)', r.workerAvailable);
@@ -666,6 +680,9 @@ async function newPage(browser, url) {
         check('second request is a cache hit', r.cached && r.urlSet);
         check('precache fills remaining files', r.precached);
         check('re-render paints cached thumbs immediately', r.instantPaint);
+        check('cached tiles show no loading spinner', r.cachedNoSpinner);
+        check('loading tile shows a spinner, cleared once its thumbnail loads', r.spinnerWhileLoading && r.spinnerCleared,
+            `${r.spinnerWhileLoading}/${r.spinnerCleared}`);
         await page.close();
     }
 
