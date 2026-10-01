@@ -2071,6 +2071,17 @@ const app = {
             const key = `p|${file.relPath || file.name}|${data.size}|${data.lastModified}|${edge}`;
             if (file._preview && file._preview.key === key) return file._preview;
 
+            // Already about screen size? The header says so: show the
+            // original without decoding it in the worker first (that full
+            // decode only to learn "it's small" doubled the load time of
+            // screen-sized scans)
+            const head = new Uint8Array(await data.slice(0, 256 * 1024).arrayBuffer());
+            const dims = ImageMeta.readPixelSize(head);
+            if (dims && Math.max(dims.w, dims.h) <= edge * 1.2) {
+                const src = await this.getOriginalSource(file, data, savedAtRead);
+                return { ...src, w: dims.w, h: dims.h };
+            }
+
             let rec = await this.idbGet('previews', key);
             if (!rec) {
                 rec = await this.generatePreview(data, edge);

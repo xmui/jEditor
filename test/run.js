@@ -865,6 +865,16 @@ async function newPage(browser, url) {
             out.taskRows = document.querySelectorAll('#task-list .task-row').length;
             app.endTask('t1');
             out.afterOneEnd = document.getElementById('loading-text').textContent;
+            // Readable whatever the photo looks like (it sits beside the photo)
+            const contrast = () => {
+                const cs = getComputedStyle(pill);
+                const lum = (c) => { const m = c.match(/[\d.]+/g).map(Number); return 0.299 * m[0] + 0.587 * m[1] + 0.114 * m[2]; };
+                return Math.abs(lum(cs.backgroundColor) - lum(cs.color));
+            };
+            document.body.classList.add('light-theme', 'glass-light-top');
+            out.pillContrastLight = contrast();
+            document.body.classList.remove('light-theme', 'glass-light-top');
+            out.pillContrastDark = contrast();
             app.endTask('t2');
             out.pillHidden = pill.classList.contains('hidden');
             return out;
@@ -882,6 +892,8 @@ async function newPage(browser, url) {
         check('info icon has its dot', r.infoDot);
         check('task pill shows current task with count', r.pillVisible && r.pillLabel === 'Exporting 2/5 (+1)' && r.taskRows === 2,
             JSON.stringify({ l: r.pillLabel, rows: r.taskRows }));
+        check('task pill readable over light and dark photos', r.pillContrastLight > 150 && r.pillContrastDark > 150,
+            JSON.stringify({ light: r.pillContrastLight, dark: r.pillContrastDark }));
         check('task pill updates and clears', r.afterOneEnd === 'Exporting 2/5' && r.pillHidden,
             JSON.stringify({ a: r.afterOneEnd, hid: r.pillHidden }));
         await page.close();
@@ -1266,6 +1278,14 @@ async function newPage(browser, url) {
             for (let i = 0; i < 200 && app._displayKind !== 'full'; i++) await new Promise(res => setTimeout(res, 25));
             const img = document.getElementById('current-image');
             out.isPreview = img._isPreview === true && Math.max(img.naturalWidth, img.naturalHeight) <= edge;
+            // A screen-sized photo is shown from the original, without a worker decode first
+            let workerCalls = 0;
+            const gen = app.generatePreview.bind(app);
+            app.generatePreview = (...a) => { workerCalls++; return gen(...a); };
+            const small = makeFakeFile('small.jpg', await makeRealJpeg(Math.round(edge * 0.7), Math.round(edge * 0.5), {}), 'image/jpeg');
+            const src = await app.getDisplaySource(small);
+            out.smallDirect = workerCalls === 0 && src.isPreview === false && src.w === Math.round(edge * 0.7);
+            app.generatePreview = gen;
             out.origDims = big._dims && big._dims.w === edge * 2;
             out.cached = !!(await app.idbGet('previews', big._preview.key));
 
@@ -1289,6 +1309,7 @@ async function newPage(browser, url) {
         });
         check('big scan shows a screen-sized preview', r.isPreview);
         check('original dimensions reported for the preview', r.origDims);
+        check('screen-sized photo skips the preview worker', r.smallDirect);
         check('preview cached in IndexedDB', r.cached);
         check('rotating a previewed photo shows instantly', r.rotatedShown);
         check('zooming in swaps to the full-resolution original', r.upgraded && r.zoomKept);
