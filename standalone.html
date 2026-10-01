@@ -14,7 +14,7 @@
     <script>
 // Single source of truth for the app version. Bump with:  npm run bump 1.x.y
 // (keeps package.json in sync and busts the service worker cache)
-const APP_VERSION = '1.11.1';
+const APP_VERSION = '1.11.2';
 
 </script>
     <script>
@@ -2796,14 +2796,6 @@ header {
     will-change: transform, opacity;
 }
 
-#loading-indicator {
-    position: absolute;
-    background: rgba(0, 0, 0, 0.8);
-    padding: 10px 20px;
-    border-radius: 8px;
-    z-index: 20;
-}
-
 .hidden {
     display: none !important;
 }
@@ -3226,15 +3218,16 @@ header {
 
 /* Task pill (top-LEFT — the header controls own the top-right corner):
    spinner + current task; hover lists all tasks */
+/* The task pill sits over the empty area beside the photo, not over the
+   photo, so it doesn't follow the photo's brightness: it matches the
+   toasts below it and is readable on anything. */
 .task-pill {
     position: fixed;
     top: 20px;
     left: 20px;
-    background: var(--glass-top-bg);
-    color: var(--glass-top-text);
-    border: 1px solid var(--glass-top-border);
-    backdrop-filter: var(--backdrop-filter);
-    -webkit-backdrop-filter: var(--backdrop-filter);
+    background: rgba(250, 250, 252, 0.95);
+    color: #111;
+    border: 1px solid rgba(0, 0, 0, 0.08);
     padding: 10px 20px;
     border-radius: 999px;
     z-index: 2000;
@@ -3275,13 +3268,12 @@ header {
     min-width: 240px;
     flex-direction: column;
     gap: 6px;
-    background: var(--glass-top-bg);
-    border: 1px solid var(--glass-top-border);
+    background: rgba(250, 250, 252, 0.97);
+    color: #111;
+    border: 1px solid rgba(0, 0, 0, 0.08);
     border-radius: 14px;
     padding: 10px 14px;
-    backdrop-filter: var(--backdrop-filter);
-    -webkit-backdrop-filter: var(--backdrop-filter);
-    box-shadow: var(--glass-shadow);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 }
 
 .task-pill:hover .task-list {
@@ -6849,6 +6841,17 @@ const app = {
             const edge = this.previewEdge();
             const key = `p|${file.relPath || file.name}|${data.size}|${data.lastModified}|${edge}`;
             if (file._preview && file._preview.key === key) return file._preview;
+
+            // Already about screen size? The header says so: show the
+            // original without decoding it in the worker first (that full
+            // decode only to learn "it's small" doubled the load time of
+            // screen-sized scans)
+            const head = new Uint8Array(await data.slice(0, 256 * 1024).arrayBuffer());
+            const dims = ImageMeta.readPixelSize(head);
+            if (dims && Math.max(dims.w, dims.h) <= edge * 1.2) {
+                const src = await this.getOriginalSource(file, data, savedAtRead);
+                return { ...src, w: dims.w, h: dims.h };
+            }
 
             let rec = await this.idbGet('previews', key);
             if (!rec) {
