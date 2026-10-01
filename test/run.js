@@ -45,10 +45,30 @@ const PAGE_HELPERS = `
             kind: 'file', name, writes: 0,
             bytes: new Uint8Array(bytes),
             getFile: async () => new File([h.bytes], name, { type, lastModified: Date.now() }),
-            createWritable: async () => ({
-                write: async (blob) => { h.bytes = new Uint8Array(await blob.arrayBuffer()); h.writtenType = blob.type; h.writes++; },
-                close: async () => {}
-            }),
+            // Like FileSystemFileHandle: whole-file writes, or positional
+            // writes on top of the existing data with keepExistingData
+            createWritable: async (opts) => {
+                let buf = opts && opts.keepExistingData ? new Uint8Array(h.bytes) : new Uint8Array(0);
+                return {
+                    write: async (d) => {
+                        if (d && d.type === 'write') {
+                            const data = new Uint8Array(d.data.buffer ? d.data : await d.data.arrayBuffer());
+                            if (d.position + data.length > buf.length) {
+                                const grown = new Uint8Array(d.position + data.length);
+                                grown.set(buf);
+                                buf = grown;
+                            }
+                            buf.set(data, d.position);
+                            h.inPlaceWrites = (h.inPlaceWrites || 0) + 1;
+                        } else {
+                            buf = new Uint8Array(await d.arrayBuffer());
+                            h.writtenType = d.type;
+                        }
+                    },
+                    close: async () => { h.bytes = buf; h.writes++; },
+                    abort: async () => { }
+                };
+            },
             queryPermission: async () => 'granted',
             requestPermission: async () => 'granted'
         };
@@ -874,6 +894,22 @@ async function newPage(browser, url) {
             const xb = new Uint8Array(await app.rotateJpegLossless(xmp.buffer.slice(0), 90).arrayBuffer());
             out.xmp = /tiff:Orientation="6"/.test(new TextDecoder('latin1').decode(xb));
 
+            // A file that already has an orientation tag is rotated by
+            // writing just those bytes in place (plus the XMP digit)
+            const tagged = await makeRealJpeg(40, 20, { exif: true, xmpOrientation: 1 });
+            const tf = makeFakeFile('t.jpg', tagged, 'image/jpeg');
+            app.files = [tf];
+            app.dirHandle = null;
+            await app.rotateImage(tf, 90);                 // adds the tag: full rewrite
+            const afterFirst = new Uint8Array(tf.handle.bytes);
+            await app.rotateImage(tf, 90);                 // tag exists: in place
+            const afterSecond = tf.handle.bytes;
+            const diff = [];
+            for (let i = 0; i < afterSecond.length; i++) if (afterFirst[i] !== afterSecond[i]) diff.push(i);
+            out.inPlace = tf.handle.inPlaceWrites >= 1 && afterSecond.length === afterFirst.length &&
+                diff.length <= 3 && readOrientation(afterSecond) === 3 &&
+                /tiff:Orientation="3"/.test(new TextDecoder('latin1').decode(afterSecond));
+
             // A CMYK original's ICC profile must not be carried onto RGB output
             const cmyk = await makeRealJpeg(40, 20, { icc: true });
             const sof = ImageMeta.jpegSegments(cmyk).find(sg => sg.marker === 0xC0);
@@ -890,6 +926,7 @@ async function newPage(browser, url) {
         check('browser shows it rotated (40x20 → 20x40)', r.dims === '20x40', r.dims);
         check('XMP orientation kept in agreement', r.xmp);
         check('CMYK colour profile not copied onto RGB output', r.cmykSafe);
+        check('second rotation writes only the orientation bytes in place', r.inPlace);
         await page.close();
     }
 

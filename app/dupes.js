@@ -145,7 +145,11 @@ const Dupes = {
         return Math.abs(deg) <= 10 ? deg : 0;
     },
 
-    // Zero-mean, unit-variance copy, plus its three quarter-turn rotations
+    // Zero-mean, unit-variance copy, plus its three quarter-turn rotations.
+    // Stored as 8-bit (value × Q, clamped): a 2000-photo order's
+    // fingerprints take ~30 MB instead of ~120 MB, with the same matches.
+    Q: 20,
+
     normalizedRotations(v, n) {
         let mean = 0;
         for (const x of v) mean += x;
@@ -153,11 +157,14 @@ const Dupes = {
         let varc = 0;
         for (const x of v) varc += (x - mean) ** 2;
         const std = Math.sqrt(varc / v.length);
-        const norm = v.map(x => (x - mean) / (std || 1));
+        const norm = new Int8Array(v.length);
+        for (let i = 0; i < v.length; i++) {
+            norm[i] = Math.max(-127, Math.min(127, Math.round((v[i] - mean) / (std || 1) * this.Q)));
+        }
         const out = [norm];
         let cur = norm;
         for (let k = 0; k < 3; k++) {
-            const r = new Float32Array(n * n);
+            const r = new Int8Array(n * n);
             for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) r[x * n + (n - 1 - y)] = cur[y * n + x];
             out.push(r);
             cur = r;
@@ -264,7 +271,7 @@ const Dupes = {
     dot(a, b) {
         let s = 0;
         for (let i = 0; i < a.length; i++) s += a[i] * b[i];
-        return s / a.length;
+        return s / (a.length * this.Q * this.Q);
     },
 
     // [layout, detail] correlation at the rotation and crop where they
@@ -359,11 +366,16 @@ const Dupes = {
         const match = new Set();
         const key = (i, j) => i < j ? i * n + j : j * n + i;
         const exactPair = (i, j) => exactOf.has(files[i]) && exactOf.get(files[i]) === exactOf.get(files[j]);
+        let slice = performance.now();
         for (let i = 0; i < n; i++) {
             for (let j = i + 1; j < n; j++) {
                 if (exactPair(i, j) || this.isMatch(fps[i], fps[j], sensitivity)) match.add(key(i, j));
             }
-            if (i % 100 === 99) await new Promise(r => setTimeout(r, 0)); // stay responsive
+            // Give the screen a frame every ~25 ms (2000 photos = 2M pairs)
+            if (performance.now() - slice > 25) {
+                await new Promise(r => setTimeout(r, 0));
+                slice = performance.now();
+            }
         }
 
         // Complete linkage: merge two groups only if every cross pair matches

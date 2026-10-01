@@ -446,7 +446,11 @@ header {
     cursor: pointer;
     border: 2px solid transparent;
     opacity: 0.6;
-    transition: all 0.2s;
+    transition: opacity 0.2s, border-color 0.2s;
+    flex-shrink: 0;
+    /* Skip layout/paint for thumbnails far outside the strip's view */
+    content-visibility: auto;
+    contain-intrinsic-size: calc(var(--strip-height, 80px) - 20px) calc(var(--strip-height, 80px) - 20px);
 }
 
 .thumb-item:hover {

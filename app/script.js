@@ -1168,6 +1168,46 @@ const app = {
         return null;
     },
 
+    // In-place edits that rotate a JPEG which already has an orientation
+    // tag: [{ position, data }] for the tag (and any XMP tiff:Orientation in
+    // the header), or null when the file needs a full rewrite.
+    async orientationPatch(fileData, deg) {
+        const head = new Uint8Array(await fileData.slice(0, 256 * 1024).arrayBuffer());
+        const view = new DataView(head.buffer);
+        const loc = this.findJpegOrientation(view);
+        if (!loc || loc.valueOffset === undefined) return null;
+        const next = this.composeOrientation(view.getUint16(loc.valueOffset, loc.littleEndian), deg);
+        const tag = new Uint8Array(2);
+        new DataView(tag.buffer).setUint16(0, next, loc.littleEndian);
+        const edits = [{ position: loc.valueOffset, data: tag }];
+        for (const seg of ImageMeta.jpegSegments(head, { partial: true }) || []) {
+            if (!ImageMeta.isXmpSeg(head, seg)) continue;
+            const text = new TextDecoder('latin1').decode(head.subarray(seg.start, seg.end));
+            const re = /tiff:Orientation(="|>)([1-8])/g;
+            let m;
+            while ((m = re.exec(text))) {
+                edits.push({ position: seg.start + m.index + m[0].length - 1, data: new Uint8Array([0x30 + next]) });
+            }
+        }
+        return edits;
+    },
+
+    // Apply edits to a file without rewriting it from script. Returns false
+    // (nothing changed) where positional writes aren't supported.
+    async writeInPlace(handle, edits) {
+        let w;
+        try {
+            w = await handle.createWritable({ keepExistingData: true });
+            for (const e of edits) await w.write({ type: 'write', position: e.position, data: e.data });
+            await w.close();
+            return true;
+        } catch (err) {
+            if (w) { try { await w.abort(); } catch (e) { /* already closed */ } }
+            this.log('In-place write unavailable, rewriting: ' + err.message);
+            return false;
+        }
+    },
+
     // Minimal APP1 segment: "Exif\0\0" + TIFF header + one-entry IFD0 (Orientation)
     buildOrientationExif(orientation) {
         const buf = new ArrayBuffer(36); // 2 marker + 2 length + 6 'Exif\0\0' + 26 TIFF
@@ -1420,6 +1460,7 @@ const app = {
             stripObserver.observe(div);
         });
         this.elements.thumbnailStrip.appendChild(frag);
+        this._activeStripEl = null;
         this.updateActiveThumbnail();
     },
 
@@ -1440,21 +1481,27 @@ const app = {
         } catch (e) { /* ignore */ }
     },
 
+    // Highlight the current photo in the film strip and centre it. Touches
+    // only the old and new thumbnail: looping over every strip item and
+    // scrollIntoView (which re-lays out the page) cost ~100 ms per step in a
+    // 2000-photo folder.
     updateActiveThumbnail() {
-        const thumbs = this.elements.thumbnailStrip.children;
-        for (let i = 0; i < thumbs.length; i++) {
-            if (thumbs[i]._file === this.currentFile) {
-                thumbs[i].classList.add('active');
-                thumbs[i].scrollIntoView({ block: 'nearest', inline: 'center' });
-            } else {
-                thumbs[i].classList.remove('active');
-            }
-        }
+        const strip = this.elements.thumbnailStrip;
+        const el = this.currentFile && this.currentFile._stripEl;
+        if (this._activeStripEl && this._activeStripEl !== el) this._activeStripEl.classList.remove('active');
+        this._activeStripEl = el && el.isConnected ? el : null;
+        if (!this._activeStripEl) return;
+        el.classList.add('active');
+        if (strip.classList.contains('hidden') || !strip.clientWidth) return;
+        const target = el.offsetLeft - (strip.clientWidth - el.offsetWidth) / 2;
+        if (Math.abs(strip.scrollLeft - target) > 1) strip.scrollLeft = target;
     },
 
     // Grid View with Lazy Loading
     renderGrid() {
         this.elements.gridView.innerHTML = '';
+        this._shownSelected = new Set();
+        this._activeGridEl = null;
 
         // Tiles load once and keep their thumbnail; leaving the viewport no
         // longer blanks them (re-decoding on re-entry was a scroll-jank source)
@@ -1495,6 +1542,15 @@ const app = {
         div.className = 'grid-item';
         div._file = file;
         file._gridEl = div;
+        // Tiles are built in chunks: each one starts in the right state
+        if (this.selection.has(file)) {
+            div.classList.add('selected');
+            (this._shownSelected || (this._shownSelected = new Set())).add(file);
+        }
+        if (file === this.currentFile) {
+            div.classList.add('active');
+            this._activeGridEl = div;
+        }
 
         const img = document.createElement('img');
         img._file = file;
@@ -1826,12 +1882,20 @@ const app = {
         this.updateSelectionUI();
     },
 
+    // Grid highlight: only tiles whose state changed are touched
     updateSelectionUI() {
-        const gridItems = this.elements.gridView.children;
-        for (let i = 0; i < gridItems.length; i++) {
-            gridItems[i].classList.toggle('selected', this.selection.has(gridItems[i]._file));
-            gridItems[i].classList.toggle('active', gridItems[i]._file === this.currentFile);
+        const shown = this._shownSelected || new Set();
+        for (const f of shown) {
+            if (!this.selection.has(f) && f._gridEl) f._gridEl.classList.remove('selected');
         }
+        for (const f of this.selection) {
+            if (f._gridEl && (!shown.has(f) || !f._gridEl.classList.contains('selected'))) f._gridEl.classList.add('selected');
+        }
+        this._shownSelected = new Set(this.selection);
+        const active = this.currentFile && this.currentFile._gridEl;
+        if (this._activeGridEl && this._activeGridEl !== active) this._activeGridEl.classList.remove('active');
+        if (active) active.classList.add('active');
+        this._activeGridEl = active || null;
 
         if (this.selection.size > 0) {
             this.elements.selectionBar.classList.remove('hidden');
@@ -2929,12 +2993,22 @@ const app = {
         const label = `${filesToRotate.length} photo${filesToRotate.length > 1 ? 's' : ''}`;
         this.beginTask(taskKey, `Rotating ${label}…`);
 
-        // Drain sequentially to avoid memory spikes; files already being
-        // saved by another batch are awaited, not double-processed.
+        // Save a few files at a time (rotations only read file headers now,
+        // so memory stays flat); files already being saved by another batch
+        // are awaited, not double-processed.
         let ok = true;
-        for (const file of filesToRotate) {
-            ok = (await this.processRotationQueue(file)) && ok;
-        }
+        let next = 0, done = 0;
+        const worker = async () => {
+            while (next < filesToRotate.length) {
+                const file = filesToRotate[next++];
+                ok = (await this.processRotationQueue(file)) && ok;
+                done++;
+                if (filesToRotate.length >= 50 && done % 25 === 0) {
+                    this.updateTask(taskKey, `Rotating ${done}/${filesToRotate.length}…`);
+                }
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(4, filesToRotate.length) }, worker));
 
         this.endTask(taskKey);
         this.showToast(ok ? `Rotated ${label} ${deg > 0 ? 'right' : 'left'}` : 'Some photos failed to rotate', 2000);
@@ -2982,55 +3056,63 @@ const app = {
 
                 // HARDENING: Fresh handle check
                 const fileData = await fileEntry.handle.getFile();
-                const originalBuf = await fileData.arrayBuffer();
+                const isJpeg = /\.jpe?g$/i.test(fileEntry.name);
+                const startUndo = (entry) => {
+                    if (undoEntry || fileEntry._undoing) return;
+                    undoEntry = entry;
+                    this.pushUndo(entry);
+                };
+                const verify = () => this.dirHandle
+                    ? this.verifyPermission(this.dirHandle, true)
+                    : this.verifyPermission(fileEntry.handle, true);
 
-                // One undo entry per rotation gesture. A lossless JPEG
-                // rotation is undone by rotating back, so no copy of the file
-                // has to stay in memory (with 30 MB scans, ten copies were
-                // 300 MB). Anything that re-encodes keeps the original bytes;
-                // the Blob snapshots them before the in-place patch below.
-                if (!undoEntry && !fileEntry._undoing) {
-                    const lossless = /\.jpe?g$/i.test(fileEntry.name) &&
-                        this.rotateJpegLossless(originalBuf.slice(0), 90) !== null;
-                    undoEntry = lossless
-                        ? { type: 'rotate', file: fileEntry, deg: 0, label: 'rotation' }
-                        : { type: 'bytes', file: fileEntry, blob: new Blob([originalBuf], { type: fileData.type }), label: 'rotation' };
-                    this.pushUndo(undoEntry);
-                }
-
-                // Fast path for JPEGs: patch the EXIF orientation flag.
-                // No decode, no re-encode, no quality loss — near-instant.
-                let blob = null;
-                if (/\.jpe?g$/i.test(fileEntry.name)) {
-                    try {
-                        blob = this.rotateJpegLossless(originalBuf, normalizedDeg);
-                    } catch (e) {
-                        this.log('Lossless rotation unavailable, re-encoding: ' + e.message);
+                // Fastest path: the JPEG already has an orientation tag, so
+                // only those two bytes change. They're written in place; the
+                // browser copies the rest of the file natively, so nothing
+                // beyond the header is read into memory (big scans, bulk
+                // rotations). Undone by rotating back — no copy kept.
+                let written = false;
+                if (isJpeg) {
+                    const patch = await this.orientationPatch(fileData, normalizedDeg);
+                    if (patch) {
+                        startUndo({ type: 'rotate', file: fileEntry, deg: 0, label: 'rotation' });
+                        await verify();
+                        written = await this.writeInPlace(fileEntry.handle, patch);
                     }
                 }
 
-                // Fallback: canvas re-encode (PNG stays pixel-lossless).
-                // Slow path, so it registers in the task pill.
-                if (!blob) {
-                    this.beginTask('rot:' + fileEntry.name, `Rotating ${fileEntry.name}…`);
-                    try {
-                        blob = await this.rotateByReencoding(fileData, fileEntry.name, normalizedDeg);
-                    } finally {
-                        this.endTask('rot:' + fileEntry.name);
+                if (!written) {
+                    const originalBuf = await fileData.arrayBuffer();
+                    // Lossless rewrite (adds an orientation tag to a JPEG that
+                    // has none — typical scanner output); this doesn't touch
+                    // originalBuf, so it can still serve as the undo copy.
+                    let blob = null;
+                    if (isJpeg) {
+                        try {
+                            blob = this.rotateJpegLossless(originalBuf, normalizedDeg);
+                        } catch (e) {
+                            this.log('Lossless rotation unavailable, re-encoding: ' + e.message);
+                        }
                     }
+                    if (blob) {
+                        startUndo({ type: 'rotate', file: fileEntry, deg: 0, label: 'rotation' });
+                    } else {
+                        // Re-encoding: undo needs the original bytes
+                        startUndo({ type: 'bytes', file: fileEntry, blob: new Blob([originalBuf], { type: fileData.type }), label: 'rotation' });
+                        // Slow path, so it registers in the task pill
+                        this.beginTask('rot:' + fileEntry.name, `Rotating ${fileEntry.name}…`);
+                        try {
+                            blob = await this.rotateByReencoding(fileData, fileEntry.name, normalizedDeg);
+                        } finally {
+                            this.endTask('rot:' + fileEntry.name);
+                        }
+                    }
+                    if (!blob) throw new Error('Blob conversion failed');
+                    await verify();
+                    const writable = await fileEntry.handle.createWritable();
+                    await writable.write(blob);
+                    await writable.close();
                 }
-                if (!blob) throw new Error('Blob conversion failed');
-
-                // Re-verify permission
-                if (this.dirHandle) {
-                    await this.verifyPermission(this.dirHandle, true);
-                } else {
-                    await this.verifyPermission(fileEntry.handle, true);
-                }
-
-                const writable = await fileEntry.handle.createWritable();
-                await writable.write(blob);
-                await writable.close();
 
                 // Refresh sort metadata — the write changed both
                 const newFileData = await fileEntry.handle.getFile();

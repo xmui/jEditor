@@ -15,8 +15,10 @@ const ImageMeta = {
     // ---- JPEG structure ----
 
     // Header segments from SOI up to (and including) SOS. SOS covers the
-    // rest of the file. Returns [{ marker, start, end }] or null.
-    jpegSegments(bytes) {
+    // rest of the file. Returns [{ marker, start, end }] or null. With
+    // partial, bytes may be just the head of a file: the segments that fit
+    // are returned instead of null.
+    jpegSegments(bytes, { partial = false } = {}) {
         if (bytes.length < 4 || bytes[0] !== 0xFF || bytes[1] !== 0xD8) return null;
         const segs = [];
         let p = 2;
@@ -29,11 +31,12 @@ const ImageMeta = {
                 return segs;
             }
             const len = (bytes[p + 2] << 8) | bytes[p + 3];
-            if (len < 2 || p + 2 + len > bytes.length) return null;
+            if (len < 2) return null;
+            if (p + 2 + len > bytes.length) return partial ? segs : null;
             segs.push({ marker: m, start: p, end: p + 2 + len });
             p += 2 + len;
         }
-        return null;
+        return partial ? segs : null;
     },
 
     // Does the segment payload start with this ASCII signature?
