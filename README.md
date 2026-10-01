@@ -26,8 +26,21 @@ Changes are saved to the original files as you go.
 - **Rotation.** JPEGs are rotated by changing the EXIF orientation tag, so the image data isn't recompressed. This works on scanner files that have no orientation tag yet. PNG and WebP are re-encoded; PNG stays lossless. GIFs aren't rotated, because that would lose the animation.
 - **Crop and straighten.** The photo is re-encoded in its original format (JPEG at quality 95). EXIF data (capture date, camera), the ICC colour profile, DPI, XMP and IPTC are carried over. The orientation tag is reset, since the pixels are now upright.
 - **Rename.** Files are renamed in place. If the new names overlap the old ones (shifting a numbered sequence, say), they go through temporary names first. If a rename fails part-way, every file gets its original name back.
-- **Delete.** Photos are moved to a `.jeditor-trash` folder inside the opened folder, not deleted. `Ctrl+Z` restores them. Emptying that folder is up to you.
+- **Delete.** Photos are moved to `.jeditor/trash` inside the opened folder, not deleted. `Ctrl+Z` restores them.
 - **Export.** Copies go to a `jEditor Export` folder, optionally resized.
+
+## The .jeditor folder
+
+jEditor keeps its own data in a `.jeditor` folder inside the folder you open:
+
+- `trash/` holds deleted photos.
+- `cache/` holds thumbnails and duplicate-finder data.
+
+Because the cache travels with the folder, a second computer opening the same order (on a shared drive, say) gets its thumbnails and duplicate data straight away. In a 2000-photo test, thumbnails were ready in about 10 seconds instead of 27, and a duplicate scan took 5 seconds instead of 20. The large screen-sized previews aren't stored there, to keep the folder small.
+
+When an order is finished, use **Clean Up Folder…** (right-click the grid background, or in Customize controls). It empties the trash and removes the cache; your photos aren't touched. Do this before copying an order to a customer: on Windows a folder starting with a dot is not hidden, so `.jeditor` would otherwise go along with the photos, deleted ones included. To stop jEditor writing a cache at all, untick **Save cache in the folder** in Customize controls. The trash is still used either way.
+
+Folders opened with earlier versions may have a `.jeditor-trash` folder; Clean Up Folder removes that too.
 
 Some programs, mostly older print and lab software, ignore the EXIF orientation tag and will show a rotated JPEG the old way round. Cropping writes the rotation into the pixels, so a photo that has been cropped is always upright.
 
