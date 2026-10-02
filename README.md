@@ -129,9 +129,10 @@ The app is plain JavaScript with no dependencies, in `app/`:
 - `script.js`: viewer, grid, rotation, file operations, shortcuts
 - `crop.js`: crop and straighten
 - `crop-auto.js`: finding the print on a scan (Auto)
+- `changelog.js`: the list of changes shown in What's New
 - `meta.js`: reading and copying JPEG/PNG metadata
 - `dupes.js`: duplicate finder
 
-To release, bump the version, commit, and merge to `main`. The Release workflow then tags the version, builds `standalone.html` and publishes a GitHub Release, and the Pages workflow builds and deploys the web app. Both builds inline every script and stylesheet into one page, so a browser never ends up mixing files from two versions. The tests fail if `app/version.js` and `package.json` disagree.
+To release, bump the version, add what changed to the top of `app/changelog.js`, commit, and merge to `main`. The changelog is what the app shows under **What's New** and what the GitHub Release notes say; the tests fail if the current version has no entry. The Release workflow then tags the version, builds `standalone.html` and publishes a GitHub Release, and the Pages workflow builds and deploys the web app. Both builds inline every script and stylesheet into one page, so a browser never ends up mixing files from two versions. The tests fail if `app/version.js` and `package.json` disagree.
 
 If you change `app/icon.png`, run `node scripts/make-icons.js` to regenerate the app icons. On Windows without Node, `start.bat` serves the app locally.

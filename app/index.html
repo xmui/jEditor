@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>jEditor | High-Performance Image Editor</title>
+    <title>jEditor</title>
     <meta name="description" content="A minimalist, high-performance image editor with bulk rotation and cropping.">
     <meta name="theme-color" content="#0c0c0c">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -12,6 +12,7 @@
     <link rel="icon" type="image/png" href="icon.png">
     <link rel="apple-touch-icon" href="icon.png">
     <script src="version.js"></script>
+    <script src="changelog.js"></script>
     <script src="meta.js"></script>
     <script src="folder-cache.js"></script>
     <script src="crop-auto.js"></script>
@@ -32,6 +33,7 @@
                 <button id="btn-browse-folder" class="browse-btn">Open Folder</button>
                 <p class="drop-hint">or drag and drop images here</p>
                 <p class="drop-hint">Press <kbd>?</kbd> for keyboard shortcuts</p>
+                <p class="drop-hint"><button id="btn-whatsnew-start" class="link-btn">What's new</button></p>
             </div>
         </div>
 
@@ -138,6 +140,13 @@
                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="2" y="6" width="20" height="12" rx="2" />
                             <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" />
+                        </svg>
+                    </button>
+                    <button id="btn-whatsnew" data-hc="whatsnew" title="What's New">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4z" />
+                            <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" />
                         </svg>
                     </button>
                     <button id="btn-customize" data-hc="customize" title="Customize Controls">
@@ -447,6 +456,19 @@
     </div>
 
     <!-- Keyboard Shortcuts panel (?) -->
+    <div id="whatsnew-panel" class="shortcuts-overlay hidden">
+        <div class="shortcuts-card whatsnew-card" role="dialog" aria-label="What's new">
+            <div class="shortcuts-head">
+                <h3>What's New</h3>
+                <button id="whatsnew-close" title="Close (Esc)">×</button>
+            </div>
+            <div id="whatsnew-list" class="whatsnew-list"></div>
+            <div class="shortcuts-foot">
+                <span>Downloads and every release: <a href="https://github.com/xmui/jEditor/releases" target="_blank" rel="noopener">GitHub releases</a></span>
+            </div>
+        </div>
+    </div>
+
     <div id="shortcuts-panel" class="shortcuts-overlay hidden">
         <div class="shortcuts-card" role="dialog" aria-label="Keyboard shortcuts">
             <div class="shortcuts-head">

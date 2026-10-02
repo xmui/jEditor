@@ -34,4 +34,7 @@ if (fs.existsSync(lockFile)) {
 }
 
 console.log(`Version bumped to ${version} (app/version.js, package.json, package-lock.json).`);
+if (!fs.readFileSync(path.join(ROOT, 'app', 'changelog.js'), 'utf8').includes(`version: '${version}'`)) {
+    console.log(`Add what changed in ${version} to the top of app/changelog.js (shown in What's New and used as the release notes).`);
+}
 console.log('Commit and merge to main — the Release workflow tags and publishes automatically.');

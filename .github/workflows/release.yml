@@ -45,11 +45,16 @@ jobs:
         if: steps.exists.outputs.exists == 'false'
         run: node scripts/build-standalone.js
 
+      - name: Release notes from app/changelog.js
+        if: steps.exists.outputs.exists == 'false'
+        run: node scripts/release-notes.js > release-notes.md
+
       - name: Publish release
         if: steps.exists.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: jEditor v${{ steps.version.outputs.version }}
+          body_path: release-notes.md
           files: standalone.html
           generate_release_notes: true

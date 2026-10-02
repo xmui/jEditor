@@ -202,6 +202,8 @@ async function newPage(browser, url) {
     page.on('console', m => { if (m.type() === 'error') issues.errors.push('CONSOLE: ' + m.text()); });
     page.on('requestfailed', r => issues.failedRequests.push(r.url()));
     page.on('response', r => { if (r.status() >= 400) issues.failedRequests.push(r.status() + ' ' + r.url()); });
+    // THROTTLE=6 npm test: run pages on a slowed CPU, to catch tests that rely on timing
+    if (process.env.THROTTLE) { const cdp = await page.context().newCDPSession(page); await cdp.send('Emulation.setCPUThrottlingRate', { rate: +process.env.THROTTLE }); }
     await page.goto(url, { waitUntil: 'networkidle' });
     await page.evaluate(PAGE_HELPERS);
     return { page, issues };
@@ -316,6 +318,83 @@ async function newPage(browser, url) {
         }));
         check('APP_VERSION matches package.json', v.appVersion === pkgVersion, `${v.appVersion} vs ${pkgVersion}`);
         check('version shown on start screen', v.title === `jEditor ${pkgVersion}`, v.title);
+        await page.close();
+    }
+
+    // ---- 1b. What's New (changelog) ----
+    console.log("what's new");
+    {
+        const { loadChangelog, notesFor } = require('../scripts/release-notes.js');
+        const log = loadChangelog();
+        const pkgVersion = require(path.join(ROOT, 'package.json')).version;
+        check('changelog has an entry for this version, at the top', log[0] && log[0].version === pkgVersion,
+            `top: ${log[0] && log[0].version}, package.json: ${pkgVersion} — add an entry to app/changelog.js`);
+        const num = (v) => v.split('.').map(Number);
+        const newer = (a, b) => { const x = num(a), y = num(b); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i]; return false; };
+        check('changelog is newest first, one entry per version', log.every((e, i) => i === 0 || newer(log[i - 1].version, e.version)));
+        check('changelog entries have a date and items', log.every(e => /^\d{4}-\d{2}-\d{2}$/.test(e.date) &&
+            Array.isArray(e.items) && e.items.length && e.items.every(t => typeof t === 'string' && t.trim())));
+        const notes = notesFor(pkgVersion, log);
+        check('release notes come from the changelog', !!notes && notes.startsWith('- ' + log[0].items[0]));
+
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(() => {
+            const out = {};
+            out.startLink = document.getElementById('btn-whatsnew-start').textContent;
+            document.getElementById('btn-whatsnew-start').click();
+            out.open = app.isWhatsNewOpen();
+            const secs = [...document.querySelectorAll('#whatsnew-list section')];
+            out.sections = secs.length;
+            out.firstIsCurrent = !!secs[0].querySelector('.wn-tag.current') && secs[0].textContent.includes(APP_VERSION);
+            out.keys = document.querySelectorAll('#whatsnew-list kbd').length;
+            out.noRawBackticks = !document.getElementById('whatsnew-list').textContent.includes('`');
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            out.closed = !app.isWhatsNewOpen();
+            out.inMore = app.uiPrefs.placement.whatsnew === 'more' && !!app.headerButton('whatsnew');
+            return out;
+        });
+        // First visit: no notice. After an update: one notice, once.
+        const notice = () => page.evaluate(async () => {
+            await new Promise(res => setTimeout(res, 900));
+            const t = document.querySelector('#toast-stack [data-key="whatsnew"]');
+            return t ? t.textContent : null;
+        });
+        await page.evaluate(() => localStorage.removeItem('jeditor.seenVersion'));
+        await page.reload({ waitUntil: 'networkidle' });
+        const firstVisit = await notice();
+        await page.evaluate(() => localStorage.setItem('jeditor.seenVersion', '1.11.0'));
+        await page.reload({ waitUntil: 'networkidle' });
+        const afterUpdate = await notice();
+        const marked = await page.evaluate(() => {
+            document.querySelector('#toast-stack [data-key="whatsnew"] .toast-action').click();
+            const tags = [...document.querySelectorAll('#whatsnew-list section')].map(sec => {
+                const t = sec.querySelector('.wn-tag');
+                return t ? t.textContent : '';
+            });
+            return { open: app.isWhatsNewOpen(), tags: tags.slice(0, CHANGELOG.findIndex(e => e.version === '1.11.0') + 1) };
+        });
+        await page.reload({ waitUntil: 'networkidle' });
+        const nextVisit = await notice();
+        // An older cached copy, then this version again: still not repeated
+        await page.evaluate(() => localStorage.setItem('jeditor.seenVersion', '99.0.0'));
+        await page.reload({ waitUntil: 'networkidle' });
+        const afterNewer = await notice();
+        const keptNewest = await page.evaluate(() => localStorage.getItem('jeditor.seenVersion'));
+        const windowTitle = await page.title();
+
+        check('start screen links to What\'s New', r.startLink.includes(require(path.join(ROOT, 'package.json')).version), r.startLink);
+        check("What's New lists every version, this one marked", r.open && r.sections === log.length && r.firstIsCurrent, JSON.stringify(r));
+        check("What's New shows `keys` as key caps", r.keys > 0 && r.noRawBackticks);
+        check("Esc closes What's New; control sits in More", r.closed && r.inMore);
+        check('no update notice on a first visit', firstVisit === null, String(firstVisit));
+        check('update notice once after an update, links to What\'s New', afterUpdate && afterUpdate.includes('Updated to') && marked.open && nextVisit === null,
+            `${afterUpdate} / ${nextVisit}`);
+        check('notice never repeats for a version already announced', afterNewer === null && keptNewest === '99.0.0', `${afterNewer} / ${keptNewest}`);
+        check('version in the window title', windowTitle === `jEditor ${pkgVersion}`, windowTitle);
+        check('versions since the last one used are marked New',
+            marked.tags[0] === 'This version' && marked.tags.slice(1, -1).every(t => t === 'New') && marked.tags[marked.tags.length - 1] === '',
+            JSON.stringify(marked.tags));
+        check("what's new suite: no JS errors", issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
@@ -897,7 +976,7 @@ async function newPage(browser, url) {
             return out;
         });
         check('default main controls: info, view, refresh, crop', r.defaultMain === 'info,view,refresh,crop', r.defaultMain);
-        check('extras live in More (fit, strip, fullscreen, dupes, keys, customize)', r.defaultExtras === 'fit,strip,fullscreen,dupes,keys,customize', r.defaultExtras);
+        check('extras live in More (fit, strip, fullscreen, dupes, keys, whatsnew, customize)', r.defaultExtras === 'fit,strip,fullscreen,dupes,keys,whatsnew,customize', r.defaultExtras);
         check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
         check('reorder + hide + promote via prefs', r.reordered === 'crop,info' && r.refreshHidden && r.fullscreenMain,
             JSON.stringify({ o: r.reordered, h: r.refreshHidden, f: r.fullscreenMain }));
@@ -1093,7 +1172,8 @@ async function newPage(browser, url) {
             // Quarter turn only → lossless EXIF rotation, not a re-encode
             ed.rotateQuarter(1);
             await app.saveCrop();
-            await new Promise(res => setTimeout(res, 100));
+            // The rotation is written in the background: wait for it, not a fixed time
+            for (let i = 0; i < 150 && readOrientation(h.handle.bytes) !== 6; i++) await new Promise(res => setTimeout(res, 20));
             out.quarterLossless = readOrientation(h.handle.bytes) === 6;
 
             // "Previous" reapplies the last crop
@@ -1240,7 +1320,7 @@ async function newPage(browser, url) {
             const f2 = frame();
             ptr('pointerdown', f2[0], f2[1]); ptr('pointermove', f2[0] + 80, f2[1] + 60); ptr('pointerup', f2[0] + 80, f2[1] + 60);
             out.resized = ed.rect.x0 > -ed.W / 2 + 10 && ed.rect.y0 > -ed.H / 2 + 10;
-            await new Promise(res => setTimeout(res, ed.ANIM_MS + 120));
+            for (let i = 0; i < 150 && (ed._anim || ed.drag); i++) await new Promise(res => setTimeout(res, 20)); // the glide
             const f3 = frame(), st3 = stage();
             out.settled = Math.abs((f3[0] + f3[2]) / 2 - st3.width / 2) < 1 && Math.abs((f3[1] + f3[3]) / 2 - st3.height / 2) < 1;
             app.cancelCrop();
@@ -1460,19 +1540,36 @@ async function newPage(browser, url) {
             out.cropDims = `${CropEditor.W}x${CropEditor.H}`;
             app.cancelCrop();
 
-            // Double-click: in to 100% on the clicked spot, again back to fit
-            const view = document.getElementById('current-image');
-            const dbl = (x, y) => view.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: x, clientY: y }));
+            // Double-click: in to 100% on the clicked spot, again back to fit.
+            // Start and measure only when nothing is still in flight: the
+            // earlier rotation's save, the original replacing the preview,
+            // the zoom animation (a busy CI machine runs all of these late)
+            const steady = async () => {
+                let el = null;
+                for (let i = 0; i < 200; i++) {
+                    await new Promise(res => setTimeout(res, 25));
+                    el = document.getElementById('current-image');
+                    if (!big._rotationQueue && !big.pendingRotation && !big.savingRotation && el.complete &&
+                        (app.zoom <= 1 || !el._isPreview) && !el.getAnimations().some(an => an.playState === 'running')) break;
+                }
+                await Promise.all(el.getAnimations().map(an => an.finished.catch(() => {})));
+                return el;
+            };
+            const dbl = (x, y) => document.getElementById('current-image')
+                .dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: x, clientY: y }));
+            const view = await steady();
             const b0 = view.getBoundingClientRect();
             // Mouse events carry whole pixels
             const px = Math.round(b0.left + b0.width * 0.3), py = Math.round(b0.top + b0.height * 0.6);
             dbl(px, py);
             const oneToOne = big._dims.w / (view.offsetWidth * app.currentFitScale());
             out.dblZoom = Math.abs(app.zoom - Math.max(2, Math.min(8, oneToOne))) < 0.01;
-            await new Promise(res => setTimeout(res, 400)); // let the zoom transition finish
-            const b1 = view.getBoundingClientRect();
+            const shown = await steady();
+            const b1 = shown.getBoundingClientRect();
             const ux = (px - b0.left) / b0.width, uy = (py - b0.top) / b0.height;
             out.dblDrift = Math.hypot(b1.left + b1.width * ux - px, b1.top + b1.height * uy - py);
+            out.dblState = JSON.stringify({ zoom: app.zoom, pan: [app.panX, app.panY], swapped: shown !== view,
+                preview: !!shown._isPreview, t0: view.style.transform, t1: shown.style.transform });
             dbl(px + 30, py + 30);
             out.dblFit = app.zoom === 1 && app.panX === 0 && app.panY === 0;
             return { ...out, expectCrop: `${Math.round(edge * 1.5)}x${edge * 2}` };
@@ -1484,7 +1581,7 @@ async function newPage(browser, url) {
         check('rotating a previewed photo shows instantly', r.rotatedShown);
         check('zooming in swaps to the full-resolution original', r.upgraded && r.zoomKept);
         check('crop works at original resolution after rotation', r.cropDims === r.expectCrop, `${r.cropDims} vs ${r.expectCrop}`);
-        check('double-click zooms to 100% on the clicked spot', r.dblZoom && r.dblDrift < 2, `drift ${r.dblDrift}px`);
+        check('double-click zooms to 100% on the clicked spot', r.dblZoom && r.dblDrift < 2, `drift ${r.dblDrift}px ${r.dblState}`);
         check('double-click again zooms back to fit', r.dblFit);
         check('preview suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
