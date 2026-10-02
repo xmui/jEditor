@@ -14,7 +14,7 @@
     <script>
 // Single source of truth for the app version. Bump with:  npm run bump 1.x.y
 // (keeps package.json in sync and busts the service worker cache)
-const APP_VERSION = '1.12.0';
+const APP_VERSION = '1.12.1';
 
 </script>
     <script>
@@ -8782,9 +8782,10 @@ const app = {
                 if (!ok) throw new Error('could not restore the old names');
                 this.showToast(`Rename undone (${entry.items.length} file${entry.items.length === 1 ? '' : 's'})`);
             } else if (entry.type === 'trash') {
-                for (const it of entry.items) await this.restoreFromTrash(it);
+                const n = await this.restoreManyFromTrash(entry.items);
                 this.sortFiles();
-                this.showToast(`Restored ${entry.items.length} photo${entry.items.length > 1 ? 's' : ''}`);
+                if (n < entry.items.length) this.showToast(`Restored ${n} of ${entry.items.length} photos — the rest are still in .jeditor/trash`, 4000);
+                else this.showToast(`Restored ${n} photo${n > 1 ? 's' : ''}`);
             }
         } catch (e) {
             console.error('Undo failed:', e);
@@ -8826,65 +8827,125 @@ const app = {
     },
 
     // ---- Trash (safe delete) ----
+    //
+    // Photos are moved into .jeditor/trash: a rename on disk, instant even
+    // for big scans. Where moving isn't supported they're copied and the
+    // original deleted. Several at a time, and the screen is updated once
+    // at the end, so deleting hundreds of photos takes seconds.
+
+    TRASH_CONCURRENCY: 6,
 
     async moveToTrash(files) {
-        const list = files.filter(Boolean);
+        const list = [...new Set(files.filter(Boolean))];
         if (!list.length) return;
         if (!this.ensureWritable()) return;
         if (!this.dirHandle) {
             this.showToast('Deleting requires opening a folder (not loose files)');
             return;
         }
-        const undoItems = [];
+        let trashDir;
         try {
-            const trashDir = await FolderCache.trashDir(this);
-            for (const f of list) {
-                try {
-                    if (f._rotationQueue) await f._rotationQueue;
-                    const data = await f.handle.getFile();
-                    let trashName = f.name;
-                    try {
-                        await trashDir.getFileHandle(trashName);
-                        trashName = `${Date.now()}_${f.name}`; // avoid collision
-                    } catch (e) { /* name is free */ }
-                    const th = await trashDir.getFileHandle(trashName, { create: true });
-                    const w = await th.createWritable();
-                    await w.write(data);
-                    await w.close();
-                    await (f.parentDir || this.dirHandle).removeEntry(f.name);
-                    undoItems.push({ file: f, trashDir, trashName });
-                    this.removeFileFromApp(f);
-                } catch (e) {
-                    console.error('Trash failed for', f.name, e);
-                    this.showToast(`Couldn't delete ${f.name}`);
-                }
-            }
+            trashDir = await FolderCache.trashDir(this);
         } catch (e) {
             console.error('Trash unavailable:', e);
             this.showToast('Delete failed: ' + e.message);
+            return;
         }
+        // Names already in the trash: one listing, not a lookup per photo
+        const taken = new Set();
+        try { for await (const e of trashDir.values()) taken.add(e.name.toLowerCase()); } catch (e) { /* empty */ }
+
+        const many = list.length > 1;
+        if (many) this.beginTask('trash', `Deleting 0/${list.length}`);
+        const moved = new Set();
+        const undoItems = [];
+        let failed = 0, next = 0, done = 0;
+        const stamp = Date.now();
+        const worker = async () => {
+            while (next < list.length) {
+                const i = next++;
+                const f = list[i];
+                try {
+                    if (f._rotationQueue) await f._rotationQueue;
+                    let trashName = f.name;
+                    if (taken.has(trashName.toLowerCase())) trashName = `${stamp}_${i}_${f.name}`; // avoid collision
+                    taken.add(trashName.toLowerCase());
+                    await this.trashOne(f, trashDir, trashName);
+                    moved.add(f);
+                    undoItems.push({ file: f, trashDir, trashName });
+                } catch (e) {
+                    console.error('Trash failed for', f.name, e);
+                    failed++;
+                }
+                done++;
+                if (many && (done % 10 === 0 || done === list.length)) this.updateTask('trash', `Deleting ${done}/${list.length}`);
+            }
+        };
+        try {
+            await Promise.all(Array.from({ length: Math.min(this.TRASH_CONCURRENCY, list.length) }, worker));
+        } finally {
+            if (many) this.endTask('trash');
+        }
+        this.removeFilesFromApp(list.filter(f => moved.has(f)));
+
         if (undoItems.length) {
             this.pushUndo({ type: 'trash', items: undoItems });
             this.showToast(`Moved ${undoItems.length} to the trash (.jeditor/trash) — Ctrl+Z to restore`, 4000);
         }
+        if (failed) this.showToast(`Couldn't delete ${failed} photo${failed === 1 ? '' : 's'}`, 4000);
+    },
+
+    // One photo into the trash: move it, or copy then delete
+    async trashOne(f, trashDir, trashName) {
+        if (typeof f.handle.move === 'function') {
+            try {
+                await f.handle.move(trashDir, trashName);
+                return;
+            } catch (e) {
+                if (e && e.name === 'NotFoundError') throw e; // the photo is gone
+                // moving not supported here: copy instead
+            }
+        }
+        const data = await f.handle.getFile();
+        const th = await trashDir.getFileHandle(trashName, { create: true });
+        const w = await th.createWritable();
+        await w.write(data);
+        await w.close();
+        await (f.parentDir || this.dirHandle).removeEntry(f.name);
     },
 
     removeFileFromApp(f) {
-        const idx = this.files.indexOf(f);
-        if (idx === -1) return;
-        const wasCurrent = this.currentFile === f;
-        this.files.splice(idx, 1);
-        this.selection.delete(f);
-        if (f._gridEl) f._gridEl.remove();
-        if (f._stripEl) f._stripEl.remove();
+        this.removeFilesFromApp([f]);
+    },
+
+    // Take photos out of the folder view in one pass
+    removeFilesFromApp(gone) {
+        if (!gone.length) return;
+        const set = new Set(gone);
+        const cur = this.currentFile;
+        const wasCurrent = set.has(cur);
+        // The photo after the current one (or before it) takes its place
+        let next = null;
+        if (wasCurrent) {
+            const idx = this.files.indexOf(cur);
+            for (let i = idx + 1; i < this.files.length && !next; i++) if (!set.has(this.files[i])) next = this.files[i];
+            for (let i = idx - 1; i >= 0 && !next; i--) if (!set.has(this.files[i])) next = this.files[i];
+        }
+        let w = 0;
+        for (const f of this.files) if (!set.has(f)) this.files[w++] = f;
+        this.files.length = w;
+        for (const f of gone) {
+            this.selection.delete(f);
+            if (f._gridEl) f._gridEl.remove();
+            if (f._stripEl) f._stripEl.remove();
+        }
 
         if (this.files.length === 0) {
             this.currentFile = null;
             this.updateStatusBar();
             this.elements.mainInterface.classList.add('hidden');
             this.elements.dropZone.classList.remove('hidden');
-        } else if (wasCurrent) {
-            const next = this.files[Math.min(idx, this.files.length - 1)];
+        } else if (wasCurrent && next) {
             if (this.viewMode === 'single') {
                 this.loadFile(next);
             } else {
@@ -8897,16 +8958,26 @@ const app = {
         if (ci !== -1) this.elements.fileCount.textContent = `${ci + 1} / ${this.files.length}`;
     },
 
+    // Put a photo back from the trash (undo): moved back, or copied
     async restoreFromTrash(item) {
         const { file, trashDir, trashName } = item;
         const th = await trashDir.getFileHandle(trashName);
-        const data = await th.getFile();
         const dest = file.parentDir || this.dirHandle;
-        const nh = await dest.getFileHandle(file.name, { create: true });
-        const w = await nh.createWritable();
-        await w.write(data);
-        await w.close();
-        await trashDir.removeEntry(trashName);
+        let nh = null;
+        if (typeof th.move === 'function') {
+            try {
+                await th.move(dest, file.name);
+                nh = th;
+            } catch (e) { /* copy instead */ }
+        }
+        if (!nh) {
+            const data = await th.getFile();
+            nh = await dest.getFileHandle(file.name, { create: true });
+            const w = await nh.createWritable();
+            await w.write(data);
+            await w.close();
+            await trashDir.removeEntry(trashName);
+        }
         file.handle = nh;
         const nd = await nh.getFile();
         file.size = nd.size;
@@ -8916,6 +8987,31 @@ const app = {
             this.elements.mainInterface.classList.remove('hidden');
             this.elements.dropZone.classList.add('hidden');
         }
+    },
+
+    async restoreManyFromTrash(items) {
+        const many = items.length > 1;
+        if (many) this.beginTask('restore', `Restoring 0/${items.length}`);
+        let next = 0, done = 0, failed = 0;
+        const worker = async () => {
+            while (next < items.length) {
+                const it = items[next++];
+                try {
+                    await this.restoreFromTrash(it);
+                } catch (e) {
+                    console.error('Restore failed for', it.file.name, e);
+                    failed++;
+                }
+                done++;
+                if (many && (done % 10 === 0 || done === items.length)) this.updateTask('restore', `Restoring ${done}/${items.length}`);
+            }
+        };
+        try {
+            await Promise.all(Array.from({ length: Math.min(this.TRASH_CONCURRENCY, items.length) }, worker));
+        } finally {
+            if (many) this.endTask('restore');
+        }
+        return items.length - failed;
     },
 
     // ---- Capture-date sort support ----
