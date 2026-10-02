@@ -202,6 +202,8 @@ async function newPage(browser, url) {
     page.on('console', m => { if (m.type() === 'error') issues.errors.push('CONSOLE: ' + m.text()); });
     page.on('requestfailed', r => issues.failedRequests.push(r.url()));
     page.on('response', r => { if (r.status() >= 400) issues.failedRequests.push(r.status() + ' ' + r.url()); });
+    // THROTTLE=6 npm test: run pages on a slowed CPU, to catch tests that rely on timing
+    if (process.env.THROTTLE) { const cdp = await page.context().newCDPSession(page); await cdp.send('Emulation.setCPUThrottlingRate', { rate: +process.env.THROTTLE }); }
     await page.goto(url, { waitUntil: 'networkidle' });
     await page.evaluate(PAGE_HELPERS);
     return { page, issues };
@@ -1162,7 +1164,8 @@ async function newPage(browser, url) {
             // Quarter turn only → lossless EXIF rotation, not a re-encode
             ed.rotateQuarter(1);
             await app.saveCrop();
-            await new Promise(res => setTimeout(res, 100));
+            // The rotation is written in the background: wait for it, not a fixed time
+            for (let i = 0; i < 150 && readOrientation(h.handle.bytes) !== 6; i++) await new Promise(res => setTimeout(res, 20));
             out.quarterLossless = readOrientation(h.handle.bytes) === 6;
 
             // "Previous" reapplies the last crop
@@ -1309,7 +1312,7 @@ async function newPage(browser, url) {
             const f2 = frame();
             ptr('pointerdown', f2[0], f2[1]); ptr('pointermove', f2[0] + 80, f2[1] + 60); ptr('pointerup', f2[0] + 80, f2[1] + 60);
             out.resized = ed.rect.x0 > -ed.W / 2 + 10 && ed.rect.y0 > -ed.H / 2 + 10;
-            await new Promise(res => setTimeout(res, ed.ANIM_MS + 120));
+            for (let i = 0; i < 150 && (ed._anim || ed.drag); i++) await new Promise(res => setTimeout(res, 20)); // the glide
             const f3 = frame(), st3 = stage();
             out.settled = Math.abs((f3[0] + f3[2]) / 2 - st3.width / 2) < 1 && Math.abs((f3[1] + f3[3]) / 2 - st3.height / 2) < 1;
             app.cancelCrop();
@@ -1538,7 +1541,14 @@ async function newPage(browser, url) {
             dbl(px, py);
             const oneToOne = big._dims.w / (view.offsetWidth * app.currentFitScale());
             out.dblZoom = Math.abs(app.zoom - Math.max(2, Math.min(8, oneToOne))) < 0.01;
-            await new Promise(res => setTimeout(res, 400)); // let the zoom transition finish
+            // Measure once the zoom animation has finished (not after a fixed
+            // time: a busy machine can run late) and the photo is the one shown
+            for (let i = 0; i < 100; i++) {
+                await new Promise(res => setTimeout(res, 30));
+                const shown = document.getElementById('current-image');
+                if (shown === view && !view.getAnimations().some(a => a.playState === 'running')) break;
+            }
+            await Promise.all(view.getAnimations().map(a => a.finished.catch(() => {})));
             const b1 = view.getBoundingClientRect();
             const ux = (px - b0.left) / b0.width, uy = (py - b0.top) / b0.height;
             out.dblDrift = Math.hypot(b1.left + b1.width * ux - px, b1.top + b1.height * uy - py);
