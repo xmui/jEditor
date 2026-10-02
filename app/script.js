@@ -55,9 +55,11 @@ const app = {
         this.log('App Initializing... v' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'dev'));
 
         // Show the version on the start screen
+        this.checkForUpdateNotice();
         const title = document.getElementById('app-title');
         if (title && typeof APP_VERSION !== 'undefined') {
             title.textContent = 'jEditor ' + APP_VERSION;
+            document.getElementById('btn-whatsnew-start').textContent = `What's new in ${APP_VERSION}`;
         }
 
         // Drag and Drop
@@ -185,6 +187,12 @@ const app = {
         this.elements.btnFullscreen.addEventListener('click', () => this.toggleFullscreen());
         this.elements.btnCustomize.addEventListener('click', () => this.toggleCustomizePanel());
         document.getElementById('btn-shortcuts').addEventListener('click', () => this.toggleShortcutsPanel());
+        document.getElementById('btn-whatsnew').addEventListener('click', () => this.toggleWhatsNew());
+        document.getElementById('btn-whatsnew-start').addEventListener('click', () => this.toggleWhatsNew(true));
+        document.getElementById('whatsnew-close').addEventListener('click', () => this.toggleWhatsNew(false));
+        document.getElementById('whatsnew-panel').addEventListener('mousedown', (e) => {
+            if (e.target === e.currentTarget) this.toggleWhatsNew(false);
+        });
         document.getElementById('btn-dupes').addEventListener('click', () => this.openDupes());
         document.getElementById('cust-shortcuts').addEventListener('click', () => {
             this.toggleCustomizePanel();
@@ -318,15 +326,16 @@ const app = {
         fullscreen: 'Fullscreen',
         dupes: 'Find Duplicates (WIP)',
         keys: 'Keyboard Shortcuts',
+        whatsnew: 'What\'s New',
         customize: 'Customize'
     },
 
     defaultUiPrefs() {
         return {
-            order: ['info', 'view', 'refresh', 'crop', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'customize'],
+            order: ['info', 'view', 'refresh', 'crop', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'whatsnew', 'customize'],
             placement: { // 'main' | 'more' | 'hidden'
                 info: 'main', view: 'main', refresh: 'main', crop: 'main',
-                fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', keys: 'more', customize: 'more'
+                fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', keys: 'more', whatsnew: 'more', customize: 'more'
             },
             vertical: false,
             scale: 1,
@@ -2540,7 +2549,8 @@ const app = {
     // stack vertically instead of overwriting each other. Passing the same
     // `key` updates an existing toast in place (progress → done), and
     // duration 0 keeps a toast up until it is updated with a duration.
-    showToast(message, duration = 3000, key = null) {
+    // action: { label, run } adds a button to the toast
+    showToast(message, duration = 3000, key = null, action = null) {
         let stack = document.getElementById('toast-stack');
         if (!stack) {
             stack = document.createElement('div');
@@ -2558,6 +2568,18 @@ const app = {
             requestAnimationFrame(() => toast.classList.add('visible'));
         }
         toast.textContent = message;
+        if (action) {
+            const btn = document.createElement('button');
+            btn.className = 'toast-action';
+            btn.textContent = action.label;
+            btn.addEventListener('click', () => {
+                toast.classList.remove('visible');
+                setTimeout(() => toast.remove(), 300);
+                action.run();
+            });
+            toast.appendChild(btn);
+            toast.classList.add('has-action');
+        }
 
         if (toast._timer) clearTimeout(toast._timer);
         if (duration > 0) {
@@ -2812,6 +2834,15 @@ const app = {
         // The rename tool handles its own keys
         if (Renamer.isOpen) return;
 
+        // What's New is modal: Esc closes it
+        if (this.isWhatsNewOpen()) {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                this.toggleWhatsNew(false);
+            }
+            return;
+        }
+
         // Shortcuts panel is modal: Esc closes it, other keys go to its inputs
         if (this.isShortcutsOpen()) {
             if (e.key === 'Escape') {
@@ -2927,6 +2958,97 @@ const app = {
         this.elements.imageContainer.style.cursor = this.zoom > 1 ? 'grab' : 'default';
         this.updateImageTransform();
         if (this.zoom > 1) this.ensureFullRes();
+    },
+
+    // ---- What's New (changelog.js) ----
+
+    // -1, 0 or 1, comparing dotted version numbers
+    compareVersions(a, b) {
+        const pa = String(a).split('.').map(Number), pb = String(b).split('.').map(Number);
+        for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+            const d = (pa[i] || 0) - (pb[i] || 0);
+            if (d) return d > 0 ? 1 : -1;
+        }
+        return 0;
+    },
+
+    // Once after an update: a notice linking to what changed. Not on the
+    // very first visit — there's nothing "new" yet.
+    checkForUpdateNotice() {
+        if (typeof APP_VERSION === 'undefined' || typeof CHANGELOG === 'undefined') return;
+        let seen = null;
+        try {
+            seen = localStorage.getItem('jeditor.seenVersion');
+            localStorage.setItem('jeditor.seenVersion', APP_VERSION);
+        } catch (e) { return; /* private mode: no way to show it only once */ }
+        if (!seen || this.compareVersions(APP_VERSION, seen) <= 0) return;
+        this._newSince = seen;
+        setTimeout(() => this.showToast(`Updated to ${APP_VERSION}`, 10000, 'whatsnew',
+            { label: 'What\'s new', run: () => this.toggleWhatsNew(true) }), 600);
+    },
+
+    isWhatsNewOpen() {
+        const p = document.getElementById('whatsnew-panel');
+        return !!p && !p.classList.contains('hidden');
+    },
+
+    toggleWhatsNew(force = null) {
+        const panel = document.getElementById('whatsnew-panel');
+        if (!panel) return;
+        const open = force !== null ? force : panel.classList.contains('hidden');
+        panel.classList.toggle('hidden', !open);
+        this.elements.headerControls.classList.remove('expanded');
+        if (open) {
+            this.renderWhatsNew();
+            document.getElementById('whatsnew-list').scrollTop = 0;
+        }
+    },
+
+    renderWhatsNew() {
+        const list = document.getElementById('whatsnew-list');
+        list.innerHTML = '';
+        const entries = typeof CHANGELOG !== 'undefined' ? CHANGELOG : [];
+        const current = typeof APP_VERSION !== 'undefined' ? APP_VERSION : null;
+        for (const entry of entries) {
+            const sec = document.createElement('section');
+            const h = document.createElement('h4');
+            const v = document.createElement('span');
+            v.className = 'wn-version';
+            v.textContent = entry.version;
+            h.appendChild(v);
+            const d = document.createElement('span');
+            d.className = 'wn-date';
+            const when = new Date(entry.date + 'T12:00:00');
+            d.textContent = isNaN(when) ? entry.date : when.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+            h.appendChild(d);
+            const tag = (text, cls) => {
+                const t = document.createElement('span');
+                t.className = 'wn-tag ' + cls;
+                t.textContent = text;
+                h.appendChild(t);
+            };
+            if (entry.version === current) tag('This version', 'current');
+            else if (this._newSince && this.compareVersions(entry.version, this._newSince) > 0) tag('New', 'new');
+            sec.appendChild(h);
+            const ul = document.createElement('ul');
+            for (const item of entry.items) {
+                const li = document.createElement('li');
+                // `key` → a key cap; everything else stays plain text
+                String(item).split('`').forEach((part, i) => {
+                    if (!part) return;
+                    if (i % 2) {
+                        const k = document.createElement('kbd');
+                        k.textContent = part;
+                        li.appendChild(k);
+                    } else {
+                        li.appendChild(document.createTextNode(part));
+                    }
+                });
+                ul.appendChild(li);
+            }
+            sec.appendChild(ul);
+            list.appendChild(sec);
+        }
     },
 
     // ---- Keyboard Shortcuts panel ----

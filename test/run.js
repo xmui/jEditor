@@ -319,6 +319,75 @@ async function newPage(browser, url) {
         await page.close();
     }
 
+    // ---- 1b. What's New (changelog) ----
+    console.log("what's new");
+    {
+        const { loadChangelog, notesFor } = require('../scripts/release-notes.js');
+        const log = loadChangelog();
+        const pkgVersion = require(path.join(ROOT, 'package.json')).version;
+        check('changelog has an entry for this version, at the top', log[0] && log[0].version === pkgVersion,
+            `top: ${log[0] && log[0].version}, package.json: ${pkgVersion} — add an entry to app/changelog.js`);
+        const num = (v) => v.split('.').map(Number);
+        const newer = (a, b) => { const x = num(a), y = num(b); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i]; return false; };
+        check('changelog is newest first, one entry per version', log.every((e, i) => i === 0 || newer(log[i - 1].version, e.version)));
+        check('changelog entries have a date and items', log.every(e => /^\d{4}-\d{2}-\d{2}$/.test(e.date) &&
+            Array.isArray(e.items) && e.items.length && e.items.every(t => typeof t === 'string' && t.trim())));
+        const notes = notesFor(pkgVersion, log);
+        check('release notes come from the changelog', !!notes && notes.startsWith('- ' + log[0].items[0]));
+
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(() => {
+            const out = {};
+            out.startLink = document.getElementById('btn-whatsnew-start').textContent;
+            document.getElementById('btn-whatsnew-start').click();
+            out.open = app.isWhatsNewOpen();
+            const secs = [...document.querySelectorAll('#whatsnew-list section')];
+            out.sections = secs.length;
+            out.firstIsCurrent = !!secs[0].querySelector('.wn-tag.current') && secs[0].textContent.includes(APP_VERSION);
+            out.keys = document.querySelectorAll('#whatsnew-list kbd').length;
+            out.noRawBackticks = !document.getElementById('whatsnew-list').textContent.includes('`');
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            out.closed = !app.isWhatsNewOpen();
+            out.inMore = app.uiPrefs.placement.whatsnew === 'more' && !!app.headerButton('whatsnew');
+            return out;
+        });
+        // First visit: no notice. After an update: one notice, once.
+        const notice = () => page.evaluate(async () => {
+            await new Promise(res => setTimeout(res, 900));
+            const t = document.querySelector('#toast-stack [data-key="whatsnew"]');
+            return t ? t.textContent : null;
+        });
+        await page.evaluate(() => localStorage.removeItem('jeditor.seenVersion'));
+        await page.reload({ waitUntil: 'networkidle' });
+        const firstVisit = await notice();
+        await page.evaluate(() => localStorage.setItem('jeditor.seenVersion', '1.11.0'));
+        await page.reload({ waitUntil: 'networkidle' });
+        const afterUpdate = await notice();
+        const marked = await page.evaluate(() => {
+            document.querySelector('#toast-stack [data-key="whatsnew"] .toast-action').click();
+            const tags = [...document.querySelectorAll('#whatsnew-list section')].map(sec => {
+                const t = sec.querySelector('.wn-tag');
+                return t ? t.textContent : '';
+            });
+            return { open: app.isWhatsNewOpen(), tags: tags.slice(0, CHANGELOG.findIndex(e => e.version === '1.11.0') + 1) };
+        });
+        await page.reload({ waitUntil: 'networkidle' });
+        const nextVisit = await notice();
+
+        check('start screen links to What\'s New', r.startLink.includes(require(path.join(ROOT, 'package.json')).version), r.startLink);
+        check("What's New lists every version, this one marked", r.open && r.sections === log.length && r.firstIsCurrent, JSON.stringify(r));
+        check("What's New shows `keys` as key caps", r.keys > 0 && r.noRawBackticks);
+        check("Esc closes What's New; control sits in More", r.closed && r.inMore);
+        check('no update notice on a first visit', firstVisit === null, String(firstVisit));
+        check('update notice once after an update, links to What\'s New', afterUpdate && afterUpdate.includes('Updated to') && marked.open && nextVisit === null,
+            `${afterUpdate} / ${nextVisit}`);
+        check('versions since the last one used are marked New',
+            marked.tags[0] === 'This version' && marked.tags.slice(1, -1).every(t => t === 'New') && marked.tags[marked.tags.length - 1] === '',
+            JSON.stringify(marked.tags));
+        check("what's new suite: no JS errors", issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 2. Sort + selection identity ----
     console.log('sort & selection identity');
     {
@@ -897,7 +966,7 @@ async function newPage(browser, url) {
             return out;
         });
         check('default main controls: info, view, refresh, crop', r.defaultMain === 'info,view,refresh,crop', r.defaultMain);
-        check('extras live in More (fit, strip, fullscreen, dupes, keys, customize)', r.defaultExtras === 'fit,strip,fullscreen,dupes,keys,customize', r.defaultExtras);
+        check('extras live in More (fit, strip, fullscreen, dupes, keys, whatsnew, customize)', r.defaultExtras === 'fit,strip,fullscreen,dupes,keys,whatsnew,customize', r.defaultExtras);
         check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
         check('reorder + hide + promote via prefs', r.reordered === 'crop,info' && r.refreshHidden && r.fullscreenMain,
             JSON.stringify({ o: r.reordered, h: r.refreshHidden, f: r.fullscreenMain }));

@@ -1,0 +1,136 @@
+// What's new, newest first. Shown in the app (What's New) and used as the
+// GitHub release notes. Every version bump needs an entry here: the tests
+// check that the first entry is the current APP_VERSION.
+// Text between `backticks` is shown as a key.
+
+const CHANGELOG = [
+    {
+        version: '1.12.2', date: '2026-10-02',
+        items: [
+            'What\'s New: this list, in the More menu and on the start screen. After an update, a notice links to it once.'
+        ]
+    },
+    {
+        version: '1.12.1', date: '2026-10-02',
+        items: [
+            'Deleting many photos at once is much faster: they are moved into the trash instead of copied (300 photos: 13.6 s → 0.2 s). Undo is faster too.',
+            'A progress pill shows while a big delete or restore runs.'
+        ]
+    },
+    {
+        version: '1.12.0', date: '2026-10-01',
+        items: [
+            'Crop and straighten works like Lightroom and Apple Photos: the frame stays in the middle and the photo moves behind it. After resizing, the view zooms so the crop fills the screen.',
+            'Drag inside the frame to move the photo, outside it to rotate. Straightening turns the photo around the middle of the crop instead of shrinking the whole picture.',
+            'Hold `Ctrl` (`⌘` on a Mac) and drag along a horizon or print edge to level it. `Shift` keeps the crop\'s shape, `Alt` resizes from the centre.',
+            'Auto (`Shift+A`) finds the print on a scan, straightens it and crops to its edges. Every photo runs Auto as each photo opens, for working through an order with `Shift+Enter`.',
+            '`Ctrl+Z` and `Ctrl+Shift+Z` undo and redo inside the crop editor.',
+            'Dragging outside the frame no longer draws a new crop box; it rotates instead.'
+        ]
+    },
+    {
+        version: '1.11.3', date: '2026-10-01',
+        items: [
+            'Grid and film-strip tiles show a spinner while their thumbnail loads, instead of a black square.',
+            'Double-click a photo to zoom to 100% on that spot; double-click again to fit.'
+        ]
+    },
+    {
+        version: '1.11.2', date: '2026-10-01',
+        items: [
+            'Fixed the "Preparing previews" pill being unreadable on light photos.',
+            'Scans that are already about screen size open faster.'
+        ]
+    },
+    {
+        version: '1.11.1', date: '2026-10-01',
+        items: [
+            'Fixed the web app sometimes failing to start for a few minutes after an update.'
+        ]
+    },
+    {
+        version: '1.11.0', date: '2026-10-01',
+        items: [
+            'jEditor keeps its data in a `.jeditor` folder inside the photo folder: the trash, plus cached thumbnails and duplicate data. Another computer opening the same order (say on a shared drive) gets them without recomputing.',
+            'Clean Up Folder empties the trash and removes the cache when an order is finished.',
+            'Batch rename: a name plus a sequence number, ordered by the current sort, date taken, name, date modified or size.',
+            'Fixed photos sometimes showing a broken image after rotating.'
+        ]
+    },
+    {
+        version: '1.10.0', date: '2026-10-01',
+        items: [
+            'Smooth with 2000-photo orders: stepping through photos no longer hitches, and the grid and film strip stay quick.',
+            'Rotating many photos at once is about 2.5× faster.',
+            'The duplicate finder uses less memory and no longer freezes the page on big orders.'
+        ]
+    },
+    {
+        version: '1.9.2', date: '2026-10-01',
+        items: [
+            'Undo uses much less memory: rotations are undone by rotating back. Undo keeps up to 50 steps.',
+            '`Ctrl+Shift+D` shows a performance readout, for troubleshooting slowdowns.'
+        ]
+    },
+    {
+        version: '1.9.1', date: '2026-09-28',
+        items: [
+            'The duplicate finder no longer groups unrelated scans: the scanner bed and borders are ignored, and each match shows a percentage.'
+        ]
+    },
+    {
+        version: '1.9.0', date: '2026-09-27',
+        items: [
+            'Rebuilt crop and straighten: always works from the photo on disk, never leaves empty corners, has print-size presets, Previous (reuse the last crop) and Save & Next.',
+            'Crops keep the capture date, camera details, colour profile and DPI.',
+            'Rotating scanner JPEGs is lossless, even when they have no orientation tag.',
+            'Big scans open instantly from a screen-sized preview; zooming in shows the original.',
+            'Keyboard shortcuts can be viewed and changed (`?`).',
+            'Find Duplicates (work in progress): exact copies and re-scans, reviewed side by side.'
+        ]
+    },
+    {
+        version: '1.8.1', date: '2026-07-09',
+        items: ['The progress pill and messages moved to the top left, clear of the controls.']
+    },
+    {
+        version: '1.8.0', date: '2026-07-09',
+        items: [
+            'Install jEditor as an app from Chrome or Edge; it works offline.',
+            'Each version is published as a GitHub release with a single-file download.'
+        ]
+    },
+    {
+        version: '1.7.0', date: '2026-07-09',
+        items: [
+            'Customize the controls: reorder them, move them into More or hide them, make the pill vertical and change the UI size.',
+            'The film strip can be resized by dragging its top edge.',
+            'One pill shows all background work in progress.'
+        ]
+    },
+    {
+        version: '1.6.0', date: '2026-07-09',
+        items: [
+            'Undo (`Ctrl+Z`) for rotations, crops, renames and deletes.',
+            'Delete moves photos to a trash folder instead of deleting them.',
+            'Sort by date taken, rename photos, export resized copies, slideshow, and a right-click menu.',
+            'Drag over the grid to select photos.'
+        ]
+    },
+    {
+        version: '1.5.0', date: '2026-07-08',
+        items: ['File Info panel (`I`) with size, dates and camera, and the photo\'s location in the corner.']
+    },
+    {
+        version: '1.4.1', date: '2026-07-08',
+        items: ['Crop and film-strip buttons moved into the top-right controls.']
+    },
+    {
+        version: '1.4.0', date: '2026-07-08',
+        items: ['Smooth grid scrolling: thumbnails are made in the background for the whole folder.']
+    },
+    {
+        version: '1.3.0', date: '2026-07-07',
+        items: ['Rotation shows instantly everywhere while the file is saved in the background.']
+    }
+];
