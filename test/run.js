@@ -1540,26 +1540,36 @@ async function newPage(browser, url) {
             out.cropDims = `${CropEditor.W}x${CropEditor.H}`;
             app.cancelCrop();
 
-            // Double-click: in to 100% on the clicked spot, again back to fit
-            const view = document.getElementById('current-image');
-            const dbl = (x, y) => view.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: x, clientY: y }));
+            // Double-click: in to 100% on the clicked spot, again back to fit.
+            // Start and measure only when nothing is still in flight: the
+            // earlier rotation's save, the original replacing the preview,
+            // the zoom animation (a busy CI machine runs all of these late)
+            const steady = async () => {
+                let el = null;
+                for (let i = 0; i < 200; i++) {
+                    await new Promise(res => setTimeout(res, 25));
+                    el = document.getElementById('current-image');
+                    if (!big._rotationQueue && !big.pendingRotation && !big.savingRotation && el.complete &&
+                        (app.zoom <= 1 || !el._isPreview) && !el.getAnimations().some(an => an.playState === 'running')) break;
+                }
+                await Promise.all(el.getAnimations().map(an => an.finished.catch(() => {})));
+                return el;
+            };
+            const dbl = (x, y) => document.getElementById('current-image')
+                .dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: x, clientY: y }));
+            const view = await steady();
             const b0 = view.getBoundingClientRect();
             // Mouse events carry whole pixels
             const px = Math.round(b0.left + b0.width * 0.3), py = Math.round(b0.top + b0.height * 0.6);
             dbl(px, py);
             const oneToOne = big._dims.w / (view.offsetWidth * app.currentFitScale());
             out.dblZoom = Math.abs(app.zoom - Math.max(2, Math.min(8, oneToOne))) < 0.01;
-            // Measure once the zoom animation has finished (not after a fixed
-            // time: a busy machine can run late) and the photo is the one shown
-            for (let i = 0; i < 100; i++) {
-                await new Promise(res => setTimeout(res, 30));
-                const shown = document.getElementById('current-image');
-                if (shown === view && !view.getAnimations().some(a => a.playState === 'running')) break;
-            }
-            await Promise.all(view.getAnimations().map(a => a.finished.catch(() => {})));
-            const b1 = view.getBoundingClientRect();
+            const shown = await steady();
+            const b1 = shown.getBoundingClientRect();
             const ux = (px - b0.left) / b0.width, uy = (py - b0.top) / b0.height;
             out.dblDrift = Math.hypot(b1.left + b1.width * ux - px, b1.top + b1.height * uy - py);
+            out.dblState = JSON.stringify({ zoom: app.zoom, pan: [app.panX, app.panY], swapped: shown !== view,
+                preview: !!shown._isPreview, t0: view.style.transform, t1: shown.style.transform });
             dbl(px + 30, py + 30);
             out.dblFit = app.zoom === 1 && app.panX === 0 && app.panY === 0;
             return { ...out, expectCrop: `${Math.round(edge * 1.5)}x${edge * 2}` };
@@ -1571,7 +1581,7 @@ async function newPage(browser, url) {
         check('rotating a previewed photo shows instantly', r.rotatedShown);
         check('zooming in swaps to the full-resolution original', r.upgraded && r.zoomKept);
         check('crop works at original resolution after rotation', r.cropDims === r.expectCrop, `${r.cropDims} vs ${r.expectCrop}`);
-        check('double-click zooms to 100% on the clicked spot', r.dblZoom && r.dblDrift < 2, `drift ${r.dblDrift}px`);
+        check('double-click zooms to 100% on the clicked spot', r.dblZoom && r.dblDrift < 2, `drift ${r.dblDrift}px ${r.dblState}`);
         check('double-click again zooms back to fit', r.dblFit);
         check('preview suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
