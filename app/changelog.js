@@ -7,7 +7,8 @@ const CHANGELOG = [
     {
         version: '1.12.2', date: '2026-10-02',
         items: [
-            'What\'s New: this list, in the More menu and on the start screen. After an update, a notice links to it once.'
+            'What\'s New: this list, in the More menu and on the start screen. The first time a new version opens, a notice links to it.',
+            'The version shows in the window\'s title bar.'
         ]
     },
     {

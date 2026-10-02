@@ -59,6 +59,7 @@ const app = {
         const title = document.getElementById('app-title');
         if (title && typeof APP_VERSION !== 'undefined') {
             title.textContent = 'jEditor ' + APP_VERSION;
+            document.title = 'jEditor ' + APP_VERSION; // the window's title bar
             document.getElementById('btn-whatsnew-start').textContent = `What's new in ${APP_VERSION}`;
         }
 
@@ -2972,14 +2973,16 @@ const app = {
         return 0;
     },
 
-    // Once after an update: a notice linking to what changed. Not on the
-    // very first visit — there's nothing "new" yet.
+    // A notice linking to what changed, on the first launch of each new
+    // version only. Not on the very first visit (there's nothing "new"
+    // yet). The newest version announced is remembered, so going back to
+    // an older cached copy and forward again doesn't repeat it.
     checkForUpdateNotice() {
         if (typeof APP_VERSION === 'undefined' || typeof CHANGELOG === 'undefined') return;
         let seen = null;
         try {
             seen = localStorage.getItem('jeditor.seenVersion');
-            localStorage.setItem('jeditor.seenVersion', APP_VERSION);
+            if (!seen || this.compareVersions(APP_VERSION, seen) > 0) localStorage.setItem('jeditor.seenVersion', APP_VERSION);
         } catch (e) { return; /* private mode: no way to show it only once */ }
         if (!seen || this.compareVersions(APP_VERSION, seen) <= 0) return;
         this._newSince = seen;

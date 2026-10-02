@@ -375,6 +375,12 @@ async function newPage(browser, url) {
         });
         await page.reload({ waitUntil: 'networkidle' });
         const nextVisit = await notice();
+        // An older cached copy, then this version again: still not repeated
+        await page.evaluate(() => localStorage.setItem('jeditor.seenVersion', '99.0.0'));
+        await page.reload({ waitUntil: 'networkidle' });
+        const afterNewer = await notice();
+        const keptNewest = await page.evaluate(() => localStorage.getItem('jeditor.seenVersion'));
+        const windowTitle = await page.title();
 
         check('start screen links to What\'s New', r.startLink.includes(require(path.join(ROOT, 'package.json')).version), r.startLink);
         check("What's New lists every version, this one marked", r.open && r.sections === log.length && r.firstIsCurrent, JSON.stringify(r));
@@ -383,6 +389,8 @@ async function newPage(browser, url) {
         check('no update notice on a first visit', firstVisit === null, String(firstVisit));
         check('update notice once after an update, links to What\'s New', afterUpdate && afterUpdate.includes('Updated to') && marked.open && nextVisit === null,
             `${afterUpdate} / ${nextVisit}`);
+        check('notice never repeats for a version already announced', afterNewer === null && keptNewest === '99.0.0', `${afterNewer} / ${keptNewest}`);
+        check('version in the window title', windowTitle === `jEditor ${pkgVersion}`, windowTitle);
         check('versions since the last one used are marked New',
             marked.tags[0] === 'This version' && marked.tags.slice(1, -1).every(t => t === 'New') && marked.tags[marked.tags.length - 1] === '',
             JSON.stringify(marked.tags));
