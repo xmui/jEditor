@@ -1885,6 +1885,31 @@ async function newPage(browser, url) {
             await app.undo();
             out.restored = app.files.length === 4;
 
+            // A batch: moved into the trash (no bytes rewritten), several at a
+            // time; a name already in the trash gets a unique one
+            const sizes = new Map(app.files.map(f => [f.name, f.size]));
+            const parked = await trash.getFileHandle(app.files[1].name, { create: true }); // same name already in the trash
+            const pw = await parked.createWritable(); await pw.write('old'); await pw.close();
+            let writes = 0;
+            const cw = FileSystemFileHandle.prototype.createWritable;
+            FileSystemFileHandle.prototype.createWritable = function (...a) { writes++; return cw.apply(this, a); };
+            app.currentFile = app.files[1];
+            const batch = app.files.slice(0, 3);
+            await app.moveToTrash(batch);
+            FileSystemFileHandle.prototype.createWritable = cw;
+            const trashNames = [];
+            for await (const e of trash.values()) trashNames.push(e.name);
+            const leftOnDisk = [];
+            for await (const e of dir.values()) if (e.kind === 'file') leftOnDisk.push(e.name);
+            out.batchMoved = writes === 0 && trashNames.length === 4 && leftOnDisk.length === 1 && app.files.length === 1;
+            out.batchCurrent = app.currentFile === app.files[0];
+            await app.undo();
+            const back = [];
+            for await (const e of dir.values()) if (e.kind === 'file') back.push(e.name);
+            const intact = await Promise.all(app.files.map(async f => (await f.handle.getFile()).size === sizes.get(f.name)));
+            out.batchRestored = app.files.length === 4 && back.length === 4 && intact.every(Boolean);
+            await trash.removeEntry(parked.name);
+
             // A changed photo's old cached thumbnail is pruned
             await app.rotateImage(app.files[0], 90);
             app.pruneFolderCache();
@@ -1918,6 +1943,8 @@ async function newPage(browser, url) {
         check('another computer: thumbnails come from the folder', second.thumbsGenerated === 0, String(second.thumbsGenerated));
         check('another computer: duplicate scan reuses fingerprints', second.fingerprintsComputed === 0, String(second.fingerprintsComputed));
         check('delete goes to .jeditor/trash; undo restores', second.trashed && second.restored);
+        check('batch delete moves files (no copying), keeps a unique trash name', second.batchMoved && second.batchCurrent);
+        check('undo restores the whole batch intact', second.batchRestored);
         check('stale cached thumbnail pruned', second.prunedTo === 3, String(second.prunedTo));
         check('clean up removes .jeditor and its undo steps', second.cleanedUp);
         check('cache setting off writes nothing', second.offWritesNothing);
