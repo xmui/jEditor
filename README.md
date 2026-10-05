@@ -86,7 +86,7 @@ Press `Ctrl+Shift+D` to open the debug console. The yellow lines at the top show
 
 It's built and tested for orders of 500–2000 photos. With 2000 scans at 1800×1200: the folder opens and shows the first photo in under half a second, thumbnails take about 20 seconds in the background, rotating all 2000 takes about 8 seconds, renaming them about 2 seconds, and a duplicate scan about 20 seconds. Bigger files take proportionally longer to thumbnail.
 
-Undo keeps up to 50 steps. Rotations are undone by rotating back, so they don't use memory. Crops keep a copy of the original file so they can be undone, up to 256 MB in total; older crop steps are dropped after that.
+Undo keeps up to 50 steps. Rotating a selection in the grid is one step, however many photos it covers. Rotations are undone by rotating back, so they don't use memory. Crops keep a copy of the original file so they can be undone, up to 256 MB in total; older crop steps are dropped after that.
 
 ## Keyboard shortcuts
 
@@ -96,9 +96,10 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 |---|---|
 | `←` `→` | Previous / next photo (`↑` `↓` move by rows in the grid) |
 | `[` `]` or `,` `.` or `Shift+←` `Shift+→` | Rotate left / right |
+| `/` | Rotate 180° |
 | `Space`, `G`, `S` | Toggle view, grid view, single view |
 | `C` | Crop and straighten |
-| `+` `-` `0` | Zoom in, zoom out, fit. The mouse wheel zooms on the pointer, up to 3200% (from 200% the pixels show as sharp squares). Double-click the photo: in to 100% on that spot, again to fit. |
+| `+` `-` `0` | Zoom in, zoom out, fit. The mouse wheel zooms on the pointer, up to 3200% (past 100% the pixels show as sharp squares, with no smoothing). Double-click the photo: in to 100% on that spot, again to fit. |
 | `I` | File info |
 | `F` | Fullscreen |
 | `F2` | Rename (the selected photos in grid view) |
@@ -109,7 +110,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `R` | Rescan the folder |
 | `?` | Show shortcuts |
 
-In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
+In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `/` rotate 180°, `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
 In find duplicates: `1`–`9` mark or unmark a photo, `K` keep the suggested photo and mark the rest, `Enter` trash marked and go to the next group, `N` not duplicates, `←` `→` previous / next group, `Esc` close.
 

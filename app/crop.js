@@ -479,6 +479,15 @@ const CropEditor = {
         this.settle(false);
     },
 
+    // Upside down: the same crop, turned half way round
+    rotateHalf() {
+        if (!this.ready) return;
+        this.pushHistory();
+        this.q = (this.q + 2) % 4;
+        this.refit();
+        this.settle(false);
+    },
+
     setAspect(key) {
         if (!this.ready) return;
         this.pushHistory();

@@ -7,9 +7,11 @@ const CHANGELOG = [
     {
         version: '1.12.3', date: '2026-10-05',
         items: [
-            'Zoom goes up to 3200% of the photo\'s pixels, so you can see individual pixels. From 200% they show as sharp squares instead of a blur.',
+            'Zoom goes up to 3200% of the photo\'s pixels. Past 100% the pixels show as sharp squares, with no smoothing.',
             'The mouse wheel zooms towards the pointer, the same amount each notch (about 25 notches from fit to 3200%). Trackpad pinch works too.',
             'A small readout shows the zoom level while zooming.',
+            '`/` turns the photo 180° (the whole selection in the grid, and in the crop editor too). It\'s also in the right-click menu.',
+            'Undoing a rotation of a grid selection puts back every photo in one step. Before, each `Ctrl+Z` undid one photo, and only the last 50 could be undone.',
             'Fixed double-click zooming to the wrong size (not 100%) on a photo that had been rotated.'
         ]
     },

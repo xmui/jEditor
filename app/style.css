@@ -329,7 +329,7 @@ header {
     user-select: none;
 }
 
-/* Zoomed past 200%: the photo's pixels as sharp squares */
+/* Zoomed past 100%: the photo's pixels as sharp squares, no smoothing */
 #current-image.pixelated {
     image-rendering: pixelated;
 }

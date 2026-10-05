@@ -594,11 +594,12 @@ const app = {
     // ---- Zoom ----
     //
     // this.zoom is relative to fit (1 = the whole photo on screen). It goes
-    // up to 3200% of the photo's own pixels, like Photoshop; from 200% the
-    // pixels are drawn as sharp squares instead of being smoothed.
+    // up to 3200% of the photo's own pixels, like Photoshop. Past 100% the
+    // pixels are drawn as sharp squares, never smoothed; below it, scaling
+    // down is smoothed (otherwise fine detail shimmers).
 
     MAX_PIXEL_ZOOM: 32,  // screen pixels per photo pixel, at most
-    PIXELATED_FROM: 2,   // sharp pixels from 200%
+    PIXELATED_FROM: 1,   // sharp pixels as soon as they're bigger than screen pixels
 
     // The zoom at which one photo pixel is one screen pixel (0 if unknown).
     // Measured on the image on screen, which is always the right way round
@@ -712,11 +713,11 @@ const app = {
     updateImageTransform() {
         if (!this.currentFile) return;
         const r = this.currentCssRotation();
-        // From 200%, the original's pixels as sharp squares (a preview
+        // Past 100%, the original's pixels as sharp squares (a preview
         // standing in until the original loads stays smooth)
         const img = this.elements.currentImage;
         const one = this.showingOriginal() ? this.oneToOneZoom() : 0;
-        img.classList.toggle('pixelated', one > 0 && this.zoom / one >= this.PIXELATED_FROM);
+        img.classList.toggle('pixelated', one > 0 && this.zoom / one > this.PIXELATED_FROM + 1e-6);
         this.elements.currentImage.style.transform =
             `translate(${this.panX}px, ${this.panY}px) rotate(${r}deg) scale(${this.zoom * this.currentFitScale(r)})`;
     },
@@ -2661,6 +2662,7 @@ const app = {
         ['nav.last', 'global', 'Navigate', 'Last photo', ['End']],
         ['edit.rotateLeft', 'global', 'Edit', 'Rotate left (whole selection in grid)', ['[', ',', 'Shift+ArrowLeft']],
         ['edit.rotateRight', 'global', 'Edit', 'Rotate right (whole selection in grid)', [']', '.', 'Shift+ArrowRight']],
+        ['edit.rotate180', 'global', 'Edit', 'Rotate 180° (whole selection in grid)', ['/']],
         ['edit.crop', 'global', 'Edit', 'Crop & straighten', ['C']],
         ['edit.rename', 'global', 'Edit', 'Rename (the selection in grid view)', ['F2']],
         ['edit.trash', 'global', 'Edit', 'Move to trash', ['Delete']],
@@ -2686,6 +2688,7 @@ const app = {
         ['crop.cancel', 'crop', 'Crop & Straighten', 'Cancel', ['Escape']],
         ['crop.rotateLeft', 'crop', 'Crop & Straighten', 'Rotate left 90°', ['[']],
         ['crop.rotateRight', 'crop', 'Crop & Straighten', 'Rotate right 90°', [']']],
+        ['crop.rotate180', 'crop', 'Crop & Straighten', 'Rotate 180°', ['/']],
         ['crop.angleDown', 'crop', 'Crop & Straighten', 'Straighten −0.1°', [',']],
         ['crop.angleUp', 'crop', 'Crop & Straighten', 'Straighten +0.1°', ['.']],
         ['crop.angleDownBig', 'crop', 'Crop & Straighten', 'Straighten −1°', ['<']],
@@ -2722,6 +2725,7 @@ const app = {
             'nav.last': () => this.goTo(this.files[this.files.length - 1]),
             'edit.rotateLeft': () => grid() ? this.rotateBulk(-90) : this.rotateCurrent(-90),
             'edit.rotateRight': () => grid() ? this.rotateBulk(90) : this.rotateCurrent(90),
+            'edit.rotate180': () => grid() ? this.rotateBulk(180) : this.rotateCurrent(180),
             'edit.crop': () => this.enterCrop(),
             'edit.rename': () => this.openRename(grid() && this.selection.size ? [...this.selection] : [this.currentFile]),
             'edit.trash': () => this.moveToTrash(grid() && this.selection.size
@@ -2752,6 +2756,7 @@ const app = {
             'crop.cancel': () => this.cancelCrop(),
             'crop.rotateLeft': () => ed.rotateQuarter(-1),
             'crop.rotateRight': () => ed.rotateQuarter(1),
+            'crop.rotate180': () => ed.rotateHalf(),
             'crop.angleDown': () => ed.nudgeAngle(-0.1),
             'crop.angleUp': () => ed.nudgeAngle(0.1),
             'crop.angleDownBig': () => ed.nudgeAngle(-1),
@@ -3291,6 +3296,15 @@ const app = {
         if (skippedGifs > 0) this.showToast(`Skipped ${skippedGifs} GIF${skippedGifs > 1 ? 's' : ''} (rotation would lose animation)`);
         if (filesToRotate.length === 0) return;
 
+        // One undo step for the whole selection (added to the history now,
+        // filled as each photo is saved)
+        let batchDone;
+        const group = { type: 'group', label: 'rotation', items: [], done: new Promise(res => { batchDone = res; }) };
+        if (filesToRotate.length > 1) {
+            this.pushUndo(group);
+            for (const file of filesToRotate) file._undoGroup = group;
+        }
+
         // Instant preview on every selected photo, before any disk work
         for (const file of filesToRotate) {
             file.pendingRotation = (file.pendingRotation || 0) + deg;
@@ -3311,7 +3325,11 @@ const app = {
         const worker = async () => {
             while (next < filesToRotate.length) {
                 const file = filesToRotate[next++];
-                ok = (await this.processRotationQueue(file)) && ok;
+                try {
+                    ok = (await this.processRotationQueue(file)) && ok;
+                } finally {
+                    if (file._undoGroup === group) file._undoGroup = null;
+                }
                 done++;
                 if (filesToRotate.length >= 50 && done % 25 === 0) {
                     this.updateTask(taskKey, `Rotating ${done}/${filesToRotate.length}…`);
@@ -3321,7 +3339,11 @@ const app = {
         await Promise.all(Array.from({ length: Math.min(4, filesToRotate.length) }, worker));
 
         this.endTask(taskKey);
-        this.showToast(ok ? `Rotated ${label} ${deg > 0 ? 'right' : 'left'}` : 'Some photos failed to rotate', 2000);
+        batchDone();
+        // Nothing was saved (all failed): no empty undo step
+        if (!group.items.length) this._undoStack = (this._undoStack || []).filter(e => e !== group);
+        const how = Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left';
+        this.showToast(ok ? `Rotated ${label} ${how}` : 'Some photos failed to rotate', 2000);
         this.log('Bulk rotation finished');
     },
 
@@ -3370,7 +3392,9 @@ const app = {
                 const startUndo = (entry) => {
                     if (undoEntry || fileEntry._undoing) return;
                     undoEntry = entry;
-                    this.pushUndo(entry);
+                    // Part of a selection being rotated: one undo step for all
+                    if (fileEntry._undoGroup) fileEntry._undoGroup.items.push(entry);
+                    else this.pushUndo(entry);
                 };
                 const verify = () => this.dirHandle
                     ? this.verifyPermission(this.dirHandle, true)
@@ -3461,6 +3485,29 @@ const app = {
     UNDO_LIMIT: 50,
     UNDO_MAX_BYTES: 256 * 1024 * 1024, // file copies kept for undo (crops, re-encodes)
 
+    // Put one photo back: a rotation is turned back, a re-encode restored
+    async undoFileEdit(entry) {
+        const f = entry.file;
+        if (f._rotationQueue) await f._rotationQueue;
+        if (entry.type === 'bytes') {
+            f.pendingRotation = 0;
+            f.savingRotation = 0;
+            const writable = await f.handle.createWritable();
+            await writable.write(entry.blob);
+            await writable.close();
+            await this.afterFileChanged(f);
+            return;
+        }
+        f._undoing = true; // the reverse rotation isn't itself undoable
+        try {
+            f.pendingRotation = (f.pendingRotation || 0) - entry.deg;
+            this.applyPreviewRotation(f);
+            if (!(await this.processRotationQueue(f))) throw new Error('could not rotate back');
+        } finally {
+            f._undoing = false;
+        }
+    },
+
     pushUndo(entry) {
         if (!this._undoStack) this._undoStack = [];
         const stack = this._undoStack;
@@ -3470,7 +3517,8 @@ const app = {
     },
 
     undoBytes() {
-        return (this._undoStack || []).reduce((n, e) => n + (e.blob ? e.blob.size : 0), 0);
+        const size = (e) => (e.blob ? e.blob.size : 0) + (e.items ? e.items.reduce((n, it) => n + size(it), 0) : 0);
+        return (this._undoStack || []).reduce((n, e) => n + size(e), 0);
     },
 
     async undo() {
@@ -3481,27 +3529,32 @@ const app = {
         }
         try {
             if (entry.type === 'bytes') {
-                const f = entry.file;
-                if (f._rotationQueue) await f._rotationQueue;
-                f.pendingRotation = 0;
-                f.savingRotation = 0;
-                const writable = await f.handle.createWritable();
-                await writable.write(entry.blob);
-                await writable.close();
-                await this.afterFileChanged(f);
-                this.showToast(`Undid ${entry.label} on ${f.name}`);
+                await this.undoFileEdit(entry);
+                this.showToast(`Undid ${entry.label} on ${entry.file.name}`);
             } else if (entry.type === 'rotate') {
-                const f = entry.file;
-                if (f._rotationQueue) await f._rotationQueue;
-                f._undoing = true; // the reverse rotation isn't itself undoable
+                await this.undoFileEdit(entry);
+                this.showToast(`Undid rotation on ${entry.file.name}`);
+            } else if (entry.type === 'group') {
+                // A rotation of a whole selection: every photo, in one step
+                // (once the batch has finished saving, so none are missed)
+                await entry.done;
+                const items = entry.items.slice();
+                let next = 0, failed = 0;
+                const worker = async () => {
+                    while (next < items.length) {
+                        const it = items[next++];
+                        try { await this.undoFileEdit(it); } catch (e) { console.error('Undo failed for', it.file.name, e); failed++; }
+                    }
+                };
+                const many = items.length > 1;
+                if (many) this.beginTask('undo-group', `Undoing rotation of ${items.length} photos…`);
                 try {
-                    f.pendingRotation = (f.pendingRotation || 0) - entry.deg;
-                    this.applyPreviewRotation(f);
-                    if (!(await this.processRotationQueue(f))) throw new Error('could not rotate back');
+                    await Promise.all(Array.from({ length: Math.min(4, items.length) }, worker));
                 } finally {
-                    f._undoing = false;
+                    if (many) this.endTask('undo-group');
                 }
-                this.showToast(`Undid rotation on ${f.name}`);
+                if (failed) throw new Error(`${failed} photo${failed === 1 ? '' : 's'} could not be put back`);
+                this.showToast(`Undid rotation on ${items.length} photo${items.length === 1 ? '' : 's'}`);
             } else if (entry.type === 'rename') {
                 await this.renameFile(entry.file, entry.oldName, { skipUndo: true });
                 this.showToast('Rename undone');
@@ -4151,6 +4204,7 @@ const app = {
                 return [
                     [`Rotate ${sel.length} Left`, () => this.rotateBulk(-90)],
                     [`Rotate ${sel.length} Right`, () => this.rotateBulk(90)],
+                    [`Rotate ${sel.length} 180°`, () => this.rotateBulk(180)],
                     ['—'],
                     [`Rename ${sel.length}…`, () => this.openRename(sel)],
                     ['Export Copies…', () => this.exportCopies(sel)],
@@ -4163,6 +4217,7 @@ const app = {
                 ['—'],
                 ['Rotate Left', () => this.rotateImage(file, -90)],
                 ['Rotate Right', () => this.rotateImage(file, 90)],
+                ['Rotate 180°', () => this.rotateImage(file, 180)],
                 ['Crop', () => { this.openSingle(file); this.enterCrop(); }],
                 ['—'],
                 ['Rename…', () => this.promptRename(file)],
@@ -4177,6 +4232,7 @@ const app = {
             return [
                 ['Rotate Left', () => this.rotateImage(file, -90)],
                 ['Rotate Right', () => this.rotateImage(file, 90)],
+                ['Rotate 180°', () => this.rotateImage(file, 180)],
                 ['Crop', () => this.enterCrop()],
                 ['—'],
                 ['Rename…', () => this.promptRename(file)],
