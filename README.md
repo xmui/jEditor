@@ -98,7 +98,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `[` `]` or `,` `.` or `Shift+←` `Shift+→` | Rotate left / right |
 | `Space`, `G`, `S` | Toggle view, grid view, single view |
 | `C` | Crop and straighten |
-| `+` `-` `0` | Zoom in, zoom out, fit (or double-click the photo: in to 100% on that spot, again to fit) |
+| `+` `-` `0` | Zoom in, zoom out, fit. The mouse wheel zooms on the pointer, up to 3200% (from 200% the pixels show as sharp squares). Double-click the photo: in to 100% on that spot, again to fit. |
 | `I` | File info |
 | `F` | Fullscreen |
 | `F2` | Rename (the selected photos in grid view) |

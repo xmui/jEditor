@@ -1562,9 +1562,11 @@ async function newPage(browser, url) {
             // Mouse events carry whole pixels
             const px = Math.round(b0.left + b0.width * 0.3), py = Math.round(b0.top + b0.height * 0.6);
             dbl(px, py);
-            const oneToOne = big._dims.w / (view.offsetWidth * app.currentFitScale());
-            out.dblZoom = Math.abs(app.zoom - Math.max(2, Math.min(8, oneToOne))) < 0.01;
             const shown = await steady();
+            // 100%: the original's pixels one-to-one with screen pixels — its
+            // on-screen size is its pixel size (whichever way round it is)
+            const sb = shown.getBoundingClientRect();
+            out.dblZoom = Math.abs(Math.max(sb.width, sb.height) - Math.max(shown.naturalWidth, shown.naturalHeight)) < 2 && !shown._isPreview;
             const b1 = shown.getBoundingClientRect();
             const ux = (px - b0.left) / b0.width, uy = (py - b0.top) / b0.height;
             out.dblDrift = Math.hypot(b1.left + b1.width * ux - px, b1.top + b1.height * uy - py);
@@ -1572,6 +1574,28 @@ async function newPage(browser, url) {
                 preview: !!shown._isPreview, t0: view.style.transform, t1: shown.style.transform });
             dbl(px + 30, py + 30);
             out.dblFit = app.zoom === 1 && app.panX === 0 && app.panY === 0;
+
+            // Wheel: zooms on the pointer, up to 3200% of the photo's pixels,
+            // sharp squares from 200%
+            const wheel = (x, y, dy) => document.getElementById('current-image')
+                .dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: x, clientY: y, deltaY: dy }));
+            const w0 = (await steady()).getBoundingClientRect();
+            const wx = Math.round(w0.left + w0.width * 0.7), wy = Math.round(w0.top + w0.height * 0.4);
+            for (let i = 0; i < 6; i++) wheel(wx, wy, -100);
+            const zoomedEl = await steady();
+            const w1 = zoomedEl.getBoundingClientRect();
+            const wux = (wx - w0.left) / w0.width, wuy = (wy - w0.top) / w0.height;
+            out.wheelDrift = Math.hypot(w1.left + w1.width * wux - wx, w1.top + w1.height * wuy - wy);
+            out.wheelZoomed = app.zoom > 2;
+            for (let i = 0; i < 80; i++) wheel(wx, wy, -100);
+            const one = app.oneToOneZoom();
+            out.maxPct = Math.round(app.zoom / one * 100);
+            out.pixelatedAtMax = document.getElementById('current-image').classList.contains('pixelated');
+            out.readout = document.getElementById('zoom-level').textContent;
+            app.zoomTo(one * 1.5);
+            out.smoothAt150 = !document.getElementById('current-image').classList.contains('pixelated');
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: '0', bubbles: true }));
+            out.keyFit = app.zoom === 1 && app.panX === 0 && !document.getElementById('current-image').classList.contains('pixelated');
             return { ...out, expectCrop: `${Math.round(edge * 1.5)}x${edge * 2}` };
         });
         check('big scan shows a screen-sized preview', r.isPreview);
@@ -1583,6 +1607,10 @@ async function newPage(browser, url) {
         check('crop works at original resolution after rotation', r.cropDims === r.expectCrop, `${r.cropDims} vs ${r.expectCrop}`);
         check('double-click zooms to 100% on the clicked spot', r.dblZoom && r.dblDrift < 2, `drift ${r.dblDrift}px ${r.dblState}`);
         check('double-click again zooms back to fit', r.dblFit);
+        check('wheel zoom keeps the spot under the pointer', r.wheelZoomed && r.wheelDrift < 2, `drift ${r.wheelDrift}px`);
+        check('zoom goes up to 3200% of the photo\'s pixels, and no further', r.maxPct === 3200 && r.readout === '3200%', `${r.maxPct}% / ${r.readout}`);
+        check('pixels shown as sharp squares from 200%, smooth below', r.pixelatedAtMax && r.smoothAt150);
+        check('0 zooms back to fit', r.keyFit);
         check('preview suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

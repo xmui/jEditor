@@ -14,7 +14,7 @@
     <script>
 // Single source of truth for the app version. Bump with:  npm run bump 1.x.y
 // (keeps package.json in sync and busts the service worker cache)
-const APP_VERSION = '1.12.2';
+const APP_VERSION = '1.12.3';
 
 </script>
     <script>
@@ -24,6 +24,15 @@ const APP_VERSION = '1.12.2';
 // Text between `backticks` is shown as a key.
 
 const CHANGELOG = [
+    {
+        version: '1.12.3', date: '2026-10-05',
+        items: [
+            'Zoom goes up to 3200% of the photo\'s pixels, so you can see individual pixels. From 200% they show as sharp squares instead of a blur.',
+            'The mouse wheel zooms towards the pointer, the same amount each notch (about 25 notches from fit to 3200%). Trackpad pinch works too.',
+            'A small readout shows the zoom level while zooming.',
+            'Fixed double-click zooming to the wrong size (not 100%) on a photo that had been rotated.'
+        ]
+    },
     {
         version: '1.12.2', date: '2026-10-02',
         items: [
@@ -3484,6 +3493,34 @@ header {
     user-select: none;
 }
 
+/* Zoomed past 200%: the photo's pixels as sharp squares */
+#current-image.pixelated {
+    image-rendering: pixelated;
+}
+
+/* Brief zoom readout while zooming */
+.zoom-level {
+    position: absolute;
+    left: 50%;
+    top: 64px; /* under the file-name pill, clear of what you're looking at */
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    padding: 6px 14px;
+    border-radius: 999px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    z-index: 5;
+}
+
+.zoom-level.visible {
+    opacity: 1;
+}
+
 /* Double-click zoom: a smoother move than the wheel's quick steps */
 #current-image.zoom-animate {
     transition: transform 0.24s cubic-bezier(0.2, 0, 0, 1), opacity 0.05s ease;
@@ -5401,6 +5438,7 @@ kbd {
             <main id="main-view">
                 <div id="image-container" class="image-contain hidden">
                     <img id="current-image" src="" alt="Current Image">
+                    <div id="zoom-level" class="zoom-level" aria-live="polite"></div>
 
 
 
@@ -6290,21 +6328,94 @@ const app = {
         this.elements.btnToggleStrip.blur(); // Release focus to restore keyboard shortcuts
     },
 
+    // Wheel / trackpad pinch: each notch zooms by the same factor, centred
+    // on the pointer, from 10% of fit up to huge pixels
     handleZoom(e) {
         if (this.viewMode !== 'single') return;
         if (this.cropState.active) return; // Disable zoom while cropping
         e.preventDefault();
+        let dy = e.deltaY;
+        if (e.deltaMode === 1) dy *= 16;       // lines
+        else if (e.deltaMode === 2) dy *= 400; // pages
+        dy = Math.max(-300, Math.min(300, dy));
+        this.zoomTo(this.zoom * Math.exp(-dy * 0.002), e.clientX, e.clientY);
+    },
 
-        const delta = -Math.sign(e.deltaY) * 0.1;
-        this.zoom += delta;
-        if (this.zoom < 0.1) this.zoom = 0.1;
-        if (this.zoom > 8) this.zoom = 8;
+    // ---- Zoom ----
+    //
+    // this.zoom is relative to fit (1 = the whole photo on screen). It goes
+    // up to 3200% of the photo's own pixels, like Photoshop; from 200% the
+    // pixels are drawn as sharp squares instead of being smoothed.
 
-        // Update cursor based on zoom level
+    MAX_PIXEL_ZOOM: 32,  // screen pixels per photo pixel, at most
+    PIXELATED_FROM: 2,   // sharp pixels from 200%
+
+    // The zoom at which one photo pixel is one screen pixel (0 if unknown).
+    // Measured on the image on screen, which is always the right way round
+    // (a size remembered from before a rotation may not be); a screen-sized
+    // preview is scaled up by how much bigger the original is.
+    oneToOneZoom() {
+        const img = this.elements.currentImage, f = this.currentFile;
+        if (!f || this._displayFile !== f || !img.offsetWidth || !img.naturalWidth) return 0;
+        let originalPerShown = 1;
+        if (!this.showingOriginal()) {
+            if (!f._dims) return 0;
+            originalPerShown = Math.max(f._dims.w, f._dims.h) / Math.max(img.naturalWidth, img.naturalHeight);
+        }
+        return img.naturalWidth * originalPerShown / (img.offsetWidth * this.currentFitScale());
+    },
+
+    // The original file's pixels are on screen (not a preview or thumbnail)
+    showingOriginal() {
+        return this._displayKind === 'full' && !this.elements.currentImage._isPreview;
+    },
+
+    maxZoom() {
+        return Math.max(8, (this.oneToOneZoom() || 1) * this.MAX_PIXEL_ZOOM);
+    },
+
+    // Zoom to `target`, keeping the screen point (x, y) where it is; the
+    // middle of the view when no point is given
+    zoomTo(target, x = null, y = null) {
+        if (this.viewMode !== 'single' || this.cropState.active || !this.currentFile) return;
+        const img = this.elements.currentImage;
+        const box = this.elements.imageContainer.getBoundingClientRect();
+        if (x === null) { x = box.left + box.width / 2; y = box.top + box.height / 2; }
+        target = Math.max(0.1, Math.min(this.maxZoom(), target));
+        if (target <= 1) {
+            this.zoom = target;
+            this.panX = 0;
+            this.panY = 0;
+        } else if (img.offsetWidth) {
+            // Where the photo's centre is: the container centres it, plus the
+            // pan. Worked out rather than measured, so a zoom still animating
+            // can't throw the anchor off (and exact to the subpixel)
+            const cx = box.left + box.width / 2 + this.panX;
+            const cy = box.top + box.height / 2 + this.panY;
+            const s = this.zoom * this.currentFitScale();
+            const hw = img.offsetWidth * s / 2, hh = img.offsetHeight * s / 2;
+            const dx = Math.max(-hw, Math.min(hw, x - cx)), dy = Math.max(-hh, Math.min(hh, y - cy));
+            const k = target / this.zoom;
+            this.panX += dx * (1 - k);
+            this.panY += dy * (1 - k);
+            this.zoom = target;
+        }
         this.elements.imageContainer.style.cursor = this.zoom > 1 ? 'grab' : 'default';
-
         this.updateImageTransform();
         if (this.zoom > 1) this.ensureFullRes();
+        this.showZoomLevel();
+    },
+
+    // A brief readout of the zoom: % of the photo's own pixels
+    showZoomLevel() {
+        const el = document.getElementById('zoom-level');
+        if (!el) return;
+        const one = this.oneToOneZoom();
+        el.textContent = Math.abs(this.zoom - 1) < 0.005 ? 'Fit'
+            : one ? `${Math.round(this.zoom / one * 100)}%` : `${this.zoom.toFixed(1)}×`;
+        el.classList.add('visible');
+        clearTimeout(this._zoomLevelTimer);
+        this._zoomLevelTimer = setTimeout(() => el.classList.remove('visible'), 900);
     },
 
     // Double-click: at fit, zoom in to 100% (one photo pixel per screen
@@ -6317,39 +6428,14 @@ const app = {
         e.preventDefault();
         if (window.getSelection) window.getSelection().removeAllRanges();
 
-        let target = 1;
-        if (Math.abs(this.zoom - 1) < 0.01) {
-            const f = this.currentFile;
-            const fullW = f._dims ? f._dims.w
-                : (this._displayFile === f && this._displayKind === 'full' ? img.naturalWidth : 0);
-            const fit = this.currentFitScale();
-            const oneToOne = fullW ? fullW / (img.offsetWidth * fit) : 0;
-            target = Math.max(2, Math.min(8, oneToOne || 2.5));
-        }
-
-        if (target === 1) {
-            this.resetPan();
-        } else {
-            // Keep the clicked point under the pointer. Scaling is about the
-            // image's centre, so rotation doesn't change the maths.
-            const rect = img.getBoundingClientRect();
-            const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
-            const dx = Math.max(-rect.width / 2, Math.min(rect.width / 2, e.clientX - cx));
-            const dy = Math.max(-rect.height / 2, Math.min(rect.height / 2, e.clientY - cy));
-            const k = target / this.zoom;
-            this.panX += dx * (1 - k);
-            this.panY += dy * (1 - k);
-            this.zoom = target;
-        }
+        // At fit: in to 100% (at least 2×) on the spot clicked; otherwise back to fit
+        const target = Math.abs(this.zoom - 1) < 0.01 ? Math.max(2, this.oneToOneZoom() || 2.5) : 1;
 
         // A gentler transition than the wheel's for the big jump
         img.classList.add('zoom-animate');
         clearTimeout(this._zoomAnimTimer);
         this._zoomAnimTimer = setTimeout(() => img.classList.remove('zoom-animate'), 260);
-
-        this.elements.imageContainer.style.cursor = this.zoom > 1 ? 'grab' : 'default';
-        this.updateImageTransform();
-        if (this.zoom > 1) this.ensureFullRes();
+        this.zoomTo(target, e.clientX, e.clientY);
     },
 
     // CSS rotation on the photo: rotation saved to disk after these pixels
@@ -6376,6 +6462,11 @@ const app = {
     updateImageTransform() {
         if (!this.currentFile) return;
         const r = this.currentCssRotation();
+        // From 200%, the original's pixels as sharp squares (a preview
+        // standing in until the original loads stays smooth)
+        const img = this.elements.currentImage;
+        const one = this.showingOriginal() ? this.oneToOneZoom() : 0;
+        img.classList.toggle('pixelated', one > 0 && this.zoom / one >= this.PIXELATED_FROM);
         this.elements.currentImage.style.transform =
             `translate(${this.panX}px, ${this.panY}px) rotate(${r}deg) scale(${this.zoom * this.currentFitScale(r)})`;
     },
@@ -8662,15 +8753,7 @@ const app = {
 
     zoomBy(factor) {
         if (this.viewMode !== 'single' || this.cropState.active) return false;
-        if (factor === 0) {
-            this.resetPan();
-        } else {
-            this.zoom = Math.max(0.1, Math.min(8, this.zoom * factor));
-            if (this.zoom <= 1) { this.panX = 0; this.panY = 0; }
-        }
-        this.elements.imageContainer.style.cursor = this.zoom > 1 ? 'grab' : 'default';
-        this.updateImageTransform();
-        if (this.zoom > 1) this.ensureFullRes();
+        this.zoomTo(factor === 0 ? 1 : this.zoom * factor);
     },
 
     // ---- What's New (changelog.js) ----

@@ -5,6 +5,15 @@
 
 const CHANGELOG = [
     {
+        version: '1.12.3', date: '2026-10-05',
+        items: [
+            'Zoom goes up to 3200% of the photo\'s pixels, so you can see individual pixels. From 200% they show as sharp squares instead of a blur.',
+            'The mouse wheel zooms towards the pointer, the same amount each notch (about 25 notches from fit to 3200%). Trackpad pinch works too.',
+            'A small readout shows the zoom level while zooming.',
+            'Fixed double-click zooming to the wrong size (not 100%) on a photo that had been rotated.'
+        ]
+    },
+    {
         version: '1.12.2', date: '2026-10-02',
         items: [
             'What\'s New: this list, in the More menu and on the start screen. The first time a new version opens, a notice links to it.',
