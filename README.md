@@ -96,7 +96,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 |---|---|
 | `←` `→` | Previous / next photo (`↑` `↓` move by rows in the grid) |
 | `[` `]` or `,` `.` or `Shift+←` `Shift+→` | Rotate left / right |
-| `/` | Rotate 180° |
+| `\` | Rotate 180° |
 | `Space`, `G`, `S` | Toggle view, grid view, single view |
 | `C` | Crop and straighten |
 | `+` `-` `0` | Zoom in, zoom out, fit. The mouse wheel zooms on the pointer, up to 3200% (past 100% the pixels show as sharp squares, with no smoothing). Double-click the photo: in to 100% on that spot, again to fit. |
@@ -110,7 +110,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `R` | Rescan the folder |
 | `?` | Show shortcuts |
 
-In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `/` rotate 180°, `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
+In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `\` rotate 180°, `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
 In find duplicates: `1`–`9` mark or unmark a photo, `K` keep the suggested photo and mark the rest, `Enter` trash marked and go to the next group, `N` not duplicates, `←` `→` previous / next group, `Esc` close.
 
