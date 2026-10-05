@@ -329,6 +329,34 @@ header {
     user-select: none;
 }
 
+/* Zoomed past 100%: the photo's pixels as sharp squares, no smoothing */
+#current-image.pixelated {
+    image-rendering: pixelated;
+}
+
+/* Brief zoom readout while zooming */
+.zoom-level {
+    position: absolute;
+    left: 50%;
+    top: 64px; /* under the file-name pill, clear of what you're looking at */
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    padding: 6px 14px;
+    border-radius: 999px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    z-index: 5;
+}
+
+.zoom-level.visible {
+    opacity: 1;
+}
+
 /* Double-click zoom: a smoother move than the wheel's quick steps */
 #current-image.zoom-animate {
     transition: transform 0.24s cubic-bezier(0.2, 0, 0, 1), opacity 0.05s ease;

@@ -1431,6 +1431,66 @@ async function newPage(browser, url) {
         check('reset all restores defaults', r.reset);
         check('key combos format for display', r.format === 'Ctrl + Shift + ←|+', r.format);
         await page.close();
+
+        // '/' turns photos 180°: the current one, the grid selection, and in crop
+        const { page: p180, issues: i180 } = await newPage(browser, `${baseUrl}/index.html`);
+        const r180 = await p180.evaluate(async () => {
+            const out = {};
+            localStorage.removeItem('jeditor.keys');
+            app.loadKeyBindings();
+            const press = (key) => window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+            const a = makeFakeFile('a.jpg', makeJpegBytes(), 'image/jpeg');
+            const b = makeFakeFile('b.jpg', makeJpegBytes(), 'image/jpeg');
+            const c = makeFakeFile('c.jpg', makeJpegBytes(), 'image/jpeg');
+            app.files = [a, b, c];
+            app.currentFile = a;
+            app.dirHandle = null;
+            document.getElementById('main-interface').classList.remove('hidden');
+            app.setView('single');
+            const settle = async (f) => { for (let i = 0; i < 100 && (f._rotationQueue || f.pendingRotation); i++) await new Promise(res => setTimeout(res, 20)); };
+            press('/');
+            await settle(a);
+            out.single = readOrientation(a.handle.bytes) === 3;
+            app.setView('grid');
+            app.selection = new Set([b, c]);
+            press('/');
+            await settle(b); await settle(c);
+            out.grid = readOrientation(b.handle.bytes) === 3 && readOrientation(c.handle.bytes) === 3;
+            out.toast = [...document.querySelectorAll('.toast')].some(t => t.textContent.includes('180°'));
+            // Undo pressed while the batch is still saving: still the whole batch
+            app.selection = new Set([b, c]);
+            const again = app.rotateBulk(90);
+            await app.undo();
+            await again;
+            await settle(b); await settle(c);
+            out.undoMidBatch = readOrientation(b.handle.bytes) === 3 && readOrientation(c.handle.bytes) === 3;
+            await app.undo();
+            await settle(b); await settle(c);
+            out.undo = readOrientation(b.handle.bytes) === 1 && readOrientation(c.handle.bytes) === 1;
+            // In the crop editor: upside down, the same crop
+            app.setView('single');
+            const f = makeFakeFile('crop.jpg', await makeRealJpeg(400, 300, {}), 'image/jpeg');
+            app.files = [f];
+            app.currentFile = f;
+            await app.enterCrop();
+            CropEditor.setRect({ x0: -150, y0: -100, x1: 50, y1: 100 });
+            const before = { ...CropEditor.rect };
+            press('/');
+            const r = CropEditor.rect;
+            out.crop = CropEditor.q === 2 && Math.abs((r.x1 - r.x0) - (before.x1 - before.x0)) < 1e-6 && Math.abs(r.x0 + before.x1) < 1e-6;
+            CropEditor.undo();
+            out.cropUndo = CropEditor.q === 0;
+            app.cancelCrop();
+            out.listed = app.KEY_ACTIONS.some(k => k[0] === 'edit.rotate180' && k[4].includes('/'));
+            return out;
+        });
+        check('/ turns the current photo 180° (losslessly)', r180.single);
+        check('/ turns the grid selection 180°, says so; one undo for the whole selection', r180.grid && r180.toast && r180.undo, JSON.stringify(r180));
+        check('undo pressed while a selection is still rotating undoes all of it', r180.undoMidBatch, JSON.stringify(r180));
+        check('/ turns the crop upside down (same crop); editor undo', r180.crop && r180.cropUndo);
+        check('180° listed in the shortcuts panel', r180.listed);
+        check('rotate 180 suite: no JS errors', i180.errors.length === 0, i180.errors.join('; '));
+        await p180.close();
     }
 
     // ---- 7d. Opening a folder, instant navigation, grid & read-only fixes ----
@@ -1562,9 +1622,11 @@ async function newPage(browser, url) {
             // Mouse events carry whole pixels
             const px = Math.round(b0.left + b0.width * 0.3), py = Math.round(b0.top + b0.height * 0.6);
             dbl(px, py);
-            const oneToOne = big._dims.w / (view.offsetWidth * app.currentFitScale());
-            out.dblZoom = Math.abs(app.zoom - Math.max(2, Math.min(8, oneToOne))) < 0.01;
             const shown = await steady();
+            // 100%: the original's pixels one-to-one with screen pixels — its
+            // on-screen size is its pixel size (whichever way round it is)
+            const sb = shown.getBoundingClientRect();
+            out.dblZoom = Math.abs(Math.max(sb.width, sb.height) - Math.max(shown.naturalWidth, shown.naturalHeight)) < 2 && !shown._isPreview;
             const b1 = shown.getBoundingClientRect();
             const ux = (px - b0.left) / b0.width, uy = (py - b0.top) / b0.height;
             out.dblDrift = Math.hypot(b1.left + b1.width * ux - px, b1.top + b1.height * uy - py);
@@ -1572,6 +1634,30 @@ async function newPage(browser, url) {
                 preview: !!shown._isPreview, t0: view.style.transform, t1: shown.style.transform });
             dbl(px + 30, py + 30);
             out.dblFit = app.zoom === 1 && app.panX === 0 && app.panY === 0;
+
+            // Wheel: zooms on the pointer, up to 3200% of the photo's pixels,
+            // sharp squares from 200%
+            const wheel = (x, y, dy) => document.getElementById('current-image')
+                .dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: x, clientY: y, deltaY: dy }));
+            const w0 = (await steady()).getBoundingClientRect();
+            const wx = Math.round(w0.left + w0.width * 0.7), wy = Math.round(w0.top + w0.height * 0.4);
+            for (let i = 0; i < 6; i++) wheel(wx, wy, -100);
+            const zoomedEl = await steady();
+            const w1 = zoomedEl.getBoundingClientRect();
+            const wux = (wx - w0.left) / w0.width, wuy = (wy - w0.top) / w0.height;
+            out.wheelDrift = Math.hypot(w1.left + w1.width * wux - wx, w1.top + w1.height * wuy - wy);
+            out.wheelZoomed = app.zoom > 2;
+            for (let i = 0; i < 80; i++) wheel(wx, wy, -100);
+            const one = app.oneToOneZoom();
+            out.maxPct = Math.round(app.zoom / one * 100);
+            out.pixelatedAtMax = document.getElementById('current-image').classList.contains('pixelated');
+            out.readout = document.getElementById('zoom-level').textContent;
+            app.zoomTo(one * 1.5);
+            out.sharpAt150 = document.getElementById('current-image').classList.contains('pixelated');
+            app.zoomTo(one * 0.8);
+            out.smoothAt80 = !document.getElementById('current-image').classList.contains('pixelated');
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: '0', bubbles: true }));
+            out.keyFit = app.zoom === 1 && app.panX === 0 && !document.getElementById('current-image').classList.contains('pixelated');
             return { ...out, expectCrop: `${Math.round(edge * 1.5)}x${edge * 2}` };
         });
         check('big scan shows a screen-sized preview', r.isPreview);
@@ -1583,6 +1669,10 @@ async function newPage(browser, url) {
         check('crop works at original resolution after rotation', r.cropDims === r.expectCrop, `${r.cropDims} vs ${r.expectCrop}`);
         check('double-click zooms to 100% on the clicked spot', r.dblZoom && r.dblDrift < 2, `drift ${r.dblDrift}px ${r.dblState}`);
         check('double-click again zooms back to fit', r.dblFit);
+        check('wheel zoom keeps the spot under the pointer', r.wheelZoomed && r.wheelDrift < 2, `drift ${r.wheelDrift}px`);
+        check('zoom goes up to 3200% of the photo\'s pixels, and no further', r.maxPct === 3200 && r.readout === '3200%', `${r.maxPct}% / ${r.readout}`);
+        check('past 100% pixels are sharp squares (no smoothing); smoothed when shrunk', r.pixelatedAtMax && r.sharpAt150 && r.smoothAt80);
+        check('0 zooms back to fit', r.keyFit);
         check('preview suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
