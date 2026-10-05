@@ -14,7 +14,7 @@
     <script>
 // Single source of truth for the app version. Bump with:  npm run bump 1.x.y
 // (keeps package.json in sync and busts the service worker cache)
-const APP_VERSION = '1.12.4';
+const APP_VERSION = '1.13.0';
 
 </script>
     <script>
@@ -24,6 +24,15 @@ const APP_VERSION = '1.12.4';
 // Text between `backticks` is shown as a key.
 
 const CHANGELOG = [
+    {
+        version: '1.13.0', date: '2026-10-05',
+        items: [
+            'Opening a folder again after rotating photos is as quick as opening it with no changes. Before, every rotated photo\'s thumbnail and preview were made again from the full scan (120 big scans: 3.3 s → 0.2 s).',
+            'Paging through photos you\'ve just rotated stays quick: their previews are kept instead of made again.',
+            'Thumbnails and previews of JPEGs are made 2–4× faster, so a new order is ready sooner (2000 photos: 48 s → 21 s). The bigger the scans, the bigger the gain.',
+            'Sorting by name is quicker on big orders.'
+        ]
+    },
     {
         version: '1.12.4', date: '2026-10-05',
         items: [
@@ -2980,17 +2989,18 @@ const Renamer = {
     // Files in numbering order
     ordered(files, o) {
         const app = this.app;
+        const pos = new Map(app.files.map((f, i) => [f, i]));
         const key = {
-            current: (f) => app.files.indexOf(f),
+            current: (f) => pos.get(f),
             taken: (f) => f.dateTaken ?? f.lastModified ?? 0,
             modified: (f) => f.lastModified || 0,
             size: (f) => f.size || 0
         }[o.order];
         const out = [...files];
         if (o.order === 'name') {
-            out.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+            out.sort((a, b) => app.NAME_ORDER.compare(a.name, b.name));
         } else {
-            out.sort((a, b) => key(a) - key(b) || app.files.indexOf(a) - app.files.indexOf(b));
+            out.sort((a, b) => key(a) - key(b) || pos.get(a) - pos.get(b));
         }
         if (o.dir === 'desc') out.reverse();
         return out;
@@ -7182,6 +7192,11 @@ const app = {
         }
     },
 
+    // Natural name order (IMG_2 before IMG_10). One collator, reused:
+    // localeCompare with options builds a new one for every comparison,
+    // which made sorting 2000 photos ~30× slower.
+    NAME_ORDER: new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }),
+
     sortFiles(render = true) {
         const mode = this.sortMode;
 
@@ -7203,7 +7218,7 @@ const app = {
             }
 
             if (typeof valA === 'string') {
-                const cmp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+                const cmp = this.NAME_ORDER.compare(valA, valB);
                 return mode.endsWith('asc') ? cmp : -cmp;
             } else {
                 return mode.endsWith('asc') ? valA - valB : valB - valA;
@@ -7513,12 +7528,74 @@ const app = {
             if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') {
                 throw new Error('Worker/OffscreenCanvas unavailable');
             }
-            const src = `self.onmessage = async (e) => {
+            const src = `
+            // A JPEG's stored pixel size, from its frame header (null if not a
+            // JPEG). Headers are small; a big one (embedded previews, colour
+            // profiles) is read further, up to 4 MB.
+            const jpegSize = async (file) => {
+                for (let len = 128 * 1024; ; len *= 4) {
+                    const b = new Uint8Array(await file.slice(0, len).arrayBuffer());
+                    if (b[0] !== 0xFF || b[1] !== 0xD8) return null;
+                    let i = 2;
+                    while (i + 9 < b.length) {
+                        if (b[i] !== 0xFF) return null;
+                        const m = b[i + 1];
+                        if (m === 0xFF) { i++; continue; }
+                        if (m === 0x01 || (m >= 0xD0 && m <= 0xD8)) { i += 2; continue; }
+                        if (m === 0xD9 || m === 0xDA) return null;
+                        if (m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC) {
+                            return { w: (b[i + 7] << 8) | b[i + 8], h: (b[i + 5] << 8) | b[i + 6] };
+                        }
+                        i += 2 + ((b[i + 2] << 8) | b[i + 3]);
+                    }
+                    if (b.length < len || len >= 4 * 1024 * 1024) return null;
+                }
+            };
+            // Big JPEGs decode at a fraction of their size (n/8 — the decoder
+            // skips most of the work, 4× faster on scans): the smallest that
+            // still satisfies need(w, h). → { bmp, size, swapped } with the
+            // orientation applied, or null to decode in full instead.
+            // Off for the session where the decoder can't do it (no
+            // orientation reported, or it keeps failing): no double decodes
+            let scaledOff = typeof ImageDecoder === 'undefined', scaledFails = 0;
+            const decodeScaled = async (file, need) => {
+                if (scaledOff) return null;
+                const size = await jpegSize(file);
+                if (!size || !size.w || !size.h) return null;
+                let n = 1;
+                while (n < 8 && !need(Math.ceil(size.w * n / 8), Math.ceil(size.h * n / 8))) n++;
+                if (n === 8) return null;
+                const dec = new ImageDecoder({ data: file.stream(), type: 'image/jpeg',
+                    desiredWidth: Math.ceil(size.w * n / 8), desiredHeight: Math.ceil(size.h * n / 8) });
+                try {
+                    const { image } = await dec.decode();
+                    try {
+                        // Only where the decoder reports the photo's orientation
+                        // (and so applies it); and only a size that's enough
+                        if (typeof image.rotation !== 'number') { scaledOff = true; return null; }
+                        if (!need(image.codedWidth, image.codedHeight)) return null;
+                        const bmp = await createImageBitmap(image);
+                        scaledFails = 0;
+                        return { bmp, size, swapped: image.rotation % 180 !== 0 };
+                    } finally {
+                        image.close();
+                    }
+                } catch (err) {
+                    if (++scaledFails >= 5) scaledOff = true;
+                    return null;
+                } finally {
+                    dec.close();
+                }
+            };
+            self.onmessage = async (e) => {
                 const { id, file, targetWidth, type, edge } = e.data;
                 try {
                     if (edge) {
-                        const full = await createImageBitmap(file);
-                        const w = full.width, h = full.height;
+                        // Screen-sized preview: long side \`edge\`
+                        const scaled = await decodeScaled(file, (w, h) => Math.max(w, h) >= edge).catch(() => null);
+                        const full = scaled ? scaled.bmp : await createImageBitmap(file);
+                        const w = scaled ? (scaled.swapped ? scaled.size.h : scaled.size.w) : full.width;
+                        const h = scaled ? (scaled.swapped ? scaled.size.w : scaled.size.h) : full.height;
                         if (Math.max(w, h) <= edge * 1.2) {
                             full.close();
                             self.postMessage({ id, result: { small: true, w, h } });
@@ -7538,7 +7615,15 @@ const app = {
                         self.postMessage({ id, result: { blob, w, h } });
                         return;
                     }
-                    const bitmap = await createImageBitmap(file, { resizeWidth: targetWidth, resizeQuality: 'medium' });
+                    // Thumbnail: \`targetWidth\` wide (either way round)
+                    const scaled = await decodeScaled(file, (w, h) => Math.min(w, h) >= targetWidth).catch(() => null);
+                    let bitmap;
+                    if (scaled) {
+                        bitmap = await createImageBitmap(scaled.bmp, { resizeWidth: targetWidth, resizeQuality: 'medium' });
+                        scaled.bmp.close();
+                    } else {
+                        bitmap = await createImageBitmap(file, { resizeWidth: targetWidth, resizeQuality: 'medium' });
+                    }
                     const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
                     canvas.getContext('2d').drawImage(bitmap, 0, 0);
                     bitmap.close();
@@ -7967,6 +8052,9 @@ const app = {
         if (file._sourcePromise) return file._sourcePromise;
         const p = (async () => {
             while (file.isBusy) await new Promise(r => setTimeout(r, 30));
+            // Just rotated: carry its cached preview over first (a few ms)
+            // instead of making a new one from the full scan
+            if (file._cacheFrom) await this.carryCache(file).catch(() => { });
             const savedAtRead = file._savedRotationTotal || 0;
             const data = await file.handle.getFile();
             const edge = this.previewEdge();
@@ -9156,6 +9244,11 @@ const app = {
                 // HARDENING: Fresh handle check
                 const fileData = await fileEntry.handle.getFile();
                 const isJpeg = /\.jpe?g$/i.test(fileEntry.name);
+                // The version the cached thumbnail and preview were made
+                // from; they're carried over to the new one after the save
+                if (!fileEntry._cacheFrom) {
+                    fileEntry._cacheFrom = { size: fileData.size, lastModified: fileData.lastModified, saved: fileEntry._savedRotationTotal || 0 };
+                }
                 const startUndo = (entry) => {
                     if (undoEntry || fileEntry._undoing) return;
                     undoEntry = entry;
@@ -9246,8 +9339,105 @@ const app = {
             return false;
         } finally {
             fileEntry.isBusy = false;
+            // Saved: bring the cached thumbnail and preview along
+            if (fileEntry._cacheFrom) this.queueCacheCarry(fileEntry);
         }
     },
+
+    // ---- Keeping caches through rotations ----
+    //
+    // Thumbnails and previews are cached per file version (size + date), and
+    // saving a rotation changes both — so reopening a folder after rotating
+    // a batch made every rotated photo again from the full scan. Only the
+    // orientation changed, not the pixels: once a rotation is saved, the
+    // cached copies (JPEGs themselves) get the same lossless orientation tag
+    // and are stored under the new version. No decoding, so it's quick, and
+    // it runs in the background.
+
+    CARRY_CONCURRENCY: 2,
+
+    queueCacheCarry(file) {
+        if (!this._carryQueue) this._carryQueue = new Set();
+        this._carryQueue.add(file);
+        this.pumpCacheCarry();
+    },
+
+    pumpCacheCarry() {
+        this._carrying = this._carrying || 0;
+        while (this._carrying < this.CARRY_CONCURRENCY && this._carryQueue.size) {
+            const file = this._carryQueue.values().next().value;
+            this._carryQueue.delete(file);
+            this._carrying++;
+            this.carryCache(file).catch(e => this.log('Cache carry failed: ' + e.message))
+                .finally(() => {
+                    this._carrying--;
+                    this.pumpCacheCarry();
+                });
+        }
+    },
+
+    carryCache(file) {
+        if (!file._carryPromise) {
+            file._carryPromise = this.doCarryCache(file).finally(() => { file._carryPromise = null; });
+        }
+        return file._carryPromise;
+    },
+
+    async doCarryCache(file) {
+        const from = file._cacheFrom;
+        // Mid-save: the save queues this again when it's done
+        if (!from || file.isBusy || file.pendingRotation || file.savingRotation) return;
+        const saved = file._savedRotationTotal || 0;
+        const data = await file.handle.getFile();
+        // Only on top of bytes the rotation engine wrote itself (a crop or
+        // undo since then made the old copies wrong for this file)
+        // ...and only when they changed (a save that failed wrote nothing)
+        if (data.size !== file.size || data.lastModified !== file.lastModified ||
+            (data.size === from.size && data.lastModified === from.lastModified)) {
+            if (file._cacheFrom === from) file._cacheFrom = null;
+            return;
+        }
+        const deg = (((saved - from.saved) % 360) + 360) % 360;
+        const turn = async (blob) => {
+            if (!blob) return null;
+            const buf = await blob.arrayBuffer();
+            const b = new Uint8Array(buf, 0, Math.min(2, buf.byteLength));
+            if (b[0] !== 0xFF || b[1] !== 0xD8) return null; // not a JPEG (photos with transparency): made again when needed
+            if (deg === 0) return new Blob([buf], { type: 'image/jpeg' });
+            try {
+                return this.rotateJpegLossless(buf, deg);
+            } catch (e) {
+                return null;
+            }
+        };
+        const rel = file.relPath || file.name;
+
+        let thumb = null;
+        const thumbKey = `${rel}|${data.size}|${data.lastModified}`;
+        if (from.size > this.THUMB_FAST_PATH_BYTES && data.size > this.THUMB_FAST_PATH_BYTES) {
+            const oldKey = `${rel}|${from.size}|${from.lastModified}`;
+            thumb = await turn(await this.idbGetThumb(oldKey) || await FolderCache.getThumb(this, oldKey));
+        }
+        const edge = this.previewEdge();
+        const oldPreviewKey = `p|${rel}|${from.size}|${from.lastModified}|${edge}`;
+        const oldPreview = await this.idbGet('previews', oldPreviewKey);
+        const preview = oldPreview && await turn(oldPreview.blob);
+
+        // Another rotation started meanwhile: it carries again from `from`
+        if (file._cacheFrom !== from || file.isBusy || (file._savedRotationTotal || 0) !== saved) return;
+        if (thumb) {
+            this.idbPutThumb(thumbKey, thumb);
+            FolderCache.putThumb(this, thumbKey, thumb);
+        }
+        if (preview) {
+            const swap = deg % 180 !== 0;
+            this.idbPutPreview(`p|${rel}|${data.size}|${data.lastModified}|${edge}`,
+                { blob: preview, w: swap ? oldPreview.h : oldPreview.w, h: swap ? oldPreview.w : oldPreview.h });
+            this.idbDelete('previews', oldPreviewKey);
+        }
+        file._cacheFrom = null;
+    },
+
     // ---- Undo ----
     UNDO_LIMIT: 50,
     UNDO_MAX_BYTES: 256 * 1024 * 1024, // file copies kept for undo (crops, re-encodes)
@@ -9355,6 +9545,7 @@ const app = {
         f._dims = undefined;
         f._glass = undefined;
         f._fp = undefined;
+        f._cacheFrom = null; // new pixels: nothing to carry over
         f._thumbStale = true; // cached thumbnail shows the old pixels until regenerated
         if (f.fullImageUrl) {
             URL.revokeObjectURL(f.fullImageUrl);
@@ -9776,6 +9967,14 @@ const app = {
 
     idbGetThumb(key) {
         return this.idbGet('thumbs', key);
+    },
+
+    async idbDelete(store, key) {
+        const db = await this.idb();
+        if (!db) return;
+        try {
+            db.transaction(store, 'readwrite').objectStore(store).delete(key);
+        } catch (e) { /* cache is best-effort */ }
     },
 
     async idbPutThumb(key, blob) {
