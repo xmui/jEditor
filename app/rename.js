@@ -139,17 +139,18 @@ const Renamer = {
     // Files in numbering order
     ordered(files, o) {
         const app = this.app;
+        const pos = new Map(app.files.map((f, i) => [f, i]));
         const key = {
-            current: (f) => app.files.indexOf(f),
+            current: (f) => pos.get(f),
             taken: (f) => f.dateTaken ?? f.lastModified ?? 0,
             modified: (f) => f.lastModified || 0,
             size: (f) => f.size || 0
         }[o.order];
         const out = [...files];
         if (o.order === 'name') {
-            out.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+            out.sort((a, b) => app.NAME_ORDER.compare(a.name, b.name));
         } else {
-            out.sort((a, b) => key(a) - key(b) || app.files.indexOf(a) - app.files.indexOf(b));
+            out.sort((a, b) => key(a) - key(b) || pos.get(a) - pos.get(b));
         }
         if (o.dir === 'desc') out.reverse();
         return out;

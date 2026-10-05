@@ -5,6 +5,15 @@
 
 const CHANGELOG = [
     {
+        version: '1.13.0', date: '2026-10-05',
+        items: [
+            'Opening a folder again after rotating photos is as quick as opening it with no changes. Before, every rotated photo\'s thumbnail and preview were made again from the full scan (120 big scans: 3.3 s → 0.2 s).',
+            'Paging through photos you\'ve just rotated stays quick: their previews are kept instead of made again.',
+            'Thumbnails and previews of JPEGs are made 2–4× faster, so a new order is ready sooner (2000 photos: 48 s → 21 s). The bigger the scans, the bigger the gain.',
+            'Sorting by name is quicker on big orders.'
+        ]
+    },
+    {
         version: '1.12.4', date: '2026-10-05',
         items: [
             'Rotate 180° is on `\\` now (it was `/`). Like any shortcut, it can be changed with `?`.'

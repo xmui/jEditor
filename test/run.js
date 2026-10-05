@@ -2097,14 +2097,22 @@ async function newPage(browser, url) {
             out.batchRestored = app.files.length === 4 && back.length === 4 && intact.every(Boolean);
             await trash.removeEntry(parked.name);
 
-            // A changed photo's old cached thumbnail is pruned
-            await app.rotateImage(app.files[0], 90);
+            // A rotated photo's thumbnail is kept under its new version;
+            // the old one is pruned
+            const rf = app.files[0];
+            const keyOf = (d) => `${rf.relPath || rf.name}|${d.size}|${d.lastModified}`;
+            const oldKey = keyOf(await rf.handle.getFile());
+            await app.rotateImage(rf, 90);
+            while (rf._cacheFrom || rf._carryPromise) await new Promise(r => setTimeout(r, 20));
+            const newKey = keyOf(await rf.handle.getFile());
+            await FolderCache.flush();
             app.pruneFolderCache();
             await new Promise(r => setTimeout(r, 400));
             const thumbs = await (await (await dir.getDirectoryHandle('.jeditor')).getDirectoryHandle('cache')).getDirectoryHandle('thumbs');
-            let n = 0;
-            for await (const e of thumbs.values()) n++;
-            out.prunedTo = n;
+            const names = [];
+            for await (const e of thumbs.values()) names.push(e.name);
+            out.prunedTo = names.length;
+            out.prunedOld = !names.includes(FolderCache.hash(oldKey) + '.img') && names.includes(FolderCache.hash(newKey) + '.img');
 
             // Clean up removes .jeditor entirely (after confirming)
             await app.moveToTrash([app.files[1]]);
@@ -2132,10 +2140,177 @@ async function newPage(browser, url) {
         check('delete goes to .jeditor/trash; undo restores', second.trashed && second.restored);
         check('batch delete moves files (no copying), keeps a unique trash name', second.batchMoved && second.batchCurrent);
         check('undo restores the whole batch intact', second.batchRestored);
-        check('stale cached thumbnail pruned', second.prunedTo === 3, String(second.prunedTo));
+        check('rotated photo: old cached thumbnail pruned, new one kept', second.prunedTo === 4 && second.prunedOld, String(second.prunedTo));
         check('clean up removes .jeditor and its undo steps', second.cleanedUp);
         check('cache setting off writes nothing', second.offWritesNothing);
         check('folder cache suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7k. Rotations keep the caches: reopening doesn't remake thumbnails/previews ----
+    console.log('caches kept through rotations');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const root = await navigator.storage.getDirectory();
+            try { await root.removeEntry('carryorder', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await root.getDirectoryHandle('carryorder', { create: true });
+            const edge = app.previewEdge();
+            // Noise keeps the files big enough to be cached; a different
+            // block per photo makes orientation mistakes visible
+            const sizes = [[Math.round(edge * 1.5), edge], [900, 600], [900, 600]];
+            for (let i = 0; i < sizes.length; i++) {
+                const [w, h] = sizes[i];
+                const c = document.createElement('canvas');
+                c.width = w; c.height = h;
+                const g = c.getContext('2d');
+                const noise = g.createImageData(w, h);
+                for (let k = 0; k < noise.data.length; k++) noise.data[k] = (Math.random() * 120) | 0;
+                g.putImageData(noise, 0, 0);
+                g.fillStyle = `hsl(${i * 120},90%,60%)`;
+                g.fillRect(0, 0, w * 0.4, h * 0.3);
+                const fh = await dir.getFileHandle(`r${i}.jpg`, { create: true });
+                const wr = await fh.createWritable();
+                await wr.write(await new Promise(res => c.toBlob(res, 'image/jpeg', 0.9)));
+                await wr.close();
+            }
+            window.showDirectoryPicker = async () => dir;
+            const open = async () => {
+                await app.browseFolder();
+                while (app.files.some(f => !f.thumbnailUrl)) await new Promise(res => setTimeout(res, 50));
+            };
+            const settled = async () => {
+                await new Promise(res => setTimeout(res, 50));
+                while (app.files.some(f => f.isBusy || f.pendingRotation || f.savingRotation || f._cacheFrom || f._carryPromise)) {
+                    await new Promise(res => setTimeout(res, 50));
+                }
+            };
+            await open();
+            await app.getDisplaySource(app.files[0]); // its preview is cached
+            // Rotate all right, then the others again (stacked): 90, 270, 0
+            app.setView('grid');
+            app.selection = new Set(app.files);
+            app.rotateBulk(90);
+            app.selection = new Set(app.files.slice(1));
+            app.rotateBulk(180);
+            app.rotateImage(app.files[2], 90);
+            await settled();
+
+            // Reopen ("check the results"): nothing is made again
+            let made = 0;
+            const genThumb = app.generateThumbnailBlob.bind(app), genPreview = app.generatePreview.bind(app);
+            app.generateThumbnailBlob = (...a) => { made++; return genThumb(...a); };
+            app.generatePreview = (...a) => { made++; return genPreview(...a); };
+            await open();
+            const src = await app.getDisplaySource(app.files[0]);
+            out.madeAgain = made;
+            app.generateThumbnailBlob = genThumb;
+            app.generatePreview = genPreview;
+
+            // ...and what's cached matches a fresh one from the rotated file
+            const px = async (blob) => {
+                const b = await createImageBitmap(blob);
+                const c = new OffscreenCanvas(12, 12);
+                c.getContext('2d').drawImage(b, 0, 0, 12, 12);
+                const res = { w: b.width, h: b.height, d: c.getContext('2d').getImageData(0, 0, 12, 12).data };
+                b.close();
+                return res;
+            };
+            const same = (a, b) => {
+                let s = 0;
+                for (let i = 0; i < a.d.length; i += 4) s += Math.abs(a.d[i] - b.d[i]) + Math.abs(a.d[i + 1] - b.d[i + 1]) + Math.abs(a.d[i + 2] - b.d[i + 2]);
+                // Same way round, same picture (a turned thumbnail keeps its
+                // short side, a new one is made 320 wide: sizes differ)
+                return (a.w > a.h) === (b.w > b.h) && Math.abs(a.w / a.h - b.w / b.h) < 0.02 && s / (a.d.length / 4) / 3 < 8;
+            };
+            out.thumbs = [];
+            for (const f of app.files) {
+                const data = await f.handle.getFile();
+                out.thumbs.push(same(await px(await (await fetch(f.thumbnailUrl)).blob()), await px(await genThumb(data))) && !f.thumbLag);
+            }
+            const fresh = await genPreview(await app.files[0].handle.getFile(), edge);
+            out.preview = src.isPreview && same(await px(src.blob), await px(fresh.blob)) && src.w === fresh.w && src.h === fresh.h;
+            out.portrait = src.w < src.h;
+
+            // A change that isn't a rotation (crop, undo of a re-encode)
+            // carries nothing over
+            const f = app.files[1];
+            const before = await f.handle.getFile();
+            f._cacheFrom = { size: before.size, lastModified: before.lastModified, saved: f._savedRotationTotal || 0 };
+            const wr = await f.handle.createWritable();
+            await wr.write(await (await fetch(app.files[2].thumbnailUrl)).blob());
+            await wr.close();
+            await app.carryCache(f);
+            const after = await f.handle.getFile();
+            out.noCarryOnOtherWrites = !(await app.idbGetThumb(`${f.relPath || f.name}|${after.size}|${after.lastModified}`)) && f._cacheFrom === null;
+            f._cacheFrom = { size: 1, lastModified: 1, saved: 0 };
+            await app.afterFileChanged(f);
+            out.resetOnChange = f._cacheFrom === null;
+            return out;
+        });
+        check('reopening after rotating makes no thumbnails or previews again', r.madeAgain === 0, String(r.madeAgain));
+        check('kept thumbnails match the rotated photos (90°, 270°, 0°)', r.thumbs.every(Boolean), JSON.stringify(r.thumbs));
+        check('kept preview matches the rotated photo, original size swapped', r.preview && r.portrait);
+        check('a change that isn\'t a rotation keeps nothing', r.noCarryOnOtherWrites && r.resetOnChange);
+        check('rotation cache suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7l. Big JPEGs decode at a fraction of their size: same result ----
+    console.log('fast decoding of big JPEGs');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const edge = app.previewEdge();
+            const W = Math.round(edge * 2.5), H = Math.round(edge * 1.7);
+            const c = new OffscreenCanvas(W, H);
+            const g = c.getContext('2d');
+            g.fillStyle = '#2050c0'; g.fillRect(0, 0, W, H);
+            g.fillStyle = '#e03020'; g.fillRect(0, 0, W * 0.3, H * 0.3);  // top-left marker
+            g.fillStyle = '#30c040'; g.fillRect(W * 0.7, H * 0.7, W * 0.3, H * 0.3);
+            const base = await c.convertToBlob({ type: 'image/jpeg', quality: 0.9 });
+            const px = async (blob, w) => {
+                const b = await createImageBitmap(blob);
+                const h = Math.round(w * b.height / b.width);
+                const cv = new OffscreenCanvas(w, h);
+                const cg = cv.getContext('2d', { willReadFrequently: true });
+                cg.drawImage(b, 0, 0, w, h);
+                const res = { w: b.width, h: b.height, d: cg.getImageData(0, 0, w, h).data };
+                b.close();
+                return res;
+            };
+            const close = (a, b) => {
+                if (a.d.length !== b.d.length) return false;
+                let s = 0;
+                for (let i = 0; i < a.d.length; i += 4) s += Math.abs(a.d[i] - b.d[i]) + Math.abs(a.d[i + 1] - b.d[i + 1]) + Math.abs(a.d[i + 2] - b.d[i + 2]);
+                return s / (a.d.length / 4) / 3 < 6;
+            };
+            const out = [];
+            for (const deg of [0, 90, 180, 270]) {
+                const blob = deg ? app.rotateJpegLossless(await base.arrayBuffer(), deg) : base;
+                const file = new File([blob], `t${deg}.jpg`, { type: 'image/jpeg' });
+                const ref = await createImageBitmap(file); // full decode, orientation applied
+                const refC = new OffscreenCanvas(ref.width, ref.height);
+                refC.getContext('2d').drawImage(ref, 0, 0);
+                const refBlob = await refC.convertToBlob({ type: 'image/png' });
+                const [rw, rh] = [ref.width, ref.height];
+                ref.close();
+                const thumb = await px(await app.generateThumbnailBlob(file), 32);
+                const prev = await app.generatePreview(file, edge);
+                const p = await px(prev.blob, 32);
+                const want = await px(refBlob, 32);
+                out.push({
+                    deg,
+                    thumb: thumb.w === app.THUMB_WIDTH && Math.abs(thumb.h - app.THUMB_WIDTH * rh / rw) <= 1 && close(thumb, want),
+                    preview: prev.w === rw && prev.h === rh && Math.max(p.w, p.h) === edge && close(p, want)
+                });
+            }
+            return out;
+        });
+        check('big JPEG thumbnails: right way round, size and picture (0/90/180/270°)', r.every(x => x.thumb), JSON.stringify(r));
+        check('big JPEG previews: right way round, size and picture, original size reported', r.every(x => x.preview), JSON.stringify(r));
+        check('fast decoding suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

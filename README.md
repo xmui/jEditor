@@ -36,7 +36,9 @@ jEditor keeps its own data in a `.jeditor` folder inside the folder you open:
 - `trash/` holds deleted photos.
 - `cache/` holds thumbnails and duplicate-finder data.
 
-Because the cache travels with the folder, a second computer opening the same order (on a shared drive, say) gets its thumbnails and duplicate data straight away. In a 2000-photo test, thumbnails were ready in about 10 seconds instead of 27, and a duplicate scan took 5 seconds instead of 20. The large screen-sized previews aren't stored there, to keep the folder small.
+Because the cache travels with the folder, a second computer opening the same order (on a shared drive, say) gets its thumbnails and duplicate data straight away. The large screen-sized previews aren't stored there, to keep the folder small; they're kept in the browser instead.
+
+Rotating doesn't throw the cache away. A rotation only changes the photo's orientation tag, so the cached thumbnail and preview get the same tag instead of being made again from the full scan. Opening the folder again after rotating a batch is as quick as opening it with no changes.
 
 When an order is finished, use **Clean Up Folder…** (right-click the grid background, or in Customize controls). It empties the trash and removes the cache; your photos aren't touched. Do this before copying an order to a customer: on Windows a folder starting with a dot is not hidden, so `.jeditor` would otherwise go along with the photos, deleted ones included. To stop jEditor writing a cache at all, untick **Save cache in the folder** in Customize controls. The trash is still used either way.
 
@@ -84,7 +86,7 @@ It can still miss some re-scans or group photos that look alike, so check each g
 
 Press `Ctrl+Shift+D` to open the debug console. The yellow lines at the top show what the app is holding and doing: memory, undo history, images decoded, background work, and how long recent photos took to load. A screenshot of it taken while things are slow is the most useful thing to include in a bug report.
 
-It's built and tested for orders of 500–2000 photos. With 2000 scans at 1800×1200: the folder opens and shows the first photo in under half a second, thumbnails take about 20 seconds in the background, rotating all 2000 takes about 8 seconds, renaming them about 2 seconds, and a duplicate scan about 20 seconds. Bigger files take proportionally longer to thumbnail.
+It's built and tested for orders of 500–2000 photos. With 2000 scans at 1800×1200: the folder opens and shows the first photo in under half a second, thumbnails take about 20 seconds in the background the first time (under 2 seconds when it's opened again, rotated or not), rotating all 2000 takes about 8 seconds, renaming them about 2 seconds, and a duplicate scan about 20 seconds. Bigger files take longer to thumbnail, though big JPEGs are decoded at a fraction of their size for thumbnails and previews (about 4× faster than a full decode on 20-megapixel scans).
 
 Undo keeps up to 50 steps. Rotating a selection in the grid is one step, however many photos it covers. Rotations are undone by rotating back, so they don't use memory. Crops keep a copy of the original file so they can be undone, up to 256 MB in total; older crop steps are dropped after that.
 
