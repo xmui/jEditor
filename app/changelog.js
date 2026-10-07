@@ -5,6 +5,12 @@
 
 const CHANGELOG = [
     {
+        version: '1.14.1', date: '2026-10-07',
+        items: [
+            'The folder controls in grid view are a pill at the top left, beside the other two, instead of a bar across the grid, so the grid starts higher up. The folder list toggle, All photos / Folders, the folder you\'re in and New folder are all in it; on a narrow window it keeps to the essentials.'
+        ]
+    },
+    {
         version: '1.14.0', date: '2026-10-07',
         items: [
             'Folders, for collating an order into labelled folders. In grid view, a folder list on the left shows every folder (folders inside folders too) with its photo count. Click one to see just its photos.',

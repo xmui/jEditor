@@ -14,7 +14,7 @@
     <script>
 // Single source of truth for the app version. Bump with:  npm run bump 1.x.y
 // (keeps package.json in sync and busts the service worker cache)
-const APP_VERSION = '1.14.0';
+const APP_VERSION = '1.14.1';
 
 </script>
     <script>
@@ -24,6 +24,12 @@ const APP_VERSION = '1.14.0';
 // Text between `backticks` is shown as a key.
 
 const CHANGELOG = [
+    {
+        version: '1.14.1', date: '2026-10-07',
+        items: [
+            'The folder controls in grid view are a pill at the top left, beside the other two, instead of a bar across the grid, so the grid starts higher up. The folder list toggle, All photos / Folders, the folder you\'re in and New folder are all in it; on a narrow window it keeps to the essentials.'
+        ]
+    },
     {
         version: '1.14.0', date: '2026-10-07',
         items: [
@@ -3246,6 +3252,10 @@ const Folders = {
         this.initClash();
         this.initPrompt();
         this.initDrag();
+        // The folder pill gives way to the centre pill as its name changes
+        const centre = document.querySelector('.file-info');
+        if (centre && typeof ResizeObserver === 'function') new ResizeObserver(() => this.fitBar()).observe(centre);
+        window.addEventListener('resize', () => this.fitBar());
     },
 
     // A new folder was opened: forget the old one's folders
@@ -3432,6 +3442,18 @@ const Folders = {
         const counts = this.counts();
         if (rail) this.renderRail(counts);
         this.renderBar(counts);
+        this.fitBar();
+    },
+
+    // As wide as it needs, up to the centre pill
+    fitBar() {
+        const bar = this.el('folder-bar');
+        const centre = document.querySelector('.file-info');
+        if (!centre || bar.classList.contains('hidden')) return;
+        const room = centre.getBoundingClientRect().left - bar.getBoundingClientRect().left - 12;
+        if (room <= 0) return;
+        bar.style.setProperty('--bar-room', `${Math.max(150, Math.floor(room))}px`);
+        bar.classList.toggle('tight', room < 300);
     },
 
     folderIcon(cls = '') {
@@ -6761,24 +6783,26 @@ kbd {
 
 /* ---- Folders (folders.js) ---- */
 
-/* Top bar in grid view: rail toggle, All photos / Folders, breadcrumb,
-   New folder. Below the header pills; the folder list sits under it. */
+/* Folder pill in grid view, top left, level with the header pills: folder
+   list toggle, All photos / Folders, breadcrumb, New folder. Kept clear of
+   the centre pill (Folders.fitBar sets --bar-room). */
 .folder-bar {
     position: absolute;
-    top: 68px;
+    top: 1rem;
     left: 20px;
-    right: 20px;
-    z-index: 9;
+    max-width: var(--bar-room, calc(50% - 200px));
+    z-index: 11;
     display: flex;
     align-items: center;
-    gap: 10px;
-    min-height: 40px;
-    padding: 4px 6px;
+    gap: 6px;
+    height: 40px;
+    padding: 4px;
     box-sizing: border-box;
+    overflow: hidden;
     background: var(--glass-top-bg);
     color: var(--glass-top-text);
     border: 1px solid var(--glass-top-border);
-    border-radius: 14px;
+    border-radius: 9999px;
     box-shadow: var(--glass-shadow);
     backdrop-filter: var(--backdrop-filter);
     -webkit-backdrop-filter: var(--backdrop-filter);
@@ -6796,8 +6820,9 @@ kbd {
     background: transparent;
     border: none;
     padding: 6px;
-    border-radius: 8px;
+    border-radius: 999px;
     display: flex;
+    flex-shrink: 0;
     opacity: 0.7;
 }
 
@@ -6810,7 +6835,7 @@ kbd {
 .fb-modes {
     display: flex;
     background: rgba(125, 125, 125, 0.16);
-    border-radius: 9px;
+    border-radius: 999px;
     padding: 2px;
     flex-shrink: 0;
 }
@@ -6819,7 +6844,8 @@ kbd {
     background: transparent;
     border: none;
     padding: 5px 12px;
-    border-radius: 7px;
+    border-radius: 999px;
+    white-space: nowrap;
     font-size: 13px;
     font-weight: 500;
     opacity: 0.75;
@@ -6829,6 +6855,17 @@ kbd {
     background: var(--accent-color);
     color: #fff;
     opacity: 1;
+}
+
+/* Not much room beside the centre pill: shorter labels, no path */
+.fb-short,
+.folder-bar.tight .fb-long,
+.folder-bar.tight .fb-crumbs {
+    display: none;
+}
+
+.folder-bar.tight .fb-short {
+    display: inline;
 }
 
 .fb-crumbs {
@@ -6845,7 +6882,7 @@ kbd {
     background: transparent;
     border: 1px solid transparent;
     padding: 4px 8px;
-    border-radius: 7px;
+    border-radius: 999px;
     font-size: 13px;
     max-width: 220px;
     overflow: hidden;
@@ -6869,19 +6906,23 @@ kbd {
 
 .fb-note {
     opacity: 0.6;
-    padding: 0 8px;
-    flex-shrink: 0;
+    padding: 0 6px;
+    white-space: nowrap;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .fb-btn {
     display: flex;
     align-items: center;
-    gap: 6px;
+    justify-content: center;
     background: rgba(125, 125, 125, 0.16);
     border: none;
-    padding: 6px 12px;
-    border-radius: 9px;
-    font-size: 13px;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border-radius: 999px;
     flex-shrink: 0;
 }
 
@@ -6892,7 +6933,7 @@ kbd {
 /* The folder list down the left of the grid */
 .folder-rail {
     position: absolute;
-    top: 120px;
+    top: 76px;
     left: 20px;
     bottom: 20px;
     width: 236px;
@@ -7029,11 +7070,7 @@ kbd {
     background: rgba(125, 125, 125, 0.15);
 }
 
-/* The grid makes room for the bar and the folder list */
-.interface.folders-on .grid-view {
-    padding-top: 124px;
-}
-
+/* The grid makes room for the folder list */
 .interface.rail-open .grid-view {
     padding-left: 276px;
 }
@@ -7490,11 +7527,16 @@ body.dragging-photos .folder-tile:hover {
     color: #ff7b72;
 }
 
-/* Toasts clear the folder bar and the folder list */
-body:has(#main-interface.folders-on:not(.hidden)) #toast-stack {
-    top: 124px;
+/* The task pill and toasts move off the folder pill and the folder list */
+body:has(#main-interface.folders-on:not(.hidden)) .task-pill {
+    top: 76px;
 }
 
+body:has(#main-interface.folders-on:not(.hidden)) #toast-stack {
+    top: 128px;
+}
+
+body:has(#main-interface.rail-open:not(.hidden)) .task-pill,
 body:has(#main-interface.rail-open:not(.hidden)) #toast-stack {
     left: 276px;
 }
@@ -7713,8 +7755,9 @@ body:has(#main-interface.rail-open:not(.hidden)) #toast-stack {
                 </div>
             </main>
 
-            <!-- Folders (folders.js): top bar with All photos / Folders and the
-                 breadcrumb, and the folder list on the left. Grid view only. -->
+            <!-- Folders (folders.js): a pill top left with the folder list
+                 toggle, All photos / Folders, the breadcrumb and New folder,
+                 and the folder list on the left. Grid view only. -->
             <nav id="folder-bar" class="folder-bar hidden" aria-label="Folders">
                 <button id="fb-rail" class="fb-icon" title="Show the folder list">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -7724,7 +7767,7 @@ body:has(#main-interface.rail-open:not(.hidden)) #toast-stack {
                     </svg>
                 </button>
                 <div class="fb-modes">
-                    <button id="fb-all" title="Every photo in the order, whatever folder it's in (A switches)">All photos</button>
+                    <button id="fb-all" title="Every photo in the order, whatever folder it's in (A switches)"><span class="fb-long">All photos</span><span class="fb-short">All</span></button>
                     <button id="fb-folders" title="One folder at a time">Folders</button>
                 </div>
                 <div id="fb-crumbs" class="fb-crumbs"></div>
@@ -7734,7 +7777,6 @@ body:has(#main-interface.rail-open:not(.hidden)) #toast-stack {
                         <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
                         <path d="M12 10v6M9 13h6" />
                     </svg>
-                    New folder
                 </button>
             </nav>
             <aside id="folder-rail" class="folder-rail hidden" aria-label="Folder list">

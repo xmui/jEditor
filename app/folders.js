@@ -38,6 +38,10 @@ const Folders = {
         this.initClash();
         this.initPrompt();
         this.initDrag();
+        // The folder pill gives way to the centre pill as its name changes
+        const centre = document.querySelector('.file-info');
+        if (centre && typeof ResizeObserver === 'function') new ResizeObserver(() => this.fitBar()).observe(centre);
+        window.addEventListener('resize', () => this.fitBar());
     },
 
     // A new folder was opened: forget the old one's folders
@@ -224,6 +228,18 @@ const Folders = {
         const counts = this.counts();
         if (rail) this.renderRail(counts);
         this.renderBar(counts);
+        this.fitBar();
+    },
+
+    // As wide as it needs, up to the centre pill
+    fitBar() {
+        const bar = this.el('folder-bar');
+        const centre = document.querySelector('.file-info');
+        if (!centre || bar.classList.contains('hidden')) return;
+        const room = centre.getBoundingClientRect().left - bar.getBoundingClientRect().left - 12;
+        if (room <= 0) return;
+        bar.style.setProperty('--bar-room', `${Math.max(150, Math.floor(room))}px`);
+        bar.classList.toggle('tight', room < 300);
     },
 
     folderIcon(cls = '') {
