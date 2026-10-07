@@ -2660,12 +2660,17 @@ async function newPage(browser, url) {
             const frames = () => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
             const grid = app.elements.gridView;
             const f = app.files[130];
+            let out0;
             app.goTo(f);
             await frames();
-            grid.scrollTop += f._gridEl.getBoundingClientRect().top - 400;
-            await frames();
             const top = () => Math.round(f._gridEl.getBoundingClientRect().top);
-            const out = { tops: [top()], cols: [app.getGridColumnCount()] };
+            // Put it 400px down and wait for the layout to hold still there
+            for (let i = 0; i < 20 && top() !== 400; i++) {
+                grid.scrollTop += f._gridEl.getBoundingClientRect().top - 400;
+                await frames();
+            }
+            out0 = top();
+            const out = { tops: [out0], cols: [app.getGridColumnCount()] };
             const wheel = (dy) => grid.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, ctrlKey: true, bubbles: true, cancelable: true }));
             for (let i = 0; i < 3; i++) { wheel(100); await frames(); }
             out.tops.push(top()); out.cols.push(app.getGridColumnCount());
@@ -2689,8 +2694,10 @@ async function newPage(browser, url) {
             // Rescan (R) with new photos sorting in before it: the highlighted one stays put
             app.goTo(f);
             await frames();
-            grid.scrollTop += f._gridEl.getBoundingClientRect().top - 300;
-            await frames();
+            for (let i = 0; i < 20 && top() !== 300; i++) {
+                grid.scrollTop += f._gridEl.getBoundingClientRect().top - 300;
+                await frames();
+            }
             for (let i = 0; i < 20; i++) {
                 const fh = await dir.getFileHandle(`a${String(i).padStart(3, '0')}.jpg`, { create: true });
                 const w = await fh.createWritable();

@@ -10102,6 +10102,7 @@ const app = {
         }, { root: null, rootMargin: '1000px' });
         this.elements.gridView._observer = observer; // Stash for refreshThumbnailUI
 
+        this.syncGridTile();
         // Subfolders of the folder being shown come first
         const files = this.viewFiles();
         const folderTiles = Folders.folderTiles();
@@ -10670,6 +10671,7 @@ const app = {
             this.elements.thumbnailStrip.classList.add('hidden');
             if (this.elements.stripResize) this.elements.stripResize.classList.add('hidden');
             this.elements.gridControls.classList.remove('hidden');
+            this.syncGridTile(); // now, not when the resize observer gets round to it
             iconGrid.classList.add('hidden');
             iconSingle.classList.remove('hidden');
 
