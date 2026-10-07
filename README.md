@@ -13,7 +13,7 @@ The version number is shown on the start screen.
 
 ## Using it
 
-1. Click **Open Folder**, or drag a folder onto the window. Subfolders are included.
+1. Click **Open Folder**, or drag a folder onto the window. Subfolders are included. The last six folders you opened are listed under **Recent** on the start screen; click one to open it again (Chrome may ask once more for permission to edit it), or hover and click × to take it off the list.
 2. Move through photos with `←` / `→`. `Space` switches between single view and grid.
 3. Rotate with `[` / `]`. In grid view this rotates every selected photo.
 4. Press `C` to crop and straighten. `Enter` saves, `Shift+Enter` saves and opens the next photo, `Esc` cancels.
@@ -69,7 +69,7 @@ Some orders are collated: the photos go into labelled folders. Open the order fo
 - **All photos** (top of the list, or the switch in the folder pill at the top left) shows every photo in the order, whatever folder it's in, with each photo's folder named on its tile. It's what you see when an order is opened. `A` switches between All photos and the last folder.
 - **Moving.** Drag the selected photos onto a folder, in the list, a folder tile or the breadcrumb. Hold `Ctrl` (or `Alt`) when you let go to copy them instead. Or press `M` (`Shift+M` copies), or use **Move to…** on the selection bar or the right-click menu. That opens a list of folders: type to find one, or type a new name to make that folder and move the photos into it in one go. `Wedding/Speeches` makes a folder inside another.
 - **Name clashes.** If a photo with the same name is already in the folder, you're asked what to do: keep both (the moved photo gets a number, `IMG_0042 (2).jpg`), skip it, or replace the one that's there, which goes to the trash. You can apply the answer to the rest of the clashes. Cancel and nothing is moved.
-- **Folders.** **New folder** in the folder pill or the list, or `Shift+N`, makes one inside the folder you're looking at. Right-click a folder to rename it, make a folder inside it, or delete it once it's empty.
+- **Folders.** **New folder** at the bottom of the folder list, `Shift+N`, or right-clicking the grid makes one inside the folder you're looking at. Right-click a folder to rename it, make a folder inside it, or delete it once it's empty.
 - In a folder, `←` `→`, the film strip, `Ctrl+A` and **Rename All…** cover that folder's photos only.
 
 `Ctrl+Z` undoes a move or copy in one step, together with any photos it replaced and the folder made for it. Making, renaming and deleting folders can be undone too.
@@ -156,6 +156,7 @@ The app is plain JavaScript with no dependencies, in `app/`:
 - `dupes.js`: duplicate finder
 - `rename.js`: batch rename
 - `folders.js`: folders: the folder list, moving and copying photos, making, renaming and deleting folders
+- `recents.js`: recent orders on the start screen
 
 To release, bump the version, add what changed to the top of `app/changelog.js`, commit, and merge to `main`. The changelog is what the app shows under **What's New** and what the GitHub Release notes say; the tests fail if the current version has no entry. The Release workflow then tags the version, builds `standalone.html` and publishes a GitHub Release, and the Pages workflow builds and deploys the web app. Both builds inline every script and stylesheet into one page, so a browser never ends up mixing files from two versions. The tests fail if `app/version.js` and `package.json` disagree.
 
