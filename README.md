@@ -14,7 +14,7 @@ The version number is shown on the start screen.
 ## Using it
 
 1. Click **Open Folder**, or drag a folder onto the window. Subfolders are included. The last six folders you opened are listed under **Recent** on the start screen; click one to open it again (Chrome may ask once more for permission to edit it), or hover and click × to take it off the list.
-2. Move through photos with `←` / `→`. `Space` switches between single view and grid.
+2. Move through photos with `←` / `→`. `Space` switches between single view and grid. In the grid, the slider at the bottom right or `Ctrl` + mouse wheel makes the tiles bigger or smaller; the highlighted photo stays where it is on screen.
 3. Rotate with `[` / `]`. In grid view this rotates every selected photo.
 4. Press `C` to crop and straighten. `Enter` saves, `Shift+Enter` saves and opens the next photo, `Esc` cancels.
 5. `Ctrl+Z` undoes the last rotation, crop, rename or delete.

@@ -142,10 +142,9 @@ const app = {
         document.getElementById('btn-browse-folder').addEventListener('click', () => this.browseFolder());
 
         // Grid Size Slider
-        this.elements.gridSizeSlider.addEventListener('input', (e) => {
-            const size = e.target.value;
-            document.documentElement.style.setProperty('--grid-item-size', `${size}px`);
-        });
+        this.elements.gridSizeSlider.addEventListener('input', (e) => this.setGridSize(parseInt(e.target.value, 10)));
+        // Off-screen tiles stand in at the real tile size (see syncGridTile)
+        if (typeof ResizeObserver === 'function') new ResizeObserver(() => this.syncGridTile()).observe(this.elements.gridView);
 
         // Sort Control (persisted; capture-date sort loads EXIF dates first)
         this.elements.sortModeSelect.addEventListener('change', async (e) => {
@@ -174,7 +173,7 @@ const app = {
             const slider = this.elements.gridSizeSlider;
             const next = Math.max(80, Math.min(400, parseInt(slider.value, 10) - Math.sign(e.deltaY) * 20));
             slider.value = next;
-            document.documentElement.style.setProperty('--grid-item-size', `${next}px`);
+            this.setGridSize(next);
         }, { passive: false });
 
         Folders.init(this);
@@ -1010,7 +1009,8 @@ const app = {
             await this.scanDirectory(this.dirHandle);
 
             if (this.files.length > oldLength) {
-                this.sortFiles();
+                // New photos can land anywhere: the highlighted one stays put
+                this.keepGridPlace(() => this.sortFiles(true, { sync: true }));
                 this.precacheThumbnails();
                 this.showToast(`Found ${this.files.length - oldLength} new photos`, 3000);
             } else {
@@ -1454,7 +1454,7 @@ const app = {
     // which made sorting 2000 photos ~30× slower.
     NAME_ORDER: new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }),
 
-    sortFiles(render = true) {
+    sortFiles(render = true, { sync = false } = {}) {
         const mode = this.sortMode;
 
         this.files.sort((a, b) => {
@@ -1486,7 +1486,7 @@ const app = {
         // the same photos stay selected/active regardless of order.
         if (render) {
             this.renderThumbnails();
-            this.renderGrid();
+            this.renderGrid({ sync });
             this.updateActiveThumbnail();
             this.updateSelectionUI();
             if (this.getCurrentIndex() !== -1) this.updateFileCount();
@@ -3394,6 +3394,67 @@ const app = {
         document.getElementById('shortcuts-filter').addEventListener('input', () => this.renderShortcutsPanel());
         // Click on the backdrop closes
         panel.addEventListener('mousedown', (e) => { if (e.target === panel) this.toggleShortcutsPanel(false); });
+    },
+
+    // Resize the grid's tiles and keep your place: the highlighted photo
+    // stays where it is on screen (or, if it's out of sight, the photo in
+    // the middle of the view)
+    setGridSize(px) {
+        const grid = this.elements.gridView;
+        const anchor = this.gridAnchor();
+        document.documentElement.style.setProperty('--grid-item-size', `${px}px`);
+        this.syncGridTile();
+        if (anchor) grid.scrollTop += anchor.el.getBoundingClientRect().top - anchor.top;
+    },
+
+    // Run fn (which rebuilds the grid) and scroll so the photo that anchored
+    // the view is back where it was on screen
+    keepGridPlace(fn) {
+        const a = this.gridAnchor();
+        const result = fn();
+        if (a) {
+            const grid = this.elements.gridView;
+            const el = a.el._file ? a.el._file._gridEl
+                : grid.querySelector(`.folder-tile[data-folder-path="${CSS.escape(a.el.dataset.folderPath || '')}"]`);
+            if (el && el.isConnected) grid.scrollTop += el.getBoundingClientRect().top - a.top;
+        }
+        return result;
+    },
+
+    gridAnchor() {
+        const grid = this.elements.gridView;
+        if (grid.classList.contains('hidden')) return null;
+        const view = grid.getBoundingClientRect();
+        const onScreen = (el) => {
+            if (!el || !el.isConnected) return false;
+            const r = el.getBoundingClientRect();
+            return r.bottom > view.top && r.top < view.bottom;
+        };
+        let el = this.currentFile && this.currentFile._gridEl;
+        if (!onScreen(el)) {
+            el = null;
+            // The tile nearest the middle of the view
+            const midY = (view.top + view.bottom) / 2;
+            let best = Infinity;
+            for (const t of grid.children) {
+                const r = t.getBoundingClientRect();
+                if (r.bottom < view.top || r.top > view.bottom) continue;
+                const d = Math.abs((r.top + r.bottom) / 2 - midY);
+                if (d < best) { best = d; el = t; }
+            }
+        }
+        return el ? { el, top: el.getBoundingClientRect().top } : null;
+    },
+
+    // Tiles scrolled out of sight aren't laid out (content-visibility), so
+    // they need the real tile size to stand in at, or rows above you change
+    // height and the grid jumps. The size is the column width, which the
+    // slider sets only as a minimum.
+    syncGridTile() {
+        const grid = this.elements.gridView;
+        if (!grid.clientWidth) return;
+        const first = parseFloat(getComputedStyle(grid).gridTemplateColumns);
+        if (first > 0) document.documentElement.style.setProperty('--grid-tile', `${first}px`);
     },
 
     getGridColumnCount() {
