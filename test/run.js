@@ -2497,6 +2497,22 @@ async function newPage(browser, url) {
             out.menu = Folders.contextItems('Wedding/Reception').map(i => i[0]).join('|');
             app.selection = new Set([f('b.jpg'), f('d.jpg')]);
             out.menuSel = Folders.contextItems('Wedding').map(i => i[0]).slice(0, 4).join('|');
+            // The path chip (bottom left) is for single view only
+            app.setView('single');
+            const chipShown = () => !document.getElementById('status-bar').classList.contains('hidden');
+            out.chipSingle = chipShown();
+            app.setView('grid');
+            out.chipGrid = chipShown();
+            // Grid rows never overlap, however wide the tiles stretch
+            Folders.setScope(null);
+            document.documentElement.style.setProperty('--grid-item-size', '130px');
+            await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+            const gridTiles = [...document.querySelectorAll('#grid-view .grid-item')];
+            const cols = app.getGridColumnCount();
+            const r1 = gridTiles[0].getBoundingClientRect(), r2 = gridTiles[cols].getBoundingClientRect();
+            out.rowGap = Math.round(r2.top - r1.bottom);
+            out.square = Math.abs(r1.width - r1.height) < 1;
+            document.documentElement.style.removeProperty('--grid-item-size');
             return out;
         });
         check('folders: every folder found, empty ones too', r.folders === '|Wedding|Wedding/Ceremony|Wedding/Reception', r.folders);
@@ -2525,6 +2541,8 @@ async function newPage(browser, url) {
         check('folders: folder list can be hidden (remembered)', r.railHidden);
         check('folders: Rename All in a folder covers that folder only', r.renameScope === 'Wedding/b.jpg,Wedding/w1.jpg|All photos in Wedding (2)', r.renameScope);
         check('folders: folder menu', r.menu === 'Open|—|New Folder Inside…|Rename Folder…|—|Delete Folder', r.menu);
+        check('path chip: shown in single view, hidden in the grid', r.chipSingle && !r.chipGrid, `${r.chipSingle}/${r.chipGrid}`);
+        check('folders: grid rows keep their gap (tiles never overlap)', r.rowGap === 16 && r.square, `gap=${r.rowGap}`);
         check('folders: folder menu moves or copies the selection there', r.menuSel === 'Open|—|Move 2 Photos Here|Copy 2 Photos Here', r.menuSel);
 
         // Drag photos onto a folder in the list (Ctrl copies), never opening
@@ -2549,6 +2567,74 @@ async function newPage(browser, url) {
         check('folders: drag onto a folder moves', dragged.moved && dragged.kept, JSON.stringify(dragged));
         check('folders: Ctrl+drag copies', copied);
         check('folders suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7n. Recent orders on the start screen ----
+    console.log('recent orders');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            await Recents.tx('readwrite', s => s.clear());
+            const opfs = await navigator.storage.getDirectory();
+            const make = async (name) => {
+                try { await opfs.removeEntry(name, { recursive: true }); } catch (e) { /* fresh */ }
+                const d = await opfs.getDirectoryHandle(name, { create: true });
+                const fh = await d.getFileHandle('a.jpg', { create: true });
+                const w = await fh.createWritable();
+                await w.write(new Blob([await makeRealJpeg(200, 150)], { type: 'image/jpeg' }));
+                await w.close();
+                return d;
+            };
+            const open = async (d) => { window.showDirectoryPicker = async () => d; await app.browseFolder(); await Recents.saving; };
+            const names = async () => (await Recents.list()).map(x => x.name).join(',');
+            const shown = () => [...document.querySelectorAll('#recent-list .recent-name')].map(x => x.textContent).join(',');
+            out.hiddenWhenEmpty = document.getElementById('recents').classList.contains('hidden');
+            const a = await make('rec A'), b = await make('rec B');
+            await open(a);
+            await open(b);
+            out.order = await names();
+            // Opening one again moves it to the top, once
+            await open(await opfs.getDirectoryHandle('rec A'));
+            out.reopened = await names();
+            await Recents.render();
+            out.shown = shown() === out.reopened && !document.getElementById('recents').classList.contains('hidden') &&
+                [...document.querySelectorAll('#recent-list .recent-when')].every(x => x.textContent === 'Today');
+            // Keeps the newest six
+            for (let i = 1; i <= 6; i++) await open(await make(`rec ${i}`));
+            out.capped = await names();
+            // Click reopens it, at the start
+            Folders.setScope(null);
+            const target = [...document.querySelectorAll('#recent-list li')].find(li => li.querySelector('.recent-name').textContent === 'rec 3');
+            target.querySelector('.recent-open').click();
+            for (let i = 0; i < 100 && !(app.dirHandle && app.dirHandle.name === 'rec 3' && app.files.length); i++) await new Promise(res => setTimeout(res, 20));
+            await Recents.saving;
+            out.clicked = app.dirHandle.name === 'rec 3' && app.files.length === 1 && (await names()).startsWith('rec 3,');
+            // × forgets it (the folder stays)
+            const li = [...document.querySelectorAll('#recent-list li')].find(x => x.querySelector('.recent-name').textContent === 'rec 1');
+            li.querySelector('.recent-remove').click();
+            for (let i = 0; i < 50 && shown().includes('rec 1'); i++) await new Promise(res => setTimeout(res, 20));
+            out.removed = !(await names()).includes('rec 1') && !shown().includes('rec 1') && !!(await opfs.getDirectoryHandle('rec 1'));
+            // A folder that's gone says so and offers to remove it
+            await opfs.removeEntry('rec 2', { recursive: true });
+            const rec2 = (await Recents.list()).find(x => x.name === 'rec 2');
+            const before = app.dirHandle;
+            await Recents.open(rec2);
+            out.missing = app.dirHandle === before && [...document.querySelectorAll('.toast')].some(t => /Couldn't find “rec 2”/.test(t.textContent) && t.querySelector('.toast-action'));
+            out.when = [Recents.when(Date.now()), Recents.when(Date.now() - 86400000), Recents.when(new Date(2020, 2, 4).getTime())].join('|');
+            return out;
+        });
+        check('recent: hidden until a folder has been opened', r.hiddenWhenEmpty);
+        check('recent: newest first', r.order === 'rec B,rec A', r.order);
+        check('recent: opening one again moves it to the top, once', r.reopened === 'rec A,rec B', r.reopened);
+        check('recent: listed on the start screen with when', r.shown);
+        check('recent: keeps the newest six', r.capped === 'rec 6,rec 5,rec 4,rec 3,rec 2,rec 1', r.capped);
+        check('recent: click reopens the folder', r.clicked);
+        check('recent: × removes it from the list only', r.removed);
+        check('recent: a folder that has gone says so', r.missing);
+        check('recent: dates read Today / Yesterday / Mar 4, 2020', /^Today\|Yesterday\|Mar 4, 2020$/.test(r.when), r.when);
+        check('recent suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

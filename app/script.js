@@ -178,6 +178,7 @@ const app = {
         }, { passive: false });
 
         Folders.init(this);
+        Recents.init(this);
         this.initContextMenu();
         this.initRubberBand();
         this.initShortcutsPanel();
@@ -265,7 +266,21 @@ const app = {
             const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
 
             this.log(`Folder selected: ${dirHandle.name}`);
+            await this.openDirectory(dirHandle);
+        } catch (err) {
+            if (err.name === 'AbortError') {
+                // User cancelled the picker
+                this.log('Folder selection cancelled');
+                return;
+            }
+            console.error('Browse folder error:', err);
+            alert('Error loading folder: ' + err.message);
+        }
+    },
 
+    // Open a folder with read/write access: from the picker, or a recent order
+    async openDirectory(dirHandle) {
+        try {
             // Reset state
             this.cleanupURLs();
             this.files = [];
@@ -278,14 +293,8 @@ const app = {
             await this.scanDirectory(dirHandle);
 
             await this.finalizeLoad();
-
         } catch (err) {
-            if (err.name === 'AbortError') {
-                // User cancelled the picker
-                this.log('Folder selection cancelled');
-                return;
-            }
-            console.error('Browse folder error:', err);
+            console.error('Open folder error:', err);
             alert('Error loading folder: ' + err.message);
             this.elements.dropZone.classList.remove('hidden');
             this.endTask('scan');
@@ -873,6 +882,9 @@ const app = {
                 // Warm the entire preview cache in the background so grid
                 // scrolling only ever hits already-generated thumbnails
                 this.precacheThumbnails();
+
+                // Top of Recent on the start screen
+                if (this.dirHandle && !this.readOnlyMode) Recents.remember(this.dirHandle);
             } else {
                 alert('No images found.');
                 this.elements.dropZone.classList.remove('hidden');
@@ -1062,11 +1074,12 @@ const app = {
         return this.dirHandle ? `${this.dirHandle.name}/${rel}` : rel;
     },
 
-    // Subtle always-on chip in the bottom-left with location + file name
+    // Subtle chip in the bottom-left with location + file name (single
+    // view only: the grid has the folder list and the folder pill)
     updateStatusBar() {
         const el = this.elements.statusBar;
         if (!el) return;
-        if (!this.currentFile) {
+        if (!this.currentFile || this.viewMode === 'grid') {
             el.classList.add('hidden');
             return;
         }
@@ -2226,6 +2239,7 @@ const app = {
         }
         this.viewMode = mode;
         Folders.render();
+        this.updateStatusBar();
         const iconGrid = this.elements.btnToggleView.querySelector('.icon-grid');
         const iconSingle = this.elements.btnToggleView.querySelector('.icon-single');
 

@@ -14,7 +14,7 @@
     <script>
 // Single source of truth for the app version. Bump with:  npm run bump 1.x.y
 // (keeps package.json in sync and busts the service worker cache)
-const APP_VERSION = '1.14.1';
+const APP_VERSION = '1.15.0';
 
 </script>
     <script>
@@ -24,6 +24,18 @@ const APP_VERSION = '1.14.1';
 // Text between `backticks` is shown as a key.
 
 const CHANGELOG = [
+    {
+        version: '1.15.0', date: '2026-10-07',
+        items: [
+            'Recent orders on the start screen, under Open Folder: the last six folders you opened, newest first. Click one to open it again without picking it. Chrome may ask once more for permission to edit it.',
+            'Hover a recent order and click × to take it off the list. The folder itself isn\'t touched.',
+            'If a recent folder has been moved, renamed or deleted, jEditor says so and offers to take it off the list.',
+            'The three pills along the top (folders, file name, controls) now match: same height, text and glass. They all follow the UI size setting.',
+            'The folder pill is simpler: no photo count and no New folder button. New folder is at the bottom of the folder list, on `Shift+N`, and in the grid\'s right-click menu.',
+            'The file path chip at the bottom left shows in single view only; the grid has the folder list and folder pill for that.',
+            'Fixed grid tiles touching the row below when they stretch to fill the width; every tile now has the same gap all round.'
+        ]
+    },
     {
         version: '1.14.1', date: '2026-10-07',
         items: [
@@ -3452,8 +3464,10 @@ const Folders = {
         if (!centre || bar.classList.contains('hidden')) return;
         const room = centre.getBoundingClientRect().left - bar.getBoundingClientRect().left - 12;
         if (room <= 0) return;
-        bar.style.setProperty('--bar-room', `${Math.max(150, Math.floor(room))}px`);
-        bar.classList.toggle('tight', room < 300);
+        // The pills follow the UI size setting (CSS zoom): room is in screen pixels
+        const zoom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1;
+        bar.style.setProperty('--bar-room', `${Math.max(150, Math.floor(room / zoom))}px`);
+        bar.classList.toggle('tight', room / zoom < 230);
     },
 
     folderIcon(cls = '') {
@@ -3514,7 +3528,6 @@ const Folders = {
 
     initBar() {
         this.el('fb-rail').addEventListener('click', () => this.toggleRail());
-        this.el('fb-new').addEventListener('click', () => this.newFolder());
         this.el('fb-all').addEventListener('click', () => this.setScope(null));
         this.el('fb-folders').addEventListener('click', () => {
             if (this.scope === null) this.setScope(this.map.has(this.lastScope) ? this.lastScope : '');
@@ -3534,15 +3547,7 @@ const Folders = {
         rail.title = this.railOpen() ? 'Hide the folder list' : 'Show the folder list';
         const crumbs = this.el('fb-crumbs');
         crumbs.innerHTML = '';
-        if (all) {
-            const folders = this.map.size - 1;
-            const span = document.createElement('span');
-            span.className = 'fb-note';
-            span.textContent = `${this.app.files.length.toLocaleString()} photos` +
-                (folders ? ` in ${folders + 1} folders` : '');
-            crumbs.appendChild(span);
-            return;
-        }
+        if (all) return;
         const parts = this.scope ? this.scope.split('/') : [];
         const paths = [''];
         parts.forEach((_, i) => paths.push(parts.slice(0, i + 1).join('/')));
@@ -3559,11 +3564,6 @@ const Folders = {
             b.textContent = this.nameOf(p);
             crumbs.appendChild(b);
         });
-        const n = counts.get(this.scope) || 0;
-        const span = document.createElement('span');
-        span.className = 'fb-note';
-        span.textContent = n ? `${n.toLocaleString()} photo${n === 1 ? '' : 's'}` : 'Empty';
-        crumbs.appendChild(span);
     },
 
     // Folder tiles at the start of the grid: the current folder's subfolders
@@ -4683,6 +4683,168 @@ const Folders = {
 };
 
 </script>
+    <script>
+// Recent orders on the start screen.
+//
+// A folder handle can be kept in IndexedDB and used again later, so a
+// recent order reopens without the folder picker. Chrome may ask once
+// more for permission to edit it ("Allow jEditor to edit files in…?")
+// after a restart. Only the handle, the name and when it was opened are
+// kept; nothing is stored about the photos.
+
+const Recents = {
+    MAX: 6,
+    DB: 'jeditor-recents',
+
+    el(id) { return document.getElementById(id); },
+
+    // Folders can only be reopened where they can be picked
+    supported() {
+        return typeof window.showDirectoryPicker === 'function' && typeof indexedDB !== 'undefined';
+    },
+
+    db() {
+        if (this._db !== undefined) return this._db;
+        this._db = new Promise((resolve) => {
+            try {
+                const req = indexedDB.open(this.DB, 1);
+                req.onupgradeneeded = () => req.result.createObjectStore('folders', { keyPath: 'id' });
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => resolve(null);
+                req.onblocked = () => resolve(null);
+            } catch (e) {
+                resolve(null);
+            }
+        });
+        return this._db;
+    },
+
+    async tx(mode, fn) {
+        const db = await this.db();
+        if (!db) return null;
+        return new Promise((resolve) => {
+            try {
+                const t = db.transaction('folders', mode);
+                const result = fn(t.objectStore('folders'));
+                t.oncomplete = () => resolve(result && 'result' in result ? result.result : true);
+                t.onerror = t.onabort = () => resolve(null);
+            } catch (e) {
+                resolve(null);
+            }
+        });
+    },
+
+    // Newest first
+    async list() {
+        const all = await this.tx('readonly', s => s.getAll());
+        return (all || []).sort((a, b) => b.openedAt - a.openedAt);
+    },
+
+    // A folder was opened: it goes to the top (once, however it was opened).
+    // One at a time, so folders opened in quick succession keep their order.
+    remember(handle) {
+        this.saving = (this.saving || Promise.resolve()).then(() => this.save(handle)).catch(() => { });
+        return this.saving;
+    },
+
+    async save(handle) {
+        if (!this.supported() || !handle || handle.kind !== 'directory') return;
+        const list = await this.list();
+        let same = null;
+        for (const rec of list) {
+            try {
+                if (rec.handle && await rec.handle.isSameEntry(handle)) { same = rec; break; }
+            } catch (e) { /* not comparable: different folder */ }
+        }
+        const openedAt = Math.max(Date.now(), list.length ? list[0].openedAt + 1 : 0);
+        const rec = { id: same ? same.id : `${openedAt}-${Math.random().toString(36).slice(2, 8)}`, name: handle.name, handle, openedAt };
+        const stale = list.filter(r => r !== same).slice(this.MAX - 1);
+        await this.tx('readwrite', s => {
+            s.put(rec);
+            stale.forEach(r => s.delete(r.id));
+        });
+        await this.render();
+    },
+
+    async forget(id) {
+        await this.tx('readwrite', s => s.delete(id));
+        this.render();
+    },
+
+    // "Today", "Yesterday", "Monday", "Oct 3", "Oct 3, 2025"
+    when(ts) {
+        const d = new Date(ts), now = new Date();
+        const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+        const days = Math.round((day(now) - day(d)) / 86400000);
+        if (days <= 0) return 'Today';
+        if (days === 1) return 'Yesterday';
+        if (days < 7) return d.toLocaleDateString(undefined, { weekday: 'long' });
+        const opts = { month: 'short', day: 'numeric' };
+        if (d.getFullYear() !== now.getFullYear()) opts.year = 'numeric';
+        return d.toLocaleDateString(undefined, opts);
+    },
+
+    async render() {
+        const box = this.el('recents');
+        if (!box) return;
+        const list = this.supported() ? await this.list() : [];
+        const ul = this.el('recent-list');
+        ul.innerHTML = '';
+        list.forEach(rec => {
+            const li = document.createElement('li');
+            const open = document.createElement('button');
+            open.className = 'recent-open';
+            open.title = `Open ${rec.name}`;
+            open.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+            const name = document.createElement('span');
+            name.className = 'recent-name';
+            name.textContent = rec.name;
+            const when = document.createElement('span');
+            when.className = 'recent-when';
+            when.textContent = this.when(rec.openedAt);
+            open.append(name, when);
+            open.addEventListener('click', () => this.open(rec));
+            const remove = document.createElement('button');
+            remove.className = 'recent-remove';
+            remove.title = 'Remove from Recent (the folder isn\'t touched)';
+            remove.setAttribute('aria-label', `Remove ${rec.name} from Recent`);
+            remove.textContent = '×';
+            remove.addEventListener('click', () => this.forget(rec.id));
+            li.append(open, remove);
+            ul.appendChild(li);
+        });
+        box.classList.toggle('hidden', !list.length);
+    },
+
+    async open(rec) {
+        const app = this.app;
+        if (!app || app.isLoading) return;
+        const h = rec.handle;
+        try {
+            // Asked within the click, while Chrome still allows a prompt
+            if (typeof h.queryPermission === 'function' && await h.queryPermission({ mode: 'readwrite' }) !== 'granted' &&
+                await h.requestPermission({ mode: 'readwrite' }) !== 'granted') {
+                app.showToast(`jEditor needs permission to open ${rec.name}`, 4000);
+                return;
+            }
+            // Still there? (moved, renamed or deleted since)
+            for await (const entry of h.values()) if (entry) break;
+        } catch (e) {
+            console.warn('Recent folder unavailable:', e);
+            app.showToast(`Couldn't find “${rec.name}” — it may have been moved, renamed or deleted`, 5000, null,
+                { label: 'Remove', run: () => this.forget(rec.id) });
+            return;
+        }
+        await app.openDirectory(h);
+    },
+
+    init(app) {
+        this.app = app;
+        this.render();
+    }
+};
+
+</script>
     <style>
 :root {
     --bg-color: #0c0c0c;
@@ -4907,6 +5069,118 @@ body.glass-light-top .sort-control select option {
     font-size: 13px;
     color: #666;
     margin-top: 0.5rem;
+}
+
+/* Recent orders, under Open Folder */
+.recents {
+    width: 320px;
+    max-width: 100%;
+    margin: 1.5rem auto 1rem;
+    padding: 1rem 0 0.75rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    text-align: left;
+}
+
+.recents.hidden {
+    display: none;
+}
+
+.recents-title {
+    margin: 0 0 6px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #777;
+}
+
+.recent-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.recent-list li {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.recent-open {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 34px 8px 10px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: #ccc;
+    font-size: 14px;
+    font-family: var(--font-family);
+    text-align: left;
+    cursor: pointer;
+}
+
+.recent-open:hover,
+.recent-open:focus-visible {
+    background: rgba(255, 255, 255, 0.07);
+    color: #fff;
+    outline: none;
+}
+
+.recent-open svg {
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+
+.recent-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.recent-when {
+    flex-shrink: 0;
+    font-size: 12px;
+    color: #777;
+}
+
+/* × to forget one, on hover */
+.recent-remove {
+    position: absolute;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: #999;
+    font-size: 16px;
+    line-height: 22px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.recent-list li:hover .recent-remove,
+.recent-remove:focus-visible {
+    opacity: 1;
+}
+
+.recent-remove:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+/* The date makes way for the × */
+.recent-list li:hover .recent-when {
+    visibility: hidden;
 }
 
 /* Main Interface */
@@ -5188,8 +5462,11 @@ header {
     padding: 20px;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(var(--grid-item-size, 150px), 1fr));
-    grid-auto-rows: var(--grid-item-size, 150px);
-    /* Force rows to be equal height */
+    /* Rows as tall as the (square) tiles: tiles stretch wider than the
+       slider size to fill the width, and a fixed row height let them run
+       into the row below. (auto rows measure the tiles before they
+       stretch; min-content measures them after.) */
+    grid-auto-rows: min-content;
     gap: 16px;
     align-content: start;
     /* Clear the floating header pills and the selection bar */
@@ -5208,7 +5485,8 @@ header {
     transition: transform 0.1s;
     /* Skip layout/paint for tiles far outside the viewport */
     content-visibility: auto;
-    contain-intrinsic-size: var(--grid-item-size, 150px) var(--grid-item-size, 150px);
+    /* Tiles scrolled past keep their real size, so rows don't shift */
+    contain-intrinsic-size: auto var(--grid-item-size, 150px) auto var(--grid-item-size, 150px);
 }
 
 .grid-item:hover {
@@ -5579,6 +5857,8 @@ header {
 
 /* UI scale applies to the floating control surfaces */
 .header-controls,
+.file-info,
+.folder-bar,
 .controls,
 .grid-controls,
 .selection-bar {
@@ -6792,22 +7072,9 @@ kbd {
     left: 20px;
     max-width: var(--bar-room, calc(50% - 200px));
     z-index: 11;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    height: 40px;
-    padding: 4px;
-    box-sizing: border-box;
+    gap: 4px;
+    padding: 0 6px;
     overflow: hidden;
-    background: var(--glass-top-bg);
-    color: var(--glass-top-text);
-    border: 1px solid var(--glass-top-border);
-    border-radius: 9999px;
-    box-shadow: var(--glass-shadow);
-    backdrop-filter: var(--backdrop-filter);
-    -webkit-backdrop-filter: var(--backdrop-filter);
-    font-size: 13px;
-    transition: background 0.35s ease, color 0.35s ease, border-color 0.35s ease;
 }
 
 .folder-bar button {
@@ -6819,7 +7086,7 @@ kbd {
 .fb-icon {
     background: transparent;
     border: none;
-    padding: 6px;
+    padding: 7px;
     border-radius: 999px;
     display: flex;
     flex-shrink: 0;
@@ -6881,9 +7148,11 @@ kbd {
 .fb-crumb {
     background: transparent;
     border: 1px solid transparent;
-    padding: 4px 8px;
+    padding: 6px 10px;
     border-radius: 999px;
     font-size: 13px;
+    font-weight: 500;
+    opacity: 0.75;
     max-width: 220px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -6896,38 +7165,12 @@ kbd {
 }
 
 .fb-crumb.current {
-    font-weight: 600;
+    opacity: 1;
 }
 
 .fb-sep {
     opacity: 0.45;
     padding: 0 2px;
-}
-
-.fb-note {
-    opacity: 0.6;
-    padding: 0 6px;
-    white-space: nowrap;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.fb-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(125, 125, 125, 0.16);
-    border: none;
-    width: 30px;
-    height: 30px;
-    padding: 0;
-    border-radius: 999px;
-    flex-shrink: 0;
-}
-
-.fb-btn:hover {
-    background: rgba(125, 125, 125, 0.3);
 }
 
 /* The folder list down the left of the grid */
@@ -7541,6 +7784,46 @@ body:has(#main-interface.rail-open:not(.hidden)) #toast-stack {
     left: 276px;
 }
 
+/* The three pills along the top (folders, file name, controls): one
+   height, one type, one glass */
+.file-info,
+.header-controls,
+.folder-bar {
+    height: 44px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    border-radius: 9999px;
+    background: var(--glass-top-bg);
+    color: var(--glass-top-text);
+    border: 1px solid var(--glass-top-border);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: var(--backdrop-filter);
+    -webkit-backdrop-filter: var(--backdrop-filter);
+    text-shadow: var(--glass-top-shadow);
+    font-family: var(--font-family);
+    font-size: 13px;
+    font-weight: 500;
+    transition: background 0.35s ease, color 0.35s ease, border-color 0.35s ease;
+}
+
+.file-info {
+    padding: 0 18px;
+}
+
+.header-controls {
+    padding: 0 6px;
+}
+
+.header-controls button {
+    padding: 6px;
+}
+
+.header-controls.vertical {
+    height: auto;
+    padding: 6px;
+}
+
 </style>
 </head>
 
@@ -7554,6 +7837,11 @@ body:has(#main-interface.rail-open:not(.hidden)) #toast-stack {
                 <h1 id="app-title">jEditor</h1>
                 <button id="btn-browse-folder" class="browse-btn">Open Folder</button>
                 <p class="drop-hint">or drag and drop images here</p>
+                <!-- Recent orders (recents.js) -->
+                <div id="recents" class="recents hidden">
+                    <h2 class="recents-title">Recent</h2>
+                    <ul id="recent-list" class="recent-list"></ul>
+                </div>
                 <p class="drop-hint">Press <kbd>?</kbd> for keyboard shortcuts</p>
                 <p class="drop-hint"><button id="btn-whatsnew-start" class="link-btn">What's new</button></p>
             </div>
@@ -7756,8 +8044,8 @@ body:has(#main-interface.rail-open:not(.hidden)) #toast-stack {
             </main>
 
             <!-- Folders (folders.js): a pill top left with the folder list
-                 toggle, All photos / Folders, the breadcrumb and New folder,
-                 and the folder list on the left. Grid view only. -->
+                 toggle, All photos / Folders and the breadcrumb, and the
+                 folder list on the left. Grid view only. -->
             <nav id="folder-bar" class="folder-bar hidden" aria-label="Folders">
                 <button id="fb-rail" class="fb-icon" title="Show the folder list">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -7771,13 +8059,6 @@ body:has(#main-interface.rail-open:not(.hidden)) #toast-stack {
                     <button id="fb-folders" title="One folder at a time">Folders</button>
                 </div>
                 <div id="fb-crumbs" class="fb-crumbs"></div>
-                <button id="fb-new" class="fb-btn" title="New folder (Shift+N)">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                        <path d="M12 10v6M9 13h6" />
-                    </svg>
-                </button>
             </nav>
             <aside id="folder-rail" class="folder-rail hidden" aria-label="Folder list">
                 <div id="folder-tree" class="folder-tree"></div>
@@ -8307,6 +8588,7 @@ const app = {
         }, { passive: false });
 
         Folders.init(this);
+        Recents.init(this);
         this.initContextMenu();
         this.initRubberBand();
         this.initShortcutsPanel();
@@ -8394,7 +8676,21 @@ const app = {
             const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
 
             this.log(`Folder selected: ${dirHandle.name}`);
+            await this.openDirectory(dirHandle);
+        } catch (err) {
+            if (err.name === 'AbortError') {
+                // User cancelled the picker
+                this.log('Folder selection cancelled');
+                return;
+            }
+            console.error('Browse folder error:', err);
+            alert('Error loading folder: ' + err.message);
+        }
+    },
 
+    // Open a folder with read/write access: from the picker, or a recent order
+    async openDirectory(dirHandle) {
+        try {
             // Reset state
             this.cleanupURLs();
             this.files = [];
@@ -8407,14 +8703,8 @@ const app = {
             await this.scanDirectory(dirHandle);
 
             await this.finalizeLoad();
-
         } catch (err) {
-            if (err.name === 'AbortError') {
-                // User cancelled the picker
-                this.log('Folder selection cancelled');
-                return;
-            }
-            console.error('Browse folder error:', err);
+            console.error('Open folder error:', err);
             alert('Error loading folder: ' + err.message);
             this.elements.dropZone.classList.remove('hidden');
             this.endTask('scan');
@@ -9002,6 +9292,9 @@ const app = {
                 // Warm the entire preview cache in the background so grid
                 // scrolling only ever hits already-generated thumbnails
                 this.precacheThumbnails();
+
+                // Top of Recent on the start screen
+                if (this.dirHandle && !this.readOnlyMode) Recents.remember(this.dirHandle);
             } else {
                 alert('No images found.');
                 this.elements.dropZone.classList.remove('hidden');
@@ -9191,11 +9484,12 @@ const app = {
         return this.dirHandle ? `${this.dirHandle.name}/${rel}` : rel;
     },
 
-    // Subtle always-on chip in the bottom-left with location + file name
+    // Subtle chip in the bottom-left with location + file name (single
+    // view only: the grid has the folder list and the folder pill)
     updateStatusBar() {
         const el = this.elements.statusBar;
         if (!el) return;
-        if (!this.currentFile) {
+        if (!this.currentFile || this.viewMode === 'grid') {
             el.classList.add('hidden');
             return;
         }
@@ -10355,6 +10649,7 @@ const app = {
         }
         this.viewMode = mode;
         Folders.render();
+        this.updateStatusBar();
         const iconGrid = this.elements.btnToggleView.querySelector('.icon-grid');
         const iconSingle = this.elements.btnToggleView.querySelector('.icon-single');
 

@@ -5,6 +5,18 @@
 
 const CHANGELOG = [
     {
+        version: '1.15.0', date: '2026-10-07',
+        items: [
+            'Recent orders on the start screen, under Open Folder: the last six folders you opened, newest first. Click one to open it again without picking it. Chrome may ask once more for permission to edit it.',
+            'Hover a recent order and click × to take it off the list. The folder itself isn\'t touched.',
+            'If a recent folder has been moved, renamed or deleted, jEditor says so and offers to take it off the list.',
+            'The three pills along the top (folders, file name, controls) now match: same height, text and glass. They all follow the UI size setting.',
+            'The folder pill is simpler: no photo count and no New folder button. New folder is at the bottom of the folder list, on `Shift+N`, and in the grid\'s right-click menu.',
+            'The file path chip at the bottom left shows in single view only; the grid has the folder list and folder pill for that.',
+            'Fixed grid tiles touching the row below when they stretch to fill the width; every tile now has the same gap all round.'
+        ]
+    },
+    {
         version: '1.14.1', date: '2026-10-07',
         items: [
             'The folder controls in grid view are a pill at the top left, beside the other two, instead of a bar across the grid, so the grid starts higher up. The folder list toggle, All photos / Folders, the folder you\'re in and New folder are all in it; on a narrow window it keeps to the essentials.'

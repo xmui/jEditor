@@ -20,6 +20,7 @@
     <script src="dupes.js"></script>
     <script src="rename.js"></script>
     <script src="folders.js"></script>
+    <script src="recents.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -33,6 +34,11 @@
                 <h1 id="app-title">jEditor</h1>
                 <button id="btn-browse-folder" class="browse-btn">Open Folder</button>
                 <p class="drop-hint">or drag and drop images here</p>
+                <!-- Recent orders (recents.js) -->
+                <div id="recents" class="recents hidden">
+                    <h2 class="recents-title">Recent</h2>
+                    <ul id="recent-list" class="recent-list"></ul>
+                </div>
                 <p class="drop-hint">Press <kbd>?</kbd> for keyboard shortcuts</p>
                 <p class="drop-hint"><button id="btn-whatsnew-start" class="link-btn">What's new</button></p>
             </div>
@@ -235,8 +241,8 @@
             </main>
 
             <!-- Folders (folders.js): a pill top left with the folder list
-                 toggle, All photos / Folders, the breadcrumb and New folder,
-                 and the folder list on the left. Grid view only. -->
+                 toggle, All photos / Folders and the breadcrumb, and the
+                 folder list on the left. Grid view only. -->
             <nav id="folder-bar" class="folder-bar hidden" aria-label="Folders">
                 <button id="fb-rail" class="fb-icon" title="Show the folder list">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -250,13 +256,6 @@
                     <button id="fb-folders" title="One folder at a time">Folders</button>
                 </div>
                 <div id="fb-crumbs" class="fb-crumbs"></div>
-                <button id="fb-new" class="fb-btn" title="New folder (Shift+N)">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                        <path d="M12 10v6M9 13h6" />
-                    </svg>
-                </button>
             </nav>
             <aside id="folder-rail" class="folder-rail hidden" aria-label="Folder list">
                 <div id="folder-tree" class="folder-tree"></div>

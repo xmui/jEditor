@@ -238,8 +238,10 @@ const Folders = {
         if (!centre || bar.classList.contains('hidden')) return;
         const room = centre.getBoundingClientRect().left - bar.getBoundingClientRect().left - 12;
         if (room <= 0) return;
-        bar.style.setProperty('--bar-room', `${Math.max(150, Math.floor(room))}px`);
-        bar.classList.toggle('tight', room < 300);
+        // The pills follow the UI size setting (CSS zoom): room is in screen pixels
+        const zoom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1;
+        bar.style.setProperty('--bar-room', `${Math.max(150, Math.floor(room / zoom))}px`);
+        bar.classList.toggle('tight', room / zoom < 230);
     },
 
     folderIcon(cls = '') {
@@ -300,7 +302,6 @@ const Folders = {
 
     initBar() {
         this.el('fb-rail').addEventListener('click', () => this.toggleRail());
-        this.el('fb-new').addEventListener('click', () => this.newFolder());
         this.el('fb-all').addEventListener('click', () => this.setScope(null));
         this.el('fb-folders').addEventListener('click', () => {
             if (this.scope === null) this.setScope(this.map.has(this.lastScope) ? this.lastScope : '');
@@ -320,15 +321,7 @@ const Folders = {
         rail.title = this.railOpen() ? 'Hide the folder list' : 'Show the folder list';
         const crumbs = this.el('fb-crumbs');
         crumbs.innerHTML = '';
-        if (all) {
-            const folders = this.map.size - 1;
-            const span = document.createElement('span');
-            span.className = 'fb-note';
-            span.textContent = `${this.app.files.length.toLocaleString()} photos` +
-                (folders ? ` in ${folders + 1} folders` : '');
-            crumbs.appendChild(span);
-            return;
-        }
+        if (all) return;
         const parts = this.scope ? this.scope.split('/') : [];
         const paths = [''];
         parts.forEach((_, i) => paths.push(parts.slice(0, i + 1).join('/')));
@@ -345,11 +338,6 @@ const Folders = {
             b.textContent = this.nameOf(p);
             crumbs.appendChild(b);
         });
-        const n = counts.get(this.scope) || 0;
-        const span = document.createElement('span');
-        span.className = 'fb-note';
-        span.textContent = n ? `${n.toLocaleString()} photo${n === 1 ? '' : 's'}` : 'Empty';
-        crumbs.appendChild(span);
     },
 
     // Folder tiles at the start of the grid: the current folder's subfolders
