@@ -1074,11 +1074,12 @@ const app = {
         return this.dirHandle ? `${this.dirHandle.name}/${rel}` : rel;
     },
 
-    // Subtle always-on chip in the bottom-left with location + file name
+    // Subtle chip in the bottom-left with location + file name (single
+    // view only: the grid has the folder list and the folder pill)
     updateStatusBar() {
         const el = this.elements.statusBar;
         if (!el) return;
-        if (!this.currentFile) {
+        if (!this.currentFile || this.viewMode === 'grid') {
             el.classList.add('hidden');
             return;
         }
@@ -2238,6 +2239,7 @@ const app = {
         }
         this.viewMode = mode;
         Folders.render();
+        this.updateStatusBar();
         const iconGrid = this.elements.btnToggleView.querySelector('.icon-grid');
         const iconSingle = this.elements.btnToggleView.querySelector('.icon-single');
 

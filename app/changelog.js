@@ -12,6 +12,7 @@ const CHANGELOG = [
             'If a recent folder has been moved, renamed or deleted, jEditor says so and offers to take it off the list.',
             'The three pills along the top (folders, file name, controls) now match: same height, text and glass. They all follow the UI size setting.',
             'The folder pill is simpler: no photo count and no New folder button. New folder is at the bottom of the folder list, on `Shift+N`, and in the grid\'s right-click menu.',
+            'The file path chip at the bottom left shows in single view only; the grid has the folder list and folder pill for that.',
             'Fixed grid tiles touching the row below when they stretch to fill the width; every tile now has the same gap all round.'
         ]
     },

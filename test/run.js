@@ -2497,6 +2497,12 @@ async function newPage(browser, url) {
             out.menu = Folders.contextItems('Wedding/Reception').map(i => i[0]).join('|');
             app.selection = new Set([f('b.jpg'), f('d.jpg')]);
             out.menuSel = Folders.contextItems('Wedding').map(i => i[0]).slice(0, 4).join('|');
+            // The path chip (bottom left) is for single view only
+            app.setView('single');
+            const chipShown = () => !document.getElementById('status-bar').classList.contains('hidden');
+            out.chipSingle = chipShown();
+            app.setView('grid');
+            out.chipGrid = chipShown();
             // Grid rows never overlap, however wide the tiles stretch
             Folders.setScope(null);
             document.documentElement.style.setProperty('--grid-item-size', '130px');
@@ -2535,6 +2541,7 @@ async function newPage(browser, url) {
         check('folders: folder list can be hidden (remembered)', r.railHidden);
         check('folders: Rename All in a folder covers that folder only', r.renameScope === 'Wedding/b.jpg,Wedding/w1.jpg|All photos in Wedding (2)', r.renameScope);
         check('folders: folder menu', r.menu === 'Open|—|New Folder Inside…|Rename Folder…|—|Delete Folder', r.menu);
+        check('path chip: shown in single view, hidden in the grid', r.chipSingle && !r.chipGrid, `${r.chipSingle}/${r.chipGrid}`);
         check('folders: grid rows keep their gap (tiles never overlap)', r.rowGap === 16 && r.square, `gap=${r.rowGap}`);
         check('folders: folder menu moves or copies the selection there', r.menuSel === 'Open|—|Move 2 Photos Here|Copy 2 Photos Here', r.menuSel);
 
