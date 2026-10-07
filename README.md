@@ -65,11 +65,11 @@ It works like Lightroom or Apple Photos: the crop frame stays in the middle of t
 
 Some orders are collated: the photos go into labelled folders. Open the order folder and switch to the grid (`Space`).
 
-- **The folder list** on the left shows every folder, including folders inside folders and empty ones, with how many photos are directly in each. Click a folder to see just its photos. `Ctrl+B` hides the list; the grid then shows a folder's subfolders as tiles at the start, with a breadcrumb above it. `Backspace` goes up a folder.
-- **All photos** (top of the list, or the switch in the bar above the grid) shows every photo in the order, whatever folder it's in, with each photo's folder named on its tile. It's what you see when an order is opened. `A` switches between All photos and the last folder.
+- **The folder list** on the left shows every folder, including folders inside folders and empty ones, with how many photos are directly in each. Click a folder to see just its photos. `Ctrl+B` hides the list; the grid then shows a folder's subfolders as tiles at the start, and the folder pill shows where you are. `Backspace` goes up a folder.
+- **All photos** (top of the list, or the switch in the folder pill at the top left) shows every photo in the order, whatever folder it's in, with each photo's folder named on its tile. It's what you see when an order is opened. `A` switches between All photos and the last folder.
 - **Moving.** Drag the selected photos onto a folder, in the list, a folder tile or the breadcrumb. Hold `Ctrl` (or `Alt`) when you let go to copy them instead. Or press `M` (`Shift+M` copies), or use **Move to…** on the selection bar or the right-click menu. That opens a list of folders: type to find one, or type a new name to make that folder and move the photos into it in one go. `Wedding/Speeches` makes a folder inside another.
 - **Name clashes.** If a photo with the same name is already in the folder, you're asked what to do: keep both (the moved photo gets a number, `IMG_0042 (2).jpg`), skip it, or replace the one that's there, which goes to the trash. You can apply the answer to the rest of the clashes. Cancel and nothing is moved.
-- **Folders.** **New folder** in the bar or the list, or `Shift+N`, makes one inside the folder you're looking at. Right-click a folder to rename it, make a folder inside it, or delete it once it's empty.
+- **Folders.** **New folder** in the folder pill or the list, or `Shift+N`, makes one inside the folder you're looking at. Right-click a folder to rename it, make a folder inside it, or delete it once it's empty.
 - In a folder, `←` `→`, the film strip, `Ctrl+A` and **Rename All…** cover that folder's photos only.
 
 `Ctrl+Z` undoes a move or copy in one step, together with any photos it replaced and the folder made for it. Making, renaming and deleting folders can be undone too.

@@ -2097,24 +2097,26 @@ kbd {
 
 /* ---- Folders (folders.js) ---- */
 
-/* Top bar in grid view: rail toggle, All photos / Folders, breadcrumb,
-   New folder. Below the header pills; the folder list sits under it. */
+/* Folder pill in grid view, top left, level with the header pills: folder
+   list toggle, All photos / Folders, breadcrumb, New folder. Kept clear of
+   the centre pill (Folders.fitBar sets --bar-room). */
 .folder-bar {
     position: absolute;
-    top: 68px;
+    top: 1rem;
     left: 20px;
-    right: 20px;
-    z-index: 9;
+    max-width: var(--bar-room, calc(50% - 200px));
+    z-index: 11;
     display: flex;
     align-items: center;
-    gap: 10px;
-    min-height: 40px;
-    padding: 4px 6px;
+    gap: 6px;
+    height: 40px;
+    padding: 4px;
     box-sizing: border-box;
+    overflow: hidden;
     background: var(--glass-top-bg);
     color: var(--glass-top-text);
     border: 1px solid var(--glass-top-border);
-    border-radius: 14px;
+    border-radius: 9999px;
     box-shadow: var(--glass-shadow);
     backdrop-filter: var(--backdrop-filter);
     -webkit-backdrop-filter: var(--backdrop-filter);
@@ -2132,8 +2134,9 @@ kbd {
     background: transparent;
     border: none;
     padding: 6px;
-    border-radius: 8px;
+    border-radius: 999px;
     display: flex;
+    flex-shrink: 0;
     opacity: 0.7;
 }
 
@@ -2146,7 +2149,7 @@ kbd {
 .fb-modes {
     display: flex;
     background: rgba(125, 125, 125, 0.16);
-    border-radius: 9px;
+    border-radius: 999px;
     padding: 2px;
     flex-shrink: 0;
 }
@@ -2155,7 +2158,8 @@ kbd {
     background: transparent;
     border: none;
     padding: 5px 12px;
-    border-radius: 7px;
+    border-radius: 999px;
+    white-space: nowrap;
     font-size: 13px;
     font-weight: 500;
     opacity: 0.75;
@@ -2165,6 +2169,17 @@ kbd {
     background: var(--accent-color);
     color: #fff;
     opacity: 1;
+}
+
+/* Not much room beside the centre pill: shorter labels, no path */
+.fb-short,
+.folder-bar.tight .fb-long,
+.folder-bar.tight .fb-crumbs {
+    display: none;
+}
+
+.folder-bar.tight .fb-short {
+    display: inline;
 }
 
 .fb-crumbs {
@@ -2181,7 +2196,7 @@ kbd {
     background: transparent;
     border: 1px solid transparent;
     padding: 4px 8px;
-    border-radius: 7px;
+    border-radius: 999px;
     font-size: 13px;
     max-width: 220px;
     overflow: hidden;
@@ -2205,19 +2220,23 @@ kbd {
 
 .fb-note {
     opacity: 0.6;
-    padding: 0 8px;
-    flex-shrink: 0;
+    padding: 0 6px;
+    white-space: nowrap;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .fb-btn {
     display: flex;
     align-items: center;
-    gap: 6px;
+    justify-content: center;
     background: rgba(125, 125, 125, 0.16);
     border: none;
-    padding: 6px 12px;
-    border-radius: 9px;
-    font-size: 13px;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border-radius: 999px;
     flex-shrink: 0;
 }
 
@@ -2228,7 +2247,7 @@ kbd {
 /* The folder list down the left of the grid */
 .folder-rail {
     position: absolute;
-    top: 120px;
+    top: 76px;
     left: 20px;
     bottom: 20px;
     width: 236px;
@@ -2365,11 +2384,7 @@ kbd {
     background: rgba(125, 125, 125, 0.15);
 }
 
-/* The grid makes room for the bar and the folder list */
-.interface.folders-on .grid-view {
-    padding-top: 124px;
-}
-
+/* The grid makes room for the folder list */
 .interface.rail-open .grid-view {
     padding-left: 276px;
 }
@@ -2826,11 +2841,16 @@ body.dragging-photos .folder-tile:hover {
     color: #ff7b72;
 }
 
-/* Toasts clear the folder bar and the folder list */
-body:has(#main-interface.folders-on:not(.hidden)) #toast-stack {
-    top: 124px;
+/* The task pill and toasts move off the folder pill and the folder list */
+body:has(#main-interface.folders-on:not(.hidden)) .task-pill {
+    top: 76px;
 }
 
+body:has(#main-interface.folders-on:not(.hidden)) #toast-stack {
+    top: 128px;
+}
+
+body:has(#main-interface.rail-open:not(.hidden)) .task-pill,
 body:has(#main-interface.rail-open:not(.hidden)) #toast-stack {
     left: 276px;
 }

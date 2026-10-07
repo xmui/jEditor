@@ -234,8 +234,9 @@
                 </div>
             </main>
 
-            <!-- Folders (folders.js): top bar with All photos / Folders and the
-                 breadcrumb, and the folder list on the left. Grid view only. -->
+            <!-- Folders (folders.js): a pill top left with the folder list
+                 toggle, All photos / Folders, the breadcrumb and New folder,
+                 and the folder list on the left. Grid view only. -->
             <nav id="folder-bar" class="folder-bar hidden" aria-label="Folders">
                 <button id="fb-rail" class="fb-icon" title="Show the folder list">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -245,7 +246,7 @@
                     </svg>
                 </button>
                 <div class="fb-modes">
-                    <button id="fb-all" title="Every photo in the order, whatever folder it's in (A switches)">All photos</button>
+                    <button id="fb-all" title="Every photo in the order, whatever folder it's in (A switches)"><span class="fb-long">All photos</span><span class="fb-short">All</span></button>
                     <button id="fb-folders" title="One folder at a time">Folders</button>
                 </div>
                 <div id="fb-crumbs" class="fb-crumbs"></div>
@@ -255,7 +256,6 @@
                         <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
                         <path d="M12 10v6M9 13h6" />
                     </svg>
-                    New folder
                 </button>
             </nav>
             <aside id="folder-rail" class="folder-rail hidden" aria-label="Folder list">
