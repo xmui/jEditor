@@ -72,6 +72,7 @@ const app = {
         });
 
         document.body.addEventListener('dragenter', () => {
+            if (Folders.dragging) return; // photos dragged onto a folder, not files from outside
             document.body.classList.add('drag-over');
             this.log('Drag Enter');
         });
@@ -82,6 +83,7 @@ const app = {
             }
         });
         document.body.addEventListener('drop', (e) => {
+            if (Folders.dragging) return;
             this.log('Drop Event Fired!');
             this.handleDrop(e);
         });
@@ -99,6 +101,7 @@ const app = {
         // Bulk Controls
         document.getElementById('btn-rotate-left-bulk').addEventListener('click', () => this.rotateBulk(-90));
         document.getElementById('btn-rotate-right-bulk').addEventListener('click', () => this.rotateBulk(90));
+        document.getElementById('btn-move-to').addEventListener('click', (e) => Folders.openPicker([...this.selection], e.shiftKey ? 'copy' : 'move'));
         document.getElementById('btn-batch-rename').addEventListener('click', () => this.batchRename([...this.selection]));
         document.getElementById('btn-export').addEventListener('click', () => this.exportCopies([...this.selection]));
         document.getElementById('btn-trash').addEventListener('click', () => this.moveToTrash([...this.selection]));
@@ -174,6 +177,7 @@ const app = {
             document.documentElement.style.setProperty('--grid-item-size', `${next}px`);
         }, { passive: false });
 
+        Folders.init(this);
         this.initContextMenu();
         this.initRubberBand();
         this.initShortcutsPanel();
@@ -369,6 +373,7 @@ const app = {
                 if (saved.stripHeight >= 50 && saved.stripHeight <= 240) this.uiPrefs.stripHeight = saved.stripHeight;
                 if (typeof saved.thumbContain === 'boolean') this.uiPrefs.thumbContain = saved.thumbContain;
                 if (typeof saved.folderCache === 'boolean') this.uiPrefs.folderCache = saved.folderCache;
+                if (typeof saved.folderRail === 'boolean') this.uiPrefs.folderRail = saved.folderRail;
             }
         } catch (e) { /* corrupted prefs → defaults */ }
     },
@@ -939,6 +944,7 @@ const app = {
         // this O(1) per file — the old array scan was quadratic.
         if (!seen) seen = new Set(this.files.map(f => f.relPath || f.name));
         try {
+            Folders.register(prefix.replace(/\/$/, ''), dirHandle);
             this.updateTask('scan', 'Scanning folder…');
             const pending = [];
             const subdirs = [];
@@ -996,6 +1002,7 @@ const app = {
                 this.precacheThumbnails();
                 this.showToast(`Found ${this.files.length - oldLength} new photos`, 3000);
             } else {
+                Folders.render(); // folders made elsewhere still show up
                 this.showToast('Folder is up to date', 2000);
             }
         } catch (e) {
@@ -1018,8 +1025,22 @@ const app = {
         return /\.(jpg|jpeg|png|webp|gif)$/i.test(name);
     },
 
+    // Position of the current photo among the ones being shown (one
+    // folder's, or all of them)
     getCurrentIndex() {
-        return this.files.indexOf(this.currentFile);
+        return this.viewFiles().indexOf(this.currentFile);
+    },
+
+    // The photos the grid, film strip and arrow keys go through
+    viewFiles() {
+        return Folders.viewFiles();
+    },
+
+    // "3 / 48" in the header
+    updateFileCount() {
+        const view = this.viewFiles();
+        const i = view.indexOf(this.currentFile);
+        this.elements.fileCount.textContent = i === -1 ? `${view.length.toLocaleString()} photos` : `${i + 1} / ${view.length}`;
     },
 
     // Degrees of CSS rotation a thumbnail needs on top of its cached bitmap:
@@ -1455,14 +1476,14 @@ const app = {
             this.renderGrid();
             this.updateActiveThumbnail();
             this.updateSelectionUI();
-            const idx = this.getCurrentIndex();
-            if (idx !== -1) this.elements.fileCount.textContent = `${idx + 1} / ${this.files.length}`;
+            if (this.getCurrentIndex() !== -1) this.updateFileCount();
         }
     },
 
     cleanupURLs() {
         // Drop queued thumbnail work for the folder being replaced
         if (this._thumbQueue) this._thumbQueue.length = 0;
+        Folders.reset();
 
         // Revoke all existing object URLs to free memory
         if (this.files) {
@@ -1577,7 +1598,7 @@ const app = {
             });
         }, { root: this.elements.thumbnailStrip, rootMargin: '0px 400px' });
 
-        this.files.forEach((file) => {
+        this.viewFiles().forEach((file) => {
             const div = document.createElement('div');
             div.className = 'thumb-item';
             div._file = file;
@@ -1628,8 +1649,9 @@ const app = {
         if (Math.abs(strip.scrollLeft - target) > 1) strip.scrollLeft = target;
     },
 
-    // Grid View with Lazy Loading
-    renderGrid() {
+    // Grid View with Lazy Loading. sync: every tile now, so a re-render
+    // after a move keeps the scroll position.
+    renderGrid({ sync = false } = {}) {
         this.elements.gridView.innerHTML = '';
         this._shownSelected = new Set();
         this._activeGridEl = null;
@@ -1648,19 +1670,26 @@ const app = {
         }, { root: null, rootMargin: '1000px' });
         this.elements.gridView._observer = observer; // Stash for refreshThumbnailUI
 
+        // Subfolders of the folder being shown come first
+        const files = this.viewFiles();
+        const folderTiles = Folders.folderTiles();
+        this.elements.gridView.append(...folderTiles);
+        this.elements.gridView.classList.toggle('grid-empty', !files.length && !folderTiles.length && Folders.scope !== null);
+        Folders.render();
+
         // Chunked render: big folders paint the first screenfuls immediately
         // and append the rest during idle time.
-        const CHUNK = 500;
+        const CHUNK = sync ? Infinity : 500;
         const token = (this._gridRenderToken = (this._gridRenderToken || 0) + 1);
         const renderChunk = (start) => {
             if (token !== this._gridRenderToken) return; // superseded re-render
             const frag = document.createDocumentFragment();
-            const end = Math.min(start + CHUNK, this.files.length);
+            const end = Math.min(start + CHUNK, files.length);
             for (let i = start; i < end; i++) {
-                frag.appendChild(this.makeGridTile(this.files[i], observer));
+                frag.appendChild(this.makeGridTile(files[i], observer));
             }
             this.elements.gridView.appendChild(frag);
-            if (end < this.files.length) {
+            if (end < files.length) {
                 if (typeof requestIdleCallback === 'function') requestIdleCallback(() => renderChunk(end));
                 else setTimeout(() => renderChunk(end), 16);
             }
@@ -1720,6 +1749,13 @@ const app = {
 
         div.appendChild(img);
         if (!file.thumbnailUrl) this.showThumbSpinner(div, img);
+        Folders.addChip(div, file);
+
+        // Drag onto a folder to move it there (Ctrl/Alt copies)
+        if (this.dirHandle && !this.readOnlyMode) {
+            div.draggable = true;
+            div.addEventListener('dragstart', (e) => Folders.dragStart(e, file));
+        }
 
         div.onclick = (e) => this.handleGridClick(e, file);
         div.ondblclick = () => this.openSingle(file);
@@ -2111,12 +2147,13 @@ const app = {
             this.toggleSelection(file);
         } else if (e.shiftKey) {
             // Range selection: from the current photo to the clicked one
-            const idx = this.files.indexOf(file);
+            const view = this.viewFiles();
+            const idx = view.indexOf(file);
             const anchor = this.getCurrentIndex();
             const start = Math.min(anchor === -1 ? idx : anchor, idx);
             const end = Math.max(anchor === -1 ? idx : anchor, idx);
             this.selection.clear();
-            for (let i = start; i <= end; i++) this.selection.add(this.files[i]);
+            for (let i = start; i <= end; i++) this.selection.add(view[i]);
             this.updateSelectionUI();
         } else {
             // Single select. Don't loadFile() here — that decodes the
@@ -2177,7 +2214,18 @@ const app = {
     },
 
     setView(mode) {
+        // Single view needs a photo in the folder being shown
+        if (mode === 'single' && !Folders.inView(this.currentFile)) {
+            const first = this.viewFiles()[0];
+            if (!first) {
+                this.showToast('There are no photos in this folder');
+                mode = 'grid';
+            } else {
+                this.currentFile = first;
+            }
+        }
         this.viewMode = mode;
+        Folders.render();
         const iconGrid = this.elements.btnToggleView.querySelector('.icon-grid');
         const iconSingle = this.elements.btnToggleView.querySelector('.icon-single');
 
@@ -2193,7 +2241,7 @@ const app = {
             iconSingle.classList.remove('hidden');
 
             // Ensure selection UI is correct
-            if (this.selection.size === 0 && this.currentFile) {
+            if (this.selection.size === 0 && Folders.inView(this.currentFile)) {
                 this.selection.add(this.currentFile);
             }
             this.updateSelectionUI();
@@ -2226,10 +2274,11 @@ const app = {
     },
 
     loadIndex(index) {
-        if (this.files.length === 0) return;
-        if (index < 0) index = this.files.length - 1;
-        if (index >= this.files.length) index = 0;
-        return this.loadFile(this.files[index]);
+        const view = this.viewFiles();
+        if (view.length === 0) return;
+        if (index < 0) index = view.length - 1;
+        if (index >= view.length) index = 0;
+        return this.loadFile(view[index]);
     },
 
     // Make `file` the current photo: header, counter, status chip, info
@@ -2237,7 +2286,7 @@ const app = {
     setCurrent(file) {
         this.currentFile = file;
         this.elements.fileName.textContent = file.name;
-        this.elements.fileCount.textContent = `${this.files.indexOf(file) + 1} / ${this.files.length}`;
+        this.updateFileCount();
         this.updateStatusBar();
         if (this._infoOpen) this.fillInfoPanel(file);
         this.updateActiveThumbnail();
@@ -2434,12 +2483,13 @@ const app = {
     // Prepare previews a few photos ahead in the direction of travel, one at
     // a time, so paging through an order never waits on a decode.
     warmPreviews(file) {
-        const n = this.files.length;
-        const i = this.files.indexOf(file);
+        const view = this.viewFiles();
+        const n = view.length;
+        const i = view.indexOf(file);
         if (i === -1 || n < 3) return;
         const dir = this._navDir || 1;
         for (let d = 2; d <= 4; d++) {
-            const f = this.files[(i + d * dir + n * 4) % n];
+            const f = view[(i + d * dir + n * 4) % n];
             if (!f || f._preview || f._warming) continue;
             f._warming = true;
             this._warmChain = (this._warmChain || Promise.resolve())
@@ -2603,13 +2653,14 @@ const app = {
     // Decode the photos either side (wrapping, like navigation does) and
     // release decoded images that fell out of that window.
     preloadNeighbours(file) {
-        const n = this.files.length;
-        const i = this.files.indexOf(file);
+        const view = this.viewFiles();
+        const n = view.length;
+        const i = view.indexOf(file);
         if (i === -1 || n < 2) return;
         const keep = new Set([file]);
         for (let d = 1; d <= this.DECODE_RADIUS; d++) {
-            keep.add(this.files[(i + d) % n]);
-            keep.add(this.files[(i - d + n) % n]);
+            keep.add(view[(i + d) % n]);
+            keep.add(view[(i - d + n) % n]);
         }
         keep.forEach(f => {
             if (f !== file && !f.isBusy && !f.pendingRotation) this.decodeFull(f).catch(() => { });
@@ -2622,13 +2673,16 @@ const app = {
     cleanupObjectURLs() {
         // Thumbnails are small (≈10–30 KB each) and are kept for the whole
         // session. Only full-size images are trimmed.
-        const cur = this.getCurrentIndex();
+        const view = this.viewFiles();
+        const cur = view.indexOf(this.currentFile);
+        const pos = view === this.files ? null : new Map(view.map((f, i) => [f, i]));
         const windowSizeFull = 4; // in-memory copies of originals (see getOriginalSource)
 
 
         this.files.forEach((f, i) => {
             if (f === this.currentFile) return;
-            const dist = Math.abs(i - cur);
+            const at = pos ? pos.get(f) : i;
+            const dist = at === undefined ? Infinity : Math.abs(at - cur);
             if (dist > windowSizeFull && f.fullImageUrl && !f._decodePromise) {
                 URL.revokeObjectURL(f.fullImageUrl);
                 delete f.fullImageUrl;
@@ -2643,17 +2697,20 @@ const app = {
     },
 
     navigate(direction) {
-        if (this.files.length === 0) return;
+        const view = this.viewFiles();
+        if (view.length === 0) return;
         this._navDir = direction < 0 ? -1 : 1;
-        const n = this.files.length;
-        let newIndex = this.getCurrentIndex() + direction;
+        const n = view.length;
+        const at = this.getCurrentIndex();
+        if (at === -1) return this.goTo(view[0]);
+        let newIndex = at + direction;
         if (Math.abs(direction) > 1) {
             // Row jumps in the grid stop at the edges instead of wrapping
             newIndex = Math.max(0, Math.min(n - 1, newIndex));
         } else {
             newIndex = (newIndex + n) % n;
         }
-        this.goTo(this.files[newIndex]);
+        this.goTo(view[newIndex]);
     },
 
     goTo(file) {
@@ -2746,6 +2803,12 @@ const app = {
         ['edit.trash', 'global', 'Edit', 'Move to trash', ['Delete']],
         ['edit.undo', 'global', 'Edit', 'Undo', ['Ctrl+Z']],
         ['edit.selectAll', 'global', 'Edit', 'Select all (grid)', ['Ctrl+A']],
+        ['edit.moveTo', 'global', 'Folders', 'Move to a folder…', ['M']],
+        ['edit.copyTo', 'global', 'Folders', 'Copy to a folder…', ['Shift+M']],
+        ['folders.new', 'global', 'Folders', 'New folder', ['Shift+N']],
+        ['folders.up', 'global', 'Folders', 'Up one folder (grid)', ['Backspace', 'Alt+ArrowUp']],
+        ['folders.all', 'global', 'Folders', 'Switch between All photos and folders (grid)', ['A']],
+        ['folders.rail', 'global', 'Folders', 'Show / hide the folder list (grid)', ['Ctrl+B']],
         ['view.toggle', 'global', 'View', 'Toggle grid / single view', ['Space']],
         ['view.grid', 'global', 'View', 'Grid view', ['G']],
         ['view.single', 'global', 'View', 'Single view', ['S']],
@@ -2799,8 +2862,8 @@ const app = {
             'nav.next': () => this.navigate(1),
             'nav.up': () => grid() ? this.navigate(-this.getGridColumnCount()) : false,
             'nav.down': () => grid() ? this.navigate(this.getGridColumnCount()) : false,
-            'nav.first': () => this.goTo(this.files[0]),
-            'nav.last': () => this.goTo(this.files[this.files.length - 1]),
+            'nav.first': () => this.goTo(this.viewFiles()[0]),
+            'nav.last': () => { const v = this.viewFiles(); this.goTo(v[v.length - 1]); },
             'edit.rotateLeft': () => grid() ? this.rotateBulk(-90) : this.rotateCurrent(-90),
             'edit.rotateRight': () => grid() ? this.rotateBulk(90) : this.rotateCurrent(90),
             'edit.rotate180': () => grid() ? this.rotateBulk(180) : this.rotateCurrent(180),
@@ -2811,8 +2874,23 @@ const app = {
             'edit.undo': () => this.undo(),
             'edit.selectAll': () => {
                 if (!grid()) return false;
-                this.selection = new Set(this.files);
+                this.selection = new Set(this.viewFiles());
                 this.updateSelectionUI();
+            },
+            'edit.moveTo': () => Folders.openPicker(Folders.targets(), 'move'),
+            'edit.copyTo': () => Folders.openPicker(Folders.targets(), 'copy'),
+            'folders.new': () => this.dirHandle ? Folders.newFolder() : false,
+            'folders.up': () => {
+                if (!grid() || !this.dirHandle || !Folders.scope) return false;
+                Folders.setScope(Folders.parentOf(Folders.scope));
+            },
+            'folders.all': () => {
+                if (!grid() || !this.dirHandle) return false;
+                Folders.setScope(Folders.scope === null ? (Folders.map.has(Folders.lastScope) ? Folders.lastScope : '') : null);
+            },
+            'folders.rail': () => {
+                if (!grid() || !this.dirHandle) return false;
+                Folders.toggleRail();
             },
             'view.toggle': () => this.toggleView(),
             'view.grid': () => this.setView('grid'),
@@ -2968,8 +3046,8 @@ const app = {
     handleKey(e) {
         if (this._recordingKey) return;
 
-        // The rename tool handles its own keys
-        if (Renamer.isOpen) return;
+        // The rename tool and folder dialogs handle their own keys
+        if (Renamer.isOpen || Folders.isModalOpen()) return;
 
         // What's New is modal: Esc closes it
         if (this.isWhatsNewOpen()) {
@@ -3742,6 +3820,8 @@ const app = {
                 const ok = await this.renameMany(entry.items.map(it => ({ file: it.file, newName: it.oldName })), { skipUndo: true });
                 if (!ok) throw new Error('could not restore the old names');
                 this.showToast(`Rename undone (${entry.items.length} file${entry.items.length === 1 ? '' : 's'})`);
+            } else if (entry.type === 'relocate' || entry.type.startsWith('folder-')) {
+                await Folders.undo(entry);
             } else if (entry.type === 'trash') {
                 const n = await this.restoreManyFromTrash(entry.items);
                 this.sortFiles();
@@ -3889,9 +3969,10 @@ const app = {
         // The photo after the current one (or before it) takes its place
         let next = null;
         if (wasCurrent) {
-            const idx = this.files.indexOf(cur);
-            for (let i = idx + 1; i < this.files.length && !next; i++) if (!set.has(this.files[i])) next = this.files[i];
-            for (let i = idx - 1; i >= 0 && !next; i--) if (!set.has(this.files[i])) next = this.files[i];
+            const view = this.viewFiles();
+            const idx = view.indexOf(cur);
+            for (let i = idx + 1; i < view.length && !next && idx !== -1; i++) if (!set.has(view[i])) next = view[i];
+            for (let i = idx - 1; i >= 0 && !next; i--) if (!set.has(view[i])) next = view[i];
         }
         let w = 0;
         for (const f of this.files) if (!set.has(f)) this.files[w++] = f;
@@ -3916,8 +3997,13 @@ const app = {
             }
         }
         this.updateSelectionUI();
-        const ci = this.getCurrentIndex();
-        if (ci !== -1) this.elements.fileCount.textContent = `${ci + 1} / ${this.files.length}`;
+        if (this.getCurrentIndex() !== -1) this.updateFileCount();
+        if (wasCurrent && !next && this.files.length) {
+            // The last photo of the folder being shown went
+            if (this.viewMode === 'single') this.setView('grid');
+            else Folders.showEmptyHeader();
+        }
+        Folders.render();
     },
 
     // Put a photo back from the trash (undo): moved back, or copied
@@ -4289,6 +4375,7 @@ const app = {
                 this._bandRaf = null;
                 const sel = new Set(this._bandBase);
                 for (const el of grid.children) {
+                    if (!el._file) continue; // folder tiles
                     const r = el.getBoundingClientRect();
                     if (r.right > x1 && r.left < x2 && r.bottom > y1 && r.top < y2) sel.add(el._file);
                 }
@@ -4367,6 +4454,12 @@ const app = {
         document.addEventListener('contextmenu', (e) => {
             if (this.cropState.active || Dupes.isOpen) { e.preventDefault(); return; }
             if (this.elements.mainInterface.classList.contains('hidden')) return;
+            const folder = this.dirHandle && e.target.closest && e.target.closest('[data-folder-path]');
+            if (folder) {
+                e.preventDefault();
+                this.openContextMenu(Folders.contextItems(folder.dataset.folderPath), e.clientX, e.clientY);
+                return;
+            }
             const tile = e.target.closest && e.target.closest('.grid-item');
             const inSingle = this.viewMode === 'single' && e.target.closest && e.target.closest('#image-container');
             const inGridBg = this.viewMode === 'grid' && e.target === this.elements.gridView;
@@ -4395,6 +4488,8 @@ const app = {
                     [`Rotate ${sel.length} Right`, () => this.rotateBulk(90)],
                     [`Rotate ${sel.length} 180°`, () => this.rotateBulk(180)],
                     ['—'],
+                    [`Move ${sel.length} to…`, () => Folders.openPicker(sel, 'move')],
+                    [`Copy ${sel.length} to…`, () => Folders.openPicker(sel, 'copy')],
                     [`Rename ${sel.length}…`, () => this.openRename(sel)],
                     ['Export Copies…', () => this.exportCopies(sel)],
                     ['—'],
@@ -4409,6 +4504,8 @@ const app = {
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
                 ['Crop', () => { this.openSingle(file); this.enterCrop(); }],
                 ['—'],
+                ['Move to…', () => Folders.openPicker([file], 'move')],
+                ['Copy to…', () => Folders.openPicker([file], 'copy')],
                 ['Rename…', () => this.promptRename(file)],
                 ['File Info', () => { this.toggleInfoPanel(true); }],
                 ['Export Copy…', () => this.exportCopies([file])],
@@ -4424,6 +4521,8 @@ const app = {
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
                 ['Crop', () => this.enterCrop()],
                 ['—'],
+                ['Move to…', () => Folders.openPicker([file], 'move')],
+                ['Copy to…', () => Folders.openPicker([file], 'copy')],
                 ['Rename…', () => this.promptRename(file)],
                 ['File Info', () => this.toggleInfoPanel(true)],
                 ['Export Copy…', () => this.exportCopies([file])],
@@ -4435,9 +4534,10 @@ const app = {
             ];
         }
         return [
-            ['Select All', () => { this.selection = new Set(this.files); this.updateSelectionUI(); }],
+            ['Select All', () => { this.selection = new Set(this.viewFiles()); this.updateSelectionUI(); }],
             ['Clear Selection', () => this.clearSelection()],
             ['—'],
+            ...(this.dirHandle ? [['New Folder…', () => Folders.newFolder()]] : []),
             ['Rename All…', () => this.openRename([])],
             ['Clean Up Folder…', () => this.cleanUpFolder()],
             ['Find Duplicates… (WIP)', () => this.openDupes()],
@@ -4531,7 +4631,7 @@ const app = {
 
         const goNext = () => {
             if (!next) return;
-            if (this.getCurrentIndex() >= this.files.length - 1) {
+            if (this.getCurrentIndex() >= this.viewFiles().length - 1) {
                 this.showToast('That was the last photo');
                 return;
             }

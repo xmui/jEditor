@@ -14,6 +14,7 @@ const ASSETS = [
     './crop.js',
     './dupes.js',
     './rename.js',
+    './folders.js',
     './icon.png',
     './icon-192.png',
     './icon-maskable-512.png',

@@ -19,6 +19,7 @@
     <script src="crop.js"></script>
     <script src="dupes.js"></script>
     <script src="rename.js"></script>
+    <script src="folders.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -233,6 +234,36 @@
                 </div>
             </main>
 
+            <!-- Folders (folders.js): top bar with All photos / Folders and the
+                 breadcrumb, and the folder list on the left. Grid view only. -->
+            <nav id="folder-bar" class="folder-bar hidden" aria-label="Folders">
+                <button id="fb-rail" class="fb-icon" title="Show the folder list">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="4" width="18" height="16" rx="2" />
+                        <line x1="9" y1="4" x2="9" y2="20" />
+                    </svg>
+                </button>
+                <div class="fb-modes">
+                    <button id="fb-all" title="Every photo in the order, whatever folder it's in (A switches)">All photos</button>
+                    <button id="fb-folders" title="One folder at a time">Folders</button>
+                </div>
+                <div id="fb-crumbs" class="fb-crumbs"></div>
+                <button id="fb-new" class="fb-btn" title="New folder (Shift+N)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                        <path d="M12 10v6M9 13h6" />
+                    </svg>
+                    New folder
+                </button>
+            </nav>
+            <aside id="folder-rail" class="folder-rail hidden" aria-label="Folder list">
+                <div id="folder-tree" class="folder-tree"></div>
+                <p id="fr-hint" class="fr-hint hidden">Make folders to collate this order. Drag photos onto a folder to move them, or hold <kbd>Ctrl</kbd> to copy. <kbd>M</kbd> moves the selection.</p>
+                <button id="fr-new" class="fr-new">+ New folder</button>
+            </aside>
+
             <!-- Grid View (Initially Hidden) -->
             <div id="grid-view" class="grid-view hidden">
                 <!-- Grid items injected here -->
@@ -262,6 +293,7 @@
                 <span id="selection-count">0 items selected</span>
                 <button id="btn-rotate-left-bulk">Rotate Left</button>
                 <button id="btn-rotate-right-bulk">Rotate Right</button>
+                <button id="btn-move-to" title="Move to a folder (M) — Shift+M copies">Move to…</button>
                 <button id="btn-batch-rename">Rename…</button>
                 <button id="btn-export">Export…</button>
                 <button id="btn-trash" class="danger">Delete</button>
@@ -451,6 +483,72 @@
                 <span class="rename-actions">
                     <button id="rename-cancel">Cancel</button>
                     <button id="rename-apply" class="primary">Rename</button>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Move / copy to a folder (folders.js) -->
+    <div id="folder-picker" class="shortcuts-overlay hidden">
+        <div class="shortcuts-card folder-card" role="dialog" aria-label="Move to a folder">
+            <div class="shortcuts-head">
+                <h3 id="fp-title">Move to…</h3>
+                <div class="fp-mode">
+                    <button data-mode="move">Move</button>
+                    <button data-mode="copy">Copy</button>
+                </div>
+                <button id="fp-close" class="fp-close" title="Close (Esc)">×</button>
+            </div>
+            <input id="fp-filter" class="fp-filter" type="text" spellcheck="false" autocomplete="off"
+                placeholder="Find a folder, or type a name for a new one">
+            <div id="fp-list" class="fp-list" role="listbox"></div>
+            <div class="shortcuts-foot"><span id="fp-foot"></span></div>
+        </div>
+    </div>
+
+    <!-- A photo with that name is already in the folder -->
+    <div id="folder-clash" class="shortcuts-overlay hidden">
+        <div class="shortcuts-card clash-card" role="alertdialog" aria-labelledby="fc-title">
+            <div class="shortcuts-head">
+                <h3 id="fc-title"></h3>
+            </div>
+            <div class="fc-body">
+                <figure>
+                    <div class="fc-frame"><img id="fc-new-img" alt=""></div>
+                    <figcaption id="fc-new-cap"></figcaption>
+                </figure>
+                <figure id="fc-old">
+                    <div class="fc-frame"><img id="fc-old-img" alt=""></div>
+                    <figcaption id="fc-old-cap"></figcaption>
+                </figure>
+            </div>
+            <label id="fc-all-row" class="fc-all"><input type="checkbox" id="fc-all"> Do the same for <span id="fc-rest"></span></label>
+            <div class="shortcuts-foot">
+                <button id="fc-cancel" title="Stop: nothing is moved (Esc)">Cancel</button>
+                <span class="rename-actions">
+                    <button id="fc-skip">Skip</button>
+                    <button id="fc-replace" class="danger">Replace</button>
+                    <button id="fc-keep" class="primary">Keep both <small id="fc-keep-note"></small></button>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Folder name (new folder, rename folder) -->
+    <div id="folder-prompt" class="shortcuts-overlay hidden">
+        <div class="shortcuts-card prompt-card" role="dialog" aria-labelledby="fpr-title">
+            <div class="shortcuts-head">
+                <h3 id="fpr-title">New folder</h3>
+            </div>
+            <div class="fpr-body">
+                <input id="fpr-input" type="text" spellcheck="false" autocomplete="off" placeholder="Folder name">
+                <div id="fpr-error" class="fpr-error" aria-live="polite"></div>
+            </div>
+            <div class="shortcuts-foot">
+                <span id="fpr-hint"></span>
+                <span class="rename-actions">
+                    <button id="fpr-cancel">Cancel</button>
+                    <button id="fpr-ok" class="primary">Create</button>
                 </span>
             </div>
         </div>

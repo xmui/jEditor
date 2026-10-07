@@ -5,6 +5,20 @@
 
 const CHANGELOG = [
     {
+        version: '1.14.0', date: '2026-10-07',
+        items: [
+            'Folders, for collating an order into labelled folders. In grid view, a folder list on the left shows every folder (folders inside folders too) with its photo count. Click one to see just its photos.',
+            'All photos shows every photo in the order, whatever folder it\'s in, with each photo\'s folder named on its tile. `A` switches between All photos and folders.',
+            'Drag photos onto a folder to move them there. Hold `Ctrl` (or `Alt`) while dropping to copy them instead.',
+            '`M` moves the selection (or the photo you\'re looking at) to a folder, `Shift+M` copies it. Type to find a folder, or type a new name to make the folder and move the photos into it in one go.',
+            'If a photo with the same name is already in the folder, you\'re asked whether to keep both (the new one gets a number), skip it, or replace the old one (which goes to the trash).',
+            'Make, rename and delete (empty) folders from the folder list, the bar above the grid (`Shift+N` makes one), or by right-clicking a folder.',
+            'Hide the folder list (`Ctrl+B`) to work with folder tiles and a breadcrumb in the grid instead. `Backspace` goes up a folder.',
+            'In a folder, `←` `→`, the film strip and Rename All cover that folder\'s photos only.',
+            '`Ctrl+Z` undoes a move or copy in one step, including any photos it replaced and the folder made for it, and undoes making, renaming or deleting a folder.'
+        ]
+    },
+    {
         version: '1.13.0', date: '2026-10-05',
         items: [
             'Opening a folder again after rotating photos is as quick as opening it with no changes. Before, every rotated photo\'s thumbnail and preview were made again from the full scan (120 big scans: 3.3 s → 0.2 s).',

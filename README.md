@@ -27,6 +27,7 @@ Changes are saved to the original files as you go.
 - **Crop and straighten.** The photo is re-encoded in its original format (JPEG at quality 95). EXIF data (capture date, camera), the ICC colour profile, DPI, XMP and IPTC are carried over. The orientation tag is reset, since the pixels are now upright.
 - **Rename.** Files are renamed in place. If the new names overlap the old ones (shifting a numbered sequence, say), they go through temporary names first. If a rename fails part-way, every file gets its original name back.
 - **Delete.** Photos are moved to `.jeditor/trash` inside the opened folder, not deleted. `Ctrl+Z` restores them.
+- **Move to a folder.** Photos are moved on disk, which is a rename and instant even for big scans; where the browser can't move a file it's copied and the original removed. A copy is a byte-for-byte duplicate. Cached thumbnails and previews follow the photo, so moving doesn't make them again.
 - **Export.** Copies go to a `jEditor Export` folder, optionally resized.
 
 ## The .jeditor folder
@@ -59,6 +60,19 @@ It works like Lightroom or Apple Photos: the crop frame stays in the middle of t
 - Aspect presets: 4×6, 5×7, 8×10, 11×14, square, 3:4, 16:9, original and free. `X` swaps portrait and landscape. A preset fits inside the current crop, so choosing one after Auto never takes in the bed.
 - **Previous** (`P`) applies the last crop again. This is useful when a batch of scans has the same borders.
 - The header shows the output size in pixels, and in inches when the file has a DPI.
+
+## Folders (collating)
+
+Some orders are collated: the photos go into labelled folders. Open the order folder and switch to the grid (`Space`).
+
+- **The folder list** on the left shows every folder, including folders inside folders and empty ones, with how many photos are directly in each. Click a folder to see just its photos. `Ctrl+B` hides the list; the grid then shows a folder's subfolders as tiles at the start, with a breadcrumb above it. `Backspace` goes up a folder.
+- **All photos** (top of the list, or the switch in the bar above the grid) shows every photo in the order, whatever folder it's in, with each photo's folder named on its tile. It's what you see when an order is opened. `A` switches between All photos and the last folder.
+- **Moving.** Drag the selected photos onto a folder, in the list, a folder tile or the breadcrumb. Hold `Ctrl` (or `Alt`) when you let go to copy them instead. Or press `M` (`Shift+M` copies), or use **Move to…** on the selection bar or the right-click menu. That opens a list of folders: type to find one, or type a new name to make that folder and move the photos into it in one go. `Wedding/Speeches` makes a folder inside another.
+- **Name clashes.** If a photo with the same name is already in the folder, you're asked what to do: keep both (the moved photo gets a number, `IMG_0042 (2).jpg`), skip it, or replace the one that's there, which goes to the trash. You can apply the answer to the rest of the clashes. Cancel and nothing is moved.
+- **Folders.** **New folder** in the bar or the list, or `Shift+N`, makes one inside the folder you're looking at. Right-click a folder to rename it, make a folder inside it, or delete it once it's empty.
+- In a folder, `←` `→`, the film strip, `Ctrl+A` and **Rename All…** cover that folder's photos only.
+
+`Ctrl+Z` undoes a move or copy in one step, together with any photos it replaced and the folder made for it. Making, renaming and deleting folders can be undone too.
 
 ## Renaming
 
@@ -105,6 +119,11 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `I` | File info |
 | `F` | Fullscreen |
 | `F2` | Rename (the selected photos in grid view) |
+| `M` / `Shift+M` | Move / copy to a folder (the selection in grid view) |
+| `Shift+N` | New folder |
+| `A` | Switch between All photos and folders (grid view) |
+| `Backspace` | Up a folder (grid view) |
+| `Ctrl+B` | Show or hide the folder list (grid view) |
 | `Delete` | Move to trash |
 | `Ctrl+Z` | Undo |
 | `Ctrl+A` | Select all (grid view) |
@@ -135,6 +154,8 @@ The app is plain JavaScript with no dependencies, in `app/`:
 - `changelog.js`: the list of changes shown in What's New
 - `meta.js`: reading and copying JPEG/PNG metadata
 - `dupes.js`: duplicate finder
+- `rename.js`: batch rename
+- `folders.js`: folders: the folder list, moving and copying photos, making, renaming and deleting folders
 
 To release, bump the version, add what changed to the top of `app/changelog.js`, commit, and merge to `main`. The changelog is what the app shows under **What's New** and what the GitHub Release notes say; the tests fail if the current version has no entry. The Release workflow then tags the version, builds `standalone.html` and publishes a GitHub Release, and the Pages workflow builds and deploys the web app. Both builds inline every script and stylesheet into one page, so a browser never ends up mixing files from two versions. The tests fail if `app/version.js` and `package.json` disagree.
 
