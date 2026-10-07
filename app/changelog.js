@@ -5,6 +5,14 @@
 
 const CHANGELOG = [
     {
+        version: '1.15.1', date: '2026-10-07',
+        items: [
+            'Zooming the grid (the slider or `Ctrl` + wheel) keeps your place: the highlighted photo stays where it is on screen while the tiles grow or shrink around it. If it\'s out of sight, the photo in the middle of the view stays put instead.',
+            'Rescanning the folder (`R`) keeps your place too: when new photos come in, the highlighted photo stays where it is on screen.',
+            'Fixed the grid jumping after zooming, when rows above had been scrolled past.'
+        ]
+    },
+    {
         version: '1.15.0', date: '2026-10-07',
         items: [
             'Recent orders on the start screen, under Open Folder: the last six folders you opened, newest first. Click one to open it again without picking it. Chrome may ask once more for permission to edit it.',

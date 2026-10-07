@@ -637,8 +637,9 @@ header {
     transition: transform 0.1s;
     /* Skip layout/paint for tiles far outside the viewport */
     content-visibility: auto;
-    /* Tiles scrolled past keep their real size, so rows don't shift */
-    contain-intrinsic-size: auto var(--grid-item-size, 150px) auto var(--grid-item-size, 150px);
+    /* Tiles out of sight stand in at the real tile size (set from the
+       column width, see syncGridTile), so rows don't shift */
+    contain-intrinsic-size: var(--grid-tile, var(--grid-item-size, 150px)) var(--grid-tile, var(--grid-item-size, 150px));
 }
 
 .grid-item:hover {

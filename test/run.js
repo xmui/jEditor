@@ -2638,6 +2638,87 @@ async function newPage(browser, url) {
         await page.close();
     }
 
+    // ---- 7o. Zooming the grid keeps your place ----
+    console.log('grid zoom keeps your place');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1300, height: 820 });
+        const r = await page.evaluate(async () => {
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('zoomorder', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('zoomorder', { create: true });
+            const bytes = await makeRealJpeg(240, 160);
+            for (let i = 0; i < 240; i++) {
+                const fh = await dir.getFileHandle(`p${String(i).padStart(3, '0')}.jpg`, { create: true });
+                const w = await fh.createWritable();
+                await w.write(new Blob([bytes], { type: 'image/jpeg' }));
+                await w.close();
+            }
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            app.setView('grid');
+            const frames = () => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+            const grid = app.elements.gridView;
+            const f = app.files[130];
+            let out0;
+            app.goTo(f);
+            await frames();
+            const top = () => Math.round(f._gridEl.getBoundingClientRect().top);
+            // Put it 400px down and wait for the layout to hold still there
+            for (let i = 0; i < 20 && top() !== 400; i++) {
+                grid.scrollTop += f._gridEl.getBoundingClientRect().top - 400;
+                await frames();
+            }
+            out0 = top();
+            const out = { tops: [out0], cols: [app.getGridColumnCount()] };
+            const wheel = (dy) => grid.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, ctrlKey: true, bubbles: true, cancelable: true }));
+            for (let i = 0; i < 3; i++) { wheel(100); await frames(); }
+            out.tops.push(top()); out.cols.push(app.getGridColumnCount());
+            for (let i = 0; i < 6; i++) { wheel(-100); await frames(); }
+            out.tops.push(top()); out.cols.push(app.getGridColumnCount());
+            const slider = app.elements.gridSizeSlider;
+            slider.value = 100;
+            slider.dispatchEvent(new Event('input'));
+            await frames();
+            await new Promise(res => setTimeout(res, 200)); // off-screen tiles settle
+            out.tops.push(top());
+            // Highlighted photo out of sight: the middle of the view stays
+            grid.scrollTop = 0;
+            await frames();
+            const a = app.gridAnchor();
+            out.fallback = a.el !== f._gridEl;
+            slider.value = 260;
+            slider.dispatchEvent(new Event('input'));
+            await frames();
+            out.fallbackMoved = Math.round(a.el.getBoundingClientRect().top - a.top);
+            // Rescan (R) with new photos sorting in before it: the highlighted one stays put
+            app.goTo(f);
+            await frames();
+            for (let i = 0; i < 20 && top() !== 300; i++) {
+                grid.scrollTop += f._gridEl.getBoundingClientRect().top - 300;
+                await frames();
+            }
+            for (let i = 0; i < 20; i++) {
+                const fh = await dir.getFileHandle(`a${String(i).padStart(3, '0')}.jpg`, { create: true });
+                const w = await fh.createWritable();
+                await w.write(new Blob([bytes], { type: 'image/jpeg' }));
+                await w.close();
+            }
+            await app.refreshFolder();
+            await frames();
+            out.rescan = Math.round(f._gridEl.getBoundingClientRect().top);
+            out.rescanFiles = app.files.length;
+            out.stillCurrent = app.currentFile === f && f._gridEl.classList.contains('active');
+            return out;
+        });
+        check('grid zoom: the highlighted photo stays put (wheel and slider)', r.tops.every(t => Math.abs(t - 400) <= 1), r.tops.join(','));
+        check('grid zoom: really changed the columns', r.cols[1] > r.cols[0] && r.cols[2] < r.cols[0], r.cols.join(','));
+        check('grid zoom: otherwise the middle of the view stays put', r.fallback && Math.abs(r.fallbackMoved) <= 1, String(r.fallbackMoved));
+        check('rescan: the highlighted photo stays put when new photos come in', r.rescanFiles === 260 && Math.abs(r.rescan - 300) <= 1 && r.stillCurrent, `${r.rescan} (${r.rescanFiles})`);
+        check('grid zoom suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7. file:// — direct open and standalone build ----
     console.log('file:// support');
     for (const [label, target] of [
