@@ -2314,6 +2314,244 @@ async function newPage(browser, url) {
         await page.close();
     }
 
+    // ---- 7m. Folders: navigate, move, copy, collate ----
+    console.log('folders');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1300, height: 800 });
+        const r = await page.evaluate(async () => {
+            const out = {};
+            // Real files in the browser's private file system, where photos
+            // move with FileSystemHandle.move() as they do on disk
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('collate', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('collate', { create: true });
+            const put = async (d, name, color) => {
+                const fh = await d.getFileHandle(name, { create: true });
+                const w = await fh.createWritable();
+                await w.write(new Blob([await makeRealJpeg(300, 200, { color })], { type: 'image/jpeg' }));
+                await w.close();
+            };
+            for (const [n, c] of [['a.jpg', '#c33'], ['b.jpg', '#3c3'], ['c.jpg', '#33c'], ['d.jpg', '#cc3']]) await put(dir, n, c);
+            const wed = await dir.getDirectoryHandle('Wedding', { create: true });
+            await put(wed, 'b.jpg', '#888');
+            await put(wed, 'w1.jpg', '#c3c');
+            const cer = await wed.getDirectoryHandle('Ceremony', { create: true });
+            await put(cer, 'c1.jpg', '#3cc');
+            await wed.getDirectoryHandle('Reception', { create: true }); // empty
+            // Everything on disk, outside jEditor's own folder
+            const disk = async (d = dir, p = '') => {
+                const names = [];
+                for await (const e of d.values()) {
+                    if (e.kind === 'directory') {
+                        if (e.name === '.jeditor') continue;
+                        names.push(p + e.name + '/');
+                        names.push(...await disk(e, p + e.name + '/'));
+                    } else names.push(p + e.name);
+                }
+                return names.sort();
+            };
+            const f = (rel) => app.files.find(x => x.relPath === rel);
+            const tiles = () => [...document.querySelectorAll('#grid-view .grid-item')].map(t => t._file.relPath).join(',');
+            window.showDirectoryPicker = async () => dir;
+            try { localStorage.removeItem('jeditor.ui'); } catch (e) { /* private */ }
+            app.loadUiPrefs();
+            await app.browseFolder();
+            app.setView('grid');
+
+            // Every folder is known, empty ones too; All photos is the start
+            out.folders = Folders.ordered().join('|');
+            out.allFirst = Folders.scope === null && app.viewFiles().length === 7 && document.querySelectorAll('#grid-view .grid-item').length === 7;
+            out.railShown = !document.getElementById('folder-rail').classList.contains('hidden') &&
+                !document.getElementById('folder-bar').classList.contains('hidden');
+            out.chips = [...document.querySelectorAll('#grid-view .grid-item')].filter(t => t.querySelector('.tile-folder'))
+                .map(t => t.querySelector('.tile-folder').textContent).sort().join(',');
+            out.railRows = [...document.querySelectorAll('#folder-tree .fr-row')].map(r => r.querySelector('.fr-name').textContent + ':' + r.querySelector('.fr-count').textContent).join('|');
+
+            // One folder at a time: its photos, its subfolders as tiles
+            Folders.setScope('Wedding');
+            out.wedTiles = tiles();
+            out.wedFolders = [...document.querySelectorAll('#grid-view .folder-tile')].map(t => t.dataset.folderPath).join(',');
+            out.crumbs = [...document.querySelectorAll('#fb-crumbs .fb-crumb')].map(b => b.textContent).join('>');
+            app.goTo(f('Wedding/w1.jpg'));
+            app.navigate(1); // wraps inside the folder
+            out.wraps = app.currentFile.relPath === 'Wedding/b.jpg' && document.getElementById('file-count').textContent === '1 / 2';
+            app.setView('single');
+            out.strip = document.querySelectorAll('#thumbnail-strip .thumb-item').length;
+            app.navigate(1);
+            out.singleStays = app.currentFile.relPath === 'Wedding/w1.jpg';
+            app.setView('grid');
+            // An empty folder: no photos, single view refused
+            Folders.setScope('Wedding/Reception');
+            out.emptyGrid = document.getElementById('grid-view').classList.contains('grid-empty') && app.viewFiles().length === 0;
+            app.setView('single');
+            out.emptyNoSingle = app.viewMode === 'grid';
+            // Backspace goes up a folder
+            document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }));
+            out.up = Folders.scope === 'Wedding';
+
+            // Move from the order's own folder into Wedding: on disk, in the app, undoable
+            Folders.setScope('');
+            app.selection = new Set([f('a.jpg'), f('c.jpg')]);
+            app.setCurrent(f('a.jpg'));
+            app.updateSelectionUI();
+            const a = f('a.jpg');
+            let entry = await Folders.relocate([...app.selection], 'Wedding');
+            out.moved = (await disk()).join(',');
+            out.movedApp = a.relPath === 'Wedding/a.jpg' && (await a.handle.getFile()).size > 0;
+            out.leftView = tiles() === 'b.jpg,d.jpg' && app.selection.size === 0 && app.currentFile.relPath === 'b.jpg';
+            out.toastUndo = [...document.querySelectorAll('.toast')].some(t => /Moved 2 photos to Wedding/.test(t.textContent) && t.querySelector('.toast-action'));
+            await app.undo();
+            out.undone = (await disk()).join(',');
+            out.undoneApp = a.relPath === 'a.jpg' && tiles() === 'a.jpg,b.jpg,c.jpg,d.jpg';
+
+            // Name clash: asked first. Cancel changes nothing
+            let asked = null;
+            Folders.askClash = async (q) => { asked = q; return null; };
+            entry = await Folders.relocate([f('b.jpg'), f('d.jpg')], 'Wedding');
+            out.cancelled = entry === null && asked && asked.file.name === 'b.jpg' && asked.canReplace &&
+                f('d.jpg') && (await disk()).includes('d.jpg');
+            // Keep both: numbered name
+            Folders.askClash = async () => ({ choice: 'keep', all: false });
+            await Folders.relocate([f('b.jpg')], 'Wedding');
+            out.keepBoth = (await disk()).includes('Wedding/b (2).jpg') && !!f('Wedding/b (2).jpg') && !!f('Wedding/b.jpg');
+            await app.undo();
+            out.keepBothUndone = (await disk()).includes('b.jpg') && !(await disk()).includes('Wedding/b (2).jpg');
+            // Replace: the photo that was there goes to the trash, undo brings both back
+            Folders.askClash = async () => ({ choice: 'replace', all: false });
+            const old = f('Wedding/b.jpg');
+            await Folders.relocate([f('b.jpg')], 'Wedding');
+            const trash = await (await dir.getDirectoryHandle('.jeditor')).getDirectoryHandle('trash');
+            const inTrash = [];
+            for await (const e of trash.values()) inTrash.push(e.name);
+            out.replaced = !app.files.includes(old) && inTrash.includes('b.jpg') && !(await disk()).includes('b.jpg') && (await disk()).includes('Wedding/b.jpg');
+            await app.undo();
+            out.replaceUndone = app.files.includes(old) && old.relPath === 'Wedding/b.jpg' && !!f('b.jpg') && (await disk()).includes('b.jpg');
+            delete Folders.askClash; // the real dialog again
+
+            // Copy: both places, undo removes the copy only
+            await Folders.relocate([f('d.jpg')], 'Wedding/Ceremony', { copy: true });
+            out.copied = (await disk()).includes('d.jpg') && (await disk()).includes('Wedding/Ceremony/d.jpg') && app.files.length === 8;
+            await app.undo();
+            out.copyUndone = !(await disk()).includes('Wedding/Ceremony/d.jpg') && app.files.length === 7;
+
+            // The picker: M, type a new name, Enter makes the folder and moves
+            app.selection = new Set([f('d.jpg')]);
+            app.updateSelectionUI();
+            document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', bubbles: true }));
+            out.pickerOpen = Folders.isModalOpen();
+            const input = document.getElementById('fp-filter');
+            input.value = 'Xmas 85';
+            input.dispatchEvent(new Event('input'));
+            out.pickerCreate = Folders.pickerItems[Folders.pickerHi].kind === 'create';
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            for (let i = 0; i < 400 && !f('Xmas 85/d.jpg'); i++) await new Promise(res => setTimeout(res, 20));
+            out.pickerMoved = (await disk()).includes('Xmas 85/d.jpg') && !Folders.isModalOpen() && document.activeElement !== input;
+            await app.undo(); // one step: the move and the folder made for it
+            out.pickerUndone = (await disk()).includes('d.jpg') && !(await disk()).includes('Xmas 85/') && !Folders.map.has('Xmas 85');
+            // Bad names are refused
+            out.badName = !!Folders.nameProblem('a:b') && !!Folders.nameProblem('.hidden') && !!Folders.nameProblem('con') && !Folders.nameProblem('Xmas 85');
+            out.freeName = Folders.freeName('IMG (2).jpg', new Set(['img (2).jpg'])) === 'IMG (3).jpg';
+
+            // Rename a folder with photos and a subfolder in it; undo
+            Folders.setScope('Wedding/Ceremony');
+            const c1 = f('Wedding/Ceremony/c1.jpg');
+            const newPath = await Folders.renameDir('Wedding', 'Bride & Groom');
+            app.pushUndo({ type: 'folder-rename', path: newPath, name: 'Wedding' });
+            Folders.afterChange();
+            out.renamed = (await disk()).includes('Bride & Groom/Ceremony/c1.jpg') && !(await disk()).includes('Wedding/') &&
+                c1.relPath === 'Bride & Groom/Ceremony/c1.jpg' && Folders.scope === 'Bride & Groom/Ceremony' &&
+                (await c1.handle.getFile()).size > 0;
+            await app.undo();
+            out.renameUndone = (await disk()).includes('Wedding/Ceremony/c1.jpg') && c1.relPath === 'Wedding/Ceremony/c1.jpg' && Folders.scope === 'Wedding/Ceremony';
+
+            // Delete: only an empty folder, undoable
+            await Folders.deleteFolder('Wedding/Reception');
+            out.deleted = !(await disk()).includes('Wedding/Reception/') && !Folders.map.has('Wedding/Reception');
+            await app.undo();
+            out.deleteUndone = (await disk()).includes('Wedding/Reception/') && Folders.map.has('Wedding/Reception');
+            await Folders.deleteFolder('Wedding');
+            out.notEmptyKept = (await disk()).includes('Wedding/');
+
+            // Moved photos keep their cached thumbnail and preview
+            const blob = new Blob([new Uint8Array(10)], { type: 'image/jpeg' });
+            await app.idbPutThumb('x.jpg|99999|5', blob);
+            await app.idbPutPreview(`p|x.jpg|99999|5|${app.previewEdge()}`, { blob, w: 1, h: 1 });
+            await Folders.carryCaches({ rel: 'x.jpg', size: 99999, mtime: 5 }, { rel: 'F/x.jpg', size: 99999, mtime: 5 }, true);
+            out.cacheCarried = !!(await app.idbGetThumb('F/x.jpg|99999|5')) && !(await app.idbGetThumb('x.jpg|99999|5')) &&
+                !!(await app.idbGet('previews', `p|F/x.jpg|99999|5|${app.previewEdge()}`));
+
+            // Hiding the folder list leaves the bar; remembered
+            Folders.setScope('');
+            Folders.toggleRail();
+            out.railHidden = document.getElementById('folder-rail').classList.contains('hidden') &&
+                !document.getElementById('folder-bar').classList.contains('hidden') && JSON.parse(localStorage.getItem('jeditor.ui')).folderRail === false;
+            Folders.toggleRail();
+            // Rename All in a folder renames that folder's photos only
+            Folders.setScope('Wedding');
+            Renamer.open(app, []);
+            out.renameScope = Renamer.scope().map(x => x.relPath).sort().join(',') + '|' + document.getElementById('rename-scope-all-label').textContent;
+            Renamer.close();
+            Folders.setScope('');
+            app.clearSelection();
+            out.menu = Folders.contextItems('Wedding/Reception').map(i => i[0]).join('|');
+            app.selection = new Set([f('b.jpg'), f('d.jpg')]);
+            out.menuSel = Folders.contextItems('Wedding').map(i => i[0]).slice(0, 4).join('|');
+            return out;
+        });
+        check('folders: every folder found, empty ones too', r.folders === '|Wedding|Wedding/Ceremony|Wedding/Reception', r.folders);
+        check('folders: All photos first, with the folder list and bar', r.allFirst && r.railShown);
+        check('folders: All photos labels each photo with its folder', r.chips === 'Ceremony,Wedding,Wedding', r.chips);
+        check('folders: list shows the tree with photo counts', r.railRows === 'All photos:7|collate:4|Wedding:2|Ceremony:1|Reception:', r.railRows);
+        check('folders: a folder shows its own photos and subfolder tiles', r.wedTiles === 'Wedding/b.jpg,Wedding/w1.jpg' && r.wedFolders === 'Wedding/Ceremony,Wedding/Reception', `${r.wedTiles} / ${r.wedFolders}`);
+        check('folders: breadcrumb', r.crumbs === 'collate>Wedding', r.crumbs);
+        check('folders: arrows stay in the folder (grid and single view)', r.wraps && r.singleStays && r.strip === 2, `strip=${r.strip}`);
+        check('folders: empty folder shows a hint and no single view', r.emptyGrid && r.emptyNoSingle);
+        check('folders: Backspace goes up a folder', r.up);
+        check('folders: move to a folder on disk', r.moved === 'Wedding/,Wedding/Ceremony/,Wedding/Ceremony/c1.jpg,Wedding/Reception/,Wedding/a.jpg,Wedding/b.jpg,Wedding/c.jpg,Wedding/w1.jpg,b.jpg,d.jpg' && r.movedApp, r.moved);
+        check('folders: moved photos leave the view, nothing hidden stays selected', r.leftView);
+        check('folders: toast offers Undo', r.toastUndo);
+        check('folders: undo puts photos back', r.undone === 'Wedding/,Wedding/Ceremony/,Wedding/Ceremony/c1.jpg,Wedding/Reception/,Wedding/b.jpg,Wedding/w1.jpg,a.jpg,b.jpg,c.jpg,d.jpg' && r.undoneApp, r.undone);
+        check('folders: name clash is asked first; cancel changes nothing', r.cancelled);
+        check('folders: keep both numbers the name; undo', r.keepBoth && r.keepBothUndone);
+        check('folders: replace sends the old photo to the trash; undo restores both', r.replaced && r.replaceUndone);
+        check('folders: copy to a folder; undo removes only the copy', r.copied && r.copyUndone);
+        check('folders: M opens the picker; a new name makes the folder and moves', r.pickerOpen && r.pickerCreate && r.pickerMoved);
+        check('folders: one undo removes the move and the new folder', r.pickerUndone);
+        check('folders: bad folder names refused; free names numbered', r.badName && r.freeName);
+        check('folders: rename a folder (photos and subfolders follow); undo', r.renamed && r.renameUndone);
+        check('folders: delete an empty folder; undo; folders with photos are kept', r.deleted && r.deleteUndone && r.notEmptyKept);
+        check('folders: moved photos keep their cached thumbnail and preview', r.cacheCarried);
+        check('folders: folder list can be hidden (remembered)', r.railHidden);
+        check('folders: Rename All in a folder covers that folder only', r.renameScope === 'Wedding/b.jpg,Wedding/w1.jpg|All photos in Wedding (2)', r.renameScope);
+        check('folders: folder menu', r.menu === 'Open|—|New Folder Inside…|Rename Folder…|—|Delete Folder', r.menu);
+        check('folders: folder menu moves or copies the selection there', r.menuSel === 'Open|—|Move 2 Photos Here|Copy 2 Photos Here', r.menuSel);
+
+        // Drag photos onto a folder in the list (Ctrl copies), never opening
+        // them as a dropped folder
+        await page.evaluate(() => {
+            Folders.setScope('');
+            app.selection = new Set([app.files.find(x => x.relPath === 'a.jpg')]);
+            app.updateSelectionUI();
+        });
+        const tile = page.locator('#grid-view .grid-item').first();
+        await tile.dragTo(page.locator('#folder-tree .fr-row[data-folder-path="Wedding/Reception"]'));
+        await page.waitForFunction(() => app.files.some(x => x.relPath === 'Wedding/Reception/a.jpg'), null, { timeout: 5000 }).catch(() => { });
+        const dragged = await page.evaluate(() => ({
+            moved: app.files.some(x => x.relPath === 'Wedding/Reception/a.jpg'),
+            kept: app.files.length === 7 && !Folders.dragging && !document.body.classList.contains('drag-over')
+        }));
+        await page.keyboard.down('Control');
+        await page.locator('#grid-view .grid-item').first().dragTo(page.locator('#folder-tree .fr-row[data-folder-path="Wedding/Ceremony"]'));
+        await page.keyboard.up('Control');
+        await page.waitForFunction(() => app.files.length === 8, null, { timeout: 5000 }).catch(() => { });
+        const copied = await page.evaluate(() => app.files.length === 8 && app.files.some(x => x.relPath === 'Wedding/Ceremony/b.jpg') && app.files.some(x => x.relPath === 'b.jpg'));
+        check('folders: drag onto a folder moves', dragged.moved && dragged.kept, JSON.stringify(dragged));
+        check('folders: Ctrl+drag copies', copied);
+        check('folders suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7. file:// — direct open and standalone build ----
     console.log('file:// support');
     for (const [label, target] of [

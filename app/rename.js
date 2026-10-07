@@ -61,12 +61,15 @@ const Renamer = {
     open(app, selected = []) {
         this.init(app);
         this.selected = selected.filter(Boolean);
-        const all = app.files.length;
+        // "All" is what the grid shows: one folder's photos when a folder is open
+        const all = app.viewFiles().length;
         const sel = this.selected.length;
         this.el('rename-scope-selected').disabled = sel === 0;
         this.el('rename-scope-selected-label').textContent = sel === 1
             ? `This photo (${this.selected[0].name})` : `Selected photos (${sel})`;
-        this.el('rename-scope-all-label').textContent = `All photos in the folder (${all.toLocaleString()})`;
+        this.el('rename-scope-all-label').textContent = Folders.scope !== null && app.dirHandle
+            ? `All photos in ${Folders.nameOf(Folders.scope)} (${all.toLocaleString()})`
+            : `All photos${Folders.hasSubfolders() ? ', in every folder' : ' in the folder'} (${all.toLocaleString()})`;
         this.el(sel ? 'rename-scope-selected' : 'rename-scope-all').checked = true;
 
         let saved = {};
@@ -121,7 +124,7 @@ const Renamer = {
 
     scope() {
         const sel = this.el('rename-scope-selected').checked && this.selected.length;
-        return sel ? [...this.selected] : [...this.app.files];
+        return sel ? [...this.selected] : [...this.app.viewFiles()];
     },
 
     schedule() {
