@@ -71,20 +71,24 @@ const FolderCache = {
 
     // ---- The order's folder in the app's storage ----
 
-    // The open order's path on disk, worked out from any photo in it (the
-    // app can tell where a file is). Null with no photos: nothing to keep.
+    // The open order's path on disk (the app tells; see src/bridge.js).
+    // Null if it can't: a folder it never saw, nothing is kept for it.
     async orderPath(app) {
         const dir = app.dirHandle;
         if (this._pathFor === dir) return this._path;
-        const f = app.files.find(x => x.handle);
-        if (!f || !this.native()) return null;
+        if (!dir || !this.native()) return null;
         let path = null;
         try {
-            const full = await this.native().pathOf(await f.handle.getFile());
-            const rel = '\\' + (f.relPath || f.name).split('/').join('\\');
-            if (full && full.toLowerCase().endsWith(rel.toLowerCase())) path = full.slice(0, -rel.length);
-        } catch (e) { /* unreadable: try again next time */ }
-        if (!path || app.dirHandle !== dir) return null;
+            path = await this.native().folderPath(dir);
+        } catch (e) { /* unknown: try again next time */ }
+        if (app.dirHandle !== dir) return null;
+        if (!path) {
+            if (this._unknown !== dir) {
+                this._unknown = dir;
+                app.showToast('jEditor can\'t tell where this folder is, so its flags and edits history aren\'t kept. Open it with Open folder instead.', 8000);
+            }
+            return null;
+        }
         if (/^[a-z]:$/i.test(path)) path += '\\'; // a whole drive
         this._pathFor = dir;
         this._path = path;

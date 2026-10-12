@@ -4570,10 +4570,17 @@ const app = {
         const out = new Map();
         const native = FolderCache.native();
         if (!native || !files.length) return out;
+        const root = await FolderCache.orderPath(this);
+        if (!root) {
+            files.forEach(f => out.set(f, { noBin: true })); // where it is isn't known: jEditor's trash
+            return out;
+        }
         const ready = [];
         for (const f of files) {
             try {
-                ready.push({ f, file: await f.handle.getFile() });
+                await f.handle.getFile(); // still there?
+                const rel = (f.relPath || f.name).split('/').join('\\');
+                ready.push({ f, path: root.replace(/\\$/, '') + '\\' + rel });
             } catch (e) {
                 out.set(f, e && e.name === 'NotFoundError' ? { gone: true } : { error: e.message });
             }
@@ -4581,7 +4588,7 @@ const app = {
         if (!ready.length) return out;
         let results;
         try {
-            results = await native.recycle(ready.map(r => r.file));
+            results = await native.recycle(ready.map(r => r.path));
         } catch (e) {
             results = [];
             ready.forEach(r => out.set(r.f, { error: e.message }));

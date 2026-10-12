@@ -42,44 +42,41 @@ const FAKE_NATIVE = `
     window.__calls = [];
     const opfs = () => navigator.storage.getDirectory();
     const sub = async (name) => (await opfs()).getDirectoryHandle(name, { create: true });
-    // Where a File is: found by searching disk/ for the same name and bytes
-    const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
-    const locate = async (file) => {
-        const disk = await sub('disk');
-        const want = new Uint8Array(await file.arrayBuffer());
-        const walk = async (dir, parts) => {
-            for await (const [name, h] of dir.entries()) {
-                if (h.kind === 'file' && name === file.name) {
-                    const f = await h.getFile();
-                    if (f.size === file.size && same(new Uint8Array(await f.arrayBuffer()), want)) return { parts: [...parts, name], dir, name };
-                } else if (h.kind === 'directory') {
-                    const hit = await walk(h, [...parts, name]);
-                    if (hit) return hit;
-                }
-            }
+    // Paths: disk/ is the folder __orderRoot, so disk/Smith/a.jpg is D:\\Orders\\Smith\\a.jpg
+    const locate = async (path) => {
+        const root = window.__orderRoot + '\\\\';
+        if (!path.startsWith(root)) return null;
+        const parts = path.slice(root.length).split('\\\\');
+        let dir = await sub('disk');
+        try {
+            for (const p of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(p);
+            await dir.getFileHandle(parts[parts.length - 1]);
+        } catch (e) {
             return null;
-        };
-        return walk(disk, []);
+        }
+        return { dir, name: parts[parts.length - 1] };
     };
     const tokens = new Map();
     window.JEditorNative = {
         async dataDir() { window.__calls.push('dataDir'); return sub('appdata'); },
-        async pathOf(file) {
-            const hit = await locate(file);
-            return hit ? window.__orderRoot + '\\\\' + hit.parts.join('\\\\') : null;
+        async folderPath(handle) {
+            if (window.__unknownPath) return null;
+            const parts = await (await sub('disk')).resolve(handle);
+            return parts ? [window.__orderRoot, ...parts].join('\\\\') : null;
         },
-        async recycle(files) {
-            window.__calls.push('recycle:' + files.length);
+        async recycle(paths) {
+            window.__calls.push('recycle:' + paths.length);
+            window.__recycled = (window.__recycled || []).concat(paths);
             const bin = await sub('bin');
             const out = [];
-            for (const file of files) {
+            for (const path of paths) {
                 if (window.__noBin) { out.push({ noBin: true }); continue; }
-                const hit = await locate(file);
-                if (!hit) { out.push({ error: 'not found' }); continue; }
+                const hit = await locate(path);
+                if (!hit) { out.push({ gone: true }); continue; }
                 const token = 't' + tokens.size;
                 const b = await bin.getFileHandle(token, { create: true });
                 const w = await b.createWritable();
-                await w.write(await file.arrayBuffer());
+                await w.write(await (await hit.dir.getFileHandle(hit.name)).getFile());
                 await w.close();
                 await hit.dir.removeEntry(hit.name);
                 tokens.set(token, hit);
@@ -330,6 +327,7 @@ async function newPage(context, baseUrl) {
             const victims = app.files.filter(f => ['photo2.jpg', 'photo3.jpg'].includes(f.name));
             await app.moveToTrash(victims);
             out.calls = window.__calls.filter(c => c.startsWith('recycle'));
+            out.paths = window.__recycled.slice();
             out.left = await names(dir);
             out.bin = await names(await opfs('bin'));
             out.files = app.files.length;
@@ -351,14 +349,29 @@ async function newPage(context, baseUrl) {
             out.noBinToast = toasts();
             await app.undo();
             out.noBinBack = await names(dir);
+
+            // A folder the app can't place: says so, and keeps nothing for it
+            window.__noBin = false;
+            window.__unknownPath = true;
+            const before2 = (await names(await opfs('appdata'))).length;
+            const lost = await makeOrder('Lost Order', 2);
+            await openOrder(lost);
+            Flags.apply('star', [app.files[0]]);
+            await Flags.save().catch(() => { });
+            out.unknownToast = toasts();
+            out.unknownStores = (await names(await opfs('appdata'))).length - before2;
+            out.unknownFolder = await names(lost);
+            window.__unknownPath = false;
             return out;
         });
         check('photos go to the Recycle Bin in one go', r.calls.join() === 'recycle:2' && r.bin.length === 2, JSON.stringify(r.calls));
+        check('... by their full paths', r.paths.join('|') === 'D:\\Orders\\Bin Order\\photo2.jpg|D:\\Orders\\Bin Order\\photo3.jpg', r.paths.join('|'));
         check('they leave the folder and the screen', r.left.join() === 'Ceremony,photo1.jpg,photo4.jpg' && r.files === 3, r.left.join());
         check('the message says Recycle Bin', /Moved 2 to the Recycle Bin/.test(r.toast), r.toast);
         check('Ctrl+Z puts them back, unchanged, out of the bin', r.back.join() === 'Ceremony,photo1.jpg,photo2.jpg,photo3.jpg,photo4.jpg' && r.same && r.binAfter.length === 0 && r.filesAfter === 5, JSON.stringify([r.back, r.binAfter]));
         check('no Recycle Bin on the drive: kept in jEditor\'s storage, not the order', r.noBinTrash.join() === 'photo1.jpg' && !r.noBinLeft.includes('photo1.jpg') && !r.noBinLeft.includes('.jeditor') && /no Recycle Bin/.test(r.noBinToast), JSON.stringify([r.noBinTrash, r.noBinLeft]));
         check('... and Ctrl+Z restores it', r.noBinBack.includes('photo1.jpg') && !r.noBinBack.includes('.jeditor'), r.noBinBack.join());
+        check('a folder whose path isn\'t known: a message, nothing stored, nothing in the folder', /can't tell where this folder is/.test(r.unknownToast) && r.unknownStores === 0 && !r.unknownFolder.includes('.jeditor'), JSON.stringify([r.unknownToast, r.unknownStores, r.unknownFolder]));
         check('recycle suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }

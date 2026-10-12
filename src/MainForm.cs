@@ -230,7 +230,7 @@ sealed class MainForm : Form
                 smoke?.Report(msg);
                 break;
             case "dataDir":
-            case "pathOf":
+            case "pathsOf":
             case "recycle":
             case "restore":
             case "openPath":
@@ -247,13 +247,14 @@ sealed class MainForm : Form
         }
     }
 
-    // Files the page sent along (chrome.webview.postMessageWithAdditionalObjects):
-    // the paths on disk behind them
+    // Files the page sent along (chrome.webview.postMessageWithAdditionalObjects,
+    // only for Files dropped from Explorer): the paths on disk behind them
     static List<string?> FilesOf(CoreWebView2WebMessageReceivedEventArgs e)
     {
         var paths = new List<string?>();
         try
         {
+            if (e.AdditionalObjects is null) return paths;
             foreach (var o in e.AdditionalObjects) paths.Add((o as CoreWebView2File)?.Path);
         }
         catch (Exception x)
@@ -282,18 +283,20 @@ sealed class MainForm : Form
                     Reply(id, handle is null ? new { error = "no storage" } : new { path = Shell.OrdersDir }, handle);
                     break;
                 }
-                case "pathOf":
-                    Reply(id, new { path = files.FirstOrDefault() });
+                case "pathsOf":
+                    Reply(id, new { paths = files });
                     break;
                 case "recycle":
                 {
-                    var paths = files.Select(p => p ?? "").ToList();
-                    var results = await RecycleBin.RecycleAsync(paths.Where(p => p != "").ToList(), Handle);
+                    // Photos in the order folders the page has, by path
+                    var paths = (msg["paths"] as JsonArray ?? []).Select(p => (string?)p ?? "").ToList();
+                    var ok = paths.Where(p => Path.IsPathFullyQualified(p) && File.Exists(p)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                    var results = await RecycleBin.RecycleAsync(ok, Handle);
                     var byPath = results.ToDictionary(r => r.Path, StringComparer.OrdinalIgnoreCase);
                     int sent = 0;
                     var answer = paths.Select(p =>
                     {
-                        if (p == "" || !byPath.TryGetValue(p, out var r)) return (object)new { error = "no path for this file" };
+                        if (!byPath.TryGetValue(p, out var r)) return (object)new { gone = true };
                         if (r.NoBin) return new { noBin = true };
                         if (r.BinPath is null) return new { error = r.Error ?? "not deleted" };
                         var token = Guid.NewGuid().ToString("N");
