@@ -5,16 +5,32 @@
 
 const CHANGELOG = [
     {
-        version: '1.17.0', date: '2026-10-12',
+        version: '1.18.0', date: '2026-10-12',
         items: [
             'Photos deleted in File Explorer no longer get stuck in jEditor. Deleting a photo that\'s already gone just takes it off the screen, a delete that Windows never finishes gives up on that file after 30 seconds instead of hanging, and a stuck operation no longer stops the folder watch from noticing photos deleted elsewhere.',
             'A photo a scanner is still saving is added once it\'s whole, not half-written, and a preview that can\'t be made or shown is tried again instead of staying blank.',
-            'Folder details: in the grid, `I` (or Order Info / Folder Info in the right-click menus) shows the folder you\'re in: how many photos, here and with subfolders, total size, average and largest photo, file types, dates, flags, and for the whole order how much room jEditor\'s .jeditor folder takes (trash, cache, Auto crop originals). Select several photos to see the same for the selection. Single view still shows the photo\'s own details.',
+            'Folder details: in the grid, `I` (or Order info / Folder info in the right-click menus) shows the folder you\'re in: how many photos, here and with subfolders, total size, average and largest photo, file types, dates, flags, and for the whole order how much room jEditor\'s .jeditor folder takes (trash, cache, Auto crop originals). Select several photos to see the same for the selection. Single view still shows the photo\'s own details.',
             'The folder list shows the total for what you\'re looking at, such as 1,240 photos · 4.80 GB. Click it for the details. Hovering a folder shows its size too.',
-            'The film strip\'s background is always black; it no longer turns light under a bright photo.',
-            'In single view, the controls above the film strip fade away a few seconds after they appear, leaving the photo the screen. Move the pointer to where they were and they come back. To do without them altogether, untick Buttons above the film strip in Customize controls.',
+            'The film strip\'s background is always black, in both themes.',
+            'In single view, the controls above the film strip fade away a few seconds after they appear, leaving the photo the screen. Move the pointer to where they were and they come back. To do without them altogether, turn off Buttons above the film strip in Settings.',
             'The selection bar in the grid is centred on the photos again, beside the folder list when it\'s open.',
             'Opening an order whose subfolder has a .jeditor folder of its own (because that subfolder was once opened on its own) merges it into the order\'s and removes it, so the order has just one. Its deleted photos and Auto crop originals move into the order\'s .jeditor, named after the subfolder, and its flags join the order\'s. Its cache is dropped and rebuilt when needed. If anything can\'t be moved, that .jeditor is left where it is.'
+        ]
+    },
+    {
+        version: '1.17.0', date: '2026-10-12',
+        items: [
+            'A new look: one consistent set of colours, type, spacing, icons and buttons across every screen, with quieter neutral greys so the photo stands out and the accent colour only marking what\'s selected, focused or the main action.',
+            'Settings (the gear, or `Ctrl+,`) replaces Customize controls. New in it: a light theme (or match the system), the colour behind photos (black, grey or light, for judging colour), Comfortable density for bigger text and controls, and Subtle glass, which is faster on older computers.',
+            'The toolbars no longer switch between light and dark as you move through bright and dark photos. They stay readable over any photo.',
+            'Clean up, Export, error messages and the big Auto crop question are now dialogs in the app instead of browser pop-ups. Clean up lists what it will remove and starts on Cancel.',
+            'The selection bar is grouped and never runs off the edge: Rotate, Auto crop, Move to, Rename and Delete, with Export, Copy to and Rotate 180° under ⋯.',
+            'Selected photos show a tick as well as the coloured ring, and the current photo has a white ring of its own, so the two are easy to tell apart. Tiles no longer grow on hover.',
+            'Messages appear at the bottom centre, above the toolbars, instead of covering the folder pill or the top of the grid. In crop and duplicates they appear at the top.',
+            'Crop and straighten: the toolbar is regrouped with Save on the right, and the straighten slider and level line follow the accent colour.',
+            'The start screen is simpler, with Settings and Keyboard shortcuts at the bottom.',
+            'Keyboard: every button, the folder list and the flag list can be reached with `Tab`, with a visible focus ring; the right-click menu works with the arrow keys; dialogs keep focus inside until they close. Toolbar buttons can be reordered with `Alt+↑` / `Alt+↓` in Settings.',
+            'Works better in a narrow window and on tablets.'
         ]
     },
     {

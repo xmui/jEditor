@@ -158,7 +158,7 @@ const Folders = {
     canEdit() {
         if (!this.app.ensureWritable()) return false;
         if (!this.app.dirHandle) {
-            this.app.showToast('Folders need a folder opened with Open Folder');
+            this.app.showToast('Folders need a folder opened with Open folder');
             return false;
         }
         return true;
@@ -279,6 +279,14 @@ const Folders = {
             }
             this.setScope(row.dataset.scope === 'all' ? null : row.dataset.folderPath);
         });
+        // Rows are focusable: Enter or Space opens the folder
+        tree.addEventListener('keydown', (e) => {
+            const row = e.target.closest && e.target.closest('.fr-row');
+            if (!row || (e.key !== 'Enter' && e.key !== ' ')) return;
+            e.preventDefault();
+            e.stopPropagation();
+            row.click();
+        });
         this.el('fr-new').addEventListener('click', () => this.newFolder());
         this.el('fr-total').addEventListener('click', () => this.app.toggleInfoPanel(true, { folder: this.scope }));
     },
@@ -290,7 +298,7 @@ const Folders = {
         const fmt = (n) => this.app.formatBytes(n);
         const rows = [];
         const esc = (s) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-        rows.push(`<div class="fr-row fr-all${this.scope === null ? ' active' : ''}" data-scope="all" title="Every photo in the order, whatever folder it's in">` +
+        rows.push(`<div tabindex="0" role="button" class="fr-row fr-all${this.scope === null ? ' active' : ''}" data-scope="all" title="Every photo in the order, whatever folder it's in">` +
             `<span class="fr-caret fr-spacer"></span>` +
             `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>` +
             `<span class="fr-name">All photos</span><span class="fr-count">${total.toLocaleString()}</span></div>`);
@@ -306,7 +314,7 @@ const Folders = {
             const caret = kids.length && p !== ''
                 ? `<button class="fr-caret${open ? ' open' : ''}" title="${open ? 'Fold' : 'Unfold'}" tabindex="-1"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1.5 6.5 5 3 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`
                 : '<span class="fr-caret fr-spacer"></span>';
-            rows.push(`<div class="fr-row${this.scope === p ? ' active' : ''}${n ? '' : ' empty'}${p === '' ? ' fr-root' : ''}" ` +
+            rows.push(`<div tabindex="0" role="button" class="fr-row${this.scope === p ? ' active' : ''}${n ? '' : ' empty'}${p === '' ? ' fr-root' : ''}" ` +
                 `data-folder-path="${esc(p)}" style="--depth:${depth}" title="${esc(title)}">` +
                 caret + this.folderIcon('fr-icon') +
                 `<span class="fr-name">${esc(this.nameOf(p))}</span><span class="fr-count">${n ? n.toLocaleString() : ''}</span></div>`);
@@ -1055,18 +1063,19 @@ const Folders = {
     contextItems(path) {
         const app = this.app;
         const sel = [...app.selection].filter(f => this.inView(f));
-        const items = [['Open', () => this.setScope(path)], ['Folder Info', () => app.toggleInfoPanel(true, { folder: path })]];
+        const items = [['Open', () => this.setScope(path)], ['Folder info', () => app.toggleInfoPanel(true, { folder: path })]];
         if (sel.length) {
             const here = sel.every(f => this.dirOf(f) === path);
             items.push(['—']);
-            if (!here) items.push([`Move ${sel.length === 1 ? 'Photo' : sel.length + ' Photos'} Here`, () => this.relocate(sel, path)]);
-            items.push([`Copy ${sel.length === 1 ? 'Photo' : sel.length + ' Photos'} Here`, () => this.relocate(sel, path, { copy: true })]);
+            const what = sel.length === 1 ? 'photo' : `${sel.length.toLocaleString()} photos`;
+            if (!here) items.push([`Move ${what} here`, () => this.relocate(sel, path)]);
+            items.push([`Copy ${what} here`, () => this.relocate(sel, path, { copy: true })]);
         }
-        items.push(['—'], ['New Folder Inside…', () => this.newFolder(path)]);
+        items.push(['—'], ['New folder inside…', () => this.newFolder(path)]);
         if (path) {
-            items.push(['Rename Folder…', () => this.renameFolder(path)]);
+            items.push(['Rename folder…', () => this.renameFolder(path)]);
             const empty = !app.files.some(f => this.within(this.dirOf(f), path)) && !this.children(path).length;
-            if (empty) items.push(['—'], ['Delete Folder', () => this.deleteFolder(path), true]);
+            if (empty) items.push(['—'], ['Delete folder', () => this.deleteFolder(path), true]);
         }
         return items;
     },
