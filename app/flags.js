@@ -44,6 +44,13 @@ const Flags = {
             const row = e.target.closest('[data-flag-filter]');
             if (row) this.setFilter(row.dataset.flagFilter === this.filter ? null : row.dataset.flagFilter);
         });
+        list.addEventListener('keydown', (e) => {
+            const row = e.target.closest && e.target.closest('[data-flag-filter]');
+            if (!row || (e.key !== 'Enter' && e.key !== ' ')) return;
+            e.preventDefault();
+            e.stopPropagation();
+            row.click();
+        });
         list.addEventListener('contextmenu', (e) => {
             const row = e.target.closest('[data-flag-filter]');
             if (!row) return;
@@ -208,7 +215,7 @@ const Flags = {
         files = files.filter(Boolean);
         if (!files.length) return false;
         if (!app.dirHandle || app.readOnlyMode) {
-            app.showToast('Flags need a folder opened with Open Folder');
+            app.showToast('Flags need a folder opened with Open folder');
             return false;
         }
         const before = files.map(f => ({ file: f, flags: f._flags ? { ...f._flags } : null }));
@@ -428,7 +435,7 @@ const Flags = {
         const row = (kind, icon) => {
             const n = counts[kind];
             if (!n && this.filter !== kind) return '';
-            return `<div class="fr-row fl-row fl-${kind}${this.filter === kind ? ' active' : ''}" data-flag-filter="${kind}" ` +
+            return `<div tabindex="0" role="button" class="fr-row fl-row fl-${kind}${this.filter === kind ? ' active' : ''}" data-flag-filter="${kind}" ` +
                 `title="${this.label(kind)}: ${n} photo${n === 1 ? '' : 's'} — click to show only these, right-click for more">` +
                 `<span class="fl-icon">${icon}</span><span class="fr-name">${this.label(kind)}</span>` +
                 `<span class="fr-count">${n.toLocaleString()}</span></div>`;
