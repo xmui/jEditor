@@ -6,6 +6,7 @@ namespace JEditor;
 //     --log <file>                  write a log
 //     --smoke-test <dir>            open <dir>, rotate a photo, check it saved, exit 0 or 1
 //     --user-data <dir>             WebView2 profile (default %LOCALAPPDATA%\jEditor\WebView2)
+//     --fake-scanner                adds a test scanner that makes photos (also: the smoke test)
 sealed class Options
 {
     public string? Folder { get; private set; }
@@ -14,6 +15,7 @@ sealed class Options
     public string? LogFile { get; private set; }
     public string? SmokeDir { get; private set; }
     public string? UserDataDir { get; private set; }
+    public bool FakeScanner { get; private set; }
 
     public static Options Parse(string[] args)
     {
@@ -28,13 +30,18 @@ sealed class Options
                 case "--log": o.LogFile = Path.GetFullPath(Value()); break;
                 case "--smoke-test": o.SmokeDir = Path.GetFullPath(Value()); break;
                 case "--user-data": o.UserDataDir = Path.GetFullPath(Value()); break;
+                case "--fake-scanner": o.FakeScanner = true; break;
                 default:
                     if (args[i].StartsWith("--")) throw new ArgumentException($"Unknown option {args[i]}");
                     o.Folder = FolderOf(args[i]);
                     break;
             }
         }
-        if (o.SmokeDir is not null) o.Folder = o.SmokeDir;
+        if (o.SmokeDir is not null)
+        {
+            o.Folder = o.SmokeDir;
+            o.FakeScanner = true;
+        }
 
         ui ??= Environment.GetEnvironmentVariable("JEDITOR_UI");
         if (string.IsNullOrWhiteSpace(ui)) ui = null;

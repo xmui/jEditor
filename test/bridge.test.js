@@ -208,7 +208,26 @@ const waitForPost = (page, type) => page.waitForFunction(
                 const reply = (data, objects = []) => setTimeout(() => window.__deliver({ replyTo: m.id, ...data }, objects), 5);
                 if (m.type === 'dataDir') reply({ path: 'C:\\data' }, [await (await navigator.storage.getDirectory()).getDirectoryHandle('appdata', { create: true })]);
                 else if (m.type === 'recycle') { window.__recycledPaths = m.paths; reply({ results: m.paths.map(() => ({ noBin: true })) }); }
-                else if (m.type === 'smokeCheck') reply({ ok: true });
+                else if (m.type === 'smokeCheck') { (window.__checks = window.__checks || []).push(m); reply({ ok: true }); }
+                else if (m.type === 'scanners') reply({ devices: [{ id: 'jeditor-test-scanner', name: 'jEditor test scanner', driver: 'test' }], problems: [] });
+                else if (m.type === 'scan') {
+                    // The app's side: three photos into the folder, each posted as it lands
+                    window.__scan = m;
+                    const names = [];
+                    for (let i = 0; i < 3; i++) {
+                        const name = m.prefix + String(m.next + i).padStart(m.digits, '0') + '.jpg';
+                        const c = document.createElement('canvas');
+                        c.width = 90; c.height = 60;
+                        c.getContext('2d').fillRect(0, 0, 10 + i, 10);
+                        const blob = await new Promise(r => c.toBlob(r, 'image/jpeg'));
+                        const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
+                        await w.write(blob);
+                        await w.close();
+                        names.push(name);
+                        window.__deliver({ type: 'scanned', scan: m.id, name });
+                    }
+                    reply({ count: names.length });
+                }
                 else if (m.type === 'checkUpdate') reply({ tag: 'v1.0.0', current: 'v1.0.0', newer: false });
             };
             const b = await bytes();
@@ -219,7 +238,10 @@ const waitForPost = (page, type) => page.waitForFunction(
         check('opens the folder and reports the photo count', opened.name === 'Jones' && opened.count === 4, JSON.stringify(opened));
         const smoke = await waitForPost(page, 'smoke');
         check('smoke test: reports success', smoke.ok && smoke.count === 4 && smoke.rotated && smoke.errors.length === 0, JSON.stringify(smoke));
-        check('smoke test: runs the further steps through the app', smoke.steps && smoke.steps.stored === true && smoke.steps.deleted === true && smoke.steps.restored === true && /v1\.0\.0/.test(smoke.steps.update), JSON.stringify(smoke.steps));
+        check('smoke test: runs the further steps through the app', smoke.steps && smoke.steps.stored === true && smoke.steps.deleted === true && smoke.steps.restored === true && smoke.steps.scanned === true && /v1\.0\.0/.test(smoke.steps.update), JSON.stringify(smoke.steps));
+        const scanned = await page.evaluate(() => ({ scan: window.__scan, check: (window.__checks || []).find(c => c.step === 'scanned') }));
+        check('smoke test: scans into the order with the test scanner, named next in its sequence', scanned.scan && scanned.scan.folder === 'C:\\Jones' && scanned.scan.device === 'jeditor-test-scanner' &&
+            scanned.check && scanned.check.names.join() === 'photo5.jpg,photo6.jpg,photo7.jpg' && scanned.check.shown === 3, JSON.stringify(scanned));
         const after = await page.evaluate(() => window.__bytes());
         const changed = Object.keys(before).filter(k => before[k] !== after[k]);
         check('smoke test: the rotation is saved to the file, and only that one', changed.length === 1 && changed[0] === smoke.file, changed.join(', '));

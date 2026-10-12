@@ -48,7 +48,22 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+    <!-- Scanning (Scanner.cs). LGPL-2.1: its DLLs stay beside the exe, not
+         inside it, so they can be replaced (see KeepLgplBeside) -->
+    <PackageReference Include="NAPS2.Sdk" Version="1.5.0" />
+    <PackageReference Include="NAPS2.Images.Gdi" Version="1.5.0" />
   </ItemGroup>
+
+  <!-- NAPS2.Sdk's licence goes with it -->
+  <ItemGroup>
+    <None Include="$(NuGetPackageRoot)naps2.sdk\1.5.0\LICENSE" Link="licenses\NAPS2.Sdk-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" Condition="'$(NuGetPackageRoot)' != ''" />
+  </ItemGroup>
+
+  <Target Name="KeepLgplBeside" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Update="@(ResolvedFileToPublish)" Condition="$([System.String]::Copy('%(Filename)').StartsWith('NAPS2.'))" ExcludeFromSingleFile="true" />
+    </ItemGroup>
+  </Target>
 
   <!-- The release this build is for (release.yml: -p:ReleaseTag=v1.2.3-2),
        so the updater can tell a re-release of the same version is newer -->

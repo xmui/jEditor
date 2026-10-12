@@ -53,6 +53,9 @@ Type: filesandordirs; Name: "{app}\app"
 [Files]
 Source: "{#PublishDir}\jEditor.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PublishDir}\app\*"; DestDir: "{app}\app"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Scanning (NAPS2.Sdk, LGPL-2.1): its DLLs and licence, beside the exe
+Source: "{#PublishDir}\NAPS2.*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PublishDir}\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\jEditor"; Filename: "{app}\jEditor.exe"

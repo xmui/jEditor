@@ -3859,3 +3859,56 @@ html:not(.native) .native-only {
     color: var(--text-3);
     text-align: center;
 }
+
+/* Scan (the Windows app) */
+.dialog.scan-card {
+    width: min(480px, 100%);
+}
+
+.scan-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+}
+
+.scan-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: var(--fs-small);
+    color: var(--text-2);
+}
+
+.scan-row {
+    display: flex;
+    gap: var(--sp-2);
+    align-items: center;
+}
+
+.scan-row .field {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: var(--ctl-lg);
+}
+
+.scan-row .scan-num {
+    flex: 0 0 96px;
+}
+
+.scan-preview {
+    color: var(--text-3);
+}
+
+.scan-note {
+    margin-top: calc(-1 * var(--sp-2));
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.scan-note:empty {
+    display: none;
+}
+
+.scan-body .set-help {
+    margin: 0;
+}

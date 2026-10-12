@@ -101,6 +101,32 @@ const FAKE_NATIVE = `
             }
             return out;
         },
+        async scanners() {
+            window.__calls.push('scanners');
+            return window.__scanners || { devices: [{ id: 'EPSON FF-680W', name: 'EPSON FF-680W', driver: 'twain' }, { id: 'wia-1', name: 'OpticBook A300', driver: 'wia' }], problems: [] };
+        },
+        // The app's side: pages into the folder at that path, each reported as it lands
+        async scan(o, scanned) {
+            window.__scanReq = o;
+            const root = window.__orderRoot + '\\\\';
+            let dir = await sub('disk');
+            for (const p of o.folder.slice(root.length).split('\\\\')) dir = await dir.getDirectoryHandle(p);
+            const pages = window.__scanPages || 2;
+            for (let i = 0; i < pages; i++) {
+                const name = o.prefix + String(o.next + i).padStart(o.digits, '0') + '.jpg';
+                const c = document.createElement('canvas');
+                c.width = 80; c.height = 60;
+                c.getContext('2d').fillRect(0, 0, 5 + i, 5 + o.next);
+                const blob = await new Promise(r => c.toBlob(r, 'image/jpeg'));
+                const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
+                await w.write(blob);
+                await w.close();
+                scanned(name);
+            }
+            if (window.__scanError) throw new Error(window.__scanError);
+            return { count: pages };
+        },
+        cancelScan() { },
         async openPath(p) { window.__opened = p; return true; },
         async exists(paths) { return paths.map(p => !(window.__missing || []).includes(p)); },
         async checkUpdate() { window.__calls.push('checkUpdate'); return window.__update || { newer: false, version: '1.0.0', tag: 'v1.0.0', notes: '' }; },
@@ -485,6 +511,74 @@ async function newPage(context, baseUrl) {
         check('Update downloads, showing progress, then installs', r.installed && /50%/.test(r.progress) && /Installing the update/.test(r.task), JSON.stringify([r.installed, r.progress, r.task]));
         check('no automatic check when it\'s turned off', r.noAuto);
         check('updates suite: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('native: scanning into the order');
+    {
+        const context = await browser.newContext();
+        const { page, errors } = await newPage(context, baseUrl);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const $ = (id) => document.getElementById(id);
+            const dir = await makeOrder('Scan Order', 3);
+            await openOrder(dir);
+            out.button = getComputedStyle($('btn-scan')).display !== 'none';
+            $('btn-scan').click();
+            await wait(() => !$('scan-device').disabled);
+            out.devices = [...$('scan-device').options].map(o => o.textContent).join(', ');
+            out.folder = $('scan-folder').value;
+            out.folders = [...$('scan-folder').options].map(o => o.textContent).join(', ');
+            out.names = [$('scan-prefix').value, $('scan-next').value, $('scan-preview').textContent];
+            const folder = $('scan-folder');
+            folder.value = 'Ceremony';
+            folder.dispatchEvent(new Event('change'));
+            out.cerNames = [$('scan-prefix').value, $('scan-next').value];
+            folder.value = '';
+            folder.dispatchEvent(new Event('change'));
+            $('scan-go').click();
+            out.closed = !Scan.isOpen();
+            await wait(() => app.files.some(f => f.name === 'photo5.jpg'));
+            out.req = window.__scanReq;
+            out.files = app.files.map(f => f.relPath || f.name).sort().join(',');
+            await wait(() => /Scanned 2 photos/.test(toasts()));
+            out.toast = toasts();
+
+            // Scan more: the names carry on
+            window.__scanPages = 1;
+            out.more = (await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '' })).names.join(',');
+
+            // The scanner stops with an error: says so, and what was saved
+            window.__scanError = 'The scanner is busy (is another program using it?)';
+            await wait(() => app.files.some(f => f.name === 'photo6.jpg'));
+            await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '' }).catch(e => { out.err = e.message; });
+            await wait(() => UI.isOpen());
+            out.alert = $('uid-title').textContent + ' — ' + $('uid-text').textContent;
+            $('uid-ok').click();
+            out.running = Scan.running;
+            window.__scanError = null;
+
+            // No scanners: says what to check
+            window.__scanners = { devices: [], problems: ['TWAIN isn\'t set up on this PC (no TWAINDSM.dll), so only WIA scanners are listed'] };
+            Scan.devices = null;
+            await Scan.open();
+            out.none = $('scan-device').textContent + ' | ' + $('scan-problems').textContent;
+            out.noneDisabled = $('scan-go').disabled;
+            Scan.close();
+            return out;
+        });
+        check('Scan is in the toolbar', r.button);
+        check('it lists the scanners, WIA ones marked', r.devices === 'EPSON FF-680W, OpticBook A300 (WIA)', r.devices);
+        check('it offers the order\'s folders, starting with the one with the most photos', r.folder === '' && r.folders === 'Scan Order, Ceremony', JSON.stringify([r.folder, r.folders]));
+        check('names follow on from the folder\'s photos', r.names[0] === 'photo' && r.names[1] === '4' && r.names[2] === 'photo4.jpg, photo5.jpg, …', JSON.stringify(r.names));
+        check('... each folder its own sequence', r.cerNames.join() === 'c,2', r.cerNames.join());
+        check('Scan asks the app to scan into the order\'s folder, by path', r.closed && r.req && r.req.folder === 'D:\\Orders\\Scan Order' && r.req.device === 'EPSON FF-680W' && r.req.driver === 'twain' && r.req.prefix === 'photo' && r.req.next === 4, JSON.stringify(r.req));
+        check('scanned photos show up in the order', r.files === 'Ceremony/c1.jpg,photo1.jpg,photo2.jpg,photo3.jpg,photo4.jpg,photo5.jpg', r.files);
+        check('a message says how many, with Scan more', /Scanned 2 photos into Scan Order/.test(r.toast) && /Scan more/.test(r.toast), r.toast);
+        check('scanning again carries on the names', r.more === 'photo6.jpg', r.more);
+        check('a scan that fails says why, and what was saved', /busy/.test(r.err || '') && /didn't finish/.test(r.alert) && /1 photo was saved/.test(r.alert) && !r.running, JSON.stringify([r.err, r.alert]));
+        check('no scanners: says so and what to check', /No scanners found/.test(r.none) && /plugged in/.test(r.none) && /TWAINDSM/.test(r.none) && r.noneDisabled, r.none);
+        check('scan suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
 

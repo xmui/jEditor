@@ -26,6 +26,11 @@ sealed class MainForm : Form
     bool fullScreen;
     FormWindowState stateBeforeFullScreen;
 
+    // Scanning (Scanner.cs): made when first used; one scan at a time
+    Scanner? scanner;
+    CancellationTokenSource? scanning;
+    Scanner Scanners => scanner ??= new Scanner(options.FakeScanner);
+
     FileSystemWatcher? watcher;
     System.Windows.Forms.Timer? reloadTimer;
     bool reloadPage;
@@ -48,7 +53,12 @@ sealed class MainForm : Form
 
         HandleCreated += (_, _) => Shell.SetDarkTitleBar(Handle, settings.Dark);
         Load += async (_, _) => await StartAsync();
-        FormClosing += (_, _) => SavePlacement();
+        FormClosing += (_, _) =>
+        {
+            SavePlacement();
+            scanning?.Cancel();
+        };
+        FormClosed += (_, _) => scanner?.Dispose();
     }
 
     async Task StartAsync()
@@ -238,8 +248,13 @@ sealed class MainForm : Form
             case "checkUpdate":
             case "installUpdate":
             case "smokeCheck":
+            case "scanners":
+            case "scan":
                 var files = FilesOf(e);
                 BeginInvoke(async () => await HandleRequestAsync(msg, files));
+                break;
+            case "cancelScan":
+                scanning?.Cancel();
                 break;
             case "log":
                 Log.Write($"page {Str(msg, "level")}: {Str(msg, "text")}");
@@ -350,9 +365,18 @@ sealed class MainForm : Form
                     });
                     break;
                 }
+                case "scanners":
+                {
+                    var (devices, problems) = await Scanners.ListAsync();
+                    Reply(id, new { devices = devices.Select(d => new { id = d.Id, name = d.Name, driver = d.Driver }), problems });
+                    break;
+                }
+                case "scan":
+                    await ScanAsync(id, msg);
+                    break;
                 case "smokeCheck":
                 {
-                    var (ok, detail) = smoke?.Check(Str(msg, "step") ?? "", Str(msg, "name")) ?? (false, "not a smoke test");
+                    var (ok, detail) = smoke?.Check(Str(msg, "step") ?? "", msg) ?? (false, "not a smoke test");
                     Reply(id, new { ok, detail });
                     break;
                 }
@@ -377,6 +401,64 @@ sealed class MainForm : Form
     }
 
     Updater.Release? pendingUpdate;
+
+    // A scan into the order: { device, driver, folder, prefix, next, digits }.
+    // Each photo saved is posted ({ type: 'scanned', scan: id, name }) as it
+    // lands; the reply says how many, once the scanner is done
+    async Task ScanAsync(long id, JsonNode msg)
+    {
+        if (scanning is not null) { Reply(id, new { error = "A scan is already running" }); return; }
+        var folder = Str(msg, "folder") ?? "";
+        if (!Path.IsPathFullyQualified(folder) || !Directory.Exists(folder)) { Reply(id, new { error = "The folder to scan into isn't there" }); return; }
+        var request = new Scanner.Request(
+            Str(msg, "device") ?? "",
+            Str(msg, "driver") ?? "twain",
+            folder,
+            CleanPrefix(Str(msg, "prefix")),
+            msg["next"]?.GetValue<int>() ?? 1,
+            msg["digits"]?.GetValue<int>() ?? 3);
+        using var cancel = scanning = new CancellationTokenSource();
+        int count = 0;
+        try
+        {
+            Log.Write($"Scanning from {request.DeviceId} ({request.Driver}) into {folder}");
+            count = await Scanners.ScanAsync(request, Handle, name =>
+            {
+                count++;
+                BeginInvoke(() => Post(new { type = "scanned", scan = id, name }));
+            }, cancel.Token);
+            Reply(id, new { count });
+        }
+        catch (OperationCanceledException)
+        {
+            Reply(id, new { count, cancelled = true });
+        }
+        catch (Exception e)
+        {
+            Log.Write($"Scan failed: {e}");
+            Reply(id, new { count, error = ScanError(e) });
+        }
+        finally
+        {
+            scanning = null;
+        }
+    }
+
+    // Only characters a file name can have
+    static string CleanPrefix(string? prefix)
+    {
+        var bad = Path.GetInvalidFileNameChars();
+        return new string((prefix ?? "").Where(c => !bad.Contains(c)).ToArray()).TrimStart();
+    }
+
+    static string ScanError(Exception e) => e switch
+    {
+        NAPS2.Scan.Exceptions.DeviceNotFoundException => "The scanner isn't connected or is turned off",
+        NAPS2.Scan.Exceptions.DeviceBusyException => "The scanner is busy (is another program using it?)",
+        NAPS2.Scan.Exceptions.DeviceException d => d.Message,
+        DllNotFoundException => "TWAIN isn't set up on this PC (no TWAINDSM.dll)",
+        _ => e.Message
+    };
 
     void Reply(long id, object payload, CoreWebView2FileSystemHandle? handle = null)
     {

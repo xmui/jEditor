@@ -5,6 +5,13 @@
 
 const CHANGELOG = [
     {
+        version: '1.20.0', date: '2026-10-12',
+        items: [
+            'Scan straight into the open order: click Scan in the toolbar, pick the scanner, the folder and the names, and the scanner\'s own window opens (Epson Scan 2, Plustek). Each photo is saved into the order as it\'s scanned and shows up straight away, so a stack in the FastFoto feeder fills the grid while it scans.',
+            'Names follow on from the folder\'s photos (Smith-014.jpg after Smith-013.jpg), each folder with its own sequence, and Scan more carries on where the last scan stopped. Names already taken are skipped, never overwritten.'
+        ]
+    },
+    {
         version: '1.19.0', date: '2026-10-12',
         items: [
             'Order folders now hold only photos. What jEditor keeps for an order (flags, the thumbnail cache, Auto crop originals) is kept on this PC instead of in a .jeditor folder. An order\'s old .jeditor folder is moved out the next time it\'s opened, flags and all.',

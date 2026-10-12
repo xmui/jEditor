@@ -70,6 +70,8 @@
             reloadCss();
         } else if (msg.type === 'updateProgress' && onUpdateProgress) {
             onUpdateProgress(msg.received, msg.total);
+        } else if (msg.type === 'scanned' && onScanned) {
+            onScanned(msg.name);
         }
     });
 
@@ -164,6 +166,7 @@
 
     // ---- What the app does for jEditor ----
     let onUpdateProgress = null;
+    let onScanned = null;
     window.JEditorNative = {
         // jEditor's storage on this PC: a folder handle, one subfolder per
         // order (see app/folder-cache.js)
@@ -195,6 +198,31 @@
         // → { current, tag, version, notes, size, newer }
         async checkUpdate() {
             return (await answer('checkUpdate')).msg;
+        },
+        // Scanners on this PC → { devices: [{ id, name, driver }], problems: [text] }
+        async scanners() {
+            return (await answer('scanners')).msg;
+        },
+        // Scans into a folder of the order (its path), named prefix + next…
+        // ({ device, driver, folder, prefix, next, digits }). The scanner's
+        // own window opens; scanned(name) as each photo lands.
+        // → { count, cancelled? }; throws if the scan failed (after `count`)
+        async scan(options, scanned) {
+            onScanned = scanned || null;
+            try {
+                const { msg } = await request('scan', options);
+                if (msg.error) {
+                    const e = new Error(msg.error);
+                    e.count = msg.count || 0;
+                    throw e;
+                }
+                return { count: msg.count || 0, cancelled: !!msg.cancelled };
+            } finally {
+                onScanned = null;
+            }
+        },
+        cancelScan() {
+            post({ type: 'cancelScan' });
         },
         // Downloads and runs the newest setup; jEditor then closes and the
         // setup opens it again. progress(received, total) as it downloads.
@@ -268,6 +296,7 @@
             const { msg } = await request('smokeCheck', { step, ...data });
             steps[step] = msg.ok ? true : (msg.detail || 'failed');
         };
+        const listed = a.files.length;
         const file = a.files[0];
         const rotated = file ? await a.rotateImage(file, 90) !== false : false;
         try {
@@ -284,6 +313,21 @@
                 await a.undo();
                 await check('restored', { name });
             }
+            // Scanning, with the app's test scanner: three photos into the
+            // order, named next in its sequence, shown as they land
+            if (typeof Scan !== 'undefined') {
+                const { devices, problems } = await window.JEditorNative.scanners();
+                steps.scanners = devices.map(d => `${d.name} (${d.driver})`).concat(problems || []).join('; ');
+                const test = devices.find(d => d.driver === 'test');
+                if (!test) {
+                    steps.scanned = 'no test scanner';
+                } else {
+                    const r = await Scan.run({ device: test.id, driver: test.driver, folder: '' });
+                    const shown = () => r.names.filter(n => a.files.some(f => (f.relPath || f.name) === n)).length;
+                    for (let i = 0; i < 75 && shown() < r.names.length; i++) await new Promise(res => setTimeout(res, 200));
+                    await check('scanned', { names: r.names, shown: shown() });
+                }
+            }
             try {
                 const u = await window.JEditorNative.checkUpdate();
                 steps.update = `latest ${u.tag}, this is ${u.current}${u.newer ? ' (newer available)' : ''}`;
@@ -293,7 +337,7 @@
         } catch (e) {
             steps.error = String(e && e.message || e);
         }
-        post({ type: 'smoke', ok: true, count: a.files.length, rotated, file: file ? file.name : null, steps, errors });
+        post({ type: 'smoke', ok: true, count: listed, rotated, file: file ? file.name : null, steps, errors });
     }
 
     // ---- Dev mode (jEditor.exe --ui <dir>) ----
