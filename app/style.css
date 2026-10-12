@@ -518,6 +518,11 @@ header {
     pointer-events: none;
 }
 
+/* Turned off in Customize controls */
+.controls.off {
+    display: none;
+}
+
 .controls:hover {
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
     transform: translateX(-50%) translateY(-2px);

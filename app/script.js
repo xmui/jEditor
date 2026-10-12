@@ -220,6 +220,12 @@ const app = {
             if (b) this.setAccent(b.dataset.accent);
         });
         document.getElementById('cust-accent-pick').addEventListener('input', (e) => this.setAccent(e.target.value));
+        document.getElementById('cust-single-controls').addEventListener('change', (e) => {
+            this.uiPrefs.singleControls = e.target.checked;
+            this.saveUiPrefs();
+            this.applyUiPrefs();
+            if (e.target.checked && this.viewMode === 'single') this.showControls(false);
+        });
         document.getElementById('cust-auto-check').addEventListener('change', (e) => {
             this.uiPrefs.autoCheck = e.target.checked;
             this.saveUiPrefs();
@@ -378,7 +384,8 @@ const app = {
             thumbContain: true, // fit whole image in tiles by default
             folderCache: true, // keep thumbnails / duplicate data in the folder's .jeditor
             autoCheck: true, // pick up photos added, removed or edited outside jEditor
-            accent: null // the accent colour (#rrggbb); null is the standard blue
+            accent: null, // the accent colour (#rrggbb); null is the standard blue
+            singleControls: true // previous / rotate / next above the film strip in single view
         };
     },
 
@@ -407,6 +414,7 @@ const app = {
                 if (typeof saved.folderCache === 'boolean') this.uiPrefs.folderCache = saved.folderCache;
                 if (typeof saved.autoCheck === 'boolean') this.uiPrefs.autoCheck = saved.autoCheck;
                 if (typeof saved.accent === 'string' && /^#[0-9a-f]{6}$/i.test(saved.accent)) this.uiPrefs.accent = saved.accent;
+                if (typeof saved.singleControls === 'boolean') this.uiPrefs.singleControls = saved.singleControls;
                 if (typeof saved.folderRail === 'boolean') this.uiPrefs.folderRail = saved.folderRail;
             }
         } catch (e) { /* corrupted prefs → defaults */ }
@@ -453,6 +461,8 @@ const app = {
         this.elements.gridView.classList.toggle('thumb-contain', !!p.thumbContain);
         this.elements.thumbnailStrip.classList.toggle('thumb-contain', !!p.thumbContain);
         this.applyAccent(p.accent);
+        const controls = this.singleControls();
+        if (controls) controls.classList.toggle('off', p.singleControls === false);
     },
 
     // Everything blue follows --accent-color; text on it (--on-accent)
@@ -508,6 +518,7 @@ const app = {
         document.getElementById('cust-vertical').checked = !!this.uiPrefs.vertical;
         document.getElementById('cust-folder-cache').checked = this.uiPrefs.folderCache !== false;
         document.getElementById('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
+        document.getElementById('cust-single-controls').checked = this.uiPrefs.singleControls !== false;
         this.syncAccentPicker();
         document.getElementById('cust-scale').value = this.uiPrefs.scale;
 
@@ -656,6 +667,7 @@ const app = {
     // A few seconds after they're shown, so the photo has the screen to
     // itself. They come back while the pointer is on or near where they
     // sit (or a button has keyboard focus), and fade again once it leaves.
+    // Customize controls can turn them off altogether (uiPrefs.singleControls).
 
     CONTROLS_IDLE_MS: 2500,
     CONTROLS_NEAR_PX: 48,
@@ -668,7 +680,7 @@ const app = {
         const el = this.singleControls();
         if (!el) return;
         document.addEventListener('pointermove', (e) => {
-            if (this.viewMode !== 'single' || el.classList.contains('hidden')) return;
+            if (this.viewMode !== 'single' || el.classList.contains('hidden') || el.classList.contains('off')) return;
             const r = el.getBoundingClientRect(), pad = this.CONTROLS_NEAR_PX;
             const near = e.clientX >= r.left - pad && e.clientX <= r.right + pad &&
                 e.clientY >= r.top - pad && e.clientY <= r.bottom + pad;

@@ -3171,10 +3171,24 @@ async function newPage(browser, url) {
             move(rect.left + rect.width / 2, 60);
             await sleep(400);
             out.fadesAfterLeaving = el.classList.contains('idle');
+            // Customize controls can turn them off altogether
+            const box = document.getElementById('cust-single-controls');
+            box.checked = false;
+            box.dispatchEvent(new Event('change'));
+            out.off = getComputedStyle(el).display === 'none' && app.uiPrefs.singleControls === false;
+            move(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            out.staysOff = getComputedStyle(el).display === 'none';
+            app.setView('grid');
+            app.setView('single');
+            out.offAfterViews = getComputedStyle(el).display === 'none';
+            box.checked = true;
+            box.dispatchEvent(new Event('change'));
+            out.onAgain = getComputedStyle(el).display !== 'none' && !el.classList.contains('idle');
             return out;
         });
         check('single view controls: shown, then fade after a few seconds', r.shownFirst && r.fades, JSON.stringify(r));
         check('single view controls: back while the pointer is there, fade once it leaves', r.back && r.staysWhileNear && r.fadesAfterLeaving, JSON.stringify(r));
+        check('single view controls: can be turned off in Customize controls, and on again', r.off && r.staysOff && r.offAfterViews && r.onAgain, JSON.stringify(r));
         check('single view controls suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

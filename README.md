@@ -14,7 +14,7 @@ The version number is shown on the start screen.
 ## Using it
 
 1. Click **Open Folder**, or drag a folder onto the window. Subfolders are included. The last six folders you opened are listed under **Recent** on the start screen; click one to open it again (Chrome may ask once more for permission to edit it), or hover and click × to take it off the list. If you open a folder that's inside an order on the Recent list, jEditor offers to open the whole order at that folder instead, so the order keeps a single `.jeditor` folder. (A browser can't look up from a folder to the one it's in, so this only works for orders it already knows.)
-2. Move through photos with `←` / `→`. In single view the buttons above the film strip fade away after a few seconds; move the pointer there to bring them back. `Space` switches between single view and grid. In the grid, the slider at the bottom right or `Ctrl` + mouse wheel makes the tiles bigger or smaller; the highlighted photo stays where it is on screen.
+2. Move through photos with `←` / `→`. In single view the buttons above the film strip fade away after a few seconds; move the pointer there to bring them back, or untick **Buttons above the film strip** in Customize controls to hide them for good. `Space` switches between single view and grid. In the grid, the slider at the bottom right or `Ctrl` + mouse wheel makes the tiles bigger or smaller; the highlighted photo stays where it is on screen.
 3. Rotate with `[` / `]`. In grid view this rotates every selected photo.
 4. Press `C` to crop and straighten. `Enter` saves, `Shift+Enter` saves and opens the next photo, `Esc` cancels.
 5. `Ctrl+Z` undoes the last rotation, crop, rename or delete.
