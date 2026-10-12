@@ -1,0 +1,96 @@
+name: Release
+
+# Publishes a GitHub Release with the setup and the portable zip attached.
+# Runs by itself when the jeditor submodule moves to a new jEditor version
+# on main, and can be run by hand from the Actions tab (say, for a fix to
+# the Windows app alone).
+#
+# Tag: v<jEditor version>, e.g. v1.18.1. A second release of the same
+# jEditor version (a Windows-only fix) gets v1.18.1-2, then -3, and so on.
+on:
+  push:
+    branches: [main]
+    paths:
+      - jeditor
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      - name: Pick the tag
+        id: tag
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = [regex]::Match((Get-Content jeditor/app/version.js -Raw), "APP_VERSION = '([0-9.]+)'").Groups[1].Value
+          $tags = @(gh release list --repo $env:GITHUB_REPOSITORY --limit 200 --json tagName --jq '.[].tagName')
+          $auto = '${{ github.event_name }}' -eq 'push'
+          $tag = "v$version"
+          if ($tags -contains $tag) {
+            if ($auto) { Write-Host "$tag is already released; nothing to do"; "skip=true" >> $env:GITHUB_OUTPUT; exit 0 }
+            $n = 2
+            while ($tags -contains "v$version-$n") { $n++ }
+            $tag = "v$version-$n"
+          }
+          Write-Host "Releasing $tag"
+          "skip=false" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build
+        if: steps.tag.outputs.skip == 'false'
+        shell: pwsh
+        run: ./scripts/build.ps1
+      - name: Smoke test
+        if: steps.tag.outputs.skip == 'false'
+        shell: pwsh
+        run: ./scripts/smoke-test.ps1
+
+      - name: Release notes
+        if: steps.tag.outputs.skip == 'false'
+        shell: pwsh
+        run: |
+          $notes = node jeditor/scripts/release-notes.js ${{ steps.tag.outputs.version }}
+          if ($LASTEXITCODE -ne 0) { $notes = '' }
+          @"
+          jEditor ${{ steps.tag.outputs.version }} for Windows. Download **jEditor-Setup-${{ steps.tag.outputs.version }}.exe** and run it: it installs for you only and doesn't need admin rights. The first time, Windows may say it protected your PC: click **More info**, then **Run anyway**.
+
+          Or unzip **jEditor-${{ steps.tag.outputs.version }}-portable.zip** anywhere and run jEditor.exe.
+
+          ## What's new in jEditor ${{ steps.tag.outputs.version }}
+
+          $($notes -join "`n")
+          "@ | Set-Content release-notes.md
+
+      - name: Publish
+        if: steps.tag.outputs.skip == 'false'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.tag.outputs.tag }}" --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA `
+            --title "jEditor ${{ steps.tag.outputs.version }} for Windows" --notes-file release-notes.md `
+            (Get-Item dist/jEditor-Setup-*.exe).FullName (Get-Item dist/jEditor-*-portable.zip).FullName

@@ -1,0 +1,67 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>jEditor</AssemblyName>
+    <RootNamespace>JEditor</RootNamespace>
+    <ApplicationIcon>jEditor.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <!-- Lets the project build on Linux and macOS too (CI and quick compile checks) -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Product>jEditor</Product>
+    <Company>jEditor</Company>
+    <Description>jEditor</Description>
+
+    <!-- One self-contained exe: no .NET install on the PC, which would need admin -->
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>embedded</DebugType>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
+    <!-- The WebView2 package also brings its WPF control, which wants a newer
+         WindowsBase; unused here -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
+  </PropertyGroup>
+
+  <!-- The UI: jEditor's app/ folder, from the submodule -->
+  <PropertyGroup>
+    <JEditorApp>$(MSBuildThisFileDirectory)..\jeditor\app\</JEditorApp>
+  </PropertyGroup>
+
+  <!-- Debug builds look for the submodule's app/ folder and run in dev mode -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <DefineConstants>$(DefineConstants);DEV_DEFAULT</DefineConstants>
+  </PropertyGroup>
+
+  <!-- The exe's version is jEditor's: the one in app/version.js -->
+  <PropertyGroup Condition="'$(Version)' == '' And Exists('$(JEditorApp)version.js')">
+    <Version>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(JEditorApp)version.js')), "APP_VERSION = '([0-9.]+)'").Groups[1].Value)</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="bridge.js" LogicalName="bridge.js" />
+  </ItemGroup>
+
+  <!-- Shipped as plain files beside the exe (not inside it), so a UI change
+       is a file change, never a rebuild -->
+  <ItemGroup>
+    <Content Include="$(JEditorApp)**\*" LinkBase="app" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+
+  <Target Name="CheckUi" BeforeTargets="Build">
+    <Error Condition="!Exists('$(JEditorApp)index.html')" Text="jEditor's UI is missing. Run: git submodule update --init" />
+  </Target>
+
+</Project>
