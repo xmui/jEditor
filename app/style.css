@@ -1,7 +1,8 @@
 :root {
     --bg-color: #0c0c0c;
     --text-color: #f0f0f0;
-    --accent-color: #2563eb;
+    --accent-color: #2563eb; /* Customize → Accent colour changes it */
+    --on-accent: #fff; /* text on the accent (dark when the accent is light) */
     /* Premium Liquid Glass Tokens */
     --glass-bg: rgba(18, 18, 18, 0.65);
     /* Slightly more opaque for better contrast */
@@ -71,6 +72,7 @@ html {
     overflow: hidden;
     user-select: none;
     -webkit-font-smoothing: antialiased;
+    accent-color: var(--accent-color); /* checkboxes and sliders */
     transition: color 0.3s ease, background-color 0.3s ease;
 }
 
@@ -195,13 +197,13 @@ body.glass-light-top .sort-control select option {
 
 .drag-over .drop-content {
     border-color: var(--accent-color);
-    background: rgba(59, 130, 246, 0.1);
+    background: color-mix(in srgb, var(--accent-color) 10%, transparent);
     color: var(--accent-color);
 }
 
 .browse-btn {
     background: var(--accent-color);
-    color: white;
+    color: var(--on-accent);
     border: none;
     padding: 14px 32px;
     border-radius: 8px;
@@ -213,7 +215,7 @@ body.glass-light-top .sort-control select option {
 }
 
 .browse-btn:hover {
-    background: #2563eb;
+    background: color-mix(in srgb, var(--accent-color) 88%, #fff);
     transform: scale(1.02);
 }
 
@@ -772,31 +774,41 @@ header {
 }
 
 /* Selection Bar */
+/* Centred in the room between the folder list (when it's open) and the
+   grid size slider; on a narrow window it runs on over the slider */
 .selection-bar {
     position: absolute;
     bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 20px;
+    right: 270px;
+    width: fit-content;
+    margin: 0 auto;
     background: var(--accent-color);
-    padding: 12px 24px;
+    padding: 10px 18px;
     border-radius: 30px;
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 10px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-    z-index: 50;
-    color: #fff;
+    z-index: 61;
+    color: var(--on-accent);
     font-weight: 500;
     white-space: nowrap;
-    max-width: calc(100vw - 32px);
+    max-width: calc(100% - 40px);
     box-sizing: border-box;
     overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.interface.rail-open .selection-bar {
+    left: 276px;
+    max-width: calc(100% - 296px);
 }
 
 .selection-bar button {
     background: rgba(0, 0, 0, 0.2);
     border: none;
-    color: #fff;
+    color: inherit;
     padding: 6px 12px;
     border-radius: 12px;
     cursor: pointer;
@@ -896,7 +908,7 @@ header {
     position: fixed;
     z-index: 80;
     border: 1px solid var(--accent-color);
-    background: rgba(37, 99, 235, 0.12);
+    background: color-mix(in srgb, var(--accent-color) 12%, transparent);
     border-radius: 2px;
     pointer-events: none;
 }
@@ -939,23 +951,33 @@ header {
 /* Task pill (top-LEFT — the header controls own the top-right corner):
    spinner + current task; hover lists all tasks */
 /* The task pill sits over the empty area beside the photo, not over the
-   photo, so it doesn't follow the photo's brightness: it matches the
-   toasts below it and is readable on anything. */
+   photo, so it doesn't follow the photo's brightness: it's the same dark
+   glass as the toasts below it and is readable on anything. */
 .task-pill {
     position: fixed;
     top: 20px;
     left: 20px;
-    background: rgba(250, 250, 252, 0.95);
-    color: #111;
-    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: var(--glass-dark-bg);
+    color: var(--glass-dark-text);
+    border: 1px solid var(--glass-dark-border);
+    backdrop-filter: var(--backdrop-filter);
+    -webkit-backdrop-filter: var(--backdrop-filter);
     padding: 10px 20px;
     border-radius: 999px;
     z-index: 2000;
     display: flex;
     align-items: center;
     gap: 10px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    transition: background 0.35s ease, color 0.35s ease;
+    box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    animation: task-pill-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.task-pill .loader-spinner {
+    color: color-mix(in srgb, var(--accent-color) 55%, #fff);
+}
+
+@keyframes task-pill-in {
+    from { opacity: 0; transform: translateY(-8px) scale(0.94); }
 }
 
 .task-pill h2 {
@@ -988,12 +1010,14 @@ header {
     min-width: 240px;
     flex-direction: column;
     gap: 6px;
-    background: rgba(250, 250, 252, 0.97);
-    color: #111;
-    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: var(--glass-dark-bg);
+    color: var(--glass-dark-text);
+    border: 1px solid var(--glass-dark-border);
+    backdrop-filter: var(--backdrop-filter);
+    -webkit-backdrop-filter: var(--backdrop-filter);
     border-radius: 14px;
     padding: 10px 14px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.6);
 }
 
 .task-pill:hover .task-list {
@@ -1118,6 +1142,56 @@ header {
     margin: 8px 0;
 }
 
+/* Accent colour: a row of swatches and a custom pick */
+.cust-accent-row {
+    flex-wrap: wrap;
+}
+
+.accent-swatches {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.accent-swatches button,
+.accent-custom {
+    position: relative;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--sw);
+    cursor: pointer;
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease;
+}
+
+.accent-swatches button:hover,
+.accent-custom:hover {
+    transform: scale(1.15);
+}
+
+.accent-swatches .active {
+    box-shadow: 0 0 0 2px var(--glass-dark-bg, #111), 0 0 0 3.5px var(--sw);
+}
+
+/* The custom swatch: a rainbow until a colour of its own is picked */
+.accent-custom {
+    background: conic-gradient(#f87171, #facc15, #4ade80, #60a5fa, #c084fc, #f87171);
+    overflow: hidden;
+}
+
+.accent-custom.active {
+    background: var(--sw);
+}
+
+.accent-custom input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
 .cust-row input[type="range"] {
     width: 120px;
     accent-color: var(--accent-color);
@@ -1205,7 +1279,8 @@ header {
 /* Toast Notifications — stacked: each concurrent operation gets its own
    pill, new ones appearing under the ones already showing. Top-LEFT under
    the task pill, keeping the whole right edge free for the header controls
-   (including vertical-pill mode). */
+   (including vertical-pill mode). Always dark glass, so they read the
+   same over a bright photo, a dark one or the empty grid. */
 #toast-stack {
     position: fixed;
     top: 72px;
@@ -1217,19 +1292,41 @@ header {
     gap: 8px;
     z-index: 9999;
     pointer-events: none;
+    max-width: min(520px, calc(100vw - 40px));
 }
 
 .toast {
-    background: rgba(250, 250, 252, 0.95);
-    color: #111;
-    padding: 10px 18px;
-    border-radius: 999px;
+    --toast-tint: currentColor;
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 9px 18px 9px 14px;
+    /* A pill on one line, a rounded card if a long message wraps */
+    border-radius: 20px;
+    background: var(--glass-dark-bg);
+    color: var(--glass-dark-text);
+    border: 1px solid var(--glass-dark-border);
+    backdrop-filter: var(--backdrop-filter);
+    -webkit-backdrop-filter: var(--backdrop-filter);
+    box-shadow: var(--glass-shadow);
+    font-family: var(--font-family);
     font-weight: 500;
     font-size: 13px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    line-height: 18px;
+    cursor: default;
+    /* Clicks go through to the photos underneath, except on a toast with
+       a button (Undo, Show): that one stays up while hovered */
+    pointer-events: none;
     opacity: 0;
-    transform: translateY(-6px);
-    transition: opacity 0.25s ease, transform 0.25s ease;
+    transform: translateY(-8px) scale(0.96);
+    transform-origin: left center;
+    transition:
+        opacity 0.2s ease,
+        transform 0.38s cubic-bezier(0.34, 1.4, 0.64, 1),
+        margin-bottom 0.26s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .toast.visible {
@@ -1237,23 +1334,105 @@ header {
     transform: none;
 }
 
+.toast.leaving {
+    opacity: 0;
+    transform: translateX(-10px) scale(0.97);
+    transition:
+        opacity 0.16s ease,
+        transform 0.18s ease,
+        margin-bottom 0.26s cubic-bezier(0.4, 0, 0.2, 1) 0.05s;
+    pointer-events: none;
+}
+
+/* Only the icon carries the type, and only just */
+.toast.t-success,
+.toast.t-crop { --toast-tint: #86efac; }
+.toast.t-error { --toast-tint: #fca5a5; }
+
+.toast-icon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 14px;
+    height: 14px;
+    color: var(--toast-tint);
+    opacity: 0.85;
+}
+
+.toast.visible:not(.t-progress) .toast-icon svg {
+    animation: toast-icon-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 0.06s both;
+}
+
+@keyframes toast-icon-pop {
+    from { transform: scale(0.4); opacity: 0; }
+}
+
+.toast-spinner {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid rgba(125, 125, 125, 0.35);
+    border-top-color: currentColor;
+    animation: spin 0.8s linear infinite;
+}
+
+.toast-msg {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.toast-count {
+    flex: none;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.5;
+}
+
+.toast.bump .toast-count {
+    animation: toast-bump 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes toast-bump {
+    40% { transform: scale(1.3); opacity: 1; }
+}
+
 .toast.has-action {
-    pointer-events: auto;
-    display: flex;
-    align-items: center;
-    gap: 12px;
     padding-right: 6px;
+    pointer-events: auto;
 }
 
 .toast-action {
+    flex: none;
+    margin-left: 4px;
     background: var(--accent-color);
-    color: #fff;
+    color: var(--on-accent);
     border: none;
     border-radius: 999px;
-    padding: 5px 12px;
+    padding: 4px 12px;
     font: inherit;
     font-weight: 600;
     cursor: pointer;
+    transition: filter 0.15s ease, transform 0.15s ease;
+}
+
+.toast-action:hover {
+    filter: brightness(1.15);
+}
+
+.toast-action:active {
+    transform: scale(0.95);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .toast,
+    .toast.leaving {
+        transform: none;
+        transition: opacity 0.15s ease;
+    }
+    .toast.visible:not(.t-progress) .toast-icon svg,
+    .toast.bump .toast-count {
+        animation: none;
+    }
 }
 
 /* ---- What's New ---- */
@@ -1298,8 +1477,8 @@ header {
 }
 
 .wn-tag.current {
-    background: rgba(37, 99, 235, 0.25);
-    color: #bfdbfe;
+    background: color-mix(in srgb, var(--accent-color) 25%, transparent);
+    color: color-mix(in srgb, var(--accent-color) 30%, #fff);
 }
 
 .wn-tag.new {
@@ -1329,7 +1508,7 @@ header {
 }
 
 .whatsnew-card .shortcuts-foot a {
-    color: #93c5fd;
+    color: color-mix(in srgb, var(--accent-color) 50%, #fff);
 }
 
 .link-btn {
@@ -1478,13 +1657,13 @@ header {
 
 .crop-btn.primary {
     background: var(--accent-color);
-    color: #fff;
+    color: var(--on-accent);
     font-weight: 600;
     padding: 7px 18px;
 }
 
 .crop-btn.primary:hover {
-    background: #1d4ed8;
+    background: color-mix(in srgb, var(--accent-color) 85%, #000);
 }
 
 .crop-sep {
@@ -1920,7 +2099,7 @@ kbd {
 }
 
 .dupe-badge.exact {
-    background: rgba(37, 99, 235, 0.85);
+    background: color-mix(in srgb, var(--accent-color) 85%, transparent);
     border-color: transparent;
 }
 
@@ -2049,7 +2228,7 @@ kbd {
 
 .rename-mode button.active {
     background: var(--accent-color);
-    color: #fff;
+    color: var(--on-accent);
 }
 
 .rename-fields {
@@ -2205,7 +2384,7 @@ kbd {
 .rename-actions button.primary {
     background: var(--accent-color);
     border-color: var(--accent-color);
-    color: #fff;
+    color: var(--on-accent);
     font-weight: 600;
 }
 
@@ -2273,7 +2452,7 @@ kbd {
 
 .fb-modes button.active {
     background: var(--accent-color);
-    color: #fff;
+    color: var(--on-accent);
     opacity: 1;
 }
 
@@ -2372,7 +2551,7 @@ kbd {
 
 .fr-row.active {
     background: var(--accent-color);
-    color: #fff;
+    color: var(--on-accent);
 }
 
 .fr-all {
@@ -2628,7 +2807,7 @@ kbd {
     box-sizing: border-box;
     border-radius: 999px;
     background: var(--accent-color);
-    color: #fff;
+    color: var(--on-accent);
     font: 600 12px/24px var(--font-family);
     text-align: center;
 }
@@ -2640,7 +2819,7 @@ body.dragging-photos .folder-tile:hover {
 
 .fr-row.drop-target,
 .fb-crumb.drop-target {
-    background: rgba(37, 99, 235, 0.3);
+    background: color-mix(in srgb, var(--accent-color) 30%, transparent);
     border-color: var(--accent-color);
 }
 
@@ -2652,7 +2831,7 @@ body.dragging-photos .folder-tile:hover {
 .folder-tile.drop-target::after {
     content: attr(data-drop-label);
     background: var(--accent-color);
-    color: #fff;
+    color: var(--on-accent);
     font-size: 11px;
     font-weight: 600;
     padding: 2px 8px;
@@ -2708,7 +2887,7 @@ body.dragging-photos .folder-tile:hover {
 
 .fp-mode button.active {
     background: var(--accent-color);
-    color: #fff;
+    color: var(--on-accent);
     opacity: 1;
 }
 
@@ -2765,7 +2944,7 @@ body.dragging-photos .folder-tile:hover {
 
 .fp-row.hi {
     background: var(--accent-color);
-    color: #fff;
+    color: var(--on-accent);
 }
 
 .fp-row.disabled {
@@ -2975,4 +3154,305 @@ body:has(#main-interface.rail-open:not(.hidden)) #toast-stack {
 .header-controls.vertical {
     height: auto;
     padding: 6px;
+}
+
+/* ---- Flags (flags.js) ---- */
+
+/* Badges on a grid tile or film-strip item: colour dot, star, rescan */
+.tile-flags {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    pointer-events: none;
+    animation: flag-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.thumb-item .tile-flags {
+    top: 3px;
+    right: 3px;
+    padding: 2px 4px;
+    gap: 2px;
+}
+
+.tile-flags i,
+#file-flags i,
+.fl-icon {
+    display: inline-flex;
+    font-style: normal;
+}
+
+.tf-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--c);
+    box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.25);
+}
+
+.tf-star,
+.fl-star .fl-icon,
+.ctx-flag.fl-star {
+    color: #fbbf24;
+}
+
+.tf-rescan,
+.fl-rescan .fl-icon,
+.ctx-flag.fl-rescan {
+    color: #fb923c;
+}
+
+@keyframes flag-in {
+    from { transform: scale(0.5); opacity: 0; }
+}
+
+/* Beside the file name in the centre pill */
+#file-flags {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: 8px;
+    vertical-align: -1px;
+}
+
+#file-flags.hidden {
+    display: none;
+}
+
+/* The Flags section at the bottom of the folder list */
+.flag-list {
+    flex: none;
+    max-height: 40%;
+    overflow-y: auto;
+    border-top: 1px solid rgba(125, 125, 125, 0.22);
+    margin-top: 6px;
+    padding-top: 6px;
+}
+
+.flag-list.hidden {
+    display: none;
+}
+
+.fl-head {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.5;
+    padding: 2px 8px 4px;
+}
+
+.fl-row {
+    padding-left: 8px;
+}
+
+.fl-icon {
+    width: 16px;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.fr-row.fl-row.active .fl-icon {
+    color: var(--on-accent);
+}
+
+.fl-none .fl-icon {
+    opacity: 0.6;
+}
+
+/* Search in the folder pill: an icon that opens into a field */
+.fb-search {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 6px;
+    height: 30px;
+    padding: 0 7px;
+    border-radius: 999px;
+    cursor: text;
+    opacity: 0.7;
+    transition: background 0.2s ease, opacity 0.2s ease;
+}
+
+.fb-search:hover {
+    opacity: 1;
+    background: rgba(125, 125, 125, 0.22);
+}
+
+.fb-search.open {
+    opacity: 1;
+    background: rgba(125, 125, 125, 0.16);
+}
+
+.fb-search input {
+    width: 0;
+    padding: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 13px;
+    transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fb-search input::-webkit-search-cancel-button {
+    display: none;
+}
+
+.fb-search input::placeholder {
+    color: inherit;
+    opacity: 0.5;
+}
+
+.fb-search.open input {
+    width: 150px;
+}
+
+.folder-bar.tight .fb-search.open input {
+    width: 90px;
+}
+
+.folder-bar .fb-search-clear {
+    display: none;
+    background: rgba(125, 125, 125, 0.3);
+    border: none;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    align-items: center;
+    justify-content: center;
+}
+
+.fb-search.has-value .fb-search-clear {
+    display: flex;
+}
+
+.fb-search-clear:hover {
+    background: rgba(125, 125, 125, 0.5);
+}
+
+/* The flag filter in force, beside the search */
+.fb-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--accent-color);
+    color: var(--on-accent);
+    font-size: 12px;
+    white-space: nowrap;
+    animation: flag-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.fb-filter-chip {
+    cursor: pointer;
+}
+
+.fb-filter-chip .fc-x {
+    opacity: 0.7;
+    margin-left: 1px;
+}
+
+.fb-filter-chip:hover .fc-x {
+    opacity: 1;
+}
+
+.fb-filter-chip.hidden {
+    display: none;
+}
+
+.fb-filter-chip .fl-icon {
+    color: var(--on-accent);
+}
+
+.grid-view.grid-no-match::after {
+    content: 'No photos match. Clear the search or the flag filter (× in the folder pill) to see everything.';
+    grid-column: 1 / -1;
+    align-self: center;
+    text-align: center;
+    opacity: 0.55;
+    font-size: 14px;
+    padding: 40px 20px;
+}
+
+/* The row of flag buttons at the top of the right-click menu */
+.ctx-flags {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 4px;
+}
+
+#context-menu .ctx-flag {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border-radius: 50%;
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+
+#context-menu .ctx-flag:hover {
+    transform: scale(1.12);
+}
+
+#context-menu .ctx-flag.on {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+#context-menu .ctx-flag.fl-star {
+    color: #fbbf24;
+}
+
+#context-menu .ctx-flag.fl-rescan {
+    color: #fb923c;
+}
+
+.ctx-flag .tf-dot {
+    width: 11px;
+    height: 11px;
+}
+
+.ctx-flag.fl-clear {
+    margin-left: auto;
+    opacity: 0.6;
+}
+
+/* ---- Auto-check (watch.js): photos that just arrived glow briefly ---- */
+.grid-item.is-new {
+    animation: new-photo 2.4s ease-out;
+}
+
+@keyframes new-photo {
+    0%, 30% { box-shadow: 0 0 0 3px var(--accent-color), 0 0 24px color-mix(in srgb, var(--accent-color) 55%, transparent); }
+    100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tile-flags,
+    .fb-filter-chip,
+    .grid-item.is-new {
+        animation: none;
+    }
+}
+
+/* "Part of an order" (recents.js) */
+.op-text {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.55;
+    opacity: 0.85;
+    user-select: text;
 }

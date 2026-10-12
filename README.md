@@ -13,13 +13,36 @@ The version number is shown on the start screen.
 
 ## Using it
 
-1. Click **Open Folder**, or drag a folder onto the window. Subfolders are included. The last six folders you opened are listed under **Recent** on the start screen; click one to open it again (Chrome may ask once more for permission to edit it), or hover and click × to take it off the list.
+1. Click **Open Folder**, or drag a folder onto the window. Subfolders are included. The last six folders you opened are listed under **Recent** on the start screen; click one to open it again (Chrome may ask once more for permission to edit it), or hover and click × to take it off the list. If you open a folder that's inside an order on the Recent list, jEditor offers to open the whole order at that folder instead, so the order keeps a single `.jeditor` folder. (A browser can't look up from a folder to the one it's in, so this only works for orders it already knows.)
 2. Move through photos with `←` / `→`. `Space` switches between single view and grid. In the grid, the slider at the bottom right or `Ctrl` + mouse wheel makes the tiles bigger or smaller; the highlighted photo stays where it is on screen.
 3. Rotate with `[` / `]`. In grid view this rotates every selected photo.
 4. Press `C` to crop and straighten. `Enter` saves, `Shift+Enter` saves and opens the next photo, `Esc` cancels.
 5. `Ctrl+Z` undoes the last rotation, crop, rename or delete.
 
 Changes are saved to the original files as you go.
+
+To change the blue accent, pick a swatch or any colour under **Accent colour** in Customize controls; everything blue follows it.
+
+## Watching the folder
+
+jEditor keeps an eye on the open folder. Photos a scanner saves into the order show up in the grid on their own, in sort order, without moving your place; they glow briefly, and a message offers **Show**, which jumps to them and selects them. Photos deleted, renamed or edited in another program are picked up too. In Chrome the folder reports its own changes as they happen; elsewhere, and on drives that can't report changes, it's checked when you come back to the window and every so often while it's on screen (less often on a slow drive). Untick **Watch the folder for changes** in Customize controls to turn this off.
+
+`R` rescans by hand. Folders are listed several at a time, which helps most on a network drive, and only new photos are opened, so an unchanged order of 2000 photos rescans in a fraction of a second. Edited photos are then looked for in the background.
+
+## Flags
+
+Mark photos while you work through an order:
+
+- `P` stars a photo (a pick), `X` marks it as needing a rescan, `1`–`5` give it a colour label (red, yellow, green, blue, purple; the same key again takes it off) and `U` clears all three. In the grid they apply to the selection, in single view to the photo shown. They're also at the top of the right-click menu, and `Ctrl+Z` undoes them.
+- Flags show on the grid tiles, the film strip and beside the file name.
+- The **Flags** section at the bottom of the folder list counts each flag. Click one to show only those photos (click again, or the × on the chip in the folder pill, to show everything). `Ctrl+A` then selects just them, ready for **Move to…**, **Export…** or **Delete**: moving every "needs rescan" photo into a Rescan folder takes two clicks and `M`.
+- Right-click a flag in the list to **Copy list of names** or **Save list as text…**: one path per line, for whoever is on the scanner.
+
+Flags are kept with the order, in `.jeditor/flags.json`, so they follow renames and moves made in jEditor and go with the order to another computer.
+
+## Search
+
+`Ctrl+F` or `/` (or the magnifier in the folder pill) searches the photos by name and folder as you type. Every word must match, in any order: `smith 004` finds `Smith_0042.jpg`, `ceremony` finds everything in the Ceremony folder. `is:star`, `is:rescan`, `is:flagged`, `is:unflagged` and `is:red` (or another colour) match flags. `Enter` goes back to the grid with the results; `Esc` clears the search. The arrow keys, film strip and `Ctrl+A` cover the results only.
 
 ## What it does to your files
 
@@ -36,12 +59,14 @@ jEditor keeps its own data in a `.jeditor` folder inside the folder you open:
 
 - `trash/` holds deleted photos.
 - `cache/` holds thumbnails and duplicate-finder data.
+- `flags.json` holds the flags (stars, rescan flags, colour labels).
+- `originals/` holds the photos as they were before a batch Auto crop, so it can be undone.
 
 Because the cache travels with the folder, a second computer opening the same order (on a shared drive, say) gets its thumbnails and duplicate data straight away. The large screen-sized previews aren't stored there, to keep the folder small; they're kept in the browser instead.
 
 Rotating doesn't throw the cache away. A rotation only changes the photo's orientation tag, so the cached thumbnail and preview get the same tag instead of being made again from the full scan. Opening the folder again after rotating a batch is as quick as opening it with no changes.
 
-When an order is finished, use **Clean Up Folder…** (right-click the grid background, or in Customize controls). It empties the trash and removes the cache; your photos aren't touched. Do this before copying an order to a customer: on Windows a folder starting with a dot is not hidden, so `.jeditor` would otherwise go along with the photos, deleted ones included. To stop jEditor writing a cache at all, untick **Save cache in the folder** in Customize controls. The trash is still used either way.
+When an order is finished, use **Clean Up Folder…** (right-click the grid background, or in Customize controls). It empties the trash and removes the cache, the flags and the Auto crop originals; your photos aren't touched. Do this before copying an order to a customer: on Windows a folder starting with a dot is not hidden, so `.jeditor` would otherwise go along with the photos, deleted ones included. To stop jEditor writing a cache at all, untick **Save cache in the folder** in Customize controls. The trash and the flags are still kept there either way.
 
 Folders opened with earlier versions may have a `.jeditor-trash` folder; Clean Up Folder removes that too.
 
@@ -56,6 +81,7 @@ It works like Lightroom or Apple Photos: the crop frame stays in the middle of t
 - Straighten with the slider, or `,` / `.` in 0.1° steps. The photo turns around the middle of the crop and zooms in just enough to hide the corners, so there are never empty corners.
 - To level something, hold `Ctrl` (`⌘` on a Mac) and draw a line along a horizon or the edge of a print. The level tool (`L`) does the same without the key.
 - **Auto** (`Shift+A`) finds the print on a scan, straightens it and crops to its edges. It needs a plain scanner lid or background around the photo, and it leaves a few pixels' margin so none of the bed shows. Turn on **Every photo** to run Auto on each photo as it opens. With `Shift+Enter` (save and next), a scan order then becomes: check the crop, press `Shift+Enter`, repeat.
+- **Batch Auto crop.** In the grid, select photos and press `Shift+A` (or **Auto Crop** on the selection bar, or the right-click menu). Auto runs on each of them in the background, with the aspect ratio last chosen in the editor, and saves them. Photos with no print edge, or already cropped to it, are left alone. The originals are kept in `.jeditor/originals`, so one `Ctrl+Z` puts the whole batch back; flip through the results and fix the odd one in the editor.
 - `Ctrl+Z` inside the editor undoes the last adjustment; `Ctrl+Shift+Z` redoes it.
 - Aspect presets: 4×6, 5×7, 8×10, 11×14, square, 3:4, 16:9, original and free. `X` swaps portrait and landscape. A preset fits inside the current crop, so choosing one after Auto never takes in the bed.
 - **Previous** (`P`) applies the last crop again. This is useful when a batch of scans has the same borders.
@@ -120,6 +146,11 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `F` | Fullscreen |
 | `F2` | Rename (the selected photos in grid view) |
 | `M` / `Shift+M` | Move / copy to a folder (the selection in grid view) |
+| `P` / `X` | Star / needs rescan on or off |
+| `1`–`5` | Red, yellow, green, blue, purple label |
+| `U` | Clear flags |
+| `Shift+A` | Auto crop (the selection in grid view) |
+| `Ctrl+F`, `/` | Search |
 | `Shift+N` | New folder |
 | `A` | Switch between All photos and folders (grid view) |
 | `Backspace` | Up a folder (grid view) |
@@ -156,7 +187,9 @@ The app is plain JavaScript with no dependencies, in `app/`:
 - `dupes.js`: duplicate finder
 - `rename.js`: batch rename
 - `folders.js`: folders: the folder list, moving and copying photos, making, renaming and deleting folders
-- `recents.js`: recent orders on the start screen
+- `flags.js`: flags (star, rescan, colour labels) and search
+- `watch.js`: watching the folder for changes, and rescanning
+- `recents.js`: recent orders on the start screen, and spotting a folder that's part of one
 
 To release, bump the version, add what changed to the top of `app/changelog.js`, commit, and merge to `main`. The changelog is what the app shows under **What's New** and what the GitHub Release notes say; the tests fail if the current version has no entry. The Release workflow then tags the version, builds `standalone.html` and publishes a GitHub Release, and the Pages workflow builds and deploys the web app. Both builds inline every script and stylesheet into one page, so a browser never ends up mixing files from two versions. The tests fail if `app/version.js` and `package.json` disagree.
 

@@ -152,8 +152,93 @@ const Recents = {
         await app.openDirectory(h);
     },
 
+    // ---- A folder inside an order opened before ----
+    //
+    // A browser can't look up from a folder to the one it's in, so a
+    // subfolder of an order can't tell it's part of one. But the orders
+    // here can tell whether a folder is inside them (resolve), so opening
+    // Smith Order/Ceremony after Smith Order offers to open the order at
+    // Ceremony instead: one .jeditor (trash, cache, flags) for the whole
+    // order, rather than a second one inside Ceremony.
+
+    // → { rec, path } or null. The closest order that already has a
+    // .jeditor, else the outermost one.
+    async containing(handle) {
+        if (!this.supported() || !handle || handle.kind !== 'directory') return null;
+        const hits = [];
+        for (const rec of await this.list()) {
+            try {
+                if (!rec.handle || typeof rec.handle.resolve !== 'function') continue;
+                const parts = await rec.handle.resolve(handle);
+                if (parts && parts.length) hits.push({ rec, path: parts.join('/') });
+            } catch (e) { /* not comparable */ }
+        }
+        if (!hits.length) return null;
+        hits.sort((a, b) => a.path.split('/').length - b.path.split('/').length);
+        for (const hit of hits) {
+            try {
+                await hit.rec.handle.getDirectoryHandle(FolderCache.DIR);
+                return hit;
+            } catch (e) { /* none there, or no access yet */ }
+        }
+        return hits[hits.length - 1];
+    },
+
+    // Ask; → { handle, path } to open the order at the folder, or null to
+    // open just the folder
+    async offerOrder(handle) {
+        const hit = await this.containing(handle);
+        if (!hit) return null;
+        const label = hit.path.split('/').join(' / ');
+        this.el('op-text').textContent = `“${handle.name}” is inside “${hit.rec.name}”, which you've opened before. ` +
+            `Open the whole order at ${label}? Its trash, cache and flags are kept in the order's .jeditor, ` +
+            'so this folder doesn\'t get one of its own.';
+        const panel = this.el('order-prompt');
+        panel.classList.remove('hidden');
+        this.el('op-order').focus();
+        const yes = await new Promise((resolve) => { this._orderResolve = resolve; });
+        if (!yes) return null;
+        const h = hit.rec.handle;
+        try {
+            // Still inside the click on "Open the order", so Chrome may ask
+            if (typeof h.queryPermission === 'function' && await h.queryPermission({ mode: 'readwrite' }) !== 'granted' &&
+                await h.requestPermission({ mode: 'readwrite' }) !== 'granted') {
+                this.app.showToast(`No permission to open ${hit.rec.name} — opening just ${handle.name}`, 4000);
+                return null;
+            }
+        } catch (e) {
+            this.app.showToast(`Couldn't open ${hit.rec.name} — opening just ${handle.name}`, 4000);
+            return null;
+        }
+        return { handle: h, path: hit.path };
+    },
+
+    initPrompt() {
+        const panel = this.el('order-prompt');
+        if (!panel) return;
+        const done = (yes) => {
+            panel.classList.add('hidden');
+            const r = this._orderResolve;
+            this._orderResolve = null;
+            if (r) r(yes);
+        };
+        this.el('op-order').addEventListener('click', () => done(true));
+        this.el('op-folder').addEventListener('click', () => done(false));
+        panel.addEventListener('mousedown', (e) => { if (e.target === panel) done(false); });
+        panel.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { e.preventDefault(); done(false); }
+            e.stopPropagation();
+        });
+    },
+
+    isPromptOpen() {
+        const panel = this.el('order-prompt');
+        return !!panel && !panel.classList.contains('hidden');
+    },
+
     init(app) {
         this.app = app;
+        this.initPrompt();
         this.render();
     }
 };

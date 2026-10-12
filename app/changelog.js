@@ -5,6 +5,22 @@
 
 const CHANGELOG = [
     {
+        version: '1.16.0', date: '2026-10-12',
+        items: [
+            'jEditor watches the open folder. New photos (a scanner saving into the order, say) slot into the grid where they belong without losing your place, with a brief glow, and a message offers Show. Photos deleted or edited in another program are picked up too. Turn it off with Watch the folder for changes in Customize controls.',
+            'Rescanning (`R`) and opening a folder are quicker, most of all on a network drive: folders are listed several at a time, and only new photos are opened. An unchanged order rescans in milliseconds. `R` now also notices photos removed or edited elsewhere.',
+            'Flags: `P` stars a photo, `X` marks it as needing a rescan, `1`–`5` give it a colour label (red, yellow, green, blue, purple) and `U` clears them. In the grid they apply to the selection. They show on the tiles, the film strip and beside the file name, and are kept with the order in .jeditor, so they follow renames and moves and go with the order to another computer. `Ctrl+Z` undoes them.',
+            'The folder list has a Flags section with counts. Click one to show only those photos, then `Ctrl+A` selects them for Move to, Export or Delete. Right-click it to copy or save the list of names: the rescan list for whoever is on the scanner.',
+            'The right-click menu starts with a row of flag buttons.',
+            'Search: `Ctrl+F` or `/` (or the magnifier in the folder pill) finds photos by name and folder. Every word you type must match; `is:star`, `is:rescan`, `is:red` and the other colours find flags.',
+            'Auto Crop on the selection bar (`Shift+A`) runs Auto on every selected photo in the background: it finds the print, straightens it and crops to it, with the aspect ratio last chosen in the crop editor. Photos with no print edge are left alone. The originals are kept in .jeditor/originals, so one `Ctrl+Z` puts the whole batch back.',
+            'Opening a folder that\'s inside an order you\'ve opened before (one on the Recent list) offers to open the whole order at that folder instead, so the order keeps one .jeditor rather than getting a second one in the subfolder.',
+            'Accent colour in Customize controls: pick a swatch or any colour, and everything blue follows it. Text on it turns dark when the colour is light.',
+            'Messages are quieter glass pills that match the top bar, with a small icon for what happened, and slide in and out smoothly. The same message twice shows ×2 instead of stacking, and a message with a button (Undo, Show) stays up while the pointer is on it.',
+            'The selection bar keeps clear of the folder list, and of the grid size slider when there\'s room.'
+        ]
+    },
+    {
         version: '1.15.1', date: '2026-10-07',
         items: [
             'Zooming the grid (the slider or `Ctrl` + wheel) keeps your place: the highlighted photo stays where it is on screen while the tiles grow or shrink around it. If it\'s out of sight, the photo in the middle of the view stays put instead.',

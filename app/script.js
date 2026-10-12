@@ -101,6 +101,7 @@ const app = {
         // Bulk Controls
         document.getElementById('btn-rotate-left-bulk').addEventListener('click', () => this.rotateBulk(-90));
         document.getElementById('btn-rotate-right-bulk').addEventListener('click', () => this.rotateBulk(90));
+        document.getElementById('btn-auto-crop').addEventListener('click', () => this.batchAutoCrop([...this.selection]));
         document.getElementById('btn-move-to').addEventListener('click', (e) => Folders.openPicker([...this.selection], e.shiftKey ? 'copy' : 'move'));
         document.getElementById('btn-batch-rename').addEventListener('click', () => this.batchRename([...this.selection]));
         document.getElementById('btn-export').addEventListener('click', () => this.exportCopies([...this.selection]));
@@ -178,6 +179,8 @@ const app = {
 
         Folders.init(this);
         Recents.init(this);
+        Flags.init(this);
+        Watch.init(this);
         this.initContextMenu();
         this.initRubberBand();
         this.initShortcutsPanel();
@@ -211,6 +214,17 @@ const app = {
         document.getElementById('cust-folder-cache').addEventListener('change', (e) => {
             this.uiPrefs.folderCache = e.target.checked;
             this.saveUiPrefs();
+        });
+        document.getElementById('cust-accent').addEventListener('click', (e) => {
+            const b = e.target.closest('[data-accent]');
+            if (b) this.setAccent(b.dataset.accent);
+        });
+        document.getElementById('cust-accent-pick').addEventListener('input', (e) => this.setAccent(e.target.value));
+        document.getElementById('cust-auto-check').addEventListener('change', (e) => {
+            this.uiPrefs.autoCheck = e.target.checked;
+            this.saveUiPrefs();
+            if (e.target.checked) Watch.start();
+            else Watch.stop();
         });
         document.getElementById('cust-cleanup').addEventListener('click', () => {
             this.toggleCustomizePanel();
@@ -277,8 +291,15 @@ const app = {
         }
     },
 
-    // Open a folder with read/write access: from the picker, or a recent order
-    async openDirectory(dirHandle) {
+    // Open a folder with read/write access: from the picker, or a recent
+    // order. A folder inside an order opened before can open as part of
+    // that order instead (scope: the folder to show, see Recents.offerOrder).
+    async openDirectory(dirHandle, { scope = null } = {}) {
+        if (scope === null) {
+            const order = await Recents.offerOrder(dirHandle);
+            if (order) return this.openDirectory(order.handle, { scope: order.path });
+        }
+        this._openScope = scope;
         try {
             // Reset state
             this.cleanupURLs();
@@ -354,7 +375,9 @@ const app = {
             scale: 1,
             stripHeight: 80,
             thumbContain: true, // fit whole image in tiles by default
-            folderCache: true // keep thumbnails / duplicate data in the folder's .jeditor
+            folderCache: true, // keep thumbnails / duplicate data in the folder's .jeditor
+            autoCheck: true, // pick up photos added, removed or edited outside jEditor
+            accent: null // the accent colour (#rrggbb); null is the standard blue
         };
     },
 
@@ -381,6 +404,8 @@ const app = {
                 if (saved.stripHeight >= 50 && saved.stripHeight <= 240) this.uiPrefs.stripHeight = saved.stripHeight;
                 if (typeof saved.thumbContain === 'boolean') this.uiPrefs.thumbContain = saved.thumbContain;
                 if (typeof saved.folderCache === 'boolean') this.uiPrefs.folderCache = saved.folderCache;
+                if (typeof saved.autoCheck === 'boolean') this.uiPrefs.autoCheck = saved.autoCheck;
+                if (typeof saved.accent === 'string' && /^#[0-9a-f]{6}$/i.test(saved.accent)) this.uiPrefs.accent = saved.accent;
                 if (typeof saved.folderRail === 'boolean') this.uiPrefs.folderRail = saved.folderRail;
             }
         } catch (e) { /* corrupted prefs → defaults */ }
@@ -426,6 +451,47 @@ const app = {
 
         this.elements.gridView.classList.toggle('thumb-contain', !!p.thumbContain);
         this.elements.thumbnailStrip.classList.toggle('thumb-contain', !!p.thumbContain);
+        this.applyAccent(p.accent);
+    },
+
+    // Everything blue follows --accent-color; text on it (--on-accent)
+    // turns dark when the colour is light, so it stays readable
+    DEFAULT_ACCENT: '#2563eb',
+
+    applyAccent(hex) {
+        const root = document.documentElement.style;
+        if (!hex) {
+            root.removeProperty('--accent-color');
+            root.removeProperty('--on-accent');
+            return;
+        }
+        const n = parseInt(hex.slice(1), 16);
+        const lin = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+        const lum = 0.2126 * lin(n >> 16) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+        root.setProperty('--accent-color', hex);
+        root.setProperty('--on-accent', lum > 0.45 ? '#111' : '#fff');
+    },
+
+    setAccent(hex) {
+        this.uiPrefs.accent = !hex || hex.toLowerCase() === this.DEFAULT_ACCENT ? null : hex.toLowerCase();
+        this.saveUiPrefs();
+        this.applyAccent(this.uiPrefs.accent);
+        this.syncAccentPicker();
+    },
+
+    syncAccentPicker() {
+        const cur = (this.uiPrefs.accent || this.DEFAULT_ACCENT).toLowerCase();
+        let preset = false;
+        document.querySelectorAll('#cust-accent [data-accent]').forEach(b => {
+            const on = b.dataset.accent === cur;
+            if (on) preset = true;
+            b.classList.toggle('active', on);
+            b.setAttribute('aria-checked', String(on));
+        });
+        const pick = document.getElementById('cust-accent-pick');
+        pick.value = cur;
+        pick.parentElement.classList.toggle('active', !preset);
+        pick.parentElement.style.setProperty('--sw', cur);
     },
 
     toggleCustomizePanel() {
@@ -440,6 +506,8 @@ const app = {
         list.innerHTML = '';
         document.getElementById('cust-vertical').checked = !!this.uiPrefs.vertical;
         document.getElementById('cust-folder-cache').checked = this.uiPrefs.folderCache !== false;
+        document.getElementById('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
+        this.syncAccentPicker();
         document.getElementById('cust-scale').value = this.uiPrefs.scale;
 
         this.uiPrefs.order.forEach(key => {
@@ -813,6 +881,13 @@ const app = {
                 try {
                     // Check if it's a modern FileSystemHandle
                     if (handle.kind === 'directory') {
+                        // Part of an order opened before? Maybe open that instead
+                        const order = droppedHandles.length === 1 && await Recents.offerOrder(handle);
+                        if (order) {
+                            this.endTask('scan');
+                            await this.openDirectory(order.handle, { scope: order.path });
+                            return;
+                        }
                         // Request persistent permission immediately to avoid per-file prompts
                         await this.verifyPermission(handle, true);
                         this.dirHandle = handle;
@@ -862,7 +937,7 @@ const app = {
             this.sortFiles(false); // pass false to avoid re-rendering twice
 
             if (this.files.length > 0) {
-                this.showToast(`Loaded ${this.files.length} images.`, 3000);
+                this.showToast(`Loaded ${this.files.length.toLocaleString()} photo${this.files.length === 1 ? '' : 's'}`, 2500);
                 this.elements.mainInterface.classList.remove('hidden');
 
                 // Force focus settings
@@ -876,6 +951,18 @@ const app = {
                 // freshly opened folder showed a blank screen.
                 this.selection.clear();
                 this.currentFile = this.files[0];
+                // Opened as part of an order: the grid, at the folder picked
+                const scope = this._openScope;
+                this._openScope = null;
+                if (scope !== null && scope !== undefined && Folders.map.has(scope)) {
+                    this.viewMode = 'grid';
+                    Folders.lastScope = scope;
+                    Folders.scope = scope;
+                    this.currentFile = Folders.viewFiles()[0] || this.files[0];
+                    if (!Folders.inView(this.currentFile)) Folders.scope = null;
+                    this.renderThumbnails();
+                    this.renderGrid();
+                }
                 this.setView(this.viewMode);
 
                 // Warm the entire preview cache in the background so grid
@@ -884,6 +971,10 @@ const app = {
 
                 // Top of Recent on the start screen
                 if (this.dirHandle && !this.readOnlyMode) Recents.remember(this.dirHandle);
+
+                // Flags saved with the order, then keep an eye on the folder
+                await Flags.load();
+                Watch.start();
             } else {
                 alert('No images found.');
                 this.elements.dropZone.classList.remove('hidden');
@@ -950,79 +1041,52 @@ const app = {
         }
     },
 
-    async scanDirectory(dirHandle, prefix = '', seen = null) {
-        // Paths already loaded (so Refresh only adds new photos). A Set keeps
-        // this O(1) per file — the old array scan was quadratic.
-        if (!seen) seen = new Set(this.files.map(f => f.relPath || f.name));
-        try {
-            Folders.register(prefix.replace(/\/$/, ''), dirHandle);
-            this.updateTask('scan', 'Scanning folder…');
-            const pending = [];
-            const subdirs = [];
-            for await (const entry of dirHandle.values()) {
-                if (entry.kind === 'file' && this.isImage(entry.name) && !entry.name.startsWith('.jeditor-')) {
-                    const relPath = prefix + entry.name;
-                    if (!seen.has(relPath)) {
-                        seen.add(relPath);
-                        pending.push({ entry, relPath });
-                    }
-                } else if (entry.kind === 'directory') {
-                    // Skip our own working folders
-                    if (entry.name === FolderCache.DIR || entry.name === FolderCache.LEGACY_TRASH || entry.name === 'jEditor Export') continue;
-                    subdirs.push(entry);
-                }
+    // Load every photo in the folder and the folders inside it. Folders are
+    // listed several at a time (see Watch.walk), which matters most on a
+    // network drive where each listing is a round trip.
+    async scanDirectory(dirHandle) {
+        // Paths already loaded, so nothing is added twice
+        const seen = new Set(this.files.map(f => f.relPath || f.name));
+        this.updateTask('scan', 'Scanning folder…');
+        const listings = await Watch.walk([{ path: '', handle: dirHandle }], true);
+        const pending = [];
+        for (const [dir, l] of listings) {
+            if (!l || l.failed) continue;
+            Folders.register(dir, l.handle);
+            for (const [name, entry] of l.files) {
+                const relPath = Folders.join(dir, name);
+                if (seen.has(relPath)) continue;
+                seen.add(relPath);
+                pending.push({ entry, relPath, parentDir: l.handle });
             }
-            // Read size/date in parallel batches instead of one at a time
-            const BATCH = 32;
-            for (let i = 0; i < pending.length; i += BATCH) {
-                const batch = pending.slice(i, i + BATCH);
-                const datas = await Promise.all(batch.map(p => p.entry.getFile().catch(() => null)));
-                batch.forEach(({ entry, relPath }, j) => {
-                    const fileData = datas[j];
-                    if (!fileData) return;
-                    this.files.push({
-                        name: entry.name,
-                        relPath,
-                        parentDir: dirHandle,
-                        handle: entry,
-                        size: fileData.size,
-                        lastModified: fileData.lastModified
-                    });
+        }
+        // Size and date, read several at a time
+        const BATCH = 32;
+        for (let i = 0; i < pending.length; i += BATCH) {
+            const batch = pending.slice(i, i + BATCH);
+            const datas = await Promise.all(batch.map(p => p.entry.getFile().catch(() => null)));
+            batch.forEach(({ entry, relPath, parentDir }, j) => {
+                const fileData = datas[j];
+                if (!fileData) return;
+                this.files.push({
+                    name: entry.name,
+                    relPath,
+                    parentDir,
+                    handle: entry,
+                    size: fileData.size,
+                    lastModified: fileData.lastModified
                 });
-                this.updateTask('scan', `Scanning folder… ${this.files.length} images`);
-            }
-            for (const sub of subdirs) {
-                await this.scanDirectory(sub, prefix + sub.name + '/', seen);
-            }
-        } catch (e) {
-            console.warn('Skipping subdirectory due to error:', e);
+            });
+            this.updateTask('scan', `Scanning folder… ${this.files.length} images`);
         }
     },
 
+    // R: new photos come in, photos removed elsewhere go, edited ones are
+    // updated (see watch.js)
     async refreshFolder() {
         if (!this.dirHandle) return;
         this.log('Manual Refresh Started');
-        this.beginTask('scan', 'Scanning for new photos…');
-
-        try {
-            const oldLength = this.files.length;
-            await this.scanDirectory(this.dirHandle);
-
-            if (this.files.length > oldLength) {
-                // New photos can land anywhere: the highlighted one stays put
-                this.keepGridPlace(() => this.sortFiles(true, { sync: true }));
-                this.precacheThumbnails();
-                this.showToast(`Found ${this.files.length - oldLength} new photos`, 3000);
-            } else {
-                Folders.render(); // folders made elsewhere still show up
-                this.showToast('Folder is up to date', 2000);
-            }
-        } catch (e) {
-            console.error('Refresh failed:', e);
-            this.showToast('Refresh failed');
-        } finally {
-            this.endTask('scan');
-        }
+        await Watch.rescan();
     },
 
     // Legacy drag-and-drop gives read-only files. Say so up front instead
@@ -1497,6 +1561,8 @@ const app = {
         // Drop queued thumbnail work for the folder being replaced
         if (this._thumbQueue) this._thumbQueue.length = 0;
         Folders.reset();
+        Watch.stop();
+        Flags.reset();
 
         // Revoke all existing object URLs to free memory
         if (this.files) {
@@ -1589,43 +1655,37 @@ const app = {
 
 
 
+    // The film strip (single view). Items load their thumbnail as they
+    // scroll into sight.
     renderThumbnails() {
-        // Only for single view footer
         this.elements.thumbnailStrip.innerHTML = '';
         const frag = document.createDocumentFragment();
-
-        // Optimally, we don't load all 1000s, but for the strip we can load visible ones.
-        // For simple implementation, we can just create divs and lazy load their bg image.
-        // Actually, let's reuse the lazy loader logic if possible, or just load them if < 50, otherwise placeholders.
-        // User complained about simple color blocks.
-
-        // Let's use IntersectionObserver for the strip too.
-        const stripObserver = new IntersectionObserver((entries) => {
+        if (this._stripObserver) this._stripObserver.disconnect();
+        this._stripObserver = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    const div = entry.target;
-                    // Load small thumbnail as bg image
-                    this.loadStripThumbnail(div._file, div);
-                    stripObserver.unobserve(div);
-                }
+                if (!entry.isIntersecting) return;
+                const div = entry.target;
+                this.loadStripThumbnail(div._file, div);
+                this._stripObserver.unobserve(div);
             });
         }, { root: this.elements.thumbnailStrip, rootMargin: '0px 400px' });
 
-        this.viewFiles().forEach((file) => {
-            const div = document.createElement('div');
-            div.className = 'thumb-item';
-            div._file = file;
-            file._stripEl = div;
-            // Placeholder color still useful while loading
-            div.style.backgroundColor = '#222';
-
-            div.onclick = () => this.openSingle(file);
-            frag.appendChild(div);
-            stripObserver.observe(div);
-        });
+        this.viewFiles().forEach((file) => frag.appendChild(this.makeStripItem(file)));
         this.elements.thumbnailStrip.appendChild(frag);
         this._activeStripEl = null;
         this.updateActiveThumbnail();
+    },
+
+    makeStripItem(file) {
+        const div = document.createElement('div');
+        div.className = 'thumb-item';
+        div._file = file;
+        file._stripEl = div;
+        div.style.backgroundColor = '#222'; // until the thumbnail arrives
+        Flags.decorate(div, file);
+        div.onclick = () => this.openSingle(file);
+        if (this._stripObserver) this._stripObserver.observe(div);
+        return div;
     },
 
     async loadStripThumbnail(file, div, force = false) {
@@ -1689,12 +1749,15 @@ const app = {
         const folderTiles = Folders.folderTiles();
         this.elements.gridView.append(...folderTiles);
         this.elements.gridView.classList.toggle('grid-empty', !files.length && !folderTiles.length && Folders.scope !== null);
+        this.elements.gridView.classList.toggle('grid-no-match', !files.length && Flags.active());
         Folders.render();
 
         // Chunked render: big folders paint the first screenfuls immediately
-        // and append the rest during idle time.
+        // and append the rest during idle time. (gridRendering: tiles are
+        // still being added, so photos can't be slotted in one by one yet.)
         const CHUNK = sync ? Infinity : 500;
         const token = (this._gridRenderToken = (this._gridRenderToken || 0) + 1);
+        this.gridRendering = true;
         const renderChunk = (start) => {
             if (token !== this._gridRenderToken) return; // superseded re-render
             const frag = document.createDocumentFragment();
@@ -1703,6 +1766,7 @@ const app = {
                 frag.appendChild(this.makeGridTile(files[i], observer));
             }
             this.elements.gridView.appendChild(frag);
+            if (end >= files.length) this.gridRendering = false;
             if (end < files.length) {
                 if (typeof requestIdleCallback === 'function') requestIdleCallback(() => renderChunk(end));
                 else setTimeout(() => renderChunk(end), 16);
@@ -1764,6 +1828,9 @@ const app = {
         div.appendChild(img);
         if (!file.thumbnailUrl) this.showThumbSpinner(div, img);
         Folders.addChip(div, file);
+        Flags.decorate(div, file);
+        // Just arrived (auto-check): a brief glow so it's easy to spot
+        if (file._arrived && Date.now() - file._arrived < 6000) div.classList.add('is-new');
 
         // Drag onto a folder to move it there (Ctrl/Alt copies)
         if (this.dirHandle && !this.readOnlyMode) {
@@ -2111,15 +2178,18 @@ const app = {
         if (!this.dirHandle) return;
         if (!this.ensureWritable()) return;
         const inTrash = await FolderCache.trashCount(this);
+        const flagged = Flags.count();
         const msg = 'Remove jEditor\'s data from this folder?\n\n' +
             (inTrash ? `• Empties the trash: ${inTrash} deleted photo${inTrash === 1 ? '' : 's'} will be gone for good.\n` : '') +
-            '• Removes cached thumbnails and duplicate data (they\'re rebuilt when needed).\n\nYour photos are not touched.';
+            (flagged ? `• Removes the flags (stars, rescan flags, colour labels) from ${flagged} photo${flagged === 1 ? '' : 's'}.\n` : '') +
+            '• Removes cached thumbnails and duplicate data (they\'re rebuilt when needed), and the originals kept for undoing Auto crop.\n\nYour photos are not touched.';
         if (!window.confirm(msg)) return;
         this.beginTask('cleanup', 'Cleaning up folder…');
         try {
             await FolderCache.cleanUp(this);
-            // Trash undo steps can't be undone any more
-            this._undoStack = (this._undoStack || []).filter(e => e.type !== 'trash');
+            Flags.clearAll();
+            // Trash undo steps can't be undone any more, and flags are gone
+            this._undoStack = (this._undoStack || []).filter(e => !['trash', 'flags', 'auto-crop'].includes(e.type));
             this.showToast(inTrash ? `Folder cleaned up — trash emptied (${inTrash})` : 'Folder cleaned up', 3000);
         } catch (e) {
             this.showToast('Clean up failed: ' + e.message, 4000);
@@ -2302,6 +2372,7 @@ const app = {
     setCurrent(file) {
         this.currentFile = file;
         this.elements.fileName.textContent = file.name;
+        Flags.updateHeader();
         this.updateFileCount();
         this.updateStatusBar();
         if (this._infoOpen) this.fillInfoPanel(file);
@@ -2751,49 +2822,154 @@ const app = {
         }
     },
 
-    // Stacking toasts: each message gets its own pill; concurrent operations
-    // stack vertically instead of overwriting each other. Passing the same
+    // Stacking toasts: each message gets its own glass pill; concurrent
+    // operations stack instead of overwriting each other. Passing the same
     // `key` updates an existing toast in place (progress → done), and
-    // duration 0 keeps a toast up until it is updated with a duration.
+    // duration 0 keeps a toast up (with a spinner) until it is updated with
+    // a duration. The same message again while it's showing bumps a ×2
+    // counter instead of stacking a copy. A toast with a button stays up
+    // while hovered, and clicking it dismisses it; the others let clicks
+    // through to the photos underneath.
     // action: { label, run } adds a button to the toast
-    showToast(message, duration = 3000, key = null, action = null) {
+    // opts.type: 'success' | 'error' | 'warn' | 'info' | 'progress' (guessed
+    // from the message when left out)
+    TOAST_MAX: 5,
+    TOAST_ICONS: {
+        success: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+        error: '<path d="M8 8l8 8"/><path d="M16 8l-8 8"/>',
+        warn: '<path d="M12 8v5"/><path d="M12 16.6v.01"/>',
+        info: '<path d="M12 11v5.5"/><path d="M12 7.6v.01"/>',
+        trash: '<path d="M5 7h14"/><path d="M10 7V5h4v2"/><path d="M7 7l1 12h8l1-12"/>',
+        undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
+        folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+        rotate: '<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/>',
+        photos: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/>',
+        flag: '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>',
+        star: '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/>',
+        search: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>',
+        crop: '<path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/>'
+    },
+
+    toastType(message, duration) {
+        if (duration === 0) return 'progress';
+        if (/fail|couldn.t|could not|can.t|error|not supported|blocked|invalid|damaged|already exists|requires|need(s)? a folder/i.test(message)) return 'error';
+        if (/^(nothing to|there are no|no changes|that was the last|these photos were opened read-only)/i.test(message)) return 'info';
+        if (/^(undid|.*undone|restored|put \d+ photos? back|removed \d+ cop)/i.test(message)) return 'undo';
+        if (/^(moved|copied) [\d,]+ photos? to /i.test(message)) return 'folder';
+        if (/trash/i.test(message)) return 'trash';
+        if (/^rotated/i.test(message)) return 'rotate';
+        if (/^(straightened|cropped|auto-cropped)/i.test(message)) return 'crop';
+        if (/new photo|^loaded|^found/i.test(message)) return 'photos';
+        if (/^(saved|moved|copied|made|renamed|deleted|all .* ready|folder (is up to date|cleaned)|updated|exported|shortcuts reset|slideshow)/i.test(message)) return 'success';
+        return 'info';
+    },
+
+    showToast(message, duration = 3000, key = null, action = null, opts = {}) {
         let stack = document.getElementById('toast-stack');
         if (!stack) {
             stack = document.createElement('div');
             stack.id = 'toast-stack';
+            stack.setAttribute('role', 'status');
+            stack.setAttribute('aria-live', 'polite');
             document.body.appendChild(stack);
         }
-
-        let toast = key ? stack.querySelector(`[data-key="${CSS.escape(key)}"]`) : null;
-        if (!toast) {
+        const live = [...stack.children].filter(t => !t.classList.contains('leaving'));
+        let toast = key ? live.find(t => t.dataset.key === key) : null;
+        // The same message again: count it rather than stack a copy
+        if (!toast && !key && !action) {
+            toast = live.find(t => !t.dataset.key && !t.classList.contains('has-action') && t._message === message);
+            if (toast) {
+                toast._repeat = (toast._repeat || 1) + 1;
+                toast.classList.remove('bump');
+                void toast.offsetWidth; // restart the bump animation
+                toast.classList.add('bump');
+            }
+        }
+        const isNew = !toast;
+        if (isNew) {
             toast = document.createElement('div');
             toast.className = 'toast';
             if (key) toast.dataset.key = key;
+            toast.addEventListener('mouseenter', () => this.pauseToast(toast));
+            toast.addEventListener('mouseleave', () => this.resumeToast(toast));
+            toast.addEventListener('click', (e) => {
+                if (!e.target.closest('.toast-action')) this.dismissToast(toast);
+            });
             stack.appendChild(toast);
-            // Let layout settle so the enter transition plays
-            requestAnimationFrame(() => toast.classList.add('visible'));
+            // Keep the stack short: the oldest finished toasts make way
+            const extra = live.length + 1 - this.TOAST_MAX;
+            if (extra > 0) live.filter(t => t._duration > 0).slice(0, extra).forEach(t => this.dismissToast(t));
+        } else if (message !== toast._message || key) {
+            toast._repeat = message === toast._message ? toast._repeat : 1;
         }
-        toast.textContent = message;
+        const type = opts.type || this.toastType(message, duration);
+        toast._message = message;
+        toast._duration = duration;
+        toast.className = `toast t-${type}` + (isNew ? '' : ' visible') +
+            (toast.classList.contains('bump') ? ' bump' : '');
+
+        // Icon · message · ×n · action
+        toast.textContent = '';
+        const icon = document.createElement('span');
+        icon.className = 'toast-icon';
+        icon.innerHTML = type === 'progress'
+            ? '<span class="toast-spinner"></span>'
+            : `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${this.TOAST_ICONS[opts.icon] || this.TOAST_ICONS[type] || this.TOAST_ICONS.info}</svg>`;
+        const msg = document.createElement('span');
+        msg.className = 'toast-msg';
+        msg.textContent = message;
+        toast.append(icon, msg);
+        if (toast._repeat > 1) {
+            const n = document.createElement('span');
+            n.className = 'toast-count';
+            n.textContent = `×${toast._repeat}`;
+            toast.appendChild(n);
+        }
         if (action) {
             const btn = document.createElement('button');
             btn.className = 'toast-action';
             btn.textContent = action.label;
             btn.addEventListener('click', () => {
-                toast.classList.remove('visible');
-                setTimeout(() => toast.remove(), 300);
+                this.dismissToast(toast);
                 action.run();
             });
             toast.appendChild(btn);
             toast.classList.add('has-action');
         }
 
+        if (isNew) requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add('visible')));
         if (toast._timer) clearTimeout(toast._timer);
-        if (duration > 0) {
-            toast._timer = setTimeout(() => {
-                toast.classList.remove('visible');
-                setTimeout(() => toast.remove(), 300);
-            }, duration);
+        toast._timer = null;
+        toast._remaining = duration;
+        if (duration > 0 && !toast._paused) this.resumeToast(toast, true);
+        return toast;
+    },
+
+    pauseToast(toast) {
+        toast._paused = true;
+        if (!toast._timer) return;
+        clearTimeout(toast._timer);
+        toast._timer = null;
+        toast._remaining = Math.max(400, toast._remaining - (performance.now() - toast._started));
+    },
+
+    resumeToast(toast, fresh = false) {
+        if (!fresh) {
+            toast._paused = false;
         }
+        if (!(toast._duration > 0) || toast._timer) return;
+        toast._started = performance.now();
+        toast._timer = setTimeout(() => this.dismissToast(toast), toast._remaining);
+    },
+
+    // Slide out, then let the toasts below close the gap smoothly
+    dismissToast(toast) {
+        if (!toast || toast.classList.contains('leaving')) return;
+        clearTimeout(toast._timer);
+        toast.classList.add('leaving');
+        toast.classList.remove('visible');
+        toast.style.marginBottom = `-${toast.offsetHeight + 8}px`;
+        setTimeout(() => toast.remove(), 300);
     },
 
     // ---- Keyboard shortcuts ----
@@ -2819,6 +2995,15 @@ const app = {
         ['edit.trash', 'global', 'Edit', 'Move to trash', ['Delete']],
         ['edit.undo', 'global', 'Edit', 'Undo', ['Ctrl+Z']],
         ['edit.selectAll', 'global', 'Edit', 'Select all (grid)', ['Ctrl+A']],
+        ['flag.star', 'global', 'Flags', 'Star / unstar', ['P']],
+        ['flag.rescan', 'global', 'Flags', 'Needs rescan on / off', ['X']],
+        ['flag.red', 'global', 'Flags', 'Red label', ['1']],
+        ['flag.yellow', 'global', 'Flags', 'Yellow label', ['2']],
+        ['flag.green', 'global', 'Flags', 'Green label', ['3']],
+        ['flag.blue', 'global', 'Flags', 'Blue label', ['4']],
+        ['flag.purple', 'global', 'Flags', 'Purple label', ['5']],
+        ['flag.clear', 'global', 'Flags', 'Clear flags', ['U']],
+        ['edit.autoCrop', 'global', 'Edit', 'Auto crop the selection (grid)', ['Shift+A']],
         ['edit.moveTo', 'global', 'Folders', 'Move to a folder…', ['M']],
         ['edit.copyTo', 'global', 'Folders', 'Copy to a folder…', ['Shift+M']],
         ['folders.new', 'global', 'Folders', 'New folder', ['Shift+N']],
@@ -2838,6 +3023,7 @@ const app = {
         ['view.slideshow', 'global', 'View', 'Slideshow', []],
         ['app.dupes', 'global', 'App', 'Find duplicates (WIP)', ['D']],
         ['app.refresh', 'global', 'App', 'Rescan folder', ['R']],
+        ['app.search', 'global', 'App', 'Search photos', ['Ctrl+F', '/']],
         ['app.shortcuts', 'global', 'App', 'Keyboard shortcuts', ['?']],
         ['app.debug', 'global', 'App', 'Debug console', ['Ctrl+Shift+D']],
         ['crop.save', 'crop', 'Crop & Straighten', 'Save', ['Enter']],
@@ -2893,6 +3079,15 @@ const app = {
                 this.selection = new Set(this.viewFiles());
                 this.updateSelectionUI();
             },
+            'flag.star': () => Flags.apply('star'),
+            'flag.rescan': () => Flags.apply('rescan'),
+            'flag.red': () => Flags.apply('red'),
+            'flag.yellow': () => Flags.apply('yellow'),
+            'flag.green': () => Flags.apply('green'),
+            'flag.blue': () => Flags.apply('blue'),
+            'flag.purple': () => Flags.apply('purple'),
+            'flag.clear': () => Flags.apply('clear'),
+            'edit.autoCrop': () => this.batchAutoCrop(Folders.targets()),
             'edit.moveTo': () => Folders.openPicker(Folders.targets(), 'move'),
             'edit.copyTo': () => Folders.openPicker(Folders.targets(), 'copy'),
             'folders.new': () => this.dirHandle ? Folders.newFolder() : false,
@@ -2921,6 +3116,7 @@ const app = {
             'view.slideshow': () => this.startSlideshow(),
             'app.dupes': () => this.openDupes(),
             'app.refresh': () => this.refreshFolder(),
+            'app.search': () => Flags.focusSearch(),
             'app.shortcuts': () => this.toggleShortcutsPanel(),
             'app.debug': () => this.toggleDebugConsole(),
             'crop.save': () => this.saveCrop(),
@@ -3063,7 +3259,7 @@ const app = {
         if (this._recordingKey) return;
 
         // The rename tool and folder dialogs handle their own keys
-        if (Renamer.isOpen || Folders.isModalOpen()) return;
+        if (Renamer.isOpen || Folders.isModalOpen() || Recents.isPromptOpen()) return;
 
         // What's New is modal: Esc closes it
         if (this.isWhatsNewOpen()) {
@@ -3478,6 +3674,7 @@ const app = {
         const stripDiv = file._stripEl;
         if (stripDiv && stripDiv.isConnected) {
             stripDiv.innerHTML = '';
+            Flags.decorate(stripDiv, file);
             this.loadStripThumbnail(file, stripDiv, true);
         }
 
@@ -3496,6 +3693,9 @@ const app = {
             // Re-observe
             const gridObserver = this.elements.gridView._observer;
             if (gridObserver) gridObserver.observe(img);
+
+            Folders.addChip(gridDiv, file);
+            Flags.decorate(gridDiv, file);
 
             // Force reload
             this.loadImageThumbnail(file, img, true);
@@ -3897,6 +4097,10 @@ const app = {
                 const ok = await this.renameMany(entry.items.map(it => ({ file: it.file, newName: it.oldName })), { skipUndo: true });
                 if (!ok) throw new Error('could not restore the old names');
                 this.showToast(`Rename undone (${entry.items.length} file${entry.items.length === 1 ? '' : 's'})`);
+            } else if (entry.type === 'flags') {
+                Flags.undo(entry);
+            } else if (entry.type === 'auto-crop') {
+                await this.undoAutoCrop(entry);
             } else if (entry.type === 'relocate' || entry.type.startsWith('folder-')) {
                 await Folders.undo(entry);
             } else if (entry.type === 'trash') {
@@ -4561,9 +4765,12 @@ const app = {
             const sel = [...this.selection];
             if (sel.length > 1) {
                 return [
+                    ['flags', sel],
+                    ['—'],
                     [`Rotate ${sel.length} Left`, () => this.rotateBulk(-90)],
                     [`Rotate ${sel.length} Right`, () => this.rotateBulk(90)],
                     [`Rotate ${sel.length} 180°`, () => this.rotateBulk(180)],
+                    [`Auto Crop ${sel.length}`, () => this.batchAutoCrop(sel)],
                     ['—'],
                     [`Move ${sel.length} to…`, () => Folders.openPicker(sel, 'move')],
                     [`Copy ${sel.length} to…`, () => Folders.openPicker(sel, 'copy')],
@@ -4574,6 +4781,8 @@ const app = {
                 ];
             }
             return [
+                ['flags', [file]],
+                ['—'],
                 ['Open', () => this.openSingle(file)],
                 ['—'],
                 ['Rotate Left', () => this.rotateImage(file, -90)],
@@ -4593,6 +4802,8 @@ const app = {
         if (inSingle) {
             const file = this.currentFile;
             return [
+                ['flags', [file]],
+                ['—'],
                 ['Rotate Left', () => this.rotateImage(file, -90)],
                 ['Rotate Right', () => this.rotateImage(file, 90)],
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
@@ -4616,6 +4827,9 @@ const app = {
             ['—'],
             ...(this.dirHandle ? [['New Folder…', () => Folders.newFolder()]] : []),
             ['Rename All…', () => this.openRename([])],
+            ['Search…', () => Flags.focusSearch()],
+            ...(this.files.some(f => Flags.has(f, 'rescan'))
+                ? [['Copy Rescan List', () => Flags.copyList(this.files.filter(f => Flags.has(f, 'rescan')), 'rescan')]] : []),
             ['Clean Up Folder…', () => this.cleanUpFolder()],
             ['Find Duplicates… (WIP)', () => this.openDupes()],
             ['Start Slideshow', () => this.startSlideshow()],
@@ -4628,7 +4842,12 @@ const app = {
         const menu = document.createElement('div');
         menu.id = 'context-menu';
         items.forEach(([label, action, danger]) => {
+            if (label === 'flags') {
+                if (this.dirHandle && !this.readOnlyMode) menu.appendChild(Flags.menuRow(action));
+                return;
+            }
             if (label === '—') {
+                if (!menu.lastChild || menu.lastChild.className === 'ctx-divider') return;
                 const hr = document.createElement('div');
                 hr.className = 'ctx-divider';
                 menu.appendChild(hr);
@@ -4783,6 +5002,179 @@ const app = {
             ed.busy = false;
             this.endTask('crop-save');
         }
+    },
+
+    // ---- Batch Auto crop ----
+    //
+    // Auto (find the print, straighten, crop to it) on many photos at once,
+    // in the background, exactly as the crop editor would do it with the
+    // aspect ratio last chosen there. Photos where no print edge is found,
+    // or that are already cropped to the print, are left alone. The
+    // originals are copied to .jeditor/originals first, so one Ctrl+Z puts
+    // the whole batch back without holding hundreds of scans in memory.
+
+    AUTO_CROP_CONCURRENCY: 2,
+
+    async batchAutoCrop(files) {
+        if (!this.ensureWritable()) return;
+        if (!this.dirHandle) {
+            this.showToast('Auto crop needs a folder opened with Open Folder');
+            return;
+        }
+        const list = [...new Set(files.filter(Boolean))].filter(f => !/\.gif$/i.test(f.name));
+        if (!list.length) {
+            this.showToast(files.length ? 'GIFs can\'t be cropped (the animation would be lost)' : 'Select some photos first');
+            return;
+        }
+        if (this._autoCropping) {
+            this.showToast('Auto crop is already running');
+            return;
+        }
+        if (list.length > 50 && !window.confirm(`Auto crop ${list.length.toLocaleString()} photos?\n\n` +
+            'Each is straightened and cropped to the print found on it. The originals are kept in .jeditor/originals, so Ctrl+Z puts them all back.')) return;
+        this._autoCropping = true;
+        const total = list.length;
+        const key = 'auto-crop';
+        const entry = { type: 'auto-crop', items: [] };
+        let done = 0, cropped = 0, noEdge = 0, already = 0, failed = 0;
+        const label = () => `Auto crop ${done}/${total}`;
+        this.beginTask(key, label());
+        try {
+            await this.verifyPermission(this.dirHandle, true);
+            const root = await FolderCache.root(this, true);
+            const backups = await root.getDirectoryHandle('originals', { create: true });
+            let next = 0;
+            const worker = async () => {
+                while (next < list.length) {
+                    const f = list[next++];
+                    try {
+                        const r = await this.autoCropOne(f, backups);
+                        if (r === 'none') noEdge++;
+                        else if (r === 'same') already++;
+                        else {
+                            cropped++;
+                            entry.items.push(r);
+                        }
+                    } catch (e) {
+                        console.error('Auto crop failed for', f.name, e);
+                        failed++;
+                    }
+                    done++;
+                    this.updateTask(key, label());
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(this.AUTO_CROP_CONCURRENCY, list.length) }, worker));
+        } catch (e) {
+            this.showToast('Auto crop failed: ' + e.message, 4000);
+            return;
+        } finally {
+            this.endTask(key);
+            this._autoCropping = false;
+        }
+        if (entry.items.length) this.pushUndo(entry);
+        const notes = [];
+        if (noEdge) notes.push(`no print found on ${noEdge}`);
+        if (already) notes.push(`${already} already cropped`);
+        if (failed) notes.push(`${failed} failed`);
+        const msg = (cropped ? `Auto-cropped ${cropped} photo${cropped === 1 ? '' : 's'}` : 'Nothing was cropped') +
+            (notes.length ? ` — ${notes.join(', ')}` : '');
+        const stillThere = entry.items.length;
+        this.showToast(msg, cropped ? 6000 : 4000, null, stillThere ? {
+            label: 'Undo',
+            run: () => {
+                const stack = this._undoStack || [];
+                if (stack[stack.length - 1] === entry) this.undo();
+                else this.showToast('Something else changed since — use Ctrl+Z');
+            }
+        } : null, { type: failed && !cropped ? 'error' : 'crop' });
+    },
+
+    // One photo: 'none' (no print edge), 'same' (nothing to crop) or the
+    // undo item { file, backup }
+    async autoCropOne(file, backups) {
+        if (file._rotationQueue) await file._rotationQueue;
+        // Detect on the screen-sized preview, as the editor does
+        const src = await this.getDisplaySource(file);
+        let bmp, W, H;
+        if (src.isPreview && src.blob) {
+            bmp = await createImageBitmap(src.blob);
+            W = src.w;
+            H = src.h;
+        } else {
+            bmp = await createImageBitmap(await file.handle.getFile());
+            W = bmp.width;
+            H = bmp.height;
+        }
+        let ed;
+        try {
+            const det = CropAuto.detect(bmp, W, H);
+            if (!det) return 'none';
+            ed = CropEditor.headless(W, H);
+            ed.fitToPrint(det);
+        } finally {
+            bmp.close();
+        }
+        if (ed.isIdentity()) return 'same';
+
+        const { type, quality } = this.getSaveFormat(file.name);
+        const fileData = await file.handle.getFile();
+        const original = new Uint8Array(await fileData.arrayBuffer());
+        const canvas = await ed.renderOutput(fileData, type, original);
+        const w = canvas.width, h = canvas.height;
+        let blob = await new Promise(r => canvas.toBlob(r, type, quality));
+        canvas.width = canvas.height = 0;
+        if (!blob) throw new Error('encoding failed');
+        blob = await ImageMeta.transplant(original, blob, type, w, h);
+
+        // The original goes to .jeditor/originals before the file changes
+        const backupName = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}-${file.name}`;
+        const bh = await backups.getFileHandle(backupName, { create: true });
+        const bw = await bh.createWritable();
+        await bw.write(new Blob([original], { type: fileData.type }));
+        await bw.close();
+
+        file.isBusy = true;
+        try {
+            const writable = await file.handle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+        } finally {
+            file.isBusy = false;
+        }
+        file.pendingRotation = 0;
+        file.savingRotation = 0;
+        await this.afterFileChanged(file);
+        return { file, backup: bh, backupName };
+    },
+
+    // Put every photo of a batch back from .jeditor/originals
+    async undoAutoCrop(entry) {
+        const items = entry.items.slice();
+        let failed = 0, next = 0;
+        const many = items.length > 1;
+        if (many) this.beginTask('undo-auto-crop', `Undoing auto crop of ${items.length} photos…`);
+        const worker = async () => {
+            while (next < items.length) {
+                const it = items[next++];
+                try {
+                    await this.undoFileEdit({ type: 'bytes', file: it.file, blob: await it.backup.getFile() });
+                    try {
+                        const backups = await (await FolderCache.root(this, false)).getDirectoryHandle('originals');
+                        await backups.removeEntry(it.backupName);
+                    } catch (e) { /* Clean Up removes it anyway */ }
+                } catch (e) {
+                    console.error('Undo failed for', it.file.name, e);
+                    failed++;
+                }
+            }
+        };
+        try {
+            await Promise.all(Array.from({ length: Math.min(4, items.length) }, worker));
+        } finally {
+            if (many) this.endTask('undo-auto-crop');
+        }
+        if (failed) throw new Error(`${failed} photo${failed === 1 ? '' : 's'} could not be put back`);
+        this.showToast(`Undid auto crop on ${items.length} photo${items.length === 1 ? '' : 's'}`);
     }
 };
 
