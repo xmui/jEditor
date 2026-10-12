@@ -1,0 +1,12 @@
+{
+  "name": "jeditor-windows",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Tests for the bridge between the jEditor UI and the Windows app",
+  "scripts": {
+    "test": "node test/bridge.test.js"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.45.0"
+  }
+}

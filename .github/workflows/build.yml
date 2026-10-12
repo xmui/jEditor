@@ -1,0 +1,59 @@
+name: Build
+
+# Every push and pull request: the bridge tests (Linux), then on Windows the
+# build, the smoke test (the real app opening a folder and saving a
+# rotation), and an install / uninstall test. The setup and the portable
+# zip are kept as artifacts on the run's page, to try on another PC.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  bridge-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm test
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+      - name: Build
+        shell: pwsh
+        run: ./scripts/build.ps1
+      - name: Smoke test
+        shell: pwsh
+        run: ./scripts/smoke-test.ps1
+      - name: Install test
+        shell: pwsh
+        run: ./scripts/install-test.ps1 -Setup (Get-Item dist/jEditor-Setup-*.exe).FullName
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jEditor-Setup
+          path: dist/jEditor-Setup-*.exe
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jEditor-portable
+          path: dist/jEditor-*-portable.zip
+          if-no-files-found: error
