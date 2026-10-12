@@ -26,7 +26,9 @@ static class Program
             Fail(null, e.Message);
             return 64;
         }
-        Log.Init(options.LogFile);
+        // Always a log (what a scan or an update did, for when one goes
+        // wrong): --log's file, else %LOCALAPPDATA%\jEditor\logs\jEditor.log
+        Log.Init(options.LogFile ?? Log.Default());
         // The smoke test keeps its order data out of the real one
         if (options.SmokeDir is not null)
             Shell.DataDir = Path.Combine(Path.GetTempPath(), "jEditor-smoke-data-" + Guid.NewGuid().ToString("N"));

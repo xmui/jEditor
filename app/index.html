@@ -715,7 +715,11 @@
                     </span>
                     <small id="scan-preview" class="scan-preview"></small>
                 </div>
-                <p class="set-help">The scanner's own window opens next: choose the size, resolution and feeder there. Each photo shows up here as soon as it's scanned.</p>
+                <label class="scan-check" for="scan-autocrop">
+                    <input id="scan-autocrop" type="checkbox">
+                    <span>Auto crop each photo<small>Finds the print on each scan and crops to it, whatever its size. Ctrl+Z puts the scans back as they were.</small></span>
+                </label>
+                <p class="set-help">The scanner's own window opens next: choose the resolution and feeder there. Each photo shows up here as soon as it's scanned.</p>
             </div>
             <div class="dialog-foot">
                 <span></span>

@@ -10,14 +10,18 @@ namespace JEditor;
 
 // Scanning into the open order, with NAPS2.Sdk.
 //
-// TWAIN scanners with 64-bit drivers (Epson Scan 2, Plustek), and WIA ones,
-// scan in this process. The scanner's own window sets everything (document
+// TWAIN scanners scan through NAPS2.Worker.exe, a 32-bit helper process
+// with its own TWAIN manager, using their 32-bit drivers (Epson Scan 2,
+// Plustek), as NAPS2 itself does. Without the helper, 64-bit TWAIN drivers
+// are used in this process. WIA scanners scan in this process. The scanner's own window sets everything (document
 // size, resolution, feeder, backs of photos) and a batch from a feeder comes
 // in one photo at a time: each is saved into the order as it arrives, under
 // the next name in the order's sequence (Smith-014.jpg, Smith-015.jpg…).
 //
-// TWAIN needs Windows' TWAIN manager, TWAINDSM.dll: scanner drivers install
-// it (System32), or it can sit in _win64\ beside jEditor.exe.
+// In-process (64-bit) TWAIN needs Windows' TWAIN manager, TWAINDSM.dll:
+// scanner drivers install it (System32), or it can sit in _win64\.
+// NAPS2's own log goes to jEditor's (Log.cs), so a scan that goes wrong
+// can be followed.
 //
 // A test scanner (--fake-scanner, and the smoke test) makes photos without
 // hardware, so everything but the driver can be checked anywhere.
@@ -33,13 +37,23 @@ sealed class Scanner : IDisposable
     const int JpegQuality = 95;
     const int FakePages = 3;
 
-    readonly ScanningContext context = new(new GdiImageContext());
+    readonly ScanningContext context = new(new GdiImageContext()) { Logger = new NapsLog() };
     readonly ScanController controller;
     readonly bool fake;
+    readonly bool worker; // TWAIN through the 32-bit helper
 
     public Scanner(bool fake)
     {
         this.fake = fake;
+        try
+        {
+            context.SetUpWin32Worker();
+            worker = true;
+        }
+        catch (Exception e)
+        {
+            Log.Write("No 32-bit scanning helper, TWAIN is 64-bit only: " + e.Message);
+        }
         controller = new ScanController(context);
     }
 
@@ -65,7 +79,7 @@ sealed class Scanner : IDisposable
         var list = new List<Device>();
         var problems = new List<string>();
         if (fake) list.Add(new Device(FakeId, "jEditor test scanner", "test"));
-        if (HasTwain())
+        if (worker || HasTwain())
         {
             try
             {
@@ -96,10 +110,10 @@ sealed class Scanner : IDisposable
         return (list, problems);
     }
 
-    static ScanOptions Options(Driver driver) => new()
+    ScanOptions Options(Driver driver) => new()
     {
         Driver = driver,
-        TwainOptions = { Dsm = TwainDsm.NewX64 },
+        TwainOptions = { Dsm = worker ? TwainDsm.New : TwainDsm.NewX64 },
     };
 
     // Scans until the scanner is done (a whole feeder of photos) or `cancel`.
@@ -188,4 +202,16 @@ sealed class Scanner : IDisposable
         p.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, (long)JpegQuality);
         bmp.Save(path, jpeg, p);
     }
+}
+
+// NAPS2's log, into jEditor's
+sealed class NapsLog : Microsoft.Extensions.Logging.ILogger
+{
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+    public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel level) => level >= Microsoft.Extensions.Logging.LogLevel.Debug;
+
+    public void Log<TState>(Microsoft.Extensions.Logging.LogLevel level, Microsoft.Extensions.Logging.EventId id, TState state,
+        Exception? e, Func<TState, Exception?, string> format) =>
+        JEditor.Log.Write($"naps2 {level}: {format(state, e)}{(e is null ? "" : " — " + e)}");
 }

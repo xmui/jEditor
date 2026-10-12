@@ -5513,7 +5513,8 @@ const app = {
 
     AUTO_CROP_CONCURRENCY: 2,
 
-    async batchAutoCrop(files) {
+    // ask: false skips the "Auto crop N photos?" question (scans, see scan.js)
+    async batchAutoCrop(files, { ask = true } = {}) {
         if (!this.ensureWritable()) return;
         if (!this.dirHandle) {
             this.showToast('Auto crop needs a folder opened with Open folder');
@@ -5528,7 +5529,7 @@ const app = {
             this.showToast('Auto crop is already running');
             return;
         }
-        if (list.length > 50 && !await UI.confirm({
+        if (ask && list.length > 50 && !await UI.confirm({
             title: `Auto crop ${list.length.toLocaleString()} photos?`,
             message: `Each is straightened and cropped to the print found on it. The originals are kept ${FolderCache.native() ? 'by jEditor on this PC' : 'in .jeditor/originals'}, so Ctrl+Z puts them all back.`,
             ok: 'Auto crop'
