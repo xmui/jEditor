@@ -296,7 +296,10 @@
                 <div id="folder-tree" class="folder-tree"></div>
                 <div id="flag-list" class="flag-list hidden"></div>
                 <p id="fr-hint" class="fr-hint hidden">Make folders to collate this order. Drag photos onto a folder to move them, or hold <kbd>Ctrl</kbd> to copy. <kbd>M</kbd> moves the selection.</p>
-                <button id="fr-new" class="fr-new">+ New folder</button>
+                <div class="fr-foot">
+                    <button id="fr-new" class="fr-new">+ New folder</button>
+                    <button id="fr-total" class="fr-total"></button>
+                </div>
             </aside>
 
             <!-- Grid View (Initially Hidden) -->
@@ -346,7 +349,7 @@
 
             <!-- File Info Panel (I) -->
             <div id="info-panel" class="info-panel hidden">
-                <h3>File Info</h3>
+                <h3>Info</h3>
                 <dl id="info-list"></dl>
             </div>
 

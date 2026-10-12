@@ -81,6 +81,8 @@ const Watch = {
         this.opDepth--;
         this.opGen++;
         Flags.saveSoon(); // renamed or moved photos: flags under their new paths
+        this.app._usage = null; // .jeditor's size may have changed (trash, originals)
+        this.app.refreshInfoSoon();
         // A check that came in meanwhile runs now
         if (!this.opDepth && this.queued) this.kick(400);
     },

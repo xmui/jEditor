@@ -358,7 +358,7 @@ const app = {
     // persists in localStorage under 'jeditor.ui'.
 
     HC_LABELS: {
-        info: 'File Info',
+        info: 'Info',
         view: 'Toggle View',
         refresh: 'Refresh Folder',
         crop: 'Crop',
@@ -1226,7 +1226,8 @@ const app = {
         if (!(n >= 0)) return '—';
         if (n < 1024) return `${n} B`;
         if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-        return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+        if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(n < 100 * 1024 * 1024 ? 2 : 1)} MB`;
+        return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
     },
 
     // Read Make / Model / DateTimeOriginal from a JPEG's EXIF block.
@@ -1320,18 +1321,183 @@ const app = {
         return file._exif;
     },
 
-    toggleInfoPanel(forceOpen = null) {
+    // The info panel (I): the photo in single view; in the grid, the folder
+    // being shown, or the selection when several photos are selected.
+    // target: { file } or { folder: path } to show one in particular (File
+    // Info / Folder Info in the right-click menus) until the grid changes.
+    toggleInfoPanel(forceOpen = null, target = null) {
         const panel = this.elements.infoPanel;
         if (!panel) return;
         const open = forceOpen !== null ? forceOpen : panel.classList.contains('hidden');
         panel.classList.toggle('hidden', !open);
         this._infoOpen = open;
-        if (open) this.fillInfoPanel(this.currentFile);
+        this._infoTarget = open ? target : null;
+        if (open) this.refreshInfoPanel();
+    },
+
+    refreshInfoPanel() {
+        if (!this._infoOpen) return;
+        const t = this._infoTarget;
+        if (t && t.file && this.files.includes(t.file)) return this.fillInfoPanel(t.file);
+        if (t && typeof t.folder === 'string') return this.fillFolderInfo({ folder: t.folder });
+        if (this.viewMode === 'single') return this.fillInfoPanel(this.currentFile);
+        if (this.selection.size > 1) return this.fillFolderInfo({ files: [...this.selection] });
+        return this.fillFolderInfo({ folder: Folders.scope });
+    },
+
+    // Selection changes come in bursts (a click clears and adds): one refresh
+    refreshInfoSoon() {
+        if (!this._infoOpen || this._infoQueued) return;
+        this._infoQueued = true;
+        requestAnimationFrame(() => {
+            this._infoQueued = false;
+            this.refreshInfoPanel();
+        });
+    },
+
+    // Back to following the grid (a click, a new folder) after File Info /
+    // Folder Info picked something in particular
+    releaseInfoTarget() {
+        if (!this._infoTarget) return;
+        this._infoTarget = null;
+        this.refreshInfoSoon();
+    },
+
+    setInfoRows(title, rows) {
+        const panel = this.elements.infoPanel;
+        panel.querySelector('h3').textContent = title;
+        const list = this.elements.infoList;
+        list.innerHTML = '';
+        rows.forEach(([k, v, cls]) => {
+            if (k === '—') {
+                const hr = document.createElement('div');
+                hr.className = 'info-sep';
+                list.appendChild(hr);
+                return;
+            }
+            const dt = document.createElement('dt');
+            dt.textContent = k;
+            const dd = document.createElement('dd');
+            dd.textContent = v == null ? '—' : v;
+            if (cls) dd.className = cls;
+            list.appendChild(dt);
+            list.appendChild(dd);
+        });
+    },
+
+    // Count, size, types, dates and flags of some photos
+    photoStats(files) {
+        let bytes = 0, largest = null, oldest = Infinity, newest = -Infinity;
+        const types = new Map();
+        const flags = { star: 0, rescan: 0, color: 0 };
+        for (const f of files) {
+            bytes += f.size || 0;
+            if (!largest || (f.size || 0) > (largest.size || 0)) largest = f;
+            if (f.lastModified) {
+                if (f.lastModified < oldest) oldest = f.lastModified;
+                if (f.lastModified > newest) newest = f.lastModified;
+            }
+            let ext = (f.name.match(/\.(\w+)$/) || [, '?'])[1].toUpperCase();
+            if (ext === 'JPG') ext = 'JPEG';
+            types.set(ext, (types.get(ext) || 0) + 1);
+            const fl = f._flags;
+            if (fl) {
+                if (fl.star) flags.star++;
+                if (fl.rescan) flags.rescan++;
+                if (fl.color) flags.color++;
+            }
+        }
+        return { n: files.length, bytes, largest, oldest, newest, types, flags };
+    },
+
+    statRows(st) {
+        const day = (t) => new Date(t).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+        const rows = [];
+        rows.push(['Size', this.formatBytes(st.bytes)]);
+        if (st.n > 1) rows.push(['Average', this.formatBytes(Math.round(st.bytes / st.n))]);
+        if (st.largest && st.n > 1) rows.push(['Largest', `${st.largest.name} (${this.formatBytes(st.largest.size)})`]);
+        if (st.types.size) rows.push(['Types', [...st.types].sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n.toLocaleString()}`).join(' · ')]);
+        if (isFinite(st.oldest)) rows.push(['Modified', day(st.oldest) === day(st.newest) ? day(st.oldest) : `${day(st.oldest)} – ${day(st.newest)}`]);
+        const fl = [];
+        if (st.flags.star) fl.push(`★ ${st.flags.star}`);
+        if (st.flags.rescan) fl.push(`rescan ${st.flags.rescan}`);
+        if (st.flags.color) fl.push(`labelled ${st.flags.color}`);
+        if (fl.length) rows.push(['Flags', fl.join(' · ')]);
+        return rows;
+    },
+
+    // folder: a path ('' the opened folder, null All photos); files: a selection
+    async fillFolderInfo({ folder = null, files = null }) {
+        const list = this.elements.infoList;
+        if (!list) return;
+        const token = (this._infoToken = (this._infoToken || 0) + 1);
+        const plural = (n, w) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`;
+        const rows = [];
+        let title;
+        const whole = folder === null || folder === '' || !this.dirHandle;
+        if (files) {
+            title = 'Selection';
+            rows.push(['Photos', files.length.toLocaleString()]);
+            rows.push(...this.statRows(this.photoStats(files)));
+        } else {
+            title = folder === null ? 'Order' : 'Folder';
+            const name = folder === null ? Folders.rootName() : Folders.nameOf(folder);
+            rows.push(['Name', name]);
+            if (folder) rows.push(['Location', `${Folders.rootName()} / ${Folders.label(folder)}`]);
+            const all = folder === null ? this.files : this.files.filter(f => Folders.within(Folders.dirOf(f), folder));
+            const here = folder === null ? all : all.filter(f => Folders.dirOf(f) === folder);
+            const subs = this.dirHandle ? [...Folders.map.keys()].filter(k => k !== '' && k !== folder && Folders.within(k, folder || '')).length : 0;
+            if (here.length !== all.length) {
+                rows.push(['Photos', `${here.length.toLocaleString()} here · ${all.length.toLocaleString()} with subfolders`]);
+            } else {
+                rows.push(['Photos', all.length.toLocaleString()]);
+            }
+            if (subs) rows.push(['Folders', subs.toLocaleString()]);
+            const st = this.photoStats(all);
+            rows.push(...this.statRows(st));
+            if (here.length !== all.length) rows.splice(rows.findIndex(r => r[0] === 'Size') + 1, 0, ['Size here', this.formatBytes(this.photoStats(here).bytes)]);
+            if (!whole) {
+                rows.push(['—']);
+                rows.push(['Whole order', `${plural(this.files.length, 'photo')} · ${this.formatBytes(this.photoStats(this.files).bytes)}`]);
+            }
+        }
+        // The current filter or search, if any
+        if (Flags.active()) rows.push(['Showing', `${this.viewFiles().length.toLocaleString()} matching the ${Flags.filter ? 'filter' : 'search'}`]);
+        // What jEditor itself keeps in the folder (worked out in the background)
+        const showOwn = !files && whole && this.dirHandle && !this.readOnlyMode;
+        if (showOwn) rows.push(['—'], ['.jeditor', 'Adding up…', 'info-pending']);
+        this.setInfoRows(title, rows);
+        if (!showOwn) return;
+        const own = await this.jeditorUsage();
+        if (token !== this._infoToken) return;
+        const i = rows.findIndex(r => r[0] === '.jeditor');
+        rows.splice(i, 1);
+        if (!own || !own.bytes) {
+            rows.splice(i, 0, ['.jeditor', 'empty']);
+        } else {
+            const parts = [['.jeditor', this.formatBytes(own.bytes)]];
+            if (own.trash.n) parts.push(['  Trash', `${plural(own.trash.n, 'photo')} · ${this.formatBytes(own.trash.bytes)}`]);
+            if (own.cache.bytes) parts.push(['  Cache', this.formatBytes(own.cache.bytes)]);
+            if (own.originals.n) parts.push(['  Originals', `${plural(own.originals.n, 'photo')} · ${this.formatBytes(own.originals.bytes)}`]);
+            rows.splice(i, 0, ...parts);
+        }
+        this.setInfoRows(title, rows);
+    },
+
+    // .jeditor's size, worked out at most every 30 s (it reads every cached
+    // thumbnail's size, so not on every click)
+    jeditorUsage() {
+        const c = this._usage;
+        if (c && c.dir === this.dirHandle && Date.now() - c.at < 30000) return c.value; // cleared by jEditor's own writes
+        const value = FolderCache.usage(this);
+        this._usage = { dir: this.dirHandle, at: Date.now(), value };
+        return value;
     },
 
     async fillInfoPanel(file) {
         const list = this.elements.infoList;
         if (!list || !file) return;
+        this.elements.infoPanel.querySelector('h3').textContent = 'File Info';
         const token = (this._infoToken = (this._infoToken || 0) + 1);
 
         const rows = [];
@@ -2298,6 +2464,7 @@ const app = {
 
 
     handleGridClick(e, file) {
+        this.releaseInfoTarget();
         if (e.ctrlKey || e.metaKey) {
             this.toggleSelection(file);
         } else if (e.shiftKey) {
@@ -2350,6 +2517,7 @@ const app = {
         if (active) active.classList.add('active');
         this._activeGridEl = active || null;
 
+        this.refreshInfoSoon();
         if (this.selection.size > 0) {
             this.elements.selectionBar.classList.remove('hidden');
             this.elements.selectionCount.textContent = `${this.selection.size} selected`;
@@ -2380,8 +2548,10 @@ const app = {
             }
         }
         this.viewMode = mode;
+        this._infoTarget = null;
         Folders.render();
         this.updateStatusBar();
+        this.refreshInfoSoon();
         const iconGrid = this.elements.btnToggleView.querySelector('.icon-grid');
         const iconSingle = this.elements.btnToggleView.querySelector('.icon-single');
 
@@ -2447,7 +2617,7 @@ const app = {
         Flags.updateHeader();
         this.updateFileCount();
         this.updateStatusBar();
-        if (this._infoOpen) this.fillInfoPanel(file);
+        if (this._infoOpen) this.refreshInfoSoon();
         this.updateActiveThumbnail();
     },
 
@@ -3090,7 +3260,7 @@ const app = {
         ['view.zoomIn', 'global', 'View', 'Zoom in', ['+', '=']],
         ['view.zoomOut', 'global', 'View', 'Zoom out', ['-']],
         ['view.zoomFit', 'global', 'View', 'Zoom to fit', ['0']],
-        ['view.info', 'global', 'View', 'File info', ['I']],
+        ['view.info', 'global', 'View', 'Info: the photo, or the folder or selection in the grid', ['I']],
         ['view.fullscreen', 'global', 'View', 'Fullscreen', ['F']],
         ['view.slideshow', 'global', 'View', 'Slideshow', []],
         ['app.dupes', 'global', 'App', 'Find duplicates (WIP)', ['D']],
@@ -4867,7 +5037,7 @@ const app = {
                 ['Move to…', () => Folders.openPicker([file], 'move')],
                 ['Copy to…', () => Folders.openPicker([file], 'copy')],
                 ['Rename…', () => this.promptRename(file)],
-                ['File Info', () => { this.toggleInfoPanel(true); }],
+                ['File Info', () => { this.toggleInfoPanel(true, { file }); }],
                 ['Export Copy…', () => this.exportCopies([file])],
                 ['—'],
                 ['Move to Trash', () => this.moveToTrash([file]), true]
@@ -4902,6 +5072,7 @@ const app = {
             ...(this.dirHandle ? [['New Folder…', () => Folders.newFolder()]] : []),
             ['Rename All…', () => this.openRename([])],
             ['Search…', () => Flags.focusSearch()],
+            [Folders.scope === null ? 'Order Info' : 'Folder Info', () => this.toggleInfoPanel(true, { folder: Folders.scope })],
             ...(this.files.some(f => Flags.has(f, 'rescan'))
                 ? [['Copy Rescan List', () => Flags.copyList(this.files.filter(f => Flags.has(f, 'rescan')), 'rescan')]] : []),
             ['Clean Up Folder…', () => this.cleanUpFolder()],

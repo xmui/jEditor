@@ -126,6 +126,16 @@ const Folders = {
         return out;
     },
 
+    // Bytes of the photos directly in each folder
+    sizes() {
+        const c = new Map();
+        for (const f of this.app.files) {
+            const d = this.dirOf(f);
+            c.set(d, (c.get(d) || 0) + (f.size || 0));
+        }
+        return c;
+    },
+
     // Photos directly in each folder
     counts() {
         const c = new Map();
@@ -179,6 +189,7 @@ const Folders = {
         }
         const changed = path !== this.scope;
         this.scope = path;
+        app._infoTarget = null;
         app.selection.clear();
         const view = this.viewFiles();
         if (!this.inView(app.currentFile) && view.length) app.currentFile = view[0];
@@ -269,11 +280,14 @@ const Folders = {
             this.setScope(row.dataset.scope === 'all' ? null : row.dataset.folderPath);
         });
         this.el('fr-new').addEventListener('click', () => this.newFolder());
+        this.el('fr-total').addEventListener('click', () => this.app.toggleInfoPanel(true, { folder: this.scope }));
     },
 
     renderRail(counts) {
         const tree = this.el('folder-tree');
         const total = this.app.files.length;
+        const sizes = this.sizes();
+        const fmt = (n) => this.app.formatBytes(n);
         const rows = [];
         const esc = (s) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
         rows.push(`<div class="fr-row fr-all${this.scope === null ? ' active' : ''}" data-scope="all" title="Every photo in the order, whatever folder it's in">` +
@@ -284,10 +298,11 @@ const Folders = {
             const kids = this.children(p);
             const n = counts.get(p) || 0;
             const open = p === '' || !this.collapsed.has(p);
-            let inside = 0;
-            for (const [d, c] of counts) if (d !== p && this.within(d, p)) inside += c;
-            const title = `${this.label(p)}: ${n} photo${n === 1 ? '' : 's'} here` +
-                (inside ? ` · ${(n + inside).toLocaleString()} including subfolders` : '');
+            let inside = 0, insideBytes = 0;
+            for (const [d, c] of counts) if (d !== p && this.within(d, p)) { inside += c; insideBytes += sizes.get(d) || 0; }
+            const bytes = sizes.get(p) || 0;
+            const title = `${this.label(p)}: ${n} photo${n === 1 ? '' : 's'} here (${fmt(bytes)})` +
+                (inside ? ` · ${(n + inside).toLocaleString()} including subfolders (${fmt(bytes + insideBytes)})` : '');
             const caret = kids.length && p !== ''
                 ? `<button class="fr-caret${open ? ' open' : ''}" title="${open ? 'Fold' : 'Unfold'}" tabindex="-1"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1.5 6.5 5 3 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`
                 : '<span class="fr-caret fr-spacer"></span>';
@@ -300,6 +315,13 @@ const Folders = {
         if (this.map.has('')) walk('', 0);
         tree.innerHTML = rows.join('');
         this.el('fr-hint').classList.toggle('hidden', this.hasSubfolders());
+        // The total at the bottom: what's being shown (the whole order in All photos)
+        const scopeFiles = this.scope === null ? this.app.files : this.app.files.filter(f => this.within(this.dirOf(f), this.scope));
+        let bytes = 0;
+        for (const f of scopeFiles) bytes += f.size || 0;
+        const totalEl = this.el('fr-total');
+        totalEl.textContent = `${scopeFiles.length.toLocaleString()} photo${scopeFiles.length === 1 ? '' : 's'} · ${fmt(bytes)}`;
+        totalEl.title = (this.scope === null ? 'The whole order' : `${this.label(this.scope)}, including subfolders`) + ' — click for details';
         const active = tree.querySelector('.fr-row.active');
         if (active && (active.offsetTop < tree.scrollTop || active.offsetTop > tree.scrollTop + tree.clientHeight - 30)) {
             tree.scrollTop = active.offsetTop - tree.clientHeight / 2;
@@ -1033,7 +1055,7 @@ const Folders = {
     contextItems(path) {
         const app = this.app;
         const sel = [...app.selection].filter(f => this.inView(f));
-        const items = [['Open', () => this.setScope(path)]];
+        const items = [['Open', () => this.setScope(path)], ['Folder Info', () => app.toggleInfoPanel(true, { folder: path })]];
         if (sel.length) {
             const here = sel.every(f => this.dirOf(f) === path);
             items.push(['—']);

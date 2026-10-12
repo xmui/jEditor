@@ -2496,7 +2496,7 @@ async function newPage(browser, url) {
             app.clearSelection();
             out.menu = Folders.contextItems('Wedding/Reception').map(i => i[0]).join('|');
             app.selection = new Set([f('b.jpg'), f('d.jpg')]);
-            out.menuSel = Folders.contextItems('Wedding').map(i => i[0]).slice(0, 4).join('|');
+            out.menuSel = Folders.contextItems('Wedding').map(i => i[0]).slice(0, 5).join('|');
             // The path chip (bottom left) is for single view only
             app.setView('single');
             const chipShown = () => !document.getElementById('status-bar').classList.contains('hidden');
@@ -2540,10 +2540,10 @@ async function newPage(browser, url) {
         check('folders: moved photos keep their cached thumbnail and preview', r.cacheCarried);
         check('folders: folder list can be hidden (remembered)', r.railHidden);
         check('folders: Rename All in a folder covers that folder only', r.renameScope === 'Wedding/b.jpg,Wedding/w1.jpg|All photos in Wedding (2)', r.renameScope);
-        check('folders: folder menu', r.menu === 'Open|—|New Folder Inside…|Rename Folder…|—|Delete Folder', r.menu);
+        check('folders: folder menu', r.menu === 'Open|Folder Info|—|New Folder Inside…|Rename Folder…|—|Delete Folder', r.menu);
         check('path chip: shown in single view, hidden in the grid', r.chipSingle && !r.chipGrid, `${r.chipSingle}/${r.chipGrid}`);
         check('folders: grid rows keep their gap (tiles never overlap)', r.rowGap === 16 && r.square, `gap=${r.rowGap}`);
-        check('folders: folder menu moves or copies the selection there', r.menuSel === 'Open|—|Move 2 Photos Here|Copy 2 Photos Here', r.menuSel);
+        check('folders: folder menu moves or copies the selection there', r.menuSel === 'Open|Folder Info|—|Move 2 Photos Here|Copy 2 Photos Here', r.menuSel);
 
         // Drag photos onto a folder in the list (Ctrl copies), never opening
         // them as a dropped folder
@@ -3190,6 +3190,81 @@ async function newPage(browser, url) {
         check('single view controls: back while the pointer is there, fade once it leaves', r.back && r.staysWhileNear && r.fadesAfterLeaving, JSON.stringify(r));
         check('single view controls: can be turned off in Customize controls, and on again', r.off && r.staysOff && r.offAfterViews && r.onAgain, JSON.stringify(r));
         check('single view controls suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7t4. Folder details and storage size ----
+    console.log('folder details');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('infoorder', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('infoorder', { create: true });
+            const put = async (d, name, data) => {
+                const fh = await d.getFileHandle(name, { create: true });
+                const w = await fh.createWritable(); await w.write(new Blob([data])); await w.close();
+            };
+            const jpg = await makeRealJpeg(200, 140);
+            await put(dir, 'a.jpg', jpg);
+            await put(dir, 'b.jpg', jpg);
+            await put(dir, 'c.png', await makeRealPng(120, 80, 300));
+            const sub = await dir.getDirectoryHandle('Ceremony', { create: true });
+            await put(sub, 'c1.jpg', jpg);
+            const trash = await (await dir.getDirectoryHandle('.jeditor', { create: true })).getDirectoryHandle('trash', { create: true });
+            await put(trash, 'gone.jpg', new Uint8Array(5000));
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            app.setView('grid');
+            const rows = () => {
+                const dts = [...document.querySelectorAll('#info-list dt')].map(x => x.textContent);
+                const dds = [...document.querySelectorAll('#info-list dd')].map(x => x.textContent);
+                return Object.fromEntries(dts.map((k, i) => [k.trim(), dds[i]]));
+            };
+            const title = () => document.querySelector('#info-panel h3').textContent;
+            const total = app.files.reduce((n, f) => n + f.size, 0);
+
+            // I in the grid: the order
+            app.selection = new Set([app.files[0]]);
+            app.updateSelectionUI();
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'i', bubbles: true }));
+            await sleep(50);
+            let r1 = rows();
+            out.order = title() === 'Order' && r1.Photos === '4' && r1.Size === app.formatBytes(total) && r1.Folders === '1' && /JPEG 3 · PNG 1/.test(r1.Types);
+            for (let i = 0; i < 50 && rows()['.jeditor'] === 'Adding up…'; i++) await sleep(30);
+            r1 = rows();
+            out.own = r1['.jeditor'] === app.formatBytes(5000) && /1 photo/.test(r1.Trash || '');
+            // Several selected: the selection
+            app.selection = new Set(app.files.slice(0, 2));
+            app.updateSelectionUI();
+            await sleep(50);
+            out.selection = title() === 'Selection' && rows().Photos === '2';
+            // A folder, with the whole order underneath
+            Folders.setScope('Ceremony');
+            app.selection.clear();
+            app.updateSelectionUI();
+            await sleep(50);
+            const r2 = rows();
+            out.folder = title() === 'Folder' && r2.Name === 'Ceremony' && r2.Photos === '1' && /4 photos/.test(r2['Whole order'] || '');
+            out.railTotal = document.getElementById('fr-total').textContent === `1 photo · ${app.formatBytes(app.files.find(f => f.name === 'c1.jpg').size)}`;
+            // Folder Info from the folder menu, then single view shows the photo
+            Folders.setScope(null);
+            Folders.contextItems('Ceremony').find(i => i[0] === 'Folder Info')[1]();
+            await sleep(50);
+            out.menu = title() === 'Folder' && rows().Name === 'Ceremony';
+            app.setView('single');
+            await sleep(80);
+            out.single = title() === 'File Info' && rows().Name === app.currentFile.name;
+            out.gb = app.formatBytes(3 * 1024 * 1024 * 1024) === '3.00 GB';
+            return out;
+        });
+        check('folder details: I in the grid shows the order: photos, size, folders, types', r.order, JSON.stringify(r));
+        check('folder details: how much room .jeditor takes, trash counted', r.own, JSON.stringify(r));
+        check('folder details: a selection, a folder with the whole order, Folder Info in the menu', r.selection && r.folder && r.menu, JSON.stringify(r));
+        check('folder details: total under the folder list; single view still shows the photo', r.railTotal && r.single && r.gb, JSON.stringify(r));
+        check('folder details suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

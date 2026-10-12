@@ -3474,3 +3474,48 @@ body:has(#main-interface.rail-open:not(.hidden)) #toast-stack {
     opacity: 0.85;
     user-select: text;
 }
+
+/* Info panel: a thin rule between sections, a placeholder while adding up */
+.info-panel .info-sep {
+    grid-column: 1 / -1;
+    height: 1px;
+    margin: 3px 0;
+    background: rgba(125, 125, 125, 0.25);
+}
+
+.info-panel dd.info-pending {
+    opacity: 0.5;
+}
+
+/* Folder list foot: the total of what's shown, then New folder */
+.fr-foot {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.fr-foot .fr-new {
+    margin-top: 0;
+}
+
+.fr-total {
+    order: -1;
+    align-self: flex-start;
+    background: transparent;
+    border: none;
+    color: inherit;
+    font: inherit;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.55;
+    padding: 2px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.fr-total:hover {
+    opacity: 1;
+    background: rgba(125, 125, 125, 0.18);
+}

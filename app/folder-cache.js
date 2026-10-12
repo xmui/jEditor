@@ -186,6 +186,41 @@ const FolderCache = {
         } catch (e) { /* best-effort */ }
     },
 
+    // ---- how much room .jeditor takes ----
+
+    // → { bytes, trash: {n, bytes}, cache: {n, bytes}, originals: {n, bytes} }
+    // or null when there's no .jeditor. Files are read for their size only.
+    async usage(app) {
+        const root = await this.root(app, false);
+        if (!root) return null;
+        await this.flush();
+        const out = { bytes: 0, trash: { n: 0, bytes: 0 }, cache: { n: 0, bytes: 0 }, originals: { n: 0, bytes: 0 }, other: { n: 0, bytes: 0 } };
+        const walk = async (dir, bucket) => {
+            const subs = [], files = [];
+            for await (const e of dir.values()) (e.kind === 'directory' ? subs : files).push(e);
+            for (let i = 0; i < files.length; i += 32) {
+                const sizes = await Promise.all(files.slice(i, i + 32).map(e => e.getFile().then(f => f.size, () => 0)));
+                for (const n of sizes) {
+                    bucket.n++;
+                    bucket.bytes += n;
+                }
+            }
+            for (const d of subs) await walk(d, bucket);
+        };
+        try {
+            for await (const e of root.values()) {
+                const bucket = out[e.name] && e.kind === 'directory' ? out[e.name] : out.other;
+                if (e.kind === 'directory') await walk(e, bucket);
+                else {
+                    bucket.n++;
+                    bucket.bytes += await e.getFile().then(f => f.size, () => 0);
+                }
+            }
+        } catch (e) { /* partial is fine */ }
+        out.bytes = out.trash.bytes + out.cache.bytes + out.originals.bytes + out.other.bytes;
+        return out;
+    },
+
     // ---- a subfolder's own .jeditor ----
     //
     // Opening Smith Order/Ceremony on its own gives Ceremony a .jeditor.

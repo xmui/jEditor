@@ -155,6 +155,8 @@ const Flags = {
             const w = await fh.createWritable();
             await w.write(JSON.stringify({ version: 1, flags: out }));
             await w.close();
+            app._usage = null;
+            app.refreshInfoSoon();
         } catch (e) {
             console.warn('Saving flags failed:', e);
         }
