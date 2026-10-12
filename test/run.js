@@ -2878,7 +2878,46 @@ async function newPage(browser, url) {
             app.uiPrefs.autoCheck = false;
             Watch.start();
             out.off = !Watch.observer && !Watch._pollTimer;
+
+            // Deleting a photo that's already gone (deleted in File Explorer
+            // before jEditor noticed): it just leaves the grid
+            await put(dir, 'x1.jpg', bytes);
+            await app.refreshFolder();
+            const x1 = app.files.find(f => f.name === 'x1.jpg');
+            await dir.removeEntry('x1.jpg');
+            await app.moveToTrash([x1]);
+            const toasts = () => [...document.querySelectorAll('.toast')].map(t => t.textContent);
+            out.goneDelete = !app.files.includes(x1) && toasts().some(t => /already deleted elsewhere/.test(t)) &&
+                !toasts().some(t => /Couldn't delete/.test(t));
+
+            // One file that never finishes deleting doesn't hold up the rest
+            await put(dir, 'x2.jpg', bytes);
+            await put(dir, 'x3.jpg', bytes);
+            await app.refreshFolder();
+            const x2 = app.files.find(f => f.name === 'x2.jpg'), x3 = app.files.find(f => f.name === 'x3.jpg');
+            const realTrashOne = app.trashOne;
+            app.trashOne = function (f, ...rest) { return f === x2 ? new Promise(() => { }) : realTrashOne.call(this, f, ...rest); };
+            app.TRASH_TIMEOUT_MS = 300;
+            const started = Date.now();
+            await app.moveToTrash([x2, x3]);
+            app.trashOne = realTrashOne;
+            app.TRASH_TIMEOUT_MS = 30000;
+            out.hungDelete = Date.now() - started < 3000 && !app.files.includes(x3) && app.files.includes(x2) &&
+                !(app._tasks && app._tasks.has('trash'));
+
+            // An edit of ours that never ends stops holding up folder checks
             app.uiPrefs.autoCheck = true;
+            Watch.start();
+            await until(() => Watch.observer || Watch._pollTimer);
+            const stuck = { hang: () => new Promise(() => { }) };
+            Watch.guard(stuck, ['hang']);
+            Watch.STALE_OP_MS = 400;
+            stuck.hang();
+            await dir.removeEntry('x2.jpg');
+            Watch.request({ full: true });
+            await until(() => !app.files.includes(x2), 5000);
+            out.staleOp = !app.files.includes(x2);
+            Watch.STALE_OP_MS = 90000;
             return out;
         });
         console.log(`  info  watching with: ${r.watching}; rescan of an unchanged order: ${r.rescanMs} ms`);
@@ -2892,6 +2931,9 @@ async function newPage(browser, url) {
         check('rescan: an unchanged order is up to date', r.upToDate && r.rescanMs < 2000, String(r.rescanMs));
         check('watch: jEditor\'s own rename and trash aren\'t seen as outside changes', r.ownOps);
         check('watch: can be switched off', r.off);
+        check('delete: a photo already deleted elsewhere just leaves the grid', r.goneDelete, JSON.stringify(r));
+        check('delete: one file that never finishes doesn\'t hold up the rest', r.hungDelete, JSON.stringify(r));
+        check('watch: an edit that never ends stops holding up folder checks', r.staleOp, JSON.stringify(r));
         check('watch suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

@@ -4455,6 +4455,7 @@ const app = {
         if (many) this.beginTask('trash', `Deleting 0/${list.length}`);
         const moved = new Set();
         const undoItems = [];
+        const alreadyGone = [];
         let failed = 0, next = 0, done = 0;
         const stamp = Date.now();
         const worker = async () => {
@@ -4462,16 +4463,22 @@ const app = {
                 const i = next++;
                 const f = list[i];
                 try {
-                    if (f._rotationQueue) await f._rotationQueue;
+                    if (f._rotationQueue) await this.withTimeout(f._rotationQueue, this.TRASH_TIMEOUT_MS, 'Waiting for a rotation').catch(() => { });
                     let trashName = f.name;
                     if (taken.has(trashName.toLowerCase())) trashName = `${stamp}_${i}_${f.name}`; // avoid collision
                     taken.add(trashName.toLowerCase());
-                    await this.trashOne(f, trashDir, trashName);
+                    // One file Windows never answers for mustn't hold up the rest
+                    await this.withTimeout(this.trashOne(f, trashDir, trashName), this.TRASH_TIMEOUT_MS, `Deleting ${f.name}`);
                     moved.add(f);
                     undoItems.push({ file: f, trashDir, trashName });
                 } catch (e) {
-                    console.error('Trash failed for', f.name, e);
-                    failed++;
+                    if (e && e.name === 'NotFoundError') {
+                        // Deleted already (in File Explorer, say): just take it off the screen
+                        alreadyGone.push(f);
+                    } else {
+                        (e && e.name === 'TimeoutError' ? console.warn : console.error)('Trash failed for', f.name, e);
+                        failed++;
+                    }
                 }
                 done++;
                 if (many && (done % 10 === 0 || done === list.length)) this.updateTask('trash', `Deleting ${done}/${list.length}`);
@@ -4482,13 +4489,36 @@ const app = {
         } finally {
             if (many) this.endTask('trash');
         }
-        this.removeFilesFromApp(list.filter(f => moved.has(f)));
+        Flags.forgetFiles(alreadyGone);
+        this.removeFilesFromApp(list.filter(f => moved.has(f)).concat(alreadyGone));
 
         if (undoItems.length) {
             this.pushUndo({ type: 'trash', items: undoItems });
             this.showToast(`Moved ${undoItems.length} to the trash (.jeditor/trash) — Ctrl+Z to restore`, 4000);
         }
-        if (failed) this.showToast(`Couldn't delete ${failed} photo${failed === 1 ? '' : 's'}`, 4000);
+        if (alreadyGone.length) {
+            const n = alreadyGone.length;
+            this.showToast(`${n} photo${n === 1 ? ' was' : 's were'} already deleted elsewhere`, 3500, null, null, { type: 'info' });
+        }
+        if (failed) {
+            this.showToast(`Couldn't delete ${failed} photo${failed === 1 ? '' : 's'} — press R to check the folder`, 5000);
+            Watch.request({ full: true }); // see what's really there
+        }
+    },
+
+    TRASH_TIMEOUT_MS: 30000,
+
+    // Rejects with a TimeoutError if `promise` hasn't settled in `ms`
+    withTimeout(promise, ms, what) {
+        let timer;
+        const timeout = new Promise((_, reject) => {
+            timer = setTimeout(() => {
+                const e = new Error(`${what} timed out`);
+                e.name = 'TimeoutError';
+                reject(e);
+            }, ms);
+        });
+        return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
     },
 
     // One photo into the trash: move it, or copy then delete
@@ -4502,7 +4532,7 @@ const app = {
                 // moving not supported here: copy instead
             }
         }
-        const data = await f.handle.getFile();
+        const data = await f.handle.getFile(); // NotFoundError if it's gone already
         const th = await trashDir.getFileHandle(trashName, { create: true });
         const w = await th.createWritable();
         await w.write(data);

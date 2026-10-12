@@ -32,6 +32,8 @@ const Watch = {
 
     opDepth: 0,
     opGen: 0,
+    ops: new Map(), // edit in progress → when it started
+    STALE_OP_MS: 90000, // an edit running longer than this no longer holds checks up
     observer: null,
     running: null,
     queued: null,
@@ -63,35 +65,47 @@ const Watch = {
             const orig = obj[name];
             if (typeof orig !== 'function') continue;
             obj[name] = function (...args) {
+                const op = {};
+                w.ops.set(op, Date.now());
                 w.opDepth++;
                 w.opGen++;
                 let res;
                 try {
                     res = orig.apply(this, args);
                 } catch (e) {
-                    w.endOp();
+                    w.endOp(op);
                     throw e;
                 }
-                if (res && typeof res.then === 'function') return res.finally(() => w.endOp());
-                w.endOp();
+                if (res && typeof res.then === 'function') return res.finally(() => w.endOp(op));
+                w.endOp(op);
                 return res;
             };
         }
     },
 
-    endOp() {
+    endOp(op) {
+        this.ops.delete(op);
         this.opDepth--;
         this.opGen++;
         Flags.saveSoon(); // renamed or moved photos: flags under their new paths
         this.app._usage = null; // .jeditor's size may have changed (trash, originals)
         this.app.refreshInfoSoon();
         // A check that came in meanwhile runs now
-        if (!this.opDepth && this.queued) this.kick(400);
+        if (!this.editing() && this.queued) this.kick(400);
+    },
+
+    // An edit of ours is under way. One that has run for minutes (a file
+    // operation Windows never finished, say) stops holding checks up, so
+    // photos deleted elsewhere still go from the grid.
+    editing() {
+        const now = Date.now();
+        for (const started of this.ops.values()) if (now - started < this.STALE_OP_MS) return true;
+        return false;
     },
 
     busy() {
         const app = this.app;
-        return this.opDepth > 0 || app.isLoading || (app._tasks && app._tasks.has('scan'));
+        return this.editing() || app.isLoading || (app._tasks && app._tasks.has('scan'));
     },
 
     // ---- Starting and stopping with the folder ----
@@ -424,7 +438,7 @@ const Watch = {
         // Something of ours touched the folder meanwhile, or a new folder
         // was opened: this picture may be half old, half new. Look again.
         if (gen !== this.gen) return;
-        if (opGen !== this.opGen || this.opDepth) {
+        if (opGen !== this.opGen || this.editing()) {
             this.request(job);
             return;
         }

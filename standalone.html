@@ -27,7 +27,8 @@ const CHANGELOG = [
     {
         version: '1.17.0', date: '2026-10-12',
         items: [
-            'Fixed black previews for photos a scanner was still saving when jEditor spotted them. A new photo is now added only once it\'s whole, and a preview that can\'t be made or shown is tried again instead of staying blank.',
+            'Photos deleted in File Explorer no longer get stuck in jEditor. Deleting a photo that\'s already gone just takes it off the screen, a delete that Windows never finishes gives up on that file after 30 seconds instead of hanging, and a stuck operation no longer stops the folder watch from noticing photos deleted elsewhere.',
+            'A photo a scanner is still saving is added once it\'s whole, not half-written, and a preview that can\'t be made or shown is tried again instead of staying blank.',
             'Folder details: in the grid, `I` (or Order Info / Folder Info in the right-click menus) shows the folder you\'re in: how many photos, here and with subfolders, total size, average and largest photo, file types, dates, flags, and for the whole order how much room jEditor\'s .jeditor folder takes (trash, cache, Auto crop originals). Select several photos to see the same for the selection. Single view still shows the photo\'s own details.',
             'The folder list shows the total for what you\'re looking at, such as 1,240 photos · 4.80 GB. Click it for the details. Hovering a folder shows its size too.',
             'In single view, the controls above the film strip fade away a few seconds after they appear, leaving the photo the screen. Move the pointer to where they were and they come back. To do without them altogether, untick Buttons above the film strip in Customize controls.',
@@ -5570,6 +5571,8 @@ const Watch = {
 
     opDepth: 0,
     opGen: 0,
+    ops: new Map(), // edit in progress → when it started
+    STALE_OP_MS: 90000, // an edit running longer than this no longer holds checks up
     observer: null,
     running: null,
     queued: null,
@@ -5601,35 +5604,47 @@ const Watch = {
             const orig = obj[name];
             if (typeof orig !== 'function') continue;
             obj[name] = function (...args) {
+                const op = {};
+                w.ops.set(op, Date.now());
                 w.opDepth++;
                 w.opGen++;
                 let res;
                 try {
                     res = orig.apply(this, args);
                 } catch (e) {
-                    w.endOp();
+                    w.endOp(op);
                     throw e;
                 }
-                if (res && typeof res.then === 'function') return res.finally(() => w.endOp());
-                w.endOp();
+                if (res && typeof res.then === 'function') return res.finally(() => w.endOp(op));
+                w.endOp(op);
                 return res;
             };
         }
     },
 
-    endOp() {
+    endOp(op) {
+        this.ops.delete(op);
         this.opDepth--;
         this.opGen++;
         Flags.saveSoon(); // renamed or moved photos: flags under their new paths
         this.app._usage = null; // .jeditor's size may have changed (trash, originals)
         this.app.refreshInfoSoon();
         // A check that came in meanwhile runs now
-        if (!this.opDepth && this.queued) this.kick(400);
+        if (!this.editing() && this.queued) this.kick(400);
+    },
+
+    // An edit of ours is under way. One that has run for minutes (a file
+    // operation Windows never finished, say) stops holding checks up, so
+    // photos deleted elsewhere still go from the grid.
+    editing() {
+        const now = Date.now();
+        for (const started of this.ops.values()) if (now - started < this.STALE_OP_MS) return true;
+        return false;
     },
 
     busy() {
         const app = this.app;
-        return this.opDepth > 0 || app.isLoading || (app._tasks && app._tasks.has('scan'));
+        return this.editing() || app.isLoading || (app._tasks && app._tasks.has('scan'));
     },
 
     // ---- Starting and stopping with the folder ----
@@ -5962,7 +5977,7 @@ const Watch = {
         // Something of ours touched the folder meanwhile, or a new folder
         // was opened: this picture may be half old, half new. Look again.
         if (gen !== this.gen) return;
-        if (opGen !== this.opGen || this.opDepth) {
+        if (opGen !== this.opGen || this.editing()) {
             this.request(job);
             return;
         }
@@ -14970,6 +14985,7 @@ const app = {
         if (many) this.beginTask('trash', `Deleting 0/${list.length}`);
         const moved = new Set();
         const undoItems = [];
+        const alreadyGone = [];
         let failed = 0, next = 0, done = 0;
         const stamp = Date.now();
         const worker = async () => {
@@ -14977,16 +14993,22 @@ const app = {
                 const i = next++;
                 const f = list[i];
                 try {
-                    if (f._rotationQueue) await f._rotationQueue;
+                    if (f._rotationQueue) await this.withTimeout(f._rotationQueue, this.TRASH_TIMEOUT_MS, 'Waiting for a rotation').catch(() => { });
                     let trashName = f.name;
                     if (taken.has(trashName.toLowerCase())) trashName = `${stamp}_${i}_${f.name}`; // avoid collision
                     taken.add(trashName.toLowerCase());
-                    await this.trashOne(f, trashDir, trashName);
+                    // One file Windows never answers for mustn't hold up the rest
+                    await this.withTimeout(this.trashOne(f, trashDir, trashName), this.TRASH_TIMEOUT_MS, `Deleting ${f.name}`);
                     moved.add(f);
                     undoItems.push({ file: f, trashDir, trashName });
                 } catch (e) {
-                    console.error('Trash failed for', f.name, e);
-                    failed++;
+                    if (e && e.name === 'NotFoundError') {
+                        // Deleted already (in File Explorer, say): just take it off the screen
+                        alreadyGone.push(f);
+                    } else {
+                        (e && e.name === 'TimeoutError' ? console.warn : console.error)('Trash failed for', f.name, e);
+                        failed++;
+                    }
                 }
                 done++;
                 if (many && (done % 10 === 0 || done === list.length)) this.updateTask('trash', `Deleting ${done}/${list.length}`);
@@ -14997,13 +15019,36 @@ const app = {
         } finally {
             if (many) this.endTask('trash');
         }
-        this.removeFilesFromApp(list.filter(f => moved.has(f)));
+        Flags.forgetFiles(alreadyGone);
+        this.removeFilesFromApp(list.filter(f => moved.has(f)).concat(alreadyGone));
 
         if (undoItems.length) {
             this.pushUndo({ type: 'trash', items: undoItems });
             this.showToast(`Moved ${undoItems.length} to the trash (.jeditor/trash) — Ctrl+Z to restore`, 4000);
         }
-        if (failed) this.showToast(`Couldn't delete ${failed} photo${failed === 1 ? '' : 's'}`, 4000);
+        if (alreadyGone.length) {
+            const n = alreadyGone.length;
+            this.showToast(`${n} photo${n === 1 ? ' was' : 's were'} already deleted elsewhere`, 3500, null, null, { type: 'info' });
+        }
+        if (failed) {
+            this.showToast(`Couldn't delete ${failed} photo${failed === 1 ? '' : 's'} — press R to check the folder`, 5000);
+            Watch.request({ full: true }); // see what's really there
+        }
+    },
+
+    TRASH_TIMEOUT_MS: 30000,
+
+    // Rejects with a TimeoutError if `promise` hasn't settled in `ms`
+    withTimeout(promise, ms, what) {
+        let timer;
+        const timeout = new Promise((_, reject) => {
+            timer = setTimeout(() => {
+                const e = new Error(`${what} timed out`);
+                e.name = 'TimeoutError';
+                reject(e);
+            }, ms);
+        });
+        return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
     },
 
     // One photo into the trash: move it, or copy then delete
@@ -15017,7 +15062,7 @@ const app = {
                 // moving not supported here: copy instead
             }
         }
-        const data = await f.handle.getFile();
+        const data = await f.handle.getFile(); // NotFoundError if it's gone already
         const th = await trashDir.getFileHandle(trashName, { create: true });
         const w = await th.createWritable();
         await w.write(data);
