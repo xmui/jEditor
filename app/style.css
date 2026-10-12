@@ -939,7 +939,9 @@ header {
     overflow: hidden;
     background: var(--tile-bg);
     cursor: pointer;
-    transition: box-shadow var(--dur-fast) var(--ease-out), filter var(--dur-fast) var(--ease-out);
+    /* Only the hover brightening animates: selection rings change at once,
+       so a re-shown grid never flashes rings fading in or out */
+    transition: filter var(--dur-fast) var(--ease-out);
     /* Skip layout/paint for tiles far outside the viewport */
     content-visibility: auto;
     /* Tiles out of sight stand in at the real tile size (syncGridTile) */
@@ -1879,15 +1881,23 @@ header {
 }
 
 /* ---- 10. Toasts and the task pill ---- */
-/* One stack at the bottom centre, above whatever toolbar is down there.
-   --toast-bottom follows the view (set below). */
+/* One stack in the bottom-left corner, clear of the photo in the middle.
+   --toast-bottom / --toast-left follow the view (set below). */
 
 body {
+    --toast-left: var(--gutter);
+    /* Grid: above the selection bar's row */
     --toast-bottom: calc(var(--gutter) + var(--ctl-lg) + var(--sp-3));
 }
 
+/* Single view: just above the film strip, beside the centred controls */
 body[data-view="single"] {
-    --toast-bottom: calc(var(--strip-height, 80px) + 28px + var(--gutter) + var(--ctl-lg) + var(--sp-3));
+    --toast-bottom: calc(var(--strip-height, 80px) + 28px + var(--gutter));
+}
+
+/* Grid with the folder list open: beside the list */
+body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) {
+    --toast-left: var(--rail-room);
 }
 
 body:has(#drop-zone:not(.hidden)) {
@@ -1902,14 +1912,14 @@ body:has(#dupes-panel:not(.hidden)) #toast-stack,
 body:has(#dupes-panel:not(.hidden)) .task-pill {
     top: 64px;
     bottom: auto !important;
+    left: var(--gutter);
 }
 
 
 .task-pill {
     position: fixed;
-    left: 50%;
+    left: var(--toast-left);
     bottom: var(--toast-bottom);
-    translate: -50% 0;
     z-index: var(--z-toast);
     display: flex;
     align-items: center;
@@ -1946,8 +1956,7 @@ body:has(#dupes-panel:not(.hidden)) .task-pill {
     display: none;
     position: absolute;
     bottom: calc(100% + var(--sp-2));
-    left: 50%;
-    translate: -50% 0;
+    left: 0;
     min-width: 260px;
     flex-direction: column;
     gap: var(--sp-2);
@@ -1978,16 +1987,15 @@ body:has(#dupes-panel:not(.hidden)) .task-pill {
 
 #toast-stack {
     position: fixed;
-    left: 50%;
+    left: var(--toast-left);
     bottom: var(--toast-bottom);
-    translate: -50% 0;
     z-index: var(--z-toast);
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
     gap: var(--sp-2);
     width: max-content;
-    max-width: min(560px, calc(100vw - 32px));
+    max-width: min(480px, calc(100vw - var(--toast-left) - var(--gutter)));
     pointer-events: none;
     transition: bottom var(--dur-base) var(--ease-out);
 }
@@ -2023,7 +2031,7 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     pointer-events: none;
     opacity: 0;
     transform: translateY(8px) scale(0.96);
-    transform-origin: center bottom;
+    transform-origin: left bottom;
     transition:
         opacity var(--dur-base) ease,
         transform var(--dur-slow) var(--ease-spring),
@@ -3648,6 +3656,10 @@ body.dragging-photos .folder-tile:hover {
     }
     .interface.rail-open .selection-bar {
         left: var(--gutter);
+    }
+    /* The folder list overlays the grid here: toasts stay at the edge */
+    body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) {
+        --toast-left: var(--gutter);
     }
     .folder-rail {
         z-index: calc(var(--z-floating) + 2);
