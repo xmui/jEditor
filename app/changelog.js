@@ -5,7 +5,7 @@
 
 const CHANGELOG = [
     {
-        version: '1.16.1', date: '2026-10-12',
+        version: '1.17.0', date: '2026-10-12',
         items: [
             'Folder details: in the grid, `I` (or Order Info / Folder Info in the right-click menus) shows the folder you\'re in: how many photos, here and with subfolders, total size, average and largest photo, file types, dates, flags, and for the whole order how much room jEditor\'s .jeditor folder takes (trash, cache, Auto crop originals). Select several photos to see the same for the selection. Single view still shows the photo\'s own details.',
             'The folder list shows the total for what you\'re looking at, such as 1,240 photos · 4.80 GB. Click it for the details. Hovering a folder shows its size too.',
