@@ -39,8 +39,9 @@ sealed class Options
         ui ??= Environment.GetEnvironmentVariable("JEDITOR_UI");
         if (string.IsNullOrWhiteSpace(ui)) ui = null;
 #if DEV_DEFAULT
-        // A Debug build runs the submodule's UI, so edits show straight away
-        ui ??= FindUpwards(Path.Combine("jeditor", "app"));
+        // A Debug build runs the repo's own app folder (not the copy beside
+        // the exe), so edits show straight away
+        ui ??= FindRepoUi();
 #endif
         if (ui is not null)
         {
@@ -66,12 +67,14 @@ sealed class Options
     }
 
 #if DEV_DEFAULT
-    static string? FindUpwards(string relative)
+    // The folder above the exe that has both src\jEditor.csproj and app\
+    static string? FindRepoUi()
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
         {
-            var candidate = Path.Combine(dir.FullName, relative);
-            if (File.Exists(Path.Combine(candidate, "index.html"))) return candidate;
+            var ui = Path.Combine(dir.FullName, "app");
+            if (File.Exists(Path.Combine(dir.FullName, "src", "jEditor.csproj")) && File.Exists(Path.Combine(ui, "index.html")))
+                return ui;
         }
         return null;
     }

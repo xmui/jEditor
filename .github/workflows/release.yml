@@ -1,17 +1,18 @@
 name: Release
 
 # Publishes a GitHub Release with the setup and the portable zip attached.
-# Runs by itself when the jeditor submodule moves to a new jEditor version
-# on main, and can be run by hand from the Actions tab (say, for a fix to
-# the Windows app alone).
+# Runs by itself when a version bump (npm run bump x.y.z: app/version.js and
+# package.json) lands on main, and can be run by hand from the Actions tab.
 #
-# Tag: v<jEditor version>, e.g. v1.18.1. A second release of the same
-# jEditor version (a Windows-only fix) gets v1.18.1-2, then -3, and so on.
+# Tag: v<version>, e.g. v1.18.1. Run by hand for a version that's already
+# released (say, a fix to the Windows side alone), it makes v1.18.1-2, then
+# -3, and so on.
 on:
   push:
     branches: [main]
     paths:
-      - jeditor
+      - app/version.js
+      - package.json
   workflow_dispatch:
 
 permissions:
@@ -26,8 +27,6 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
@@ -45,7 +44,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $version = [regex]::Match((Get-Content jeditor/app/version.js -Raw), "APP_VERSION = '([0-9.]+)'").Groups[1].Value
+          $version = [regex]::Match((Get-Content app/version.js -Raw), "APP_VERSION = '([0-9.]+)'").Groups[1].Value
           $tags = @(gh release list --repo $env:GITHUB_REPOSITORY --limit 200 --json tagName --jq '.[].tagName')
           $auto = '${{ github.event_name }}' -eq 'push'
           $tag = "v$version"
@@ -73,7 +72,7 @@ jobs:
         if: steps.tag.outputs.skip == 'false'
         shell: pwsh
         run: |
-          $notes = node jeditor/scripts/release-notes.js ${{ steps.tag.outputs.version }}
+          $notes = node scripts/release-notes.js ${{ steps.tag.outputs.version }}
           if ($LASTEXITCODE -ne 0) { $notes = '' }
           @"
           jEditor ${{ steps.tag.outputs.version }} for Windows. Download **jEditor-Setup-${{ steps.tag.outputs.version }}.exe** and run it: it installs for you only and doesn't need admin rights. The first time, Windows may say it protected your PC: click **More info**, then **Run anyway**.

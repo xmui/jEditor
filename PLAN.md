@@ -1,16 +1,16 @@
-# jEditor for Windows: plan
+# jEditor: plan
 
 ## Why a Windows app, and why it can work without admin
 
-The lab has one Windows PC (an Epson FastFoto FF-680W and a Plustek OpticBook A300). The web app works there but has limits a browser can't get past: permission prompts, no way to look up from a folder to its order, a `.jeditor` folder that isn't really hidden, no Recycle Bin, and no scanning. See the "native Windows app and in-app scanning" notes in jEditor's PLAN.md for the full list.
+The lab has one Windows PC (an Epson FastFoto FF-680W and a Plustek OpticBook A300). The web app worked there but had limits a browser can't get past: permission prompts, no way to look up from a folder to its order, a `.jeditor` folder that isn't really hidden, no Recycle Bin, and no scanning. See "Native Windows app and in-app scanning" in [docs/jeditor-plan.md](docs/jeditor-plan.md) for the full list, and the lab's scanners.
 
 **Lab PC test (2026-10-12):** MultiMC, an unsigned portable .exe, ran from the user's own folder without admin. So nothing on that PC blocks unsigned apps run from user folders (no AppLocker rule, no Smart App Control). A per-user install of jEditor runs there too. Expect at most a one-time SmartScreen "More info → Run anyway", since a new app has no reputation yet.
 
 ## How it's built
 
 - **.NET 8 WinForms + WebView2.** Not Tauri, and not a rewrite of jEditor's ~12.6k lines. WebView2 is Edge's engine, so jEditor runs as it does in Edge. The deciding feature is `CoreWebView2Environment.CreateWebFileSystemDirectoryHandle` (stable since WebView2 SDK 1.0.2651.64; pinned at 1.0.4258.31): the app makes a real `FileSystemDirectoryHandle` for any path, with edit permission already granted, and posts it to the page. jEditor's File System Access code then works unchanged, with no permission prompts. C# also has NTwain for TWAIN scanning, and easy access to the Recycle Bin, Explorer's thumbnails and the rest of Windows.
-- **A separate repo, with jEditor as a submodule.** jEditor itself has no changes for this: `src/bridge.js` runs before jEditor's scripts and replaces `showDirectoryPicker`. The only things it relies on in jEditor are the `app` object (`openDirectory`, `files`, `rotateImage`, `isLoading`) for opening a folder from the command line and for the smoke test, and `data-theme` on `<html>` for the title bar.
-- **The UI ships as files.** The `app` folder sits beside the exe, so a UI change never needs a rebuild. `--ui <folder>` runs the UI from a jEditor checkout in dev mode, where CSS changes show live.
+- **One repo.** It started with jEditor (the web app, xmui/jEditor) as a submodule; on 2026-10-12 the UI moved in, with its history, and the web app was retired. Its old plan is in [docs/jeditor-plan.md](docs/jeditor-plan.md). The UI is still standard web code: `src/bridge.js` runs before it and replaces `showDirectoryPicker`. The bridge relies on the `app` object (`openDirectory`, `files`, `rotateImage`, `isLoading`) for opening a folder from the command line and for the smoke test, and on `data-theme` on `<html>` for the title bar. The UI's tests (`test/ui.test.js`) still run it in Chrome.
+- **The UI ships as files.** The `app` folder sits beside the exe, so a UI change never needs a rebuild. `--ui <folder>` runs the UI from a checkout in dev mode, where CSS changes show live.
 - **No admin anywhere.** It's a self-contained exe, because a shared .NET runtime would need admin to install. The installer is Inno Setup with `PrivilegesRequired=lowest`: `%LOCALAPPDATA%\Programs\jEditor`, the user's Start menu, and the uninstall entry in HKCU. CI checks nothing lands in Program Files or HKLM.
 - **Origin `https://jeditor.example/`, fixed.** IndexedDB and localStorage (settings, recent orders, the flags cache) are stored under it.
 

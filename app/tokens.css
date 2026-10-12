@@ -1,0 +1,248 @@
+/* ==========================================================================
+   jEditor design tokens
+   --------------------------------------------------------------------------
+   Every colour, size, radius, shadow, duration and layer in style.css comes
+   from here. Components never use raw values.
+
+   Switches live on <html> (set by applyUiPrefs in script.js):
+     data-theme     dark | light            (Settings → Theme; "system" resolves to one)
+     data-density   compact | comfortable   (Settings → Density)
+     data-glass     rich | subtle           (Settings → Glass)
+     data-surround  auto | black | dark | grey | light   (background behind photos)
+   --accent-color / --on-accent are set from Settings → Accent colour.
+   ========================================================================== */
+
+:root {
+    color-scheme: dark;
+
+    /* ---- Type ---- */
+    /* One token, so the typeface can be swapped in one line later */
+    --font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    --font-mono: ui-monospace, "Cascadia Mono", "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --fw-regular: 400;
+    --fw-medium: 500;
+    --fw-semibold: 600;
+
+    /* Compact (default) */
+    --fs-caption: 11px;  --lh-caption: 16px;
+    --fs-small: 12px;    --lh-small: 16px;
+    --fs-body: 13px;     --lh-body: 20px;
+    --fs-title: 15px;    --lh-title: 22px;
+    --fs-display: 24px;  --lh-display: 32px;
+
+    /* ---- Spacing (4pt grid) ---- */
+    --sp-0: 2px;
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 20px;
+    --sp-6: 24px;
+    --sp-8: 32px;
+    --sp-12: 48px;
+
+    /* ---- Control sizes ---- */
+    --ctl-sm: 28px;      /* dense icon buttons, chips (hit area padded to 44) */
+    --ctl-md: 32px;      /* buttons and fields in panels */
+    --ctl-lg: 44px;      /* primary actions, floating toolbars */
+    --hit-min: 44px;     /* invisible hit area around small controls */
+    --icon-sm: 16px;
+    --icon-md: 20px;
+    --gutter: 20px;      /* distance of floating chrome from the window edge */
+
+    /* ---- Radii ---- */
+    --r-xs: 4px;
+    --r-sm: 6px;
+    --r-md: 8px;
+    --r-lg: 12px;
+    --r-xl: 16px;
+    --r-pill: 999px;
+
+    /* ---- Motion ---- */
+    --dur-fast: 120ms;
+    --dur-base: 180ms;
+    --dur-slow: 280ms;
+    --ease-out: cubic-bezier(0.2, 0, 0, 1);
+    --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+    /* ---- Layers ---- */
+    --z-chrome: 10;      /* folder list, grid chrome */
+    --z-floating: 20;    /* floating toolbars */
+    --z-popover: 30;     /* info panel, menus anchored to a toolbar */
+    --z-mode: 40;        /* crop & straighten, duplicates (full screen) */
+    --z-toast: 45;       /* toasts and the task pill: over the crop and duplicates screens, under dialogs */
+    --z-modal: 50;       /* dialogs */
+    --z-menu: 60;        /* right-click menu */
+    --z-debug: 100;
+
+    /* ---- Accent (set by Settings; blue by default) ---- */
+    --accent-color: #2563eb;
+    --on-accent: #fff;
+    --accent: var(--accent-color);
+    --accent-hover: color-mix(in oklab, var(--accent) 88%, #fff);
+    --accent-active: color-mix(in oklab, var(--accent) 85%, #000);
+    --accent-soft: color-mix(in srgb, var(--accent) 18%, transparent);
+    --accent-text: color-mix(in oklab, var(--accent) 55%, #fff);
+
+    /* ---- Neutrals, dark theme (default) ---- */
+    --bg-canvas: #0b0b0b;
+    --bg-surface: #171717;
+    --bg-raised: #222222;
+    --bg-sunken: #0f0f0f;
+    --bg-hover: rgb(255 255 255 / 0.07);
+    --bg-pressed: rgb(255 255 255 / 0.12);
+    --bg-selected: rgb(255 255 255 / 0.10);
+    --scrim: rgb(0 0 0 / 0.55);
+    --border-subtle: rgb(255 255 255 / 0.08);
+    --border: rgb(255 255 255 / 0.14);
+    --border-input: rgb(255 255 255 / 0.32);
+    --text-1: #f2f2f2;
+    --text-2: #a3a3a3;
+    --text-3: #8f8f8f;
+    --text-disabled: #5c5c5c;
+    --tile-bg: #1c1c1c;
+    /* The film strip is black in every theme, whatever the photo above it */
+    --strip-bg: #000;
+    --strip-text: rgb(255 255 255 / 0.62);
+    --tb-hover: rgb(255 255 255 / 0.10);     /* buttons on glass toolbars */
+    --tb-pressed: rgb(255 255 255 / 0.16);
+    --seg-bg: rgb(255 255 255 / 0.06);       /* segmented control track */
+    --seg-active: rgb(255 255 255 / 0.16);   /* its chosen segment */
+    --switch-off: rgb(255 255 255 / 0.24);
+    /* Labels and badges drawn on top of photos: always dark, any theme */
+    --on-photo-bg: rgb(0 0 0 / 0.62);
+    --on-photo-shade: rgb(0 0 0 / 0.8);      /* gradient under folder names */
+    --on-photo-text: #fff;
+    --on-photo-star: #fbbf24;
+    --on-photo-rescan: #fb923c;
+    --on-photo-keep: rgb(22 163 74 / 0.9);
+
+    /* ---- Status ---- */
+    --danger: #dc2626;
+    --danger-hover: #ef4444;
+    --on-danger: #fff;
+    --danger-text: #ff8a80;
+    --danger-soft: rgb(220 38 38 / 0.16);
+    --success: #4ade80;
+    --warning-text: #fde68a;
+    --warning-soft: rgb(250 204 21 / 0.16);
+    --flag-star: #fbbf24;
+    --flag-rescan: #fb923c;
+
+    /* ---- Focus ---- */
+    --focus-ring: 0 0 0 2px var(--bg-canvas), 0 0 0 4px var(--accent-text);
+
+    /* ---- Elevation ---- */
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.35);
+    --shadow-2: 0 4px 12px rgb(0 0 0 / 0.35), 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-3: 0 12px 32px rgb(0 0 0 / 0.45), 0 2px 6px rgb(0 0 0 / 0.3);
+    --shadow-4: 0 24px 64px rgb(0 0 0 / 0.55), 0 4px 12px rgb(0 0 0 / 0.3);
+    --highlight: inset 0 1px 0 rgb(255 255 255 / 0.06);
+
+    /* ---- Glass (floating toolbars over photos) ----
+       Rich: translucent with a darkened backdrop, so secondary text keeps
+       5:1 even over a pure-white photo. Subtle: near-solid, no blur. */
+    --glass-bg: rgb(24 24 24 / 0.70);
+    --glass-border: rgb(255 255 255 / 0.10);
+    --glass-filter: blur(24px) saturate(160%) brightness(0.4);
+
+    /* ---- Surround (behind the photo) ---- */
+    --surround: var(--bg-canvas);
+}
+
+/* ---- Light theme ---- */
+:root[data-theme="light"] {
+    color-scheme: light;
+    --accent-text: color-mix(in oklab, var(--accent) 80%, #000);
+    --accent-hover: color-mix(in oklab, var(--accent) 88%, #000);
+    --accent-active: color-mix(in oklab, var(--accent) 78%, #000);
+    --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+
+    --bg-canvas: #e8e8e8;
+    --bg-surface: #ffffff;
+    --bg-raised: #f2f2f2;
+    --bg-sunken: #dcdcdc;
+    --bg-hover: rgb(0 0 0 / 0.05);
+    --bg-pressed: rgb(0 0 0 / 0.09);
+    --bg-selected: rgb(0 0 0 / 0.07);
+    --scrim: rgb(0 0 0 / 0.35);
+    --border-subtle: rgb(0 0 0 / 0.06);
+    --border: rgb(0 0 0 / 0.12);
+    --border-input: rgb(0 0 0 / 0.40);
+    --text-1: #171717;
+    --text-2: #555555;
+    --text-3: #6b6b6b;
+    --text-disabled: #a3a3a3;
+    --tile-bg: #d6d6d6;
+    --tb-hover: rgb(0 0 0 / 0.06);
+    --tb-pressed: rgb(0 0 0 / 0.11);
+    --seg-bg: rgb(0 0 0 / 0.06);
+    --seg-active: #ffffff;
+    --switch-off: rgb(0 0 0 / 0.24);
+
+    --danger-text: #b91c1c;
+    --danger-soft: rgb(220 38 38 / 0.10);
+    --success: #15803d;
+    --warning-text: #92400e;
+    --flag-star: #d97706;
+    --flag-rescan: #ea580c;
+
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.12);
+    --shadow-2: 0 4px 12px rgb(0 0 0 / 0.12), 0 1px 2px rgb(0 0 0 / 0.08);
+    --shadow-3: 0 12px 32px rgb(0 0 0 / 0.16), 0 2px 6px rgb(0 0 0 / 0.08);
+    --shadow-4: 0 24px 64px rgb(0 0 0 / 0.22), 0 4px 12px rgb(0 0 0 / 0.1);
+    --highlight: inset 0 1px 0 rgb(255 255 255 / 0.7);
+
+    --glass-bg: rgb(250 250 250 / 0.78);
+    --glass-border: rgb(0 0 0 / 0.10);
+    --glass-filter: blur(24px) saturate(160%) contrast(0.6) brightness(1.4);
+}
+
+/* ---- Glass: subtle (performance, or the OS asks for less transparency) ---- */
+:root[data-glass="subtle"] {
+    --glass-bg: rgb(24 24 24 / 0.94);
+    --glass-filter: none;
+}
+
+:root[data-theme="light"][data-glass="subtle"] {
+    --glass-bg: rgb(250 250 250 / 0.95);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+    :root {
+        --glass-bg: rgb(24 24 24 / 0.94);
+        --glass-filter: none;
+    }
+    :root[data-theme="light"] {
+        --glass-bg: rgb(250 250 250 / 0.95);
+    }
+}
+
+/* ---- Density: comfortable ---- */
+:root[data-density="comfortable"] {
+    --fs-caption: 12px;  --lh-caption: 16px;
+    --fs-small: 13px;    --lh-small: 18px;
+    --fs-body: 14px;     --lh-body: 20px;
+    --fs-title: 16px;    --lh-title: 24px;
+    --fs-display: 28px;  --lh-display: 36px;
+    --ctl-sm: 32px;
+    --ctl-md: 36px;
+    --ctl-lg: 48px;
+}
+
+/* ---- Surround ---- */
+:root[data-surround="black"] { --surround: #000; }
+:root[data-surround="dark"]  { --surround: #0b0b0b; }
+:root[data-surround="grey"]  { --surround: #767676; }  /* 18% grey */
+:root[data-surround="light"] { --surround: #d9d9d9; }
+
+/* ---- Reduced motion: everything becomes a plain fade or nothing ---- */
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --dur-fast: 0ms;
+        --dur-base: 120ms;
+        --dur-slow: 120ms;
+        --ease-spring: var(--ease-out);
+    }
+}

@@ -1,18 +1,18 @@
 #!/usr/bin/env node
-// Tests for src/bridge.js: the real jEditor UI (from the jeditor
-// submodule) in headless Chromium, served at the Windows app's origin, with
+// Tests for src/bridge.js: the real jEditor UI (app/) in headless Chromium, served at the Windows app's origin, with
 // a fake chrome.webview standing in for the app. Folders are real
 // FileSystemDirectoryHandles from the browser's private file system, so
 // jEditor reads and writes them as it would a folder on disk.
 //
-//   npm test          (needs Chrome or Chromium; CHROME_PATH to choose one)
+//   npm test          (with the UI tests; needs Chrome or Chromium, CHROME_PATH to choose one)
+//   node test/bridge.test.js    just these
 
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright-core');
 
 const ROOT = path.join(__dirname, '..');
-const UI = path.join(ROOT, 'jeditor', 'app');
+const UI = path.join(ROOT, 'app');
 const BRIDGE = fs.readFileSync(path.join(ROOT, 'src', 'bridge.js'), 'utf8');
 const ORIGIN = 'https://jeditor.example';
 
@@ -105,10 +105,6 @@ const waitForPost = (page, type) => page.waitForFunction(
     (t) => window.__posted.find(m => m.type === t), type, { timeout: 15000 }).then(h => h.jsonValue());
 
 (async () => {
-    if (!fs.existsSync(path.join(UI, 'index.html'))) {
-        console.error('jEditor\'s UI is missing: run  git submodule update --init');
-        process.exit(1);
-    }
     const browser = await chromium.launch(launchOptions());
 
     console.log('bridge: start-up');
