@@ -155,14 +155,16 @@ const Folders = {
     },
 
     // The photos the grid, film strip and arrow keys go through
+    // (narrowed further by a flag filter or search, see flags.js)
     viewFiles() {
         const files = this.app.files;
-        if (this.scope === null || !this.enabled()) return files;
-        return files.filter(f => this.dirOf(f) === this.scope);
+        if (this.scope === null || !this.enabled()) return Flags.narrow(files);
+        return Flags.narrow(files.filter(f => this.dirOf(f) === this.scope));
     },
 
     inView(file) {
-        return !!file && (this.scope === null || !this.enabled() || this.dirOf(file) === this.scope);
+        return !!file && (this.scope === null || !this.enabled() || this.dirOf(file) === this.scope) &&
+            (!Flags.active() || Flags.passes(file));
     },
 
     // ---- Scope ----
@@ -226,8 +228,12 @@ const Folders = {
         this.el('folder-rail').classList.toggle('hidden', !rail);
         if (!on) return;
         const counts = this.counts();
-        if (rail) this.renderRail(counts);
+        if (rail) {
+            this.renderRail(counts);
+            Flags.renderList();
+        }
         this.renderBar(counts);
+        Flags.syncSearchUI();
         this.fitBar();
     },
 

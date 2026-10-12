@@ -572,6 +572,19 @@ const CropEditor = {
             return false;
         }
         this.pushHistory();
+        this.fitToPrint(det);
+        this.syncAngleUi();
+        this.flashGrid();
+        this.settle(animate);
+        if (!quiet) {
+            const a = this.angle;
+            this.app.showToast(a ? `Straightened ${a > 0 ? '+' : ''}${a.toFixed(1)}° and cropped to the print` : 'Cropped to the print', 2200);
+        }
+        return true;
+    },
+
+    // Straighten and crop to the print CropAuto found (no screen updates)
+    fitToPrint(det) {
         const angle = Math.max(-this.MAX_ANGLE, Math.min(this.MAX_ANGLE, Math.round(-det.tilt * 100) / 100));
         this.angle = Object.is(angle, -0) ? 0 : angle;
         // The print's corners, straightened: crop to the largest upright
@@ -583,14 +596,16 @@ const CropEditor = {
         const print = { x0: xs[1] + inset, x1: xs[2] - inset, y0: ys[1] + inset, y1: ys[2] - inset };
         this.landscape = print.x1 - print.x0 >= print.y1 - print.y0;
         this.setRect(this.fitRect(this.aspectRect(print)));
-        this.syncAngleUi();
-        this.flashGrid();
-        this.settle(animate);
-        if (!quiet) {
-            const a = this.angle;
-            this.app.showToast(a ? `Straightened ${a > 0 ? '+' : ''}${a.toFixed(1)}° and cropped to the print` : 'Cropped to the print', 2200);
-        }
-        return true;
+    },
+
+    // The editor's geometry for one photo, off screen: batch Auto crop
+    // works out and renders each crop exactly as the editor would, with
+    // the aspect ratio last chosen there
+    headless(W, H) {
+        const h = Object.create(this);
+        Object.assign(h, { W, H, q: 0, angle: 0, aspectKey: this.loadAspect(), landscape: W >= H, render() { } });
+        h.setRect(h.fullRect());
+        return h;
     },
 
     // Remember this crop so the next photo can reuse it (scan batches share

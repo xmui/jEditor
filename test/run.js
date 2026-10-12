@@ -2719,6 +2719,398 @@ async function newPage(browser, url) {
         await page.close();
     }
 
+    // ---- 7p. Toasts: typed, merged, hover keeps them, click dismisses ----
+    console.log('toasts');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const all = () => [...document.querySelectorAll('#toast-stack .toast:not(.leaving)')];
+            app.showToast('Nothing to undo', 3000);
+            app.showToast('Nothing to undo', 3000);
+            app.showToast('Nothing to undo', 3000);
+            out.merged = all().length === 1 && all()[0].querySelector('.toast-count').textContent === '×3';
+            app.showToast('Delete failed: in use', 3000);
+            app.showToast('Saved 100 × 80', 3000);
+            out.types = all().map(t => [...t.classList].find(c => c.startsWith('t-'))).join(',');
+            out.icons = all().every(t => t.querySelector('.toast-icon svg'));
+            // Hovering keeps a toast with a button up past its time
+            const t = app.showToast('Moved 2 photos to X', 150, null, { label: 'Undo', run() { } });
+            out.passThrough = getComputedStyle(all()[0]).pointerEvents === 'none' && getComputedStyle(t).pointerEvents === 'auto';
+            t.dispatchEvent(new MouseEvent('mouseenter'));
+            await new Promise(res => setTimeout(res, 400));
+            out.held = t.isConnected && !t.classList.contains('leaving');
+            t.dispatchEvent(new MouseEvent('mouseleave'));
+            await new Promise(res => setTimeout(res, 1000));
+            out.goneAfter = !t.isConnected;
+            // Click dismisses
+            const c = app.showToast('Made “X”', 10000, null, { label: 'Undo', run() { } });
+            c.click();
+            await new Promise(res => setTimeout(res, 400));
+            out.clicked = !c.isConnected;
+            // No more than five at once
+            for (let i = 0; i < 8; i++) app.showToast('Message ' + i, 5000);
+            out.capped = all().length <= 5;
+            return out;
+        });
+        check('toasts: the same message again counts ×3 instead of stacking', r.merged);
+        check('toasts: typed (error, success) with an icon each', r.types.includes('t-error') && r.types.includes('t-success') && r.icons, r.types);
+        check('toasts: plain ones let clicks through; one with a button stays up while hovered', r.passThrough && r.held && r.goneAfter, JSON.stringify(r));
+        check('toasts: click dismisses; at most five at once', r.clicked && r.capped, JSON.stringify(r));
+        check('toast suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7q. Watching the folder: new, removed and edited photos ----
+    console.log('watching the folder');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const until = async (fn, ms = 4000) => { const t0 = Date.now(); while (!fn() && Date.now() - t0 < ms) await sleep(30); return fn(); };
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('watchorder', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('watchorder', { create: true });
+            const put = async (d, name, bytes) => {
+                const fh = await d.getFileHandle(name, { create: true });
+                const w = await fh.createWritable();
+                await w.write(new Blob([bytes], { type: 'image/jpeg' }));
+                await w.close();
+            };
+            const bytes = await makeRealJpeg(240, 160);
+            for (const n of ['b.jpg', 'd.jpg', 'f.jpg', 'h.jpg']) await put(dir, n, bytes);
+            const sub = await dir.getDirectoryHandle('Wedding', { create: true });
+            await put(sub, 'w1.jpg', bytes);
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            app.setView('grid');
+            await until(() => Watch.observer || Watch._pollTimer);
+            out.watching = Watch.observer ? 'observer' : 'poll';
+            const kept = app.files.find(f => f.name === 'd.jpg')._gridEl;
+
+            // A scanner saves two new photos: they slot in, nothing else is rebuilt
+            await put(dir, 'c.jpg', bytes);
+            await put(dir, 'e.jpg', await makeRealJpeg(240, 160, { color: '#c33' }));
+            if (!Watch.observer) Watch.request({ full: true });
+            await until(() => app.files.length === 7);
+            const order = [...app.elements.gridView.querySelectorAll('.grid-item')].map(t => t._file.name).join(',');
+            out.added = app.files.length === 7 && order === app.viewFiles().map(f => f.name).join(',');
+            out.inPlace = app.files.find(f => f.name === 'd.jpg')._gridEl === kept && kept.isConnected;
+            out.glow = app.files.find(f => f.name === 'c.jpg')._gridEl.classList.contains('is-new');
+            await until(() => [...document.querySelectorAll('.toast')].some(t => /new photo/.test(t.textContent)));
+            const toast = [...document.querySelectorAll('.toast')].find(t => /new photo/.test(t.textContent));
+            out.toast = !!toast && !!toast.querySelector('.toast-action');
+            if (toast) toast.querySelector('.toast-action').click();
+            out.shown = ['c.jpg', 'e.jpg'].every(n => app.selection.has(app.files.find(f => f.name === n)));
+
+            // Removed outside jEditor: gone from the grid
+            await dir.removeEntry('h.jpg');
+            if (!Watch.observer) Watch.request({ full: true });
+            await until(() => !app.files.some(f => f.name === 'h.jpg'));
+            out.removed = !app.files.some(f => f.name === 'h.jpg') && app.files.length === 6;
+
+            // A new folder with a photo in it
+            const extra = await dir.getDirectoryHandle('Reception', { create: true });
+            await put(extra, 'r1.jpg', bytes);
+            if (!Watch.observer) Watch.request({ full: true });
+            await until(() => app.files.some(f => f.relPath === 'Reception/r1.jpg'));
+            out.newFolder = Folders.map.has('Reception') && app.files.some(f => f.relPath === 'Reception/r1.jpg');
+
+            // Edited in another program: R notices (in the background)
+            const b = app.files.find(f => f.name === 'b.jpg');
+            const before = b.size;
+            await put(dir, 'b.jpg', await makeRealJpeg(300, 200, { color: '#39c' }));
+            await app.refreshFolder();
+            await until(() => b.size !== before);
+            out.edited = b.size !== before;
+
+            // Nothing changed: up to date, quickly
+            const t0 = performance.now();
+            await app.refreshFolder();
+            out.rescanMs = Math.round(performance.now() - t0);
+            out.upToDate = [...document.querySelectorAll('.toast')].some(t => /up to date/.test(t.textContent));
+
+            // jEditor's own rename and trash aren't mistaken for outside changes
+            const d = app.files.find(f => f.name === 'd.jpg');
+            await app.renameFile(d, 'd2.jpg');
+            await app.moveToTrash([app.files.find(f => f.name === 'f.jpg')]);
+            await sleep(900);
+            await app.refreshFolder();
+            out.ownOps = app.files.length === 6 && app.files.includes(d) && d.name === 'd2.jpg' &&
+                !app.files.some(f => f.name === 'f.jpg') && !app.files.some(f => f.name === 'd.jpg');
+
+            // Switched off: no watching
+            app.uiPrefs.autoCheck = false;
+            Watch.start();
+            out.off = !Watch.observer && !Watch._pollTimer;
+            app.uiPrefs.autoCheck = true;
+            return out;
+        });
+        console.log(`  info  watching with: ${r.watching}; rescan of an unchanged order: ${r.rescanMs} ms`);
+        check('watch: new photos slot into the grid in sort order', r.added, JSON.stringify(r));
+        check('watch: existing tiles aren\'t rebuilt; new ones glow', r.inPlace && r.glow);
+        check('watch: toast with Show selects the new photos', r.toast && r.shown);
+        check('watch: photos removed outside jEditor go', r.removed);
+        check('watch: a new folder and its photos show up', r.newFolder);
+        check('rescan: photos edited elsewhere are picked up', r.edited);
+        check('rescan: an unchanged order is up to date', r.upToDate && r.rescanMs < 2000, String(r.rescanMs));
+        check('watch: jEditor\'s own rename and trash aren\'t seen as outside changes', r.ownOps);
+        check('watch: can be switched off', r.off);
+        check('watch suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7r. Flags and search ----
+    console.log('flags and search');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const key = (k, opts = {}) => window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, ...opts }));
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('flagorder', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('flagorder', { create: true });
+            const bytes = await makeRealJpeg(200, 140);
+            const put = async (d, name) => {
+                const fh = await d.getFileHandle(name, { create: true });
+                const w = await fh.createWritable();
+                await w.write(new Blob([bytes], { type: 'image/jpeg' }));
+                await w.close();
+            };
+            for (let i = 1; i <= 6; i++) await put(dir, `IMG_000${i}.jpg`);
+            const sub = await dir.getDirectoryHandle('Ceremony', { create: true });
+            await put(sub, 'vows.jpg');
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            app.setView('grid');
+            const f = (n) => app.files.find(x => x.name === n);
+            const sel = (...names) => { app.selection = new Set(names.map(f)); app.updateSelectionUI(); };
+
+            sel('IMG_0001.jpg', 'IMG_0002.jpg');
+            key('p');
+            sel('IMG_0002.jpg', 'vows.jpg');
+            key('x');
+            sel('IMG_0003.jpg');
+            key('3');
+            out.flags = Flags.has(f('IMG_0001.jpg'), 'star') && Flags.has(f('IMG_0002.jpg'), 'star') && Flags.has(f('IMG_0002.jpg'), 'rescan') &&
+                Flags.has(f('vows.jpg'), 'rescan') && Flags.has(f('IMG_0003.jpg'), 'green');
+            out.badges = !!f('IMG_0002.jpg')._gridEl.querySelector('.tile-flags .tf-star') && !!f('IMG_0002.jpg')._gridEl.querySelector('.tf-rescan');
+            // P again on the same photos takes the star off; Ctrl+Z puts it back
+            sel('IMG_0001.jpg');
+            key('p');
+            out.toggled = !Flags.has(f('IMG_0001.jpg'), 'star');
+            key('z', { ctrlKey: true });
+            await sleep(50);
+            out.undone = Flags.has(f('IMG_0001.jpg'), 'star');
+            // 3 again takes the green label off
+            sel('IMG_0003.jpg');
+            key('4');
+            out.colourSwap = Flags.has(f('IMG_0003.jpg'), 'blue') && !Flags.has(f('IMG_0003.jpg'), 'green');
+
+            // Saved with the order
+            await sleep(700);
+            const read = async () => JSON.parse(await (await (await (await dir.getDirectoryHandle('.jeditor')).getFileHandle('flags.json')).getFile()).text()).flags;
+            const saved = await read();
+            out.saved = saved['IMG_0002.jpg'] && saved['IMG_0002.jpg'].star && saved['Ceremony/vows.jpg'].rescan && saved['IMG_0003.jpg'].color === 'blue';
+
+            // A rename carries the flags; they're saved under the new name
+            await app.renameFile(f('IMG_0001.jpg'), 'Smith_01.jpg');
+            await sleep(700);
+            const afterRename = await read();
+            out.renamed = !!(afterRename['Smith_01.jpg'] && afterRename['Smith_01.jpg'].star && !afterRename['IMG_0001.jpg']);
+
+            // Opened again: flags come back
+            await app.openDirectory(dir);
+            await sleep(200);
+            out.reloaded = Flags.has(f('Smith_01.jpg'), 'star') && Flags.has(f('vows.jpg'), 'rescan');
+            app.setView('grid');
+
+            // The filter: only flagged photos; Ctrl+A selects just those
+            Flags.setFilter('star');
+            out.filter = app.viewFiles().map(x => x.name).sort().join(',');
+            key('a', { ctrlKey: true });
+            out.selectAll = app.selection.size === 2;
+            out.chip = !document.getElementById('fb-filter-chip').classList.contains('hidden');
+            out.list = [...document.querySelectorAll('#flag-list [data-flag-filter]')].map(r => r.dataset.flagFilter).join(',');
+            Flags.setFilter(null);
+
+            // Search: words in the name or folder, and is: for flags
+            Flags.setQuery('ceremony');
+            out.searchFolder = app.viewFiles().map(x => x.name).join(',');
+            Flags.setQuery('img 000');
+            out.searchWords = app.viewFiles().length;
+            Flags.setQuery('is:rescan');
+            out.searchFlag = app.viewFiles().map(x => x.name).sort().join(',');
+            Flags.setQuery('nothing-like-this');
+            out.noMatch = app.viewFiles().length === 0 && app.elements.gridView.classList.contains('grid-no-match');
+            Flags.clearFilter();
+            out.cleared = app.viewFiles().length === 7;
+            // Ctrl+F opens the search box
+            key('f', { ctrlKey: true });
+            out.focus = document.activeElement && document.activeElement.id === 'fb-search';
+            document.activeElement.blur();
+
+            // The rescan list
+            out.listText = Flags.listText(app.files.filter(x => Flags.has(x, 'rescan')), 'rescan');
+
+            // Clean Up removes the flags too
+            window.confirm = () => true;
+            await app.cleanUpFolder();
+            out.cleanedUp = !app.files.some(x => x._flags);
+            return out;
+        });
+        check('flags: P, X and 1–5 set star, rescan and colour on the selection', r.flags && r.badges, JSON.stringify(r));
+        check('flags: P again unstars; Ctrl+Z undoes; a new colour replaces the old', r.toggled && r.undone && r.colourSwap);
+        check('flags: saved in .jeditor/flags.json, keyed by path', r.saved);
+        check('flags: a rename carries them; saved under the new name', r.renamed);
+        check('flags: come back when the order is opened again', r.reloaded);
+        check('flags: filter shows only those photos, Ctrl+A selects just them', r.filter === 'IMG_0002.jpg,Smith_01.jpg' && r.selectAll && r.chip, r.filter);
+        check('flags: the folder list has a Flags section with counts', r.list.startsWith('star,rescan,blue') && r.list.endsWith('none'), r.list);
+        check('search: by folder, by words, by is:flag; no match says so', r.searchFolder === 'vows.jpg' && r.searchWords === 5 && r.searchFlag === 'IMG_0002.jpg,vows.jpg' && r.noMatch && r.cleared,
+            `${r.searchFolder} / ${r.searchWords} / ${r.searchFlag}`);
+        check('search: Ctrl+F opens the search box', r.focus);
+        check('flags: rescan list names each photo with its folder', /Needs rescan \(2\)/.test(r.listText) && r.listText.includes('Ceremony/vows.jpg'), r.listText);
+        check('flags: Clean Up Folder removes them', r.cleanedUp);
+        check('flags suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7s. Batch Auto crop ----
+    console.log('batch auto crop');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('cropbatch', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('cropbatch', { create: true });
+            // Two scans with a tilted print on a light bed, one plain photo
+            const scan = async (color, tilt) => {
+                const c = document.createElement('canvas');
+                c.width = 900; c.height = 700;
+                const g = c.getContext('2d');
+                g.fillStyle = '#f4f4f2'; g.fillRect(0, 0, 900, 700);
+                g.save(); g.translate(450, 350); g.rotate(tilt * Math.PI / 180);
+                g.fillStyle = color; g.fillRect(-280, -200, 560, 400);
+                g.restore();
+                return new Blob([await (await new Promise(res => c.toBlob(res, 'image/jpeg', 0.92))).arrayBuffer()], { type: 'image/jpeg' });
+            };
+            const files = { 'scan1.jpg': await scan('#2a6', 3), 'scan2.jpg': await scan('#a33', -2), 'plain.jpg': new Blob([await makeRealJpeg(400, 300)], { type: 'image/jpeg' }) };
+            const originals = {};
+            for (const [n, b] of Object.entries(files)) {
+                const fh = await dir.getFileHandle(n, { create: true });
+                const w = await fh.createWritable(); await w.write(b); await w.close();
+                originals[n] = new Uint8Array(await b.arrayBuffer());
+            }
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            app.setView('grid');
+            app.selection = new Set(app.files);
+            app.updateSelectionUI();
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'A', shiftKey: true, bubbles: true }));
+            for (let i = 0; i < 200 && (app._autoCropping || !app._undoStack || !app._undoStack.some(e => e.type === 'auto-crop')); i++) await new Promise(res => setTimeout(res, 50));
+            const dims = async (n) => {
+                const bmp = await createImageBitmap(await (await dir.getFileHandle(n)).getFile());
+                const d = [bmp.width, bmp.height]; bmp.close(); return d;
+            };
+            out.scan1 = await dims('scan1.jpg');
+            out.scan2 = await dims('scan2.jpg');
+            out.plain = await dims('plain.jpg');
+            out.toast = [...document.querySelectorAll('.toast')].map(t => t.textContent).find(t => /Auto-cropped/.test(t)) || '';
+            const backups = await (await dir.getDirectoryHandle('.jeditor')).getDirectoryHandle('originals');
+            out.backups = 0;
+            for await (const e of backups.values()) out.backups++;
+            // One Ctrl+Z puts both back, byte for byte
+            await app.undo();
+            const same = async (n) => {
+                const now = new Uint8Array(await (await (await dir.getFileHandle(n)).getFile()).arrayBuffer());
+                return now.length === originals[n].length && now.every((v, i) => v === originals[n][i]);
+            };
+            out.restored = await same('scan1.jpg') && await same('scan2.jpg');
+            out.backupsAfter = 0;
+            for await (const e of backups.values()) out.backupsAfter++;
+            return out;
+        });
+        const inside = (d) => d[0] < 900 && d[1] < 700 && d[0] > 450 && d[1] > 300;
+        check('auto crop: each scan is cropped to its print', inside(r.scan1) && inside(r.scan2), `${r.scan1} / ${r.scan2}`);
+        check('auto crop: a photo with no print edge is left alone', r.plain.join('x') === '400x300', r.plain.join('x'));
+        check('auto crop: says what it did, with Undo', /Auto-cropped 2 photos — no print found on 1/.test(r.toast), r.toast);
+        check('auto crop: originals kept in .jeditor/originals; one Ctrl+Z restores every byte', r.backups === 2 && r.restored && r.backupsAfter === 0, JSON.stringify(r));
+        check('auto crop suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7t. A subfolder of an order opened before ----
+    console.log('subfolder of a known order');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('parentorder', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('parentorder', { create: true });
+            const bytes = await makeRealJpeg(200, 140);
+            const put = async (d, name) => {
+                const fh = await d.getFileHandle(name, { create: true });
+                const w = await fh.createWritable(); await w.write(new Blob([bytes], { type: 'image/jpeg' })); await w.close();
+            };
+            await put(dir, 'a.jpg');
+            const sub = await dir.getDirectoryHandle('Ceremony', { create: true });
+            await put(sub, 'c1.jpg');
+            await put(sub, 'c2.jpg');
+            await dir.getDirectoryHandle('.jeditor', { create: true });
+            Recents.list = async () => [{ id: 'p', name: 'parentorder', handle: dir, openedAt: 1 }];
+            window.showDirectoryPicker = async () => sub;
+            const opening = app.browseFolder();
+            for (let i = 0; i < 50 && !Recents.isPromptOpen(); i++) await new Promise(res => setTimeout(res, 20));
+            out.asked = Recents.isPromptOpen() && /inside “parentorder”/.test(document.getElementById('op-text').textContent);
+            document.getElementById('op-order').click();
+            await opening;
+            await new Promise(res => setTimeout(res, 300));
+            out.order = app.dirHandle === dir && Folders.scope === 'Ceremony' && app.viewMode === 'grid' &&
+                app.viewFiles().length === 2 && app.files.length === 3;
+            out.noNewJeditor = await sub.getDirectoryHandle('.jeditor').then(() => false, () => true);
+            // Just this folder
+            const again = app.browseFolder();
+            for (let i = 0; i < 50 && !Recents.isPromptOpen(); i++) await new Promise(res => setTimeout(res, 20));
+            document.getElementById('op-folder').click();
+            await again;
+            out.justFolder = app.dirHandle === sub && app.files.length === 2;
+            return out;
+        });
+        check('subfolder: opening a folder inside a known order offers the order', r.asked);
+        check('subfolder: the order opens at that folder; no second .jeditor', r.order && r.noNewJeditor, JSON.stringify(r));
+        check('subfolder: or just the folder', r.justFolder);
+        check('subfolder suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7u. Accent colour ----
+    console.log('accent colour');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+            const out = {};
+            app.setAccent('#16a34a');
+            out.green = css('--accent-color') === '#16a34a' && css('--on-accent') === '#fff';
+            await new Promise(res => setTimeout(res, 400)); // the button's colour transition
+            out.button = getComputedStyle(document.getElementById('btn-browse-folder')).backgroundColor;
+            out.saved = JSON.parse(localStorage.getItem('jeditor.ui')).accent === '#16a34a';
+            app.setAccent('#facc15');
+            out.lightText = css('--on-accent') === '#111';
+            document.querySelector('#cust-accent [data-accent="#2563eb"]').click();
+            out.reset = app.uiPrefs.accent === null && css('--accent-color') === '#2563eb';
+            return out;
+        });
+        check('accent: a colour changes every accent element', r.green && r.button === 'rgb(22, 163, 74)', r.button);
+        check('accent: remembered; dark text on a light accent; blue resets', r.saved && r.lightText && r.reset, JSON.stringify(r));
+        check('accent suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7. file:// — direct open and standalone build ----
     console.log('file:// support');
     for (const [label, target] of [

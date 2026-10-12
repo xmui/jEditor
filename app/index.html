@@ -20,6 +20,8 @@
     <script src="dupes.js"></script>
     <script src="rename.js"></script>
     <script src="folders.js"></script>
+    <script src="flags.js"></script>
+    <script src="watch.js"></script>
     <script src="recents.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -187,6 +189,21 @@
                         <label for="cust-vertical">Vertical pill</label>
                         <input type="checkbox" id="cust-vertical">
                     </div>
+                    <div class="cust-row cust-accent-row">
+                        <span>Accent colour</span>
+                        <div id="cust-accent" class="accent-swatches" role="radiogroup" aria-label="Accent colour">
+                            <button data-accent="#2563eb" title="Blue" style="--sw:#2563eb"></button>
+                            <button data-accent="#7c3aed" title="Violet" style="--sw:#7c3aed"></button>
+                            <button data-accent="#db2777" title="Pink" style="--sw:#db2777"></button>
+                            <button data-accent="#dc2626" title="Red" style="--sw:#dc2626"></button>
+                            <button data-accent="#ea580c" title="Orange" style="--sw:#ea580c"></button>
+                            <button data-accent="#16a34a" title="Green" style="--sw:#16a34a"></button>
+                            <button data-accent="#0d9488" title="Teal" style="--sw:#0d9488"></button>
+                            <label class="accent-custom" title="Any colour">
+                                <input type="color" id="cust-accent-pick" value="#2563eb" aria-label="Pick any accent colour">
+                            </label>
+                        </div>
+                    </div>
                     <div class="cust-row">
                         <label for="cust-scale">UI size</label>
                         <input type="range" id="cust-scale" min="0.8" max="1.6" step="0.1" value="1">
@@ -194,6 +211,10 @@
                     <div class="cust-row" title="Thumbnails and duplicate data are saved in a .jeditor folder inside the photo folder, so any computer that opens it later starts fast">
                         <label for="cust-folder-cache">Save cache in the folder (.jeditor)</label>
                         <input type="checkbox" id="cust-folder-cache">
+                    </div>
+                    <div class="cust-row" title="New photos (a scanner saving into the order, say), photos removed elsewhere and photos edited in another program show up on their own">
+                        <label for="cust-auto-check">Watch the folder for changes</label>
+                        <input type="checkbox" id="cust-auto-check">
                     </div>
                     <button id="cust-cleanup" title="Empty the trash and remove the cache from the open folder">Clean up this folder…</button>
                     <button id="cust-shortcuts">Keyboard shortcuts…</button>
@@ -256,9 +277,20 @@
                     <button id="fb-folders" title="One folder at a time">Folders</button>
                 </div>
                 <div id="fb-crumbs" class="fb-crumbs"></div>
+                <span id="fb-filter-chip" class="fb-filter-chip hidden"></span>
+                <div id="fb-search-box" class="fb-search" title="Search names and folders (Ctrl+F)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                        stroke-linecap="round"><circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4.2-4.2" /></svg>
+                    <input id="fb-search" type="search" placeholder="Search" autocomplete="off" spellcheck="false" aria-label="Search photos">
+                    <button id="fb-search-clear" class="fb-search-clear" title="Clear the search and filter" tabindex="-1">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
+                            stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17" /></svg>
+                    </button>
+                </div>
             </nav>
             <aside id="folder-rail" class="folder-rail hidden" aria-label="Folder list">
                 <div id="folder-tree" class="folder-tree"></div>
+                <div id="flag-list" class="flag-list hidden"></div>
                 <p id="fr-hint" class="fr-hint hidden">Make folders to collate this order. Drag photos onto a folder to move them, or hold <kbd>Ctrl</kbd> to copy. <kbd>M</kbd> moves the selection.</p>
                 <button id="fr-new" class="fr-new">+ New folder</button>
             </aside>
@@ -292,6 +324,7 @@
                 <span id="selection-count">0 items selected</span>
                 <button id="btn-rotate-left-bulk">Rotate Left</button>
                 <button id="btn-rotate-right-bulk">Rotate Right</button>
+                <button id="btn-auto-crop" title="Find the print on each scan, straighten and crop to it (Shift+A)">Auto Crop</button>
                 <button id="btn-move-to" title="Move to a folder (M) — Shift+M copies">Move to…</button>
                 <button id="btn-batch-rename">Rename…</button>
                 <button id="btn-export">Export…</button>
@@ -534,6 +567,25 @@
     </div>
 
     <!-- Folder name (new folder, rename folder) -->
+    <!-- A folder inside an order opened before (recents.js) -->
+    <div id="order-prompt" class="shortcuts-overlay hidden">
+        <div class="shortcuts-card prompt-card" role="dialog" aria-labelledby="op-title">
+            <div class="shortcuts-head">
+                <h3 id="op-title">Part of an order</h3>
+            </div>
+            <div class="fpr-body">
+                <p id="op-text" class="op-text"></p>
+            </div>
+            <div class="shortcuts-foot">
+                <span></span>
+                <span class="rename-actions">
+                    <button id="op-folder">Just this folder</button>
+                    <button id="op-order" class="primary">Open the order</button>
+                </span>
+            </div>
+        </div>
+    </div>
+
     <div id="folder-prompt" class="shortcuts-overlay hidden">
         <div class="shortcuts-card prompt-card" role="dialog" aria-labelledby="fpr-title">
             <div class="shortcuts-head">
