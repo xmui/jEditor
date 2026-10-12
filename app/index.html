@@ -185,10 +185,13 @@
                 <div id="folder-tree" class="folder-tree"></div>
                 <div id="flag-list" class="flag-list hidden"></div>
                 <p id="fr-hint" class="fr-hint hidden">Make folders to collate this order. Drag photos onto a folder to move them, or hold <kbd>Ctrl</kbd> to copy. <kbd>M</kbd> moves the selection.</p>
-                <button id="fr-new" class="btn ghost fr-new">
-                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-                    New folder
-                </button>
+                <div class="fr-foot">
+                    <button id="fr-new" class="btn ghost fr-new">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                        New folder
+                    </button>
+                    <button id="fr-total" class="fr-total" title="Details of what's shown (I)"></button>
+                </div>
             </aside>
 
             <!-- Grid view -->
@@ -248,8 +251,8 @@
             </div>
 
             <!-- File info panel (I) -->
-            <div id="info-panel" class="info-panel popover hidden" role="dialog" aria-label="File info">
-                <h3 class="section-label">File info</h3>
+            <div id="info-panel" class="info-panel popover hidden" role="dialog" aria-label="Info">
+                <h3 class="section-label">Info</h3>
                 <dl id="info-list"></dl>
             </div>
 
@@ -452,6 +455,11 @@
                     <h3 id="set-h-header" class="section-label">Toolbar buttons</h3>
                     <p class="set-help">Drag to reorder, or focus a row and press <kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd>. Choose which buttons show in the toolbar, which go under <b>More</b>, and which are hidden.</p>
                     <ul id="customize-list" class="customize-list"></ul>
+                    <div class="set-row">
+                        <label class="set-label" for="cust-single-controls">Buttons above the film strip
+                            <small>Previous, rotate and next in single view. They fade when not in use; the keyboard shortcuts work either way.</small></label>
+                        <input type="checkbox" id="cust-single-controls" class="switch">
+                    </div>
                     <div class="set-row">
                         <label class="set-label" for="cust-vertical">Vertical toolbar</label>
                         <input type="checkbox" id="cust-vertical" class="switch">

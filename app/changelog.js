@@ -5,6 +5,19 @@
 
 const CHANGELOG = [
     {
+        version: '1.18.0', date: '2026-10-12',
+        items: [
+            'Photos deleted in File Explorer no longer get stuck in jEditor. Deleting a photo that\'s already gone just takes it off the screen, a delete that Windows never finishes gives up on that file after 30 seconds instead of hanging, and a stuck operation no longer stops the folder watch from noticing photos deleted elsewhere.',
+            'A photo a scanner is still saving is added once it\'s whole, not half-written, and a preview that can\'t be made or shown is tried again instead of staying blank.',
+            'Folder details: in the grid, `I` (or Order info / Folder info in the right-click menus) shows the folder you\'re in: how many photos, here and with subfolders, total size, average and largest photo, file types, dates, flags, and for the whole order how much room jEditor\'s .jeditor folder takes (trash, cache, Auto crop originals). Select several photos to see the same for the selection. Single view still shows the photo\'s own details.',
+            'The folder list shows the total for what you\'re looking at, such as 1,240 photos · 4.80 GB. Click it for the details. Hovering a folder shows its size too.',
+            'The film strip\'s background is always black, in both themes.',
+            'In single view, the controls above the film strip fade away a few seconds after they appear, leaving the photo the screen. Move the pointer to where they were and they come back. To do without them altogether, turn off Buttons above the film strip in Settings.',
+            'The selection bar in the grid is centred on the photos again, beside the folder list when it\'s open.',
+            'Opening an order whose subfolder has a .jeditor folder of its own (because that subfolder was once opened on its own) merges it into the order\'s and removes it, so the order has just one. Its deleted photos and Auto crop originals move into the order\'s .jeditor, named after the subfolder, and its flags join the order\'s. Its cache is dropped and rebuilt when needed. If anything can\'t be moved, that .jeditor is left where it is.'
+        ]
+    },
+    {
         version: '1.17.0', date: '2026-10-12',
         items: [
             'A new look: one consistent set of colours, type, spacing, icons and buttons across every screen, with quieter neutral greys so the photo stands out and the accent colour only marking what\'s selected, focused or the main action.',

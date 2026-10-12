@@ -14,7 +14,7 @@ The version number is shown on the start screen.
 ## Using it
 
 1. Click **Open folder**, or drag a folder onto the window. Subfolders are included. The last six folders you opened are listed under **Recent** on the start screen; click one to open it again (Chrome may ask once more for permission to edit it), or hover and click × to take it off the list. If you open a folder that's inside an order on the Recent list, jEditor offers to open the whole order at that folder instead, so the order keeps a single `.jeditor` folder. (A browser can't look up from a folder to the one it's in, so this only works for orders it already knows.)
-2. Move through photos with `←` / `→`. `Space` switches between single view and grid. In the grid, the slider at the bottom right or `Ctrl` + mouse wheel makes the tiles bigger or smaller; the highlighted photo stays where it is on screen.
+2. Move through photos with `←` / `→`. In single view the buttons above the film strip fade away after a few seconds; move the pointer there to bring them back, or turn off **Buttons above the film strip** in Settings to hide them for good. `Space` switches between single view and grid. In the grid, the slider at the bottom right or `Ctrl` + mouse wheel makes the tiles bigger or smaller; the highlighted photo stays where it is on screen.
 3. Rotate with `[` / `]`. In grid view this rotates every selected photo.
 4. Press `C` to crop and straighten. `Enter` saves, `Shift+Enter` saves and opens the next photo, `Esc` cancels.
 5. `Ctrl+Z` undoes the last rotation, crop, rename or delete.
@@ -62,6 +62,8 @@ jEditor keeps its own data in a `.jeditor` folder inside the folder you open:
 - `flags.json` holds the flags (stars, rescan flags, colour labels).
 - `originals/` holds the photos as they were before a batch Auto crop, so it can be undone.
 
+If a subfolder has a `.jeditor` of its own (because it was once opened on its own), opening the whole order merges it into the order's: its deleted photos and Auto crop originals move across, named after the subfolder, its flags join the order's, and its cache is dropped. Then it's removed, so the order keeps one `.jeditor`.
+
 Because the cache travels with the folder, a second computer opening the same order (on a shared drive, say) gets its thumbnails and duplicate data straight away. The large screen-sized previews aren't stored there, to keep the folder small; they're kept in the browser instead.
 
 Rotating doesn't throw the cache away. A rotation only changes the photo's orientation tag, so the cached thumbnail and preview get the same tag instead of being made again from the full scan. Opening the folder again after rotating a batch is as quick as opening it with no changes.
@@ -97,6 +99,7 @@ Some orders are collated: the photos go into labelled folders. Open the order fo
 - **Name clashes.** If a photo with the same name is already in the folder, you're asked what to do: keep both (the moved photo gets a number, `IMG_0042 (2).jpg`), skip it, or replace the one that's there, which goes to the trash. You can apply the answer to the rest of the clashes. Cancel and nothing is moved.
 - **Folders.** **New folder** at the bottom of the folder list, `Shift+N`, or right-clicking the grid makes one inside the folder you're looking at. Right-click a folder to rename it, make a folder inside it, or delete it once it's empty.
 - In a folder, `←` `→`, the film strip, `Ctrl+A` and **Rename all…** cover that folder's photos only.
+- **Folder details.** The bottom of the folder list shows the total for what you're looking at (`1,240 photos · 4.80 GB`); click it, press `I` in the grid, or right-click a folder for **Folder info**. It lists how many photos there are (directly in the folder and with its subfolders), the total, average and largest size, file types, dates and flags. For the whole order it also shows how much room `.jeditor` takes: trash, cache and Auto crop originals. Select several photos to see the same for the selection.
 
 `Ctrl+Z` undoes a move or copy in one step, together with any photos it replaced and the folder made for it. Making, renaming and deleting folders can be undone too.
 
@@ -142,7 +145,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `Space`, `G`, `S` | Toggle view, grid view, single view |
 | `C` | Crop and straighten |
 | `+` `-` `0` | Zoom in, zoom out, fit. The mouse wheel zooms on the pointer, up to 3200% (past 100% the pixels show as sharp squares, with no smoothing). Double-click the photo: in to 100% on that spot, again to fit. |
-| `I` | File info |
+| `I` | Info: the photo in single view; in the grid, the folder you're in (photos, total size, types, dates, flags, room taken by `.jeditor`), or the selection |
 | `F` | Full screen |
 | `F2` | Rename (the selected photos in grid view) |
 | `M` / `Shift+M` | Move / copy to a folder (the selection in grid view) |

@@ -23,6 +23,8 @@
 const Watch = {
     WALK_CONCURRENCY: 8, // folders listed at once (helps most on network drives)
     STAT_BATCH: 24,      // files opened at once for size and date
+    SETTLED_MS: 5000,    // a file untouched this long is finished, whatever its ending
+    UNFINISHED_RECHECK_MS: 1200,
     POLL_MIN_MS: 15000,  // checking without an observer: at most this often…
     POLL_MAX_MS: 120000, // …and at least this often, scaled to how long a scan takes
     EDIT_CHECK_MS: 60000, // edits are looked for on focus at most once a minute
@@ -30,6 +32,8 @@ const Watch = {
 
     opDepth: 0,
     opGen: 0,
+    ops: new Map(), // edit in progress → when it started
+    STALE_OP_MS: 90000, // an edit running longer than this no longer holds checks up
     observer: null,
     running: null,
     queued: null,
@@ -61,33 +65,47 @@ const Watch = {
             const orig = obj[name];
             if (typeof orig !== 'function') continue;
             obj[name] = function (...args) {
+                const op = {};
+                w.ops.set(op, Date.now());
                 w.opDepth++;
                 w.opGen++;
                 let res;
                 try {
                     res = orig.apply(this, args);
                 } catch (e) {
-                    w.endOp();
+                    w.endOp(op);
                     throw e;
                 }
-                if (res && typeof res.then === 'function') return res.finally(() => w.endOp());
-                w.endOp();
+                if (res && typeof res.then === 'function') return res.finally(() => w.endOp(op));
+                w.endOp(op);
                 return res;
             };
         }
     },
 
-    endOp() {
+    endOp(op) {
+        this.ops.delete(op);
         this.opDepth--;
         this.opGen++;
         Flags.saveSoon(); // renamed or moved photos: flags under their new paths
+        this.app._usage = null; // .jeditor's size may have changed (trash, originals)
+        this.app.refreshInfoSoon();
         // A check that came in meanwhile runs now
-        if (!this.opDepth && this.queued) this.kick(400);
+        if (!this.editing() && this.queued) this.kick(400);
+    },
+
+    // An edit of ours is under way. One that has run for minutes (a file
+    // operation Windows never finished, say) stops holding checks up, so
+    // photos deleted elsewhere still go from the grid.
+    editing() {
+        const now = Date.now();
+        for (const started of this.ops.values()) if (now - started < this.STALE_OP_MS) return true;
+        return false;
     },
 
     busy() {
         const app = this.app;
-        return this.opDepth > 0 || app.isLoading || (app._tasks && app._tasks.has('scan'));
+        return this.editing() || app.isLoading || (app._tasks && app._tasks.has('scan'));
     },
 
     // ---- Starting and stopping with the folder ----
@@ -151,7 +169,9 @@ const Watch = {
         if (!this.enabled()) return;
         const dirs = new Set(), files = new Set();
         let full = false;
-        const skip = (parts) => parts.length && this.skipDir(parts[0]);
+        // Inside jEditor's own folders, at any depth (a subfolder's .jeditor
+        // being merged, say), nothing is a photo
+        const skip = (parts) => parts.some(p => this.skipDir(p));
         for (const r of records) {
             if (r.type === 'errored') {
                 // The observer gave up: fall back to checking now and then
@@ -242,16 +262,18 @@ const Watch = {
         return name === FolderCache.DIR || name === FolderCache.LEGACY_TRASH || name === 'jEditor Export';
     },
 
+    // own: jEditor's folders found here (.jeditor, the old .jeditor-trash)
     async listDir(handle) {
-        const files = new Map(), dirs = new Map();
+        const files = new Map(), dirs = new Map(), own = [];
         for await (const entry of handle.values()) {
             if (entry.kind === 'file') {
                 if (this.app.isImage(entry.name) && !entry.name.startsWith('.jeditor-')) files.set(entry.name, entry);
-            } else if (entry.kind === 'directory' && !this.skipDir(entry.name)) {
-                dirs.set(entry.name, entry);
+            } else if (entry.kind === 'directory') {
+                if (entry.name === FolderCache.DIR || entry.name === FolderCache.LEGACY_TRASH) own.push(entry);
+                else if (!this.skipDir(entry.name)) dirs.set(entry.name, entry);
             }
         }
-        return { files, dirs };
+        return { files, dirs, own };
     },
 
     // Lists the given folders, and with deep every folder inside them;
@@ -298,6 +320,36 @@ const Watch = {
             datas.forEach((d, j) => { out[i + j] = d; });
         }
         return out;
+    },
+
+    // Is this file whole, or is a scanner still writing it? A photo is
+    // finished when it ends the way its format ends (a JPEG's end marker,
+    // PNG's IEND, GIF's trailer, WebP's stated length), or when it hasn't
+    // changed for a few seconds. Older files aren't read at all.
+    async complete(data, name = data.name || '') {
+        if (!data.size) return Date.now() - data.lastModified > this.SETTLED_MS * 6;
+        if (Date.now() - data.lastModified > this.SETTLED_MS) return true;
+        try {
+            const n = data.size;
+            const tail = new Uint8Array(await data.slice(Math.max(0, n - 16)).arrayBuffer());
+            const ext = (name.match(/\.(\w+)$/) || [, ''])[1].toLowerCase();
+            if (ext === 'jpg' || ext === 'jpeg') {
+                for (let i = tail.length - 2; i >= 0; i--) if (tail[i] === 0xFF && tail[i + 1] === 0xD9) return true;
+                return false;
+            }
+            if (ext === 'png') {
+                const t = tail.length - 8;
+                return t >= 0 && tail[t] === 0x49 && tail[t + 1] === 0x45 && tail[t + 2] === 0x4E && tail[t + 3] === 0x44;
+            }
+            if (ext === 'gif') return tail[tail.length - 1] === 0x3B;
+            if (ext === 'webp') {
+                const head = new DataView(await data.slice(0, 12).arrayBuffer());
+                return head.byteLength >= 8 && head.getUint32(4, true) + 8 <= n;
+            }
+        } catch (e) {
+            return false; // can't be read yet: still being written
+        }
+        return true;
     },
 
     // ---- One scan ----
@@ -355,13 +407,24 @@ const Watch = {
             }
         }
 
-        // Size and date of the new photos
+        // Size and date of the new photos. One a scanner is still writing
+        // waits: it's looked at again shortly, and added once it's whole.
         const datas = await this.stat(fresh.map(p => p.handle));
         const added = [];
-        fresh.forEach((p, i) => {
-            const d = datas[i];
-            if (d) added.push({ ...p, size: d.size, lastModified: d.lastModified });
-        });
+        const unfinished = new Set();
+        for (let i = 0; i < fresh.length; i++) {
+            const p = fresh[i], d = datas[i];
+            if (!d) continue;
+            if (!(await this.complete(d, p.name))) {
+                unfinished.add(Folders.parentOf(p.relPath));
+                continue;
+            }
+            added.push({ ...p, size: d.size, lastModified: d.lastModified });
+        }
+        if (unfinished.size) {
+            const g = this.gen;
+            setTimeout(() => { if (g === this.gen) this.request({ dirs: unfinished }); }, this.UNFINISHED_RECHECK_MS);
+        }
 
         // Edited elsewhere: size or date differ from what's loaded
         let edited = [];
@@ -375,7 +438,7 @@ const Watch = {
         // Something of ours touched the folder meanwhile, or a new folder
         // was opened: this picture may be half old, half new. Look again.
         if (gen !== this.gen) return;
-        if (opGen !== this.opGen || this.opDepth) {
+        if (opGen !== this.opGen || this.editing()) {
             this.request(job);
             return;
         }

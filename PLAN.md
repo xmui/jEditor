@@ -169,3 +169,56 @@ re-cropped, re-exposed or black & white.
 3. Visible "unsaved / saving / saved" indicator per photo instead of a global
    spinner.
 4. Sort order persistence (localStorage) and a "Date taken" (EXIF) sort mode.
+
+## Parked (2026-10-12): native Windows app and in-app scanning
+
+Decision for now: **stay a web app.** Notes kept for when this comes back.
+
+### The lab's setup
+- One lab PC (Windows).
+- **Epson FastFoto FF-680W**: sheet-fed batch photo scanner. Scanned with
+  Epson's FastFoto software, batch capture only; its correction and cropping
+  aren't used. Ships a 64-bit TWAIN driver as part of Epson Scan 2 (Epson
+  Scan 1 is 32-bit only).
+- **Plustek OpticBook A300**: A3 flatbed, scanned with VueScan. Retailer
+  listings for the A300 Plus say TWAIN and WIA on Windows x64; not confirmed
+  from Plustek, and the lab's unit may be the older non-Plus model.
+- How many prints go on the bed at once depends on the scanner.
+- Still to ask: are photo backs scanned on the FastFoto?
+
+### Best next step (no native app needed)
+**Split several prints from one flatbed scan.** VueScan saves the whole-bed
+scan into the order, the folder watch (1.16.0) picks it up, and jEditor
+finds each print, straightens and crops it, and saves each as its own photo.
+This builds on `crop-auto.js`, which already finds one print on a plain bed.
+Estimate: a few days, mostly tuning. Needs 3–5 full-resolution A300 bed
+scans with several prints each: prints touching, one against the bed edge,
+a dark print.
+
+### If a native app is wanted later
+- Wrap the existing UI (Tauri, or a .NET/WebView2 host) instead of
+  rewriting it (~12.6k lines). Rough estimates:
+  1. Windows app shell with native file access: 1–2 weeks.
+  2. In-app scanning for both scanners over TWAIN: 2–3 weeks, set mainly
+     by test rounds on the lab PC (scanners can't be reached remotely).
+- What it gains:
+  - Scanning in jEditor, with per-order settings and naming at scan time.
+  - "Needs rescan" photos replaced in place, keeping their name and folder.
+  - No permission prompts; the subfolder-of-an-order check works for any
+    folder.
+  - Real Recycle Bin, a truly hidden `.jeditor` on Windows.
+  - Faster thumbnails: every CPU core, or Explorer's own thumbnail cache.
+  - Faster file access on network drives.
+- Risks:
+  - Whether Epson Scan 2's TWAIN runs at full batch speed without its own
+    window popping up.
+  - Plustek driver details (it may be 32-bit only; a 64-bit app would then
+    need a 32-bit helper process).
+  - No code-signing certificate means a one-time "Run anyway" warning;
+    acceptable on a single PC.
+- De-risk first (about 30 minutes): install NAPS2 (free) on the lab PC and
+  scan from each scanner through its TWAIN driver. If both work there, a
+  native jEditor can drive them too.
+- Before choosing: measure where time goes on a real big order (the debug
+  console, `Ctrl+Shift+D`). Native helps most if it's thumbnails and file
+  reading.

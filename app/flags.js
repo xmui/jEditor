@@ -162,6 +162,8 @@ const Flags = {
             const w = await fh.createWritable();
             await w.write(JSON.stringify({ version: 1, flags: out }));
             await w.close();
+            app._usage = null;
+            app.refreshInfoSoon();
         } catch (e) {
             console.warn('Saving flags failed:', e);
         }
@@ -180,6 +182,32 @@ const Flags = {
     count() {
         let n = this.orphans.size;
         for (const f of this.app.files) if (this.any(f)) n++;
+        return n;
+    },
+
+    // Flags from a subfolder's own .jeditor (see FolderCache.absorbNested),
+    // saved relative to that subfolder. Joined with any already set here.
+    mergeFrom(prefix, saved) {
+        const byPath = new Map(this.app.files.map(f => [f.relPath || f.name, f]));
+        let n = 0;
+        for (const [rel, v] of Object.entries(saved)) {
+            const fl = this.clean(v);
+            if (!fl) continue;
+            const path = Folders.join(prefix, rel);
+            const f = byPath.get(path);
+            const old = f ? f._flags : this.orphans.get(path);
+            const joined = { ...fl, ...(old || {}) };
+            if (fl.star) joined.star = true;
+            if (fl.rescan) joined.rescan = true;
+            if (f) f._flags = joined;
+            else this.orphans.set(path, joined);
+            n++;
+        }
+        if (n) {
+            this._dirty = true;
+            this.saveSoon();
+            this.refreshAll();
+        }
         return n;
     },
 

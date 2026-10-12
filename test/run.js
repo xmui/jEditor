@@ -2518,7 +2518,7 @@ async function newPage(browser, url) {
             app.clearSelection();
             out.menu = Folders.contextItems('Wedding/Reception').map(i => i[0]).join('|');
             app.selection = new Set([f('b.jpg'), f('d.jpg')]);
-            out.menuSel = Folders.contextItems('Wedding').map(i => i[0]).slice(0, 4).join('|');
+            out.menuSel = Folders.contextItems('Wedding').map(i => i[0]).slice(0, 5).join('|');
             // The path chip (bottom left) is for single view only
             app.setView('single');
             const chipShown = () => !document.getElementById('status-bar').classList.contains('hidden');
@@ -2562,10 +2562,10 @@ async function newPage(browser, url) {
         check('folders: moved photos keep their cached thumbnail and preview', r.cacheCarried);
         check('folders: folder list can be hidden (remembered)', r.railHidden);
         check('folders: Rename All in a folder covers that folder only', r.renameScope === 'Wedding/b.jpg,Wedding/w1.jpg|All photos in Wedding (2)', r.renameScope);
-        check('folders: folder menu', r.menu === 'Open|—|New folder inside…|Rename folder…|—|Delete folder', r.menu);
+        check('folders: folder menu', r.menu === 'Open|Folder info|—|New folder inside…|Rename folder…|—|Delete folder', r.menu);
         check('path chip: shown in single view, hidden in the grid', r.chipSingle && !r.chipGrid, `${r.chipSingle}/${r.chipGrid}`);
         check('folders: grid rows keep their gap (tiles never overlap)', r.rowGap === 16 && r.square, `gap=${r.rowGap}`);
-        check('folders: folder menu moves or copies the selection there', r.menuSel === 'Open|—|Move 2 photos here|Copy 2 photos here', r.menuSel);
+        check('folders: folder menu moves or copies the selection there', r.menuSel === 'Open|Folder info|—|Move 2 photos here|Copy 2 photos here', r.menuSel);
 
         // Drag photos onto a folder in the list (Ctrl copies), never opening
         // them as a dropped folder
@@ -2826,6 +2826,40 @@ async function newPage(browser, url) {
             if (toast) toast.querySelector('.toast-action').click();
             out.shown = ['c.jpg', 'e.jpg'].every(n => app.selection.has(app.files.find(f => f.name === n)));
 
+            // A scanner writing a photo: first the start of it, then the
+            // rest. It's added once it's whole, with a real thumbnail.
+            const full = await makeRealJpeg(400, 300, { color: '#2a8' });
+            const partFh = await dir.getFileHandle('g.jpg', { create: true });
+            let w = await partFh.createWritable();
+            await w.write(new Blob([full.slice(0, 300)]));
+            await w.close();
+            if (!Watch.observer) Watch.request({ full: true });
+            await sleep(700);
+            out.notYet = !app.files.some(f => f.name === 'g.jpg');
+            w = await partFh.createWritable();
+            await w.write(new Blob([full]));
+            await w.close();
+            if (!Watch.observer) Watch.request({ full: true });
+            await until(() => app.files.some(f => f.name === 'g.jpg'), 6000);
+            const g = app.files.find(f => f.name === 'g.jpg');
+            out.wholeSize = !!g && g.size === full.length;
+            await until(() => g && g.thumbnailUrl, 4000);
+            out.thumb = await new Promise(res => {
+                if (!g || !g.thumbnailUrl) return res(false);
+                const im = new Image();
+                im.onload = () => res(im.naturalWidth > 0);
+                im.onerror = () => res(false);
+                im.src = g.thumbnailUrl;
+            });
+            await dir.removeEntry('g.jpg');
+            if (!Watch.observer) Watch.request({ full: true });
+            await until(() => !app.files.some(f => f.name === 'g.jpg'));
+            // Whole files are told apart from half-written ones
+            const jpgDone = await Watch.complete(new File([full], 'x.jpg', { lastModified: Date.now() }));
+            const jpgHalf = await Watch.complete(new File([full.slice(0, 500)], 'x.jpg', { lastModified: Date.now() }));
+            const oldHalf = await Watch.complete(new File([full.slice(0, 500)], 'x.jpg', { lastModified: Date.now() - 60000 }));
+            out.complete = jpgDone && !jpgHalf && oldHalf;
+
             // Removed outside jEditor: gone from the grid
             await dir.removeEntry('h.jpg');
             if (!Watch.observer) Watch.request({ full: true });
@@ -2866,19 +2900,62 @@ async function newPage(browser, url) {
             app.uiPrefs.autoCheck = false;
             Watch.start();
             out.off = !Watch.observer && !Watch._pollTimer;
+
+            // Deleting a photo that's already gone (deleted in File Explorer
+            // before jEditor noticed): it just leaves the grid
+            await put(dir, 'x1.jpg', bytes);
+            await app.refreshFolder();
+            const x1 = app.files.find(f => f.name === 'x1.jpg');
+            await dir.removeEntry('x1.jpg');
+            await app.moveToTrash([x1]);
+            const toasts = () => [...document.querySelectorAll('.toast')].map(t => t.textContent);
+            out.goneDelete = !app.files.includes(x1) && toasts().some(t => /already deleted elsewhere/.test(t)) &&
+                !toasts().some(t => /Couldn't delete/.test(t));
+
+            // One file that never finishes deleting doesn't hold up the rest
+            await put(dir, 'x2.jpg', bytes);
+            await put(dir, 'x3.jpg', bytes);
+            await app.refreshFolder();
+            const x2 = app.files.find(f => f.name === 'x2.jpg'), x3 = app.files.find(f => f.name === 'x3.jpg');
+            const realTrashOne = app.trashOne;
+            app.trashOne = function (f, ...rest) { return f === x2 ? new Promise(() => { }) : realTrashOne.call(this, f, ...rest); };
+            app.TRASH_TIMEOUT_MS = 300;
+            const started = Date.now();
+            await app.moveToTrash([x2, x3]);
+            app.trashOne = realTrashOne;
+            app.TRASH_TIMEOUT_MS = 30000;
+            out.hungDelete = Date.now() - started < 3000 && !app.files.includes(x3) && app.files.includes(x2) &&
+                !(app._tasks && app._tasks.has('trash'));
+
+            // An edit of ours that never ends stops holding up folder checks
             app.uiPrefs.autoCheck = true;
+            Watch.start();
+            await until(() => Watch.observer || Watch._pollTimer);
+            const stuck = { hang: () => new Promise(() => { }) };
+            Watch.guard(stuck, ['hang']);
+            Watch.STALE_OP_MS = 400;
+            stuck.hang();
+            await dir.removeEntry('x2.jpg');
+            Watch.request({ full: true });
+            await until(() => !app.files.includes(x2), 5000);
+            out.staleOp = !app.files.includes(x2);
+            Watch.STALE_OP_MS = 90000;
             return out;
         });
         console.log(`  info  watching with: ${r.watching}; rescan of an unchanged order: ${r.rescanMs} ms`);
         check('watch: new photos slot into the grid in sort order', r.added, JSON.stringify(r));
         check('watch: existing tiles aren\'t rebuilt; new ones glow', r.inPlace && r.glow);
         check('watch: toast with Show selects the new photos', r.toast && r.shown);
+        check('watch: a photo still being written waits, then comes in whole with a real thumbnail', r.notYet && r.wholeSize && r.thumb && r.complete, JSON.stringify(r));
         check('watch: photos removed outside jEditor go', r.removed);
         check('watch: a new folder and its photos show up', r.newFolder);
         check('rescan: photos edited elsewhere are picked up', r.edited);
         check('rescan: an unchanged order is up to date', r.upToDate && r.rescanMs < 2000, String(r.rescanMs));
         check('watch: jEditor\'s own rename and trash aren\'t seen as outside changes', r.ownOps);
         check('watch: can be switched off', r.off);
+        check('delete: a photo already deleted elsewhere just leaves the grid', r.goneDelete, JSON.stringify(r));
+        check('delete: one file that never finishes doesn\'t hold up the rest', r.hungDelete, JSON.stringify(r));
+        check('watch: an edit that never ends stops holding up folder checks', r.staleOp, JSON.stringify(r));
         check('watch suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -3106,6 +3183,187 @@ async function newPage(browser, url) {
         check('subfolder: the order opens at that folder; no second .jeditor', r.order && r.noNewJeditor, JSON.stringify(r));
         check('subfolder: or just the folder', r.justFolder);
         check('subfolder suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7t2. A subfolder's own .jeditor is merged into the order's ----
+    console.log('nested .jeditor merged');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('nestorder', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('nestorder', { create: true });
+            const bytes = await makeRealJpeg(200, 140);
+            const put = async (d, name, data = bytes) => {
+                const fh = await d.getFileHandle(name, { create: true });
+                const w = await fh.createWritable(); await w.write(new Blob([data])); await w.close();
+            };
+            await put(dir, 'a.jpg');
+            const sub = await dir.getDirectoryHandle('Ceremony', { create: true });
+            await put(sub, 'c1.jpg');
+            await put(sub, 'c2.jpg');
+            // Ceremony was opened on its own once: flags, a deleted photo, a cache
+            const own = await sub.getDirectoryHandle('.jeditor', { create: true });
+            await put(own, 'flags.json', JSON.stringify({ version: 1, flags: { 'c1.jpg': { star: true }, 'gone.jpg': { rescan: true } } }));
+            await put(await own.getDirectoryHandle('trash', { create: true }), 'old.jpg');
+            await put(await (await own.getDirectoryHandle('cache', { create: true })).getDirectoryHandle('thumbs', { create: true }), 'x.img', 'x');
+            // The order already has a trashed photo with the same name
+            const top = await dir.getDirectoryHandle('.jeditor', { create: true });
+            await put(await top.getDirectoryHandle('trash', { create: true }), 'Ceremony - old.jpg');
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            for (let i = 0; i < 100; i++) {
+                if (await sub.getDirectoryHandle('.jeditor').then(() => false, () => true)) break;
+                await sleep(30);
+            }
+            out.removed = await sub.getDirectoryHandle('.jeditor').then(() => false, () => true);
+            const trash = [];
+            for await (const e of (await top.getDirectoryHandle('trash')).values()) trash.push(e.name);
+            out.trash = trash.sort().join(',');
+            out.flag = Flags.has(app.files.find(f => f.relPath === 'Ceremony/c1.jpg'), 'star');
+            await sleep(700);
+            const saved = JSON.parse(await (await (await top.getFileHandle('flags.json')).getFile()).text()).flags;
+            out.saved = !!(saved['Ceremony/c1.jpg'] && saved['Ceremony/c1.jpg'].star && saved['Ceremony/gone.jpg'] && saved['Ceremony/gone.jpg'].rescan);
+            out.photos = app.files.length === 3;
+            out.toast = [...document.querySelectorAll('.toast')].map(t => t.textContent).find(t => /Merged/.test(t)) || '';
+            return out;
+        });
+        check('nested .jeditor: merged into the order\'s and removed', r.removed && r.photos, JSON.stringify(r));
+        check('nested .jeditor: its deleted photos move to the order\'s trash, named after the folder', r.trash === 'Ceremony - old (2).jpg,Ceremony - old.jpg', r.trash);
+        check('nested .jeditor: its flags join the order\'s under the folder\'s path', r.flag && r.saved);
+        check('nested .jeditor: says so', /Merged the \.jeditor folder in “Ceremony” into this order's \(2 flags, 1 deleted photo\)/.test(r.toast), r.toast);
+        check('nested .jeditor suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7t3. Single view: the controls above the film strip fade away ----
+    console.log('single view controls fade');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1200, height: 800 });
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const dir = makeDir('Fade');
+            for (let i = 1; i <= 3; i++) {
+                const h = makeHandle(`f${i}.jpg`, await makeRealJpeg(300, 200), 'image/jpeg');
+                dir._files.set(h.name, h);
+            }
+            dir.values = async function* () { yield* dir._files.values(); };
+            window.showDirectoryPicker = async () => dir;
+            app.CONTROLS_IDLE_MS = 150;
+            await app.browseFolder();
+            app.setView('single');
+            const el = app.singleControls();
+            out.shownFirst = !el.classList.contains('idle');
+            await sleep(400);
+            out.fades = el.classList.contains('idle');
+            const move = (x, y) => document.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
+            const rect = el.getBoundingClientRect();
+            move(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            out.back = !el.classList.contains('idle');
+            await sleep(400);
+            out.staysWhileNear = !el.classList.contains('idle');
+            move(rect.left + rect.width / 2, 60);
+            await sleep(400);
+            out.fadesAfterLeaving = el.classList.contains('idle');
+            // Customize controls can turn them off altogether
+            const box = document.getElementById('cust-single-controls');
+            box.checked = false;
+            box.dispatchEvent(new Event('change'));
+            out.off = getComputedStyle(el).display === 'none' && app.uiPrefs.singleControls === false;
+            move(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            out.staysOff = getComputedStyle(el).display === 'none';
+            app.setView('grid');
+            app.setView('single');
+            out.offAfterViews = getComputedStyle(el).display === 'none';
+            box.checked = true;
+            box.dispatchEvent(new Event('change'));
+            out.onAgain = getComputedStyle(el).display !== 'none' && !el.classList.contains('idle');
+            return out;
+        });
+        check('single view controls: shown, then fade after a few seconds', r.shownFirst && r.fades, JSON.stringify(r));
+        check('single view controls: back while the pointer is there, fade once it leaves', r.back && r.staysWhileNear && r.fadesAfterLeaving, JSON.stringify(r));
+        check('single view controls: can be turned off in Customize controls, and on again', r.off && r.staysOff && r.offAfterViews && r.onAgain, JSON.stringify(r));
+        check('single view controls suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7t4. Folder details and storage size ----
+    console.log('folder details');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('infoorder', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('infoorder', { create: true });
+            const put = async (d, name, data) => {
+                const fh = await d.getFileHandle(name, { create: true });
+                const w = await fh.createWritable(); await w.write(new Blob([data])); await w.close();
+            };
+            const jpg = await makeRealJpeg(200, 140);
+            await put(dir, 'a.jpg', jpg);
+            await put(dir, 'b.jpg', jpg);
+            await put(dir, 'c.png', await makeRealPng(120, 80, 300));
+            const sub = await dir.getDirectoryHandle('Ceremony', { create: true });
+            await put(sub, 'c1.jpg', jpg);
+            const trash = await (await dir.getDirectoryHandle('.jeditor', { create: true })).getDirectoryHandle('trash', { create: true });
+            await put(trash, 'gone.jpg', new Uint8Array(5000));
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            app.setView('grid');
+            const rows = () => {
+                const dts = [...document.querySelectorAll('#info-list dt')].map(x => x.textContent);
+                const dds = [...document.querySelectorAll('#info-list dd')].map(x => x.textContent);
+                return Object.fromEntries(dts.map((k, i) => [k.trim(), dds[i]]));
+            };
+            const title = () => document.querySelector('#info-panel h3').textContent;
+            const total = app.files.reduce((n, f) => n + f.size, 0);
+
+            // I in the grid: the order
+            app.selection = new Set([app.files[0]]);
+            app.updateSelectionUI();
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'i', bubbles: true }));
+            await sleep(50);
+            let r1 = rows();
+            out.order = title() === 'Order' && r1.Photos === '4' && r1.Size === app.formatBytes(total) && r1.Folders === '1' && /JPEG 3 · PNG 1/.test(r1.Types);
+            for (let i = 0; i < 50 && rows()['.jeditor'] === 'Adding up…'; i++) await sleep(30);
+            r1 = rows();
+            out.own = r1['.jeditor'] === app.formatBytes(5000) && /1 photo/.test(r1.Trash || '');
+            // Several selected: the selection
+            app.selection = new Set(app.files.slice(0, 2));
+            app.updateSelectionUI();
+            await sleep(50);
+            out.selection = title() === 'Selection' && rows().Photos === '2';
+            // A folder, with the whole order underneath
+            Folders.setScope('Ceremony');
+            app.selection.clear();
+            app.updateSelectionUI();
+            await sleep(50);
+            const r2 = rows();
+            out.folder = title() === 'Folder' && r2.Name === 'Ceremony' && r2.Photos === '1' && /4 photos/.test(r2['Whole order'] || '');
+            out.railTotal = document.getElementById('fr-total').textContent === `1 photo · ${app.formatBytes(app.files.find(f => f.name === 'c1.jpg').size)}`;
+            // Folder Info from the folder menu, then single view shows the photo
+            Folders.setScope(null);
+            Folders.contextItems('Ceremony').find(i => i[0] === 'Folder info')[1]();
+            await sleep(50);
+            out.menu = title() === 'Folder' && rows().Name === 'Ceremony';
+            app.setView('single');
+            await sleep(80);
+            out.single = title() === 'File info' && rows().Name === app.currentFile.name;
+            out.gb = app.formatBytes(3 * 1024 * 1024 * 1024) === '3.00 GB';
+            return out;
+        });
+        check('folder details: I in the grid shows the order: photos, size, folders, types', r.order, JSON.stringify(r));
+        check('folder details: how much room .jeditor takes, trash counted', r.own, JSON.stringify(r));
+        check('folder details: a selection, a folder with the whole order, Folder Info in the menu', r.selection && r.folder && r.menu, JSON.stringify(r));
+        check('folder details: total under the folder list; single view still shows the photo', r.railTotal && r.single && r.gb, JSON.stringify(r));
+        check('folder details suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

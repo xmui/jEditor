@@ -217,6 +217,7 @@ const app = {
         this.initSettings();
 
         this.initStripResize();
+        this.initControlsAutoHide();
 
         // Apply saved layout (order, hidden buttons, orientation, scale,
         // strip height, thumbnail fit)
@@ -325,7 +326,7 @@ const app = {
     // preferences too. Everything persists in localStorage under 'jeditor.ui'.
 
     HC_LABELS: {
-        info: 'File info',
+        info: 'Info',
         view: 'Grid / single view',
         refresh: 'Rescan folder',
         crop: 'Crop and straighten',
@@ -360,6 +361,7 @@ const app = {
             folderCache: true, // keep thumbnails / duplicate data in the folder's .jeditor
             autoCheck: true, // pick up photos added, removed or edited outside jEditor
             accent: null, // the accent colour (#rrggbb); null is the standard blue
+            singleControls: true, // previous / rotate / next above the film strip in single view
             theme: 'dark',
             density: 'compact',
             glass: 'rich',
@@ -392,6 +394,7 @@ const app = {
                 if (typeof saved.folderCache === 'boolean') this.uiPrefs.folderCache = saved.folderCache;
                 if (typeof saved.autoCheck === 'boolean') this.uiPrefs.autoCheck = saved.autoCheck;
                 if (typeof saved.accent === 'string' && /^#[0-9a-f]{6}$/i.test(saved.accent)) this.uiPrefs.accent = saved.accent;
+                if (typeof saved.singleControls === 'boolean') this.uiPrefs.singleControls = saved.singleControls;
                 if (typeof saved.folderRail === 'boolean') this.uiPrefs.folderRail = saved.folderRail;
                 for (const [k, allowed] of Object.entries(this.APPEARANCE)) {
                     if (allowed.includes(saved[k])) this.uiPrefs[k] = saved[k];
@@ -442,6 +445,8 @@ const app = {
         this.elements.thumbnailStrip.classList.toggle('thumb-contain', !!p.thumbContain);
         document.getElementById('btn-toggle-fit').setAttribute('aria-pressed', String(!!p.thumbContain));
         this.applyAccent(p.accent);
+        const controls = this.singleControls();
+        if (controls) controls.classList.toggle('off', p.singleControls === false);
         this.applyAppearance();
     },
 
@@ -561,6 +566,12 @@ const app = {
         });
 
         // Toolbar buttons
+        $('cust-single-controls').addEventListener('change', (e) => {
+            this.uiPrefs.singleControls = e.target.checked;
+            this.saveUiPrefs();
+            this.applyUiPrefs();
+            if (e.target.checked && this.viewMode === 'single') this.showControls(false);
+        });
         $('cust-vertical').addEventListener('change', (e) => {
             this.uiPrefs.vertical = e.target.checked;
             this.saveUiPrefs();
@@ -605,6 +616,7 @@ const app = {
         $('cust-folder-cache').checked = this.uiPrefs.folderCache !== false;
         $('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
         $('cust-cleanup').disabled = !this.dirHandle;
+        $('cust-single-controls').checked = this.uiPrefs.singleControls !== false;
         this.syncAccentPicker();
         $('cust-scale').value = this.uiPrefs.scale;
         $('cust-scale-out').textContent = `${Math.round(this.uiPrefs.scale * 100)}%`;
@@ -766,6 +778,58 @@ const app = {
                 list.appendChild(row);
             });
         }
+    },
+
+    // ---- Single view: the controls above the film strip fade away ----
+    //
+    // A few seconds after they're shown, so the photo has the screen to
+    // itself. They come back while the pointer is on or near where they
+    // sit (or a button has keyboard focus), and fade again once it leaves.
+    // Customize controls can turn them off altogether (uiPrefs.singleControls).
+
+    CONTROLS_IDLE_MS: 2500,
+    CONTROLS_NEAR_PX: 48,
+
+    singleControls() {
+        return this.elements.thumbnailStrip.parentElement.querySelector('.controls');
+    },
+
+    initControlsAutoHide() {
+        const el = this.singleControls();
+        if (!el) return;
+        document.addEventListener('pointermove', (e) => {
+            if (this.viewMode !== 'single' || el.classList.contains('hidden') || el.classList.contains('off')) return;
+            const r = el.getBoundingClientRect(), pad = this.CONTROLS_NEAR_PX;
+            const near = e.clientX >= r.left - pad && e.clientX <= r.right + pad &&
+                e.clientY >= r.top - pad && e.clientY <= r.bottom + pad;
+            if (near) this.showControls();
+            else if (this._controlsHeld) this.idleControls();
+        }, { passive: true });
+        // Touch: a tap on the photo brings them back for a while
+        this.elements.imageContainer.addEventListener('pointerdown', (e) => {
+            if (e.pointerType !== 'mouse' && this.viewMode === 'single') this.showControls(false);
+        });
+        el.addEventListener('focusin', () => this.showControls());
+        el.addEventListener('focusout', () => this.idleControls());
+    },
+
+    // hold: stay up until idleControls (pointer near); otherwise fade later
+    showControls(hold = true) {
+        const el = this.singleControls();
+        if (!el) return;
+        el.classList.remove('idle');
+        clearTimeout(this._controlsTimer);
+        this._controlsHeld = hold;
+        if (!hold) this.idleControls();
+    },
+
+    idleControls() {
+        this._controlsHeld = false;
+        clearTimeout(this._controlsTimer);
+        this._controlsTimer = setTimeout(() => {
+            const el = this.singleControls();
+            if (el && !el.contains(document.activeElement)) el.classList.add('idle');
+        }, this.CONTROLS_IDLE_MS);
     },
 
     toggleThumbnailStrip() {
@@ -1093,6 +1157,9 @@ const app = {
                 // Flags saved with the order, then keep an eye on the folder
                 await Flags.load();
                 Watch.start();
+                const nested = this._nestedJeditor || [];
+                this._nestedJeditor = null;
+                if (nested.length && this.dirHandle && !this.readOnlyMode) FolderCache.absorbNested(this, nested);
             } else {
                 UI.alert({
                     title: 'No photos found',
@@ -1171,8 +1238,12 @@ const app = {
         this.updateTask('scan', 'Scanning folder…');
         const listings = await Watch.walk([{ path: '', handle: dirHandle }], true);
         const pending = [];
+        // A subfolder opened on its own before has a .jeditor of its own:
+        // merged into this one once the folder is open (finalizeLoad)
+        this._nestedJeditor = [];
         for (const [dir, l] of listings) {
             if (!l || l.failed) continue;
+            if (dir && l.own && l.own.length) this._nestedJeditor.push({ path: dir, parent: l.handle, handles: l.own });
             Folders.register(dir, l.handle);
             for (const [name, entry] of l.files) {
                 const relPath = Folders.join(dir, name);
@@ -1186,9 +1257,13 @@ const app = {
         for (let i = 0; i < pending.length; i += BATCH) {
             const batch = pending.slice(i, i + BATCH);
             const datas = await Promise.all(batch.map(p => p.entry.getFile().catch(() => null)));
+            // A photo a scanner is writing right now is left for the folder
+            // watch to add once it's whole (only just-changed files are checked)
+            const whole = await Promise.all(datas.map((d, j) => d && Date.now() - d.lastModified < Watch.SETTLED_MS
+                ? Watch.complete(d, batch[j].entry.name) : true));
             batch.forEach(({ entry, relPath, parentDir }, j) => {
                 const fileData = datas[j];
-                if (!fileData) return;
+                if (!fileData || !whole[j]) return;
                 this.files.push({
                     name: entry.name,
                     relPath,
@@ -1276,7 +1351,8 @@ const app = {
         if (!(n >= 0)) return '—';
         if (n < 1024) return `${n} B`;
         if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-        return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+        if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(n < 100 * 1024 * 1024 ? 2 : 1)} MB`;
+        return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
     },
 
     // Read Make / Model / DateTimeOriginal from a JPEG's EXIF block.
@@ -1370,18 +1446,183 @@ const app = {
         return file._exif;
     },
 
-    toggleInfoPanel(forceOpen = null) {
+    // The info panel (I): the photo in single view; in the grid, the folder
+    // being shown, or the selection when several photos are selected.
+    // target: { file } or { folder: path } to show one in particular (File
+    // Info / Folder Info in the right-click menus) until the grid changes.
+    toggleInfoPanel(forceOpen = null, target = null) {
         const panel = this.elements.infoPanel;
         if (!panel) return;
         const open = forceOpen !== null ? forceOpen : panel.classList.contains('hidden');
         panel.classList.toggle('hidden', !open);
         this._infoOpen = open;
-        if (open) this.fillInfoPanel(this.currentFile);
+        this._infoTarget = open ? target : null;
+        if (open) this.refreshInfoPanel();
+    },
+
+    refreshInfoPanel() {
+        if (!this._infoOpen) return;
+        const t = this._infoTarget;
+        if (t && t.file && this.files.includes(t.file)) return this.fillInfoPanel(t.file);
+        if (t && typeof t.folder === 'string') return this.fillFolderInfo({ folder: t.folder });
+        if (this.viewMode === 'single') return this.fillInfoPanel(this.currentFile);
+        if (this.selection.size > 1) return this.fillFolderInfo({ files: [...this.selection] });
+        return this.fillFolderInfo({ folder: Folders.scope });
+    },
+
+    // Selection changes come in bursts (a click clears and adds): one refresh
+    refreshInfoSoon() {
+        if (!this._infoOpen || this._infoQueued) return;
+        this._infoQueued = true;
+        requestAnimationFrame(() => {
+            this._infoQueued = false;
+            this.refreshInfoPanel();
+        });
+    },
+
+    // Back to following the grid (a click, a new folder) after File Info /
+    // Folder Info picked something in particular
+    releaseInfoTarget() {
+        if (!this._infoTarget) return;
+        this._infoTarget = null;
+        this.refreshInfoSoon();
+    },
+
+    setInfoRows(title, rows) {
+        const panel = this.elements.infoPanel;
+        panel.querySelector('h3').textContent = title;
+        const list = this.elements.infoList;
+        list.innerHTML = '';
+        rows.forEach(([k, v, cls]) => {
+            if (k === '—') {
+                const hr = document.createElement('div');
+                hr.className = 'info-sep';
+                list.appendChild(hr);
+                return;
+            }
+            const dt = document.createElement('dt');
+            dt.textContent = k;
+            const dd = document.createElement('dd');
+            dd.textContent = v == null ? '—' : v;
+            if (cls) dd.className = cls;
+            list.appendChild(dt);
+            list.appendChild(dd);
+        });
+    },
+
+    // Count, size, types, dates and flags of some photos
+    photoStats(files) {
+        let bytes = 0, largest = null, oldest = Infinity, newest = -Infinity;
+        const types = new Map();
+        const flags = { star: 0, rescan: 0, color: 0 };
+        for (const f of files) {
+            bytes += f.size || 0;
+            if (!largest || (f.size || 0) > (largest.size || 0)) largest = f;
+            if (f.lastModified) {
+                if (f.lastModified < oldest) oldest = f.lastModified;
+                if (f.lastModified > newest) newest = f.lastModified;
+            }
+            let ext = (f.name.match(/\.(\w+)$/) || [, '?'])[1].toUpperCase();
+            if (ext === 'JPG') ext = 'JPEG';
+            types.set(ext, (types.get(ext) || 0) + 1);
+            const fl = f._flags;
+            if (fl) {
+                if (fl.star) flags.star++;
+                if (fl.rescan) flags.rescan++;
+                if (fl.color) flags.color++;
+            }
+        }
+        return { n: files.length, bytes, largest, oldest, newest, types, flags };
+    },
+
+    statRows(st) {
+        const day = (t) => new Date(t).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+        const rows = [];
+        rows.push(['Size', this.formatBytes(st.bytes)]);
+        if (st.n > 1) rows.push(['Average', this.formatBytes(Math.round(st.bytes / st.n))]);
+        if (st.largest && st.n > 1) rows.push(['Largest', `${st.largest.name} (${this.formatBytes(st.largest.size)})`]);
+        if (st.types.size) rows.push(['Types', [...st.types].sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n.toLocaleString()}`).join(' · ')]);
+        if (isFinite(st.oldest)) rows.push(['Modified', day(st.oldest) === day(st.newest) ? day(st.oldest) : `${day(st.oldest)} – ${day(st.newest)}`]);
+        const fl = [];
+        if (st.flags.star) fl.push(`★ ${st.flags.star}`);
+        if (st.flags.rescan) fl.push(`rescan ${st.flags.rescan}`);
+        if (st.flags.color) fl.push(`labelled ${st.flags.color}`);
+        if (fl.length) rows.push(['Flags', fl.join(' · ')]);
+        return rows;
+    },
+
+    // folder: a path ('' the opened folder, null All photos); files: a selection
+    async fillFolderInfo({ folder = null, files = null }) {
+        const list = this.elements.infoList;
+        if (!list) return;
+        const token = (this._infoToken = (this._infoToken || 0) + 1);
+        const plural = (n, w) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`;
+        const rows = [];
+        let title;
+        const whole = folder === null || folder === '' || !this.dirHandle;
+        if (files) {
+            title = 'Selection';
+            rows.push(['Photos', files.length.toLocaleString()]);
+            rows.push(...this.statRows(this.photoStats(files)));
+        } else {
+            title = folder === null ? 'Order' : 'Folder';
+            const name = folder === null ? Folders.rootName() : Folders.nameOf(folder);
+            rows.push(['Name', name]);
+            if (folder) rows.push(['Location', `${Folders.rootName()} / ${Folders.label(folder)}`]);
+            const all = folder === null ? this.files : this.files.filter(f => Folders.within(Folders.dirOf(f), folder));
+            const here = folder === null ? all : all.filter(f => Folders.dirOf(f) === folder);
+            const subs = this.dirHandle ? [...Folders.map.keys()].filter(k => k !== '' && k !== folder && Folders.within(k, folder || '')).length : 0;
+            if (here.length !== all.length) {
+                rows.push(['Photos', `${here.length.toLocaleString()} here · ${all.length.toLocaleString()} with subfolders`]);
+            } else {
+                rows.push(['Photos', all.length.toLocaleString()]);
+            }
+            if (subs) rows.push(['Folders', subs.toLocaleString()]);
+            const st = this.photoStats(all);
+            rows.push(...this.statRows(st));
+            if (here.length !== all.length) rows.splice(rows.findIndex(r => r[0] === 'Size') + 1, 0, ['Size here', this.formatBytes(this.photoStats(here).bytes)]);
+            if (!whole) {
+                rows.push(['—']);
+                rows.push(['Whole order', `${plural(this.files.length, 'photo')} · ${this.formatBytes(this.photoStats(this.files).bytes)}`]);
+            }
+        }
+        // The current filter or search, if any
+        if (Flags.active()) rows.push(['Showing', `${this.viewFiles().length.toLocaleString()} matching the ${Flags.filter ? 'filter' : 'search'}`]);
+        // What jEditor itself keeps in the folder (worked out in the background)
+        const showOwn = !files && whole && this.dirHandle && !this.readOnlyMode;
+        if (showOwn) rows.push(['—'], ['.jeditor', 'Adding up…', 'info-pending']);
+        this.setInfoRows(title, rows);
+        if (!showOwn) return;
+        const own = await this.jeditorUsage();
+        if (token !== this._infoToken) return;
+        const i = rows.findIndex(r => r[0] === '.jeditor');
+        rows.splice(i, 1);
+        if (!own || !own.bytes) {
+            rows.splice(i, 0, ['.jeditor', 'empty']);
+        } else {
+            const parts = [['.jeditor', this.formatBytes(own.bytes)]];
+            if (own.trash.n) parts.push(['  Trash', `${plural(own.trash.n, 'photo')} · ${this.formatBytes(own.trash.bytes)}`]);
+            if (own.cache.bytes) parts.push(['  Cache', this.formatBytes(own.cache.bytes)]);
+            if (own.originals.n) parts.push(['  Originals', `${plural(own.originals.n, 'photo')} · ${this.formatBytes(own.originals.bytes)}`]);
+            rows.splice(i, 0, ...parts);
+        }
+        this.setInfoRows(title, rows);
+    },
+
+    // .jeditor's size, worked out at most every 30 s (it reads every cached
+    // thumbnail's size, so not on every click)
+    jeditorUsage() {
+        const c = this._usage;
+        if (c && c.dir === this.dirHandle && Date.now() - c.at < 30000) return c.value; // cleared by jEditor's own writes
+        const value = FolderCache.usage(this);
+        this._usage = { dir: this.dirHandle, at: Date.now(), value };
+        return value;
     },
 
     async fillInfoPanel(file) {
         const list = this.elements.infoList;
         if (!list || !file) return;
+        this.elements.infoPanel.querySelector('h3').textContent = 'File info';
         const token = (this._infoToken = (this._infoToken || 0) + 1);
 
         const rows = [];
@@ -2140,7 +2381,7 @@ const app = {
                 // A save landing mid-read invalidates the file snapshot: retry once
                 if (attempt === 0) continue;
                 fileEntry._thumbPromise = null;
-                console.error('Thumbnail error:', e);
+                console.warn('Thumbnail error (will retry):', e);
                 const fallback = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjx0ZXh0IHg9IjEwIiB5PSIyMCIgZm9udC1zaXplPSIyMCI+4pqcPC90ZXh0Pjwvc3ZnPg==';
                 (fileEntry._thumbWaiters || []).forEach(img => { img.src = fallback; });
                 fileEntry._thumbWaiters = [];
@@ -2158,6 +2399,7 @@ const app = {
         // lands while we decode shows up in the lag delta below.
         const savedAtRead = fileEntry._savedRotationTotal || 0;
         const fileData = await fileEntry.handle.getFile();
+        if (!fileData.size) throw new Error('empty file (still being written?)');
 
         let blob;
         if (fileData.size <= this.THUMB_FAST_PATH_BYTES) {
@@ -2196,6 +2438,7 @@ const app = {
         const url = fileEntry.thumbnailUrl;
         (fileEntry._thumbWaiters || []).forEach(img => {
             img.decoding = 'async';
+            img.onerror = () => { if (img.src === fileEntry.thumbnailUrl) this.thumbnailBroken(fileEntry); };
             img.src = url;
         });
         fileEntry._thumbWaiters = [];
@@ -2216,7 +2459,30 @@ const app = {
             return;
         }
 
-        await this.ensureThumbnail(fileEntry, { urgent: true, force }).catch(() => { });
+        await this.ensureThumbnail(fileEntry, { urgent: true, force }).catch(() => this.retryThumbnail(fileEntry));
+    },
+
+    // A thumbnail that couldn't be made, or made but not shown (the file
+    // was caught half-written, say): try again a few times, a little later
+    // each time, rather than leave the tile blank
+    THUMB_RETRIES: 4,
+
+    retryThumbnail(fileEntry) {
+        const n = (fileEntry._thumbRetries || 0) + 1;
+        if (n > this.THUMB_RETRIES) return;
+        fileEntry._thumbRetries = n;
+        setTimeout(() => {
+            if (!this.files.includes(fileEntry) || fileEntry.thumbnailUrl) return;
+            this.refreshThumbnailUI(fileEntry);
+        }, 1500 * n);
+    },
+
+    thumbnailBroken(fileEntry) {
+        if (!fileEntry.thumbnailUrl) return;
+        URL.revokeObjectURL(fileEntry.thumbnailUrl);
+        fileEntry.thumbnailUrl = null;
+        fileEntry._thumbPromise = null;
+        this.retryThumbnail(fileEntry);
     },
 
     // Drop cached thumbnails (in .jeditor) of photos that changed or are gone
@@ -2291,6 +2557,7 @@ const app = {
 
 
     handleGridClick(e, file) {
+        this.releaseInfoTarget();
         if (e.ctrlKey || e.metaKey) {
             this.toggleSelection(file);
         } else if (e.shiftKey) {
@@ -2343,6 +2610,7 @@ const app = {
         if (active) active.classList.add('active');
         this._activeGridEl = active || null;
 
+        this.refreshInfoSoon();
         if (this.selection.size > 0) {
             this.elements.selectionBar.classList.remove('hidden');
             this.elements.selectionCount.textContent = `${this.selection.size} selected`;
@@ -2373,9 +2641,11 @@ const app = {
             }
         }
         this.viewMode = mode;
+        this._infoTarget = null;
         document.body.dataset.view = mode; // toasts and the phone layout follow the view
         Folders.render();
         this.updateStatusBar();
+        this.refreshInfoSoon();
         const iconGrid = this.elements.btnToggleView.querySelector('.icon-grid');
         const iconSingle = this.elements.btnToggleView.querySelector('.icon-single');
 
@@ -2411,6 +2681,7 @@ const app = {
             this.elements.imageContainer.classList.remove('hidden');
             this.elements.gridView.classList.add('hidden');
             this.elements.thumbnailStrip.parentElement.querySelector('.controls').classList.remove('hidden');
+            this.showControls(false); // shown on the way in, then out of the way
             this.elements.thumbnailStrip.classList.remove('hidden');
             if (this.elements.stripResize) this.elements.stripResize.classList.remove('hidden');
             this.elements.gridControls.classList.add('hidden');
@@ -2440,7 +2711,7 @@ const app = {
         Flags.updateHeader();
         this.updateFileCount();
         this.updateStatusBar();
-        if (this._infoOpen) this.fillInfoPanel(file);
+        if (this._infoOpen) this.refreshInfoSoon();
         this.updateActiveThumbnail();
     },
 
@@ -3059,7 +3330,7 @@ const app = {
         ['view.zoomIn', 'global', 'View', 'Zoom in', ['+', '=']],
         ['view.zoomOut', 'global', 'View', 'Zoom out', ['-']],
         ['view.zoomFit', 'global', 'View', 'Zoom to fit', ['0']],
-        ['view.info', 'global', 'View', 'File info', ['I']],
+        ['view.info', 'global', 'View', 'Info: the photo, or the folder or selection in the grid', ['I']],
         ['view.fullscreen', 'global', 'View', 'Full screen', ['F']],
         ['view.slideshow', 'global', 'View', 'Slideshow', []],
         ['app.dupes', 'global', 'App', 'Find duplicates (WIP)', ['D']],
@@ -3694,6 +3965,8 @@ const app = {
     syncGridTile() {
         const grid = this.elements.gridView;
         if (!grid.clientWidth) return;
+        // The selection bar centres on the grid, less its scrollbar
+        document.documentElement.style.setProperty('--grid-scrollbar', `${grid.offsetWidth - grid.clientWidth}px`);
         const first = parseFloat(getComputedStyle(grid).gridTemplateColumns);
         if (first > 0) document.documentElement.style.setProperty('--grid-tile', `${first}px`);
     },
@@ -4225,6 +4498,7 @@ const app = {
         if (many) this.beginTask('trash', `Deleting 0/${list.length}`);
         const moved = new Set();
         const undoItems = [];
+        const alreadyGone = [];
         let failed = 0, next = 0, done = 0;
         const stamp = Date.now();
         const worker = async () => {
@@ -4232,16 +4506,22 @@ const app = {
                 const i = next++;
                 const f = list[i];
                 try {
-                    if (f._rotationQueue) await f._rotationQueue;
+                    if (f._rotationQueue) await this.withTimeout(f._rotationQueue, this.TRASH_TIMEOUT_MS, 'Waiting for a rotation').catch(() => { });
                     let trashName = f.name;
                     if (taken.has(trashName.toLowerCase())) trashName = `${stamp}_${i}_${f.name}`; // avoid collision
                     taken.add(trashName.toLowerCase());
-                    await this.trashOne(f, trashDir, trashName);
+                    // One file Windows never answers for mustn't hold up the rest
+                    await this.withTimeout(this.trashOne(f, trashDir, trashName), this.TRASH_TIMEOUT_MS, `Deleting ${f.name}`);
                     moved.add(f);
                     undoItems.push({ file: f, trashDir, trashName });
                 } catch (e) {
-                    console.error('Trash failed for', f.name, e);
-                    failed++;
+                    if (e && e.name === 'NotFoundError') {
+                        // Deleted already (in File Explorer, say): just take it off the screen
+                        alreadyGone.push(f);
+                    } else {
+                        (e && e.name === 'TimeoutError' ? console.warn : console.error)('Trash failed for', f.name, e);
+                        failed++;
+                    }
                 }
                 done++;
                 if (many && (done % 10 === 0 || done === list.length)) this.updateTask('trash', `Deleting ${done}/${list.length}`);
@@ -4252,13 +4532,36 @@ const app = {
         } finally {
             if (many) this.endTask('trash');
         }
-        this.removeFilesFromApp(list.filter(f => moved.has(f)));
+        Flags.forgetFiles(alreadyGone);
+        this.removeFilesFromApp(list.filter(f => moved.has(f)).concat(alreadyGone));
 
         if (undoItems.length) {
             this.pushUndo({ type: 'trash', items: undoItems });
             this.showToast(`Moved ${undoItems.length} to the trash (.jeditor/trash) — Ctrl+Z to restore`, 4000);
         }
-        if (failed) this.showToast(`Couldn't delete ${failed} photo${failed === 1 ? '' : 's'}`, 4000);
+        if (alreadyGone.length) {
+            const n = alreadyGone.length;
+            this.showToast(`${n} photo${n === 1 ? ' was' : 's were'} already deleted elsewhere`, 3500, null, null, { type: 'info' });
+        }
+        if (failed) {
+            this.showToast(`Couldn't delete ${failed} photo${failed === 1 ? '' : 's'} — press R to check the folder`, 5000);
+            Watch.request({ full: true }); // see what's really there
+        }
+    },
+
+    TRASH_TIMEOUT_MS: 30000,
+
+    // Rejects with a TimeoutError if `promise` hasn't settled in `ms`
+    withTimeout(promise, ms, what) {
+        let timer;
+        const timeout = new Promise((_, reject) => {
+            timer = setTimeout(() => {
+                const e = new Error(`${what} timed out`);
+                e.name = 'TimeoutError';
+                reject(e);
+            }, ms);
+        });
+        return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
     },
 
     // One photo into the trash: move it, or copy then delete
@@ -4272,7 +4575,7 @@ const app = {
                 // moving not supported here: copy instead
             }
         }
-        const data = await f.handle.getFile();
+        const data = await f.handle.getFile(); // NotFoundError if it's gone already
         const th = await trashDir.getFileHandle(trashName, { create: true });
         const w = await th.createWritable();
         await w.write(data);
@@ -4841,7 +5144,7 @@ const app = {
                 ['Move to…', () => Folders.openPicker([file], 'move')],
                 ['Copy to…', () => Folders.openPicker([file], 'copy')],
                 ['Rename…', () => this.promptRename(file)],
-                ['File info', () => { this.toggleInfoPanel(true); }],
+                ['File info', () => { this.toggleInfoPanel(true, { file }); }],
                 ['Export a copy…', () => this.exportCopies([file])],
                 ['—'],
                 ['Delete', () => this.moveToTrash([file]), true]
@@ -4876,6 +5179,7 @@ const app = {
             ...(this.dirHandle ? [['New folder…', () => Folders.newFolder()]] : []),
             ['Rename all…', () => this.openRename([])],
             ['Search…', () => Flags.focusSearch()],
+            [Folders.scope === null ? 'Order info' : 'Folder info', () => this.toggleInfoPanel(true, { folder: Folders.scope })],
             ...(this.files.some(f => Flags.has(f, 'rescan'))
                 ? [['Copy rescan list', () => Flags.copyList(this.files.filter(f => Flags.has(f, 'rescan')), 'rescan')]] : []),
             ['Find duplicates… (WIP)', () => this.openDupes()],
