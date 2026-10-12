@@ -6,6 +6,8 @@
 //     page a real folder handle with permission to edit already granted,
 //     so jEditor's file code runs unchanged and never asks for permission
 //   - opens a folder the app was started with (jEditor.exe "D:\Orders\Smith")
+//   - gives jEditor window.JEditorNative: storage on this PC for orders'
+//     data, the Recycle Bin, paths on disk, and updates
 //   - turns off the service worker, so a changed UI file is always used
 //   - tells the app when the theme changes, for the title bar's colour
 //   - in dev mode: reload and DevTools keys, and changed stylesheets
@@ -39,11 +41,20 @@
     // ---- Requests to the app, answered by { replyTo: id, ... } ----
     let nextId = 1;
     const pending = new Map();
-    const request = (type, data = {}) => new Promise((resolve) => {
+    // `objects`: Files to send along (the app reads their paths on disk).
+    // Only Files from outside the page (dropped or chosen) can go: a File
+    // from a file handle can't, postMessageWithAdditionalObjects throws.
+    const request = (type, data = {}, objects = null) => new Promise((resolve) => {
         const id = nextId++;
         pending.set(id, resolve);
-        post({ type, id, ...data });
+        if (objects && objects.length) webview.postMessageWithAdditionalObjects({ type, id, ...data }, objects);
+        else post({ type, id, ...data });
     });
+    const answer = async (type, data, objects) => {
+        const { msg, objects: got } = await request(type, data, objects);
+        if (msg.error) throw new Error(msg.error);
+        return { msg, objects: got };
+    };
 
     webview.addEventListener('message', (e) => {
         const msg = e.data || {};
@@ -53,9 +64,12 @@
             pending.delete(msg.replyTo);
             resolve({ msg, objects });
         } else if (msg.type === 'openFolder' && objects[0]) {
+            remember(objects[0], msg.path);
             openFolder(objects[0], msg);
         } else if (msg.type === 'reloadCss') {
             reloadCss();
+        } else if (msg.type === 'updateProgress' && onUpdateProgress) {
+            onUpdateProgress(msg.received, msg.total);
         }
     });
 
@@ -65,7 +79,129 @@
     window.showDirectoryPicker = async function showDirectoryPicker() {
         const { msg, objects } = await request('pickFolder');
         if (msg.cancelled || !objects[0]) throw new DOMException('The user aborted a request.', 'AbortError');
+        remember(objects[0], msg.path);
         return objects[0];
+    };
+
+    // ---- Where folders are on disk ----
+    // The app sends every folder handle with its path. They're remembered,
+    // here and in IndexedDB (for recent orders opened again another day),
+    // so jEditor can ask where a folder it has is: folderPath(handle).
+    const known = []; // { key, path, handle, at }, newest first
+    const KEEP = 500;
+    let stored = null; // what IndexedDB has, read once
+    const folders = () => new Promise((resolve, reject) => {
+        const r = indexedDB.open('jeditor-native', 1);
+        r.onupgradeneeded = () => r.result.createObjectStore('folders', { keyPath: 'key' });
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => reject(r.error);
+    });
+    const inStore = (mode, run) => folders().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction('folders', mode);
+        const out = run(tx.objectStore('folders'));
+        tx.oncomplete = () => { db.close(); resolve(out && out.result); };
+        tx.onerror = tx.onabort = () => { db.close(); reject(tx.error); };
+    }));
+    const loadStored = () => stored || (stored = inStore('readonly', s => s.getAll())
+        .then(all => (all || []).sort((a, b) => b.at - a.at))
+        .catch(() => []));
+
+    function remember(handle, path) {
+        if (!handle || typeof path !== 'string' || !path) return;
+        const rec = { key: path.toLowerCase(), path, handle, at: Date.now() };
+        const i = known.findIndex(k => k.key === rec.key);
+        if (i >= 0) known.splice(i, 1);
+        known.unshift(rec);
+        loadStored().then(all => inStore('readwrite', s => {
+            s.put(rec);
+            // The oldest go once there are many
+            all.filter(r => r.key !== rec.key).slice(KEEP - 1).forEach(r => s.delete(r.key));
+        })).then(() => { stored = null; }).catch(() => { /* kept for this session at least */ });
+    }
+
+    // Folders dragged in from Explorer: their paths come with the drop
+    let dropping = Promise.resolve();
+    addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        if (!dt || !dt.files || !dt.files.length || !dt.items) return;
+        try {
+            const items = [...dt.items].filter(i => i.kind === 'file');
+            const files = [...dt.files];
+            if (items.length !== files.length || typeof items[0].getAsFileSystemHandle !== 'function') return;
+            const handles = items.map(i => i.getAsFileSystemHandle());
+            const paths = request('pathsOf', {}, files);
+            dropping = Promise.all([Promise.all(handles), paths]).then(([hs, { msg }]) => {
+                hs.forEach((h, i) => { if (h && h.kind === 'directory') remember(h, (msg.paths || [])[i]); });
+            }).catch(e => log('warn', 'Couldn\'t tell where the dropped folder is: ' + e.message));
+        } catch (err) {
+            log('warn', 'Couldn\'t tell where the dropped folder is: ' + err.message);
+        }
+    }, true);
+
+    // → the folder's path, or null if the app never sent it
+    async function folderPath(handle) {
+        if (!handle || handle.kind !== 'directory') return null;
+        await dropping;
+        const name = String(handle.name || '').toLowerCase();
+        const nameOf = (p) => (p.split(/[\\/]/).filter(Boolean).pop() || '').toLowerCase();
+        const look = async (list) => {
+            // Same name first: a quick check before asking each one
+            const ordered = [...list.filter(r => nameOf(r.path) === name), ...list.filter(r => nameOf(r.path) !== name)];
+            for (const r of ordered) {
+                try {
+                    if (r.handle === handle || await r.handle.isSameEntry(handle)) return r;
+                } catch (e) { /* gone */ }
+            }
+            return null;
+        };
+        let r = await look(known);
+        if (!r) {
+            r = await look(await loadStored());
+            if (r) known.push(r);
+        }
+        return r ? r.path : null;
+    }
+
+    // ---- What the app does for jEditor ----
+    let onUpdateProgress = null;
+    window.JEditorNative = {
+        // jEditor's storage on this PC: a folder handle, one subfolder per
+        // order (see app/folder-cache.js)
+        async dataDir() {
+            const { objects } = await answer('dataDir');
+            if (!objects[0]) throw new Error('No storage');
+            return objects[0];
+        },
+        // Where a folder handle is on disk (null: not known)
+        folderPath,
+        // Files to the Recycle Bin, by path. Per file: { token } (Ctrl+Z:
+        // restore), { noBin } (its drive has no Recycle Bin: keep it some
+        // other way), { gone } (not there) or { error }
+        async recycle(paths) {
+            return (await answer('recycle', { paths })).msg.results;
+        },
+        // Back from the Recycle Bin. Per token: { ok } or { error }
+        async restore(tokens) {
+            return (await answer('restore', { tokens })).msg.results;
+        },
+        // Open a folder by its path (an order from the stored list)
+        async openPath(path) {
+            return (await answer('openPath', { path })).msg.ok;
+        },
+        // Which of these folders are still there
+        async exists(paths) {
+            return (await answer('exists', { paths })).msg.exists;
+        },
+        // → { current, tag, version, notes, size, newer }
+        async checkUpdate() {
+            return (await answer('checkUpdate')).msg;
+        },
+        // Downloads and runs the newest setup; jEditor then closes and the
+        // setup opens it again. progress(received, total) as it downloads.
+        async installUpdate(progress) {
+            onUpdateProgress = progress || null;
+            try { await answer('installUpdate'); } finally { onUpdateProgress = null; }
+        }
     };
 
     // ---- No service worker ----
@@ -122,12 +258,42 @@
         }
     }
 
-    // Opened the folder; now save an edit, so the app can check the file
-    // changed on disk: proof that the handle can write
+    // Opened the folder; now, with the app checking on disk after each step:
+    // save an edit (the handle can write), flag a photo (the order's data
+    // goes to jEditor's storage, not the folder), delete one (it's in the
+    // Recycle Bin) and undo that (it's back, unchanged), and look for updates
     async function smokeTest(a) {
+        const steps = {};
+        const check = async (step, data = {}) => {
+            const { msg } = await request('smokeCheck', { step, ...data });
+            steps[step] = msg.ok ? true : (msg.detail || 'failed');
+        };
         const file = a.files[0];
         const rotated = file ? await a.rotateImage(file, 90) !== false : false;
-        post({ type: 'smoke', ok: true, count: a.files.length, rotated, file: file ? file.name : null, errors });
+        try {
+            Flags.apply('star', [file]);
+            await Flags.save();
+            await check('stored');
+            const victim = a.files.find(f => f !== file);
+            if (victim) {
+                const name = victim.relPath || victim.name;
+                await a.moveToTrash([victim]);
+                const last = (a._undoStack || [])[a._undoStack.length - 1];
+                steps.recycled = !!(last && last.type === 'trash' && last.items[0] && last.items[0].recycled) || 'not sent to the Recycle Bin';
+                await check('deleted', { name });
+                await a.undo();
+                await check('restored', { name });
+            }
+            try {
+                const u = await window.JEditorNative.checkUpdate();
+                steps.update = `latest ${u.tag}, this is ${u.current}${u.newer ? ' (newer available)' : ''}`;
+            } catch (e) {
+                steps.update = 'not checked: ' + e.message; // network; not a failure
+            }
+        } catch (e) {
+            steps.error = String(e && e.message || e);
+        }
+        post({ type: 'smoke', ok: true, count: a.files.length, rotated, file: file ? file.name : null, steps, errors });
     }
 
     // ---- Dev mode (jEditor.exe --ui <dir>) ----

@@ -5,6 +5,15 @@
 
 const CHANGELOG = [
     {
+        version: '1.19.0', date: '2026-10-12',
+        items: [
+            'Order folders now hold only photos. What jEditor keeps for an order (flags, the thumbnail cache, Auto crop originals) is kept on this PC instead of in a .jeditor folder. An order\'s old .jeditor folder is moved out the next time it\'s opened, flags and all.',
+            'Deleted photos go to the Windows Recycle Bin, and `Ctrl+Z` still brings them back. On a network or USB drive, which has no Recycle Bin, jEditor keeps them itself until you clean up.',
+            'Stored orders (Settings → Folder → Manage…) lists every order jEditor keeps data for, newest first, with how much room each takes. Open an order again from there, remove its cache or everything, remove every cache at once, or remove orders whose folder is gone.',
+            'Updates: jEditor looks for a new version once a day (Settings → Updates, where you can also check by hand or turn this off). Click Update and it downloads, installs and opens again on its own, still without admin rights.'
+        ]
+    },
+    {
         version: '1.18.1', date: '2026-10-12',
         items: [
             'Messages and the progress pill moved to the bottom-left corner, so they no longer cover the middle of the photo. In the grid they sit beside the folder list when it\'s open.',

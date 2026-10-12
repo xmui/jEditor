@@ -41,8 +41,6 @@ UninstallDisplayName=jEditor
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
-; Asks to close jEditor first if it's running (the mutex is in Program.cs)
-AppMutex=jEditor.Windows.App
 CloseApplications=yes
 
 [Tasks]
@@ -62,3 +60,46 @@ Name: "{autodesktop}\jEditor"; Filename: "{app}\jEditor.exe"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\jEditor.exe"; Description: "{cm:LaunchProgram,jEditor}"; Flags: nowait postinstall skipifsilent
+; An update started from jEditor (/RELAUNCH=1) opens it again when done
+Filename: "{app}\jEditor.exe"; Flags: nowait; Check: Relaunch
+
+[Code]
+// jEditor holds this mutex while it runs (Program.cs). An update started
+// from jEditor runs silently while jEditor closes itself, so it waits for
+// it; run by hand, it asks for jEditor to be closed.
+function WaitForJEditor(Silent: Boolean): Boolean;
+var
+  Waited: Integer;
+begin
+  Result := True;
+  Waited := 0;
+  while CheckForMutexes('jEditor.Windows.App') do
+  begin
+    if Silent then
+    begin
+      if Waited >= 60 then begin Result := False; exit; end;
+      Sleep(500);
+      Waited := Waited + 1;
+    end
+    else if MsgBox('jEditor is open. Close it, then click OK.', mbInformation, MB_OKCANCEL) = IDCANCEL then
+    begin
+      Result := False;
+      exit;
+    end;
+  end;
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  Result := WaitForJEditor(WizardSilent);
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  Result := WaitForJEditor(UninstallSilent);
+end;
+
+function Relaunch(): Boolean;
+begin
+  Result := WizardSilent and (ExpandConstant('{param:RELAUNCH|0}') = '1');
+end;

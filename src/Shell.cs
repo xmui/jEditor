@@ -8,8 +8,13 @@ static class Shell
     // %LOCALAPPDATA%\jEditor: settings and the WebView2 profile. Not where
     // the app is installed (%LOCALAPPDATA%\Programs\jEditor), so
     // uninstalling or updating doesn't touch them.
-    public static string DataDir { get; } =
+    // The smoke test uses a temporary one.
+    public static string DataDir { get; set; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "jEditor");
+
+    // Each order's flags, cache and Auto crop originals: orders\<name>-<id>,
+    // made and read by the page (app/folder-cache.js)
+    public static string OrdersDir => Path.Combine(DataDir, "orders");
 
     // A link, in the default browser (or mail app)
     public static void OpenExternal(string url)

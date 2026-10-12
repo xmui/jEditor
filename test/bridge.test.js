@@ -48,6 +48,13 @@ const FAKE_WEBVIEW = `
     window.__listeners = [];
     window.chrome.webview = {
         postMessage(m) { window.__posted.push(m); if (window.__onPost) window.__onPost(m); },
+        // As WebView2: a File from a file handle can't be sent (only ones
+        // dropped or chosen from outside the page can, not made here)
+        postMessageWithAdditionalObjects(m, objects) {
+            if ([...objects].some(o => o instanceof File)) throw new TypeError('Unsupported object in additionalObjects');
+            m.__objects = objects;
+            this.postMessage(m);
+        },
         addEventListener(type, fn) { if (type === 'message') window.__listeners.push(fn); },
         removeEventListener() { }
     };
@@ -196,6 +203,14 @@ const waitForPost = (page, type) => page.waitForFunction(
                 return Object.fromEntries(out);
             };
             window.__bytes = bytes;
+            // The app's side of the smoke test's further steps
+            window.__onPost = async (m) => {
+                const reply = (data, objects = []) => setTimeout(() => window.__deliver({ replyTo: m.id, ...data }, objects), 5);
+                if (m.type === 'dataDir') reply({ path: 'C:\\data' }, [await (await navigator.storage.getDirectory()).getDirectoryHandle('appdata', { create: true })]);
+                else if (m.type === 'recycle') { window.__recycledPaths = m.paths; reply({ results: m.paths.map(() => ({ noBin: true })) }); }
+                else if (m.type === 'smokeCheck') reply({ ok: true });
+                else if (m.type === 'checkUpdate') reply({ tag: 'v1.0.0', current: 'v1.0.0', newer: false });
+            };
             const b = await bytes();
             window.__deliver({ type: 'openFolder', path: 'C:\\Jones', smoke: true }, [dir]);
             return b;
@@ -204,9 +219,20 @@ const waitForPost = (page, type) => page.waitForFunction(
         check('opens the folder and reports the photo count', opened.name === 'Jones' && opened.count === 4, JSON.stringify(opened));
         const smoke = await waitForPost(page, 'smoke');
         check('smoke test: reports success', smoke.ok && smoke.count === 4 && smoke.rotated && smoke.errors.length === 0, JSON.stringify(smoke));
+        check('smoke test: runs the further steps through the app', smoke.steps && smoke.steps.stored === true && smoke.steps.deleted === true && smoke.steps.restored === true && /v1\.0\.0/.test(smoke.steps.update), JSON.stringify(smoke.steps));
         const after = await page.evaluate(() => window.__bytes());
         const changed = Object.keys(before).filter(k => before[k] !== after[k]);
         check('smoke test: the rotation is saved to the file, and only that one', changed.length === 1 && changed[0] === smoke.file, changed.join(', '));
+        const recycled = await page.evaluate(() => window.__recycledPaths || []);
+        check('smoke test: deletes by path, in the folder the app sent', recycled.length === 1 && /^C:\\Jones\\photo\d\.jpg$/.test(recycled[0]), recycled.join());
+        await page.reload();
+        await page.waitForFunction(() => typeof app !== 'undefined' && app.elements && window.JEditorNative);
+        const remembered = await page.evaluate(async () => {
+            const root = await navigator.storage.getDirectory();
+            const other = await root.getDirectoryHandle('Elsewhere', { create: true });
+            return [await JEditorNative.folderPath(await root.getDirectoryHandle('Jones')), await JEditorNative.folderPath(other)];
+        });
+        check('folder paths are remembered after a restart (recent orders); unknown ones are null', remembered[0] === 'C:\\Jones' && remembered[1] === null, JSON.stringify(remembered));
         check('command line: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }

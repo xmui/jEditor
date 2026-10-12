@@ -229,10 +229,160 @@ sealed class MainForm : Form
             case "smoke":
                 smoke?.Report(msg);
                 break;
+            case "dataDir":
+            case "pathsOf":
+            case "recycle":
+            case "restore":
+            case "openPath":
+            case "exists":
+            case "checkUpdate":
+            case "installUpdate":
+            case "smokeCheck":
+                var files = FilesOf(e);
+                BeginInvoke(async () => await HandleRequestAsync(msg, files));
+                break;
             case "log":
                 Log.Write($"page {Str(msg, "level")}: {Str(msg, "text")}");
                 break;
         }
+    }
+
+    // Files the page sent along (chrome.webview.postMessageWithAdditionalObjects,
+    // only for Files dropped from Explorer): the paths on disk behind them
+    static List<string?> FilesOf(CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        var paths = new List<string?>();
+        try
+        {
+            if (e.AdditionalObjects is null) return paths;
+            foreach (var o in e.AdditionalObjects) paths.Add((o as CoreWebView2File)?.Path);
+        }
+        catch (Exception x)
+        {
+            Log.Write("Couldn't read the files sent: " + x.Message);
+        }
+        return paths;
+    }
+
+    // ---- Requests from the page, answered with { replyTo: id, ... } ----
+
+    // Photos sent to the Recycle Bin this session: what Ctrl+Z can put back
+    readonly Dictionary<string, (string bin, string original)> recycled = new();
+
+    async Task HandleRequestAsync(JsonNode msg, List<string?> files)
+    {
+        var id = msg["id"]?.GetValue<long>() ?? 0;
+        try
+        {
+            switch (Str(msg, "type"))
+            {
+                case "dataDir":
+                {
+                    Directory.CreateDirectory(Shell.OrdersDir);
+                    var handle = FolderHandle(Shell.OrdersDir);
+                    Reply(id, handle is null ? new { error = "no storage" } : new { path = Shell.OrdersDir }, handle);
+                    break;
+                }
+                case "pathsOf":
+                    Reply(id, new { paths = files });
+                    break;
+                case "recycle":
+                {
+                    // Photos in the order folders the page has, by path
+                    var paths = (msg["paths"] as JsonArray ?? []).Select(p => (string?)p ?? "").ToList();
+                    var ok = paths.Where(p => Path.IsPathFullyQualified(p) && File.Exists(p)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                    var results = await RecycleBin.RecycleAsync(ok, Handle);
+                    var byPath = results.ToDictionary(r => r.Path, StringComparer.OrdinalIgnoreCase);
+                    int sent = 0;
+                    var answer = paths.Select(p =>
+                    {
+                        if (!byPath.TryGetValue(p, out var r)) return (object)new { gone = true };
+                        if (r.NoBin) return new { noBin = true };
+                        if (r.BinPath is null) return new { error = r.Error ?? "not deleted" };
+                        var token = Guid.NewGuid().ToString("N");
+                        recycled[token] = (r.BinPath, r.Path);
+                        sent++;
+                        return new { token };
+                    }).ToList();
+                    Log.Write($"Recycled {sent} of {paths.Count}");
+                    Reply(id, new { results = answer });
+                    break;
+                }
+                case "restore":
+                {
+                    var tokens = (msg["tokens"] as JsonArray ?? []).Select(t => (string?)t ?? "").ToList();
+                    var answer = tokens.Select(t =>
+                    {
+                        if (!recycled.TryGetValue(t, out var r)) return (object)new { error = "not deleted in this session" };
+                        var error = RecycleBin.Restore(r.bin, r.original);
+                        if (error is not null) return new { error };
+                        recycled.Remove(t);
+                        return new { ok = true };
+                    }).ToList();
+                    Reply(id, new { results = answer });
+                    break;
+                }
+                case "openPath":
+                {
+                    var path = Str(msg, "path");
+                    if (path is not null && Directory.Exists(path)) OpenFolder(path);
+                    Reply(id, new { ok = path is not null && Directory.Exists(path) });
+                    break;
+                }
+                case "exists":
+                {
+                    var paths = (msg["paths"] as JsonArray ?? []).Select(p => (string?)p ?? "").ToList();
+                    Reply(id, new { exists = paths.Select(p => p != "" && Directory.Exists(p)).ToList() });
+                    break;
+                }
+                case "checkUpdate":
+                {
+                    var latest = await Updater.LatestAsync();
+                    pendingUpdate = latest;
+                    Reply(id, new
+                    {
+                        current = Updater.CurrentTag,
+                        tag = latest.Tag,
+                        version = latest.Version,
+                        notes = latest.Notes,
+                        size = latest.Size,
+                        newer = Updater.IsNewer(latest.Tag, Updater.CurrentTag)
+                    });
+                    break;
+                }
+                case "smokeCheck":
+                {
+                    var (ok, detail) = smoke?.Check(Str(msg, "step") ?? "", Str(msg, "name")) ?? (false, "not a smoke test");
+                    Reply(id, new { ok, detail });
+                    break;
+                }
+                case "installUpdate":
+                {
+                    var release = pendingUpdate ?? await Updater.LatestAsync();
+                    if (!Updater.IsNewer(release.Tag, Updater.CurrentTag)) { Reply(id, new { error = "This is already the newest version" }); break; }
+                    var setup = await Updater.DownloadAsync(release, (got, total) =>
+                        BeginInvoke(() => Post(new { type = "updateProgress", received = got, total })));
+                    Reply(id, new { ok = true });
+                    Updater.Install(setup);
+                    Finish(0);
+                    break;
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Log.Write($"{Str(msg, "type")} failed: {e}");
+            Reply(id, new { error = e.Message });
+        }
+    }
+
+    Updater.Release? pendingUpdate;
+
+    void Reply(long id, object payload, CoreWebView2FileSystemHandle? handle = null)
+    {
+        var node = JsonSerializer.SerializeToNode(payload)!.AsObject();
+        node["replyTo"] = id;
+        Post(node, handle);
     }
 
     static string? Str(JsonNode msg, string key) =>

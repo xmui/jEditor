@@ -5,10 +5,11 @@
 #
 #   ./scripts/build.ps1                  everything
 #   ./scripts/build.ps1 -SkipInstaller   no Inno Setup needed
+#   ./scripts/build.ps1 -Tag v1.2.3      the release it's for (the updater compares it)
 #
 # <ver> is jEditor's version, from app\version.js.
 
-param([switch]$SkipInstaller)
+param([switch]$SkipInstaller, [string]$Tag = '')
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -22,7 +23,7 @@ if (-not $version) { throw "No APP_VERSION in $versionJs" }
 Write-Host "jEditor $version"
 
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
-dotnet publish (Join-Path $root 'src\jEditor.csproj') -c Release -o $publish
+dotnet publish (Join-Path $root 'src\jEditor.csproj') -c Release -o $publish "-p:ReleaseTag=$Tag"
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
 
 # Portable zip: a jEditor folder with the exe and the UI

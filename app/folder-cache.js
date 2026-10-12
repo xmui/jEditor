@@ -1,26 +1,41 @@
-// The .jeditor folder inside the opened photo folder:
+// What jEditor keeps for an order, besides the photos:
 //
-//   .jeditor/trash/                   deleted photos (Ctrl+Z restores)
-//   .jeditor/cache/thumbs/<hash>.img  grid / film-strip thumbnails
-//   .jeditor/cache/fingerprints.json  duplicate-finder data
+//   trash/                   deleted photos, where there's no Recycle Bin
+//                            (Ctrl+Z restores)
+//   cache/thumbs/<hash>.img  grid / film-strip thumbnails
+//   cache/fingerprints.json  duplicate-finder data
+//   flags.json               flags (flags.js)
+//   originals/               photos as they were before a batch Auto crop
 //
-// The browser's own cache (IndexedDB) is per computer and per browser; this
-// travels with the folder, so another workstation opening the same order —
-// say on a shared drive — gets thumbnails and duplicate data without
-// recomputing them. Screen-sized previews aren't stored here: at ~0.4 MB
-// each they'd add ~800 MB to a 2000-photo order.
+// In the Windows app this is kept on the PC, not in the order: in jEditor's
+// storage (%LOCALAPPDATA%\jEditor\orders), one folder per order named
+// after it and its path, with order.json saying which folder it belongs to
+// (the stored orders list, stored.js). Order folders hold only photos.
+// Deleted photos go to the Recycle Bin there (script.js), so trash/ is only
+// for drives without one (network and USB drives).
 //
-// Everything is best-effort: a cache that can't be read or written is
-// simply skipped. "Clean Up Folder" removes .jeditor (and the old
-// .jeditor-trash) when an order is finished.
+// Elsewhere (Chrome, the tests) it's a .jeditor folder inside the order, as
+// it always was. A .jeditor found in an order opened in the app is moved
+// out into the app's storage and removed (absorbNested).
+//
+// Screen-sized previews aren't stored here: at ~0.4 MB each they'd add
+// ~800 MB to a 2000-photo order. Everything is best-effort: a cache that
+// can't be read or written is simply skipped. "Clean up" removes it all
+// when an order is finished.
 
 const FolderCache = {
     DIR: '.jeditor',
     LEGACY_TRASH: '.jeditor-trash',
     FP_VERSION: 2,
 
+    // The app's storage for orders' data, or null (in a browser)
+    native() {
+        return window.JEditorNative || null;
+    },
+
     reset() {
         this._root = null;
+        this._touched = null;
         this._rootFor = null;
         this._thumbs = null;
         this._writes = [];
@@ -46,11 +61,65 @@ const FolderCache = {
         if (this._root) return this._root;
         if (!app.dirHandle) return null;
         try {
-            this._root = await app.dirHandle.getDirectoryHandle(this.DIR, { create });
+            this._root = this.native() ? await this.orderStore(app, create)
+                : await app.dirHandle.getDirectoryHandle(this.DIR, { create });
         } catch (e) {
             return null;
         }
         return this._root;
+    },
+
+    // ---- The order's folder in the app's storage ----
+
+    // The open order's path on disk (the app tells; see src/bridge.js).
+    // Null if it can't: a folder it never saw, nothing is kept for it.
+    async orderPath(app) {
+        const dir = app.dirHandle;
+        if (this._pathFor === dir) return this._path;
+        if (!dir || !this.native()) return null;
+        let path = null;
+        try {
+            path = await this.native().folderPath(dir);
+        } catch (e) { /* unknown: try again next time */ }
+        if (app.dirHandle !== dir) return null;
+        if (!path) {
+            if (this._unknown !== dir) {
+                this._unknown = dir;
+                app.showToast('jEditor can\'t tell where this folder is, so its flags and edits history aren\'t kept. Open it with Open folder instead.', 8000);
+            }
+            return null;
+        }
+        if (/^[a-z]:$/i.test(path)) path += '\\'; // a whole drive
+        this._pathFor = dir;
+        this._path = path;
+        return path;
+    },
+
+    // "Smith Order-1a2b3c4d5e6f7a8b": readable, and one per path
+    storeName(path) {
+        const name = path.split(/[\\/]/).filter(Boolean).pop() || 'Order';
+        const safe = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 60).trim() || 'Order';
+        return `${safe}-${this.hash(path.toLowerCase())}`;
+    },
+
+    async orderStore(app, create) {
+        const path = await this.orderPath(app);
+        if (!path) return null;
+        const all = await this.native().dataDir();
+        const dir = await all.getDirectoryHandle(this.storeName(path), { create });
+        // Which folder this is for, and when it was last opened
+        if (this._touched !== app.dirHandle) {
+            this._touched = app.dirHandle;
+            await this.writeJson(dir, 'order.json', { path, name: app.dirHandle.name, openedAt: Date.now() }).catch(() => { });
+        }
+        return dir;
+    },
+
+    async writeJson(dir, name, data) {
+        const fh = await dir.getFileHandle(name, { create: true });
+        const w = await fh.createWritable();
+        await w.write(JSON.stringify(data));
+        await w.close();
     },
 
     async trashDir(app) {
@@ -135,7 +204,7 @@ const FolderCache = {
     },
 
     async flush() {
-        while (this._writes.length || this._writing) await new Promise(r => setTimeout(r, 20));
+        while ((this._writes && this._writes.length) || this._writing) await new Promise(r => setTimeout(r, 20));
     },
 
     // Remove cached thumbnails of photos that changed or are gone
@@ -194,6 +263,11 @@ const FolderCache = {
         const root = await this.root(app, false);
         if (!root) return null;
         await this.flush();
+        return this.measure(root);
+    },
+
+    // The same for any order's folder (the stored orders list)
+    async measure(root) {
         const out = { bytes: 0, trash: { n: 0, bytes: 0 }, cache: { n: 0, bytes: 0 }, originals: { n: 0, bytes: 0 }, other: { n: 0, bytes: 0 } };
         const walk = async (dir, bucket) => {
             const subs = [], files = [];
@@ -267,6 +341,12 @@ const FolderCache = {
             }
         }
         if (!merged && !kept) return;
+        if (nested.every(n => n.path === '')) {
+            // The order's own .jeditor, moved out into the app's storage
+            if (merged) app.showToast('Moved this order\'s .jeditor folder out of the order: its flags, deleted photos and Auto crop originals are now kept by jEditor on this PC', 6000, null, null, { type: 'success' });
+            if (kept) app.showToast('Couldn\'t move everything out of this order\'s .jeditor folder — it\'s left where it is', 5000);
+            return;
+        }
         const where = nested.length === 1 ? `“${nested[0].path.split('/').pop()}”` : `${nested.length} subfolders`;
         const what = [];
         if (flags) what.push(`${flags} flag${flags === 1 ? '' : 's'}`);
@@ -284,7 +364,7 @@ const FolderCache = {
         const to = await root.getDirectoryHandle(sub, { create: true });
         const taken = new Set();
         for await (const e of to.values()) taken.add(e.name.toLowerCase());
-        const prefix = path.split('/').join(' - ') + ' - ';
+        const prefix = path ? path.split('/').join(' - ') + ' - ' : ''; // '' = the order's own
         let moved = 0, ok = true;
         const entries = [];
         for await (const e of from.values()) entries.push(e);
@@ -331,10 +411,20 @@ const FolderCache = {
         return n;
     },
 
-    // Delete .jeditor (trash + cache) and the old .jeditor-trash
+    // Delete the order's data (trash, cache, flags, originals): its folder
+    // in the app's storage, and any .jeditor or old .jeditor-trash in it
     async cleanUp(app) {
         await this.flush();
         let removed = false;
+        if (this.native()) {
+            const path = await this.orderPath(app);
+            if (path) {
+                try {
+                    await (await this.native().dataDir()).removeEntry(this.storeName(path), { recursive: true });
+                    removed = true;
+                } catch (e) { /* nothing stored */ }
+            }
+        }
         for (const name of [this.DIR, this.LEGACY_TRASH]) {
             try {
                 await app.dirHandle.removeEntry(name, { recursive: true });
