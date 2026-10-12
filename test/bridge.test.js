@@ -224,9 +224,10 @@ const waitForPost = (page, type) => page.waitForFunction(
                         await w.write(blob);
                         await w.close();
                         names.push(name);
-                        window.__deliver({ type: 'scanned', scan: m.id, name });
+                        // The last one's message comes after the reply (as it once did): the reply's list covers it
+                        if (i < 2) window.__deliver({ type: 'scanned', scan: m.id, name });
                     }
-                    reply({ count: names.length });
+                    reply({ count: names.length, names });
                 }
                 else if (m.type === 'checkUpdate') reply({ tag: 'v1.0.0', current: 'v1.0.0', newer: false });
             };

@@ -206,7 +206,8 @@
         // Scans into a folder of the order (its path), named prefix + next…
         // ({ device, driver, folder, prefix, next, digits }). The scanner's
         // own window opens; scanned(name) as each photo lands.
-        // → { count, cancelled? }; throws if the scan failed (after `count`)
+        // → { count, names, cancelled? }; throws if the scan failed (with
+        // the names saved before it did)
         async scan(options, scanned) {
             onScanned = scanned || null;
             try {
@@ -214,9 +215,10 @@
                 if (msg.error) {
                     const e = new Error(msg.error);
                     e.count = msg.count || 0;
+                    e.names = msg.names || [];
                     throw e;
                 }
-                return { count: msg.count || 0, cancelled: !!msg.cancelled };
+                return { count: msg.count || 0, names: msg.names || [], cancelled: !!msg.cancelled };
             } finally {
                 onScanned = null;
             }

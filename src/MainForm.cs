@@ -419,24 +419,29 @@ sealed class MainForm : Form
             msg["digits"]?.GetValue<int>() ?? 3);
         using var cancel = scanning = new CancellationTokenSource();
         int count = 0;
+        var names = new List<string>();
         try
         {
             Log.Write($"Scanning from {request.DeviceId} ({request.Driver}) into {folder}");
+            // Sent before the reply, in order: the page stops listening once
+            // the reply comes, so the last photo's message mustn't trail it
             count = await Scanners.ScanAsync(request, Handle, name =>
             {
                 count++;
-                BeginInvoke(() => Post(new { type = "scanned", scan = id, name }));
+                names.Add(name);
+                if (InvokeRequired) Invoke(() => Post(new { type = "scanned", scan = id, name }));
+                else Post(new { type = "scanned", scan = id, name });
             }, cancel.Token);
-            Reply(id, new { count });
+            Reply(id, new { count, names });
         }
         catch (OperationCanceledException)
         {
-            Reply(id, new { count, cancelled = true });
+            Reply(id, new { count, names, cancelled = true });
         }
         catch (Exception e)
         {
             Log.Write($"Scan failed: {e}");
-            Reply(id, new { count, error = ScanError(e) });
+            Reply(id, new { count, names, error = ScanError(e) });
         }
         finally
         {

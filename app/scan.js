@@ -218,14 +218,20 @@ const Scan = {
         this.running = true;
         app.beginTask('scanner', label());
         const show = () => Watch.request({ dirs: [folder] });
+        const add = (name) => {
+            const rel = folder ? `${folder}/${name}` : name;
+            if (!names.includes(rel)) names.push(rel);
+        };
         let result;
         try {
             result = await native.scan({ device, driver, folder: path, prefix, next, digits: digits || 3 }, (name) => {
-                names.push(folder ? `${folder}/${name}` : name);
+                add(name);
                 app.updateTask('scanner', label());
                 show();
             });
+            (result.names || []).forEach(add); // the full list, in case a message was missed
         } catch (e) {
+            (e.names || []).forEach(add);
             show();
             app.endTask('scanner');
             this.running = false;
