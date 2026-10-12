@@ -31,6 +31,7 @@ const CHANGELOG = [
             'A photo a scanner is still saving is added once it\'s whole, not half-written, and a preview that can\'t be made or shown is tried again instead of staying blank.',
             'Folder details: in the grid, `I` (or Order Info / Folder Info in the right-click menus) shows the folder you\'re in: how many photos, here and with subfolders, total size, average and largest photo, file types, dates, flags, and for the whole order how much room jEditor\'s .jeditor folder takes (trash, cache, Auto crop originals). Select several photos to see the same for the selection. Single view still shows the photo\'s own details.',
             'The folder list shows the total for what you\'re looking at, such as 1,240 photos · 4.80 GB. Click it for the details. Hovering a folder shows its size too.',
+            'The film strip\'s background is always black; it no longer turns light under a bright photo.',
             'In single view, the controls above the film strip fade away a few seconds after they appear, leaving the photo the screen. Move the pointer to where they were and they come back. To do without them altogether, untick Buttons above the film strip in Customize controls.',
             'The selection bar in the grid is centred on the photos again, beside the folder list when it\'s open.',
             'Opening an order whose subfolder has a .jeditor folder of its own (because that subfolder was once opened on its own) merges it into the order\'s and removes it, so the order has just one. Its deleted photos and Auto crop originals move into the order\'s .jeditor, named after the subfolder, and its flags join the order\'s. Its cache is dropped and rebuilt when needed. If anything can\'t be moved, that .jeditor is left where it is.'
@@ -6407,7 +6408,6 @@ const Recents = {
     --glass-bottom-border: var(--glass-dark-border);
     --glass-bottom-text: var(--glass-dark-text);
     --glass-bottom-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
-    --strip-bg: rgba(0, 0, 0, 0.35);
 }
 
 /* Bright image band behind the header → light glass on top surfaces */
@@ -6424,7 +6424,6 @@ body.glass-light-bottom {
     --glass-bottom-border: var(--glass-light-border);
     --glass-bottom-text: var(--glass-light-text);
     --glass-bottom-shadow: none;
-    --strip-bg: rgba(255, 255, 255, 0.40);
 }
 
 body,
@@ -6936,10 +6935,8 @@ header {
 /* Thumbnails */
 .thumbnails {
     height: var(--strip-height, 80px);
-    background: var(--strip-bg);
-    backdrop-filter: blur(20px) saturate(160%);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
-    transition: background 0.35s ease;
+    /* Always black, whatever the photo above it */
+    background: #000;
     display: flex;
     align-items: center;
     overflow-x: auto;

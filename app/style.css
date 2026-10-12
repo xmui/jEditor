@@ -40,7 +40,6 @@
     --glass-bottom-border: var(--glass-dark-border);
     --glass-bottom-text: var(--glass-dark-text);
     --glass-bottom-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
-    --strip-bg: rgba(0, 0, 0, 0.35);
 }
 
 /* Bright image band behind the header → light glass on top surfaces */
@@ -57,7 +56,6 @@ body.glass-light-bottom {
     --glass-bottom-border: var(--glass-light-border);
     --glass-bottom-text: var(--glass-light-text);
     --glass-bottom-shadow: none;
-    --strip-bg: rgba(255, 255, 255, 0.40);
 }
 
 body,
@@ -569,10 +567,8 @@ header {
 /* Thumbnails */
 .thumbnails {
     height: var(--strip-height, 80px);
-    background: var(--strip-bg);
-    backdrop-filter: blur(20px) saturate(160%);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
-    transition: background 0.35s ease;
+    /* Always black, whatever the photo above it */
+    background: #000;
     display: flex;
     align-items: center;
     overflow-x: auto;
