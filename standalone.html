@@ -15,7 +15,7 @@
     <script>
 // Single source of truth for the app version. Bump with:  npm run bump 1.x.y
 // (keeps package.json in sync and busts the service worker cache)
-const APP_VERSION = '1.18.0';
+const APP_VERSION = '1.18.1';
 
 </script>
     <script>
@@ -25,6 +25,13 @@ const APP_VERSION = '1.18.0';
 // Text between `backticks` is shown as a key.
 
 const CHANGELOG = [
+    {
+        version: '1.18.1', date: '2026-10-12',
+        items: [
+            'Messages and the progress pill moved to the bottom-left corner, so they no longer cover the middle of the photo. In the grid they sit beside the folder list when it\'s open.',
+            'Fixed photos flashing as if selected for a moment when switching back to the grid: the ones selected the last time you were in the grid lit up again before clearing.'
+        ]
+    },
     {
         version: '1.18.0', date: '2026-10-12',
         items: [
@@ -7821,7 +7828,9 @@ header {
     overflow: hidden;
     background: var(--tile-bg);
     cursor: pointer;
-    transition: box-shadow var(--dur-fast) var(--ease-out), filter var(--dur-fast) var(--ease-out);
+    /* Only the hover brightening animates: selection rings change at once,
+       so a re-shown grid never flashes rings fading in or out */
+    transition: filter var(--dur-fast) var(--ease-out);
     /* Skip layout/paint for tiles far outside the viewport */
     content-visibility: auto;
     /* Tiles out of sight stand in at the real tile size (syncGridTile) */
@@ -8809,15 +8818,23 @@ header {
 }
 
 /* ---- 10. Toasts and the task pill ---- */
-/* One stack at the bottom centre, above whatever toolbar is down there.
-   --toast-bottom follows the view (set below). */
+/* One stack in the bottom-left corner, clear of the photo in the middle.
+   --toast-bottom / --toast-left follow the view (set below). */
 
 body {
+    --toast-left: var(--gutter);
+    /* Grid: above the selection bar's row */
     --toast-bottom: calc(var(--gutter) + var(--ctl-lg) + var(--sp-3));
 }
 
+/* Single view: just above the film strip, beside the centred controls */
 body[data-view="single"] {
-    --toast-bottom: calc(var(--strip-height, 80px) + 28px + var(--gutter) + var(--ctl-lg) + var(--sp-3));
+    --toast-bottom: calc(var(--strip-height, 80px) + 28px + var(--gutter));
+}
+
+/* Grid with the folder list open: beside the list */
+body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) {
+    --toast-left: var(--rail-room);
 }
 
 body:has(#drop-zone:not(.hidden)) {
@@ -8832,14 +8849,14 @@ body:has(#dupes-panel:not(.hidden)) #toast-stack,
 body:has(#dupes-panel:not(.hidden)) .task-pill {
     top: 64px;
     bottom: auto !important;
+    left: var(--gutter);
 }
 
 
 .task-pill {
     position: fixed;
-    left: 50%;
+    left: var(--toast-left);
     bottom: var(--toast-bottom);
-    translate: -50% 0;
     z-index: var(--z-toast);
     display: flex;
     align-items: center;
@@ -8876,8 +8893,7 @@ body:has(#dupes-panel:not(.hidden)) .task-pill {
     display: none;
     position: absolute;
     bottom: calc(100% + var(--sp-2));
-    left: 50%;
-    translate: -50% 0;
+    left: 0;
     min-width: 260px;
     flex-direction: column;
     gap: var(--sp-2);
@@ -8908,16 +8924,15 @@ body:has(#dupes-panel:not(.hidden)) .task-pill {
 
 #toast-stack {
     position: fixed;
-    left: 50%;
+    left: var(--toast-left);
     bottom: var(--toast-bottom);
-    translate: -50% 0;
     z-index: var(--z-toast);
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
     gap: var(--sp-2);
     width: max-content;
-    max-width: min(560px, calc(100vw - 32px));
+    max-width: min(480px, calc(100vw - var(--toast-left) - var(--gutter)));
     pointer-events: none;
     transition: bottom var(--dur-base) var(--ease-out);
 }
@@ -8953,7 +8968,7 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     pointer-events: none;
     opacity: 0;
     transform: translateY(8px) scale(0.96);
-    transform-origin: center bottom;
+    transform-origin: left bottom;
     transition:
         opacity var(--dur-base) ease,
         transform var(--dur-slow) var(--ease-spring),
@@ -10579,6 +10594,10 @@ body.dragging-photos .folder-tile:hover {
     }
     .interface.rail-open .selection-bar {
         left: var(--gutter);
+    }
+    /* The folder list overlays the grid here: toasts stay at the edge */
+    body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) {
+        --toast-left: var(--gutter);
     }
     .folder-rail {
         z-index: calc(var(--z-floating) + 2);
@@ -13990,9 +14009,11 @@ const app = {
             this.elements.gridControls.classList.add('hidden');
             iconGrid.classList.remove('hidden');
             iconSingle.classList.add('hidden');
-            this.selection.clear(); // Clear selection on enter single? Or keep?
-            // Usually keeping is confusing if you just want to flip. Let's keep but only active is `currentFile`.
-            this.elements.selectionBar.classList.add('hidden');
+            // Single view has no selection. Clear the tiles' highlight too, now
+            // while the grid is hidden: left in place, the photos selected
+            // last time lit up for a moment when the grid came back.
+            this.selection.clear();
+            this.updateSelectionUI();
 
             if (this.currentFile) this.loadFile(this.currentFile);
         }

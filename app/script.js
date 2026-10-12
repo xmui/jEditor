@@ -2687,9 +2687,11 @@ const app = {
             this.elements.gridControls.classList.add('hidden');
             iconGrid.classList.remove('hidden');
             iconSingle.classList.add('hidden');
-            this.selection.clear(); // Clear selection on enter single? Or keep?
-            // Usually keeping is confusing if you just want to flip. Let's keep but only active is `currentFile`.
-            this.elements.selectionBar.classList.add('hidden');
+            // Single view has no selection. Clear the tiles' highlight too, now
+            // while the grid is hidden: left in place, the photos selected
+            // last time lit up for a moment when the grid came back.
+            this.selection.clear();
+            this.updateSelectionUI();
 
             if (this.currentFile) this.loadFile(this.currentFile);
         }

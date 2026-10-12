@@ -1565,6 +1565,15 @@ async function newPage(browser, url) {
             app.selection = new Set([app.files[0]]);
             app.updateSelectionUI();
             out.selectionText = document.getElementById('selection-count').textContent;
+            // Leaving the grid clears the tiles' highlight too, so photos
+            // selected earlier don't light up when the grid comes back
+            app.setView('grid');
+            app.selection = new Set(app.files.slice(0, 3));
+            app.updateSelectionUI();
+            app.setView('single');
+            out.noStaleRings = !document.querySelector('#grid-view .grid-item.selected');
+            app.setView('grid');
+            out.onlyCurrentRinged = [...document.querySelectorAll('#grid-view .grid-item.selected')].map(t => t._file).join() === String(app.currentFile);
             return out;
         });
         check('opening a folder shows the photo (no blank screen)', r.visible);
@@ -1573,6 +1582,8 @@ async function newPage(browser, url) {
         check('grid Up/Down uses the real column count', r.cols);
         check('read-only photos refuse edits with a message', r.readOnly);
         check('selection count reads "1 selected"', r.selectionText === '1 selected', r.selectionText);
+        check('back in the grid, only the current photo is selected (no stale rings)', r.noStaleRings && r.onlyCurrentRinged,
+            JSON.stringify({ stale: !r.noStaleRings, only: r.onlyCurrentRinged }));
         check('debug console shows a performance readout', r.perf && r.perfShown);
         check('viewer suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();

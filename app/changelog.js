@@ -5,6 +5,13 @@
 
 const CHANGELOG = [
     {
+        version: '1.18.1', date: '2026-10-12',
+        items: [
+            'Messages and the progress pill moved to the bottom-left corner, so they no longer cover the middle of the photo. In the grid they sit beside the folder list when it\'s open.',
+            'Fixed photos flashing as if selected for a moment when switching back to the grid: the ones selected the last time you were in the grid lit up again before clearing.'
+        ]
+    },
+    {
         version: '1.18.0', date: '2026-10-12',
         items: [
             'Photos deleted in File Explorer no longer get stuck in jEditor. Deleting a photo that\'s already gone just takes it off the screen, a delete that Windows never finishes gives up on that file after 30 seconds instead of hanging, and a stuck operation no longer stops the folder watch from noticing photos deleted elsewhere.',
