@@ -27,6 +27,9 @@ static class Program
             return 64;
         }
         Log.Init(options.LogFile);
+        // The smoke test keeps its order data out of the real one
+        if (options.SmokeDir is not null)
+            Shell.DataDir = Path.Combine(Path.GetTempPath(), "jEditor-smoke-data-" + Guid.NewGuid().ToString("N"));
         Log.Write($"jEditor {Application.ProductVersion} starting: {string.Join(' ', args)}");
 
         ApplicationConfiguration.Initialize();

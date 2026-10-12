@@ -50,6 +50,12 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
   </ItemGroup>
 
+  <!-- The release this build is for (release.yml: -p:ReleaseTag=v1.2.3-2),
+       so the updater can tell a re-release of the same version is newer -->
+  <ItemGroup Condition="'$(ReleaseTag)' != ''">
+    <AssemblyMetadata Include="ReleaseTag" Value="$(ReleaseTag)" />
+  </ItemGroup>
+
   <ItemGroup>
     <EmbeddedResource Include="bridge.js" LogicalName="bridge.js" />
   </ItemGroup>

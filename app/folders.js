@@ -926,19 +926,30 @@ const Folders = {
         return entry;
     },
 
-    // Photos into .jeditor/trash without an undo step of their own (the
-    // move that replaced them undoes them)
+    // Photos into the trash (the Recycle Bin in the Windows app) without an
+    // undo step of their own (the move that replaced them undoes them)
     async trashQuietly(files) {
         const app = this.app;
+        const items = [];
+        for (const f of files) await this.settle(f);
+        const binned = await app.recycleFiles(files);
+        files = files.filter(f => {
+            const r = binned.get(f);
+            if (r && r.token) items.push({ file: f, recycled: r.token });
+            else if (r && !r.noBin) console.error('Recycle failed for', f.name, r.error || 'gone');
+            return !r || r.noBin;
+        });
+        if (!files.length) {
+            app.removeFilesFromApp(items.map(it => it.file));
+            return items;
+        }
         const trashDir = await FolderCache.trashDir(app);
         const taken = new Set();
         try { for await (const e of trashDir.values()) taken.add(e.name.toLowerCase()); } catch (e) { /* empty */ }
         const stamp = Date.now();
-        const items = [];
         for (let i = 0; i < files.length; i++) {
             const f = files[i];
             try {
-                await this.settle(f);
                 let trashName = f.name;
                 if (taken.has(trashName.toLowerCase())) trashName = `${stamp}_r${i}_${f.name}`;
                 taken.add(trashName.toLowerCase());

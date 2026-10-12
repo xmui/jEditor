@@ -1,0 +1,117 @@
+using System.Diagnostics;
+using System.Net.Http.Headers;
+using System.Reflection;
+using System.Security.Cryptography;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
+
+namespace JEditor;
+
+// Updates from this repo's GitHub releases: is there a newer one, download
+// its setup (checked against the SHA-256 GitHub publishes for it), and run
+// it. The setup installs for this user, so no admin; it waits for jEditor
+// to close and opens it again afterwards (/RELAUNCH=1, see jEditor.iss).
+static class Updater
+{
+    const string LatestRelease = "https://api.github.com/repos/xmui/jeditor-windows/releases/latest";
+
+    static readonly HttpClient http = MakeClient();
+
+    public sealed record Release(string Tag, string Version, string Notes, string SetupUrl, long Size, string? Sha256);
+
+    // What this build is: the release tag it was built for (release.yml
+    // passes it), else v<version> for a build made any other way
+    public static string CurrentTag { get; } =
+        typeof(Updater).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(a => a.Key == "ReleaseTag" && !string.IsNullOrEmpty(a.Value))?.Value
+        ?? "v" + Application.ProductVersion;
+
+    public static async Task<Release> LatestAsync()
+    {
+        using var res = await http.GetAsync(LatestRelease);
+        if ((int)res.StatusCode == 404) throw new InvalidOperationException("No releases yet");
+        res.EnsureSuccessStatusCode();
+        var json = JsonNode.Parse(await res.Content.ReadAsStringAsync())!;
+        var tag = (string?)json["tag_name"] ?? throw new InvalidOperationException("The release has no tag");
+        var setup = (json["assets"] as JsonArray ?? [])
+            .FirstOrDefault(a => Regex.IsMatch((string?)a?["name"] ?? "", @"^jEditor-Setup-.*\.exe$", RegexOptions.IgnoreCase))
+            ?? throw new InvalidOperationException($"Release {tag} has no setup to download");
+        var digest = (string?)setup["digest"];
+        return new Release(
+            tag,
+            Parse(tag).version.ToString(),
+            (string?)json["body"] ?? "",
+            (string?)setup["browser_download_url"] ?? throw new InvalidOperationException("No download link"),
+            (long?)setup["size"] ?? 0,
+            digest is not null && digest.StartsWith("sha256:") ? digest[7..].ToLowerInvariant() : null);
+    }
+
+    // v1.18.1 < v1.18.1-2 < v1.19.0
+    public static bool IsNewer(string tag, string than)
+    {
+        var (a, an) = Parse(tag);
+        var (b, bn) = Parse(than);
+        return a != b ? a > b : an > bn;
+    }
+
+    static (Version version, int build) Parse(string tag)
+    {
+        var m = Regex.Match(tag, @"(\d+)\.(\d+)\.(\d+)(?:-(\d+))?");
+        if (!m.Success) return (new Version(0, 0, 0), 0);
+        var v = new Version(int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), int.Parse(m.Groups[3].Value));
+        return (v, m.Groups[4].Success ? int.Parse(m.Groups[4].Value) : 1);
+    }
+
+    // → the downloaded setup's path
+    public static async Task<string> DownloadAsync(Release release, Action<long, long> progress)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "jEditor-update");
+        Directory.CreateDirectory(dir);
+        var file = Path.Combine(dir, $"jEditor-Setup-{release.Tag.TrimStart('v')}.exe");
+        using var res = await http.GetAsync(release.SetupUrl, HttpCompletionOption.ResponseHeadersRead);
+        res.EnsureSuccessStatusCode();
+        long total = res.Content.Headers.ContentLength ?? release.Size, received = 0, reported = 0;
+        using (var src = await res.Content.ReadAsStreamAsync())
+        using (var dst = File.Create(file))
+        {
+            var buffer = new byte[1 << 16];
+            int n;
+            while ((n = await src.ReadAsync(buffer)) > 0)
+            {
+                await dst.WriteAsync(buffer.AsMemory(0, n));
+                received += n;
+                if (received - reported >= 1 << 20 || received == total)
+                {
+                    reported = received;
+                    progress(received, total);
+                }
+            }
+        }
+        if (release.Sha256 is not null)
+        {
+            await using var check = File.OpenRead(file);
+            var hash = Convert.ToHexString(await SHA256.HashDataAsync(check)).ToLowerInvariant();
+            if (hash != release.Sha256)
+            {
+                File.Delete(file);
+                throw new InvalidOperationException("The download was damaged (its checksum doesn't match). Try again.");
+            }
+        }
+        return file;
+    }
+
+    // Runs the setup quietly; it waits for jEditor to close, then opens it
+    public static void Install(string setup)
+    {
+        Log.Write($"Running {setup}");
+        Process.Start(new ProcessStartInfo(setup, "/SILENT /SUPPRESSMSGBOXES /NORESTART /RELAUNCH=1") { UseShellExecute = true });
+    }
+
+    static HttpClient MakeClient()
+    {
+        var c = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+        c.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("jEditor", Application.ProductVersion));
+        c.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        return c;
+    }
+}

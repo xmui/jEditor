@@ -7,7 +7,10 @@ namespace JEditor;
 //
 // Proves on a real Windows machine (CI) that the whole path works: the UI
 // loads from the app folder, the bridge hands it a folder handle made by
-// WebView2, jEditor lists the photos, and a rotation is saved to disk.
+// WebView2, jEditor lists the photos, and a rotation is saved to disk. Then
+// the page asks the app to check each further step on disk (Check): a flag
+// is stored in jEditor's storage and nothing is added to the order; a
+// deleted photo is in the Recycle Bin; Ctrl+Z brings it back unchanged.
 // Exits 0 on success, 1 on failure, 2 if it takes longer than 90 seconds.
 // The details are in the log.
 sealed class Smoke
@@ -15,6 +18,7 @@ sealed class Smoke
     static readonly string[] PhotoTypes = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
 
     readonly MainForm form;
+    readonly string dir;
     readonly Dictionary<string, string> before;
     readonly System.Windows.Forms.Timer timeout = new() { Interval = 90_000 };
     bool done;
@@ -22,6 +26,7 @@ sealed class Smoke
     public Smoke(MainForm form, string dir)
     {
         this.form = form;
+        this.dir = dir;
         before = Photos(dir).ToDictionary(p => p, Hash);
         Log.Write($"Smoke test: {before.Count} photos in {dir}");
     }
@@ -34,6 +39,40 @@ sealed class Smoke
 
     public void Fail(string why) => Done(1, why);
 
+    // A step the page took, checked on disk → (ok, what's wrong)
+    public (bool, string?) Check(string step, string? name)
+    {
+        var path = name is null ? null : Path.Combine(dir, name.Replace('/', Path.DirectorySeparatorChar));
+        (bool, string?) result = step switch
+        {
+            "stored" => Stored(),
+            "deleted" when path is not null => File.Exists(path) ? (false, $"{name} is still in the folder")
+                : !RecycleBin.HasBin(path) ? (false, "the test folder's drive has no Recycle Bin") : (true, null),
+            "restored" when path is not null => !File.Exists(path) ? (false, $"{name} didn't come back")
+                : before.TryGetValue(path, out var h) && h != Hash(path) ? (false, $"{name} came back changed") : (true, null),
+            _ => (false, "unknown step " + step),
+        };
+        Log.Write($"Smoke check {step}{(name is null ? "" : " " + name)}: {(result.Item1 ? "ok" : result.Item2)}");
+        return result;
+    }
+
+    // The flag went to jEditor's storage, in a folder whose order.json
+    // names this order; the order itself got no .jeditor
+    (bool, string?) Stored()
+    {
+        if (Directory.Exists(Path.Combine(dir, ".jeditor"))) return (false, "a .jeditor folder was made in the order");
+        if (!Directory.Exists(Shell.OrdersDir)) return (false, "nothing in jEditor's storage");
+        foreach (var store in Directory.EnumerateDirectories(Shell.OrdersDir))
+        {
+            var info = Path.Combine(store, "order.json");
+            if (!File.Exists(info)) continue;
+            var json = JsonNode.Parse(File.ReadAllText(info));
+            if (!string.Equals((string?)json?["path"], dir, StringComparison.OrdinalIgnoreCase)) continue;
+            return File.Exists(Path.Combine(store, "flags.json")) ? (true, null) : (false, "no flags.json beside order.json");
+        }
+        return (false, $"no stored folder names {dir} (the path worked out from a photo was wrong?)");
+    }
+
     public async void Report(JsonNode msg)
     {
         var problems = new List<string>();
@@ -42,6 +81,14 @@ sealed class Smoke
         if (count != before.Count) problems.Add($"jEditor listed {count} photos, the folder has {before.Count}");
         if (msg["rotated"]?.GetValue<bool>() != true) problems.Add("the rotation reported failure");
         if (msg["errors"] is JsonArray errors && errors.Count > 0) problems.Add("JS errors: " + errors.ToJsonString());
+        if (msg["steps"] is JsonObject steps)
+        {
+            Log.Write("Smoke steps: " + steps.ToJsonString());
+            foreach (var step in new[] { "stored", "recycled", "deleted", "restored" })
+                if (steps[step] is not JsonValue v || !v.TryGetValue<bool>(out var ok) || !ok) problems.Add($"{step}: {steps[step]?.ToJsonString() ?? "not reached"}");
+            if (steps["error"] is not null) problems.Add("error: " + steps["error"]);
+        }
+        else problems.Add("no steps reported");
 
         // The rotation was written to disk (allowing a moment for it to land)
         int changed = 0;

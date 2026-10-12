@@ -3775,3 +3775,87 @@ body.dragging-photos .folder-tile:hover {
         display: none;
     }
 }
+
+/* Only in the Windows app (html.native), or only outside it */
+html:not(.native) .native-only {
+    display: none !important;
+}
+
+/* Stored orders (Settings → Stored orders, in the Windows app) */
+.dialog.stored-card {
+    width: min(760px, 100%);
+}
+
+.stored-help {
+    margin: 0;
+    padding: 0 var(--sp-5) var(--sp-3);
+}
+
+.stored-summary {
+    padding: 0 var(--sp-5) var(--sp-2);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.stored-list {
+    list-style: none;
+    margin: 0;
+    padding: 0 var(--sp-5) var(--sp-3);
+    overflow-y: auto;
+}
+
+.stored-list li {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-3) 0;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.stored-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.stored-name {
+    font-weight: var(--fw-medium);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.stored-current {
+    margin-left: var(--sp-2);
+    padding: 1px var(--sp-2);
+    border-radius: var(--r-pill);
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+}
+
+.stored-path,
+.stored-detail {
+    color: var(--text-3);
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.stored-gone .stored-path {
+    color: var(--warning-text);
+}
+
+.stored-actions {
+    display: flex;
+    gap: var(--sp-2);
+    flex-shrink: 0;
+}
+
+.stored-empty {
+    padding: var(--sp-5) 0;
+    color: var(--text-3);
+    text-align: center;
+}

@@ -55,6 +55,14 @@ const app = {
         // Debug
         this.log('App Initializing... v' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'dev'));
 
+        // In the Windows app: what only it has, and wording for how it keeps
+        // things (the Recycle Bin, storage on the PC rather than .jeditor)
+        if (FolderCache.native()) {
+            document.documentElement.classList.add('native');
+            document.querySelectorAll('[data-native-text]').forEach(el => { el.textContent = el.dataset.nativeText; });
+            document.querySelectorAll('[data-native-title]').forEach(el => { el.title = el.dataset.nativeTitle; });
+        }
+
         // Show the version on the start screen
         this.checkForUpdateNotice();
         const title = document.getElementById('app-title');
@@ -188,6 +196,8 @@ const app = {
 
         Folders.init(this);
         Recents.init(this);
+        Stored.init(this);
+        Updates.init(this);
         Flags.init(this);
         Watch.init(this);
         this.initContextMenu();
@@ -358,7 +368,8 @@ const app = {
             scale: 1,
             stripHeight: 80,
             thumbContain: true, // fit whole image in tiles by default
-            folderCache: true, // keep thumbnails / duplicate data in the folder's .jeditor
+            folderCache: true, // keep thumbnails / duplicate data with the order's data (folder-cache.js)
+            autoUpdate: true, // the Windows app looks for a new version once a day
             autoCheck: true, // pick up photos added, removed or edited outside jEditor
             accent: null, // the accent colour (#rrggbb); null is the standard blue
             singleControls: true, // previous / rotate / next above the film strip in single view
@@ -393,6 +404,7 @@ const app = {
                 if (typeof saved.thumbContain === 'boolean') this.uiPrefs.thumbContain = saved.thumbContain;
                 if (typeof saved.folderCache === 'boolean') this.uiPrefs.folderCache = saved.folderCache;
                 if (typeof saved.autoCheck === 'boolean') this.uiPrefs.autoCheck = saved.autoCheck;
+                if (typeof saved.autoUpdate === 'boolean') this.uiPrefs.autoUpdate = saved.autoUpdate;
                 if (typeof saved.accent === 'string' && /^#[0-9a-f]{6}$/i.test(saved.accent)) this.uiPrefs.accent = saved.accent;
                 if (typeof saved.singleControls === 'boolean') this.uiPrefs.singleControls = saved.singleControls;
                 if (typeof saved.folderRail === 'boolean') this.uiPrefs.folderRail = saved.folderRail;
@@ -563,6 +575,10 @@ const app = {
         $('cust-cleanup').addEventListener('click', () => {
             this.toggleCustomizePanel(false);
             this.cleanUpFolder();
+        });
+        $('cust-stored').addEventListener('click', () => {
+            this.toggleCustomizePanel(false);
+            Stored.open();
         });
 
         // Toolbar buttons
@@ -1239,11 +1255,13 @@ const app = {
         const listings = await Watch.walk([{ path: '', handle: dirHandle }], true);
         const pending = [];
         // A subfolder opened on its own before has a .jeditor of its own:
-        // merged into this one once the folder is open (finalizeLoad)
+        // merged into the order's once the folder is open (finalizeLoad). In
+        // the Windows app the order's own .jeditor goes too: its contents
+        // move into the app's storage on the PC (folder-cache.js).
         this._nestedJeditor = [];
         for (const [dir, l] of listings) {
             if (!l || l.failed) continue;
-            if (dir && l.own && l.own.length) this._nestedJeditor.push({ path: dir, parent: l.handle, handles: l.own });
+            if ((dir || FolderCache.native()) && l.own && l.own.length) this._nestedJeditor.push({ path: dir, parent: l.handle, handles: l.own });
             Folders.register(dir, l.handle);
             for (const [name, entry] of l.files) {
                 const relPath = Folders.join(dir, name);
@@ -1590,17 +1608,18 @@ const app = {
         if (Flags.active()) rows.push(['Showing', `${this.viewFiles().length.toLocaleString()} matching the ${Flags.filter ? 'filter' : 'search'}`]);
         // What jEditor itself keeps in the folder (worked out in the background)
         const showOwn = !files && whole && this.dirHandle && !this.readOnlyMode;
-        if (showOwn) rows.push(['—'], ['.jeditor', 'Adding up…', 'info-pending']);
+        const label = FolderCache.native() ? 'Kept on this PC' : '.jeditor';
+        if (showOwn) rows.push(['—'], [label, 'Adding up…', 'info-pending']);
         this.setInfoRows(title, rows);
         if (!showOwn) return;
         const own = await this.jeditorUsage();
         if (token !== this._infoToken) return;
-        const i = rows.findIndex(r => r[0] === '.jeditor');
+        const i = rows.findIndex(r => r[0] === label);
         rows.splice(i, 1);
         if (!own || !own.bytes) {
-            rows.splice(i, 0, ['.jeditor', 'empty']);
+            rows.splice(i, 0, [label, 'nothing']);
         } else {
-            const parts = [['.jeditor', this.formatBytes(own.bytes)]];
+            const parts = [[label, this.formatBytes(own.bytes)]];
             if (own.trash.n) parts.push(['  Trash', `${plural(own.trash.n, 'photo')} · ${this.formatBytes(own.trash.bytes)}`]);
             if (own.cache.bytes) parts.push(['  Cache', this.formatBytes(own.cache.bytes)]);
             if (own.originals.n) parts.push(['  Originals', `${plural(own.originals.n, 'photo')} · ${this.formatBytes(own.originals.bytes)}`]);
@@ -2501,13 +2520,15 @@ const app = {
         const inTrash = await FolderCache.trashCount(this);
         const flagged = Flags.count();
         const items = [
-            ...(inTrash ? [`Empties the trash: ${inTrash} deleted photo${inTrash === 1 ? '' : 's'} will be gone for good.`] : []),
+            ...(inTrash ? [`Empties ${FolderCache.native() ? 'jEditor\'s trash' : 'the trash'}: ${inTrash} deleted photo${inTrash === 1 ? '' : 's'} will be gone for good.`] : []),
             ...(flagged ? [`Removes the flags (stars, rescan flags, colour labels) from ${flagged} photo${flagged === 1 ? '' : 's'}.`] : []),
             'Removes cached thumbnails and duplicate data (rebuilt when needed), and the originals kept for undoing Auto crop.'
         ];
+        const native = FolderCache.native();
         const ok = await UI.confirm({
-            title: 'Clean up this folder?',
-            message: 'Do this when an order is finished, before it goes to the customer.',
+            title: native ? 'Clean up this order?' : 'Clean up this folder?',
+            message: native ? 'Removes what jEditor keeps on this PC for this order. Do this when an order is finished.'
+                : 'Do this when an order is finished, before it goes to the customer.',
             items,
             note: 'Your photos are not touched.',
             ok: 'Clean up',
@@ -2520,7 +2541,8 @@ const app = {
             Flags.clearAll();
             // Trash undo steps can't be undone any more, and flags are gone
             this._undoStack = (this._undoStack || []).filter(e => !['trash', 'flags', 'auto-crop'].includes(e.type));
-            this.showToast(inTrash ? `Folder cleaned up — trash emptied (${inTrash})` : 'Folder cleaned up', 3000);
+            const what = native ? 'Order cleaned up' : 'Folder cleaned up';
+            this.showToast(inTrash ? `${what} — trash emptied (${inTrash})` : what, 3000);
         } catch (e) {
             this.showToast('Clean up failed: ' + e.message, 4000);
         } finally {
@@ -3576,7 +3598,7 @@ const app = {
 
         // The rename tool, folder dialogs, Settings and the alert/confirm
         // dialogs handle their own keys
-        if (Renamer.isOpen || Folders.isModalOpen() || Recents.isPromptOpen() || UI.isOpen()) return;
+        if (Renamer.isOpen || Folders.isModalOpen() || Recents.isPromptOpen() || UI.isOpen() || Stored.isOpen()) return;
 
         // What's New is modal: Esc closes it
         if (this.isWhatsNewOpen()) {
@@ -4424,7 +4446,7 @@ const app = {
             } else if (entry.type === 'trash') {
                 const n = await this.restoreManyFromTrash(entry.items);
                 this.sortFiles();
-                if (n < entry.items.length) this.showToast(`Restored ${n} of ${entry.items.length} photos — the rest are still in .jeditor/trash`, 4000);
+                if (n < entry.items.length) this.showToast(`Restored ${n} of ${entry.items.length} photos — the rest are still in ${FolderCache.native() ? 'the Recycle Bin' : '.jeditor/trash'}`, 4000);
                 else this.showToast(`Restored ${n} photo${n > 1 ? 's' : ''}`);
             }
         } catch (e) {
@@ -4469,38 +4491,120 @@ const app = {
 
     // ---- Trash (safe delete) ----
     //
-    // Photos are moved into .jeditor/trash: a rename on disk, instant even
-    // for big scans. Where moving isn't supported they're copied and the
-    // original deleted. Several at a time, and the screen is updated once
-    // at the end, so deleting hundreds of photos takes seconds.
+    // In the Windows app, deleted photos go to the Recycle Bin, all in one
+    // go, and Ctrl+Z takes them back out. Elsewhere, and on a drive with no
+    // Recycle Bin (network, USB), they're moved into the order's trash/
+    // (folder-cache.js): a rename on disk, instant even for big scans, or a
+    // copy and delete where moving isn't possible. Several at a time, and the
+    // screen is updated once at the end, so deleting hundreds of photos
+    // takes seconds.
 
     TRASH_CONCURRENCY: 6,
 
     async moveToTrash(files) {
-        const list = [...new Set(files.filter(Boolean))];
+        let list = [...new Set(files.filter(Boolean))];
         if (!list.length) return;
         if (!this.ensureWritable()) return;
         if (!this.dirHandle) {
             this.showToast('Deleting requires opening a folder (not loose files)');
             return;
         }
+        const many = list.length > 1;
+        if (many) this.beginTask('trash', `Deleting 0/${list.length}`);
+        const moved = new Set();
+        const undoItems = [];
+        const alreadyGone = [];
+        let failed = 0, binned = 0;
+        try {
+            // The Recycle Bin first, where there is one
+            if (FolderCache.native()) {
+                await Promise.all(list.map(f => f._rotationQueue
+                    ? this.withTimeout(f._rotationQueue, this.TRASH_TIMEOUT_MS, 'Waiting for a rotation').catch(() => { }) : null));
+                const results = await this.recycleFiles(list);
+                const rest = [];
+                for (const f of list) {
+                    const r = results.get(f) || {};
+                    if (r.token) {
+                        moved.add(f);
+                        undoItems.push({ file: f, recycled: r.token });
+                        binned++;
+                    } else if (r.gone) {
+                        alreadyGone.push(f);
+                    } else if (r.noBin) {
+                        rest.push(f);
+                    } else {
+                        console.error('Recycle failed for', f.name, r.error);
+                        failed++;
+                    }
+                }
+                list = rest;
+                if (many) this.updateTask('trash', `Deleting ${moved.size + alreadyGone.length + failed}/${moved.size + alreadyGone.length + failed + list.length}`);
+            }
+            if (list.length) failed += await this.trashIntoFolder(list, { moved, undoItems, alreadyGone });
+        } finally {
+            if (many) this.endTask('trash');
+        }
+        Flags.forgetFiles(alreadyGone);
+        this.removeFilesFromApp([...moved].concat(alreadyGone));
+
+        if (undoItems.length) {
+            this.pushUndo({ type: 'trash', items: undoItems });
+            const n = undoItems.length;
+            const where = binned === n ? 'the Recycle Bin' : binned ? 'the Recycle Bin and jEditor\'s trash' : FolderCache.native() ? 'jEditor\'s trash (this drive has no Recycle Bin)' : 'the trash (.jeditor/trash)';
+            this.showToast(`Moved ${n} to ${where} — Ctrl+Z to restore`, 4000);
+        }
+        if (alreadyGone.length) {
+            const n = alreadyGone.length;
+            this.showToast(`${n} photo${n === 1 ? ' was' : 's were'} already deleted elsewhere`, 3500, null, null, { type: 'info' });
+        }
+        if (failed) {
+            this.showToast(`Couldn't delete ${failed} photo${failed === 1 ? '' : 's'} — press R to check the folder`, 5000);
+            Watch.request({ full: true }); // see what's really there
+        }
+    },
+
+    // In the Windows app: photos to the Recycle Bin, in one go. → Map of
+    // photo → { token } (Ctrl+Z restores it with this), { noBin } (its drive
+    // has no Recycle Bin), { gone } (deleted already) or { error }
+    async recycleFiles(files) {
+        const out = new Map();
+        const native = FolderCache.native();
+        if (!native || !files.length) return out;
+        const ready = [];
+        for (const f of files) {
+            try {
+                ready.push({ f, file: await f.handle.getFile() });
+            } catch (e) {
+                out.set(f, e && e.name === 'NotFoundError' ? { gone: true } : { error: e.message });
+            }
+        }
+        if (!ready.length) return out;
+        let results;
+        try {
+            results = await native.recycle(ready.map(r => r.file));
+        } catch (e) {
+            results = [];
+            ready.forEach(r => out.set(r.f, { error: e.message }));
+        }
+        ready.forEach((r, i) => { if (results[i]) out.set(r.f, results[i]); });
+        return out;
+    },
+
+    // Photos into the order's trash/ (no Recycle Bin). Fills in what was
+    // moved; → how many failed
+    async trashIntoFolder(list, { moved, undoItems, alreadyGone }) {
         let trashDir;
         try {
             trashDir = await FolderCache.trashDir(this);
         } catch (e) {
             console.error('Trash unavailable:', e);
             this.showToast('Delete failed: ' + e.message);
-            return;
+            return list.length;
         }
         // Names already in the trash: one listing, not a lookup per photo
         const taken = new Set();
         try { for await (const e of trashDir.values()) taken.add(e.name.toLowerCase()); } catch (e) { /* empty */ }
-
         const many = list.length > 1;
-        if (many) this.beginTask('trash', `Deleting 0/${list.length}`);
-        const moved = new Set();
-        const undoItems = [];
-        const alreadyGone = [];
         let failed = 0, next = 0, done = 0;
         const stamp = Date.now();
         const worker = async () => {
@@ -4529,26 +4633,8 @@ const app = {
                 if (many && (done % 10 === 0 || done === list.length)) this.updateTask('trash', `Deleting ${done}/${list.length}`);
             }
         };
-        try {
-            await Promise.all(Array.from({ length: Math.min(this.TRASH_CONCURRENCY, list.length) }, worker));
-        } finally {
-            if (many) this.endTask('trash');
-        }
-        Flags.forgetFiles(alreadyGone);
-        this.removeFilesFromApp(list.filter(f => moved.has(f)).concat(alreadyGone));
-
-        if (undoItems.length) {
-            this.pushUndo({ type: 'trash', items: undoItems });
-            this.showToast(`Moved ${undoItems.length} to the trash (.jeditor/trash) — Ctrl+Z to restore`, 4000);
-        }
-        if (alreadyGone.length) {
-            const n = alreadyGone.length;
-            this.showToast(`${n} photo${n === 1 ? ' was' : 's were'} already deleted elsewhere`, 3500, null, null, { type: 'info' });
-        }
-        if (failed) {
-            this.showToast(`Couldn't delete ${failed} photo${failed === 1 ? '' : 's'} — press R to check the folder`, 5000);
-            Watch.request({ full: true }); // see what's really there
-        }
+        await Promise.all(Array.from({ length: Math.min(this.TRASH_CONCURRENCY, list.length) }, worker));
+        return failed;
     },
 
     TRASH_TIMEOUT_MS: 30000,
@@ -4635,13 +4721,19 @@ const app = {
         Folders.render();
     },
 
-    // Put a photo back from the trash (undo): moved back, or copied
+    // Put a photo back from the trash (undo): out of the Recycle Bin, or
+    // moved back from trash/, or copied
     async restoreFromTrash(item) {
         const { file, trashDir, trashName } = item;
-        const th = await trashDir.getFileHandle(trashName);
         const dest = file.parentDir || this.dirHandle;
         let nh = null;
-        if (typeof th.move === 'function') {
+        if (item.recycled) {
+            const [r] = await FolderCache.native().restore([item.recycled]);
+            if (!r || r.error) throw new Error((r && r.error) || 'not restored');
+            nh = await dest.getFileHandle(file.name);
+        }
+        const th = nh ? null : await trashDir.getFileHandle(trashName);
+        if (!nh && typeof th.move === 'function') {
             try {
                 await th.move(dest, file.name);
                 nh = th;
@@ -5427,7 +5519,7 @@ const app = {
         }
         if (list.length > 50 && !await UI.confirm({
             title: `Auto crop ${list.length.toLocaleString()} photos?`,
-            message: 'Each is straightened and cropped to the print found on it. The originals are kept in .jeditor/originals, so Ctrl+Z puts them all back.',
+            message: `Each is straightened and cropped to the print found on it. The originals are kept ${FolderCache.native() ? 'by jEditor on this PC' : 'in .jeditor/originals'}, so Ctrl+Z puts them all back.`,
             ok: 'Auto crop'
         })) return;
         this._autoCropping = true;

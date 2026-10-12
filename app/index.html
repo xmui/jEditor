@@ -24,6 +24,8 @@
     <script src="flags.js"></script>
     <script src="watch.js"></script>
     <script src="recents.js"></script>
+    <script src="stored.js"></script>
+    <script src="updates.js"></script>
     <script src="ui.js"></script>
     <link rel="stylesheet" href="tokens.css">
     <link rel="stylesheet" href="style.css">
@@ -238,7 +240,7 @@
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="19" cy="12" r="1.25" fill="currentColor"/></svg>
                 </button>
                 <span class="tb-sep" aria-hidden="true"></span>
-                <button id="btn-trash" class="tb-btn labelled danger" title="Delete: moves to the trash in .jeditor (Delete). Ctrl+Z restores">
+                <button id="btn-trash" class="tb-btn labelled danger" title="Delete: moves to the trash in .jeditor (Delete). Ctrl+Z restores" data-native-title="Delete: moves to the Recycle Bin (Delete). Ctrl+Z restores">
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                     <span>Delete</span>
                 </button>
@@ -331,7 +333,7 @@
     <div id="dupes-panel" class="dupes-overlay mode-screen hidden" role="dialog" aria-labelledby="dupes-title">
         <div class="dupes-head mode-head">
             <h3 id="dupes-title" class="mode-title">Possible duplicates</h3>
-            <span class="wip-tag" title="Duplicate detection is still being worked on: it can miss some duplicates or group photos that only look alike. Nothing is deleted outright: marked photos go to the trash in .jeditor and Ctrl+Z restores them.">Work in progress</span>
+            <span class="wip-tag" title="Duplicate detection is still being worked on: it can miss some duplicates or group photos that only look alike. Nothing is deleted outright: marked photos go to the trash in .jeditor and Ctrl+Z restores them." data-native-title="Duplicate detection is still being worked on: it can miss some duplicates or group photos that only look alike. Nothing is deleted outright: marked photos go to the Recycle Bin and Ctrl+Z restores them.">Work in progress</span>
             <span id="dupes-summary" class="dupes-summary"></span>
             <label class="dupes-sens">Sensitivity
                 <select id="dupes-sensitivity" class="field">
@@ -440,14 +442,33 @@
                         <input type="checkbox" id="cust-auto-check" class="switch">
                     </div>
                     <div class="set-row">
-                        <label class="set-label" for="cust-folder-cache">Save cache in the folder
-                            <small>Thumbnails go in .jeditor, so any computer that opens the order later starts fast</small></label>
+                        <label class="set-label" for="cust-folder-cache"><span data-native-text="Keep a thumbnail cache">Save cache in the folder</span>
+                            <small data-native-text="Thumbnails are kept on this PC, so an order opens fast the next time">Thumbnails go in .jeditor, so any computer that opens the order later starts fast</small></label>
                         <input type="checkbox" id="cust-folder-cache" class="switch">
                     </div>
                     <div class="set-row">
-                        <span class="set-label">Clean up this folder
-                            <small>Empties the trash and removes the cache, flags and Auto crop originals. Photos aren't touched.</small></span>
+                        <span class="set-label"><span data-native-text="Clean up this order">Clean up this folder</span>
+                            <small data-native-text="Removes what jEditor keeps on this PC for the open order: cache, flags and Auto crop originals. Photos aren't touched.">Empties the trash and removes the cache, flags and Auto crop originals. Photos aren't touched.</small></span>
                         <button id="cust-cleanup" class="btn secondary danger-text">Clean up…</button>
+                    </div>
+                    <div class="set-row native-only">
+                        <span class="set-label">Stored orders
+                            <small>What jEditor keeps on this PC for each order you've opened, and how much room it takes</small></span>
+                        <button id="cust-stored" class="btn secondary">Manage…</button>
+                    </div>
+                </section>
+
+                <section class="settings-section native-only" aria-labelledby="set-h-updates">
+                    <h3 id="set-h-updates" class="section-label">Updates</h3>
+                    <div class="set-row">
+                        <span class="set-label">jEditor <span id="upd-version"></span>
+                            <small id="upd-status">Not checked yet</small></span>
+                        <button id="upd-check" class="btn secondary">Check for updates</button>
+                    </div>
+                    <div class="set-row">
+                        <label class="set-label" for="upd-auto">Check for updates automatically
+                            <small>Once a day, when jEditor starts</small></label>
+                        <input type="checkbox" id="upd-auto" class="switch">
                     </div>
                 </section>
 
@@ -633,6 +654,25 @@
     </div>
 
     <!-- General-purpose alert / confirm / prompt (ui.js) -->
+    <div id="stored-panel" class="dialog-overlay hidden">
+        <div class="dialog stored-card" role="dialog" aria-modal="true" aria-labelledby="stored-title">
+            <div class="dialog-head">
+                <h2 id="stored-title" class="dialog-title">Stored orders</h2>
+                <button id="stored-close" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+            <p class="set-help stored-help">For each order you've opened, jEditor keeps its flags, a thumbnail cache and the originals from Auto crop on this PC, never in the order folder. Removing the cache is always safe: it's made again when needed.</p>
+            <div id="stored-summary" class="stored-summary"></div>
+            <ul id="stored-list" class="stored-list"></ul>
+            <div class="dialog-foot">
+                <button id="stored-clear-caches" class="btn secondary">Remove all caches</button>
+                <button id="stored-clear-missing" class="btn secondary danger-text">Remove orders that are gone</button>
+                <button id="stored-done" class="btn primary">Done</button>
+            </div>
+        </div>
+    </div>
+
     <div id="ui-dialog" class="dialog-overlay hidden">
         <div class="dialog prompt-card" role="alertdialog" aria-modal="true" aria-labelledby="uid-title" aria-describedby="uid-text">
             <div class="dialog-head">
