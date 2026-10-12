@@ -500,9 +500,22 @@ header {
     padding: 8px 16px;
     gap: 8px;
     transition: background 0.35s ease, border-color 0.35s ease,
-        transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
+        transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease, opacity 0.3s ease;
     pointer-events: none;
     /* Let clicks pass through */
+}
+
+/* Faded out a few seconds after showing; back when the pointer comes near
+   (see initControlsAutoHide) */
+.controls.idle {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+    transition: background 0.35s ease, border-color 0.35s ease,
+        transform 0.6s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease, opacity 0.6s ease;
+}
+
+.controls.idle button {
+    pointer-events: none;
 }
 
 .controls:hover {

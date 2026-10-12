@@ -3140,6 +3140,45 @@ async function newPage(browser, url) {
         await page.close();
     }
 
+    // ---- 7t3. Single view: the controls above the film strip fade away ----
+    console.log('single view controls fade');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1200, height: 800 });
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const dir = makeDir('Fade');
+            for (let i = 1; i <= 3; i++) {
+                const h = makeHandle(`f${i}.jpg`, await makeRealJpeg(300, 200), 'image/jpeg');
+                dir._files.set(h.name, h);
+            }
+            dir.values = async function* () { yield* dir._files.values(); };
+            window.showDirectoryPicker = async () => dir;
+            app.CONTROLS_IDLE_MS = 150;
+            await app.browseFolder();
+            app.setView('single');
+            const el = app.singleControls();
+            out.shownFirst = !el.classList.contains('idle');
+            await sleep(400);
+            out.fades = el.classList.contains('idle');
+            const move = (x, y) => document.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
+            const rect = el.getBoundingClientRect();
+            move(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            out.back = !el.classList.contains('idle');
+            await sleep(400);
+            out.staysWhileNear = !el.classList.contains('idle');
+            move(rect.left + rect.width / 2, 60);
+            await sleep(400);
+            out.fadesAfterLeaving = el.classList.contains('idle');
+            return out;
+        });
+        check('single view controls: shown, then fade after a few seconds', r.shownFirst && r.fades, JSON.stringify(r));
+        check('single view controls: back while the pointer is there, fade once it leaves', r.back && r.staysWhileNear && r.fadesAfterLeaving, JSON.stringify(r));
+        check('single view controls suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7u. Accent colour ----
     console.log('accent colour');
     {

@@ -243,6 +243,7 @@ const app = {
         });
 
         this.initStripResize();
+        this.initControlsAutoHide();
 
         // Apply saved layout (order, hidden buttons, orientation, scale,
         // strip height, thumbnail fit)
@@ -648,6 +649,57 @@ const app = {
                 list.appendChild(row);
             });
         }
+    },
+
+    // ---- Single view: the controls above the film strip fade away ----
+    //
+    // A few seconds after they're shown, so the photo has the screen to
+    // itself. They come back while the pointer is on or near where they
+    // sit (or a button has keyboard focus), and fade again once it leaves.
+
+    CONTROLS_IDLE_MS: 2500,
+    CONTROLS_NEAR_PX: 48,
+
+    singleControls() {
+        return this.elements.thumbnailStrip.parentElement.querySelector('.controls');
+    },
+
+    initControlsAutoHide() {
+        const el = this.singleControls();
+        if (!el) return;
+        document.addEventListener('pointermove', (e) => {
+            if (this.viewMode !== 'single' || el.classList.contains('hidden')) return;
+            const r = el.getBoundingClientRect(), pad = this.CONTROLS_NEAR_PX;
+            const near = e.clientX >= r.left - pad && e.clientX <= r.right + pad &&
+                e.clientY >= r.top - pad && e.clientY <= r.bottom + pad;
+            if (near) this.showControls();
+            else if (this._controlsHeld) this.idleControls();
+        }, { passive: true });
+        // Touch: a tap on the photo brings them back for a while
+        this.elements.imageContainer.addEventListener('pointerdown', (e) => {
+            if (e.pointerType !== 'mouse' && this.viewMode === 'single') this.showControls(false);
+        });
+        el.addEventListener('focusin', () => this.showControls());
+        el.addEventListener('focusout', () => this.idleControls());
+    },
+
+    // hold: stay up until idleControls (pointer near); otherwise fade later
+    showControls(hold = true) {
+        const el = this.singleControls();
+        if (!el) return;
+        el.classList.remove('idle');
+        clearTimeout(this._controlsTimer);
+        this._controlsHeld = hold;
+        if (!hold) this.idleControls();
+    },
+
+    idleControls() {
+        this._controlsHeld = false;
+        clearTimeout(this._controlsTimer);
+        this._controlsTimer = setTimeout(() => {
+            const el = this.singleControls();
+            if (el && !el.contains(document.activeElement)) el.classList.add('idle');
+        }, this.CONTROLS_IDLE_MS);
     },
 
     toggleThumbnailStrip() {
@@ -2353,6 +2405,7 @@ const app = {
             this.elements.imageContainer.classList.remove('hidden');
             this.elements.gridView.classList.add('hidden');
             this.elements.thumbnailStrip.parentElement.querySelector('.controls').classList.remove('hidden');
+            this.showControls(false); // shown on the way in, then out of the way
             this.elements.thumbnailStrip.classList.remove('hidden');
             if (this.elements.stripResize) this.elements.stripResize.classList.remove('hidden');
             this.elements.gridControls.classList.add('hidden');
