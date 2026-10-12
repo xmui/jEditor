@@ -72,6 +72,8 @@
             onUpdateProgress(msg.received, msg.total);
         } else if (msg.type === 'scanned' && onScanned) {
             onScanned(msg.name);
+        } else if (msg.type === 'drivesChanged') {
+            dispatchEvent(new Event('jeditor-drives')); // places.js
         }
     });
 
@@ -198,6 +200,16 @@
         // → { current, tag, version, notes, size, newer }
         async checkUpdate() {
             return (await answer('checkUpdate')).msg;
+        },
+        // The drives on this PC (USB ones too) and the usual folders →
+        // { drives: [{ path, name, kind: usb|disk|network|cd, label, total, free }], home: [{ name, path }] }.
+        // A 'jeditor-drives' event on window says a drive came or went.
+        async places() {
+            return (await answer('places')).msg;
+        },
+        // A folder's folders → { path, name, parent, folders: [{ name, path }], photos, more }
+        async listDir(path) {
+            return (await answer('listDir', { path })).msg;
         },
         // Scanners on this PC → { devices: [{ id, name, driver }], problems: [text] }
         async scanners() {
@@ -329,6 +341,15 @@
                     for (let i = 0; i < 75 && shown() < r.names.length; i++) await new Promise(res => setTimeout(res, 200));
                     await check('scanned', { names: r.names, shown: shown() });
                 }
+            }
+            // Browse: the drives, and this folder's photos counted on disk
+            {
+                const places = await window.JEditorNative.places();
+                steps.places = places.drives.length ? true : 'no drives listed';
+                const here = await window.JEditorNative.folderPath(a.dirHandle);
+                const l = here ? await window.JEditorNative.listDir(here) : null;
+                const top = a.files.filter(f => !(f.relPath || '').includes('/')).length;
+                steps.browsed = !l ? 'no path for the folder' : l.photos === top ? true : `Browse counts ${l.photos} photos, jEditor shows ${top}`;
             }
             try {
                 const u = await window.JEditorNative.checkUpdate();

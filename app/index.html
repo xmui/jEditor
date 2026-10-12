@@ -27,6 +27,7 @@
     <script src="stored.js"></script>
     <script src="updates.js"></script>
     <script src="scan.js"></script>
+    <script src="places.js"></script>
     <script src="ui.js"></script>
     <link rel="stylesheet" href="tokens.css">
     <link rel="stylesheet" href="style.css">
@@ -49,6 +50,10 @@
                 <div id="recents" class="recents hidden">
                     <h2 class="recents-title">Recent</h2>
                     <ul id="recent-list" class="recent-list"></ul>
+                </div>
+                <!-- Drives and folders (places.js, the Windows app) -->
+                <div id="start-browse" class="recents start-browse native-only">
+                    <div id="start-browse-list"></div>
                 </div>
                 <div class="start-foot">
                     <button id="btn-shortcuts-start" class="link-btn">Keyboard shortcuts <kbd>?</kbd></button>
@@ -188,6 +193,11 @@
                 </div>
             </nav>
             <aside id="folder-rail" class="folder-rail hidden" aria-label="Folder list">
+                <div class="fr-tabs seg native-only" role="tablist" aria-label="Folder list">
+                    <button id="fr-tab-order" class="active" role="tab" aria-selected="true" title="This order's folders">This order</button>
+                    <button id="fr-tab-browse" role="tab" aria-selected="false" title="Other orders, folders and drives">Browse</button>
+                </div>
+                <div id="rail-browse" class="rail-browse native-only"></div>
                 <div id="folder-tree" class="folder-tree"></div>
                 <div id="flag-list" class="flag-list hidden"></div>
                 <p id="fr-hint" class="fr-hint hidden">Make folders to collate this order. Drag photos onto a folder to move them, or hold <kbd>Ctrl</kbd> to copy. <kbd>M</kbd> moves the selection.</p>

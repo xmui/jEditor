@@ -242,6 +242,7 @@ const Folders = {
         if (rail) {
             this.renderRail(counts);
             Flags.renderList();
+            if (typeof Places !== 'undefined') Places.apply();
         }
         this.renderBar(counts);
         Flags.syncSearchUI();

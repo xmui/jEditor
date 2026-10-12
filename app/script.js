@@ -199,6 +199,7 @@ const app = {
         Stored.init(this);
         Updates.init(this);
         Scan.init(this);
+        Places.init(this);
         Flags.init(this);
         Watch.init(this);
         this.initContextMenu();

@@ -89,6 +89,31 @@ sealed class MainForm : Form
         }
     }
 
+    // ---- Drives plugged in or taken out (USB orders) ----
+    // Windows tells every window; the page is told once things settle
+
+    const int WM_DEVICECHANGE = 0x0219, DBT_DEVICEARRIVAL = 0x8000, DBT_DEVICEREMOVECOMPLETE = 0x8004;
+    System.Windows.Forms.Timer? drivesTimer;
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WM_DEVICECHANGE && (m.WParam == DBT_DEVICEARRIVAL || m.WParam == DBT_DEVICEREMOVECOMPLETE))
+        {
+            if (drivesTimer is null)
+            {
+                drivesTimer = new System.Windows.Forms.Timer { Interval = 700 };
+                drivesTimer.Tick += (_, _) =>
+                {
+                    drivesTimer.Stop();
+                    if (web.CoreWebView2 is not null) Post(new { type = "drivesChanged" });
+                };
+            }
+            drivesTimer.Stop();
+            drivesTimer.Start();
+        }
+        base.WndProc(ref m);
+    }
+
     public void Finish(int code)
     {
         ExitCode = code;
@@ -250,6 +275,8 @@ sealed class MainForm : Form
             case "smokeCheck":
             case "scanners":
             case "scan":
+            case "places":
+            case "listDir":
                 var files = FilesOf(e);
                 BeginInvoke(async () => await HandleRequestAsync(msg, files));
                 break;
@@ -362,6 +389,32 @@ sealed class MainForm : Form
                         notes = latest.Notes,
                         size = latest.Size,
                         newer = Updater.IsNewer(latest.Tag, Updater.CurrentTag)
+                    });
+                    break;
+                }
+                case "places":
+                {
+                    var drives = await Task.Run(Places.Drives);
+                    Reply(id, new
+                    {
+                        drives = drives.Select(d => new { path = d.Path, name = d.Name, kind = d.Kind, label = d.Label, total = d.Total, free = d.Free }),
+                        home = Places.Home().Select(h => new { name = h.Name, path = h.Path })
+                    });
+                    break;
+                }
+                case "listDir":
+                {
+                    var path = Str(msg, "path") ?? "";
+                    if (!Path.IsPathFullyQualified(path)) { Reply(id, new { error = "Not a folder" }); break; }
+                    var l = await Task.Run(() => Places.List(path));
+                    Reply(id, new
+                    {
+                        path = l.Path,
+                        name = l.Name,
+                        parent = l.Parent,
+                        folders = l.Folders.Select(f => new { name = f.Name, path = f.Path }),
+                        photos = l.Photos,
+                        more = l.More
                     });
                     break;
                 }

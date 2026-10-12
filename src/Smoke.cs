@@ -11,7 +11,8 @@ namespace JEditor;
 // the page asks the app to check each further step on disk (Check): a flag
 // is stored in jEditor's storage and nothing is added to the order; a
 // deleted photo is in the Recycle Bin; Ctrl+Z brings it back unchanged;
-// the test scanner's photos land in the order, named next in its sequence.
+// the test scanner's photos land in the order, named next in its sequence;
+// Browse lists the drives and counts the folder's photos as jEditor does.
 // Exits 0 on success, 1 on failure, 2 if it takes longer than 90 seconds.
 // The details are in the log.
 sealed class Smoke
@@ -111,7 +112,7 @@ sealed class Smoke
         if (msg["steps"] is JsonObject steps)
         {
             Log.Write("Smoke steps: " + steps.ToJsonString());
-            foreach (var step in new[] { "stored", "recycled", "deleted", "restored", "scanned" })
+            foreach (var step in new[] { "stored", "recycled", "deleted", "restored", "scanned", "places", "browsed" })
                 if (steps[step] is not JsonValue v || !v.TryGetValue<bool>(out var ok) || !ok) problems.Add($"{step}: {steps[step]?.ToJsonString() ?? "not reached"}");
             if (steps["error"] is not null) problems.Add("error: " + steps["error"]);
         }

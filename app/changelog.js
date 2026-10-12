@@ -8,7 +8,9 @@ const CHANGELOG = [
         version: '1.20.0', date: '2026-10-12',
         items: [
             'Scan straight into the open order: click Scan in the toolbar, pick the scanner, the folder and the names, and the scanner\'s own window opens (Epson Scan 2, Plustek). Each photo is saved into the order as it\'s scanned and shows up straight away, so a stack in the FastFoto feeder fills the grid while it scans.',
-            'Names follow on from the folder\'s photos (Smith-014.jpg after Smith-013.jpg), each folder with its own sequence, and Scan more carries on where the last scan stopped. Names already taken are skipped, never overwritten.'
+            'Names follow on from the folder\'s photos (Smith-014.jpg after Smith-013.jpg), each folder with its own sequence, and Scan more carries on where the last scan stopped. Names already taken are skipped, never overwritten.',
+            'Browse other orders, folders and drives: the folder list has a Browse tab with your recent orders (switch with one click), the drives on this PC and the usual folders. Click into any folder to see how many photos it has, then Open as order. The start screen lists the drives too.',
+            'Orders on a USB stick: plugging one in while jEditor is open offers to browse it, and it\'s listed first under Drives. Take it out and Browse steps back out of it.'
         ]
     },
     {
