@@ -102,6 +102,9 @@
     --text-3: #8f8f8f;
     --text-disabled: #5c5c5c;
     --tile-bg: #1c1c1c;
+    /* The film strip is black in every theme, whatever the photo above it */
+    --strip-bg: #000;
+    --strip-text: rgb(255 255 255 / 0.62);
     --tb-hover: rgb(255 255 255 / 0.10);     /* buttons on glass toolbars */
     --tb-pressed: rgb(255 255 255 / 0.16);
     --seg-bg: rgb(255 255 255 / 0.06);       /* segmented control track */

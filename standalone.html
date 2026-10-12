@@ -15,7 +15,7 @@
     <script>
 // Single source of truth for the app version. Bump with:  npm run bump 1.x.y
 // (keeps package.json in sync and busts the service worker cache)
-const APP_VERSION = '1.17.1';
+const APP_VERSION = '1.18.1';
 
 </script>
     <script>
@@ -26,10 +26,23 @@ const APP_VERSION = '1.17.1';
 
 const CHANGELOG = [
     {
-        version: '1.17.1', date: '2026-10-12',
+        version: '1.18.1', date: '2026-10-12',
         items: [
             'Messages and the progress pill moved to the bottom-left corner, so they no longer cover the middle of the photo. In the grid they sit beside the folder list when it\'s open.',
             'Fixed photos flashing as if selected for a moment when switching back to the grid: the ones selected the last time you were in the grid lit up again before clearing.'
+        ]
+    },
+    {
+        version: '1.18.0', date: '2026-10-12',
+        items: [
+            'Photos deleted in File Explorer no longer get stuck in jEditor. Deleting a photo that\'s already gone just takes it off the screen, a delete that Windows never finishes gives up on that file after 30 seconds instead of hanging, and a stuck operation no longer stops the folder watch from noticing photos deleted elsewhere.',
+            'A photo a scanner is still saving is added once it\'s whole, not half-written, and a preview that can\'t be made or shown is tried again instead of staying blank.',
+            'Folder details: in the grid, `I` (or Order info / Folder info in the right-click menus) shows the folder you\'re in: how many photos, here and with subfolders, total size, average and largest photo, file types, dates, flags, and for the whole order how much room jEditor\'s .jeditor folder takes (trash, cache, Auto crop originals). Select several photos to see the same for the selection. Single view still shows the photo\'s own details.',
+            'The folder list shows the total for what you\'re looking at, such as 1,240 photos · 4.80 GB. Click it for the details. Hovering a folder shows its size too.',
+            'The film strip\'s background is always black, in both themes.',
+            'In single view, the controls above the film strip fade away a few seconds after they appear, leaving the photo the screen. Move the pointer to where they were and they come back. To do without them altogether, turn off Buttons above the film strip in Settings.',
+            'The selection bar in the grid is centred on the photos again, beside the folder list when it\'s open.',
+            'Opening an order whose subfolder has a .jeditor folder of its own (because that subfolder was once opened on its own) merges it into the order\'s and removes it, so the order has just one. Its deleted photos and Auto crop originals move into the order\'s .jeditor, named after the subfolder, and its flags join the order\'s. Its cache is dropped and rebuilt when needed. If anything can\'t be moved, that .jeditor is left where it is.'
         ]
     },
     {
@@ -868,6 +881,138 @@ const FolderCache = {
             await w.close();
             this._fpMap = new Map(entries);
         } catch (e) { /* best-effort */ }
+    },
+
+    // ---- how much room .jeditor takes ----
+
+    // → { bytes, trash: {n, bytes}, cache: {n, bytes}, originals: {n, bytes} }
+    // or null when there's no .jeditor. Files are read for their size only.
+    async usage(app) {
+        const root = await this.root(app, false);
+        if (!root) return null;
+        await this.flush();
+        const out = { bytes: 0, trash: { n: 0, bytes: 0 }, cache: { n: 0, bytes: 0 }, originals: { n: 0, bytes: 0 }, other: { n: 0, bytes: 0 } };
+        const walk = async (dir, bucket) => {
+            const subs = [], files = [];
+            for await (const e of dir.values()) (e.kind === 'directory' ? subs : files).push(e);
+            for (let i = 0; i < files.length; i += 32) {
+                const sizes = await Promise.all(files.slice(i, i + 32).map(e => e.getFile().then(f => f.size, () => 0)));
+                for (const n of sizes) {
+                    bucket.n++;
+                    bucket.bytes += n;
+                }
+            }
+            for (const d of subs) await walk(d, bucket);
+        };
+        try {
+            for await (const e of root.values()) {
+                const bucket = out[e.name] && e.kind === 'directory' ? out[e.name] : out.other;
+                if (e.kind === 'directory') await walk(e, bucket);
+                else {
+                    bucket.n++;
+                    bucket.bytes += await e.getFile().then(f => f.size, () => 0);
+                }
+            }
+        } catch (e) { /* partial is fine */ }
+        out.bytes = out.trash.bytes + out.cache.bytes + out.originals.bytes + out.other.bytes;
+        return out;
+    },
+
+    // ---- a subfolder's own .jeditor ----
+    //
+    // Opening Smith Order/Ceremony on its own gives Ceremony a .jeditor.
+    // When the whole order is opened later, that one is merged into the
+    // order's and removed, so the order has one: its trash and Auto crop
+    // originals move across (named after the subfolder, so nothing clashes),
+    // its flags join the order's under the subfolder's path, and its cache
+    // goes (it's rebuilt when needed). If anything can't be moved, that
+    // .jeditor stays where it is.
+
+    async absorbNested(app, nested) {
+        const dir = app.dirHandle;
+        let flags = 0, trashed = 0, merged = 0, kept = 0;
+        for (const { path, parent, handles } of nested) {
+            for (const h of handles) {
+                if (app.dirHandle !== dir) return; // another folder opened meanwhile
+                try {
+                    let ok = true;
+                    if (h.name === this.LEGACY_TRASH) {
+                        const r = await this.moveAll(app, h, 'trash', path);
+                        trashed += r.moved;
+                        ok = r.ok;
+                    } else {
+                        try {
+                            const fh = await h.getFileHandle(Flags.FILE);
+                            const data = JSON.parse(await (await fh.getFile()).text());
+                            flags += Flags.mergeFrom(path, (data && data.flags) || {});
+                        } catch (e) { /* no flags there */ }
+                        for (const sub of ['trash', 'originals']) {
+                            let from;
+                            try { from = await h.getDirectoryHandle(sub); } catch (e) { continue; }
+                            const r = await this.moveAll(app, from, sub, path);
+                            if (sub === 'trash') trashed += r.moved;
+                            ok = ok && r.ok;
+                        }
+                    }
+                    if (!ok) { kept++; continue; }
+                    await parent.removeEntry(h.name, { recursive: true });
+                    merged++;
+                } catch (e) {
+                    console.warn(`Couldn't merge ${path}/${h.name}:`, e);
+                    kept++;
+                }
+            }
+        }
+        if (!merged && !kept) return;
+        const where = nested.length === 1 ? `“${nested[0].path.split('/').pop()}”` : `${nested.length} subfolders`;
+        const what = [];
+        if (flags) what.push(`${flags} flag${flags === 1 ? '' : 's'}`);
+        if (trashed) what.push(`${trashed} deleted photo${trashed === 1 ? '' : 's'}`);
+        if (merged) {
+            app.showToast(`Merged the .jeditor folder in ${where} into this order's` + (what.length ? ` (${what.join(', ')})` : ''), 5000, null, null, { type: 'success' });
+        }
+        if (kept) app.showToast(`Couldn't merge ${kept} .jeditor folder${kept === 1 ? '' : 's'} inside this order — left where ${kept === 1 ? 'it is' : 'they are'}`, 5000);
+    },
+
+    // Move every file in `from` into .jeditor/<sub>, as "<subfolder> - name"
+    async moveAll(app, from, sub, path) {
+        const root = await this.root(app, true);
+        if (!root) return { moved: 0, ok: false };
+        const to = await root.getDirectoryHandle(sub, { create: true });
+        const taken = new Set();
+        for await (const e of to.values()) taken.add(e.name.toLowerCase());
+        const prefix = path.split('/').join(' - ') + ' - ';
+        let moved = 0, ok = true;
+        const entries = [];
+        for await (const e of from.values()) entries.push(e);
+        for (const e of entries) {
+            if (e.kind !== 'file') { ok = false; continue; } // unexpected: leave it be
+            let name = prefix + e.name;
+            const dot = name.lastIndexOf('.');
+            for (let n = 2; taken.has(name.toLowerCase()); n++) {
+                name = dot > 0 ? `${prefix}${e.name.slice(0, e.name.lastIndexOf('.'))} (${n})${e.name.slice(e.name.lastIndexOf('.'))}` : `${prefix}${e.name} (${n})`;
+            }
+            try {
+                let done = false;
+                if (typeof e.move === 'function') {
+                    try { await e.move(to, name); done = true; } catch (err) { /* copy instead */ }
+                }
+                if (!done) {
+                    const data = await e.getFile();
+                    const nh = await to.getFileHandle(name, { create: true });
+                    const w = await nh.createWritable();
+                    await w.write(data);
+                    await w.close();
+                    await from.removeEntry(e.name);
+                }
+                taken.add(name.toLowerCase());
+                moved++;
+            } catch (err) {
+                console.warn('Couldn\'t move', e.name, err);
+                ok = false;
+            }
+        }
+        return { moved, ok };
     },
 
     // ---- clean up ----
@@ -3433,6 +3578,16 @@ const Folders = {
         return out;
     },
 
+    // Bytes of the photos directly in each folder
+    sizes() {
+        const c = new Map();
+        for (const f of this.app.files) {
+            const d = this.dirOf(f);
+            c.set(d, (c.get(d) || 0) + (f.size || 0));
+        }
+        return c;
+    },
+
     // Photos directly in each folder
     counts() {
         const c = new Map();
@@ -3486,6 +3641,7 @@ const Folders = {
         }
         const changed = path !== this.scope;
         this.scope = path;
+        app._infoTarget = null;
         app.selection.clear();
         const view = this.viewFiles();
         if (!this.inView(app.currentFile) && view.length) app.currentFile = view[0];
@@ -3584,11 +3740,14 @@ const Folders = {
             row.click();
         });
         this.el('fr-new').addEventListener('click', () => this.newFolder());
+        this.el('fr-total').addEventListener('click', () => this.app.toggleInfoPanel(true, { folder: this.scope }));
     },
 
     renderRail(counts) {
         const tree = this.el('folder-tree');
         const total = this.app.files.length;
+        const sizes = this.sizes();
+        const fmt = (n) => this.app.formatBytes(n);
         const rows = [];
         const esc = (s) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
         rows.push(`<div tabindex="0" role="button" class="fr-row fr-all${this.scope === null ? ' active' : ''}" data-scope="all" title="Every photo in the order, whatever folder it's in">` +
@@ -3599,10 +3758,11 @@ const Folders = {
             const kids = this.children(p);
             const n = counts.get(p) || 0;
             const open = p === '' || !this.collapsed.has(p);
-            let inside = 0;
-            for (const [d, c] of counts) if (d !== p && this.within(d, p)) inside += c;
-            const title = `${this.label(p)}: ${n} photo${n === 1 ? '' : 's'} here` +
-                (inside ? ` · ${(n + inside).toLocaleString()} including subfolders` : '');
+            let inside = 0, insideBytes = 0;
+            for (const [d, c] of counts) if (d !== p && this.within(d, p)) { inside += c; insideBytes += sizes.get(d) || 0; }
+            const bytes = sizes.get(p) || 0;
+            const title = `${this.label(p)}: ${n} photo${n === 1 ? '' : 's'} here (${fmt(bytes)})` +
+                (inside ? ` · ${(n + inside).toLocaleString()} including subfolders (${fmt(bytes + insideBytes)})` : '');
             const caret = kids.length && p !== ''
                 ? `<button class="fr-caret${open ? ' open' : ''}" title="${open ? 'Fold' : 'Unfold'}" tabindex="-1"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1.5 6.5 5 3 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`
                 : '<span class="fr-caret fr-spacer"></span>';
@@ -3615,6 +3775,13 @@ const Folders = {
         if (this.map.has('')) walk('', 0);
         tree.innerHTML = rows.join('');
         this.el('fr-hint').classList.toggle('hidden', this.hasSubfolders());
+        // The total at the bottom: what's being shown (the whole order in All photos)
+        const scopeFiles = this.scope === null ? this.app.files : this.app.files.filter(f => this.within(this.dirOf(f), this.scope));
+        let bytes = 0;
+        for (const f of scopeFiles) bytes += f.size || 0;
+        const totalEl = this.el('fr-total');
+        totalEl.textContent = `${scopeFiles.length.toLocaleString()} photo${scopeFiles.length === 1 ? '' : 's'} · ${fmt(bytes)}`;
+        totalEl.title = (this.scope === null ? 'The whole order' : `${this.label(this.scope)}, including subfolders`) + ' — click for details';
         const active = tree.querySelector('.fr-row.active');
         if (active && (active.offsetTop < tree.scrollTop || active.offsetTop > tree.scrollTop + tree.clientHeight - 30)) {
             tree.scrollTop = active.offsetTop - tree.clientHeight / 2;
@@ -4348,7 +4515,7 @@ const Folders = {
     contextItems(path) {
         const app = this.app;
         const sel = [...app.selection].filter(f => this.inView(f));
-        const items = [['Open', () => this.setScope(path)]];
+        const items = [['Open', () => this.setScope(path)], ['Folder info', () => app.toggleInfoPanel(true, { folder: path })]];
         if (sel.length) {
             const here = sel.every(f => this.dirOf(f) === path);
             items.push(['—']);
@@ -4944,6 +5111,8 @@ const Flags = {
             const w = await fh.createWritable();
             await w.write(JSON.stringify({ version: 1, flags: out }));
             await w.close();
+            app._usage = null;
+            app.refreshInfoSoon();
         } catch (e) {
             console.warn('Saving flags failed:', e);
         }
@@ -4962,6 +5131,32 @@ const Flags = {
     count() {
         let n = this.orphans.size;
         for (const f of this.app.files) if (this.any(f)) n++;
+        return n;
+    },
+
+    // Flags from a subfolder's own .jeditor (see FolderCache.absorbNested),
+    // saved relative to that subfolder. Joined with any already set here.
+    mergeFrom(prefix, saved) {
+        const byPath = new Map(this.app.files.map(f => [f.relPath || f.name, f]));
+        let n = 0;
+        for (const [rel, v] of Object.entries(saved)) {
+            const fl = this.clean(v);
+            if (!fl) continue;
+            const path = Folders.join(prefix, rel);
+            const f = byPath.get(path);
+            const old = f ? f._flags : this.orphans.get(path);
+            const joined = { ...fl, ...(old || {}) };
+            if (fl.star) joined.star = true;
+            if (fl.rescan) joined.rescan = true;
+            if (f) f._flags = joined;
+            else this.orphans.set(path, joined);
+            n++;
+        }
+        if (n) {
+            this._dirty = true;
+            this.saveSoon();
+            this.refreshAll();
+        }
         return n;
     },
 
@@ -5426,6 +5621,8 @@ const Flags = {
 const Watch = {
     WALK_CONCURRENCY: 8, // folders listed at once (helps most on network drives)
     STAT_BATCH: 24,      // files opened at once for size and date
+    SETTLED_MS: 5000,    // a file untouched this long is finished, whatever its ending
+    UNFINISHED_RECHECK_MS: 1200,
     POLL_MIN_MS: 15000,  // checking without an observer: at most this often…
     POLL_MAX_MS: 120000, // …and at least this often, scaled to how long a scan takes
     EDIT_CHECK_MS: 60000, // edits are looked for on focus at most once a minute
@@ -5433,6 +5630,8 @@ const Watch = {
 
     opDepth: 0,
     opGen: 0,
+    ops: new Map(), // edit in progress → when it started
+    STALE_OP_MS: 90000, // an edit running longer than this no longer holds checks up
     observer: null,
     running: null,
     queued: null,
@@ -5464,33 +5663,47 @@ const Watch = {
             const orig = obj[name];
             if (typeof orig !== 'function') continue;
             obj[name] = function (...args) {
+                const op = {};
+                w.ops.set(op, Date.now());
                 w.opDepth++;
                 w.opGen++;
                 let res;
                 try {
                     res = orig.apply(this, args);
                 } catch (e) {
-                    w.endOp();
+                    w.endOp(op);
                     throw e;
                 }
-                if (res && typeof res.then === 'function') return res.finally(() => w.endOp());
-                w.endOp();
+                if (res && typeof res.then === 'function') return res.finally(() => w.endOp(op));
+                w.endOp(op);
                 return res;
             };
         }
     },
 
-    endOp() {
+    endOp(op) {
+        this.ops.delete(op);
         this.opDepth--;
         this.opGen++;
         Flags.saveSoon(); // renamed or moved photos: flags under their new paths
+        this.app._usage = null; // .jeditor's size may have changed (trash, originals)
+        this.app.refreshInfoSoon();
         // A check that came in meanwhile runs now
-        if (!this.opDepth && this.queued) this.kick(400);
+        if (!this.editing() && this.queued) this.kick(400);
+    },
+
+    // An edit of ours is under way. One that has run for minutes (a file
+    // operation Windows never finished, say) stops holding checks up, so
+    // photos deleted elsewhere still go from the grid.
+    editing() {
+        const now = Date.now();
+        for (const started of this.ops.values()) if (now - started < this.STALE_OP_MS) return true;
+        return false;
     },
 
     busy() {
         const app = this.app;
-        return this.opDepth > 0 || app.isLoading || (app._tasks && app._tasks.has('scan'));
+        return this.editing() || app.isLoading || (app._tasks && app._tasks.has('scan'));
     },
 
     // ---- Starting and stopping with the folder ----
@@ -5554,7 +5767,9 @@ const Watch = {
         if (!this.enabled()) return;
         const dirs = new Set(), files = new Set();
         let full = false;
-        const skip = (parts) => parts.length && this.skipDir(parts[0]);
+        // Inside jEditor's own folders, at any depth (a subfolder's .jeditor
+        // being merged, say), nothing is a photo
+        const skip = (parts) => parts.some(p => this.skipDir(p));
         for (const r of records) {
             if (r.type === 'errored') {
                 // The observer gave up: fall back to checking now and then
@@ -5645,16 +5860,18 @@ const Watch = {
         return name === FolderCache.DIR || name === FolderCache.LEGACY_TRASH || name === 'jEditor Export';
     },
 
+    // own: jEditor's folders found here (.jeditor, the old .jeditor-trash)
     async listDir(handle) {
-        const files = new Map(), dirs = new Map();
+        const files = new Map(), dirs = new Map(), own = [];
         for await (const entry of handle.values()) {
             if (entry.kind === 'file') {
                 if (this.app.isImage(entry.name) && !entry.name.startsWith('.jeditor-')) files.set(entry.name, entry);
-            } else if (entry.kind === 'directory' && !this.skipDir(entry.name)) {
-                dirs.set(entry.name, entry);
+            } else if (entry.kind === 'directory') {
+                if (entry.name === FolderCache.DIR || entry.name === FolderCache.LEGACY_TRASH) own.push(entry);
+                else if (!this.skipDir(entry.name)) dirs.set(entry.name, entry);
             }
         }
-        return { files, dirs };
+        return { files, dirs, own };
     },
 
     // Lists the given folders, and with deep every folder inside them;
@@ -5701,6 +5918,36 @@ const Watch = {
             datas.forEach((d, j) => { out[i + j] = d; });
         }
         return out;
+    },
+
+    // Is this file whole, or is a scanner still writing it? A photo is
+    // finished when it ends the way its format ends (a JPEG's end marker,
+    // PNG's IEND, GIF's trailer, WebP's stated length), or when it hasn't
+    // changed for a few seconds. Older files aren't read at all.
+    async complete(data, name = data.name || '') {
+        if (!data.size) return Date.now() - data.lastModified > this.SETTLED_MS * 6;
+        if (Date.now() - data.lastModified > this.SETTLED_MS) return true;
+        try {
+            const n = data.size;
+            const tail = new Uint8Array(await data.slice(Math.max(0, n - 16)).arrayBuffer());
+            const ext = (name.match(/\.(\w+)$/) || [, ''])[1].toLowerCase();
+            if (ext === 'jpg' || ext === 'jpeg') {
+                for (let i = tail.length - 2; i >= 0; i--) if (tail[i] === 0xFF && tail[i + 1] === 0xD9) return true;
+                return false;
+            }
+            if (ext === 'png') {
+                const t = tail.length - 8;
+                return t >= 0 && tail[t] === 0x49 && tail[t + 1] === 0x45 && tail[t + 2] === 0x4E && tail[t + 3] === 0x44;
+            }
+            if (ext === 'gif') return tail[tail.length - 1] === 0x3B;
+            if (ext === 'webp') {
+                const head = new DataView(await data.slice(0, 12).arrayBuffer());
+                return head.byteLength >= 8 && head.getUint32(4, true) + 8 <= n;
+            }
+        } catch (e) {
+            return false; // can't be read yet: still being written
+        }
+        return true;
     },
 
     // ---- One scan ----
@@ -5758,13 +6005,24 @@ const Watch = {
             }
         }
 
-        // Size and date of the new photos
+        // Size and date of the new photos. One a scanner is still writing
+        // waits: it's looked at again shortly, and added once it's whole.
         const datas = await this.stat(fresh.map(p => p.handle));
         const added = [];
-        fresh.forEach((p, i) => {
-            const d = datas[i];
-            if (d) added.push({ ...p, size: d.size, lastModified: d.lastModified });
-        });
+        const unfinished = new Set();
+        for (let i = 0; i < fresh.length; i++) {
+            const p = fresh[i], d = datas[i];
+            if (!d) continue;
+            if (!(await this.complete(d, p.name))) {
+                unfinished.add(Folders.parentOf(p.relPath));
+                continue;
+            }
+            added.push({ ...p, size: d.size, lastModified: d.lastModified });
+        }
+        if (unfinished.size) {
+            const g = this.gen;
+            setTimeout(() => { if (g === this.gen) this.request({ dirs: unfinished }); }, this.UNFINISHED_RECHECK_MS);
+        }
 
         // Edited elsewhere: size or date differ from what's loaded
         let edited = [];
@@ -5778,7 +6036,7 @@ const Watch = {
         // Something of ours touched the folder meanwhile, or a new folder
         // was opened: this picture may be half old, half new. Look again.
         if (gen !== this.gen) return;
-        if (opGen !== this.opGen || this.opDepth) {
+        if (opGen !== this.opGen || this.editing()) {
             this.request(job);
             return;
         }
@@ -6465,6 +6723,9 @@ else UI.init();
     --text-3: #8f8f8f;
     --text-disabled: #5c5c5c;
     --tile-bg: #1c1c1c;
+    /* The film strip is black in every theme, whatever the photo above it */
+    --strip-bg: #000;
+    --strip-text: rgb(255 255 255 / 0.62);
     --tb-hover: rgb(255 255 255 / 0.10);     /* buttons on glass toolbars */
     --tb-pressed: rgb(255 255 255 / 0.16);
     --seg-bg: rgb(255 255 255 / 0.06);       /* segmented control track */
@@ -7446,6 +7707,24 @@ header {
     left: 50%;
     transform: translateX(-50%);
     z-index: var(--z-floating);
+    transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out);
+}
+
+/* Faded out a few seconds after showing; back when the pointer comes near
+   (see initControlsAutoHide) */
+.controls.idle {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+    transition: opacity 0.6s var(--ease-in-out), transform 0.6s var(--ease-in-out);
+}
+
+.controls.idle button {
+    pointer-events: none;
+}
+
+/* Turned off in Settings */
+.controls.off {
+    display: none;
 }
 
 /* Film strip */
@@ -7459,8 +7738,7 @@ header {
     height: var(--strip-height, 80px);
     padding: 0 var(--sp-3);
     overflow-x: auto;
-    background: var(--bg-surface);
-    border-top: 1px solid var(--border-subtle);
+    background: var(--strip-bg);
 }
 
 .thumb-item {
@@ -7521,8 +7799,8 @@ header {
     white-space: nowrap;
     font-size: var(--fs-caption);
     line-height: var(--lh-caption);
-    color: var(--text-2);
-    background: var(--bg-surface);
+    color: var(--strip-text);
+    background: var(--strip-bg);
     pointer-events: none;
 }
 
@@ -8194,9 +8472,42 @@ header {
     line-height: 1.5;
 }
 
+/* Folder list foot: the total of what's shown, then New folder */
+.fr-foot {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    margin-top: var(--sp-2);
+    padding-top: var(--sp-2);
+    border-top: 1px solid var(--border);
+}
+
+.fr-total {
+    order: -1;
+    align-self: flex-start;
+    height: 24px;
+    padding: 0 var(--sp-2);
+    border: none;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.fr-total:empty {
+    display: none;
+}
+
+.fr-total:hover {
+    background: var(--tb-hover);
+    color: var(--text-1);
+}
+
 .fr-new {
     justify-content: flex-start;
-    margin-top: var(--sp-2);
     color: var(--text-2);
 }
 
@@ -8299,10 +8610,13 @@ header {
     position: absolute;
     bottom: var(--gutter);
     left: var(--gutter);
-    right: calc(var(--gutter) + var(--grid-controls-w, 196px) + var(--sp-3));
+    /* Centred on the grid (beside the folder list when it's open), allowing
+       for the grid's scrollbar; on a narrow window it runs on over the
+       grid size slider */
+    right: calc(var(--gutter) + var(--grid-scrollbar, 0px));
     z-index: calc(var(--z-floating) + 1);
     width: fit-content;
-    max-width: calc(100% - 2 * var(--gutter));
+    max-width: calc(100% - 2 * var(--gutter) - var(--grid-scrollbar, 0px));
     margin: 0 auto;
     white-space: nowrap;
     animation: bar-in var(--dur-slow) var(--ease-out);
@@ -8408,6 +8722,18 @@ header {
     margin: 0;
     text-align: right;
     overflow-wrap: anywhere;
+}
+
+/* A thin rule between sections, a placeholder while adding up */
+.info-panel .info-sep {
+    grid-column: 1 / -1;
+    height: 1px;
+    margin: var(--sp-1) 0;
+    background: var(--border);
+}
+
+.info-panel dd.info-pending {
+    color: var(--text-2);
 }
 
 /* Right-click menu */
@@ -10185,8 +10511,9 @@ body.dragging-photos .folder-tile:hover {
 
 /* ---- 16. Responsive ---- */
 
-/* Laptops: with the folder list open there's less room for labels */
-@media (max-width: 1279px) {
+/* Laptops: with the folder list open there's less room for labels (the
+   bar is centred on the grid, so it would reach the size slider) */
+@media (max-width: 1439px) {
     .interface.rail-open .selection-bar .tb-btn.labelled span {
         display: none;
     }
@@ -10480,10 +10807,13 @@ body.dragging-photos .folder-tile:hover {
                 <div id="folder-tree" class="folder-tree"></div>
                 <div id="flag-list" class="flag-list hidden"></div>
                 <p id="fr-hint" class="fr-hint hidden">Make folders to collate this order. Drag photos onto a folder to move them, or hold <kbd>Ctrl</kbd> to copy. <kbd>M</kbd> moves the selection.</p>
-                <button id="fr-new" class="btn ghost fr-new">
-                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-                    New folder
-                </button>
+                <div class="fr-foot">
+                    <button id="fr-new" class="btn ghost fr-new">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                        New folder
+                    </button>
+                    <button id="fr-total" class="fr-total" title="Details of what's shown (I)"></button>
+                </div>
             </aside>
 
             <!-- Grid view -->
@@ -10543,8 +10873,8 @@ body.dragging-photos .folder-tile:hover {
             </div>
 
             <!-- File info panel (I) -->
-            <div id="info-panel" class="info-panel popover hidden" role="dialog" aria-label="File info">
-                <h3 class="section-label">File info</h3>
+            <div id="info-panel" class="info-panel popover hidden" role="dialog" aria-label="Info">
+                <h3 class="section-label">Info</h3>
                 <dl id="info-list"></dl>
             </div>
 
@@ -10747,6 +11077,11 @@ body.dragging-photos .folder-tile:hover {
                     <h3 id="set-h-header" class="section-label">Toolbar buttons</h3>
                     <p class="set-help">Drag to reorder, or focus a row and press <kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd>. Choose which buttons show in the toolbar, which go under <b>More</b>, and which are hidden.</p>
                     <ul id="customize-list" class="customize-list"></ul>
+                    <div class="set-row">
+                        <label class="set-label" for="cust-single-controls">Buttons above the film strip
+                            <small>Previous, rotate and next in single view. They fade when not in use; the keyboard shortcuts work either way.</small></label>
+                        <input type="checkbox" id="cust-single-controls" class="switch">
+                    </div>
                     <div class="set-row">
                         <label class="set-label" for="cust-vertical">Vertical toolbar</label>
                         <input type="checkbox" id="cust-vertical" class="switch">
@@ -11204,6 +11539,7 @@ const app = {
         this.initSettings();
 
         this.initStripResize();
+        this.initControlsAutoHide();
 
         // Apply saved layout (order, hidden buttons, orientation, scale,
         // strip height, thumbnail fit)
@@ -11312,7 +11648,7 @@ const app = {
     // preferences too. Everything persists in localStorage under 'jeditor.ui'.
 
     HC_LABELS: {
-        info: 'File info',
+        info: 'Info',
         view: 'Grid / single view',
         refresh: 'Rescan folder',
         crop: 'Crop and straighten',
@@ -11347,6 +11683,7 @@ const app = {
             folderCache: true, // keep thumbnails / duplicate data in the folder's .jeditor
             autoCheck: true, // pick up photos added, removed or edited outside jEditor
             accent: null, // the accent colour (#rrggbb); null is the standard blue
+            singleControls: true, // previous / rotate / next above the film strip in single view
             theme: 'dark',
             density: 'compact',
             glass: 'rich',
@@ -11379,6 +11716,7 @@ const app = {
                 if (typeof saved.folderCache === 'boolean') this.uiPrefs.folderCache = saved.folderCache;
                 if (typeof saved.autoCheck === 'boolean') this.uiPrefs.autoCheck = saved.autoCheck;
                 if (typeof saved.accent === 'string' && /^#[0-9a-f]{6}$/i.test(saved.accent)) this.uiPrefs.accent = saved.accent;
+                if (typeof saved.singleControls === 'boolean') this.uiPrefs.singleControls = saved.singleControls;
                 if (typeof saved.folderRail === 'boolean') this.uiPrefs.folderRail = saved.folderRail;
                 for (const [k, allowed] of Object.entries(this.APPEARANCE)) {
                     if (allowed.includes(saved[k])) this.uiPrefs[k] = saved[k];
@@ -11429,6 +11767,8 @@ const app = {
         this.elements.thumbnailStrip.classList.toggle('thumb-contain', !!p.thumbContain);
         document.getElementById('btn-toggle-fit').setAttribute('aria-pressed', String(!!p.thumbContain));
         this.applyAccent(p.accent);
+        const controls = this.singleControls();
+        if (controls) controls.classList.toggle('off', p.singleControls === false);
         this.applyAppearance();
     },
 
@@ -11548,6 +11888,12 @@ const app = {
         });
 
         // Toolbar buttons
+        $('cust-single-controls').addEventListener('change', (e) => {
+            this.uiPrefs.singleControls = e.target.checked;
+            this.saveUiPrefs();
+            this.applyUiPrefs();
+            if (e.target.checked && this.viewMode === 'single') this.showControls(false);
+        });
         $('cust-vertical').addEventListener('change', (e) => {
             this.uiPrefs.vertical = e.target.checked;
             this.saveUiPrefs();
@@ -11592,6 +11938,7 @@ const app = {
         $('cust-folder-cache').checked = this.uiPrefs.folderCache !== false;
         $('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
         $('cust-cleanup').disabled = !this.dirHandle;
+        $('cust-single-controls').checked = this.uiPrefs.singleControls !== false;
         this.syncAccentPicker();
         $('cust-scale').value = this.uiPrefs.scale;
         $('cust-scale-out').textContent = `${Math.round(this.uiPrefs.scale * 100)}%`;
@@ -11753,6 +12100,58 @@ const app = {
                 list.appendChild(row);
             });
         }
+    },
+
+    // ---- Single view: the controls above the film strip fade away ----
+    //
+    // A few seconds after they're shown, so the photo has the screen to
+    // itself. They come back while the pointer is on or near where they
+    // sit (or a button has keyboard focus), and fade again once it leaves.
+    // Customize controls can turn them off altogether (uiPrefs.singleControls).
+
+    CONTROLS_IDLE_MS: 2500,
+    CONTROLS_NEAR_PX: 48,
+
+    singleControls() {
+        return this.elements.thumbnailStrip.parentElement.querySelector('.controls');
+    },
+
+    initControlsAutoHide() {
+        const el = this.singleControls();
+        if (!el) return;
+        document.addEventListener('pointermove', (e) => {
+            if (this.viewMode !== 'single' || el.classList.contains('hidden') || el.classList.contains('off')) return;
+            const r = el.getBoundingClientRect(), pad = this.CONTROLS_NEAR_PX;
+            const near = e.clientX >= r.left - pad && e.clientX <= r.right + pad &&
+                e.clientY >= r.top - pad && e.clientY <= r.bottom + pad;
+            if (near) this.showControls();
+            else if (this._controlsHeld) this.idleControls();
+        }, { passive: true });
+        // Touch: a tap on the photo brings them back for a while
+        this.elements.imageContainer.addEventListener('pointerdown', (e) => {
+            if (e.pointerType !== 'mouse' && this.viewMode === 'single') this.showControls(false);
+        });
+        el.addEventListener('focusin', () => this.showControls());
+        el.addEventListener('focusout', () => this.idleControls());
+    },
+
+    // hold: stay up until idleControls (pointer near); otherwise fade later
+    showControls(hold = true) {
+        const el = this.singleControls();
+        if (!el) return;
+        el.classList.remove('idle');
+        clearTimeout(this._controlsTimer);
+        this._controlsHeld = hold;
+        if (!hold) this.idleControls();
+    },
+
+    idleControls() {
+        this._controlsHeld = false;
+        clearTimeout(this._controlsTimer);
+        this._controlsTimer = setTimeout(() => {
+            const el = this.singleControls();
+            if (el && !el.contains(document.activeElement)) el.classList.add('idle');
+        }, this.CONTROLS_IDLE_MS);
     },
 
     toggleThumbnailStrip() {
@@ -12080,6 +12479,9 @@ const app = {
                 // Flags saved with the order, then keep an eye on the folder
                 await Flags.load();
                 Watch.start();
+                const nested = this._nestedJeditor || [];
+                this._nestedJeditor = null;
+                if (nested.length && this.dirHandle && !this.readOnlyMode) FolderCache.absorbNested(this, nested);
             } else {
                 UI.alert({
                     title: 'No photos found',
@@ -12158,8 +12560,12 @@ const app = {
         this.updateTask('scan', 'Scanning folder…');
         const listings = await Watch.walk([{ path: '', handle: dirHandle }], true);
         const pending = [];
+        // A subfolder opened on its own before has a .jeditor of its own:
+        // merged into this one once the folder is open (finalizeLoad)
+        this._nestedJeditor = [];
         for (const [dir, l] of listings) {
             if (!l || l.failed) continue;
+            if (dir && l.own && l.own.length) this._nestedJeditor.push({ path: dir, parent: l.handle, handles: l.own });
             Folders.register(dir, l.handle);
             for (const [name, entry] of l.files) {
                 const relPath = Folders.join(dir, name);
@@ -12173,9 +12579,13 @@ const app = {
         for (let i = 0; i < pending.length; i += BATCH) {
             const batch = pending.slice(i, i + BATCH);
             const datas = await Promise.all(batch.map(p => p.entry.getFile().catch(() => null)));
+            // A photo a scanner is writing right now is left for the folder
+            // watch to add once it's whole (only just-changed files are checked)
+            const whole = await Promise.all(datas.map((d, j) => d && Date.now() - d.lastModified < Watch.SETTLED_MS
+                ? Watch.complete(d, batch[j].entry.name) : true));
             batch.forEach(({ entry, relPath, parentDir }, j) => {
                 const fileData = datas[j];
-                if (!fileData) return;
+                if (!fileData || !whole[j]) return;
                 this.files.push({
                     name: entry.name,
                     relPath,
@@ -12263,7 +12673,8 @@ const app = {
         if (!(n >= 0)) return '—';
         if (n < 1024) return `${n} B`;
         if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-        return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+        if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(n < 100 * 1024 * 1024 ? 2 : 1)} MB`;
+        return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
     },
 
     // Read Make / Model / DateTimeOriginal from a JPEG's EXIF block.
@@ -12357,18 +12768,183 @@ const app = {
         return file._exif;
     },
 
-    toggleInfoPanel(forceOpen = null) {
+    // The info panel (I): the photo in single view; in the grid, the folder
+    // being shown, or the selection when several photos are selected.
+    // target: { file } or { folder: path } to show one in particular (File
+    // Info / Folder Info in the right-click menus) until the grid changes.
+    toggleInfoPanel(forceOpen = null, target = null) {
         const panel = this.elements.infoPanel;
         if (!panel) return;
         const open = forceOpen !== null ? forceOpen : panel.classList.contains('hidden');
         panel.classList.toggle('hidden', !open);
         this._infoOpen = open;
-        if (open) this.fillInfoPanel(this.currentFile);
+        this._infoTarget = open ? target : null;
+        if (open) this.refreshInfoPanel();
+    },
+
+    refreshInfoPanel() {
+        if (!this._infoOpen) return;
+        const t = this._infoTarget;
+        if (t && t.file && this.files.includes(t.file)) return this.fillInfoPanel(t.file);
+        if (t && typeof t.folder === 'string') return this.fillFolderInfo({ folder: t.folder });
+        if (this.viewMode === 'single') return this.fillInfoPanel(this.currentFile);
+        if (this.selection.size > 1) return this.fillFolderInfo({ files: [...this.selection] });
+        return this.fillFolderInfo({ folder: Folders.scope });
+    },
+
+    // Selection changes come in bursts (a click clears and adds): one refresh
+    refreshInfoSoon() {
+        if (!this._infoOpen || this._infoQueued) return;
+        this._infoQueued = true;
+        requestAnimationFrame(() => {
+            this._infoQueued = false;
+            this.refreshInfoPanel();
+        });
+    },
+
+    // Back to following the grid (a click, a new folder) after File Info /
+    // Folder Info picked something in particular
+    releaseInfoTarget() {
+        if (!this._infoTarget) return;
+        this._infoTarget = null;
+        this.refreshInfoSoon();
+    },
+
+    setInfoRows(title, rows) {
+        const panel = this.elements.infoPanel;
+        panel.querySelector('h3').textContent = title;
+        const list = this.elements.infoList;
+        list.innerHTML = '';
+        rows.forEach(([k, v, cls]) => {
+            if (k === '—') {
+                const hr = document.createElement('div');
+                hr.className = 'info-sep';
+                list.appendChild(hr);
+                return;
+            }
+            const dt = document.createElement('dt');
+            dt.textContent = k;
+            const dd = document.createElement('dd');
+            dd.textContent = v == null ? '—' : v;
+            if (cls) dd.className = cls;
+            list.appendChild(dt);
+            list.appendChild(dd);
+        });
+    },
+
+    // Count, size, types, dates and flags of some photos
+    photoStats(files) {
+        let bytes = 0, largest = null, oldest = Infinity, newest = -Infinity;
+        const types = new Map();
+        const flags = { star: 0, rescan: 0, color: 0 };
+        for (const f of files) {
+            bytes += f.size || 0;
+            if (!largest || (f.size || 0) > (largest.size || 0)) largest = f;
+            if (f.lastModified) {
+                if (f.lastModified < oldest) oldest = f.lastModified;
+                if (f.lastModified > newest) newest = f.lastModified;
+            }
+            let ext = (f.name.match(/\.(\w+)$/) || [, '?'])[1].toUpperCase();
+            if (ext === 'JPG') ext = 'JPEG';
+            types.set(ext, (types.get(ext) || 0) + 1);
+            const fl = f._flags;
+            if (fl) {
+                if (fl.star) flags.star++;
+                if (fl.rescan) flags.rescan++;
+                if (fl.color) flags.color++;
+            }
+        }
+        return { n: files.length, bytes, largest, oldest, newest, types, flags };
+    },
+
+    statRows(st) {
+        const day = (t) => new Date(t).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+        const rows = [];
+        rows.push(['Size', this.formatBytes(st.bytes)]);
+        if (st.n > 1) rows.push(['Average', this.formatBytes(Math.round(st.bytes / st.n))]);
+        if (st.largest && st.n > 1) rows.push(['Largest', `${st.largest.name} (${this.formatBytes(st.largest.size)})`]);
+        if (st.types.size) rows.push(['Types', [...st.types].sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n.toLocaleString()}`).join(' · ')]);
+        if (isFinite(st.oldest)) rows.push(['Modified', day(st.oldest) === day(st.newest) ? day(st.oldest) : `${day(st.oldest)} – ${day(st.newest)}`]);
+        const fl = [];
+        if (st.flags.star) fl.push(`★ ${st.flags.star}`);
+        if (st.flags.rescan) fl.push(`rescan ${st.flags.rescan}`);
+        if (st.flags.color) fl.push(`labelled ${st.flags.color}`);
+        if (fl.length) rows.push(['Flags', fl.join(' · ')]);
+        return rows;
+    },
+
+    // folder: a path ('' the opened folder, null All photos); files: a selection
+    async fillFolderInfo({ folder = null, files = null }) {
+        const list = this.elements.infoList;
+        if (!list) return;
+        const token = (this._infoToken = (this._infoToken || 0) + 1);
+        const plural = (n, w) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`;
+        const rows = [];
+        let title;
+        const whole = folder === null || folder === '' || !this.dirHandle;
+        if (files) {
+            title = 'Selection';
+            rows.push(['Photos', files.length.toLocaleString()]);
+            rows.push(...this.statRows(this.photoStats(files)));
+        } else {
+            title = folder === null ? 'Order' : 'Folder';
+            const name = folder === null ? Folders.rootName() : Folders.nameOf(folder);
+            rows.push(['Name', name]);
+            if (folder) rows.push(['Location', `${Folders.rootName()} / ${Folders.label(folder)}`]);
+            const all = folder === null ? this.files : this.files.filter(f => Folders.within(Folders.dirOf(f), folder));
+            const here = folder === null ? all : all.filter(f => Folders.dirOf(f) === folder);
+            const subs = this.dirHandle ? [...Folders.map.keys()].filter(k => k !== '' && k !== folder && Folders.within(k, folder || '')).length : 0;
+            if (here.length !== all.length) {
+                rows.push(['Photos', `${here.length.toLocaleString()} here · ${all.length.toLocaleString()} with subfolders`]);
+            } else {
+                rows.push(['Photos', all.length.toLocaleString()]);
+            }
+            if (subs) rows.push(['Folders', subs.toLocaleString()]);
+            const st = this.photoStats(all);
+            rows.push(...this.statRows(st));
+            if (here.length !== all.length) rows.splice(rows.findIndex(r => r[0] === 'Size') + 1, 0, ['Size here', this.formatBytes(this.photoStats(here).bytes)]);
+            if (!whole) {
+                rows.push(['—']);
+                rows.push(['Whole order', `${plural(this.files.length, 'photo')} · ${this.formatBytes(this.photoStats(this.files).bytes)}`]);
+            }
+        }
+        // The current filter or search, if any
+        if (Flags.active()) rows.push(['Showing', `${this.viewFiles().length.toLocaleString()} matching the ${Flags.filter ? 'filter' : 'search'}`]);
+        // What jEditor itself keeps in the folder (worked out in the background)
+        const showOwn = !files && whole && this.dirHandle && !this.readOnlyMode;
+        if (showOwn) rows.push(['—'], ['.jeditor', 'Adding up…', 'info-pending']);
+        this.setInfoRows(title, rows);
+        if (!showOwn) return;
+        const own = await this.jeditorUsage();
+        if (token !== this._infoToken) return;
+        const i = rows.findIndex(r => r[0] === '.jeditor');
+        rows.splice(i, 1);
+        if (!own || !own.bytes) {
+            rows.splice(i, 0, ['.jeditor', 'empty']);
+        } else {
+            const parts = [['.jeditor', this.formatBytes(own.bytes)]];
+            if (own.trash.n) parts.push(['  Trash', `${plural(own.trash.n, 'photo')} · ${this.formatBytes(own.trash.bytes)}`]);
+            if (own.cache.bytes) parts.push(['  Cache', this.formatBytes(own.cache.bytes)]);
+            if (own.originals.n) parts.push(['  Originals', `${plural(own.originals.n, 'photo')} · ${this.formatBytes(own.originals.bytes)}`]);
+            rows.splice(i, 0, ...parts);
+        }
+        this.setInfoRows(title, rows);
+    },
+
+    // .jeditor's size, worked out at most every 30 s (it reads every cached
+    // thumbnail's size, so not on every click)
+    jeditorUsage() {
+        const c = this._usage;
+        if (c && c.dir === this.dirHandle && Date.now() - c.at < 30000) return c.value; // cleared by jEditor's own writes
+        const value = FolderCache.usage(this);
+        this._usage = { dir: this.dirHandle, at: Date.now(), value };
+        return value;
     },
 
     async fillInfoPanel(file) {
         const list = this.elements.infoList;
         if (!list || !file) return;
+        this.elements.infoPanel.querySelector('h3').textContent = 'File info';
         const token = (this._infoToken = (this._infoToken || 0) + 1);
 
         const rows = [];
@@ -13127,7 +13703,7 @@ const app = {
                 // A save landing mid-read invalidates the file snapshot: retry once
                 if (attempt === 0) continue;
                 fileEntry._thumbPromise = null;
-                console.error('Thumbnail error:', e);
+                console.warn('Thumbnail error (will retry):', e);
                 const fallback = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjx0ZXh0IHg9IjEwIiB5PSIyMCIgZm9udC1zaXplPSIyMCI+4pqcPC90ZXh0Pjwvc3ZnPg==';
                 (fileEntry._thumbWaiters || []).forEach(img => { img.src = fallback; });
                 fileEntry._thumbWaiters = [];
@@ -13145,6 +13721,7 @@ const app = {
         // lands while we decode shows up in the lag delta below.
         const savedAtRead = fileEntry._savedRotationTotal || 0;
         const fileData = await fileEntry.handle.getFile();
+        if (!fileData.size) throw new Error('empty file (still being written?)');
 
         let blob;
         if (fileData.size <= this.THUMB_FAST_PATH_BYTES) {
@@ -13183,6 +13760,7 @@ const app = {
         const url = fileEntry.thumbnailUrl;
         (fileEntry._thumbWaiters || []).forEach(img => {
             img.decoding = 'async';
+            img.onerror = () => { if (img.src === fileEntry.thumbnailUrl) this.thumbnailBroken(fileEntry); };
             img.src = url;
         });
         fileEntry._thumbWaiters = [];
@@ -13203,7 +13781,30 @@ const app = {
             return;
         }
 
-        await this.ensureThumbnail(fileEntry, { urgent: true, force }).catch(() => { });
+        await this.ensureThumbnail(fileEntry, { urgent: true, force }).catch(() => this.retryThumbnail(fileEntry));
+    },
+
+    // A thumbnail that couldn't be made, or made but not shown (the file
+    // was caught half-written, say): try again a few times, a little later
+    // each time, rather than leave the tile blank
+    THUMB_RETRIES: 4,
+
+    retryThumbnail(fileEntry) {
+        const n = (fileEntry._thumbRetries || 0) + 1;
+        if (n > this.THUMB_RETRIES) return;
+        fileEntry._thumbRetries = n;
+        setTimeout(() => {
+            if (!this.files.includes(fileEntry) || fileEntry.thumbnailUrl) return;
+            this.refreshThumbnailUI(fileEntry);
+        }, 1500 * n);
+    },
+
+    thumbnailBroken(fileEntry) {
+        if (!fileEntry.thumbnailUrl) return;
+        URL.revokeObjectURL(fileEntry.thumbnailUrl);
+        fileEntry.thumbnailUrl = null;
+        fileEntry._thumbPromise = null;
+        this.retryThumbnail(fileEntry);
     },
 
     // Drop cached thumbnails (in .jeditor) of photos that changed or are gone
@@ -13278,6 +13879,7 @@ const app = {
 
 
     handleGridClick(e, file) {
+        this.releaseInfoTarget();
         if (e.ctrlKey || e.metaKey) {
             this.toggleSelection(file);
         } else if (e.shiftKey) {
@@ -13330,6 +13932,7 @@ const app = {
         if (active) active.classList.add('active');
         this._activeGridEl = active || null;
 
+        this.refreshInfoSoon();
         if (this.selection.size > 0) {
             this.elements.selectionBar.classList.remove('hidden');
             this.elements.selectionCount.textContent = `${this.selection.size} selected`;
@@ -13360,9 +13963,11 @@ const app = {
             }
         }
         this.viewMode = mode;
+        this._infoTarget = null;
         document.body.dataset.view = mode; // toasts and the phone layout follow the view
         Folders.render();
         this.updateStatusBar();
+        this.refreshInfoSoon();
         const iconGrid = this.elements.btnToggleView.querySelector('.icon-grid');
         const iconSingle = this.elements.btnToggleView.querySelector('.icon-single');
 
@@ -13398,6 +14003,7 @@ const app = {
             this.elements.imageContainer.classList.remove('hidden');
             this.elements.gridView.classList.add('hidden');
             this.elements.thumbnailStrip.parentElement.querySelector('.controls').classList.remove('hidden');
+            this.showControls(false); // shown on the way in, then out of the way
             this.elements.thumbnailStrip.classList.remove('hidden');
             if (this.elements.stripResize) this.elements.stripResize.classList.remove('hidden');
             this.elements.gridControls.classList.add('hidden');
@@ -13429,7 +14035,7 @@ const app = {
         Flags.updateHeader();
         this.updateFileCount();
         this.updateStatusBar();
-        if (this._infoOpen) this.fillInfoPanel(file);
+        if (this._infoOpen) this.refreshInfoSoon();
         this.updateActiveThumbnail();
     },
 
@@ -14048,7 +14654,7 @@ const app = {
         ['view.zoomIn', 'global', 'View', 'Zoom in', ['+', '=']],
         ['view.zoomOut', 'global', 'View', 'Zoom out', ['-']],
         ['view.zoomFit', 'global', 'View', 'Zoom to fit', ['0']],
-        ['view.info', 'global', 'View', 'File info', ['I']],
+        ['view.info', 'global', 'View', 'Info: the photo, or the folder or selection in the grid', ['I']],
         ['view.fullscreen', 'global', 'View', 'Full screen', ['F']],
         ['view.slideshow', 'global', 'View', 'Slideshow', []],
         ['app.dupes', 'global', 'App', 'Find duplicates (WIP)', ['D']],
@@ -14683,6 +15289,8 @@ const app = {
     syncGridTile() {
         const grid = this.elements.gridView;
         if (!grid.clientWidth) return;
+        // The selection bar centres on the grid, less its scrollbar
+        document.documentElement.style.setProperty('--grid-scrollbar', `${grid.offsetWidth - grid.clientWidth}px`);
         const first = parseFloat(getComputedStyle(grid).gridTemplateColumns);
         if (first > 0) document.documentElement.style.setProperty('--grid-tile', `${first}px`);
     },
@@ -15214,6 +15822,7 @@ const app = {
         if (many) this.beginTask('trash', `Deleting 0/${list.length}`);
         const moved = new Set();
         const undoItems = [];
+        const alreadyGone = [];
         let failed = 0, next = 0, done = 0;
         const stamp = Date.now();
         const worker = async () => {
@@ -15221,16 +15830,22 @@ const app = {
                 const i = next++;
                 const f = list[i];
                 try {
-                    if (f._rotationQueue) await f._rotationQueue;
+                    if (f._rotationQueue) await this.withTimeout(f._rotationQueue, this.TRASH_TIMEOUT_MS, 'Waiting for a rotation').catch(() => { });
                     let trashName = f.name;
                     if (taken.has(trashName.toLowerCase())) trashName = `${stamp}_${i}_${f.name}`; // avoid collision
                     taken.add(trashName.toLowerCase());
-                    await this.trashOne(f, trashDir, trashName);
+                    // One file Windows never answers for mustn't hold up the rest
+                    await this.withTimeout(this.trashOne(f, trashDir, trashName), this.TRASH_TIMEOUT_MS, `Deleting ${f.name}`);
                     moved.add(f);
                     undoItems.push({ file: f, trashDir, trashName });
                 } catch (e) {
-                    console.error('Trash failed for', f.name, e);
-                    failed++;
+                    if (e && e.name === 'NotFoundError') {
+                        // Deleted already (in File Explorer, say): just take it off the screen
+                        alreadyGone.push(f);
+                    } else {
+                        (e && e.name === 'TimeoutError' ? console.warn : console.error)('Trash failed for', f.name, e);
+                        failed++;
+                    }
                 }
                 done++;
                 if (many && (done % 10 === 0 || done === list.length)) this.updateTask('trash', `Deleting ${done}/${list.length}`);
@@ -15241,13 +15856,36 @@ const app = {
         } finally {
             if (many) this.endTask('trash');
         }
-        this.removeFilesFromApp(list.filter(f => moved.has(f)));
+        Flags.forgetFiles(alreadyGone);
+        this.removeFilesFromApp(list.filter(f => moved.has(f)).concat(alreadyGone));
 
         if (undoItems.length) {
             this.pushUndo({ type: 'trash', items: undoItems });
             this.showToast(`Moved ${undoItems.length} to the trash (.jeditor/trash) — Ctrl+Z to restore`, 4000);
         }
-        if (failed) this.showToast(`Couldn't delete ${failed} photo${failed === 1 ? '' : 's'}`, 4000);
+        if (alreadyGone.length) {
+            const n = alreadyGone.length;
+            this.showToast(`${n} photo${n === 1 ? ' was' : 's were'} already deleted elsewhere`, 3500, null, null, { type: 'info' });
+        }
+        if (failed) {
+            this.showToast(`Couldn't delete ${failed} photo${failed === 1 ? '' : 's'} — press R to check the folder`, 5000);
+            Watch.request({ full: true }); // see what's really there
+        }
+    },
+
+    TRASH_TIMEOUT_MS: 30000,
+
+    // Rejects with a TimeoutError if `promise` hasn't settled in `ms`
+    withTimeout(promise, ms, what) {
+        let timer;
+        const timeout = new Promise((_, reject) => {
+            timer = setTimeout(() => {
+                const e = new Error(`${what} timed out`);
+                e.name = 'TimeoutError';
+                reject(e);
+            }, ms);
+        });
+        return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
     },
 
     // One photo into the trash: move it, or copy then delete
@@ -15261,7 +15899,7 @@ const app = {
                 // moving not supported here: copy instead
             }
         }
-        const data = await f.handle.getFile();
+        const data = await f.handle.getFile(); // NotFoundError if it's gone already
         const th = await trashDir.getFileHandle(trashName, { create: true });
         const w = await th.createWritable();
         await w.write(data);
@@ -15830,7 +16468,7 @@ const app = {
                 ['Move to…', () => Folders.openPicker([file], 'move')],
                 ['Copy to…', () => Folders.openPicker([file], 'copy')],
                 ['Rename…', () => this.promptRename(file)],
-                ['File info', () => { this.toggleInfoPanel(true); }],
+                ['File info', () => { this.toggleInfoPanel(true, { file }); }],
                 ['Export a copy…', () => this.exportCopies([file])],
                 ['—'],
                 ['Delete', () => this.moveToTrash([file]), true]
@@ -15865,6 +16503,7 @@ const app = {
             ...(this.dirHandle ? [['New folder…', () => Folders.newFolder()]] : []),
             ['Rename all…', () => this.openRename([])],
             ['Search…', () => Flags.focusSearch()],
+            [Folders.scope === null ? 'Order info' : 'Folder info', () => this.toggleInfoPanel(true, { folder: Folders.scope })],
             ...(this.files.some(f => Flags.has(f, 'rescan'))
                 ? [['Copy rescan list', () => Flags.copyList(this.files.filter(f => Flags.has(f, 'rescan')), 'rescan')]] : []),
             ['Find duplicates… (WIP)', () => this.openDupes()],
