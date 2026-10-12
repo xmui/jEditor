@@ -1136,9 +1136,13 @@ const app = {
         for (let i = 0; i < pending.length; i += BATCH) {
             const batch = pending.slice(i, i + BATCH);
             const datas = await Promise.all(batch.map(p => p.entry.getFile().catch(() => null)));
+            // A photo a scanner is writing right now is left for the folder
+            // watch to add once it's whole (only just-changed files are checked)
+            const whole = await Promise.all(datas.map((d, j) => d && Date.now() - d.lastModified < Watch.SETTLED_MS
+                ? Watch.complete(d, batch[j].entry.name) : true));
             batch.forEach(({ entry, relPath, parentDir }, j) => {
                 const fileData = datas[j];
-                if (!fileData) return;
+                if (!fileData || !whole[j]) return;
                 this.files.push({
                     name: entry.name,
                     relPath,
@@ -2322,7 +2326,7 @@ const app = {
                 // A save landing mid-read invalidates the file snapshot: retry once
                 if (attempt === 0) continue;
                 fileEntry._thumbPromise = null;
-                console.error('Thumbnail error:', e);
+                console.warn('Thumbnail error (will retry):', e);
                 const fallback = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjx0ZXh0IHg9IjEwIiB5PSIyMCIgZm9udC1zaXplPSIyMCI+4pqcPC90ZXh0Pjwvc3ZnPg==';
                 (fileEntry._thumbWaiters || []).forEach(img => { img.src = fallback; });
                 fileEntry._thumbWaiters = [];
@@ -2340,6 +2344,7 @@ const app = {
         // lands while we decode shows up in the lag delta below.
         const savedAtRead = fileEntry._savedRotationTotal || 0;
         const fileData = await fileEntry.handle.getFile();
+        if (!fileData.size) throw new Error('empty file (still being written?)');
 
         let blob;
         if (fileData.size <= this.THUMB_FAST_PATH_BYTES) {
@@ -2378,6 +2383,7 @@ const app = {
         const url = fileEntry.thumbnailUrl;
         (fileEntry._thumbWaiters || []).forEach(img => {
             img.decoding = 'async';
+            img.onerror = () => { if (img.src === fileEntry.thumbnailUrl) this.thumbnailBroken(fileEntry); };
             img.src = url;
         });
         fileEntry._thumbWaiters = [];
@@ -2398,7 +2404,30 @@ const app = {
             return;
         }
 
-        await this.ensureThumbnail(fileEntry, { urgent: true, force }).catch(() => { });
+        await this.ensureThumbnail(fileEntry, { urgent: true, force }).catch(() => this.retryThumbnail(fileEntry));
+    },
+
+    // A thumbnail that couldn't be made, or made but not shown (the file
+    // was caught half-written, say): try again a few times, a little later
+    // each time, rather than leave the tile blank
+    THUMB_RETRIES: 4,
+
+    retryThumbnail(fileEntry) {
+        const n = (fileEntry._thumbRetries || 0) + 1;
+        if (n > this.THUMB_RETRIES) return;
+        fileEntry._thumbRetries = n;
+        setTimeout(() => {
+            if (!this.files.includes(fileEntry) || fileEntry.thumbnailUrl) return;
+            this.refreshThumbnailUI(fileEntry);
+        }, 1500 * n);
+    },
+
+    thumbnailBroken(fileEntry) {
+        if (!fileEntry.thumbnailUrl) return;
+        URL.revokeObjectURL(fileEntry.thumbnailUrl);
+        fileEntry.thumbnailUrl = null;
+        fileEntry._thumbPromise = null;
+        this.retryThumbnail(fileEntry);
     },
 
     // Drop cached thumbnails (in .jeditor) of photos that changed or are gone

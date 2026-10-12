@@ -27,6 +27,7 @@ const CHANGELOG = [
     {
         version: '1.17.0', date: '2026-10-12',
         items: [
+            'Fixed black previews for photos a scanner was still saving when jEditor spotted them. A new photo is now added only once it\'s whole, and a preview that can\'t be made or shown is tried again instead of staying blank.',
             'Folder details: in the grid, `I` (or Order Info / Folder Info in the right-click menus) shows the folder you\'re in: how many photos, here and with subfolders, total size, average and largest photo, file types, dates, flags, and for the whole order how much room jEditor\'s .jeditor folder takes (trash, cache, Auto crop originals). Select several photos to see the same for the selection. Single view still shows the photo\'s own details.',
             'The folder list shows the total for what you\'re looking at, such as 1,240 photos · 4.80 GB. Click it for the details. Hovering a folder shows its size too.',
             'In single view, the controls above the film strip fade away a few seconds after they appear, leaving the photo the screen. Move the pointer to where they were and they come back. To do without them altogether, untick Buttons above the film strip in Customize controls.',
@@ -5560,6 +5561,8 @@ const Flags = {
 const Watch = {
     WALK_CONCURRENCY: 8, // folders listed at once (helps most on network drives)
     STAT_BATCH: 24,      // files opened at once for size and date
+    SETTLED_MS: 5000,    // a file untouched this long is finished, whatever its ending
+    UNFINISHED_RECHECK_MS: 1200,
     POLL_MIN_MS: 15000,  // checking without an observer: at most this often…
     POLL_MAX_MS: 120000, // …and at least this often, scaled to how long a scan takes
     EDIT_CHECK_MS: 60000, // edits are looked for on focus at most once a minute
@@ -5843,6 +5846,36 @@ const Watch = {
         return out;
     },
 
+    // Is this file whole, or is a scanner still writing it? A photo is
+    // finished when it ends the way its format ends (a JPEG's end marker,
+    // PNG's IEND, GIF's trailer, WebP's stated length), or when it hasn't
+    // changed for a few seconds. Older files aren't read at all.
+    async complete(data, name = data.name || '') {
+        if (!data.size) return Date.now() - data.lastModified > this.SETTLED_MS * 6;
+        if (Date.now() - data.lastModified > this.SETTLED_MS) return true;
+        try {
+            const n = data.size;
+            const tail = new Uint8Array(await data.slice(Math.max(0, n - 16)).arrayBuffer());
+            const ext = (name.match(/\.(\w+)$/) || [, ''])[1].toLowerCase();
+            if (ext === 'jpg' || ext === 'jpeg') {
+                for (let i = tail.length - 2; i >= 0; i--) if (tail[i] === 0xFF && tail[i + 1] === 0xD9) return true;
+                return false;
+            }
+            if (ext === 'png') {
+                const t = tail.length - 8;
+                return t >= 0 && tail[t] === 0x49 && tail[t + 1] === 0x45 && tail[t + 2] === 0x4E && tail[t + 3] === 0x44;
+            }
+            if (ext === 'gif') return tail[tail.length - 1] === 0x3B;
+            if (ext === 'webp') {
+                const head = new DataView(await data.slice(0, 12).arrayBuffer());
+                return head.byteLength >= 8 && head.getUint32(4, true) + 8 <= n;
+            }
+        } catch (e) {
+            return false; // can't be read yet: still being written
+        }
+        return true;
+    },
+
     // ---- One scan ----
 
     async scan(job) {
@@ -5898,13 +5931,24 @@ const Watch = {
             }
         }
 
-        // Size and date of the new photos
+        // Size and date of the new photos. One a scanner is still writing
+        // waits: it's looked at again shortly, and added once it's whole.
         const datas = await this.stat(fresh.map(p => p.handle));
         const added = [];
-        fresh.forEach((p, i) => {
-            const d = datas[i];
-            if (d) added.push({ ...p, size: d.size, lastModified: d.lastModified });
-        });
+        const unfinished = new Set();
+        for (let i = 0; i < fresh.length; i++) {
+            const p = fresh[i], d = datas[i];
+            if (!d) continue;
+            if (!(await this.complete(d, p.name))) {
+                unfinished.add(Folders.parentOf(p.relPath));
+                continue;
+            }
+            added.push({ ...p, size: d.size, lastModified: d.lastModified });
+        }
+        if (unfinished.size) {
+            const g = this.gen;
+            setTimeout(() => { if (g === this.gen) this.request({ dirs: unfinished }); }, this.UNFINISHED_RECHECK_MS);
+        }
 
         // Edited elsewhere: size or date differ from what's loaded
         let edited = [];
@@ -11607,9 +11651,13 @@ const app = {
         for (let i = 0; i < pending.length; i += BATCH) {
             const batch = pending.slice(i, i + BATCH);
             const datas = await Promise.all(batch.map(p => p.entry.getFile().catch(() => null)));
+            // A photo a scanner is writing right now is left for the folder
+            // watch to add once it's whole (only just-changed files are checked)
+            const whole = await Promise.all(datas.map((d, j) => d && Date.now() - d.lastModified < Watch.SETTLED_MS
+                ? Watch.complete(d, batch[j].entry.name) : true));
             batch.forEach(({ entry, relPath, parentDir }, j) => {
                 const fileData = datas[j];
-                if (!fileData) return;
+                if (!fileData || !whole[j]) return;
                 this.files.push({
                     name: entry.name,
                     relPath,
@@ -12793,7 +12841,7 @@ const app = {
                 // A save landing mid-read invalidates the file snapshot: retry once
                 if (attempt === 0) continue;
                 fileEntry._thumbPromise = null;
-                console.error('Thumbnail error:', e);
+                console.warn('Thumbnail error (will retry):', e);
                 const fallback = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjx0ZXh0IHg9IjEwIiB5PSIyMCIgZm9udC1zaXplPSIyMCI+4pqcPC90ZXh0Pjwvc3ZnPg==';
                 (fileEntry._thumbWaiters || []).forEach(img => { img.src = fallback; });
                 fileEntry._thumbWaiters = [];
@@ -12811,6 +12859,7 @@ const app = {
         // lands while we decode shows up in the lag delta below.
         const savedAtRead = fileEntry._savedRotationTotal || 0;
         const fileData = await fileEntry.handle.getFile();
+        if (!fileData.size) throw new Error('empty file (still being written?)');
 
         let blob;
         if (fileData.size <= this.THUMB_FAST_PATH_BYTES) {
@@ -12849,6 +12898,7 @@ const app = {
         const url = fileEntry.thumbnailUrl;
         (fileEntry._thumbWaiters || []).forEach(img => {
             img.decoding = 'async';
+            img.onerror = () => { if (img.src === fileEntry.thumbnailUrl) this.thumbnailBroken(fileEntry); };
             img.src = url;
         });
         fileEntry._thumbWaiters = [];
@@ -12869,7 +12919,30 @@ const app = {
             return;
         }
 
-        await this.ensureThumbnail(fileEntry, { urgent: true, force }).catch(() => { });
+        await this.ensureThumbnail(fileEntry, { urgent: true, force }).catch(() => this.retryThumbnail(fileEntry));
+    },
+
+    // A thumbnail that couldn't be made, or made but not shown (the file
+    // was caught half-written, say): try again a few times, a little later
+    // each time, rather than leave the tile blank
+    THUMB_RETRIES: 4,
+
+    retryThumbnail(fileEntry) {
+        const n = (fileEntry._thumbRetries || 0) + 1;
+        if (n > this.THUMB_RETRIES) return;
+        fileEntry._thumbRetries = n;
+        setTimeout(() => {
+            if (!this.files.includes(fileEntry) || fileEntry.thumbnailUrl) return;
+            this.refreshThumbnailUI(fileEntry);
+        }, 1500 * n);
+    },
+
+    thumbnailBroken(fileEntry) {
+        if (!fileEntry.thumbnailUrl) return;
+        URL.revokeObjectURL(fileEntry.thumbnailUrl);
+        fileEntry.thumbnailUrl = null;
+        fileEntry._thumbPromise = null;
+        this.retryThumbnail(fileEntry);
     },
 
     // Drop cached thumbnails (in .jeditor) of photos that changed or are gone

@@ -23,6 +23,8 @@
 const Watch = {
     WALK_CONCURRENCY: 8, // folders listed at once (helps most on network drives)
     STAT_BATCH: 24,      // files opened at once for size and date
+    SETTLED_MS: 5000,    // a file untouched this long is finished, whatever its ending
+    UNFINISHED_RECHECK_MS: 1200,
     POLL_MIN_MS: 15000,  // checking without an observer: at most this often…
     POLL_MAX_MS: 120000, // …and at least this often, scaled to how long a scan takes
     EDIT_CHECK_MS: 60000, // edits are looked for on focus at most once a minute
@@ -306,6 +308,36 @@ const Watch = {
         return out;
     },
 
+    // Is this file whole, or is a scanner still writing it? A photo is
+    // finished when it ends the way its format ends (a JPEG's end marker,
+    // PNG's IEND, GIF's trailer, WebP's stated length), or when it hasn't
+    // changed for a few seconds. Older files aren't read at all.
+    async complete(data, name = data.name || '') {
+        if (!data.size) return Date.now() - data.lastModified > this.SETTLED_MS * 6;
+        if (Date.now() - data.lastModified > this.SETTLED_MS) return true;
+        try {
+            const n = data.size;
+            const tail = new Uint8Array(await data.slice(Math.max(0, n - 16)).arrayBuffer());
+            const ext = (name.match(/\.(\w+)$/) || [, ''])[1].toLowerCase();
+            if (ext === 'jpg' || ext === 'jpeg') {
+                for (let i = tail.length - 2; i >= 0; i--) if (tail[i] === 0xFF && tail[i + 1] === 0xD9) return true;
+                return false;
+            }
+            if (ext === 'png') {
+                const t = tail.length - 8;
+                return t >= 0 && tail[t] === 0x49 && tail[t + 1] === 0x45 && tail[t + 2] === 0x4E && tail[t + 3] === 0x44;
+            }
+            if (ext === 'gif') return tail[tail.length - 1] === 0x3B;
+            if (ext === 'webp') {
+                const head = new DataView(await data.slice(0, 12).arrayBuffer());
+                return head.byteLength >= 8 && head.getUint32(4, true) + 8 <= n;
+            }
+        } catch (e) {
+            return false; // can't be read yet: still being written
+        }
+        return true;
+    },
+
     // ---- One scan ----
 
     async scan(job) {
@@ -361,13 +393,24 @@ const Watch = {
             }
         }
 
-        // Size and date of the new photos
+        // Size and date of the new photos. One a scanner is still writing
+        // waits: it's looked at again shortly, and added once it's whole.
         const datas = await this.stat(fresh.map(p => p.handle));
         const added = [];
-        fresh.forEach((p, i) => {
-            const d = datas[i];
-            if (d) added.push({ ...p, size: d.size, lastModified: d.lastModified });
-        });
+        const unfinished = new Set();
+        for (let i = 0; i < fresh.length; i++) {
+            const p = fresh[i], d = datas[i];
+            if (!d) continue;
+            if (!(await this.complete(d, p.name))) {
+                unfinished.add(Folders.parentOf(p.relPath));
+                continue;
+            }
+            added.push({ ...p, size: d.size, lastModified: d.lastModified });
+        }
+        if (unfinished.size) {
+            const g = this.gen;
+            setTimeout(() => { if (g === this.gen) this.request({ dirs: unfinished }); }, this.UNFINISHED_RECHECK_MS);
+        }
 
         // Edited elsewhere: size or date differ from what's loaded
         let edited = [];

@@ -2804,6 +2804,40 @@ async function newPage(browser, url) {
             if (toast) toast.querySelector('.toast-action').click();
             out.shown = ['c.jpg', 'e.jpg'].every(n => app.selection.has(app.files.find(f => f.name === n)));
 
+            // A scanner writing a photo: first the start of it, then the
+            // rest. It's added once it's whole, with a real thumbnail.
+            const full = await makeRealJpeg(400, 300, { color: '#2a8' });
+            const partFh = await dir.getFileHandle('g.jpg', { create: true });
+            let w = await partFh.createWritable();
+            await w.write(new Blob([full.slice(0, 300)]));
+            await w.close();
+            if (!Watch.observer) Watch.request({ full: true });
+            await sleep(700);
+            out.notYet = !app.files.some(f => f.name === 'g.jpg');
+            w = await partFh.createWritable();
+            await w.write(new Blob([full]));
+            await w.close();
+            if (!Watch.observer) Watch.request({ full: true });
+            await until(() => app.files.some(f => f.name === 'g.jpg'), 6000);
+            const g = app.files.find(f => f.name === 'g.jpg');
+            out.wholeSize = !!g && g.size === full.length;
+            await until(() => g && g.thumbnailUrl, 4000);
+            out.thumb = await new Promise(res => {
+                if (!g || !g.thumbnailUrl) return res(false);
+                const im = new Image();
+                im.onload = () => res(im.naturalWidth > 0);
+                im.onerror = () => res(false);
+                im.src = g.thumbnailUrl;
+            });
+            await dir.removeEntry('g.jpg');
+            if (!Watch.observer) Watch.request({ full: true });
+            await until(() => !app.files.some(f => f.name === 'g.jpg'));
+            // Whole files are told apart from half-written ones
+            const jpgDone = await Watch.complete(new File([full], 'x.jpg', { lastModified: Date.now() }));
+            const jpgHalf = await Watch.complete(new File([full.slice(0, 500)], 'x.jpg', { lastModified: Date.now() }));
+            const oldHalf = await Watch.complete(new File([full.slice(0, 500)], 'x.jpg', { lastModified: Date.now() - 60000 }));
+            out.complete = jpgDone && !jpgHalf && oldHalf;
+
             // Removed outside jEditor: gone from the grid
             await dir.removeEntry('h.jpg');
             if (!Watch.observer) Watch.request({ full: true });
@@ -2851,6 +2885,7 @@ async function newPage(browser, url) {
         check('watch: new photos slot into the grid in sort order', r.added, JSON.stringify(r));
         check('watch: existing tiles aren\'t rebuilt; new ones glow', r.inPlace && r.glow);
         check('watch: toast with Show selects the new photos', r.toast && r.shown);
+        check('watch: a photo still being written waits, then comes in whole with a real thumbnail', r.notYet && r.wholeSize && r.thumb && r.complete, JSON.stringify(r));
         check('watch: photos removed outside jEditor go', r.removed);
         check('watch: a new folder and its photos show up', r.newFolder);
         check('rescan: photos edited elsewhere are picked up', r.edited);
