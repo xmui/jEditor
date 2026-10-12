@@ -26,6 +26,8 @@
     <script src="recents.js"></script>
     <script src="stored.js"></script>
     <script src="updates.js"></script>
+    <script src="scan.js"></script>
+    <script src="places.js"></script>
     <script src="ui.js"></script>
     <link rel="stylesheet" href="tokens.css">
     <link rel="stylesheet" href="style.css">
@@ -48,6 +50,10 @@
                 <div id="recents" class="recents hidden">
                     <h2 class="recents-title">Recent</h2>
                     <ul id="recent-list" class="recent-list"></ul>
+                </div>
+                <!-- Drives and folders (places.js, the Windows app) -->
+                <div id="start-browse" class="recents start-browse native-only">
+                    <div id="start-browse-list"></div>
                 </div>
                 <div class="start-foot">
                     <button id="btn-shortcuts-start" class="link-btn">Keyboard shortcuts <kbd>?</kbd></button>
@@ -96,6 +102,9 @@
                      data-hc names each control. Default main row:
                      info, view, refresh, crop — the rest live in "More". -->
                 <div class="header-controls toolbar" id="header-controls" role="toolbar" aria-label="Photo actions">
+                    <button id="btn-scan" data-hc="scan" class="tb-btn native-only" title="Scan into this order" aria-label="Scan into this order">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h16"/><path d="M6 13V5a1 1 0 0 1 1-1h7l4 4v5"/><path d="M5 17h14a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1a1 1 0 0 1 1-1z"/></svg>
+                    </button>
                     <button id="btn-info" data-hc="info" class="tb-btn" title="File info (I)" aria-label="File info">
                         <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 16.5V11.5"/><circle cx="12" cy="8" r="0.6" fill="currentColor"/></svg>
                     </button>
@@ -184,6 +193,11 @@
                 </div>
             </nav>
             <aside id="folder-rail" class="folder-rail hidden" aria-label="Folder list">
+                <div class="fr-tabs seg native-only" role="tablist" aria-label="Folder list">
+                    <button id="fr-tab-order" class="active" role="tab" aria-selected="true" title="This order's folders">This order</button>
+                    <button id="fr-tab-browse" role="tab" aria-selected="false" title="Other orders, folders and drives">Browse</button>
+                </div>
+                <div id="rail-browse" class="rail-browse native-only"></div>
                 <div id="folder-tree" class="folder-tree"></div>
                 <div id="flag-list" class="flag-list hidden"></div>
                 <p id="fr-hint" class="fr-hint hidden">Make folders to collate this order. Drag photos onto a folder to move them, or hold <kbd>Ctrl</kbd> to copy. <kbd>M</kbd> moves the selection.</p>
@@ -671,6 +685,46 @@
                 <button id="stored-done" class="btn primary">Done</button>
             </div>
         </div>
+    </div>
+
+    <div id="scan-panel" class="dialog-overlay hidden">
+        <form id="scan-form" class="dialog scan-card" role="dialog" aria-modal="true" aria-labelledby="scan-title">
+            <div class="dialog-head">
+                <h2 id="scan-title" class="dialog-title">Scan into this order</h2>
+                <button id="scan-x" type="button" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+            <div class="dialog-body scan-body">
+                <label class="scan-field" for="scan-device">Scanner
+                    <span class="scan-row">
+                        <select id="scan-device" class="field"></select>
+                        <button id="scan-refresh" type="button" class="btn ghost icon" title="Look for scanners again" aria-label="Look for scanners again">
+                            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                        </button>
+                    </span>
+                </label>
+                <div id="scan-problems" class="scan-note"></div>
+                <label class="scan-field" for="scan-folder">Save into
+                    <select id="scan-folder" class="field"></select>
+                </label>
+                <div class="scan-field">Names
+                    <span class="scan-row">
+                        <input id="scan-prefix" class="field" type="text" spellcheck="false" autocomplete="off" aria-label="Name before the number">
+                        <input id="scan-next" class="field scan-num" type="number" min="0" step="1" aria-label="First number">
+                    </span>
+                    <small id="scan-preview" class="scan-preview"></small>
+                </div>
+                <p class="set-help">The scanner's own window opens next: choose the size, resolution and feeder there. Each photo shows up here as soon as it's scanned.</p>
+            </div>
+            <div class="dialog-foot">
+                <span></span>
+                <span class="dialog-actions">
+                    <button id="scan-cancel" type="button" class="btn secondary">Cancel</button>
+                    <button id="scan-go" type="submit" class="btn primary">Scan</button>
+                </span>
+            </div>
+        </form>
     </div>
 
     <div id="ui-dialog" class="dialog-overlay hidden">

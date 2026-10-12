@@ -26,6 +26,11 @@ sealed class MainForm : Form
     bool fullScreen;
     FormWindowState stateBeforeFullScreen;
 
+    // Scanning (Scanner.cs): made when first used; one scan at a time
+    Scanner? scanner;
+    CancellationTokenSource? scanning;
+    Scanner Scanners => scanner ??= new Scanner(options.FakeScanner);
+
     FileSystemWatcher? watcher;
     System.Windows.Forms.Timer? reloadTimer;
     bool reloadPage;
@@ -48,7 +53,12 @@ sealed class MainForm : Form
 
         HandleCreated += (_, _) => Shell.SetDarkTitleBar(Handle, settings.Dark);
         Load += async (_, _) => await StartAsync();
-        FormClosing += (_, _) => SavePlacement();
+        FormClosing += (_, _) =>
+        {
+            SavePlacement();
+            scanning?.Cancel();
+        };
+        FormClosed += (_, _) => scanner?.Dispose();
     }
 
     async Task StartAsync()
@@ -77,6 +87,31 @@ sealed class MainForm : Form
             Program.Fail(options, "jEditor couldn't start: " + e.Message);
             Finish(70);
         }
+    }
+
+    // ---- Drives plugged in or taken out (USB orders) ----
+    // Windows tells every window; the page is told once things settle
+
+    const int WM_DEVICECHANGE = 0x0219, DBT_DEVICEARRIVAL = 0x8000, DBT_DEVICEREMOVECOMPLETE = 0x8004;
+    System.Windows.Forms.Timer? drivesTimer;
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WM_DEVICECHANGE && (m.WParam == DBT_DEVICEARRIVAL || m.WParam == DBT_DEVICEREMOVECOMPLETE))
+        {
+            if (drivesTimer is null)
+            {
+                drivesTimer = new System.Windows.Forms.Timer { Interval = 700 };
+                drivesTimer.Tick += (_, _) =>
+                {
+                    drivesTimer.Stop();
+                    if (web.CoreWebView2 is not null) Post(new { type = "drivesChanged" });
+                };
+            }
+            drivesTimer.Stop();
+            drivesTimer.Start();
+        }
+        base.WndProc(ref m);
     }
 
     public void Finish(int code)
@@ -238,8 +273,15 @@ sealed class MainForm : Form
             case "checkUpdate":
             case "installUpdate":
             case "smokeCheck":
+            case "scanners":
+            case "scan":
+            case "places":
+            case "listDir":
                 var files = FilesOf(e);
                 BeginInvoke(async () => await HandleRequestAsync(msg, files));
+                break;
+            case "cancelScan":
+                scanning?.Cancel();
                 break;
             case "log":
                 Log.Write($"page {Str(msg, "level")}: {Str(msg, "text")}");
@@ -350,9 +392,44 @@ sealed class MainForm : Form
                     });
                     break;
                 }
+                case "places":
+                {
+                    var drives = await Task.Run(Places.Drives);
+                    Reply(id, new
+                    {
+                        drives = drives.Select(d => new { path = d.Path, name = d.Name, kind = d.Kind, label = d.Label, total = d.Total, free = d.Free }),
+                        home = Places.Home().Select(h => new { name = h.Name, path = h.Path })
+                    });
+                    break;
+                }
+                case "listDir":
+                {
+                    var path = Str(msg, "path") ?? "";
+                    if (!Path.IsPathFullyQualified(path)) { Reply(id, new { error = "Not a folder" }); break; }
+                    var l = await Task.Run(() => Places.List(path));
+                    Reply(id, new
+                    {
+                        path = l.Path,
+                        name = l.Name,
+                        parent = l.Parent,
+                        folders = l.Folders.Select(f => new { name = f.Name, path = f.Path }),
+                        photos = l.Photos,
+                        more = l.More
+                    });
+                    break;
+                }
+                case "scanners":
+                {
+                    var (devices, problems) = await Scanners.ListAsync();
+                    Reply(id, new { devices = devices.Select(d => new { id = d.Id, name = d.Name, driver = d.Driver }), problems });
+                    break;
+                }
+                case "scan":
+                    await ScanAsync(id, msg);
+                    break;
                 case "smokeCheck":
                 {
-                    var (ok, detail) = smoke?.Check(Str(msg, "step") ?? "", Str(msg, "name")) ?? (false, "not a smoke test");
+                    var (ok, detail) = smoke?.Check(Str(msg, "step") ?? "", msg) ?? (false, "not a smoke test");
                     Reply(id, new { ok, detail });
                     break;
                 }
@@ -377,6 +454,69 @@ sealed class MainForm : Form
     }
 
     Updater.Release? pendingUpdate;
+
+    // A scan into the order: { device, driver, folder, prefix, next, digits }.
+    // Each photo saved is posted ({ type: 'scanned', scan: id, name }) as it
+    // lands; the reply says how many, once the scanner is done
+    async Task ScanAsync(long id, JsonNode msg)
+    {
+        if (scanning is not null) { Reply(id, new { error = "A scan is already running" }); return; }
+        var folder = Str(msg, "folder") ?? "";
+        if (!Path.IsPathFullyQualified(folder) || !Directory.Exists(folder)) { Reply(id, new { error = "The folder to scan into isn't there" }); return; }
+        var request = new Scanner.Request(
+            Str(msg, "device") ?? "",
+            Str(msg, "driver") ?? "twain",
+            folder,
+            CleanPrefix(Str(msg, "prefix")),
+            msg["next"]?.GetValue<int>() ?? 1,
+            msg["digits"]?.GetValue<int>() ?? 3);
+        using var cancel = scanning = new CancellationTokenSource();
+        int count = 0;
+        var names = new List<string>();
+        try
+        {
+            Log.Write($"Scanning from {request.DeviceId} ({request.Driver}) into {folder}");
+            // Sent before the reply, in order: the page stops listening once
+            // the reply comes, so the last photo's message mustn't trail it
+            count = await Scanners.ScanAsync(request, Handle, name =>
+            {
+                count++;
+                names.Add(name);
+                if (InvokeRequired) Invoke(() => Post(new { type = "scanned", scan = id, name }));
+                else Post(new { type = "scanned", scan = id, name });
+            }, cancel.Token);
+            Reply(id, new { count, names });
+        }
+        catch (OperationCanceledException)
+        {
+            Reply(id, new { count, names, cancelled = true });
+        }
+        catch (Exception e)
+        {
+            Log.Write($"Scan failed: {e}");
+            Reply(id, new { count, names, error = ScanError(e) });
+        }
+        finally
+        {
+            scanning = null;
+        }
+    }
+
+    // Only characters a file name can have
+    static string CleanPrefix(string? prefix)
+    {
+        var bad = Path.GetInvalidFileNameChars();
+        return new string((prefix ?? "").Where(c => !bad.Contains(c)).ToArray()).TrimStart();
+    }
+
+    static string ScanError(Exception e) => e switch
+    {
+        NAPS2.Scan.Exceptions.DeviceNotFoundException => "The scanner isn't connected or is turned off",
+        NAPS2.Scan.Exceptions.DeviceBusyException => "The scanner is busy (is another program using it?)",
+        NAPS2.Scan.Exceptions.DeviceException d => d.Message,
+        DllNotFoundException => "TWAIN isn't set up on this PC (no TWAINDSM.dll)",
+        _ => e.Message
+    };
 
     void Reply(long id, object payload, CoreWebView2FileSystemHandle? handle = null)
     {

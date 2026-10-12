@@ -914,7 +914,7 @@ async function newPage(browser, url) {
             // Default pill: info, view, refresh, crop visible; rest in "More"
             const hc = document.getElementById('header-controls');
             const visible = [...hc.querySelectorAll('[data-hc]')]
-                .filter(b => !b.classList.contains('hc-extra') && !b.classList.contains('hidden'))
+                .filter(b => !b.classList.contains('hc-extra') && !b.classList.contains('hidden') && getComputedStyle(b).display !== 'none')
                 .map(b => b.dataset.hc);
             out.defaultMain = visible.join(',');
             const extras = [...hc.querySelectorAll('.hc-extra')].map(b => b.dataset.hc);

@@ -10,7 +10,9 @@ namespace JEditor;
 // WebView2, jEditor lists the photos, and a rotation is saved to disk. Then
 // the page asks the app to check each further step on disk (Check): a flag
 // is stored in jEditor's storage and nothing is added to the order; a
-// deleted photo is in the Recycle Bin; Ctrl+Z brings it back unchanged.
+// deleted photo is in the Recycle Bin; Ctrl+Z brings it back unchanged;
+// the test scanner's photos land in the order, named next in its sequence;
+// Browse lists the drives and counts the folder's photos as jEditor does.
 // Exits 0 on success, 1 on failure, 2 if it takes longer than 90 seconds.
 // The details are in the log.
 sealed class Smoke
@@ -40,12 +42,14 @@ sealed class Smoke
     public void Fail(string why) => Done(1, why);
 
     // A step the page took, checked on disk → (ok, what's wrong)
-    public (bool, string?) Check(string step, string? name)
+    public (bool, string?) Check(string step, JsonNode msg)
     {
+        var name = (string?)msg["name"];
         var path = name is null ? null : Path.Combine(dir, name.Replace('/', Path.DirectorySeparatorChar));
         (bool, string?) result = step switch
         {
             "stored" => Stored(),
+            "scanned" => Scanned(msg),
             "deleted" when path is not null => File.Exists(path) ? (false, $"{name} is still in the folder")
                 : !RecycleBin.HasBin(path) ? (false, "the test folder's drive has no Recycle Bin") : (true, null),
             "restored" when path is not null => !File.Exists(path) ? (false, $"{name} didn't come back")
@@ -73,6 +77,30 @@ sealed class Smoke
         return (false, $"no stored folder names {dir} (the path worked out from a photo was wrong?)");
     }
 
+    // Three test scans after scan_0001…0003: scan_0004…0006, whole JPEGs,
+    // nothing half-written left, and all three shown in jEditor
+    (bool, string?) Scanned(JsonNode msg)
+    {
+        var names = (msg["names"] as JsonArray ?? []).Select(n => (string?)n ?? "").ToList();
+        var expected = new[] { "scan_0004.jpg", "scan_0005.jpg", "scan_0006.jpg" };
+        if (!names.SequenceEqual(expected)) return (false, $"scanned as {string.Join(", ", names)}; expected {string.Join(", ", expected)}");
+        foreach (var n in names)
+        {
+            try
+            {
+                using var img = System.Drawing.Image.FromFile(Path.Combine(dir, n));
+                if (img.Width != 1500) return (false, $"{n} is {img.Width} wide");
+            }
+            catch (Exception e)
+            {
+                return (false, $"{n} isn't a readable photo: {e.Message}");
+            }
+        }
+        if (Directory.EnumerateFiles(dir, "*.part").Any()) return (false, "a half-written scan was left in the folder");
+        var shown = msg["shown"]?.GetValue<int>() ?? 0;
+        return shown == names.Count ? (true, null) : (false, $"jEditor shows {shown} of the {names.Count} scans");
+    }
+
     public async void Report(JsonNode msg)
     {
         var problems = new List<string>();
@@ -84,7 +112,7 @@ sealed class Smoke
         if (msg["steps"] is JsonObject steps)
         {
             Log.Write("Smoke steps: " + steps.ToJsonString());
-            foreach (var step in new[] { "stored", "recycled", "deleted", "restored" })
+            foreach (var step in new[] { "stored", "recycled", "deleted", "restored", "scanned", "places", "browsed" })
                 if (steps[step] is not JsonValue v || !v.TryGetValue<bool>(out var ok) || !ok) problems.Add($"{step}: {steps[step]?.ToJsonString() ?? "not reached"}");
             if (steps["error"] is not null) problems.Add("error: " + steps["error"]);
         }

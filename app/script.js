@@ -198,6 +198,8 @@ const app = {
         Recents.init(this);
         Stored.init(this);
         Updates.init(this);
+        Scan.init(this);
+        Places.init(this);
         Flags.init(this);
         Watch.init(this);
         this.initContextMenu();
@@ -336,6 +338,7 @@ const app = {
     // preferences too. Everything persists in localStorage under 'jeditor.ui'.
 
     HC_LABELS: {
+        scan: 'Scan',
         info: 'Info',
         view: 'Grid / single view',
         refresh: 'Rescan folder',
@@ -359,9 +362,9 @@ const app = {
 
     defaultUiPrefs() {
         return {
-            order: ['info', 'view', 'refresh', 'crop', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'whatsnew', 'customize'],
+            order: ['scan', 'info', 'view', 'refresh', 'crop', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'whatsnew', 'customize'],
             placement: { // 'main' | 'more' | 'hidden'
-                info: 'main', view: 'main', refresh: 'main', crop: 'main',
+                scan: 'main', info: 'main', view: 'main', refresh: 'main', crop: 'main',
                 fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', keys: 'more', whatsnew: 'more', customize: 'more'
             },
             vertical: false,
@@ -638,6 +641,7 @@ const app = {
         $('cust-scale-out').textContent = `${Math.round(this.uiPrefs.scale * 100)}%`;
 
         this.uiPrefs.order.forEach(key => {
+            if (key === 'scan' && !FolderCache.native()) return; // the Windows app only
             const li = document.createElement('li');
             li.draggable = true;
             li.dataset.key = key;
@@ -3598,7 +3602,7 @@ const app = {
 
         // The rename tool, folder dialogs, Settings and the alert/confirm
         // dialogs handle their own keys
-        if (Renamer.isOpen || Folders.isModalOpen() || Recents.isPromptOpen() || UI.isOpen() || Stored.isOpen()) return;
+        if (Renamer.isOpen || Folders.isModalOpen() || Recents.isPromptOpen() || UI.isOpen() || Stored.isOpen() || Scan.isOpen()) return;
 
         // What's New is modal: Esc closes it
         if (this.isWhatsNewOpen()) {

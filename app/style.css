@@ -3859,3 +3859,190 @@ html:not(.native) .native-only {
     color: var(--text-3);
     text-align: center;
 }
+
+/* Scan (the Windows app) */
+.dialog.scan-card {
+    width: min(480px, 100%);
+}
+
+.scan-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+}
+
+.scan-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: var(--fs-small);
+    color: var(--text-2);
+}
+
+.scan-row {
+    display: flex;
+    gap: var(--sp-2);
+    align-items: center;
+}
+
+.scan-row .field {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: var(--ctl-lg);
+}
+
+.scan-row .scan-num {
+    flex: 0 0 96px;
+}
+
+.scan-preview {
+    color: var(--text-3);
+}
+
+.scan-note {
+    margin-top: calc(-1 * var(--sp-2));
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.scan-note:empty {
+    display: none;
+}
+
+.scan-body .set-help {
+    margin: 0;
+}
+
+/* Browse: other orders, folders and drives (places.js, the Windows app) */
+.fr-tabs {
+    display: flex;
+    margin-bottom: var(--sp-2);
+}
+
+.fr-tabs button {
+    flex: 1;
+}
+
+.rail-browse {
+    display: none;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+}
+
+.folder-rail.browsing .rail-browse {
+    display: flex;
+}
+
+.folder-rail.browsing .folder-tree,
+.folder-rail.browsing .flag-list,
+.folder-rail.browsing .fr-hint,
+.folder-rail.browsing .fr-foot {
+    display: none !important;
+}
+
+.pl {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.pl .pl-row {
+    width: 100%;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+}
+
+.pl-icon {
+    display: flex;
+    flex-shrink: 0;
+    color: var(--text-2);
+}
+
+.pl-usb .pl-icon,
+.pl-current .pl-icon {
+    color: var(--accent-text);
+}
+
+.pl-current .fr-name {
+    font-weight: var(--fw-medium);
+}
+
+.pl-section {
+    margin: var(--sp-2) 0 2px;
+    padding: 0 var(--sp-2);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-2);
+}
+
+.pl-section:first-child {
+    margin-top: 0;
+}
+
+.pl-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+}
+
+.pl-where {
+    flex: 1;
+    min-width: 0;
+}
+
+.pl-name,
+.pl-path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pl-name {
+    font-weight: var(--fw-semibold);
+}
+
+.pl-path {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.pl-open {
+    flex-shrink: 0;
+    justify-content: space-between;
+    margin: var(--sp-2) 0;
+}
+
+.pl-photos {
+    font-weight: var(--fw-regular);
+    opacity: 0.85;
+}
+
+.pl-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.pl-empty {
+    margin: var(--sp-2);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.start-browse {
+    margin-top: var(--sp-6);
+}
+
+.start-browse .pl {
+    max-height: 40vh;
+}
+
+.start-browse .pl-section {
+    padding: 0 var(--sp-3);
+}

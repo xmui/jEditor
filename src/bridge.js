@@ -70,6 +70,10 @@
             reloadCss();
         } else if (msg.type === 'updateProgress' && onUpdateProgress) {
             onUpdateProgress(msg.received, msg.total);
+        } else if (msg.type === 'scanned' && onScanned) {
+            onScanned(msg.name);
+        } else if (msg.type === 'drivesChanged') {
+            dispatchEvent(new Event('jeditor-drives')); // places.js
         }
     });
 
@@ -164,6 +168,7 @@
 
     // ---- What the app does for jEditor ----
     let onUpdateProgress = null;
+    let onScanned = null;
     window.JEditorNative = {
         // jEditor's storage on this PC: a folder handle, one subfolder per
         // order (see app/folder-cache.js)
@@ -195,6 +200,43 @@
         // → { current, tag, version, notes, size, newer }
         async checkUpdate() {
             return (await answer('checkUpdate')).msg;
+        },
+        // The drives on this PC (USB ones too) and the usual folders →
+        // { drives: [{ path, name, kind: usb|disk|network|cd, label, total, free }], home: [{ name, path }] }.
+        // A 'jeditor-drives' event on window says a drive came or went.
+        async places() {
+            return (await answer('places')).msg;
+        },
+        // A folder's folders → { path, name, parent, folders: [{ name, path }], photos, more }
+        async listDir(path) {
+            return (await answer('listDir', { path })).msg;
+        },
+        // Scanners on this PC → { devices: [{ id, name, driver }], problems: [text] }
+        async scanners() {
+            return (await answer('scanners')).msg;
+        },
+        // Scans into a folder of the order (its path), named prefix + next…
+        // ({ device, driver, folder, prefix, next, digits }). The scanner's
+        // own window opens; scanned(name) as each photo lands.
+        // → { count, names, cancelled? }; throws if the scan failed (with
+        // the names saved before it did)
+        async scan(options, scanned) {
+            onScanned = scanned || null;
+            try {
+                const { msg } = await request('scan', options);
+                if (msg.error) {
+                    const e = new Error(msg.error);
+                    e.count = msg.count || 0;
+                    e.names = msg.names || [];
+                    throw e;
+                }
+                return { count: msg.count || 0, names: msg.names || [], cancelled: !!msg.cancelled };
+            } finally {
+                onScanned = null;
+            }
+        },
+        cancelScan() {
+            post({ type: 'cancelScan' });
         },
         // Downloads and runs the newest setup; jEditor then closes and the
         // setup opens it again. progress(received, total) as it downloads.
@@ -268,6 +310,7 @@
             const { msg } = await request('smokeCheck', { step, ...data });
             steps[step] = msg.ok ? true : (msg.detail || 'failed');
         };
+        const listed = a.files.length;
         const file = a.files[0];
         const rotated = file ? await a.rotateImage(file, 90) !== false : false;
         try {
@@ -284,6 +327,30 @@
                 await a.undo();
                 await check('restored', { name });
             }
+            // Scanning, with the app's test scanner: three photos into the
+            // order, named next in its sequence, shown as they land
+            if (typeof Scan !== 'undefined') {
+                const { devices, problems } = await window.JEditorNative.scanners();
+                steps.scanners = devices.map(d => `${d.name} (${d.driver})`).concat(problems || []).join('; ');
+                const test = devices.find(d => d.driver === 'test');
+                if (!test) {
+                    steps.scanned = 'no test scanner';
+                } else {
+                    const r = await Scan.run({ device: test.id, driver: test.driver, folder: '' });
+                    const shown = () => r.names.filter(n => a.files.some(f => (f.relPath || f.name) === n)).length;
+                    for (let i = 0; i < 75 && shown() < r.names.length; i++) await new Promise(res => setTimeout(res, 200));
+                    await check('scanned', { names: r.names, shown: shown() });
+                }
+            }
+            // Browse: the drives, and this folder's photos counted on disk
+            {
+                const places = await window.JEditorNative.places();
+                steps.places = places.drives.length ? true : 'no drives listed';
+                const here = await window.JEditorNative.folderPath(a.dirHandle);
+                const l = here ? await window.JEditorNative.listDir(here) : null;
+                const top = a.files.filter(f => !(f.relPath || '').includes('/')).length;
+                steps.browsed = !l ? 'no path for the folder' : l.photos === top ? true : `Browse counts ${l.photos} photos, jEditor shows ${top}`;
+            }
             try {
                 const u = await window.JEditorNative.checkUpdate();
                 steps.update = `latest ${u.tag}, this is ${u.current}${u.newer ? ' (newer available)' : ''}`;
@@ -293,7 +360,7 @@
         } catch (e) {
             steps.error = String(e && e.message || e);
         }
-        post({ type: 'smoke', ok: true, count: a.files.length, rotated, file: file ? file.name : null, steps, errors });
+        post({ type: 'smoke', ok: true, count: listed, rotated, file: file ? file.name : null, steps, errors });
     }
 
     // ---- Dev mode (jEditor.exe --ui <dir>) ----

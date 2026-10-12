@@ -38,6 +38,15 @@ function check(name, ok, detail = '') {
 // D:\Orders\<name>; jEditor's storage is OPFS "appdata"; the Recycle Bin is
 // OPFS "bin". window.__noBin makes the drive have no Recycle Bin.
 const FAKE_NATIVE = `
+    const BS = String.fromCharCode(92);
+    window.__drives = [
+        { path: 'C:' + BS, name: 'Local disk (C:)', kind: 'disk', total: 1e12, free: 5e11 },
+        { path: 'E:' + BS, name: 'USB drive (E:)', kind: 'usb', total: 64e9, free: 1e9 }
+    ];
+    window.__tree = {
+        ['E:' + BS]: { path: 'E:' + BS, name: 'E:' + BS, parent: null, folders: [{ name: 'Order 10', path: 'E:' + BS + 'Order 10' }, { name: 'Order 9', path: 'E:' + BS + 'Order 9' }], photos: 0, more: false },
+        ['E:' + BS + 'Order 9']: { path: 'E:' + BS + 'Order 9', name: 'Order 9', parent: 'E:' + BS, folders: [], photos: 12, more: false }
+    };
     window.__orderRoot = 'D:\\\\Orders';
     window.__calls = [];
     const opfs = () => navigator.storage.getDirectory();
@@ -100,6 +109,39 @@ const FAKE_NATIVE = `
                 out.push({ ok: true });
             }
             return out;
+        },
+        async scanners() {
+            window.__calls.push('scanners');
+            return window.__scanners || { devices: [{ id: 'EPSON FF-680W', name: 'EPSON FF-680W', driver: 'twain' }, { id: 'wia-1', name: 'OpticBook A300', driver: 'wia' }], problems: [] };
+        },
+        // The app's side: pages into the folder at that path, each reported as it lands
+        async scan(o, scanned) {
+            window.__scanReq = o;
+            const root = window.__orderRoot + '\\\\';
+            let dir = await sub('disk');
+            for (const p of o.folder.slice(root.length).split('\\\\')) dir = await dir.getDirectoryHandle(p);
+            const pages = window.__scanPages || 2;
+            for (let i = 0; i < pages; i++) {
+                const name = o.prefix + String(o.next + i).padStart(o.digits, '0') + '.jpg';
+                const c = document.createElement('canvas');
+                c.width = 80; c.height = 60;
+                c.getContext('2d').fillRect(0, 0, 5 + i, 5 + o.next);
+                const blob = await new Promise(r => c.toBlob(r, 'image/jpeg'));
+                const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
+                await w.write(blob);
+                await w.close();
+                scanned(name);
+            }
+            if (window.__scanError) throw new Error(window.__scanError);
+            return { count: pages };
+        },
+        cancelScan() { },
+        // Drives and folders: paths use BS (a backslash) to stay readable here
+        async places() { return { drives: window.__drives, home: [{ name: 'Desktop', path: 'C:' + BS + 'Users' + BS + 'lab' + BS + 'Desktop' }] }; },
+        async listDir(p) {
+            const t = window.__tree[p];
+            if (!t) throw new Error('not there');
+            return t;
         },
         async openPath(p) { window.__opened = p; return true; },
         async exists(paths) { return paths.map(p => !(window.__missing || []).includes(p)); },
@@ -485,6 +527,147 @@ async function newPage(context, baseUrl) {
         check('Update downloads, showing progress, then installs', r.installed && /50%/.test(r.progress) && /Installing the update/.test(r.task), JSON.stringify([r.installed, r.progress, r.task]));
         check('no automatic check when it\'s turned off', r.noAuto);
         check('updates suite: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('native: scanning into the order');
+    {
+        const context = await browser.newContext();
+        const { page, errors } = await newPage(context, baseUrl);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const $ = (id) => document.getElementById(id);
+            const dir = await makeOrder('Scan Order', 3);
+            await openOrder(dir);
+            out.button = getComputedStyle($('btn-scan')).display !== 'none';
+            $('btn-scan').click();
+            await wait(() => !$('scan-device').disabled);
+            out.devices = [...$('scan-device').options].map(o => o.textContent).join(', ');
+            out.folder = $('scan-folder').value;
+            out.folders = [...$('scan-folder').options].map(o => o.textContent).join(', ');
+            out.names = [$('scan-prefix').value, $('scan-next').value, $('scan-preview').textContent];
+            const folder = $('scan-folder');
+            folder.value = 'Ceremony';
+            folder.dispatchEvent(new Event('change'));
+            out.cerNames = [$('scan-prefix').value, $('scan-next').value];
+            folder.value = '';
+            folder.dispatchEvent(new Event('change'));
+            $('scan-go').click();
+            out.closed = !Scan.isOpen();
+            await wait(() => app.files.some(f => f.name === 'photo5.jpg'));
+            out.req = window.__scanReq;
+            out.files = app.files.map(f => f.relPath || f.name).sort().join(',');
+            await wait(() => /Scanned 2 photos/.test(toasts()));
+            out.toast = toasts();
+
+            // Scan more: the names carry on
+            window.__scanPages = 1;
+            out.more = (await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '' })).names.join(',');
+
+            // The scanner stops with an error: says so, and what was saved
+            window.__scanError = 'The scanner is busy (is another program using it?)';
+            await wait(() => app.files.some(f => f.name === 'photo6.jpg'));
+            await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '' }).catch(e => { out.err = e.message; });
+            await wait(() => UI.isOpen());
+            out.alert = $('uid-title').textContent + ' — ' + $('uid-text').textContent;
+            $('uid-ok').click();
+            out.running = Scan.running;
+            window.__scanError = null;
+
+            // No scanners: says what to check
+            window.__scanners = { devices: [], problems: ['TWAIN isn\'t set up on this PC (no TWAINDSM.dll), so only WIA scanners are listed'] };
+            Scan.devices = null;
+            await Scan.open();
+            out.none = $('scan-device').textContent + ' | ' + $('scan-problems').textContent;
+            out.noneDisabled = $('scan-go').disabled;
+            Scan.close();
+            return out;
+        });
+        check('Scan is in the toolbar', r.button);
+        check('it lists the scanners, WIA ones marked', r.devices === 'EPSON FF-680W, OpticBook A300 (WIA)', r.devices);
+        check('it offers the order\'s folders, starting with the one with the most photos', r.folder === '' && r.folders === 'Scan Order, Ceremony', JSON.stringify([r.folder, r.folders]));
+        check('names follow on from the folder\'s photos', r.names[0] === 'photo' && r.names[1] === '4' && r.names[2] === 'photo4.jpg, photo5.jpg, …', JSON.stringify(r.names));
+        check('... each folder its own sequence', r.cerNames.join() === 'c,2', r.cerNames.join());
+        check('Scan asks the app to scan into the order\'s folder, by path', r.closed && r.req && r.req.folder === 'D:\\Orders\\Scan Order' && r.req.device === 'EPSON FF-680W' && r.req.driver === 'twain' && r.req.prefix === 'photo' && r.req.next === 4, JSON.stringify(r.req));
+        check('scanned photos show up in the order', r.files === 'Ceremony/c1.jpg,photo1.jpg,photo2.jpg,photo3.jpg,photo4.jpg,photo5.jpg', r.files);
+        check('a message says how many, with Scan more', /Scanned 2 photos into Scan Order/.test(r.toast) && /Scan more/.test(r.toast), r.toast);
+        check('scanning again carries on the names', r.more === 'photo6.jpg', r.more);
+        check('a scan that fails says why, and what was saved', /busy/.test(r.err || '') && /didn't finish/.test(r.alert) && /1 photo was saved/.test(r.alert) && !r.running, JSON.stringify([r.err, r.alert]));
+        check('no scanners: says so and what to check', /No scanners found/.test(r.none) && /plugged in/.test(r.none) && /TWAINDSM/.test(r.none) && r.noneDisabled, r.none);
+        check('scan suite: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('native: Browse (other orders, folders, drives)');
+    {
+        const context = await browser.newContext();
+        const { page, errors } = await newPage(context, baseUrl);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const $ = (id) => document.getElementById(id);
+            const rows = (el) => [...el.querySelectorAll('.pl-row')].map(b => b.textContent.trim());
+            // The start screen: drives (USB first) and folders
+            await Places.start.render();
+            out.start = rows($('start-browse-list'));
+            out.startShown = getComputedStyle($('start-browse')).display !== 'none';
+            // Into the USB drive, then an order on it
+            $('start-browse-list').querySelector('.pl-usb').click();
+            await wait(() => $('start-browse-list').querySelector('.pl-open'));
+            out.usb = rows($('start-browse-list'));
+            [...$('start-browse-list').querySelectorAll('.pl-row')].find(b => /Order 9/.test(b.textContent)).click();
+            await wait(() => /12 photos/.test($('start-browse-list').textContent));
+            out.order9 = $('start-browse-list').querySelector('.pl-open').textContent;
+            $('start-browse-list').querySelector('.pl-open').click();
+            await wait(() => window.__opened);
+            out.opened = window.__opened;
+            // Up goes back to the drive
+            $('start-browse-list').querySelector('.pl-up').click();
+            await wait(() => !/12 photos/.test($('start-browse-list').textContent));
+            out.up = $('start-browse-list').querySelector('.pl-name').textContent;
+
+            // With an order open: the folder list's Browse tab
+            const dir = await makeOrder('Browse Order', 2);
+            await openOrder(dir);
+            await Recents.saving;
+            if (!Folders.railOpen()) Folders.toggleRail();
+            out.tabs = getComputedStyle(document.querySelector('.fr-tabs')).display !== 'none';
+            $('fr-tab-browse').click();
+            await wait(() => $('rail-browse').querySelector('.pl-row'));
+            out.railBrowsing = $('folder-rail').classList.contains('browsing') && getComputedStyle($('folder-tree')).display === 'none';
+            out.rail = rows($('rail-browse'));
+            out.sections = [...$('rail-browse').querySelectorAll('.pl-section')].map(s => s.textContent);
+            $('fr-tab-order').click();
+            out.backToOrder = !$('folder-rail').classList.contains('browsing') && getComputedStyle($('folder-tree')).display !== 'none';
+
+            // A USB drive plugged in: offered, and Browse shows it
+            window.__drives = window.__drives.concat([{ path: 'F:' + String.fromCharCode(92), name: 'Backup (F:)', kind: 'usb', total: 32e9, free: 2e9 }]);
+            window.__tree['F:' + String.fromCharCode(92)] = { path: 'F:' + String.fromCharCode(92), name: 'F:' + String.fromCharCode(92), parent: null, folders: [{ name: 'Smith', path: 'F:' + String.fromCharCode(92) + 'Smith' }], photos: 0, more: false };
+            dispatchEvent(new Event('jeditor-drives'));
+            await wait(() => /Backup \(F:\) plugged in/.test(toasts()));
+            out.toast = toasts();
+            const action = [...document.querySelectorAll('.toast button')].find(b => b.textContent === 'Browse');
+            action.click();
+            await wait(() => /Smith/.test($('rail-browse').textContent));
+            out.shown = $('folder-rail').classList.contains('browsing') && $('rail-browse').querySelector('.pl-name').textContent;
+            // ... and taken out while looking at it: back to the top
+            window.__drives = window.__drives.filter(d => d.kind !== 'usb' || d.name !== 'Backup (F:)');
+            dispatchEvent(new Event('jeditor-drives'));
+            await wait(() => !$('rail-browse').querySelector('.pl-up'));
+            out.afterRemoval = rows($('rail-browse')).join(' | ');
+            return out;
+        });
+        check('the start screen lists drives, USB first, and folders', r.startShown && r.start[0].startsWith('USB drive (E:)') && /Local disk \(C:\)/.test(r.start.join()) && /Desktop/.test(r.start.join()), JSON.stringify(r.start));
+        check('a drive opens to its folders, in number order', r.usb.join() === 'Order 9,Order 10', r.usb.join());
+        check('a folder says how many photos are in it', /Open as order/.test(r.order9) && /12 photos/.test(r.order9), r.order9);
+        check('Open as order opens it', r.opened === 'E:\\Order 9', r.opened);
+        check('Up goes back a folder, to the drive by its name', r.up === 'USB drive (E:)', r.up);
+        check('the folder list has This order and Browse', r.tabs && r.railBrowsing, JSON.stringify([r.tabs, r.railBrowsing]));
+        check('Browse lists recent orders (the open one marked), drives and folders', r.sections.join() === 'Recent orders,Drives,Folders' && /Browse Order\s*Open/.test(r.rail[0]), JSON.stringify(r.rail));
+        check('This order goes back to the folders', r.backToOrder);
+        check('a USB drive plugged in is offered', /Backup \(F:\) plugged in/.test(r.toast), r.toast);
+        check('... and Browse shows what\'s on it', r.shown === 'Backup (F:)', String(r.shown));
+        check('a drive taken out while looking at it goes back to the top', !/Backup/.test(r.afterRemoval) && /USB drive \(E:\)/.test(r.afterRemoval), r.afterRemoval);
+        check('browse suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
 
