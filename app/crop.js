@@ -231,6 +231,7 @@ const CropEditor = {
         this.history = [];
         this.future = [];
         this.root.classList.remove('hidden');
+        this.colors = this.themeColors();
         this.el('crop-file').textContent = file.name;
         this.el('crop-dims').textContent = 'Loading…';
         this.updateButtons();
@@ -773,12 +774,29 @@ const CropEditor = {
         this.el('crop-dims').textContent = text;
     },
 
+    // The canvas can't use CSS variables: resolve the ones it draws with
+    // (the colour behind photos and the accent) once per opening
+    themeColors() {
+        const probe = document.createElement('span');
+        probe.style.display = 'none';
+        this.root.appendChild(probe);
+        const read = (v, fallback) => {
+            probe.style.color = fallback;
+            probe.style.color = `var(${v})`;
+            return getComputedStyle(probe).color || fallback;
+        };
+        const colors = { bg: read('--surround', '#0b0b0b'), accent: read('--accent-text', '#7aa7ff') };
+        probe.remove();
+        return colors;
+    },
+
     render() {
         if (!this.isOpen || !this.canvas) return;
+        const colors = this.colors || { bg: '#0b0b0b', accent: '#7aa7ff' };
         const ctx = this.ctx;
         const dpr = window.devicePixelRatio || 1;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.fillStyle = '#0b0b0c';
+        ctx.fillStyle = colors.bg;
         ctx.fillRect(0, 0, this.cssW, this.cssH);
         if (!this.ready) return;
 
@@ -859,7 +877,7 @@ const CropEditor = {
         if (this.drag && this.drag.mode === 'level') {
             const p = this.toScreen(this.drag.a.x, this.drag.a.y, v);
             const q = this.toScreen(this.drag.b.x, this.drag.b.y, v);
-            ctx.strokeStyle = '#facc15';
+            ctx.strokeStyle = colors.accent;
             ctx.lineWidth = 2;
             ctx.setLineDash([6, 4]);
             ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
@@ -867,7 +885,7 @@ const CropEditor = {
             const t = this.levelAngle(this.drag.a, this.drag.b);
             if (t !== null) {
                 ctx.font = '600 12px system-ui, sans-serif';
-                ctx.fillStyle = '#facc15';
+                ctx.fillStyle = colors.accent;
                 ctx.fillText(`${t > 0 ? '+' : ''}${t.toFixed(1)}°`, q.x + 10, q.y - 10);
             }
         }

@@ -1,11 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark" data-density="compact" data-glass="rich" data-surround="auto">
 
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>jEditor</title>
-    <meta name="description" content="A minimalist, high-performance image editor with bulk rotation and cropping.">
-    <meta name="theme-color" content="#0c0c0c">
+    <meta name="description" content="Rotate, crop, straighten, flag and sort folders of scanned photos. Edits the files on your disk; nothing is uploaded.">
+    <meta name="theme-color" content="#0b0b0b">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="manifest.json">
@@ -23,239 +24,137 @@
     <script src="flags.js"></script>
     <script src="watch.js"></script>
     <script src="recents.js"></script>
+    <script src="ui.js"></script>
+    <link rel="stylesheet" href="tokens.css">
     <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
     <div id="app">
-        <!-- Empty State / Drop Zone -->
+        <!-- Start screen / drop zone -->
         <div id="drop-zone" class="drop-zone">
             <div class="drop-content">
-                <img src="icon.png"
-                    style="width: 80px; height: 80px; border-radius: 16px; margin-bottom: 1.5rem; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
-                <h1 id="app-title">jEditor</h1>
-                <button id="btn-browse-folder" class="browse-btn">Open Folder</button>
-                <p class="drop-hint">or drag and drop images here</p>
+                <img class="start-icon" src="icon.png" alt="" width="72" height="72">
+                <h1 id="app-title" class="start-title">jEditor</h1>
+                <p class="start-tagline">Rotate, crop and sort scan orders. Edits the files on your disk.</p>
+                <button id="btn-browse-folder" class="btn primary lg start-open">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
+                    Open folder
+                </button>
+                <p class="drop-hint">or drop a folder anywhere in this window</p>
                 <!-- Recent orders (recents.js) -->
                 <div id="recents" class="recents hidden">
                     <h2 class="recents-title">Recent</h2>
                     <ul id="recent-list" class="recent-list"></ul>
                 </div>
-                <p class="drop-hint">Press <kbd>?</kbd> for keyboard shortcuts</p>
-                <p class="drop-hint"><button id="btn-whatsnew-start" class="link-btn">What's new</button></p>
+                <div class="start-foot">
+                    <button id="btn-shortcuts-start" class="link-btn">Keyboard shortcuts <kbd>?</kbd></button>
+                    <span class="start-dot" aria-hidden="true"></span>
+                    <button id="btn-settings-start" class="link-btn">Settings</button>
+                    <span class="start-dot" aria-hidden="true"></span>
+                    <button id="btn-whatsnew-start" class="link-btn">What's new</button>
+                </div>
             </div>
         </div>
 
         <!-- Task pill: spinner + current task; hover reveals every active task -->
-        <div id="loading-indicator" class="task-pill hidden">
-            <div class="loader-spinner"></div>
-            <h2 id="loading-text">Processing...</h2>
+        <div id="loading-indicator" class="task-pill hidden" role="status" aria-live="polite">
+            <div class="loader-spinner" aria-hidden="true"></div>
+            <h2 id="loading-text">Working…</h2>
             <div id="task-list" class="task-list"></div>
         </div>
 
-        <!-- Main Interface (Hidden initially) -->
+        <!-- Main interface (hidden until a folder is open) -->
         <div id="main-interface" class="interface hidden">
 
-            <!-- Top Bar -->
+            <!-- Top bar -->
             <header>
                 <div class="file-info">
-                    <span id="file-name">filename.jpg</span>
+                    <button id="file-name" class="file-name" title="Rename (F2)">
+                        <span id="file-name-text">filename.jpg</span>
+                        <svg class="i file-name-edit" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg>
+                    </button>
                     <span id="file-count">1 / 50</span>
                     <div class="sort-control">
-                        <select id="sort-mode" title="Sort By">
-                            <option value="name_asc">Name (A-Z)</option>
-                            <option value="name_desc">Name (Z-A)</option>
-                            <option value="date_desc">Newest Modified</option>
-                            <option value="date_asc">Oldest Modified</option>
-                            <option value="taken_desc">Newest Taken</option>
-                            <option value="taken_asc">Oldest Taken</option>
-                            <option value="size_desc">Largest First</option>
-                            <option value="size_asc">Smallest First</option>
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="M11 4h10"/><path d="M11 8h7"/><path d="M11 12h4"/></svg>
+                        <select id="sort-mode" aria-label="Sort by">
+                            <option value="name_asc">Name (A–Z)</option>
+                            <option value="name_desc">Name (Z–A)</option>
+                            <option value="date_desc">Newest modified</option>
+                            <option value="date_asc">Oldest modified</option>
+                            <option value="taken_desc">Newest taken</option>
+                            <option value="taken_asc">Oldest taken</option>
+                            <option value="size_desc">Largest first</option>
+                            <option value="size_asc">Smallest first</option>
                         </select>
                     </div>
                 </div>
-                <!-- View Toggle & Actions.
-                     Order/visibility is driven by uiPrefs (Customize panel);
+                <!-- View toggle & actions.
+                     Order/visibility is driven by uiPrefs (Settings → Header buttons);
                      data-hc names each control. Default main row:
                      info, view, refresh, crop — the rest live in "More". -->
-                <div class="header-controls" id="header-controls">
-                    <button id="btn-info" data-hc="info" title="File Info (I)">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="10" />
-                            <line x1="12" y1="16" x2="12" y2="11.5" />
-                            <circle cx="12" cy="8" r="0.5" fill="currentColor" />
-                        </svg>
+                <div class="header-controls toolbar" id="header-controls" role="toolbar" aria-label="Photo actions">
+                    <button id="btn-info" data-hc="info" class="tb-btn" title="File info (I)" aria-label="File info">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 16.5V11.5"/><circle cx="12" cy="8" r="0.6" fill="currentColor"/></svg>
                     </button>
-                    <button id="btn-toggle-view" data-hc="view" class="icon-btn" title="Toggle View (Space)">
-                        <svg class="icon-grid" width="20" height="20" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2">
-                            <rect x="3" y="3" width="7" height="7"></rect>
-                            <rect x="14" y="3" width="7" height="7"></rect>
-                            <rect x="14" y="14" width="7" height="7"></rect>
-                            <rect x="3" y="14" width="7" height="7"></rect>
-                        </svg>
-                        <svg class="icon-single hidden" width="20" height="20" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2">
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                        </svg>
+                    <button id="btn-toggle-view" data-hc="view" class="tb-btn icon-btn" title="Grid or single view (Space)" aria-label="Switch between grid and single view">
+                        <svg class="i icon-grid" viewBox="0 0 24 24" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="14" rx="1.5"/><rect width="7" height="7" x="3" y="14" rx="1.5"/></svg>
+                        <svg class="i icon-single hidden" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
                     </button>
-                    <button id="btn-refresh" data-hc="refresh" class="icon-btn" title="Refresh Folder (R)">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <path d="M23 4v6h-6"></path>
-                            <path d="M1 20v-6h6"></path>
-                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                        </svg>
+                    <button id="btn-refresh" data-hc="refresh" class="tb-btn icon-btn" title="Rescan folder (R)" aria-label="Rescan folder">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
                     </button>
-                    <button id="btn-crop" data-hc="crop" title="Crop Image (C)">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"></path>
-                            <path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"></path>
-                        </svg>
+                    <button id="btn-crop" data-hc="crop" class="tb-btn" title="Crop and straighten (C)" aria-label="Crop and straighten">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
                     </button>
-                    <button id="btn-toggle-fit" data-hc="fit" class="icon-btn" title="Toggle Thumbnail Fit">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <rect x="3" y="3" width="18" height="18" rx="2" />
-                            <circle cx="12" cy="12" r="3" />
-                        </svg>
+                    <button id="btn-toggle-fit" data-hc="fit" class="tb-btn icon-btn" title="Thumbnails: fit or fill" aria-label="Thumbnails: fit or fill">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><rect width="12" height="8" x="6" y="8" rx="1"/></svg>
                     </button>
-                    <button id="btn-toggle-strip" data-hc="strip" title="Toggle Film Strip">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                            <line x1="3" y1="9" x2="21" y2="9" />
-                            <line x1="9" y1="21" x2="9" y2="9" />
-                            <line x1="15" y1="21" x2="15" y2="9" />
-                        </svg>
+                    <button id="btn-toggle-strip" data-hc="strip" class="tb-btn" title="Film strip" aria-label="Show or hide the film strip" aria-pressed="true">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 15h18"/><path d="M9 15v6"/><path d="M15 15v6"/></svg>
                     </button>
-                    <button id="btn-fullscreen" data-hc="fullscreen" title="Fullscreen (F)">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"></path>
-                        </svg>
+                    <button id="btn-fullscreen" data-hc="fullscreen" class="tb-btn" title="Full screen (F)" aria-label="Full screen">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
                     </button>
-                    <button id="btn-dupes" data-hc="dupes" title="Find Duplicates (D) — work in progress">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="8" y="8" width="13" height="13" rx="2" />
-                            <path d="M4 16V5a2 2 0 0 1 2-2h11" />
-                        </svg>
+                    <button id="btn-dupes" data-hc="dupes" class="tb-btn" title="Find duplicates (D) — work in progress" aria-label="Find duplicates">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="13" height="13" x="8" y="8" rx="2"/><path d="M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2"/></svg>
                     </button>
-                    <button id="btn-shortcuts" data-hc="keys" title="Keyboard Shortcuts (?)">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="2" y="6" width="20" height="12" rx="2" />
-                            <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" />
-                        </svg>
+                    <button id="btn-shortcuts" data-hc="keys" class="tb-btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M8 13h.01M12 13h.01M16 13h.01M7 16.5h10"/></svg>
                     </button>
-                    <button id="btn-whatsnew" data-hc="whatsnew" title="What's New">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4z" />
-                            <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" />
-                        </svg>
+                    <button id="btn-whatsnew" data-hc="whatsnew" class="tb-btn" title="What's new" aria-label="What's new">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3.5 11.6 8a2 2 0 0 0 1.3 1.3L17.5 11l-4.6 1.6a2 2 0 0 0-1.3 1.3L10 18.5 8.4 14a2 2 0 0 0-1.3-1.3L2.5 11 7 9.4A2 2 0 0 0 8.4 8z"/><path d="M19 3v4M17 5h4M19 16v4M17 18h4"/></svg>
                     </button>
-                    <button id="btn-customize" data-hc="customize" title="Customize Controls">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <line x1="4" y1="21" x2="4" y2="14"></line>
-                            <line x1="4" y1="10" x2="4" y2="3"></line>
-                            <line x1="12" y1="21" x2="12" y2="12"></line>
-                            <line x1="12" y1="8" x2="12" y2="3"></line>
-                            <line x1="20" y1="21" x2="20" y2="16"></line>
-                            <line x1="20" y1="12" x2="20" y2="3"></line>
-                            <line x1="1" y1="14" x2="7" y2="14"></line>
-                            <line x1="9" y1="8" x2="15" y2="8"></line>
-                            <line x1="17" y1="16" x2="23" y2="16"></line>
-                        </svg>
+                    <button id="btn-customize" data-hc="customize" class="tb-btn" title="Settings (Ctrl+,)" aria-label="Settings">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
                     </button>
-                    <button id="btn-more" class="hc-more" title="More controls">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                            <circle cx="5" cy="12" r="1.8" />
-                            <circle cx="12" cy="12" r="1.8" />
-                            <circle cx="19" cy="12" r="1.8" />
-                        </svg>
+                    <button id="btn-more" class="tb-btn hc-more" title="More" aria-label="More actions" aria-expanded="false">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="19" cy="12" r="1.25" fill="currentColor"/></svg>
                     </button>
-                </div>
-
-                <!-- Customize Controls panel -->
-                <div id="customize-panel" class="customize-panel hidden">
-                    <h3>Customize Controls</h3>
-                    <ul id="customize-list"></ul>
-                    <div class="cust-row">
-                        <label for="cust-vertical">Vertical pill</label>
-                        <input type="checkbox" id="cust-vertical">
-                    </div>
-                    <div class="cust-row cust-accent-row">
-                        <span>Accent colour</span>
-                        <div id="cust-accent" class="accent-swatches" role="radiogroup" aria-label="Accent colour">
-                            <button data-accent="#2563eb" title="Blue" style="--sw:#2563eb"></button>
-                            <button data-accent="#7c3aed" title="Violet" style="--sw:#7c3aed"></button>
-                            <button data-accent="#db2777" title="Pink" style="--sw:#db2777"></button>
-                            <button data-accent="#dc2626" title="Red" style="--sw:#dc2626"></button>
-                            <button data-accent="#ea580c" title="Orange" style="--sw:#ea580c"></button>
-                            <button data-accent="#16a34a" title="Green" style="--sw:#16a34a"></button>
-                            <button data-accent="#0d9488" title="Teal" style="--sw:#0d9488"></button>
-                            <label class="accent-custom" title="Any colour">
-                                <input type="color" id="cust-accent-pick" value="#2563eb" aria-label="Pick any accent colour">
-                            </label>
-                        </div>
-                    </div>
-                    <div class="cust-row">
-                        <label for="cust-scale">UI size</label>
-                        <input type="range" id="cust-scale" min="0.8" max="1.6" step="0.1" value="1">
-                    </div>
-                    <div class="cust-row" title="Thumbnails and duplicate data are saved in a .jeditor folder inside the photo folder, so any computer that opens it later starts fast">
-                        <label for="cust-folder-cache">Save cache in the folder (.jeditor)</label>
-                        <input type="checkbox" id="cust-folder-cache">
-                    </div>
-                    <div class="cust-row" title="New photos (a scanner saving into the order, say), photos removed elsewhere and photos edited in another program show up on their own">
-                        <label for="cust-auto-check">Watch the folder for changes</label>
-                        <input type="checkbox" id="cust-auto-check">
-                    </div>
-                    <button id="cust-cleanup" title="Empty the trash and remove the cache from the open folder">Clean up this folder…</button>
-                    <button id="cust-shortcuts">Keyboard shortcuts…</button>
-                    <button id="cust-reset">Reset layout</button>
                 </div>
             </header>
 
-            <!-- Main Image Area -->
+            <!-- Main image area -->
             <main id="main-view">
                 <div id="image-container" class="image-contain hidden">
-                    <img id="current-image" src="" alt="Current Image">
+                    <img id="current-image" src="" alt="">
                     <div id="zoom-level" class="zoom-level" aria-live="polite"></div>
 
-
-
-                    <!-- Controls (Floating) -->
-                    <div class="controls">
-                        <button id="btn-prev" title="Previous (Left Arrow)">
-                            <svg viewBox="0 0 24 24" width="24" height="24">
-                                <path fill="currentColor"
-                                    d="M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z" />
-                            </svg>
+                    <!-- Floating controls -->
+                    <div class="controls toolbar" role="toolbar" aria-label="Navigate and rotate">
+                        <button id="btn-prev" class="tb-btn" title="Previous (←)" aria-label="Previous photo">
+                            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
                         </button>
-                        <button id="btn-rotate-left" title="Rotate Left">
-                            <svg viewBox="0 0 24 24" width="24" height="24">
-                                <path fill="currentColor"
-                                    d="M13,3A9,9 0 0,0 4,12H1L4.89,15.89L4.96,16.03L9,12H6A7,7 0 0,1 13,5A7,7 0 0,1 20,12A7,7 0 0,1 13,19C11.07,19 9.32,18.2 8,16.9L6.58,18.32C8.24,19.97 10.5,21 13,21A9,9 0 0,0 22,12A9,9 0 0,0 13,3Z" />
-                            </svg>
+                        <span class="tb-sep" aria-hidden="true"></span>
+                        <button id="btn-rotate-left" class="tb-btn" title="Rotate left ([)" aria-label="Rotate left">
+                            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                         </button>
-
-                        <button id="btn-rotate-right" title="Rotate Right">
-                            <svg viewBox="0 0 24 24" width="24" height="24">
-                                <path fill="currentColor"
-                                    d="M16.89,15.89L23,12H20A9,9 0 0,0 11,3A9,9 0 0,0 2,12A9,9 0 0,0 11,21C13.5,21 15.76,19.97 17.42,18.32L16,16.9C14.68,18.2 12.93,19 11,19A7,7 0 0,1 4,12A7,7 0 0,1 11,5A7,7 0 0,1 18,12H15L16.89,15.89Z" />
-                            </svg>
+                        <button id="btn-rotate-right" class="tb-btn" title="Rotate right (])" aria-label="Rotate right">
+                            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
                         </button>
-                        <button id="btn-next" title="Next (Right Arrow)">
-                            <svg viewBox="0 0 24 24" width="24" height="24">
-                                <path fill="currentColor"
-                                    d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z" />
-                            </svg>
+                        <span class="tb-sep" aria-hidden="true"></span>
+                        <button id="btn-next" class="tb-btn" title="Next (→)" aria-label="Next photo">
+                            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
                         </button>
                     </div>
                 </div>
@@ -264,27 +163,21 @@
             <!-- Folders (folders.js): a pill top left with the folder list
                  toggle, All photos / Folders and the breadcrumb, and the
                  folder list on the left. Grid view only. -->
-            <nav id="folder-bar" class="folder-bar hidden" aria-label="Folders">
-                <button id="fb-rail" class="fb-icon" title="Show the folder list">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="4" width="18" height="16" rx="2" />
-                        <line x1="9" y1="4" x2="9" y2="20" />
-                    </svg>
+            <nav id="folder-bar" class="folder-bar toolbar hidden" aria-label="Folders">
+                <button id="fb-rail" class="fb-icon tb-btn" title="Folder list (Ctrl+B)" aria-label="Show the folder list">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
                 </button>
-                <div class="fb-modes">
-                    <button id="fb-all" title="Every photo in the order, whatever folder it's in (A switches)"><span class="fb-long">All photos</span><span class="fb-short">All</span></button>
-                    <button id="fb-folders" title="One folder at a time">Folders</button>
+                <div class="fb-modes seg" role="group" aria-label="Show">
+                    <button id="fb-all" title="Every photo in the order, whatever folder it's in (A)"><span class="fb-long">All photos</span><span class="fb-short">All</span></button>
+                    <button id="fb-folders" title="One folder at a time (A)">Folders</button>
                 </div>
                 <div id="fb-crumbs" class="fb-crumbs"></div>
                 <span id="fb-filter-chip" class="fb-filter-chip hidden"></span>
                 <div id="fb-search-box" class="fb-search" title="Search names and folders (Ctrl+F)">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-                        stroke-linecap="round"><circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4.2-4.2" /></svg>
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
                     <input id="fb-search" type="search" placeholder="Search" autocomplete="off" spellcheck="false" aria-label="Search photos">
-                    <button id="fb-search-clear" class="fb-search-clear" title="Clear the search and filter" tabindex="-1">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"
-                            stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17" /></svg>
+                    <button id="fb-search-clear" class="fb-search-clear" title="Clear the search and filter" aria-label="Clear the search" tabindex="-1">
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" /></svg>
                     </button>
                 </div>
             </nav>
@@ -292,69 +185,83 @@
                 <div id="folder-tree" class="folder-tree"></div>
                 <div id="flag-list" class="flag-list hidden"></div>
                 <p id="fr-hint" class="fr-hint hidden">Make folders to collate this order. Drag photos onto a folder to move them, or hold <kbd>Ctrl</kbd> to copy. <kbd>M</kbd> moves the selection.</p>
-                <button id="fr-new" class="fr-new">+ New folder</button>
+                <button id="fr-new" class="btn ghost fr-new">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                    New folder
+                </button>
             </aside>
 
-            <!-- Grid View (Initially Hidden) -->
-            <div id="grid-view" class="grid-view hidden">
+            <!-- Grid view -->
+            <div id="grid-view" class="grid-view hidden" tabindex="-1" aria-label="Photos">
                 <!-- Grid items injected here -->
             </div>
 
-            <!-- Grid Controls (Bottom Slider) -->
-            <div id="grid-controls" class="grid-controls hidden">
-                <div class="slider-group">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="3" y="3" width="7" height="7"></rect>
-                        <rect x="14" y="3" width="7" height="7"></rect>
-                        <rect x="14" y="14" width="7" height="7"></rect>
-                        <rect x="3" y="14" width="7" height="7"></rect>
-                    </svg>
-                    <input type="range" id="grid-size-slider" min="80" max="400" value="150" step="10">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="3" y="3" width="7" height="7"></rect>
-                        <rect x="14" y="3" width="7" height="7"></rect>
-                        <rect x="14" y="14" width="7" height="7"></rect>
-                        <rect x="3" y="14" width="7" height="7"></rect>
-                    </svg>
-                </div>
+            <!-- Grid size (bottom right) -->
+            <div id="grid-controls" class="grid-controls toolbar hidden">
+                <label class="slider-group">
+                    <svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="14" rx="1.5"/><rect width="7" height="7" x="3" y="14" rx="1.5"/></svg>
+                    <input type="range" id="grid-size-slider" min="80" max="400" value="150" step="10" aria-label="Thumbnail size">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
+                </label>
             </div>
 
-            <!-- Selection Actions (Floating, visible when selection > 0) -->
-            <div id="selection-bar" class="selection-bar hidden">
-                <span id="selection-count">0 items selected</span>
-                <button id="btn-rotate-left-bulk">Rotate Left</button>
-                <button id="btn-rotate-right-bulk">Rotate Right</button>
-                <button id="btn-auto-crop" title="Find the print on each scan, straighten and crop to it (Shift+A)">Auto Crop</button>
-                <button id="btn-move-to" title="Move to a folder (M) — Shift+M copies">Move to…</button>
-                <button id="btn-batch-rename">Rename…</button>
-                <button id="btn-export">Export…</button>
-                <button id="btn-trash" class="danger">Delete</button>
-                <button id="btn-clear-selection">Clear</button>
+            <!-- Selection actions (shown when photos are selected in the grid) -->
+            <div id="selection-bar" class="selection-bar toolbar hidden" role="toolbar" aria-label="Selected photos">
+                <button id="btn-clear-selection" class="sel-count" title="Clear the selection" aria-label="Clear the selection">
+                    <span id="selection-count">0 selected</span>
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>
+                </button>
+                <span class="tb-sep" aria-hidden="true"></span>
+                <button id="btn-rotate-left-bulk" class="tb-btn" title="Rotate left ([)" aria-label="Rotate left">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                </button>
+                <button id="btn-rotate-right-bulk" class="tb-btn" title="Rotate right (])" aria-label="Rotate right">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                </button>
+                <button id="btn-auto-crop" class="tb-btn labelled" title="Find the print on each scan, straighten and crop to it (Shift+A)">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4M19 14v4M10 2v2M7 8H3M21 16h-4M11 3H9"/></svg>
+                    <span>Auto crop</span>
+                </button>
+                <span class="tb-sep" aria-hidden="true"></span>
+                <button id="btn-move-to" class="tb-btn labelled" title="Move to a folder (M) — Shift+M copies">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 9V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1"/><path d="M2 13h10"/><path d="m9 16 3-3-3-3"/></svg>
+                    <span>Move to…</span>
+                </button>
+                <button id="btn-batch-rename" class="tb-btn labelled" title="Rename (F2)">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg>
+                    <span>Rename…</span>
+                </button>
+                <button id="btn-export" class="tb-btn" title="More: export, copy, flags" aria-label="More actions" aria-haspopup="menu">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="19" cy="12" r="1.25" fill="currentColor"/></svg>
+                </button>
+                <span class="tb-sep" aria-hidden="true"></span>
+                <button id="btn-trash" class="tb-btn labelled danger" title="Delete: moves to the trash in .jeditor (Delete). Ctrl+Z restores">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    <span>Delete</span>
+                </button>
             </div>
 
-
-
-            <!-- Thumbnail Strip (drag the top edge to resize) -->
-            <div id="strip-resize" class="strip-resize" title="Drag to resize film strip"></div>
+            <!-- Film strip (drag the top edge to resize) -->
+            <div id="strip-resize" class="strip-resize" title="Drag to resize the film strip"></div>
             <div id="thumbnail-strip" class="thumbnails">
                 <!-- Items injected here -->
             </div>
 
-            <!-- File Info Panel (I) -->
-            <div id="info-panel" class="info-panel hidden">
-                <h3>File Info</h3>
+            <!-- File info panel (I) -->
+            <div id="info-panel" class="info-panel popover hidden" role="dialog" aria-label="File info">
+                <h3 class="section-label">File info</h3>
                 <dl id="info-list"></dl>
             </div>
 
-            <!-- Always-on path chip (bottom-left, subtle) -->
+            <!-- Path chip (bottom left, single view) -->
             <div id="status-bar" class="status-bar hidden"></div>
         </div>
     </div>
 
     <!-- Crop & Straighten editor (crop.js) -->
-    <div id="crop-editor" class="crop-editor hidden">
-        <div class="crop-head">
-            <span id="crop-file"></span>
+    <div id="crop-editor" class="crop-editor mode-screen hidden">
+        <div class="crop-head mode-head">
+            <span id="crop-file" class="mode-title"></span>
             <span id="crop-dims" class="crop-dims"></span>
             <span id="crop-hint" class="crop-hint hidden">Draw a line along a horizon or print edge to level it</span>
             <span id="crop-tip" class="crop-tip"></span>
@@ -364,125 +271,233 @@
         </div>
         <div class="crop-toolbar">
             <div class="crop-row crop-row-straighten">
-                <div class="crop-straighten" title="Straighten — , and . nudge 0.1°, &lt; and &gt; nudge 1°, double-click to zero">
+                <label class="crop-straighten" title="Straighten: , and . nudge 0.1°, &lt; and &gt; nudge 1°, double-click to zero">
                     <span>Straighten</span>
-                    <input type="range" id="crop-angle" min="-45" max="45" step="0.1" value="0">
-                    <input type="number" id="crop-angle-num" min="-45" max="45" step="0.1" value="0">
-                    <span>°</span>
-                </div>
-                <button id="crop-level" class="crop-btn" title="Level tool: draw along something that should be straight (L, or hold Ctrl/⌘ and drag)">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round">
-                        <path d="M2 17 22 7" />
-                        <circle cx="12" cy="12" r="2.5" />
-                    </svg>
+                    <input type="range" id="crop-angle" min="-45" max="45" step="0.1" value="0" aria-label="Straighten angle">
+                    <span class="crop-angle-field">
+                        <input type="number" id="crop-angle-num" class="field" min="-45" max="45" step="0.1" value="0" aria-label="Straighten angle in degrees">
+                        <span aria-hidden="true">°</span>
+                    </span>
+                </label>
+                <button id="crop-level" class="btn ghost crop-btn" title="Level tool: draw along something that should be straight (L, or hold Ctrl/⌘ and drag)">
+                    <svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 17 22 7"/><circle cx="12" cy="12" r="2.5"/></svg>
                     Level
                 </button>
             </div>
             <div class="crop-row">
-                <button id="crop-cancel" class="crop-btn" title="Cancel (Esc)">Cancel</button>
-                <span class="crop-sep"></span>
-                <select id="crop-aspect" title="Aspect ratio (A cycles)"></select>
-                <button id="crop-swap" class="crop-btn icon" title="Swap portrait / landscape (X)">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="7" width="12" height="14" rx="1.5" />
-                        <path d="M13 3h3a5 5 0 0 1 5 5v3" />
-                        <path d="M18.5 8.5 21 11l2.5-2.5" />
-                    </svg>
-                </button>
-                <span class="crop-sep"></span>
-                <button id="crop-rot-left" class="crop-btn icon" title="Rotate left 90° ([)">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
-                        <path d="M3 3v5h5" />
-                    </svg>
-                </button>
-                <button id="crop-rot-right" class="crop-btn icon" title="Rotate right 90° (])">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
-                        <path d="M21 3v5h-5" />
-                    </svg>
-                </button>
-                <span class="crop-sep"></span>
-                <button id="crop-auto" class="crop-btn" title="Auto: straighten and crop to the print on a scan (Shift+A)">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <path d="m3 21 12-12" />
-                        <path d="m13 7 2-2 4 4-2 2" />
-                        <path d="M19 2v3M20.5 3.5h-3M6 4v2M7 5H5M20 14v2M21 15h-2" />
-                    </svg>
-                    Auto
-                </button>
-                <button id="crop-auto-each" class="crop-btn chip" aria-pressed="false"
-                    title="Run Auto on every photo as the editor opens it — handy with Save &amp; Next">Every photo</button>
-                <span class="crop-sep"></span>
-                <button id="crop-previous" class="crop-btn" title="Reuse the previous crop (P)">Previous</button>
-                <button id="crop-reset" class="crop-btn" title="Reset (R)">Reset</button>
-                <span class="crop-sep"></span>
-                <button id="crop-save-next" class="crop-btn" title="Save, then crop the next photo (Shift+Enter)">Save &amp; Next</button>
-                <button id="crop-save" class="crop-btn primary" title="Save (Enter)">Save</button>
+                <button id="crop-cancel" class="btn secondary crop-btn" title="Cancel (Esc)">Cancel</button>
+                <span class="crop-group">
+                    <select id="crop-aspect" class="field" title="Aspect ratio (A cycles)" aria-label="Aspect ratio"></select>
+                    <button id="crop-swap" class="btn ghost icon crop-btn" title="Swap portrait / landscape (X)" aria-label="Swap portrait and landscape">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="12" height="14" rx="1.5"/><path d="M13 3h3a5 5 0 0 1 5 5v3"/><path d="M18.5 8.5 21 11l2.5-2.5"/></svg>
+                    </button>
+                </span>
+                <span class="crop-sep" aria-hidden="true"></span>
+                <span class="crop-group">
+                    <button id="crop-rot-left" class="btn ghost icon crop-btn" title="Rotate left 90° ([)" aria-label="Rotate left 90°">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                    </button>
+                    <button id="crop-rot-right" class="btn ghost icon crop-btn" title="Rotate right 90° (])" aria-label="Rotate right 90°">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                    </button>
+                </span>
+                <span class="crop-sep" aria-hidden="true"></span>
+                <span class="crop-group">
+                    <button id="crop-auto" class="btn ghost crop-btn" title="Auto: straighten and crop to the print on a scan (Shift+A)">
+                        <svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4M19 14v4M10 2v2M7 8H3M21 16h-4M11 3H9"/></svg>
+                        Auto
+                    </button>
+                    <button id="crop-auto-each" class="btn crop-btn chip" aria-pressed="false"
+                        title="Run Auto on every photo as the editor opens it, handy with Save &amp; next">Every photo</button>
+                </span>
+                <span class="crop-sep" aria-hidden="true"></span>
+                <span class="crop-group">
+                    <button id="crop-previous" class="btn ghost crop-btn" title="Reuse the previous crop (P)">Previous</button>
+                    <button id="crop-reset" class="btn ghost crop-btn" title="Reset (R)">Reset</button>
+                </span>
+                <span class="crop-spacer" aria-hidden="true"></span>
+                <span class="crop-group crop-commit">
+                    <button id="crop-save-next" class="btn secondary crop-btn" title="Save, then crop the next photo (Shift+Enter)">Save &amp; next</button>
+                    <button id="crop-save" class="btn primary crop-btn" title="Save (Enter)">Save</button>
+                </span>
             </div>
         </div>
     </div>
 
     <!-- Duplicates review (dupes.js) -->
-    <div id="dupes-panel" class="dupes-overlay hidden">
-        <div class="dupes-head">
-            <h3>Possible duplicates</h3>
-            <span class="wip-tag" title="Duplicate detection is still being worked on: it can miss some duplicates or group photos that only look alike. Nothing is deleted outright — marked photos go to .jeditor-trash and Ctrl+Z restores them.">WIP</span>
+    <div id="dupes-panel" class="dupes-overlay mode-screen hidden" role="dialog" aria-labelledby="dupes-title">
+        <div class="dupes-head mode-head">
+            <h3 id="dupes-title" class="mode-title">Possible duplicates</h3>
+            <span class="wip-tag" title="Duplicate detection is still being worked on: it can miss some duplicates or group photos that only look alike. Nothing is deleted outright: marked photos go to the trash in .jeditor and Ctrl+Z restores them.">Work in progress</span>
             <span id="dupes-summary" class="dupes-summary"></span>
             <label class="dupes-sens">Sensitivity
-                <select id="dupes-sensitivity">
+                <select id="dupes-sensitivity" class="field">
                     <option value="strict">Strict</option>
                     <option value="normal" selected>Normal</option>
                     <option value="loose">Loose</option>
                 </select>
             </label>
-            <button id="dupes-close" title="Close (Esc)">×</button>
+            <button id="dupes-close" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
+                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
         </div>
         <div id="dupes-stage" class="dupes-stage"></div>
         <div class="dupes-foot">
-            <button id="dupes-prev" class="crop-btn" title="Previous group (←)">← Previous</button>
+            <button id="dupes-prev" class="btn ghost crop-btn" title="Previous group (←)">
+                <svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+                Previous
+            </button>
             <span id="dupes-progress" class="dupes-progress"></span>
-            <span class="dupes-tip">Click a photo or press 1–9 to mark it · Work in progress: double-check before trashing</span>
-            <button id="dupes-keep-best" class="crop-btn" title="Keep the suggested photo, mark the rest (K)">Keep suggested</button>
-            <button id="dupes-skip" class="crop-btn" title="These aren't duplicates (N)">Not duplicates</button>
-            <button id="dupes-apply" class="crop-btn primary" title="Trash marked photos and go to the next group (Enter)">Keep all &amp; next</button>
-            <button id="dupes-next" class="crop-btn" title="Next group (→)">Next →</button>
+            <span class="dupes-tip">Click a photo or press 1–9 to mark it. Check each group before trashing.</span>
+            <button id="dupes-keep-best" class="btn secondary crop-btn" title="Keep the suggested photo, mark the rest (K)">Keep suggested</button>
+            <button id="dupes-skip" class="btn secondary crop-btn" title="These aren't duplicates (N)">Not duplicates</button>
+            <button id="dupes-apply" class="btn primary crop-btn" title="Trash marked photos and go to the next group (Enter)">Keep all &amp; next</button>
+            <button id="dupes-next" class="btn ghost crop-btn" title="Next group (→)">
+                Next
+                <svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Settings (ui.js + script.js). The cust-* ids are the original
+         Customize controls; the header-button list is customize-list. -->
+    <div id="settings-panel" class="dialog-overlay hidden">
+        <div class="dialog settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <div class="dialog-head">
+                <h2 id="settings-title" class="dialog-title">Settings</h2>
+                <button id="settings-close" class="btn ghost icon" title="Close (Esc)" aria-label="Close" autofocus>
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+            <div class="dialog-body settings-body">
+                <section class="settings-section" aria-labelledby="set-h-appearance">
+                    <h3 id="set-h-appearance" class="section-label">Appearance</h3>
+                    <div class="set-row">
+                        <span class="set-label" id="set-theme-label">Theme</span>
+                        <div class="seg" role="radiogroup" aria-labelledby="set-theme-label">
+                            <label><input type="radio" name="set-theme" value="dark"><span>Dark</span></label>
+                            <label><input type="radio" name="set-theme" value="light"><span>Light</span></label>
+                            <label><input type="radio" name="set-theme" value="system"><span>Match system</span></label>
+                        </div>
+                    </div>
+                    <div class="set-row">
+                        <span class="set-label" id="set-surround-label">Behind photos
+                            <small>The colour around a photo affects how you judge it</small></span>
+                        <div class="seg" role="radiogroup" aria-labelledby="set-surround-label">
+                            <label><input type="radio" name="set-surround" value="auto"><span>Theme</span></label>
+                            <label><input type="radio" name="set-surround" value="black"><span>Black</span></label>
+                            <label><input type="radio" name="set-surround" value="grey"><span>Grey</span></label>
+                            <label><input type="radio" name="set-surround" value="light"><span>Light</span></label>
+                        </div>
+                    </div>
+                    <div class="set-row">
+                        <span class="set-label" id="set-accent-label">Accent colour</span>
+                        <div id="cust-accent" class="accent-swatches" role="radiogroup" aria-labelledby="set-accent-label">
+                            <button data-accent="#2563eb" title="Blue" aria-label="Blue" role="radio" style="--sw:#2563eb"></button>
+                            <button data-accent="#7c3aed" title="Violet" aria-label="Violet" role="radio" style="--sw:#7c3aed"></button>
+                            <button data-accent="#db2777" title="Pink" aria-label="Pink" role="radio" style="--sw:#db2777"></button>
+                            <button data-accent="#dc2626" title="Red" aria-label="Red" role="radio" style="--sw:#dc2626"></button>
+                            <button data-accent="#ea580c" title="Orange" aria-label="Orange" role="radio" style="--sw:#ea580c"></button>
+                            <button data-accent="#16a34a" title="Green" aria-label="Green" role="radio" style="--sw:#16a34a"></button>
+                            <button data-accent="#0d9488" title="Teal" aria-label="Teal" role="radio" style="--sw:#0d9488"></button>
+                            <label class="accent-custom" title="Any colour">
+                                <input type="color" id="cust-accent-pick" value="#2563eb" aria-label="Pick any accent colour">
+                            </label>
+                        </div>
+                    </div>
+                    <div class="set-row">
+                        <span class="set-label" id="set-density-label">Density</span>
+                        <div class="seg" role="radiogroup" aria-labelledby="set-density-label">
+                            <label><input type="radio" name="set-density" value="compact"><span>Compact</span></label>
+                            <label><input type="radio" name="set-density" value="comfortable"><span>Comfortable</span></label>
+                        </div>
+                    </div>
+                    <div class="set-row">
+                        <label class="set-label" for="cust-scale">Toolbar size</label>
+                        <span class="set-range">
+                            <input type="range" id="cust-scale" min="0.8" max="1.6" step="0.1" value="1">
+                            <output id="cust-scale-out" for="cust-scale">100%</output>
+                        </span>
+                    </div>
+                    <div class="set-row">
+                        <span class="set-label" id="set-glass-label">Glass
+                            <small>Subtle is faster on older computers</small></span>
+                        <div class="seg" role="radiogroup" aria-labelledby="set-glass-label">
+                            <label><input type="radio" name="set-glass" value="rich"><span>Rich</span></label>
+                            <label><input type="radio" name="set-glass" value="subtle"><span>Subtle</span></label>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="settings-section" aria-labelledby="set-h-folder">
+                    <h3 id="set-h-folder" class="section-label">Folder</h3>
+                    <div class="set-row">
+                        <label class="set-label" for="cust-auto-check">Watch the folder for changes
+                            <small>Photos a scanner saves, or that are removed or edited elsewhere, show up on their own</small></label>
+                        <input type="checkbox" id="cust-auto-check" class="switch">
+                    </div>
+                    <div class="set-row">
+                        <label class="set-label" for="cust-folder-cache">Save cache in the folder
+                            <small>Thumbnails go in .jeditor, so any computer that opens the order later starts fast</small></label>
+                        <input type="checkbox" id="cust-folder-cache" class="switch">
+                    </div>
+                    <div class="set-row">
+                        <span class="set-label">Clean up this folder
+                            <small>Empties the trash and removes the cache, flags and Auto crop originals. Photos aren't touched.</small></span>
+                        <button id="cust-cleanup" class="btn secondary danger-text">Clean up…</button>
+                    </div>
+                </section>
+
+                <section class="settings-section" aria-labelledby="set-h-header">
+                    <h3 id="set-h-header" class="section-label">Toolbar buttons</h3>
+                    <p class="set-help">Drag to reorder, or focus a row and press <kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd>. Choose which buttons show in the toolbar, which go under <b>More</b>, and which are hidden.</p>
+                    <ul id="customize-list" class="customize-list"></ul>
+                    <div class="set-row">
+                        <label class="set-label" for="cust-vertical">Vertical toolbar</label>
+                        <input type="checkbox" id="cust-vertical" class="switch">
+                    </div>
+                    <button id="cust-reset" class="btn ghost">Reset toolbar layout</button>
+                </section>
+            </div>
+            <div class="dialog-foot">
+                <button id="cust-shortcuts" class="btn ghost">Keyboard shortcuts…</button>
+                <span class="dialog-actions">
+                    <button id="settings-done" class="btn primary">Done</button>
+                </span>
+            </div>
         </div>
     </div>
 
     <!-- Batch rename (rename.js) -->
-    <div id="rename-panel" class="shortcuts-overlay hidden">
-        <div class="shortcuts-card rename-card" role="dialog" aria-label="Rename photos">
-            <div class="shortcuts-head">
-                <h3>Rename photos</h3>
-                <button id="rename-close" title="Close (Esc)">×</button>
+    <div id="rename-panel" class="dialog-overlay hidden">
+        <div class="dialog rename-card" role="dialog" aria-modal="true" aria-labelledby="rename-title">
+            <div class="dialog-head">
+                <h2 id="rename-title" class="dialog-title">Rename photos</h2>
+                <button id="rename-close" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
             </div>
-            <div class="rename-body">
-                <div class="rename-scope">
+            <div class="dialog-body rename-body">
+                <div class="rename-scope" role="radiogroup" aria-label="Which photos">
                     <label><input type="radio" name="rename-scope" id="rename-scope-selected"> <span id="rename-scope-selected-label">Selected photos</span></label>
                     <label><input type="radio" name="rename-scope" id="rename-scope-all"> <span id="rename-scope-all-label">All photos in the folder</span></label>
                 </div>
-                <div class="rename-mode">
+                <div class="rename-mode seg" role="group" aria-label="How">
                     <button data-mode="new">New names</button>
                     <button data-mode="replace">Find &amp; replace</button>
                 </div>
                 <div id="rename-new-fields" class="rename-fields">
                     <label class="rename-wide">Name
-                        <input id="rename-pattern" type="text" spellcheck="false" autocomplete="off" placeholder="Smith_{###}">
+                        <input id="rename-pattern" class="field mono" type="text" spellcheck="false" autocomplete="off" placeholder="Smith_{###}">
                     </label>
                 </div>
                 <div id="rename-replace-fields" class="rename-fields hidden">
-                    <label>Find <input id="rename-find" type="text" spellcheck="false" autocomplete="off" placeholder="IMG_"></label>
-                    <label>Replace with <input id="rename-replace" type="text" spellcheck="false" autocomplete="off" placeholder="Smith_"></label>
+                    <label>Find <input id="rename-find" class="field mono" type="text" spellcheck="false" autocomplete="off" placeholder="IMG_"></label>
+                    <label>Replace with <input id="rename-replace" class="field mono" type="text" spellcheck="false" autocomplete="off" placeholder="Smith_"></label>
                     <label class="rename-check"><input id="rename-case" type="checkbox"> Match case</label>
                 </div>
                 <div class="rename-tokens">
-                    Insert:
+                    <span>Insert</span>
                     <button class="rename-token" data-token="{###}" title="Sequence number; more #s = more digits">{###} number</button>
                     <button class="rename-token" data-token="{name}" title="The current name">{name}</button>
                     <button class="rename-token" data-token="{date}" title="Date taken, YYYY-MM-DD">{date}</button>
@@ -490,7 +505,7 @@
                 </div>
                 <div class="rename-fields">
                     <label>Number in order of
-                        <select id="rename-order">
+                        <select id="rename-order" class="field">
                             <option value="current">Current sort</option>
                             <option value="taken">Date taken</option>
                             <option value="name">Name</option>
@@ -498,51 +513,55 @@
                             <option value="size">File size</option>
                         </select>
                     </label>
-                    <label>
-                        <select id="rename-dir">
+                    <label>Direction
+                        <select id="rename-dir" class="field">
                             <option value="asc">Ascending (oldest / A first)</option>
                             <option value="desc">Descending (newest / Z first)</option>
                         </select>
                     </label>
-                    <label>Start at <input id="rename-start" type="number" value="1"></label>
-                    <label>Step <input id="rename-step" type="number" value="1"></label>
+                    <label>Start at <input id="rename-start" class="field" type="number" value="1"></label>
+                    <label>Step <input id="rename-step" class="field" type="number" value="1"></label>
                 </div>
-                <div id="rename-summary" class="rename-summary"></div>
+                <div id="rename-summary" class="rename-summary" aria-live="polite"></div>
                 <div id="rename-preview" class="rename-preview"></div>
             </div>
-            <div class="shortcuts-foot">
-                <span>The extension is kept. Ctrl+Z undoes the whole rename.</span>
-                <span class="rename-actions">
-                    <button id="rename-cancel">Cancel</button>
-                    <button id="rename-apply" class="primary">Rename</button>
+            <div class="dialog-foot">
+                <span class="dialog-note">The extension is kept. Ctrl+Z undoes the whole rename.</span>
+                <span class="dialog-actions rename-actions">
+                    <button id="rename-cancel" class="btn secondary">Cancel</button>
+                    <button id="rename-apply" class="btn primary">Rename</button>
                 </span>
             </div>
         </div>
     </div>
 
     <!-- Move / copy to a folder (folders.js) -->
-    <div id="folder-picker" class="shortcuts-overlay hidden">
-        <div class="shortcuts-card folder-card" role="dialog" aria-label="Move to a folder">
-            <div class="shortcuts-head">
-                <h3 id="fp-title">Move to…</h3>
-                <div class="fp-mode">
+    <div id="folder-picker" class="dialog-overlay hidden">
+        <div class="dialog folder-card" role="dialog" aria-modal="true" aria-labelledby="fp-title">
+            <div class="dialog-head">
+                <h2 id="fp-title" class="dialog-title">Move to…</h2>
+                <div class="fp-mode seg" role="group" aria-label="Move or copy">
                     <button data-mode="move">Move</button>
                     <button data-mode="copy">Copy</button>
                 </div>
-                <button id="fp-close" class="fp-close" title="Close (Esc)">×</button>
+                <button id="fp-close" class="btn ghost icon fp-close" title="Close (Esc)" aria-label="Close">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
             </div>
-            <input id="fp-filter" class="fp-filter" type="text" spellcheck="false" autocomplete="off"
-                placeholder="Find a folder, or type a name for a new one">
-            <div id="fp-list" class="fp-list" role="listbox"></div>
-            <div class="shortcuts-foot"><span id="fp-foot"></span></div>
+            <div class="fp-filter-wrap">
+                <input id="fp-filter" class="field fp-filter" type="text" spellcheck="false" autocomplete="off"
+                    placeholder="Find a folder, or type a name for a new one" aria-label="Find or name a folder">
+            </div>
+            <div id="fp-list" class="fp-list" role="listbox" aria-label="Folders"></div>
+            <div class="dialog-foot"><span id="fp-foot" class="dialog-note"></span></div>
         </div>
     </div>
 
     <!-- A photo with that name is already in the folder -->
-    <div id="folder-clash" class="shortcuts-overlay hidden">
-        <div class="shortcuts-card clash-card" role="alertdialog" aria-labelledby="fc-title">
-            <div class="shortcuts-head">
-                <h3 id="fc-title"></h3>
+    <div id="folder-clash" class="dialog-overlay hidden">
+        <div class="dialog clash-card" role="alertdialog" aria-modal="true" aria-labelledby="fc-title">
+            <div class="dialog-head">
+                <h2 id="fc-title" class="dialog-title"></h2>
             </div>
             <div class="fc-body">
                 <figure>
@@ -555,103 +574,117 @@
                 </figure>
             </div>
             <label id="fc-all-row" class="fc-all"><input type="checkbox" id="fc-all"> Do the same for <span id="fc-rest"></span></label>
-            <div class="shortcuts-foot">
-                <button id="fc-cancel" title="Stop: nothing is moved (Esc)">Cancel</button>
-                <span class="rename-actions">
-                    <button id="fc-skip">Skip</button>
-                    <button id="fc-replace" class="danger">Replace</button>
-                    <button id="fc-keep" class="primary">Keep both <small id="fc-keep-note"></small></button>
+            <div class="dialog-foot">
+                <button id="fc-cancel" class="btn ghost" title="Stop: nothing is moved (Esc)">Cancel</button>
+                <span class="dialog-actions rename-actions">
+                    <button id="fc-skip" class="btn secondary">Skip</button>
+                    <button id="fc-replace" class="btn danger">Replace</button>
+                    <button id="fc-keep" class="btn primary">Keep both <small id="fc-keep-note"></small></button>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- A folder inside an order opened before (recents.js) -->
+    <div id="order-prompt" class="dialog-overlay hidden">
+        <div class="dialog prompt-card" role="dialog" aria-modal="true" aria-labelledby="op-title">
+            <div class="dialog-head">
+                <h2 id="op-title" class="dialog-title">Part of an order</h2>
+            </div>
+            <div class="dialog-body fpr-body">
+                <p id="op-text" class="op-text"></p>
+            </div>
+            <div class="dialog-foot">
+                <span></span>
+                <span class="dialog-actions rename-actions">
+                    <button id="op-folder" class="btn secondary">Just this folder</button>
+                    <button id="op-order" class="btn primary">Open the order</button>
                 </span>
             </div>
         </div>
     </div>
 
     <!-- Folder name (new folder, rename folder) -->
-    <!-- A folder inside an order opened before (recents.js) -->
-    <div id="order-prompt" class="shortcuts-overlay hidden">
-        <div class="shortcuts-card prompt-card" role="dialog" aria-labelledby="op-title">
-            <div class="shortcuts-head">
-                <h3 id="op-title">Part of an order</h3>
+    <div id="folder-prompt" class="dialog-overlay hidden">
+        <div class="dialog prompt-card" role="dialog" aria-modal="true" aria-labelledby="fpr-title">
+            <div class="dialog-head">
+                <h2 id="fpr-title" class="dialog-title">New folder</h2>
             </div>
-            <div class="fpr-body">
-                <p id="op-text" class="op-text"></p>
-            </div>
-            <div class="shortcuts-foot">
-                <span></span>
-                <span class="rename-actions">
-                    <button id="op-folder">Just this folder</button>
-                    <button id="op-order" class="primary">Open the order</button>
-                </span>
-            </div>
-        </div>
-    </div>
-
-    <div id="folder-prompt" class="shortcuts-overlay hidden">
-        <div class="shortcuts-card prompt-card" role="dialog" aria-labelledby="fpr-title">
-            <div class="shortcuts-head">
-                <h3 id="fpr-title">New folder</h3>
-            </div>
-            <div class="fpr-body">
-                <input id="fpr-input" type="text" spellcheck="false" autocomplete="off" placeholder="Folder name">
+            <div class="dialog-body fpr-body">
+                <input id="fpr-input" class="field" type="text" spellcheck="false" autocomplete="off" placeholder="Folder name" aria-labelledby="fpr-title" aria-describedby="fpr-error">
                 <div id="fpr-error" class="fpr-error" aria-live="polite"></div>
             </div>
-            <div class="shortcuts-foot">
-                <span id="fpr-hint"></span>
-                <span class="rename-actions">
-                    <button id="fpr-cancel">Cancel</button>
-                    <button id="fpr-ok" class="primary">Create</button>
+            <div class="dialog-foot">
+                <span id="fpr-hint" class="dialog-note"></span>
+                <span class="dialog-actions rename-actions">
+                    <button id="fpr-cancel" class="btn secondary">Cancel</button>
+                    <button id="fpr-ok" class="btn primary">Create</button>
                 </span>
             </div>
         </div>
     </div>
 
-    <!-- Keyboard Shortcuts panel (?) -->
-    <div id="whatsnew-panel" class="shortcuts-overlay hidden">
-        <div class="shortcuts-card whatsnew-card" role="dialog" aria-label="What's new">
-            <div class="shortcuts-head">
-                <h3>What's New</h3>
-                <button id="whatsnew-close" title="Close (Esc)">×</button>
+    <!-- General-purpose alert / confirm / prompt (ui.js) -->
+    <div id="ui-dialog" class="dialog-overlay hidden">
+        <div class="dialog prompt-card" role="alertdialog" aria-modal="true" aria-labelledby="uid-title" aria-describedby="uid-text">
+            <div class="dialog-head">
+                <h2 id="uid-title" class="dialog-title"></h2>
+            </div>
+            <div class="dialog-body fpr-body">
+                <div id="uid-text" class="op-text"></div>
+                <div id="uid-field" class="uid-field hidden">
+                    <label id="uid-field-label" for="uid-input"></label>
+                    <input id="uid-input" class="field" type="text" spellcheck="false" autocomplete="off">
+                </div>
+            </div>
+            <div class="dialog-foot">
+                <span></span>
+                <span class="dialog-actions">
+                    <button id="uid-cancel" class="btn secondary">Cancel</button>
+                    <button id="uid-ok" class="btn primary">OK</button>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- What's new -->
+    <div id="whatsnew-panel" class="dialog-overlay hidden">
+        <div class="dialog whatsnew-card" role="dialog" aria-modal="true" aria-labelledby="whatsnew-title">
+            <div class="dialog-head">
+                <h2 id="whatsnew-title" class="dialog-title">What's new</h2>
+                <button id="whatsnew-close" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
             </div>
             <div id="whatsnew-list" class="whatsnew-list"></div>
-            <div class="shortcuts-foot">
-                <span>Downloads and every release: <a href="https://github.com/xmui/jEditor/releases" target="_blank" rel="noopener">GitHub releases</a></span>
+            <div class="dialog-foot">
+                <span class="dialog-note">Downloads and every release: <a href="https://github.com/xmui/jEditor/releases" target="_blank" rel="noopener">GitHub releases</a></span>
             </div>
         </div>
     </div>
 
-    <div id="shortcuts-panel" class="shortcuts-overlay hidden">
-        <div class="shortcuts-card" role="dialog" aria-label="Keyboard shortcuts">
-            <div class="shortcuts-head">
-                <h3>Keyboard Shortcuts</h3>
-                <input id="shortcuts-filter" type="search" placeholder="Filter…" autocomplete="off">
-                <button id="shortcuts-close" title="Close (Esc)">×</button>
+    <!-- Keyboard shortcuts (?) -->
+    <div id="shortcuts-panel" class="dialog-overlay hidden">
+        <div class="dialog shortcuts-card" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+            <div class="dialog-head">
+                <h2 id="shortcuts-title" class="dialog-title">Keyboard shortcuts</h2>
+                <input id="shortcuts-filter" class="field" type="search" placeholder="Filter" autocomplete="off" aria-label="Filter shortcuts">
+                <button id="shortcuts-close" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
             </div>
             <div id="shortcuts-list" class="shortcuts-list"></div>
-            <div class="shortcuts-foot">
-                <span>Click <b>+</b> to add a key, click a key to remove it.</span>
-                <button id="shortcuts-reset">Reset all to defaults</button>
+            <div class="dialog-foot">
+                <span class="dialog-note">Click <b>+</b> to add a key. Click a key to remove it.</span>
+                <button id="shortcuts-reset" class="btn secondary">Reset all to defaults</button>
             </div>
         </div>
     </div>
 
-    <!-- DEBUG CONSOLE -->
-    <div id="debug-console" style="
-        position: fixed; 
-        bottom: 0; 
-        left: 0; 
-        width: 100%; 
-        height: 230px; 
-        background: rgba(0,0,0,0.85); 
-        color: #0f0; 
-        font-family: monospace; 
-        font-size: 12px; 
-        padding: 10px; 
-        overflow-y: auto; 
-        z-index: 9999; 
-        pointer-events: none;
-        display: none;">
+    <!-- Debug console (Ctrl+Shift+D) -->
+    <div id="debug-console" class="debug-console">
         <div>Debug Console (Ctrl+Shift+D to toggle)</div>
-        <div id="debug-perf" style="white-space: pre; color: #ff0; margin: 4px 0 6px;"></div>
+        <div id="debug-perf" class="debug-perf"></div>
         <div id="debug-log"></div>
     </div>
 

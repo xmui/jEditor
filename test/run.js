@@ -864,7 +864,7 @@ async function newPage(browser, url) {
             out.takenOrder = app.files.map(f => f.name).join(',');
 
             // --- Export copies (original size) ---
-            window.prompt = () => '';
+            UI.prompt = async () => ''; // the in-app Export dialog, answered "full size"
             await app.exportCopies([f2]);
             const exp = await root.getDirectoryHandle('jEditor Export');
             out.exported = exp._files.size === 1;
@@ -967,9 +967,9 @@ async function newPage(browser, url) {
                 const lum = (c) => { const m = c.match(/[\d.]+/g).map(Number); return 0.299 * m[0] + 0.587 * m[1] + 0.114 * m[2]; };
                 return Math.abs(lum(cs.backgroundColor) - lum(cs.color));
             };
-            document.body.classList.add('light-theme', 'glass-light-top');
+            document.documentElement.dataset.theme = 'light';
             out.pillContrastLight = contrast();
-            document.body.classList.remove('light-theme', 'glass-light-top');
+            document.documentElement.dataset.theme = 'dark';
             out.pillContrastDark = contrast();
             app.endTask('t2');
             out.pillHidden = pill.classList.contains('hidden');
@@ -995,36 +995,58 @@ async function newPage(browser, url) {
         await page.close();
     }
 
-    // ---- 6. Adaptive glass: regions follow their own background band ----
-    console.log('adaptive glass');
+    // ---- 6. Appearance: theme, density, glass, surround; glass never follows the photo ----
+    console.log('appearance settings');
     {
-        const { page } = await newPage(browser, `${baseUrl}/index.html`);
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
         const r = await page.evaluate(async () => {
-            const makeImg = (topColor, bottomColor) => new Promise(res => {
-                const canvas = document.createElement('canvas');
-                canvas.width = 50; canvas.height = 50;
-                const ctx = canvas.getContext('2d');
-                ctx.fillStyle = topColor; ctx.fillRect(0, 0, 50, 25);
-                ctx.fillStyle = bottomColor; ctx.fillRect(0, 25, 50, 25);
-                const img = new Image();
-                img.onload = () => res(img);
-                img.src = canvas.toDataURL();
-            });
+            const out = {};
+            const root = document.documentElement;
+            const css = (v) => getComputedStyle(root).getPropertyValue(v).trim();
+            localStorage.removeItem('jeditor.ui');
+            app.loadUiPrefs();
+            app.applyUiPrefs();
+            out.defaults = [root.dataset.theme, root.dataset.density, root.dataset.glass, root.dataset.surround].join(',');
 
-            const cls = () => ['glass-light-top', 'glass-light-bottom']
-                .map(c => document.body.classList.contains(c) ? '1' : '0').join('');
+            // Settings opens on Ctrl+, from the start screen, and its radios apply at once
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true }));
+            out.opened = app.isSettingsOpen();
+            const pick = (name, value) => {
+                const r = document.querySelector(`input[name="${name}"][value="${value}"]`);
+                r.checked = true;
+                r.dispatchEvent(new Event('change', { bubbles: true }));
+            };
+            pick('set-theme', 'light');
+            pick('set-density', 'comfortable');
+            pick('set-glass', 'subtle');
+            pick('set-surround', 'grey');
+            out.applied = [root.dataset.theme, root.dataset.density, root.dataset.glass, root.dataset.surround].join(',');
+            out.lightText = css('--text-1') === '#171717';
+            out.comfortable = css('--fs-body') === '14px';
+            out.subtleGlass = css('--glass-filter') === 'none';
+            out.surround = getComputedStyle(document.getElementById('main-view')).backgroundColor;
+            out.saved = JSON.parse(localStorage.getItem('jeditor.ui'));
+            // Esc closes it
+            document.getElementById('settings-panel').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            out.closed = !app.isSettingsOpen();
 
-            app.analyzeImageBrightness(await makeImg('#111', '#fff'));
-            const darkTopBrightBottom = cls();
-            app.analyzeImageBrightness(await makeImg('#fff', '#111'));
-            const brightTopDarkBottom = cls();
-            app.analyzeImageBrightness(await makeImg('#111', '#111'));
-            const allDark = cls();
-            return { darkTopBrightBottom, brightTopDarkBottom, allDark };
+            // The glass no longer follows the photo: no sampler, no classes
+            out.noSampler = typeof app.analyzeImageBrightness === 'undefined' && typeof app.applyGlass === 'undefined';
+            out.noGlassClasses = !document.body.className.includes('glass-light');
+
+            localStorage.removeItem('jeditor.ui');
+            app.loadUiPrefs();
+            app.applyUiPrefs();
+            return out;
         });
-        check('bright bottom → light glass only at bottom', r.darkTopBrightBottom === '01', r.darkTopBrightBottom);
-        check('bright top → light glass only at top', r.brightTopDarkBottom === '10', r.brightTopDarkBottom);
-        check('dark photo → dark glass everywhere', r.allDark === '00', r.allDark);
+        check('appearance defaults: dark, compact, rich glass, theme surround', r.defaults === 'dark,compact,rich,auto', r.defaults);
+        check('Ctrl+, opens Settings; Esc closes it', r.opened && r.closed, JSON.stringify({ o: r.opened, c: r.closed }));
+        check('theme, density, glass and surround apply and are remembered',
+            r.applied === 'light,comfortable,subtle,grey' && r.lightText && r.comfortable && r.subtleGlass &&
+            r.surround === 'rgb(118, 118, 118)' && r.saved.theme === 'light' && r.saved.density === 'comfortable' &&
+            r.saved.glass === 'subtle' && r.saved.surround === 'grey', JSON.stringify(r));
+        check('the glass is fixed: it no longer follows the photo', r.noSampler && r.noGlassClasses);
+        check('appearance suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
@@ -1404,7 +1426,7 @@ async function newPage(browser, url) {
             // Panel: record a new key with the + button
             press('?');
             out.panelOpen = app.isShortcutsOpen();
-            const row = [...document.querySelectorAll('.sc-row')].find(x => x.textContent.startsWith('Fullscreen'));
+            const row = [...document.querySelectorAll('.sc-row')].find(x => x.textContent.startsWith('Full screen'));
             row.querySelector('.sc-add').click();
             press('k');
             out.recorded = app.keyBindings['view.fullscreen'].includes('K');
@@ -2116,7 +2138,7 @@ async function newPage(browser, url) {
 
             // Clean up removes .jeditor entirely (after confirming)
             await app.moveToTrash([app.files[1]]);
-            window.confirm = () => true;
+            UI.confirm = async () => true;
             await app.cleanUpFolder();
             let gone = false;
             try { await dir.getDirectoryHandle('.jeditor'); } catch (e) { gone = true; }
@@ -2540,10 +2562,10 @@ async function newPage(browser, url) {
         check('folders: moved photos keep their cached thumbnail and preview', r.cacheCarried);
         check('folders: folder list can be hidden (remembered)', r.railHidden);
         check('folders: Rename All in a folder covers that folder only', r.renameScope === 'Wedding/b.jpg,Wedding/w1.jpg|All photos in Wedding (2)', r.renameScope);
-        check('folders: folder menu', r.menu === 'Open|—|New Folder Inside…|Rename Folder…|—|Delete Folder', r.menu);
+        check('folders: folder menu', r.menu === 'Open|—|New folder inside…|Rename folder…|—|Delete folder', r.menu);
         check('path chip: shown in single view, hidden in the grid', r.chipSingle && !r.chipGrid, `${r.chipSingle}/${r.chipGrid}`);
         check('folders: grid rows keep their gap (tiles never overlap)', r.rowGap === 16 && r.square, `gap=${r.rowGap}`);
-        check('folders: folder menu moves or copies the selection there', r.menuSel === 'Open|—|Move 2 Photos Here|Copy 2 Photos Here', r.menuSel);
+        check('folders: folder menu moves or copies the selection there', r.menuSel === 'Open|—|Move 2 photos here|Copy 2 photos here', r.menuSel);
 
         // Drag photos onto a folder in the list (Ctrl copies), never opening
         // them as a dropped folder
@@ -2956,7 +2978,7 @@ async function newPage(browser, url) {
             out.listText = Flags.listText(app.files.filter(x => Flags.has(x, 'rescan')), 'rescan');
 
             // Clean Up removes the flags too
-            window.confirm = () => true;
+            UI.confirm = async () => true;
             await app.cleanUpFolder();
             out.cleanedUp = !app.files.some(x => x._flags);
             return out;

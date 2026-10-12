@@ -23,7 +23,8 @@ const app = {
         imageContainer: document.getElementById('image-container'),
         gridView: document.getElementById('grid-view'),
         currentImage: document.getElementById('current-image'),
-        fileName: document.getElementById('file-name'),
+        fileName: document.getElementById('file-name-text'),
+        fileNameBtn: document.getElementById('file-name'),
         fileCount: document.getElementById('file-count'),
         thumbnailStrip: document.getElementById('thumbnail-strip'),
         loading: document.getElementById('loading-indicator'),
@@ -36,7 +37,7 @@ const app = {
         btnFullscreen: document.getElementById('btn-fullscreen'),
         btnCustomize: document.getElementById('btn-customize'),
         headerControls: document.getElementById('header-controls'),
-        customizePanel: document.getElementById('customize-panel'),
+        customizePanel: document.getElementById('settings-panel'),
         customizeList: document.getElementById('customize-list'),
         stripResize: document.getElementById('strip-resize'),
         taskList: document.getElementById('task-list'),
@@ -58,7 +59,12 @@ const app = {
         this.checkForUpdateNotice();
         const title = document.getElementById('app-title');
         if (title && typeof APP_VERSION !== 'undefined') {
-            title.textContent = 'jEditor ' + APP_VERSION;
+            // "jEditor 1.2.3": the version as a quiet badge beside the name
+            title.textContent = 'jEditor ';
+            const v = document.createElement('span');
+            v.className = 'app-version';
+            v.textContent = APP_VERSION;
+            title.appendChild(v);
             document.title = 'jEditor ' + APP_VERSION; // the window's title bar
             document.getElementById('btn-whatsnew-start').textContent = `What's new in ${APP_VERSION}`;
         }
@@ -104,7 +110,12 @@ const app = {
         document.getElementById('btn-auto-crop').addEventListener('click', () => this.batchAutoCrop([...this.selection]));
         document.getElementById('btn-move-to').addEventListener('click', (e) => Folders.openPicker([...this.selection], e.shiftKey ? 'copy' : 'move'));
         document.getElementById('btn-batch-rename').addEventListener('click', () => this.batchRename([...this.selection]));
-        document.getElementById('btn-export').addEventListener('click', () => this.exportCopies([...this.selection]));
+        // ⋯ on the selection bar: the less-used actions
+        document.getElementById('btn-export').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const r = e.currentTarget.getBoundingClientRect();
+            this.openContextMenu(this.selectionMoreItems(), r.left, r.top - 8, { above: true });
+        });
         document.getElementById('btn-trash').addEventListener('click', () => this.moveToTrash([...this.selection]));
         document.getElementById('btn-clear-selection').addEventListener('click', () => this.clearSelection());
         document.getElementById('btn-refresh').addEventListener('click', () => this.refreshFolder());
@@ -162,10 +173,8 @@ const app = {
             }
         } catch (err) { /* private mode */ }
 
-        // Click the filename to rename
-        this.elements.fileName.style.cursor = 'pointer';
-        this.elements.fileName.title = 'Click to rename';
-        this.elements.fileName.addEventListener('click', () => this.promptRename());
+        // Click the file name to rename
+        this.elements.fileNameBtn.addEventListener('click', () => this.promptRename());
 
         // Ctrl+wheel zooms the grid
         this.elements.gridView.addEventListener('wheel', (e) => {
@@ -188,59 +197,24 @@ const app = {
         // Any pointer interaction stops a running slideshow
         document.addEventListener('pointerdown', () => this.stopSlideshow());
 
-        // Header pill: More expander, fullscreen, customize
+        // Header pill: More expander, fullscreen, settings
         this.elements.btnMore.addEventListener('click', () => {
-            this.elements.headerControls.classList.toggle('expanded');
+            const open = this.elements.headerControls.classList.toggle('expanded');
+            this.elements.btnMore.setAttribute('aria-expanded', String(open));
         });
         this.elements.btnFullscreen.addEventListener('click', () => this.toggleFullscreen());
         this.elements.btnCustomize.addEventListener('click', () => this.toggleCustomizePanel());
         document.getElementById('btn-shortcuts').addEventListener('click', () => this.toggleShortcutsPanel());
         document.getElementById('btn-whatsnew').addEventListener('click', () => this.toggleWhatsNew());
         document.getElementById('btn-whatsnew-start').addEventListener('click', () => this.toggleWhatsNew(true));
+        document.getElementById('btn-shortcuts-start').addEventListener('click', () => this.toggleShortcutsPanel(true));
+        document.getElementById('btn-settings-start').addEventListener('click', () => this.toggleCustomizePanel(true));
         document.getElementById('whatsnew-close').addEventListener('click', () => this.toggleWhatsNew(false));
         document.getElementById('whatsnew-panel').addEventListener('mousedown', (e) => {
             if (e.target === e.currentTarget) this.toggleWhatsNew(false);
         });
         document.getElementById('btn-dupes').addEventListener('click', () => this.openDupes());
-        document.getElementById('cust-shortcuts').addEventListener('click', () => {
-            this.toggleCustomizePanel();
-            this.toggleShortcutsPanel(true);
-        });
-        document.getElementById('cust-vertical').addEventListener('change', (e) => {
-            this.uiPrefs.vertical = e.target.checked;
-            this.saveUiPrefs();
-            this.applyUiPrefs();
-        });
-        document.getElementById('cust-folder-cache').addEventListener('change', (e) => {
-            this.uiPrefs.folderCache = e.target.checked;
-            this.saveUiPrefs();
-        });
-        document.getElementById('cust-accent').addEventListener('click', (e) => {
-            const b = e.target.closest('[data-accent]');
-            if (b) this.setAccent(b.dataset.accent);
-        });
-        document.getElementById('cust-accent-pick').addEventListener('input', (e) => this.setAccent(e.target.value));
-        document.getElementById('cust-auto-check').addEventListener('change', (e) => {
-            this.uiPrefs.autoCheck = e.target.checked;
-            this.saveUiPrefs();
-            if (e.target.checked) Watch.start();
-            else Watch.stop();
-        });
-        document.getElementById('cust-cleanup').addEventListener('click', () => {
-            this.toggleCustomizePanel();
-            this.cleanUpFolder();
-        });
-        document.getElementById('cust-scale').addEventListener('input', (e) => {
-            this.uiPrefs.scale = parseFloat(e.target.value);
-            this.saveUiPrefs();
-            this.applyUiPrefs();
-        });
-        document.getElementById('cust-reset').addEventListener('click', () => {
-            this.uiPrefs = this.defaultUiPrefs();
-            this.saveUiPrefs();
-            this.applyUiPrefs();
-            this.renderCustomizePanel();
-        });
+        this.initSettings();
 
         this.initStripResize();
 
@@ -287,7 +261,7 @@ const app = {
                 return;
             }
             console.error('Browse folder error:', err);
-            alert('Error loading folder: ' + err.message);
+            UI.alert({ title: 'Couldn\'t open the folder', message: err.message });
         }
     },
 
@@ -315,7 +289,7 @@ const app = {
             await this.finalizeLoad();
         } catch (err) {
             console.error('Open folder error:', err);
-            alert('Error loading folder: ' + err.message);
+            UI.alert({ title: 'Couldn\'t open the folder', message: err.message });
             this.elements.dropZone.classList.remove('hidden');
             this.endTask('scan');
         }
@@ -342,26 +316,34 @@ const app = {
         }
     },
 
-    // ---- UI customization ----
+    // ---- UI preferences and Settings ----
     //
     // Every header control can be shown in the pill, tucked into the "More"
-    // section, or hidden entirely; the order is drag-reorderable in the
-    // Customize panel. Orientation (horizontal/vertical), UI scale, film
-    // strip height and thumbnail fit are all preferences too. Everything
-    // persists in localStorage under 'jeditor.ui'.
+    // section, or hidden entirely; the order is drag-reorderable in
+    // Settings. Theme, density, glass, the colour behind photos, accent,
+    // toolbar size, orientation, film strip height and thumbnail fit are
+    // preferences too. Everything persists in localStorage under 'jeditor.ui'.
 
     HC_LABELS: {
-        info: 'File Info',
-        view: 'Toggle View',
-        refresh: 'Refresh Folder',
-        crop: 'Crop',
-        fit: 'Thumbnail Fit',
-        strip: 'Film Strip',
-        fullscreen: 'Fullscreen',
-        dupes: 'Find Duplicates (WIP)',
-        keys: 'Keyboard Shortcuts',
-        whatsnew: 'What\'s New',
-        customize: 'Customize'
+        info: 'File info',
+        view: 'Grid / single view',
+        refresh: 'Rescan folder',
+        crop: 'Crop and straighten',
+        fit: 'Thumbnail fit',
+        strip: 'Film strip',
+        fullscreen: 'Full screen',
+        dupes: 'Find duplicates (WIP)',
+        keys: 'Keyboard shortcuts',
+        whatsnew: 'What\'s new',
+        customize: 'Settings'
+    },
+
+    // Allowed values for the appearance settings; the first is the default
+    APPEARANCE: {
+        theme: ['dark', 'light', 'system'],
+        density: ['compact', 'comfortable'],
+        glass: ['rich', 'subtle'],
+        surround: ['auto', 'black', 'grey', 'light']
     },
 
     defaultUiPrefs() {
@@ -377,7 +359,11 @@ const app = {
             thumbContain: true, // fit whole image in tiles by default
             folderCache: true, // keep thumbnails / duplicate data in the folder's .jeditor
             autoCheck: true, // pick up photos added, removed or edited outside jEditor
-            accent: null // the accent colour (#rrggbb); null is the standard blue
+            accent: null, // the accent colour (#rrggbb); null is the standard blue
+            theme: 'dark',
+            density: 'compact',
+            glass: 'rich',
+            surround: 'auto'
         };
     },
 
@@ -407,6 +393,9 @@ const app = {
                 if (typeof saved.autoCheck === 'boolean') this.uiPrefs.autoCheck = saved.autoCheck;
                 if (typeof saved.accent === 'string' && /^#[0-9a-f]{6}$/i.test(saved.accent)) this.uiPrefs.accent = saved.accent;
                 if (typeof saved.folderRail === 'boolean') this.uiPrefs.folderRail = saved.folderRail;
+                for (const [k, allowed] of Object.entries(this.APPEARANCE)) {
+                    if (allowed.includes(saved[k])) this.uiPrefs[k] = saved[k];
+                }
             }
         } catch (e) { /* corrupted prefs → defaults */ }
     },
@@ -451,7 +440,30 @@ const app = {
 
         this.elements.gridView.classList.toggle('thumb-contain', !!p.thumbContain);
         this.elements.thumbnailStrip.classList.toggle('thumb-contain', !!p.thumbContain);
+        document.getElementById('btn-toggle-fit').setAttribute('aria-pressed', String(!!p.thumbContain));
         this.applyAccent(p.accent);
+        this.applyAppearance();
+    },
+
+    // Theme, density, glass and the colour behind photos: attributes on
+    // <html> that tokens.css switches on
+    applyAppearance() {
+        const p = this.uiPrefs;
+        const root = document.documentElement;
+        if (!this._systemTheme && window.matchMedia) {
+            this._systemTheme = window.matchMedia('(prefers-color-scheme: light)');
+            const follow = () => { if (this.uiPrefs.theme === 'system') this.applyAppearance(); };
+            if (this._systemTheme.addEventListener) this._systemTheme.addEventListener('change', follow);
+        }
+        const theme = p.theme === 'system'
+            ? (this._systemTheme && this._systemTheme.matches ? 'light' : 'dark')
+            : p.theme;
+        root.dataset.theme = theme;
+        root.dataset.density = p.density;
+        root.dataset.glass = p.glass;
+        root.dataset.surround = p.surround;
+        const meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.content = theme === 'light' ? '#e8e8e8' : '#0b0b0b';
     },
 
     // Everything blue follows --accent-color; text on it (--on-accent)
@@ -494,21 +506,108 @@ const app = {
         pick.parentElement.style.setProperty('--sw', cur);
     },
 
-    toggleCustomizePanel() {
+    // ---- The Settings window ----
+
+    initSettings() {
+        const $ = (id) => document.getElementById(id);
+        const panel = $('settings-panel');
+        $('settings-close').addEventListener('click', () => this.toggleCustomizePanel(false));
+        $('settings-done').addEventListener('click', () => this.toggleCustomizePanel(false));
+        panel.addEventListener('mousedown', (e) => {
+            if (e.target === panel) this.toggleCustomizePanel(false);
+        });
+        panel.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape' || this._recordingKey) return;
+            e.preventDefault();
+            e.stopPropagation();
+            this.toggleCustomizePanel(false);
+        });
+
+        // Appearance: one radio group per setting, applied as you pick
+        for (const key of Object.keys(this.APPEARANCE)) {
+            panel.querySelectorAll(`input[name="set-${key}"]`).forEach(r => r.addEventListener('change', () => {
+                if (!r.checked) return;
+                this.uiPrefs[key] = r.value;
+                this.saveUiPrefs();
+                this.applyAppearance();
+            }));
+        }
+        $('cust-accent').addEventListener('click', (e) => {
+            const b = e.target.closest('[data-accent]');
+            if (b) this.setAccent(b.dataset.accent);
+        });
+        $('cust-accent-pick').addEventListener('input', (e) => this.setAccent(e.target.value));
+        $('cust-scale').addEventListener('input', (e) => {
+            this.uiPrefs.scale = parseFloat(e.target.value);
+            $('cust-scale-out').textContent = `${Math.round(this.uiPrefs.scale * 100)}%`;
+            this.saveUiPrefs();
+            this.applyUiPrefs();
+        });
+
+        // Folder
+        $('cust-auto-check').addEventListener('change', (e) => {
+            this.uiPrefs.autoCheck = e.target.checked;
+            this.saveUiPrefs();
+            if (e.target.checked) Watch.start();
+            else Watch.stop();
+        });
+        $('cust-folder-cache').addEventListener('change', (e) => {
+            this.uiPrefs.folderCache = e.target.checked;
+            this.saveUiPrefs();
+        });
+        $('cust-cleanup').addEventListener('click', () => {
+            this.toggleCustomizePanel(false);
+            this.cleanUpFolder();
+        });
+
+        // Toolbar buttons
+        $('cust-vertical').addEventListener('change', (e) => {
+            this.uiPrefs.vertical = e.target.checked;
+            this.saveUiPrefs();
+            this.applyUiPrefs();
+        });
+        $('cust-reset').addEventListener('click', () => {
+            const d = this.defaultUiPrefs();
+            Object.assign(this.uiPrefs, { order: d.order, placement: d.placement, vertical: d.vertical });
+            this.saveUiPrefs();
+            this.applyUiPrefs();
+            this.renderCustomizePanel();
+        });
+        $('cust-shortcuts').addEventListener('click', () => {
+            this.toggleCustomizePanel(false);
+            this.toggleShortcutsPanel(true);
+        });
+    },
+
+    isSettingsOpen() {
+        return !this.elements.customizePanel.classList.contains('hidden');
+    },
+
+    // Opens or closes Settings (the name is from when it was a small
+    // "Customize" panel under the header)
+    toggleCustomizePanel(force = null) {
         const panel = this.elements.customizePanel;
-        const open = panel.classList.contains('hidden');
+        const open = force !== null ? force : panel.classList.contains('hidden');
         panel.classList.toggle('hidden', !open);
+        this.elements.headerControls.classList.remove('expanded');
         if (open) this.renderCustomizePanel();
     },
 
     renderCustomizePanel() {
+        const $ = (id) => document.getElementById(id);
         const list = this.elements.customizeList;
         list.innerHTML = '';
-        document.getElementById('cust-vertical').checked = !!this.uiPrefs.vertical;
-        document.getElementById('cust-folder-cache').checked = this.uiPrefs.folderCache !== false;
-        document.getElementById('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
+        for (const key of Object.keys(this.APPEARANCE)) {
+            const r = this.elements.customizePanel.querySelector(`input[name="set-${key}"][value="${this.uiPrefs[key]}"]`);
+            if (r) r.checked = true;
+        }
+        $('cust-vertical').checked = !!this.uiPrefs.vertical;
+        $('cust-folder-cache').checked = this.uiPrefs.folderCache !== false;
+        $('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
+        $('cust-cleanup').disabled = !this.dirHandle;
         this.syncAccentPicker();
-        document.getElementById('cust-scale').value = this.uiPrefs.scale;
+        $('cust-scale').value = this.uiPrefs.scale;
+        $('cust-scale-out').textContent = `${Math.round(this.uiPrefs.scale * 100)}%`;
 
         this.uiPrefs.order.forEach(key => {
             const li = document.createElement('li');
@@ -517,12 +616,14 @@ const app = {
 
             const grip = document.createElement('span');
             grip.className = 'cust-grip';
-            grip.textContent = '≡';
+            grip.innerHTML = '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6" r="1" fill="currentColor"/><circle cx="15" cy="6" r="1" fill="currentColor"/><circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/><circle cx="9" cy="18" r="1" fill="currentColor"/><circle cx="15" cy="18" r="1" fill="currentColor"/></svg>';
             const name = document.createElement('span');
             name.className = 'cust-name';
             name.textContent = this.HC_LABELS[key] || key;
             const sel = document.createElement('select');
-            [['main', 'Shown'], ['more', 'In More'], ['hidden', 'Hidden']].forEach(([v, l]) => {
+            sel.className = 'field sm';
+            sel.setAttribute('aria-label', `Where ${this.HC_LABELS[key] || key} goes`);
+            [['main', 'Toolbar'], ['more', 'Under More'], ['hidden', 'Hidden']].forEach(([v, l]) => {
                 const o = document.createElement('option');
                 o.value = v;
                 o.textContent = l;
@@ -539,6 +640,23 @@ const app = {
             li.appendChild(name);
             li.appendChild(sel);
 
+            // Keyboard: Alt+↑ / Alt+↓ moves the focused row
+            li.tabIndex = 0;
+            li.addEventListener('keydown', (e) => {
+                if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+                e.preventDefault();
+                const order = this.uiPrefs.order;
+                const from = order.indexOf(key);
+                const to = from + (e.key === 'ArrowUp' ? -1 : 1);
+                if (to < 0 || to >= order.length) return;
+                order.splice(from, 1);
+                order.splice(to, 0, key);
+                this.saveUiPrefs();
+                this.applyUiPrefs();
+                this.renderCustomizePanel();
+                const moved = this.elements.customizeList.querySelector(`li[data-key="${key}"]`);
+                if (moved) moved.focus();
+            });
             li.addEventListener('dragstart', (e) => {
                 this._dragKey = key;
                 e.dataTransfer.effectAllowed = 'move';
@@ -655,7 +773,7 @@ const app = {
         const show = strip.classList.contains('hidden');
         strip.classList.toggle('hidden', !show);
         if (this.elements.stripResize) this.elements.stripResize.classList.toggle('hidden', !show);
-        this.elements.btnToggleStrip.style.opacity = show ? '1' : '0.5';
+        this.elements.btnToggleStrip.setAttribute('aria-pressed', String(show));
         this.elements.btnToggleStrip.blur(); // Release focus to restore keyboard shortcuts
     },
 
@@ -923,7 +1041,7 @@ const app = {
 
         } catch (err) {
             console.error('Drop error:', err);
-            alert('Error loading: ' + err.message);
+            UI.alert({ title: 'Couldn\'t open what was dropped', message: err.message });
             this.elements.dropZone.classList.remove('hidden');
             this.endTask('scan');
         } finally {
@@ -976,12 +1094,15 @@ const app = {
                 await Flags.load();
                 Watch.start();
             } else {
-                alert('No images found.');
+                UI.alert({
+                    title: 'No photos found',
+                    message: 'There are no JPEG, PNG, WebP or GIF files in that folder or its subfolders. Choose another folder.'
+                });
                 this.elements.dropZone.classList.remove('hidden');
             }
         } catch (err) {
             console.error('Error finalizing load:', err);
-            alert(`Error: ${err.message || err}`);
+            UI.alert({ title: 'Something went wrong opening the folder', message: String(err.message || err) });
             this.elements.dropZone.classList.remove('hidden');
         } finally {
             this.endTask('scan');
@@ -1093,7 +1214,7 @@ const app = {
     // of letting an edit run and fail at the save.
     ensureWritable() {
         if (!this.readOnlyMode) return true;
-        this.showToast('These photos were opened read-only — use Open Folder to edit and save', 4000);
+        this.showToast('These photos were opened read-only — use Open folder to edit and save', 4000);
         return false;
     },
 
@@ -1590,71 +1711,6 @@ const app = {
         }
     },
 
-    analyzeImageBrightness(img) {
-        const vals = this.measureBrightness(img);
-        if (vals) this.applyGlass(vals);
-        return vals;
-    },
-
-    measureBrightness(img) {
-        if (!img || !img.width || !img.height) return null;
-
-        // Sample the image at 50x50 and measure three zones: the whole image
-        // (drives the global theme) plus the top and bottom bands, which sit
-        // behind the header glass and the control glass respectively. Each
-        // glass region adapts to what is actually behind it.
-        const SIZE = 50;
-        const BAND = 13; // ~top/bottom quarter of the image
-
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = SIZE;
-        canvas.height = SIZE;
-        ctx.drawImage(img, 0, 0, SIZE, SIZE);
-
-        try {
-            const data = ctx.getImageData(0, 0, SIZE, SIZE).data;
-            let total = 0, top = 0, bottom = 0;
-
-            for (let y = 0; y < SIZE; y++) {
-                let rowSum = 0;
-                for (let x = 0; x < SIZE; x++) {
-                    const i = (y * SIZE + x) * 4;
-                    // Perceived brightness
-                    rowSum += (data[i] * 0.299) + (data[i + 1] * 0.587) + (data[i + 2] * 0.114);
-                }
-                total += rowSum;
-                if (y < BAND) top += rowSum;
-                if (y >= SIZE - BAND) bottom += rowSum;
-            }
-
-            return {
-                total: total / (SIZE * SIZE),
-                top: top / (BAND * SIZE),
-                bottom: bottom / (BAND * SIZE)
-            };
-        } catch (e) {
-            console.warn('Cannot analyze image brightness (CORS or error)', e);
-            return null;
-        }
-    },
-
-    applyGlass(vals) {
-        // Hysteresis: don't flip a region's theme on borderline photos —
-        // it must cross clearly into the other zone to switch.
-        const body = document.body;
-        const setWithHysteresis = (cls, value) => {
-            if (value > 150) body.classList.add(cls);
-            else if (value < 120) body.classList.remove(cls);
-            // 120–150: keep whatever it was
-        };
-        setWithHysteresis('light-theme', vals.total);
-        setWithHysteresis('glass-light-top', vals.top);
-        setWithHysteresis('glass-light-bottom', vals.bottom);
-    },
-
-
-
     // The film strip (single view). Items load their thumbnail as they
     // scroll into sight.
     renderThumbnails() {
@@ -1681,7 +1737,6 @@ const app = {
         div.className = 'thumb-item';
         div._file = file;
         file._stripEl = div;
-        div.style.backgroundColor = '#222'; // until the thumbnail arrives
         Flags.decorate(div, file);
         div.onclick = () => this.openSingle(file);
         if (this._stripObserver) this._stripObserver.observe(div);
@@ -2179,11 +2234,20 @@ const app = {
         if (!this.ensureWritable()) return;
         const inTrash = await FolderCache.trashCount(this);
         const flagged = Flags.count();
-        const msg = 'Remove jEditor\'s data from this folder?\n\n' +
-            (inTrash ? `• Empties the trash: ${inTrash} deleted photo${inTrash === 1 ? '' : 's'} will be gone for good.\n` : '') +
-            (flagged ? `• Removes the flags (stars, rescan flags, colour labels) from ${flagged} photo${flagged === 1 ? '' : 's'}.\n` : '') +
-            '• Removes cached thumbnails and duplicate data (they\'re rebuilt when needed), and the originals kept for undoing Auto crop.\n\nYour photos are not touched.';
-        if (!window.confirm(msg)) return;
+        const items = [
+            ...(inTrash ? [`Empties the trash: ${inTrash} deleted photo${inTrash === 1 ? '' : 's'} will be gone for good.`] : []),
+            ...(flagged ? [`Removes the flags (stars, rescan flags, colour labels) from ${flagged} photo${flagged === 1 ? '' : 's'}.`] : []),
+            'Removes cached thumbnails and duplicate data (rebuilt when needed), and the originals kept for undoing Auto crop.'
+        ];
+        const ok = await UI.confirm({
+            title: 'Clean up this folder?',
+            message: 'Do this when an order is finished, before it goes to the customer.',
+            items,
+            note: 'Your photos are not touched.',
+            ok: 'Clean up',
+            danger: true
+        });
+        if (!ok) return;
         this.beginTask('cleanup', 'Cleaning up folder…');
         try {
             await FolderCache.cleanUp(this);
@@ -2309,6 +2373,7 @@ const app = {
             }
         }
         this.viewMode = mode;
+        document.body.dataset.view = mode; // toasts and the phone layout follow the view
         Folders.render();
         this.updateStatusBar();
         const iconGrid = this.elements.btnToggleView.querySelector('.icon-grid');
@@ -2669,7 +2734,6 @@ const app = {
                     if (this._loadToken !== loadToken) return;
                     if (this._displayFile === file && this._displayKind === 'full') return;
                     this.swapDisplay(ph, 'thumb', file);
-                    this.applyGlassFor(file, ph);
                 };
                 if (ph.complete && ph.naturalWidth) showPlaceholder();
                 else ph.decode().then(showPlaceholder, () => { });
@@ -2711,30 +2775,7 @@ const app = {
 
     afterDisplay(file, el) {
         if (el._decoded && el._origW) file._dims = { w: el._origW, h: el._origH };
-        this.applyGlassFor(file, el);
         this.warmPreviews(file);
-    },
-
-    // Adaptive glass, sampled once per photo and reused on revisits.
-    // Sampling a full-size image costs tens of milliseconds, so it uses the
-    // photo's 320px thumbnail when that is loaded, and otherwise waits until
-    // the new photo has painted.
-    applyGlassFor(file, img) {
-        if (file._glass) {
-            this.applyGlass(file._glass);
-            return;
-        }
-        const thumb = file._stripEl && file._stripEl.querySelector('img');
-        if (thumb && thumb.complete && thumb.naturalWidth && thumb.src.startsWith('blob:')) {
-            file._glass = this.analyzeImageBrightness(thumb);
-            return;
-        }
-        if (!img) return;
-        setTimeout(() => {
-            if (file._glass || !img.naturalWidth) return;
-            file._glass = this.measureBrightness(img);
-            if (file._glass && this._displayFile === file) this.applyGlass(file._glass);
-        }, 0);
     },
 
     // Decode the photos either side (wrapping, like navigation does) and
@@ -3019,12 +3060,13 @@ const app = {
         ['view.zoomOut', 'global', 'View', 'Zoom out', ['-']],
         ['view.zoomFit', 'global', 'View', 'Zoom to fit', ['0']],
         ['view.info', 'global', 'View', 'File info', ['I']],
-        ['view.fullscreen', 'global', 'View', 'Fullscreen', ['F']],
+        ['view.fullscreen', 'global', 'View', 'Full screen', ['F']],
         ['view.slideshow', 'global', 'View', 'Slideshow', []],
         ['app.dupes', 'global', 'App', 'Find duplicates (WIP)', ['D']],
         ['app.refresh', 'global', 'App', 'Rescan folder', ['R']],
         ['app.search', 'global', 'App', 'Search photos', ['Ctrl+F', '/']],
         ['app.shortcuts', 'global', 'App', 'Keyboard shortcuts', ['?']],
+        ['app.settings', 'global', 'App', 'Settings', ['Ctrl+,']],
         ['app.debug', 'global', 'App', 'Debug console', ['Ctrl+Shift+D']],
         ['crop.save', 'crop', 'Crop & Straighten', 'Save', ['Enter']],
         ['crop.saveNext', 'crop', 'Crop & Straighten', 'Save, then crop next photo', ['Shift+Enter']],
@@ -3118,6 +3160,7 @@ const app = {
             'app.refresh': () => this.refreshFolder(),
             'app.search': () => Flags.focusSearch(),
             'app.shortcuts': () => this.toggleShortcutsPanel(),
+            'app.settings': () => this.toggleCustomizePanel(true),
             'app.debug': () => this.toggleDebugConsole(),
             'crop.save': () => this.saveCrop(),
             'crop.saveNext': () => this.saveCrop({ next: true }),
@@ -3258,8 +3301,9 @@ const app = {
     handleKey(e) {
         if (this._recordingKey) return;
 
-        // The rename tool and folder dialogs handle their own keys
-        if (Renamer.isOpen || Folders.isModalOpen() || Recents.isPromptOpen()) return;
+        // The rename tool, folder dialogs, Settings and the alert/confirm
+        // dialogs handle their own keys
+        if (Renamer.isOpen || Folders.isModalOpen() || Recents.isPromptOpen() || UI.isOpen()) return;
 
         // What's New is modal: Esc closes it
         if (this.isWhatsNewOpen()) {
@@ -3305,7 +3349,7 @@ const app = {
         if (!id) return;
         // Only the shortcut list and debug console work from the start screen
         const onStart = this.elements.mainInterface.classList.contains('hidden');
-        if (onStart && context === 'global' && id !== 'app.shortcuts' && id !== 'app.debug') return;
+        if (onStart && context === 'global' && !['app.shortcuts', 'app.debug', 'app.settings'].includes(id)) return;
         if (context === 'crop' && !CropEditor.ready && id !== 'crop.cancel') {
             e.preventDefault();
             return;
@@ -3331,8 +3375,7 @@ const app = {
     toggleDebugConsole() {
         const debugEl = document.getElementById('debug-console');
         if (!debugEl) return;
-        const show = debugEl.style.display === 'none';
-        debugEl.style.display = show ? 'block' : 'none';
+        const show = debugEl.classList.toggle('open');
         this.log(show ? 'Console Show' : 'Console Hide');
         clearInterval(this._perfTimer);
         if (show) {
@@ -3367,7 +3410,7 @@ const app = {
     updatePerfReadout() {
         const el = document.getElementById('debug-perf');
         const consoleEl = document.getElementById('debug-console');
-        if (!el || !consoleEl || consoleEl.style.display === 'none') {
+        if (!el || !consoleEl || !consoleEl.classList.contains('open')) {
             clearInterval(this._perfTimer);
             return;
         }
@@ -4503,7 +4546,7 @@ const app = {
     openRename(files) {
         if (!this.ensureWritable()) return;
         if (!this.dirHandle) {
-            this.showToast('Renaming needs a folder opened with Open Folder');
+            this.showToast('Renaming needs a folder opened with Open folder');
             return;
         }
         Renamer.open(this, files);
@@ -4681,9 +4724,13 @@ const app = {
             this.showToast('Export requires opening a folder');
             return;
         }
-        const input = prompt(
-            `Export ${list.length} cop${list.length > 1 ? 'ies' : 'y'} to "jEditor Export".\nMax edge in px (blank = original size):`, ''
-        );
+        const n = list.length;
+        const input = await UI.prompt({
+            title: n === 1 ? 'Export a copy' : `Export ${n.toLocaleString()} copies`,
+            message: 'Copies go to a "jEditor Export" folder inside this one. The originals aren\'t changed.',
+            input: { label: 'Longest side in pixels (leave empty for full size)', placeholder: 'Full size', inputMode: 'numeric' },
+            ok: 'Export'
+        });
         if (input === null) return;
         const maxEdge = parseInt(input, 10) || 0;
 
@@ -4764,20 +4811,21 @@ const app = {
             }
             const sel = [...this.selection];
             if (sel.length > 1) {
+                const n = sel.length.toLocaleString();
                 return [
                     ['flags', sel],
                     ['—'],
-                    [`Rotate ${sel.length} Left`, () => this.rotateBulk(-90)],
-                    [`Rotate ${sel.length} Right`, () => this.rotateBulk(90)],
-                    [`Rotate ${sel.length} 180°`, () => this.rotateBulk(180)],
-                    [`Auto Crop ${sel.length}`, () => this.batchAutoCrop(sel)],
+                    [`Rotate ${n} left`, () => this.rotateBulk(-90)],
+                    [`Rotate ${n} right`, () => this.rotateBulk(90)],
+                    [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
+                    [`Auto crop ${n}`, () => this.batchAutoCrop(sel)],
                     ['—'],
-                    [`Move ${sel.length} to…`, () => Folders.openPicker(sel, 'move')],
-                    [`Copy ${sel.length} to…`, () => Folders.openPicker(sel, 'copy')],
-                    [`Rename ${sel.length}…`, () => this.openRename(sel)],
-                    ['Export Copies…', () => this.exportCopies(sel)],
+                    [`Move ${n} to…`, () => Folders.openPicker(sel, 'move')],
+                    [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy')],
+                    [`Rename ${n}…`, () => this.openRename(sel)],
+                    [`Export ${n} copies…`, () => this.exportCopies(sel)],
                     ['—'],
-                    [`Move ${sel.length} to Trash`, () => this.moveToTrash(sel), true]
+                    [`Delete ${n}`, () => this.moveToTrash(sel), true]
                 ];
             }
             return [
@@ -4785,18 +4833,18 @@ const app = {
                 ['—'],
                 ['Open', () => this.openSingle(file)],
                 ['—'],
-                ['Rotate Left', () => this.rotateImage(file, -90)],
-                ['Rotate Right', () => this.rotateImage(file, 90)],
+                ['Rotate left', () => this.rotateImage(file, -90)],
+                ['Rotate right', () => this.rotateImage(file, 90)],
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
-                ['Crop', () => { this.openSingle(file); this.enterCrop(); }],
+                ['Crop and straighten', () => { this.openSingle(file); this.enterCrop(); }],
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
                 ['Copy to…', () => Folders.openPicker([file], 'copy')],
                 ['Rename…', () => this.promptRename(file)],
-                ['File Info', () => { this.toggleInfoPanel(true); }],
-                ['Export Copy…', () => this.exportCopies([file])],
+                ['File info', () => { this.toggleInfoPanel(true); }],
+                ['Export a copy…', () => this.exportCopies([file])],
                 ['—'],
-                ['Move to Trash', () => this.moveToTrash([file]), true]
+                ['Delete', () => this.moveToTrash([file]), true]
             ];
         }
         if (inSingle) {
@@ -4804,43 +4852,63 @@ const app = {
             return [
                 ['flags', [file]],
                 ['—'],
-                ['Rotate Left', () => this.rotateImage(file, -90)],
-                ['Rotate Right', () => this.rotateImage(file, 90)],
+                ['Rotate left', () => this.rotateImage(file, -90)],
+                ['Rotate right', () => this.rotateImage(file, 90)],
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
-                ['Crop', () => this.enterCrop()],
+                ['Crop and straighten', () => this.enterCrop()],
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
                 ['Copy to…', () => Folders.openPicker([file], 'copy')],
                 ['Rename…', () => this.promptRename(file)],
-                ['File Info', () => this.toggleInfoPanel(true)],
-                ['Export Copy…', () => this.exportCopies([file])],
+                ['File info', () => this.toggleInfoPanel(true)],
+                ['Export a copy…', () => this.exportCopies([file])],
                 ['—'],
-                ['Fullscreen', () => this.toggleFullscreen()],
-                ['Start Slideshow', () => this.startSlideshow()],
+                ['Full screen', () => this.toggleFullscreen()],
+                ['Start slideshow', () => this.startSlideshow()],
                 ['—'],
-                ['Move to Trash', () => this.moveToTrash([file]), true]
+                ['Delete', () => this.moveToTrash([file]), true]
             ];
         }
         return [
-            ['Select All', () => { this.selection = new Set(this.viewFiles()); this.updateSelectionUI(); }],
-            ['Clear Selection', () => this.clearSelection()],
+            ['Select all', () => { this.selection = new Set(this.viewFiles()); this.updateSelectionUI(); }],
+            ['Clear selection', () => this.clearSelection()],
             ['—'],
-            ...(this.dirHandle ? [['New Folder…', () => Folders.newFolder()]] : []),
-            ['Rename All…', () => this.openRename([])],
+            ...(this.dirHandle ? [['New folder…', () => Folders.newFolder()]] : []),
+            ['Rename all…', () => this.openRename([])],
             ['Search…', () => Flags.focusSearch()],
             ...(this.files.some(f => Flags.has(f, 'rescan'))
-                ? [['Copy Rescan List', () => Flags.copyList(this.files.filter(f => Flags.has(f, 'rescan')), 'rescan')]] : []),
-            ['Clean Up Folder…', () => this.cleanUpFolder()],
-            ['Find Duplicates… (WIP)', () => this.openDupes()],
-            ['Start Slideshow', () => this.startSlideshow()],
-            ['Fullscreen', () => this.toggleFullscreen()]
+                ? [['Copy rescan list', () => Flags.copyList(this.files.filter(f => Flags.has(f, 'rescan')), 'rescan')]] : []),
+            ['Find duplicates… (WIP)', () => this.openDupes()],
+            ['Start slideshow', () => this.startSlideshow()],
+            ['Full screen', () => this.toggleFullscreen()],
+            ['—'],
+            ['Clean up folder…', () => this.cleanUpFolder()]
         ];
     },
 
-    openContextMenu(items, x, y) {
+    // The selection bar's ⋯ menu: what doesn't earn a place on the bar
+    selectionMoreItems() {
+        const sel = [...this.selection];
+        const n = sel.length.toLocaleString();
+        return [
+            ['flags', sel],
+            ['—'],
+            [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
+            [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy')],
+            [sel.length === 1 ? 'Export a copy…' : `Export ${n} copies…`, () => this.exportCopies(sel)],
+            ['—'],
+            ['Select all', () => { this.selection = new Set(this.viewFiles()); this.updateSelectionUI(); }]
+        ];
+    },
+
+    // items: [label, action, danger] | ['—'] | ['flags', files]
+    // opts.above: x, y is the top-left of the button it opens from; the
+    // menu opens upwards from there
+    openContextMenu(items, x, y, opts = {}) {
         this.closeContextMenu();
         const menu = document.createElement('div');
         menu.id = 'context-menu';
+        menu.setAttribute('role', 'menu');
         items.forEach(([label, action, danger]) => {
             if (label === 'flags') {
                 if (this.dirHandle && !this.readOnlyMode) menu.appendChild(Flags.menuRow(action));
@@ -4850,11 +4918,13 @@ const app = {
                 if (!menu.lastChild || menu.lastChild.className === 'ctx-divider') return;
                 const hr = document.createElement('div');
                 hr.className = 'ctx-divider';
+                hr.setAttribute('role', 'separator');
                 menu.appendChild(hr);
                 return;
             }
             const btn = document.createElement('button');
             btn.textContent = label;
+            btn.setAttribute('role', 'menuitem');
             if (danger) btn.classList.add('danger');
             btn.onclick = (ev) => {
                 ev.stopPropagation();
@@ -4863,15 +4933,34 @@ const app = {
             };
             menu.appendChild(btn);
         });
+        if (menu.lastChild && menu.lastChild.className === 'ctx-divider') menu.lastChild.remove();
+        // Arrow keys move through the items; Esc closes (handleKey)
+        menu.addEventListener('keydown', (e) => {
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const all = [...menu.querySelectorAll('button')];
+            const i = all.indexOf(document.activeElement);
+            const next = e.key === 'Home' ? 0 : e.key === 'End' ? all.length - 1
+                : (i + (e.key === 'ArrowDown' ? 1 : -1) + all.length) % all.length;
+            all[next].focus();
+        });
+        this._menuReturn = document.activeElement;
         document.body.appendChild(menu);
         const r = menu.getBoundingClientRect();
-        menu.style.left = Math.min(x, window.innerWidth - r.width - 8) + 'px';
-        menu.style.top = Math.min(y, window.innerHeight - r.height - 8) + 'px';
+        const top = opts.above ? y - r.height : y;
+        menu.style.left = Math.max(8, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
+        menu.style.top = Math.max(8, Math.min(top, window.innerHeight - r.height - 8)) + 'px';
+        const first = menu.querySelector('[role="menuitem"]');
+        if (first) first.focus({ preventScroll: true });
     },
 
     closeContextMenu() {
         const menu = document.getElementById('context-menu');
-        if (menu) menu.remove();
+        if (!menu) return;
+        const hadFocus = menu.contains(document.activeElement);
+        menu.remove();
+        if (hadFocus && this._menuReturn && this._menuReturn.isConnected) this._menuReturn.focus({ preventScroll: true });
     },
 
     // ---- Crop & Straighten (see crop.js) ----
@@ -5018,7 +5107,7 @@ const app = {
     async batchAutoCrop(files) {
         if (!this.ensureWritable()) return;
         if (!this.dirHandle) {
-            this.showToast('Auto crop needs a folder opened with Open Folder');
+            this.showToast('Auto crop needs a folder opened with Open folder');
             return;
         }
         const list = [...new Set(files.filter(Boolean))].filter(f => !/\.gif$/i.test(f.name));
@@ -5030,8 +5119,11 @@ const app = {
             this.showToast('Auto crop is already running');
             return;
         }
-        if (list.length > 50 && !window.confirm(`Auto crop ${list.length.toLocaleString()} photos?\n\n` +
-            'Each is straightened and cropped to the print found on it. The originals are kept in .jeditor/originals, so Ctrl+Z puts them all back.')) return;
+        if (list.length > 50 && !await UI.confirm({
+            title: `Auto crop ${list.length.toLocaleString()} photos?`,
+            message: 'Each is straightened and cropped to the print found on it. The originals are kept in .jeditor/originals, so Ctrl+Z puts them all back.',
+            ok: 'Auto crop'
+        })) return;
         this._autoCropping = true;
         const total = list.length;
         const key = 'auto-crop';
