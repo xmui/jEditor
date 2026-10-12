@@ -8,6 +8,7 @@ const CHANGELOG = [
         version: '1.16.1', date: '2026-10-12',
         items: [
             'In single view, the controls above the film strip fade away a few seconds after they appear, leaving the photo the screen. Move the pointer to where they were and they come back. To do without them altogether, untick Buttons above the film strip in Customize controls.',
+            'The selection bar in the grid is centred on the photos again, beside the folder list when it\'s open.',
             'Opening an order whose subfolder has a .jeditor folder of its own (because that subfolder was once opened on its own) merges it into the order\'s and removes it, so the order has just one. Its deleted photos and Auto crop originals move into the order\'s .jeditor, named after the subfolder, and its flags join the order\'s. Its cache is dropped and rebuilt when needed. If anything can\'t be moved, that .jeditor is left where it is.'
         ]
     },

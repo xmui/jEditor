@@ -3723,6 +3723,8 @@ const app = {
     syncGridTile() {
         const grid = this.elements.gridView;
         if (!grid.clientWidth) return;
+        // The selection bar centres on the grid, less its scrollbar
+        document.documentElement.style.setProperty('--grid-scrollbar', `${grid.offsetWidth - grid.clientWidth}px`);
         const first = parseFloat(getComputedStyle(grid).gridTemplateColumns);
         if (first > 0) document.documentElement.style.setProperty('--grid-tile', `${first}px`);
     },

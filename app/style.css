@@ -792,13 +792,13 @@ header {
 }
 
 /* Selection Bar */
-/* Centred in the room between the folder list (when it's open) and the
-   grid size slider; on a narrow window it runs on over the slider */
+/* Centred on the grid (beside the folder list when it's open); on a
+   narrow window it runs on over the grid size slider */
 .selection-bar {
     position: absolute;
     bottom: 20px;
     left: 20px;
-    right: 270px;
+    right: calc(20px + var(--grid-scrollbar, 0px));
     width: fit-content;
     margin: 0 auto;
     background: var(--accent-color);
@@ -812,7 +812,7 @@ header {
     color: var(--on-accent);
     font-weight: 500;
     white-space: nowrap;
-    max-width: calc(100% - 40px);
+    max-width: calc(100% - 40px - var(--grid-scrollbar, 0px));
     box-sizing: border-box;
     overflow-x: auto;
     scrollbar-width: none;
@@ -820,7 +820,7 @@ header {
 
 .interface.rail-open .selection-bar {
     left: 276px;
-    max-width: calc(100% - 296px);
+    max-width: calc(100% - 296px - var(--grid-scrollbar, 0px));
 }
 
 .selection-bar button {

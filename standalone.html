@@ -28,6 +28,7 @@ const CHANGELOG = [
         version: '1.16.1', date: '2026-10-12',
         items: [
             'In single view, the controls above the film strip fade away a few seconds after they appear, leaving the photo the screen. Move the pointer to where they were and they come back. To do without them altogether, untick Buttons above the film strip in Customize controls.',
+            'The selection bar in the grid is centred on the photos again, beside the folder list when it\'s open.',
             'Opening an order whose subfolder has a .jeditor folder of its own (because that subfolder was once opened on its own) merges it into the order\'s and removes it, so the order has just one. Its deleted photos and Auto crop originals move into the order\'s .jeditor, named after the subfolder, and its flags join the order\'s. Its cache is dropped and rebuilt when needed. If anything can\'t be moved, that .jeditor is left where it is.'
         ]
     },
@@ -7036,13 +7037,13 @@ header {
 }
 
 /* Selection Bar */
-/* Centred in the room between the folder list (when it's open) and the
-   grid size slider; on a narrow window it runs on over the slider */
+/* Centred on the grid (beside the folder list when it's open); on a
+   narrow window it runs on over the grid size slider */
 .selection-bar {
     position: absolute;
     bottom: 20px;
     left: 20px;
-    right: 270px;
+    right: calc(20px + var(--grid-scrollbar, 0px));
     width: fit-content;
     margin: 0 auto;
     background: var(--accent-color);
@@ -7056,7 +7057,7 @@ header {
     color: var(--on-accent);
     font-weight: 500;
     white-space: nowrap;
-    max-width: calc(100% - 40px);
+    max-width: calc(100% - 40px - var(--grid-scrollbar, 0px));
     box-sizing: border-box;
     overflow-x: auto;
     scrollbar-width: none;
@@ -7064,7 +7065,7 @@ header {
 
 .interface.rail-open .selection-bar {
     left: 276px;
-    max-width: calc(100% - 296px);
+    max-width: calc(100% - 296px - var(--grid-scrollbar, 0px));
 }
 
 .selection-bar button {
@@ -14082,6 +14083,8 @@ const app = {
     syncGridTile() {
         const grid = this.elements.gridView;
         if (!grid.clientWidth) return;
+        // The selection bar centres on the grid, less its scrollbar
+        document.documentElement.style.setProperty('--grid-scrollbar', `${grid.offsetWidth - grid.clientWidth}px`);
         const first = parseFloat(getComputedStyle(grid).gridTemplateColumns);
         if (first > 0) document.documentElement.style.setProperty('--grid-tile', `${first}px`);
     },
