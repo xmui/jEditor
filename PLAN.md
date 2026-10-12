@@ -170,9 +170,21 @@ re-cropped, re-exposed or black & white.
    spinner.
 4. Sort order persistence (localStorage) and a "Date taken" (EXIF) sort mode.
 
-## Parked (2026-10-12): native Windows app and in-app scanning
+## Native Windows app and in-app scanning
 
-Decision for now: **stay a web app.** Notes kept for when this comes back.
+**Update (2026-10-12): started, in its own repo,
+[xmui/jeditor-windows](https://github.com/xmui/jeditor-windows).** It wraps
+this repo's `app/` folder (a git submodule) in .NET 8 + WebView2, and
+needs no changes here. Its PLAN.md has the stack, the reasons and the
+phases. The web app stays as it is.
+
+**Lab PC test:** MultiMC, an unsigned portable .exe, ran from the user's
+own folder without admin. So unsigned per-user apps run on that PC (no
+AppLocker rule, no Smart App Control), and a per-user install of jEditor
+needs no admin. Expect at most a one-time SmartScreen "Run anyway".
+
+The notes below were written when this was parked; they're kept as
+written.
 
 ### The lab's setup
 - One lab PC (Windows).
