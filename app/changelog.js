@@ -5,6 +5,15 @@
 
 const CHANGELOG = [
     {
+        version: '1.20.1', date: '2026-10-12',
+        items: [
+            'TWAIN scanners (the FastFoto through Epson Scan 2, not just its WIA version) now scan through a small 32-bit helper, the way NAPS2 does, using the scanners\' 32-bit drivers. It brings its own TWAIN manager, so nothing extra needs installing.',
+            'Auto crop each photo (on to start with, in the Scan box): prints of any size are found on each scan and cropped to, as soon as the scan is in. Ctrl+Z puts the scans back as they were.',
+            'Photos added to the open folder (by a scanner, say) just appear, without a message for each batch. R still says what changed.',
+            'jEditor keeps a log of what it does (%LOCALAPPDATA%\\jEditor\\logs), including each scan step by step, for when something goes wrong.'
+        ]
+    },
+    {
         version: '1.20.0', date: '2026-10-12',
         items: [
             'Scan straight into the open order: click Scan in the toolbar, pick the scanner, the folder and the names, and the scanner\'s own window opens (Epson Scan 2, Plustek). Each photo is saved into the order as it\'s scanned and shows up straight away, so a stack in the FastFoto feeder fills the grid while it scans.',

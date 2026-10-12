@@ -53,8 +53,8 @@ Type: filesandordirs; Name: "{app}\app"
 [Files]
 Source: "{#PublishDir}\jEditor.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PublishDir}\app\*"; DestDir: "{app}\app"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Scanning (NAPS2.Sdk, LGPL-2.1): its DLLs and licence, beside the exe
-Source: "{#PublishDir}\NAPS2.*.dll"; DestDir: "{app}"; Flags: ignoreversion
+; Scanning (NAPS2.Sdk, LGPL-2.1): its DLLs, its 32-bit TWAIN helper and licence, beside the exe
+Source: "{#PublishDir}\NAPS2.*"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PublishDir}\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion
 
 [Icons]

@@ -560,6 +560,13 @@ async function newPage(context, baseUrl) {
             await wait(() => /Scanned 2 photos/.test(toasts()));
             out.toast = toasts();
 
+            out.autoCropDefault = $('scan-autocrop').checked;
+            // Auto crop each photo: the scans go to Auto crop once they're in
+            const realCrop = app.batchAutoCrop;
+            app.batchAutoCrop = async (files, opts) => { out.cropped = files.map(f => f.name).join() + (opts && opts.ask === false ? ' (no question)' : ''); };
+            await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: 'Ceremony', autoCrop: true });
+            app.batchAutoCrop = realCrop;
+
             // Scan more: the names carry on
             window.__scanPages = 1;
             out.more = (await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '' })).names.join(',');
@@ -591,6 +598,8 @@ async function newPage(context, baseUrl) {
         check('Scan asks the app to scan into the order\'s folder, by path', r.closed && r.req && r.req.folder === 'D:\\Orders\\Scan Order' && r.req.device === 'EPSON FF-680W' && r.req.driver === 'twain' && r.req.prefix === 'photo' && r.req.next === 4, JSON.stringify(r.req));
         check('scanned photos show up in the order', r.files === 'Ceremony/c1.jpg,photo1.jpg,photo2.jpg,photo3.jpg,photo4.jpg,photo5.jpg', r.files);
         check('a message says how many, with Scan more', /Scanned 2 photos into Scan Order/.test(r.toast) && /Scan more/.test(r.toast), r.toast);
+        check('Auto crop each photo is on to start with', r.autoCropDefault);
+        check('... and crops each scan once it\'s in, without asking', r.cropped === 'c2.jpg,c3.jpg (no question)', r.cropped);
         check('scanning again carries on the names', r.more === 'photo6.jpg', r.more);
         check('a scan that fails says why, and what was saved', /busy/.test(r.err || '') && /didn't finish/.test(r.alert) && /1 photo was saved/.test(r.alert) && !r.running, JSON.stringify([r.err, r.alert]));
         check('no scanners: says so and what to check', /No scanners found/.test(r.none) && /plugged in/.test(r.none) && /TWAINDSM/.test(r.none) && r.noneDisabled, r.none);

@@ -541,7 +541,9 @@ const Watch = {
     report({ added, gone, edited, manual }) {
         const app = this.app;
         const parts = [];
-        const n = added.length;
+        // New photos just appear (a scanner saving into the order would
+        // otherwise say so for every photo); a rescan (R) still says so
+        const n = manual ? added.length : 0;
         if (n) parts.push(`${n.toLocaleString()} new photo${n === 1 ? '' : 's'}`);
         if (gone) parts.push(`${gone.toLocaleString()} photo${gone === 1 ? '' : 's'} removed from the folder`);
         if (edited) parts.push(`${edited.toLocaleString()} changed on disk`);

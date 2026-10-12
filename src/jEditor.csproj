@@ -52,6 +52,8 @@
          inside it, so they can be replaced (see KeepLgplBeside) -->
     <PackageReference Include="NAPS2.Sdk" Version="1.5.0" />
     <PackageReference Include="NAPS2.Images.Gdi" Version="1.5.0" />
+    <!-- NAPS2.Worker.exe: TWAIN in a 32-bit helper process, as NAPS2 does -->
+    <PackageReference Include="NAPS2.Sdk.Worker.Win32" Version="1.5.0" />
   </ItemGroup>
 
   <!-- NAPS2.Sdk's licence goes with it -->

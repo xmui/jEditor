@@ -56,6 +56,8 @@ const Scan = {
         this.el('scan-panel').classList.remove('hidden');
         this.fillFolders();
         this.fillNames();
+        const last = this.last();
+        this.el('scan-autocrop').checked = !last || last.autoCrop !== false;
         this.el('scan-go').focus();
         await this.loadDevices(false);
     },
@@ -193,16 +195,17 @@ const Scan = {
         const folder = this.el('scan-folder').value;
         const prefix = this.el('scan-prefix').value;
         const next = Math.max(0, parseInt(this.el('scan-next').value, 10) || 0);
-        try { localStorage.setItem(this.KEY, JSON.stringify({ device: device.id })); } catch (e) { /* private */ }
+        const autoCrop = this.el('scan-autocrop').checked;
+        try { localStorage.setItem(this.KEY, JSON.stringify({ device: device.id, autoCrop })); } catch (e) { /* private */ }
         this.close();
-        this.run({ device: device.id, driver: device.driver, folder, prefix, next, digits: this.digits })
+        this.run({ device: device.id, driver: device.driver, folder, prefix, next, digits: this.digits, autoCrop })
             .catch(() => { /* said already */ });
     },
 
     // Scans into `folder` (a folder of the order: '' is the order itself).
     // Without prefix/next, names follow on from the folder's photos.
     // → { count, names, cancelled }
-    async run({ device, driver, folder = '', prefix, next, digits }) {
+    async run({ device, driver, folder = '', prefix, next, digits, autoCrop = false }) {
         const app = this.app;
         const native = FolderCache.native();
         if (this.running) throw new Error('A scan is already running');
@@ -247,7 +250,8 @@ const Scan = {
         const n = names.length;
         if (n) {
             app.showToast(`Scanned ${n} photo${n === 1 ? '' : 's'} into ${Folders.label(folder)}`, 6000, 'scanned',
-                { label: 'Scan more', run: () => this.again({ device, driver, folder }) }, { type: 'success' });
+                { label: 'Scan more', run: () => this.again({ device, driver, folder, autoCrop }) }, { type: 'success' });
+            if (autoCrop) await this.autoCrop(names);
         } else if (!result.cancelled) {
             app.showToast('Nothing was scanned', 3000, null, null, { type: 'info' });
         }
@@ -255,8 +259,18 @@ const Scan = {
     },
 
     // Same scanner and folder, names following on from the last scan
-    again({ device, driver, folder }) {
+    again({ device, driver, folder, autoCrop }) {
         // After the folder check has picked up the last photos
-        setTimeout(() => this.run({ device, driver, folder }).catch(() => { }), Watch.DEBOUNCE_MS + 400);
+        setTimeout(() => this.run({ device, driver, folder, autoCrop }).catch(() => { }), Watch.DEBOUNCE_MS + 400);
+    },
+
+    // Prints come in all sizes: each scan is cropped to the print on it
+    // (Auto crop; the originals are kept, so Ctrl+Z undoes it)
+    async autoCrop(names) {
+        const app = this.app;
+        const find = () => names.map(n => app.files.find(f => (f.relPath || f.name) === n)).filter(Boolean);
+        for (let i = 0; i < 50 && find().length < names.length; i++) await new Promise(r => setTimeout(r, 200));
+        const files = find();
+        if (files.length) await app.batchAutoCrop(files, { ask: false });
     }
 };

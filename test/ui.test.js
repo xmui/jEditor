@@ -2831,10 +2831,10 @@ async function newPage(browser, url) {
             out.added = app.files.length === 7 && order === app.viewFiles().map(f => f.name).join(',');
             out.inPlace = app.files.find(f => f.name === 'd.jpg')._gridEl === kept && kept.isConnected;
             out.glow = app.files.find(f => f.name === 'c.jpg')._gridEl.classList.contains('is-new');
-            await until(() => [...document.querySelectorAll('.toast')].some(t => /new photo/.test(t.textContent)));
-            const toast = [...document.querySelectorAll('.toast')].find(t => /new photo/.test(t.textContent));
-            out.toast = !!toast && !!toast.querySelector('.toast-action');
-            if (toast) toast.querySelector('.toast-action').click();
+            // No message for them: they just appear (a scanner adds them one by one)
+            await new Promise(r => setTimeout(r, 800));
+            out.toast = ![...document.querySelectorAll('.toast')].some(t => /new photo/.test(t.textContent));
+            Watch.showNew(['c.jpg', 'e.jpg'].map(n => app.files.find(f => f.name === n)));
             out.shown = ['c.jpg', 'e.jpg'].every(n => app.selection.has(app.files.find(f => f.name === n)));
 
             // A scanner writing a photo: first the start of it, then the
@@ -2956,7 +2956,7 @@ async function newPage(browser, url) {
         console.log(`  info  watching with: ${r.watching}; rescan of an unchanged order: ${r.rescanMs} ms`);
         check('watch: new photos slot into the grid in sort order', r.added, JSON.stringify(r));
         check('watch: existing tiles aren\'t rebuilt; new ones glow', r.inPlace && r.glow);
-        check('watch: toast with Show selects the new photos', r.toast && r.shown);
+        check('watch: no message for new photos; showing them selects them', r.toast && r.shown);
         check('watch: a photo still being written waits, then comes in whole with a real thumbnail', r.notYet && r.wholeSize && r.thumb && r.complete, JSON.stringify(r));
         check('watch: photos removed outside jEditor go', r.removed);
         check('watch: a new folder and its photos show up', r.newFolder);
