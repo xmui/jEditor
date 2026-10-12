@@ -3087,6 +3087,59 @@ async function newPage(browser, url) {
         await page.close();
     }
 
+    // ---- 7t2. A subfolder's own .jeditor is merged into the order's ----
+    console.log('nested .jeditor merged');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('nestorder', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('nestorder', { create: true });
+            const bytes = await makeRealJpeg(200, 140);
+            const put = async (d, name, data = bytes) => {
+                const fh = await d.getFileHandle(name, { create: true });
+                const w = await fh.createWritable(); await w.write(new Blob([data])); await w.close();
+            };
+            await put(dir, 'a.jpg');
+            const sub = await dir.getDirectoryHandle('Ceremony', { create: true });
+            await put(sub, 'c1.jpg');
+            await put(sub, 'c2.jpg');
+            // Ceremony was opened on its own once: flags, a deleted photo, a cache
+            const own = await sub.getDirectoryHandle('.jeditor', { create: true });
+            await put(own, 'flags.json', JSON.stringify({ version: 1, flags: { 'c1.jpg': { star: true }, 'gone.jpg': { rescan: true } } }));
+            await put(await own.getDirectoryHandle('trash', { create: true }), 'old.jpg');
+            await put(await (await own.getDirectoryHandle('cache', { create: true })).getDirectoryHandle('thumbs', { create: true }), 'x.img', 'x');
+            // The order already has a trashed photo with the same name
+            const top = await dir.getDirectoryHandle('.jeditor', { create: true });
+            await put(await top.getDirectoryHandle('trash', { create: true }), 'Ceremony - old.jpg');
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            for (let i = 0; i < 100; i++) {
+                if (await sub.getDirectoryHandle('.jeditor').then(() => false, () => true)) break;
+                await sleep(30);
+            }
+            out.removed = await sub.getDirectoryHandle('.jeditor').then(() => false, () => true);
+            const trash = [];
+            for await (const e of (await top.getDirectoryHandle('trash')).values()) trash.push(e.name);
+            out.trash = trash.sort().join(',');
+            out.flag = Flags.has(app.files.find(f => f.relPath === 'Ceremony/c1.jpg'), 'star');
+            await sleep(700);
+            const saved = JSON.parse(await (await (await top.getFileHandle('flags.json')).getFile()).text()).flags;
+            out.saved = !!(saved['Ceremony/c1.jpg'] && saved['Ceremony/c1.jpg'].star && saved['Ceremony/gone.jpg'] && saved['Ceremony/gone.jpg'].rescan);
+            out.photos = app.files.length === 3;
+            out.toast = [...document.querySelectorAll('.toast')].map(t => t.textContent).find(t => /Merged/.test(t)) || '';
+            return out;
+        });
+        check('nested .jeditor: merged into the order\'s and removed', r.removed && r.photos, JSON.stringify(r));
+        check('nested .jeditor: its deleted photos move to the order\'s trash, named after the folder', r.trash === 'Ceremony - old (2).jpg,Ceremony - old.jpg', r.trash);
+        check('nested .jeditor: its flags join the order\'s under the folder\'s path', r.flag && r.saved);
+        check('nested .jeditor: says so', /Merged the \.jeditor folder in “Ceremony” into this order's \(2 flags, 1 deleted photo\)/.test(r.toast), r.toast);
+        check('nested .jeditor suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7u. Accent colour ----
     console.log('accent colour');
     {

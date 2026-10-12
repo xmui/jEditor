@@ -975,6 +975,9 @@ const app = {
                 // Flags saved with the order, then keep an eye on the folder
                 await Flags.load();
                 Watch.start();
+                const nested = this._nestedJeditor || [];
+                this._nestedJeditor = null;
+                if (nested.length && this.dirHandle && !this.readOnlyMode) FolderCache.absorbNested(this, nested);
             } else {
                 alert('No images found.');
                 this.elements.dropZone.classList.remove('hidden');
@@ -1050,8 +1053,12 @@ const app = {
         this.updateTask('scan', 'Scanning folder…');
         const listings = await Watch.walk([{ path: '', handle: dirHandle }], true);
         const pending = [];
+        // A subfolder opened on its own before has a .jeditor of its own:
+        // merged into this one once the folder is open (finalizeLoad)
+        this._nestedJeditor = [];
         for (const [dir, l] of listings) {
             if (!l || l.failed) continue;
+            if (dir && l.own && l.own.length) this._nestedJeditor.push({ path: dir, parent: l.handle, handles: l.own });
             Folders.register(dir, l.handle);
             for (const [name, entry] of l.files) {
                 const relPath = Folders.join(dir, name);

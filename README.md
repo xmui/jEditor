@@ -62,6 +62,8 @@ jEditor keeps its own data in a `.jeditor` folder inside the folder you open:
 - `flags.json` holds the flags (stars, rescan flags, colour labels).
 - `originals/` holds the photos as they were before a batch Auto crop, so it can be undone.
 
+If a subfolder has a `.jeditor` of its own (because it was once opened on its own), opening the whole order merges it into the order's: its deleted photos and Auto crop originals move across, named after the subfolder, its flags join the order's, and its cache is dropped. Then it's removed, so the order keeps one `.jeditor`.
+
 Because the cache travels with the folder, a second computer opening the same order (on a shared drive, say) gets its thumbnails and duplicate data straight away. The large screen-sized previews aren't stored there, to keep the folder small; they're kept in the browser instead.
 
 Rotating doesn't throw the cache away. A rotation only changes the photo's orientation tag, so the cached thumbnail and preview get the same tag instead of being made again from the full scan. Opening the folder again after rotating a batch is as quick as opening it with no changes.

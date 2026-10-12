@@ -5,6 +5,12 @@
 
 const CHANGELOG = [
     {
+        version: '1.16.1', date: '2026-10-12',
+        items: [
+            'Opening an order whose subfolder has a .jeditor folder of its own (because that subfolder was once opened on its own) merges it into the order\'s and removes it, so the order has just one. Its deleted photos and Auto crop originals move into the order\'s .jeditor, named after the subfolder, and its flags join the order\'s. Its cache is dropped and rebuilt when needed. If anything can\'t be moved, that .jeditor is left where it is.'
+        ]
+    },
+    {
         version: '1.16.0', date: '2026-10-12',
         items: [
             'jEditor watches the open folder. New photos (a scanner saving into the order, say) slot into the grid where they belong without losing your place, with a brief glow, and a message offers Show. Photos deleted or edited in another program are picked up too. Turn it off with Watch the folder for changes in Customize controls.',

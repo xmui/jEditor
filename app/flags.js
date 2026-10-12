@@ -176,6 +176,32 @@ const Flags = {
         return n;
     },
 
+    // Flags from a subfolder's own .jeditor (see FolderCache.absorbNested),
+    // saved relative to that subfolder. Joined with any already set here.
+    mergeFrom(prefix, saved) {
+        const byPath = new Map(this.app.files.map(f => [f.relPath || f.name, f]));
+        let n = 0;
+        for (const [rel, v] of Object.entries(saved)) {
+            const fl = this.clean(v);
+            if (!fl) continue;
+            const path = Folders.join(prefix, rel);
+            const f = byPath.get(path);
+            const old = f ? f._flags : this.orphans.get(path);
+            const joined = { ...fl, ...(old || {}) };
+            if (fl.star) joined.star = true;
+            if (fl.rescan) joined.rescan = true;
+            if (f) f._flags = joined;
+            else this.orphans.set(path, joined);
+            n++;
+        }
+        if (n) {
+            this._dirty = true;
+            this.saveSoon();
+            this.refreshAll();
+        }
+        return n;
+    },
+
     // Photos that left the folder keep their flags in case they come back
     forgetFiles(files) {
         for (const f of files) if (this.any(f)) this.orphans.set(f.relPath || f.name, f._flags);

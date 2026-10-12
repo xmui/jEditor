@@ -151,7 +151,9 @@ const Watch = {
         if (!this.enabled()) return;
         const dirs = new Set(), files = new Set();
         let full = false;
-        const skip = (parts) => parts.length && this.skipDir(parts[0]);
+        // Inside jEditor's own folders, at any depth (a subfolder's .jeditor
+        // being merged, say), nothing is a photo
+        const skip = (parts) => parts.some(p => this.skipDir(p));
         for (const r of records) {
             if (r.type === 'errored') {
                 // The observer gave up: fall back to checking now and then
@@ -242,16 +244,18 @@ const Watch = {
         return name === FolderCache.DIR || name === FolderCache.LEGACY_TRASH || name === 'jEditor Export';
     },
 
+    // own: jEditor's folders found here (.jeditor, the old .jeditor-trash)
     async listDir(handle) {
-        const files = new Map(), dirs = new Map();
+        const files = new Map(), dirs = new Map(), own = [];
         for await (const entry of handle.values()) {
             if (entry.kind === 'file') {
                 if (this.app.isImage(entry.name) && !entry.name.startsWith('.jeditor-')) files.set(entry.name, entry);
-            } else if (entry.kind === 'directory' && !this.skipDir(entry.name)) {
-                dirs.set(entry.name, entry);
+            } else if (entry.kind === 'directory') {
+                if (entry.name === FolderCache.DIR || entry.name === FolderCache.LEGACY_TRASH) own.push(entry);
+                else if (!this.skipDir(entry.name)) dirs.set(entry.name, entry);
             }
         }
-        return { files, dirs };
+        return { files, dirs, own };
     },
 
     // Lists the given folders, and with deep every folder inside them;

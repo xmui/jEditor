@@ -186,6 +186,103 @@ const FolderCache = {
         } catch (e) { /* best-effort */ }
     },
 
+    // ---- a subfolder's own .jeditor ----
+    //
+    // Opening Smith Order/Ceremony on its own gives Ceremony a .jeditor.
+    // When the whole order is opened later, that one is merged into the
+    // order's and removed, so the order has one: its trash and Auto crop
+    // originals move across (named after the subfolder, so nothing clashes),
+    // its flags join the order's under the subfolder's path, and its cache
+    // goes (it's rebuilt when needed). If anything can't be moved, that
+    // .jeditor stays where it is.
+
+    async absorbNested(app, nested) {
+        const dir = app.dirHandle;
+        let flags = 0, trashed = 0, merged = 0, kept = 0;
+        for (const { path, parent, handles } of nested) {
+            for (const h of handles) {
+                if (app.dirHandle !== dir) return; // another folder opened meanwhile
+                try {
+                    let ok = true;
+                    if (h.name === this.LEGACY_TRASH) {
+                        const r = await this.moveAll(app, h, 'trash', path);
+                        trashed += r.moved;
+                        ok = r.ok;
+                    } else {
+                        try {
+                            const fh = await h.getFileHandle(Flags.FILE);
+                            const data = JSON.parse(await (await fh.getFile()).text());
+                            flags += Flags.mergeFrom(path, (data && data.flags) || {});
+                        } catch (e) { /* no flags there */ }
+                        for (const sub of ['trash', 'originals']) {
+                            let from;
+                            try { from = await h.getDirectoryHandle(sub); } catch (e) { continue; }
+                            const r = await this.moveAll(app, from, sub, path);
+                            if (sub === 'trash') trashed += r.moved;
+                            ok = ok && r.ok;
+                        }
+                    }
+                    if (!ok) { kept++; continue; }
+                    await parent.removeEntry(h.name, { recursive: true });
+                    merged++;
+                } catch (e) {
+                    console.warn(`Couldn't merge ${path}/${h.name}:`, e);
+                    kept++;
+                }
+            }
+        }
+        if (!merged && !kept) return;
+        const where = nested.length === 1 ? `“${nested[0].path.split('/').pop()}”` : `${nested.length} subfolders`;
+        const what = [];
+        if (flags) what.push(`${flags} flag${flags === 1 ? '' : 's'}`);
+        if (trashed) what.push(`${trashed} deleted photo${trashed === 1 ? '' : 's'}`);
+        if (merged) {
+            app.showToast(`Merged the .jeditor folder in ${where} into this order's` + (what.length ? ` (${what.join(', ')})` : ''), 5000, null, null, { type: 'success' });
+        }
+        if (kept) app.showToast(`Couldn't merge ${kept} .jeditor folder${kept === 1 ? '' : 's'} inside this order — left where ${kept === 1 ? 'it is' : 'they are'}`, 5000);
+    },
+
+    // Move every file in `from` into .jeditor/<sub>, as "<subfolder> - name"
+    async moveAll(app, from, sub, path) {
+        const root = await this.root(app, true);
+        if (!root) return { moved: 0, ok: false };
+        const to = await root.getDirectoryHandle(sub, { create: true });
+        const taken = new Set();
+        for await (const e of to.values()) taken.add(e.name.toLowerCase());
+        const prefix = path.split('/').join(' - ') + ' - ';
+        let moved = 0, ok = true;
+        const entries = [];
+        for await (const e of from.values()) entries.push(e);
+        for (const e of entries) {
+            if (e.kind !== 'file') { ok = false; continue; } // unexpected: leave it be
+            let name = prefix + e.name;
+            const dot = name.lastIndexOf('.');
+            for (let n = 2; taken.has(name.toLowerCase()); n++) {
+                name = dot > 0 ? `${prefix}${e.name.slice(0, e.name.lastIndexOf('.'))} (${n})${e.name.slice(e.name.lastIndexOf('.'))}` : `${prefix}${e.name} (${n})`;
+            }
+            try {
+                let done = false;
+                if (typeof e.move === 'function') {
+                    try { await e.move(to, name); done = true; } catch (err) { /* copy instead */ }
+                }
+                if (!done) {
+                    const data = await e.getFile();
+                    const nh = await to.getFileHandle(name, { create: true });
+                    const w = await nh.createWritable();
+                    await w.write(data);
+                    await w.close();
+                    await from.removeEntry(e.name);
+                }
+                taken.add(name.toLowerCase());
+                moved++;
+            } catch (err) {
+                console.warn('Couldn\'t move', e.name, err);
+                ok = false;
+            }
+        }
+        return { moved, ok };
+    },
+
     // ---- clean up ----
 
     // How many photos are in the trash (new and old location)
