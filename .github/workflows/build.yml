@@ -1,6 +1,6 @@
 name: Build
 
-# Every push and pull request: the bridge tests (Linux), then on Windows the
+# Every push and pull request: the UI and bridge tests (Linux), then on Windows the
 # build, the smoke test (the real app opening a folder and saving a
 # rotation), and an install / uninstall test. The setup and the portable
 # zip are kept as artifacts on the run's page, to try on another PC.
@@ -11,12 +11,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  bridge-tests:
+  tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -29,8 +27,6 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x

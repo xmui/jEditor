@@ -1,10 +1,13 @@
 {
-  "name": "jeditor-windows",
-  "version": "0.0.0",
+  "name": "jeditor",
+  "version": "1.18.1",
   "private": true,
-  "description": "Tests for the bridge between the jEditor UI and the Windows app",
+  "description": "jEditor: a photo viewer for working through scan orders, as a Windows app",
   "scripts": {
-    "test": "node test/bridge.test.js"
+    "start": "node scripts/serve.js",
+    "test": "node test/bridge.test.js && node test/ui.test.js",
+    "build:standalone": "node scripts/build-standalone.js",
+    "bump": "node scripts/bump-version.js"
   },
   "devDependencies": {
     "playwright-core": "^1.45.0"

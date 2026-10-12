@@ -6,7 +6,7 @@
 #   ./scripts/build.ps1                  everything
 #   ./scripts/build.ps1 -SkipInstaller   no Inno Setup needed
 #
-# <ver> is jEditor's version, from jeditor\app\version.js.
+# <ver> is jEditor's version, from app\version.js.
 
 param([switch]$SkipInstaller)
 
@@ -15,8 +15,8 @@ $root = Split-Path -Parent $PSScriptRoot
 $dist = Join-Path $root 'dist'
 $publish = Join-Path $dist 'publish'
 
-$versionJs = Join-Path $root 'jeditor\app\version.js'
-if (-not (Test-Path $versionJs)) { throw "jEditor's UI is missing. Run: git submodule update --init" }
+$versionJs = Join-Path $root 'app\version.js'
+if (-not (Test-Path $versionJs)) { throw "No $versionJs" }
 $version = [regex]::Match((Get-Content $versionJs -Raw), "APP_VERSION = '([0-9.]+)'").Groups[1].Value
 if (-not $version) { throw "No APP_VERSION in $versionJs" }
 Write-Host "jEditor $version"

@@ -31,12 +31,12 @@
     <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
   </PropertyGroup>
 
-  <!-- The UI: jEditor's app/ folder, from the submodule -->
+  <!-- The UI: the app/ folder -->
   <PropertyGroup>
-    <JEditorApp>$(MSBuildThisFileDirectory)..\jeditor\app\</JEditorApp>
+    <JEditorApp>$(MSBuildThisFileDirectory)..\app\</JEditorApp>
   </PropertyGroup>
 
-  <!-- Debug builds look for the submodule's app/ folder and run in dev mode -->
+  <!-- Debug builds run the repo's app/ folder in dev mode -->
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
     <DefineConstants>$(DefineConstants);DEV_DEFAULT</DefineConstants>
   </PropertyGroup>
@@ -61,7 +61,7 @@
   </ItemGroup>
 
   <Target Name="CheckUi" BeforeTargets="Build">
-    <Error Condition="!Exists('$(JEditorApp)index.html')" Text="jEditor's UI is missing. Run: git submodule update --init" />
+    <Error Condition="!Exists('$(JEditorApp)index.html')" Text="The UI is missing: no app\index.html" />
   </Target>
 
 </Project>
