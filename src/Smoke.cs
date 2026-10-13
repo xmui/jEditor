@@ -51,6 +51,7 @@ sealed class Smoke
             "stored" => Stored(),
             "scanned" => Scanned(msg),
             "cropped" => Cropped(msg),
+            "fed" => Fed(msg),
             "tethered" => Tethered(msg),
             "windows" => AppWindows.All.Count >= 2 ? (true, null) : (false, $"{AppWindows.All.Count} window(s) open"),
             "moved" when path is not null => File.Exists(path) ? (true, null) : (false, $"{name} isn't there"),
@@ -132,6 +133,30 @@ sealed class Smoke
         return (true, null);
     }
 
+    // The feeder with jEditor's settings: three photos, both sides, the
+    // test scanner's sides swapped: scan_0007…0009, each with its -b back,
+    // and the photo (not the plain back) under the plain name
+    (bool, string?) Fed(JsonNode msg)
+    {
+        var names = (msg["names"] as JsonArray ?? []).Select(n => (string?)n ?? "").ToList();
+        var expected = new[] { "scan_0007.jpg", "scan_0007-b.jpg", "scan_0008.jpg", "scan_0008-b.jpg", "scan_0009.jpg", "scan_0009-b.jpg" };
+        if (!names.SequenceEqual(expected)) return (false, $"saved as {string.Join(", ", names)}; expected {string.Join(", ", expected)}");
+        try
+        {
+            // The photo is colourful; the back is plain paper
+            using var front = new System.Drawing.Bitmap(Path.Combine(dir, "scan_0007.jpg"));
+            using var backSide = new System.Drawing.Bitmap(Path.Combine(dir, "scan_0007-b.jpg"));
+            var f = front.GetPixel(front.Width / 10, front.Height / 10);
+            var b = backSide.GetPixel(backSide.Width / 10, backSide.Height / 10);
+            if (b.GetSaturation() > 0.1 || f.GetSaturation() < 0.15) return (false, $"the sides are the wrong way round (front {f}, back {b})");
+        }
+        catch (Exception e)
+        {
+            return (false, "the fed photos aren't readable: " + e.Message);
+        }
+        return (true, null);
+    }
+
     // Tethered shooting with the test camera: connected, live view frames,
     // and one shot as RAW + JPEG under one number, the JPEG whole
     (bool, string?) Tethered(JsonNode msg)
@@ -164,7 +189,7 @@ sealed class Smoke
         if (msg["steps"] is JsonObject steps)
         {
             Log.Write("Smoke steps: " + steps.ToJsonString());
-            foreach (var step in new[] { "stored", "recycled", "deleted", "restored", "scanned", "cropped", "tethered", "logged", "places", "browsed", "projects", "counted", "pins", "windows", "moved", "unmoved", "back" })
+            foreach (var step in new[] { "stored", "recycled", "deleted", "restored", "scanned", "fed", "cropped", "tethered", "logged", "places", "browsed", "projects", "counted", "pins", "windows", "moved", "unmoved", "back" })
                 if (steps[step] is not JsonValue v || !v.TryGetValue<bool>(out var ok) || !ok) problems.Add($"{step}: {steps[step]?.ToJsonString() ?? "not reached"}");
             if (steps["error"] is not null) problems.Add("error: " + steps["error"]);
         }

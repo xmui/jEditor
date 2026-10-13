@@ -126,8 +126,10 @@ const FAKE_NATIVE = `
             let dir = await sub('disk');
             for (const p of o.folder.slice(root.length).split('\\\\')) dir = await dir.getDirectoryHandle(p);
             const pages = o.crops ? o.crops.length : window.__scanPages || 2;
-            for (let i = 0; i < pages; i++) {
-                const name = o.prefix + String(o.next + i).padStart(o.digits, '0') + '.jpg';
+            const ext = o.format === 'tiff' ? '.tif' : o.format === 'png' ? '.png' : '.jpg';
+            const sides = o.source === 'feeder' && o.sides === 'both' ? ['', '-b'] : [''];
+            for (let i = 0; i < pages * sides.length; i++) {
+                const name = o.prefix + String(o.next + Math.floor(i / sides.length)).padStart(o.digits, '0') + sides[i % sides.length] + ext;
                 const c = document.createElement('canvas');
                 c.width = 80; c.height = 60;
                 c.getContext('2d').fillRect(0, 0, 5 + i, 5 + o.next);
@@ -194,7 +196,12 @@ const FAKE_NATIVE = `
         tetherStop() { window.__tetherEnd(null); },
         tetherSet(o) { window.__tetherCalls.push('set ' + JSON.stringify(o)); },
         // Preview and crop: an 8.5 × 11.7 in glass with three prints on a pale lid
-        async scanCaps(o) { window.__capsReq = o; return { bedW: 8.5, bedH: 11.7, dpis: [75, 150, 300, 600, 1200], gray: true, guessed: false }; },
+        async scanCaps(o) {
+            window.__capsReq = o;
+            // The FastFoto: a feeder (both sides); the OpticBook: a glass
+            if (/EPSON/.test(o.device)) return { bedW: 8.5, bedH: 11.7, dpis: [75, 150, 300, 600, 1200], gray: true, guessed: false, flatbed: false, feeder: true, duplex: true, feedW: 8.5, feedH: 14 };
+            return { bedW: 8.5, bedH: 11.7, dpis: [75, 150, 300, 600, 1200], gray: true, guessed: false, flatbed: true, feeder: false, duplex: false };
+        },
         async scanPreview(o) {
             window.__previewReq = o;
             if (window.__previewHang) {
@@ -663,6 +670,12 @@ async function newPage(context, baseUrl) {
             out.button = getComputedStyle($('btn-scan')).display !== 'none';
             $('btn-scan').click();
             await wait(() => !$('scan-device').disabled);
+            await wait(() => Scan.caps['EPSON FF-680W']);
+            out.defaultMode = Scan.mode();
+            // These checks use the scanner's own window (Advanced)
+            $('scan-driver').checked = true;
+            $('scan-driver').dispatchEvent(new Event('change'));
+            out.driverMode = Scan.mode() + ' ' + $('scan-go').textContent + ' ' + !$('scan-help-driver').classList.contains('hidden');
             out.devices = [...$('scan-device').options].map(o => o.textContent).join(', ');
             // Compatibility mode: for TWAIN scanners, remembered for each
             out.compatShown = !$('scan-compat-row').classList.contains('hidden') && !$('scan-compat').checked;
@@ -762,6 +775,8 @@ async function newPage(context, baseUrl) {
             return out;
         });
         check('Scan is in the toolbar', r.button);
+        check('jEditor\'s own settings to start with: the FastFoto (a feeder) gets the feeder', r.defaultMode === 'feeder', r.defaultMode);
+        check('Advanced: the scanner\'s own window instead', r.driverMode === 'driver Scan true', r.driverMode);
         check('it lists the scanners, WIA ones marked', r.devices === 'EPSON FF-680W, OpticBook A300 (WIA)', r.devices);
         check('it offers the order\'s folders, starting with the one with the most photos', r.folder === '' && r.folders === 'Scan Order, Ceremony', JSON.stringify([r.folder, r.folders]));
         check('names follow on from the folder\'s photos', r.names[0] === 'photo' && r.names[1] === '4' && r.names[2] === 'photo4.jpg, photo5.jpg, …', JSON.stringify(r.names));
@@ -802,14 +817,19 @@ async function newPage(context, baseUrl) {
             await wait(() => !$('scan-device').disabled);
             $('scan-device').value = 'wia-1';
             $('scan-device').dispatchEvent(new Event('change'));
+            await wait(() => Scan.caps['wia-1']);
+            // The OpticBook (a glass): the glass to start with, no feeder offered
             out.modeDefault = Scan.mode();
-            document.querySelector('input[name="scan-mode"][value="preview"]').click();
+            out.feederHidden = $('scan-mode-feeder').classList.contains('hidden') && $('scan-sides-row').classList.contains('hidden');
             out.goLabel = $('scan-go').textContent;
-            out.help = !$('scan-help-preview').classList.contains('hidden') && $('scan-help-driver').classList.contains('hidden');
+            out.help = !$('scan-help-glass').classList.contains('hidden') && $('scan-help-driver').classList.contains('hidden');
+            // The settings are in setup, then beside the glass
+            out.optsInSetup = $('scan-opts-home').contains($('scan-opts'));
             $('scan-go').click();
             await wait(() => $('scan-panel').dataset.state === 'preview' && !Scan.waiting && ScanPreview.boxes.length > 0);
             out.capsReq = window.__capsReq;
             out.previewReq = window.__previewReq;
+            out.optsBeside = $('scan-opts-pv').contains($('scan-opts'));
             out.boxes = ScanPreview.boxes.map(b => [b.x, b.y, b.w, b.h].map(v => Math.round(v * 1000) / 1000));
             out.shown = $('scan-pv-boxes').querySelectorAll('.pv-box').length;
             out.count = $('scan-pv-count').textContent;
@@ -849,17 +869,54 @@ async function newPage(context, baseUrl) {
             // Find prints puts them back
             $('scan-pv-find').click();
             out.found = ScanPreview.boxes.length;
+            // A 4×6 box (tall), where there's room; turned a quarter; the
+            // first one tilted
+            $('scan-pv-size').value = '2.5x3.5';
+            $('scan-pv-orient').value = 'land';
+            $('scan-pv-add').click();
+            const added = ScanPreview.boxes[3];
+            out.sized = [Math.round(added.w * 8.5 * 100) / 100, Math.round(added.h * 11.7 * 100) / 100];
+            // (Least in the way: the glass has no spot quite free for it)
+            out.noOverlap = ScanPreview.boxes.slice(0, 3).reduce((sum, o) => sum + Math.max(0, Math.min(added.x + added.w, o.x + o.w) - Math.max(added.x, o.x)) * Math.max(0, Math.min(added.y + added.h, o.y + o.h) - Math.max(added.y, o.y)), 0) < added.w * added.h * 0.05;
+            $('scan-pv-boxes').querySelectorAll('.pv-turn')[3].click();
+            out.turned = ScanPreview.boxes[3].turn + ' ' + $('scan-pv-boxes').querySelectorAll('.pv-up')[3].style.transform;
+            ScanPreview.boxes[0].angle = 4.5;
+            ScanPreview.render();
+            out.tiltShown = $('scan-pv-boxes').querySelector('.pv-box').style.transform;
             $('scan-dpi').value = '1200';
             $('scan-dpi').dispatchEvent(new Event('change'));
             $('scan-color').value = 'gray';
+            $('scan-color').dispatchEvent(new Event('change'));
+            // Brightness and contrast show on the preview
+            $('scan-bright').value = '20';
+            $('scan-bright').dispatchEvent(new Event('input'));
+            $('scan-contrast').value = '-10';
+            $('scan-contrast').dispatchEvent(new Event('input'));
+            out.filter = [$('scan-adj-r').getAttribute('slope'), $('scan-adj-r').getAttribute('intercept'), $('scan-bright-out').textContent];
+            // PNG (lossless): no quality, names end .png
+            $('scan-format').value = 'png';
+            $('scan-format').dispatchEvent(new Event('change'));
+            out.tiff = [$('scan-quality-row').classList.contains('hidden'), $('scan-pv-names').textContent];
+            // Saved setups
+            const realPrompt = UI.prompt;
+            UI.prompt = async () => 'Reprints';
+            await Scan.saveSetup();
+            UI.prompt = realPrompt;
+            out.setups = [JSON.parse(localStorage.getItem('jeditor.scanSetups')).map(x => `${x.name} ${x.dpi} ${x.format} ${x.brightness}`).join(), $('scan-setup-pick').value];
+            $('scan-bright').value = '0';
+            $('scan-bright').dispatchEvent(new Event('input'));
+            out.custom = $('scan-setup-pick').value;
+            $('scan-setup-pick').value = 'Reprints';
+            $('scan-setup-pick').dispatchEvent(new Event('change'));
+            out.applied = $('scan-bright').value;
             $('scan-go').click();
             await wait(() => $('scan-panel').dataset.state === 'done');
             out.req = window.__scanReq;
-            await wait(() => app.files.some(f => f.name === 'photo5.jpg'));
+            await wait(() => app.files.some(f => f.name === 'photo6.png'));
             out.files = app.files.map(f => f.name).sort().join();
             out.status = $('scan-status').textContent;
-            out.modeKept = JSON.parse(localStorage.getItem('jeditor.scanMode'))['wia-1'] === true;
-            out.prefs = JSON.parse(localStorage.getItem('jeditor.scanPv'));
+            out.modeKept = JSON.parse(localStorage.getItem('jeditor.scanMode'))['wia-1'] === 'glass';
+            out.prefs = JSON.parse(localStorage.getItem('jeditor.scanOpts'));
             // Scan more previews the glass again; the names carry on
             window.__previewReq = null;
             $('scan-go').click();
@@ -882,7 +939,8 @@ async function newPage(context, baseUrl) {
             return out;
         });
         const near = (b, x, y, w, h) => b && b[0] <= x && b[1] <= y && b[0] + b[2] >= x + w && b[1] + b[3] >= y + h && b[2] < w + 0.12 && b[3] < h + 0.1;
-        check('How: the scanner\'s window to start with; Preview and crop says what it does, and the button says Preview', r.modeDefault === 'driver' && r.help && r.goLabel === 'Preview', JSON.stringify([r.modeDefault, r.help, r.goLabel]));
+        check('How: the OpticBook (a glass) gets the glass, no feeder offered; it says what it does, and the button says Preview', r.modeDefault === 'glass' && r.feederHidden && r.help && r.goLabel === 'Preview', JSON.stringify([r.modeDefault, r.feederHidden, r.help, r.goLabel]));
+        check('the settings are in setup, then beside the glass', r.optsInSetup && r.optsBeside);
         check('it asks the scanner about its glass, then previews it small', r.capsReq && r.capsReq.device === 'wia-1' && r.previewReq && r.previewReq.dpi === 75 && r.previewReq.bedW === 8.5, JSON.stringify([r.capsReq, r.previewReq]));
         check('the dock grows to show the glass', r.wide);
         check('a box round each print, in reading order', r.boxes.length === 3 && r.shown === 3 && near(r.boxes[0], 0.059, 0.043, 0.47, 0.256) && near(r.boxes[1], 0.588, 0.06, 0.353, 0.342) && near(r.boxes[2], 0.118, 0.427, 0.706, 0.342), JSON.stringify(r.boxes));
@@ -891,12 +949,61 @@ async function newPage(context, baseUrl) {
         check('× removes a box', r.afterRemove[0] === 2 && r.afterRemove[1] === 'Scan 2 photos', JSON.stringify(r.afterRemove));
         check('dragging on the glass draws a box; dragging a box moves it; a click makes none', r2.drawn.length === 3 && r2.drawn[2][0] === 0.1 && r2.drawn[2][1] === 0.85 && r2.drawn[2][2] === 0.4 && r2.drawn[0][0] > 0.06 && r2.go === 'Scan 3 photos', JSON.stringify(r2.drawn));
         check('Delete removes the selected box; Find prints puts them back', r2.afterDelete === 2 && r2.found === 3, JSON.stringify([r2.afterDelete, r2.found]));
-        check('Scan sends the boxes, resolution, colour and glass to the app, without a scanner window', r2.req && r2.req.crops && r2.req.crops.length === 3 && r2.req.dpi === 1200 && r2.req.gray === true && r2.req.bedW === 8.5 && r2.req.bedH === 11.7 && r2.req.prefix === 'photo' && r2.req.next === 3, JSON.stringify(r2.req));
-        check('... a photo per box comes in', /photo3\.jpg,photo4\.jpg,photo5\.jpg/.test(r2.files) && /Scanned 3 photos/.test(r2.status), JSON.stringify([r2.files, r2.status]));
-        check('Preview and crop is remembered for that scanner, with the resolution and colour', r2.modeKept && r2.prefs.dpi === 1200 && r2.prefs.color === 'gray' && /^preview Preview$/.test(r2.setupMode), JSON.stringify([r2.modeKept, r2.prefs, r2.setupMode]));
-        check('Scan more previews again; the names carry on', /photo6\.jpg/.test(r2.moreNames) && r2.moreDpi === '1200', JSON.stringify([r2.moreNames, r2.moreDpi]));
+        check('a print-size box: wallet, wide, at its real size, where there\'s room', r2.sized.join() === '3.5,2.5' && r2.noOverlap, JSON.stringify([r2.sized, r2.noOverlap]));
+        check('↻ turns a box a quarter (the arrow shows which way is up); a tilted box shows tilted', r2.turned === '90 rotate(-90deg)' && r2.tiltShown === 'rotate(4.5deg)', JSON.stringify([r2.turned, r2.tiltShown]));
+        check('brightness and contrast show on the preview', r2.filter[0] === '0.9' && Math.abs(parseFloat(r2.filter[1]) - 0.15) < 1e-9 && r2.filter[2] === '20', JSON.stringify(r2.filter));
+        check('PNG: no quality, and the names end .png', r2.tiff[0] && /photo3\.png … photo6\.png/.test(r2.tiff[1]), JSON.stringify(r2.tiff));
+        check('saved setups: saved under a name, Custom once changed, picked again', r2.setups[0] === 'Reprints 1200 png 20' && r2.setups[1] === 'Reprints' && r2.custom === '' && r2.applied === '20', JSON.stringify([r2.setups, r2.custom, r2.applied]));
+        check('Scan sends the boxes (tilt and turn too), settings and glass to the app, with no scanner window', r2.req && r2.req.source === 'glass' && r2.req.crops && r2.req.crops.length === 4 && r2.req.crops[0].angle === 4.5 && r2.req.crops[3].turn === 90 && r2.req.dpi === 1200 && r2.req.gray === true && r2.req.format === 'png' && r2.req.brightness === 20 && r2.req.contrast === -10 && r2.req.bedW === 8.5 && r2.req.bedH === 11.7 && r2.req.prefix === 'photo' && r2.req.next === 3, JSON.stringify(r2.req));
+        check('... a photo per box comes in', /photo3\.png,photo4\.png,photo5\.png,photo6\.png/.test(r2.files) && /Scanned 4 photos/.test(r2.status), JSON.stringify([r2.files, r2.status]));
+        check('the glass is remembered for that scanner, and the settings', r2.modeKept && r2.prefs.dpi === 1200 && r2.prefs.color === 'gray' && r2.prefs.format === 'png' && /^glass Preview$/.test(r2.setupMode), JSON.stringify([r2.modeKept, r2.prefs, r2.setupMode]));
+        check('Scan more previews again; the names carry on', /photo7\.png/.test(r2.moreNames) && r2.moreDpi === '1200', JSON.stringify([r2.moreNames, r2.moreDpi]));
         check('Stop ends a preview', r2.stopShown && r2.stopped === 'Preview stopped', JSON.stringify([r2.stopShown, r2.stopped]));
         check('preview suite: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('native: the feeder, with jEditor\'s settings');
+    {
+        const context = await browser.newContext();
+        const { page, errors } = await newPage(context, baseUrl);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const $ = (id) => document.getElementById(id);
+            const dir = await makeOrder('Feed Order', 2);
+            await openOrder(dir);
+            $('btn-scan').click();
+            await wait(() => !$('scan-device').disabled && Scan.caps['EPSON FF-680W']);
+            out.mode = Scan.mode();
+            out.glassHidden = $('scan-mode-glass').classList.contains('hidden');
+            out.sidesShown = !$('scan-sides-row').classList.contains('hidden');
+            // The FastFoto has its sides the other way round: on to start with
+            out.swap = $('scan-swap').checked;
+            $('scan-sides').value = 'both';
+            $('scan-sides').dispatchEvent(new Event('change'));
+            out.names = $('scan-preview').textContent;
+            $('scan-dpi').value = '600';
+            $('scan-dpi').dispatchEvent(new Event('change'));
+            $('scan-go').click();
+            await wait(() => $('scan-panel').dataset.state === 'done');
+            out.req = window.__scanReq;
+            await wait(() => app.files.some(f => f.name === 'photo4-b.jpg'));
+            out.files = app.files.map(f => f.name).sort().join();
+            // Swap off: remembered for that scanner
+            $('scan-settings').click();
+            $('scan-swap').checked = false;
+            $('scan-swap').dispatchEvent(new Event('change'));
+            out.swapKept = JSON.parse(localStorage.getItem('jeditor.scanSwap'))['EPSON FF-680W'] === false;
+            Scan.close();
+            return out;
+        });
+        check('the FastFoto (a feeder) gets the feeder and its sides; no glass offered', r.mode === 'feeder' && r.glassHidden && r.sidesShown, JSON.stringify([r.mode, r.glassHidden, r.sidesShown]));
+        check('... its front and back are swapped to start with (Advanced)', r.swap);
+        check('both sides: each back is named after its front, with -b', /photo3\.jpg and its back photo3-b\.jpg/.test(r.names), r.names);
+        check('Scan sends the feeder settings, with no scanner window', r.req && r.req.source === 'feeder' && r.req.sides === 'both' && r.req.swap === true && r.req.dpi === 600 && r.req.bedW === 8.5 && r.req.bedH === 14 && r.req.format === 'jpeg', JSON.stringify(r.req));
+        check('... fronts and backs come in', /photo3-b\.jpg,photo3\.jpg,photo4-b\.jpg,photo4\.jpg/.test(r.files), r.files);
+        check('the swap is remembered for that scanner', r.swapKept);
+        check('feeder suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
 
