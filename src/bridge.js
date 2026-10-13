@@ -268,6 +268,10 @@
         cancelScan() {
             post({ type: 'cancelScan' });
         },
+        // Shows jEditor's log in Explorer
+        async showLog() {
+            return (await answer('showLog')).msg.ok;
+        },
         // Downloads and runs the newest setup; jEditor then closes and the
         // setup opens it again. progress(received, total) as it downloads.
         async installUpdate(progress) {

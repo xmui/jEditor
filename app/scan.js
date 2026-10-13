@@ -220,6 +220,12 @@ const Scan = {
         const label = () => names.length ? `Scanning… ${names.length} photo${names.length === 1 ? '' : 's'}` : 'Scanning… (the scanner\'s window may be behind jEditor)';
         this.running = true;
         app.beginTask('scanner', label());
+        // Stays while it scans, with Stop (a scanner whose window never
+        // shows can't hold jEditor up)
+        const scannerName = ((this.devices || []).find(d => d.id === device) || {}).name || 'the scanner';
+        const stop = app.showToast(`Scanning with ${scannerName}. Its window may be behind jEditor.`, 0, 'scanning',
+            { label: 'Stop', run: () => native.cancelScan() }, { type: 'info' });
+        const done = () => { if (stop && stop.isConnected) app.dismissToast(stop); };
         const show = () => Watch.request({ dirs: [folder] });
         const add = (name) => {
             const rel = folder ? `${folder}/${name}` : name;
@@ -237,6 +243,7 @@ const Scan = {
             (e.names || []).forEach(add);
             show();
             app.endTask('scanner');
+            done();
             this.running = false;
             UI.alert({
                 title: 'The scan didn\'t finish',
@@ -246,13 +253,16 @@ const Scan = {
         }
         show();
         app.endTask('scanner');
+        done();
         this.running = false;
         const n = names.length;
         if (n) {
             app.showToast(`Scanned ${n} photo${n === 1 ? '' : 's'} into ${Folders.label(folder)}`, 6000, 'scanned',
                 { label: 'Scan more', run: () => this.again({ device, driver, folder, autoCrop }) }, { type: 'success' });
             if (autoCrop) await this.autoCrop(names);
-        } else if (!result.cancelled) {
+        } else if (result.cancelled) {
+            app.showToast('Scan stopped', 2500, null, null, { type: 'info' });
+        } else {
             app.showToast('Nothing was scanned', 3000, null, null, { type: 'info' });
         }
         return { count: n, names, cancelled: result.cancelled };

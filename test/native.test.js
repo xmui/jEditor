@@ -117,6 +117,11 @@ const FAKE_NATIVE = `
         // The app's side: pages into the folder at that path, each reported as it lands
         async scan(o, scanned) {
             window.__scanReq = o;
+            // A scanner whose window never shows: only Stop ends it
+            if (window.__scanHang) {
+                await new Promise(r => { window.__unhang = r; });
+                return { count: 0, names: [], cancelled: true };
+            }
             const root = window.__orderRoot + '\\\\';
             let dir = await sub('disk');
             for (const p of o.folder.slice(root.length).split('\\\\')) dir = await dir.getDirectoryHandle(p);
@@ -135,7 +140,8 @@ const FAKE_NATIVE = `
             if (window.__scanError) throw new Error(window.__scanError);
             return { count: pages };
         },
-        cancelScan() { },
+        cancelScan() { window.__cancelled = true; if (window.__unhang) window.__unhang(); },
+        async showLog() { window.__logShown = true; return true; },
         // Drives and folders: paths use BS (a backslash) to stay readable here
         async places() { return { drives: window.__drives, home: [{ name: 'Desktop', path: 'C:' + BS + 'Users' + BS + 'lab' + BS + 'Desktop' }] }; },
         async listDir(p) {
@@ -596,6 +602,25 @@ async function newPage(context, baseUrl) {
             out.running = Scan.running;
             window.__scanError = null;
 
+            // A scanner that never shows its window: Stop ends it
+            window.__scanHang = true;
+            const hung = Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '' });
+            await wait(() => [...document.querySelectorAll('.toast')].some(t => /Scanning with EPSON FF-680W/.test(t.textContent)));
+            const toast = [...document.querySelectorAll('.toast')].find(t => /Scanning with/.test(t.textContent));
+            out.stopOffered = /Stop/.test(toast.textContent);
+            [...toast.querySelectorAll('button')].find(b => b.textContent === 'Stop').click();
+            const stopped = await hung;
+            out.stopped = stopped.cancelled && window.__cancelled && !Scan.running;
+            await wait(() => /Scan stopped/.test(toasts()));
+            await new Promise(r => setTimeout(r, 400)); // dismissed messages take 300 ms to go
+            out.stopToast = toasts();
+            window.__scanHang = false;
+
+            // Settings: Show log
+            $('upd-log').click();
+            await wait(() => window.__logShown);
+            out.log = window.__logShown;
+
             // No scanners: says what to check
             window.__scanners = { devices: [], problems: ['TWAIN isn\'t set up on this PC (no TWAINDSM.dll), so only WIA scanners are listed'] };
             Scan.devices = null;
@@ -617,6 +642,9 @@ async function newPage(context, baseUrl) {
         check('... and crops each scan once it\'s in, without asking', r.cropped === 'c2.jpg,c3.jpg (no question)', r.cropped);
         check('scanning again carries on the names', r.more === 'photo6.jpg', r.more);
         check('a scan that fails says why, and what was saved', /busy/.test(r.err || '') && /didn't finish/.test(r.alert) && /1 photo was saved/.test(r.alert) && !r.running, JSON.stringify([r.err, r.alert]));
+        check('while scanning, a message offers Stop', r.stopOffered);
+        check('Stop ends a scan whose window never shows', r.stopped && /Scan stopped/.test(r.stopToast) && !/Scanning with/.test(r.stopToast), JSON.stringify([r.stopped, r.stopToast]));
+        check('Settings: Show log', r.log);
         check('no scanners: says so and what to check', /No scanners found/.test(r.none) && /plugged in/.test(r.none) && /TWAINDSM/.test(r.none) && r.noneDisabled, r.none);
         check('scan suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();

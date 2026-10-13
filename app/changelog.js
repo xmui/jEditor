@@ -12,6 +12,8 @@ const CHANGELOG = [
             'Pinned: folders you pin (the pin beside any folder), and the folders pinned in Explorer\'s Quick Access. This PC: the drives, which open out like Explorer\'s. A USB drive plugged in is marked New, and can be ejected from here.',
             'The start screen shows the same projects, pinned folders and drives.',
             'A folder with no photos in it opens, ready to scan into or fill from Explorer, instead of saying No photos found. Deleting the last photo keeps the project open too.',
+            'While a scan runs, a message says which scanner and offers Stop, for a scanner whose window never shows. If its driver doesn\'t respond, jEditor gives up on it after 5 seconds and starts the scanning helper afresh next time.',
+            'Settings → Updates → Show log opens jEditor\'s log in Explorer, to send when something goes wrong.',
             'Order is now project everywhere on screen.'
         ]
     },

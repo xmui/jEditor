@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -293,6 +294,7 @@ sealed class MainForm : Form
             case "eject":
             case "reveal":
             case "pickPath":
+            case "showLog":
                 var files = FilesOf(e);
                 BeginInvoke(async () => await HandleRequestAsync(msg, files));
                 break;
@@ -474,6 +476,14 @@ sealed class MainForm : Form
                     Reply(id, new { ok });
                     break;
                 }
+                case "showLog":
+                {
+                    var log = Log.Default();
+                    var ok = File.Exists(log);
+                    if (ok) Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{log}\"") { UseShellExecute = true });
+                    Reply(id, new { ok });
+                    break;
+                }
                 case "pickPath":
                 {
                     using var dialog = new FolderBrowserDialog
@@ -548,13 +558,30 @@ sealed class MainForm : Form
             Log.Write($"Scanning from {request.DeviceId} ({request.Driver}) into {folder}");
             // Sent before the reply, in order: the page stops listening once
             // the reply comes, so the last photo's message mustn't trail it
-            count = await Scanners.ScanAsync(request, Handle, name =>
+            var scan = Scanners.ScanAsync(request, Handle, name =>
             {
                 count++;
                 names.Add(name);
                 if (InvokeRequired) Invoke(() => Post(new { type = "scanned", scan = id, name }));
                 else Post(new { type = "scanned", scan = id, name });
             }, cancel.Token);
+            // Stop: a driver stuck on its own doesn't hear it, so 5 s after
+            // Stop the scan is given up on, and the scanning helper with it
+            var stopped = new TaskCompletionSource();
+            using (cancel.Token.Register(() => stopped.TrySetResult()))
+            {
+                var giveUp = stopped.Task.ContinueWith(_ => Task.Delay(5000)).Unwrap();
+                if (await Task.WhenAny(scan, giveUp) != scan)
+                {
+                    Log.Write("The scan didn't stop when asked: giving up on it, and on the scanning helper");
+                    var stuck = scanner;
+                    scanner = null; // a fresh one next time
+                    _ = scan.ContinueWith(_ => stuck?.Dispose());
+                    try { stuck?.Dispose(); } catch (Exception e) { Log.Write("Closing the scanning helper: " + e.Message); }
+                    throw new OperationCanceledException();
+                }
+            }
+            count = await scan;
             Reply(id, new { count, names });
         }
         catch (OperationCanceledException)
