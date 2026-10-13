@@ -49,6 +49,14 @@ const Edits = {
             if (app.dirHandle === left) return;
             app.showToast(`${left.name}: ${n.toLocaleString()} edit${n === 1 ? '' : 's'} not saved yet — still there when you open it again`, 6000, null, null, { type: 'info' });
         }, 0);
+        // What hasn't been written yet goes to the project being left,
+        // after any write still under way (its folder is taken now)
+        if (left && (this._dirty || this._saving) && !app.readOnlyMode) {
+            const data = this.collect();
+            const root = FolderCache.root(app, !this.isEmpty(data)).catch(() => null);
+            const before = (this._saving || Promise.resolve()).catch(() => { });
+            this._final = before.then(async () => this.writeOut(await root, data));
+        }
         this._dirty = false;
         this.defer = false;
         this.orphans = new Map();
@@ -100,6 +108,9 @@ const Edits = {
             this.updateBar();
             return [];
         }
+        // (the last project's last write first: it may be this one)
+        if (this._final) await this._final.catch(() => { });
+        if (this._loadedFor !== app.dirHandle) return [];
         let data = null;
         try {
             const root = await FolderCache.root(app, false);
@@ -158,6 +169,7 @@ const Edits = {
     async flush() {
         while (this._saving) await this._saving.catch(() => { });
         if (this._dirty) await this.save();
+        if (this._final) await this._final.catch(() => { });
     },
 
     async save() {
@@ -165,18 +177,29 @@ const Edits = {
         this.updateBar();
         if (!this._dirty || !app.dirHandle || app.readOnlyMode) return;
         this._dirty = false;
+        const data = this.collect();
+        await this.writeOut(await FolderCache.root(app, !this.isEmpty(data)).catch(() => null), data);
+    },
+
+    // Nothing to keep: no setting, no edits
+    isEmpty(data) {
+        return !data.defer && !Object.keys(data.edits).length;
+    },
+
+    // The setting and every edit, as edits.json holds them
+    collect() {
         const out = {};
         for (const [k, v] of this.orphans) out[k] = v;
-        for (const f of app.files) if (f._edit) out[f.relPath || f.name] = f._edit;
-        const empty = !this.defer && !Object.keys(out).length;
+        for (const f of this.app.files) if (f._edit) out[f.relPath || f.name] = f._edit;
+        return { version: 1, defer: this.defer, edits: out };
+    },
+
+    // Written to the project's data folder (removed when there's nothing)
+    async writeOut(root, data) {
+        if (!root) return;
         try {
-            const root = await FolderCache.root(app, !empty);
-            if (!root) return;
-            if (empty) {
-                await root.removeEntry(this.FILE).catch(() => { });
-                return;
-            }
-            await FolderCache.writeJson(root, this.FILE, { version: 1, defer: this.defer, edits: out });
+            if (this.isEmpty(data)) await root.removeEntry(this.FILE).catch(() => { });
+            else await FolderCache.writeJson(root, this.FILE, data);
         } catch (e) {
             console.warn('Saving edits failed:', e);
         }

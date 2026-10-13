@@ -3225,6 +3225,8 @@ async function newPage(browser, url) {
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
         const r = await page.evaluate(async () => {
+            let step = 'start';
+            try { return await (async () => {
             const out = {};
             const sleep = (ms) => new Promise(res => setTimeout(res, ms));
             const until = async (fn, n = 200) => { for (let i = 0; i < n && !(await fn()); i++) await sleep(50); };
@@ -3271,12 +3273,14 @@ async function newPage(browser, url) {
             out.barOffAtFirst = bar().classList.contains('hidden');
 
             // Turned on for this project (the grid's menu)
+            step = "Turned on for this project (the grid's menu)";
             const bg = app.buildContextItems(null, false).find(it => it[0] === 'Save edits when done');
             bg[1]();
             await until(async () => (await kept()) && (await kept()).defer);
             out.on = Edits.on() && !bar().classList.contains('hidden') && /kept until you save/.test(barText()) && (await kept()).defer === true;
 
             // Batch Auto crop: kept as edits, nothing written
+            step = 'Batch Auto crop: kept as edits, nothing written';
             app.selection = new Set(app.files);
             app.updateSelectionUI();
             window.dispatchEvent(new KeyboardEvent('keydown', { key: 'A', shiftKey: true, bubbles: true }));
@@ -3286,6 +3290,7 @@ async function newPage(browser, url) {
             out.badges = !!f('scan1.jpg')._gridEl.querySelector('.tile-edit') && !f('plain.jpg')._gridEl.querySelector('.tile-edit');
             out.barCount = barText();
             // Shown as it will be saved: the thumbnail and preview are of the print
+            step = 'Shown as it will be saved: the thumbnail and preview are of the print';
             await until(() => f('scan1.jpg').thumbnailUrl && !f('scan1.jpg')._thumbStale);
             const tb = await createImageBitmap(await (await fetch(f('scan1.jpg').thumbnailUrl)).blob());
             out.thumbAspect = tb.width / tb.height;
@@ -3295,6 +3300,7 @@ async function newPage(browser, url) {
             out.shown = [shown.w, shown.h];
 
             // Recrop: the editor opens on the whole photo, at the kept crop
+            step = 'Recrop: the editor opens on the whole photo, at the kept crop';
             const edit1 = { ...f('scan1.jpg')._edit };
             app.selection.clear();
             app.currentFile = f('scan1.jpg');
@@ -3313,6 +3319,7 @@ async function newPage(browser, url) {
             out.recropShown = [re.w, re.h];
 
             // A turn is kept too; Ctrl+Z takes it back
+            step = 'A turn is kept too; Ctrl+Z takes it back';
             await app.rotateImage(f('plain.jpg'), 90);
             const turned = await app.getDisplaySource(f('plain.jpg'));
             out.turned = f('plain.jpg')._edit && f('plain.jpg')._edit.q === 1 && turned.w === 300 && turned.h === 400 && await untouched();
@@ -3321,13 +3328,17 @@ async function newPage(browser, url) {
             await app.rotateImage(f('plain.jpg'), -90);
 
             // Kept with the project: open it again and they're back
-            await until(async () => { const k = await kept(); return k && Object.keys(k.edits).length === 3; });
+            step = "Kept with the project: open it again and they're back";
+            // (straight away, the last change maybe not written yet: it is
+            // before the project is read again)
             await app.openDirectory(dir);
             // (kept edits can come a moment after the photos)
             await until(() => app.files.length === 3 && Edits.count() === 3);
             out.reloaded = Edits.on() && !!f('scan1.jpg')._edit && f('scan1.jpg')._edit.angle === 0 && !!f('plain.jpg')._edit && f('plain.jpg')._edit.q === 3 && /3 edits/.test(barText());
 
             // Export copies: every photo, the edited ones with their edits
+            step = 'Export copies: every photo, the edited ones with their edits';
+            await until(() => Edits.count() === 3);
             UI.choose = async () => 'alt';
             UI.prompt = async () => '';
             await Edits.saveAll();
@@ -3336,6 +3347,8 @@ async function newPage(browser, url) {
             out.exportLeavesEdits = Edits.count() === 3 && await untouched();
 
             // Save into the photos
+            step = 'Save into the photos';
+            await until(() => Edits.count() === 3 && !app._savingEdits);
             UI.choose = async () => 'ok';
             await Edits.saveAll();
             out.saved = [await dims(dir, 'scan1.jpg'), await dims(dir, 'scan2.jpg'), await dims(dir, 'plain.jpg')];
@@ -3346,6 +3359,7 @@ async function newPage(browser, url) {
             for await (const e of backups.values()) out.backups++;
 
             // One Ctrl+Z: the photos back, the edits kept again
+            step = 'One Ctrl+Z: the photos back, the edits kept again';
             // (a lossless turn undone keeps its orientation tag: the same
             // picture, not quite the same bytes)
             await app.undo();
@@ -3353,13 +3367,17 @@ async function newPage(browser, url) {
             out.undoSave = await same('scan1.jpg') && await same('scan2.jpg') && upright && Edits.count() === 3;
 
             // Turned off with edits waiting: discard them
+            step = 'Turned off with edits waiting: discard them';
             UI.choose = async () => 'alt';
             await Edits.setDefer(false);
             await until(async () => !(await kept()));
             out.off = !Edits.on() && Edits.count() === 0 && bar().classList.contains('hidden') && !(await kept()) &&
                 await same('scan1.jpg') && (await dims(dir, 'plain.jpg')).join('x') === '400x300';
             return out;
+            })(); } catch (err) { return { crash: `${step}: ${err.message}`, toasts: [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | ') }; }
         });
+        check('kept edits: the steps all ran', !r.crash, `${r.crash} — toasts: ${r.toasts}`);
+        if (r.crash) { await page.close(); } else {
         const inside = (d) => d[0] < 900 && d[1] < 700 && d[0] > 450 && d[1] > 300;
         check('kept edits: on for the project; the bar shows; saved in edits.json', r.barOffAtFirst && r.on, JSON.stringify(r));
         check('kept edits: batch Auto crop keeps crops as edits, nothing written', r.autoKept && /check them, then Save/.test(r.autoToast), r.autoToast);
@@ -3375,6 +3393,7 @@ async function newPage(browser, url) {
         check('kept edits: turning it off can discard what is waiting', r.off);
         check('kept edits suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
+        }
     }
 
     // ---- 7s3. Undo history ----
