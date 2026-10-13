@@ -102,14 +102,14 @@ const Stored = {
         const total = orders.reduce((n, o) => n + o.usage.bytes, 0);
         const gone = orders.filter(o => !o.exists).length;
         summary.textContent = orders.length
-            ? `${orders.length} order${orders.length === 1 ? '' : 's'} · ${fmt(total)}` + (gone ? ` · ${gone} no longer found` : '')
+            ? `${orders.length} project${orders.length === 1 ? '' : 's'} · ${fmt(total)}` + (gone ? ` · ${gone} no longer found` : '')
             : '';
         this.el('stored-clear-caches').disabled = !orders.some(o => o.usage.cache.bytes);
         this.el('stored-clear-missing').disabled = !gone;
         if (!orders.length) {
             const li = document.createElement('li');
             li.className = 'stored-empty';
-            li.textContent = 'Nothing stored yet. Open an order and its flags and cache are kept here.';
+            li.textContent = 'Nothing stored yet. Open a project and its flags and cache are kept here.';
             list.appendChild(li);
             return;
         }
@@ -154,9 +154,9 @@ const Stored = {
                 if (title) b.title = title;
                 actions.appendChild(b);
             };
-            button('open', 'Open', 'ghost', !o.exists || !o.path || o.key === current, o.exists ? 'Open this order' : 'The folder isn\'t there any more');
+            button('open', 'Open', 'ghost', !o.exists || !o.path || o.key === current, o.exists ? 'Open this project' : 'The folder isn\'t there any more');
             button('cache', 'Remove cache', 'secondary', !u.cache.bytes, 'Thumbnails and duplicate data; made again when needed');
-            button('all', 'Remove all', 'secondary danger-text', false, 'Everything jEditor keeps for this order');
+            button('all', 'Remove all', 'secondary danger-text', false, 'Everything jEditor keeps for this project');
             li.append(info, actions);
             list.appendChild(li);
         }
@@ -213,11 +213,11 @@ const Stored = {
         if (flags) items.push(`${flags} flag${flags === 1 ? '' : 's'} (stars, rescan flags, colour labels) are lost.`);
         if (trash) items.push(`${trash} deleted photo${trash === 1 ? '' : 's'} kept by jEditor will be gone for good.`);
         if (originals) items.push(`${originals} Auto crop original${originals === 1 ? '' : 's'} will be gone, so those crops can't be undone.`);
-        items.push('The cache goes too (made again if the order is opened).');
+        items.push('The cache goes too (made again if the project is opened).');
         return UI.confirm({
-            title: orders.length === 1 ? `Remove everything stored for “${orders[0].name}”?` : `Remove everything stored for ${orders.length} orders?`,
+            title: orders.length === 1 ? `Remove everything stored for “${orders[0].name}”?` : `Remove everything stored for ${orders.length} projects?`,
             items,
-            note: 'The photos in the order folders aren\'t touched.',
+            note: 'The photos in the project folders aren\'t touched.',
             ok: 'Remove',
             danger: true
         });
@@ -228,8 +228,8 @@ const Stored = {
         if (!withCache.length) return;
         const bytes = withCache.reduce((n, o) => n + o.usage.cache.bytes, 0);
         const ok = await UI.confirm({
-            title: 'Remove every order\'s cache?',
-            message: `Frees ${this.app.formatBytes(bytes)}. Thumbnails are made again when an order is opened, so it opens a bit slower the first time.`,
+            title: 'Remove every project\'s cache?',
+            message: `Frees ${this.app.formatBytes(bytes)}. Thumbnails are made again when a project is opened, so it opens a bit slower the first time.`,
             note: 'Flags and the photos aren\'t touched.',
             ok: 'Remove caches'
         });
@@ -250,7 +250,7 @@ const Stored = {
         for (const o of gone) {
             try { await this.removeAll(o, false); } catch (e) { failed++; }
         }
-        this.app.showToast(failed ? `Couldn't remove ${failed}` : `Removed ${gone.length} order${gone.length === 1 ? '' : 's'} that ${gone.length === 1 ? 'is' : 'are'} gone`, 3000, null, null, failed ? {} : { type: 'success' });
+        this.app.showToast(failed ? `Couldn't remove ${failed}` : `Removed ${gone.length} project${gone.length === 1 ? '' : 's'} that ${gone.length === 1 ? 'is' : 'are'} gone`, 3000, null, null, failed ? {} : { type: 'success' });
         await this.refresh();
     }
 };

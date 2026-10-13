@@ -5,6 +5,20 @@
 
 const CHANGELOG = [
     {
+        version: '1.21.0', date: '2026-10-13',
+        items: [
+            'A new sidebar. At the top, the open project: its name, where it is, how many photos, and Scan, Show in Explorer and Pin. Then its folders, as before.',
+            'Projects: every project in your projects folder (chosen the first time; click its name to change it), newest first, with how many photos and when each last changed, and a search box. Projects opened from elsewhere are listed under them. Click one to open it.',
+            'Pinned: folders you pin (the pin beside any folder), and the folders pinned in Explorer\'s Quick Access. This PC: the drives, which open out like Explorer\'s. A USB drive plugged in is marked New, and can be ejected from here.',
+            'The start screen shows the same projects, pinned folders and drives.',
+            'A folder with no photos in it opens, ready to scan into or fill from Explorer, instead of saying No photos found. Deleting the last photo keeps the project open too.',
+            'While a scan runs, a message says which scanner and offers Stop, for a scanner whose window never shows. If its driver doesn\'t respond, jEditor gives up on it after 5 seconds and starts the scanning helper afresh next time.',
+            'Compatibility mode in the Scan box, for TWAIN scanners whose window never opens (some Plustek drivers, like the OpticBook\'s): it uses Windows\' older TWAIN manager and takes the whole image at once. Remembered for each scanner.',
+            'Settings → Updates → Show log opens jEditor\'s log in Explorer, to send when something goes wrong.',
+            'Order is now project everywhere on screen.'
+        ]
+    },
+    {
         version: '1.20.2', date: '2026-10-13',
         items: [
             'Updating from inside jEditor no longer fails and rolls back: the setup now waits until jEditor has really closed before replacing its files.',

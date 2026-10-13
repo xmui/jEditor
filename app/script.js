@@ -1180,6 +1180,22 @@ const app = {
                 const nested = this._nestedJeditor || [];
                 this._nestedJeditor = null;
                 if (nested.length && this.dirHandle && !this.readOnlyMode) FolderCache.absorbNested(this, nested);
+            } else if (this.dirHandle && !this.readOnlyMode) {
+                // No photos yet: it opens anyway, to scan into, make folders
+                // in, or fill from elsewhere (they show up as they land)
+                this._openScope = null;
+                this.selection.clear();
+                this.currentFile = null;
+                this.elements.mainInterface.classList.remove('hidden');
+                this.elements.mainInterface.setAttribute('tabindex', '-1');
+                this.elements.mainInterface.focus();
+                this.renderThumbnails();
+                this.renderGrid();
+                this.setView('grid');
+                Folders.showEmptyHeader();
+                Recents.remember(this.dirHandle);
+                await Flags.load();
+                Watch.start();
             } else {
                 UI.alert({
                     title: 'No photos found',
@@ -1587,7 +1603,7 @@ const app = {
             rows.push(['Photos', files.length.toLocaleString()]);
             rows.push(...this.statRows(this.photoStats(files)));
         } else {
-            title = folder === null ? 'Order' : 'Folder';
+            title = folder === null ? 'Project' : 'Folder';
             const name = folder === null ? Folders.rootName() : Folders.nameOf(folder);
             rows.push(['Name', name]);
             if (folder) rows.push(['Location', `${Folders.rootName()} / ${Folders.label(folder)}`]);
@@ -1605,7 +1621,7 @@ const app = {
             if (here.length !== all.length) rows.splice(rows.findIndex(r => r[0] === 'Size') + 1, 0, ['Size here', this.formatBytes(this.photoStats(here).bytes)]);
             if (!whole) {
                 rows.push(['—']);
-                rows.push(['Whole order', `${plural(this.files.length, 'photo')} · ${this.formatBytes(this.photoStats(this.files).bytes)}`]);
+                rows.push(['Whole project', `${plural(this.files.length, 'photo')} · ${this.formatBytes(this.photoStats(this.files).bytes)}`]);
             }
         }
         // The current filter or search, if any
@@ -1942,6 +1958,25 @@ const app = {
         }
     },
 
+    // Back to the start screen, with everything saved (before ejecting the
+    // drive the project is on: nothing of it may stay open)
+    async closeFolder() {
+        if (!this.dirHandle) return;
+        try { await Flags.save(); } catch (e) { /* best-effort */ }
+        await FolderCache.flush();
+        this.cleanupURLs();
+        FolderCache.reset();
+        this.files = [];
+        this.selection = new Set();
+        this.currentFile = null;
+        this.dirHandle = null;
+        this.elements.gridView.innerHTML = '';
+        this.elements.thumbnailStrip.innerHTML = '';
+        this.elements.mainInterface.classList.add('hidden');
+        this.elements.dropZone.classList.remove('hidden');
+        Places.apply();
+    },
+
     cleanupURLs() {
         // Drop queued thumbnail work for the folder being replaced
         if (this._thumbQueue) this._thumbQueue.length = 0;
@@ -2067,7 +2102,9 @@ const app = {
         const files = this.viewFiles();
         const folderTiles = Folders.folderTiles();
         this.elements.gridView.append(...folderTiles);
-        this.elements.gridView.classList.toggle('grid-empty', !files.length && !folderTiles.length && Folders.scope !== null);
+        this.elements.gridView.classList.toggle('grid-empty', !files.length && !folderTiles.length && Folders.scope !== null && this.files.length > 0);
+        // A project with no photos at all yet
+        this.elements.gridView.classList.toggle('grid-empty-project', !this.files.length && !folderTiles.length);
         this.elements.gridView.classList.toggle('grid-no-match', !files.length && Flags.active());
         Folders.render();
 
@@ -2530,9 +2567,9 @@ const app = {
         ];
         const native = FolderCache.native();
         const ok = await UI.confirm({
-            title: native ? 'Clean up this order?' : 'Clean up this folder?',
-            message: native ? 'Removes what jEditor keeps on this PC for this order. Do this when an order is finished.'
-                : 'Do this when an order is finished, before it goes to the customer.',
+            title: native ? 'Clean up this project?' : 'Clean up this folder?',
+            message: native ? 'Removes what jEditor keeps on this PC for this project. Do this when a project is finished.'
+                : 'Do this when a project is finished, before it goes to the customer.',
             items,
             note: 'Your photos are not touched.',
             ok: 'Clean up',
@@ -2545,7 +2582,7 @@ const app = {
             Flags.clearAll();
             // Trash undo steps can't be undone any more, and flags are gone
             this._undoStack = (this._undoStack || []).filter(e => !['trash', 'flags', 'auto-crop'].includes(e.type));
-            const what = native ? 'Order cleaned up' : 'Folder cleaned up';
+            const what = native ? 'Project cleaned up' : 'Folder cleaned up';
             this.showToast(inTrash ? `${what} — trash emptied (${inTrash})` : what, 3000);
         } catch (e) {
             this.showToast('Clean up failed: ' + e.message, 4000);
@@ -4709,7 +4746,13 @@ const app = {
             if (f._stripEl) f._stripEl.remove();
         }
 
-        if (this.files.length === 0) {
+        if (this.files.length === 0 && this.dirHandle && !this.readOnlyMode) {
+            // The last photo went: the project stays open, empty
+            this.currentFile = null;
+            this.setView('grid');
+            this.renderGrid();
+            Folders.showEmptyHeader();
+        } else if (this.files.length === 0) {
             this.currentFile = null;
             this.updateStatusBar();
             this.elements.mainInterface.classList.add('hidden');
@@ -5284,7 +5327,7 @@ const app = {
             ...(this.dirHandle ? [['New folder…', () => Folders.newFolder()]] : []),
             ['Rename all…', () => this.openRename([])],
             ['Search…', () => Flags.focusSearch()],
-            [Folders.scope === null ? 'Order info' : 'Folder info', () => this.toggleInfoPanel(true, { folder: Folders.scope })],
+            [Folders.scope === null ? 'Project info' : 'Folder info', () => this.toggleInfoPanel(true, { folder: Folders.scope })],
             ...(this.files.some(f => Flags.has(f, 'rescan'))
                 ? [['Copy rescan list', () => Flags.copyList(this.files.filter(f => Flags.has(f, 'rescan')), 'rescan')]] : []),
             ['Find duplicates… (WIP)', () => this.openDupes()],

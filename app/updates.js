@@ -20,6 +20,9 @@ const Updates = {
             if (this.latest && this.latest.newer) this.offer(this.latest);
             else this.check({ manual: true });
         });
+        this.el('upd-log').addEventListener('click', async () => {
+            if (!await FolderCache.native().showLog().catch(() => false)) app.showToast('There\'s no log yet', 2500);
+        });
         this.el('upd-auto').addEventListener('change', (e) => {
             app.uiPrefs.autoUpdate = e.target.checked;
             app.saveUiPrefs();

@@ -40,7 +40,7 @@
             <div class="drop-content">
                 <img class="start-icon" src="icon.png" alt="" width="72" height="72">
                 <h1 id="app-title" class="start-title">jEditor</h1>
-                <p class="start-tagline">Rotate, crop and sort scan orders. Edits the files on your disk.</p>
+                <p class="start-tagline">Rotate, crop and sort photos. Edits the files on your disk.</p>
                 <button id="btn-browse-folder" class="btn primary lg start-open">
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
                     Open folder
@@ -51,10 +51,8 @@
                     <h2 class="recents-title">Recent</h2>
                     <ul id="recent-list" class="recent-list"></ul>
                 </div>
-                <!-- Drives and folders (places.js, the Windows app) -->
-                <div id="start-browse" class="recents start-browse native-only">
-                    <div id="start-browse-list"></div>
-                </div>
+                <!-- Projects, pinned folders, drives (places.js, the Windows app) -->
+                <div id="start-places" class="start-places sb-places native-only"></div>
                 <div class="start-foot">
                     <button id="btn-shortcuts-start" class="link-btn">Keyboard shortcuts <kbd>?</kbd></button>
                     <span class="start-dot" aria-hidden="true"></span>
@@ -102,7 +100,7 @@
                      data-hc names each control. Default main row:
                      info, view, refresh, crop — the rest live in "More". -->
                 <div class="header-controls toolbar" id="header-controls" role="toolbar" aria-label="Photo actions">
-                    <button id="btn-scan" data-hc="scan" class="tb-btn native-only" title="Scan into this order" aria-label="Scan into this order">
+                    <button id="btn-scan" data-hc="scan" class="tb-btn native-only" title="Scan into this project" aria-label="Scan into this project">
                         <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h16"/><path d="M6 13V5a1 1 0 0 1 1-1h7l4 4v5"/><path d="M5 17h14a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1a1 1 0 0 1 1-1z"/></svg>
                     </button>
                     <button id="btn-info" data-hc="info" class="tb-btn" title="File info (I)" aria-label="File info">
@@ -179,7 +177,7 @@
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
                 </button>
                 <div class="fb-modes seg" role="group" aria-label="Show">
-                    <button id="fb-all" title="Every photo in the order, whatever folder it's in (A)"><span class="fb-long">All photos</span><span class="fb-short">All</span></button>
+                    <button id="fb-all" title="Every photo in the project, whatever folder it's in (A)"><span class="fb-long">All photos</span><span class="fb-short">All</span></button>
                     <button id="fb-folders" title="One folder at a time (A)">Folders</button>
                 </div>
                 <div id="fb-crumbs" class="fb-crumbs"></div>
@@ -192,15 +190,17 @@
                     </button>
                 </div>
             </nav>
-            <aside id="folder-rail" class="folder-rail hidden" aria-label="Folder list">
-                <div class="fr-tabs seg native-only" role="tablist" aria-label="Folder list">
-                    <button id="fr-tab-order" class="active" role="tab" aria-selected="true" title="This order's folders">This order</button>
-                    <button id="fr-tab-browse" role="tab" aria-selected="false" title="Other orders, folders and drives">Browse</button>
+            <aside id="folder-rail" class="folder-rail hidden" aria-label="Sidebar">
+                <!-- The open project (places.js, the Windows app) -->
+                <div id="sb-card" class="sb-card native-only"></div>
+                <div class="sb-scroll">
+                    <div class="sb-sec sb-sec-here native-only"><span class="sb-sec-title">This project</span></div>
+                    <div id="folder-tree" class="folder-tree"></div>
+                    <div id="flag-list" class="flag-list hidden"></div>
+                    <p id="fr-hint" class="fr-hint hidden">Make folders to sort this project. Drag photos onto a folder to move them, or hold <kbd>Ctrl</kbd> to copy. <kbd>M</kbd> moves the selection.</p>
+                    <!-- Projects, pinned folders, drives (places.js) -->
+                    <div id="sb-places" class="sb-places native-only"></div>
                 </div>
-                <div id="rail-browse" class="rail-browse native-only"></div>
-                <div id="folder-tree" class="folder-tree"></div>
-                <div id="flag-list" class="flag-list hidden"></div>
-                <p id="fr-hint" class="fr-hint hidden">Make folders to collate this order. Drag photos onto a folder to move them, or hold <kbd>Ctrl</kbd> to copy. <kbd>M</kbd> moves the selection.</p>
                 <div class="fr-foot">
                     <button id="fr-new" class="btn ghost fr-new">
                         <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -457,17 +457,17 @@
                     </div>
                     <div class="set-row">
                         <label class="set-label" for="cust-folder-cache"><span data-native-text="Keep a thumbnail cache">Save cache in the folder</span>
-                            <small data-native-text="Thumbnails are kept on this PC, so an order opens fast the next time">Thumbnails go in .jeditor, so any computer that opens the order later starts fast</small></label>
+                            <small data-native-text="Thumbnails are kept on this PC, so a project opens fast the next time">Thumbnails go in .jeditor, so any computer that opens the project later starts fast</small></label>
                         <input type="checkbox" id="cust-folder-cache" class="switch">
                     </div>
                     <div class="set-row">
-                        <span class="set-label"><span data-native-text="Clean up this order">Clean up this folder</span>
+                        <span class="set-label"><span data-native-text="Clean up this project">Clean up this folder</span>
                             <small data-native-text="Removes what jEditor keeps on this PC for the open order: cache, flags and Auto crop originals. Photos aren't touched.">Empties the trash and removes the cache, flags and Auto crop originals. Photos aren't touched.</small></span>
                         <button id="cust-cleanup" class="btn secondary danger-text">Clean up…</button>
                     </div>
                     <div class="set-row native-only">
-                        <span class="set-label">Stored orders
-                            <small>What jEditor keeps on this PC for each order you've opened, and how much room it takes</small></span>
+                        <span class="set-label">Stored projects
+                            <small>What jEditor keeps on this PC for each project you've opened, and how much room it takes</small></span>
                         <button id="cust-stored" class="btn secondary">Manage…</button>
                     </div>
                 </section>
@@ -483,6 +483,11 @@
                         <label class="set-label" for="upd-auto">Check for updates automatically
                             <small>Once a day, when jEditor starts</small></label>
                         <input type="checkbox" id="upd-auto" class="switch">
+                    </div>
+                    <div class="set-row">
+                        <span class="set-label">Log
+                            <small>What jEditor did, step by step (scans, updates): for when something goes wrong</small></span>
+                        <button id="upd-log" class="btn secondary">Show log</button>
                     </div>
                 </section>
 
@@ -632,7 +637,7 @@
     <div id="order-prompt" class="dialog-overlay hidden">
         <div class="dialog prompt-card" role="dialog" aria-modal="true" aria-labelledby="op-title">
             <div class="dialog-head">
-                <h2 id="op-title" class="dialog-title">Part of an order</h2>
+                <h2 id="op-title" class="dialog-title">Part of a project</h2>
             </div>
             <div class="dialog-body fpr-body">
                 <p id="op-text" class="op-text"></p>
@@ -641,7 +646,7 @@
                 <span></span>
                 <span class="dialog-actions rename-actions">
                     <button id="op-folder" class="btn secondary">Just this folder</button>
-                    <button id="op-order" class="btn primary">Open the order</button>
+                    <button id="op-order" class="btn primary">Open the project</button>
                 </span>
             </div>
         </div>
@@ -671,17 +676,17 @@
     <div id="stored-panel" class="dialog-overlay hidden">
         <div class="dialog stored-card" role="dialog" aria-modal="true" aria-labelledby="stored-title">
             <div class="dialog-head">
-                <h2 id="stored-title" class="dialog-title">Stored orders</h2>
+                <h2 id="stored-title" class="dialog-title">Stored projects</h2>
                 <button id="stored-close" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                 </button>
             </div>
-            <p class="set-help stored-help">For each order you've opened, jEditor keeps its flags, a thumbnail cache and the originals from Auto crop on this PC, never in the order folder. Removing the cache is always safe: it's made again when needed.</p>
+            <p class="set-help stored-help">For each project you've opened, jEditor keeps its flags, a thumbnail cache and the originals from Auto crop on this PC, never in the project folder. Removing the cache is always safe: it's made again when needed.</p>
             <div id="stored-summary" class="stored-summary"></div>
             <ul id="stored-list" class="stored-list"></ul>
             <div class="dialog-foot">
                 <button id="stored-clear-caches" class="btn secondary">Remove all caches</button>
-                <button id="stored-clear-missing" class="btn secondary danger-text">Remove orders that are gone</button>
+                <button id="stored-clear-missing" class="btn secondary danger-text">Remove projects that are gone</button>
                 <button id="stored-done" class="btn primary">Done</button>
             </div>
         </div>
@@ -690,7 +695,7 @@
     <div id="scan-panel" class="dialog-overlay hidden">
         <form id="scan-form" class="dialog scan-card" role="dialog" aria-modal="true" aria-labelledby="scan-title">
             <div class="dialog-head">
-                <h2 id="scan-title" class="dialog-title">Scan into this order</h2>
+                <h2 id="scan-title" class="dialog-title">Scan into this project</h2>
                 <button id="scan-x" type="button" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                 </button>
@@ -718,6 +723,10 @@
                 <label class="scan-check" for="scan-autocrop">
                     <input id="scan-autocrop" type="checkbox">
                     <span>Auto crop each photo<small>Finds the print on each scan and crops to it, whatever its size. Ctrl+Z puts the scans back as they were.</small></span>
+                </label>
+                <label class="scan-check" for="scan-compat" id="scan-compat-row">
+                    <input id="scan-compat" type="checkbox">
+                    <span>Compatibility mode<small>If this scanner's window never opens, try this: an older way of talking to its driver (some Plustek ones need it).</small></span>
                 </label>
                 <p class="set-help">The scanner's own window opens next: choose the resolution and feeder there. Each photo shows up here as soon as it's scanned.</p>
             </div>

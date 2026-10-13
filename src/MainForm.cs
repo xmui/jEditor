@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -287,6 +288,13 @@ sealed class MainForm : Form
             case "scan":
             case "places":
             case "listDir":
+            case "listProjects":
+            case "countPhotos":
+            case "quickAccess":
+            case "eject":
+            case "reveal":
+            case "pickPath":
+            case "showLog":
                 var files = FilesOf(e);
                 BeginInvoke(async () => await HandleRequestAsync(msg, files));
                 break;
@@ -428,6 +436,68 @@ sealed class MainForm : Form
                     });
                     break;
                 }
+                case "listProjects":
+                {
+                    var path = Str(msg, "path") ?? "";
+                    if (!Path.IsPathFullyQualified(path)) { Reply(id, new { error = "Not a folder" }); break; }
+                    var list = await Task.Run(() => Projects.List(path));
+                    Reply(id, new { projects = list.Select(p => new { name = p.Name, path = p.Path, modified = new DateTimeOffset(p.Modified).ToUnixTimeMilliseconds() }) });
+                    break;
+                }
+                case "countPhotos":
+                {
+                    var paths = (msg["paths"] as JsonArray ?? []).Select(p => (string?)p ?? "").ToList();
+                    var counts = await Task.Run(() => paths.AsParallel().AsOrdered().WithDegreeOfParallelism(4)
+                        .Select(p => Path.IsPathFullyQualified(p) ? Projects.Count(p) : -1).ToList());
+                    Reply(id, new { counts, limit = Projects.Limit });
+                    break;
+                }
+                case "quickAccess":
+                {
+                    List<(string Name, string Path)> pins;
+                    try { pins = await Projects.QuickAccessAsync(); }
+                    catch (Exception e) { Log.Write("Quick Access: " + e.Message); pins = []; }
+                    Reply(id, new { folders = pins.Select(p => new { name = p.Name, path = p.Path }) });
+                    break;
+                }
+                case "eject":
+                {
+                    var path = Str(msg, "path") ?? "";
+                    var why = Path.IsPathFullyQualified(path) ? await Projects.EjectAsync(path) : "Not a drive";
+                    Log.Write($"Eject {path}: {why ?? "done"}");
+                    Reply(id, why is null ? new { ok = true } : new { ok = false, error = why });
+                    break;
+                }
+                case "reveal":
+                {
+                    var path = Str(msg, "path") ?? "";
+                    var ok = Path.IsPathFullyQualified(path) && Directory.Exists(path);
+                    if (ok) Projects.Reveal(path);
+                    Reply(id, new { ok });
+                    break;
+                }
+                case "showLog":
+                {
+                    var log = Log.Default();
+                    var ok = File.Exists(log);
+                    if (ok) Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{log}\"") { UseShellExecute = true });
+                    Reply(id, new { ok });
+                    break;
+                }
+                case "pickPath":
+                {
+                    using var dialog = new FolderBrowserDialog
+                    {
+                        Description = Str(msg, "title") ?? "Choose a folder",
+                        UseDescriptionForTitle = true,
+                        ShowNewFolderButton = true,
+                    };
+                    var start = Str(msg, "start");
+                    if (start is not null && Directory.Exists(start)) dialog.InitialDirectory = start;
+                    Reply(id, dialog.ShowDialog(this) == DialogResult.OK && !string.IsNullOrEmpty(dialog.SelectedPath)
+                        ? new { path = dialog.SelectedPath } : new { cancelled = true });
+                    break;
+                }
                 case "scanners":
                 {
                     var (devices, problems) = await Scanners.ListAsync();
@@ -479,7 +549,8 @@ sealed class MainForm : Form
             folder,
             CleanPrefix(Str(msg, "prefix")),
             msg["next"]?.GetValue<int>() ?? 1,
-            msg["digits"]?.GetValue<int>() ?? 3);
+            msg["digits"]?.GetValue<int>() ?? 3,
+            msg["compat"]?.GetValue<bool>() ?? false);
         using var cancel = scanning = new CancellationTokenSource();
         int count = 0;
         var names = new List<string>();
@@ -488,13 +559,30 @@ sealed class MainForm : Form
             Log.Write($"Scanning from {request.DeviceId} ({request.Driver}) into {folder}");
             // Sent before the reply, in order: the page stops listening once
             // the reply comes, so the last photo's message mustn't trail it
-            count = await Scanners.ScanAsync(request, Handle, name =>
+            var scan = Scanners.ScanAsync(request, Handle, name =>
             {
                 count++;
                 names.Add(name);
                 if (InvokeRequired) Invoke(() => Post(new { type = "scanned", scan = id, name }));
                 else Post(new { type = "scanned", scan = id, name });
             }, cancel.Token);
+            // Stop: a driver stuck on its own doesn't hear it, so 5 s after
+            // Stop the scan is given up on, and the scanning helper with it
+            var stopped = new TaskCompletionSource();
+            using (cancel.Token.Register(() => stopped.TrySetResult()))
+            {
+                var giveUp = stopped.Task.ContinueWith(_ => Task.Delay(5000)).Unwrap();
+                if (await Task.WhenAny(scan, giveUp) != scan)
+                {
+                    Log.Write("The scan didn't stop when asked: giving up on it, and on the scanning helper");
+                    var stuck = scanner;
+                    scanner = null; // a fresh one next time
+                    _ = scan.ContinueWith(_ => stuck?.Dispose());
+                    try { stuck?.Dispose(); } catch (Exception e) { Log.Write("Closing the scanning helper: " + e.Message); }
+                    throw new OperationCanceledException();
+                }
+            }
+            count = await scan;
             Reply(id, new { count, names });
         }
         catch (OperationCanceledException)

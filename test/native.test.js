@@ -117,6 +117,11 @@ const FAKE_NATIVE = `
         // The app's side: pages into the folder at that path, each reported as it lands
         async scan(o, scanned) {
             window.__scanReq = o;
+            // A scanner whose window never shows: only Stop ends it
+            if (window.__scanHang) {
+                await new Promise(r => { window.__unhang = r; });
+                return { count: 0, names: [], cancelled: true };
+            }
             const root = window.__orderRoot + '\\\\';
             let dir = await sub('disk');
             for (const p of o.folder.slice(root.length).split('\\\\')) dir = await dir.getDirectoryHandle(p);
@@ -135,7 +140,8 @@ const FAKE_NATIVE = `
             if (window.__scanError) throw new Error(window.__scanError);
             return { count: pages };
         },
-        cancelScan() { },
+        cancelScan() { window.__cancelled = true; if (window.__unhang) window.__unhang(); },
+        async showLog() { window.__logShown = true; return true; },
         // Drives and folders: paths use BS (a backslash) to stay readable here
         async places() { return { drives: window.__drives, home: [{ name: 'Desktop', path: 'C:' + BS + 'Users' + BS + 'lab' + BS + 'Desktop' }] }; },
         async listDir(p) {
@@ -143,6 +149,21 @@ const FAKE_NATIVE = `
             if (!t) throw new Error('not there');
             return t;
         },
+        // The projects folder: D:\Orders is disk/ (its folders, newest first)
+        async listProjects(p) {
+            window.__calls.push('listProjects');
+            if (p !== window.__orderRoot) return [];
+            const out = [];
+            let i = 0;
+            // When each changed: set by the test (__modified), newest first as the app sorts them
+            for await (const [name, h] of (await sub('disk')).entries()) if (h.kind === 'directory') out.push({ name, path: p + BS + name, modified: (window.__modified || {})[name] || Date.now() - 60000 * i++ });
+            return out.sort((a, b) => b.modified - a.modified);
+        },
+        async countPhotos(paths) { return { counts: paths.map(p => (window.__counts || {})[p] ?? 3), limit: 1000 }; },
+        async quickAccess() { return window.__quick || []; },
+        async eject(p) { window.__ejected = p; window.__drives = window.__drives.filter(d => d.path !== p); return { ok: true }; },
+        async reveal(p) { window.__revealed = p; return true; },
+        async pickPath() { return window.__pick || null; },
         async openPath(p) { window.__opened = p; return true; },
         async exists(paths) { return paths.map(p => !(window.__missing || []).includes(p)); },
         async checkUpdate() { window.__calls.push('checkUpdate'); return window.__update || { newer: false, version: '1.0.0', tag: 'v1.0.0', notes: '' }; },
@@ -317,7 +338,7 @@ async function newPage(context, baseUrl) {
         });
         check('flags are there when the order is opened again', r.kept);
         check('one stored folder per order', r.stores === 2, String(r.stores));
-        check('Clean up talks about the order, not .jeditor', /Clean up this order/.test(r.dialog) && !/\.jeditor/.test(r.dialog), r.dialog.slice(0, 160));
+        check('Clean up talks about the project, not .jeditor', /Clean up this project/.test(r.dialog) && !/\.jeditor/.test(r.dialog), r.dialog.slice(0, 160));
         check('Clean up removes the order\'s stored folder', r.afterNames.length === 1 && r.afterNames[0].startsWith('Other-') && r.flagsGone, r.afterNames.join());
         check('clean up suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
@@ -543,6 +564,13 @@ async function newPage(context, baseUrl) {
             $('btn-scan').click();
             await wait(() => !$('scan-device').disabled);
             out.devices = [...$('scan-device').options].map(o => o.textContent).join(', ');
+            // Compatibility mode: for TWAIN scanners, remembered for each
+            out.compatShown = !$('scan-compat-row').classList.contains('hidden') && !$('scan-compat').checked;
+            $('scan-device').value = 'wia-1';
+            $('scan-device').dispatchEvent(new Event('change'));
+            out.compatHiddenWia = $('scan-compat-row').classList.contains('hidden');
+            $('scan-device').value = 'EPSON FF-680W';
+            $('scan-device').dispatchEvent(new Event('change'));
             out.folder = $('scan-folder').value;
             out.folders = [...$('scan-folder').options].map(o => o.textContent).join(', ');
             out.names = [$('scan-prefix').value, $('scan-next').value, $('scan-preview').textContent];
@@ -552,10 +580,12 @@ async function newPage(context, baseUrl) {
             out.cerNames = [$('scan-prefix').value, $('scan-next').value];
             folder.value = '';
             folder.dispatchEvent(new Event('change'));
+            $('scan-compat').checked = true;
             $('scan-go').click();
             out.closed = !Scan.isOpen();
             await wait(() => app.files.some(f => f.name === 'photo5.jpg'));
             out.req = window.__scanReq;
+            out.compatKept = JSON.parse(localStorage.getItem('jeditor.scanCompat') || '{}')['EPSON FF-680W'] === true;
             out.files = app.files.map(f => f.relPath || f.name).sort().join(',');
             await wait(() => /Scanned 2 photos/.test(toasts()));
             out.toast = toasts();
@@ -581,6 +611,25 @@ async function newPage(context, baseUrl) {
             out.running = Scan.running;
             window.__scanError = null;
 
+            // A scanner that never shows its window: Stop ends it
+            window.__scanHang = true;
+            const hung = Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '' });
+            await wait(() => [...document.querySelectorAll('.toast')].some(t => /Scanning with EPSON FF-680W/.test(t.textContent)));
+            const toast = [...document.querySelectorAll('.toast')].find(t => /Scanning with/.test(t.textContent));
+            out.stopOffered = /Stop/.test(toast.textContent);
+            [...toast.querySelectorAll('button')].find(b => b.textContent === 'Stop').click();
+            const stopped = await hung;
+            out.stopped = stopped.cancelled && window.__cancelled && !Scan.running;
+            await wait(() => /Scan stopped/.test(toasts()));
+            await new Promise(r => setTimeout(r, 400)); // dismissed messages take 300 ms to go
+            out.stopToast = toasts();
+            window.__scanHang = false;
+
+            // Settings: Show log
+            $('upd-log').click();
+            await wait(() => window.__logShown);
+            out.log = window.__logShown;
+
             // No scanners: says what to check
             window.__scanners = { devices: [], problems: ['TWAIN isn\'t set up on this PC (no TWAINDSM.dll), so only WIA scanners are listed'] };
             Scan.devices = null;
@@ -599,84 +648,158 @@ async function newPage(context, baseUrl) {
         check('scanned photos show up in the order', r.files === 'Ceremony/c1.jpg,photo1.jpg,photo2.jpg,photo3.jpg,photo4.jpg,photo5.jpg', r.files);
         check('a message says how many, with Scan more', /Scanned 2 photos into Scan Order/.test(r.toast) && /Scan more/.test(r.toast), r.toast);
         check('Auto crop each photo is on to start with', r.autoCropDefault);
+        check('Compatibility mode: offered for TWAIN scanners only, off to start with', r.compatShown && r.compatHiddenWia, JSON.stringify([r.compatShown, r.compatHiddenWia]));
+        check('... sent with the scan, and remembered for that scanner', r.req.compat === true && r.compatKept, JSON.stringify([r.req.compat, r.compatKept]));
         check('... and crops each scan once it\'s in, without asking', r.cropped === 'c2.jpg,c3.jpg (no question)', r.cropped);
         check('scanning again carries on the names', r.more === 'photo6.jpg', r.more);
         check('a scan that fails says why, and what was saved', /busy/.test(r.err || '') && /didn't finish/.test(r.alert) && /1 photo was saved/.test(r.alert) && !r.running, JSON.stringify([r.err, r.alert]));
+        check('while scanning, a message offers Stop', r.stopOffered);
+        check('Stop ends a scan whose window never shows', r.stopped && /Scan stopped/.test(r.stopToast) && !/Scanning with/.test(r.stopToast), JSON.stringify([r.stopped, r.stopToast]));
+        check('Settings: Show log', r.log);
         check('no scanners: says so and what to check', /No scanners found/.test(r.none) && /plugged in/.test(r.none) && /TWAINDSM/.test(r.none) && r.noneDisabled, r.none);
         check('scan suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
 
-    console.log('native: Browse (other orders, folders, drives)');
+    console.log('native: an empty folder opens, to scan into');
     {
         const context = await browser.newContext();
         const { page, errors } = await newPage(context, baseUrl);
         const r = await page.evaluate(async () => {
             const out = {};
             const $ = (id) => document.getElementById(id);
-            const rows = (el) => [...el.querySelectorAll('.pl-row')].map(b => b.textContent.trim());
-            // The start screen: drives (USB first) and folders
-            await Places.start.render();
-            out.start = rows($('start-browse-list'));
-            out.startShown = getComputedStyle($('start-browse')).display !== 'none';
-            // Into the USB drive, then an order on it
-            $('start-browse-list').querySelector('.pl-usb').click();
-            await wait(() => $('start-browse-list').querySelector('.pl-open'));
-            out.usb = rows($('start-browse-list'));
-            [...$('start-browse-list').querySelectorAll('.pl-row')].find(b => /Order 9/.test(b.textContent)).click();
-            await wait(() => /12 photos/.test($('start-browse-list').textContent));
-            out.order9 = $('start-browse-list').querySelector('.pl-open').textContent;
-            $('start-browse-list').querySelector('.pl-open').click();
-            await wait(() => window.__opened);
-            out.opened = window.__opened;
-            // Up goes back to the drive
-            $('start-browse-list').querySelector('.pl-up').click();
-            await wait(() => !/12 photos/.test($('start-browse-list').textContent));
-            out.up = $('start-browse-list').querySelector('.pl-name').textContent;
-
-            // With an order open: the folder list's Browse tab
-            const dir = await makeOrder('Browse Order', 2);
-            await openOrder(dir);
-            await Recents.saving;
-            if (!Folders.railOpen()) Folders.toggleRail();
-            out.tabs = getComputedStyle(document.querySelector('.fr-tabs')).display !== 'none';
-            $('fr-tab-browse').click();
-            await wait(() => $('rail-browse').querySelector('.pl-row'));
-            out.railBrowsing = $('folder-rail').classList.contains('browsing') && getComputedStyle($('folder-tree')).display === 'none';
-            out.rail = rows($('rail-browse'));
-            out.sections = [...$('rail-browse').querySelectorAll('.pl-section')].map(s => s.textContent);
-            $('fr-tab-order').click();
-            out.backToOrder = !$('folder-rail').classList.contains('browsing') && getComputedStyle($('folder-tree')).display !== 'none';
-
-            // A USB drive plugged in: offered, and Browse shows it
-            window.__drives = window.__drives.concat([{ path: 'F:' + String.fromCharCode(92), name: 'Backup (F:)', kind: 'usb', total: 32e9, free: 2e9 }]);
-            window.__tree['F:' + String.fromCharCode(92)] = { path: 'F:' + String.fromCharCode(92), name: 'F:' + String.fromCharCode(92), parent: null, folders: [{ name: 'Smith', path: 'F:' + String.fromCharCode(92) + 'Smith' }], photos: 0, more: false };
-            dispatchEvent(new Event('jeditor-drives'));
-            await wait(() => /Backup \(F:\) plugged in/.test(toasts()));
-            out.toast = toasts();
-            const action = [...document.querySelectorAll('.toast button')].find(b => b.textContent === 'Browse');
-            action.click();
-            await wait(() => /Smith/.test($('rail-browse').textContent));
-            out.shown = $('folder-rail').classList.contains('browsing') && $('rail-browse').querySelector('.pl-name').textContent;
-            // ... and taken out while looking at it: back to the top
-            window.__drives = window.__drives.filter(d => d.kind !== 'usb' || d.name !== 'Backup (F:)');
-            dispatchEvent(new Event('jeditor-drives'));
-            await wait(() => !$('rail-browse').querySelector('.pl-up'));
-            out.afterRemoval = rows($('rail-browse')).join(' | ');
+            const dir = await (await opfs('disk')).getDirectoryHandle('Empty Project', { create: true });
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            await wait(() => !app.isLoading);
+            out.open = !$('main-interface').classList.contains('hidden') && $('drop-zone').classList.contains('hidden');
+            out.noAlert = !UI.isOpen();
+            out.message = getComputedStyle($('grid-view'), '::after').content;
+            out.view = app.viewMode;
+            // Scan into it: the photos show up
+            window.__scanPages = 2;
+            const scanned = await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '' });
+            await wait(() => app.files.length === 2);
+            out.names = scanned.names.join();
+            out.files = app.files.length;
+            out.noMessage = !$('grid-view').classList.contains('grid-empty-project');
+            // Every photo deleted: it stays open, empty
+            window.__noBin = false;
+            await app.moveToTrash([...app.files]);
+            await wait(() => app.files.length === 0);
+            out.stillOpen = !$('main-interface').classList.contains('hidden') && $('drop-zone').classList.contains('hidden');
+            out.emptyAgain = $('grid-view').classList.contains('grid-empty-project');
             return out;
         });
-        check('the start screen lists drives, USB first, and folders', r.startShown && r.start[0].startsWith('USB drive (E:)') && /Local disk \(C:\)/.test(r.start.join()) && /Desktop/.test(r.start.join()), JSON.stringify(r.start));
-        check('a drive opens to its folders, in number order', r.usb.join() === 'Order 9,Order 10', r.usb.join());
-        check('a folder says how many photos are in it', /Open as order/.test(r.order9) && /12 photos/.test(r.order9), r.order9);
-        check('Open as order opens it', r.opened === 'E:\\Order 9', r.opened);
-        check('Up goes back a folder, to the drive by its name', r.up === 'USB drive (E:)', r.up);
-        check('the folder list has This order and Browse', r.tabs && r.railBrowsing, JSON.stringify([r.tabs, r.railBrowsing]));
-        check('Browse lists recent orders (the open one marked), drives and folders', r.sections.join() === 'Recent orders,Drives,Folders' && /Browse Order\s*Open/.test(r.rail[0]), JSON.stringify(r.rail));
-        check('This order goes back to the folders', r.backToOrder);
-        check('a USB drive plugged in is offered', /Backup \(F:\) plugged in/.test(r.toast), r.toast);
-        check('... and Browse shows what\'s on it', r.shown === 'Backup (F:)', String(r.shown));
-        check('a drive taken out while looking at it goes back to the top', !/Backup/.test(r.afterRemoval) && /USB drive \(E:\)/.test(r.afterRemoval), r.afterRemoval);
-        check('browse suite: no JS errors', errors.length === 0, errors.join('; '));
+        check('an empty folder opens as an empty project, no "No photos found"', r.open && r.noAlert && r.view === 'grid', JSON.stringify(r));
+        check('... saying how to fill it (Scan)', /Scan into this project/.test(r.message), r.message);
+        check('scanning into it shows the photos', r.names === 'Empty-001.jpg,Empty-002.jpg' && r.files === 2 && r.noMessage, JSON.stringify([r.names, r.files, r.noMessage]));
+        check('deleting every photo keeps it open, empty', r.stillOpen && r.emptyAgain, JSON.stringify([r.stillOpen, r.emptyAgain]));
+        check('empty project suite: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('native: the sidebar (projects, pinned, This PC)');
+    {
+        const context = await browser.newContext();
+        const { page, errors } = await newPage(context, baseUrl);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const $ = (id) => document.getElementById(id);
+            const names = (el) => [...el.querySelectorAll('.sb-row .fr-name')].map(n => n.textContent);
+            const rowOf = (el, name) => [...el.querySelectorAll('.sb-row')].find(r => r.querySelector('.fr-name').textContent === name);
+            window.__quick = [{ name: 'Archive Scan Jobs', path: 'D:' + String.fromCharCode(92) + 'Archive Scan Jobs' }];
+            await makeOrder('Alpha', 2);
+            await makeOrder('Beta', 3);
+            window.__modified = { Alpha: Date.now() - 86400000, Beta: Date.now() };
+            await Places.refresh();
+            const start = $('start-places');
+            // The start screen: no projects folder yet, so it asks for one
+            out.choose = !!start.querySelector('.sb-choose');
+            out.drives = names(start).filter(n => /\(/.test(n)).join();
+            out.quick = names(start).includes('Archive Scan Jobs');
+            window.__pick = window.__orderRoot;
+            start.querySelector('.sb-choose').click();
+            await wait(() => names(start).includes('Beta'));
+            out.projects = names(start).filter(n => ['Alpha', 'Beta'].includes(n)).join();
+            await wait(() => [...start.querySelectorAll('[data-count]')].some(s => s.textContent === '3'));
+            out.counts = [...start.querySelectorAll('[data-count]')].map(s => s.textContent).filter(Boolean).length > 0;
+            out.folderName = start.querySelector('.sb-sec-link').textContent;
+            // Search
+            const search = start.querySelector('.sb-search');
+            search.value = 'bet';
+            search.dispatchEvent(new Event('input', { bubbles: true }));
+            await wait(() => !names(start).includes('Alpha'));
+            out.search = names(start).filter(n => ['Alpha', 'Beta'].includes(n)).join();
+            search.value = '';
+            search.dispatchEvent(new Event('input', { bubbles: true }));
+            await wait(() => names(start).includes('Alpha'));
+            // Clicking a project opens it
+            rowOf(start, 'Beta').querySelector('.sb-main').click();
+            await wait(() => window.__opened);
+            out.opened = window.__opened;
+
+            // A project open: its card, and it's marked in the list
+            const dir = await (await opfs('disk')).getDirectoryHandle('Alpha');
+            await openOrder(dir);
+            app.setView('grid');
+            if (!Folders.railOpen()) Folders.toggleRail();
+            const side = $('sb-places');
+            await wait(() => $('sb-card').textContent.includes('Alpha') && rowOf(side, 'Alpha'));
+            await wait(() => rowOf(side, 'Alpha').classList.contains('active'));
+            out.card = $('sb-card').textContent.replace(/\s+/g, ' ').trim();
+            out.active = rowOf(side, 'Alpha').classList.contains('active');
+            $('sb-card').querySelector('[data-act="reveal"]').click();
+            await wait(() => window.__revealed);
+            out.revealed = window.__revealed;
+            $('sb-card').querySelector('[data-act="scan"]').click();
+            out.scanOpen = Scan.isOpen();
+            Scan.close();
+            $('sb-card').querySelector('[data-act="pin"]').click();
+            await wait(() => [...side.querySelectorAll('.sb-pinned .fr-name')].some(n => n.textContent === 'Alpha'));
+            out.pinned = Places.pins().map(p => p.name).join();
+
+            // A drive opens out; a folder in it opens as the project
+            rowOf(side, 'USB drive (E:)').querySelector('.sb-main').click();
+            await wait(() => rowOf(side, 'Order 9'));
+            out.inside = names(side).filter(n => /^Order/.test(n)).join();
+            window.__opened = null;
+            rowOf(side, 'Order 9').querySelector('.sb-main').click();
+            await wait(() => window.__opened);
+            out.openedUsb = window.__opened;
+
+            // Sections fold away, and stay folded
+            side.querySelector('[data-act="section"][data-sec="pinned"]').click();
+            await wait(() => side.querySelector('.sb-sec.closed[data-sec="pinned"]'));
+            out.folded = !names(side).includes('Archive Scan Jobs') && JSON.parse(localStorage.getItem('jeditor.sidebarClosed')).includes('pinned');
+
+            // A USB drive plugged in: offered, marked New; Eject
+            window.__drives = window.__drives.concat([{ path: 'F:' + String.fromCharCode(92), name: 'Backup (F:)', kind: 'usb', total: 32e9, free: 2e9 }]);
+            window.__tree['F:' + String.fromCharCode(92)] = { path: 'F:' + String.fromCharCode(92), name: 'F:' + String.fromCharCode(92), parent: null, folders: [], photos: 0, more: false };
+            dispatchEvent(new Event('jeditor-drives'));
+            await wait(() => /Backup \(F:\) plugged in/.test(toasts()) && rowOf(side, 'Backup (F:)'));
+            out.toast = toasts();
+            out.isNew = !!rowOf(side, 'Backup (F:)').querySelector('.sb-new');
+            rowOf(side, 'Backup (F:)').querySelector('[data-act="eject"]').click();
+            await wait(() => window.__ejected && !rowOf(side, 'Backup (F:)'));
+            out.ejected = window.__ejected;
+            await wait(() => /can be taken out/.test(toasts()));
+            out.ejectToast = /Backup \(F:\) can be taken out/.test(toasts());
+            return out;
+        });
+        check('start screen: asks for the projects folder, lists drives and Explorer\'s pins', r.choose && /USB drive \(E:\)/.test(r.drives) && /Local disk \(C:\)/.test(r.drives) && r.quick, JSON.stringify(r));
+        check('the projects folder\'s projects are listed, newest first, with photo counts', r.projects === 'Beta,Alpha' && r.counts && r.folderName === 'Orders', JSON.stringify([r.projects, r.counts, r.folderName]));
+        check('search finds a project', r.search === 'Beta', r.search);
+        check('clicking a project opens it', r.opened === 'D:\\Orders\\Beta', r.opened);
+        check('the project card: name, path, photos', /Alpha/.test(r.card) && /D:\\Orders\\Alpha/.test(r.card) && /\d photos/.test(r.card), r.card);
+        check('the open project is marked in the list', r.active);
+        check('card buttons: Explorer, Scan, Pin', r.revealed === 'D:\\Orders\\Alpha' && r.scanOpen && r.pinned === 'Alpha', JSON.stringify([r.revealed, r.scanOpen, r.pinned]));
+        check('a drive opens out to its folders, in number order', r.inside === 'Order 9,Order 10', r.inside);
+        check('a folder on it opens as the project', r.openedUsb === 'E:\\Order 9', r.openedUsb);
+        check('sections fold away and stay folded', r.folded);
+        check('a USB drive plugged in is offered and marked New', /Backup \(F:\) plugged in/.test(r.toast) && r.isNew, JSON.stringify([r.toast, r.isNew]));
+        check('Eject ejects it and says so', r.ejected === 'F:\\' && r.ejectToast, JSON.stringify([r.ejected, r.ejectToast]));
+        check('sidebar suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
 

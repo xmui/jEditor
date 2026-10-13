@@ -214,6 +214,33 @@
         async listDir(path) {
             return (await answer('listDir', { path })).msg;
         },
+        // The projects (folders) in a folder, newest first →
+        // [{ name, path, modified (ms) }]
+        async listProjects(path) {
+            return (await answer('listProjects', { path })).msg.projects;
+        },
+        // Photos in each folder and its subfolders → { counts: [n, -1 if gone], limit }
+        // (counting stops at `limit`)
+        async countPhotos(paths) {
+            return (await answer('countPhotos', { paths })).msg;
+        },
+        // Explorer's pinned Quick Access folders → [{ name, path }]
+        async quickAccess() {
+            return (await answer('quickAccess')).msg.folders;
+        },
+        // Ejects a USB drive → { ok, error? }
+        async eject(path) {
+            return (await answer('eject', { path })).msg;
+        },
+        // Shows a folder in Explorer
+        async reveal(path) {
+            return (await answer('reveal', { path })).msg.ok;
+        },
+        // Windows' folder picker, just for a path → path, or null if cancelled
+        async pickPath(title, start) {
+            const { msg } = await answer('pickPath', { title, start });
+            return msg.cancelled ? null : msg.path;
+        },
         // Scanners on this PC → { devices: [{ id, name, driver }], problems: [text] }
         async scanners() {
             return (await answer('scanners')).msg;
@@ -240,6 +267,10 @@
         },
         cancelScan() {
             post({ type: 'cancelScan' });
+        },
+        // Shows jEditor's log in Explorer
+        async showLog() {
+            return (await answer('showLog')).msg.ok;
         },
         // Downloads and runs the newest setup; jEditor then closes and the
         // setup opens it again. progress(received, total) as it downloads.
@@ -353,6 +384,16 @@
                 const l = here ? await window.JEditorNative.listDir(here) : null;
                 const top = a.files.filter(f => !(f.relPath || '').includes('/')).length;
                 steps.browsed = !l ? 'no path for the folder' : l.photos === top ? true : `Browse counts ${l.photos} photos, jEditor shows ${top}`;
+                // The sidebar: this folder among its parent's projects, its
+                // photos counted, Explorer's pins read
+                if (here) {
+                    const parent = here.replace(/\\[^\\]+$/, '');
+                    const projects = await window.JEditorNative.listProjects(parent);
+                    steps.projects = projects.some(p => p.path.toLowerCase() === here.toLowerCase()) ? true : 'not among its folder\'s projects';
+                    const { counts } = await window.JEditorNative.countPhotos([here]);
+                    steps.counted = counts[0] === a.files.length ? true : `counted ${counts[0]} photos, jEditor shows ${a.files.length}`;
+                }
+                steps.pins = Array.isArray(await window.JEditorNative.quickAccess()) || 'no answer';
             }
             try {
                 const u = await window.JEditorNative.checkUpdate();
