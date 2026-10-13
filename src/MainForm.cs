@@ -356,6 +356,8 @@ sealed class MainForm : Form
             case "smokeCheck":
             case "scanners":
             case "scan":
+            case "scanCaps":
+            case "scanPreview":
             case "places":
             case "listDir":
             case "listProjects":
@@ -634,6 +636,12 @@ sealed class MainForm : Form
                 case "scan":
                     await ScanAsync(id, msg);
                     break;
+                case "scanCaps":
+                    await ScanCapsAsync(id, msg);
+                    break;
+                case "scanPreview":
+                    await ScanPreviewAsync(id, msg);
+                    break;
                 case "smokeCheck":
                 {
                     var (ok, detail) = smoke?.Check(Str(msg, "step") ?? "", msg) ?? (false, "not a smoke test");
@@ -664,7 +672,9 @@ sealed class MainForm : Form
 
     // A scan into the order: { device, driver, folder, prefix, next, digits }.
     // Each photo saved is posted ({ type: 'scanned', scan: id, name }) as it
-    // lands; the reply says how many, once the scanner is done
+    // lands; the reply says how many, once the scanner is done. Preview and
+    // crop adds { crops: [{ x, y, w, h }], dpi, gray, bedW, bedH }: no
+    // scanner window, a photo per box
     async Task ScanAsync(long id, JsonNode msg)
     {
         if (scanning is not null) { Reply(id, new { error = "A scan is already running" }); return; }
@@ -677,39 +687,30 @@ sealed class MainForm : Form
             CleanPrefix(Str(msg, "prefix")),
             msg["next"]?.GetValue<int>() ?? 1,
             msg["digits"]?.GetValue<int>() ?? 3,
-            msg["compat"]?.GetValue<bool>() ?? false);
-        using var cancel = scanning = new CancellationTokenSource();
+            msg["compat"]?.GetValue<bool>() ?? false)
+        {
+            Crops = Boxes(msg["crops"]),
+            Dpi = Math.Clamp(msg["dpi"]?.GetValue<int>() ?? 300, 50, 4800),
+            Gray = msg["gray"]?.GetValue<bool>() ?? false,
+            BedW = msg["bedW"]?.GetValue<double>() ?? 0,
+            BedH = msg["bedH"]?.GetValue<double>() ?? 0,
+        };
+        if (request.Crops is not null && (request.BedW <= 0 || request.BedH <= 0)) { Reply(id, new { error = "Preview first: the boxes need the bed's size" }); return; }
         int count = 0;
         var names = new List<string>();
         try
         {
-            Log.Write($"Scanning from {request.DeviceId} ({request.Driver}) into {folder}");
+            Log.Write($"Scanning from {request.DeviceId} ({request.Driver}) into {folder}" +
+                (request.Crops is null ? "" : $": preview and crop, {request.Crops.Length} box{(request.Crops.Length == 1 ? "" : "es")} at {request.Dpi} dpi"));
             // Sent before the reply, in order: the page stops listening once
             // the reply comes, so the last photo's message mustn't trail it
-            var scan = Scanners.ScanAsync(request, Handle, name =>
+            count = await Stoppable(cancel => Scanners.ScanAsync(request, Handle, name =>
             {
                 count++;
                 names.Add(name);
                 if (InvokeRequired) Invoke(() => Post(new { type = "scanned", scan = id, name }));
                 else Post(new { type = "scanned", scan = id, name });
-            }, cancel.Token);
-            // Stop: a driver stuck on its own doesn't hear it, so 5 s after
-            // Stop the scan is given up on, and the scanning helper with it
-            var stopped = new TaskCompletionSource();
-            using (cancel.Token.Register(() => stopped.TrySetResult()))
-            {
-                var giveUp = stopped.Task.ContinueWith(_ => Task.Delay(5000)).Unwrap();
-                if (await Task.WhenAny(scan, giveUp) != scan)
-                {
-                    Log.Write("The scan didn't stop when asked: giving up on it, and on the scanning helper");
-                    var stuck = scanner;
-                    scanner = null; // a fresh one next time
-                    _ = scan.ContinueWith(_ => stuck?.Dispose());
-                    try { stuck?.Dispose(); } catch (Exception e) { Log.Write("Closing the scanning helper: " + e.Message); }
-                    throw new OperationCanceledException();
-                }
-            }
-            count = await scan;
+            }, cancel));
             Reply(id, new { count, names });
         }
         catch (OperationCanceledException)
@@ -720,6 +721,88 @@ sealed class MainForm : Form
         {
             Log.Write($"Scan failed: {e}");
             Reply(id, new { count, names, error = ScanError(e) });
+        }
+    }
+
+    static Scanner.Box[]? Boxes(JsonNode? node)
+    {
+        if (node is not JsonArray list || list.Count == 0) return null;
+        var boxes = new List<Scanner.Box>();
+        foreach (var b in list)
+        {
+            if (b is null) continue;
+            double V(string k) => Math.Clamp(b[k]?.GetValue<double>() ?? 0, 0, 1);
+            var box = new Scanner.Box(V("x"), V("y"), V("w"), V("h"));
+            if (box.W > 0.005 && box.H > 0.005) boxes.Add(box);
+        }
+        return boxes.Count > 0 ? boxes.ToArray() : null;
+    }
+
+    // Preview and crop, first: what the flatbed can do ({ device, driver,
+    // compat } → { bedW, bedH, dpis, gray, guessed })
+    async Task ScanCapsAsync(long id, JsonNode msg)
+    {
+        if (scanning is not null) { Reply(id, new { error = "The scanner is busy with a scan" }); return; }
+        try
+        {
+            var caps = await Stoppable(cancel => Scanners.CapsAsync(Str(msg, "device") ?? "", Str(msg, "driver") ?? "twain", msg["compat"]?.GetValue<bool>() ?? false, cancel));
+            Reply(id, new { bedW = caps.BedW, bedH = caps.BedH, dpis = caps.Dpis, gray = caps.Gray, guessed = caps.Guessed });
+        }
+        catch (OperationCanceledException) { Reply(id, new { cancelled = true }); }
+        catch (Exception e)
+        {
+            Log.Write($"Scanner caps failed: {e}");
+            Reply(id, new { error = ScanError(e) });
+        }
+    }
+
+    // Then the whole bed, small ({ device, driver, compat, bedW, bedH, dpi }
+    // → { image: data URL, width, height, bedW, bedH })
+    async Task ScanPreviewAsync(long id, JsonNode msg)
+    {
+        if (scanning is not null) { Reply(id, new { error = "The scanner is busy with a scan" }); return; }
+        try
+        {
+            var bedW = msg["bedW"]?.GetValue<double>() ?? 0;
+            var bedH = msg["bedH"]?.GetValue<double>() ?? 0;
+            if (bedW <= 0 || bedH <= 0) { Reply(id, new { error = "The scanner's bed size isn't known" }); return; }
+            var dpi = Math.Clamp(msg["dpi"]?.GetValue<int>() ?? 75, 50, 300);
+            Log.Write($"Preview from {Str(msg, "device")} ({Str(msg, "driver")})");
+            var p = await Stoppable(cancel => Scanners.PreviewAsync(Str(msg, "device") ?? "", Str(msg, "driver") ?? "twain", msg["compat"]?.GetValue<bool>() ?? false, bedW, bedH, dpi, Handle, cancel));
+            Reply(id, new { image = "data:image/jpeg;base64," + Convert.ToBase64String(p.Jpeg), width = p.Width, height = p.Height, bedW = p.BedW, bedH = p.BedH });
+        }
+        catch (OperationCanceledException) { Reply(id, new { cancelled = true }); }
+        catch (Exception e)
+        {
+            Log.Write($"Preview failed: {e}");
+            Reply(id, new { error = ScanError(e) });
+        }
+    }
+
+    // Runs scanner work that Stop (cancelScan) can end. A driver stuck on its
+    // own doesn't hear Stop, so 5 s after it the work is given up on, and the
+    // scanning helper with it (a fresh one next time)
+    async Task<T> Stoppable<T>(Func<CancellationToken, Task<T>> work)
+    {
+        using var cancel = scanning = new CancellationTokenSource();
+        try
+        {
+            var task = work(cancel.Token);
+            var stopped = new TaskCompletionSource();
+            using (cancel.Token.Register(() => stopped.TrySetResult()))
+            {
+                var giveUp = stopped.Task.ContinueWith(_ => Task.Delay(5000)).Unwrap();
+                if (await Task.WhenAny(task, giveUp) != task)
+                {
+                    Log.Write("The scanner didn't stop when asked: giving up on it, and on the scanning helper");
+                    var stuck = scanner;
+                    scanner = null;
+                    _ = task.ContinueWith(_ => stuck?.Dispose());
+                    try { stuck?.Dispose(); } catch (Exception e) { Log.Write("Closing the scanning helper: " + e.Message); }
+                    throw new OperationCanceledException();
+                }
+            }
+            return await task;
         }
         finally
         {

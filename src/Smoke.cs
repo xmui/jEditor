@@ -50,6 +50,7 @@ sealed class Smoke
         {
             "stored" => Stored(),
             "scanned" => Scanned(msg),
+            "cropped" => Cropped(msg),
             "windows" => AppWindows.All.Count >= 2 ? (true, null) : (false, $"{AppWindows.All.Count} window(s) open"),
             "moved" when path is not null => File.Exists(path) ? (true, null) : (false, $"{name} isn't there"),
             "back" when path is not null => File.Exists(path) && !File.Exists(Path.Combine(dir, "Moved", Path.GetFileName(path))) ? (true, null) : (false, $"{name} didn't come back"),
@@ -104,6 +105,32 @@ sealed class Smoke
         return shown == names.Count ? (true, null) : (false, $"jEditor shows {shown} of the {names.Count} scans");
     }
 
+    // Preview and crop with the test scanner: its glass previewed at 75 dpi
+    // (8.5 × 11.7 in), three prints found, and a photo per box at 150 dpi,
+    // each the box's size
+    (bool, string?) Cropped(JsonNode msg)
+    {
+        var names = (msg["names"] as JsonArray ?? []).Select(n => (string?)n ?? "").ToList();
+        var sizes = (msg["sizes"] as JsonArray ?? []).Select(s => (s![0]!.GetValue<int>(), s[1]!.GetValue<int>())).ToList();
+        var preview = msg["preview"] as JsonArray;
+        if (preview is null || preview[0]!.GetValue<int>() != 638 || preview[1]!.GetValue<int>() != 878) return (false, $"the preview is {preview?.ToJsonString()}, not 638 × 878");
+        if (names.Count != 3 || sizes.Count != 3) return (false, $"{names.Count} photos saved: {string.Join(", ", names)}");
+        for (int i = 0; i < names.Count; i++)
+        {
+            try
+            {
+                using var img = System.Drawing.Image.FromFile(Path.Combine(dir, names[i]));
+                var (w, h) = sizes[i];
+                if (Math.Abs(img.Width - w) > 3 || Math.Abs(img.Height - h) > 3) return (false, $"{names[i]} is {img.Width} × {img.Height}, its box {w} × {h}");
+            }
+            catch (Exception e)
+            {
+                return (false, $"{names[i]} isn't a readable photo: {e.Message}");
+            }
+        }
+        return (true, null);
+    }
+
     public async void Report(JsonNode msg)
     {
         var problems = new List<string>();
@@ -115,7 +142,7 @@ sealed class Smoke
         if (msg["steps"] is JsonObject steps)
         {
             Log.Write("Smoke steps: " + steps.ToJsonString());
-            foreach (var step in new[] { "stored", "recycled", "deleted", "restored", "scanned", "logged", "places", "browsed", "projects", "counted", "pins", "windows", "moved", "unmoved", "back" })
+            foreach (var step in new[] { "stored", "recycled", "deleted", "restored", "scanned", "cropped", "logged", "places", "browsed", "projects", "counted", "pins", "windows", "moved", "unmoved", "back" })
                 if (steps[step] is not JsonValue v || !v.TryGetValue<bool>(out var ok) || !ok) problems.Add($"{step}: {steps[step]?.ToJsonString() ?? "not reached"}");
             if (steps["error"] is not null) problems.Add("error: " + steps["error"]);
         }

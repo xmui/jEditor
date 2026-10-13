@@ -5,6 +5,14 @@
 
 const CHANGELOG = [
     {
+        version: '1.23.0', date: '2026-10-13',
+        items: [
+            'Preview and crop, for a flatbed like the OpticBook: in the scan dock, choose How → Preview and crop. Lay prints on the glass, as many as fit; jEditor previews the glass, with no scanner window, and puts a box round each print it finds.',
+            'Adjust the boxes: drag on the glass to add one, drag a box to move it, or its corners to resize it; × or `Delete` removes one. Choose the resolution (from what the scanner offers; 600 dpi to start with) and colour or greys, then Scan: the glass is scanned once and each box saved as its own photo, named in order. Auto crop each photo then trims each to its print and straightens it.',
+            'Scan more previews the glass again for the next prints, and the names carry on. How you scan is remembered for each scanner, and Stop works while it previews too.'
+        ]
+    },
+    {
         version: '1.22.1', date: '2026-10-13',
         items: [
             'Details in the scan dock (the `>_` button): jEditor\'s log, live, showing what the scanner\'s driver is doing as it does it. Errors are in red. Copy copies the lines to send on; Log file shows the whole log in Explorer. It opens by itself when a scan fails.',

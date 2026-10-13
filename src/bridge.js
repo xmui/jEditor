@@ -273,6 +273,20 @@
         cancelScan() {
             post({ type: 'cancelScan' });
         },
+        // Preview and crop. What a flatbed can do ({ device, driver, compat })
+        // → { bedW, bedH (inches), dpis, gray, guessed }, or null if stopped
+        async scanCaps(options) {
+            const { msg } = await answer('scanCaps', options);
+            return msg.cancelled ? null : msg;
+        },
+        // The whole bed, small ({ device, driver, compat, bedW, bedH, dpi })
+        // → { image (data URL), width, height, bedW, bedH }, or null if
+        // stopped. Then scan() with { crops: [{ x, y, w, h }] (fractions of
+        // the bed), dpi, gray, bedW, bedH } saves a photo per box.
+        async scanPreview(options) {
+            const { msg } = await answer('scanPreview', options);
+            return msg.cancelled ? null : msg;
+        },
         // ---- Windows: one project each ----
         // Another jEditor window, opening `path` (or the start screen)
         async newWindow(path) {
@@ -418,6 +432,24 @@
                     const shown = () => r.names.filter(n => a.files.some(f => (f.relPath || f.name) === n)).length;
                     for (let i = 0; i < 75 && shown() < r.names.length; i++) await new Promise(res => setTimeout(res, 200));
                     await check('scanned', { names: r.names, shown: shown() });
+                    // Preview and crop: the test scanner's glass, a box round
+                    // each print found, a photo per box
+                    const caps = await window.JEditorNative.scanCaps({ device: test.id, driver: test.driver });
+                    const p = await window.JEditorNative.scanPreview({ device: test.id, driver: test.driver, bedW: caps.bedW, bedH: caps.bedH, dpi: 75 });
+                    const img = new Image();
+                    img.src = p.image;
+                    await img.decode();
+                    const boxes = ScanPreview.find(img);
+                    if (boxes.length !== 3) {
+                        steps.cropped = `found ${boxes.length} prints on the test glass, not 3`;
+                    } else {
+                        const dpi = 150;
+                        const c = await Scan.run({ device: test.id, driver: test.driver, folder: '', crops: boxes, dpi, gray: false, bedW: p.bedW, bedH: p.bedH });
+                        const sizes = boxes.map(b => [Math.round(b.w * p.bedW * dpi), Math.round(b.h * p.bedH * dpi)]);
+                        await check('cropped', { names: c.names, sizes, preview: [p.width, p.height] });
+                        const inApp = () => c.names.filter(n => a.files.some(f => (f.relPath || f.name) === n)).length;
+                        for (let i = 0; i < 75 && inApp() < c.names.length; i++) await new Promise(res => setTimeout(res, 200));
+                    }
                 }
             }
             // Details: the log's last lines, then new ones as they're written

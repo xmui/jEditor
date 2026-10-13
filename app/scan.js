@@ -11,6 +11,12 @@
 //             grid straight away), and Stop
 //   done      how many, and Scan more (names carry on), Change settings
 //
+// Preview and crop (How, in setup; for a flatbed): no scanner window.
+//   preview   the glass, small, with a box round each print found on it
+//             (scan-preview.js); boxes can be moved, resized, drawn and
+//             deleted. Resolution and colour, then Scan: one scan of the
+//             glass, saved as a photo per box. Scan more previews again.
+//
 // Details (the >_ button) shows the app's log as it's written: what the
 // scanner's driver is doing, for when it isn't. It opens by itself when a
 // scan fails.
@@ -20,6 +26,9 @@ const Scan = {
     KEY_COMPAT: 'jeditor.scanCompat', // scanners in compatibility mode
     KEY_POS: 'jeditor.scanDock', // where the dock was dragged to
     KEY_DETAILS: 'jeditor.scanDetails', // Details showing
+    KEY_MODE: 'jeditor.scanMode', // scanners used with Preview and crop
+    KEY_PV: 'jeditor.scanPv', // Preview and crop's resolution and colour
+    caps: {}, // what each flatbed can do (asked once)
     STRIP: 6, // photos shown in the dock
     PHOTO: /^(.*?)(\d+)\.(jpe?g|tiff?|png|webp)$/i,
 
@@ -37,8 +46,15 @@ const Scan = {
         this.el('scan-settings').addEventListener('click', () => this.setState('setup'));
         this.el('scan-refresh').addEventListener('click', () => this.loadDevices(true));
         this.details = LogView.attach(this.el('scan-log'), app);
+        document.querySelectorAll('input[name="scan-mode"]').forEach(r => r.addEventListener('change', () => this.syncMode()));
+        ScanPreview.init(boxes => this.boxesChanged(boxes));
+        this.el('scan-pv-again').addEventListener('click', () => this.previewGlass());
+        this.el('scan-pv-find').addEventListener('click', () => ScanPreview.set(ScanPreview.find(this.el('scan-pv-img'))));
+        this.el('scan-pv-clear').addEventListener('click', () => ScanPreview.set([]));
+        this.el('scan-dpi').addEventListener('change', () => this.savePv());
+        this.el('scan-color').addEventListener('change', () => this.savePv());
         this.el('scan-details').addEventListener('click', () => this.showDetails(!this.details.shown, true));
-        this.el('scan-device').addEventListener('change', () => this.syncCompat());
+        this.el('scan-device').addEventListener('change', () => { this.syncCompat(); this.syncMode(true); });
         this.el('scan-folder').addEventListener('change', () => this.fillNames());
         this.el('scan-prefix').addEventListener('input', () => this.preview());
         this.el('scan-next').addEventListener('input', () => this.preview());
@@ -94,6 +110,7 @@ const Scan = {
     // While it scans, closing only makes it small
     close() {
         if (this.running) return this.setSmall(true);
+        if (this.waiting) FolderCache.native().cancelScan(); // a preview: stop it
         this.el('scan-panel').classList.add('hidden');
         if (this.details.shown) this.details.hide(); // (still wanted next time)
     },
@@ -124,7 +141,10 @@ const Scan = {
         if (state === 'setup') {
             this.el('scan-title').textContent = 'Scan into this project';
             this.el('scan-go').disabled = !(this.devices && this.devices.length);
+            this.syncMode();
         }
+        if (state === 'preview') this.boxesChanged(ScanPreview.boxes);
+        if (state === 'done') this.el('scan-go').disabled = false;
     },
 
     // Dragged by its title; stays where it was put
@@ -235,6 +255,7 @@ const Scan = {
             select.appendChild(o);
         }
         this.syncCompat();
+        this.syncMode(true);
         note.textContent = this.devices.length ? '' : 'Is the scanner plugged in and turned on? ' + this.problems.join('. ');
         if (this.devices.length && this.problems.length) note.textContent = this.problems.join('. ');
     },
@@ -253,6 +274,59 @@ const Scan = {
 
     last() {
         try { return JSON.parse(localStorage.getItem(this.KEY) || 'null'); } catch (e) { return null; }
+    },
+
+    // ---- How: the scanner's window, or Preview and crop ----
+
+    modes() {
+        try { return JSON.parse(localStorage.getItem(this.KEY_MODE) || '{}') || {}; } catch (e) { return {}; }
+    },
+
+    mode() {
+        const r = document.querySelector('input[name="scan-mode"]:checked');
+        return r ? r.value : 'driver';
+    },
+
+    // `fromDevice`: set How to what was used with the scanner chosen
+    syncMode(fromDevice = false) {
+        if (fromDevice) {
+            const id = this.el('scan-device').value;
+            const want = this.modes()[id] ? 'preview' : 'driver';
+            const r = document.querySelector(`input[name="scan-mode"][value="${want}"]`);
+            if (r) r.checked = true;
+        }
+        const preview = this.mode() === 'preview';
+        this.el('scan-help-driver').classList.toggle('hidden', preview);
+        this.el('scan-help-preview').classList.toggle('hidden', !preview);
+        if (this.el('scan-panel').dataset.state === 'setup') this.el('scan-go').textContent = preview ? 'Preview' : 'Scan';
+    },
+
+    pvPrefs() {
+        try { return JSON.parse(localStorage.getItem(this.KEY_PV) || '{}') || {}; } catch (e) { return {}; }
+    },
+
+    savePv() {
+        try { localStorage.setItem(this.KEY_PV, JSON.stringify({ dpi: +this.el('scan-dpi').value, color: this.el('scan-color').value })); } catch (e) { /* private */ }
+    },
+
+    // Resolutions the flatbed has (100 dpi and up); the last one used, else 600
+    fillDpis(caps) {
+        const select = this.el('scan-dpi');
+        const dpis = (caps.dpis || []).filter(d => d >= 100);
+        const list = dpis.length ? dpis : [300, 600, 1200];
+        select.innerHTML = '';
+        for (const d of list) {
+            const o = document.createElement('option');
+            o.value = d;
+            o.textContent = `${d} dpi`;
+            select.appendChild(o);
+        }
+        const prefs = this.pvPrefs();
+        const upTo600 = list.filter(d => d <= 600);
+        select.value = list.includes(prefs.dpi) ? prefs.dpi : (upTo600.length ? upTo600[upTo600.length - 1] : list[0]);
+        const gray = this.el('scan-color').querySelector('option[value="gray"]');
+        gray.disabled = caps.gray === false;
+        this.el('scan-color').value = prefs.color === 'gray' && !gray.disabled ? 'gray' : 'color';
     },
 
     // ---- Where, and what names ----
@@ -348,17 +422,121 @@ const Scan = {
             localStorage.setItem(this.KEY_COMPAT, JSON.stringify(all));
         } catch (e) { /* private */ }
         try { localStorage.setItem(this.KEY, JSON.stringify({ device: device.id, autoCrop })); } catch (e) { /* private */ }
+        const state = this.el('scan-panel').dataset.state;
+        if (state === 'preview') return this.scanBoxes();
         // Scan more: the names carry on from the photos just scanned
-        const more = this.el('scan-panel').dataset.state === 'done';
+        const more = state === 'done';
+        const mode = more ? this.lastMode || 'driver' : this.mode();
+        try {
+            const modes = this.modes();
+            if (mode === 'preview') modes[device.id] = true; else delete modes[device.id];
+            localStorage.setItem(this.KEY_MODE, JSON.stringify(modes));
+        } catch (e) { /* private */ }
+        this.lastMode = mode;
+        if (mode === 'preview') {
+            this.pv = { device, folder, autoCrop, compat, more, prefix, next, digits: this.digits, bed: null };
+            this.previewGlass();
+            return;
+        }
         const opts = { device: device.id, driver: device.driver, folder, autoCrop, compat };
         if (!more) Object.assign(opts, { prefix, next, digits: this.digits });
+        this.run(opts).catch(() => { /* said already */ });
+    },
+
+    // ---- Preview and crop ----
+
+    // The glass, small, with the prints found on it
+    async previewGlass() {
+        const pv = this.pv;
+        if (!pv || this.running || this.waiting) return;
+        const native = FolderCache.native();
+        const panel = this.el('scan-panel');
+        const wait = (text) => { this.el('scan-pv-wait').textContent = text; };
+        panel.classList.remove('hidden');
+        this.setSmall(false);
+        this.waiting = true;
+        panel.classList.add('waiting');
+        ScanPreview.clearImage();
+        this.setState('preview');
+        this.el('scan-title').textContent = `Preview · ${pv.device.name}`;
+        this.pvError('');
+        try {
+            let caps = this.caps[pv.device.id];
+            if (!caps) {
+                wait('Asking the scanner about its glass…');
+                caps = await native.scanCaps({ device: pv.device.id, driver: pv.device.driver, compat: pv.compat });
+                if (!caps) return this.pvError('Stopped');
+                this.caps[pv.device.id] = caps;
+            }
+            this.fillDpis(caps);
+            wait(`Previewing the glass of ${pv.device.name}…`);
+            // As small as the scanner goes, near 75 dpi
+            const low = (caps.dpis || []).filter(d => d >= 50 && d <= 150);
+            const dpi = low.length ? low.reduce((a, b) => (Math.abs(b - 75) < Math.abs(a - 75) ? b : a)) : 75;
+            const p = await native.scanPreview({ device: pv.device.id, driver: pv.device.driver, compat: pv.compat, bedW: caps.bedW, bedH: caps.bedH, dpi });
+            if (!p) return this.pvError('Preview stopped');
+            pv.bed = { w: p.bedW, h: p.bedH };
+            await ScanPreview.show(p);
+            ScanPreview.set(ScanPreview.find(this.el('scan-pv-img')));
+            if (caps.guessed) this.app.showToast('The scanner didn\'t say how big its glass is, so jEditor took it to be A4', 5000);
+        } catch (e) {
+            this.pvError(`The preview didn't work: ${e.message}`);
+            this.showDetails(true); // what the driver did
+        } finally {
+            this.waiting = false;
+            panel.classList.remove('waiting');
+            if (panel.dataset.state === 'preview') this.boxesChanged(ScanPreview.boxes);
+        }
+    },
+
+    pvError(text) {
+        this.pvErrorText = text;
+        this.boxesChanged(ScanPreview.boxes);
+    },
+
+    boxesChanged(boxes) {
+        const n = boxes.length;
+        const count = this.el('scan-pv-count');
+        const go = this.el('scan-go');
+        const error = !n && this.pvErrorText;
+        count.classList.toggle('error', !!error);
+        count.textContent = error ? this.pvErrorText
+            : n ? `${n} photo${n === 1 ? '' : 's'}`
+            : this.waiting ? '' : 'No prints found: drag on the glass to mark one';
+        if (n) this.pvErrorText = '';
+        if (this.el('scan-panel').dataset.state !== 'preview') return;
+        go.textContent = n ? `Scan ${n} photo${n === 1 ? '' : 's'}` : 'Scan';
+        go.disabled = !n || !!this.waiting || !(this.pv && this.pv.bed);
+        const pv = this.pv;
+        const names = this.el('scan-pv-names');
+        if (!pv || !n) { names.textContent = ''; return; }
+        const { prefix, next, digits } = pv.more ? this.naming(pv.folder) : pv;
+        names.textContent = `Into ${Folders.label(pv.folder)}: ${this.name(prefix, next, digits || 3)}` + (n > 1 ? ` … ${this.name(prefix, next + n - 1, digits || 3)}` : '');
+    },
+
+    scanBoxes() {
+        const pv = this.pv;
+        const boxes = ScanPreview.boxes.filter(b => b.w > 0 && b.h > 0);
+        if (!pv || !pv.bed || !boxes.length) return;
+        this.savePv();
+        const r4 = (v) => Math.round(v * 10000) / 10000;
+        const opts = {
+            device: pv.device.id, driver: pv.device.driver, folder: pv.folder, autoCrop: pv.autoCrop, compat: pv.compat,
+            crops: boxes.map(b => ({ x: r4(b.x), y: r4(b.y), w: r4(b.w), h: r4(b.h) })),
+            dpi: +this.el('scan-dpi').value || 300, gray: this.el('scan-color').value === 'gray',
+            bedW: pv.bed.w, bedH: pv.bed.h
+        };
+        if (!pv.more) Object.assign(opts, { prefix: pv.prefix, next: pv.next, digits: pv.digits });
+        pv.more = true; // next time, the names carry on
+        this.lastMode = 'preview';
         this.run(opts).catch(() => { /* said already */ });
     },
 
     // Scans into `folder` (a folder of the order: '' is the order itself).
     // Without prefix/next, names follow on from the folder's photos.
     // → { count, names, cancelled }
-    async run({ device, driver, folder = '', prefix, next, digits, autoCrop = false, compat }) {
+    // Preview and crop: crops (boxes on the glass), dpi, gray, bedW, bedH.
+    async run({ device, driver, folder = '', prefix, next, digits, autoCrop = false, compat, crops, dpi, gray, bedW, bedH }) {
         const app = this.app;
         const native = FolderCache.native();
         if (this.running) throw new Error('A scan is already running');
@@ -370,7 +548,8 @@ const Scan = {
         }
         const path = root.replace(/\\$/, '') + (folder ? '\\' + folder.split('/').join('\\') : '');
         const names = [];
-        const label = () => names.length ? `Scanning… ${names.length} photo${names.length === 1 ? '' : 's'}` : 'Scanning… (the scanner\'s window may be behind jEditor)';
+        const label = () => names.length ? `Scanning… ${names.length} photo${names.length === 1 ? '' : 's'}`
+            : crops ? `Scanning the glass at ${dpi} dpi…` : 'Scanning… (the scanner\'s window may be behind jEditor)';
         this.running = true;
         app.beginTask('scanner', label());
         // The dock shows it, with Stop (a scanner whose window never shows
@@ -382,7 +561,7 @@ const Scan = {
         this.el('scan-title').textContent = `Scanning · ${scannerName}`;
         this.el('scan-summary').textContent = `Into ${Folders.label(folder)} · ${this.name(prefix, next, digits || 3)}, ${this.name(prefix, next + 1, digits || 3)}, …`;
         this.clearStrip();
-        this.status(`Waiting for ${scannerName}. Its window may be behind jEditor.`);
+        this.status(crops ? `Scanning the glass at ${dpi} dpi: ${crops.length} photo${crops.length === 1 ? '' : 's'} to cut from it.` : `Waiting for ${scannerName}. Its window may be behind jEditor.`);
         const done = (text, error) => {
             this.setState('done');
             this.el('scan-title').textContent = `Scanned · ${scannerName}`;
@@ -396,7 +575,9 @@ const Scan = {
         let result;
         try {
             if (compat === undefined) compat = driver === 'twain' && !!this.compat()[device];
-            result = await native.scan({ device, driver, folder: path, prefix, next, digits: digits || 3, compat }, (name) => {
+            const request = { device, driver, folder: path, prefix, next, digits: digits || 3, compat };
+            if (crops) Object.assign(request, { crops, dpi, gray: !!gray, bedW, bedH });
+            result = await native.scan(request, (name) => {
                 add(name);
                 app.updateTask('scanner', label());
                 this.status(label());
