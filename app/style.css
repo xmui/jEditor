@@ -4100,6 +4100,199 @@ html:not(.native) .native-only {
     margin: 0;
 }
 
+/* Preview and crop (scan-preview.js): the dock grows to show the glass */
+.scan-dock[data-state="preview"] {
+    left: 3vw !important;
+    right: 3vw !important;
+    top: 3vh !important;
+    bottom: 3vh !important;
+    width: auto;
+    max-height: none;
+}
+
+.scan-dock[data-state="preview"] .scan-dock-body {
+    flex: 1;
+}
+
+.scan-dock[data-state="preview"] .scan-live,
+.scan-dock:not([data-state="preview"]) .scan-pv {
+    display: none;
+}
+
+.scan-dock[data-state="preview"] #scan-settings {
+    display: inline-flex;
+}
+
+.scan-dock[data-state="preview"].waiting #scan-stop {
+    display: inline-flex;
+}
+
+.scan-dock.waiting .scan-dot {
+    display: block;
+}
+
+.scan-pv {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    gap: var(--sp-3);
+    padding: var(--sp-3);
+}
+
+.scan-pv-stage {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    min-height: 240px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--r-md, 8px);
+    background: rgba(0, 0, 0, 0.28);
+    overflow: hidden;
+}
+
+.scan-pv-bed {
+    position: relative;
+    flex: none;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+
+.scan-pv-bed img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+.scan-pv-bed img:not([src]) {
+    visibility: hidden;
+}
+
+.scan-pv-boxes {
+    position: absolute;
+    inset: 0;
+    cursor: crosshair;
+    touch-action: none;
+    outline: none;
+}
+
+.pv-box {
+    position: absolute;
+    border: 2px solid var(--accent);
+    background: rgba(47, 111, 237, 0.1);
+    cursor: move;
+}
+
+.pv-box.sel {
+    border-color: #fff;
+    box-shadow: 0 0 0 2px var(--accent);
+}
+
+.pv-n {
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    min-width: 20px;
+    padding: 0 6px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 11px;
+    font-weight: var(--fw-semibold);
+    line-height: 18px;
+    text-align: center;
+    pointer-events: none;
+}
+
+.pv-x {
+    position: absolute;
+    right: 3px;
+    top: 3px;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    font: 14px/20px system-ui, sans-serif;
+    cursor: pointer;
+}
+
+.pv-x:hover {
+    background: #d13438;
+}
+
+.pv-h {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--accent);
+    border-radius: 2px;
+    background: #fff;
+}
+
+.pv-h.nw { left: -7px; top: -7px; cursor: nwse-resize; }
+.pv-h.ne { right: -7px; top: -7px; cursor: nesw-resize; }
+.pv-h.se { right: -7px; bottom: -7px; cursor: nwse-resize; }
+.pv-h.sw { left: -7px; bottom: -7px; cursor: nesw-resize; }
+
+.scan-pv-wait {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-2);
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+}
+
+.scan-dock.waiting .scan-pv-wait {
+    display: flex;
+}
+
+.scan-pv-side {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    width: 250px;
+    flex: none;
+    overflow-y: auto;
+}
+
+.scan-pv-count {
+    font-weight: var(--fw-semibold);
+}
+
+.scan-pv-count.error {
+    color: #ff7b72;
+    font-weight: normal;
+}
+
+.scan-pv-help {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.scan-pv-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+}
+
+@media (max-width: 760px) {
+    .scan-pv {
+        flex-direction: column;
+    }
+
+    .scan-pv-side {
+        width: auto;
+    }
+}
+
 #scan-details[aria-pressed="true"] {
     color: var(--accent);
     background: var(--accent-soft, transparent);

@@ -226,10 +226,26 @@ const waitForPost = (page, type) => page.waitForFunction(
                 else if (m.type === 'transfer') reply({ items: m.paths.map(p => ({ from: p, to: m.dest + '\\' + p.split('\\').pop() })) });
                 else if (m.type === 'undoTransfer') reply({ errors: m.items.map(() => null) });
                 else if (m.type === 'scanners') reply({ devices: [{ id: 'jeditor-test-scanner', name: 'jEditor test scanner', driver: 'test' }], problems: [] });
+                else if (m.type === 'scanCaps') reply({ bedW: 8.5, bedH: 11.7, dpis: [75, 150, 300, 600], gray: true, guessed: false });
+                else if (m.type === 'scanPreview') {
+                    // The test scanner's glass, as the app draws it
+                    const c = document.createElement('canvas');
+                    c.width = Math.round(m.bedW * m.dpi);
+                    c.height = Math.round(m.bedH * m.dpi);
+                    const g = c.getContext('2d');
+                    g.fillStyle = 'rgb(242,242,240)';
+                    g.fillRect(0, 0, c.width, c.height);
+                    for (const [x, y, w, h, col] of [[0.5, 0.5, 4, 3, '#4a6eaa'], [5, 0.7, 3, 4, '#963c5a'], [1, 5, 6, 4, '#287850']]) {
+                        g.fillStyle = col;
+                        g.fillRect(x * m.dpi, y * m.dpi, w * m.dpi, h * m.dpi);
+                    }
+                    reply({ image: c.toDataURL('image/jpeg'), width: c.width, height: c.height, bedW: m.bedW, bedH: m.bedH });
+                }
                 else if (m.type === 'scan') {
                     // The app's side: three photos into the folder, each posted as it lands
-                    window.__scan = m;
                     const names = [];
+                    if (!m.crops) window.__scan = m;
+                    else window.__cropScan = m;
                     for (let i = 0; i < 3; i++) {
                         const name = m.prefix + String(m.next + i).padStart(m.digits, '0') + '.jpg';
                         const c = document.createElement('canvas');
@@ -258,8 +274,11 @@ const waitForPost = (page, type) => page.waitForFunction(
         check('opens the folder and reports the photo count', opened.name === 'Jones' && opened.count === 4, JSON.stringify(opened));
         const smoke = await waitForPost(page, 'smoke');
         check('smoke test: reports success', smoke.ok && smoke.count === 4 && smoke.rotated && smoke.errors.length === 0, JSON.stringify(smoke));
-        check('smoke test: runs the further steps through the app', smoke.steps && smoke.steps.stored === true && smoke.steps.deleted === true && smoke.steps.restored === true && smoke.steps.scanned === true && smoke.steps.logged === true && smoke.steps.places === true && smoke.steps.browsed === true && smoke.steps.projects === true && smoke.steps.counted === true && smoke.steps.pins === true && smoke.steps.windows === true && smoke.steps.moved === true && smoke.steps.unmoved === true && smoke.steps.back === true && /v1\.0\.0/.test(smoke.steps.update), JSON.stringify(smoke.steps));
+        check('smoke test: runs the further steps through the app', smoke.steps && smoke.steps.stored === true && smoke.steps.deleted === true && smoke.steps.restored === true && smoke.steps.scanned === true && smoke.steps.cropped === true && smoke.steps.logged === true && smoke.steps.places === true && smoke.steps.browsed === true && smoke.steps.projects === true && smoke.steps.counted === true && smoke.steps.pins === true && smoke.steps.windows === true && smoke.steps.moved === true && smoke.steps.unmoved === true && smoke.steps.back === true && /v1\.0\.0/.test(smoke.steps.update), JSON.stringify(smoke.steps));
         const scanned = await page.evaluate(() => ({ scan: window.__scan, check: (window.__checks || []).find(c => c.step === 'scanned') }));
+        const crop = await page.evaluate(() => ({ scan: window.__cropScan, check: (window.__checks || []).find(c => c.step === 'cropped') }));
+        check('smoke test: previews the test glass, finds its three prints and scans a photo per box', crop.scan && crop.scan.crops.length === 3 && crop.scan.dpi === 150 && crop.scan.bedW === 8.5 &&
+            crop.check && crop.check.names.length === 3 && crop.check.sizes.length === 3 && crop.check.preview.join() === '638,878', JSON.stringify(crop));
         check('smoke test: scans into the order with the test scanner, named next in its sequence', scanned.scan && scanned.scan.folder === 'C:\\Jones' && scanned.scan.device === 'jeditor-test-scanner' &&
             scanned.check && scanned.check.names.join() === 'photo5.jpg,photo6.jpg,photo7.jpg' && scanned.check.shown === 3, JSON.stringify(scanned));
         const after = await page.evaluate(() => window.__bytes());

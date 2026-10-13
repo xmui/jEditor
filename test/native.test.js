@@ -125,7 +125,7 @@ const FAKE_NATIVE = `
             const root = window.__orderRoot + '\\\\';
             let dir = await sub('disk');
             for (const p of o.folder.slice(root.length).split('\\\\')) dir = await dir.getDirectoryHandle(p);
-            const pages = window.__scanPages || 2;
+            const pages = o.crops ? o.crops.length : window.__scanPages || 2;
             for (let i = 0; i < pages; i++) {
                 const name = o.prefix + String(o.next + i).padStart(o.digits, '0') + '.jpg';
                 const c = document.createElement('canvas');
@@ -141,6 +141,27 @@ const FAKE_NATIVE = `
             return { count: pages };
         },
         cancelScan() { window.__cancelled = true; if (window.__unhang) window.__unhang(); },
+        // Preview and crop: an 8.5 × 11.7 in glass with three prints on a pale lid
+        async scanCaps(o) { window.__capsReq = o; return { bedW: 8.5, bedH: 11.7, dpis: [75, 150, 300, 600, 1200], gray: true, guessed: false }; },
+        async scanPreview(o) {
+            window.__previewReq = o;
+            if (window.__previewHang) {
+                await new Promise(r => { window.__unhang = r; });
+                return null;
+            }
+            const c = document.createElement('canvas');
+            c.width = Math.round(o.bedW * o.dpi);
+            c.height = Math.round(o.bedH * o.dpi);
+            const g = c.getContext('2d');
+            g.fillStyle = 'rgb(242,242,240)';
+            g.fillRect(0, 0, c.width, c.height);
+            const prints = window.__prints || [[0.5, 0.5, 4, 3, '#4a6eaa'], [5, 0.7, 3, 4, '#963c5a'], [1, 5, 6, 4, '#287850']];
+            for (const [x, y, w, h, col] of prints) {
+                g.fillStyle = col;
+                g.fillRect(x * o.dpi, y * o.dpi, w * o.dpi, h * o.dpi);
+            }
+            return { image: c.toDataURL('image/jpeg', 0.85), width: c.width, height: c.height, bedW: o.bedW, bedH: o.bedH };
+        },
         async showLog() { window.__logShown = true; return true; },
         async logTail() { return { lines: ['10:00:00.000 jEditor 1.0 ready', '10:00:01.000 naps2 Debug: Twain init'], file: 'log' }; },
         // The app's side: window.__logPush(lines) as it writes them
@@ -712,6 +733,118 @@ async function newPage(context, baseUrl) {
         check('... and opens by itself when a scan fails', r.detailsOnError);
         check('no scanners: says so and what to check', /No scanners found/.test(r.none) && /plugged in/.test(r.none) && /TWAINDSM/.test(r.none) && r.noneDisabled, r.none);
         check('scan suite: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('native: preview and crop');
+    {
+        const context = await browser.newContext();
+        const { page, errors } = await newPage(context, baseUrl);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const $ = (id) => document.getElementById(id);
+            const dir = await makeOrder('Glass Order', 2);
+            await openOrder(dir);
+            localStorage.removeItem('jeditor.scanMode');
+            $('btn-scan').click();
+            await wait(() => !$('scan-device').disabled);
+            $('scan-device').value = 'wia-1';
+            $('scan-device').dispatchEvent(new Event('change'));
+            out.modeDefault = Scan.mode();
+            document.querySelector('input[name="scan-mode"][value="preview"]').click();
+            out.goLabel = $('scan-go').textContent;
+            out.help = !$('scan-help-preview').classList.contains('hidden') && $('scan-help-driver').classList.contains('hidden');
+            $('scan-go').click();
+            await wait(() => $('scan-panel').dataset.state === 'preview' && !Scan.waiting && ScanPreview.boxes.length > 0);
+            out.capsReq = window.__capsReq;
+            out.previewReq = window.__previewReq;
+            out.boxes = ScanPreview.boxes.map(b => [b.x, b.y, b.w, b.h].map(v => Math.round(v * 1000) / 1000));
+            out.shown = $('scan-pv-boxes').querySelectorAll('.pv-box').length;
+            out.count = $('scan-pv-count').textContent;
+            out.go = $('scan-go').textContent;
+            out.dpi = $('scan-dpi').value;
+            out.dpis = [...$('scan-dpi').options].map(o => o.value).join();
+            out.names = $('scan-pv-names').textContent;
+            out.wide = $('scan-panel').getBoundingClientRect().width > innerWidth * 0.8;
+            // × removes a box
+            $('scan-pv-boxes').querySelectorAll('.pv-x')[2].click();
+            out.afterRemove = [ScanPreview.boxes.length, $('scan-go').textContent];
+            return out;
+        });
+        // Draw a box with the mouse, then move the first one
+        const rect = await page.evaluate(() => { const b = document.getElementById('scan-pv-boxes').getBoundingClientRect(); return { x: b.left, y: b.top, w: b.width, h: b.height }; });
+        await page.mouse.move(rect.x + rect.w * 0.1, rect.y + rect.h * 0.85);
+        await page.mouse.down();
+        await page.mouse.move(rect.x + rect.w * 0.3, rect.y + rect.h * 0.9, { steps: 4 });
+        await page.mouse.move(rect.x + rect.w * 0.5, rect.y + rect.h * 0.95, { steps: 4 });
+        await page.mouse.up();
+        const first = await page.evaluate(() => { const b = document.querySelector('#scan-pv-boxes .pv-box').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; });
+        await page.mouse.move(first.x, first.y);
+        await page.mouse.down();
+        await page.mouse.move(first.x + rect.w * 0.05, first.y + rect.h * 0.02, { steps: 4 });
+        await page.mouse.up();
+        // A tiny click on the glass makes no box
+        await page.mouse.click(rect.x + rect.w * 0.9, rect.y + rect.h * 0.98);
+        const r2 = await page.evaluate(async () => {
+            const out = {};
+            const $ = (id) => document.getElementById(id);
+            out.drawn = ScanPreview.boxes.map(b => [b.x, b.y, b.w, b.h].map(v => Math.round(v * 100) / 100));
+            out.go = $('scan-go').textContent;
+            // Delete removes the selected one (the moved box)
+            ScanPreview.sel = 0;
+            $('scan-pv-boxes').dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+            out.afterDelete = ScanPreview.boxes.length;
+            // Find prints puts them back
+            $('scan-pv-find').click();
+            out.found = ScanPreview.boxes.length;
+            $('scan-dpi').value = '1200';
+            $('scan-dpi').dispatchEvent(new Event('change'));
+            $('scan-color').value = 'gray';
+            $('scan-go').click();
+            await wait(() => $('scan-panel').dataset.state === 'done');
+            out.req = window.__scanReq;
+            await wait(() => app.files.some(f => f.name === 'photo5.jpg'));
+            out.files = app.files.map(f => f.name).sort().join();
+            out.status = $('scan-status').textContent;
+            out.modeKept = JSON.parse(localStorage.getItem('jeditor.scanMode'))['wia-1'] === true;
+            out.prefs = JSON.parse(localStorage.getItem('jeditor.scanPv'));
+            // Scan more previews the glass again; the names carry on
+            window.__previewReq = null;
+            $('scan-go').click();
+            await wait(() => $('scan-panel').dataset.state === 'preview' && !Scan.waiting && window.__previewReq);
+            out.moreNames = $('scan-pv-names').textContent;
+            out.moreDpi = $('scan-dpi').value;
+            // Stop while previewing
+            window.__previewHang = true;
+            $('scan-pv-again').click();
+            await wait(() => Scan.waiting);
+            out.stopShown = getComputedStyle($('scan-stop')).display !== 'none';
+            $('scan-stop').click();
+            await wait(() => !Scan.waiting);
+            out.stopped = $('scan-pv-count').textContent;
+            window.__previewHang = false;
+            // Back to setup: How is remembered for that scanner
+            $('scan-settings').click();
+            out.setupMode = Scan.mode() + ' ' + $('scan-go').textContent;
+            Scan.close();
+            return out;
+        });
+        const near = (b, x, y, w, h) => b && b[0] <= x && b[1] <= y && b[0] + b[2] >= x + w && b[1] + b[3] >= y + h && b[2] < w + 0.12 && b[3] < h + 0.1;
+        check('How: the scanner\'s window to start with; Preview and crop says what it does, and the button says Preview', r.modeDefault === 'driver' && r.help && r.goLabel === 'Preview', JSON.stringify([r.modeDefault, r.help, r.goLabel]));
+        check('it asks the scanner about its glass, then previews it small', r.capsReq && r.capsReq.device === 'wia-1' && r.previewReq && r.previewReq.dpi === 75 && r.previewReq.bedW === 8.5, JSON.stringify([r.capsReq, r.previewReq]));
+        check('the dock grows to show the glass', r.wide);
+        check('a box round each print, in reading order', r.boxes.length === 3 && r.shown === 3 && near(r.boxes[0], 0.059, 0.043, 0.47, 0.256) && near(r.boxes[1], 0.588, 0.06, 0.353, 0.342) && near(r.boxes[2], 0.118, 0.427, 0.706, 0.342), JSON.stringify(r.boxes));
+        check('... saying how many, and the names they\'ll get', r.count === '3 photos' && r.go === 'Scan 3 photos' && r.names === 'Into Glass Order: photo3.jpg … photo5.jpg', JSON.stringify([r.count, r.go, r.names]));
+        check('resolutions from the scanner (100 dpi and up), 600 to start with', r.dpi === '600' && r.dpis === '150,300,600,1200', JSON.stringify([r.dpi, r.dpis]));
+        check('× removes a box', r.afterRemove[0] === 2 && r.afterRemove[1] === 'Scan 2 photos', JSON.stringify(r.afterRemove));
+        check('dragging on the glass draws a box; dragging a box moves it; a click makes none', r2.drawn.length === 3 && r2.drawn[2][0] === 0.1 && r2.drawn[2][1] === 0.85 && r2.drawn[2][2] === 0.4 && r2.drawn[0][0] > 0.06 && r2.go === 'Scan 3 photos', JSON.stringify(r2.drawn));
+        check('Delete removes the selected box; Find prints puts them back', r2.afterDelete === 2 && r2.found === 3, JSON.stringify([r2.afterDelete, r2.found]));
+        check('Scan sends the boxes, resolution, colour and glass to the app, without a scanner window', r2.req && r2.req.crops && r2.req.crops.length === 3 && r2.req.dpi === 1200 && r2.req.gray === true && r2.req.bedW === 8.5 && r2.req.bedH === 11.7 && r2.req.prefix === 'photo' && r2.req.next === 3, JSON.stringify(r2.req));
+        check('... a photo per box comes in', /photo3\.jpg,photo4\.jpg,photo5\.jpg/.test(r2.files) && /Scanned 3 photos/.test(r2.status), JSON.stringify([r2.files, r2.status]));
+        check('Preview and crop is remembered for that scanner, with the resolution and colour', r2.modeKept && r2.prefs.dpi === 1200 && r2.prefs.color === 'gray' && /^preview Preview$/.test(r2.setupMode), JSON.stringify([r2.modeKept, r2.prefs, r2.setupMode]));
+        check('Scan more previews again; the names carry on', /photo6\.jpg/.test(r2.moreNames) && r2.moreDpi === '1200', JSON.stringify([r2.moreNames, r2.moreDpi]));
+        check('Stop ends a preview', r2.stopShown && r2.stopped === 'Preview stopped', JSON.stringify([r2.stopShown, r2.stopped]));
+        check('preview suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
 

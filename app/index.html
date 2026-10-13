@@ -27,6 +27,7 @@
     <script src="stored.js"></script>
     <script src="updates.js"></script>
     <script src="logview.js"></script>
+    <script src="scan-preview.js"></script>
     <script src="scan.js"></script>
     <script src="places.js"></script>
     <script src="windows.js"></script>
@@ -738,12 +739,47 @@
                     <input id="scan-compat" type="checkbox">
                     <span>Compatibility mode<small>If this scanner's window never opens, try this: an older way of talking to its driver (some Plustek ones need it).</small></span>
                 </label>
-                <p class="set-help">The scanner's own window opens next: choose the resolution and feeder there. You can keep working while it scans: each photo shows up as soon as it's in.</p>
+                <div class="scan-field">How
+                    <div class="seg scan-mode" role="radiogroup" aria-label="How to scan">
+                        <label><input type="radio" name="scan-mode" value="driver" checked><span>Scanner's window</span></label>
+                        <label><input type="radio" name="scan-mode" value="preview"><span>Preview and crop</span></label>
+                    </div>
+                </div>
+                <p class="set-help" id="scan-help-driver">The scanner's own window opens next: choose the resolution and feeder there. You can keep working while it scans: each photo shows up as soon as it's in.</p>
+                <p class="set-help hidden" id="scan-help-preview">For the flatbed: lay prints on the glass, as many as fit. jEditor previews the glass and puts a box round each print; adjust them, then Scan saves each box as its own photo. No scanner window.</p>
             </div>
             <div id="scan-live" class="scan-live">
                 <div id="scan-summary" class="scan-summary"></div>
                 <div id="scan-strip" class="scan-strip" aria-label="The last photos scanned"></div>
                 <div id="scan-status" class="scan-status" role="status"></div>
+            </div>
+            <div id="scan-pv" class="scan-pv">
+                <div id="scan-pv-stage" class="scan-pv-stage">
+                    <div id="scan-pv-bed" class="scan-pv-bed">
+                        <img id="scan-pv-img" alt="" draggable="false">
+                        <div id="scan-pv-boxes" class="scan-pv-boxes" tabindex="0" aria-label="The scanner's glass: drag to mark a photo"></div>
+                    </div>
+                    <div class="scan-pv-wait" role="status"><span class="scan-dot" aria-hidden="true"></span><span id="scan-pv-wait"></span></div>
+                </div>
+                <div class="scan-pv-side">
+                    <div id="scan-pv-count" class="scan-pv-count"></div>
+                    <small class="scan-pv-help">Drag on the glass to add a photo. Drag a box to move it, or its corners to resize it. <kbd>Delete</kbd> removes the selected box.</small>
+                    <div class="scan-pv-tools">
+                        <button id="scan-pv-again" type="button" class="btn secondary sm" title="Scan the glass again, small (after changing the prints)">Preview again</button>
+                        <button id="scan-pv-find" type="button" class="btn ghost sm" title="Put the boxes back where jEditor finds the prints">Find prints</button>
+                        <button id="scan-pv-clear" type="button" class="btn ghost sm">Clear boxes</button>
+                    </div>
+                    <label class="scan-field" for="scan-dpi">Resolution
+                        <select id="scan-dpi" class="field"></select>
+                    </label>
+                    <label class="scan-field" for="scan-color">Colour
+                        <select id="scan-color" class="field">
+                            <option value="color">Colour</option>
+                            <option value="gray">Greys</option>
+                        </select>
+                    </label>
+                    <small id="scan-pv-names" class="scan-preview"></small>
+                </div>
             </div>
             <div id="scan-log" class="log-view hidden" aria-label="Details">
                 <div class="log-view-head">
