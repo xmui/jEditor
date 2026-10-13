@@ -3245,7 +3245,7 @@ async function newPage(browser, url) {
         check('nested .jeditor: merged into the order\'s and removed', r.removed && r.photos, JSON.stringify(r));
         check('nested .jeditor: its deleted photos move to the order\'s trash, named after the folder', r.trash === 'Ceremony - old (2).jpg,Ceremony - old.jpg', r.trash);
         check('nested .jeditor: its flags join the order\'s under the folder\'s path', r.flag && r.saved);
-        check('nested .jeditor: says so', /Merged the \.jeditor folder in “Ceremony” into this order's \(2 flags, 1 deleted photo\)/.test(r.toast), r.toast);
+        check('nested .jeditor: says so', /Merged the \.jeditor folder in “Ceremony” into this project's \(2 flags, 1 deleted photo\)/.test(r.toast), r.toast);
         check('nested .jeditor suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -3342,7 +3342,7 @@ async function newPage(browser, url) {
             window.dispatchEvent(new KeyboardEvent('keydown', { key: 'i', bubbles: true }));
             await sleep(50);
             let r1 = rows();
-            out.order = title() === 'Order' && r1.Photos === '4' && r1.Size === app.formatBytes(total) && r1.Folders === '1' && /JPEG 3 · PNG 1/.test(r1.Types);
+            out.order = title() === 'Project' && r1.Photos === '4' && r1.Size === app.formatBytes(total) && r1.Folders === '1' && /JPEG 3 · PNG 1/.test(r1.Types);
             for (let i = 0; i < 50 && rows()['.jeditor'] === 'Adding up…'; i++) await sleep(30);
             r1 = rows();
             out.own = r1['.jeditor'] === app.formatBytes(5000) && /1 photo/.test(r1.Trash || '');
@@ -3357,7 +3357,7 @@ async function newPage(browser, url) {
             app.updateSelectionUI();
             await sleep(50);
             const r2 = rows();
-            out.folder = title() === 'Folder' && r2.Name === 'Ceremony' && r2.Photos === '1' && /4 photos/.test(r2['Whole order'] || '');
+            out.folder = title() === 'Folder' && r2.Name === 'Ceremony' && r2.Photos === '1' && /4 photos/.test(r2['Whole project'] || '');
             out.railTotal = document.getElementById('fr-total').textContent === `1 photo · ${app.formatBytes(app.files.find(f => f.name === 'c1.jpg').size)}`;
             // Folder Info from the folder menu, then single view shows the photo
             Folders.setScope(null);
@@ -3370,9 +3370,9 @@ async function newPage(browser, url) {
             out.gb = app.formatBytes(3 * 1024 * 1024 * 1024) === '3.00 GB';
             return out;
         });
-        check('folder details: I in the grid shows the order: photos, size, folders, types', r.order, JSON.stringify(r));
+        check('folder details: I in the grid shows the project: photos, size, folders, types', r.order, JSON.stringify(r));
         check('folder details: how much room .jeditor takes, trash counted', r.own, JSON.stringify(r));
-        check('folder details: a selection, a folder with the whole order, Folder Info in the menu', r.selection && r.folder && r.menu, JSON.stringify(r));
+        check('folder details: a selection, a folder with the whole project, Folder Info in the menu', r.selection && r.folder && r.menu, JSON.stringify(r));
         check('folder details: total under the folder list; single view still shows the photo', r.railTotal && r.single && r.gb, JSON.stringify(r));
         check('folder details suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();

@@ -299,7 +299,7 @@ const Folders = {
         const fmt = (n) => this.app.formatBytes(n);
         const rows = [];
         const esc = (s) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-        rows.push(`<div tabindex="0" role="button" class="fr-row fr-all${this.scope === null ? ' active' : ''}" data-scope="all" title="Every photo in the order, whatever folder it's in">` +
+        rows.push(`<div tabindex="0" role="button" class="fr-row fr-all${this.scope === null ? ' active' : ''}" data-scope="all" title="Every photo in the project, whatever folder it's in">` +
             `<span class="fr-caret fr-spacer"></span>` +
             `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>` +
             `<span class="fr-name">All photos</span><span class="fr-count">${total.toLocaleString()}</span></div>`);
@@ -330,7 +330,7 @@ const Folders = {
         for (const f of scopeFiles) bytes += f.size || 0;
         const totalEl = this.el('fr-total');
         totalEl.textContent = `${scopeFiles.length.toLocaleString()} photo${scopeFiles.length === 1 ? '' : 's'} · ${fmt(bytes)}`;
-        totalEl.title = (this.scope === null ? 'The whole order' : `${this.label(this.scope)}, including subfolders`) + ' — click for details';
+        totalEl.title = (this.scope === null ? 'The whole project' : `${this.label(this.scope)}, including subfolders`) + ' — click for details';
         const active = tree.querySelector('.fr-row.active');
         if (active && (active.offsetTop < tree.scrollTop || active.offsetTop > tree.scrollTop + tree.clientHeight - 30)) {
             tree.scrollTop = active.offsetTop - tree.clientHeight / 2;

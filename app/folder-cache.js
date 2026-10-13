@@ -344,7 +344,7 @@ const FolderCache = {
         if (nested.every(n => n.path === '')) {
             // The order's own .jeditor, moved out into the app's storage
             if (merged) app.showToast('Moved this order\'s .jeditor folder out of the order: its flags, deleted photos and Auto crop originals are now kept by jEditor on this PC', 6000, null, null, { type: 'success' });
-            if (kept) app.showToast('Couldn\'t move everything out of this order\'s .jeditor folder — it\'s left where it is', 5000);
+            if (kept) app.showToast('Couldn\'t move everything out of this project\'s .jeditor folder — it\'s left where it is', 5000);
             return;
         }
         const where = nested.length === 1 ? `“${nested[0].path.split('/').pop()}”` : `${nested.length} subfolders`;
@@ -352,9 +352,9 @@ const FolderCache = {
         if (flags) what.push(`${flags} flag${flags === 1 ? '' : 's'}`);
         if (trashed) what.push(`${trashed} deleted photo${trashed === 1 ? '' : 's'}`);
         if (merged) {
-            app.showToast(`Merged the .jeditor folder in ${where} into this order's` + (what.length ? ` (${what.join(', ')})` : ''), 5000, null, null, { type: 'success' });
+            app.showToast(`Merged the .jeditor folder in ${where} into this project's` + (what.length ? ` (${what.join(', ')})` : ''), 5000, null, null, { type: 'success' });
         }
-        if (kept) app.showToast(`Couldn't merge ${kept} .jeditor folder${kept === 1 ? '' : 's'} inside this order — left where ${kept === 1 ? 'it is' : 'they are'}`, 5000);
+        if (kept) app.showToast(`Couldn't merge ${kept} .jeditor folder${kept === 1 ? '' : 's'} inside this project — left where ${kept === 1 ? 'it is' : 'they are'}`, 5000);
     },
 
     // Move every file in `from` into .jeditor/<sub>, as "<subfolder> - name"

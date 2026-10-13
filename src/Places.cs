@@ -95,3 +95,134 @@ static class Places
         return new Listing(dir.FullName, name, dir.Parent?.FullName, folders, photos, more);
     }
 }
+
+// The sidebar's other needs: the projects in a folder, photo counts,
+// Explorer's pinned folders, ejecting a USB drive, showing a folder in
+// Explorer
+static class Projects
+{
+    static readonly HashSet<string> PhotoTypes = new(StringComparer.OrdinalIgnoreCase)
+        { ".jpg", ".jpeg", ".png", ".webp", ".gif", ".tif", ".tiff", ".bmp", ".heic" };
+
+    public sealed record Project(string Name, string Path, DateTime Modified);
+
+    // The folders in `path`, newest first (by when each was last changed)
+    public static List<Project> List(string path)
+    {
+        var dir = new DirectoryInfo(path);
+        if (!dir.Exists) throw new DirectoryNotFoundException("The projects folder isn't there");
+        var list = new List<Project>();
+        foreach (var d in dir.EnumerateDirectories())
+        {
+            try
+            {
+                if ((d.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0 || d.Name.StartsWith('.') || d.Name.StartsWith('$')) continue;
+                list.Add(new Project(d.Name, d.FullName, d.LastWriteTime));
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+        return list.OrderByDescending(p => p.Modified).ToList();
+    }
+
+    // Photos in a folder and its subfolders, counted up to `Limit`. Kept per
+    // folder until it changes, as network shares are slow to walk
+    public const int Limit = 1000;
+    static readonly Dictionary<string, (DateTime when, int count)> counts = new(StringComparer.OrdinalIgnoreCase);
+
+    public static int Count(string path)
+    {
+        var dir = new DirectoryInfo(path);
+        if (!dir.Exists) return -1;
+        var stamp = dir.LastWriteTimeUtc;
+        lock (counts)
+        {
+            if (counts.TryGetValue(path, out var c) && c.when == stamp) return c.count;
+        }
+        int n = 0;
+        var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.Hidden | FileAttributes.System };
+        try
+        {
+            foreach (var f in dir.EnumerateFiles("*", options))
+                if (PhotoTypes.Contains(f.Extension) && ++n >= Limit) break;
+        }
+        catch (IOException) { }
+        lock (counts) counts[path] = (stamp, n);
+        return n;
+    }
+
+    // Explorer's Quick Access folders that are pinned (Shell.Application on
+    // an STA thread)
+    public static Task<List<(string Name, string Path)>> QuickAccessAsync() => Sta(() =>
+    {
+        var list = new List<(string, string)>();
+        var type = Type.GetTypeFromProgID("Shell.Application");
+        if (type is null) return list;
+        dynamic shell = Activator.CreateInstance(type)!;
+        dynamic? folder = shell.NameSpace("shell:::{679f85cb-0220-4080-b29b-5540cc05aab6}");
+        if (folder is null) return list;
+        foreach (dynamic item in folder.Items())
+        {
+            try
+            {
+                if (!(bool)item.IsFolder) continue;
+                string path = item.Path;
+                if (string.IsNullOrEmpty(path) || !System.IO.Path.IsPathFullyQualified(path) || !Directory.Exists(path)) continue;
+                // Pinned ones only, not Explorer's "frequent" folders
+                object? pinned = null;
+                try { pinned = item.ExtendedProperty("System.Home.IsPinned"); } catch { }
+                if (pinned is bool b && !b) continue;
+                list.Add(((string)item.Name, path));
+            }
+            catch { /* skip it */ }
+        }
+        return list;
+    });
+
+    static Task<T> Sta<T>(Func<T> work)
+    {
+        var done = new TaskCompletionSource<T>();
+        var t = new Thread(() =>
+        {
+            try { done.SetResult(work()); }
+            catch (Exception e) { done.SetException(e); }
+        });
+        t.SetApartmentState(ApartmentState.STA);
+        t.IsBackground = true;
+        t.Start();
+        return done.Task;
+    }
+
+    // A USB drive out safely: Windows' own Eject (Explorer's), else the
+    // drive is locked, taken offline and ejected. → null, or why it can't
+    public static async Task<string?> EjectAsync(string root)
+    {
+        var drive = new DriveInfo(root);
+        if (drive.DriveType != DriveType.Removable) return "Only USB drives can be ejected";
+        var letter = drive.Name.TrimEnd('\\');
+        var viaShell = await Sta(() =>
+        {
+            try
+            {
+                var type = Type.GetTypeFromProgID("Shell.Application");
+                if (type is null) return false;
+                dynamic shell = Activator.CreateInstance(type)!;
+                dynamic? item = shell.NameSpace(17).ParseName(letter + "\\"); // 17: This PC
+                if (item is null) return false;
+                item.InvokeVerb("Eject");
+                return true;
+            }
+            catch { return false; }
+        });
+        // Done once the drive is gone (Explorer's Eject reports nothing back)
+        for (int i = 0; i < 30; i++)
+        {
+            await Task.Delay(200);
+            if (!DriveInfo.GetDrives().Any(d => d.Name.Equals(drive.Name, StringComparison.OrdinalIgnoreCase) && d.IsReady)) return null;
+        }
+        return viaShell ? "Windows couldn't eject it: is a file on it still open?" : "Windows couldn't eject it";
+    }
+
+    public static void Reveal(string path) =>
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"\"{path}\"") { UseShellExecute = true });
+}

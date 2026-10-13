@@ -50,7 +50,7 @@ const Scan = {
             return;
         }
         if (!app.dirHandle || app.readOnlyMode) {
-            app.showToast('Open an order first: scans go into its folder', 3500);
+            app.showToast('Open a project first: scans go into its folder', 3500);
             return;
         }
         this.el('scan-panel').classList.remove('hidden');
@@ -212,7 +212,7 @@ const Scan = {
         if (prefix === undefined || next === undefined) ({ prefix, next, digits } = this.naming(folder));
         const root = await FolderCache.orderPath(app);
         if (!root) {
-            app.showToast('jEditor can\'t tell where this order is on disk, so it can\'t scan into it. Open it with Open folder.', 6000);
+            app.showToast('jEditor can\'t tell where this project is on disk, so it can\'t scan into it. Open it with Open folder.', 6000);
             throw new Error('order path unknown');
         }
         const path = root.replace(/\\$/, '') + (folder ? '\\' + folder.split('/').join('\\') : '');

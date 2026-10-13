@@ -277,6 +277,12 @@ sealed class MainForm : Form
             case "scan":
             case "places":
             case "listDir":
+            case "listProjects":
+            case "countPhotos":
+            case "quickAccess":
+            case "eject":
+            case "reveal":
+            case "pickPath":
                 var files = FilesOf(e);
                 BeginInvoke(async () => await HandleRequestAsync(msg, files));
                 break;
@@ -416,6 +422,60 @@ sealed class MainForm : Form
                         photos = l.Photos,
                         more = l.More
                     });
+                    break;
+                }
+                case "listProjects":
+                {
+                    var path = Str(msg, "path") ?? "";
+                    if (!Path.IsPathFullyQualified(path)) { Reply(id, new { error = "Not a folder" }); break; }
+                    var list = await Task.Run(() => Projects.List(path));
+                    Reply(id, new { projects = list.Select(p => new { name = p.Name, path = p.Path, modified = new DateTimeOffset(p.Modified).ToUnixTimeMilliseconds() }) });
+                    break;
+                }
+                case "countPhotos":
+                {
+                    var paths = (msg["paths"] as JsonArray ?? []).Select(p => (string?)p ?? "").ToList();
+                    var counts = await Task.Run(() => paths.AsParallel().AsOrdered().WithDegreeOfParallelism(4)
+                        .Select(p => Path.IsPathFullyQualified(p) ? Projects.Count(p) : -1).ToList());
+                    Reply(id, new { counts, limit = Projects.Limit });
+                    break;
+                }
+                case "quickAccess":
+                {
+                    List<(string Name, string Path)> pins;
+                    try { pins = await Projects.QuickAccessAsync(); }
+                    catch (Exception e) { Log.Write("Quick Access: " + e.Message); pins = []; }
+                    Reply(id, new { folders = pins.Select(p => new { name = p.Name, path = p.Path }) });
+                    break;
+                }
+                case "eject":
+                {
+                    var path = Str(msg, "path") ?? "";
+                    var why = Path.IsPathFullyQualified(path) ? await Projects.EjectAsync(path) : "Not a drive";
+                    Log.Write($"Eject {path}: {why ?? "done"}");
+                    Reply(id, why is null ? new { ok = true } : new { ok = false, error = why });
+                    break;
+                }
+                case "reveal":
+                {
+                    var path = Str(msg, "path") ?? "";
+                    var ok = Path.IsPathFullyQualified(path) && Directory.Exists(path);
+                    if (ok) Projects.Reveal(path);
+                    Reply(id, new { ok });
+                    break;
+                }
+                case "pickPath":
+                {
+                    using var dialog = new FolderBrowserDialog
+                    {
+                        Description = Str(msg, "title") ?? "Choose a folder",
+                        UseDescriptionForTitle = true,
+                        ShowNewFolderButton = true,
+                    };
+                    var start = Str(msg, "start");
+                    if (start is not null && Directory.Exists(start)) dialog.InitialDirectory = start;
+                    Reply(id, dialog.ShowDialog(this) == DialogResult.OK && !string.IsNullOrEmpty(dialog.SelectedPath)
+                        ? new { path = dialog.SelectedPath } : new { cancelled = true });
                     break;
                 }
                 case "scanners":

@@ -1587,7 +1587,7 @@ const app = {
             rows.push(['Photos', files.length.toLocaleString()]);
             rows.push(...this.statRows(this.photoStats(files)));
         } else {
-            title = folder === null ? 'Order' : 'Folder';
+            title = folder === null ? 'Project' : 'Folder';
             const name = folder === null ? Folders.rootName() : Folders.nameOf(folder);
             rows.push(['Name', name]);
             if (folder) rows.push(['Location', `${Folders.rootName()} / ${Folders.label(folder)}`]);
@@ -1605,7 +1605,7 @@ const app = {
             if (here.length !== all.length) rows.splice(rows.findIndex(r => r[0] === 'Size') + 1, 0, ['Size here', this.formatBytes(this.photoStats(here).bytes)]);
             if (!whole) {
                 rows.push(['—']);
-                rows.push(['Whole order', `${plural(this.files.length, 'photo')} · ${this.formatBytes(this.photoStats(this.files).bytes)}`]);
+                rows.push(['Whole project', `${plural(this.files.length, 'photo')} · ${this.formatBytes(this.photoStats(this.files).bytes)}`]);
             }
         }
         // The current filter or search, if any
@@ -1940,6 +1940,25 @@ const app = {
             this.updateSelectionUI();
             if (this.getCurrentIndex() !== -1) this.updateFileCount();
         }
+    },
+
+    // Back to the start screen, with everything saved (before ejecting the
+    // drive the project is on: nothing of it may stay open)
+    async closeFolder() {
+        if (!this.dirHandle) return;
+        try { await Flags.save(); } catch (e) { /* best-effort */ }
+        await FolderCache.flush();
+        this.cleanupURLs();
+        FolderCache.reset();
+        this.files = [];
+        this.selection = new Set();
+        this.currentFile = null;
+        this.dirHandle = null;
+        this.elements.gridView.innerHTML = '';
+        this.elements.thumbnailStrip.innerHTML = '';
+        this.elements.mainInterface.classList.add('hidden');
+        this.elements.dropZone.classList.remove('hidden');
+        Places.apply();
     },
 
     cleanupURLs() {
@@ -2530,9 +2549,9 @@ const app = {
         ];
         const native = FolderCache.native();
         const ok = await UI.confirm({
-            title: native ? 'Clean up this order?' : 'Clean up this folder?',
-            message: native ? 'Removes what jEditor keeps on this PC for this order. Do this when an order is finished.'
-                : 'Do this when an order is finished, before it goes to the customer.',
+            title: native ? 'Clean up this project?' : 'Clean up this folder?',
+            message: native ? 'Removes what jEditor keeps on this PC for this project. Do this when a project is finished.'
+                : 'Do this when a project is finished, before it goes to the customer.',
             items,
             note: 'Your photos are not touched.',
             ok: 'Clean up',
@@ -2545,7 +2564,7 @@ const app = {
             Flags.clearAll();
             // Trash undo steps can't be undone any more, and flags are gone
             this._undoStack = (this._undoStack || []).filter(e => !['trash', 'flags', 'auto-crop'].includes(e.type));
-            const what = native ? 'Order cleaned up' : 'Folder cleaned up';
+            const what = native ? 'Project cleaned up' : 'Folder cleaned up';
             this.showToast(inTrash ? `${what} — trash emptied (${inTrash})` : what, 3000);
         } catch (e) {
             this.showToast('Clean up failed: ' + e.message, 4000);
@@ -5284,7 +5303,7 @@ const app = {
             ...(this.dirHandle ? [['New folder…', () => Folders.newFolder()]] : []),
             ['Rename all…', () => this.openRename([])],
             ['Search…', () => Flags.focusSearch()],
-            [Folders.scope === null ? 'Order info' : 'Folder info', () => this.toggleInfoPanel(true, { folder: Folders.scope })],
+            [Folders.scope === null ? 'Project info' : 'Folder info', () => this.toggleInfoPanel(true, { folder: Folders.scope })],
             ...(this.files.some(f => Flags.has(f, 'rescan'))
                 ? [['Copy rescan list', () => Flags.copyList(this.files.filter(f => Flags.has(f, 'rescan')), 'rescan')]] : []),
             ['Find duplicates… (WIP)', () => this.openDupes()],
