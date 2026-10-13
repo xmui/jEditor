@@ -141,6 +141,58 @@ const FAKE_NATIVE = `
             return { count: pages };
         },
         cancelScan() { window.__cancelled = true; if (window.__unhang) window.__unhang(); },
+        // Tethered shooting: the app's side, with a camera that shoots RAW + JPEG
+        async cameras() {
+            return window.__cameras || [{ id: 'cam-1', name: 'Sony A7 III', ready: true, note: null }, { id: 'cam-2', name: 'Sony A7 IV', ready: false, note: 'Connected for file transfer.' }];
+        },
+        async tether(o, event) {
+            window.__tetherReq = o;
+            window.__tetherCalls = [];
+            const root = window.__orderRoot + BS;
+            let dir = await sub('disk');
+            const rel = o.folder.length > root.length ? o.folder.slice(root.length) : '';
+            for (const p of rel.split(BS).filter(Boolean)) dir = await dir.getDirectoryHandle(p);
+            const names = [];
+            let n = o.next;
+            window.__tetherFrames = 0;
+            const frame = () => {
+                const c = document.createElement('canvas');
+                c.width = 60; c.height = 40;
+                c.getContext('2d').fillRect(0, 0, 10 + window.__tetherFrames++, 10);
+                event({ kind: 'frame', image: c.toDataURL('image/jpeg') });
+            };
+            window.__tetherAck = () => { if (window.__tetherLive && window.__tetherFrames < 5) setTimeout(frame, 10); };
+            window.__tetherLiveSet = (on) => { window.__tetherLive = on; if (on) frame(); };
+            window.__tetherShoot = async () => {
+                const name = o.prefix + String(n++).padStart(o.digits, '0');
+                for (const ext of ['.arw', '.jpg']) {
+                    const c = document.createElement('canvas');
+                    c.width = 90; c.height = 60;
+                    c.getContext('2d').fillRect(0, 0, 20, n);
+                    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg'));
+                    const w = await (await dir.getFileHandle(name + ext, { create: true })).createWritable();
+                    await w.write(blob);
+                    await w.close();
+                    names.push(name + ext);
+                    event({ kind: 'saved', name: name + ext });
+                }
+            };
+            setTimeout(() => {
+                event({ kind: 'connected', name: o.name });
+                window.__tetherLive = o.live;
+                if (o.live) frame();
+            }, 20);
+            return new Promise((resolve, reject) => {
+                window.__tetherEnd = (error) => {
+                    if (error) { const e = new Error(error); e.names = names; reject(e); } else resolve({ count: names.length, names });
+                };
+            });
+        },
+        tetherShoot() { window.__tetherCalls.push('shoot'); window.__tetherShoot(); },
+        tetherLive(on) { window.__tetherCalls.push('live ' + on); window.__tetherLiveSet(on); },
+        tetherAck() { window.__tetherAck && window.__tetherAck(); },
+        tetherStop() { window.__tetherEnd(null); },
+        tetherSet(o) { window.__tetherCalls.push('set ' + JSON.stringify(o)); },
         // Preview and crop: an 8.5 × 11.7 in glass with three prints on a pale lid
         async scanCaps(o) { window.__capsReq = o; return { bedW: 8.5, bedH: 11.7, dpis: [75, 150, 300, 600, 1200], gray: true, guessed: false }; },
         async scanPreview(o) {
@@ -845,6 +897,98 @@ async function newPage(context, baseUrl) {
         check('Scan more previews again; the names carry on', /photo6\.jpg/.test(r2.moreNames) && r2.moreDpi === '1200', JSON.stringify([r2.moreNames, r2.moreDpi]));
         check('Stop ends a preview', r2.stopShown && r2.stopped === 'Preview stopped', JSON.stringify([r2.stopShown, r2.stopped]));
         check('preview suite: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('native: tethered shooting');
+    {
+        const context = await browser.newContext();
+        const { page, errors } = await newPage(context, baseUrl);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const $ = (id) => document.getElementById(id);
+            const dir = await makeOrder('Shoot Order', 2);
+            await openOrder(dir);
+            out.button = getComputedStyle($('btn-camera')).display !== 'none';
+            $('btn-camera').click();
+            await wait(() => !$('cam-device').disabled);
+            out.cameras = [...$('cam-device').options].map(o => o.textContent).join(', ');
+            out.ready = $('cam-device').value;
+            $('cam-device').value = 'cam-2';
+            $('cam-device').dispatchEvent(new Event('change'));
+            out.notReady = [$('cam-go').disabled, $('cam-note').textContent];
+            $('cam-device').value = 'cam-1';
+            $('cam-device').dispatchEvent(new Event('change'));
+            out.names = [$('cam-prefix').value, $('cam-next').value, $('cam-names').textContent];
+            out.defaults = [$('cam-card').checked, $('cam-show').checked, $('cam-liveview').checked];
+            $('cam-go').click();
+            await wait(() => $('cam-panel').dataset.state === 'live');
+            out.req = window.__tetherReq;
+            out.title = $('cam-title').textContent;
+            await wait(() => window.__tetherFrames >= 5);
+            await wait(() => $('cam-frame').complete && $('cam-frame').naturalWidth > 0);
+            out.frames = window.__tetherFrames;
+            // F12 takes a photo; RAW + JPEG come in under one number
+            document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'F12', bubbles: true }));
+            await wait(() => app.files.some(f => f.name === 'photo3.jpg'));
+            out.files = app.files.map(f => f.name).sort().join();
+            out.status = $('cam-status').textContent;
+            out.strip = [...$('cam-strip').querySelectorAll('figcaption')].map(c => c.textContent).join();
+            await wait(() => app.viewMode === 'single' && app.currentFile && app.currentFile.name === 'photo3.jpg');
+            out.shown = app.currentFile && app.currentFile.name;
+            // The button in the live view too
+            $('cam-shoot').click();
+            await wait(() => app.files.some(f => f.name === 'photo4.jpg'));
+            out.calls = window.__tetherCalls.slice();
+            // Keep a copy on the card: changed while connected, sent at once
+            $('cam-card').checked = false;
+            $('cam-card').dispatchEvent(new Event('change'));
+            out.cardSet = window.__tetherCalls.includes('set {"keepOnCard":false}');
+            // Small: live view stops; back: it starts again
+            $('cam-min').click();
+            out.liveOff = window.__tetherCalls.includes('live false');
+            $('cam-min').click();
+            out.liveOn = window.__tetherCalls.lastIndexOf('live true') > window.__tetherCalls.indexOf('live false');
+            // Closing while connected only makes it small
+            $('cam-x').click();
+            out.small = $('cam-panel').classList.contains('small') && !$('cam-panel').classList.contains('hidden');
+            Camera.setSmall(false);
+            // Disconnect
+            $('cam-stop').click();
+            await wait(() => $('cam-panel').dataset.state === 'setup');
+            out.ended = $('cam-note').textContent;
+            out.nextNames = $('cam-next').value;
+            // The camera goes away: says so, with what came in
+            $('cam-go').click();
+            await wait(() => $('cam-panel').dataset.state === 'live');
+            await window.__tetherShoot();
+            window.__tetherEnd('The camera was unplugged or turned off');
+            await wait(() => UI.isOpen());
+            out.alert = $('uid-title').textContent + ' — ' + $('uid-text').textContent;
+            $('uid-ok').click();
+            out.detailsOnError = !$('cam-log').classList.contains('hidden');
+            out.prefs = JSON.parse(localStorage.getItem('jeditor.camera'));
+            Camera.close();
+            return out;
+        });
+        check('Camera is in the toolbar, after Scan', r.button);
+        check('it lists Sony cameras, saying which aren\'t in PC Remote mode, and picks a ready one', r.cameras === 'Sony A7 III, Sony A7 IV (not in PC Remote mode)' && r.ready === 'cam-1', JSON.stringify([r.cameras, r.ready]));
+        check('... a camera not in PC Remote mode can\'t connect, and it says why', r.notReady[0] === true && /file transfer/.test(r.notReady[1]), JSON.stringify(r.notReady));
+        check('names follow on from the folder\'s photos, RAW keeping the number', r.names[0] === 'photo' && r.names[1] === '3' && /photo3\.jpg, photo4\.jpg/.test(r.names[2]) && /RAW/.test(r.names[2]), JSON.stringify(r.names));
+        check('keep a copy on the card, show each photo and live view: on to start with', r.defaults.join() === 'true,true,true', r.defaults.join());
+        check('Connect asks the app to tether into the project\'s folder, by path', r.req && r.req.camera === 'cam-1' && r.req.folder === 'D:\\Orders\\Shoot Order' && r.req.prefix === 'photo' && r.req.next === 3 && r.req.keepOnCard === true && r.req.live === true, JSON.stringify(r.req));
+        check('connected: the live view shows, one frame after another as each is shown', /Sony A7 III/.test(r.title) && r.frames >= 5, JSON.stringify([r.title, r.frames]));
+        check('F12 takes a photo: RAW + JPEG come in, the JPEG into the project', r.files === 'c1.jpg,photo1.jpg,photo2.jpg,photo3.jpg', r.files);
+        check('... counted as one photo', /^1 photo · last: photo3\.jpg/.test(r.status) && r.strip === 'photo3.arw,photo3.jpg', JSON.stringify([r.status, r.strip]));
+        check('... and the new photo opens large', r.shown === 'photo3.jpg', r.shown);
+        check('the round button in the live view takes one too', r.calls.filter(c => c === 'shoot').length === 2, JSON.stringify(r.calls));
+        check('keep a copy on the card goes to the camera when changed', r.cardSet);
+        check('live view stops while the dock is small, and starts again', r.liveOff && r.liveOn);
+        check('closing it while connected only makes it small', r.small);
+        check('Disconnect: says how many, and the names carry on for next time', /Disconnected · 2 photos into Shoot Order/.test(r.ended) && r.nextNames === '5', JSON.stringify([r.ended, r.nextNames]));
+        check('the camera going away says so, with what came in, and shows Details', /disconnected/.test(r.alert) && /unplugged/.test(r.alert) && /1 photo came in/.test(r.alert) && r.detailsOnError, r.alert);
+        check('choices are remembered', r.prefs && r.prefs.camera === 'cam-1' && r.prefs.keepOnCard === false, JSON.stringify(r.prefs));
+        check('camera suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
 

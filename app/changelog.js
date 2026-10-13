@@ -5,6 +5,15 @@
 
 const CHANGELOG = [
     {
+        version: '1.24.0', date: '2026-10-13',
+        items: [
+            'Tethered shooting, like Lightroom\'s: Camera in the toolbar connects a Sony Alpha (A7 III, A7 IV and similar) over USB and shoots straight into the open project. Set the camera to PC Remote first: Menu → Network (or Setup) → USB Connection → PC Remote.',
+            'The camera dock shows its live view (bigger with the expand button) and the last photos in. Take a photo with the round button, Take photo, or `F12` anywhere in jEditor; shots taken with the camera\'s own shutter button come in too. Each new photo opens large (it can be turned off).',
+            'Photos are named in the project\'s sequence, like scans (Smith-014.jpg); RAW + JPEG keep one number (Smith-014.arw beside Smith-014.jpg). Keep a copy on the camera\'s card is on to start with.',
+            'Details (`>_`) shows what the camera says, for when it doesn\'t connect. jEditor talks to the camera through Windows\' own driver: nothing else needs installing.'
+        ]
+    },
+    {
         version: '1.23.0', date: '2026-10-13',
         items: [
             'Preview and crop, for a flatbed like the OpticBook: in the scan dock, choose How → Preview and crop. Lay prints on the glass, as many as fit; jEditor previews the glass, with no scanner window, and puts a box round each print it finds.',

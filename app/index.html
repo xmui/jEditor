@@ -29,6 +29,7 @@
     <script src="logview.js"></script>
     <script src="scan-preview.js"></script>
     <script src="scan.js"></script>
+    <script src="camera.js"></script>
     <script src="places.js"></script>
     <script src="windows.js"></script>
     <script src="ui.js"></script>
@@ -105,6 +106,9 @@
                 <div class="header-controls toolbar" id="header-controls" role="toolbar" aria-label="Photo actions">
                     <button id="btn-scan" data-hc="scan" class="tb-btn native-only" title="Scan into this project" aria-label="Scan into this project">
                         <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h16"/><path d="M6 13V5a1 1 0 0 1 1-1h7l4 4v5"/><path d="M5 17h14a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1a1 1 0 0 1 1-1z"/></svg>
+                    </button>
+                    <button id="btn-camera" data-hc="camera" class="tb-btn native-only" title="Camera: shoot straight into this project (F12 takes a photo)" aria-label="Camera">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
                     </button>
                     <button id="btn-info" data-hc="info" class="tb-btn" title="File info (I)" aria-label="File info">
                         <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 16.5V11.5"/><circle cx="12" cy="8" r="0.6" fill="currentColor"/></svg>
@@ -796,6 +800,84 @@
                 <span class="scan-grow"></span>
                 <button id="scan-cancel" type="button" class="btn secondary">Cancel</button>
                 <button id="scan-go" type="submit" class="btn primary">Scan</button>
+            </div>
+        </form>
+    </div>
+
+    <div id="cam-panel" class="scan-dock cam-dock hidden native-only" role="dialog" aria-labelledby="cam-title" data-state="setup">
+        <div id="cam-head" class="scan-dock-head" title="Drag to move">
+            <span class="scan-dot" aria-hidden="true"></span>
+            <h2 id="cam-title" class="scan-dock-title">Camera</h2>
+            <button id="cam-details" type="button" class="btn ghost icon sm" title="Details: what the camera is doing" aria-label="Details" aria-pressed="false">
+                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>
+            </button>
+            <button id="cam-big" type="button" class="btn ghost icon sm" title="Bigger live view" aria-label="Bigger live view" aria-pressed="false">
+                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+            </button>
+            <button id="cam-min" type="button" class="btn ghost icon sm" title="Make small" aria-label="Make small">
+                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
+            </button>
+            <button id="cam-x" type="button" class="btn ghost icon sm" title="Close (Esc)" aria-label="Close">
+                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+        </div>
+        <form id="cam-form" class="scan-dock-body">
+            <div id="cam-setup" class="scan-body">
+                <label class="scan-field" for="cam-device">Camera
+                    <span class="scan-row">
+                        <select id="cam-device" class="field"></select>
+                        <button id="cam-refresh" type="button" class="btn ghost icon" title="Look for cameras again" aria-label="Look for cameras again">
+                            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                        </button>
+                    </span>
+                </label>
+                <div id="cam-note" class="scan-note"></div>
+                <label class="scan-field" for="cam-folder">Save into
+                    <select id="cam-folder" class="field"></select>
+                </label>
+                <div class="scan-field">Names
+                    <span class="scan-row">
+                        <input id="cam-prefix" class="field" type="text" spellcheck="false" autocomplete="off" aria-label="Name before the number">
+                        <input id="cam-next" class="field scan-num" type="number" min="0" step="1" aria-label="First number">
+                    </span>
+                    <small id="cam-names" class="scan-preview"></small>
+                </div>
+                <label class="scan-check" for="cam-card">
+                    <input id="cam-card" type="checkbox">
+                    <span>Keep a copy on the camera's card<small>Each photo also stays on the memory card, as a backup. Off: they only come to this PC.</small></span>
+                </label>
+                <label class="scan-check" for="cam-show">
+                    <input id="cam-show" type="checkbox">
+                    <span>Show each photo as it comes in<small>Opens the new photo large, as Lightroom does.</small></span>
+                </label>
+                <p class="set-help">On the camera: Menu → Network (or Setup) → USB Connection → <b>PC Remote</b>, then plug it into this PC with a USB cable. Photos taken here (F12) or with the camera's own button come straight into the project, RAW files too.</p>
+            </div>
+            <div id="cam-live" class="cam-live">
+                <div id="cam-view" class="cam-view">
+                    <img id="cam-frame" alt="" draggable="false">
+                    <div id="cam-view-note" class="cam-view-note"></div>
+                    <button id="cam-shoot" type="button" class="cam-shoot" title="Take a photo (F12)" aria-label="Take a photo (F12)"></button>
+                </div>
+                <div id="cam-summary" class="scan-summary"></div>
+                <div id="cam-strip" class="scan-strip" aria-label="The last photos taken"></div>
+                <div id="cam-status" class="scan-status" role="status"></div>
+            </div>
+            <div id="cam-log" class="log-view hidden" aria-label="Details">
+                <div class="log-view-head">
+                    <span>Details</span>
+                    <span class="scan-grow"></span>
+                    <button type="button" class="btn ghost sm" data-log="copy" title="Copy these lines, to send them on">Copy</button>
+                    <button type="button" class="btn ghost sm" data-log="file" title="Show the whole log in Explorer">Log file</button>
+                </div>
+                <div class="log-lines" tabindex="0"></div>
+            </div>
+            <div class="scan-dock-foot">
+                <label class="scan-check cam-live-toggle" for="cam-liveview"><input id="cam-liveview" type="checkbox" checked><span>Live view</span></label>
+                <span class="scan-grow"></span>
+                <button id="cam-cancel" type="button" class="btn secondary">Cancel</button>
+                <button id="cam-stop" type="button" class="btn secondary">Disconnect</button>
+                <button id="cam-go" type="submit" class="btn primary">Connect</button>
+                <button id="cam-take" type="button" class="btn primary">Take photo</button>
             </div>
         </form>
     </div>

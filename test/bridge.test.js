@@ -226,6 +226,29 @@ const waitForPost = (page, type) => page.waitForFunction(
                 else if (m.type === 'transfer') reply({ items: m.paths.map(p => ({ from: p, to: m.dest + '\\' + p.split('\\').pop() })) });
                 else if (m.type === 'undoTransfer') reply({ errors: m.items.map(() => null) });
                 else if (m.type === 'scanners') reply({ devices: [{ id: 'jeditor-test-scanner', name: 'jEditor test scanner', driver: 'test' }], problems: [] });
+                else if (m.type === 'cameras') reply({ cameras: [{ id: 'jeditor-test-camera', name: 'jEditor test camera', ready: true, note: null }] });
+                else if (m.type === 'tether') {
+                    // The app's side: connected, frames until stopped, a shot as RAW + JPEG
+                    window.__tether = m;
+                    const ev = (e) => window.__deliver({ type: 'tether', session: m.id, ...e });
+                    ev({ kind: 'connected', name: 'jEditor test camera' });
+                    for (let i = 0; i < 3; i++) ev({ kind: 'frame', image: 'data:image/jpeg;base64,' });
+                    window.__tetherReply = () => reply({ count: 2, names: ['shot_001.arw', 'shot_001.jpg'] });
+                    window.__tetherEv = ev;
+                }
+                else if (m.type === 'tetherShoot') {
+                    for (const name of ['shot_001.arw', 'shot_001.jpg']) {
+                        const c = document.createElement('canvas');
+                        c.width = 90; c.height = 60;
+                        const blob = await new Promise(r => c.toBlob(r, 'image/jpeg'));
+                        const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
+                        await w.write(blob);
+                        await w.close();
+                        window.__tetherEv({ kind: 'saved', name });
+                    }
+                }
+                else if (m.type === 'tetherStop') window.__tetherReply();
+                else if (m.type === 'tetherAck' || m.type === 'tetherLive') { /* fine */ }
                 else if (m.type === 'scanCaps') reply({ bedW: 8.5, bedH: 11.7, dpis: [75, 150, 300, 600], gray: true, guessed: false });
                 else if (m.type === 'scanPreview') {
                     // The test scanner's glass, as the app draws it
@@ -274,8 +297,11 @@ const waitForPost = (page, type) => page.waitForFunction(
         check('opens the folder and reports the photo count', opened.name === 'Jones' && opened.count === 4, JSON.stringify(opened));
         const smoke = await waitForPost(page, 'smoke');
         check('smoke test: reports success', smoke.ok && smoke.count === 4 && smoke.rotated && smoke.errors.length === 0, JSON.stringify(smoke));
-        check('smoke test: runs the further steps through the app', smoke.steps && smoke.steps.stored === true && smoke.steps.deleted === true && smoke.steps.restored === true && smoke.steps.scanned === true && smoke.steps.cropped === true && smoke.steps.logged === true && smoke.steps.places === true && smoke.steps.browsed === true && smoke.steps.projects === true && smoke.steps.counted === true && smoke.steps.pins === true && smoke.steps.windows === true && smoke.steps.moved === true && smoke.steps.unmoved === true && smoke.steps.back === true && /v1\.0\.0/.test(smoke.steps.update), JSON.stringify(smoke.steps));
+        check('smoke test: runs the further steps through the app', smoke.steps && smoke.steps.stored === true && smoke.steps.deleted === true && smoke.steps.restored === true && smoke.steps.scanned === true && smoke.steps.cropped === true && smoke.steps.tethered === true && smoke.steps.logged === true && smoke.steps.places === true && smoke.steps.browsed === true && smoke.steps.projects === true && smoke.steps.counted === true && smoke.steps.pins === true && smoke.steps.windows === true && smoke.steps.moved === true && smoke.steps.unmoved === true && smoke.steps.back === true && /v1\.0\.0/.test(smoke.steps.update), JSON.stringify(smoke.steps));
         const scanned = await page.evaluate(() => ({ scan: window.__scan, check: (window.__checks || []).find(c => c.step === 'scanned') }));
+        const teth = await page.evaluate(() => ({ req: window.__tether, check: (window.__checks || []).find(c => c.step === 'tethered') }));
+        check('smoke test: tethers the test camera into the order, takes a shot (RAW + JPEG) and disconnects', teth.req && teth.req.camera === 'jeditor-test-camera' && teth.req.folder === 'C:\\Jones' && teth.req.prefix === 'shot_' &&
+            teth.check && teth.check.connected === true && teth.check.frames >= 3 && teth.check.names.join() === 'shot_001.arw,shot_001.jpg', JSON.stringify(teth));
         const crop = await page.evaluate(() => ({ scan: window.__cropScan, check: (window.__checks || []).find(c => c.step === 'cropped') }));
         check('smoke test: previews the test glass, finds its three prints and scans a photo per box', crop.scan && crop.scan.crops.length === 3 && crop.scan.dpi === 150 && crop.scan.bedW === 8.5 &&
             crop.check && crop.check.names.length === 3 && crop.check.sizes.length === 3 && crop.check.preview.join() === '638,878', JSON.stringify(crop));

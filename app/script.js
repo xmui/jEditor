@@ -199,6 +199,7 @@ const app = {
         Stored.init(this);
         Updates.init(this);
         Scan.init(this);
+        Camera.init(this);
         Places.init(this);
         Windows.init(this);
         Flags.init(this);
@@ -340,6 +341,7 @@ const app = {
 
     HC_LABELS: {
         scan: 'Scan',
+        camera: 'Camera (tethered shooting)',
         info: 'Info',
         view: 'Grid / single view',
         refresh: 'Rescan folder',
@@ -363,9 +365,9 @@ const app = {
 
     defaultUiPrefs() {
         return {
-            order: ['scan', 'info', 'view', 'refresh', 'crop', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'whatsnew', 'customize'],
+            order: ['scan', 'camera', 'info', 'view', 'refresh', 'crop', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'whatsnew', 'customize'],
             placement: { // 'main' | 'more' | 'hidden'
-                scan: 'main', info: 'main', view: 'main', refresh: 'main', crop: 'main',
+                scan: 'main', camera: 'main', info: 'main', view: 'main', refresh: 'main', crop: 'main',
                 fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', keys: 'more', whatsnew: 'more', customize: 'more'
             },
             vertical: false,
@@ -391,9 +393,7 @@ const app = {
             if (saved) {
                 if (Array.isArray(saved.order)) {
                     // keep unknown-key safety: only accept known keys, append missing
-                    const known = this.uiPrefs.order;
-                    this.uiPrefs.order = saved.order.filter(k => known.includes(k))
-                        .concat(known.filter(k => !saved.order.includes(k)));
+                    this.uiPrefs.order = this.mergeOrder(saved.order, this.uiPrefs.order);
                 }
                 if (saved.placement) {
                     for (const k of Object.keys(this.uiPrefs.placement)) {
@@ -419,6 +419,21 @@ const app = {
         } catch (e) { /* corrupted prefs → defaults */ }
     },
 
+    // A saved order of controls, with only known ones; a control added in a
+    // newer version goes after the one before it in the standard order
+    // (Camera after Scan), else at the end
+    mergeOrder(saved, known) {
+        const order = saved.filter(k => known.includes(k));
+        for (const k of known) {
+            if (order.includes(k)) continue;
+            const i = known.indexOf(k);
+            const before = i > 0 && order.includes(known[i - 1]) ? known[i - 1] : null;
+            if (before) order.splice(order.indexOf(before) + 1, 0, k);
+            else order.push(k);
+        }
+        return order;
+    },
+
     saveUiPrefs() {
         try { localStorage.setItem('jeditor.ui', JSON.stringify(this.uiPrefs)); } catch (e) { /* private mode */ }
     },
@@ -432,8 +447,7 @@ const app = {
         const container = this.elements.headerControls;
 
         // Controls added in newer versions go at the end of an older layout
-        const known = this.defaultUiPrefs().order;
-        p.order = p.order.filter(k => known.includes(k)).concat(known.filter(k => !p.order.includes(k)));
+        p.order = this.mergeOrder(p.order, this.defaultUiPrefs().order);
 
         // Reorder buttons (More button stays last)
         p.order.forEach(key => {
@@ -642,7 +656,7 @@ const app = {
         $('cust-scale-out').textContent = `${Math.round(this.uiPrefs.scale * 100)}%`;
 
         this.uiPrefs.order.forEach(key => {
-            if (key === 'scan' && !FolderCache.native()) return; // the Windows app only
+            if ((key === 'scan' || key === 'camera') && !FolderCache.native()) return; // the Windows app only
             const li = document.createElement('li');
             li.draggable = true;
             li.dataset.key = key;
@@ -3641,7 +3655,7 @@ const app = {
 
         // The rename tool, folder dialogs, Settings and the alert/confirm
         // dialogs handle their own keys
-        if (Renamer.isOpen || Folders.isModalOpen() || Recents.isPromptOpen() || UI.isOpen() || Stored.isOpen() || Scan.isOpen()) return;
+        if (Renamer.isOpen || Folders.isModalOpen() || Recents.isPromptOpen() || UI.isOpen() || Stored.isOpen() || Scan.isOpen() || Camera.isOpen()) return;
 
         // What's New is modal: Esc closes it
         if (this.isWhatsNewOpen()) {
