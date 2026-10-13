@@ -10,6 +10,7 @@
 
 const Scan = {
     KEY: 'jeditor.scan', // last scanner used (this PC)
+    KEY_COMPAT: 'jeditor.scanCompat', // scanners in compatibility mode
     PHOTO: /^(.*?)(\d+)\.(jpe?g|tiff?|png|webp)$/i,
 
     el(id) { return document.getElementById(id); },
@@ -22,6 +23,7 @@ const Scan = {
         this.el('scan-x').addEventListener('click', () => this.close());
         this.el('scan-cancel').addEventListener('click', () => this.close());
         this.el('scan-refresh').addEventListener('click', () => this.loadDevices(true));
+        this.el('scan-device').addEventListener('change', () => this.syncCompat());
         this.el('scan-folder').addEventListener('change', () => this.fillNames());
         this.el('scan-prefix').addEventListener('input', () => this.preview());
         this.el('scan-next').addEventListener('input', () => this.preview());
@@ -102,8 +104,21 @@ const Scan = {
             o.textContent = 'No scanners found';
             select.appendChild(o);
         }
+        this.syncCompat();
         note.textContent = this.devices.length ? '' : 'Is the scanner plugged in and turned on? ' + this.problems.join('. ');
         if (this.devices.length && this.problems.length) note.textContent = this.problems.join('. ');
+    },
+
+    // Compatibility mode: TWAIN scanners only, remembered for each
+    compat() {
+        try { return JSON.parse(localStorage.getItem(this.KEY_COMPAT) || '{}') || {}; } catch (e) { return {}; }
+    },
+
+    syncCompat() {
+        const device = this.devices && this.devices.find(d => d.id === this.el('scan-device').value);
+        const twain = !!device && device.driver === 'twain';
+        this.el('scan-compat-row').classList.toggle('hidden', !twain);
+        this.el('scan-compat').checked = twain && !!this.compat()[device.id];
     },
 
     last() {
@@ -196,16 +211,22 @@ const Scan = {
         const prefix = this.el('scan-prefix').value;
         const next = Math.max(0, parseInt(this.el('scan-next').value, 10) || 0);
         const autoCrop = this.el('scan-autocrop').checked;
+        const compat = device.driver === 'twain' && this.el('scan-compat').checked;
+        try {
+            const all = this.compat();
+            if (compat) all[device.id] = true; else delete all[device.id];
+            localStorage.setItem(this.KEY_COMPAT, JSON.stringify(all));
+        } catch (e) { /* private */ }
         try { localStorage.setItem(this.KEY, JSON.stringify({ device: device.id, autoCrop })); } catch (e) { /* private */ }
         this.close();
-        this.run({ device: device.id, driver: device.driver, folder, prefix, next, digits: this.digits, autoCrop })
+        this.run({ device: device.id, driver: device.driver, folder, prefix, next, digits: this.digits, autoCrop, compat })
             .catch(() => { /* said already */ });
     },
 
     // Scans into `folder` (a folder of the order: '' is the order itself).
     // Without prefix/next, names follow on from the folder's photos.
     // → { count, names, cancelled }
-    async run({ device, driver, folder = '', prefix, next, digits, autoCrop = false }) {
+    async run({ device, driver, folder = '', prefix, next, digits, autoCrop = false, compat }) {
         const app = this.app;
         const native = FolderCache.native();
         if (this.running) throw new Error('A scan is already running');
@@ -233,7 +254,8 @@ const Scan = {
         };
         let result;
         try {
-            result = await native.scan({ device, driver, folder: path, prefix, next, digits: digits || 3 }, (name) => {
+            if (compat === undefined) compat = driver === 'twain' && !!this.compat()[device];
+            result = await native.scan({ device, driver, folder: path, prefix, next, digits: digits || 3, compat }, (name) => {
                 add(name);
                 app.updateTask('scanner', label());
                 show();
@@ -258,7 +280,7 @@ const Scan = {
         const n = names.length;
         if (n) {
             app.showToast(`Scanned ${n} photo${n === 1 ? '' : 's'} into ${Folders.label(folder)}`, 6000, 'scanned',
-                { label: 'Scan more', run: () => this.again({ device, driver, folder, autoCrop }) }, { type: 'success' });
+                { label: 'Scan more', run: () => this.again({ device, driver, folder, autoCrop, compat }) }, { type: 'success' });
             if (autoCrop) await this.autoCrop(names);
         } else if (result.cancelled) {
             app.showToast('Scan stopped', 2500, null, null, { type: 'info' });
@@ -269,9 +291,9 @@ const Scan = {
     },
 
     // Same scanner and folder, names following on from the last scan
-    again({ device, driver, folder, autoCrop }) {
+    again({ device, driver, folder, autoCrop, compat }) {
         // After the folder check has picked up the last photos
-        setTimeout(() => this.run({ device, driver, folder, autoCrop }).catch(() => { }), Watch.DEBOUNCE_MS + 400);
+        setTimeout(() => this.run({ device, driver, folder, autoCrop, compat }).catch(() => { }), Watch.DEBOUNCE_MS + 400);
     },
 
     // Prints come in all sizes: each scan is cropped to the print on it

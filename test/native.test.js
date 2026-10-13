@@ -564,6 +564,13 @@ async function newPage(context, baseUrl) {
             $('btn-scan').click();
             await wait(() => !$('scan-device').disabled);
             out.devices = [...$('scan-device').options].map(o => o.textContent).join(', ');
+            // Compatibility mode: for TWAIN scanners, remembered for each
+            out.compatShown = !$('scan-compat-row').classList.contains('hidden') && !$('scan-compat').checked;
+            $('scan-device').value = 'wia-1';
+            $('scan-device').dispatchEvent(new Event('change'));
+            out.compatHiddenWia = $('scan-compat-row').classList.contains('hidden');
+            $('scan-device').value = 'EPSON FF-680W';
+            $('scan-device').dispatchEvent(new Event('change'));
             out.folder = $('scan-folder').value;
             out.folders = [...$('scan-folder').options].map(o => o.textContent).join(', ');
             out.names = [$('scan-prefix').value, $('scan-next').value, $('scan-preview').textContent];
@@ -573,10 +580,12 @@ async function newPage(context, baseUrl) {
             out.cerNames = [$('scan-prefix').value, $('scan-next').value];
             folder.value = '';
             folder.dispatchEvent(new Event('change'));
+            $('scan-compat').checked = true;
             $('scan-go').click();
             out.closed = !Scan.isOpen();
             await wait(() => app.files.some(f => f.name === 'photo5.jpg'));
             out.req = window.__scanReq;
+            out.compatKept = JSON.parse(localStorage.getItem('jeditor.scanCompat') || '{}')['EPSON FF-680W'] === true;
             out.files = app.files.map(f => f.relPath || f.name).sort().join(',');
             await wait(() => /Scanned 2 photos/.test(toasts()));
             out.toast = toasts();
@@ -639,6 +648,8 @@ async function newPage(context, baseUrl) {
         check('scanned photos show up in the order', r.files === 'Ceremony/c1.jpg,photo1.jpg,photo2.jpg,photo3.jpg,photo4.jpg,photo5.jpg', r.files);
         check('a message says how many, with Scan more', /Scanned 2 photos into Scan Order/.test(r.toast) && /Scan more/.test(r.toast), r.toast);
         check('Auto crop each photo is on to start with', r.autoCropDefault);
+        check('Compatibility mode: offered for TWAIN scanners only, off to start with', r.compatShown && r.compatHiddenWia, JSON.stringify([r.compatShown, r.compatHiddenWia]));
+        check('... sent with the scan, and remembered for that scanner', r.req.compat === true && r.compatKept, JSON.stringify([r.req.compat, r.compatKept]));
         check('... and crops each scan once it\'s in, without asking', r.cropped === 'c2.jpg,c3.jpg (no question)', r.cropped);
         check('scanning again carries on the names', r.more === 'photo6.jpg', r.more);
         check('a scan that fails says why, and what was saved', /busy/.test(r.err || '') && /didn't finish/.test(r.alert) && /1 photo was saved/.test(r.alert) && !r.running, JSON.stringify([r.err, r.alert]));

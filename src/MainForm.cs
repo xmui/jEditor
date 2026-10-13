@@ -549,7 +549,8 @@ sealed class MainForm : Form
             folder,
             CleanPrefix(Str(msg, "prefix")),
             msg["next"]?.GetValue<int>() ?? 1,
-            msg["digits"]?.GetValue<int>() ?? 3);
+            msg["digits"]?.GetValue<int>() ?? 3,
+            msg["compat"]?.GetValue<bool>() ?? false);
         using var cancel = scanning = new CancellationTokenSource();
         int count = 0;
         var names = new List<string>();

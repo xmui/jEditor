@@ -31,7 +31,9 @@ sealed class Scanner : IDisposable
 
     // Where and how to save: Folder is a folder in the order; names are
     // Prefix + Next (Digits wide, counting up, skipping names taken) + .jpg
-    public sealed record Request(string DeviceId, string Driver, string Folder, string Prefix, int Next, int Digits);
+    // Compat: for TWAIN drivers that don't work with the newer TWAIN manager
+    // (some Plustek ones): Windows' old one, and the whole image at once
+    public sealed record Request(string DeviceId, string Driver, string Folder, string Prefix, int Next, int Digits, bool Compat = false);
 
     public const string FakeId = "jeditor-test-scanner";
     const int JpegQuality = 95;
@@ -167,6 +169,12 @@ sealed class Scanner : IDisposable
 
         var driver = r.Driver == "wia" ? Driver.Wia : Driver.Twain;
         var options = Options(driver);
+        if (r.Compat && driver == Driver.Twain)
+        {
+            if (worker) options.TwainOptions.Dsm = TwainDsm.Old;
+            options.TwainOptions.TransferMode = TwainTransferMode.Native;
+            Log.Write("Compatibility mode: old TWAIN manager" + (worker ? "" : " (not without the helper)") + ", native transfer");
+        }
         options.Device = new ScanDevice(driver, r.DeviceId, r.DeviceId);
         options.UseNativeUI = true; // the scanner's own window: size detection, resolution, feeder…
         options.DialogParent = owner;
