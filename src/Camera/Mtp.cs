@@ -26,7 +26,13 @@ namespace JEditor.Camera
         static void SetU32(IPortableDeviceValues v, PropertyKey k, uint x) => Check(v.SetUnsignedIntegerValue(ref k, x), "SetUnsignedIntegerValue");
         static void SetU64(IPortableDeviceValues v, PropertyKey k, ulong x) => Check(v.SetUnsignedLargeIntegerValue(ref k, x), "SetUnsignedLargeIntegerValue");
         static void SetStr(IPortableDeviceValues v, PropertyKey k, string s) => Check(v.SetStringValue(ref k, s), "SetStringValue");
-        static void SetBuf(IPortableDeviceValues v, PropertyKey k, byte[] b, uint n) => Check(v.SetBufferValue(ref k, b, n), "SetBufferValue");
+        static void SetBuf(IPortableDeviceValues v, PropertyKey k, byte[] b, uint n)
+        {
+            if (n > b.Length) throw new ArgumentOutOfRangeException(nameof(n));
+            var h = GCHandle.Alloc(b, GCHandleType.Pinned);
+            try { Check(v.SetBufferValue(ref k, h.AddrOfPinnedObject(), n), "SetBufferValue"); }
+            finally { h.Free(); }
+        }
         static uint GetU32(IPortableDeviceValues v, PropertyKey k) { Check(v.GetUnsignedIntegerValue(ref k, out uint x), "GetUnsignedIntegerValue"); return x; }
         static bool TryGetU32(IPortableDeviceValues v, PropertyKey k, out uint x) => v.GetUnsignedIntegerValue(ref k, out x) >= 0;
         static ulong GetU64(IPortableDeviceValues v, PropertyKey k) { Check(v.GetUnsignedLargeIntegerValue(ref k, out ulong x), "GetUnsignedLargeIntegerValue"); return x; }
@@ -190,13 +196,27 @@ namespace JEditor.Camera
         {
             mgr.RefreshDeviceList();
             uint count = 0;
-            Check(mgr.GetDevices(null, ref count), "GetDevices(count)");
+            Check(mgr.GetDevices(IntPtr.Zero, ref count), "GetDevices(count)");
             if (count == 0) return Array.Empty<string>();
-            var ptrs = new IntPtr[count];
-            Check(mgr.GetDevices(ptrs, ref count), "GetDevices");
-            var ids = new string[count];
-            for (int i = 0; i < count; i++) { ids[i] = Marshal.PtrToStringUni(ptrs[i])!; Marshal.FreeCoTaskMem(ptrs[i]); }
-            return ids;
+            var list = Marshal.AllocHGlobal(IntPtr.Size * (int)count);
+            try
+            {
+                for (int i = 0; i < count; i++) Marshal.WriteIntPtr(list, i * IntPtr.Size, IntPtr.Zero);
+                Check(mgr.GetDevices(list, ref count), "GetDevices");
+                var ids = new List<string>((int)count);
+                for (int i = 0; i < count; i++)
+                {
+                    var p = Marshal.ReadIntPtr(list, i * IntPtr.Size);
+                    if (p == IntPtr.Zero) continue;
+                    ids.Add(Marshal.PtrToStringUni(p)!);
+                    Marshal.FreeCoTaskMem(p);
+                }
+                return ids.ToArray();
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(list);
+            }
         }
 
         public delegate int StringGetter(string id, IntPtr buffer, ref uint chars);

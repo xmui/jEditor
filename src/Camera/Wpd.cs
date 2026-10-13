@@ -45,7 +45,9 @@ namespace JEditor.Camera
     [ComImport, Guid("a1567595-4c2f-4574-a6fa-ecef917b9a40"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     public interface IPortableDeviceManager
     {
-        [PreserveSig] int GetDevices([In, Out] IntPtr[]? deviceIds, ref uint count);           // each LPWSTR: CoTaskMemFree
+        // Arrays are raw pointers here: in COM interop .NET would pass an
+        // array as a SAFEARRAY, and Windows writes a plain C array into it
+        [PreserveSig] int GetDevices(IntPtr deviceIds, ref uint count);           // LPWSTR[count]; each: CoTaskMemFree
         [PreserveSig] int RefreshDeviceList();
         [PreserveSig] int GetDeviceFriendlyName([MarshalAs(UnmanagedType.LPWStr)] string deviceId, IntPtr buffer, ref uint chars);
         [PreserveSig] int GetDeviceDescription([MarshalAs(UnmanagedType.LPWStr)] string deviceId, IntPtr buffer, ref uint chars);
@@ -53,7 +55,7 @@ namespace JEditor.Camera
         [PreserveSig] int GetDeviceProperty([MarshalAs(UnmanagedType.LPWStr)] string deviceId,
                                             [MarshalAs(UnmanagedType.LPWStr)] string propertyName,
                                             IntPtr data, ref uint dataSize, ref uint regType);
-        [PreserveSig] int GetPrivateDevices([In, Out] IntPtr[]? deviceIds, ref uint count);
+        [PreserveSig] int GetPrivateDevices(IntPtr deviceIds, ref uint count);
     }
 
     [ComImport, Guid("625e2df8-6392-4cf0-9ad1-3cfa5f17775c"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -106,7 +108,7 @@ namespace JEditor.Camera
         [PreserveSig] int GetIUnknownValue(ref PropertyKey key, [MarshalAs(UnmanagedType.IUnknown)] out object value);
         [PreserveSig] int SetGuidValue(ref PropertyKey key, ref Guid value);
         [PreserveSig] int GetGuidValue(ref PropertyKey key, out Guid value);
-        [PreserveSig] int SetBufferValue(ref PropertyKey key, [In] byte[] value, uint byteCount);  // driver copies
+        [PreserveSig] int SetBufferValue(ref PropertyKey key, IntPtr value, uint byteCount);  // BYTE*: the values copy it
         [PreserveSig] int GetBufferValue(ref PropertyKey key, out IntPtr value, out uint byteCount); // CoTaskMemFree
         [PreserveSig] int SetIPortableDeviceValuesValue(ref PropertyKey key, IPortableDeviceValues value);
         [PreserveSig] int GetIPortableDeviceValuesValue(ref PropertyKey key, out IPortableDeviceValues value);

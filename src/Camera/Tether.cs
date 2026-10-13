@@ -244,24 +244,34 @@ sealed class Tether : IDisposable
         {
             foreach (var id in WpdDevices.GetDeviceIds(manager))
             {
-                var maker = WpdDevices.GetString(manager.GetDeviceManufacturer, id);
-                var name = WpdDevices.GetString(manager.GetDeviceFriendlyName, id);
-                var ids = WpdDevices.ParseVidPid(id);
-                bool sony = ids?.vid == Sony || maker.Contains("Sony", StringComparison.OrdinalIgnoreCase);
-                Log.Write($"Cameras: {maker} {name} {(ids is { } v ? $"{v.vid:X4}:{v.pid:X4}" : "")}{(sony ? "" : " (not a Sony, skipped)")}");
-                if (!sony) continue;
-                var label = string.IsNullOrWhiteSpace(name) ? "Sony camera" : name.StartsWith("Sony", StringComparison.OrdinalIgnoreCase) ? name : "Sony " + name;
-                if (ids is { } p && MtpMode.Contains(p.pid))
-                    list.Add(new Found(id, label, false, "It's connected for file transfer. On the camera: Menu → Network (or Setup) → USB Connection → PC Remote, then plug it in again."));
-                else
-                    list.Add(new Found(id, label, true, ids is { } q && PcRemote.Contains(q.pid) ? null : "Not a model jEditor knows: it may work in PC Remote mode."));
+                try { Add(id); }
+                catch (Exception e) { Log.Write($"Cameras: skipped {id}: {e.Message}"); }
             }
+        }
+        catch (Exception e)
+        {
+            Log.Write("Cameras: couldn't list Windows' devices: " + e.Message);
         }
         finally
         {
             Marshal.ReleaseComObject(manager);
         }
         return list;
+
+        void Add(string id)
+        {
+            var maker = WpdDevices.GetString(manager.GetDeviceManufacturer, id);
+            var name = WpdDevices.GetString(manager.GetDeviceFriendlyName, id);
+            var ids = WpdDevices.ParseVidPid(id);
+            bool sony = ids?.vid == Sony || maker.Contains("Sony", StringComparison.OrdinalIgnoreCase);
+            Log.Write($"Cameras: {maker} {name} {(ids is { } v ? $"{v.vid:X4}:{v.pid:X4}" : "")}{(sony ? "" : " (not a Sony, skipped)")}");
+            if (!sony) return;
+            var label = string.IsNullOrWhiteSpace(name) ? "Sony camera" : name.StartsWith("Sony", StringComparison.OrdinalIgnoreCase) ? name : "Sony " + name;
+            if (ids is { } p && MtpMode.Contains(p.pid))
+                list.Add(new Found(id, label, false, "It's connected for file transfer. On the camera: Menu → Network (or Setup) → USB Connection → PC Remote, then plug it in again."));
+            else
+                list.Add(new Found(id, label, true, ids is { } q && PcRemote.Contains(q.pid) ? null : "Not a model jEditor knows: it may work in PC Remote mode."));
+        }
     });
 }
 
