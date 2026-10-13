@@ -827,7 +827,7 @@ const Scan = {
         const n = names.length;
         const said = `${n} photo${n === 1 ? '' : 's'} into ${Folders.label(folder)}`;
         if (n) {
-            done((result.cancelled ? 'Stopped after ' : 'Scanned ') + said + (autoCrop ? ' · auto cropping…' : ''));
+            done((result.cancelled ? 'Stopped after ' : 'Scanned ') + said + (autoCrop ? ' · auto cropping…' : '') + (source === 'feeder' && !result.cancelled ? '. Load the next batch, then Scan more.' : ''));
             app.showToast(`Scanned ${said}`, 4000, 'scanned', null, { type: 'success' });
             if (autoCrop) {
                 await this.autoCrop(names);
