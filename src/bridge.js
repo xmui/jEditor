@@ -72,6 +72,9 @@
             onUpdateProgress(msg.received, msg.total);
         } else if (msg.type === 'scanned' && onScanned) {
             onScanned(msg.name);
+        } else if (msg.type === 'notice') {
+            // Something the app has to say, once jEditor is up
+            whenReady().then(() => UI.alert({ title: msg.title, message: msg.text }));
         } else if (msg.type === 'drivesChanged') {
             dispatchEvent(new Event('jeditor-drives')); // places.js
         }

@@ -5,6 +5,13 @@
 
 const CHANGELOG = [
     {
+        version: '1.20.2', date: '2026-10-13',
+        items: [
+            'Updating from inside jEditor no longer fails and rolls back: the setup now waits until jEditor has really closed before replacing its files.',
+            'If an update still doesn\'t install, jEditor opens again on the version you had and says so, with where the setup\'s log is, instead of just closing.'
+        ]
+    },
+    {
         version: '1.20.1', date: '2026-10-12',
         items: [
             'TWAIN scanners (the FastFoto through Epson Scan 2, not just its WIA version) now scan through a small 32-bit helper, the way NAPS2 does, using the scanners\' 32-bit drivers. It brings its own TWAIN manager, so nothing extra needs installing.',
