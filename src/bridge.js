@@ -70,6 +70,8 @@
             reloadCss();
         } else if (msg.type === 'updateProgress' && onUpdateProgress) {
             onUpdateProgress(msg.received, msg.total);
+        } else if (msg.type === 'logLines' && onLogLines) {
+            onLogLines(msg.lines || []);
         } else if (msg.type === 'scanned' && onScanned) {
             onScanned(msg.name);
         } else if (msg.type === 'notice') {
@@ -174,6 +176,7 @@
     // ---- What the app does for jEditor ----
     let onUpdateProgress = null;
     let onScanned = null;
+    let onLogLines = null;
     window.JEditorNative = {
         // jEditor's storage on this PC: a folder handle, one subfolder per
         // order (see app/folder-cache.js)
@@ -302,6 +305,15 @@
         async showLog() {
             return (await answer('showLog')).msg.ok;
         },
+        // The log's last lines → { lines, file }
+        async logTail() {
+            return (await answer('logTail')).msg;
+        },
+        // lines(array) with each new batch of log lines; null stops
+        watchLog(lines) {
+            onLogLines = lines || null;
+            post({ type: 'logWatch', on: !!lines });
+        },
         // Downloads and runs the newest setup; jEditor then closes and the
         // setup opens it again. progress(received, total) as it downloads.
         async installUpdate(progress) {
@@ -407,6 +419,17 @@
                     for (let i = 0; i < 75 && shown() < r.names.length; i++) await new Promise(res => setTimeout(res, 200));
                     await check('scanned', { names: r.names, shown: shown() });
                 }
+            }
+            // Details: the log's last lines, then new ones as they're written
+            {
+                const tail = await window.JEditorNative.logTail();
+                const heard = [];
+                window.JEditorNative.watchLog(lines => heard.push(...lines));
+                log('info', 'smoke: a line for Details');
+                for (let i = 0; i < 25 && !heard.some(l => /a line for Details/.test(l)); i++) await new Promise(res => setTimeout(res, 200));
+                window.JEditorNative.watchLog(null);
+                steps.logged = !(tail.lines || []).length ? 'the log\'s last lines aren\'t there'
+                    : !heard.some(l => /a line for Details/.test(l)) ? 'new log lines weren\'t sent' : true;
             }
             // Browse: the drives, and this folder's photos counted on disk
             {

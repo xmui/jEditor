@@ -10,11 +10,16 @@
 //   scanning  the last photos in, as they land (each also shows up in the
 //             grid straight away), and Stop
 //   done      how many, and Scan more (names carry on), Change settings
+//
+// Details (the >_ button) shows the app's log as it's written: what the
+// scanner's driver is doing, for when it isn't. It opens by itself when a
+// scan fails.
 
 const Scan = {
     KEY: 'jeditor.scan', // last scanner used (this PC)
     KEY_COMPAT: 'jeditor.scanCompat', // scanners in compatibility mode
     KEY_POS: 'jeditor.scanDock', // where the dock was dragged to
+    KEY_DETAILS: 'jeditor.scanDetails', // Details showing
     STRIP: 6, // photos shown in the dock
     PHOTO: /^(.*?)(\d+)\.(jpe?g|tiff?|png|webp)$/i,
 
@@ -31,6 +36,8 @@ const Scan = {
         this.el('scan-stop').addEventListener('click', () => FolderCache.native().cancelScan());
         this.el('scan-settings').addEventListener('click', () => this.setState('setup'));
         this.el('scan-refresh').addEventListener('click', () => this.loadDevices(true));
+        this.details = LogView.attach(this.el('scan-log'), app);
+        this.el('scan-details').addEventListener('click', () => this.showDetails(!this.details.shown, true));
         this.el('scan-device').addEventListener('change', () => this.syncCompat());
         this.el('scan-folder').addEventListener('change', () => this.fillNames());
         this.el('scan-prefix').addEventListener('input', () => this.preview());
@@ -75,6 +82,7 @@ const Scan = {
         panel.classList.remove('hidden');
         this.setSmall(false);
         this.setState('setup');
+        if (this.detailsWanted()) this.showDetails(true);
         this.fillFolders();
         this.fillNames();
         const last = this.last();
@@ -87,6 +95,20 @@ const Scan = {
     close() {
         if (this.running) return this.setSmall(true);
         this.el('scan-panel').classList.add('hidden');
+        if (this.details.shown) this.details.hide(); // (still wanted next time)
+    },
+
+    // ---- Details ----
+
+    detailsWanted() {
+        try { return localStorage.getItem(this.KEY_DETAILS) === '1'; } catch (e) { return false; }
+    },
+
+    // `remember`: the button was pressed (so next time too)
+    showDetails(on, remember = false) {
+        if (on) this.details.show(); else this.details.hide();
+        this.el('scan-details').setAttribute('aria-pressed', String(on));
+        if (remember) try { localStorage.setItem(this.KEY_DETAILS, on ? '1' : '0'); } catch (e) { /* private */ }
     },
 
     setSmall(small) {
@@ -388,6 +410,7 @@ const Scan = {
             app.endTask('scanner');
             this.running = false;
             done(`Stopped: ${e.message}` + (names.length ? ` (${names.length} saved)` : ''), true);
+            this.showDetails(true); // what the driver did
             UI.alert({
                 title: 'The scan didn\'t finish',
                 message: e.message + (names.length ? ` (${names.length} photo${names.length === 1 ? ' was' : 's were'} saved before it stopped.)` : '')
