@@ -258,7 +258,7 @@ const Flags = {
             on = !files.every(f => this.has(f, kind));
             files.forEach(f => this.setOne(f, 'color', on ? kind : null));
         }
-        app.pushUndo({ type: 'flags', items: before });
+        app.pushUndo({ type: 'flags', kind, on, items: before });
         this.changed(files);
         const n = files.length;
         const what = n === 1 ? (files[0].name) : `${n.toLocaleString()} photos`;

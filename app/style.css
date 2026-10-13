@@ -1277,6 +1277,96 @@ html.native .grid-view.grid-empty-project::after {
     gap: 5px;
 }
 
+/* Save edits when done (edits.js): a pencil on edited photos, top left */
+.tile-edit {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    display: inline-flex;
+    padding: 4px;
+    border-radius: var(--r-pill);
+    background: var(--on-photo-bg);
+    color: var(--on-photo-text);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    pointer-events: none;
+    animation: pop-in var(--dur-slow) var(--ease-spring);
+}
+
+.thumb-item .tile-edit {
+    top: 3px;
+    left: 3px;
+    padding: 2px;
+}
+
+.thumb-item .tile-edit svg {
+    width: 10px;
+    height: 10px;
+}
+
+:root[data-glass="subtle"] .tile-edit {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.file-edit {
+    display: inline-flex;
+    margin-left: 4px;
+    color: var(--accent-text);
+}
+
+/* What's waiting to be saved: a pill under the header */
+.edits-bar {
+    position: absolute;
+    top: calc(var(--gutter) + var(--ctl-lg) + var(--sp-2));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--z-floating);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    max-width: calc(100% - 2 * var(--gutter));
+    padding: 0 var(--sp-1) 0 var(--sp-3);
+    white-space: nowrap;
+    animation: bar-in var(--dur-slow) var(--ease-out);
+}
+
+.edits-icon {
+    display: inline-flex;
+    color: var(--accent-text);
+}
+
+.edits-icon .i {
+    width: 16px;
+    height: 16px;
+}
+
+.edits-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: var(--fs-small);
+}
+
+/* Room for it above the first row of photos */
+.interface.edits-on .grid-view {
+    padding-top: calc(var(--gutter) + 2 * var(--ctl-lg) + var(--sp-4));
+}
+
+.sb-card-defer {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-top: var(--sp-2);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    cursor: pointer;
+}
+
+.sb-card-defer input {
+    margin: 0;
+}
+
 /* ---- 7. Folder pill, folder list, flags, search ---- */
 
 /* Folder pill in grid view, top left, level with the header pills. Kept
@@ -1826,6 +1916,96 @@ html.native .grid-view.grid-empty-project::after {
 
 @keyframes popover-in {
     from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+}
+
+/* Undo history drops down under the header pill, like Info */
+.history-panel {
+    position: absolute;
+    top: calc(var(--gutter) + var(--ctl-lg) + var(--sp-2));
+    right: var(--gutter);
+    z-index: var(--z-popover);
+    display: flex;
+    flex-direction: column;
+    width: 320px;
+    max-width: calc(100% - 2 * var(--gutter));
+    max-height: calc(100% - 2 * var(--gutter) - var(--ctl-lg) - var(--sp-2));
+    padding: var(--sp-4) var(--sp-2) var(--sp-3);
+    border-radius: var(--r-lg);
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+}
+
+.history-panel .section-label,
+.history-hint,
+.history-foot {
+    margin: 0 var(--sp-2) var(--sp-2);
+}
+
+.history-hint,
+.history-foot {
+    color: var(--text-2);
+}
+
+.history-foot {
+    margin-top: var(--sp-2);
+    margin-bottom: 0;
+    font-size: var(--fs-caption);
+}
+
+.history-list {
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.history-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--sp-2);
+    width: 100%;
+    padding: 6px var(--sp-2);
+    border: none;
+    border-radius: var(--r-sm);
+    background: none;
+    color: var(--text-1);
+    text-align: left;
+    cursor: pointer;
+}
+
+.history-row:hover,
+.history-row:focus-visible {
+    background: var(--tb-hover);
+    outline: none;
+}
+
+/* Pointing at a step marks it and every newer one: what would be undone */
+.history-list:has(.history-row:hover) .history-row:has(~ .history-row:hover),
+.history-list .history-row:hover {
+    background: var(--tb-hover);
+}
+
+.history-what {
+    font-weight: var(--fw-semibold);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.history-when {
+    color: var(--text-2);
+    font-size: var(--fs-caption);
+}
+
+.history-detail {
+    grid-column: 1 / -1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-2);
+}
+
+.history-panel.busy .history-list {
+    opacity: 0.5;
+    pointer-events: none;
 }
 
 /* File info drops down under the header pill */

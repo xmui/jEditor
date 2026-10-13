@@ -114,6 +114,7 @@ const Updates = {
             await new Promise(r => setTimeout(r, 100));
         }
         try { await Flags.save(); } catch (e) { /* best-effort */ }
+        try { await Edits.flush(); } catch (e) { /* best-effort */ }
         await FolderCache.flush();
     }
 };

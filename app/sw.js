@@ -18,6 +18,8 @@ const ASSETS = [
     './rename.js',
     './folders.js',
     './flags.js',
+    './edits.js',
+    './history.js',
     './watch.js',
     './recents.js',
     './icon.png',

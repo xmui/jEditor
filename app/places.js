@@ -76,6 +76,13 @@ const Places = {
             const b = e.target.closest('button[data-act]');
             if (b) this.cardAction(b.dataset.act);
         });
+        // Save edits when done (edits.js), for this project
+        this.el('sb-card').addEventListener('change', async (e) => {
+            const box = e.target.closest('input[data-act="defer"]');
+            if (!box) return;
+            await Edits.setDefer(box.checked);
+            box.checked = Edits.defer;
+        });
         addEventListener('jeditor-drives', () => this.drivesChanged());
         this.refresh();
     },
@@ -343,7 +350,8 @@ const Places = {
             (path ? `<button class="btn secondary sm" data-act="reveal" title="Show in Explorer">${this.icons.reveal}Explorer</button>` : '') +
             `<button class="btn ghost icon sm" data-act="split" title="Split: this project and another window side by side">${this.icons.split}</button>` +
             (path ? `<button class="btn ghost icon sm sb-card-pin${this.isPinned(path) ? ' on' : ''}" data-act="pin" title="${this.isPinned(path) ? 'Unpin' : 'Pin to the sidebar'}">${this.icons.pin}</button>` : '') +
-            `</div>`;
+            `</div>` +
+            (app.readOnlyMode ? '' : `<label class="sb-card-defer" title="Crops and turns are kept on the photos, to change as often as you like, and saved into them (or exported) when you're done"><input type="checkbox" data-act="defer"${Edits.defer ? ' checked' : ''}><span>Save edits when done</span></label>`);
         // The current project is marked in the lists
         for (const box of this.boxes) {
             box.querySelectorAll('.sb-row').forEach(r => r.classList.toggle('active', this.key(r.dataset.path) === this.key(path)));

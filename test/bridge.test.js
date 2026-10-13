@@ -162,7 +162,8 @@ const waitForPost = (page, type) => page.waitForFunction(
         check('Open folder asks the app once', r.picks === 1, JSON.stringify(r));
         check('opens the folder the app picked, for editing', r.name === 'Smith Order' && r.writable, JSON.stringify(r));
 
-        // Remembered under Recent, with its handle
+        // Remembered under Recent, with its handle (once loading has finished)
+        await page.waitForFunction(() => !!Recents.saving, null, { timeout: 15000 });
         await page.evaluate(() => Recents.saving);
         const recents = await page.evaluate(async () => (await Recents.list()).map(x => x.name));
         check('the folder goes on the Recent list', recents[0] === 'Smith Order', JSON.stringify(recents));

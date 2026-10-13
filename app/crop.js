@@ -234,13 +234,20 @@ const CropEditor = {
         this.colors = this.themeColors();
         this.el('crop-file').textContent = file.name;
         this.el('crop-dims').textContent = 'Loading…';
+        // Edits kept until saved (edits.js): the crop is kept, not written
+        const later = Edits.on();
+        this.el('crop-save').textContent = later ? 'Done' : 'Save';
+        this.el('crop-save').title = later ? 'Keep this crop; it\'s saved to the file when you save the project\'s edits (Enter)' : 'Save (Enter)';
+        this.el('crop-save-next').textContent = later ? 'Done & next' : 'Save & next';
         this.updateButtons();
         this.resizeCanvas();
 
         // Screen-sized working copy — the viewer's cached preview when there
         // is one (made from the file's current bytes); the full-resolution
-        // render happens on save, from the original.
-        const src = await app.getDisplaySource(file);
+        // render happens on save, from the original. Always the whole
+        // photo, even with an edit kept until saved (edits.js): that edit
+        // is where the crop starts, so it can be changed
+        const src = await app.getDisplaySource(file, { raw: true });
         let preview;
         if (src.isPreview && src.blob) {
             preview = await createImageBitmap(src.blob);
@@ -266,8 +273,14 @@ const CropEditor = {
         this.applyAspectToRect(this.rect);
         this.ready = true;
         this.syncAngleUi();
+        const kept = Edits.get(file);
+        if (kept) {
+            this.applySnapshot(kept);
+            this.el('crop-aspect').value = this.aspectKey;
+            this.syncAngleUi();
+        }
         this.vw = this.homeView();
-        if (this.autoEach()) {
+        if (!kept && this.autoEach()) {
             this.autoDetect({ quiet: true, animate: false });
             this.history = []; // the starting point is the detected crop
         }
@@ -567,7 +580,7 @@ const CropEditor = {
 
     autoDetect({ quiet = false, animate = true } = {}) {
         if (!this.ready) return false;
-        const det = CropAuto.detect(this.preview, this.W, this.H);
+        const det = CropAuto.find(this.preview, this.W, this.H);
         if (!det) {
             if (!quiet) this.app.showToast('No print edge found — Auto needs a plain scanner border around the photo', 3500);
             return false;
@@ -628,43 +641,78 @@ const CropEditor = {
             return;
         }
         this.pushHistory();
-        this.q = snap.q || 0;
+        this.applySnapshot(snap);
+        this.el('crop-aspect').value = this.aspectKey;
+        this.syncAngleUi();
+        this.settle(false);
+    },
+
+    // Put a snapshot (see above) on this photo: the same turn, tilt and
+    // crop, scaled to its size and kept inside it
+    applySnapshot(snap) {
+        this.q = (((snap.q || 0) % 4) + 4) % 4;
         this.angle = snap.angle || 0;
         this.aspectKey = snap.aspectKey || 'free';
         this.landscape = !!snap.landscape;
-        this.el('crop-aspect').value = this.aspectKey;
         const d = this.turnedDims();
         const n = snap.n;
         this.setRect({ x0: n.x0 * d.w, y0: n.y0 * d.h, x1: n.x1 * d.w, y1: n.y1 * d.h });
         this.refit();
-        this.syncAngleUi();
-        this.settle(false);
+    },
+
+    // A snapshot on a W × H photo, off screen (edits kept until saved, see
+    // edits.js, are snapshots: they're shown and saved through this)
+    fromSnapshot(W, H, snap) {
+        const h = this.headless(W, H);
+        h.applySnapshot(snap);
+        return h;
     },
 
     // ---- output ----
 
     // Render the crop at full resolution from the file's own bytes.
     async renderOutput(fileData, type, original = null) {
-        // EXIF orientation is applied by default ('from-image')
-        const bmp = await createImageBitmap(fileData, {
-            colorSpaceConversion: ImageMeta.canCarryProfile(type, original) ? 'none' : 'default'
-        });
+        const bmp = await this.decodeFor(fileData, type, original);
         try {
             if (bmp.width !== this.W || bmp.height !== this.H) {
                 throw new Error('the file changed on disk — reopen crop');
             }
-            const o = this.outputRect();
-            const canvas = document.createElement('canvas');
-            canvas.width = o.w;
-            canvas.height = o.h;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) throw new Error('image too large to process');
-            const [c, s] = this.cs();
-            ctx.imageSmoothingEnabled = this.angle !== 0;
-            ctx.imageSmoothingQuality = 'high';
-            ctx.setTransform(c, s, -s, c, -o.x0, -o.y0);
-            ctx.drawImage(bmp, -this.W / 2, -this.H / 2);
-            return canvas;
+            return this.drawOutput(bmp);
+        } finally {
+            bmp.close();
+        }
+    },
+
+    // EXIF orientation is applied by default ('from-image')
+    decodeFor(fileData, type, original) {
+        return createImageBitmap(fileData, {
+            colorSpaceConversion: ImageMeta.canCarryProfile(type, original) ? 'none' : 'default'
+        });
+    },
+
+    // The crop of `bmp` (W × H) on a canvas of its own
+    drawOutput(bmp) {
+        const o = this.outputRect();
+        const canvas = document.createElement('canvas');
+        canvas.width = o.w;
+        canvas.height = o.h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('image too large to process');
+        const [c, s] = this.cs();
+        ctx.imageSmoothingEnabled = this.angle !== 0;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.setTransform(c, s, -s, c, -o.x0, -o.y0);
+        ctx.drawImage(bmp, -this.W / 2, -this.H / 2);
+        return canvas;
+    },
+
+    // A snapshot rendered at full resolution from a file's bytes (saving
+    // edits kept until saved). Null when it changes nothing.
+    async renderSnapshot(fileData, snap, type, original = null) {
+        const bmp = await this.decodeFor(fileData, type, original);
+        try {
+            const ed = this.fromSnapshot(bmp.width, bmp.height, snap);
+            return ed.isIdentity() && !ed.q ? null : ed.drawOutput(bmp);
         } finally {
             bmp.close();
         }

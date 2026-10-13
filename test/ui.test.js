@@ -911,7 +911,7 @@ async function newPage(browser, url) {
             const out = {};
             localStorage.removeItem('jeditor.ui');
 
-            // Default pill: info, view, refresh, crop visible; rest in "More"
+            // Default pill: info, view, refresh, crop, history visible; rest in "More"
             const hc = document.getElementById('header-controls');
             const visible = [...hc.querySelectorAll('[data-hc]')]
                 .filter(b => !b.classList.contains('hc-extra') && !b.classList.contains('hidden') && getComputedStyle(b).display !== 'none')
@@ -926,7 +926,7 @@ async function newPage(browser, url) {
             // Placement + order + vertical + scale via prefs
             app.uiPrefs.placement.fullscreen = 'main';
             app.uiPrefs.placement.refresh = 'hidden';
-            app.uiPrefs.order = ['crop', 'info', 'view', 'refresh', 'fit', 'strip', 'fullscreen', 'customize'];
+            app.uiPrefs.order = ['crop', 'info', 'view', 'refresh', 'history', 'fit', 'strip', 'fullscreen', 'customize'];
             app.uiPrefs.vertical = true;
             app.uiPrefs.scale = 1.2;
             app.saveUiPrefs();
@@ -975,7 +975,7 @@ async function newPage(browser, url) {
             out.pillHidden = pill.classList.contains('hidden');
             return out;
         });
-        check('default main controls: info, view, refresh, crop', r.defaultMain === 'info,view,refresh,crop', r.defaultMain);
+        check('default main controls: info, view, refresh, crop, history', r.defaultMain === 'info,view,refresh,crop,history', r.defaultMain);
         check('extras live in More (fit, strip, fullscreen, dupes, keys, whatsnew, customize)', r.defaultExtras === 'fit,strip,fullscreen,dupes,keys,whatsnew,customize', r.defaultExtras);
         check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
         check('reorder + hide + promote via prefs', r.reordered === 'crop,info' && r.refreshHidden && r.fullscreenMain,
@@ -3149,6 +3149,311 @@ async function newPage(browser, url) {
         check('auto crop: says what it did, with Undo', /Auto-cropped 2 photos — no print found on 1/.test(r.toast), r.toast);
         check('auto crop: originals kept in .jeditor/originals; one Ctrl+Z restores every byte', r.backups === 2 && r.restored && r.backupsAfter === 0, JSON.stringify(r));
         check('auto crop suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7s1. Auto crop on a sheet-feeder page ----
+    console.log('feeder auto crop');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            let seed = 11;
+            const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+            // Like a FastFoto page: the photo at the leading edge, the bluish
+            // backing beside it, white fill where the page runs on past it
+            const page = (tilt) => {
+                const c = document.createElement('canvas');
+                c.width = 850; c.height = 1400;
+                const g = c.getContext('2d');
+                g.fillStyle = '#fbfbfb'; g.fillRect(0, 0, 850, 1400);
+                const img = g.getImageData(0, 0, 850, 580);
+                for (let i = 0; i < img.data.length; i += 4) {
+                    const n = (rnd() - 0.5) * 14;
+                    img.data[i] = 180 + n; img.data[i + 1] = 195 + n; img.data[i + 2] = 210 + n;
+                }
+                g.putImageData(img, 0, 0);
+                g.save(); g.translate(450, 285); g.rotate(tilt * Math.PI / 180);
+                for (let y = 0; y < 560; y += 28) for (let x = 0; x < 380; x += 38) {
+                    g.fillStyle = `hsl(${Math.floor(rnd() * 360)},50%,${10 + Math.floor(rnd() * 50)}%)`;
+                    g.fillRect(x - 190, y - 280, 38, 28);
+                }
+                g.restore();
+                return c;
+            };
+            const crop = (det, W, H) => {
+                const ed = CropEditor.headless(W, H);
+                ed.aspectKey = 'free';
+                ed.fitToPrint(det);
+                const o = ed.outputRect();
+                const ctr = ed.toImage({ x: (o.x0 + o.x1) / 2, y: (o.y0 + o.y1) / 2 });
+                return { w: o.w, h: o.h, cx: Math.round(ctr.x + W / 2), cy: Math.round(ctr.y + H / 2), angle: ed.angle };
+            };
+            const straight = page(0);
+            out.flatbedMisses = !CropAuto.detect(straight, 850, 1400);
+            const d0 = CropAuto.find(straight, 850, 1400, { feeder: true });
+            out.straight = d0 && crop(d0, 850, 1400);
+            const tilted = page(1.5);
+            const d1 = CropAuto.find(tilted, 850, 1400, { feeder: true });
+            out.tilted = d1 && crop(d1, 850, 1400);
+            // The crop editor's Auto (no hint) knows such a page too
+            out.unhinted = !!CropAuto.find(straight, 850, 1400);
+            // ...but leaves an ordinary photo alone, even one with a plain
+            // dark band along the bottom
+            const photo = document.createElement('canvas');
+            photo.width = 900; photo.height = 600;
+            const pg = photo.getContext('2d');
+            for (let y = 0; y < 600; y += 30) for (let x = 0; x < 900; x += 30) {
+                pg.fillStyle = `hsl(${Math.floor(rnd() * 360)},40%,${20 + Math.floor(rnd() * 50)}%)`;
+                pg.fillRect(x, y, 30, 30);
+            }
+            pg.fillStyle = '#050505'; pg.fillRect(0, 420, 900, 180);
+            out.photoAlone = !CropAuto.find(photo, 900, 600);
+            return out;
+        });
+        const near = (c, w, h) => c && c.w > w - 30 && c.w <= w && c.h > h - 30 && c.h <= h && Math.abs(c.cx - 450) <= 8 && Math.abs(c.cy - 280) <= 10;
+        check('feeder page: the flatbed finder can\'t see the photo (two backgrounds)', r.flatbedMisses);
+        check('feeder page: Auto crop finds the photo, background trimmed off', near(r.straight, 380, 560), JSON.stringify(r.straight));
+        check('feeder page: a tilted photo is straightened and cropped', near(r.tilted, 380, 560) && Math.abs(r.tilted.angle + 1.5) < 0.4, JSON.stringify(r.tilted));
+        check('feeder page: found without the hint too; an ordinary photo is left alone', r.unhinted && r.photoAlone, JSON.stringify([r.unhinted, r.photoAlone]));
+        check('feeder auto crop suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7s2. Save edits when done ----
+    console.log('save edits when done');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try { return await (async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const until = async (fn, n = 200) => { for (let i = 0; i < n && !(await fn()); i++) await sleep(50); };
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('keptedits', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('keptedits', { create: true });
+            const scan = async (color, tilt) => {
+                const c = document.createElement('canvas');
+                c.width = 900; c.height = 700;
+                const g = c.getContext('2d');
+                g.fillStyle = '#f4f4f2'; g.fillRect(0, 0, 900, 700);
+                g.save(); g.translate(450, 350); g.rotate(tilt * Math.PI / 180);
+                g.fillStyle = color; g.fillRect(-280, -200, 560, 400);
+                g.restore();
+                return new Blob([await (await new Promise(res => c.toBlob(res, 'image/jpeg', 0.92))).arrayBuffer()], { type: 'image/jpeg' });
+            };
+            const files = { 'scan1.jpg': await scan('#2a6', 3), 'scan2.jpg': await scan('#a33', -2), 'plain.jpg': new Blob([await makeRealJpeg(400, 300)], { type: 'image/jpeg' }) };
+            const originals = {};
+            for (const [n, b] of Object.entries(files)) {
+                const fh = await dir.getFileHandle(n, { create: true });
+                const w = await fh.createWritable(); await w.write(b); await w.close();
+                originals[n] = new Uint8Array(await b.arrayBuffer());
+            }
+            const bytes = async (d, n) => new Uint8Array(await (await (await d.getFileHandle(n)).getFile()).arrayBuffer());
+            const same = async (n) => {
+                const now = await bytes(dir, n);
+                return now.length === originals[n].length && now.every((v, i) => v === originals[n][i]);
+            };
+            const untouched = async () => await same('scan1.jpg') && await same('scan2.jpg') && await same('plain.jpg');
+            const dims = async (d, n) => {
+                const bmp = await createImageBitmap(await (await d.getFileHandle(n)).getFile());
+                const x = [bmp.width, bmp.height]; bmp.close(); return x;
+            };
+            const kept = async () => {
+                try { return JSON.parse(await (await (await (await dir.getDirectoryHandle('.jeditor')).getFileHandle('edits.json')).getFile()).text()); } catch (e) { return null; }
+            };
+            const f = (n) => app.files.find(x => x.name === n);
+            const bar = () => document.getElementById('edits-bar');
+            const barText = () => document.getElementById('edits-text').textContent;
+
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            app.setView('grid');
+            out.barOffAtFirst = bar().classList.contains('hidden');
+
+            // Turned on for this project (the grid's menu)
+            step = "Turned on for this project (the grid's menu)";
+            const bg = app.buildContextItems(null, false).find(it => it[0] === 'Save edits when done');
+            bg[1]();
+            await until(async () => (await kept()) && (await kept()).defer);
+            out.on = Edits.on() && !bar().classList.contains('hidden') && /kept until you save/.test(barText()) && (await kept()).defer === true;
+
+            // Batch Auto crop: kept as edits, nothing written
+            step = 'Batch Auto crop: kept as edits, nothing written';
+            app.selection = new Set(app.files);
+            app.updateSelectionUI();
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'A', shiftKey: true, bubbles: true }));
+            await until(() => !app._autoCropping && f('scan1.jpg')._edit && f('scan2.jpg')._edit);
+            out.autoKept = !!f('scan1.jpg')._edit && !!f('scan2.jpg')._edit && !f('plain.jpg')._edit && await untouched();
+            out.autoToast = [...document.querySelectorAll('.toast')].map(t => t.textContent).find(t => /Auto-cropped/.test(t)) || '';
+            out.badges = !!f('scan1.jpg')._gridEl.querySelector('.tile-edit') && !f('plain.jpg')._gridEl.querySelector('.tile-edit');
+            out.barCount = barText();
+            // Shown as it will be saved: the thumbnail and preview are of the print
+            step = 'Shown as it will be saved: the thumbnail and preview are of the print';
+            await until(() => f('scan1.jpg').thumbnailUrl && !f('scan1.jpg')._thumbStale);
+            const tb = await createImageBitmap(await (await fetch(f('scan1.jpg').thumbnailUrl)).blob());
+            out.thumbAspect = tb.width / tb.height;
+            await until(() => f('scan1.jpg')._gridEl.querySelector(':scope > img').src === f('scan1.jpg').thumbnailUrl, 40);
+            out.tileShows = f('scan1.jpg')._gridEl.querySelector(':scope > img').src === f('scan1.jpg').thumbnailUrl;
+            const shown = await app.getDisplaySource(f('scan1.jpg'));
+            out.shown = [shown.w, shown.h];
+
+            // Recrop: the editor opens on the whole photo, at the kept crop
+            step = 'Recrop: the editor opens on the whole photo, at the kept crop';
+            const edit1 = { ...f('scan1.jpg')._edit };
+            app.selection.clear();
+            app.currentFile = f('scan1.jpg');
+            app.setView('single');
+            await app.enterCrop();
+            await until(() => CropEditor.ready);
+            const ed = CropEditor;
+            out.editorWhole = ed.W === 900 && ed.H === 700;
+            out.editorAtKept = Math.abs(ed.angle - edit1.angle) < 1e-6 && Math.abs(ed.snapshot().n.x0 - edit1.n.x0) < 1e-3;
+            out.doneLabel = document.getElementById('crop-save').textContent;
+            ed.setAngle(0);
+            ed.setRect({ x0: -300, y0: -200, x1: 300, y1: 200 });
+            await app.saveCrop();
+            out.recropped = !!f('scan1.jpg')._edit && f('scan1.jpg')._edit.angle === 0 && await untouched();
+            const re = await app.getDisplaySource(f('scan1.jpg'));
+            out.recropShown = [re.w, re.h];
+
+            // A turn is kept too; Ctrl+Z takes it back
+            step = 'A turn is kept too; Ctrl+Z takes it back';
+            await app.rotateImage(f('plain.jpg'), 90);
+            const turned = await app.getDisplaySource(f('plain.jpg'));
+            out.turned = f('plain.jpg')._edit && f('plain.jpg')._edit.q === 1 && turned.w === 300 && turned.h === 400 && await untouched();
+            await app.undo();
+            out.turnUndone = !f('plain.jpg')._edit;
+            await app.rotateImage(f('plain.jpg'), -90);
+
+            // Kept with the project: open it again and they're back
+            step = "Kept with the project: open it again and they're back";
+            // (straight away, the last change maybe not written yet: it is
+            // before the project is read again)
+            await app.openDirectory(dir);
+            // (kept edits can come a moment after the photos)
+            await until(() => app.files.length === 3 && Edits.count() === 3);
+            out.reloaded = Edits.on() && !!f('scan1.jpg')._edit && f('scan1.jpg')._edit.angle === 0 && !!f('plain.jpg')._edit && f('plain.jpg')._edit.q === 3 && /3 edits/.test(barText());
+
+            // Export copies: every photo, the edited ones with their edits
+            step = 'Export copies: every photo, the edited ones with their edits';
+            await until(() => Edits.count() === 3);
+            UI.choose = async () => 'alt';
+            UI.prompt = async () => '';
+            await Edits.saveAll();
+            const exp = await dir.getDirectoryHandle('jEditor Export');
+            out.exported = [await dims(exp, 'scan1.jpg'), await dims(exp, 'scan2.jpg'), await dims(exp, 'plain.jpg')];
+            out.exportLeavesEdits = Edits.count() === 3 && await untouched();
+
+            // Save into the photos
+            step = 'Save into the photos';
+            await until(() => Edits.count() === 3 && !app._savingEdits);
+            UI.choose = async () => 'ok';
+            await Edits.saveAll();
+            out.saved = [await dims(dir, 'scan1.jpg'), await dims(dir, 'scan2.jpg'), await dims(dir, 'plain.jpg')];
+            out.plainLossless = readOrientation(await bytes(dir, 'plain.jpg')) === 8;
+            out.savedClears = Edits.count() === 0 && !f('scan1.jpg')._gridEl.querySelector('.tile-edit') && /kept until you save/.test(barText());
+            const backups = await (await dir.getDirectoryHandle('.jeditor')).getDirectoryHandle('originals');
+            out.backups = 0;
+            for await (const e of backups.values()) out.backups++;
+
+            // One Ctrl+Z: the photos back, the edits kept again
+            step = 'One Ctrl+Z: the photos back, the edits kept again';
+            // (a lossless turn undone keeps its orientation tag: the same
+            // picture, not quite the same bytes)
+            await app.undo();
+            const upright = (await dims(dir, 'plain.jpg')).join('x') === '400x300';
+            out.undoSave = await same('scan1.jpg') && await same('scan2.jpg') && upright && Edits.count() === 3;
+
+            // Turned off with edits waiting: discard them
+            step = 'Turned off with edits waiting: discard them';
+            UI.choose = async () => 'alt';
+            await Edits.setDefer(false);
+            await until(async () => !(await kept()));
+            out.off = !Edits.on() && Edits.count() === 0 && bar().classList.contains('hidden') && !(await kept()) &&
+                await same('scan1.jpg') && (await dims(dir, 'plain.jpg')).join('x') === '400x300';
+            return out;
+            })(); } catch (err) { return { crash: `${step}: ${err.message}`, toasts: [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | ') }; }
+        });
+        check('kept edits: the steps all ran', !r.crash, `${r.crash} — toasts: ${r.toasts}`);
+        if (r.crash) { await page.close(); } else {
+        const inside = (d) => d[0] < 900 && d[1] < 700 && d[0] > 450 && d[1] > 300;
+        check('kept edits: on for the project; the bar shows; saved in edits.json', r.barOffAtFirst && r.on, JSON.stringify(r));
+        check('kept edits: batch Auto crop keeps crops as edits, nothing written', r.autoKept && /check them, then Save/.test(r.autoToast), r.autoToast);
+        check('kept edits: pencil on edited photos; the bar counts them', r.badges && r.barCount === '2 edits not saved yet', r.barCount);
+        check('kept edits: thumbnail and viewer show the photo as it will be saved', r.thumbAspect > 1.33 && r.tileShows && inside(r.shown), `${r.thumbAspect} ${r.tileShows} ${r.shown}`);
+        check('kept edits: recrop opens on the whole photo at the kept crop', r.editorWhole && r.editorAtKept && r.doneLabel === 'Done');
+        check('kept edits: a new crop replaces the kept one, still nothing written', r.recropped && r.recropShown.join('x') === '600x400', String(r.recropShown));
+        check('kept edits: a turn is kept too; Ctrl+Z takes it back', r.turned && r.turnUndone);
+        check('kept edits: still there when the project is opened again', r.reloaded);
+        check('kept edits: export copies all photos with their edits, photos untouched', r.exported[0].join('x') === '600x400' && inside(r.exported[1]) && r.exported[2].join('x') === '300x400' && r.exportLeavesEdits, JSON.stringify(r.exported));
+        check('kept edits: save writes them into the photos (a turn losslessly), originals kept', r.saved[0].join('x') === '600x400' && inside(r.saved[1]) && r.saved[2].join('x') === '300x400' && r.plainLossless && r.savedClears && r.backups === 2, JSON.stringify(r.saved) + ' ' + r.backups);
+        check('kept edits: Ctrl+Z after saving puts the photos back with the edits kept', r.undoSave);
+        check('kept edits: turning it off can discard what is waiting', r.off);
+        check('kept edits suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+        }
+    }
+
+    // ---- 7s3. Undo history ----
+    console.log('undo history');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('history', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('history', { create: true });
+            for (const n of ['a.jpg', 'b.jpg', 'c.jpg']) {
+                const fh = await dir.getFileHandle(n, { create: true });
+                const w = await fh.createWritable(); await w.write(new Blob([await makeRealJpeg(120, 80)], { type: 'image/jpeg' })); await w.close();
+            }
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            app.setView('grid');
+            const f = (n) => app.files.find(x => x.name === n);
+            const key = (k, o = {}) => window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, ...o }));
+
+            out.button = !!document.querySelector('#header-controls [data-hc="history"]:not(.hidden):not(.hc-extra)');
+            key('h');
+            out.empty = History.isOpen() && !document.getElementById('history-empty').classList.contains('hidden');
+            key('Escape');
+            out.closed = !History.isOpen();
+
+            // Four steps: a star, a rename, a red label, a rotation
+            Flags.apply('star', [f('a.jpg')]);
+            await app.renameFile(f('b.jpg'), 'Smith_02.jpg');
+            Flags.apply('red', [f('c.jpg')]);
+            await app.rotateImage(f('c.jpg'), 90);
+            document.getElementById('btn-history').click();
+            const rows = () => [...document.querySelectorAll('#history-list .history-row')];
+            out.rows = rows().map(r => r.querySelector('.history-what').textContent + ':' + r.querySelector('.history-detail').textContent);
+
+            // Back to before the rename: asks first, then undoes three steps
+            let asked = null;
+            UI.confirm = async (o) => { asked = o; return false; };
+            rows()[2].click();
+            await sleep(50);
+            out.askedFirst = !!asked && asked.title === 'Go back 3 steps?' && asked.items.length === 3 && rows().length === 4 && !!f('Smith_02.jpg');
+            UI.confirm = async (o) => { asked = o; return true; };
+            rows()[2].click();
+            for (let i = 0; i < 100 && (History._running || rows().length !== 1); i++) await sleep(50);
+            out.wentBack = rows().length === 1 && !!f('b.jpg') && !Flags.has(f('c.jpg'), 'red') && Flags.has(f('a.jpg'), 'star') && !f('c.jpg').pendingRotation;
+            out.toast = [...document.querySelectorAll('.toast')].map(t => t.textContent).find(t => /Went back/.test(t)) || '';
+            out.left = rows().map(r => r.querySelector('.history-what').textContent).join();
+            // Info closes it
+            app.toggleInfoPanel(true);
+            out.infoCloses = !History.isOpen();
+            return out;
+        });
+        check('history: a toolbar button and H open it; empty says so; Esc closes', r.button && r.empty && r.closed, JSON.stringify(r));
+        check('history: every step, newest first, with what and which photo', JSON.stringify(r.rows) === JSON.stringify(['Rotation:c.jpg', 'Red label:c.jpg', 'Rename:b.jpg → Smith_02.jpg', 'Star:a.jpg']), JSON.stringify(r.rows));
+        check('history: clicking a step asks first, naming what is undone', r.askedFirst);
+        check('history: then goes back to before it, saying so once', r.wentBack && /Went back 3 steps/.test(r.toast) && r.left === 'Star', r.toast + ' ' + r.left);
+        check('history: Info closes it', r.infoCloses);
+        check('history suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

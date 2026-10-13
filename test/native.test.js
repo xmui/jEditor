@@ -198,6 +198,8 @@ const FAKE_NATIVE = `
         // Preview and crop: an 8.5 × 11.7 in glass with three prints on a pale lid
         async scanCaps(o) {
             window.__capsReq = o;
+            const special = window.__capsFor && window.__capsFor(o);
+            if (special) return special;
             // The FastFoto: a feeder (both sides); the OpticBook: a glass
             if (/EPSON/.test(o.device)) return { bedW: 8.5, bedH: 11.7, dpis: [75, 150, 300, 600, 1200], gray: true, guessed: false, flatbed: false, feeder: true, duplex: true, feedW: 8.5, feedH: 14 };
             return { bedW: 8.5, bedH: 11.7, dpis: [75, 150, 300, 600, 1200], gray: true, guessed: false, flatbed: true, feeder: false, duplex: false };
@@ -1007,6 +1009,50 @@ async function newPage(context, baseUrl) {
         await context.close();
     }
 
+    console.log('native: a scanner that only opens in Older TWAIN mode');
+    {
+        const context = await browser.newContext();
+        const { page, errors } = await newPage(context, baseUrl);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const $ = (id) => document.getElementById(id);
+            window.__scanners = { devices: [
+                { id: 'Plustek OpticBook A300 Plus-TWAIN', name: 'Plustek OpticBook A300 Plus-TWAIN', driver: 'twain' },
+                { id: 'Mystery Scanner', name: 'Mystery Scanner', driver: 'twain' }], problems: [] };
+            // The app found the OpticBook only opens in compatibility mode;
+            // the other one wouldn't say what it has at all
+            window.__capsFor = (o) => /OpticBook/.test(o.device)
+                ? { bedW: 8.5, bedH: 11.7, dpis: [75, 150, 300, 600], gray: true, guessed: false, flatbed: true, feeder: false, compat: true }
+                : { bedW: 8.27, bedH: 11.69, dpis: [75, 150, 300, 600], gray: true, guessed: false, flatbed: false, feeder: false };
+            const dir = await makeOrder('Book Order', 1);
+            await openOrder(dir);
+            $('btn-scan').click();
+            await wait(() => !$('scan-device').disabled && Scan.caps['Plustek OpticBook A300 Plus-TWAIN']);
+            await wait(() => $('scan-compat').checked);
+            out.kept = !!JSON.parse(localStorage.getItem('jeditor.scanCompat') || '{}')['Plustek OpticBook A300 Plus-TWAIN'];
+            out.checked = $('scan-compat').checked;
+            out.toast = [...document.querySelectorAll('.toast')].map(t => t.textContent).find(t => /Older TWAIN mode/.test(t)) || '';
+            out.glass = Scan.mode() === 'glass' && $('scan-mode-feeder').classList.contains('hidden');
+            // Asked again (next caps, preview, scan) in that mode
+            $('scan-device').value = 'Mystery Scanner';
+            $('scan-device').dispatchEvent(new Event('change'));
+            await wait(() => Scan.caps['Mystery Scanner']);
+            out.bothOffered = !$('scan-mode-glass').classList.contains('hidden') && !$('scan-mode-feeder').classList.contains('hidden') && Scan.mode() === 'glass';
+            $('scan-device').value = 'Plustek OpticBook A300 Plus-TWAIN';
+            $('scan-device').dispatchEvent(new Event('change'));
+            $('scan-go').click();
+            await wait(() => window.__previewReq);
+            out.previewCompat = window.__previewReq.compat === true;
+            Scan.close();
+            return out;
+        });
+        check('Older TWAIN mode found by the app is turned on for that scanner, and said', r.kept && r.checked && /OpticBook.*Older TWAIN mode/.test(r.toast), JSON.stringify(r));
+        check('... and used from then on', r.previewCompat && r.glass);
+        check('a scanner that won\'t say what it has gets both the glass and the feeder offered', r.bothOffered);
+        check('compat suite: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
     console.log('native: tethered shooting');
     {
         const context = await browser.newContext();
@@ -1272,6 +1318,15 @@ async function newPage(context, baseUrl) {
             $('sb-card').querySelector('[data-act="pin"]').click();
             await wait(() => [...side.querySelectorAll('.sb-pinned .fr-name')].some(n => n.textContent === 'Alpha'));
             out.pinned = Places.pins().map(p => p.name).join();
+            // Save edits when done, for this project: kept with its data on the PC
+            const deferBox = $('sb-card').querySelector('input[data-act="defer"]');
+            out.deferOff = !!deferBox && !deferBox.checked;
+            deferBox.click();
+            await wait(() => Edits.on());
+            await Edits.flush();
+            const kept = await store();
+            out.deferKept = JSON.parse(await (await (await kept.getFileHandle('edits.json')).getFile()).text()).defer === true &&
+                !$('edits-bar').classList.contains('hidden');
 
             // A drive opens out; a folder in it opens as the project
             rowOf(side, 'USB drive (E:)').querySelector('.sb-main').click();
@@ -1317,6 +1372,7 @@ async function newPage(context, baseUrl) {
         check('the project card: name, path, photos', /Alpha/.test(r.card) && /D:\\Orders\\Alpha/.test(r.card) && /\d photos/.test(r.card), r.card);
         check('the open project is marked in the list', r.active);
         check('card buttons: Explorer, Scan, Pin', r.revealed === 'D:\\Orders\\Alpha' && r.scanOpen && r.pinned === 'Alpha', JSON.stringify([r.revealed, r.scanOpen, r.pinned]));
+        check('card: Save edits when done turns on for the project, kept on the PC', r.deferOff && r.deferKept, JSON.stringify([r.deferOff, r.deferKept]));
         check('a drive opens out to its folders, in number order', r.inside === 'Order 9,Order 10', r.inside);
         check('browsing: clicking a folder only opens it out, it isn\'t loaded', r.browseOnly);
         check('... Open makes it the project, and so does a double-click', r.openedUsb === 'E:\\Order 9' && r.dblOpened === 'E:\\Order 10', JSON.stringify([r.openedUsb, r.dblOpened]));
