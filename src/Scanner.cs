@@ -176,6 +176,13 @@ sealed class Scanner : IDisposable
     // Each page as something that writes it to a file
     async IAsyncEnumerable<Action<string>> Pages(Request r, IntPtr owner, [EnumeratorCancellation] CancellationToken cancel)
     {
+        // Preview and crop (the test scanner too: its glass)
+        if (r.Crops is { Length: > 0 })
+        {
+            await foreach (var write in CroppedPages(r, owner, cancel)) yield return write;
+            yield break;
+        }
+
         if (r.DeviceId == FakeId && fake)
         {
             for (int i = 1; i <= FakePages; i++)
@@ -184,12 +191,6 @@ sealed class Scanner : IDisposable
                 var n = i;
                 yield return path => WriteFakePhoto(path, n);
             }
-            yield break;
-        }
-
-        if (r.Crops is { Length: > 0 })
-        {
-            await foreach (var write in CroppedPages(r, owner, cancel)) yield return write;
             yield break;
         }
 
