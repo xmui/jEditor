@@ -103,8 +103,11 @@ static class Updater
     // Runs the setup quietly; it waits for jEditor to close, then opens it
     public static void Install(string setup)
     {
-        Log.Write($"Running {setup}");
-        Process.Start(new ProcessStartInfo(setup, "/SILENT /SUPPRESSMSGBOXES /NORESTART /RELAUNCH=1") { UseShellExecute = true });
+        // Its log beside jEditor's; if it fails, it opens jEditor again
+        // (--update-failed) to say so
+        var log = Path.Combine(Path.GetDirectoryName(Log.Default())!, "setup.log");
+        Log.Write($"Running {setup} (log: {log})");
+        Process.Start(new ProcessStartInfo(setup, $"/SILENT /SUPPRESSMSGBOXES /NORESTART /RELAUNCH=1 \"/LOG={log}\"") { UseShellExecute = true });
     }
 
     static HttpClient MakeClient()

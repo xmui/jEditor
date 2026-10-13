@@ -1,6 +1,8 @@
 # Installs jEditor with its installer, checks it went in for this user only
-# (no admin locations), runs the smoke test on the installed copy, then
-# uninstalls and checks it's gone.
+# (no admin locations), runs the smoke test on the installed copy, updates
+# it the way jEditor's updater does while its files are still busy (they
+# must be waited for, not half-replaced and rolled back), then uninstalls
+# and checks it's gone.
 #
 #   ./scripts/install-test.ps1 -Setup dist\jEditor-Setup-<ver>.exe
 
@@ -29,6 +31,26 @@ Write-Host "Installed for this user: $dir"
 
 & (Join-Path $PSScriptRoot 'smoke-test.ps1') -Exe $exe
 if ($LASTEXITCODE -ne 0) { Fail "the smoke test failed on the installed copy" }
+
+# An update while jEditor is still letting go of its files: jEditor.exe is
+# held open (as by a process still exiting) for 4 s after the update starts
+Write-Host "Updating while jEditor.exe is still busy"
+$log = Join-Path $env:TEMP 'jeditor-update-test.log'
+$hold = [System.IO.File]::Open($exe, 'Open', 'Read', 'None')
+$started = Get-Date
+$u = Start-Process -FilePath $Setup -ArgumentList '/SILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$log" -PassThru
+Start-Sleep -Seconds 4
+$hold.Close()
+$u.WaitForExit()
+$took = ((Get-Date) - $started).TotalSeconds
+if ($u.ExitCode -ne 0) {
+    Get-Content $log -Tail 30 | ForEach-Object { Write-Host "  $_" }
+    Fail "the update exited with $($u.ExitCode) (rolled back?)"
+}
+if (Select-String -Path $log -Pattern 'Rolling back' -Quiet) { Fail "the update rolled back" }
+if (-not (Select-String -Path $log -Pattern 'Installation process succeeded' -Quiet)) { Fail "the update's log doesn't say it succeeded" }
+if ($took -lt 4) { Fail "the update didn't wait for jEditor.exe ($([int]$took) s)" }
+Write-Host "Update waited for the busy file and installed ($([int]$took) s)"
 
 Write-Host "Uninstalling"
 $uninstaller = (Get-ItemProperty $userKey).UninstallString.Trim('"')
