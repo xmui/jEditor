@@ -70,6 +70,8 @@
             reloadCss();
         } else if (msg.type === 'updateProgress' && onUpdateProgress) {
             onUpdateProgress(msg.received, msg.total);
+        } else if (msg.type === 'tether' && onTether) {
+            onTether(msg);
         } else if (msg.type === 'logLines' && onLogLines) {
             onLogLines(msg.lines || []);
         } else if (msg.type === 'scanned' && onScanned) {
@@ -177,6 +179,7 @@
     let onUpdateProgress = null;
     let onScanned = null;
     let onLogLines = null;
+    let onTether = null;
     window.JEditorNative = {
         // jEditor's storage on this PC: a folder handle, one subfolder per
         // order (see app/folder-cache.js)
@@ -287,6 +290,38 @@
             const { msg } = await answer('scanPreview', options);
             return msg.cancelled ? null : msg;
         },
+        // ---- Tethered shooting ----
+        // Cameras plugged in (Sony, over USB) → [{ id, name, ready, note }]
+        async cameras() {
+            return (await answer('cameras')).msg.cameras;
+        },
+        // A camera's photos into a folder of the project (its path), named
+        // prefix + next…: { camera, name, folder, prefix, next, digits,
+        // keepOnCard, live }. event({ kind, … }) as things happen:
+        // connected { name }, frame { image } (call tetherAck() once it's
+        // shown, for the next), saved { name }, status { text, error }.
+        // → { count, names } when it ends (tetherStop); throws if the camera
+        // went away or failed (with the names saved before)
+        async tether(options, event) {
+            onTether = event || null;
+            try {
+                const { msg } = await request('tether', options);
+                if (msg.error) {
+                    const e = new Error(msg.error);
+                    e.names = msg.names || [];
+                    throw e;
+                }
+                return { count: msg.count || 0, names: msg.names || [] };
+            } finally {
+                onTether = null;
+            }
+        },
+        tetherShoot() { post({ type: 'tetherShoot' }); },
+        tetherLive(on) { post({ type: 'tetherLive', on: !!on }); },
+        tetherAck() { post({ type: 'tetherAck' }); },
+        tetherStop() { post({ type: 'tetherStop' }); },
+        // { keepOnCard } and/or a new { folder, prefix, next, digits }
+        tetherSet(o) { post({ type: 'tetherSet', ...o }); },
         // ---- Windows: one project each ----
         // Another jEditor window, opening `path` (or the start screen)
         async newWindow(path) {
@@ -450,6 +485,33 @@
                         const inApp = () => c.names.filter(n => a.files.some(f => (f.relPath || f.name) === n)).length;
                         for (let i = 0; i < 75 && inApp() < c.names.length; i++) await new Promise(res => setTimeout(res, 200));
                     }
+                }
+            }
+            // Tethered shooting with the test camera: live view, a shot (RAW +
+            // JPEG under one number), into the folder, then disconnect
+            {
+                const cams = await window.JEditorNative.cameras();
+                const cam = cams.find(c => c.id === 'jeditor-test-camera');
+                const here = await window.JEditorNative.folderPath(a.dirHandle);
+                if (!cam || !here) {
+                    steps.tethered = !cam ? 'no test camera' : 'no path for the folder';
+                } else {
+                    let frames = 0, connected = false;
+                    const saved = [];
+                    const session = window.JEditorNative.tether({ camera: cam.id, name: cam.name, folder: here, prefix: 'shot_', next: 1, digits: 3, keepOnCard: true, live: true }, (e) => {
+                        if (e.kind === 'connected') connected = true;
+                        if (e.kind === 'frame') { frames++; window.JEditorNative.tetherAck(); }
+                        if (e.kind === 'saved') saved.push(e.name);
+                    });
+                    const until = async (ok) => { for (let i = 0; i < 75 && !ok(); i++) await new Promise(res => setTimeout(res, 200)); };
+                    await until(() => connected && frames >= 3);
+                    window.JEditorNative.tetherShoot();
+                    await until(() => saved.length >= 2);
+                    window.JEditorNative.tetherStop();
+                    const r = await session;
+                    await check('tethered', { names: r.names, saved, frames, connected });
+                    Watch.request({ full: true });
+                    await until(() => a.files.some(f => f.name === 'shot_001.jpg'));
                 }
             }
             // Details: the log's last lines, then new ones as they're written

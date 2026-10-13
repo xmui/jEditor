@@ -7,6 +7,7 @@ namespace JEditor;
 //     --smoke-test <dir>            open <dir>, rotate a photo, check it saved, exit 0 or 1
 //     --user-data <dir>             WebView2 profile (default %LOCALAPPDATA%\jEditor\WebView2)
 //     --fake-scanner                adds a test scanner that makes photos (also: the smoke test)
+//     --fake-camera                 adds a test camera for tethered shooting (also: the smoke test)
 //     --update-failed <log>         an update didn't install (the setup opens jEditor again with this)
 sealed class Options
 {
@@ -17,6 +18,7 @@ sealed class Options
     public string? SmokeDir { get; private set; }
     public string? UserDataDir { get; private set; }
     public bool FakeScanner { get; private set; }
+    public bool FakeCamera { get; private set; }
     public string? UpdateFailedLog { get; private set; }
 
     // For another window: the same, opening `folder` (or nothing), never
@@ -44,6 +46,7 @@ sealed class Options
                 case "--smoke-test": o.SmokeDir = Path.GetFullPath(Value()); break;
                 case "--user-data": o.UserDataDir = Path.GetFullPath(Value()); break;
                 case "--fake-scanner": o.FakeScanner = true; break;
+                case "--fake-camera": o.FakeCamera = true; break;
                 case "--update-failed": o.UpdateFailedLog = Value(); break;
                 default:
                     if (args[i].StartsWith("--")) throw new ArgumentException($"Unknown option {args[i]}");
@@ -55,6 +58,7 @@ sealed class Options
         {
             o.Folder = o.SmokeDir;
             o.FakeScanner = true;
+            o.FakeCamera = true;
         }
 
         ui ??= Environment.GetEnvironmentVariable("JEDITOR_UI");

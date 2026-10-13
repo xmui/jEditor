@@ -32,6 +32,9 @@ sealed class MainForm : Form
     CancellationTokenSource? scanning;
     Scanner Scanners => scanner ??= new Scanner(options.FakeScanner);
 
+    // Tethered shooting (Camera/Tether.cs): one camera at a time
+    Camera.Tether? tether;
+
     FileSystemWatcher? watcher;
     System.Windows.Forms.Timer? reloadTimer;
     bool reloadPage;
@@ -60,6 +63,7 @@ sealed class MainForm : Form
         {
             SavePlacement();
             scanning?.Cancel();
+            tether?.Stop();
         };
         FormClosed += (_, _) => scanner?.Dispose();
         Log.Line += LogLine;
@@ -358,6 +362,8 @@ sealed class MainForm : Form
             case "scan":
             case "scanCaps":
             case "scanPreview":
+            case "cameras":
+            case "tether":
             case "places":
             case "listDir":
             case "listProjects":
@@ -381,6 +387,25 @@ sealed class MainForm : Form
                 break;
             case "cancelScan":
                 scanning?.Cancel();
+                break;
+            case "tetherShoot":
+                tether?.Shoot();
+                break;
+            case "tetherLive":
+                tether?.Live(msg["on"]?.GetValue<bool>() ?? false);
+                break;
+            case "tetherAck":
+                tether?.FrameShown();
+                break;
+            case "tetherStop":
+                tether?.Stop();
+                break;
+            case "tetherSet":
+                if (tether is not null)
+                {
+                    if (msg["keepOnCard"] is JsonValue keep) tether.SetKeepOnCard(keep.GetValue<bool>());
+                    if (TetherTarget(msg) is { } target) tether.SetTarget(target);
+                }
                 break;
             case "logWatch":
                 followLog = msg["on"]?.GetValue<bool>() ?? false;
@@ -639,6 +664,15 @@ sealed class MainForm : Form
                 case "scanCaps":
                     await ScanCapsAsync(id, msg);
                     break;
+                case "cameras":
+                {
+                    var found = await Camera.Tether.FindAsync(options.FakeCamera);
+                    Reply(id, new { cameras = found.Select(c => new { id = c.Id, name = c.Name, ready = c.Ready, note = c.Note }) });
+                    break;
+                }
+                case "tether":
+                    await TetherAsync(id, msg);
+                    break;
                 case "scanPreview":
                     await ScanPreviewAsync(id, msg);
                     break;
@@ -808,6 +842,52 @@ sealed class MainForm : Form
         {
             scanning = null;
         }
+    }
+
+    // Tethered shooting: { camera, name, folder, prefix, next, digits,
+    // keepOnCard, live }. What happens is posted ({ type: 'tether', session:
+    // id, kind, … }: connected, frame, saved, status); the reply comes when
+    // it ends: { count, names, error? }
+    async Task TetherAsync(long id, JsonNode msg)
+    {
+        if (tether is not null) { Reply(id, new { error = "A camera is already connected in this window" }); return; }
+        if (TetherTarget(msg) is not { } target) { Reply(id, new { error = "The folder to save into isn't there" }); return; }
+        var cameraId = Str(msg, "camera") ?? "";
+        Camera.ICamera camera = cameraId == Camera.Tether.FakeId && options.FakeCamera
+            ? new Camera.FakeCamera()
+            : new Camera.SonyCamera(cameraId, Str(msg, "name") ?? "the camera");
+        var session = tether = new Camera.Tether(camera, target, msg["keepOnCard"]?.GetValue<bool>() ?? true, msg["live"]?.GetValue<bool>() ?? true, e =>
+        {
+            var node = JsonSerializer.SerializeToNode(e)!.AsObject();
+            node["type"] = "tether";
+            node["session"] = id;
+            try
+            {
+                // In order, before the reply (as scanned photos are)
+                if (!IsDisposed && IsHandleCreated) Invoke(() => PostIfReady(node));
+            }
+            catch (InvalidOperationException) { } // (closing)
+        });
+        try
+        {
+            Log.Write($"Tethering {cameraId} into {target.Folder}");
+            session.Start();
+            var why = await session.Done;
+            if (IsDisposed || web.CoreWebView2 is null) return; // the window closed
+            Reply(id, why is null ? new { count = session.Saved.Count, names = session.Saved } : (object)new { count = session.Saved.Count, names = session.Saved, error = why });
+        }
+        finally
+        {
+            tether = null;
+            session.Dispose();
+        }
+    }
+
+    static Camera.Tether.Target? TetherTarget(JsonNode msg)
+    {
+        var folder = Str(msg, "folder");
+        if (folder is null || !Path.IsPathFullyQualified(folder) || !Directory.Exists(folder)) return null;
+        return new Camera.Tether.Target(folder, CleanPrefix(Str(msg, "prefix")), msg["next"]?.GetValue<int>() ?? 1, msg["digits"]?.GetValue<int>() ?? 3);
     }
 
     // Only characters a file name can have

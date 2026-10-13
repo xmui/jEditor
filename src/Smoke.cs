@@ -51,6 +51,7 @@ sealed class Smoke
             "stored" => Stored(),
             "scanned" => Scanned(msg),
             "cropped" => Cropped(msg),
+            "tethered" => Tethered(msg),
             "windows" => AppWindows.All.Count >= 2 ? (true, null) : (false, $"{AppWindows.All.Count} window(s) open"),
             "moved" when path is not null => File.Exists(path) ? (true, null) : (false, $"{name} isn't there"),
             "back" when path is not null => File.Exists(path) && !File.Exists(Path.Combine(dir, "Moved", Path.GetFileName(path))) ? (true, null) : (false, $"{name} didn't come back"),
@@ -131,6 +132,27 @@ sealed class Smoke
         return (true, null);
     }
 
+    // Tethered shooting with the test camera: connected, live view frames,
+    // and one shot as RAW + JPEG under one number, the JPEG whole
+    (bool, string?) Tethered(JsonNode msg)
+    {
+        var names = (msg["names"] as JsonArray ?? []).Select(n => (string?)n ?? "").ToList();
+        if (msg["connected"]?.GetValue<bool>() != true) return (false, "the test camera never said it connected");
+        if ((msg["frames"]?.GetValue<int>() ?? 0) < 3) return (false, $"{msg["frames"]} live view frames");
+        if (!names.SequenceEqual(["shot_001.arw", "shot_001.jpg"])) return (false, $"saved as {string.Join(", ", names)}; expected shot_001.arw, shot_001.jpg");
+        if (!File.Exists(Path.Combine(dir, "shot_001.arw"))) return (false, "shot_001.arw isn't there");
+        try
+        {
+            using var img = System.Drawing.Image.FromFile(Path.Combine(dir, "shot_001.jpg"));
+            if (img.Width != 1200) return (false, $"shot_001.jpg is {img.Width} wide");
+        }
+        catch (Exception e)
+        {
+            return (false, $"shot_001.jpg isn't a readable photo: {e.Message}");
+        }
+        return Directory.EnumerateFiles(dir, "*.part").Any() ? (false, "a half-written photo was left in the folder") : (true, null);
+    }
+
     public async void Report(JsonNode msg)
     {
         var problems = new List<string>();
@@ -142,7 +164,7 @@ sealed class Smoke
         if (msg["steps"] is JsonObject steps)
         {
             Log.Write("Smoke steps: " + steps.ToJsonString());
-            foreach (var step in new[] { "stored", "recycled", "deleted", "restored", "scanned", "cropped", "logged", "places", "browsed", "projects", "counted", "pins", "windows", "moved", "unmoved", "back" })
+            foreach (var step in new[] { "stored", "recycled", "deleted", "restored", "scanned", "cropped", "tethered", "logged", "places", "browsed", "projects", "counted", "pins", "windows", "moved", "unmoved", "back" })
                 if (steps[step] is not JsonValue v || !v.TryGetValue<bool>(out var ok) || !ok) problems.Add($"{step}: {steps[step]?.ToJsonString() ?? "not reached"}");
             if (steps["error"] is not null) problems.Add("error: " + steps["error"]);
         }
