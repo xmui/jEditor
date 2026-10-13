@@ -18,6 +18,8 @@
 #endif
 
 [Setup]
+; Always a log (%TEMP%\Setup Log …, or /LOG=), for an update that goes wrong
+SetupLogging=yes
 ; Never change AppId: it's how an update finds the installed copy
 AppId={{3DE12F63-EDF7-4FD0-B174-E0BD0FA2421E}
 AppName=jEditor
@@ -105,4 +107,87 @@ end;
 function Relaunch(): Boolean;
 begin
   Result := WizardSilent and (ExpandConstant('{param:RELAUNCH|0}') = '1');
+end;
+
+// jEditor lets go of its mutex a moment before it has really exited, and
+// a running exe or a loaded DLL can't be replaced: an update that started
+// copying then failed and rolled back. So the files are waited for too.
+// A file is free once it can be opened by us alone.
+function IsFree(const Path: String): Boolean;
+var
+  S: TFileStream;
+begin
+  Result := True;
+  if not FileExists(Path) then exit;
+  try
+    S := TFileStream.Create(Path, fmOpenReadWrite or fmShareExclusive);
+    S.Free;
+  except
+    Result := False;
+  end;
+end;
+
+// jEditor.exe and the scanning files (NAPS2.*)
+function BusyFile(const Dir: String): String;
+var
+  F: TFindRec;
+begin
+  Result := '';
+  if not IsFree(Dir + '\jEditor.exe') then begin Result := 'jEditor.exe'; exit; end;
+  if FindFirst(Dir + '\NAPS2.*', F) then
+  try
+    repeat
+      if not IsFree(Dir + '\' + F.Name) then begin Result := F.Name; exit; end;
+    until not FindNext(F);
+  finally
+    FindClose(F);
+  end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Dir, Busy: String;
+  Waited: Integer;
+begin
+  Result := '';
+  Dir := ExpandConstant('{app}');
+  if not DirExists(Dir) then exit;
+  Waited := 0;
+  Busy := BusyFile(Dir);
+  while (Busy <> '') and (Waited < 60) do
+  begin
+    Sleep(500);
+    Waited := Waited + 1;
+    Busy := BusyFile(Dir);
+  end;
+  if Busy <> '' then
+  begin
+    Log('Still in use after 30 s: ' + Busy);
+    Result := 'jEditor is still running (' + Busy + ' is in use). Close it and try again.';
+  end;
+end;
+
+var
+  Installed: Boolean;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then Installed := True;
+end;
+
+// An update from jEditor that didn't install: jEditor (the version that was
+// there) opens again and says so, with this log
+procedure DeinitializeSetup();
+var
+  Code: Integer;
+  Exe: String;
+begin
+  if Installed or not Relaunch() then exit;
+  try
+    Exe := ExpandConstant('{app}\jEditor.exe');
+    if FileExists(Exe) then
+      Exec(Exe, '--update-failed "' + ExpandConstant('{log}') + '"', '', SW_SHOWNORMAL, ewNoWait, Code);
+  except
+    // Not far enough to know where jEditor is: nothing to open
+  end;
 end;

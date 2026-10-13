@@ -245,6 +245,16 @@ sealed class MainForm : Form
                 break;
             case "ready":
                 Log.Write($"jEditor {Str(msg, "version")} ready");
+                if (options.UpdateFailedLog is string setupLog)
+                {
+                    Log.Write($"The update didn't install; its log: {setupLog}");
+                    Post(new
+                    {
+                        type = "notice",
+                        title = "The update didn't install",
+                        text = $"jEditor is still on {Application.ProductVersion}; nothing was changed. Try again from Settings → Updates, or download the setup from the Releases page and run it with jEditor closed. What happened is in {setupLog}"
+                    });
+                }
                 if (pendingFolder is string folder)
                 {
                     pendingFolder = null;
