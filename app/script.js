@@ -85,8 +85,12 @@ const app = {
             }, false);
         });
 
-        document.body.addEventListener('dragenter', () => {
-            if (Folders.dragging) return; // photos dragged onto a folder, not files from outside
+        // Files from outside only: not photos onto a folder, a toolbar
+        // control being reordered in Settings, or text
+        const fromOutside = (e) => !Folders.dragging && !this._dragKey &&
+            !!e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+        document.body.addEventListener('dragenter', (e) => {
+            if (!fromOutside(e)) return;
             document.body.classList.add('drag-over');
             this.log('Drag Enter');
         });
@@ -97,7 +101,8 @@ const app = {
             }
         });
         document.body.addEventListener('drop', (e) => {
-            if (Folders.dragging) return;
+            document.body.classList.remove('drag-over');
+            if (!fromOutside(e)) return;
             this.log('Drop Event Fired!');
             this.handleDrop(e);
         });
@@ -707,7 +712,9 @@ const app = {
             li.addEventListener('dragstart', (e) => {
                 this._dragKey = key;
                 e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', key);
             });
+            li.addEventListener('dragend', () => { this._dragKey = null; });
             li.addEventListener('dragover', (e) => e.preventDefault());
             li.addEventListener('drop', (e) => {
                 e.preventDefault();

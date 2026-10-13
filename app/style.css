@@ -4673,8 +4673,33 @@ html.native {
     cursor: pointer;
 }
 
-.sb-pin {
+.sb-pin,
+.sb-open {
     opacity: 0;
+}
+
+.sb-open {
+    flex-shrink: 0;
+    height: 22px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-xs);
+    background: var(--tb-hover);
+    color: var(--text-1);
+    font: inherit;
+    font-size: var(--fs-small);
+    cursor: pointer;
+}
+
+.sb-row:hover .sb-open,
+.sb-open:focus-visible {
+    opacity: 1;
+}
+
+.sb-open:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
 }
 
 .sb-pin svg {

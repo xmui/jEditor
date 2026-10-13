@@ -5,6 +5,13 @@
 
 const CHANGELOG = [
     {
+        version: '1.24.1', date: '2026-10-13',
+        items: [
+            'Browsing in the sidebar no longer opens folders by mistake: in Pinned and This PC, clicking a folder only opens it out to show what\'s inside. Open (beside it when you point at it) or a double-click makes it the project. Projects in your projects folder still open with one click.',
+            'Settings: dragging toolbar controls to reorder them works again (it was taken for photos being dropped in).'
+        ]
+    },
+    {
         version: '1.24.0', date: '2026-10-13',
         items: [
             'Tethered shooting, like Lightroom\'s: Camera in the toolbar connects a Sony Alpha (A7 III, A7 IV and similar) over USB and shoots straight into the open project. Set the camera to PC Remote first: Menu → Network (or Setup) → USB Connection → PC Remote.',

@@ -58,6 +58,12 @@ const Places = {
         this.boxes = [this.el('sb-places'), this.el('start-places')].filter(Boolean);
         for (const box of this.boxes) {
             box.addEventListener('click', (e) => this.onClick(e));
+            // A double-click on a folder you're browsing opens it as the project
+            box.addEventListener('dblclick', (e) => {
+                const main = e.target.closest('.sb-main[data-act="toggle"]');
+                const row = main && main.closest('.sb-row');
+                if (row && row.dataset.path) this.open(row.dataset.path);
+            });
             box.addEventListener('auxclick', (e) => { if (e.button === 1) this.onClick(e); });
             box.addEventListener('input', (e) => {
                 if (!e.target.classList.contains('sb-search')) return;
@@ -195,10 +201,18 @@ const Places = {
             `</div>`;
     },
 
-    // A folder and, if opened out, what's inside it
+    // A folder and, if opened out, what's inside it. Clicking a project
+    // (opts.project) opens it; any other folder only opens out, so browsing
+    // (a drive, the folder all the projects are in) never loads one by
+    // mistake: Open (or a double-click) makes it the project
     async tree(path, name, depth, opts = {}) {
         const open = this.expanded.has(this.key(path));
-        let html = this.row({ path, name, icon: opts.icon || this.icons.folder, depth, caret: true, open, count: opts.count !== false, ...opts.row });
+        const row = { ...(opts.row || {}) };
+        if (!opts.project) {
+            row.act = 'toggle';
+            row.extra = `<button class="sb-open" data-act="open" title="Open ${this.esc(name)} as the project (or double-click it; Ctrl+click: in a new window)">Open</button>` + (row.extra || '');
+        }
+        let html = this.row({ path, name, icon: opts.icon || this.icons.folder, depth, caret: true, open, count: opts.count !== false, ...row });
         if (open) {
             const l = await this.listing(path);
             const kids = (l.folders || []).slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
@@ -217,7 +231,7 @@ const Places = {
         const shown = q || this.showAll ? list : list.slice(0, this.SHOWN);
         let html = '';
         for (const p of shown) {
-            html += await this.tree(p.path, p.name, 0, { icon: this.icons.project, row: { meta: this.when(p.modified), pin: this.isPinned(p.path) } });
+            html += await this.tree(p.path, p.name, 0, { project: true, icon: this.icons.project, row: { meta: this.when(p.modified), pin: this.isPinned(p.path) } });
         }
         if (!list.length) html += `<p class="sb-help">${q ? 'No project matches' : 'No projects in this folder yet'}</p>`;
         if (!q && !this.showAll && list.length > shown.length) html += `<button class="link-btn sb-more" data-act="all">Show all ${list.length.toLocaleString()}</button>`;

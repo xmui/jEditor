@@ -1170,10 +1170,19 @@ async function newPage(context, baseUrl) {
             rowOf(side, 'USB drive (E:)').querySelector('.sb-main').click();
             await wait(() => rowOf(side, 'Order 9'));
             out.inside = names(side).filter(n => /^Order/.test(n)).join();
+            // Browsing: a click only opens a folder out, never loads it
             window.__opened = null;
             rowOf(side, 'Order 9').querySelector('.sb-main').click();
+            await new Promise(r => setTimeout(r, 200));
+            out.browseOnly = window.__opened === null;
+            // Open makes it the project; so does a double-click
+            rowOf(side, 'Order 9').querySelector('.sb-open').click();
             await wait(() => window.__opened);
             out.openedUsb = window.__opened;
+            window.__opened = null;
+            rowOf(side, 'Order 10').querySelector('.sb-main').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+            await wait(() => window.__opened);
+            out.dblOpened = window.__opened;
 
             // Sections fold away, and stay folded
             side.querySelector('[data-act="section"][data-sec="pinned"]').click();
@@ -1202,7 +1211,8 @@ async function newPage(context, baseUrl) {
         check('the open project is marked in the list', r.active);
         check('card buttons: Explorer, Scan, Pin', r.revealed === 'D:\\Orders\\Alpha' && r.scanOpen && r.pinned === 'Alpha', JSON.stringify([r.revealed, r.scanOpen, r.pinned]));
         check('a drive opens out to its folders, in number order', r.inside === 'Order 9,Order 10', r.inside);
-        check('a folder on it opens as the project', r.openedUsb === 'E:\\Order 9', r.openedUsb);
+        check('browsing: clicking a folder only opens it out, it isn\'t loaded', r.browseOnly);
+        check('... Open makes it the project, and so does a double-click', r.openedUsb === 'E:\\Order 9' && r.dblOpened === 'E:\\Order 10', JSON.stringify([r.openedUsb, r.dblOpened]));
         check('sections fold away and stay folded', r.folded);
         check('a USB drive plugged in is offered and marked New', /Backup \(F:\) plugged in/.test(r.toast) && r.isNew, JSON.stringify([r.toast, r.isNew]));
         check('Eject ejects it and says so', r.ejected === 'F:\\' && r.ejectToast, JSON.stringify([r.ejected, r.ejectToast]));
