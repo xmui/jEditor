@@ -11,6 +11,7 @@ const CHANGELOG = [
             'Projects: every project in your projects folder (chosen the first time; click its name to change it), newest first, with how many photos and when each last changed, and a search box. Projects opened from elsewhere are listed under them. Click one to open it.',
             'Pinned: folders you pin (the pin beside any folder), and the folders pinned in Explorer\'s Quick Access. This PC: the drives, which open out like Explorer\'s. A USB drive plugged in is marked New, and can be ejected from here.',
             'The start screen shows the same projects, pinned folders and drives.',
+            'A folder with no photos in it opens, ready to scan into or fill from Explorer, instead of saying No photos found. Deleting the last photo keeps the project open too.',
             'Order is now project everywhere on screen.'
         ]
     },

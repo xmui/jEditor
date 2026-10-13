@@ -1057,6 +1057,7 @@ header {
 
 /* Empty and no-match states */
 .grid-view.grid-empty::after,
+.grid-view.grid-empty-project::after,
 .grid-view.grid-no-match::after {
     grid-column: 1 / -1;
     justify-self: center;
@@ -1073,6 +1074,14 @@ header {
 
 .grid-view.grid-empty::after {
     content: 'No photos here yet. Drag photos onto this folder in the folder list, or select some in All photos and press M.';
+}
+
+.grid-view.grid-empty-project::after {
+    content: 'No photos here yet. Add some in Explorer, or drop them here, and they show up as they arrive.';
+}
+
+html.native .grid-view.grid-empty-project::after {
+    content: 'No photos here yet. Scan into this project (Scan, at the top), or add photos in Explorer: they show up as they arrive.';
 }
 
 .grid-view.grid-no-match::after {

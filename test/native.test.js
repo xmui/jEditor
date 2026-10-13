@@ -622,6 +622,44 @@ async function newPage(context, baseUrl) {
         await context.close();
     }
 
+    console.log('native: an empty folder opens, to scan into');
+    {
+        const context = await browser.newContext();
+        const { page, errors } = await newPage(context, baseUrl);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const $ = (id) => document.getElementById(id);
+            const dir = await (await opfs('disk')).getDirectoryHandle('Empty Project', { create: true });
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            await wait(() => !app.isLoading);
+            out.open = !$('main-interface').classList.contains('hidden') && $('drop-zone').classList.contains('hidden');
+            out.noAlert = !UI.isOpen();
+            out.message = getComputedStyle($('grid-view'), '::after').content;
+            out.view = app.viewMode;
+            // Scan into it: the photos show up
+            window.__scanPages = 2;
+            const scanned = await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '' });
+            await wait(() => app.files.length === 2);
+            out.names = scanned.names.join();
+            out.files = app.files.length;
+            out.noMessage = !$('grid-view').classList.contains('grid-empty-project');
+            // Every photo deleted: it stays open, empty
+            window.__noBin = false;
+            await app.moveToTrash([...app.files]);
+            await wait(() => app.files.length === 0);
+            out.stillOpen = !$('main-interface').classList.contains('hidden') && $('drop-zone').classList.contains('hidden');
+            out.emptyAgain = $('grid-view').classList.contains('grid-empty-project');
+            return out;
+        });
+        check('an empty folder opens as an empty project, no "No photos found"', r.open && r.noAlert && r.view === 'grid', JSON.stringify(r));
+        check('... saying how to fill it (Scan)', /Scan into this project/.test(r.message), r.message);
+        check('scanning into it shows the photos', r.names === 'Empty-001.jpg,Empty-002.jpg' && r.files === 2 && r.noMessage, JSON.stringify([r.names, r.files, r.noMessage]));
+        check('deleting every photo keeps it open, empty', r.stillOpen && r.emptyAgain, JSON.stringify([r.stillOpen, r.emptyAgain]));
+        check('empty project suite: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
     console.log('native: the sidebar (projects, pinned, This PC)');
     {
         const context = await browser.newContext();

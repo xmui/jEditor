@@ -531,7 +531,7 @@ const Watch = {
                 nextStrip = item;
             }
         });
-        grid.classList.remove('grid-empty');
+        grid.classList.remove('grid-empty', 'grid-empty-project');
         Folders.render();
         if (!Folders.inView(app.currentFile) && view.length) app.setCurrent(view[0]);
         else if (app.currentFile) app.updateFileCount();

@@ -1180,6 +1180,22 @@ const app = {
                 const nested = this._nestedJeditor || [];
                 this._nestedJeditor = null;
                 if (nested.length && this.dirHandle && !this.readOnlyMode) FolderCache.absorbNested(this, nested);
+            } else if (this.dirHandle && !this.readOnlyMode) {
+                // No photos yet: it opens anyway, to scan into, make folders
+                // in, or fill from elsewhere (they show up as they land)
+                this._openScope = null;
+                this.selection.clear();
+                this.currentFile = null;
+                this.elements.mainInterface.classList.remove('hidden');
+                this.elements.mainInterface.setAttribute('tabindex', '-1');
+                this.elements.mainInterface.focus();
+                this.renderThumbnails();
+                this.renderGrid();
+                this.setView('grid');
+                Folders.showEmptyHeader();
+                Recents.remember(this.dirHandle);
+                await Flags.load();
+                Watch.start();
             } else {
                 UI.alert({
                     title: 'No photos found',
@@ -2086,7 +2102,9 @@ const app = {
         const files = this.viewFiles();
         const folderTiles = Folders.folderTiles();
         this.elements.gridView.append(...folderTiles);
-        this.elements.gridView.classList.toggle('grid-empty', !files.length && !folderTiles.length && Folders.scope !== null);
+        this.elements.gridView.classList.toggle('grid-empty', !files.length && !folderTiles.length && Folders.scope !== null && this.files.length > 0);
+        // A project with no photos at all yet
+        this.elements.gridView.classList.toggle('grid-empty-project', !this.files.length && !folderTiles.length);
         this.elements.gridView.classList.toggle('grid-no-match', !files.length && Flags.active());
         Folders.render();
 
@@ -4728,7 +4746,13 @@ const app = {
             if (f._stripEl) f._stripEl.remove();
         }
 
-        if (this.files.length === 0) {
+        if (this.files.length === 0 && this.dirHandle && !this.readOnlyMode) {
+            // The last photo went: the project stays open, empty
+            this.currentFile = null;
+            this.setView('grid');
+            this.renderGrid();
+            Folders.showEmptyHeader();
+        } else if (this.files.length === 0) {
             this.currentFile = null;
             this.updateStatusBar();
             this.elements.mainInterface.classList.add('hidden');
