@@ -911,7 +911,7 @@ async function newPage(browser, url) {
             const out = {};
             localStorage.removeItem('jeditor.ui');
 
-            // Default pill: info, view, refresh, crop visible; rest in "More"
+            // Default pill: info, view, refresh, crop, history visible; rest in "More"
             const hc = document.getElementById('header-controls');
             const visible = [...hc.querySelectorAll('[data-hc]')]
                 .filter(b => !b.classList.contains('hc-extra') && !b.classList.contains('hidden') && getComputedStyle(b).display !== 'none')
@@ -926,7 +926,7 @@ async function newPage(browser, url) {
             // Placement + order + vertical + scale via prefs
             app.uiPrefs.placement.fullscreen = 'main';
             app.uiPrefs.placement.refresh = 'hidden';
-            app.uiPrefs.order = ['crop', 'info', 'view', 'refresh', 'fit', 'strip', 'fullscreen', 'customize'];
+            app.uiPrefs.order = ['crop', 'info', 'view', 'refresh', 'history', 'fit', 'strip', 'fullscreen', 'customize'];
             app.uiPrefs.vertical = true;
             app.uiPrefs.scale = 1.2;
             app.saveUiPrefs();
@@ -975,7 +975,7 @@ async function newPage(browser, url) {
             out.pillHidden = pill.classList.contains('hidden');
             return out;
         });
-        check('default main controls: info, view, refresh, crop', r.defaultMain === 'info,view,refresh,crop', r.defaultMain);
+        check('default main controls: info, view, refresh, crop, history', r.defaultMain === 'info,view,refresh,crop,history', r.defaultMain);
         check('extras live in More (fit, strip, fullscreen, dupes, keys, whatsnew, customize)', r.defaultExtras === 'fit,strip,fullscreen,dupes,keys,whatsnew,customize', r.defaultExtras);
         check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
         check('reorder + hide + promote via prefs', r.reordered === 'crop,info' && r.refreshHidden && r.fullscreenMain,
@@ -3255,8 +3255,9 @@ async function newPage(browser, url) {
             // Kept with the project: open it again and they're back
             await until(async () => { const k = await kept(); return k && Object.keys(k.edits).length === 3; });
             await app.openDirectory(dir);
-            await until(() => app.files.length === 3);
-            out.reloaded = Edits.on() && !!f('scan1.jpg')._edit && f('scan1.jpg')._edit.angle === 0 && f('plain.jpg')._edit.q === 3 && /3 edits/.test(barText());
+            // (kept edits can come a moment after the photos)
+            await until(() => app.files.length === 3 && Edits.count() === 3);
+            out.reloaded = Edits.on() && !!f('scan1.jpg')._edit && f('scan1.jpg')._edit.angle === 0 && !!f('plain.jpg')._edit && f('plain.jpg')._edit.q === 3 && /3 edits/.test(barText());
 
             // Export copies: every photo, the edited ones with their edits
             UI.choose = async () => 'alt';
@@ -3305,6 +3306,67 @@ async function newPage(browser, url) {
         check('kept edits: Ctrl+Z after saving puts the photos back with the edits kept', r.undoSave);
         check('kept edits: turning it off can discard what is waiting', r.off);
         check('kept edits suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7s3. Undo history ----
+    console.log('undo history');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('history', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('history', { create: true });
+            for (const n of ['a.jpg', 'b.jpg', 'c.jpg']) {
+                const fh = await dir.getFileHandle(n, { create: true });
+                const w = await fh.createWritable(); await w.write(new Blob([await makeRealJpeg(120, 80)], { type: 'image/jpeg' })); await w.close();
+            }
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            app.setView('grid');
+            const f = (n) => app.files.find(x => x.name === n);
+            const key = (k, o = {}) => window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, ...o }));
+
+            out.button = !!document.querySelector('#header-controls [data-hc="history"]:not(.hidden):not(.hc-extra)');
+            key('h');
+            out.empty = History.isOpen() && !document.getElementById('history-empty').classList.contains('hidden');
+            key('Escape');
+            out.closed = !History.isOpen();
+
+            // Four steps: a star, a rename, a red label, a rotation
+            Flags.apply('star', [f('a.jpg')]);
+            await app.renameFile(f('b.jpg'), 'Smith_02.jpg');
+            Flags.apply('red', [f('c.jpg')]);
+            await app.rotateImage(f('c.jpg'), 90);
+            document.getElementById('btn-history').click();
+            const rows = () => [...document.querySelectorAll('#history-list .history-row')];
+            out.rows = rows().map(r => r.querySelector('.history-what').textContent + ':' + r.querySelector('.history-detail').textContent);
+
+            // Back to before the rename: asks first, then undoes three steps
+            let asked = null;
+            UI.confirm = async (o) => { asked = o; return false; };
+            rows()[2].click();
+            await sleep(50);
+            out.askedFirst = !!asked && asked.title === 'Go back 3 steps?' && asked.items.length === 3 && rows().length === 4 && !!f('Smith_02.jpg');
+            UI.confirm = async (o) => { asked = o; return true; };
+            rows()[2].click();
+            for (let i = 0; i < 100 && (History._running || rows().length !== 1); i++) await sleep(50);
+            out.wentBack = rows().length === 1 && !!f('b.jpg') && !Flags.has(f('c.jpg'), 'red') && Flags.has(f('a.jpg'), 'star') && !f('c.jpg').pendingRotation;
+            out.toast = [...document.querySelectorAll('.toast')].map(t => t.textContent).find(t => /Went back/.test(t)) || '';
+            out.left = rows().map(r => r.querySelector('.history-what').textContent).join();
+            // Info closes it
+            app.toggleInfoPanel(true);
+            out.infoCloses = !History.isOpen();
+            return out;
+        });
+        check('history: a toolbar button and H open it; empty says so; Esc closes', r.button && r.empty && r.closed, JSON.stringify(r));
+        check('history: every step, newest first, with what and which photo', JSON.stringify(r.rows) === JSON.stringify(['Rotation:c.jpg', 'Red label:c.jpg', 'Rename:b.jpg → Smith_02.jpg', 'Star:a.jpg']), JSON.stringify(r.rows));
+        check('history: clicking a step asks first, naming what is undone', r.askedFirst);
+        check('history: then goes back to before it, saying so once', r.wentBack && /Went back 3 steps/.test(r.toast) && r.left === 'Star', r.toast + ' ' + r.left);
+        check('history: Info closes it', r.infoCloses);
+        check('history suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

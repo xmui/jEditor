@@ -209,6 +209,7 @@ const app = {
         Windows.init(this);
         Flags.init(this);
         Edits.init(this);
+        History.init(this);
         Watch.init(this);
         this.initContextMenu();
         this.initRubberBand();
@@ -352,6 +353,7 @@ const app = {
         view: 'Grid / single view',
         refresh: 'Rescan folder',
         crop: 'Crop and straighten',
+        history: 'Undo history',
         fit: 'Thumbnail fit',
         strip: 'Film strip',
         fullscreen: 'Full screen',
@@ -371,9 +373,9 @@ const app = {
 
     defaultUiPrefs() {
         return {
-            order: ['scan', 'camera', 'info', 'view', 'refresh', 'crop', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'whatsnew', 'customize'],
+            order: ['scan', 'camera', 'info', 'view', 'refresh', 'crop', 'history', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'whatsnew', 'customize'],
             placement: { // 'main' | 'more' | 'hidden'
-                scan: 'main', camera: 'main', info: 'main', view: 'main', refresh: 'main', crop: 'main',
+                scan: 'main', camera: 'main', info: 'main', view: 'main', refresh: 'main', crop: 'main', history: 'main',
                 fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', keys: 'more', whatsnew: 'more', customize: 'more'
             },
             vertical: false,
@@ -1518,6 +1520,7 @@ const app = {
         if (!panel) return;
         const open = forceOpen !== null ? forceOpen : panel.classList.contains('hidden');
         panel.classList.toggle('hidden', !open);
+        if (open && History.isOpen()) History.toggle(false);
         this._infoOpen = open;
         this._infoTarget = open ? target : null;
         if (open) this.refreshInfoPanel();
@@ -3376,6 +3379,8 @@ const app = {
     },
 
     showToast(message, duration = 3000, key = null, action = null, opts = {}) {
+        // Going back several steps (history.js) says so once, at the end
+        if (this._quietToasts) return;
         let stack = document.getElementById('toast-stack');
         if (!stack) {
             stack = document.createElement('div');
@@ -3505,6 +3510,7 @@ const app = {
         ['edit.rename', 'global', 'Edit', 'Rename (the selection in grid view)', ['F2']],
         ['edit.trash', 'global', 'Edit', 'Move to trash', ['Delete']],
         ['edit.undo', 'global', 'Edit', 'Undo', ['Ctrl+Z']],
+        ['edit.history', 'global', 'Edit', 'Undo history: go back several steps', ['H']],
         ['edit.selectAll', 'global', 'Edit', 'Select all (grid)', ['Ctrl+A']],
         ['flag.star', 'global', 'Flags', 'Star / unstar', ['P']],
         ['flag.rescan', 'global', 'Flags', 'Needs rescan on / off', ['X']],
@@ -3586,6 +3592,7 @@ const app = {
             'edit.trash': () => this.moveToTrash(grid() && this.selection.size
                 ? [...this.selection] : [this.currentFile]),
             'edit.undo': () => this.undo(),
+            'edit.history': () => History.toggle(),
             'edit.selectAll': () => {
                 if (!grid()) return false;
                 this.selection = new Set(this.viewFiles());
@@ -3805,6 +3812,11 @@ const app = {
         if (combo === 'Escape' && document.getElementById('context-menu')) {
             e.preventDefault();
             this.closeContextMenu();
+            return;
+        }
+        if (combo === 'Escape' && History.isOpen()) {
+            e.preventDefault();
+            History.toggle(false);
             return;
         }
 
@@ -4256,7 +4268,7 @@ const app = {
         // One undo step for the whole selection (added to the history now,
         // filled as each photo is saved)
         let batchDone;
-        const group = { type: 'group', label: 'rotation', items: [], done: new Promise(res => { batchDone = res; }) };
+        const group = { type: 'group', label: 'rotation', items: [], count: filesToRotate.length, done: new Promise(res => { batchDone = res; }) };
         if (filesToRotate.length > 1) {
             this.pushUndo(group);
             for (const file of filesToRotate) file._undoGroup = group;
@@ -4572,9 +4584,11 @@ const app = {
     pushUndo(entry) {
         if (!this._undoStack) this._undoStack = [];
         const stack = this._undoStack;
+        if (!entry.at) entry.at = Date.now(); // for the undo history (history.js)
         stack.push(entry);
         while (stack.length > this.UNDO_LIMIT ||
             (stack.length > 1 && this.undoBytes() > this.UNDO_MAX_BYTES)) stack.shift();
+        History.changed();
     },
 
     undoBytes() {
@@ -4582,12 +4596,16 @@ const app = {
         return (this._undoStack || []).reduce((n, e) => n + size(e), 0);
     },
 
+    // The newest step taken back. True when it was (the undo history
+    // goes back several steps through this)
     async undo() {
         const entry = (this._undoStack || []).pop();
+        this._undoError = null;
         if (!entry) {
             this.showToast('Nothing to undo');
-            return;
+            return false;
         }
+        History.changed();
         try {
             if (entry.type === 'bytes') {
                 await this.undoFileEdit(entry);
@@ -4643,8 +4661,13 @@ const app = {
             }
         } catch (e) {
             console.error('Undo failed:', e);
+            this._undoError = e.message;
             this.showToast('Undo failed: ' + e.message);
+            return false;
+        } finally {
+            History.changed();
         }
+        return true;
     },
 
     // A file's bytes changed outside the rotation pipeline (undo/restore):
