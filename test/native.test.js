@@ -142,6 +142,9 @@ const FAKE_NATIVE = `
         },
         cancelScan() { window.__cancelled = true; if (window.__unhang) window.__unhang(); },
         async showLog() { window.__logShown = true; return true; },
+        async logTail() { return { lines: ['10:00:00.000 jEditor 1.0 ready', '10:00:01.000 naps2 Debug: Twain init'], file: 'log' }; },
+        // The app's side: window.__logPush(lines) as it writes them
+        watchLog(fn) { window.__logWatch = !!fn; window.__logPush = fn; },
         // Drives and folders: paths use BS (a backslash) to stay readable here
         async places() { return { drives: window.__drives, home: [{ name: 'Desktop', path: 'C:' + BS + 'Users' + BS + 'lab' + BS + 'Desktop' }] }; },
         async listDir(p) {
@@ -633,6 +636,18 @@ async function newPage(context, baseUrl) {
             await wait(() => !Scan.running);
             out.more = window.__scanReq.prefix + window.__scanReq.next + '.jpg';
 
+            // Details: the log so far, then new lines as the app writes them
+            out.detailsOff = $('scan-log').classList.contains('hidden');
+            $('scan-details').click();
+            await wait(() => $('scan-log').querySelectorAll('.log-lines div').length >= 2);
+            // (a line it already had isn't shown twice)
+            window.__logPush(['10:00:01.000 naps2 Debug: Twain init', '10:00:02.000 naps2 Debug: Twain open', '10:00:03.000 Scan failed: device error']);
+            await wait(() => $('scan-log').querySelectorAll('.log-lines div').length >= 4);
+            const lines = [...$('scan-log').querySelectorAll('.log-lines div')];
+            out.details = { lines: lines.map(d => d.textContent), err: lines[lines.length - 1].className, dim: lines[1].className, watching: window.__logWatch, pressed: $('scan-details').getAttribute('aria-pressed') };
+            $('scan-details').click();
+            out.detailsHidden = $('scan-log').classList.contains('hidden') && window.__logWatch === false;
+
             // The scanner stops with an error: says so, and what was saved
             window.__scanError = 'The scanner is busy (is another program using it?)';
             await wait(() => app.files.some(f => f.name === 'photo6.jpg'));
@@ -641,6 +656,7 @@ async function newPage(context, baseUrl) {
             out.alert = $('uid-title').textContent + ' — ' + $('uid-text').textContent;
             $('uid-ok').click();
             out.running = Scan.running;
+            out.detailsOnError = !$('scan-log').classList.contains('hidden') && window.__logWatch;
             window.__scanError = null;
 
             // A scanner that never shows its window: Stop ends it
@@ -690,6 +706,10 @@ async function newPage(context, baseUrl) {
         check('while scanning, the dock offers Stop; closing it only makes it small', r.stopOffered && r.small, JSON.stringify([r.stopOffered, r.small]));
         check('Stop ends a scan whose window never shows', r.stopped && r.stopToast === 'Scan stopped', JSON.stringify([r.stopped, r.stopToast]));
         check('Settings: Show log', r.log);
+        check('Details: off to start with; shows the log so far, then new lines as they come', r.detailsOff && r.details.lines.length === 4 && /device error/.test(r.details.lines[3]) && r.details.watching && r.details.pressed === 'true', JSON.stringify(r.details));
+        check('... errors stand out, the scanner driver\'s chatter is dimmed', r.details.err === 'err' && r.details.dim === 'dim', JSON.stringify(r.details));
+        check('... and it stops following the log when closed', r.detailsHidden);
+        check('... and opens by itself when a scan fails', r.detailsOnError);
         check('no scanners: says so and what to check', /No scanners found/.test(r.none) && /plugged in/.test(r.none) && /TWAINDSM/.test(r.none) && r.noneDisabled, r.none);
         check('scan suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();

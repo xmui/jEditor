@@ -62,6 +62,40 @@ sealed class MainForm : Form
             scanning?.Cancel();
         };
         FormClosed += (_, _) => scanner?.Dispose();
+        Log.Line += LogLine;
+        FormClosed += (_, _) => Log.Line -= LogLine;
+    }
+
+    // The scan dock's Details: new log lines, sent on in small batches while
+    // it shows ({ type: 'logLines', lines })
+    bool followLog;
+    readonly System.Collections.Concurrent.ConcurrentQueue<string> logLines = new();
+    int logSending; // 1 while a batch is on its way
+
+    void LogLine(string line)
+    {
+        if (!followLog) return;
+        logLines.Enqueue(line);
+        if (Interlocked.Exchange(ref logSending, 1) == 1) return;
+        _ = Task.Delay(150).ContinueWith(_ =>
+        {
+            try
+            {
+                if (!IsDisposed && IsHandleCreated) { BeginInvoke(SendLogLines); return; }
+            }
+            catch (InvalidOperationException) { }
+            logSending = 0;
+        });
+    }
+
+    void SendLogLines()
+    {
+        Interlocked.Exchange(ref logSending, 0);
+        var lines = new List<string>();
+        while (logLines.TryDequeue(out var line)) lines.Add(line);
+        // (Not to another page: Post would log that, and round it goes)
+        if (lines.Count > 0 && followLog && web.CoreWebView2 is not null && IsOurs(Core.Source))
+            Post(new { type = "logLines", lines });
     }
 
     async Task StartAsync()
@@ -331,6 +365,7 @@ sealed class MainForm : Form
             case "reveal":
             case "pickPath":
             case "showLog":
+            case "logTail":
             case "newWindow":
             case "split":
             case "windows":
@@ -344,6 +379,10 @@ sealed class MainForm : Form
                 break;
             case "cancelScan":
                 scanning?.Cancel();
+                break;
+            case "logWatch":
+                followLog = msg["on"]?.GetValue<bool>() ?? false;
+                if (!followLog) logLines.Clear();
                 break;
             case "log":
                 Log.Write($"page {Str(msg, "level")}: {Str(msg, "text")}");
@@ -569,6 +608,9 @@ sealed class MainForm : Form
                     Reply(id, new { ok });
                     break;
                 }
+                case "logTail":
+                    Reply(id, new { lines = Log.Recent(), file = Log.Default() });
+                    break;
                 case "pickPath":
                 {
                     using var dialog = new FolderBrowserDialog

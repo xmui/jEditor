@@ -26,6 +26,7 @@
     <script src="recents.js"></script>
     <script src="stored.js"></script>
     <script src="updates.js"></script>
+    <script src="logview.js"></script>
     <script src="scan.js"></script>
     <script src="places.js"></script>
     <script src="windows.js"></script>
@@ -698,6 +699,9 @@
         <div id="scan-head" class="scan-dock-head" title="Drag to move">
             <span class="scan-dot" aria-hidden="true"></span>
             <h2 id="scan-title" class="scan-dock-title">Scan into this project</h2>
+            <button id="scan-details" type="button" class="btn ghost icon sm" title="Details: what the scanner is doing" aria-label="Details" aria-pressed="false">
+                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>
+            </button>
             <button id="scan-min" type="button" class="btn ghost icon sm" title="Make small" aria-label="Make small">
                 <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
             </button>
@@ -740,6 +744,15 @@
                 <div id="scan-summary" class="scan-summary"></div>
                 <div id="scan-strip" class="scan-strip" aria-label="The last photos scanned"></div>
                 <div id="scan-status" class="scan-status" role="status"></div>
+            </div>
+            <div id="scan-log" class="log-view hidden" aria-label="Details">
+                <div class="log-view-head">
+                    <span>Details</span>
+                    <span class="scan-grow"></span>
+                    <button type="button" class="btn ghost sm" data-log="copy" title="Copy these lines, to send them on">Copy</button>
+                    <button type="button" class="btn ghost sm" data-log="file" title="Show the whole log in Explorer">Log file</button>
+                </div>
+                <div class="log-lines" tabindex="0"></div>
             </div>
             <div class="scan-dock-foot">
                 <button id="scan-stop" type="button" class="btn secondary">Stop</button>

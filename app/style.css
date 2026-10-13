@@ -4100,6 +4100,53 @@ html:not(.native) .native-only {
     margin: 0;
 }
 
+#scan-details[aria-pressed="true"] {
+    color: var(--accent);
+    background: var(--accent-soft, transparent);
+}
+
+/* Details: the app's log, live (logview.js) */
+.log-view {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1, 4px);
+    margin: 0 var(--sp-3) var(--sp-3);
+}
+
+.log-view.hidden {
+    display: none;
+}
+
+.log-view-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1, 4px);
+    font-size: var(--fs-small);
+    color: var(--text-2);
+}
+
+.log-lines {
+    height: 180px;
+    overflow: auto;
+    padding: 6px 8px;
+    border-radius: var(--r-sm, 6px);
+    border: 1px solid var(--border);
+    background: rgba(0, 0, 0, 0.35);
+    color: var(--text-1);
+    font: 11px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+    user-select: text;
+}
+
+.log-lines .dim {
+    color: var(--text-3);
+}
+
+.log-lines .err {
+    color: #ff7b72;
+}
+
 /* The sidebar's places and the project card (places.js, the Windows app) */
 html.native {
     --rail-w: 290px;

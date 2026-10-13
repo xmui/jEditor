@@ -180,6 +180,9 @@ sealed class Scanner : IDisposable
         options.DialogParent = owner;
         options.MaxQuality = true;  // kept lossless until saved
         options.Dpi = 300;          // (the scanner's window decides)
+        Log.Write(driver == Driver.Twain
+            ? $"TWAIN: manager {options.TwainOptions.Dsm}, transfer {options.TwainOptions.TransferMode}, {(worker ? "through the 32-bit helper" : "64-bit, in jEditor")}; opening the scanner's window"
+            : "WIA: opening the scanner's window");
         await foreach (var image in controller.Scan(options, cancel))
         {
             var img = image;

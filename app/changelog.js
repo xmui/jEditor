@@ -5,6 +5,13 @@
 
 const CHANGELOG = [
     {
+        version: '1.22.1', date: '2026-10-13',
+        items: [
+            'Details in the scan dock (the `>_` button): jEditor\'s log, live, showing what the scanner\'s driver is doing as it does it. Errors are in red. Copy copies the lines to send on; Log file shows the whole log in Explorer. It opens by itself when a scan fails.',
+            'The log now also says how each TWAIN scan is set up (which TWAIN manager, transfer mode and whether it goes through the 32-bit helper).'
+        ]
+    },
+    {
         version: '1.22.0', date: '2026-10-13',
         items: [
             'Two projects at once: New window (`Ctrl+Shift+N`, or `Ctrl`+click a project in the sidebar) opens another jEditor window, and Split (on the project card) puts this window and another side by side.',
