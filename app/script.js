@@ -208,6 +208,7 @@ const app = {
         Places.init(this);
         Windows.init(this);
         Flags.init(this);
+        Edits.init(this);
         Watch.init(this);
         this.initContextMenu();
         this.initRubberBand();
@@ -1159,6 +1160,8 @@ const app = {
         try {
             // Sort initial files
             this.sortFiles(false); // pass false to avoid re-rendering twice
+            // Edits kept until saved: the thumbnails are made with them
+            await Edits.loadFor(1500);
 
             if (this.files.length > 0) {
                 this.showToast(`Loaded ${this.files.length.toLocaleString()} photo${this.files.length === 1 ? '' : 's'}`, 2500);
@@ -1985,6 +1988,7 @@ const app = {
     async closeFolder() {
         if (!this.dirHandle) return;
         try { await Flags.save(); } catch (e) { /* best-effort */ }
+        try { await Edits.flush(); } catch (e) { /* best-effort */ }
         await FolderCache.flush();
         this.cleanupURLs();
         FolderCache.reset();
@@ -2006,6 +2010,7 @@ const app = {
         Folders.reset();
         Watch.stop();
         Flags.reset();
+        Edits.reset();
 
         // Revoke all existing object URLs to free memory
         if (this.files) {
@@ -2019,6 +2024,10 @@ const app = {
                     delete file.fullImageUrl;
                 }
                 delete file._decodedEl;
+                if (file._edited) {
+                    URL.revokeObjectURL(file._edited.url);
+                    delete file._edited;
+                }
                 if (file._preview) {
                     URL.revokeObjectURL(file._preview.url);
                     delete file._preview;
@@ -2060,6 +2069,7 @@ const app = {
         div._file = file;
         file._stripEl = div;
         Flags.decorate(div, file);
+        Edits.decorate(div, file);
         div.onclick = () => this.openSingle(file);
         if (this._stripObserver) this._stripObserver.observe(div);
         return div;
@@ -2208,6 +2218,7 @@ const app = {
         if (!file.thumbnailUrl) this.showThumbSpinner(div, img);
         Folders.addChip(div, file);
         Flags.decorate(div, file);
+        Edits.decorate(div, file);
         // Just arrived (auto-check): a brief glow so it's easy to spot
         if (file._arrived && Date.now() - file._arrived < 6000) div.classList.add('is-new');
 
@@ -2481,11 +2492,15 @@ const app = {
         // Bytes read now include everything saved so far; any save that
         // lands while we decode shows up in the lag delta below.
         const savedAtRead = fileEntry._savedRotationTotal || 0;
+        const editGen = fileEntry._editGen || 0;
         const fileData = await fileEntry.handle.getFile();
         if (!fileData.size) throw new Error('empty file (still being written?)');
 
         let blob;
-        if (fileData.size <= this.THUMB_FAST_PATH_BYTES) {
+        if (fileEntry._edit) {
+            // Edited, not saved yet: from the edited preview (not cached)
+            blob = await this.editedThumbnail(fileEntry);
+        } else if (fileData.size <= this.THUMB_FAST_PATH_BYTES) {
             // A copy, not the File itself — the File stops being readable
             // once the photo is rotated
             blob = new Blob([await fileData.arrayBuffer()], { type: fileData.type });
@@ -2508,6 +2523,8 @@ const app = {
             if (blob) FolderCache.putThumb(this, cacheKey, blob);
         }
         if (!blob) throw new Error('Thumbnail encode failed');
+        // Its edit changed meanwhile: a newer thumbnail is on the way
+        if ((fileEntry._editGen || 0) !== editGen) return;
 
         if (fileEntry.thumbnailUrl) URL.revokeObjectURL(fileEntry.thumbnailUrl);
         fileEntry.thumbnailUrl = URL.createObjectURL(blob);
@@ -2515,6 +2532,21 @@ const app = {
         fileEntry._thumbPromise = null;
         fileEntry._thumbStale = false;
         this.deliverThumbnail(fileEntry);
+    },
+
+    async editedThumbnail(file) {
+        const src = await this.getDisplaySource(file);
+        const bmp = await createImageBitmap(src.blob, { resizeWidth: this.THUMB_WIDTH, resizeQuality: 'medium' });
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = bmp.width;
+            canvas.height = bmp.height;
+            canvas.getContext('2d').drawImage(bmp, 0, 0);
+            const alpha = /\.(png|webp|gif)$/i.test(file.name);
+            return await new Promise(r => canvas.toBlob(r, alpha ? 'image/png' : 'image/jpeg', 0.8));
+        } finally {
+            bmp.close();
+        }
     },
 
     deliverThumbnail(fileEntry) {
@@ -2525,6 +2557,11 @@ const app = {
             img.src = url;
         });
         fileEntry._thumbWaiters = [];
+        // A tile drawn again while this was being made shows the old one
+        for (const holder of [fileEntry._gridEl, fileEntry._stripEl]) {
+            const img = holder && holder.isConnected && holder.querySelector(':scope > img');
+            if (img && img.src !== url && img.src !== this.BLANK_THUMB) img.src = url;
+        }
         this.applyPreviewRotation(fileEntry);
     },
 
@@ -2583,7 +2620,9 @@ const app = {
         if (!this.ensureWritable()) return;
         const inTrash = await FolderCache.trashCount(this);
         const flagged = Flags.count();
+        const edited = Edits.count();
         const items = [
+            ...(edited ? [`Discards the edits not saved yet on ${edited} photo${edited === 1 ? '' : 's'} (the photos stay as they are on disk).`] : []),
             ...(inTrash ? [`Empties ${FolderCache.native() ? 'jEditor\'s trash' : 'the trash'}: ${inTrash} deleted photo${inTrash === 1 ? '' : 's'} will be gone for good.`] : []),
             ...(flagged ? [`Removes the flags (stars, rescan flags, colour labels) from ${flagged} photo${flagged === 1 ? '' : 's'}.`] : []),
             'Removes cached thumbnails and duplicate data (rebuilt when needed), and the originals kept for undoing Auto crop.'
@@ -2603,8 +2642,9 @@ const app = {
         try {
             await FolderCache.cleanUp(this);
             Flags.clearAll();
+            Edits.clearAll();
             // Trash undo steps can't be undone any more, and flags are gone
-            this._undoStack = (this._undoStack || []).filter(e => !['trash', 'flags', 'auto-crop'].includes(e.type));
+            this._undoStack = (this._undoStack || []).filter(e => !['trash', 'flags', 'auto-crop', 'edits', 'saved-edits'].includes(e.type));
             const what = native ? 'Project cleaned up' : 'Folder cleaned up';
             this.showToast(inTrash ? `${what} — trash emptied (${inTrash})` : what, 3000);
         } catch (e) {
@@ -2797,6 +2837,7 @@ const app = {
         this.currentFile = file;
         this.elements.fileName.textContent = file.name;
         Flags.updateHeader();
+        Edits.updateHeader();
         this.updateFileCount();
         this.updateStatusBar();
         if (this._infoOpen) this.refreshInfoSoon();
@@ -2831,7 +2872,10 @@ const app = {
 
     // What to show for `file` at screen size, read from its current bytes:
     // { url, blob?, isPreview, savedAtRead, w, h } with w×h the original size.
-    getDisplaySource(file) {
+    // A photo with an edit not saved yet (edits.js) is shown with it, unless
+    // raw: the crop editor and Auto crop work on the photo as it is.
+    getDisplaySource(file, { raw = false } = {}) {
+        if (!raw && file._edit) return this.editedSource(file);
         if (file._sourcePromise) return file._sourcePromise;
         const p = (async () => {
             while (file.isBusy) await new Promise(r => setTimeout(r, 30));
@@ -2874,6 +2918,67 @@ const app = {
         file._sourcePromise = p;
         p.catch(() => { }).finally(() => { if (file._sourcePromise === p) file._sourcePromise = null; });
         return p;
+    },
+
+    // The photo with its edit, at screen size: made from the photo's own
+    // preview, so it's quick, and it's what Save will write (at full size)
+    editedSource(file) {
+        const gen = file._editGen || 0;
+        if (file._editPromise && file._editPromise._gen === gen) return file._editPromise;
+        const p = (async () => {
+            const edit = file._edit;
+            const raw = await this.getDisplaySource(file, { raw: true });
+            const key = `${raw.url}|${gen}`;
+            if (file._edited && file._edited.key === key) return file._edited;
+            const blob = raw.blob || await (await fetch(raw.url)).blob();
+            const bmp = await createImageBitmap(blob);
+            // Its size in the photo's own pixels (the preview is smaller)
+            const scale = Math.max(raw.w || bmp.width, raw.h || bmp.height) / Math.max(bmp.width, bmp.height);
+            let canvas;
+            try {
+                canvas = CropEditor.fromSnapshot(bmp.width, bmp.height, edit).drawOutput(bmp);
+            } finally {
+                bmp.close();
+            }
+            const alpha = /\.(png|webp|gif)$/i.test(file.name);
+            const out = await new Promise(r => canvas.toBlob(r, alpha ? 'image/png' : 'image/jpeg', 0.92));
+            const w = Math.round(canvas.width * scale), h = Math.round(canvas.height * scale);
+            canvas.width = canvas.height = 0;
+            if (!out) throw new Error('encoding failed');
+            const src = { key, blob: out, url: URL.createObjectURL(out), isPreview: true, edited: true, savedAtRead: raw.savedAtRead, w, h };
+            if ((file._editGen || 0) !== gen) return src; // edited again meanwhile: not kept
+            if (file._edited) URL.revokeObjectURL(file._edited.url);
+            file._edited = src;
+            return src;
+        })();
+        p._gen = gen;
+        file._editPromise = p;
+        p.catch(() => { }).finally(() => { if (file._editPromise === p) file._editPromise = null; });
+        return p;
+    },
+
+    // An edit not saved yet was made, changed or dropped: show the photo
+    // as it now will be
+    editChanged(f) {
+        this.dropEdited(f);
+        f._dims = undefined;
+        f._thumbStale = true;
+        f._sourceGen = (f._sourceGen || 0) + 1; // in-flight decodes won't be cached
+        f._decodePromise = null;
+        this.dropDecoded(f);
+        this.refreshThumbnailUI(f);
+        if (this.currentFile === f && this.viewMode === 'single' && !this.cropState.active) this.loadFile(f);
+        if (this._infoOpen && this.currentFile === f) this.fillInfoPanel(f);
+    },
+
+    // Forget the edited preview (and any being made)
+    dropEdited(f) {
+        f._editGen = (f._editGen || 0) + 1;
+        if (f._edited) {
+            URL.revokeObjectURL(f._edited.url);
+            delete f._edited;
+        }
+        f._editPromise = null;
     },
 
     // A File from getFile() is a snapshot: once the file on disk is written
@@ -2975,6 +3080,7 @@ const app = {
         const el = this.elements.currentImage;
         const file = this._displayFile;
         if (!el || !el._isPreview || !file || file !== this.currentFile || this._upgrading === file) return;
+        if (file._edit) return; // shown edited: the original would show it without
         this._upgrading = file;
         try {
             const src = await this.getOriginalSource(file);
@@ -3179,6 +3285,11 @@ const app = {
             if (dist > 60 && f._preview && !f._sourcePromise) {
                 URL.revokeObjectURL(f._preview.url);
                 delete f._preview;
+            }
+            // Edited previews too (made again from the preview when needed)
+            if (dist > 60 && f._edited && !f._editPromise) {
+                URL.revokeObjectURL(f._edited.url);
+                delete f._edited;
             }
         });
     },
@@ -4079,6 +4190,7 @@ const app = {
         if (stripDiv && stripDiv.isConnected) {
             stripDiv.innerHTML = '';
             Flags.decorate(stripDiv, file);
+            Edits.decorate(stripDiv, file);
             this.loadStripThumbnail(file, stripDiv, true);
         }
 
@@ -4100,6 +4212,7 @@ const app = {
 
             Folders.addChip(gridDiv, file);
             Flags.decorate(gridDiv, file);
+            Edits.decorate(gridDiv, file);
 
             // Force reload
             this.loadImageThumbnail(file, img, true);
@@ -4132,6 +4245,13 @@ const app = {
         const skippedGifs = snapshot.length - filesToRotate.length;
         if (skippedGifs > 0) this.showToast(`Skipped ${skippedGifs} GIF${skippedGifs > 1 ? 's' : ''} (rotation would lose animation)`);
         if (filesToRotate.length === 0) return;
+        if (Edits.on()) {
+            // Kept with the other edits until they're saved
+            Edits.rotate(filesToRotate, deg);
+            const n = filesToRotate.length;
+            this.showToast(`Turned ${n} photo${n > 1 ? 's' : ''} ${Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left'}`, 1600);
+            return;
+        }
 
         // One undo step for the whole selection (added to the history now,
         // filled as each photo is saved)
@@ -4192,6 +4312,8 @@ const app = {
             this.showToast('GIF rotation is not supported (animation would be lost)');
             return Promise.resolve(false);
         }
+        // Kept with the other edits until they're saved
+        if (Edits.on()) return Promise.resolve(Edits.rotate([fileEntry], deg));
 
         // Instant, stacking preview; the save happens in the background
         fileEntry.pendingRotation = (fileEntry.pendingRotation || 0) + deg;
@@ -4505,6 +4627,10 @@ const app = {
                 Flags.undo(entry);
             } else if (entry.type === 'auto-crop') {
                 await this.undoAutoCrop(entry);
+            } else if (entry.type === 'edits') {
+                Edits.undo(entry);
+            } else if (entry.type === 'saved-edits') {
+                await this.undoSavedEdits(entry);
             } else if (entry.type === 'relocate' || entry.type.startsWith('folder-')) {
                 await Folders.undo(entry);
             } else if (entry.type === 'transfer') {
@@ -4611,6 +4737,7 @@ const app = {
             if (many) this.endTask('trash');
         }
         Flags.forgetFiles(alreadyGone);
+        Edits.forgetFiles(alreadyGone);
         this.removeFilesFromApp([...moved].concat(alreadyGone));
 
         if (undoItems.length) {
@@ -4751,6 +4878,7 @@ const app = {
     // Take photos out of the folder view in one pass
     removeFilesFromApp(gone) {
         if (!gone.length) return;
+        if (gone.some(f => f._edit)) setTimeout(() => Edits.updateBar(), 0);
         const set = new Set(gone);
         const cur = this.currentFile;
         const wasCurrent = set.has(cur);
@@ -5203,7 +5331,8 @@ const app = {
         const n = list.length;
         const input = await UI.prompt({
             title: n === 1 ? 'Export a copy' : `Export ${n.toLocaleString()} copies`,
-            message: 'Copies go to a "jEditor Export" folder inside this one. The originals aren\'t changed.',
+            message: 'Copies go to a "jEditor Export" folder inside this one. The originals aren\'t changed.' +
+                (list.some(f => f._edit) ? '\n\nPhotos with edits not saved yet are exported with them.' : ''),
             input: { label: 'Longest side in pixels (leave empty for full size)', placeholder: 'Full size', inputMode: 'numeric' },
             ok: 'Export'
         });
@@ -5216,7 +5345,7 @@ const app = {
             for (const f of list) {
                 try {
                     const data = await f.handle.getFile();
-                    let out = data;
+                    let out = f._edit ? await this.renderEdited(f, data) : data;
                     if (maxEdge > 0) {
                         const bmp = await createImageBitmap(data);
                         const scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
@@ -5250,6 +5379,29 @@ const app = {
             this.endTask('export');
             this.showToast('Export failed: ' + e.message);
         }
+    },
+
+    // A photo with its edit not saved yet (edits.js), at full size, as
+    // saving it would write it
+    async renderEdited(f, data) {
+        const edit = f._edit;
+        const original = new Uint8Array(await data.arrayBuffer());
+        const n = edit.n, eq = (a, b) => Math.abs(a - b) < 1e-6;
+        const turnOnly = !edit.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5);
+        if (turnOnly && /\.jpe?g$/i.test(f.name)) {
+            try {
+                const b = this.rotateJpegLossless(original.buffer, edit.q * 90);
+                if (b) return b;
+            } catch (e) { /* re-encode */ }
+        }
+        const { type, quality } = this.getSaveFormat(f.name);
+        const canvas = await CropEditor.renderSnapshot(data, edit, type, original);
+        if (!canvas) return data;
+        const w = canvas.width, h = canvas.height;
+        const blob = await new Promise(r => canvas.toBlob(r, type, quality));
+        canvas.width = canvas.height = 0;
+        if (!blob) throw new Error('encoding failed');
+        return ImageMeta.transplant(original, blob, type, w, h);
     },
 
     // ---- Context menu ----
@@ -5295,6 +5447,7 @@ const app = {
                     [`Rotate ${n} right`, () => this.rotateBulk(90)],
                     [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
                     [`Auto crop ${n}`, () => this.batchAutoCrop(sel)],
+                    ...(sel.some(f => f._edit) ? [[`Discard edits on ${sel.filter(f => f._edit).length.toLocaleString()}`, () => Edits.discard(sel)]] : []),
                     ['—'],
                     [`Move ${n} to…`, () => Folders.openPicker(sel, 'move')],
                     [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy')],
@@ -5313,6 +5466,7 @@ const app = {
                 ['Rotate right', () => this.rotateImage(file, 90)],
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
                 ['Crop and straighten', () => { this.openSingle(file); this.enterCrop(); }],
+                ...(file._edit ? [['Discard edit', () => Edits.discard([file])]] : []),
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
                 ['Copy to…', () => Folders.openPicker([file], 'copy')],
@@ -5332,6 +5486,7 @@ const app = {
                 ['Rotate right', () => this.rotateImage(file, 90)],
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
                 ['Crop and straighten', () => this.enterCrop()],
+                ...(file && file._edit ? [['Discard edit', () => Edits.discard([file])]] : []),
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
                 ['Copy to…', () => Folders.openPicker([file], 'copy')],
@@ -5359,6 +5514,10 @@ const app = {
             ['Start slideshow', () => this.startSlideshow()],
             ['Full screen', () => this.toggleFullscreen()],
             ['—'],
+            ...(this.dirHandle && !this.readOnlyMode ? [
+                [Edits.defer ? 'Save edits straight away' : 'Save edits when done', () => Edits.setDefer(!Edits.defer)],
+                ...(Edits.count() ? [['Save edits…', () => Edits.saveAll()]] : [])
+            ] : []),
             ['Clean up folder…', () => this.cleanUpFolder()]
         ];
     },
@@ -5501,6 +5660,21 @@ const app = {
             this.enterCrop();
         };
 
+        // Save edits when done (edits.js): kept on the photo, not written
+        if (Edits.on()) {
+            const had = !!file._edit;
+            const none = ed.isIdentity() && !ed.q;
+            this.rememberCrop(snap);
+            this.cancelCrop();
+            if (none && !had) this.showToast('No changes', 1500);
+            else {
+                Edits.set([{ file, edit: none ? null : snap }], 'crop');
+                this.showToast(none ? 'Back to the whole photo' : 'Crop kept — saved into the photo when you save the edits', 2200);
+            }
+            goNext();
+            return;
+        }
+
         // Only quarter turns and no crop: that's a rotation — do it
         // losslessly through the rotation engine instead of re-encoding
         if (ed.isIdentity()) {
@@ -5597,6 +5771,7 @@ const app = {
             this.showToast('Auto crop is already running');
             return;
         }
+        if (Edits.on()) return this.batchAutoCropKept(list);
         if (ask && list.length > 50 && !await UI.confirm({
             title: `Auto crop ${list.length.toLocaleString()} photos?`,
             message: `Each is straightened and cropped to the print found on it. The originals are kept ${FolderCache.native() ? 'by jEditor on this PC' : 'in .jeditor/originals'}, so Ctrl+Z puts them all back.`,
@@ -5659,12 +5834,91 @@ const app = {
         } : null, { type: failed && !cropped ? 'error' : 'crop' });
     },
 
+    // Batch Auto crop with Save edits when done: each crop is kept as an
+    // edit (nothing is written), so every one can be checked and changed
+    // in the crop editor before the edits are saved
+    async batchAutoCropKept(list) {
+        this._autoCropping = true;
+        const total = list.length;
+        const key = 'auto-crop';
+        const items = [];
+        let done = 0, noEdge = 0, failed = 0;
+        const label = () => `Auto crop ${done}/${total}`;
+        this.beginTask(key, label());
+        try {
+            let next = 0;
+            const worker = async () => {
+                while (next < list.length) {
+                    const f = list[next++];
+                    try {
+                        const ed = await this.detectCrop(f);
+                        if (!ed) noEdge++;
+                        else items.push({ file: f, edit: ed.isIdentity() && !ed.q ? null : ed.snapshot() });
+                    } catch (e) {
+                        console.error('Auto crop failed for', f.name, e);
+                        failed++;
+                    }
+                    done++;
+                    this.updateTask(key, label());
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(this.AUTO_CROP_CONCURRENCY + 1, list.length) }, worker));
+        } finally {
+            this.endTask(key);
+            this._autoCropping = false;
+        }
+        const cropped = items.filter(it => it.edit).length;
+        if (items.length) Edits.set(items, 'auto crop');
+        const notes = [];
+        if (noEdge) notes.push(`no print found on ${noEdge}`);
+        if (items.length - cropped) notes.push(`${items.length - cropped} already cropped`);
+        if (failed) notes.push(`${failed} failed`);
+        const msg = (cropped ? `Auto-cropped ${cropped} photo${cropped === 1 ? '' : 's'} — check them, then Save` : 'Nothing was cropped') +
+            (notes.length ? ` — ${notes.join(', ')}` : '');
+        const entry = (this._undoStack || [])[(this._undoStack || []).length - 1];
+        this.showToast(msg, cropped ? 6000 : 4000, null, items.length ? {
+            label: 'Undo',
+            run: () => {
+                const stack = this._undoStack || [];
+                if (stack[stack.length - 1] === entry) this.undo();
+                else this.showToast('Something else changed since — use Ctrl+Z');
+            }
+        } : null, { type: failed && !cropped ? 'error' : 'crop' });
+    },
+
+    // Auto crop's geometry for one photo, from the photo as it is on disk
+    // (not its kept edit): a headless crop editor, or null (no print edge)
+    async detectCrop(file) {
+        if (file._rotationQueue) await file._rotationQueue;
+        // Detect on the screen-sized preview, as the editor does
+        const src = await this.getDisplaySource(file, { raw: true });
+        let bmp, W, H;
+        if (src.isPreview && src.blob) {
+            bmp = await createImageBitmap(src.blob);
+            W = src.w;
+            H = src.h;
+        } else {
+            bmp = await createImageBitmap(await file.handle.getFile());
+            W = bmp.width;
+            H = bmp.height;
+        }
+        try {
+            const det = CropAuto.detect(bmp, W, H);
+            if (!det) return null;
+            const ed = CropEditor.headless(W, H);
+            ed.fitToPrint(det);
+            return ed;
+        } finally {
+            bmp.close();
+        }
+    },
+
     // One photo: 'none' (no print edge), 'same' (nothing to crop) or the
     // undo item { file, backup }
     async autoCropOne(file, backups) {
         if (file._rotationQueue) await file._rotationQueue;
         // Detect on the screen-sized preview, as the editor does
-        const src = await this.getDisplaySource(file);
+        const src = await this.getDisplaySource(file, { raw: true });
         let bmp, W, H;
         if (src.isPreview && src.blob) {
             bmp = await createImageBitmap(src.blob);
@@ -5744,7 +5998,164 @@ const app = {
             if (many) this.endTask('undo-auto-crop');
         }
         if (failed) throw new Error(`${failed} photo${failed === 1 ? '' : 's'} could not be put back`);
-        this.showToast(`Undid auto crop on ${items.length} photo${items.length === 1 ? '' : 's'}`);
+        if (!entry.quiet) this.showToast(`Undid auto crop on ${items.length} photo${items.length === 1 ? '' : 's'}`);
+    },
+
+    // ---- Saving edits kept until saved (edits.js) ----
+    //
+    // Each photo is rendered at full size from its own bytes, as the crop
+    // editor saves, and written over the photo; a photo only turned is
+    // turned losslessly by the rotation engine. The originals go to
+    // originals/ first, as for batch Auto crop, and one Ctrl+Z puts every
+    // photo back with its edit kept again. True when all were saved.
+
+    async saveEdits(list) {
+        if (!this.ensureWritable()) return false;
+        if (!this.dirHandle) {
+            this.showToast('Saving edits needs a folder opened with Open folder');
+            return false;
+        }
+        if (this._savingEdits) {
+            this.showToast('The edits are already being saved');
+            return false;
+        }
+        this._savingEdits = true;
+        const total = list.length;
+        const key = 'save-edits';
+        let batchDone;
+        const group = { type: 'group', label: 'rotation', items: [], done: new Promise(res => { batchDone = res; }) };
+        const entry = { type: 'saved-edits', items: [], group, edits: [] };
+        let done = 0, failed = 0, changed = 0;
+        const label = () => `Saving edits ${done}/${total}`;
+        this.beginTask(key, label());
+        try {
+            await this.verifyPermission(this.dirHandle, true);
+            const root = await FolderCache.root(this, true);
+            const backups = await root.getDirectoryHandle('originals', { create: true });
+            let next = 0;
+            const worker = async () => {
+                while (next < list.length) {
+                    const f = list[next++];
+                    const edit = f._edit;
+                    try {
+                        if (!edit) continue;
+                        const r = await this.saveEditOne(f, edit, backups, group);
+                        if (r === 'changed') changed++;
+                        else {
+                            entry.edits.push({ file: f, edit });
+                            if (r !== 'turned') entry.items.push(r);
+                        }
+                    } catch (e) {
+                        console.error('Saving the edit failed for', f.name, e);
+                        failed++;
+                    }
+                    done++;
+                    this.updateTask(key, label());
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(this.AUTO_CROP_CONCURRENCY, list.length) }, worker));
+        } catch (e) {
+            this.showToast('Saving the edits failed: ' + e.message, 4000);
+            return false;
+        } finally {
+            batchDone();
+            this.endTask(key);
+            this._savingEdits = false;
+        }
+        if (entry.edits.length) {
+            this.pushUndo(entry);
+            Edits.changed([]);
+        }
+        const saved = entry.edits.length;
+        const notes = [];
+        if (changed) notes.push(`${changed} changed on disk since the edit, so not saved (open Crop to check them)`);
+        if (failed) notes.push(`${failed} failed`);
+        this.showToast((saved ? `Saved ${saved} edit${saved === 1 ? '' : 's'} into the photos` : 'Nothing was saved') +
+            (notes.length ? ` — ${notes.join(', ')}` : ''), notes.length ? 6000 : 3000, null, saved ? {
+            label: 'Undo',
+            run: () => {
+                const stack = this._undoStack || [];
+                if (stack[stack.length - 1] === entry) this.undo();
+                else this.showToast('Something else changed since — use Ctrl+Z');
+            }
+        } : null, { type: failed && !saved ? 'error' : 'crop' });
+        return !failed && !changed;
+    },
+
+    // 'changed' (the photo isn't the one the edit was made on), 'turned'
+    // (only turned: done by the rotation engine) or the undo item
+    // { file, backup, backupName }
+    async saveEditOne(file, edit, backups, group) {
+        if (file._rotationQueue) await file._rotationQueue;
+        const fileData = await file.handle.getFile();
+        if (edit.size && fileData.size !== edit.size) return 'changed';
+        const n = edit.n, eq = (a, b) => Math.abs(a - b) < 1e-6;
+        if (!edit.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5) && !/\.gif$/i.test(file.name)) {
+            const q = edit.q % 4;
+            delete file._edit;
+            file.pendingRotation = q === 3 ? -90 : q * 90;
+            file._undoGroup = group;
+            try {
+                if (!(await this.processRotationQueue(file))) {
+                    file._edit = edit;
+                    throw new Error('could not turn it');
+                }
+            } finally {
+                if (file._undoGroup === group) file._undoGroup = null;
+            }
+            this.dropEdited(file);
+            await this.afterFileChanged(file);
+            return 'turned';
+        }
+
+        const { type, quality } = this.getSaveFormat(file.name);
+        const original = new Uint8Array(await fileData.arrayBuffer());
+        const canvas = await CropEditor.renderSnapshot(fileData, edit, type, original);
+        if (!canvas) throw new Error('nothing to save');
+        const w = canvas.width, h = canvas.height;
+        let blob = await new Promise(r => canvas.toBlob(r, type, quality));
+        canvas.width = canvas.height = 0;
+        if (!blob) throw new Error('encoding failed');
+        blob = await ImageMeta.transplant(original, blob, type, w, h);
+
+        const backupName = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}-${file.name}`;
+        const bh = await backups.getFileHandle(backupName, { create: true });
+        const bw = await bh.createWritable();
+        await bw.write(new Blob([original], { type: fileData.type }));
+        await bw.close();
+
+        file.isBusy = true;
+        try {
+            const writable = await file.handle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+        } finally {
+            file.isBusy = false;
+        }
+        delete file._edit;
+        file.pendingRotation = 0;
+        file.savingRotation = 0;
+        this.dropEdited(file);
+        await this.afterFileChanged(file);
+        return { file, backup: bh, backupName };
+    },
+
+    // Every photo back as it was, with its edit kept again
+    async undoSavedEdits(entry) {
+        await entry.group.done;
+        let failed = 0;
+        try {
+            if (entry.items.length) await this.undoAutoCrop({ items: entry.items, quiet: true });
+        } catch (e) {
+            failed++;
+        }
+        for (const it of entry.group.items) {
+            try { await this.undoFileEdit(it); } catch (e) { console.error('Undo failed for', it.file.name, e); failed++; }
+        }
+        Edits.restore(entry.edits);
+        if (failed) throw new Error('some photos could not be put back');
+        const n = entry.edits.length;
+        this.showToast(`Put back ${n} photo${n === 1 ? '' : 's'} — the edits are kept again`);
     }
 };
 

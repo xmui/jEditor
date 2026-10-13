@@ -1272,6 +1272,15 @@ async function newPage(context, baseUrl) {
             $('sb-card').querySelector('[data-act="pin"]').click();
             await wait(() => [...side.querySelectorAll('.sb-pinned .fr-name')].some(n => n.textContent === 'Alpha'));
             out.pinned = Places.pins().map(p => p.name).join();
+            // Save edits when done, for this project: kept with its data on the PC
+            const deferBox = $('sb-card').querySelector('input[data-act="defer"]');
+            out.deferOff = !!deferBox && !deferBox.checked;
+            deferBox.click();
+            await wait(() => Edits.on());
+            await Edits.flush();
+            const kept = await store();
+            out.deferKept = JSON.parse(await (await (await kept.getFileHandle('edits.json')).getFile()).text()).defer === true &&
+                !$('edits-bar').classList.contains('hidden');
 
             // A drive opens out; a folder in it opens as the project
             rowOf(side, 'USB drive (E:)').querySelector('.sb-main').click();
@@ -1317,6 +1326,7 @@ async function newPage(context, baseUrl) {
         check('the project card: name, path, photos', /Alpha/.test(r.card) && /D:\\Orders\\Alpha/.test(r.card) && /\d photos/.test(r.card), r.card);
         check('the open project is marked in the list', r.active);
         check('card buttons: Explorer, Scan, Pin', r.revealed === 'D:\\Orders\\Alpha' && r.scanOpen && r.pinned === 'Alpha', JSON.stringify([r.revealed, r.scanOpen, r.pinned]));
+        check('card: Save edits when done turns on for the project, kept on the PC', r.deferOff && r.deferKept, JSON.stringify([r.deferOff, r.deferKept]));
         check('a drive opens out to its folders, in number order', r.inside === 'Order 9,Order 10', r.inside);
         check('browsing: clicking a folder only opens it out, it isn\'t loaded', r.browseOnly);
         check('... Open makes it the project, and so does a double-click', r.openedUsb === 'E:\\Order 9' && r.dblOpened === 'E:\\Order 10', JSON.stringify([r.openedUsb, r.dblOpened]));

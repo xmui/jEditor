@@ -3152,6 +3152,162 @@ async function newPage(browser, url) {
         await page.close();
     }
 
+    // ---- 7s2. Save edits when done ----
+    console.log('save edits when done');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const until = async (fn, n = 200) => { for (let i = 0; i < n && !(await fn()); i++) await sleep(50); };
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('keptedits', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('keptedits', { create: true });
+            const scan = async (color, tilt) => {
+                const c = document.createElement('canvas');
+                c.width = 900; c.height = 700;
+                const g = c.getContext('2d');
+                g.fillStyle = '#f4f4f2'; g.fillRect(0, 0, 900, 700);
+                g.save(); g.translate(450, 350); g.rotate(tilt * Math.PI / 180);
+                g.fillStyle = color; g.fillRect(-280, -200, 560, 400);
+                g.restore();
+                return new Blob([await (await new Promise(res => c.toBlob(res, 'image/jpeg', 0.92))).arrayBuffer()], { type: 'image/jpeg' });
+            };
+            const files = { 'scan1.jpg': await scan('#2a6', 3), 'scan2.jpg': await scan('#a33', -2), 'plain.jpg': new Blob([await makeRealJpeg(400, 300)], { type: 'image/jpeg' }) };
+            const originals = {};
+            for (const [n, b] of Object.entries(files)) {
+                const fh = await dir.getFileHandle(n, { create: true });
+                const w = await fh.createWritable(); await w.write(b); await w.close();
+                originals[n] = new Uint8Array(await b.arrayBuffer());
+            }
+            const bytes = async (d, n) => new Uint8Array(await (await (await d.getFileHandle(n)).getFile()).arrayBuffer());
+            const same = async (n) => {
+                const now = await bytes(dir, n);
+                return now.length === originals[n].length && now.every((v, i) => v === originals[n][i]);
+            };
+            const untouched = async () => await same('scan1.jpg') && await same('scan2.jpg') && await same('plain.jpg');
+            const dims = async (d, n) => {
+                const bmp = await createImageBitmap(await (await d.getFileHandle(n)).getFile());
+                const x = [bmp.width, bmp.height]; bmp.close(); return x;
+            };
+            const kept = async () => {
+                try { return JSON.parse(await (await (await (await dir.getDirectoryHandle('.jeditor')).getFileHandle('edits.json')).getFile()).text()); } catch (e) { return null; }
+            };
+            const f = (n) => app.files.find(x => x.name === n);
+            const bar = () => document.getElementById('edits-bar');
+            const barText = () => document.getElementById('edits-text').textContent;
+
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            app.setView('grid');
+            out.barOffAtFirst = bar().classList.contains('hidden');
+
+            // Turned on for this project (the grid's menu)
+            const bg = app.buildContextItems(null, false).find(it => it[0] === 'Save edits when done');
+            bg[1]();
+            await until(async () => (await kept()) && (await kept()).defer);
+            out.on = Edits.on() && !bar().classList.contains('hidden') && /kept until you save/.test(barText()) && (await kept()).defer === true;
+
+            // Batch Auto crop: kept as edits, nothing written
+            app.selection = new Set(app.files);
+            app.updateSelectionUI();
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'A', shiftKey: true, bubbles: true }));
+            await until(() => !app._autoCropping && f('scan1.jpg')._edit && f('scan2.jpg')._edit);
+            out.autoKept = !!f('scan1.jpg')._edit && !!f('scan2.jpg')._edit && !f('plain.jpg')._edit && await untouched();
+            out.autoToast = [...document.querySelectorAll('.toast')].map(t => t.textContent).find(t => /Auto-cropped/.test(t)) || '';
+            out.badges = !!f('scan1.jpg')._gridEl.querySelector('.tile-edit') && !f('plain.jpg')._gridEl.querySelector('.tile-edit');
+            out.barCount = barText();
+            // Shown as it will be saved: the thumbnail and preview are of the print
+            await until(() => f('scan1.jpg').thumbnailUrl && !f('scan1.jpg')._thumbStale);
+            const tb = await createImageBitmap(await (await fetch(f('scan1.jpg').thumbnailUrl)).blob());
+            out.thumbAspect = tb.width / tb.height;
+            await until(() => f('scan1.jpg')._gridEl.querySelector(':scope > img').src === f('scan1.jpg').thumbnailUrl, 40);
+            out.tileShows = f('scan1.jpg')._gridEl.querySelector(':scope > img').src === f('scan1.jpg').thumbnailUrl;
+            const shown = await app.getDisplaySource(f('scan1.jpg'));
+            out.shown = [shown.w, shown.h];
+
+            // Recrop: the editor opens on the whole photo, at the kept crop
+            const edit1 = { ...f('scan1.jpg')._edit };
+            app.selection.clear();
+            app.currentFile = f('scan1.jpg');
+            app.setView('single');
+            await app.enterCrop();
+            await until(() => CropEditor.ready);
+            const ed = CropEditor;
+            out.editorWhole = ed.W === 900 && ed.H === 700;
+            out.editorAtKept = Math.abs(ed.angle - edit1.angle) < 1e-6 && Math.abs(ed.snapshot().n.x0 - edit1.n.x0) < 1e-3;
+            out.doneLabel = document.getElementById('crop-save').textContent;
+            ed.setAngle(0);
+            ed.setRect({ x0: -300, y0: -200, x1: 300, y1: 200 });
+            await app.saveCrop();
+            out.recropped = !!f('scan1.jpg')._edit && f('scan1.jpg')._edit.angle === 0 && await untouched();
+            const re = await app.getDisplaySource(f('scan1.jpg'));
+            out.recropShown = [re.w, re.h];
+
+            // A turn is kept too; Ctrl+Z takes it back
+            await app.rotateImage(f('plain.jpg'), 90);
+            const turned = await app.getDisplaySource(f('plain.jpg'));
+            out.turned = f('plain.jpg')._edit && f('plain.jpg')._edit.q === 1 && turned.w === 300 && turned.h === 400 && await untouched();
+            await app.undo();
+            out.turnUndone = !f('plain.jpg')._edit;
+            await app.rotateImage(f('plain.jpg'), -90);
+
+            // Kept with the project: open it again and they're back
+            await until(async () => { const k = await kept(); return k && Object.keys(k.edits).length === 3; });
+            await app.openDirectory(dir);
+            await until(() => app.files.length === 3);
+            out.reloaded = Edits.on() && !!f('scan1.jpg')._edit && f('scan1.jpg')._edit.angle === 0 && f('plain.jpg')._edit.q === 3 && /3 edits/.test(barText());
+
+            // Export copies: every photo, the edited ones with their edits
+            UI.choose = async () => 'alt';
+            UI.prompt = async () => '';
+            await Edits.saveAll();
+            const exp = await dir.getDirectoryHandle('jEditor Export');
+            out.exported = [await dims(exp, 'scan1.jpg'), await dims(exp, 'scan2.jpg'), await dims(exp, 'plain.jpg')];
+            out.exportLeavesEdits = Edits.count() === 3 && await untouched();
+
+            // Save into the photos
+            UI.choose = async () => 'ok';
+            await Edits.saveAll();
+            out.saved = [await dims(dir, 'scan1.jpg'), await dims(dir, 'scan2.jpg'), await dims(dir, 'plain.jpg')];
+            out.plainLossless = readOrientation(await bytes(dir, 'plain.jpg')) === 8;
+            out.savedClears = Edits.count() === 0 && !f('scan1.jpg')._gridEl.querySelector('.tile-edit') && /kept until you save/.test(barText());
+            const backups = await (await dir.getDirectoryHandle('.jeditor')).getDirectoryHandle('originals');
+            out.backups = 0;
+            for await (const e of backups.values()) out.backups++;
+
+            // One Ctrl+Z: the photos back, the edits kept again
+            // (a lossless turn undone keeps its orientation tag: the same
+            // picture, not quite the same bytes)
+            await app.undo();
+            const upright = (await dims(dir, 'plain.jpg')).join('x') === '400x300';
+            out.undoSave = await same('scan1.jpg') && await same('scan2.jpg') && upright && Edits.count() === 3;
+
+            // Turned off with edits waiting: discard them
+            UI.choose = async () => 'alt';
+            await Edits.setDefer(false);
+            await until(async () => !(await kept()));
+            out.off = !Edits.on() && Edits.count() === 0 && bar().classList.contains('hidden') && !(await kept()) &&
+                await same('scan1.jpg') && (await dims(dir, 'plain.jpg')).join('x') === '400x300';
+            return out;
+        });
+        const inside = (d) => d[0] < 900 && d[1] < 700 && d[0] > 450 && d[1] > 300;
+        check('kept edits: on for the project; the bar shows; saved in edits.json', r.barOffAtFirst && r.on, JSON.stringify(r));
+        check('kept edits: batch Auto crop keeps crops as edits, nothing written', r.autoKept && /check them, then Save/.test(r.autoToast), r.autoToast);
+        check('kept edits: pencil on edited photos; the bar counts them', r.badges && r.barCount === '2 edits not saved yet', r.barCount);
+        check('kept edits: thumbnail and viewer show the photo as it will be saved', r.thumbAspect > 1.33 && r.tileShows && inside(r.shown), `${r.thumbAspect} ${r.tileShows} ${r.shown}`);
+        check('kept edits: recrop opens on the whole photo at the kept crop', r.editorWhole && r.editorAtKept && r.doneLabel === 'Done');
+        check('kept edits: a new crop replaces the kept one, still nothing written', r.recropped && r.recropShown.join('x') === '600x400', String(r.recropShown));
+        check('kept edits: a turn is kept too; Ctrl+Z takes it back', r.turned && r.turnUndone);
+        check('kept edits: still there when the project is opened again', r.reloaded);
+        check('kept edits: export copies all photos with their edits, photos untouched', r.exported[0].join('x') === '600x400' && inside(r.exported[1]) && r.exported[2].join('x') === '300x400' && r.exportLeavesEdits, JSON.stringify(r.exported));
+        check('kept edits: save writes them into the photos (a turn losslessly), originals kept', r.saved[0].join('x') === '600x400' && inside(r.saved[1]) && r.saved[2].join('x') === '300x400' && r.plainLossless && r.savedClears && r.backups === 2, JSON.stringify(r.saved) + ' ' + r.backups);
+        check('kept edits: Ctrl+Z after saving puts the photos back with the edits kept', r.undoSave);
+        check('kept edits: turning it off can discard what is waiting', r.off);
+        check('kept edits suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7t. A subfolder of an order opened before ----
     console.log('subfolder of a known order');
     {

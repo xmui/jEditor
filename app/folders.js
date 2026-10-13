@@ -741,6 +741,11 @@ const Folders = {
             lastModified: nd.lastModified
         };
         if (f.dateTaken !== undefined) copy.dateTaken = f.dateTaken;
+        // An edit not saved yet comes along (edits.js), as the thumbnail shows it
+        if (f._edit) {
+            copy._edit = { ...f._edit, size: copy.size };
+            Edits.saveSoon();
+        }
         // Same bytes, same thumbnail
         if (f.thumbnailUrl) {
             try {

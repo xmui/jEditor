@@ -22,6 +22,7 @@
     <script src="rename.js"></script>
     <script src="folders.js"></script>
     <script src="flags.js"></script>
+    <script src="edits.js"></script>
     <script src="watch.js"></script>
     <script src="recents.js"></script>
     <script src="stored.js"></script>
@@ -149,6 +150,15 @@
                     </button>
                 </div>
             </header>
+
+            <!-- Save edits when done (edits.js): what's waiting -->
+            <div id="edits-bar" class="edits-bar toolbar hidden" role="toolbar" aria-label="Edits not saved yet">
+                <span class="edits-icon" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg></span>
+                <span id="edits-text" class="edits-text" aria-live="polite"></span>
+                <button id="edits-off" class="btn ghost sm" title="Save each edit straight away again">Turn off</button>
+                <button id="edits-discard" class="btn ghost sm" title="Put the photos back as they are on disk">Discard</button>
+                <button id="edits-save" class="btn primary sm" title="Save the edits into the photos, or export edited copies">Save…</button>
+            </div>
 
             <!-- Main image area -->
             <main id="main-view">
@@ -968,6 +978,7 @@
                 <span></span>
                 <span class="dialog-actions">
                     <button id="uid-cancel" class="btn secondary">Cancel</button>
+                    <button id="uid-alt" class="btn secondary hidden"></button>
                     <button id="uid-ok" class="btn primary">OK</button>
                 </span>
             </div>

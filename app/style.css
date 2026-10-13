@@ -1277,6 +1277,96 @@ html.native .grid-view.grid-empty-project::after {
     gap: 5px;
 }
 
+/* Save edits when done (edits.js): a pencil on edited photos, top left */
+.tile-edit {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    display: inline-flex;
+    padding: 4px;
+    border-radius: var(--r-pill);
+    background: var(--on-photo-bg);
+    color: var(--on-photo-text);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    pointer-events: none;
+    animation: pop-in var(--dur-slow) var(--ease-spring);
+}
+
+.thumb-item .tile-edit {
+    top: 3px;
+    left: 3px;
+    padding: 2px;
+}
+
+.thumb-item .tile-edit svg {
+    width: 10px;
+    height: 10px;
+}
+
+:root[data-glass="subtle"] .tile-edit {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.file-edit {
+    display: inline-flex;
+    margin-left: 4px;
+    color: var(--accent-text);
+}
+
+/* What's waiting to be saved: a pill under the header */
+.edits-bar {
+    position: absolute;
+    top: calc(var(--gutter) + var(--ctl-lg) + var(--sp-2));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--z-floating);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    max-width: calc(100% - 2 * var(--gutter));
+    padding: 0 var(--sp-1) 0 var(--sp-3);
+    white-space: nowrap;
+    animation: bar-in var(--dur-slow) var(--ease-out);
+}
+
+.edits-icon {
+    display: inline-flex;
+    color: var(--accent-text);
+}
+
+.edits-icon .i {
+    width: 16px;
+    height: 16px;
+}
+
+.edits-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: var(--fs-small);
+}
+
+/* Room for it above the first row of photos */
+.interface.edits-on .grid-view {
+    padding-top: calc(var(--gutter) + 2 * var(--ctl-lg) + var(--sp-4));
+}
+
+.sb-card-defer {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-top: var(--sp-2);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    cursor: pointer;
+}
+
+.sb-card-defer input {
+    margin: 0;
+}
+
 /* ---- 7. Folder pill, folder list, flags, search ---- */
 
 /* Folder pill in grid view, top left, level with the header pills. Kept

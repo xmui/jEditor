@@ -44,7 +44,7 @@ const Watch = {
         this.app = app;
         // Everything that writes to the order folder
         this.guard(app, ['drainRotationQueue', 'moveToTrash', 'undo', 'renameFile', 'renameMany', 'moveFile',
-            'saveCrop', 'cleanUpFolder', 'exportCopies', 'batchAutoCrop']);
+            'saveCrop', 'cleanUpFolder', 'exportCopies', 'batchAutoCrop', 'saveEdits']);
         this.guard(Folders, ['relocate', 'newFolder', 'renameFolder', 'deleteFolder', 'createPath', 'trashQuietly', 'undo', 'removeIfEmpty']);
         window.addEventListener('focus', () => this.onFocus());
         document.addEventListener('visibilitychange', () => {
@@ -475,6 +475,7 @@ const Watch = {
         }
         if (gone.length) {
             Flags.forgetFiles(gone);
+            Edits.forgetFiles(gone);
             app.removeFilesFromApp(gone);
         }
         if (!added.length) {
@@ -486,6 +487,7 @@ const Watch = {
         const wasEmpty = app.files.length === 0;
         app.files.push(...added);
         Flags.adopt(added);
+        Edits.adopt(added);
         if (wasEmpty) {
             // Everything had gone, and now there's something again
             app.elements.dropZone.classList.add('hidden');

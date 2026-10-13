@@ -5,6 +5,15 @@
 
 const CHANGELOG = [
     {
+        version: '1.26.0', date: '2026-10-14',
+        items: [
+            'Save edits when done, a setting for each project (on its card in the sidebar, or right-click the grid). Crops, straightening, turns and batch Auto crop are kept on the photos instead of being saved into them straight away, so they can be changed as often as you like before anything is written.',
+            'Recrop any time: Crop opens on the whole photo, at the crop you kept, so nothing is lost by cropping too tight. Batch Auto crop is the same: check each photo (Crop, then `Shift+Enter` for Done & next) and fix the ones it got wrong.',
+            'The grid, film strip and viewer show each photo as it will be saved, with a pencil on the edited ones. The bar under the toolbar counts them, with Save and Discard. Save writes them into the photos (the originals are kept, so `Ctrl+Z` puts them back with the edits kept again) or exports copies of every photo, edited ones with their edits, into "jEditor Export".',
+            'Kept edits stay with the project when jEditor is closed. Right-click a photo for Discard edit.'
+        ]
+    },
+    {
         version: '1.25.0', date: '2026-10-14',
         items: [
             'Scanning uses jEditor\'s own settings now, no scanner window: How picks the glass (preview and crop) or the feeder, from what the scanner has. The scanner\'s own window is still there, under Advanced, for when you need its extras.',
