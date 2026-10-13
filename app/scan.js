@@ -830,7 +830,7 @@ const Scan = {
             done((result.cancelled ? 'Stopped after ' : 'Scanned ') + said + (autoCrop ? ' · auto cropping…' : '') + (source === 'feeder' && !result.cancelled ? '. Load the next batch, then Scan more.' : ''));
             app.showToast(`Scanned ${said}`, 4000, 'scanned', null, { type: 'success' });
             if (autoCrop) {
-                await this.autoCrop(names);
+                await this.autoCrop(names, { feeder: source === 'feeder' });
                 if (panel.dataset.state === 'done') this.status((result.cancelled ? 'Stopped after ' : 'Scanned ') + said + ' · auto cropped');
             }
         } else if (result.cancelled) {
@@ -845,11 +845,11 @@ const Scan = {
 
     // Prints come in all sizes: each scan is cropped to the print on it
     // (Auto crop; the originals are kept, so Ctrl+Z undoes it)
-    async autoCrop(names) {
+    async autoCrop(names, { feeder = false } = {}) {
         const app = this.app;
         const find = () => names.map(n => app.files.find(f => (f.relPath || f.name) === n)).filter(Boolean);
         for (let i = 0; i < 50 && find().length < names.length; i++) await new Promise(r => setTimeout(r, 200));
         const files = find();
-        if (files.length) await app.batchAutoCrop(files, { ask: false });
+        if (files.length) await app.batchAutoCrop(files, { ask: false, feeder });
     }
 };

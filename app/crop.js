@@ -580,7 +580,7 @@ const CropEditor = {
 
     autoDetect({ quiet = false, animate = true } = {}) {
         if (!this.ready) return false;
-        const det = CropAuto.detect(this.preview, this.W, this.H);
+        const det = CropAuto.find(this.preview, this.W, this.H);
         if (!det) {
             if (!quiet) this.app.showToast('No print edge found — Auto needs a plain scanner border around the photo', 3500);
             return false;

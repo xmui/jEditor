@@ -3152,6 +3152,74 @@ async function newPage(browser, url) {
         await page.close();
     }
 
+    // ---- 7s1. Auto crop on a sheet-feeder page ----
+    console.log('feeder auto crop');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            let seed = 11;
+            const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+            // Like a FastFoto page: the photo at the leading edge, the bluish
+            // backing beside it, white fill where the page runs on past it
+            const page = (tilt) => {
+                const c = document.createElement('canvas');
+                c.width = 850; c.height = 1400;
+                const g = c.getContext('2d');
+                g.fillStyle = '#fbfbfb'; g.fillRect(0, 0, 850, 1400);
+                const img = g.getImageData(0, 0, 850, 580);
+                for (let i = 0; i < img.data.length; i += 4) {
+                    const n = (rnd() - 0.5) * 14;
+                    img.data[i] = 180 + n; img.data[i + 1] = 195 + n; img.data[i + 2] = 210 + n;
+                }
+                g.putImageData(img, 0, 0);
+                g.save(); g.translate(450, 285); g.rotate(tilt * Math.PI / 180);
+                for (let y = 0; y < 560; y += 28) for (let x = 0; x < 380; x += 38) {
+                    g.fillStyle = `hsl(${Math.floor(rnd() * 360)},50%,${10 + Math.floor(rnd() * 50)}%)`;
+                    g.fillRect(x - 190, y - 280, 38, 28);
+                }
+                g.restore();
+                return c;
+            };
+            const crop = (det, W, H) => {
+                const ed = CropEditor.headless(W, H);
+                ed.aspectKey = 'free';
+                ed.fitToPrint(det);
+                const o = ed.outputRect();
+                const ctr = ed.toImage({ x: (o.x0 + o.x1) / 2, y: (o.y0 + o.y1) / 2 });
+                return { w: o.w, h: o.h, cx: Math.round(ctr.x + W / 2), cy: Math.round(ctr.y + H / 2), angle: ed.angle };
+            };
+            const straight = page(0);
+            out.flatbedMisses = !CropAuto.detect(straight, 850, 1400);
+            const d0 = CropAuto.find(straight, 850, 1400, { feeder: true });
+            out.straight = d0 && crop(d0, 850, 1400);
+            const tilted = page(1.5);
+            const d1 = CropAuto.find(tilted, 850, 1400, { feeder: true });
+            out.tilted = d1 && crop(d1, 850, 1400);
+            // The crop editor's Auto (no hint) knows such a page too
+            out.unhinted = !!CropAuto.find(straight, 850, 1400);
+            // ...but leaves an ordinary photo alone, even one with a plain
+            // dark band along the bottom
+            const photo = document.createElement('canvas');
+            photo.width = 900; photo.height = 600;
+            const pg = photo.getContext('2d');
+            for (let y = 0; y < 600; y += 30) for (let x = 0; x < 900; x += 30) {
+                pg.fillStyle = `hsl(${Math.floor(rnd() * 360)},40%,${20 + Math.floor(rnd() * 50)}%)`;
+                pg.fillRect(x, y, 30, 30);
+            }
+            pg.fillStyle = '#050505'; pg.fillRect(0, 420, 900, 180);
+            out.photoAlone = !CropAuto.find(photo, 900, 600);
+            return out;
+        });
+        const near = (c, w, h) => c && c.w > w - 30 && c.w <= w && c.h > h - 30 && c.h <= h && Math.abs(c.cx - 450) <= 8 && Math.abs(c.cy - 280) <= 10;
+        check('feeder page: the flatbed finder can\'t see the photo (two backgrounds)', r.flatbedMisses);
+        check('feeder page: Auto crop finds the photo, background trimmed off', near(r.straight, 380, 560), JSON.stringify(r.straight));
+        check('feeder page: a tilted photo is straightened and cropped', near(r.tilted, 380, 560) && Math.abs(r.tilted.angle + 1.5) < 0.4, JSON.stringify(r.tilted));
+        check('feeder page: found without the hint too; an ordinary photo is left alone', r.unhinted && r.photoAlone, JSON.stringify([r.unhinted, r.photoAlone]));
+        check('feeder auto crop suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7s2. Save edits when done ----
     console.log('save edits when done');
     {
