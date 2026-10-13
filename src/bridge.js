@@ -467,6 +467,11 @@
                     const shown = () => r.names.filter(n => a.files.some(f => (f.relPath || f.name) === n)).length;
                     for (let i = 0; i < 75 && shown() < r.names.length; i++) await new Promise(res => setTimeout(res, 200));
                     await check('scanned', { names: r.names, shown: shown() });
+                    // The feeder, jEditor's settings: both sides of three
+                    // photos, the test scanner's sides swapped (as the
+                    // FastFoto's are): each photo, then its back as -b
+                    const fed = await Scan.run({ device: test.id, driver: test.driver, folder: '', source: 'feeder', sides: 'both', swap: true, dpi: 300, bedW: 8.5, bedH: 14, format: 'jpeg', quality: 90, brightness: 10, contrast: 0 });
+                    await check('fed', { names: fed.names });
                     // Preview and crop: the test scanner's glass, a box round
                     // each print found, a photo per box
                     const caps = await window.JEditorNative.scanCaps({ device: test.id, driver: test.driver });
@@ -479,8 +484,10 @@
                         steps.cropped = `found ${boxes.length} prints on the test glass, not 3`;
                     } else {
                         const dpi = 150;
-                        const c = await Scan.run({ device: test.id, driver: test.driver, folder: '', crops: boxes, dpi, gray: false, bedW: p.bedW, bedH: p.bedH });
-                        const sizes = boxes.map(b => [Math.round(b.w * p.bedW * dpi), Math.round(b.h * p.bedH * dpi)]);
+                        // The first box turned a quarter (its photo comes out tall)
+                        boxes[0].turn = 90;
+                        const c = await Scan.run({ device: test.id, driver: test.driver, folder: '', source: 'glass', crops: boxes, dpi, gray: false, bedW: p.bedW, bedH: p.bedH });
+                        const sizes = boxes.map(b => (b.turn ? (s) => s.reverse() : (s) => s)([Math.round(b.w * p.bedW * dpi), Math.round(b.h * p.bedH * dpi)]));
                         await check('cropped', { names: c.names, sizes, preview: [p.width, p.height] });
                         const inApp = () => c.names.filter(n => a.files.some(f => (f.relPath || f.name) === n)).length;
                         for (let i = 0; i < 75 && inApp() < c.names.length; i++) await new Promise(res => setTimeout(res, 200));

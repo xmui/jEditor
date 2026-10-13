@@ -82,19 +82,27 @@ const ScanPreview = {
             const div = document.createElement('div');
             div.className = 'pv-box' + (i === this.sel ? ' sel' : '');
             div.dataset.i = i;
-            Object.assign(div.style, { left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.w * 100}%`, height: `${b.h * 100}%` });
+            this.place(div, b);
             const n = document.createElement('span');
             n.className = 'pv-n';
             n.textContent = i + 1;
-            const x = document.createElement('button');
-            x.type = 'button';
-            x.className = 'pv-x';
-            x.title = 'Remove this box';
-            x.setAttribute('aria-label', `Remove box ${i + 1}`);
-            x.textContent = '×';
-            x.addEventListener('pointerdown', (e) => e.stopPropagation());
-            x.addEventListener('click', () => this.remove(i));
-            div.append(n, x);
+            // Which way is up in the saved photo
+            const up = document.createElement('span');
+            up.className = 'pv-up';
+            up.title = 'This side up in the photo';
+            up.textContent = '↑';
+            up.style.transform = `rotate(${-(b.turn || 0)}deg)`;
+            const turn = this.button('pv-turn', '↻', `Turn photo ${i + 1} a quarter (which way is up)`, () => {
+                b.turn = ((b.turn || 0) + 90) % 360;
+                this.render();
+                this.changed();
+            });
+            const x = this.button('pv-x', '×', `Remove box ${i + 1}`, () => this.remove(i));
+            const rot = document.createElement('i');
+            rot.className = 'pv-rot';
+            rot.dataset.h = 'rot';
+            rot.title = 'Drag to tilt the box to match a crooked print (it comes out straight)';
+            div.append(n, up, turn, x, rot);
             for (const c of ['nw', 'ne', 'se', 'sw']) {
                 const h = document.createElement('i');
                 h.className = 'pv-h ' + c;
@@ -105,40 +113,97 @@ const ScanPreview = {
         });
     },
 
-    // Drag: a corner resizes its box, a box moves, the glass draws a new one
+    button(cls, text, label, click) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = cls;
+        btn.title = label;
+        btn.setAttribute('aria-label', label);
+        btn.textContent = text;
+        btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+        btn.addEventListener('click', click);
+        return btn;
+    },
+
+    place(el, b) {
+        Object.assign(el.style, {
+            left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.w * 100}%`, height: `${b.h * 100}%`,
+            transform: b.angle ? `rotate(${b.angle}deg)` : ''
+        });
+    },
+
+    // A box of a given size (fractions of the glass), where there's room:
+    // the first spot in reading order that overlaps the other boxes least
+    addBox(w, h) {
+        w = Math.min(w, 1);
+        h = Math.min(h, 1);
+        const overlap = (x, y) => this.boxes.reduce((sum, o) =>
+            sum + Math.max(0, Math.min(x + w, o.x + o.w) - Math.max(x, o.x)) * Math.max(0, Math.min(y + h, o.y + o.h) - Math.max(y, o.y)), 0);
+        const steps = (size) => {
+            const list = [];
+            for (let v = 0; v + size <= 1.0001; v += 0.02) list.push(v);
+            list.push(Math.max(0, 1 - size));
+            return list;
+        };
+        let best = { x: 0, y: 0, o: Infinity };
+        for (const y of steps(h)) {
+            for (const x of steps(w)) {
+                const o = overlap(x, y);
+                if (o < best.o - 1e-9) best = { x, y, o };
+            }
+            if (best.o === 0) break;
+        }
+        this.boxes.push({ x: best.x, y: best.y, w, h, angle: 0, turn: 0 });
+        this.sel = this.boxes.length - 1;
+        this.render();
+        this.changed();
+    },
+
+    // Drag: a corner resizes its box, the round handle tilts it, a box
+    // moves, the glass draws a new one
     pointerDown(e) {
         if (e.button !== 0 || !this.image) return;
         const layer = this.el('scan-pv-boxes');
         layer.focus({ preventScroll: true });
         const r = layer.getBoundingClientRect();
+        const W = r.width, H = r.height;
         const at = (ev) => ({
-            x: Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)),
-            y: Math.max(0, Math.min(1, (ev.clientY - r.top) / r.height))
+            x: Math.max(0, Math.min(1, (ev.clientX - r.left) / W)),
+            y: Math.max(0, Math.min(1, (ev.clientY - r.top) / H))
         });
         const p0 = at(e);
         const boxEl = e.target.closest('.pv-box');
-        let i, mode, corner = null, start;
+        let i, mode, corner = null;
         if (boxEl) {
             i = +boxEl.dataset.i;
             corner = e.target.dataset && e.target.dataset.h;
-            mode = corner ? 'resize' : 'move';
+            mode = corner === 'rot' ? 'rotate' : corner ? 'resize' : 'move';
         } else {
-            this.boxes.push({ x: p0.x, y: p0.y, w: 0, h: 0 });
+            this.boxes.push({ x: p0.x, y: p0.y, w: 0, h: 0, angle: 0, turn: 0 });
             i = this.boxes.length - 1;
             mode = 'draw';
         }
-        start = { ...this.boxes[i] };
+        const start = { ...this.boxes[i] };
         this.sel = i;
         this.render();
         try { layer.setPointerCapture(e.pointerId); } catch (err) { /* not a live pointer */ }
         e.preventDefault();
+        // Pixel geometry (the glass keeps its shape on screen, so angles are true)
+        const rad = (start.angle || 0) * Math.PI / 180;
+        const cos = Math.cos(rad), sin = Math.sin(rad);
+        const c0 = { x: (start.x + start.w / 2) * W, y: (start.y + start.h / 2) * H };
         const move = (ev) => {
             const p = at(ev);
             const b = this.boxes[i];
             if (mode === 'move') {
-                b.x = Math.max(0, Math.min(1 - start.w, start.x + p.x - p0.x));
-                b.y = Math.max(0, Math.min(1 - start.h, start.y + p.y - p0.y));
-            } else {
+                b.x = Math.max(-start.w / 2, Math.min(1 - start.w / 2, start.x + p.x - p0.x));
+                b.y = Math.max(-start.h / 2, Math.min(1 - start.h / 2, start.y + p.y - p0.y));
+            } else if (mode === 'rotate') {
+                // The handle sits above the middle: its angle from there
+                let a = Math.atan2(p.x * W - c0.x, -(p.y * H - c0.y)) * 180 / Math.PI;
+                if (Math.abs(a) < 1.5) a = 0;
+                b.angle = Math.max(-45, Math.min(45, Math.round(a * 10) / 10));
+            } else if (mode === 'draw' || !start.angle) {
                 // The corner opposite the one dragged stays put
                 const fixed = mode === 'draw' ? p0 : {
                     x: corner.includes('w') ? start.x + start.w : start.x,
@@ -148,9 +213,24 @@ const ScanPreview = {
                 b.y = Math.min(fixed.y, p.y);
                 b.w = Math.abs(p.x - fixed.x);
                 b.h = Math.abs(p.y - fixed.y);
+            } else {
+                // A tilted box: the opposite corner stays put, sizes measured
+                // along the box's own sides
+                const sx = corner.includes('w') ? -1 : 1, sy = corner.includes('n') ? -1 : 1;
+                const hw = start.w * W / 2, hh = start.h * H / 2;
+                const fixed = { x: c0.x + (-sx * hw) * cos - (-sy * hh) * sin, y: c0.y + (-sx * hw) * sin + (-sy * hh) * cos };
+                const dx = p.x * W - fixed.x, dy = p.y * H - fixed.y;
+                const lx = dx * cos + dy * sin, ly = -dx * sin + dy * cos; // in the box's frame
+                const w = Math.max(4, sx * lx), h = Math.max(4, sy * ly);
+                const cx = fixed.x + (sx * w / 2) * cos - (sy * h / 2) * sin;
+                const cy = fixed.y + (sx * w / 2) * sin + (sy * h / 2) * cos;
+                b.w = w / W;
+                b.h = h / H;
+                b.x = cx / W - b.w / 2;
+                b.y = cy / H - b.h / 2;
             }
             const el = layer.children[i];
-            if (el) Object.assign(el.style, { left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.w * 100}%`, height: `${b.h * 100}%` });
+            if (el) this.place(el, b);
         };
         const up = () => {
             layer.removeEventListener('pointermove', move);
@@ -308,7 +388,7 @@ const ScanPreview = {
             };
             const x0 = Math.max(0, b.x0 - gap('l')), y0 = Math.max(0, b.y0 - gap('t'));
             const x1 = Math.min(w, b.x1 + gap('r')), y1 = Math.min(h, b.y1 + gap('b'));
-            return { x: x0 / w, y: y0 / h, w: (x1 - x0) / w, h: (y1 - y0) / h };
+            return { x: x0 / w, y: y0 / h, w: (x1 - x0) / w, h: (y1 - y0) / h, angle: 0, turn: 0 };
         });
         return this.readingOrder(padded);
     },

@@ -5,6 +5,15 @@
 
 const CHANGELOG = [
     {
+        version: '1.25.0', date: '2026-10-14',
+        items: [
+            'Scanning uses jEditor\'s own settings now, no scanner window: How picks the glass (preview and crop) or the feeder, from what the scanner has. The scanner\'s own window is still there, under Advanced, for when you need its extras.',
+            'Settings in the scan dock: resolution, colour or greys, file type (JPEG with a quality, PNG, or TIFF), and brightness and contrast (shown on the preview as you move them). Saved setups keep a combination under a name to pick next time.',
+            'The feeder (FastFoto): Sides is Front, Back or Both; with both, each back is saved beside its photo as Smith-014-b.jpg. The FastFoto sends the back as its front, so jEditor swaps them for it (Advanced → front and back are swapped; remembered for each scanner).',
+            'Preview and crop: tilt a box to match a crooked print with the round handle above it (the photo comes out straight), and ↻ turns it a quarter so the photo comes out the right way up (the arrow shows which way). Add a box at an exact print size (wallet, 3½×5, 4×6, 5×7, 8×10, 8½×11), wide or tall, where there\'s room on the glass.'
+        ]
+    },
+    {
         version: '1.24.1', date: '2026-10-13',
         items: [
             'Browsing in the sidebar no longer opens folders by mistake: in Pinned and This PC, clicking a folder only opens it out to show what\'s inside. Open (beside it when you point at it) or a double-click makes it the project. Projects in your projects folder still open with one click.',

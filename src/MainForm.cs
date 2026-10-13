@@ -723,11 +723,18 @@ sealed class MainForm : Form
             msg["digits"]?.GetValue<int>() ?? 3,
             msg["compat"]?.GetValue<bool>() ?? false)
         {
+            Source = Str(msg, "source") is "glass" or "feeder" ? Str(msg, "source")! : "driver",
             Crops = Boxes(msg["crops"]),
             Dpi = Math.Clamp(msg["dpi"]?.GetValue<int>() ?? 300, 50, 4800),
             Gray = msg["gray"]?.GetValue<bool>() ?? false,
             BedW = msg["bedW"]?.GetValue<double>() ?? 0,
             BedH = msg["bedH"]?.GetValue<double>() ?? 0,
+            Sides = Str(msg, "sides") is "back" or "both" ? Str(msg, "sides")! : "front",
+            Swap = msg["swap"]?.GetValue<bool>() ?? false,
+            Brightness = Math.Clamp(msg["brightness"]?.GetValue<int>() ?? 0, -100, 100),
+            Contrast = Math.Clamp(msg["contrast"]?.GetValue<int>() ?? 0, -100, 100),
+            Format = Str(msg, "format") is "tiff" or "png" ? Str(msg, "format")! : "jpeg",
+            Quality = Math.Clamp(msg["quality"]?.GetValue<int>() ?? 95, 40, 100),
         };
         if (request.Crops is not null && (request.BedW <= 0 || request.BedH <= 0)) { Reply(id, new { error = "Preview first: the boxes need the bed's size" }); return; }
         int count = 0;
@@ -766,7 +773,9 @@ sealed class MainForm : Form
         {
             if (b is null) continue;
             double V(string k) => Math.Clamp(b[k]?.GetValue<double>() ?? 0, 0, 1);
-            var box = new Scanner.Box(V("x"), V("y"), V("w"), V("h"));
+            var angle = Math.Clamp(b["angle"]?.GetValue<double>() ?? 0, -45, 45);
+            var turn = (((b["turn"]?.GetValue<int>() ?? 0) / 90 * 90) % 360 + 360) % 360;
+            var box = new Scanner.Box(V("x"), V("y"), V("w"), V("h"), angle, turn);
             if (box.W > 0.005 && box.H > 0.005) boxes.Add(box);
         }
         return boxes.Count > 0 ? boxes.ToArray() : null;
@@ -780,7 +789,7 @@ sealed class MainForm : Form
         try
         {
             var caps = await Stoppable(cancel => Scanners.CapsAsync(Str(msg, "device") ?? "", Str(msg, "driver") ?? "twain", msg["compat"]?.GetValue<bool>() ?? false, cancel));
-            Reply(id, new { bedW = caps.BedW, bedH = caps.BedH, dpis = caps.Dpis, gray = caps.Gray, guessed = caps.Guessed });
+            Reply(id, new { bedW = caps.BedW, bedH = caps.BedH, dpis = caps.Dpis, gray = caps.Gray, guessed = caps.Guessed, flatbed = caps.Flatbed, feeder = caps.Feeder, duplex = caps.Duplex, feedW = caps.FeedW, feedH = caps.FeedH });
         }
         catch (OperationCanceledException) { Reply(id, new { cancelled = true }); }
         catch (Exception e)
