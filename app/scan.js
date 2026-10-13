@@ -285,6 +285,20 @@ const Scan = {
         try { return JSON.parse(localStorage.getItem(this.KEY_COMPAT) || '{}') || {}; } catch (e) { return {}; }
     },
 
+    // The scanner only worked in Older TWAIN mode (jEditor tries it when a
+    // TWAIN scanner won't open): kept on for it from now on
+    adoptCompat(deviceId, reply) {
+        if (!reply || !reply.compat) return;
+        const all = this.compat();
+        if (all[deviceId]) return;
+        all[deviceId] = true;
+        this.put(this.KEY_COMPAT, all);
+        if (this.pv && this.pv.device.id === deviceId) this.pv.compat = true;
+        this.syncCompat();
+        const d = (this.devices || []).find(x => x.id === deviceId);
+        this.app.showToast(`${d ? d.name : 'This scanner'} only works in Older TWAIN mode, so jEditor turned that on for it (under Advanced)`, 7000, null, null, { type: 'info' });
+    },
+
     syncCompat() {
         const device = this.devices && this.devices.find(d => d.id === this.el('scan-device').value);
         const twain = !!device && device.driver === 'twain';
@@ -330,6 +344,7 @@ const Scan = {
         try {
             const caps = await FolderCache.native().scanCaps({ device: d.id, driver: d.driver, compat: d.driver === 'twain' && !!this.compat()[d.id] });
             if (caps) this.caps[d.id] = caps;
+            this.adoptCompat(d.id, caps);
         } catch (e) { /* both offered */ }
         if (this.device() === d) {
             this.syncMode(true);
@@ -342,7 +357,8 @@ const Scan = {
     syncMode(fromDevice = false) {
         const d = this.device();
         const caps = d && this.caps[d.id];
-        const unsure = !caps || caps.guessed;
+        // Not known (the scanner didn't say): both offered
+        const unsure = !caps || caps.guessed || (!caps.flatbed && !caps.feeder);
         const hasGlass = unsure || caps.flatbed !== false;
         const hasFeeder = unsure || !!caps.feeder;
         this.el('scan-mode-glass').classList.toggle('hidden', !hasGlass);
@@ -683,6 +699,7 @@ const Scan = {
                 caps = await native.scanCaps({ device: pv.device.id, driver: pv.device.driver, compat: pv.compat });
                 if (!caps) return this.pvError('Stopped');
                 this.caps[pv.device.id] = caps;
+                this.adoptCompat(pv.device.id, caps);
             }
             this.fillDpis(caps);
             wait(`Previewing the glass of ${pv.device.name}…`);
@@ -691,6 +708,7 @@ const Scan = {
             const dpi = low.length ? low.reduce((a, b) => (Math.abs(b - 75) < Math.abs(a - 75) ? b : a)) : 75;
             const p = await native.scanPreview({ device: pv.device.id, driver: pv.device.driver, compat: pv.compat, bedW: caps.bedW, bedH: caps.bedH, dpi });
             if (!p) return this.pvError('Preview stopped');
+            this.adoptCompat(pv.device.id, p);
             pv.bed = { w: p.bedW, h: p.bedH };
             await ScanPreview.show(p);
             ScanPreview.set(ScanPreview.find(this.el('scan-pv-img')));
@@ -808,6 +826,7 @@ const Scan = {
                 show();
             });
             (result.names || []).forEach(add); // the full list, in case a message was missed
+            this.adoptCompat(device, result);
         } catch (e) {
             (e.names || []).forEach(add);
             show();

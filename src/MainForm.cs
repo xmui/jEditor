@@ -752,16 +752,16 @@ sealed class MainForm : Form
                 if (InvokeRequired) Invoke(() => Post(new { type = "scanned", scan = id, name }));
                 else Post(new { type = "scanned", scan = id, name });
             }, cancel));
-            Reply(id, new { count, names });
+            Reply(id, new { count, names, compat = scanner?.FellBackToCompat ?? false });
         }
         catch (OperationCanceledException)
         {
-            Reply(id, new { count, names, cancelled = true });
+            Reply(id, new { count, names, cancelled = true, compat = scanner?.FellBackToCompat ?? false });
         }
         catch (Exception e)
         {
             Log.Write($"Scan failed: {e}");
-            Reply(id, new { count, names, error = ScanError(e) });
+            Reply(id, new { count, names, error = ScanError(e), compat = scanner?.FellBackToCompat ?? false });
         }
     }
 
@@ -789,7 +789,7 @@ sealed class MainForm : Form
         try
         {
             var caps = await Stoppable(cancel => Scanners.CapsAsync(Str(msg, "device") ?? "", Str(msg, "driver") ?? "twain", msg["compat"]?.GetValue<bool>() ?? false, cancel));
-            Reply(id, new { bedW = caps.BedW, bedH = caps.BedH, dpis = caps.Dpis, gray = caps.Gray, guessed = caps.Guessed, flatbed = caps.Flatbed, feeder = caps.Feeder, duplex = caps.Duplex, feedW = caps.FeedW, feedH = caps.FeedH });
+            Reply(id, new { bedW = caps.BedW, bedH = caps.BedH, dpis = caps.Dpis, gray = caps.Gray, guessed = caps.Guessed, flatbed = caps.Flatbed, feeder = caps.Feeder, duplex = caps.Duplex, feedW = caps.FeedW, feedH = caps.FeedH, compat = caps.Compat });
         }
         catch (OperationCanceledException) { Reply(id, new { cancelled = true }); }
         catch (Exception e)
@@ -812,7 +812,7 @@ sealed class MainForm : Form
             var dpi = Math.Clamp(msg["dpi"]?.GetValue<int>() ?? 75, 50, 300);
             Log.Write($"Preview from {Str(msg, "device")} ({Str(msg, "driver")})");
             var p = await Stoppable(cancel => Scanners.PreviewAsync(Str(msg, "device") ?? "", Str(msg, "driver") ?? "twain", msg["compat"]?.GetValue<bool>() ?? false, bedW, bedH, dpi, Handle, cancel));
-            Reply(id, new { image = "data:image/jpeg;base64," + Convert.ToBase64String(p.Jpeg), width = p.Width, height = p.Height, bedW = p.BedW, bedH = p.BedH });
+            Reply(id, new { image = "data:image/jpeg;base64," + Convert.ToBase64String(p.Jpeg), width = p.Width, height = p.Height, bedW = p.BedW, bedH = p.BedH, compat = scanner?.FellBackToCompat ?? false });
         }
         catch (OperationCanceledException) { Reply(id, new { cancelled = true }); }
         catch (Exception e)
@@ -910,6 +910,7 @@ sealed class MainForm : Form
     {
         NAPS2.Scan.Exceptions.DeviceNotFoundException => "The scanner isn't connected or is turned off",
         NAPS2.Scan.Exceptions.DeviceBusyException => "The scanner is busy (is another program using it?)",
+        NAPS2.Scan.Exceptions.AlreadyHandledDriverException => "The scanner's driver stopped with an error. Check the scanner is on and that no other program (its own scan utility, say) is using it. If it keeps happening, use the scanner's own window (Advanced).",
         NAPS2.Scan.Exceptions.DeviceException d => d.Message,
         DllNotFoundException => "TWAIN isn't set up on this PC (no TWAINDSM.dll)",
         _ => e.Message

@@ -12,6 +12,7 @@ const CHANGELOG = [
             'The grid, film strip and viewer show each photo as it will be saved, with a pencil on the edited ones. The bar under the toolbar counts them, with Save and Discard. Save writes them into the photos (the originals are kept, so `Ctrl+Z` puts them back with the edits kept again) or exports copies of every photo, edited ones with their edits, into "jEditor Export".',
             'Kept edits stay with the project when jEditor is closed. Right-click a photo for Discard edit.',
             'Auto crop works on feeder scans (FastFoto): each page comes out the feeder\'s full length with the photo at the top and backing and white around it; Auto crop now finds the photo on such a page, trims everything else and straightens it. Shift+A and the crop editor\'s Auto recognise these pages too, so ones scanned before can be fixed.',
+            'Scanners whose driver won\'t open with the newer TWAIN manager (the OpticBook A300): jEditor now tries again in Older TWAIN mode by itself, and when that works, keeps it on for that scanner and says so. A scanner that won\'t say what it has gets both How choices (the glass and the feeder) instead of none.',
             'Undo history: the new History button in the toolbar (or `H`) lists every step Ctrl+Z can take back, newest first: what it was, which photos and when. Click a step to go back to before it; jEditor asks first, naming everything that will be undone. Like the other toolbar buttons, it can be moved to More or hidden in Settings.'
         ]
     },

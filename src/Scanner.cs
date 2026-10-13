@@ -64,9 +64,10 @@ sealed class Scanner : IDisposable
     public sealed record Box(double X, double Y, double W, double H, double Angle = 0, int Turn = 0);
 
     // What a scanner can do: its glass (inches; guessed: the driver didn't
-    // say, so A4), resolutions, and its feeder (the longest page) and sides
+    // say, so A4), resolutions, and its feeder (the longest page) and sides.
+    // Compat: it only answered in compatibility mode (see Request)
     public sealed record Caps(double BedW, double BedH, List<int> Dpis, bool Gray, bool Guessed,
-        bool Flatbed = true, bool Feeder = false, bool Duplex = false, double FeedW = 0, double FeedH = 0);
+        bool Flatbed = true, bool Feeder = false, bool Duplex = false, double FeedW = 0, double FeedH = 0, bool Compat = false);
 
     // The whole bed, small: a JPEG, its size in pixels and the bed's in inches
     public sealed record Preview(byte[] Jpeg, int Width, int Height, double BedW, double BedH);
@@ -97,6 +98,52 @@ sealed class Scanner : IDisposable
     }
 
     public void Dispose() => context.Dispose();
+
+    // The last caps, preview or scan only worked in compatibility mode,
+    // though it wasn't asked for: the page turns it on for that scanner
+    public bool FellBackToCompat { get; private set; }
+
+    // A TWAIN driver that won't open with the newer TWAIN manager (the
+    // OpticBook's): NAPS2 says the driver has already shown its error, or
+    // that it couldn't open it at all
+    static bool WontOpen(Exception e) =>
+        e is NAPS2.Scan.Exceptions.AlreadyHandledDriverException or NAPS2.Scan.Exceptions.ScanDriverUnknownException
+        || e.GetType() == typeof(NAPS2.Scan.Exceptions.DeviceException);
+
+    // Scans with options made by make(compat). A TWAIN scanner that fails
+    // to open before anything came is tried once more in compatibility
+    // mode (Windows' old TWAIN manager, native transfer)
+    async IAsyncEnumerable<ProcessedImage> Run(Func<bool, ScanOptions> make, bool compat, [EnumeratorCancellation] CancellationToken cancel)
+    {
+        var options = make(compat);
+        bool any = false;
+        Exception? failed = null;
+        await using (var e = controller.Scan(options, cancel).GetAsyncEnumerator(cancel))
+        {
+            while (true)
+            {
+                try
+                {
+                    if (!await e.MoveNextAsync()) break;
+                }
+                catch (Exception ex) when (!any && !compat && options.Driver == Driver.Twain && WontOpen(ex) && !cancel.IsCancellationRequested)
+                {
+                    failed = ex;
+                    break;
+                }
+                any = true;
+                yield return e.Current;
+            }
+        }
+        if (failed is null) yield break;
+        Log.Write($"The scanner didn't open ({failed.GetType().Name}: {failed.Message}); trying again in compatibility mode (Older TWAIN mode)");
+        await foreach (var image in controller.Scan(make(true), cancel))
+        {
+            if (!FellBackToCompat) Log.Write("It works in compatibility mode: jEditor keeps that on for this scanner");
+            FellBackToCompat = true;
+            yield return image;
+        }
+    }
 
     // Is the TWAIN manager there? (Without it there are no TWAIN scanners)
     public static bool HasTwain()
@@ -164,6 +211,7 @@ sealed class Scanner : IDisposable
     public async Task<int> ScanAsync(Request r, IntPtr owner, Action<string> saved, CancellationToken cancel)
     {
         if (!Directory.Exists(r.Folder)) throw new DirectoryNotFoundException("The folder to scan into isn't there");
+        FellBackToCompat = false;
         int count = 0, next = Math.Max(0, r.Next);
         string? lastStem = null;
         string Stem(int n) => r.Prefix + n.ToString().PadLeft(Math.Clamp(r.Digits, 1, 9), '0');
@@ -231,15 +279,19 @@ sealed class Scanner : IDisposable
         }
 
         var driver = r.Driver == "wia" ? Driver.Wia : Driver.Twain;
-        var options = For(r.DeviceId, r.Driver, r.Compat);
-        options.UseNativeUI = true; // the scanner's own window: size detection, resolution, feeder…
-        options.DialogParent = owner;
-        options.MaxQuality = true;  // kept lossless until saved
-        options.Dpi = 300;          // (the scanner's window decides)
-        Log.Write(driver == Driver.Twain
-            ? $"TWAIN: manager {options.TwainOptions.Dsm}, transfer {options.TwainOptions.TransferMode}, {(worker ? "through the 32-bit helper" : "64-bit, in jEditor")}; opening the scanner's window"
-            : "WIA: opening the scanner's window");
-        await foreach (var image in controller.Scan(options, cancel))
+        ScanOptions Make(bool compat)
+        {
+            var options = For(r.DeviceId, r.Driver, compat);
+            options.UseNativeUI = true; // the scanner's own window: size detection, resolution, feeder…
+            options.DialogParent = owner;
+            options.MaxQuality = true;  // kept lossless until saved
+            options.Dpi = 300;          // (the scanner's window decides)
+            Log.Write(driver == Driver.Twain
+                ? $"TWAIN: manager {options.TwainOptions.Dsm}, transfer {options.TwainOptions.TransferMode}, {(worker ? "through the 32-bit helper" : "64-bit, in jEditor")}; opening the scanner's window"
+                : "WIA: opening the scanner's window");
+            return options;
+        }
+        await foreach (var image in Run(Make, r.Compat, cancel))
         {
             var img = image;
             yield return new Page(path =>
@@ -313,16 +365,20 @@ sealed class Scanner : IDisposable
             }
             yield break;
         }
-        var options = For(r.DeviceId, r.Driver, r.Compat);
-        options.UseNativeUI = false;
-        options.DialogParent = owner;
-        options.PaperSource = duplex ? PaperSource.Duplex : PaperSource.Feeder;
-        options.Dpi = r.Dpi;
-        options.BitDepth = r.Gray ? NAPS2.Images.BitDepth.Grayscale : NAPS2.Images.BitDepth.Color;
-        if (r.BedW > 1 && r.BedH > 1) options.PageSize = new PageSize(Math.Round((decimal)r.BedW, 2), Math.Round((decimal)r.BedH, 2), PageSizeUnit.Inch);
-        options.MaxQuality = true;
-        Log.Write($"Scanning the feeder: {options.PaperSource}, page up to {r.BedW:0.##} × {r.BedH:0.##} in, no scanner window ({options.Driver}, manager {options.TwainOptions.Dsm}, transfer {options.TwainOptions.TransferMode})");
-        await foreach (var image in controller.Scan(options, cancel))
+        ScanOptions Make(bool compat)
+        {
+            var options = For(r.DeviceId, r.Driver, compat);
+            options.UseNativeUI = false;
+            options.DialogParent = owner;
+            options.PaperSource = duplex ? PaperSource.Duplex : PaperSource.Feeder;
+            options.Dpi = r.Dpi;
+            options.BitDepth = r.Gray ? NAPS2.Images.BitDepth.Grayscale : NAPS2.Images.BitDepth.Color;
+            if (r.BedW > 1 && r.BedH > 1) options.PageSize = new PageSize(Math.Round((decimal)r.BedW, 2), Math.Round((decimal)r.BedH, 2), PageSizeUnit.Inch);
+            options.MaxQuality = true;
+            Log.Write($"Scanning the feeder: {options.PaperSource}, page up to {r.BedW:0.##} × {r.BedH:0.##} in, no scanner window ({options.Driver}, manager {options.TwainOptions.Dsm}, transfer {options.TwainOptions.TransferMode})");
+            return options;
+        }
+        await foreach (var image in Run(Make, r.Compat, cancel))
         {
             using (image) yield return images.RenderToBitmap(image);
         }
@@ -421,10 +477,29 @@ sealed class Scanner : IDisposable
     {
         // The test scanner has both: a glass with three prints, and a feeder
         if (deviceId == FakeId && fake) return new Caps(FakeBed.W, FakeBed.H, [75, 150, 300, 600, 1200], true, false, true, true, true, 8.5, 14);
+        FellBackToCompat = false;
         try
         {
             var options = For(deviceId, driver, compat);
             var caps = await controller.GetCaps(options, cancel);
+            // NAPS2 answers nothing when the driver wouldn't open
+            static bool Empty(ScanCaps c) => c.PaperSourceCaps is null && c.FlatbedCaps is null && c.FeederCaps is null;
+            if (Empty(caps) && !compat && options.Driver == Driver.Twain)
+            {
+                Log.Write("Scanner caps: the scanner didn't open; asking again in compatibility mode (Older TWAIN mode)");
+                var again = await controller.GetCaps(For(deviceId, driver, true), cancel);
+                if (!Empty(again))
+                {
+                    caps = again;
+                    compat = FellBackToCompat = true;
+                }
+            }
+            if (Empty(caps))
+            {
+                // Glass and feeder both offered, the bed taken to be A4
+                Log.Write("Scanner caps: the scanner didn't open to say what it has (is another program using it, or is it asleep?)");
+                return new Caps((double)PageSize.A4.WidthInInches, (double)PageSize.A4.HeightInInches, CommonDpis.Where(d => d <= 1200).ToList(), true, true, true, true);
+            }
             var sources = caps.PaperSourceCaps;
             var feed = (caps.FeederCaps ?? caps.DuplexCaps)?.PageSizeCaps?.ScanArea;
             bool hasFlatbed = sources?.SupportsFlatbed ?? caps.FlatbedCaps is not null;
@@ -442,8 +517,8 @@ sealed class Scanner : IDisposable
             var gray = flatbed?.BitDepthCaps?.SupportsGrayscale ?? true;
             Log.Write($"Scanner caps: bed {(area is null ? "not said" : $"{area.WidthInInches:0.##} × {area.HeightInInches:0.##} in")}; resolutions {string.Join(", ", values)}; {caps.MetadataCaps?.Manufacturer} {caps.MetadataCaps?.Model}");
             if (area is not null && area.WidthInInches > 1 && area.HeightInInches > 1)
-                return new Caps((double)area.WidthInInches, (double)area.HeightInInches, dpis, gray, false, hasFlatbed, hasFeeder, hasDuplex, feedW, feedH);
-            return new Caps((double)PageSize.A4.WidthInInches, (double)PageSize.A4.HeightInInches, dpis, gray, hasFlatbed, hasFlatbed, hasFeeder, hasDuplex, feedW, feedH);
+                return new Caps((double)area.WidthInInches, (double)area.HeightInInches, dpis, gray, false, hasFlatbed, hasFeeder, hasDuplex, feedW, feedH, compat);
+            return new Caps((double)PageSize.A4.WidthInInches, (double)PageSize.A4.HeightInInches, dpis, gray, hasFlatbed, hasFlatbed, hasFeeder, hasDuplex, feedW, feedH, compat);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -455,9 +530,10 @@ sealed class Scanner : IDisposable
     // The whole bed at a low resolution, to draw boxes on
     public async Task<Preview> PreviewAsync(string deviceId, string driver, bool compat, double bedW, double bedH, int dpi, IntPtr owner, CancellationToken cancel)
     {
+        FellBackToCompat = false;
         using var bmp = deviceId == FakeId && fake
             ? await Task.Run(() => FakeBed.Draw(dpi, bedH), cancel)
-            : await ScanBed(For(deviceId, driver, compat), bedW, bedH, dpi, false, owner, cancel);
+            : await ScanBed(c => For(deviceId, driver, c), compat, bedW, bedH, dpi, false, owner, cancel);
         using var ms = new MemoryStream();
         SaveJpeg(bmp, ms, 85);
         Log.Write($"Preview: {bmp.Width} × {bmp.Height} at {dpi} dpi");
@@ -465,7 +541,20 @@ sealed class Scanner : IDisposable
     }
 
     // The flatbed, from its top edge down to `height` inches, as one image
-    async Task<Bitmap> ScanBed(ScanOptions options, double width, double height, int dpi, bool gray, IntPtr owner, CancellationToken cancel)
+    async Task<Bitmap> ScanBed(Func<bool, ScanOptions> scanner, bool compat, double width, double height, int dpi, bool gray, IntPtr owner, CancellationToken cancel)
+    {
+        Bitmap? result = null;
+        await foreach (var image in Run(c => BedOptions(scanner(c), width, height, dpi, gray, owner), compat, cancel))
+        {
+            using (image)
+            {
+                if (result is null) result = images.RenderToBitmap(image);
+            }
+        }
+        return result ?? throw new InvalidOperationException("The scanner sent nothing back");
+    }
+
+    static ScanOptions BedOptions(ScanOptions options, double width, double height, int dpi, bool gray, IntPtr owner)
     {
         options.UseNativeUI = false;
         options.DialogParent = owner;
@@ -476,15 +565,7 @@ sealed class Scanner : IDisposable
         options.PageAlign = HorizontalAlign.Left;
         options.MaxQuality = true;
         Log.Write($"Scanning the bed: {width:0.##} × {height:0.##} in at {dpi} dpi, {(gray ? "greys" : "colour")}, no scanner window ({options.Driver}, manager {options.TwainOptions.Dsm}, transfer {options.TwainOptions.TransferMode})");
-        Bitmap? result = null;
-        await foreach (var image in controller.Scan(options, cancel))
-        {
-            using (image)
-            {
-                if (result is null) result = images.RenderToBitmap(image);
-            }
-        }
-        return result ?? throw new InvalidOperationException("The scanner sent nothing back");
+        return options;
     }
 
     // Preview and crop: one scan of the bed (only as far down as the
@@ -498,7 +579,7 @@ sealed class Scanner : IDisposable
         var dpi = fakeScan ? Math.Min(r.Dpi, 300) : r.Dpi;
         var bmp = fakeScan
             ? await Task.Run(() => FakeBed.Draw(dpi, height), cancel)
-            : await ScanBed(For(r.DeviceId, r.Driver, r.Compat), r.BedW, height, dpi, r.Gray, owner, cancel);
+            : await ScanBed(c => For(r.DeviceId, r.Driver, c), r.Compat, r.BedW, height, dpi, r.Gray, owner, cancel);
         try
         {
             // Pixels per inch: the image's own resolution if it's believable

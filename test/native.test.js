@@ -198,6 +198,8 @@ const FAKE_NATIVE = `
         // Preview and crop: an 8.5 × 11.7 in glass with three prints on a pale lid
         async scanCaps(o) {
             window.__capsReq = o;
+            const special = window.__capsFor && window.__capsFor(o);
+            if (special) return special;
             // The FastFoto: a feeder (both sides); the OpticBook: a glass
             if (/EPSON/.test(o.device)) return { bedW: 8.5, bedH: 11.7, dpis: [75, 150, 300, 600, 1200], gray: true, guessed: false, flatbed: false, feeder: true, duplex: true, feedW: 8.5, feedH: 14 };
             return { bedW: 8.5, bedH: 11.7, dpis: [75, 150, 300, 600, 1200], gray: true, guessed: false, flatbed: true, feeder: false, duplex: false };
@@ -1004,6 +1006,50 @@ async function newPage(context, baseUrl) {
         check('... fronts and backs come in', /photo3-b\.jpg,photo3\.jpg,photo4-b\.jpg,photo4\.jpg/.test(r.files), r.files);
         check('the swap is remembered for that scanner', r.swapKept);
         check('feeder suite: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('native: a scanner that only opens in Older TWAIN mode');
+    {
+        const context = await browser.newContext();
+        const { page, errors } = await newPage(context, baseUrl);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const $ = (id) => document.getElementById(id);
+            window.__scanners = { devices: [
+                { id: 'Plustek OpticBook A300 Plus-TWAIN', name: 'Plustek OpticBook A300 Plus-TWAIN', driver: 'twain' },
+                { id: 'Mystery Scanner', name: 'Mystery Scanner', driver: 'twain' }], problems: [] };
+            // The app found the OpticBook only opens in compatibility mode;
+            // the other one wouldn't say what it has at all
+            window.__capsFor = (o) => /OpticBook/.test(o.device)
+                ? { bedW: 8.5, bedH: 11.7, dpis: [75, 150, 300, 600], gray: true, guessed: false, flatbed: true, feeder: false, compat: true }
+                : { bedW: 8.27, bedH: 11.69, dpis: [75, 150, 300, 600], gray: true, guessed: false, flatbed: false, feeder: false };
+            const dir = await makeOrder('Book Order', 1);
+            await openOrder(dir);
+            $('btn-scan').click();
+            await wait(() => !$('scan-device').disabled && Scan.caps['Plustek OpticBook A300 Plus-TWAIN']);
+            await wait(() => $('scan-compat').checked);
+            out.kept = !!JSON.parse(localStorage.getItem('jeditor.scanCompat') || '{}')['Plustek OpticBook A300 Plus-TWAIN'];
+            out.checked = $('scan-compat').checked;
+            out.toast = [...document.querySelectorAll('.toast')].map(t => t.textContent).find(t => /Older TWAIN mode/.test(t)) || '';
+            out.glass = Scan.mode() === 'glass' && $('scan-mode-feeder').classList.contains('hidden');
+            // Asked again (next caps, preview, scan) in that mode
+            $('scan-device').value = 'Mystery Scanner';
+            $('scan-device').dispatchEvent(new Event('change'));
+            await wait(() => Scan.caps['Mystery Scanner']);
+            out.bothOffered = !$('scan-mode-glass').classList.contains('hidden') && !$('scan-mode-feeder').classList.contains('hidden') && Scan.mode() === 'glass';
+            $('scan-device').value = 'Plustek OpticBook A300 Plus-TWAIN';
+            $('scan-device').dispatchEvent(new Event('change'));
+            $('scan-go').click();
+            await wait(() => window.__previewReq);
+            out.previewCompat = window.__previewReq.compat === true;
+            Scan.close();
+            return out;
+        });
+        check('Older TWAIN mode found by the app is turned on for that scanner, and said', r.kept && r.checked && /OpticBook.*Older TWAIN mode/.test(r.toast), JSON.stringify(r));
+        check('... and used from then on', r.previewCompat && r.glass);
+        check('a scanner that won\'t say what it has gets both the glass and the feeder offered', r.bothOffered);
+        check('compat suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
 
