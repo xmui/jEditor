@@ -380,6 +380,16 @@
                 const l = here ? await window.JEditorNative.listDir(here) : null;
                 const top = a.files.filter(f => !(f.relPath || '').includes('/')).length;
                 steps.browsed = !l ? 'no path for the folder' : l.photos === top ? true : `Browse counts ${l.photos} photos, jEditor shows ${top}`;
+                // The sidebar: this folder among its parent's projects, its
+                // photos counted, Explorer's pins read
+                if (here) {
+                    const parent = here.replace(/\\[^\\]+$/, '');
+                    const projects = await window.JEditorNative.listProjects(parent);
+                    steps.projects = projects.some(p => p.path.toLowerCase() === here.toLowerCase()) ? true : 'not among its folder\'s projects';
+                    const { counts } = await window.JEditorNative.countPhotos([here]);
+                    steps.counted = counts[0] === a.files.length ? true : `counted ${counts[0]} photos, jEditor shows ${a.files.length}`;
+                }
+                steps.pins = Array.isArray(await window.JEditorNative.quickAccess()) || 'no answer';
             }
             try {
                 const u = await window.JEditorNative.checkUpdate();
