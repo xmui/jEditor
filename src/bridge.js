@@ -75,6 +75,8 @@
         } else if (msg.type === 'notice') {
             // Something the app has to say, once jEditor is up
             whenReady().then(() => UI.alert({ title: msg.title, message: msg.text }));
+        } else if (msg.type === 'filesChanged') {
+            dispatchEvent(new Event('jeditor-files')); // another window moved photos
         } else if (msg.type === 'drivesChanged') {
             dispatchEvent(new Event('jeditor-drives')); // places.js
         }
@@ -268,6 +270,34 @@
         cancelScan() {
             post({ type: 'cancelScan' });
         },
+        // ---- Windows: one project each ----
+        // Another jEditor window, opening `path` (or the start screen)
+        async newWindow(path) {
+            return (await answer('newWindow', path ? { path } : {})).msg.ok;
+        },
+        // This window on the left half of the screen, another on the right
+        async split() {
+            return (await answer('split')).msg.ok;
+        },
+        // What this window shows, for the others' Move to:
+        // { name, path, folders: ['', 'Ceremony', …] }
+        setState(state) {
+            post({ type: 'state', ...state });
+        },
+        // The other windows' projects → [{ id, name, path, folders }]
+        async windows() {
+            return (await answer('windows')).msg.windows;
+        },
+        // Photos (paths) moved or copied into a folder (a path), each under a
+        // free name → [{ from, to } or { from, error }]. Every window hears
+        // of it ('jeditor-files').
+        async transfer(paths, dest, copy) {
+            return (await answer('transfer', { paths, dest, copy: !!copy })).msg.items;
+        },
+        // Undoes one: moved photos go back, copies go → [error or null]
+        async undoTransfer(items, copy) {
+            return (await answer('undoTransfer', { items, copy: !!copy })).msg.errors;
+        },
         // Shows jEditor's log in Explorer
         async showLog() {
             return (await answer('showLog')).msg.ok;
@@ -345,6 +375,7 @@
             steps[step] = msg.ok ? true : (msg.detail || 'failed');
         };
         const listed = a.files.length;
+        let lastScanned = null; // the scan step's last photo, moved by the windows step
         const file = a.files[0];
         const rotated = file ? await a.rotateImage(file, 90) !== false : false;
         try {
@@ -371,6 +402,7 @@
                     steps.scanned = 'no test scanner';
                 } else {
                     const r = await Scan.run({ device: test.id, driver: test.driver, folder: '' });
+                    lastScanned = r.names[r.names.length - 1];
                     const shown = () => r.names.filter(n => a.files.some(f => (f.relPath || f.name) === n)).length;
                     for (let i = 0; i < 75 && shown() < r.names.length; i++) await new Promise(res => setTimeout(res, 200));
                     await check('scanned', { names: r.names, shown: shown() });
@@ -394,6 +426,27 @@
                     steps.counted = counts[0] === a.files.length ? true : `counted ${counts[0]} photos, jEditor shows ${a.files.length}`;
                 }
                 steps.pins = Array.isArray(await window.JEditorNative.quickAccess()) || 'no answer';
+            }
+            // Windows: a second one opens, the two split, and a photo moves
+            // into a folder through the app and back (Ctrl+Z)
+            {
+                await window.JEditorNative.newWindow(null);
+                await new Promise(r => setTimeout(r, 1500));
+                await check('windows');
+                await window.JEditorNative.split();
+                const here = await window.JEditorNative.folderPath(a.dirHandle);
+                const scan = lastScanned && a.files.find(f => (f.relPath || f.name) === lastScanned);
+                if (here && scan) {
+                    await a.dirHandle.getDirectoryHandle('Moved', { create: true });
+                    const from = here + '\\' + scan.name;
+                    const items = await window.JEditorNative.transfer([from], here + '\\Moved', false);
+                    await check('moved', { name: 'Moved/' + scan.name });
+                    const errors = await window.JEditorNative.undoTransfer(items.filter(i => i.to), false);
+                    steps.unmoved = errors.every(e => !e) || String(errors);
+                    await check('back', { name: scan.name });
+                } else {
+                    steps.moved = 'nothing to move';
+                }
             }
             try {
                 const u = await window.JEditorNative.checkUpdate();

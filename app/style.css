@@ -3870,8 +3870,169 @@ html:not(.native) .native-only {
 }
 
 /* Scan (the Windows app) */
-.dialog.scan-card {
-    width: min(480px, 100%);
+/* The scan dock: a floating panel, not a dialog. States: setup (the
+   choices), scanning (the photos coming in), done (Scan more) */
+.scan-dock {
+    position: fixed;
+    right: var(--gutter);
+    bottom: calc(var(--gutter) + 64px);
+    z-index: calc(var(--z-floating) + 3);
+    display: flex;
+    flex-direction: column;
+    width: min(380px, calc(100vw - 2 * var(--gutter)));
+    max-height: calc(100vh - 2 * var(--gutter) - 64px);
+    border-radius: var(--r-lg);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-4, var(--shadow-2)), var(--highlight);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    color: var(--text-1);
+    font-size: var(--fs-body);
+}
+
+.scan-dock-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+    cursor: move;
+    user-select: none;
+}
+
+.scan-dock-title {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-semibold);
+}
+
+.scan-dot {
+    display: none;
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #3fb950;
+    box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.25);
+    animation: scan-pulse 1.4s ease-in-out infinite;
+}
+
+.scan-dock[data-state="scanning"] .scan-dot {
+    display: block;
+}
+
+@keyframes scan-pulse {
+    50% { opacity: 0.4; }
+}
+
+.scan-dock-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+}
+
+.scan-dock.small .scan-dock-body {
+    display: none;
+}
+
+.scan-dock .scan-body {
+    padding: var(--sp-3);
+}
+
+.scan-dock:not([data-state="setup"]) .scan-body,
+.scan-dock[data-state="setup"] .scan-live,
+.scan-dock:not([data-state="scanning"]) #scan-stop,
+.scan-dock:not([data-state="done"]) #scan-settings,
+.scan-dock[data-state="scanning"] #scan-cancel,
+.scan-dock[data-state="scanning"] #scan-go {
+    display: none;
+}
+
+.scan-live {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-3);
+}
+
+.scan-summary,
+.scan-status {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.scan-status {
+    color: var(--text-1);
+}
+
+.scan-status.error {
+    color: var(--danger-text);
+}
+
+.scan-strip {
+    display: flex;
+    gap: 6px;
+    min-height: 54px;
+    overflow: hidden;
+}
+
+.scan-strip:empty::before {
+    content: 'Waiting for the first photo…';
+    align-self: center;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.scan-dock[data-state="done"] .scan-strip:empty {
+    display: none;
+}
+
+.scan-strip figure {
+    position: relative;
+    flex: none;
+    width: 72px;
+    height: 54px;
+    margin: 0;
+    overflow: hidden;
+    border-radius: var(--r-xs);
+    background: var(--tb-hover);
+}
+
+.scan-strip img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.scan-strip figcaption {
+    position: absolute;
+    left: 4px;
+    bottom: 2px;
+    max-width: calc(100% - 8px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #fff;
+    font-size: 10px;
+    text-shadow: 0 1px 2px #000;
+}
+
+.scan-dock-foot {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: 0 var(--sp-3) var(--sp-3);
+}
+
+.scan-grow {
+    flex: 1;
 }
 
 .scan-body {

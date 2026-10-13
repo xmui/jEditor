@@ -28,6 +28,7 @@
     <script src="updates.js"></script>
     <script src="scan.js"></script>
     <script src="places.js"></script>
+    <script src="windows.js"></script>
     <script src="ui.js"></script>
     <link rel="stylesheet" href="tokens.css">
     <link rel="stylesheet" href="style.css">
@@ -692,15 +693,20 @@
         </div>
     </div>
 
-    <div id="scan-panel" class="dialog-overlay hidden">
-        <form id="scan-form" class="dialog scan-card" role="dialog" aria-modal="true" aria-labelledby="scan-title">
-            <div class="dialog-head">
-                <h2 id="scan-title" class="dialog-title">Scan into this project</h2>
-                <button id="scan-x" type="button" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
-                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                </button>
-            </div>
-            <div class="dialog-body scan-body">
+    <!-- The scan dock (scan.js): floats over the photos, never in the way -->
+    <div id="scan-panel" class="scan-dock hidden native-only" role="dialog" aria-labelledby="scan-title" data-state="setup">
+        <div id="scan-head" class="scan-dock-head" title="Drag to move">
+            <span class="scan-dot" aria-hidden="true"></span>
+            <h2 id="scan-title" class="scan-dock-title">Scan into this project</h2>
+            <button id="scan-min" type="button" class="btn ghost icon sm" title="Make small" aria-label="Make small">
+                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
+            </button>
+            <button id="scan-x" type="button" class="btn ghost icon sm" title="Close (Esc)" aria-label="Close">
+                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+        </div>
+        <form id="scan-form" class="scan-dock-body">
+            <div id="scan-setup" class="scan-body">
                 <label class="scan-field" for="scan-device">Scanner
                     <span class="scan-row">
                         <select id="scan-device" class="field"></select>
@@ -728,14 +734,19 @@
                     <input id="scan-compat" type="checkbox">
                     <span>Compatibility mode<small>If this scanner's window never opens, try this: an older way of talking to its driver (some Plustek ones need it).</small></span>
                 </label>
-                <p class="set-help">The scanner's own window opens next: choose the resolution and feeder there. Each photo shows up here as soon as it's scanned.</p>
+                <p class="set-help">The scanner's own window opens next: choose the resolution and feeder there. You can keep working while it scans: each photo shows up as soon as it's in.</p>
             </div>
-            <div class="dialog-foot">
-                <span></span>
-                <span class="dialog-actions">
-                    <button id="scan-cancel" type="button" class="btn secondary">Cancel</button>
-                    <button id="scan-go" type="submit" class="btn primary">Scan</button>
-                </span>
+            <div id="scan-live" class="scan-live">
+                <div id="scan-summary" class="scan-summary"></div>
+                <div id="scan-strip" class="scan-strip" aria-label="The last photos scanned"></div>
+                <div id="scan-status" class="scan-status" role="status"></div>
+            </div>
+            <div class="scan-dock-foot">
+                <button id="scan-stop" type="button" class="btn secondary">Stop</button>
+                <button id="scan-settings" type="button" class="btn ghost">Change settings</button>
+                <span class="scan-grow"></span>
+                <button id="scan-cancel" type="button" class="btn secondary">Cancel</button>
+                <button id="scan-go" type="submit" class="btn primary">Scan</button>
             </div>
         </form>
     </div>

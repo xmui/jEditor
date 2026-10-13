@@ -200,6 +200,7 @@ const app = {
         Updates.init(this);
         Scan.init(this);
         Places.init(this);
+        Windows.init(this);
         Flags.init(this);
         Watch.init(this);
         this.initContextMenu();
@@ -1975,6 +1976,7 @@ const app = {
         this.elements.mainInterface.classList.add('hidden');
         this.elements.dropZone.classList.remove('hidden');
         Places.apply();
+        Windows.publish();
     },
 
     cleanupURLs() {
@@ -4484,6 +4486,8 @@ const app = {
                 await this.undoAutoCrop(entry);
             } else if (entry.type === 'relocate' || entry.type.startsWith('folder-')) {
                 await Folders.undo(entry);
+            } else if (entry.type === 'transfer') {
+                await Windows.undo(entry);
             } else if (entry.type === 'trash') {
                 const n = await this.restoreManyFromTrash(entry.items);
                 this.sortFiles();

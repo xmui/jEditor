@@ -1,16 +1,21 @@
 // Scanning (the Windows app): photos from a scanner straight into the open
-// order.
+// project, in the scan dock: a panel floating over the photos (drag it by
+// its title, make it small with —) that never blocks anything, so you can
+// keep working, or work in another window, while it scans.
 //
-// Scan (toolbar) asks which scanner, which folder of the order and how to
-// name the photos: next in the folder's sequence (Smith-014.jpg after
-// Smith-013.jpg), worked out from what's there. The scanner's own window
-// then opens for size, resolution, feeder and the backs of photos. Each
-// photo is saved into the folder as it comes in and shows up straight away,
-// so a stack in the feeder fills the grid while it scans.
+//   setup     which scanner, which folder of the project and how to name the
+//             photos: next in the folder's sequence (Smith-014.jpg after
+//             Smith-013.jpg), worked out from what's there. Scan opens the
+//             scanner's own window (size, resolution, feeder, backs).
+//   scanning  the last photos in, as they land (each also shows up in the
+//             grid straight away), and Stop
+//   done      how many, and Scan more (names carry on), Change settings
 
 const Scan = {
     KEY: 'jeditor.scan', // last scanner used (this PC)
     KEY_COMPAT: 'jeditor.scanCompat', // scanners in compatibility mode
+    KEY_POS: 'jeditor.scanDock', // where the dock was dragged to
+    STRIP: 6, // photos shown in the dock
     PHOTO: /^(.*?)(\d+)\.(jpe?g|tiff?|png|webp)$/i,
 
     el(id) { return document.getElementById(id); },
@@ -21,7 +26,10 @@ const Scan = {
         if (!panel || !FolderCache.native()) return;
         this.el('btn-scan').addEventListener('click', () => this.open());
         this.el('scan-x').addEventListener('click', () => this.close());
+        this.el('scan-min').addEventListener('click', () => this.setSmall(!panel.classList.contains('small')));
         this.el('scan-cancel').addEventListener('click', () => this.close());
+        this.el('scan-stop').addEventListener('click', () => FolderCache.native().cancelScan());
+        this.el('scan-settings').addEventListener('click', () => this.setState('setup'));
         this.el('scan-refresh').addEventListener('click', () => this.loadDevices(true));
         this.el('scan-device').addEventListener('change', () => this.syncCompat());
         this.el('scan-folder').addEventListener('change', () => this.fillNames());
@@ -31,31 +39,42 @@ const Scan = {
             e.preventDefault();
             this.start();
         });
-        panel.addEventListener('mousedown', (e) => { if (e.target === panel) this.close(); });
         panel.addEventListener('keydown', (e) => {
             if (e.key !== 'Escape' || UI.isOpen()) return;
             e.preventDefault();
             e.stopPropagation();
             this.close();
         });
+        this.initDrag();
     },
 
+    // Keys typed in the dock are its own (the photo shortcuts wait)
     isOpen() {
+        const panel = this.el('scan-panel');
+        return !!panel && !panel.classList.contains('hidden') && panel.contains(document.activeElement) &&
+            document.activeElement !== panel;
+    },
+
+    visible() {
         const panel = this.el('scan-panel');
         return !!panel && !panel.classList.contains('hidden');
     },
 
     async open() {
         const app = this.app;
+        const panel = this.el('scan-panel');
         if (this.running) {
-            app.showToast('A scan is already running', 2500, null, null, { type: 'info' });
+            panel.classList.remove('hidden');
+            this.setSmall(false);
             return;
         }
         if (!app.dirHandle || app.readOnlyMode) {
             app.showToast('Open a project first: scans go into its folder', 3500);
             return;
         }
-        this.el('scan-panel').classList.remove('hidden');
+        panel.classList.remove('hidden');
+        this.setSmall(false);
+        this.setState('setup');
         this.fillFolders();
         this.fillNames();
         const last = this.last();
@@ -64,8 +83,97 @@ const Scan = {
         await this.loadDevices(false);
     },
 
+    // While it scans, closing only makes it small
     close() {
+        if (this.running) return this.setSmall(true);
         this.el('scan-panel').classList.add('hidden');
+    },
+
+    setSmall(small) {
+        this.el('scan-panel').classList.toggle('small', small);
+        this.el('scan-min').title = small ? 'Show it all' : 'Make small';
+    },
+
+    setState(state) {
+        const panel = this.el('scan-panel');
+        panel.dataset.state = state;
+        this.el('scan-go').textContent = state === 'done' ? 'Scan more' : 'Scan';
+        this.el('scan-cancel').textContent = state === 'done' ? 'Done' : 'Cancel';
+        if (state === 'setup') {
+            this.el('scan-title').textContent = 'Scan into this project';
+            this.el('scan-go').disabled = !(this.devices && this.devices.length);
+        }
+    },
+
+    // Dragged by its title; stays where it was put
+    initDrag() {
+        const panel = this.el('scan-panel');
+        const head = this.el('scan-head');
+        const place = (x, y) => {
+            const r = panel.getBoundingClientRect();
+            x = Math.max(4, Math.min(innerWidth - r.width - 4, x));
+            y = Math.max(4, Math.min(innerHeight - 40, y));
+            Object.assign(panel.style, { left: `${x}px`, top: `${y}px`, right: 'auto', bottom: 'auto' });
+            return { x, y };
+        };
+        try {
+            const pos = JSON.parse(localStorage.getItem(this.KEY_POS) || 'null');
+            if (pos) requestAnimationFrame(() => place(pos.x, pos.y));
+        } catch (e) { /* none */ }
+        head.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0 || e.target.closest('button')) return;
+            const r = panel.getBoundingClientRect();
+            const dx = e.clientX - r.left, dy = e.clientY - r.top;
+            head.setPointerCapture(e.pointerId);
+            let pos = null;
+            const move = (ev) => { pos = place(ev.clientX - dx, ev.clientY - dy); };
+            const up = () => {
+                head.removeEventListener('pointermove', move);
+                head.removeEventListener('pointerup', up);
+                if (pos) try { localStorage.setItem(this.KEY_POS, JSON.stringify(pos)); } catch (err) { /* private */ }
+            };
+            head.addEventListener('pointermove', move);
+            head.addEventListener('pointerup', up);
+        });
+    },
+
+    // ---- The photos coming in ----
+
+    async addThumb(folder, name) {
+        const strip = this.el('scan-strip');
+        const fig = document.createElement('figure');
+        const cap = document.createElement('figcaption');
+        cap.textContent = name.replace(/\.[^.]+$/, '');
+        fig.appendChild(cap);
+        strip.appendChild(fig);
+        while (strip.children.length > this.STRIP) {
+            const old = strip.firstElementChild;
+            const img = old.querySelector('img');
+            if (img) URL.revokeObjectURL(img.src);
+            old.remove();
+        }
+        try {
+            const dir = await Folders.handleFor(folder);
+            const file = await (await dir.getFileHandle(name)).getFile();
+            if (!fig.isConnected) return;
+            const img = document.createElement('img');
+            img.alt = '';
+            img.decoding = 'async';
+            img.src = URL.createObjectURL(file);
+            fig.prepend(img);
+        } catch (e) { /* not readable yet: the name shows */ }
+    },
+
+    clearStrip() {
+        const strip = this.el('scan-strip');
+        strip.querySelectorAll('img').forEach(img => URL.revokeObjectURL(img.src));
+        strip.innerHTML = '';
+    },
+
+    status(text, error = false) {
+        const el = this.el('scan-status');
+        el.textContent = text;
+        el.classList.toggle('error', error);
     },
 
     // ---- Scanners ----
@@ -218,9 +326,11 @@ const Scan = {
             localStorage.setItem(this.KEY_COMPAT, JSON.stringify(all));
         } catch (e) { /* private */ }
         try { localStorage.setItem(this.KEY, JSON.stringify({ device: device.id, autoCrop })); } catch (e) { /* private */ }
-        this.close();
-        this.run({ device: device.id, driver: device.driver, folder, prefix, next, digits: this.digits, autoCrop, compat })
-            .catch(() => { /* said already */ });
+        // Scan more: the names carry on from the photos just scanned
+        const more = this.el('scan-panel').dataset.state === 'done';
+        const opts = { device: device.id, driver: device.driver, folder, autoCrop, compat };
+        if (!more) Object.assign(opts, { prefix, next, digits: this.digits });
+        this.run(opts).catch(() => { /* said already */ });
     },
 
     // Scans into `folder` (a folder of the order: '' is the order itself).
@@ -241,12 +351,21 @@ const Scan = {
         const label = () => names.length ? `Scanning… ${names.length} photo${names.length === 1 ? '' : 's'}` : 'Scanning… (the scanner\'s window may be behind jEditor)';
         this.running = true;
         app.beginTask('scanner', label());
-        // Stays while it scans, with Stop (a scanner whose window never
-        // shows can't hold jEditor up)
+        // The dock shows it, with Stop (a scanner whose window never shows
+        // can't hold jEditor up)
         const scannerName = ((this.devices || []).find(d => d.id === device) || {}).name || 'the scanner';
-        const stop = app.showToast(`Scanning with ${scannerName}. Its window may be behind jEditor.`, 0, 'scanning',
-            { label: 'Stop', run: () => native.cancelScan() }, { type: 'info' });
-        const done = () => { if (stop && stop.isConnected) app.dismissToast(stop); };
+        const panel = this.el('scan-panel');
+        panel.classList.remove('hidden');
+        this.setState('scanning');
+        this.el('scan-title').textContent = `Scanning · ${scannerName}`;
+        this.el('scan-summary').textContent = `Into ${Folders.label(folder)} · ${this.name(prefix, next, digits || 3)}, ${this.name(prefix, next + 1, digits || 3)}, …`;
+        this.clearStrip();
+        this.status(`Waiting for ${scannerName}. Its window may be behind jEditor.`);
+        const done = (text, error) => {
+            this.setState('done');
+            this.el('scan-title').textContent = `Scanned · ${scannerName}`;
+            this.status(text, error);
+        };
         const show = () => Watch.request({ dirs: [folder] });
         const add = (name) => {
             const rel = folder ? `${folder}/${name}` : name;
@@ -258,6 +377,8 @@ const Scan = {
             result = await native.scan({ device, driver, folder: path, prefix, next, digits: digits || 3, compat }, (name) => {
                 add(name);
                 app.updateTask('scanner', label());
+                this.status(label());
+                this.addThumb(folder, name);
                 show();
             });
             (result.names || []).forEach(add); // the full list, in case a message was missed
@@ -265,8 +386,8 @@ const Scan = {
             (e.names || []).forEach(add);
             show();
             app.endTask('scanner');
-            done();
             this.running = false;
+            done(`Stopped: ${e.message}` + (names.length ? ` (${names.length} saved)` : ''), true);
             UI.alert({
                 title: 'The scan didn\'t finish',
                 message: e.message + (names.length ? ` (${names.length} photo${names.length === 1 ? ' was' : 's were'} saved before it stopped.)` : '')
@@ -275,25 +396,24 @@ const Scan = {
         }
         show();
         app.endTask('scanner');
-        done();
         this.running = false;
         const n = names.length;
+        const said = `${n} photo${n === 1 ? '' : 's'} into ${Folders.label(folder)}`;
         if (n) {
-            app.showToast(`Scanned ${n} photo${n === 1 ? '' : 's'} into ${Folders.label(folder)}`, 6000, 'scanned',
-                { label: 'Scan more', run: () => this.again({ device, driver, folder, autoCrop, compat }) }, { type: 'success' });
-            if (autoCrop) await this.autoCrop(names);
+            done((result.cancelled ? 'Stopped after ' : 'Scanned ') + said + (autoCrop ? ' · auto cropping…' : ''));
+            app.showToast(`Scanned ${said}`, 4000, 'scanned', null, { type: 'success' });
+            if (autoCrop) {
+                await this.autoCrop(names);
+                if (panel.dataset.state === 'done') this.status((result.cancelled ? 'Stopped after ' : 'Scanned ') + said + ' · auto cropped');
+            }
         } else if (result.cancelled) {
+            done('Scan stopped');
             app.showToast('Scan stopped', 2500, null, null, { type: 'info' });
         } else {
+            done('Nothing was scanned');
             app.showToast('Nothing was scanned', 3000, null, null, { type: 'info' });
         }
         return { count: n, names, cancelled: result.cancelled };
-    },
-
-    // Same scanner and folder, names following on from the last scan
-    again({ device, driver, folder, autoCrop, compat }) {
-        // After the folder check has picked up the last photos
-        setTimeout(() => this.run({ device, driver, folder, autoCrop, compat }).catch(() => { }), Watch.DEBOUNCE_MS + 400);
     },
 
     // Prints come in all sizes: each scan is cropped to the print on it

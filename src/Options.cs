@@ -19,6 +19,17 @@ sealed class Options
     public bool FakeScanner { get; private set; }
     public string? UpdateFailedLog { get; private set; }
 
+    // For another window: the same, opening `folder` (or nothing), never
+    // a smoke test or an update notice
+    public Options ForWindow(string? folder)
+    {
+        var o = (Options)MemberwiseClone();
+        o.Folder = folder;
+        o.SmokeDir = null;
+        o.UpdateFailedLog = null;
+        return o;
+    }
+
     public static Options Parse(string[] args)
     {
         var o = new Options();

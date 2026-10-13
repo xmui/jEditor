@@ -50,6 +50,9 @@ sealed class Smoke
         {
             "stored" => Stored(),
             "scanned" => Scanned(msg),
+            "windows" => AppWindows.All.Count >= 2 ? (true, null) : (false, $"{AppWindows.All.Count} window(s) open"),
+            "moved" when path is not null => File.Exists(path) ? (true, null) : (false, $"{name} isn't there"),
+            "back" when path is not null => File.Exists(path) && !File.Exists(Path.Combine(dir, "Moved", Path.GetFileName(path))) ? (true, null) : (false, $"{name} didn't come back"),
             "deleted" when path is not null => File.Exists(path) ? (false, $"{name} is still in the folder")
                 : !RecycleBin.HasBin(path) ? (false, "the test folder's drive has no Recycle Bin") : (true, null),
             "restored" when path is not null => !File.Exists(path) ? (false, $"{name} didn't come back")
@@ -112,7 +115,7 @@ sealed class Smoke
         if (msg["steps"] is JsonObject steps)
         {
             Log.Write("Smoke steps: " + steps.ToJsonString());
-            foreach (var step in new[] { "stored", "recycled", "deleted", "restored", "scanned", "places", "browsed", "projects", "counted", "pins" })
+            foreach (var step in new[] { "stored", "recycled", "deleted", "restored", "scanned", "places", "browsed", "projects", "counted", "pins", "windows", "moved", "unmoved", "back" })
                 if (steps[step] is not JsonValue v || !v.TryGetValue<bool>(out var ok) || !ok) problems.Add($"{step}: {steps[step]?.ToJsonString() ?? "not reached"}");
             if (steps["error"] is not null) problems.Add("error: " + steps["error"]);
         }

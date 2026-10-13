@@ -222,6 +222,9 @@ const waitForPost = (page, type) => page.waitForFunction(
                     reply({ counts: m.paths.map(() => n), limit: 1000 });
                 }
                 else if (m.type === 'quickAccess') reply({ folders: [] });
+                else if (m.type === 'newWindow' || m.type === 'split') reply({ ok: true });
+                else if (m.type === 'transfer') reply({ items: m.paths.map(p => ({ from: p, to: m.dest + '\\' + p.split('\\').pop() })) });
+                else if (m.type === 'undoTransfer') reply({ errors: m.items.map(() => null) });
                 else if (m.type === 'scanners') reply({ devices: [{ id: 'jeditor-test-scanner', name: 'jEditor test scanner', driver: 'test' }], problems: [] });
                 else if (m.type === 'scan') {
                     // The app's side: three photos into the folder, each posted as it lands
@@ -252,7 +255,7 @@ const waitForPost = (page, type) => page.waitForFunction(
         check('opens the folder and reports the photo count', opened.name === 'Jones' && opened.count === 4, JSON.stringify(opened));
         const smoke = await waitForPost(page, 'smoke');
         check('smoke test: reports success', smoke.ok && smoke.count === 4 && smoke.rotated && smoke.errors.length === 0, JSON.stringify(smoke));
-        check('smoke test: runs the further steps through the app', smoke.steps && smoke.steps.stored === true && smoke.steps.deleted === true && smoke.steps.restored === true && smoke.steps.scanned === true && smoke.steps.places === true && smoke.steps.browsed === true && smoke.steps.projects === true && smoke.steps.counted === true && smoke.steps.pins === true && /v1\.0\.0/.test(smoke.steps.update), JSON.stringify(smoke.steps));
+        check('smoke test: runs the further steps through the app', smoke.steps && smoke.steps.stored === true && smoke.steps.deleted === true && smoke.steps.restored === true && smoke.steps.scanned === true && smoke.steps.places === true && smoke.steps.browsed === true && smoke.steps.projects === true && smoke.steps.counted === true && smoke.steps.pins === true && smoke.steps.windows === true && smoke.steps.moved === true && smoke.steps.unmoved === true && smoke.steps.back === true && /v1\.0\.0/.test(smoke.steps.update), JSON.stringify(smoke.steps));
         const scanned = await page.evaluate(() => ({ scan: window.__scan, check: (window.__checks || []).find(c => c.step === 'scanned') }));
         check('smoke test: scans into the order with the test scanner, named next in its sequence', scanned.scan && scanned.scan.folder === 'C:\\Jones' && scanned.scan.device === 'jeditor-test-scanner' &&
             scanned.check && scanned.check.names.join() === 'photo5.jpg,photo6.jpg,photo7.jpg' && scanned.check.shown === 3, JSON.stringify(scanned));

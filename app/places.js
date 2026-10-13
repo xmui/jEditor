@@ -43,7 +43,8 @@ const Places = {
         caret: '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1.5 6.5 5 3 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
         eject: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15h14L12 7z"/><path d="M5 19h14"/></svg>',
         scan: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h16"/><path d="M6 13V5a1 1 0 0 1 1-1h7l4 4v5"/><path d="M5 17h14a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1a1 1 0 0 1 1-1z"/></svg>',
-        reveal: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7"/><path d="M10 14 21 3"/><path d="M21 14v7H3V3h7"/></svg>'
+        reveal: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7"/><path d="M10 14 21 3"/><path d="M21 14v7H3V3h7"/></svg>',
+        split: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>'
     },
 
     el(id) { return document.getElementById(id); },
@@ -57,6 +58,7 @@ const Places = {
         this.boxes = [this.el('sb-places'), this.el('start-places')].filter(Boolean);
         for (const box of this.boxes) {
             box.addEventListener('click', (e) => this.onClick(e));
+            box.addEventListener('auxclick', (e) => { if (e.button === 1) this.onClick(e); });
             box.addEventListener('input', (e) => {
                 if (!e.target.classList.contains('sb-search')) return;
                 this.query = e.target.value;
@@ -185,7 +187,7 @@ const Places = {
         const countText = c === undefined ? '' : c < 0 ? '' : c >= (this.limit || 1000) ? `${c.toLocaleString()}+` : c.toLocaleString();
         return `<div class="fr-row sb-row${cur ? ' active' : ''} ${cls}" style="--depth:${depth}" data-path="${this.esc(path)}">` +
             (caret ? `<button class="fr-caret${open ? ' open' : ''}" data-act="toggle" tabindex="-1" title="${open ? 'Fold' : 'Show what\'s inside'}">${this.icons.caret}</button>` : '<span class="fr-caret fr-spacer"></span>') +
-            `<button class="sb-main" data-act="${act}" title="${this.esc(title || path)}"><span class="sb-icon">${icon}</span><span class="fr-name">${this.esc(name)}</span></button>` +
+            `<button class="sb-main" data-act="${act}" title="${this.esc((title || path) + (act === 'open' ? ' — Ctrl+click opens it in a new window' : ''))}"><span class="sb-icon">${icon}</span><span class="fr-name">${this.esc(name)}</span></button>` +
             extra +
             (pin !== null ? `<button class="sb-pin${pin ? ' on' : ''}" data-act="${pin ? 'unpin' : 'pin'}" title="${pin ? 'Unpin' : 'Pin to the sidebar'}">${this.icons.pin}</button>` : '') +
             (meta ? `<span class="sb-meta">${this.esc(meta)}</span>` : '') +
@@ -325,6 +327,7 @@ const Places = {
             `<div class="sb-card-btns">` +
             `<button class="btn primary sm" data-act="scan">${this.icons.scan}Scan</button>` +
             (path ? `<button class="btn secondary sm" data-act="reveal" title="Show in Explorer">${this.icons.reveal}Explorer</button>` : '') +
+            `<button class="btn ghost icon sm" data-act="split" title="Split: this project and another window side by side">${this.icons.split}</button>` +
             (path ? `<button class="btn ghost icon sm sb-card-pin${this.isPinned(path) ? ' on' : ''}" data-act="pin" title="${this.isPinned(path) ? 'Unpin' : 'Pin to the sidebar'}">${this.icons.pin}</button>` : '') +
             `</div>`;
         // The current project is marked in the lists
@@ -336,6 +339,7 @@ const Places = {
     cardAction(act) {
         const path = this._currentPath;
         if (act === 'scan') Scan.open();
+        else if (act === 'split') Windows.split();
         else if (act === 'reveal' && path) this.native().reveal(path);
         else if (act === 'pin' && path) {
             if (this.isPinned(path)) this.unpin(path);
@@ -367,6 +371,7 @@ const Places = {
         if (act === 'choose') return this.chooseFolder();
         if (act === 'all') { this.showAll = true; return this.drawProjects(); }
         if (!path) return;
+        if (act === 'open' && (e.ctrlKey || e.button === 1)) return Windows.newWindow(path); // in a window of its own
         if (act === 'open') return this.open(path);
         if (act === 'toggle') {
             const k = this.key(path);

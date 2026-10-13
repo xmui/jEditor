@@ -41,6 +41,8 @@ sealed class MainForm : Form
     public MainForm(Options options)
     {
         this.options = options;
+        AppWindows.Added(this);
+        FormClosed += (_, _) => AppWindows.Closed(this);
         settings = options.SmokeDir is null ? Settings.Load() : new Settings();
         pendingFolder = options.Folder;
         if (options.SmokeDir is not null) smoke = new Smoke(this, options.SmokeDir);
@@ -70,7 +72,7 @@ sealed class MainForm : Form
                 ?? (smoke is not null ? Path.Combine(Path.GetTempPath(), "jEditor-smoke-" + Guid.NewGuid().ToString("N"))
                 : Path.Combine(Shell.DataDir, "WebView2"));
             Log.Write($"Profile: {userData}; UI: {options.UiDir}{(options.Dev ? " (dev mode)" : "")}");
-            var env = await CoreWebView2Environment.CreateAsync(null, userData);
+            var env = await AppWindows.Environment(userData);
             await web.EnsureCoreWebView2Async(env);
 
             Configure();
@@ -115,11 +117,45 @@ sealed class MainForm : Form
         base.WndProc(ref m);
     }
 
+    // jEditor closes: every window (the smoke test, an update)
     public void Finish(int code)
     {
         ExitCode = code;
+        AppWindows.CloseAll(code);
+    }
+
+    // ---- For AppWindows ----
+
+    public void CloseNow()
+    {
         if (IsHandleCreated) BeginInvoke(Close); else Close();
     }
+
+    public void StartAt(Rectangle bounds)
+    {
+        StartPosition = FormStartPosition.Manual;
+        WindowState = FormWindowState.Normal;
+        Bounds = bounds;
+    }
+
+    public Options WindowOptions(string? folder) => options.ForWindow(folder);
+
+    public void LeaveFullScreen()
+    {
+        if (fullScreen && web.CoreWebView2 is not null) _ = Core.ExecuteScriptAsync("document.fullscreenElement && document.exitFullscreen()");
+        if (fullScreen) SetFullScreen(false);
+    }
+
+    public void PostIfReady(object message)
+    {
+        if (!IsDisposed && web.CoreWebView2 is not null) Post(message);
+    }
+
+    // What the page says it shows (its project and folders), for the other
+    // windows' Move to
+    public JsonNode? PageState { get; private set; }
+    static int nextId = 1;
+    public int Id { get; } = nextId++;
 
     // ---- WebView2 settings and events ----
 
@@ -295,8 +331,16 @@ sealed class MainForm : Form
             case "reveal":
             case "pickPath":
             case "showLog":
+            case "newWindow":
+            case "split":
+            case "windows":
+            case "transfer":
+            case "undoTransfer":
                 var files = FilesOf(e);
                 BeginInvoke(async () => await HandleRequestAsync(msg, files));
+                break;
+            case "state":
+                PageState = msg;
                 break;
             case "cancelScan":
                 scanning?.Cancel();
@@ -474,6 +518,47 @@ sealed class MainForm : Form
                     var ok = Path.IsPathFullyQualified(path) && Directory.Exists(path);
                     if (ok) Projects.Reveal(path);
                     Reply(id, new { ok });
+                    break;
+                }
+                case "newWindow":
+                {
+                    var path = Str(msg, "path");
+                    if (path is not null && !(Path.IsPathFullyQualified(path) && Directory.Exists(path))) { Reply(id, new { error = "That folder isn't there" }); break; }
+                    AppWindows.Open(options.ForWindow(path), this);
+                    Reply(id, new { ok = true });
+                    break;
+                }
+                case "split":
+                    AppWindows.Split(this);
+                    Reply(id, new { ok = true });
+                    break;
+                case "windows":
+                {
+                    var others = AppWindows.All.Where(f => f != this && f.PageState is not null && Str(f.PageState, "path") is not null)
+                        .Select(f => new { id = f.Id, name = Str(f.PageState!, "name"), path = Str(f.PageState!, "path"), folders = f.PageState!["folders"]?.DeepClone() })
+                        .ToList();
+                    Reply(id, new { windows = others });
+                    break;
+                }
+                case "transfer":
+                {
+                    var paths = (msg["paths"] as JsonArray ?? []).Select(p => (string?)p ?? "").Where(Path.IsPathFullyQualified).ToList();
+                    var dest = Str(msg, "dest") ?? "";
+                    if (!Path.IsPathFullyQualified(dest)) { Reply(id, new { error = "Not a folder" }); break; }
+                    var copy = msg["copy"]?.GetValue<bool>() ?? false;
+                    var items = await Task.Run(() => Transfer.Run(paths, dest, copy));
+                    Log.Write($"{(copy ? "Copied" : "Moved")} {items.Count(i => i.To is not null)} of {items.Count} into {dest}");
+                    Reply(id, new { items = items.Select(i => new { from = i.From, to = i.To, error = i.Error }) });
+                    AppWindows.PostAll(new { type = "filesChanged" });
+                    break;
+                }
+                case "undoTransfer":
+                {
+                    var pairs = (msg["items"] as JsonArray ?? []).Select(i => ((string?)i?["from"] ?? "", (string?)i?["to"] ?? ""))
+                        .Where(p => Path.IsPathFullyQualified(p.Item1) && Path.IsPathFullyQualified(p.Item2)).ToList();
+                    var errors = await Transfer.UndoAsync(pairs, msg["copy"]?.GetValue<bool>() ?? false, Handle);
+                    Reply(id, new { errors });
+                    AppWindows.PostAll(new { type = "filesChanged" });
                     break;
                 }
                 case "showLog":

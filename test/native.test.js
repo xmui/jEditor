@@ -164,6 +164,30 @@ const FAKE_NATIVE = `
         async eject(p) { window.__ejected = p; window.__drives = window.__drives.filter(d => d.path !== p); return { ok: true }; },
         async reveal(p) { window.__revealed = p; return true; },
         async pickPath() { return window.__pick || null; },
+        // Windows: the other windows are __others; transfers move files in disk/
+        setState(st) { window.__state = st; },
+        async windows() { return window.__others || []; },
+        async newWindow(p) { window.__newWindow = p || '(start)'; return true; },
+        async split() { window.__split = true; return true; },
+        async transfer(paths, dest, copy) {
+            window.__transfer = { paths, dest, copy };
+            const root = window.__orderRoot + BS;
+            let dir = await sub('disk');
+            for (const p of dest.slice(root.length).split(BS).filter(Boolean)) dir = await dir.getDirectoryHandle(p);
+            const out = [];
+            for (const from of paths) {
+                const hit = await locate(from);
+                if (!hit) { out.push({ from, error: 'not there any more' }); continue; }
+                const data = await (await hit.dir.getFileHandle(hit.name)).getFile();
+                const w = await (await dir.getFileHandle(hit.name, { create: true })).createWritable();
+                await w.write(data);
+                await w.close();
+                if (!copy) await hit.dir.removeEntry(hit.name);
+                out.push({ from, to: dest + BS + hit.name });
+            }
+            return out;
+        },
+        async undoTransfer(items, copy) { window.__undoTransfer = { items, copy }; return items.map(() => null); },
         async openPath(p) { window.__opened = p; return true; },
         async exists(paths) { return paths.map(p => !(window.__missing || []).includes(p)); },
         async checkUpdate() { window.__calls.push('checkUpdate'); return window.__update || { newer: false, version: '1.0.0', tag: 'v1.0.0', notes: '' }; },
@@ -244,7 +268,7 @@ const HELPERS = `
 async function newPage(context, baseUrl) {
     const page = await context.newPage();
     const errors = [];
-    page.on('pageerror', e => errors.push(e.message));
+    page.on('pageerror', e => errors.push(e.message + (process.env.STACKS ? ' @ ' + e.stack : '')));
     page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
     await page.addInitScript(FAKE_NATIVE);
     await page.goto(`${baseUrl}/index.html`);
@@ -582,8 +606,12 @@ async function newPage(context, baseUrl) {
             folder.dispatchEvent(new Event('change'));
             $('scan-compat').checked = true;
             $('scan-go').click();
-            out.closed = !Scan.isOpen();
+            // The dock stays, showing the photos as they come in
+            await wait(() => $('scan-panel').dataset.state !== 'setup');
+            out.closed = !$('scan-panel').classList.contains('hidden');
             await wait(() => app.files.some(f => f.name === 'photo5.jpg'));
+            await wait(() => $('scan-panel').dataset.state === 'done');
+            out.dock = { title: $('scan-title').textContent, status: $('scan-status').textContent, strip: $('scan-strip').querySelectorAll('figure').length, more: $('scan-go').textContent };
             out.req = window.__scanReq;
             out.compatKept = JSON.parse(localStorage.getItem('jeditor.scanCompat') || '{}')['EPSON FF-680W'] === true;
             out.files = app.files.map(f => f.relPath || f.name).sort().join(',');
@@ -597,9 +625,13 @@ async function newPage(context, baseUrl) {
             await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: 'Ceremony', autoCrop: true });
             app.batchAutoCrop = realCrop;
 
-            // Scan more: the names carry on
+            // Scan more (in the dock): the names carry on
             window.__scanPages = 1;
-            out.more = (await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '' })).names.join(',');
+            await wait(() => app.files.some(f => f.relPath === 'Ceremony/c3.jpg'));
+            $('scan-go').click();
+            await wait(() => app.files.some(f => f.name === 'photo6.jpg'));
+            await wait(() => !Scan.running);
+            out.more = window.__scanReq.prefix + window.__scanReq.next + '.jpg';
 
             // The scanner stops with an error: says so, and what was saved
             window.__scanError = 'The scanner is busy (is another program using it?)';
@@ -614,15 +646,16 @@ async function newPage(context, baseUrl) {
             // A scanner that never shows its window: Stop ends it
             window.__scanHang = true;
             const hung = Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '' });
-            await wait(() => [...document.querySelectorAll('.toast')].some(t => /Scanning with EPSON FF-680W/.test(t.textContent)));
-            const toast = [...document.querySelectorAll('.toast')].find(t => /Scanning with/.test(t.textContent));
-            out.stopOffered = /Stop/.test(toast.textContent);
-            [...toast.querySelectorAll('button')].find(b => b.textContent === 'Stop').click();
+            await wait(() => $('scan-panel').dataset.state === 'scanning');
+            out.stopOffered = getComputedStyle($('scan-stop')).display !== 'none' && /Scanning · EPSON FF-680W/.test($('scan-title').textContent);
+            // Closing it while it scans only makes it small
+            $('scan-x').click();
+            out.small = $('scan-panel').classList.contains('small') && !$('scan-panel').classList.contains('hidden');
+            Scan.setSmall(false);
+            $('scan-stop').click();
             const stopped = await hung;
             out.stopped = stopped.cancelled && window.__cancelled && !Scan.running;
-            await wait(() => /Scan stopped/.test(toasts()));
-            await new Promise(r => setTimeout(r, 400)); // dismissed messages take 300 ms to go
-            out.stopToast = toasts();
+            out.stopToast = $('scan-status').textContent;
             window.__scanHang = false;
 
             // Settings: Show log
@@ -644,17 +677,18 @@ async function newPage(context, baseUrl) {
         check('it offers the order\'s folders, starting with the one with the most photos', r.folder === '' && r.folders === 'Scan Order, Ceremony', JSON.stringify([r.folder, r.folders]));
         check('names follow on from the folder\'s photos', r.names[0] === 'photo' && r.names[1] === '4' && r.names[2] === 'photo4.jpg, photo5.jpg, …', JSON.stringify(r.names));
         check('... each folder its own sequence', r.cerNames.join() === 'c,2', r.cerNames.join());
-        check('Scan asks the app to scan into the order\'s folder, by path', r.closed && r.req && r.req.folder === 'D:\\Orders\\Scan Order' && r.req.device === 'EPSON FF-680W' && r.req.driver === 'twain' && r.req.prefix === 'photo' && r.req.next === 4, JSON.stringify(r.req));
+        check('the dock stays while it scans, then says how many, with the photos and Scan more', r.closed && /^Scanned 2 photos into Scan Order/.test(r.dock.status) && r.dock.strip === 2 && r.dock.more === 'Scan more' && /Scanned · EPSON FF-680W/.test(r.dock.title), JSON.stringify(r.dock));
+        check('Scan asks the app to scan into the order\'s folder, by path', r.req && r.req.folder === 'D:\\Orders\\Scan Order' && r.req.device === 'EPSON FF-680W' && r.req.driver === 'twain' && r.req.prefix === 'photo' && r.req.next === 4, JSON.stringify(r.req));
         check('scanned photos show up in the order', r.files === 'Ceremony/c1.jpg,photo1.jpg,photo2.jpg,photo3.jpg,photo4.jpg,photo5.jpg', r.files);
-        check('a message says how many, with Scan more', /Scanned 2 photos into Scan Order/.test(r.toast) && /Scan more/.test(r.toast), r.toast);
+        check('a message says how many', /Scanned 2 photos into Scan Order/.test(r.toast), r.toast);
         check('Auto crop each photo is on to start with', r.autoCropDefault);
         check('Compatibility mode: offered for TWAIN scanners only, off to start with', r.compatShown && r.compatHiddenWia, JSON.stringify([r.compatShown, r.compatHiddenWia]));
         check('... sent with the scan, and remembered for that scanner', r.req.compat === true && r.compatKept, JSON.stringify([r.req.compat, r.compatKept]));
         check('... and crops each scan once it\'s in, without asking', r.cropped === 'c2.jpg,c3.jpg (no question)', r.cropped);
-        check('scanning again carries on the names', r.more === 'photo6.jpg', r.more);
+        check('Scan more in the dock carries on the names', r.more === 'photo6.jpg', r.more);
         check('a scan that fails says why, and what was saved', /busy/.test(r.err || '') && /didn't finish/.test(r.alert) && /1 photo was saved/.test(r.alert) && !r.running, JSON.stringify([r.err, r.alert]));
-        check('while scanning, a message offers Stop', r.stopOffered);
-        check('Stop ends a scan whose window never shows', r.stopped && /Scan stopped/.test(r.stopToast) && !/Scanning with/.test(r.stopToast), JSON.stringify([r.stopped, r.stopToast]));
+        check('while scanning, the dock offers Stop; closing it only makes it small', r.stopOffered && r.small, JSON.stringify([r.stopOffered, r.small]));
+        check('Stop ends a scan whose window never shows', r.stopped && r.stopToast === 'Scan stopped', JSON.stringify([r.stopped, r.stopToast]));
         check('Settings: Show log', r.log);
         check('no scanners: says so and what to check', /No scanners found/.test(r.none) && /plugged in/.test(r.none) && /TWAINDSM/.test(r.none) && r.noneDisabled, r.none);
         check('scan suite: no JS errors', errors.length === 0, errors.join('; '));
@@ -696,6 +730,82 @@ async function newPage(context, baseUrl) {
         check('scanning into it shows the photos', r.names === 'Empty-001.jpg,Empty-002.jpg' && r.files === 2 && r.noMessage, JSON.stringify([r.names, r.files, r.noMessage]));
         check('deleting every photo keeps it open, empty', r.stillOpen && r.emptyAgain, JSON.stringify([r.stillOpen, r.emptyAgain]));
         check('empty project suite: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('native: windows (Split, New window, photos between windows)');
+    {
+        const context = await browser.newContext();
+        const { page, errors } = await newPage(context, baseUrl);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const $ = (id) => document.getElementById(id);
+            const BS = String.fromCharCode(92);
+            await makeOrder('Other', 2);
+            const dir = await makeOrder('Here', 2);
+            await openOrder(dir);
+            app.setView('grid');
+            if (!Folders.railOpen()) Folders.toggleRail();
+            // It tells the app what it shows
+            await wait(() => window.__state && window.__state.name === 'Here');
+            out.state = window.__state;
+            // Split and New window
+            await wait(() => $('sb-card').querySelector('[data-act="split"]'));
+            $('sb-card').querySelector('[data-act="split"]').click();
+            await wait(() => window.__split);
+            out.split = window.__split;
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'N', ctrlKey: true, shiftKey: true, bubbles: true }));
+            await wait(() => window.__newWindow);
+            out.newWindow = window.__newWindow;
+
+            // M lists the other window's folders; choosing one moves the photos there
+            window.__others = [{ id: 2, name: 'Other', path: window.__orderRoot + BS + 'Other', folders: ['', 'Ceremony'] }];
+            const p1 = app.files.find(f => f.name === 'photo1.jpg');
+            Folders.openPicker([p1], 'move');
+            await wait(() => [...document.querySelectorAll('#fp-list .fp-row')].some(r => /other window/.test(r.textContent)));
+            const rows = [...document.querySelectorAll('#fp-list .fp-row')].filter(r => /other window/.test(r.textContent)).map(r => r.querySelector('.fp-name').textContent);
+            out.pickerRows = rows.join(' | ');
+            const item = Folders.pickerItems.find(it => it.kind === 'window' && it.path === 'Ceremony');
+            await Folders.choose(item);
+            await wait(() => window.__transfer);
+            out.moved = window.__transfer;
+            await wait(() => !app.files.some(f => f.name === 'photo1.jpg'));
+            out.gone = !app.files.some(f => f.name === 'photo1.jpg');
+            out.toast = toasts();
+            // Ctrl+Z puts it back
+            await app.undo();
+            out.undo = window.__undoTransfer;
+
+            // Dropped from another window onto a folder here
+            window.__transfer = null;
+            const dt = new DataTransfer();
+            dt.setData(Windows.TYPE, JSON.stringify([window.__orderRoot + BS + 'Other' + BS + 'photo2.jpg']));
+            const row = document.querySelector('#folder-tree [data-folder-path="Ceremony"]');
+            row.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
+            row.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, ctrlKey: true }));
+            await wait(() => window.__transfer);
+            out.dropped = window.__transfer;
+            await wait(() => app.files.some(f => f.relPath === 'Ceremony/photo2.jpg'));
+            out.arrived = app.files.some(f => f.relPath === 'Ceremony/photo2.jpg');
+            // Ctrl+click a project in the sidebar: a window of its own
+            window.__newWindow = null;
+            localStorage.setItem('jeditor.projectsFolder', JSON.stringify(window.__orderRoot));
+            await Places.refresh();
+            const otherRow = [...$('sb-places').querySelectorAll('.sb-row')].find(r => r.querySelector('.fr-name').textContent === 'Other');
+            otherRow.querySelector('.sb-main').dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+            await wait(() => window.__newWindow);
+            out.ctrlClick = window.__newWindow;
+            return out;
+        });
+        const D = 'D:\\Orders\\';
+        check('a window tells the app its project and folders', r.state.path === D + 'Here' && r.state.folders.join() === ',Ceremony', JSON.stringify(r.state));
+        check('Split and New window (Ctrl+Shift+N)', r.split && r.newWindow === '(start)', JSON.stringify([r.split, r.newWindow]));
+        check('M lists the other window\'s folders', r.pickerRows === 'Other | Other / Ceremony', r.pickerRows);
+        check('... and moves the photos there, by path', r.moved && r.moved.paths.join() === D + 'Here\\photo1.jpg' && r.moved.dest === D + 'Other\\Ceremony' && !r.moved.copy && r.gone, JSON.stringify(r.moved));
+        check('... saying so, and Ctrl+Z undoes it', /Moved 1 photo into Other \/ Ceremony/.test(r.toast) && r.undo && r.undo.items[0].from === D + 'Here\\photo1.jpg', JSON.stringify([r.toast, r.undo]));
+        check('photos dropped from another window onto a folder come in (Ctrl copies)', r.dropped && r.dropped.dest === D + 'Here\\Ceremony' && r.dropped.copy && r.arrived, JSON.stringify(r.dropped));
+        check('Ctrl+click a project opens it in a new window', r.ctrlClick === D + 'Other', String(r.ctrlClick));
+        check('windows suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
 
@@ -753,7 +863,7 @@ async function newPage(context, baseUrl) {
             await wait(() => window.__revealed);
             out.revealed = window.__revealed;
             $('sb-card').querySelector('[data-act="scan"]').click();
-            out.scanOpen = Scan.isOpen();
+            out.scanOpen = Scan.visible();
             Scan.close();
             $('sb-card').querySelector('[data-act="pin"]').click();
             await wait(() => [...side.querySelectorAll('.sb-pinned .fr-name')].some(n => n.textContent === 'Alpha'));

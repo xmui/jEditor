@@ -5,6 +5,14 @@
 
 const CHANGELOG = [
     {
+        version: '1.22.0', date: '2026-10-13',
+        items: [
+            'Two projects at once: New window (`Ctrl+Shift+N`, or `Ctrl`+click a project in the sidebar) opens another jEditor window, and Split (on the project card) puts this window and another side by side.',
+            'Photos dragged from one window onto a folder in the other, or onto its photos, move there (hold `Ctrl` to copy). `M` lists the other window\'s folders too. `Ctrl+Z` puts them back.',
+            'The scan dock: Scan now opens a panel that floats over the photos instead of a box in the way. Keep working, or work in another window, while it scans: it shows the last photos as they come in, with Stop, then Scan more (the names carry on) or Change settings. Drag it by its title; — makes it small.'
+        ]
+    },
+    {
         version: '1.21.0', date: '2026-10-13',
         items: [
             'A new sidebar. At the top, the open project: its name, where it is, how many photos, and Scan, Show in Explorer and Pin. Then its folders, as before.',

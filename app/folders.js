@@ -244,6 +244,7 @@ const Folders = {
             Flags.renderList();
             if (typeof Places !== 'undefined') Places.apply();
         }
+        if (typeof Windows !== 'undefined') Windows.publish();
         this.renderBar(counts);
         Flags.syncSearchUI();
         this.fitBar();
@@ -1165,6 +1166,12 @@ const Folders = {
         this.el('folder-picker').classList.remove('hidden');
         this.renderPicker(true);
         input.focus();
+        // The other windows' folders, once known
+        if (typeof Windows !== 'undefined' && FolderCache.native()) {
+            Windows.refreshOthers().then(() => {
+                if (this.pickerFiles === files && !this.el('folder-picker').classList.contains('hidden')) this.renderPicker();
+            });
+        }
     },
 
     closePicker() {
@@ -1207,7 +1214,18 @@ const Folders = {
                 items.push({ kind: 'create', parent: base, name: typed, problem, disabled: !!problem });
             }
         }
-        return items.concat(folders);
+        // Folders of the projects open in other windows
+        const others = [];
+        if (typeof Windows !== 'undefined' && FolderCache.native()) {
+            for (const w of Windows.others) {
+                for (const p of w.folders || []) {
+                    const label = p ? `${w.name} / ${p.split('/').join(' / ')}` : w.name;
+                    if (ql && !label.toLowerCase().replace(/\s*\/\s*/g, '/').includes(ql)) continue;
+                    others.push({ kind: 'window', win: w, path: p, label, depth: 0 });
+                }
+            }
+        }
+        return items.concat(folders, others);
     },
 
     renderPicker(resetHi = false) {
@@ -1246,7 +1264,11 @@ const Folders = {
             row.dataset.i = i;
             row.setAttribute('role', 'option');
             row.style.setProperty('--depth', it.depth || 0);
-            if (it.kind === 'create') {
+            if (it.kind === 'window') {
+                row.innerHTML = this.folderIcon('fp-icon') + '<span class="fp-name"></span><span class="fp-meta"></span>';
+                row.querySelector('.fp-name').textContent = it.label;
+                row.querySelector('.fp-meta').textContent = 'other window';
+            } else if (it.kind === 'create') {
                 const where = it.parent === '' ? this.rootName() : this.nameOf(it.parent);
                 row.innerHTML = `<span class="fp-plus">+</span><span class="fp-name"></span><span class="fp-meta"></span>`;
                 row.querySelector('.fp-name').textContent = `New folder “${it.name.split('/').join(' / ')}”`;
@@ -1266,6 +1288,13 @@ const Folders = {
         const files = this.pickerFiles;
         const copy = this.pickerMode === 'copy';
         if (!files) return;
+        if (item.kind === 'window') {
+            // Into the project in another window
+            this.closePicker();
+            const paths = files.map(f => Windows.pathOf(f)).filter(Boolean);
+            if (paths.length) await Windows.send(paths, item.win.path, item.path, copy, item.win.name);
+            return;
+        }
         let dest = item.path, created = [];
         if (item.kind === 'create') {
             try {
@@ -1405,6 +1434,7 @@ const Folders = {
         this.dragging = [...app.selection];
         e.dataTransfer.effectAllowed = 'copyMove';
         e.dataTransfer.setData(this.DRAG_TYPE, String(this.dragging.length));
+        if (typeof Windows !== 'undefined') Windows.addDragData(e, this.dragging); // for a drop in another window
         const ghost = this.makeGhost(this.dragging, file);
         e.dataTransfer.setDragImage(ghost, 40, 40);
         document.body.classList.add('dragging-photos');
@@ -1457,7 +1487,8 @@ const Folders = {
         this._dropEl = el;
         if (el) {
             el.classList.add('drop-target');
-            const n = this.dragging.length;
+            // From another window the photos can't be counted until they're dropped
+            const n = this.dragging ? this.dragging.length : 1;
             el.dataset.dropLabel = `${copy ? 'Copy' : 'Move'} ${n === 1 ? 'here' : n}`;
         }
     },

@@ -44,10 +44,10 @@ static class Program
         if (!RuntimeAvailable(options)) return 66;
 
         using var mutex = new Mutex(false, MutexName);
-        using var form = new MainForm(options);
-        Application.Run(form);
-        Log.Write($"Exiting with code {form.ExitCode}");
-        return form.ExitCode;
+        // Runs until the last window closes (New window opens more)
+        AppWindows.Run(new MainForm(options));
+        Log.Write($"Exiting with code {AppWindows.ExitCode}");
+        return AppWindows.ExitCode;
     }
 
     static bool RuntimeAvailable(Options options)
