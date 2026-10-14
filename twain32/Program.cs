@@ -137,7 +137,8 @@ sealed class Run : ApplicationContext
             session = new TwainSession(appId);
             session.TransferReady += TransferReady;
             session.DataTransferred += DataTransferred;
-            session.TransferError += (_, e) => Fail("The scanner stopped: " + (e.Exception?.Message ?? Status(e.SourceStatus)));
+            // Ended after the callback returns, not inside the driver's call
+            session.TransferError += (_, e) => { var why = "The scanner stopped: " + (e.Exception?.Message ?? Status(e.SourceStatus)); window.BeginInvoke(new Action(() => Fail(why))); };
             session.SourceDisabled += (_, _) => window.BeginInvoke(new Action(() => Finish(null)));
             var rc = session.Open(new WindowsFormsMessageLoopHook(window.Handle));
             if (rc != ReturnCode.Success) { Fail("TWAIN wouldn't start: " + rc); return; }
@@ -184,7 +185,7 @@ sealed class Run : ApplicationContext
         Set("No progress window", () => caps.CapIndicators.SetValue(BoolType.False));
         Set("Feeder", () => caps.CapFeederEnabled.SetValue(BoolType.True));
         Set(o.Duplex ? "Both sides" : "One side", () => caps.CapDuplexEnabled.SetValue(o.Duplex ? BoolType.True : BoolType.False));
-        Set(o.Gray ? "Greys" : "Colour", () => caps.ICapPixelType.SetValue(o.Gray ? PixelType.Gray : PixelType.RGB));
+        Set(o.Gray ? "Grayscale" : "Color", () => caps.ICapPixelType.SetValue(o.Gray ? PixelType.Gray : PixelType.RGB));
         Set("Inches", () => caps.ICapUnits.SetValue(Unit.Inches));
         Set($"{o.Dpi} dpi across", () => caps.ICapXResolution.SetValue(o.Dpi));
         Set($"{o.Dpi} dpi down", () => caps.ICapYResolution.SetValue(o.Dpi));

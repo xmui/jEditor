@@ -143,7 +143,10 @@ const Places = {
 
     async draw() {
         if (!this.boxes || !this.boxes.length) return;
+        // A slower draw started earlier doesn't overwrite a newer one
+        const gen = this._drawGen = (this._drawGen || 0) + 1;
         const html = await this.html();
+        if (gen !== this._drawGen) return;
         for (const box of this.boxes) {
             const search = box.querySelector('.sb-search');
             const focused = search && document.activeElement === search;
@@ -388,6 +391,7 @@ const Places = {
         if (!this.native() || !this.boxes) return;
         if (this._dir !== this.app.dirHandle) {
             this._dir = this.app.dirHandle;
+            this.counts.clear(); // counted again: scans and moves change them
             this.draw();
         } else {
             this.drawCard();

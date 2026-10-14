@@ -7,7 +7,7 @@
 //   • near-duplicates: each thumbnail is first cropped to the photo itself
 //     (a uniform scanner bed or film border would otherwise make unrelated
 //     scans look alike), then compared at all four rotations on two
-//     brightness-normalised maps: the overall layout (16×16) and the fine
+//     brightness-normalized maps: the overall layout (16×16) and the fine
 //     detail (32×32 minus its local mean). Both must agree; photos that
 //     merely share a composition (sky over ground) differ in detail.
 // Groups use complete linkage — a photo joins a group only if it matches
@@ -261,7 +261,7 @@ const Dupes = {
                 fine[(y >> 1) * M + (x >> 1)] += lum / 4;
             }
         }
-        // Detail: each cell minus its 3×3 neighbourhood mean
+        // Detail: each cell minus its 3×3 neighborhood mean
         const detail = new Float32Array(M * M);
         for (let y = 0; y < M; y++) {
             for (let x = 0; x < M; x++) {
@@ -374,7 +374,8 @@ const Dupes = {
     // ---- grouping ----
 
     // Returns groups: [{ files, exact: Set(file) }], each with ≥ 2 files.
-    async findGroups(files, sensitivity, onProgress = () => { }) {
+    // stale(): the scan was closed or started again, so this one stops
+    async findGroups(files, sensitivity, onProgress = () => { }, stale = () => false) {
         const n = files.length;
         const exactOf = new Map(); // file → sha shared with another file
 
@@ -387,6 +388,7 @@ const Dupes = {
         for (const idx of bySize.values()) {
             if (idx.length < 2) continue;
             const byHash = new Map();
+            if (stale()) return [];
             for (const i of idx) {
                 const h = await this.sha256(files[i]).catch(() => null);
                 if (!h) continue;
@@ -400,6 +402,7 @@ const Dupes = {
 
         const fps = new Array(n);
         for (let i = 0; i < n; i++) {
+            if (stale()) return [];
             fps[i] = await this.fingerprint(files[i]).catch(() => null);
             if (i % 10 === 0) onProgress(i, n);
         }
@@ -417,6 +420,7 @@ const Dupes = {
             // Give the screen a frame every ~25 ms (2000 photos = 2M pairs)
             if (performance.now() - slice > 25) {
                 await new Promise(r => setTimeout(r, 0));
+                if (stale()) return [];
                 slice = performance.now();
             }
         }
@@ -506,7 +510,7 @@ const Dupes = {
                     this.app.updateTask('dupes', `Finding duplicates ${i}/${n}`);
                     this.renderMessage(`Comparing photos… ${i} / ${n}`);
                 }
-            });
+            }, () => token !== this._scanToken);
             if (token !== this._scanToken) return;
             const ignored = this.app._dupesIgnored || new Set();
             this.groups = groups.filter(g => !ignored.has(this.groupKey(g)));

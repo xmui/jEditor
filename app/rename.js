@@ -312,6 +312,9 @@ const Renamer = {
     async apply() {
         if (!this.rows || this._applying) return;
         const o = this.options();
+        // Enter pressed while capture dates are still being read: wait for them
+        if (this.needsDates(o) && this.scope().some(f => f.dateTaken === undefined)) await this.app.ensureDatesTaken();
+        if (!this.isOpen) return;
         // Re-plan against the latest state (another rename may have run)
         this.rows = this.plan(this.scope(), o);
         if (this.rows.some(r => r.error)) { this.render(o); return; }

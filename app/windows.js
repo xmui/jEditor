@@ -64,7 +64,9 @@ const Windows = {
     },
 
     join(root, rel) {
-        return String(root).replace(/\\$/, '') + (rel ? '\\' + rel.split('/').join('\\') : '');
+        // A drive's top folder keeps its backslash (E:\, not E:)
+        if (!rel) return String(root);
+        return String(root).replace(/\\$/, '') + '\\' + rel.split('/').join('\\');
     },
 
     pathOf(file) {

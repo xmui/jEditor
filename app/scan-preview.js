@@ -145,7 +145,7 @@ const ScanPreview = {
     },
 
     // A click on the glass: a box round the print there, or (none found)
-    // one the size of the last box, centred on the click
+    // one the size of the last box, centered on the click
     clickBox(p) {
         const img = this.el('scan-pv-img');
         const { width: W, height: H } = this.image;

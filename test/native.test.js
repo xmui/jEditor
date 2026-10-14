@@ -302,7 +302,7 @@ const FAKE_NATIVE = `
     };
 `;
 
-// A real JPEG: a colour with a label, so every photo's bytes differ
+// A real JPEG: a color with a label, so every photo's bytes differ
 const JPEG = async (color, label = '') => {
     const c = document.createElement('canvas');
     c.width = 160; c.height = 120;
@@ -740,6 +740,12 @@ async function newPage(context, baseUrl) {
             await wait(() => app.files.some(f => f.name === 'photo6.jpg'));
             await wait(() => !Scan.running);
             out.more = window.__scanReq.prefix + window.__scanReq.next + '.jpg';
+            // A prefix typed for a scan carries on into Scan more / Try again,
+            // not the folder's most used one
+            await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '', prefix: 'Smith-B-', next: 1, digits: 3 });
+            await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '' });
+            out.typedMore = window.__scanReq.prefix + window.__scanReq.next;
+            Scan.lastNaming = null; // the scans below follow the folder's names again
 
             // Details: the log so far, then new lines as the app writes them
             out.detailsOff = $('scan-log').classList.contains('hidden');
@@ -822,6 +828,7 @@ async function newPage(context, baseUrl) {
         check('... sent with the scan, and remembered for that scanner', r.req.compat === true && r.compatKept, JSON.stringify([r.req.compat, r.compatKept]));
         check('... and crops each scan once it\'s in, without asking', r.cropped === 'c2.jpg,c3.jpg (no question)', r.cropped);
         check('Scan more in the dock carries on the names', r.more === 'photo6.jpg', r.more);
+        check('a typed prefix carries on into the next scan', r.typedMore === 'Smith-B-2', r.typedMore);
         check('a scan that fails says why, and what was saved', /busy/.test(r.err || '') && /didn't finish/.test(r.alert) && /1 photo was saved/.test(r.alert) && !r.running, JSON.stringify([r.err, r.alert]));
         check('while scanning, the dock offers Stop; closing it only makes it small', r.stopOffered && r.small, JSON.stringify([r.stopOffered, r.small]));
         check('Stop ends a scan whose window never shows', r.stopped && r.stopToast === 'Scan stopped', JSON.stringify([r.stopped, r.stopToast]));
@@ -989,6 +996,30 @@ async function newPage(context, baseUrl) {
         check('the glass is remembered for that scanner, and the settings', r2.modeKept && r2.prefs.dpi === 1200 && r2.prefs.color === 'gray' && r2.prefs.format === 'png' && /^glass Preview$/.test(r2.setupMode), JSON.stringify([r2.modeKept, r2.prefs, r2.setupMode]));
         check('Scan more previews again; the names carry on', /photo7\.png/.test(r2.moreNames) && r2.moreDpi === '1200', JSON.stringify([r2.moreNames, r2.moreDpi]));
         check('Stop ends a preview', r2.stopShown && r2.stopped === 'Preview stopped', JSON.stringify([r2.stopShown, r2.stopped]));
+        // Scan whole glass: beside Preview, one photo of the whole glass, no preview
+        const rw = await page.evaluate(async () => {
+            const $ = (id) => document.getElementById(id);
+            const wait = async (f) => { for (let i = 0; i < 100 && !f(); i++) await new Promise(r => setTimeout(r, 50)); };
+            await wait(() => !Scan.running && !Scan.waiting);
+            Scan.setState('setup');
+            const out = { shown: getComputedStyle($('scan-whole')).display !== 'none', go: $('scan-go').textContent };
+            // The buttons stay in sight however far the settings scroll
+            const body = $('scan-form');
+            body.scrollTop = body.scrollHeight;
+            const foot = $('scan-whole').closest('.scan-dock-foot').getBoundingClientRect(), box = body.getBoundingClientRect();
+            out.footInSight = foot.bottom <= box.bottom + 1 && foot.top >= box.top;
+            window.__scanReq = null;
+            window.__previewReq = null;
+            $('scan-whole').click();
+            await wait(() => window.__scanReq && !Scan.running);
+            const q = window.__scanReq || {};
+            out.req = { source: q.source, crops: q.crops, bed: [q.bedW, q.bedH], dpi: q.dpi, previewed: !!window.__previewReq };
+            out.state = $('scan-panel').dataset.state;
+            return out;
+        });
+        check('Scan whole glass sits beside Preview, and the dock\'s buttons stay in sight', rw.shown && rw.go === 'Preview' && rw.footInSight, JSON.stringify(rw));
+        check('Scan whole glass scans the whole glass as one photo, with no preview', rw.req.source === 'glass' && JSON.stringify(rw.req.crops) === '[{"x":0,"y":0,"w":1,"h":1,"angle":0,"turn":0}]'
+            && rw.req.bed[0] > 8 && rw.req.dpi === 1200 && !rw.req.previewed && rw.state === 'done', JSON.stringify(rw));
         check('preview suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }

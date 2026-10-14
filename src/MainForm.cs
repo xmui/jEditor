@@ -125,6 +125,15 @@ sealed class MainForm : Form
         catch (Exception e)
         {
             Log.Write(e.ToString());
+            // Closed while it was starting: nothing to say
+            if (IsDisposed || Disposing) return;
+            // A second window that couldn't start goes alone; the others stay
+            if (AppWindows.All.Count(f => f != this && !f.IsDisposed) > 0)
+            {
+                Program.Fail(options, "This jEditor window couldn't start: " + e.Message);
+                Close();
+                return;
+            }
             Program.Fail(options, "jEditor couldn't start: " + e.Message);
             Finish(70);
         }
@@ -232,6 +241,10 @@ sealed class MainForm : Form
         {
             Log.Write($"WebView2 process failed: {e.ProcessFailedKind} {e.Reason}");
             smoke?.Fail($"WebView2 process failed ({e.ProcessFailedKind})");
+            // The page's renderer crashed (out of memory on a huge project,
+            // say): loaded again, instead of a blank window
+            if (smoke is null && e.ProcessFailedKind == CoreWebView2ProcessFailedKind.RenderProcessExited)
+                BeginInvoke(() => { try { if (!IsDisposed) Core.Reload(); } catch (Exception ex) { Log.Write("Reload after crash: " + ex.Message); } });
         };
     }
 
@@ -316,7 +329,16 @@ sealed class MainForm : Form
             case "pickFolder":
                 // After this handler returns: the picker is modal
                 var id = msg["id"]?.GetValue<long>() ?? 0;
-                BeginInvoke(() => PickFolder(id));
+                BeginInvoke(() =>
+                {
+                    // Whatever goes wrong, the page's picker gets an answer
+                    try { PickFolder(id); }
+                    catch (Exception ex)
+                    {
+                        Log.Write($"Folder picker failed: {ex.Message}");
+                        try { Post(new { replyTo = id, cancelled = true }); } catch (Exception) { }
+                    }
+                });
                 break;
             case "ready":
                 Log.Write($"jEditor {Str(msg, "version")} ready");
@@ -497,14 +519,19 @@ sealed class MainForm : Form
                 case "openPath":
                 {
                     var path = Str(msg, "path");
-                    if (path is not null && Directory.Exists(path)) OpenFolder(path);
-                    Reply(id, new { ok = path is not null && Directory.Exists(path) });
+                    var there = path is not null && Directory.Exists(path);
+                    // Open in another window already: that one comes forward
+                    if (there && AppWindows.ShowOpen(path!, this)) { Reply(id, new { ok = true, elsewhere = true }); break; }
+                    if (there) OpenFolder(path!);
+                    Reply(id, new { ok = there });
                     break;
                 }
                 case "exists":
                 {
                     var paths = (msg["paths"] as JsonArray ?? []).Select(p => (string?)p ?? "").ToList();
-                    Reply(id, new { exists = paths.Select(p => p != "" && Directory.Exists(p)).ToList() });
+                    // Off the window's thread: a network drive that's gone takes a while to say so
+                    var exists = await Task.Run(() => paths.Select(p => p != "" && Directory.Exists(p)).ToList());
+                    Reply(id, new { exists });
                     break;
                 }
                 case "checkUpdate":
@@ -621,6 +648,7 @@ sealed class MainForm : Form
                 {
                     var path = Str(msg, "path");
                     if (path is not null && !(Path.IsPathFullyQualified(path) && Directory.Exists(path))) { Reply(id, new { error = "That folder isn't there" }); break; }
+                    if (path is not null && AppWindows.ShowOpen(path, null)) { Reply(id, new { ok = true, elsewhere = true }); break; }
                     AppWindows.Open(options.ForWindow(path), this);
                     Reply(id, new { ok = true });
                     break;
@@ -719,8 +747,10 @@ sealed class MainForm : Form
                     if (!Updater.IsNewer(release.Tag, Updater.CurrentTag)) { Reply(id, new { error = "This is already the newest version" }); break; }
                     var setup = await Updater.DownloadAsync(release, (got, total) =>
                         BeginInvoke(() => Post(new { type = "updateProgress", received = got, total })));
-                    Reply(id, new { ok = true });
+                    // Started first: if Windows won't run it (antivirus, say),
+                    // the page hears the error instead of waiting forever
                     Updater.Install(setup);
+                    Reply(id, new { ok = true });
                     Finish(0);
                     break;
                 }
@@ -1029,6 +1059,7 @@ sealed class MainForm : Form
             return;
         }
         settings.LastFolder = path;
+        if (smoke is null) Settings.Update(s => s.LastFolder = path);
         Log.Write($"Picked {path}");
         Post(new { replyTo = id, path }, handle);
     }
@@ -1113,12 +1144,17 @@ sealed class MainForm : Form
         watcher?.Dispose();
         if (smoke is not null) return;
         var normal = WindowState == FormWindowState.Normal && !fullScreen ? Bounds : RestoreBounds;
-        settings.X = normal.X;
-        settings.Y = normal.Y;
-        settings.Width = normal.Width;
-        settings.Height = normal.Height;
-        settings.Maximized = fullScreen ? stateBeforeFullScreen == FormWindowState.Maximized : WindowState == FormWindowState.Maximized;
-        settings.Save();
+        var maximized = fullScreen ? stateBeforeFullScreen == FormWindowState.Maximized : WindowState == FormWindowState.Maximized;
+        // Only where this window was: the rest is as the other windows left it
+        Settings.Update(s =>
+        {
+            s.X = normal.X;
+            s.Y = normal.Y;
+            s.Width = normal.Width;
+            s.Height = normal.Height;
+            s.Maximized = maximized;
+            s.Dark = settings.Dark;
+        });
     }
 
     // ---- The UI files ----
@@ -1144,11 +1180,13 @@ sealed class MainForm : Form
             return;
         }
         var stamp = UiStamp(options.UiDir!);
-        if (settings.UiStamp == stamp) return;
+        // As the file says now: another window may have cleared them already
+        if (settings.UiStamp == stamp || Settings.Load().UiStamp == stamp) { settings.UiStamp = stamp; return; }
         Log.Write($"UI changed ({settings.UiStamp ?? "first run"} → {stamp}): clearing caches");
         await Core.Profile.ClearBrowsingDataAsync(
             CoreWebView2BrowsingDataKinds.DiskCache | CoreWebView2BrowsingDataKinds.CacheStorage | CoreWebView2BrowsingDataKinds.ServiceWorkers);
         settings.UiStamp = stamp;
+        if (smoke is null) Settings.Update(s => s.UiStamp = stamp);
     }
 
     static string UiStamp(string dir)

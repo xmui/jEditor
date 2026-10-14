@@ -432,16 +432,16 @@
                     </div>
                     <div class="set-row">
                         <span class="set-label" id="set-surround-label">Behind photos
-                            <small>The colour around a photo affects how you judge it</small></span>
+                            <small>The color around a photo affects how you judge it</small></span>
                         <div class="seg" role="radiogroup" aria-labelledby="set-surround-label">
                             <label><input type="radio" name="set-surround" value="auto"><span>Theme</span></label>
                             <label><input type="radio" name="set-surround" value="black"><span>Black</span></label>
-                            <label><input type="radio" name="set-surround" value="grey"><span>Grey</span></label>
+                            <label><input type="radio" name="set-surround" value="grey"><span>Gray</span></label>
                             <label><input type="radio" name="set-surround" value="light"><span>Light</span></label>
                         </div>
                     </div>
                     <div class="set-row">
-                        <span class="set-label" id="set-accent-label">Accent colour</span>
+                        <span class="set-label" id="set-accent-label">Accent color</span>
                         <div id="cust-accent" class="accent-swatches" role="radiogroup" aria-labelledby="set-accent-label">
                             <button data-accent="#2563eb" title="Blue" aria-label="Blue" role="radio" style="--sw:#2563eb"></button>
                             <button data-accent="#7c3aed" title="Violet" aria-label="Violet" role="radio" style="--sw:#7c3aed"></button>
@@ -450,8 +450,8 @@
                             <button data-accent="#ea580c" title="Orange" aria-label="Orange" role="radio" style="--sw:#ea580c"></button>
                             <button data-accent="#16a34a" title="Green" aria-label="Green" role="radio" style="--sw:#16a34a"></button>
                             <button data-accent="#0d9488" title="Teal" aria-label="Teal" role="radio" style="--sw:#0d9488"></button>
-                            <label class="accent-custom" title="Any colour">
-                                <input type="color" id="cust-accent-pick" value="#2563eb" aria-label="Pick any accent colour">
+                            <label class="accent-custom" title="Any color">
+                                <input type="color" id="cust-accent-pick" value="#2563eb" aria-label="Pick any accent color">
                             </label>
                         </div>
                     </div>
@@ -781,7 +781,7 @@
                     <summary>Advanced</summary>
                     <label class="scan-check" for="scan-driver">
                         <input id="scan-driver" type="checkbox">
-                        <span>Use the scanner's own window instead<small>Its own settings (dust removal, colour restoration and so on), if jEditor's aren't enough. Remembered for this scanner.</small></span>
+                        <span>Use the scanner's own window instead<small>Its own settings (dust removal, color restoration and so on), if jEditor's aren't enough. Remembered for this scanner.</small></span>
                     </label>
                     <label class="scan-check" for="scan-swap" id="scan-swap-row">
                         <input id="scan-swap" type="checkbox">
@@ -813,10 +813,10 @@
                     <label class="scan-field" for="scan-dpi">Resolution
                         <select id="scan-dpi" class="field"></select>
                     </label>
-                    <label class="scan-field" for="scan-color">Colour
+                    <label class="scan-field" for="scan-color">Color
                         <select id="scan-color" class="field">
-                            <option value="color">Colour</option>
-                            <option value="gray">Greys</option>
+                            <option value="color">Color</option>
+                            <option value="gray">Grayscale</option>
                         </select>
                     </label>
                     <label class="scan-field" for="scan-sides" id="scan-sides-row">Sides
@@ -887,6 +887,7 @@
                 <button id="scan-settings" type="button" class="btn ghost">Change settings</button>
                 <span class="scan-grow"></span>
                 <button id="scan-cancel" type="button" class="btn secondary">Cancel</button>
+                <button id="scan-whole" type="button" class="btn secondary" title="The whole glass as one photo, at the resolution chosen: no preview, no boxes">Scan whole glass</button>
                 <button id="scan-go" type="submit" class="btn primary">Scan</button>
             </div>
         </form>

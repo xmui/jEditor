@@ -329,7 +329,7 @@ sealed class Scanner : IDisposable
         bool front = r.Sides != "back", back = r.Sides != "front";
         // The scanner's own "front" is the photo unless swapped
         bool duplex = back && front || (front ? r.Swap : !r.Swap);
-        Log.Write($"Feeder: {r.Sides} side{(r.Sides == "both" ? "s" : "")}{(r.Swap ? " (this scanner's sides swapped)" : "")}, {(duplex ? "both sides scanned" : "one side")}, {r.Dpi} dpi, {(r.Gray ? "greys" : "colour")}, brightness {r.Brightness}, contrast {r.Contrast}, {r.Format}");
+        Log.Write($"Feeder: {r.Sides} side{(r.Sides == "both" ? "s" : "")}{(r.Swap ? " (this scanner's sides swapped)" : "")}, {(duplex ? "both sides scanned" : "one side")}, {r.Dpi} dpi, {(r.Gray ? "grayscale" : "color")}, brightness {r.Brightness}, contrast {r.Contrast}, {r.Format}");
         Bitmap? first = null; // duplex: the scanner's front, until its back comes
         try
         {
@@ -440,7 +440,7 @@ sealed class Scanner : IDisposable
 
     // ---- Saving ----
 
-    // Brightness and contrast (-100…100): contrast about the middle grey,
+    // Brightness and contrast (-100…100): contrast about the middle gray,
     // then brightness added, the same as the preview shows
     static Bitmap Adjust(Bitmap bmp, Request r) => Adjust(bmp, r.Brightness, r.Contrast);
 
@@ -600,7 +600,7 @@ sealed class Scanner : IDisposable
         options.PageSize = new PageSize(Math.Round((decimal)width, 2), Math.Round((decimal)height, 2), PageSizeUnit.Inch);
         options.PageAlign = HorizontalAlign.Left;
         options.MaxQuality = true;
-        Log.Write($"{what}: {width:0.##} × {height:0.##} in at {dpi} dpi, {(gray ? "greys" : "colour")}, no scanner window ({options.Driver}, manager {options.TwainOptions.Dsm}, transfer {options.TwainOptions.TransferMode})");
+        Log.Write($"{what}: {width:0.##} × {height:0.##} in at {dpi} dpi, {(gray ? "grayscale" : "color")}, no scanner window ({options.Driver}, manager {options.TwainOptions.Dsm}, transfer {options.TwainOptions.TransferMode})");
         return options;
     }
 

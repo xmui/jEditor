@@ -143,7 +143,7 @@ sealed class Smoke
         if (!names.SequenceEqual(expected)) return (false, $"saved as {string.Join(", ", names)}; expected {string.Join(", ", expected)}");
         try
         {
-            // The photo is colourful; the back is plain paper
+            // The photo is colorful; the back is plain paper
             using var front = new System.Drawing.Bitmap(Path.Combine(dir, "scan_0007.jpg"));
             using var backSide = new System.Drawing.Bitmap(Path.Combine(dir, "scan_0007-b.jpg"));
             var f = front.GetPixel(front.Width / 10, front.Height / 10);

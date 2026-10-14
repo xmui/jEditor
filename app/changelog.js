@@ -5,9 +5,26 @@
 
 const CHANGELOG = [
     {
+        version: '1.29.0', date: '2026-10-14',
+        items: [
+            'Scan whole glass: next to Preview in the scan dock, it scans the whole glass as one photo at the resolution chosen, with no preview or boxes (Auto crop each photo still trims it to the print, when on).',
+            'The scan and camera docks keep their buttons in sight: the settings scroll behind them, so Scan is never below the fold.',
+            'American spelling throughout: color, gray, center, canceled. The scan color choice reads Grayscale.',
+            'A project opens in one window only: opening it again (sidebar, Ctrl+click, Open in a new window) brings its window forward, so two windows can\'t write over each other\'s flags and edits.',
+            'Scan more and Try again keep the names you typed (Smith-B-006 after Smith-B-005), and Scan or Preview pressed while jEditor is still asking the scanner what it can do waits instead of saying a scan is already running.',
+            'Crop saves exactly the crop on screen when you press Save, and the editor waits while it writes. Edits made while Save edits is writing wait for it too, so none is lost or applied twice.',
+            'Duplicates: the search stops when you close it, `Ctrl+Z` restores, and `Enter` on a button presses that button.',
+            'Rename with {date} waits for capture dates instead of using file dates; a failed rename says which photos kept a temporary name.',
+            'Renaming a project keeps its flags and edits in every case, and a photo renamed onto an old name doesn\'t take that photo\'s flags.',
+            'Updates: a stalled download fails with a message instead of hanging, and a setup Windows blocks says so.',
+            'A tethered shot that can\'t be saved is kept in a jEditor-unsaved folder instead of lost; the scan helper is shut down cleanly when a scan ends early.',
+            'Smaller fixes: sidebar photo counts update, Preparing previews no longer sticks, PNG scans show their size and DPI, settings are shared safely between windows, and a crashed page reloads itself.'
+        ]
+    },
+    {
         version: '1.28.0', date: '2026-10-14',
         items: [
-            'Shortcut profiles: Keyboard shortcuts (`?`) has a Profile list. Lightroom Classic gives Lightroom\'s keys: `R` crop, `E` single view, `G` grid, `Ctrl+[` and `Ctrl+]` rotate, `P` star, `X` needs rescan, `U` clear, `6`–`9` colour labels, `F5` rescan. Make your own with New profile…; each profile keeps its own changes.',
+            'Shortcut profiles: Keyboard shortcuts (`?`) has a Profile list. Lightroom Classic gives Lightroom\'s keys: `R` crop, `E` single view, `G` grid, `Ctrl+[` and `Ctrl+]` rotate, `P` star, `X` needs rescan, `U` clear, `6`–`9` color labels, `F5` rescan. Make your own with New profile…; each profile keeps its own changes.',
             'Opening a project while another was still loading could mix their photos and flags; the first open now stops.',
             'Flags changed just before switching project are saved to it, and can no longer erase the next project\'s flags. Taking the last flag off a photo is saved too.',
             'Kept edits follow photos that are renamed or moved.',
@@ -37,7 +54,7 @@ const CHANGELOG = [
             'Recrop any time: Crop opens on the whole photo, at the crop you kept, so nothing is lost by cropping too tight. Batch Auto crop is the same: check each photo (Crop, then `Shift+Enter` for Done & next) and fix the ones it got wrong.',
             'The grid, film strip and viewer show each photo as it will be saved, with a pencil on the edited ones. The bar under the toolbar counts them, with Save and Discard. Save writes them into the photos (the originals are kept, so `Ctrl+Z` puts them back with the edits kept again) or exports copies of every photo, edited ones with their edits, into "jEditor Export".',
             'Kept edits stay with the project when jEditor is closed. Right-click a photo for Discard edit.',
-            'Auto crop works on feeder scans (FastFoto): each page comes out the feeder\'s full length with the photo at the top and backing and white around it; Auto crop now finds the photo on such a page, trims everything else and straightens it. Shift+A and the crop editor\'s Auto recognise these pages too, so ones scanned before can be fixed.',
+            'Auto crop works on feeder scans (FastFoto): each page comes out the feeder\'s full length with the photo at the top and backing and white around it; Auto crop now finds the photo on such a page, trims everything else and straightens it. Shift+A and the crop editor\'s Auto recognize these pages too, so ones scanned before can be fixed.',
             'Scanners whose driver won\'t open with the newer TWAIN manager (the OpticBook A300): jEditor now tries again in Older TWAIN mode by itself, and when that works, keeps it on for that scanner and says so. A scanner that won\'t say what it has gets both How choices (the glass and the feeder) instead of none.',
             'Undo history: the new History button in the toolbar (or `H`) lists every step Ctrl+Z can take back, newest first: what it was, which photos and when. Click a step to go back to before it; jEditor asks first, naming everything that will be undone. Like the other toolbar buttons, it can be moved to More or hidden in Settings.'
         ]
@@ -46,7 +63,7 @@ const CHANGELOG = [
         version: '1.25.0', date: '2026-10-14',
         items: [
             'Scanning uses jEditor\'s own settings now, no scanner window: How picks the glass (preview and crop) or the feeder, from what the scanner has. The scanner\'s own window is still there, under Advanced, for when you need its extras.',
-            'Settings in the scan dock: resolution, colour or greys, file type (JPEG with a quality, PNG, or TIFF), and brightness and contrast (shown on the preview as you move them). Saved setups keep a combination under a name to pick next time.',
+            'Settings in the scan dock: resolution, color or grayscale, file type (JPEG with a quality, PNG, or TIFF), and brightness and contrast (shown on the preview as you move them). Saved setups keep a combination under a name to pick next time.',
             'The feeder (FastFoto): Sides is Front, Back or Both; with both, each back is saved beside its photo as Smith-014-b.jpg. The FastFoto sends the back as its front, so jEditor swaps them for it (Advanced → front and back are swapped; remembered for each scanner).',
             'Preview and crop: tilt a box to match a crooked print with the round handle above it (the photo comes out straight), and ↻ turns it a quarter so the photo comes out the right way up (the arrow shows which way). Add a box at an exact print size (wallet, 3½×5, 4×6, 5×7, 8×10, 8½×11), wide or tall, where there\'s room on the glass.'
         ]
@@ -71,7 +88,7 @@ const CHANGELOG = [
         version: '1.23.0', date: '2026-10-13',
         items: [
             'Preview and crop, for a flatbed like the OpticBook: in the scan dock, choose How → Preview and crop. Lay prints on the glass, as many as fit; jEditor previews the glass, with no scanner window, and puts a box round each print it finds.',
-            'Adjust the boxes: drag on the glass to add one, drag a box to move it, or its corners to resize it; × or `Delete` removes one. Choose the resolution (from what the scanner offers; 600 dpi to start with) and colour or greys, then Scan: the glass is scanned once and each box saved as its own photo, named in order. Auto crop each photo then trims each to its print and straightens it.',
+            'Adjust the boxes: drag on the glass to add one, drag a box to move it, or its corners to resize it; × or `Delete` removes one. Choose the resolution (from what the scanner offers; 600 dpi to start with) and color or grayscale, then Scan: the glass is scanned once and each box saved as its own photo, named in order. Auto crop each photo then trims each to its print and straightens it.',
             'Scan more previews the glass again for the next prints, and the names carry on. How you scan is remembered for each scanner, and Stop works while it previews too.'
         ]
     },
@@ -154,21 +171,21 @@ const CHANGELOG = [
             'The folder list shows the total for what you\'re looking at, such as 1,240 photos · 4.80 GB. Click it for the details. Hovering a folder shows its size too.',
             'The film strip\'s background is always black, in both themes.',
             'In single view, the controls above the film strip fade away a few seconds after they appear, leaving the photo the screen. Move the pointer to where they were and they come back. To do without them altogether, turn off Buttons above the film strip in Settings.',
-            'The selection bar in the grid is centred on the photos again, beside the folder list when it\'s open.',
+            'The selection bar in the grid is centered on the photos again, beside the folder list when it\'s open.',
             'Opening an order whose subfolder has a .jeditor folder of its own (because that subfolder was once opened on its own) merges it into the order\'s and removes it, so the order has just one. Its deleted photos and Auto crop originals move into the order\'s .jeditor, named after the subfolder, and its flags join the order\'s. Its cache is dropped and rebuilt when needed. If anything can\'t be moved, that .jeditor is left where it is.'
         ]
     },
     {
         version: '1.17.0', date: '2026-10-12',
         items: [
-            'A new look: one consistent set of colours, type, spacing, icons and buttons across every screen, with quieter neutral greys so the photo stands out and the accent colour only marking what\'s selected, focused or the main action.',
-            'Settings (the gear, or `Ctrl+,`) replaces Customize controls. New in it: a light theme (or match the system), the colour behind photos (black, grey or light, for judging colour), Comfortable density for bigger text and controls, and Subtle glass, which is faster on older computers.',
+            'A new look: one consistent set of colors, type, spacing, icons and buttons across every screen, with quieter neutral grays so the photo stands out and the accent color only marking what\'s selected, focused or the main action.',
+            'Settings (the gear, or `Ctrl+,`) replaces Customize controls. New in it: a light theme (or match the system), the color behind photos (black, gray or light, for judging color), Comfortable density for bigger text and controls, and Subtle glass, which is faster on older computers.',
             'The toolbars no longer switch between light and dark as you move through bright and dark photos. They stay readable over any photo.',
             'Clean up, Export, error messages and the big Auto crop question are now dialogs in the app instead of browser pop-ups. Clean up lists what it will remove and starts on Cancel.',
             'The selection bar is grouped and never runs off the edge: Rotate, Auto crop, Move to, Rename and Delete, with Export, Copy to and Rotate 180° under ⋯.',
-            'Selected photos show a tick as well as the coloured ring, and the current photo has a white ring of its own, so the two are easy to tell apart. Tiles no longer grow on hover.',
-            'Messages appear at the bottom centre, above the toolbars, instead of covering the folder pill or the top of the grid. In crop and duplicates they appear at the top.',
-            'Crop and straighten: the toolbar is regrouped with Save on the right, and the straighten slider and level line follow the accent colour.',
+            'Selected photos show a tick as well as the colored ring, and the current photo has a white ring of its own, so the two are easy to tell apart. Tiles no longer grow on hover.',
+            'Messages appear at the bottom center, above the toolbars, instead of covering the folder pill or the top of the grid. In crop and duplicates they appear at the top.',
+            'Crop and straighten: the toolbar is regrouped with Save on the right, and the straighten slider and level line follow the accent color.',
             'The start screen is simpler, with Settings and Keyboard shortcuts at the bottom.',
             'Keyboard: every button, the folder list and the flag list can be reached with `Tab`, with a visible focus ring; the right-click menu works with the arrow keys; dialogs keep focus inside until they close. Toolbar buttons can be reordered with `Alt+↑` / `Alt+↓` in Settings.',
             'Works better in a narrow window and on tablets.'
@@ -179,13 +196,13 @@ const CHANGELOG = [
         items: [
             'jEditor watches the open folder. New photos (a scanner saving into the order, say) slot into the grid where they belong without losing your place, with a brief glow, and a message offers Show. Photos deleted or edited in another program are picked up too. Turn it off with Watch the folder for changes in Customize controls.',
             'Rescanning (`R`) and opening a folder are quicker, most of all on a network drive: folders are listed several at a time, and only new photos are opened. An unchanged order rescans in milliseconds. `R` now also notices photos removed or edited elsewhere.',
-            'Flags: `P` stars a photo, `X` marks it as needing a rescan, `1`–`5` give it a colour label (red, yellow, green, blue, purple) and `U` clears them. In the grid they apply to the selection. They show on the tiles, the film strip and beside the file name, and are kept with the order in .jeditor, so they follow renames and moves and go with the order to another computer. `Ctrl+Z` undoes them.',
+            'Flags: `P` stars a photo, `X` marks it as needing a rescan, `1`–`5` give it a color label (red, yellow, green, blue, purple) and `U` clears them. In the grid they apply to the selection. They show on the tiles, the film strip and beside the file name, and are kept with the order in .jeditor, so they follow renames and moves and go with the order to another computer. `Ctrl+Z` undoes them.',
             'The folder list has a Flags section with counts. Click one to show only those photos, then `Ctrl+A` selects them for Move to, Export or Delete. Right-click it to copy or save the list of names: the rescan list for whoever is on the scanner.',
             'The right-click menu starts with a row of flag buttons.',
-            'Search: `Ctrl+F` or `/` (or the magnifier in the folder pill) finds photos by name and folder. Every word you type must match; `is:star`, `is:rescan`, `is:red` and the other colours find flags.',
+            'Search: `Ctrl+F` or `/` (or the magnifier in the folder pill) finds photos by name and folder. Every word you type must match; `is:star`, `is:rescan`, `is:red` and the other colors find flags.',
             'Auto Crop on the selection bar (`Shift+A`) runs Auto on every selected photo in the background: it finds the print, straightens it and crops to it, with the aspect ratio last chosen in the crop editor. Photos with no print edge are left alone. The originals are kept in .jeditor/originals, so one `Ctrl+Z` puts the whole batch back.',
             'Opening a folder that\'s inside an order you\'ve opened before (one on the Recent list) offers to open the whole order at that folder instead, so the order keeps one .jeditor rather than getting a second one in the subfolder.',
-            'Accent colour in Customize controls: pick a swatch or any colour, and everything blue follows it. Text on it turns dark when the colour is light.',
+            'Accent color in Customize controls: pick a swatch or any color, and everything blue follows it. Text on it turns dark when the color is light.',
             'Messages are quieter glass pills that match the top bar, with a small icon for what happened, and slide in and out smoothly. The same message twice shows ×2 instead of stacking, and a message with a button (Undo, Show) stays up while the pointer is on it.',
             'The selection bar keeps clear of the folder list, and of the grid size slider when there\'s room.'
         ]
@@ -275,7 +292,7 @@ const CHANGELOG = [
         items: [
             'Crop and straighten works like Lightroom and Apple Photos: the frame stays in the middle and the photo moves behind it. After resizing, the view zooms so the crop fills the screen.',
             'Drag inside the frame to move the photo, outside it to rotate. Straightening turns the photo around the middle of the crop instead of shrinking the whole picture.',
-            'Hold `Ctrl` (`⌘` on a Mac) and drag along a horizon or print edge to level it. `Shift` keeps the crop\'s shape, `Alt` resizes from the centre.',
+            'Hold `Ctrl` (`⌘` on a Mac) and drag along a horizon or print edge to level it. `Shift` keeps the crop\'s shape, `Alt` resizes from the center.',
             'Auto (`Shift+A`) finds the print on a scan, straightens it and crops to its edges. Every photo runs Auto as each photo opens, for working through an order with `Shift+Enter`.',
             '`Ctrl+Z` and `Ctrl+Shift+Z` undo and redo inside the crop editor.',
             'Dragging outside the frame no longer draws a new crop box; it rotates instead.'
@@ -335,7 +352,7 @@ const CHANGELOG = [
         version: '1.9.0', date: '2026-09-27',
         items: [
             'Rebuilt crop and straighten: always works from the photo on disk, never leaves empty corners, has print-size presets, Previous (reuse the last crop) and Save & Next.',
-            'Crops keep the capture date, camera details, colour profile and DPI.',
+            'Crops keep the capture date, camera details, color profile and DPI.',
             'Rotating scanner JPEGs is lossless, even when they have no orientation tag.',
             'Big scans open instantly from a screen-sized preview; zooming in shows the original.',
             'Keyboard shortcuts can be viewed and changed (`?`).',

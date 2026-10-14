@@ -187,10 +187,26 @@ sealed class Tether : IDisposable
     // camera (DSC01234.ARW, DSC01234.JPG): they keep one number
     void SaveNext()
     {
-        var (cameraName, data) = camera.Download();
         Target t;
         lock (gate) t = target;
+        // Checked before the photo leaves the camera's buffer
         if (!Directory.Exists(t.Folder)) throw new CameraException("The folder to save into isn't there any more");
+        var (cameraName, data) = camera.Download();
+        try { Write(t, cameraName, data); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Not lost: kept where it can be found, and the session says why
+            var keep = Path.Combine(Path.GetTempPath(), "jEditor-unsaved");
+            Directory.CreateDirectory(keep);
+            var safe = Path.Combine(keep, $"{DateTime.Now:yyyyMMdd-HHmmss}-{Path.GetFileName(cameraName)}");
+            File.WriteAllBytes(safe, data);
+            Log.Write($"Camera: couldn't save {cameraName} ({e.Message}); kept it as {safe}");
+            throw new CameraException($"The photo couldn't be saved ({e.Message}). It was kept in {keep}.");
+        }
+    }
+
+    void Write(Target t, string cameraName, byte[] data)
+    {
         var ext = Path.GetExtension(cameraName).ToLowerInvariant();
         if (ext is "" or ".jpeg") ext = ".jpg";
         var stem = Path.GetFileNameWithoutExtension(cameraName);

@@ -9,7 +9,7 @@
 //   - gives jEditor window.JEditorNative: storage on this PC for orders'
 //     data, the Recycle Bin, paths on disk, and updates
 //   - turns off the service worker, so a changed UI file is always used
-//   - tells the app when the theme changes, for the title bar's colour
+//   - tells the app when the theme changes, for the title bar's color
 //   - in dev mode: reload and DevTools keys, and changed stylesheets
 //     swapped in without reloading
 //   - runs the smoke test (jEditor.exe --smoke-test <folder>)
@@ -88,7 +88,7 @@
 
     // ---- The folder picker: Windows' own ----
     // Same contract as the browser's: a FileSystemDirectoryHandle, or an
-    // AbortError when cancelled
+    // AbortError when canceled
     window.showDirectoryPicker = async function showDirectoryPicker() {
         const { msg, objects } = await request('pickFolder');
         if (msg.cancelled || !objects[0]) throw new DOMException('The user aborted a request.', 'AbortError');
@@ -252,7 +252,7 @@
         async reveal(path) {
             return (await answer('reveal', { path })).msg.ok;
         },
-        // Windows' folder picker, just for a path → path, or null if cancelled
+        // Windows' folder picker, just for a path → path, or null if canceled
         async pickPath(title, start) {
             const { msg } = await answer('pickPath', { title, start });
             return msg.cancelled ? null : msg.path;
@@ -400,7 +400,7 @@
         check();
     });
 
-    // The theme and the page's background colour, for the title bar and
+    // The theme and the page's background color, for the title bar and
     // what shows while the window resizes
     let lastTheme = null;
     const reportTheme = () => {

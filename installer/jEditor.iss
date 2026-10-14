@@ -55,7 +55,7 @@ Type: filesandordirs; Name: "{app}\app"
 [Files]
 Source: "{#PublishDir}\jEditor.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PublishDir}\app\*"; DestDir: "{app}\app"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Scanning (NAPS2.Sdk, LGPL-2.1): its DLLs, its 32-bit TWAIN helper and licence, beside the exe
+; Scanning (NAPS2.Sdk, LGPL-2.1): its DLLs, its 32-bit TWAIN helper and license, beside the exe
 Source: "{#PublishDir}\NAPS2.*"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PublishDir}\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion
 ; The 32-bit TWAIN helper (the scanner's own auto-size)
@@ -136,6 +136,8 @@ var
 begin
   Result := '';
   if not IsFree(Dir + '\jEditor.exe') then begin Result := 'jEditor.exe'; exit; end;
+  // The 32-bit scan helper, if a scan left it running
+  if not IsFree(Dir + '\twain32\jEditor.Twain32.exe') then begin Result := 'jEditor.Twain32.exe'; exit; end;
   if FindFirst(Dir + '\NAPS2.*', F) then
   try
     repeat

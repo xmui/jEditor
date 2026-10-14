@@ -73,7 +73,7 @@ static class RecycleBin
             {
                 op.Advise(sink);
                 try { op.PerformOperations(); }
-                catch (COMException e) { Log.Write($"Recycling stopped: {e.Message}"); } // cancelled, say
+                catch (COMException e) { Log.Write($"Recycling stopped: {e.Message}"); } // canceled, say
             }
         }
         finally

@@ -12,7 +12,7 @@
 // the rail can show the whole tree. Photos are moved with
 // FileSystemHandle.move() — a rename on disk, instant even for big scans —
 // or copied and the original removed where moving isn't supported. Name
-// clashes are asked about before anything is touched, so a cancelled move
+// clashes are asked about before anything is touched, so a canceled move
 // changes nothing. A move, its replaced photos (to .jeditor/trash) and any
 // folder made for it are undone together with one Ctrl+Z.
 
@@ -38,9 +38,9 @@ const Folders = {
         this.initClash();
         this.initPrompt();
         this.initDrag();
-        // The folder pill gives way to the centre pill as its name changes
-        const centre = document.querySelector('.file-info');
-        if (centre && typeof ResizeObserver === 'function') new ResizeObserver(() => this.fitBar()).observe(centre);
+        // The folder pill gives way to the center pill as its name changes
+        const center = document.querySelector('.file-info');
+        if (center && typeof ResizeObserver === 'function') new ResizeObserver(() => this.fitBar()).observe(center);
         window.addEventListener('resize', () => this.fitBar());
     },
 
@@ -250,12 +250,12 @@ const Folders = {
         this.fitBar();
     },
 
-    // As wide as it needs, up to the centre pill
+    // As wide as it needs, up to the center pill
     fitBar() {
         const bar = this.el('folder-bar');
-        const centre = document.querySelector('.file-info');
-        if (!centre || bar.classList.contains('hidden')) return;
-        const room = centre.getBoundingClientRect().left - bar.getBoundingClientRect().left - 12;
+        const center = document.querySelector('.file-info');
+        if (!center || bar.classList.contains('hidden')) return;
+        const room = center.getBoundingClientRect().left - bar.getBoundingClientRect().left - 12;
         if (room <= 0) return;
         // The pills follow the UI size setting (CSS zoom): room is in screen pixels
         const zoom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1;
@@ -719,6 +719,9 @@ const Folders = {
         f.name = name;
         f.parentDir = destDir;
         f.relPath = this.join(dest, name);
+        // Flags or edits left by a photo that once had this path aren't this one's
+        Flags.orphans.delete(f.relPath);
+        if (Edits.orphans) Edits.orphans.delete(f.relPath);
         try {
             const d = await f.handle.getFile();
             f.size = d.size;
@@ -1299,6 +1302,8 @@ const Folders = {
         if (item.kind === 'window') {
             // Into the project in another window
             this.closePicker();
+            // A rotation still being written lands before the file goes
+            for (const f of files) await this.settle(f);
             const paths = files.map(f => Windows.pathOf(f)).filter(Boolean);
             if (paths.length) await Windows.send(paths, item.win.path, item.path, copy, item.win.name);
             return;

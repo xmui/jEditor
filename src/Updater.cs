@@ -68,16 +68,26 @@ static class Updater
         var dir = Path.Combine(Path.GetTempPath(), "jEditor-update");
         Directory.CreateDirectory(dir);
         var file = Path.Combine(dir, $"jEditor-Setup-{release.Tag.TrimStart('v')}.exe");
-        using var res = await http.GetAsync(release.SetupUrl, HttpCompletionOption.ResponseHeadersRead);
+        // Setups from earlier updates aren't needed any more
+        foreach (var old in Directory.EnumerateFiles(dir, "jEditor-Setup-*.exe"))
+            if (!string.Equals(old, file, StringComparison.OrdinalIgnoreCase)) try { File.Delete(old); } catch (Exception) { }
+        // A download that stops moving for a minute fails, instead of
+        // sitting at the same percentage for ever
+        using var stalled = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        using var res = await http.GetAsync(release.SetupUrl, HttpCompletionOption.ResponseHeadersRead, stalled.Token);
         res.EnsureSuccessStatusCode();
         long total = res.Content.Headers.ContentLength ?? release.Size, received = 0, reported = 0;
-        using (var src = await res.Content.ReadAsStreamAsync())
+        using (var src = await res.Content.ReadAsStreamAsync(stalled.Token))
         using (var dst = File.Create(file))
         {
             var buffer = new byte[1 << 16];
             int n;
-            while ((n = await src.ReadAsync(buffer)) > 0)
+            while (true)
             {
+                stalled.CancelAfter(TimeSpan.FromSeconds(60));
+                try { n = await src.ReadAsync(buffer, stalled.Token); }
+                catch (OperationCanceledException) { throw new IOException("The download stopped (no data for a minute). Check the internet connection and try again."); }
+                if (n <= 0) break;
                 await dst.WriteAsync(buffer.AsMemory(0, n));
                 received += n;
                 if (received - reported >= 1 << 20 || received == total)

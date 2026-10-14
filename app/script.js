@@ -278,8 +278,8 @@ const app = {
             await this.openDirectory(dirHandle);
         } catch (err) {
             if (err.name === 'AbortError') {
-                // User cancelled the picker
-                this.log('Folder selection cancelled');
+                // User canceled the picker
+                this.log('Folder selection canceled');
                 return;
             }
             console.error('Browse folder error:', err);
@@ -352,7 +352,7 @@ const app = {
     //
     // Every header control can be shown in the pill, tucked into the "More"
     // section, or hidden entirely; the order is drag-reorderable in
-    // Settings. Theme, density, glass, the colour behind photos, accent,
+    // Settings. Theme, density, glass, the color behind photos, accent,
     // toolbar size, orientation, film strip height and thumbnail fit are
     // preferences too. Everything persists in localStorage under 'jeditor.ui'.
 
@@ -498,7 +498,7 @@ const app = {
         this.applyAppearance();
     },
 
-    // Theme, density, glass and the colour behind photos: attributes on
+    // Theme, density, glass and the color behind photos: attributes on
     // <html> that tokens.css switches on
     applyAppearance() {
         const p = this.uiPrefs;
@@ -520,7 +520,7 @@ const app = {
     },
 
     // Everything blue follows --accent-color; text on it (--on-accent)
-    // turns dark when the colour is light, so it stays readable
+    // turns dark when the color is light, so it stays readable
     DEFAULT_ACCENT: '#2563eb',
 
     applyAccent(hex) {
@@ -896,7 +896,7 @@ const app = {
         this.elements.btnToggleStrip.blur(); // Release focus to restore keyboard shortcuts
     },
 
-    // Wheel / trackpad pinch: each notch zooms by the same factor, centred
+    // Wheel / trackpad pinch: each notch zooms by the same factor, centered
     // on the pointer, from 10% of fit up to huge pixels
     handleZoom(e) {
         if (this.viewMode !== 'single') return;
@@ -956,7 +956,7 @@ const app = {
             this.panX = 0;
             this.panY = 0;
         } else if (img.offsetWidth) {
-            // Where the photo's centre is: the container centres it, plus the
+            // Where the photo's center is: the container centers it, plus the
             // pan. Worked out rather than measured, so a zoom still animating
             // can't throw the anchor off (and exact to the subpixel)
             const cx = box.left + box.width / 2 + this.panX;
@@ -1516,15 +1516,22 @@ const app = {
     // EXIF metadata cached per file; only the file head is read
     async getExifInfo(file) {
         if (file._exif !== undefined) return file._exif;
-        file._exif = null;
-        if (/\.jpe?g$/i.test(file.name)) {
-            try {
-                const fileData = await file.handle.getFile();
-                const head = await fileData.slice(0, 256 * 1024).arrayBuffer();
-                file._exif = this.readJpegExifInfo(head);
-            } catch (e) { /* leave null */ }
-        }
-        return file._exif;
+        // A read in progress is shared, not answered with "none" meanwhile
+        if (file._exifReading) return file._exifReading;
+        file._exifReading = (async () => {
+            let info = null;
+            if (/\.jpe?g$/i.test(file.name)) {
+                try {
+                    const fileData = await file.handle.getFile();
+                    const head = await fileData.slice(0, 256 * 1024).arrayBuffer();
+                    info = this.readJpegExifInfo(head);
+                } catch (e) { /* none */ }
+            }
+            file._exif = info;
+            file._exifReading = null;
+            return info;
+        })();
+        return file._exifReading;
     },
 
     // The info panel (I): the photo in single view; in the grid, the folder
@@ -2026,6 +2033,9 @@ const app = {
     cleanupURLs() {
         // Drop queued thumbnail work for the folder being replaced
         if (this._thumbQueue) this._thumbQueue.length = 0;
+        // Its jobs were just dropped, so "Preparing previews" can't finish: it goes
+        this._precacheGen = (this._precacheGen || 0) + 1;
+        this.endTask('precache');
         Folders.reset();
         Watch.stop();
         Flags.reset();
@@ -2112,7 +2122,7 @@ const app = {
         } catch (e) { /* ignore */ }
     },
 
-    // Highlight the current photo in the film strip and centre it. Touches
+    // Highlight the current photo in the film strip and center it. Touches
     // only the old and new thumbnail: looping over every strip item and
     // scrollIntoView (which re-lays out the page) cost ~100 ms per step in a
     // 2000-photo folder.
@@ -2279,7 +2289,7 @@ const app = {
             }
             const src = `
             // A JPEG's stored pixel size, from its frame header (null if not a
-            // JPEG). Headers are small; a big one (embedded previews, colour
+            // JPEG). Headers are small; a big one (embedded previews, color
             // profiles) is read further, up to 4 MB.
             const jpegSize = async (file) => {
                 for (let len = 128 * 1024; ; len *= 4) {
@@ -2629,7 +2639,10 @@ const app = {
         if (!FolderCache.enabled(this)) return;
         const keys = this.files.filter(f => f.size > this.THUMB_FAST_PATH_BYTES)
             .map(f => `${f.relPath || f.name}|${f.size}|${f.lastModified}`);
-        FolderCache.flush().then(() => FolderCache.prune(this, keys)).catch(() => { });
+        // Another project opened while the cache was written: these keys
+        // aren't its thumbnails, so nothing of it is pruned
+        const dir = this.dirHandle;
+        FolderCache.flush().then(() => { if (this.dirHandle === dir) return FolderCache.prune(this, keys); }).catch(() => { });
     },
 
     // Remove jEditor's data from the open folder: the trash (deleted photos
@@ -2643,7 +2656,7 @@ const app = {
         const items = [
             ...(edited ? [`Discards the edits not saved yet on ${edited} photo${edited === 1 ? '' : 's'} (the photos stay as they are on disk).`] : []),
             ...(inTrash ? [`Empties ${FolderCache.native() ? 'jEditor\'s trash' : 'the trash'}: ${inTrash} deleted photo${inTrash === 1 ? '' : 's'} will be gone for good.`] : []),
-            ...(flagged ? [`Removes the flags (stars, rescan flags, colour labels) from ${flagged} photo${flagged === 1 ? '' : 's'}.`] : []),
+            ...(flagged ? [`Removes the flags (stars, rescan flags, color labels) from ${flagged} photo${flagged === 1 ? '' : 's'}.`] : []),
             'Removes cached thumbnails and duplicate data (rebuilt when needed), and the originals kept for undoing Auto crop.'
         ];
         const native = FolderCache.native();
@@ -2682,13 +2695,14 @@ const app = {
         const total = missing.length;
         const showProgress = total >= 30;
         if (showProgress) this.beginTask('precache', `Preparing previews 0/${total}`);
+        const gen = this._precacheGen = (this._precacheGen || 0) + 1;
         let done = 0;
         missing.forEach(file => {
             this.ensureThumbnail(file, { urgent: false })
                 .catch(() => { })
                 .finally(() => {
                     done++;
-                    if (!showProgress) return;
+                    if (!showProgress || gen !== this._precacheGen) return;
                     if (done === total) {
                         this.endTask('precache');
                         this.showToast(`All ${total} previews ready`, 2000);
@@ -2871,7 +2885,7 @@ const app = {
     // photo that isn't ready yet shows its cached thumbnail immediately and
     // upgrades to full resolution the moment its decode finishes.
 
-    DECODE_RADIUS: 1, // neighbours kept decoded each side (full-res scans are large)
+    DECODE_RADIUS: 1, // neighbors kept decoded each side (full-res scans are large)
 
     // ---- Display sources: screen-sized previews ----
     //
@@ -3597,7 +3611,7 @@ const app = {
     KEY_PROFILES: {
         jeditor: { name: 'jEditor' },
         // Lightroom Classic's Library and Crop keys, where jEditor has the
-        // same action. Its 1–5 are star ratings, so the colour labels are on
+        // same action. Its 1–5 are star ratings, so the color labels are on
         // 6–9 as there (purple has no key in Lightroom).
         lightroom: {
             name: 'Lightroom Classic',
@@ -3629,7 +3643,7 @@ const app = {
     },
 
     // Handlers return false when the key doesn't apply right now, which
-    // lets the browser's default behaviour through.
+    // lets the browser's default behavior through.
     keyHandlers() {
         const grid = () => this.viewMode === 'grid';
         const ed = CropEditor;
@@ -3724,7 +3738,7 @@ const app = {
         };
     },
 
-    // Normalised combo for a keydown: 'Ctrl+Shift+D', 'Shift+ArrowLeft', 'C',
+    // Normalized combo for a keydown: 'Ctrl+Shift+D', 'Shift+ArrowLeft', 'C',
     // '?' … Cmd counts as Ctrl. Shift is implied by printable symbols ('?'
     // already is Shift+/), so it's only named for letters and named keys.
     comboFromEvent(e) {
@@ -3984,11 +3998,19 @@ const app = {
             Dupes.toggle(parseInt(combo, 10) - 1);
             return;
         }
-        const id = this._keyMaps[context].get(combo);
+        let id = this._keyMaps[context].get(combo);
+        // Duplicates: Undo (it says Ctrl+Z restores) works there too
+        if (!id && context === 'dupes' && this._keyMaps.global.get(combo) === 'edit.undo') id = 'edit.undo';
+        // A focused button's own Enter/Space press isn't a shortcut there
+        if (id && context === 'dupes' && e.target && e.target.tagName === 'BUTTON' && (combo === 'Enter' || combo === 'Space')) return;
         if (!id) return;
         // Only the shortcut list and debug console work from the start screen
         const onStart = this.elements.mainInterface.classList.contains('hidden');
         if (onStart && context === 'global' && !['app.shortcuts', 'app.debug', 'app.settings'].includes(id)) return;
+        if (context === 'crop' && CropEditor.busy) {
+            e.preventDefault(); // saving: the crop being written stays as it is
+            return;
+        }
         if (context === 'crop' && !CropEditor.ready && id !== 'crop.cancel') {
             e.preventDefault();
             return;
@@ -4362,7 +4384,7 @@ const app = {
     syncGridTile() {
         const grid = this.elements.gridView;
         if (!grid.clientWidth) return;
-        // The selection bar centres on the grid, less its scrollbar
+        // The selection bar centers on the grid, less its scrollbar
         document.documentElement.style.setProperty('--grid-scrollbar', `${grid.offsetWidth - grid.clientWidth}px`);
         const first = parseFloat(getComputedStyle(grid).gridTemplateColumns);
         if (first > 0) document.documentElement.style.setProperty('--grid-tile', `${first}px`);
@@ -4444,6 +4466,7 @@ const app = {
         if (skippedGifs > 0) this.showToast(`Skipped ${skippedGifs} GIF${skippedGifs > 1 ? 's' : ''} (rotation would lose animation)`);
         if (filesToRotate.length === 0) return;
         if (Edits.on()) {
+            if (this.editsSaving()) return;
             // Kept with the other edits until they're saved
             Edits.rotate(filesToRotate, deg);
             const n = filesToRotate.length;
@@ -4511,7 +4534,7 @@ const app = {
             return Promise.resolve(false);
         }
         // Kept with the other edits until they're saved
-        if (Edits.on()) return Promise.resolve(Edits.rotate([fileEntry], deg));
+        if (Edits.on()) return Promise.resolve(!this.editsSaving() && Edits.rotate([fileEntry], deg));
 
         // Instant, stacking preview; the save happens in the background
         fileEntry.pendingRotation = (fileEntry.pendingRotation || 0) + deg;
@@ -4866,6 +4889,7 @@ const app = {
         f.savingRotation = 0;
         f.thumbLag = 0;
         f._exif = undefined;
+        f._exifReading = null;
         f.dateTaken = undefined;
         f._dims = undefined;
         f._glass = undefined;
@@ -5201,7 +5225,10 @@ const app = {
 
     // ---- Capture-date sort support ----
 
+    // One reading at a time: a second call (each keystroke in Rename) waits
+    // for the one running, rather than taking dates still being read as none
     async ensureDatesTaken() {
+        while (this._readingDates) await this._readingDates;
         const missing = this.files.filter(f => f.dateTaken === undefined);
         if (!missing.length) return;
         this.beginTask('taken', 'Reading capture dates…');
@@ -5213,8 +5240,8 @@ const app = {
                 f.dateTaken = (exif && exif.dateTaken) ? exif.dateTaken.getTime() : (f.lastModified || 0);
             }
         });
-        await Promise.all(workers);
-        this.endTask('taken');
+        this._readingDates = Promise.all(workers).finally(() => { this._readingDates = null; this.endTask('taken'); });
+        await this._readingDates;
     },
 
     // ---- Rename ----
@@ -5275,6 +5302,9 @@ const app = {
         }
         file.name = newName;
         if (file.relPath) file.relPath = file.relPath.replace(/[^/]+$/, newName);
+        // Flags or edits left by a photo that once had this name aren't this one's
+        Flags.orphans.delete(file.relPath || file.name);
+        if (Edits.orphans) Edits.orphans.delete(file.relPath || file.name);
         if (this.currentFile === file) {
             this.elements.fileName.textContent = newName;
             this.updateStatusBar();
@@ -5341,11 +5371,22 @@ const app = {
             for (let i = 0; i < back.length; i++) {
                 try { await this.moveFile(back[i], `.jeditor-restoring-${stamp}-${i}${(back[i].name.match(/\.[^.]+$/) || [''])[0]}`); } catch (e) { /* keep going */ }
             }
+            const stuck = [];
             for (const f of back) {
-                try { await this.moveFile(f, original.get(f)); } catch (e) { /* reported below */ }
+                try { await this.moveFile(f, original.get(f)); } catch (e) { stuck.push(f); }
             }
             this.endTask('rename');
-            this.showToast(`Rename failed (${err.message}) — names were put back`, 5000);
+            if (stuck.length) {
+                // Said as it is: some kept a temporary name
+                UI.alert({
+                    title: 'The rename stopped part way',
+                    message: `${err.message}\n\n${stuck.length} photo${stuck.length === 1 ? '' : 's'} couldn't get ${stuck.length === 1 ? 'its' : 'their'} name back and ${stuck.length === 1 ? 'is' : 'are'} still called:`,
+                    items: stuck.slice(0, 12).map(f => `${f.name} (was ${original.get(f)})`).concat(stuck.length > 12 ? [`… and ${stuck.length - 12} more`] : [])
+                });
+                Watch.request({ full: true });
+            } else {
+                this.showToast(`Rename failed (${err.message}) — names were put back`, 5000);
+            }
             return false;
         }
         this.endTask('rename');
@@ -5832,6 +5873,7 @@ const app = {
         const file = this.currentFile;
         if (!file || this.cropState.active) return;
         if (!this.ensureWritable()) return;
+        if (this.editsSaving()) return;
         if (/\.gif$/i.test(file.name)) {
             this.showToast('Cropping GIFs is not supported (animation would be lost)');
             return;
@@ -5876,6 +5918,7 @@ const app = {
         if (!ed.isOpen || !ed.ready || ed.busy) return;
         const file = ed.file;
         const snap = ed.snapshot();
+        const W = ed.W, H = ed.H;
 
         const goNext = () => {
             if (!next) return;
@@ -5926,12 +5969,12 @@ const app = {
             const fileData = await file.handle.getFile();
             const original = new Uint8Array(await fileData.arrayBuffer());
 
-            const canvas = await ed.renderOutput(fileData, type, original);
+            const canvas = await ed.renderFrozen(fileData, snap, W, H, type, original);
             const w = canvas.width, h = canvas.height;
             let blob = await new Promise(r => canvas.toBlob(r, type, quality));
             canvas.width = canvas.height = 0; // release the full-size buffer now
             if (!blob) throw new Error('encoding failed');
-            // Keep EXIF (dates, camera), colour profile and DPI
+            // Keep EXIF (dates, camera), color profile and DPI
             blob = await ImageMeta.transplant(original, blob, type, w, h);
 
             if (this.dirHandle) await this.verifyPermission(this.dirHandle, true);
@@ -5999,7 +6042,7 @@ const app = {
             this.showToast('Auto crop is already running');
             return;
         }
-        if (Edits.on()) return this.batchAutoCropKept(list, { feeder, scan });
+        if (Edits.on()) return this.editsSaving() ? undefined : this.batchAutoCropKept(list, { feeder, scan });
         if (ask && list.length > 50 && !await UI.confirm({
             title: `Auto crop ${list.length.toLocaleString()} photos?`,
             message: `Each is straightened and cropped to the print found on it. The originals are kept ${FolderCache.native() ? 'by jEditor on this PC' : 'in .jeditor/originals'}, so Ctrl+Z puts them all back.`,
@@ -6217,6 +6260,7 @@ const app = {
                 } catch (e) {
                     console.error('Undo failed for', it.file.name, e);
                     failed++;
+                    if (entry.failedFiles) entry.failedFiles.add(it.file);
                 }
             }
         };
@@ -6236,6 +6280,14 @@ const app = {
     // turned losslessly by the rotation engine. The originals go to
     // originals/ first, as for batch Auto crop, and one Ctrl+Z puts every
     // photo back with its edit kept again. True when all were saved.
+
+    // Save edits is writing kept edits into the photos: a new edit made
+    // meanwhile could be dropped or applied twice, so it waits
+    editsSaving() {
+        if (!this._savingEdits) return false;
+        this.showToast('The edits are being saved into the photos. One moment…', 2500);
+        return true;
+    },
 
     async saveEdits(list) {
         if (!this.ensureWritable()) return false;
@@ -6360,7 +6412,7 @@ const app = {
         } finally {
             file.isBusy = false;
         }
-        delete file._edit;
+        if (file._edit === edit) delete file._edit;
         file.pendingRotation = 0;
         file.savingRotation = 0;
         this.dropEdited(file);
@@ -6372,15 +6424,18 @@ const app = {
     async undoSavedEdits(entry) {
         await entry.group.done;
         let failed = 0;
+        // A photo whose bytes couldn't be put back keeps its saved crop, so
+        // its edit isn't kept again (it would be applied a second time)
+        const notBack = new Set();
         try {
-            if (entry.items.length) await this.undoAutoCrop({ items: entry.items, quiet: true });
+            if (entry.items.length) await this.undoAutoCrop({ items: entry.items, quiet: true, failedFiles: notBack });
         } catch (e) {
             failed++;
         }
         for (const it of entry.group.items) {
-            try { await this.undoFileEdit(it); } catch (e) { console.error('Undo failed for', it.file.name, e); failed++; }
+            try { await this.undoFileEdit(it); } catch (e) { console.error('Undo failed for', it.file.name, e); failed++; notBack.add(it.file); }
         }
-        Edits.restore(entry.edits);
+        Edits.restore(entry.edits.filter(e => !notBack.has(e.file)));
         if (failed) throw new Error('some photos could not be put back');
         const n = entry.edits.length;
         this.showToast(`Put back ${n} photo${n === 1 ? '' : 's'} — the edits are kept again`);

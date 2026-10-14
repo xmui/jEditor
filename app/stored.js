@@ -55,13 +55,15 @@ const Stored = {
             if (h.kind !== 'directory') continue;
             const info = await this.readJson(h, 'order.json') || {};
             const flags = await this.readJson(h, Flags.FILE);
+            const edits = await this.readJson(h, Edits.FILE);
             out.push({
                 key, handle: h,
                 path: typeof info.path === 'string' ? info.path : null,
                 name: typeof info.name === 'string' ? info.name : key,
                 openedAt: +info.openedAt || 0,
                 usage: await FolderCache.measure(h),
-                flags: flags && flags.flags ? Object.keys(flags.flags).length : 0
+                flags: flags && flags.flags ? Object.keys(flags.flags).length : 0,
+                edits: edits && edits.edits ? Object.keys(edits.edits).length : 0
             });
         }
         let exists = [];
@@ -199,8 +201,9 @@ const Stored = {
             // As Clean up does: the open order's flags and trash are gone
             FolderCache.reset();
             Flags.clearAll();
+            Edits.clearAll();
             this.app._undoStack = (this.app._undoStack || []).filter(e =>
-                !(e.type === 'trash' && e.items.some(it => !it.recycled)) && !['flags', 'auto-crop'].includes(e.type));
+                !(e.type === 'trash' && e.items.some(it => !it.recycled)) && !['flags', 'auto-crop', 'edits', 'saved-edits'].includes(e.type));
             this.app._usage = null;
         }
     },
@@ -209,8 +212,10 @@ const Stored = {
     confirmRemove(orders) {
         const sum = (f) => orders.reduce((n, o) => n + f(o), 0);
         const flags = sum(o => o.flags), trash = sum(o => o.usage.trash.n), originals = sum(o => o.usage.originals.n);
+        const edits = sum(o => o.edits || 0);
         const items = [];
-        if (flags) items.push(`${flags} flag${flags === 1 ? '' : 's'} (stars, rescan flags, colour labels) are lost.`);
+        if (edits) items.push(`${edits} edit${edits === 1 ? '' : 's'} not saved into the photos yet (kept with Save edits when done) are lost.`);
+        if (flags) items.push(`${flags} flag${flags === 1 ? '' : 's'} (stars, rescan flags, color labels) are lost.`);
         if (trash) items.push(`${trash} deleted photo${trash === 1 ? '' : 's'} kept by jEditor will be gone for good.`);
         if (originals) items.push(`${originals} Auto crop original${originals === 1 ? '' : 's'} will be gone, so those crops can't be undone.`);
         items.push('The cache goes too (made again if the project is opened).');

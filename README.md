@@ -23,7 +23,7 @@ jEditor needs the Microsoft Edge WebView2 Runtime, which comes with Windows 11 a
 
 ## Changing the look
 
-The UI is plain HTML, CSS and JavaScript: the `app` folder here, shipped beside `jEditor.exe`. Colours, type and spacing are in `app/tokens.css`. Changing the UI never needs the exe to be rebuilt. To try a change:
+The UI is plain HTML, CSS and JavaScript: the `app` folder here, shipped beside `jEditor.exe`. Colors, type and spacing are in `app/tokens.css`. Changing the UI never needs the exe to be rebuilt. To try a change:
 
 ```
 jEditor.exe --ui C:\path\to\jeditor-windows\app
@@ -43,7 +43,7 @@ A Debug build (`dotnet run --project src`) does this on its own with the repo's 
 
 - `src/`: a small .NET 8 WinForms app hosting WebView2, Edge's engine. It serves the `app` folder at `https://jeditor.example/`. That address must never change, because jEditor's settings and recent orders are stored under it.
 - `src/bridge.js`: runs in the page before jEditor does. It replaces the browser's folder picker with Windows' own, and the app hands the page a real folder handle made by WebView2 (`CreateWebFileSystemDirectoryHandle`), with permission to edit already granted. The UI's file code is standard web code (the File System Access API), so it also runs in Chrome and in the tests. The bridge also turns off the service worker, reports the theme for the title bar, and runs dev mode and the smoke test.
-- `src/Scanner.cs`: scanning into the open order with [NAPS2.Sdk](https://github.com/cyanfish/naps2) (LGPL-2.1; its DLLs and licence ship beside the exe, not inside it, so they can be replaced). TWAIN scanners with 64-bit drivers and WIA scanners work in the app's own process; the scanner's own window sets size and resolution. TWAIN needs `TWAINDSM.dll`, which scanner drivers install in System32 (or put one in `_win64\` beside the exe). `--fake-scanner` adds a test scanner that needs no hardware.
+- `src/Scanner.cs`: scanning into the open order with [NAPS2.Sdk](https://github.com/cyanfish/naps2) (LGPL-2.1; its DLLs and license ship beside the exe, not inside it, so they can be replaced). TWAIN scanners with 64-bit drivers and WIA scanners work in the app's own process; the scanner's own window sets size and resolution. TWAIN needs `TWAINDSM.dll`, which scanner drivers install in System32 (or put one in `_win64\` beside the exe). `--fake-scanner` adds a test scanner that needs no hardware.
 - `app/`: the UI. It ships beside the exe.
 - `docs/`: how to use jEditor, and the plan from its web app days.
 - `installer/jEditor.iss`: the per-user installer (Inno Setup).

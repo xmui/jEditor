@@ -31,6 +31,29 @@ static class AppWindows
         if (All.Count == 0) context?.ExitThread();
     }
 
+    // The window (other than `except`) that has this project open, brought
+    // to the front: two windows on one project would each write its flags
+    // and edits over the other's
+    public static bool ShowOpen(string path, MainForm? except)
+    {
+        static string Norm(string p)
+        {
+            try { return Path.TrimEndingDirectorySeparator(Path.GetFullPath(p)); }
+            catch (Exception) { return p; }
+        }
+        var want = Norm(path);
+        foreach (var f in All)
+        {
+            if (f == except || f.IsDisposed || f.PageState is null) continue;
+            var open = f.PageState["path"] is System.Text.Json.Nodes.JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
+            if (open is null || !string.Equals(Norm(open), want, StringComparison.OrdinalIgnoreCase)) continue;
+            if (f.WindowState == FormWindowState.Minimized) f.WindowState = FormWindowState.Normal;
+            f.Activate();
+            return true;
+        }
+        return false;
+    }
+
     // Another window, a little below and right of `from`
     public static MainForm Open(Options options, MainForm? from)
     {

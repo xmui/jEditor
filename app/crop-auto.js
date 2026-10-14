@@ -1,5 +1,5 @@
 // Finds a print on a flatbed scan: the scanner bed (lid or background) is a
-// uniform colour around the photo, so each side of the print shows up as a
+// uniform color around the photo, so each side of the print shows up as a
 // straight boundary between "bed" and "not bed". Each side is fitted as a
 // line (robust to dust, shadows and photo content that happens to match the
 // bed), which gives the print's tilt and its four corners.
@@ -158,8 +158,8 @@ const CropAuto = {
     // A photo from a sheet feeder (the FastFoto): the page is as long as the
     // feeder takes, the photo at its leading edge, and around it two
     // backgrounds, the scanner's backing beside the photo and plain fill
-    // where the page runs on past it, so there's no one bed colour to look
-    // for. A row or column that's all one colour (whatever colour) is
+    // where the page runs on past it, so there's no one bed color to look
+    // for. A row or column that's all one colour (whatever color) is
     // background; the photo is the block of rows and columns that aren't.
     // Its sides are then looked for against the backing beside it, for the
     // tilt. → as detect, or null
@@ -174,7 +174,7 @@ const CropAuto = {
         ctx.drawImage(src, 0, 0, w, h);
         const d = ctx.getImageData(0, 0, w, h).data;
 
-        // The share of a line's pixels unlike the line's own usual colour
+        // The share of a line's pixels unlike the line's own usual color
         const T = 40;
         const unlike = (at, n) => {
             const step = Math.max(1, Math.floor(n / 200));
@@ -218,7 +218,7 @@ const CropAuto = {
         const sx = W / w, sy = H / h;
         const box = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
         // The sides, against the backing either side of the photo (only
-        // its own rows: past them the page may be another colour)
+        // its own rows: past them the page may be another color)
         const m = Math.round(Math.min(left, right, w * 0.04));
         let result = null;
         if (m >= 3) {
@@ -241,9 +241,9 @@ const CropAuto = {
         return result || { tilt: 0, corners: box.map(([x, y]) => [x * sx, y * sy]), found: 0, scale: Math.max(sx, sy), feeder: true };
     },
 
-    // The bed's colour: whichever corner colour most of the scan's outer ring
+    // The bed's colour: whichever corner color most of the scan's outer ring
     // agrees with (a print pushed into one corner hides that corner, not
-    // the other three). null when the ring has no dominant colour.
+    // the other three). null when the ring has no dominant color.
     bedColour(d, w, h) {
         const R = Math.max(2, Math.round(Math.min(w, h) * 0.008));
         const ring = [];

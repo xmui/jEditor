@@ -7,7 +7,7 @@
 //             photos: next in the folder's sequence (Smith-014.jpg after
 //             Smith-013.jpg), worked out from what's there; How (the glass
 //             or the feeder, from what the scanner has) and jEditor's own
-//             settings: resolution, colour, sides (feeder: backs saved as
+//             settings: resolution, color, sides (feeder: backs saved as
 //             Smith-014-b.jpg), file type and quality, brightness and
 //             contrast, and saved setups. No scanner window: Advanced has
 //             the scanner's own window, for when jEditor's aren't enough.
@@ -109,6 +109,7 @@ const Scan = {
             e.preventDefault();
             this.start();
         });
+        this.el('scan-whole').addEventListener('click', () => this.start({ whole: true }));
         panel.addEventListener('keydown', (e) => {
             if (e.key !== 'Escape' || UI.isOpen()) return;
             e.preventDefault();
@@ -371,14 +372,20 @@ const Scan = {
     },
 
     // What the scanner can do: its glass, feeder and resolutions (asked once)
+    // The scanner is busy while it's asked (its driver is open), so a scan
+    // or preview started meanwhile waits for it (capsLoading)
     async loadCaps() {
         const d = this.device();
         if (!d || this.caps[d.id] || this.running || this.waiting) return;
+        let asked;
+        this.capsLoading = asked = FolderCache.native().scanCaps({ device: d.id, driver: d.driver, compat: d.driver === 'twain' && !!this.compat()[d.id] })
+            .catch(() => null);
         try {
-            const caps = await FolderCache.native().scanCaps({ device: d.id, driver: d.driver, compat: d.driver === 'twain' && !!this.compat()[d.id] });
+            const caps = await asked;
             if (caps) this.caps[d.id] = caps;
             this.adoptCompat(d.id, caps);
         } catch (e) { /* both offered */ }
+        if (this.capsLoading === asked) this.capsLoading = null;
         if (this.device() === d) {
             this.syncMode(true);
             if (this.caps[d.id]) this.fillDpis(this.caps[d.id]);
@@ -489,7 +496,7 @@ const Scan = {
         return d && /FF-\d|FastFoto/i.test(d.name || d.id) ? 300 : 600;
     },
 
-    // The last settings used (1.23's resolution and colour too)
+    // The last settings used (1.23's resolution and color too)
     loadOpts() {
         const old = this.get('jeditor.scanPv', {}) || {};
         this.setOpts({ dpi: old.dpi, color: old.color, ...(this.get(this.KEY_OPTS, {}) || {}) });
@@ -684,7 +691,12 @@ const Scan = {
 
     // ---- Scanning ----
 
-    start() {
+    // whole: Scan whole glass (one photo of the whole glass, no preview)
+    async start({ whole = false } = {}) {
+        if (this.capsLoading) {
+            this.status('Waiting for the scanner…');
+            await this.capsLoading;
+        }
         const device = this.devices && this.devices.find(d => d.id === this.el('scan-device').value);
         if (!device) return;
         const folder = this.el('scan-folder').value;
@@ -702,7 +714,25 @@ const Scan = {
         if (state === 'preview') return this.scanBoxes();
         // Scan more: the names carry on from the photos just scanned
         const more = state === 'done';
-        const mode = more ? this.lastMode || this.mode() : this.mode();
+        const mode = whole ? 'whole' : more ? this.lastMode || this.mode() : this.mode();
+        if (mode === 'whole') {
+            // The whole glass as one photo, at the settings chosen: no
+            // preview, no boxes (Auto crop each photo still trims it to the
+            // print, when it's on)
+            this.lastMode = 'whole';
+            const o = this.opts();
+            this.saveOpts(o);
+            const bed = this.bedFor(device, this.caps[device.id] || null);
+            const opts = {
+                device: device.id, driver: device.driver, folder, autoCrop, compat, source: 'glass',
+                crops: [{ x: 0, y: 0, w: 1, h: 1, angle: 0, turn: 0 }],
+                dpi: o.dpi, gray: o.color === 'gray', bedW: bed.w, bedH: bed.h,
+                brightness: o.brightness, contrast: o.contrast, format: o.format, quality: o.quality
+            };
+            if (!more) Object.assign(opts, { prefix, next, digits: this.digits });
+            this.run(opts).catch(() => { /* said already */ });
+            return;
+        }
         const modes = this.modes();
         modes[device.id] = mode;
         this.put(this.KEY_MODE, modes);
@@ -730,6 +760,7 @@ const Scan = {
 
     // The glass, small, with the prints found on it
     async previewGlass() {
+        if (this.capsLoading) await this.capsLoading;
         const pv = this.pv;
         if (!pv || this.running || this.waiting) return;
         const native = FolderCache.native();
@@ -861,7 +892,7 @@ const Scan = {
         const pv = this.pv;
         const names = this.el('scan-pv-names');
         if (!pv || !n) { names.textContent = ''; return; }
-        const { prefix, next, digits } = pv.more ? this.naming(pv.folder) : pv;
+        const { prefix, next, digits } = pv.more ? this.continuing(pv.folder) : pv;
         names.textContent = `Into ${Folders.label(pv.folder)}: ${this.name(prefix, next, digits || 3)}` + (n > 1 ? ` … ${this.name(prefix, next + n - 1, digits || 3)}` : '');
     },
 
@@ -890,12 +921,33 @@ const Scan = {
     // → { count, names, cancelled }
     // jEditor's settings (source 'glass' with crops, or 'feeder'): dpi,
     // gray, bedW, bedH, sides, swap, brightness, contrast, format, quality.
+    // Scan more and Try again: the names the last scan used, carried on
+    // (a prefix typed for it, like Smith-B-, isn't swapped for the folder's
+    // most used one); else as the folder's photos go
+    continuing(folder) {
+        const last = this.lastNaming;
+        if (!last || last.folder !== folder || last.dir !== this.app.dirHandle) return this.naming(folder);
+        let next = last.next;
+        for (const f of this.app.files) {
+            if (Folders.dirOf(f) !== folder) continue;
+            const m = this.PHOTO.exec(f.name);
+            if (m && m[1] === last.prefix) next = Math.max(next, parseInt(m[2], 10) + 1);
+        }
+        return { prefix: last.prefix, next, digits: last.digits };
+    },
+
     async run({ device, driver, folder = '', prefix, next, digits, autoCrop = false, compat, crops, dpi, source = 'driver', ...settings }) {
         const original = arguments[0];
         const app = this.app;
         const native = FolderCache.native();
         if (this.running) throw new Error('A scan is already running');
-        if (prefix === undefined || next === undefined) ({ prefix, next, digits } = this.naming(folder));
+        if (prefix === undefined || next === undefined) ({ prefix, next, digits } = this.continuing(folder));
+        this.lastNaming = { dir: app.dirHandle, folder, prefix, next, digits: digits || 3 };
+        // The names saved move it on (one stopped part way included)
+        const advance = (name) => {
+            const m = this.PHOTO.exec(name.split('/').pop());
+            if (m && m[1] === prefix) this.lastNaming.next = Math.max(this.lastNaming.next, parseInt(m[2], 10) + 1);
+        };
         // TIFFs aren't shown in jEditor, so there's nothing to auto crop
         if (settings.format === 'tiff') autoCrop = false;
         const root = await FolderCache.orderPath(app);
@@ -929,6 +981,7 @@ const Scan = {
         const add = (name) => {
             const rel = folder ? `${folder}/${name}` : name;
             if (!names.includes(rel)) names.push(rel);
+            advance(name);
         };
         let result;
         try {

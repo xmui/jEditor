@@ -133,6 +133,7 @@ const Watch = {
 
     stop() {
         this.gen = (this.gen || 0) + 1;
+        this._unreadable = null;
         if (this.observer) {
             try { this.observer.disconnect(); } catch (e) { /* already gone */ }
             this.observer = null;
@@ -416,7 +417,17 @@ const Watch = {
         const unfinished = new Set();
         for (let i = 0; i < fresh.length; i++) {
             const p = fresh[i], d = datas[i];
-            if (!d) continue;
+            if (!d) {
+                // Can't be read yet (a program still has it open): looked at
+                // again, like one still being written, for a while
+                const tries = (this._unreadable || (this._unreadable = new Map())).get(p.relPath) || 0;
+                if (tries < 20) {
+                    this._unreadable.set(p.relPath, tries + 1);
+                    unfinished.add(Folders.parentOf(p.relPath));
+                }
+                continue;
+            }
+            if (this._unreadable) this._unreadable.delete(p.relPath);
             if (!(await this.complete(d, p.name))) {
                 unfinished.add(Folders.parentOf(p.relPath));
                 continue;
