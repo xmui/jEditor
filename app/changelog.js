@@ -13,7 +13,8 @@ const CHANGELOG = [
             'Each scanned photo opens large as it comes in, like the camera\'s (Show each photo as it comes in).',
             'A scanner unplugged, switched off or asleep, a paper jam or an empty feeder now gets a proper dialog saying what to check, with Try again (the names carry on).',
             'Settings are remembered for each scanner; a photo feeder starts at 300 dpi. The scanner\'s own window brings each photo over whole now, which was slow on the FastFoto, and Details times each page.',
-            'New project in the sidebar: names a new folder in your projects folder and opens it.'
+            'New project in the sidebar: names a new folder in your projects folder and opens it.',
+            'Rename projects and folders: right-click one in the sidebar → Rename…, or the pencil on the project card. Its flags, kept edits and thumbnails go with it, and a pin follows it.'
         ]
     },
     {

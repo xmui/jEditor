@@ -274,6 +274,16 @@ const FAKE_NATIVE = `
         },
         async undoTransfer(items, copy) { window.__undoTransfer = { items, copy }; return items.map(() => null); },
         async openPath(p) { window.__opened = p; return true; },
+        async renameFolder(p, name) {
+            window.__renamed = [p, name];
+            const parent = p.slice(0, p.lastIndexOf(BS));
+            if (parent === window.__orderRoot) {
+                const disk = await sub('disk');
+                const h = await disk.getDirectoryHandle(p.slice(parent.length + 1));
+                if (h.move) await h.move(name);
+            }
+            return parent + BS + name;
+        },
         async makeFolder(parent, name) {
             if (parent !== window.__orderRoot) throw new Error("The projects folder is not there");
             const disk = await sub('disk');
@@ -1347,6 +1357,17 @@ async function newPage(context, baseUrl) {
             start.querySelector('[data-act="newproject"]').click();
             await wait(() => said);
             out.twice = said;
+            // Rename (right-click): a pinned one's pin follows it
+            Places.pin(window.__orderRoot + String.fromCharCode(92) + 'Gamma', 'Gamma');
+            await wait(() => rowOf(start, 'Gamma'));
+            rowOf(start, 'Gamma').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 50, clientY: 50 }));
+            const item = [...document.querySelectorAll('#context-menu [role="menuitem"]')].find(b => b.textContent === 'Rename…');
+            out.menu = [...document.querySelectorAll('#context-menu [role="menuitem"]')].map(b => b.textContent).join(', ');
+            UI.prompt = async () => 'Gamma Smith';
+            item.click();
+            await wait(() => window.__renamed && Places.pins().some(p => p.name === 'Gamma Smith'));
+            out.renamed = window.__renamed;
+            out.pinMoved = Places.pins().find(p => p.name === 'Gamma Smith').path;
 
             // A project open: its card, and it's marked in the list
             const dir = await (await opfs('disk')).getDirectoryHandle('Alpha');
@@ -1367,6 +1388,16 @@ async function newPage(context, baseUrl) {
             $('sb-card').querySelector('[data-act="pin"]').click();
             await wait(() => [...side.querySelectorAll('.sb-pinned .fr-name')].some(n => n.textContent === 'Alpha'));
             out.pinned = Places.pins().map(p => p.name).join();
+            // Renaming the open project: closed, renamed, opened again at its new name
+            window.__opened = null;
+            UI.prompt = async () => 'Alpha Smith';
+            $('sb-card').querySelector('[data-act="rename"]').click();
+            await wait(() => window.__opened);
+            out.reopened = window.__opened;
+            out.pinRenamed = Places.pins().map(p => p.name).join();
+            const back = await (await opfs('disk')).getDirectoryHandle('Alpha Smith').catch(() => null) || await (await opfs('disk')).getDirectoryHandle('Alpha');
+            await openOrder(back);
+            await wait(() => $('sb-card').querySelector('[data-act="rename"]'));
             // Save edits when done, for this project: kept with its data on the PC
             const deferBox = $('sb-card').querySelector('input[data-act="defer"]');
             out.deferOff = !!deferBox && !deferBox.checked;
@@ -1418,10 +1449,12 @@ async function newPage(context, baseUrl) {
         check('the projects folder\'s projects are listed, newest first, with photo counts', r.projects === 'Beta,Alpha' && r.counts && r.folderName === 'Orders', JSON.stringify([r.projects, r.counts, r.folderName]));
         check('search finds a project', r.search === 'Beta', r.search);
         check('clicking a project opens it', r.opened === 'D:\\Orders\\Beta', r.opened);
+        check('Rename on a project\'s right-click menu; its pin follows it', /Rename…/.test(r.menu) && /Show in Explorer/.test(r.menu) && r.renamed && r.renamed[1] === 'Gamma Smith' && r.pinMoved === 'D:\\Orders\\Gamma Smith', JSON.stringify([r.menu, r.renamed, r.pinMoved]));
         check('New project: makes the folder in the projects folder, opens it and lists it; a name taken says so', r.made === 'D:\\Orders\\Gamma' && r.listed && /already a Gamma/.test(r.twice || ''), JSON.stringify([r.made, r.listed, r.twice]));
         check('the project card: name, path, photos', /Alpha/.test(r.card) && /D:\\Orders\\Alpha/.test(r.card) && /\d photos/.test(r.card), r.card);
         check('the open project is marked in the list', r.active);
-        check('card buttons: Explorer, Scan, Pin', r.revealed === 'D:\\Orders\\Alpha' && r.scanOpen && r.pinned === 'Alpha', JSON.stringify([r.revealed, r.scanOpen, r.pinned]));
+        check('card: Rename closes the open project, renames it and opens it again', r.reopened === 'D:\\Orders\\Alpha Smith' && r.pinRenamed.split(',').includes('Alpha Smith') && !r.pinRenamed.split(',').includes('Alpha'), JSON.stringify([r.reopened, r.pinRenamed]));
+        check('card buttons: Explorer, Scan, Pin', r.revealed === 'D:\\Orders\\Alpha' && r.scanOpen && r.pinned.split(',').includes('Alpha'), JSON.stringify([r.revealed, r.scanOpen, r.pinned]));
         check('card: Save edits when done turns on for the project, kept on the PC', r.deferOff && r.deferKept, JSON.stringify([r.deferOff, r.deferKept]));
         check('a drive opens out to its folders, in number order', r.inside === 'Order 9,Order 10', r.inside);
         check('browsing: clicking a folder only opens it out, it isn\'t loaded', r.browseOnly);

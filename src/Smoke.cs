@@ -189,7 +189,7 @@ sealed class Smoke
         if (msg["steps"] is JsonObject steps)
         {
             Log.Write("Smoke steps: " + steps.ToJsonString());
-            foreach (var step in new[] { "stored", "recycled", "deleted", "restored", "scanned", "fed", "cropped", "tethered", "logged", "places", "browsed", "projects", "counted", "pins", "windows", "moved", "unmoved", "back" })
+            foreach (var step in new[] { "stored", "recycled", "deleted", "restored", "scanned", "fed", "cropped", "tethered", "logged", "places", "browsed", "projects", "counted", "pins", "renamed", "windows", "moved", "unmoved", "back" })
                 if (steps[step] is not JsonValue v || !v.TryGetValue<bool>(out var ok) || !ok) problems.Add($"{step}: {steps[step]?.ToJsonString() ?? "not reached"}");
             if (steps["error"] is not null) problems.Add("error: " + steps["error"]);
         }

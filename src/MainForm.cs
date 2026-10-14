@@ -368,6 +368,7 @@ sealed class MainForm : Form
             case "listDir":
             case "listProjects":
             case "makeFolder":
+            case "renameFolder":
             case "countPhotos":
             case "quickAccess":
             case "eject":
@@ -559,17 +560,29 @@ sealed class MainForm : Form
                 {
                     // A new project: a folder in the projects folder
                     var parent = Str(msg, "parent") ?? "";
-                    var name = (Str(msg, "name") ?? "").Trim().TrimEnd('.', ' ');
+                    var name = (Str(msg, "name") ?? "").Trim();
                     if (!Path.IsPathFullyQualified(parent) || !Directory.Exists(parent)) { Reply(id, new { error = "The projects folder isn't there" }); break; }
-                    if (name.Length == 0 || name.Length > 120 || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-                    { Reply(id, new { error = "A folder's name can't have any of these in it: \\ / : * ? \" < > |" }); break; }
-                    if (System.Text.RegularExpressions.Regex.IsMatch(name, @"^(CON|PRN|AUX|NUL|COM\d|LPT\d)(\..*)?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
-                    { Reply(id, new { error = "Windows keeps that name for itself" }); break; }
+                    if (FolderRename.NameProblem(name) is { } problem) { Reply(id, new { error = problem }); break; }
                     var path = Path.Combine(parent, name);
                     if (Directory.Exists(path) || File.Exists(path)) { Reply(id, new { error = $"There's already a {name} there" }); break; }
                     Directory.CreateDirectory(path);
                     Log.Write($"New project: {path}");
                     Reply(id, new { path });
+                    break;
+                }
+                case "renameFolder":
+                {
+                    // A project or folder renamed, its stored data with it
+                    var path = Str(msg, "path") ?? "";
+                    var name = (Str(msg, "name") ?? "").Trim();
+                    if (!Path.IsPathFullyQualified(path)) { Reply(id, new { error = "Not a folder" }); break; }
+                    if (FolderRename.NameProblem(name) is { } problem) { Reply(id, new { error = problem }); break; }
+                    try { Reply(id, new { path = await Task.Run(() => FolderRename.Rename(path, name)) }); }
+                    catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                    {
+                        Log.Write($"Rename {path} failed: {e.Message}");
+                        Reply(id, new { error = e is UnauthorizedAccessException || e.HResult == unchecked((int)0x80070020) ? "Windows wouldn't rename it: something has a file in it open (Explorer, another program, another jEditor window)" : e.Message });
+                    }
                     break;
                 }
                 case "countPhotos":
