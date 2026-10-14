@@ -719,6 +719,9 @@ const Folders = {
         f.name = name;
         f.parentDir = destDir;
         f.relPath = this.join(dest, name);
+        // Flags or edits left by a photo that once had this path aren't this one's
+        Flags.orphans.delete(f.relPath);
+        if (Edits.orphans) Edits.orphans.delete(f.relPath);
         try {
             const d = await f.handle.getFile();
             f.size = d.size;

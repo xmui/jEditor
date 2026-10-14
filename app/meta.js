@@ -213,7 +213,9 @@ const ImageMeta = {
 
     // ---- PNG structure ----
 
-    pngChunks(bytes) {
+    // partial: the chunks that are whole in `bytes` (the start of a file),
+    // for reading the header and pHYs, which come before the image data
+    pngChunks(bytes, { partial = false } = {}) {
         const sig = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
         if (bytes.length < 8 || sig.some((b, i) => bytes[i] !== b)) return null;
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -223,7 +225,7 @@ const ImageMeta = {
             const len = view.getUint32(p);
             const type = String.fromCharCode(bytes[p + 4], bytes[p + 5], bytes[p + 6], bytes[p + 7]);
             const end = p + 12 + len;
-            if (end > bytes.length) return null;
+            if (end > bytes.length) return partial ? chunks : null;
             chunks.push({ type, start: p, end, data: p + 8 });
             p = end;
             if (type === 'IEND') break;
@@ -359,7 +361,7 @@ const ImageMeta = {
                 }
                 return null;
             }
-            const chunks = this.pngChunks(bytes);
+            const chunks = this.pngChunks(bytes, { partial: true });
             if (chunks && chunks[0] && chunks[0].type === 'IHDR') {
                 const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
                 return { w: v.getUint32(chunks[0].data), h: v.getUint32(chunks[0].data + 4) };
@@ -403,7 +405,7 @@ const ImageMeta = {
                 }
                 return null;
             }
-            const chunks = this.pngChunks(bytes);
+            const chunks = this.pngChunks(bytes, { partial: true });
             const phys = chunks && chunks.find(c => c.type === 'pHYs');
             if (phys && bytes[phys.data + 8] === 1) {
                 const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);

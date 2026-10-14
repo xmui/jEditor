@@ -3984,7 +3984,11 @@ const app = {
             Dupes.toggle(parseInt(combo, 10) - 1);
             return;
         }
-        const id = this._keyMaps[context].get(combo);
+        let id = this._keyMaps[context].get(combo);
+        // Duplicates: Undo (it says Ctrl+Z restores) works there too
+        if (!id && context === 'dupes' && this._keyMaps.global.get(combo) === 'edit.undo') id = 'edit.undo';
+        // A focused button's own Enter/Space press isn't a shortcut there
+        if (id && context === 'dupes' && e.target && e.target.tagName === 'BUTTON' && (combo === 'Enter' || combo === 'Space')) return;
         if (!id) return;
         // Only the shortcut list and debug console work from the start screen
         const onStart = this.elements.mainInterface.classList.contains('hidden');
@@ -5276,6 +5280,9 @@ const app = {
         }
         file.name = newName;
         if (file.relPath) file.relPath = file.relPath.replace(/[^/]+$/, newName);
+        // Flags or edits left by a photo that once had this name aren't this one's
+        Flags.orphans.delete(file.relPath || file.name);
+        if (Edits.orphans) Edits.orphans.delete(file.relPath || file.name);
         if (this.currentFile === file) {
             this.elements.fileName.textContent = newName;
             this.updateStatusBar();
