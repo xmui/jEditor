@@ -939,7 +939,7 @@ async function newPage(context, baseUrl) {
         const near = (b, x, y, w, h) => b && b[0] <= x && b[1] <= y && b[0] + b[2] >= x + w && b[1] + b[3] >= y + h && b[2] < w + 0.12 && b[3] < h + 0.1;
         check('How: the OpticBook (a glass) gets the glass, no feeder offered; it says what it does, and the button says Preview', r.modeDefault === 'glass' && r.feederHidden && r.help && r.goLabel === 'Preview', JSON.stringify([r.modeDefault, r.feederHidden, r.help, r.goLabel]));
         check('the settings are in setup, then beside the glass', r.optsInSetup && r.optsBeside);
-        check('it asks the scanner about its glass, then previews it small', r.capsReq && r.capsReq.device === 'wia-1' && r.previewReq && r.previewReq.dpi === 75 && r.previewReq.bedW === 8.5, JSON.stringify([r.capsReq, r.previewReq]));
+        check('it asks the scanner about its glass, then previews it small', r.capsReq && r.capsReq.device === 'wia-1' && r.previewReq && r.previewReq.dpi === 150 && r.previewReq.bedW === 8.5, JSON.stringify([r.capsReq, r.previewReq]));
         check('the dock grows to show the glass', r.wide);
         check('a box round each print, in reading order', r.boxes.length === 3 && r.shown === 3 && near(r.boxes[0], 0.059, 0.043, 0.47, 0.256) && near(r.boxes[1], 0.588, 0.06, 0.353, 0.342) && near(r.boxes[2], 0.118, 0.427, 0.706, 0.342), JSON.stringify(r.boxes));
         check('... saying how many, and the names they\'ll get', r.count === '3 photos' && r.go === 'Scan 3 photos' && r.names === 'Into Glass Order: photo3.jpg … photo5.jpg', JSON.stringify([r.count, r.go, r.names]));
@@ -1019,7 +1019,7 @@ async function newPage(context, baseUrl) {
             // The app found the OpticBook only opens in compatibility mode;
             // the other one wouldn't say what it has at all
             window.__capsFor = (o) => /OpticBook/.test(o.device)
-                ? { bedW: 8.5, bedH: 11.7, dpis: [75, 150, 300, 600], gray: true, guessed: false, flatbed: true, feeder: false, compat: true }
+                ? { bedW: 8.27, bedH: 11.69, dpis: [75, 150, 300, 600], gray: true, guessed: true, flatbed: true, feeder: false, compat: true }
                 : { bedW: 8.27, bedH: 11.69, dpis: [75, 150, 300, 600], gray: true, guessed: false, flatbed: false, feeder: false };
             const dir = await makeOrder('Book Order', 1);
             await openOrder(dir);
@@ -1029,7 +1029,7 @@ async function newPage(context, baseUrl) {
             out.kept = !!JSON.parse(localStorage.getItem('jeditor.scanCompat') || '{}')['Plustek OpticBook A300 Plus-TWAIN'];
             out.checked = $('scan-compat').checked;
             out.toast = [...document.querySelectorAll('.toast')].map(t => t.textContent).find(t => /Older TWAIN mode/.test(t)) || '';
-            out.glass = Scan.mode() === 'glass' && $('scan-mode-feeder').classList.contains('hidden');
+            out.glass = Scan.mode() === 'glass';
             // Asked again (next caps, preview, scan) in that mode
             $('scan-device').value = 'Mystery Scanner';
             $('scan-device').dispatchEvent(new Event('change'));
@@ -1040,12 +1040,24 @@ async function newPage(context, baseUrl) {
             $('scan-go').click();
             await wait(() => window.__previewReq);
             out.previewCompat = window.__previewReq.compat === true;
+            // Its glass isn't said, but jEditor knows the A300's: A3
+            out.a3 = [window.__previewReq.bedW, window.__previewReq.bedH, window.__previewReq.dpi];
+            await wait(() => !Scan.waiting);
+            // Another size: remembered, previewed again
+            window.__previewReq = null;
+            $('scan-pv-glass').value = 'letter';
+            $('scan-pv-glass').dispatchEvent(new Event('change'));
+            await wait(() => window.__previewReq);
+            out.letter = [window.__previewReq.bedW, window.__previewReq.bedH];
+            out.kept = JSON.parse(localStorage.getItem('jeditor.scanBed'))['Plustek OpticBook A300 Plus-TWAIN'];
+            await wait(() => !Scan.waiting);
             Scan.close();
             return out;
         });
         check('Older TWAIN mode found by the app is turned on for that scanner, and said', r.kept && r.checked && /OpticBook.*Older TWAIN mode/.test(r.toast), JSON.stringify(r));
         check('... and used from then on', r.previewCompat && r.glass);
         check('a scanner that won\'t say what it has gets both the glass and the feeder offered', r.bothOffered);
+        check('glass size: the A300\'s is known (A3), previewed at about 150 dpi; another size is remembered and previewed again', r.a3.join() === '11.69,16.54,150' && r.letter.join() === '8.5,11' && r.kept === 'letter', JSON.stringify([r.a3, r.letter, r.kept]));
         check('compat suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }

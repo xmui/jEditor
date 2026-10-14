@@ -35,6 +35,20 @@ const Scan = {
     KEY_MODE: 'jeditor.scanMode', // how each scanner is used: glass, feeder or driver
     KEY_SWAP: 'jeditor.scanSwap', // scanners whose front and back are swapped
     KEY_AUTOSIZE: 'jeditor.scanAutoSize', // feeders that crop each photo themselves (off: jEditor does)
+    KEY_BED: 'jeditor.scanBed', // each scanner's glass size, when chosen
+
+    // Glass sizes (inches). Auto: what the scanner says, else what jEditor
+    // knows of the model, else A4
+    BEDS: [
+        ['auto', 'As the scanner says'],
+        ['a4', 'A4 · 8.3 × 11.7 in', 8.27, 11.69],
+        ['letter', 'Letter · 8.5 × 11 in', 8.5, 11],
+        ['epson', '8.5 × 11.7 in (most flatbeds)', 8.5, 11.7],
+        ['legal', 'Legal · 8.5 × 14 in', 8.5, 14],
+        ['a3', 'A3 · 11.7 × 16.5 in', 11.69, 16.54],
+        ['tabloid', '11 × 17 in', 11, 17]
+    ],
+    KNOWN_BEDS: [[/OpticBook\s*A300/i, 'a3'], [/Perfection\s*V\d{3}/i, 'epson'], [/OpticBook\s*3[89]00|OpticBook\s*4800/i, 'letter']],
     KEY_OPTS: 'jeditor.scanOpts', // the settings last used
     KEY_SETUPS: 'jeditor.scanSetups', // saved setups: [{ name, …settings }]
     caps: {}, // what each scanner can do (asked once)
@@ -69,6 +83,15 @@ const Scan = {
         this.el('scan-pv-again').addEventListener('click', () => this.previewGlass());
         this.el('scan-pv-find').addEventListener('click', () => ScanPreview.set(ScanPreview.find(this.el('scan-pv-img'))));
         this.el('scan-pv-clear').addEventListener('click', () => ScanPreview.set([]));
+        // Another glass size: remembered for the scanner, previewed again
+        this.el('scan-pv-glass').addEventListener('change', () => {
+            const pv = this.pv;
+            if (!pv) return;
+            const all = this.get(this.KEY_BED, {}) || {};
+            all[pv.device.id] = this.el('scan-pv-glass').value;
+            this.put(this.KEY_BED, all);
+            this.previewGlass();
+        });
         for (const id of ['scan-dpi', 'scan-color', 'scan-sides', 'scan-format', 'scan-quality', 'scan-bright', 'scan-contrast']) {
             this.el(id).addEventListener('input', () => this.optsChanged());
             this.el(id).addEventListener('change', () => this.optsChanged());
@@ -703,17 +726,23 @@ const Scan = {
                 this.adoptCompat(pv.device.id, caps);
             }
             this.fillDpis(caps);
-            wait(`Previewing the glass of ${pv.device.name}…`);
-            // As small as the scanner goes, near 75 dpi
-            const low = (caps.dpis || []).filter(d => d >= 50 && d <= 150);
-            const dpi = low.length ? low.reduce((a, b) => (Math.abs(b - 75) < Math.abs(a - 75) ? b : a)) : 75;
-            const p = await native.scanPreview({ device: pv.device.id, driver: pv.device.driver, compat: pv.compat, bedW: caps.bedW, bedH: caps.bedH, dpi });
+            const bed = this.bedFor(pv.device, caps);
+            this.fillBeds(pv.device);
+            // Sharp enough to find the prints well (near 150 dpi), small
+            // enough to come quickly (5 million pixels at most); the scan
+            // itself is at the resolution chosen
+            const most = Math.floor(Math.sqrt(5e6 / (bed.w * bed.h)));
+            const want = Math.min(150, most);
+            const low = (caps.dpis || []).filter(d => d >= 50 && d <= Math.max(want, 75));
+            const dpi = low.length ? low.reduce((a, b) => (Math.abs(b - want) < Math.abs(a - want) ? b : a)) : Math.min(want, 150);
+            wait(`Previewing the glass of ${pv.device.name} (${dpi} dpi, to find the prints)…`);
+            const p = await native.scanPreview({ device: pv.device.id, driver: pv.device.driver, compat: pv.compat, bedW: bed.w, bedH: bed.h, dpi });
             if (!p) return this.pvError('Preview stopped');
             this.adoptCompat(pv.device.id, p);
             pv.bed = { w: p.bedW, h: p.bedH };
             await ScanPreview.show(p);
             ScanPreview.set(ScanPreview.find(this.el('scan-pv-img')));
-            if (caps.guessed) this.app.showToast('The scanner didn\'t say how big its glass is, so jEditor took it to be A4', 5000);
+            if (bed.guessed) this.app.showToast('The scanner didn\'t say how big its glass is, so jEditor took it to be A4: choose its size under Glass if that\'s wrong', 6000);
         } catch (e) {
             this.pvError(`The preview didn't work: ${e.message}`);
             this.showDetails(true); // what the driver did
@@ -722,6 +751,31 @@ const Scan = {
             panel.classList.remove('waiting');
             if (panel.dataset.state === 'preview') this.boxesChanged(ScanPreview.boxes);
         }
+    },
+
+    // The glass to preview: chosen for this scanner, or what the scanner
+    // says, or what jEditor knows of the model, or A4. { w, h, guessed }
+    bedFor(device, caps) {
+        const pick = (key) => { const b = this.BEDS.find(x => x[0] === key); return b && b[2] ? { w: b[2], h: b[3] } : null; };
+        const chosen = pick((this.get(this.KEY_BED, {}) || {})[device.id]);
+        if (chosen) return chosen;
+        if (caps && !caps.guessed && caps.bedW > 1 && caps.bedH > 1) return { w: caps.bedW, h: caps.bedH };
+        const known = this.KNOWN_BEDS.find(([re]) => re.test(device.name || device.id));
+        if (known) return pick(known[1]);
+        return { w: 8.27, h: 11.69, guessed: true };
+    },
+
+    fillBeds(device) {
+        const select = this.el('scan-pv-glass');
+        if (!select.options.length) {
+            for (const [key, label] of this.BEDS) {
+                const o = document.createElement('option');
+                o.value = key;
+                o.textContent = label;
+                select.appendChild(o);
+            }
+        }
+        select.value = (this.get(this.KEY_BED, {}) || {})[device.id] || 'auto';
     },
 
     pvError(text) {

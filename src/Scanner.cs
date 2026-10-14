@@ -569,7 +569,7 @@ sealed class Scanner : IDisposable
         FellBackToCompat = false;
         using var bmp = deviceId == FakeId && fake
             ? await Task.Run(() => FakeBed.Draw(dpi, bedH), cancel)
-            : await ScanBed(c => For(deviceId, driver, c), compat, bedW, bedH, dpi, false, owner, cancel);
+            : await ScanBed(c => For(deviceId, driver, c), compat, bedW, bedH, dpi, false, owner, cancel, "Previewing the glass (small, only to find the prints; the scan itself is at the resolution chosen)");
         using var ms = new MemoryStream();
         SaveJpeg(bmp, ms, 85);
         Log.Write($"Preview: {bmp.Width} × {bmp.Height} at {dpi} dpi");
@@ -577,10 +577,10 @@ sealed class Scanner : IDisposable
     }
 
     // The flatbed, from its top edge down to `height` inches, as one image
-    async Task<Bitmap> ScanBed(Func<bool, ScanOptions> scanner, bool compat, double width, double height, int dpi, bool gray, IntPtr owner, CancellationToken cancel)
+    async Task<Bitmap> ScanBed(Func<bool, ScanOptions> scanner, bool compat, double width, double height, int dpi, bool gray, IntPtr owner, CancellationToken cancel, string what)
     {
         Bitmap? result = null;
-        await foreach (var image in Run(c => BedOptions(scanner(c), width, height, dpi, gray, owner), compat, cancel))
+        await foreach (var image in Run(c => BedOptions(scanner(c), width, height, dpi, gray, owner, what), compat, cancel))
         {
             using (image)
             {
@@ -590,7 +590,7 @@ sealed class Scanner : IDisposable
         return result ?? throw new InvalidOperationException("The scanner sent nothing back");
     }
 
-    static ScanOptions BedOptions(ScanOptions options, double width, double height, int dpi, bool gray, IntPtr owner)
+    static ScanOptions BedOptions(ScanOptions options, double width, double height, int dpi, bool gray, IntPtr owner, string what)
     {
         options.UseNativeUI = false;
         options.DialogParent = owner;
@@ -600,7 +600,7 @@ sealed class Scanner : IDisposable
         options.PageSize = new PageSize(Math.Round((decimal)width, 2), Math.Round((decimal)height, 2), PageSizeUnit.Inch);
         options.PageAlign = HorizontalAlign.Left;
         options.MaxQuality = true;
-        Log.Write($"Scanning the bed: {width:0.##} × {height:0.##} in at {dpi} dpi, {(gray ? "greys" : "colour")}, no scanner window ({options.Driver}, manager {options.TwainOptions.Dsm}, transfer {options.TwainOptions.TransferMode})");
+        Log.Write($"{what}: {width:0.##} × {height:0.##} in at {dpi} dpi, {(gray ? "greys" : "colour")}, no scanner window ({options.Driver}, manager {options.TwainOptions.Dsm}, transfer {options.TwainOptions.TransferMode})");
         return options;
     }
 
@@ -615,7 +615,7 @@ sealed class Scanner : IDisposable
         var dpi = fakeScan ? Math.Min(r.Dpi, 300) : r.Dpi;
         var bmp = fakeScan
             ? await Task.Run(() => FakeBed.Draw(dpi, height), cancel)
-            : await ScanBed(c => For(r.DeviceId, r.Driver, c), r.Compat, r.BedW, height, dpi, r.Gray, owner, cancel);
+            : await ScanBed(c => For(r.DeviceId, r.Driver, c), r.Compat, r.BedW, height, dpi, r.Gray, owner, cancel, "Scanning the glass");
         try
         {
             // Pixels per inch: the image's own resolution if it's believable
