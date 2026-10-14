@@ -388,6 +388,7 @@ const Places = {
         if (!this.native() || !this.boxes) return;
         if (this._dir !== this.app.dirHandle) {
             this._dir = this.app.dirHandle;
+            this.counts.clear(); // counted again: scans and moves change them
             this.draw();
         } else {
             this.drawCard();

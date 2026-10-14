@@ -195,6 +195,7 @@ const CropEditor = {
         num.addEventListener('change', () => { this.straighten(parseFloat(num.value) || 0); num.blur(); });
         const wheelNudge = (e) => {
             e.preventDefault();
+            if (!e.deltaY) return; // a sideways scroll doesn't turn it
             this.nudgeAngle((e.deltaY < 0 ? 1 : -1) * (e.shiftKey ? 1 : 0.1));
         };
         slider.addEventListener('wheel', wheelNudge, { passive: false });

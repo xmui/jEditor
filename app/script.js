@@ -1516,15 +1516,22 @@ const app = {
     // EXIF metadata cached per file; only the file head is read
     async getExifInfo(file) {
         if (file._exif !== undefined) return file._exif;
-        file._exif = null;
-        if (/\.jpe?g$/i.test(file.name)) {
-            try {
-                const fileData = await file.handle.getFile();
-                const head = await fileData.slice(0, 256 * 1024).arrayBuffer();
-                file._exif = this.readJpegExifInfo(head);
-            } catch (e) { /* leave null */ }
-        }
-        return file._exif;
+        // A read in progress is shared, not answered with "none" meanwhile
+        if (file._exifReading) return file._exifReading;
+        file._exifReading = (async () => {
+            let info = null;
+            if (/\.jpe?g$/i.test(file.name)) {
+                try {
+                    const fileData = await file.handle.getFile();
+                    const head = await fileData.slice(0, 256 * 1024).arrayBuffer();
+                    info = this.readJpegExifInfo(head);
+                } catch (e) { /* none */ }
+            }
+            file._exif = info;
+            file._exifReading = null;
+            return info;
+        })();
+        return file._exifReading;
     },
 
     // The info panel (I): the photo in single view; in the grid, the folder
@@ -2026,6 +2033,9 @@ const app = {
     cleanupURLs() {
         // Drop queued thumbnail work for the folder being replaced
         if (this._thumbQueue) this._thumbQueue.length = 0;
+        // Its jobs were just dropped, so "Preparing previews" can't finish: it goes
+        this._precacheGen = (this._precacheGen || 0) + 1;
+        this.endTask('precache');
         Folders.reset();
         Watch.stop();
         Flags.reset();
@@ -2682,13 +2692,14 @@ const app = {
         const total = missing.length;
         const showProgress = total >= 30;
         if (showProgress) this.beginTask('precache', `Preparing previews 0/${total}`);
+        const gen = this._precacheGen = (this._precacheGen || 0) + 1;
         let done = 0;
         missing.forEach(file => {
             this.ensureThumbnail(file, { urgent: false })
                 .catch(() => { })
                 .finally(() => {
                     done++;
-                    if (!showProgress) return;
+                    if (!showProgress || gen !== this._precacheGen) return;
                     if (done === total) {
                         this.endTask('precache');
                         this.showToast(`All ${total} previews ready`, 2000);
@@ -4871,6 +4882,7 @@ const app = {
         f.savingRotation = 0;
         f.thumbLag = 0;
         f._exif = undefined;
+        f._exifReading = null;
         f.dateTaken = undefined;
         f._dims = undefined;
         f._glass = undefined;
@@ -5206,7 +5218,10 @@ const app = {
 
     // ---- Capture-date sort support ----
 
+    // One reading at a time: a second call (each keystroke in Rename) waits
+    // for the one running, rather than taking dates still being read as none
     async ensureDatesTaken() {
+        while (this._readingDates) await this._readingDates;
         const missing = this.files.filter(f => f.dateTaken === undefined);
         if (!missing.length) return;
         this.beginTask('taken', 'Reading capture dates…');
@@ -5218,8 +5233,8 @@ const app = {
                 f.dateTaken = (exif && exif.dateTaken) ? exif.dateTaken.getTime() : (f.lastModified || 0);
             }
         });
-        await Promise.all(workers);
-        this.endTask('taken');
+        this._readingDates = Promise.all(workers).finally(() => { this._readingDates = null; this.endTask('taken'); });
+        await this._readingDates;
     },
 
     // ---- Rename ----

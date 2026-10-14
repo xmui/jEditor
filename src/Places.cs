@@ -126,9 +126,11 @@ static class Projects
     }
 
     // Photos in a folder and its subfolders, counted up to `Limit`. Kept per
-    // folder until it changes, as network shares are slow to walk
+    // folder until it changes, as network shares are slow to walk, and for
+    // a minute at most: photos added in a subfolder don't change the top
+    // folder's time
     public const int Limit = 1000;
-    static readonly Dictionary<string, (DateTime when, int count)> counts = new(StringComparer.OrdinalIgnoreCase);
+    static readonly Dictionary<string, (DateTime when, int count, DateTime at)> counts = new(StringComparer.OrdinalIgnoreCase);
 
     public static int Count(string path)
     {
@@ -137,7 +139,7 @@ static class Projects
         var stamp = dir.LastWriteTimeUtc;
         lock (counts)
         {
-            if (counts.TryGetValue(path, out var c) && c.when == stamp) return c.count;
+            if (counts.TryGetValue(path, out var c) && c.when == stamp && DateTime.UtcNow - c.at < TimeSpan.FromMinutes(1)) return c.count;
         }
         int n = 0;
         var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.Hidden | FileAttributes.System };
@@ -147,7 +149,7 @@ static class Projects
                 if (PhotoTypes.Contains(f.Extension) && ++n >= Limit) break;
         }
         catch (IOException) { }
-        lock (counts) counts[path] = (stamp, n);
+        lock (counts) counts[path] = (stamp, n, DateTime.UtcNow);
         return n;
     }
 
