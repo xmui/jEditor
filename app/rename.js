@@ -49,7 +49,7 @@ const Renamer = {
         const panel = this.el('rename-panel');
         panel.addEventListener('mousedown', (e) => { if (e.target === panel) this.close(); });
         panel.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') { e.preventDefault(); this.close(); }
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.close(); }
             if (e.key === 'Enter' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON') {
                 e.preventDefault();
                 this.apply();
