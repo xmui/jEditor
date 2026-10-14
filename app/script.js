@@ -4004,6 +4004,10 @@ const app = {
         // Only the shortcut list and debug console work from the start screen
         const onStart = this.elements.mainInterface.classList.contains('hidden');
         if (onStart && context === 'global' && !['app.shortcuts', 'app.debug', 'app.settings'].includes(id)) return;
+        if (context === 'crop' && CropEditor.busy) {
+            e.preventDefault(); // saving: the crop being written stays as it is
+            return;
+        }
         if (context === 'crop' && !CropEditor.ready && id !== 'crop.cancel') {
             e.preventDefault();
             return;
@@ -5911,6 +5915,7 @@ const app = {
         if (!ed.isOpen || !ed.ready || ed.busy) return;
         const file = ed.file;
         const snap = ed.snapshot();
+        const W = ed.W, H = ed.H;
 
         const goNext = () => {
             if (!next) return;
@@ -5961,7 +5966,7 @@ const app = {
             const fileData = await file.handle.getFile();
             const original = new Uint8Array(await fileData.arrayBuffer());
 
-            const canvas = await ed.renderOutput(fileData, type, original);
+            const canvas = await ed.renderFrozen(fileData, snap, W, H, type, original);
             const w = canvas.width, h = canvas.height;
             let blob = await new Promise(r => canvas.toBlob(r, type, quality));
             canvas.width = canvas.height = 0; // release the full-size buffer now

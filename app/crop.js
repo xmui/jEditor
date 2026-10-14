@@ -170,6 +170,7 @@ const CropEditor = {
 
         const bind = (id, fn) => this.el(id).addEventListener('click', (e) => {
             e.currentTarget.blur(); // keep Enter/Space for the editor's shortcuts
+            if (this.busy) return; // saving: the crop being written stays as it is
             fn();
         });
         bind('crop-cancel', () => app.cancelCrop());
@@ -248,22 +249,29 @@ const CropEditor = {
         // render happens on save, from the original. Always the whole
         // photo, even with an edit kept until saved (edits.js): that edit
         // is where the crop starts, so it can be changed
+        // Closed, or opened again, while this one was loading: it stops
+        const token = this._openToken = (this._openToken || 0) + 1;
+        const current = () => this.isOpen && this.file === file && this._openToken === token;
         const src = await app.getDisplaySource(file, { raw: true });
-        let preview;
+        let preview, w, h;
         if (src.isPreview && src.blob) {
             preview = await createImageBitmap(src.blob);
-            this.W = src.w;
-            this.H = src.h;
+            w = src.w;
+            h = src.h;
         } else {
             const data = await file.handle.getFile();
             preview = await createImageBitmap(data); // EXIF orientation applied by default
-            this.W = preview.width;
-            this.H = preview.height;
+            w = preview.width;
+            h = preview.height;
         }
         const data = await file.handle.getFile();
-        if (!this.isOpen || this.file !== file) { preview.close(); return; }
+        const dpi = ImageMeta.readDpi(new Uint8Array(await data.slice(0, 256 * 1024).arrayBuffer()));
+        if (!current()) { preview.close(); return; }
+        if (this.preview && this.preview !== preview && this.preview.close) this.preview.close();
         this.preview = preview;
-        this.dpi = ImageMeta.readDpi(new Uint8Array(await data.slice(0, 256 * 1024).arrayBuffer()));
+        this.W = w;
+        this.H = h;
+        this.dpi = dpi;
 
         this.q = 0;
         this.angle = 0;
@@ -684,6 +692,18 @@ const CropEditor = {
         }
     },
 
+    // The crop as it was when Save was pressed (snap, on a W × H photo),
+    // whatever happens in the editor while the file is read
+    async renderFrozen(fileData, snap, W, H, type, original = null) {
+        const bmp = await this.decodeFor(fileData, type, original);
+        try {
+            if (bmp.width !== W || bmp.height !== H) throw new Error('the file changed on disk — reopen crop');
+            return this.fromSnapshot(W, H, snap).drawOutput(bmp);
+        } finally {
+            bmp.close();
+        }
+    },
+
     // EXIF orientation is applied by default ('from-image')
     decodeFor(fileData, type, original) {
         return createImageBitmap(fileData, {
@@ -982,7 +1002,7 @@ const CropEditor = {
     },
 
     onDown(e) {
-        if (!this.ready || e.button !== 0) return;
+        if (!this.ready || this.busy || e.button !== 0) return;
         // Stop any glide where it is: the frame is where the user sees it
         if (this._anim) { cancelAnimationFrame(this._anim); this._anim = 0; }
         const v = { ...this.view() };
