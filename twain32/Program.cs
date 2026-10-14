@@ -83,12 +83,14 @@ sealed class Options
 static class Out
 {
     static readonly object gate = new();
+    // UTF-8, as jEditor reads it (a WinExe's Console.Out is in the code page)
+    static readonly StreamWriter stdout = new(Console.OpenStandardOutput(), new System.Text.UTF8Encoding(false));
     public static void Line(string s)
     {
         lock (gate)
         {
-            Console.Out.WriteLine(s.Replace("\r", " ").Replace("\n", " "));
-            Console.Out.Flush();
+            stdout.WriteLine(s.Replace("\r", " ").Replace("\n", " "));
+            stdout.Flush();
         }
     }
     public static void Log(string s) => Line("LOG " + s);

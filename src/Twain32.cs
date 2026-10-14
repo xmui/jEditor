@@ -72,7 +72,9 @@ static class Twain32
                 }
                 else if (line.StartsWith("PAGE "))
                 {
-                    var path = line[5..];
+                    // Only the file's name is taken: the folder is ours, and the
+                    // name is plain ASCII whatever the code page did to the rest
+                    var path = Path.Combine(dir, Path.GetFileName(line[5..]));
                     // From memory, so the file can go at once (GDI+ keeps the stream)
                     var bmp = new Bitmap(new MemoryStream(await File.ReadAllBytesAsync(path, CancellationToken.None)));
                     try { File.Delete(path); } catch (Exception) { }

@@ -971,6 +971,8 @@ sealed class MainForm : Form
 
     void Post(object message, CoreWebView2FileSystemHandle? handle = null)
     {
+        // The window closed while a request was still running: no one to tell
+        if (IsDisposed || web.IsDisposed || web.CoreWebView2 is null) return;
         // Folder handles only ever go to jEditor's own page
         if (!IsOurs(Core.Source))
         {
