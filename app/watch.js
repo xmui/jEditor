@@ -88,6 +88,8 @@ const Watch = {
         this.opDepth--;
         this.opGen++;
         Flags.saveSoon(); // renamed or moved photos: flags under their new paths
+        // and kept edits too (edits.json is keyed by path as well)
+        if (typeof Edits !== 'undefined' && this.app.files.some(f => f._edit)) Edits.saveSoon();
         this.app._usage = null; // .jeditor's size may have changed (trash, originals)
         this.app.refreshInfoSoon();
         // A check that came in meanwhile runs now

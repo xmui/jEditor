@@ -296,7 +296,14 @@ const app = {
             if (order) return this.openDirectory(order.handle, { scope: order.path });
         }
         this._openScope = scope;
+        // A newer open (or drop) supersedes this one: it stops where it is
+        const gen = this._openGen = (this._openGen || 0) + 1;
+        this.isLoading = true;
         try {
+            // Flags changed just now are written to the project being left
+            // (their save is on a timer, which would otherwise run here)
+            if (this.dirHandle) { try { await Flags.save(); } catch (e) { /* best-effort */ } }
+            if (gen !== this._openGen) return;
             // Reset state
             this.cleanupURLs();
             this.files = [];
@@ -307,9 +314,12 @@ const app = {
             this.elements.dropZone.classList.add('hidden');
 
             await this.scanDirectory(dirHandle);
+            if (gen !== this._openGen) return;
 
             await this.finalizeLoad();
         } catch (err) {
+            if (gen !== this._openGen) return;
+            this.isLoading = false;
             console.error('Open folder error:', err);
             UI.alert({ title: 'Couldn\'t open the folder', message: err.message });
             this.elements.dropZone.classList.remove('hidden');
@@ -1074,6 +1084,7 @@ const app = {
             // Safety reset
             if (this.isLoading) this.isLoading = false;
             this.isLoading = true;
+            this._openGen = (this._openGen || 0) + 1; // an open in progress stops
 
             this.cleanupURLs();
             this.files = [];
@@ -1296,10 +1307,13 @@ const app = {
     // listed several at a time (see Watch.walk), which matters most on a
     // network drive where each listing is a round trip.
     async scanDirectory(dirHandle) {
+        // Another folder opened meanwhile: this one stops adding photos
+        const gen = this._openGen;
         // Paths already loaded, so nothing is added twice
         const seen = new Set(this.files.map(f => f.relPath || f.name));
         this.updateTask('scan', 'Scanning folder…');
         const listings = await Watch.walk([{ path: '', handle: dirHandle }], true);
+        if (gen !== this._openGen) return;
         const pending = [];
         // A subfolder opened on its own before has a .jeditor of its own:
         // merged into the order's once the folder is open (finalizeLoad). In
@@ -1326,6 +1340,7 @@ const app = {
             // watch to add once it's whole (only just-changed files are checked)
             const whole = await Promise.all(datas.map((d, j) => d && Date.now() - d.lastModified < Watch.SETTLED_MS
                 ? Watch.complete(d, batch[j].entry.name) : true));
+            if (gen !== this._openGen) return;
             batch.forEach(({ entry, relPath, parentDir }, j) => {
                 const fileData = datas[j];
                 if (!fileData || !whole[j]) return;

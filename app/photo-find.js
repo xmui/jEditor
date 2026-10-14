@@ -285,8 +285,15 @@ const PhotoFind = {
     // until it parts, each piece then grown back
     split(g, w, h) {
         const xs = g.pts.map(p => p % w), ys = g.pts.map(p => (p - (p % w)) / w);
-        const x0 = Math.min(...xs), y0 = Math.min(...ys);
-        const bw = Math.max(...xs) - x0 + 1, bh = Math.max(...ys) - y0 + 1;
+        // A loop, not Math.min(...xs): a big group is too many arguments
+        let x0 = w, y0 = h, x1 = 0, y1 = 0;
+        for (let i = 0; i < xs.length; i++) {
+            if (xs[i] < x0) x0 = xs[i];
+            if (xs[i] > x1) x1 = xs[i];
+            if (ys[i] < y0) y0 = ys[i];
+            if (ys[i] > y1) y1 = ys[i];
+        }
+        const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
         const m = new Uint8Array(bw * bh);
         for (let i = 0; i < g.pts.length; i++) m[(ys[i] - y0) * bw + (xs[i] - x0)] = 1;
         const unit = Math.max(2, Math.round(Math.min(w, h) * 0.008));

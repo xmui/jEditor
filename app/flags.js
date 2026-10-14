@@ -62,6 +62,8 @@ const Flags = {
 
     // Another folder is being opened
     reset() {
+        clearTimeout(this._saveTimer); // a save due now would land in the next project
+        this._dirty = false;
         this.filter = null;
         this.query = '';
         this.orphans = new Map();

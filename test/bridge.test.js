@@ -148,8 +148,10 @@ const waitForPost = (page, type) => page.waitForFunction(
         // The app answers the picker with a folder of three photos
         await page.evaluate(async (make) => {
             const dir = await (eval(make))('Smith Order', 3);
-            window.__onPost = (m) => {
+            window.__onPost = async (m) => {
                 if (m.type === 'pickFolder') setTimeout(() => window.__deliver({ replyTo: m.id, path: 'D:\\Orders\\Smith Order' }, [dir]), 10);
+                // The app's storage (flags and edits are read from it while the folder opens)
+                else if (m.type === 'dataDir') window.__deliver({ replyTo: m.id, path: 'C:\\data' }, [await (await navigator.storage.getDirectory()).getDirectoryHandle('appdata', { create: true })]);
             };
         }, MAKE_FOLDER.toString());
         await page.click('#btn-browse-folder');
