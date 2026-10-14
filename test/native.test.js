@@ -274,6 +274,13 @@ const FAKE_NATIVE = `
         },
         async undoTransfer(items, copy) { window.__undoTransfer = { items, copy }; return items.map(() => null); },
         async openPath(p) { window.__opened = p; return true; },
+        async makeFolder(parent, name) {
+            if (parent !== window.__orderRoot) throw new Error("The projects folder is not there");
+            const disk = await sub('disk');
+            try { await disk.getDirectoryHandle(name); throw new Error('There is already a ' + name + ' there'); } catch (e) { if (!/NotFound/.test(e.name)) throw e; }
+            await disk.getDirectoryHandle(name, { create: true });
+            return parent + BS + name;
+        },
         async exists(paths) { return paths.map(p => !(window.__missing || []).includes(p)); },
         async checkUpdate() { window.__calls.push('checkUpdate'); return window.__update || { newer: false, version: '1.0.0', tag: 'v1.0.0', notes: '' }; },
         async installUpdate(progress) {
@@ -1326,6 +1333,20 @@ async function newPage(context, baseUrl) {
             rowOf(start, 'Beta').querySelector('.sb-main').click();
             await wait(() => window.__opened);
             out.opened = window.__opened;
+            // New project: named, made in the projects folder, opened, listed
+            window.__opened = null;
+            UI.prompt = async () => 'Gamma';
+            start.querySelector('[data-act="newproject"]').click();
+            await wait(() => window.__opened);
+            out.made = window.__opened;
+            await wait(() => names(start).includes('Gamma'));
+            out.listed = names(start).includes('Gamma');
+            // The same name again: says so
+            let said = null;
+            UI.alert = async (o) => { said = o.message; };
+            start.querySelector('[data-act="newproject"]').click();
+            await wait(() => said);
+            out.twice = said;
 
             // A project open: its card, and it's marked in the list
             const dir = await (await opfs('disk')).getDirectoryHandle('Alpha');
@@ -1397,6 +1418,7 @@ async function newPage(context, baseUrl) {
         check('the projects folder\'s projects are listed, newest first, with photo counts', r.projects === 'Beta,Alpha' && r.counts && r.folderName === 'Orders', JSON.stringify([r.projects, r.counts, r.folderName]));
         check('search finds a project', r.search === 'Beta', r.search);
         check('clicking a project opens it', r.opened === 'D:\\Orders\\Beta', r.opened);
+        check('New project: makes the folder in the projects folder, opens it and lists it; a name taken says so', r.made === 'D:\\Orders\\Gamma' && r.listed && /already a Gamma/.test(r.twice || ''), JSON.stringify([r.made, r.listed, r.twice]));
         check('the project card: name, path, photos', /Alpha/.test(r.card) && /D:\\Orders\\Alpha/.test(r.card) && /\d photos/.test(r.card), r.card);
         check('the open project is marked in the list', r.active);
         check('card buttons: Explorer, Scan, Pin', r.revealed === 'D:\\Orders\\Alpha' && r.scanOpen && r.pinned === 'Alpha', JSON.stringify([r.revealed, r.scanOpen, r.pinned]));

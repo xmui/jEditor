@@ -44,7 +44,8 @@ const Places = {
         eject: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15h14L12 7z"/><path d="M5 19h14"/></svg>',
         scan: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h16"/><path d="M6 13V5a1 1 0 0 1 1-1h7l4 4v5"/><path d="M5 17h14a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1a1 1 0 0 1 1-1z"/></svg>',
         reveal: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7"/><path d="M10 14 21 3"/><path d="M21 14v7H3V3h7"/></svg>',
-        split: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>'
+        split: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>',
+        plus: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>'
     },
 
     el(id) { return document.getElementById(id); },
@@ -169,7 +170,8 @@ const Places = {
         const dir = this.projectsDir();
         const dirName = dir ? (dir.split(/[\\/]/).filter(Boolean).pop() || dir) : '';
         const projects = dir
-            ? `<input class="field sm sb-search" type="search" placeholder="Search projects" value="${this.esc(this.query)}" aria-label="Search projects" spellcheck="false" autocomplete="off">` +
+            ? `<button class="btn secondary sm sb-new" data-act="newproject" title="Make a new folder in ${this.esc(dirName)} and open it">${this.icons.plus}New project</button>` +
+              `<input class="field sm sb-search" type="search" placeholder="Search projects" value="${this.esc(this.query)}" aria-label="Search projects" spellcheck="false" autocomplete="off">` +
               `<div class="sb-projects">${await this.projectRows()}</div>`
             : `<button class="btn secondary sb-choose" data-act="choose">Choose your projects folder…</button>` +
               `<p class="sb-help">The folder your projects are in. Each folder in it is listed here, newest first.</p>`;
@@ -391,6 +393,7 @@ const Places = {
         const path = row && row.dataset.path;
         if (act === 'section') return this.toggleSection(b.dataset.sec);
         if (act === 'choose') return this.chooseFolder();
+        if (act === 'newproject') return this.newProject();
         if (act === 'all') { this.showAll = true; return this.drawProjects(); }
         if (!path) return;
         if (act === 'open' && (e.ctrlKey || e.button === 1)) return Windows.newWindow(path); // in a window of its own
@@ -424,6 +427,28 @@ const Places = {
         closed.delete('projects');
         this.set(this.KEY_CLOSED, [...closed]);
         await this.refresh();
+    },
+
+    // A new folder in the projects folder, opened as the project
+    async newProject() {
+        const dir = this.projectsDir();
+        if (!dir) return this.chooseFolder();
+        const dirName = dir.split(/[\\/]/).filter(Boolean).pop() || dir;
+        const name = await UI.prompt({
+            title: 'New project',
+            message: `A new folder in ${dirName}, opened as the project, ready to scan or shoot into.`,
+            input: { label: 'Name', placeholder: 'Smith Order' },
+            ok: 'Create'
+        });
+        if (name === null || !name.trim()) return;
+        try {
+            const path = await this.native().makeFolder(dir, name.trim());
+            this.listings.clear();
+            await this.open(path);
+            this.refresh();
+        } catch (e) {
+            UI.alert({ title: 'Couldn\'t make the project', message: e.message });
+        }
     },
 
     async open(path) {

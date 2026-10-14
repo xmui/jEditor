@@ -227,6 +227,10 @@
         async listProjects(path) {
             return (await answer('listProjects', { path })).msg.projects;
         },
+        // A new folder named `name` in `parent` (a new project) → its path
+        async makeFolder(parent, name) {
+            return (await answer('makeFolder', { parent, name })).msg.path;
+        },
         // Photos in each folder and its subfolders → { counts: [n, -1 if gone], limit }
         // (counting stops at `limit`)
         async countPhotos(paths) {

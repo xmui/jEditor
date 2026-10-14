@@ -4885,6 +4885,14 @@ html.native {
     transform: none;
 }
 
+.sb-new {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+    justify-content: center;
+    margin: 2px 0 var(--sp-2);
+}
+
 .sb-sec-link {
     margin-left: auto;
     max-width: 55%;

@@ -367,6 +367,7 @@ sealed class MainForm : Form
             case "places":
             case "listDir":
             case "listProjects":
+            case "makeFolder":
             case "countPhotos":
             case "quickAccess":
             case "eject":
@@ -552,6 +553,23 @@ sealed class MainForm : Form
                     if (!Path.IsPathFullyQualified(path)) { Reply(id, new { error = "Not a folder" }); break; }
                     var list = await Task.Run(() => Projects.List(path));
                     Reply(id, new { projects = list.Select(p => new { name = p.Name, path = p.Path, modified = new DateTimeOffset(p.Modified).ToUnixTimeMilliseconds() }) });
+                    break;
+                }
+                case "makeFolder":
+                {
+                    // A new project: a folder in the projects folder
+                    var parent = Str(msg, "parent") ?? "";
+                    var name = (Str(msg, "name") ?? "").Trim().TrimEnd('.', ' ');
+                    if (!Path.IsPathFullyQualified(parent) || !Directory.Exists(parent)) { Reply(id, new { error = "The projects folder isn't there" }); break; }
+                    if (name.Length == 0 || name.Length > 120 || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+                    { Reply(id, new { error = "A folder's name can't have any of these in it: \\ / : * ? \" < > |" }); break; }
+                    if (System.Text.RegularExpressions.Regex.IsMatch(name, @"^(CON|PRN|AUX|NUL|COM\d|LPT\d)(\..*)?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                    { Reply(id, new { error = "Windows keeps that name for itself" }); break; }
+                    var path = Path.Combine(parent, name);
+                    if (Directory.Exists(path) || File.Exists(path)) { Reply(id, new { error = $"There's already a {name} there" }); break; }
+                    Directory.CreateDirectory(path);
+                    Log.Write($"New project: {path}");
+                    Reply(id, new { path });
                     break;
                 }
                 case "countPhotos":
