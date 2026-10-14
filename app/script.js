@@ -5364,11 +5364,22 @@ const app = {
             for (let i = 0; i < back.length; i++) {
                 try { await this.moveFile(back[i], `.jeditor-restoring-${stamp}-${i}${(back[i].name.match(/\.[^.]+$/) || [''])[0]}`); } catch (e) { /* keep going */ }
             }
+            const stuck = [];
             for (const f of back) {
-                try { await this.moveFile(f, original.get(f)); } catch (e) { /* reported below */ }
+                try { await this.moveFile(f, original.get(f)); } catch (e) { stuck.push(f); }
             }
             this.endTask('rename');
-            this.showToast(`Rename failed (${err.message}) — names were put back`, 5000);
+            if (stuck.length) {
+                // Said as it is: some kept a temporary name
+                UI.alert({
+                    title: 'The rename stopped part way',
+                    message: `${err.message}\n\n${stuck.length} photo${stuck.length === 1 ? '' : 's'} couldn't get ${stuck.length === 1 ? 'its' : 'their'} name back and ${stuck.length === 1 ? 'is' : 'are'} still called:`,
+                    items: stuck.slice(0, 12).map(f => `${f.name} (was ${original.get(f)})`).concat(stuck.length > 12 ? [`… and ${stuck.length - 12} more`] : [])
+                });
+                Watch.request({ full: true });
+            } else {
+                this.showToast(`Rename failed (${err.message}) — names were put back`, 5000);
+            }
             return false;
         }
         this.endTask('rename');
