@@ -175,6 +175,8 @@ const Recents = {
         }
         if (!hits.length) return null;
         hits.sort((a, b) => a.path.split('/').length - b.path.split('/').length);
+        // The Windows app keeps no .jeditor in the folders: the closest project
+        if (FolderCache.native()) return hits[0];
         for (const hit of hits) {
             try {
                 await hit.rec.handle.getDirectoryHandle(FolderCache.DIR);

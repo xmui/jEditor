@@ -62,12 +62,23 @@ static class FolderRename
                 var np = to + p.TrimEnd('\\')[from.Length..];
                 json["path"] = np;
                 json["name"] = Path.GetFileName(np);
-                File.WriteAllText(file, json.ToJsonString());
                 var target = Path.Combine(Shell.OrdersDir, StoreName(np));
-                if (string.Equals(target, store, StringComparison.OrdinalIgnoreCase)) continue;
-                if (Directory.Exists(target)) { Log.Write($"Rename: {target} is there already; {store} left as it is"); continue; }
-                Directory.Move(store, target);
-                Log.Write($"Rename: its data moved to {Path.GetFileName(target)}");
+                if (!string.Equals(target, store, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Data left by an earlier project of that name is set aside,
+                    // so this project's own goes in its place
+                    if (Directory.Exists(target))
+                    {
+                        var aside = target + "-old-" + DateTime.Now.ToString("yyyyMMddHHmmss");
+                        Directory.Move(target, aside);
+                        Log.Write($"Rename: {Path.GetFileName(target)} was there already; set aside as {Path.GetFileName(aside)}");
+                    }
+                    Directory.Move(store, target);
+                    file = Path.Combine(target, "order.json");
+                    Log.Write($"Rename: its data moved to {Path.GetFileName(target)}");
+                }
+                // Its path written once the data is where that path finds it
+                File.WriteAllText(file, json.ToJsonString());
             }
             catch (Exception e)
             {
@@ -84,7 +95,28 @@ static class FolderRename
         if (safe.Length > 60) safe = safe[..60];
         safe = safe.Trim();
         if (safe.Length == 0) safe = "Order";
-        return $"{safe}-{Hash(path.ToLowerInvariant())}";
+        return $"{safe}-{Hash(JsLower(path))}";
+    }
+
+    // JavaScript's toLowerCase, which the page's store names use: as
+    // ToLowerInvariant but for İ (i + combining dot) and a word-final Σ (ς)
+    static string JsLower(string s)
+    {
+        var sb = new System.Text.StringBuilder(s.Length);
+        for (int i = 0; i < s.Length; i++)
+        {
+            char c = s[i];
+            if (c == '\u0130') { sb.Append("i\u0307"); continue; }
+            if (c == '\u03A3')
+            {
+                bool before = i > 0 && char.IsLetter(s[i - 1]);
+                bool after = i + 1 < s.Length && char.IsLetter(s[i + 1]);
+                sb.Append(before && !after ? '\u03C2' : '\u03C3');
+                continue;
+            }
+            sb.Append(char.ToLowerInvariant(c));
+        }
+        return sb.ToString();
     }
 
     static string Hash(string key)

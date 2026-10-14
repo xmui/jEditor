@@ -1302,6 +1302,8 @@ const Folders = {
         if (item.kind === 'window') {
             // Into the project in another window
             this.closePicker();
+            // A rotation still being written lands before the file goes
+            for (const f of files) await this.settle(f);
             const paths = files.map(f => Windows.pathOf(f)).filter(Boolean);
             if (paths.length) await Windows.send(paths, item.win.path, item.path, copy, item.win.name);
             return;
