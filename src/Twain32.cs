@@ -96,7 +96,19 @@ static class Twain32
         }
         finally
         {
-            try { if (!proc.HasExited && !proc.WaitForExit(3000)) proc.Kill(); } catch (Exception) { }
+            // Left early (a save failed, say): the helper is asked to stop, so
+            // the scanner is closed properly, and waited for without holding
+            // up the window; one that doesn't end is ended
+            try
+            {
+                if (!proc.HasExited)
+                {
+                    try { proc.StandardInput.WriteLine("stop"); proc.StandardInput.Flush(); } catch (Exception) { }
+                    await Task.WhenAny(proc.WaitForExitAsync(), Task.Delay(8000));
+                    if (!proc.HasExited) proc.Kill();
+                }
+            }
+            catch (Exception) { }
             try { Directory.Delete(dir, true); } catch (Exception) { }
         }
     }

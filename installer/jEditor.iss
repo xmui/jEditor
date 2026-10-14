@@ -136,6 +136,8 @@ var
 begin
   Result := '';
   if not IsFree(Dir + '\jEditor.exe') then begin Result := 'jEditor.exe'; exit; end;
+  // The 32-bit scan helper, if a scan left it running
+  if not IsFree(Dir + '\twain32\jEditor.Twain32.exe') then begin Result := 'jEditor.Twain32.exe'; exit; end;
   if FindFirst(Dir + '\NAPS2.*', F) then
   try
     repeat

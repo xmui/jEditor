@@ -137,7 +137,8 @@ sealed class Run : ApplicationContext
             session = new TwainSession(appId);
             session.TransferReady += TransferReady;
             session.DataTransferred += DataTransferred;
-            session.TransferError += (_, e) => Fail("The scanner stopped: " + (e.Exception?.Message ?? Status(e.SourceStatus)));
+            // Ended after the callback returns, not inside the driver's call
+            session.TransferError += (_, e) => { var why = "The scanner stopped: " + (e.Exception?.Message ?? Status(e.SourceStatus)); window.BeginInvoke(new Action(() => Fail(why))); };
             session.SourceDisabled += (_, _) => window.BeginInvoke(new Action(() => Finish(null)));
             var rc = session.Open(new WindowsFormsMessageLoopHook(window.Handle));
             if (rc != ReturnCode.Success) { Fail("TWAIN wouldn't start: " + rc); return; }

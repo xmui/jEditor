@@ -316,7 +316,16 @@ sealed class MainForm : Form
             case "pickFolder":
                 // After this handler returns: the picker is modal
                 var id = msg["id"]?.GetValue<long>() ?? 0;
-                BeginInvoke(() => PickFolder(id));
+                BeginInvoke(() =>
+                {
+                    // Whatever goes wrong, the page's picker gets an answer
+                    try { PickFolder(id); }
+                    catch (Exception ex)
+                    {
+                        Log.Write($"Folder picker failed: {ex.Message}");
+                        try { Post(new { replyTo = id, cancelled = true }); } catch (Exception) { }
+                    }
+                });
                 break;
             case "ready":
                 Log.Write($"jEditor {Str(msg, "version")} ready");
@@ -507,7 +516,9 @@ sealed class MainForm : Form
                 case "exists":
                 {
                     var paths = (msg["paths"] as JsonArray ?? []).Select(p => (string?)p ?? "").ToList();
-                    Reply(id, new { exists = paths.Select(p => p != "" && Directory.Exists(p)).ToList() });
+                    // Off the window's thread: a network drive that's gone takes a while to say so
+                    var exists = await Task.Run(() => paths.Select(p => p != "" && Directory.Exists(p)).ToList());
+                    Reply(id, new { exists });
                     break;
                 }
                 case "checkUpdate":
@@ -723,8 +734,10 @@ sealed class MainForm : Form
                     if (!Updater.IsNewer(release.Tag, Updater.CurrentTag)) { Reply(id, new { error = "This is already the newest version" }); break; }
                     var setup = await Updater.DownloadAsync(release, (got, total) =>
                         BeginInvoke(() => Post(new { type = "updateProgress", received = got, total })));
-                    Reply(id, new { ok = true });
+                    // Started first: if Windows won't run it (antivirus, say),
+                    // the page hears the error instead of waiting forever
                     Updater.Install(setup);
+                    Reply(id, new { ok = true });
                     Finish(0);
                     break;
                 }
