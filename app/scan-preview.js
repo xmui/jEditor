@@ -135,8 +135,7 @@ const ScanPreview = {
 
     // A box round a print (PhotoFind's { cx, cy, w, h, tilt } in the
     // preview's pixels), with a little glass round it for Auto crop to trim
-    boxFor(f) {
-        const { width: W, height: H } = this.image;
+    boxFor(f, W = this.image.width, H = this.image.height) {
         const m = Math.min(W, H) * 0.01;
         const w = f.w + 2 * m, h = f.h + 2 * m;
         return {
@@ -280,9 +279,8 @@ const ScanPreview = {
     // print and straightens it)
     find(img) {
         const W = img.naturalWidth, H = img.naturalHeight;
-        if (!W || !H || !this.image) return [];
-        const k = this.image.width / W;
-        const found = PhotoFind.all(img, W, H).map(f => this.boxFor({ cx: f.cx * k, cy: f.cy * k, w: f.w * k, h: f.h * k, tilt: f.tilt }));
+        if (!W || !H) return [];
+        const found = PhotoFind.all(img, W, H).map(f => this.boxFor(f, W, H));
         return this.readingOrder(found);
     },
 

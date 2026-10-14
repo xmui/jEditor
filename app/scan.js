@@ -50,6 +50,7 @@ const Scan = {
     ],
     KNOWN_BEDS: [[/OpticBook\s*A300/i, 'a3'], [/Perfection\s*V\d{3}/i, 'epson'], [/OpticBook\s*3[89]00|OpticBook\s*4800/i, 'letter']],
     KEY_OPTS: 'jeditor.scanOpts', // the settings last used
+    KEY_DEV_OPTS: 'jeditor.scanOptsBy', // …and with each scanner
     KEY_SETUPS: 'jeditor.scanSetups', // saved setups: [{ name, …settings }]
     caps: {}, // what each scanner can do (asked once)
     STRIP: 6, // photos shown in the dock
@@ -100,7 +101,7 @@ const Scan = {
         this.el('scan-setup-save').addEventListener('click', () => this.saveSetup());
         this.el('scan-setup-del').addEventListener('click', () => this.deleteSetup());
         this.el('scan-details').addEventListener('click', () => this.showDetails(!this.details.shown, true));
-        this.el('scan-device').addEventListener('change', () => { this.syncCompat(); this.syncMode(true); this.loadCaps(); });
+        this.el('scan-device').addEventListener('change', () => { this.syncCompat(); this.syncMode(true); this.loadOptsFor(this.device()); this.loadCaps(); });
         this.el('scan-folder').addEventListener('change', () => this.fillNames());
         this.el('scan-prefix').addEventListener('input', () => this.preview());
         this.el('scan-next').addEventListener('input', () => this.preview());
@@ -154,6 +155,7 @@ const Scan = {
         this.loadOpts();
         this.el('scan-go').focus();
         await this.loadDevices(false);
+        this.loadOptsFor(this.device());
         await this.loadCaps();
     },
 
@@ -464,6 +466,29 @@ const Scan = {
         this.syncOpts();
     },
 
+    // Kept for the scanner they were used with, and as the last used
+    saveOpts(o) {
+        this.put(this.KEY_OPTS, o);
+        const d = this.device();
+        if (!d) return;
+        const all = this.get(this.KEY_DEV_OPTS, {}) || {};
+        all[d.id] = o;
+        this.put(this.KEY_DEV_OPTS, all);
+    },
+
+    // A scanner's own settings, else the last used, at a resolution that
+    // suits it (a photo feeder: 300 dpi, plenty for prints and quick)
+    loadOptsFor(d) {
+        if (!d) return;
+        const mine = (this.get(this.KEY_DEV_OPTS, {}) || {})[d.id];
+        if (mine) return this.setOpts(mine);
+        this.setOpts({ ...(this.get(this.KEY_OPTS, {}) || {}), dpi: this.defaultDpi(d) });
+    },
+
+    defaultDpi(d) {
+        return d && /FF-\d|FastFoto/i.test(d.name || d.id) ? 300 : 600;
+    },
+
     // The last settings used (1.23's resolution and colour too)
     loadOpts() {
         const old = this.get('jeditor.scanPv', {}) || {};
@@ -473,7 +498,7 @@ const Scan = {
 
     optsChanged() {
         this.syncOpts();
-        this.put(this.KEY_OPTS, this.opts());
+        this.saveOpts(this.opts());
         // Changed from a saved setup: it's custom now
         const pick = this.el('scan-setup-pick');
         const s = this.setups().find(x => x.name === pick.value);
@@ -525,7 +550,7 @@ const Scan = {
         this.el('scan-setup-del').disabled = !s;
         if (!s) return;
         this.setOpts(s);
-        this.put(this.KEY_OPTS, this.opts());
+        this.saveOpts(this.opts());
         this.preview();
     },
 
@@ -554,7 +579,9 @@ const Scan = {
         const select = this.el('scan-dpi');
         const dpis = (caps.dpis || []).filter(d => d >= 100);
         const list = dpis.length ? dpis : [300, 600, 1200];
-        const want = +select.value || (this.get(this.KEY_OPTS, {}) || {}).dpi || (this.get('jeditor.scanPv', {}) || {}).dpi;
+        const d = this.device();
+        const mine = d && (this.get(this.KEY_DEV_OPTS, {}) || {})[d.id];
+        const want = (mine && mine.dpi) || (d ? this.defaultDpi(d) : 0) || +select.value || (this.get(this.KEY_OPTS, {}) || {}).dpi;
         select.innerHTML = '';
         for (const d of list) {
             const o = document.createElement('option');
@@ -844,7 +871,7 @@ const Scan = {
         if (!pv || !pv.bed || !boxes.length) return;
         const r4 = (v) => Math.round(v * 10000) / 10000;
         const o = this.opts();
-        this.put(this.KEY_OPTS, o);
+        this.saveOpts(o);
         const opts = {
             device: pv.device.id, driver: pv.device.driver, folder: pv.folder, autoCrop: pv.autoCrop, compat: pv.compat,
             source: 'glass',

@@ -195,6 +195,9 @@ const PAGE_HELPERS = `
     };
 `;
 
+// Synthetic scans with known answers, for the photo finder (scenes.js)
+const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
+
 async function newPage(browser, url) {
     const page = await browser.newPage();
     const issues = { errors: [], failedRequests: [] };
@@ -3149,6 +3152,46 @@ async function newPage(browser, url) {
         check('auto crop: says what it did, with Undo', /Auto-cropped 2 photos — no print found on 1/.test(r.toast), r.toast);
         check('auto crop: originals kept in .jeditor/originals; one Ctrl+Z restores every byte', r.backups === 2 && r.restored && r.backupsAfter === 0, JSON.stringify(r));
         check('auto crop suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7s0. The photo finder (photo-find.js) ----
+    console.log('photo finder');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.evaluate(PHOTO_SCENES);
+        const r = await page.evaluate(() => {
+            const S = Scenes, out = {};
+            const lid = '#ecebe6';
+            const all = (name, bed, prints, opts, W = 1000, H = 1200) => {
+                const c = S.draw(W, H, bed, prints, opts);
+                const found = PhotoFind.all(c, W, H);
+                out[name] = { n: found.length, err: Math.max(...prints.map(p => Math.min(...found.map(f => S.err(f.corners, p)), 999))) };
+            };
+            all('three', lid, [{ x: 300, y: 260, w: 360, h: 240, angle: 3 }, { x: 800, y: 300, w: 240, h: 360, angle: -5 }, { x: 420, y: 800, w: 420, h: 300, angle: 0, kind: 'dark' }], { gradient: 0.12, noise: 6, dust: true });
+            all('whiteBorder', '#f7f7f5', [{ x: 500, y: 450, w: 400, h: 300, angle: -1.5, border: 18, borderColor: '#ffffff' }], { noise: 4 });
+            all('darkOnBlack', '#0a0a0a', [{ x: 500, y: 500, w: 380, h: 280, angle: 4, kind: 'dark' }], { noise: 6 });
+            all('touching', lid, [{ x: 330, y: 400, w: 300, h: 220, angle: 0 }, { x: 631, y: 400, w: 300, h: 220, angle: 0 }], { noise: 5 });
+            all('six', lid, [0, 1, 2, 3, 4, 5].map(i => ({ x: 200 + (i % 2) * 450, y: 180 + Math.floor(i / 2) * 380, w: 360, h: 250, angle: (i - 2.5) * 1.6 })), { noise: 6, dust: true });
+            all('shaded', lid, [{ x: 400, y: 450, w: 400, h: 300, angle: -2 }, { x: 600, y: 950, w: 300, h: 200, angle: 1 }], { gradient: 0.35, noise: 6 });
+            all('panorama', lid, [{ x: 500, y: 400, w: 900, h: 280, angle: 1 }], { noise: 5 });
+            const feeder = (g, W, H) => { g.fillStyle = '#fbfbfb'; g.fillRect(0, 0, W, H); g.fillStyle = '#b4c3d2'; g.fillRect(0, 0, W, 580); };
+            const fp = { x: 450, y: 285, w: 380, h: 560, angle: 1.5 };
+            const f = PhotoFind.single(S.draw(850, 1400, feeder, [fp], { noise: 8 }), 850, 1400, { feeder: true });
+            out.feeder = f ? S.err(f.corners, fp) : 999;
+            const sky = S.draw(900, 600, '#888', [{ x: 450, y: 300, w: 900, h: 600, angle: 0, kind: 'sky' }], {});
+            const plain = S.draw(900, 600, '#888', [{ x: 450, y: 300, w: 900, h: 600, angle: 0 }], {});
+            out.notScans = !PhotoFind.single(sky, 900, 600, { strict: true }) && !PhotoFind.single(plain, 900, 600, { strict: true });
+            return out;
+        });
+        const ok = (k, n, e) => r[k] && r[k].n === n && r[k].err <= e;
+        check('finder: prints on a shaded, dusty lid, tilted, a dark one too', ok('three', 3, 4) && ok('shaded', 2, 4) && ok('darkOnBlack', 1, 5), JSON.stringify([r.three, r.shaded, r.darkOnBlack]));
+        check('finder: a white-bordered print on a white lid, border and all', ok('whiteBorder', 1, 6), JSON.stringify(r.whiteBorder));
+        check('finder: prints laid touching are told apart; a panorama stays whole', ok('touching', 2, 4) && ok('panorama', 1, 4), JSON.stringify([r.touching, r.panorama]));
+        check('finder: six prints at once', ok('six', 6, 4), JSON.stringify(r.six));
+        check('finder: a feeder page (two backgrounds), tilted', r.feeder <= 4, String(r.feeder));
+        check('finder: ordinary photos (one with a plain sky) aren\'t taken for scans', r.notScans);
+        check('finder suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
