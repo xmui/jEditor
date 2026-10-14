@@ -4234,7 +4234,8 @@ html:not(.native) .native-only {
     margin-top: auto;
     border-top: 1px solid var(--border);
     border-radius: 0 0 var(--r-lg) var(--r-lg);
-    background: var(--glass-bg);
+    /* Nearly solid, so the settings scrolling behind don't show through */
+    background: color-mix(in srgb, var(--bg-surface) 94%, transparent);
     backdrop-filter: var(--glass-filter);
     -webkit-backdrop-filter: var(--glass-filter);
 }
