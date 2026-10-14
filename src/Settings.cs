@@ -33,6 +33,20 @@ sealed class Settings
         return new Settings();
     }
 
+    // One change written now, onto what's in the file: several windows
+    // share it, and each writing its whole copy when it closes lost the
+    // others' changes (the last folder, the UI stamp)
+    static readonly object gate = new();
+    public static void Update(Action<Settings> change)
+    {
+        lock (gate)
+        {
+            var s = Load();
+            change(s);
+            s.Save();
+        }
+    }
+
     public void Save()
     {
         try

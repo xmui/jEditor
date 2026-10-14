@@ -125,6 +125,15 @@ sealed class MainForm : Form
         catch (Exception e)
         {
             Log.Write(e.ToString());
+            // Closed while it was starting: nothing to say
+            if (IsDisposed || Disposing) return;
+            // A second window that couldn't start goes alone; the others stay
+            if (AppWindows.All.Count(f => f != this && !f.IsDisposed) > 0)
+            {
+                Program.Fail(options, "This jEditor window couldn't start: " + e.Message);
+                Close();
+                return;
+            }
             Program.Fail(options, "jEditor couldn't start: " + e.Message);
             Finish(70);
         }
@@ -232,6 +241,10 @@ sealed class MainForm : Form
         {
             Log.Write($"WebView2 process failed: {e.ProcessFailedKind} {e.Reason}");
             smoke?.Fail($"WebView2 process failed ({e.ProcessFailedKind})");
+            // The page's renderer crashed (out of memory on a huge project,
+            // say): loaded again, instead of a blank window
+            if (smoke is null && e.ProcessFailedKind == CoreWebView2ProcessFailedKind.RenderProcessExited)
+                BeginInvoke(() => { try { if (!IsDisposed) Core.Reload(); } catch (Exception ex) { Log.Write("Reload after crash: " + ex.Message); } });
         };
     }
 
@@ -1046,6 +1059,7 @@ sealed class MainForm : Form
             return;
         }
         settings.LastFolder = path;
+        if (smoke is null) Settings.Update(s => s.LastFolder = path);
         Log.Write($"Picked {path}");
         Post(new { replyTo = id, path }, handle);
     }
@@ -1130,12 +1144,17 @@ sealed class MainForm : Form
         watcher?.Dispose();
         if (smoke is not null) return;
         var normal = WindowState == FormWindowState.Normal && !fullScreen ? Bounds : RestoreBounds;
-        settings.X = normal.X;
-        settings.Y = normal.Y;
-        settings.Width = normal.Width;
-        settings.Height = normal.Height;
-        settings.Maximized = fullScreen ? stateBeforeFullScreen == FormWindowState.Maximized : WindowState == FormWindowState.Maximized;
-        settings.Save();
+        var maximized = fullScreen ? stateBeforeFullScreen == FormWindowState.Maximized : WindowState == FormWindowState.Maximized;
+        // Only where this window was: the rest is as the other windows left it
+        Settings.Update(s =>
+        {
+            s.X = normal.X;
+            s.Y = normal.Y;
+            s.Width = normal.Width;
+            s.Height = normal.Height;
+            s.Maximized = maximized;
+            s.Dark = settings.Dark;
+        });
     }
 
     // ---- The UI files ----
@@ -1161,11 +1180,13 @@ sealed class MainForm : Form
             return;
         }
         var stamp = UiStamp(options.UiDir!);
-        if (settings.UiStamp == stamp) return;
+        // As the file says now: another window may have cleared them already
+        if (settings.UiStamp == stamp || Settings.Load().UiStamp == stamp) { settings.UiStamp = stamp; return; }
         Log.Write($"UI changed ({settings.UiStamp ?? "first run"} → {stamp}): clearing caches");
         await Core.Profile.ClearBrowsingDataAsync(
             CoreWebView2BrowsingDataKinds.DiskCache | CoreWebView2BrowsingDataKinds.CacheStorage | CoreWebView2BrowsingDataKinds.ServiceWorkers);
         settings.UiStamp = stamp;
+        if (smoke is null) Settings.Update(s => s.UiStamp = stamp);
     }
 
     static string UiStamp(string dir)
