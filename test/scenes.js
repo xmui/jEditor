@@ -26,7 +26,7 @@ window.Scenes = (() => {
         }
         if (kind === 'sky') { g.fillStyle = '#cfe0ef'; g.fillRect(-w / 2, -h / 2, w, h * 0.35); }
     };
-    // print: { x, y (centre), w, h, angle (deg clockwise), border (px, white), kind }
+    // print: { x, y (center), w, h, angle (deg clockwise), border (px, white), kind }
     const draw = (W, H, bed, prints, opts = {}) => {
         const c = document.createElement('canvas'); c.width = W; c.height = H;
         const g = c.getContext('2d');

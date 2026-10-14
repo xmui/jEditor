@@ -364,7 +364,7 @@ a {
     font-size: var(--fs-small);
 }
 
-/* Selects draw their own chevron in the text colour */
+/* Selects draw their own chevron in the text color */
 select.field,
 .sort-control select {
     appearance: none;
@@ -1203,7 +1203,7 @@ html.native .grid-view.grid-empty-project::after {
     -webkit-backdrop-filter: blur(6px);
 }
 
-/* Flag badges on a tile or film-strip item: colour dot, star, rescan */
+/* Flag badges on a tile or film-strip item: color dot, star, rescan */
 .tile-flags {
     position: absolute;
     top: 6px;
@@ -1242,7 +1242,7 @@ html.native .grid-view.grid-empty-project::after {
     box-shadow: 0 0 0 1.5px rgb(0 0 0 / 0.25);
 }
 
-/* Star and rescan colours on photos (dark chips) stay bright */
+/* Star and rescan colors on photos (dark chips) stay bright */
 .tf-star {
     color: var(--on-photo-star);
 }
@@ -1270,7 +1270,7 @@ html.native .grid-view.grid-empty-project::after {
     -webkit-backdrop-filter: none;
 }
 
-/* Beside the file name in the centre pill */
+/* Beside the file name in the center pill */
 #file-flags {
     display: inline-flex;
     align-items: center;
@@ -1370,7 +1370,7 @@ html.native .grid-view.grid-empty-project::after {
 /* ---- 7. Folder pill, folder list, flags, search ---- */
 
 /* Folder pill in grid view, top left, level with the header pills. Kept
-   clear of the centre pill (Folders.fitBar sets --bar-room). */
+   clear of the center pill (Folders.fitBar sets --bar-room). */
 .folder-bar {
     position: absolute;
     top: var(--gutter);
@@ -1394,7 +1394,7 @@ html.native .grid-view.grid-empty-project::after {
     background: var(--tb-pressed);
 }
 
-/* Not much room beside the centre pill: shorter labels, no path */
+/* Not much room beside the center pill: shorter labels, no path */
 .fb-short,
 .folder-bar.tight .fb-long,
 .folder-bar.tight .fb-crumbs {
@@ -1831,13 +1831,13 @@ html.native .grid-view.grid-empty-project::after {
 
 /* ---- 8. Selection bar, grid size ---- */
 
-/* Centred in the room between the folder list (when open) and the grid
+/* Centered in the room between the folder list (when open) and the grid
    size slider */
 .selection-bar {
     position: absolute;
     bottom: var(--gutter);
     left: var(--gutter);
-    /* Centred on the grid (beside the folder list when it's open), allowing
+    /* Centered on the grid (beside the folder list when it's open), allowing
        for the grid's scrollbar; on a narrow window it runs on over the
        grid size slider */
     right: calc(var(--gutter) + var(--grid-scrollbar, 0px));
@@ -2144,7 +2144,7 @@ body {
     --toast-bottom: calc(var(--gutter) + var(--ctl-lg) + var(--sp-3));
 }
 
-/* Single view: just above the film strip, beside the centred controls */
+/* Single view: just above the film strip, beside the centered controls */
 body[data-view="single"] {
     --toast-bottom: calc(var(--strip-height, 80px) + 28px + var(--gutter));
 }
@@ -2639,7 +2639,7 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     box-shadow: 0 0 0 2px var(--bg-surface), 0 0 0 4px var(--sw);
 }
 
-/* The custom swatch: a rainbow until a colour of its own is picked */
+/* The custom swatch: a rainbow until a color of its own is picked */
 .accent-custom {
     background: conic-gradient(#f87171, #facc15, #4ade80, #60a5fa, #c084fc, #f87171);
     overflow: visible;
@@ -3313,7 +3313,7 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     text-align: right;
 }
 
-/* Straighten slider: a centre tick; the part between 0° and the angle is
+/* Straighten slider: a center tick; the part between 0° and the angle is
    filled (--lo / --hi set by crop.js) */
 .crop-straighten input[type="range"] {
     --lo: 50%;
@@ -3846,7 +3846,7 @@ body.dragging-photos .folder-tile:hover {
 /* ---- 16. Responsive ---- */
 
 /* Laptops: with the folder list open there's less room for labels (the
-   bar is centred on the grid, so it would reach the size slider) */
+   bar is centered on the grid, so it would reach the size slider) */
 @media (max-width: 1439px) {
     .interface.rail-open .selection-bar .tb-btn.labelled span {
         display: none;

@@ -7,7 +7,7 @@
 //             photos: next in the folder's sequence (Smith-014.jpg after
 //             Smith-013.jpg), worked out from what's there; How (the glass
 //             or the feeder, from what the scanner has) and jEditor's own
-//             settings: resolution, colour, sides (feeder: backs saved as
+//             settings: resolution, color, sides (feeder: backs saved as
 //             Smith-014-b.jpg), file type and quality, brightness and
 //             contrast, and saved setups. No scanner window: Advanced has
 //             the scanner's own window, for when jEditor's aren't enough.
@@ -489,7 +489,7 @@ const Scan = {
         return d && /FF-\d|FastFoto/i.test(d.name || d.id) ? 300 : 600;
     },
 
-    // The last settings used (1.23's resolution and colour too)
+    // The last settings used (1.23's resolution and color too)
     loadOpts() {
         const old = this.get('jeditor.scanPv', {}) || {};
         this.setOpts({ dpi: old.dpi, color: old.color, ...(this.get(this.KEY_OPTS, {}) || {}) });

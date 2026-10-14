@@ -44,7 +44,7 @@ static class Twain32
         if (gray) info.ArgumentList.Add("--gray");
         if (duplex) info.ArgumentList.Add("--duplex");
         if (autoSize) { info.ArgumentList.Add("--autosize"); info.ArgumentList.Add("--deskew"); }
-        Log.Write($"Scanning the feeder through jEditor's 32-bit helper: {dpi} dpi, {(gray ? "greys" : "colour")}, {(duplex ? "both sides" : "one side")}{(autoSize ? ", the scanner's own auto-size" : "")}");
+        Log.Write($"Scanning the feeder through jEditor's 32-bit helper: {dpi} dpi, {(gray ? "grayscale" : "color")}, {(duplex ? "both sides" : "one side")}{(autoSize ? ", the scanner's own auto-size" : "")}");
         var started = Stopwatch.StartNew();
         using var proc = Process.Start(info) ?? throw new Failed("the 32-bit helper didn't start");
         // Stop: the photo going through finishes, then it ends; one stuck is ended

@@ -1,7 +1,7 @@
 /* ==========================================================================
    jEditor design tokens
    --------------------------------------------------------------------------
-   Every colour, size, radius, shadow, duration and layer in style.css comes
+   Every color, size, radius, shadow, duration and layer in style.css comes
    from here. Components never use raw values.
 
    Switches live on <html> (set by applyUiPrefs in script.js):
@@ -9,7 +9,7 @@
      data-density   compact | comfortable   (Settings → Density)
      data-glass     rich | subtle           (Settings → Glass)
      data-surround  auto | black | dark | grey | light   (background behind photos)
-   --accent-color / --on-accent are set from Settings → Accent colour.
+   --accent-color / --on-accent are set from Settings → Accent color.
    ========================================================================== */
 
 :root {
@@ -234,7 +234,7 @@
 /* ---- Surround ---- */
 :root[data-surround="black"] { --surround: #000; }
 :root[data-surround="dark"]  { --surround: #0b0b0b; }
-:root[data-surround="grey"]  { --surround: #767676; }  /* 18% grey */
+:root[data-surround="grey"]  { --surround: #767676; }  /* 18% gray (the value stays "grey") */
 :root[data-surround="light"] { --surround: #d9d9d9; }
 
 /* ---- Reduced motion: everything becomes a plain fade or nothing ---- */

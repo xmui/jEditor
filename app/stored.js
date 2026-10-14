@@ -210,7 +210,7 @@ const Stored = {
         const sum = (f) => orders.reduce((n, o) => n + f(o), 0);
         const flags = sum(o => o.flags), trash = sum(o => o.usage.trash.n), originals = sum(o => o.usage.originals.n);
         const items = [];
-        if (flags) items.push(`${flags} flag${flags === 1 ? '' : 's'} (stars, rescan flags, colour labels) are lost.`);
+        if (flags) items.push(`${flags} flag${flags === 1 ? '' : 's'} (stars, rescan flags, color labels) are lost.`);
         if (trash) items.push(`${trash} deleted photo${trash === 1 ? '' : 's'} kept by jEditor will be gone for good.`);
         if (originals) items.push(`${originals} Auto crop original${originals === 1 ? '' : 's'} will be gone, so those crops can't be undone.`);
         items.push('The cache goes too (made again if the project is opened).');

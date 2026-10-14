@@ -184,7 +184,7 @@ sealed class Run : ApplicationContext
         Set("No progress window", () => caps.CapIndicators.SetValue(BoolType.False));
         Set("Feeder", () => caps.CapFeederEnabled.SetValue(BoolType.True));
         Set(o.Duplex ? "Both sides" : "One side", () => caps.CapDuplexEnabled.SetValue(o.Duplex ? BoolType.True : BoolType.False));
-        Set(o.Gray ? "Greys" : "Colour", () => caps.ICapPixelType.SetValue(o.Gray ? PixelType.Gray : PixelType.RGB));
+        Set(o.Gray ? "Grayscale" : "Color", () => caps.ICapPixelType.SetValue(o.Gray ? PixelType.Gray : PixelType.RGB));
         Set("Inches", () => caps.ICapUnits.SetValue(Unit.Inches));
         Set($"{o.Dpi} dpi across", () => caps.ICapXResolution.SetValue(o.Dpi));
         Set($"{o.Dpi} dpi down", () => caps.ICapYResolution.SetValue(o.Dpi));

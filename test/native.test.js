@@ -302,7 +302,7 @@ const FAKE_NATIVE = `
     };
 `;
 
-// A real JPEG: a colour with a label, so every photo's bytes differ
+// A real JPEG: a color with a label, so every photo's bytes differ
 const JPEG = async (color, label = '') => {
     const c = document.createElement('canvas');
     c.width = 160; c.height = 120;

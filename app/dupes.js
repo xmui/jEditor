@@ -7,7 +7,7 @@
 //   • near-duplicates: each thumbnail is first cropped to the photo itself
 //     (a uniform scanner bed or film border would otherwise make unrelated
 //     scans look alike), then compared at all four rotations on two
-//     brightness-normalised maps: the overall layout (16×16) and the fine
+//     brightness-normalized maps: the overall layout (16×16) and the fine
 //     detail (32×32 minus its local mean). Both must agree; photos that
 //     merely share a composition (sky over ground) differ in detail.
 // Groups use complete linkage — a photo joins a group only if it matches
@@ -261,7 +261,7 @@ const Dupes = {
                 fine[(y >> 1) * M + (x >> 1)] += lum / 4;
             }
         }
-        // Detail: each cell minus its 3×3 neighbourhood mean
+        // Detail: each cell minus its 3×3 neighborhood mean
         const detail = new Float32Array(M * M);
         for (let y = 0; y < M; y++) {
             for (let x = 0; x < M; x++) {

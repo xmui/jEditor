@@ -2,7 +2,7 @@
 // cropped by Auto crop or boxed in Preview and crop) and the photo on a
 // sheet-feeder page.
 //
-//   1. The background: the colours round the scan's edge (a lid, a feeder's
+//   1. The background: the colors round the scan's edge (a lid, a feeder's
 //      backing and the plain fill past a short photo: up to three).
 //   2. Flooded in from the edge, step by small step, so lid shading and a
 //      backing that darkens are followed, but a print's edge stops it.
@@ -103,7 +103,7 @@ const PhotoFind = {
             rest = rest.filter(v => !near.has(v));
         }
         const share = clusters.reduce((s, cl) => s + cl.n, 0) / Math.max(1, total);
-        // Grain: how much neighbours along the edge differ (shading, which
+        // Grain: how much neighbors along the edge differ (shading, which
         // changes slowly, doesn't count)
         const diffs = [];
         const dstep = Math.max(1, Math.floor(w / 500));
@@ -125,7 +125,7 @@ const PhotoFind = {
         const [R, G, B] = S;
         const n = w * h;
         const noise = Math.max(1, ...bg.clusters.map(c => c.noise));
-        const near = Math.max(30, noise * 5);   // a seed on the edge: this close to a background colour
+        const near = Math.max(30, noise * 5);   // a seed on the edge: this close to a background color
         const far = Math.max(160, noise * 14);  // (lid shading: followed step by step)
         const stepMax = fine ? Math.max(3, bg.grain * 1.6) : Math.max(6, bg.grain * 3); // each step along the way small
         const nearest = (p) => {

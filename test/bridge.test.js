@@ -121,7 +121,7 @@ const waitForPost = (page, type) => page.waitForFunction(
         const version = fs.readFileSync(path.join(UI, 'version.js'), 'utf8').match(/APP_VERSION = '([^']+)'/)[1];
         check('posts ready with jEditor\'s version', ready.version === version, JSON.stringify(ready));
         const theme = await waitForPost(page, 'theme');
-        check('posts the theme and background colour', typeof theme.dark === 'boolean' && /^rgba?\(/.test(theme.background), JSON.stringify(theme));
+        check('posts the theme and background color', typeof theme.dark === 'boolean' && /^rgba?\(/.test(theme.background), JSON.stringify(theme));
 
         const r = await page.evaluate(async () => ({
             picker: window.showDirectoryPicker.name === 'showDirectoryPicker' && /request\('pickFolder'\)/.test(String(window.showDirectoryPicker)),
@@ -173,7 +173,7 @@ const waitForPost = (page, type) => page.waitForFunction(
         await context.close();
     }
 
-    console.log('bridge: picker cancelled');
+    console.log('bridge: picker canceled');
     {
         const { context, page, errors } = await openPage(browser);
         await waitForPost(page, 'ready');
@@ -188,7 +188,7 @@ const waitForPost = (page, type) => page.waitForFunction(
             startScreen: !document.getElementById('drop-zone').classList.contains('hidden'),
             dialog: typeof UI !== 'undefined' && UI.isOpen()
         }));
-        check('cancelling leaves the start screen, with no error message', r.files === 0 && r.startScreen && !r.dialog, JSON.stringify(r));
+        check('canceling leaves the start screen, with no error message', r.files === 0 && r.startScreen && !r.dialog, JSON.stringify(r));
         check('cancel: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }

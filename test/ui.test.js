@@ -1108,7 +1108,7 @@ async function newPage(browser, url) {
         check('compressed image data byte-identical', r.sameData);
         check('browser shows it rotated (40x20 → 20x40)', r.dims === '20x40', r.dims);
         check('XMP orientation kept in agreement', r.xmp);
-        check('CMYK colour profile not copied onto RGB output', r.cmykSafe);
+        check('CMYK color profile not copied onto RGB output', r.cmykSafe);
         check('second rotation writes only the orientation bytes in place', r.inPlace);
         await page.close();
     }
@@ -1232,7 +1232,7 @@ async function newPage(browser, url) {
             out.pngDpi = pd && Math.round(pd.x);
             out.pngType = p.handle.writtenType;
 
-            // ---- Frame-centred editing (Lightroom / Photos style) ----
+            // ---- Frame-centered editing (Lightroom / Photos style) ----
             // A print on a scanner bed: busy blocks, tilted 3° clockwise
             const scanJpeg = async (tilt, bed) => {
                 const c = document.createElement('canvas');
@@ -1364,7 +1364,7 @@ async function newPage(browser, url) {
         check('editor closes after save', r.closed);
         check('crop keeps EXIF (Make, DateTimeOriginal)', r.make === 'TestCam' && r.taken, String(r.make));
         check('crop keeps DPI (300)', r.dpi === 300, String(r.dpi));
-        check('crop keeps the ICC colour profile', r.icc);
+        check('crop keeps the ICC color profile', r.icc);
         check('crop resets EXIF orientation to 1 (pixels baked upright)', r.orientationReset === 1, String(r.orientationReset));
         check('undo restores the pre-crop file', r.undone);
         check('straightened crop fits inside the rotated image', r.fitsAt7);
@@ -1381,13 +1381,13 @@ async function newPage(browser, url) {
         check('Auto straightens a tilted print (−3°)', r.autoFound && Math.abs(r.autoAngle + 3) < 0.15, String(r.autoAngle));
         check('Auto crops to the print (720×480, no bed)', r.autoNoBed && Math.abs(r.autoSize[0] - 720) < 12 && Math.abs(r.autoSize[1] - 480) < 12, JSON.stringify(r.autoSize));
         check('Auto declines a photo with no scanner border', r.autoDeclines);
-        check('straightening pivots on the crop centre', r.pivot);
-        check('resting view: crop centred and filling the stage', r.fills && r.centred);
+        check('straightening pivots on the crop center', r.pivot);
+        check('resting view: crop centered and filling the stage', r.fills && r.centred);
         check('drag inside moves the photo, not the frame', r.panFrameStill && r.panMovedPhoto);
         check('drag outside the frame rotates', r.rotateDrag && r.rotateFrameStill, String(r.rotateDrag));
         check('Ctrl+drag draws a level line', r.ctrlLevel);
         check('editor undo: a run of nudges is one step; redo', r.nudged && r.undoNudges && r.redo);
-        check('handle resize, then the view re-centres', r.resized && r.settled);
+        check('handle resize, then the view re-centers', r.resized && r.settled);
         check('"Every photo" runs Auto as each photo opens', r.autoEach);
         check('crop suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
@@ -1600,7 +1600,7 @@ async function newPage(browser, url) {
             out.visible = !document.getElementById('image-container').classList.contains('hidden') &&
                 img.naturalWidth === 300 && app.viewMode === 'single';
 
-            // Neighbour is pre-decoded: next photo is on screen synchronously
+            // Neighbor is pre-decoded: next photo is on screen synchronously
             const next = app.files[1];
             for (let i = 0; i < 50 && !(next._decodedEl && next._decodedEl._decoded); i++) await new Promise(res => setTimeout(res, 20));
             app.navigate(1);
@@ -3137,8 +3137,8 @@ async function newPage(browser, url) {
             out.cleanedUp = !app.files.some(x => x._flags);
             return out;
         });
-        check('flags: P, X and 1–5 set star, rescan and colour on the selection', r.flags && r.badges, JSON.stringify(r));
-        check('flags: P again unstars; Ctrl+Z undoes; a new colour replaces the old', r.toggled && r.undone && r.colourSwap);
+        check('flags: P, X and 1–5 set star, rescan and color on the selection', r.flags && r.badges, JSON.stringify(r));
+        check('flags: P again unstars; Ctrl+Z undoes; a new color replaces the old', r.toggled && r.undone && r.colourSwap);
         check('flags: saved in .jeditor/flags.json, keyed by path', r.saved);
         check('flags: a rename carries them; saved under the new name', r.renamed);
         check('flags: come back when the order is opened again', r.reloaded);
@@ -3789,8 +3789,8 @@ async function newPage(browser, url) {
         await page.close();
     }
 
-    // ---- 7u. Accent colour ----
-    console.log('accent colour');
+    // ---- 7u. Accent color ----
+    console.log('accent color');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
         const r = await page.evaluate(async () => {
@@ -3798,7 +3798,7 @@ async function newPage(browser, url) {
             const out = {};
             app.setAccent('#16a34a');
             out.green = css('--accent-color') === '#16a34a' && css('--on-accent') === '#fff';
-            await new Promise(res => setTimeout(res, 400)); // the button's colour transition
+            await new Promise(res => setTimeout(res, 400)); // the button's color transition
             out.button = getComputedStyle(document.getElementById('btn-browse-folder')).backgroundColor;
             out.saved = JSON.parse(localStorage.getItem('jeditor.ui')).accent === '#16a34a';
             app.setAccent('#facc15');
@@ -3807,7 +3807,7 @@ async function newPage(browser, url) {
             out.reset = app.uiPrefs.accent === null && css('--accent-color') === '#2563eb';
             return out;
         });
-        check('accent: a colour changes every accent element', r.green && r.button === 'rgb(22, 163, 74)', r.button);
+        check('accent: a color changes every accent element', r.green && r.button === 'rgb(22, 163, 74)', r.button);
         check('accent: remembered; dark text on a light accent; blue resets', r.saved && r.lightText && r.reset, JSON.stringify(r));
         check('accent suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();

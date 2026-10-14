@@ -278,8 +278,8 @@ const app = {
             await this.openDirectory(dirHandle);
         } catch (err) {
             if (err.name === 'AbortError') {
-                // User cancelled the picker
-                this.log('Folder selection cancelled');
+                // User canceled the picker
+                this.log('Folder selection canceled');
                 return;
             }
             console.error('Browse folder error:', err);
@@ -352,7 +352,7 @@ const app = {
     //
     // Every header control can be shown in the pill, tucked into the "More"
     // section, or hidden entirely; the order is drag-reorderable in
-    // Settings. Theme, density, glass, the colour behind photos, accent,
+    // Settings. Theme, density, glass, the color behind photos, accent,
     // toolbar size, orientation, film strip height and thumbnail fit are
     // preferences too. Everything persists in localStorage under 'jeditor.ui'.
 
@@ -498,7 +498,7 @@ const app = {
         this.applyAppearance();
     },
 
-    // Theme, density, glass and the colour behind photos: attributes on
+    // Theme, density, glass and the color behind photos: attributes on
     // <html> that tokens.css switches on
     applyAppearance() {
         const p = this.uiPrefs;
@@ -520,7 +520,7 @@ const app = {
     },
 
     // Everything blue follows --accent-color; text on it (--on-accent)
-    // turns dark when the colour is light, so it stays readable
+    // turns dark when the color is light, so it stays readable
     DEFAULT_ACCENT: '#2563eb',
 
     applyAccent(hex) {
@@ -896,7 +896,7 @@ const app = {
         this.elements.btnToggleStrip.blur(); // Release focus to restore keyboard shortcuts
     },
 
-    // Wheel / trackpad pinch: each notch zooms by the same factor, centred
+    // Wheel / trackpad pinch: each notch zooms by the same factor, centered
     // on the pointer, from 10% of fit up to huge pixels
     handleZoom(e) {
         if (this.viewMode !== 'single') return;
@@ -956,7 +956,7 @@ const app = {
             this.panX = 0;
             this.panY = 0;
         } else if (img.offsetWidth) {
-            // Where the photo's centre is: the container centres it, plus the
+            // Where the photo's center is: the container centers it, plus the
             // pan. Worked out rather than measured, so a zoom still animating
             // can't throw the anchor off (and exact to the subpixel)
             const cx = box.left + box.width / 2 + this.panX;
@@ -2112,7 +2112,7 @@ const app = {
         } catch (e) { /* ignore */ }
     },
 
-    // Highlight the current photo in the film strip and centre it. Touches
+    // Highlight the current photo in the film strip and center it. Touches
     // only the old and new thumbnail: looping over every strip item and
     // scrollIntoView (which re-lays out the page) cost ~100 ms per step in a
     // 2000-photo folder.
@@ -2279,7 +2279,7 @@ const app = {
             }
             const src = `
             // A JPEG's stored pixel size, from its frame header (null if not a
-            // JPEG). Headers are small; a big one (embedded previews, colour
+            // JPEG). Headers are small; a big one (embedded previews, color
             // profiles) is read further, up to 4 MB.
             const jpegSize = async (file) => {
                 for (let len = 128 * 1024; ; len *= 4) {
@@ -2643,7 +2643,7 @@ const app = {
         const items = [
             ...(edited ? [`Discards the edits not saved yet on ${edited} photo${edited === 1 ? '' : 's'} (the photos stay as they are on disk).`] : []),
             ...(inTrash ? [`Empties ${FolderCache.native() ? 'jEditor\'s trash' : 'the trash'}: ${inTrash} deleted photo${inTrash === 1 ? '' : 's'} will be gone for good.`] : []),
-            ...(flagged ? [`Removes the flags (stars, rescan flags, colour labels) from ${flagged} photo${flagged === 1 ? '' : 's'}.`] : []),
+            ...(flagged ? [`Removes the flags (stars, rescan flags, color labels) from ${flagged} photo${flagged === 1 ? '' : 's'}.`] : []),
             'Removes cached thumbnails and duplicate data (rebuilt when needed), and the originals kept for undoing Auto crop.'
         ];
         const native = FolderCache.native();
@@ -2871,7 +2871,7 @@ const app = {
     // photo that isn't ready yet shows its cached thumbnail immediately and
     // upgrades to full resolution the moment its decode finishes.
 
-    DECODE_RADIUS: 1, // neighbours kept decoded each side (full-res scans are large)
+    DECODE_RADIUS: 1, // neighbors kept decoded each side (full-res scans are large)
 
     // ---- Display sources: screen-sized previews ----
     //
@@ -3597,7 +3597,7 @@ const app = {
     KEY_PROFILES: {
         jeditor: { name: 'jEditor' },
         // Lightroom Classic's Library and Crop keys, where jEditor has the
-        // same action. Its 1–5 are star ratings, so the colour labels are on
+        // same action. Its 1–5 are star ratings, so the color labels are on
         // 6–9 as there (purple has no key in Lightroom).
         lightroom: {
             name: 'Lightroom Classic',
@@ -3629,7 +3629,7 @@ const app = {
     },
 
     // Handlers return false when the key doesn't apply right now, which
-    // lets the browser's default behaviour through.
+    // lets the browser's default behavior through.
     keyHandlers() {
         const grid = () => this.viewMode === 'grid';
         const ed = CropEditor;
@@ -3724,7 +3724,7 @@ const app = {
         };
     },
 
-    // Normalised combo for a keydown: 'Ctrl+Shift+D', 'Shift+ArrowLeft', 'C',
+    // Normalized combo for a keydown: 'Ctrl+Shift+D', 'Shift+ArrowLeft', 'C',
     // '?' … Cmd counts as Ctrl. Shift is implied by printable symbols ('?'
     // already is Shift+/), so it's only named for letters and named keys.
     comboFromEvent(e) {
@@ -4362,7 +4362,7 @@ const app = {
     syncGridTile() {
         const grid = this.elements.gridView;
         if (!grid.clientWidth) return;
-        // The selection bar centres on the grid, less its scrollbar
+        // The selection bar centers on the grid, less its scrollbar
         document.documentElement.style.setProperty('--grid-scrollbar', `${grid.offsetWidth - grid.clientWidth}px`);
         const first = parseFloat(getComputedStyle(grid).gridTemplateColumns);
         if (first > 0) document.documentElement.style.setProperty('--grid-tile', `${first}px`);
@@ -5931,7 +5931,7 @@ const app = {
             let blob = await new Promise(r => canvas.toBlob(r, type, quality));
             canvas.width = canvas.height = 0; // release the full-size buffer now
             if (!blob) throw new Error('encoding failed');
-            // Keep EXIF (dates, camera), colour profile and DPI
+            // Keep EXIF (dates, camera), color profile and DPI
             blob = await ImageMeta.transplant(original, blob, type, w, h);
 
             if (this.dirHandle) await this.verifyPermission(this.dirHandle, true);

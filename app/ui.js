@@ -1,9 +1,9 @@
-// In-app dialogs and dialog keyboard behaviour.
+// In-app dialogs and dialog keyboard behavior.
 //
 // UI.alert / UI.confirm / UI.prompt replace the browser's alert(),
 // confirm() and prompt() with a dialog in the app's own style. Each returns
 // a promise: alert → undefined, confirm → true/false, prompt → the text or
-// null when cancelled. UI.choose has a second answer (alt): 'ok', 'alt'
+// null when canceled. UI.choose has a second answer (alt): 'ok', 'alt'
 // or null.
 //
 // Every .dialog-overlay also gets, without its own code having to ask:
