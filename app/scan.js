@@ -371,14 +371,20 @@ const Scan = {
     },
 
     // What the scanner can do: its glass, feeder and resolutions (asked once)
+    // The scanner is busy while it's asked (its driver is open), so a scan
+    // or preview started meanwhile waits for it (capsLoading)
     async loadCaps() {
         const d = this.device();
         if (!d || this.caps[d.id] || this.running || this.waiting) return;
+        let asked;
+        this.capsLoading = asked = FolderCache.native().scanCaps({ device: d.id, driver: d.driver, compat: d.driver === 'twain' && !!this.compat()[d.id] })
+            .catch(() => null);
         try {
-            const caps = await FolderCache.native().scanCaps({ device: d.id, driver: d.driver, compat: d.driver === 'twain' && !!this.compat()[d.id] });
+            const caps = await asked;
             if (caps) this.caps[d.id] = caps;
             this.adoptCompat(d.id, caps);
         } catch (e) { /* both offered */ }
+        if (this.capsLoading === asked) this.capsLoading = null;
         if (this.device() === d) {
             this.syncMode(true);
             if (this.caps[d.id]) this.fillDpis(this.caps[d.id]);
@@ -684,7 +690,11 @@ const Scan = {
 
     // ---- Scanning ----
 
-    start() {
+    async start() {
+        if (this.capsLoading) {
+            this.status('Waiting for the scanner…');
+            await this.capsLoading;
+        }
         const device = this.devices && this.devices.find(d => d.id === this.el('scan-device').value);
         if (!device) return;
         const folder = this.el('scan-folder').value;
@@ -730,6 +740,7 @@ const Scan = {
 
     // The glass, small, with the prints found on it
     async previewGlass() {
+        if (this.capsLoading) await this.capsLoading;
         const pv = this.pv;
         if (!pv || this.running || this.waiting) return;
         const native = FolderCache.native();

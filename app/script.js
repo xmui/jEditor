@@ -4444,6 +4444,7 @@ const app = {
         if (skippedGifs > 0) this.showToast(`Skipped ${skippedGifs} GIF${skippedGifs > 1 ? 's' : ''} (rotation would lose animation)`);
         if (filesToRotate.length === 0) return;
         if (Edits.on()) {
+            if (this.editsSaving()) return;
             // Kept with the other edits until they're saved
             Edits.rotate(filesToRotate, deg);
             const n = filesToRotate.length;
@@ -4511,7 +4512,7 @@ const app = {
             return Promise.resolve(false);
         }
         // Kept with the other edits until they're saved
-        if (Edits.on()) return Promise.resolve(Edits.rotate([fileEntry], deg));
+        if (Edits.on()) return Promise.resolve(!this.editsSaving() && Edits.rotate([fileEntry], deg));
 
         // Instant, stacking preview; the save happens in the background
         fileEntry.pendingRotation = (fileEntry.pendingRotation || 0) + deg;
@@ -5832,6 +5833,7 @@ const app = {
         const file = this.currentFile;
         if (!file || this.cropState.active) return;
         if (!this.ensureWritable()) return;
+        if (this.editsSaving()) return;
         if (/\.gif$/i.test(file.name)) {
             this.showToast('Cropping GIFs is not supported (animation would be lost)');
             return;
@@ -5999,7 +6001,7 @@ const app = {
             this.showToast('Auto crop is already running');
             return;
         }
-        if (Edits.on()) return this.batchAutoCropKept(list, { feeder, scan });
+        if (Edits.on()) return this.editsSaving() ? undefined : this.batchAutoCropKept(list, { feeder, scan });
         if (ask && list.length > 50 && !await UI.confirm({
             title: `Auto crop ${list.length.toLocaleString()} photos?`,
             message: `Each is straightened and cropped to the print found on it. The originals are kept ${FolderCache.native() ? 'by jEditor on this PC' : 'in .jeditor/originals'}, so Ctrl+Z puts them all back.`,
@@ -6237,6 +6239,14 @@ const app = {
     // originals/ first, as for batch Auto crop, and one Ctrl+Z puts every
     // photo back with its edit kept again. True when all were saved.
 
+    // Save edits is writing kept edits into the photos: a new edit made
+    // meanwhile could be dropped or applied twice, so it waits
+    editsSaving() {
+        if (!this._savingEdits) return false;
+        this.showToast('The edits are being saved into the photos. One moment…', 2500);
+        return true;
+    },
+
     async saveEdits(list) {
         if (!this.ensureWritable()) return false;
         if (!this.dirHandle) {
@@ -6360,7 +6370,7 @@ const app = {
         } finally {
             file.isBusy = false;
         }
-        delete file._edit;
+        if (file._edit === edit) delete file._edit;
         file.pendingRotation = 0;
         file.savingRotation = 0;
         this.dropEdited(file);
