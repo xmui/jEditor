@@ -2772,6 +2772,23 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     width: 200px;
 }
 
+.shortcuts-profiles {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-5) 0;
+}
+
+.shortcuts-profiles label {
+    color: var(--text-2);
+}
+
+#shortcuts-profile {
+    width: auto;
+    min-width: 180px;
+}
+
 .shortcuts-list {
     overflow-y: auto;
     padding: var(--sp-2) var(--sp-5) var(--sp-4);

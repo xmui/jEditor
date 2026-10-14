@@ -5,6 +5,19 @@
 
 const CHANGELOG = [
     {
+        version: '1.28.0', date: '2026-10-14',
+        items: [
+            'Shortcut profiles: Keyboard shortcuts (`?`) has a Profile list. Lightroom Classic gives Lightroom\'s keys: `R` crop, `E` single view, `G` grid, `Ctrl+[` and `Ctrl+]` rotate, `P` star, `X` needs rescan, `U` clear, `6`–`9` colour labels, `F5` rescan. Make your own with New profile…; each profile keeps its own changes.',
+            'Opening a project while another was still loading could mix their photos and flags; the first open now stops.',
+            'Flags changed just before switching project are saved to it, and can no longer erase the next project\'s flags. Taking the last flag off a photo is saved too.',
+            'Kept edits follow photos that are renamed or moved.',
+            'Renaming a folder only in capitals (wedding → Wedding) while a photo in it is open elsewhere now says it couldn\'t, instead of risking the folder.',
+            'Auto crop no longer fails with "Maximum call stack size exceeded" on prints laid touching.',
+            'The No flag filter shows unflagged photos; Esc in Rename only closes it; a camera date of 0000:00:00 is no date (not 1899).',
+            'FastFoto auto-size scans work when the Windows user name has accents, and closing a window mid-scan no longer shows an error.'
+        ]
+    },
+    {
         version: '1.27.0', date: '2026-10-14',
         items: [
             'A new photo finder behind Auto crop, batch Auto crop, feeder scans and Preview and crop. It learns the scan\'s background from its edge (a lid, a feeder\'s backing and the white past a short photo), so it copes with lid shading, dust, dark photos on a dark lid, white-bordered prints on a white lid, tilted prints and prints laid touching. Ordinary photos, even ones with a plain sky, aren\'t taken for scans.',

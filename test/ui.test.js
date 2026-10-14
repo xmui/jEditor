@@ -1457,6 +1457,69 @@ async function newPage(browser, url) {
         check('key combos format for display', r.format === 'Ctrl + Shift + ←|+', r.format);
         await page.close();
 
+        // Profiles: Lightroom Classic's keys, changes kept per profile, own profiles
+        const { page: pp } = await newPage(browser, `${baseUrl}/index.html`);
+        const rp = await pp.evaluate(async () => {
+            const out = {};
+            for (const k of Object.keys(localStorage)) if (k.startsWith('jeditor.key')) localStorage.removeItem(k);
+            app.loadKeyBindings();
+            // No key does two things in one place, in any built-in profile
+            out.clashes = [];
+            for (const id of Object.keys(app.KEY_PROFILES)) {
+                const keys = app.keyProfileDefaults(id), seen = new Map();
+                for (const [aid, ctx] of app.KEY_ACTIONS) for (const k of keys[aid]) {
+                    const at = ctx + ' ' + k;
+                    if (seen.has(at)) out.clashes.push(`${id}: ${k} → ${seen.get(at)} and ${aid}`);
+                    seen.set(at, aid);
+                }
+            }
+            app.setKeyProfile('lightroom');
+            const kb = app.keyBindings;
+            out.lr = kb['edit.crop'].join() === 'R' && kb['flag.red'].join() === '6' && kb['view.single'].join() === 'E'
+                && kb['edit.rotateLeft'].join() === 'Ctrl+[' && kb['app.refresh'].join() === 'F5' && kb['flag.star'].join() === 'P';
+            // A change in Lightroom's stays there
+            app.assignKey('view.grid', 'Shift+G');
+            out.lrSaved = JSON.parse(localStorage.getItem('jeditor.keys.lightroom'))['view.grid'].includes('Shift+G')
+                && !localStorage.getItem('jeditor.keys');
+            app.setKeyProfile('jeditor');
+            out.back = app.keyBindings['edit.crop'].join() === 'C' && app.keyBindings['view.grid'].join() === 'G';
+            app.setKeyProfile('lightroom');
+            out.kept = app.keyBindings['view.grid'].includes('Shift+G');
+            app.loadKeyBindings();
+            out.remembered = app.keyProfile === 'lightroom';
+            // Reset goes back to Lightroom's keys, not jEditor's
+            app.resetKeys();
+            out.reset = app.keyBindings['view.grid'].join() === 'G' && app.keyBindings['edit.crop'].join() === 'R';
+            // The panel: both profiles listed; a new one from the keys in use
+            app.toggleShortcutsPanel(true);
+            const sel = document.getElementById('shortcuts-profile');
+            out.listed = [...sel.options].map(o => o.textContent).join() === 'jEditor,Lightroom Classic' && sel.value === 'lightroom';
+            out.noRename = document.getElementById('shortcuts-profile-rename').classList.contains('hidden');
+            const made = app.newKeyProfile();
+            await new Promise(r => setTimeout(r, 50));
+            document.getElementById('uid-input').value = 'Ana';
+            document.getElementById('uid-ok').click();
+            await made;
+            out.made = app.keyProfiles().some(p => p.name === 'Ana' && p.id === app.keyProfile)
+                && app.keyBindings['edit.crop'].join() === 'R' && sel.value === app.keyProfile
+                && !document.getElementById('shortcuts-profile-rename').classList.contains('hidden');
+            // Picking from the list switches
+            sel.value = 'jeditor';
+            sel.dispatchEvent(new Event('change'));
+            out.picked = app.keyProfile === 'jeditor' && app.keyBindings['edit.crop'].join() === 'C';
+            app.toggleShortcutsPanel(false);
+            for (const k of Object.keys(localStorage)) if (k.startsWith('jeditor.key')) localStorage.removeItem(k);
+            return out;
+        });
+        check('shortcut profiles: no key does two things', !rp.clashes.length, rp.clashes.join('; '));
+        check('Lightroom Classic profile has Lightroom\'s keys', rp.lr);
+        check('a change is kept in its own profile', rp.lrSaved && rp.back && rp.kept, JSON.stringify(rp));
+        check('the profile in use is remembered', rp.remembered);
+        check('reset goes back to the profile\'s own keys', rp.reset);
+        check('the panel lists profiles; a new one copies the keys in use', rp.listed && rp.noRename && rp.made, JSON.stringify(rp));
+        check('picking a profile in the panel switches to it', rp.picked);
+        await pp.close();
+
         // '\\' turns photos 180°: the current one, the grid selection, and in crop
         const { page: p180, issues: i180 } = await newPage(browser, `${baseUrl}/index.html`);
         const r180 = await p180.evaluate(async () => {

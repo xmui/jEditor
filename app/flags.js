@@ -62,6 +62,8 @@ const Flags = {
 
     // Another folder is being opened
     reset() {
+        clearTimeout(this._saveTimer); // a save due now would land in the next project
+        this._dirty = false;
         this.filter = null;
         this.query = '';
         this.orphans = new Map();
@@ -78,10 +80,10 @@ const Flags = {
     },
     has(f, kind) {
         const fl = f && f._flags;
+        if (kind === 'none') return !fl || (!fl.star && !fl.rescan && !fl.color);
         if (!fl) return false;
         if (kind === 'star') return !!fl.star;
         if (kind === 'rescan') return !!fl.rescan;
-        if (kind === 'none') return !fl.star && !fl.rescan && !fl.color;
         if (kind === 'flagged') return !!(fl.star || fl.rescan || fl.color);
         return fl.color === kind;
     },
@@ -296,6 +298,7 @@ const Flags = {
             if (f._stripEl) this.decorate(f._stripEl, f);
         });
         this.updateHeader();
+        this._dirty = true; // a flag taken off the last photo still has to be written
         this.saveSoon();
         if (this.filter || /\bis:/.test(this.query)) this.refilter();
         else Folders.render();

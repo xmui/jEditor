@@ -616,6 +616,9 @@ const Folders = {
                 moved = false; // folders can't be moved here: copy instead
             }
         }
+        // Copying a folder to its own name in other case would copy it onto
+        // itself, then delete it: never for a case-only change
+        if (caseOnly && cur === oldName) throw new Error('a photo in it may be open in another program');
         if (!moved || cur !== name) {
             const src = await parent.getDirectoryHandle(cur);
             await this.copyTree(src, parent, name);
