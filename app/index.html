@@ -16,6 +16,7 @@
     <script src="changelog.js"></script>
     <script src="meta.js"></script>
     <script src="folder-cache.js"></script>
+    <script src="photo-find.js"></script>
     <script src="crop-auto.js"></script>
     <script src="crop.js"></script>
     <script src="dupes.js"></script>
@@ -781,6 +782,10 @@
                     <label class="scan-check" for="scan-swap" id="scan-swap-row">
                         <input id="scan-swap" type="checkbox">
                         <span>This scanner's front and back are swapped<small>On if one-sided scans come out showing the back (the FastFoto does this). Remembered for this scanner.</small></span>
+                    </label>
+                    <label class="scan-check" for="scan-autosize" id="scan-autosize-row">
+                        <input id="scan-autosize" type="checkbox">
+                        <span>The scanner crops each photo itself<small>Its own auto-size, as in its own software (the FastFoto has it). If it can't, jEditor scans the usual way and crops each photo. Remembered for this scanner.</small></span>
                     </label>
                     <label class="scan-check" for="scan-compat" id="scan-compat-row">
                         <input id="scan-compat" type="checkbox">

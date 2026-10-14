@@ -77,6 +77,23 @@
     <EmbeddedResource Include="bridge.js" LogicalName="bridge.js" />
   </ItemGroup>
 
+  <!-- The 32-bit TWAIN helper (twain32/: the scanner's own auto-size, which
+       NAPS2 can't ask for): built with jEditor, shipped in twain32\ beside it -->
+  <PropertyGroup>
+    <Twain32Project>$(MSBuildThisFileDirectory)..\twain32\jEditor.Twain32.csproj</Twain32Project>
+    <Twain32Out>$(MSBuildThisFileDirectory)..\twain32\bin\$(Configuration)\net48\</Twain32Out>
+  </PropertyGroup>
+  <Target Name="BuildTwain32" BeforeTargets="AssignTargetPaths">
+    <MSBuild Projects="$(Twain32Project)" Targets="Restore" Properties="Configuration=$(Configuration);_Twain32Restore=1"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishDir;OutputPath;ReleaseTag;_IsPublishing" />
+    <MSBuild Projects="$(Twain32Project)" Targets="Build" Properties="Configuration=$(Configuration)"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishDir;OutputPath;ReleaseTag;_IsPublishing" />
+    <ItemGroup>
+      <Twain32Files Include="$(Twain32Out)*.exe;$(Twain32Out)*.dll;$(Twain32Out)*.config" />
+      <Content Include="@(Twain32Files)" Link="twain32\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    </ItemGroup>
+  </Target>
+
   <!-- Shipped as plain files beside the exe (not inside it), so a UI change
        is a file change, never a rebuild -->
   <ItemGroup>

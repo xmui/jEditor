@@ -49,6 +49,9 @@ sealed class Scanner : IDisposable
         // scanner calls the photo's back its front (the FastFoto does)
         public string Sides { get; init; } = "front";
         public bool Swap { get; init; }
+        // Feeder, TWAIN: the scanner crops each photo itself (its own
+        // auto-size, through the 32-bit helper; see Twain32)
+        public bool AutoSize { get; init; }
         // -100…100, applied by jEditor so every scanner does the same
         public int Brightness { get; init; }
         public int Contrast { get; init; }
@@ -117,6 +120,8 @@ sealed class Scanner : IDisposable
     {
         var options = make(compat);
         bool any = false;
+        int n = 0;
+        var started = System.Diagnostics.Stopwatch.StartNew();
         Exception? failed = null;
         await using (var e = controller.Scan(options, cancel).GetAsyncEnumerator(cancel))
         {
@@ -132,9 +137,11 @@ sealed class Scanner : IDisposable
                     break;
                 }
                 any = true;
+                Log.Write($"Image {++n} came in at {started.Elapsed.TotalSeconds:0.0} s");
                 yield return e.Current;
             }
         }
+        if (failed is null) Log.Write($"The scanner is done: {n} image{(n == 1 ? "" : "s")} in {started.Elapsed.TotalSeconds:0.0} s");
         if (failed is null) yield break;
         Log.Write($"The scanner didn't open ({failed.GetType().Name}: {failed.Message}); trying again in compatibility mode (Older TWAIN mode)");
         await foreach (var image in controller.Scan(make(true), cancel))
@@ -284,6 +291,10 @@ sealed class Scanner : IDisposable
             var options = For(r.DeviceId, r.Driver, compat);
             options.UseNativeUI = true; // the scanner's own window: size detection, resolution, feeder…
             options.DialogParent = owner;
+            // The whole image at once: NAPS2's default with a scanner window
+            // (memory transfer, in small pieces through the 32-bit helper)
+            // kept the FastFoto's window busy long after each photo
+            if (driver == Driver.Twain) options.TwainOptions.TransferMode = TwainTransferMode.Native;
             options.MaxQuality = true;  // kept lossless until saved
             options.Dpi = 300;          // (the scanner's window decides)
             Log.Write(driver == Driver.Twain
@@ -364,6 +375,31 @@ sealed class Scanner : IDisposable
                 else sides[1].Dispose();
             }
             yield break;
+        }
+        // The scanner's own auto-size, if it has it; else the usual way
+        if (r.AutoSize && r.Driver == "twain" && Twain32.Exe is not null)
+        {
+            Exception? failed = null;
+            bool any = false;
+            await using (var e = Twain32.ScanAsync(r.DeviceId, r.Dpi, r.Gray, duplex, true, cancel).GetAsyncEnumerator(cancel))
+            {
+                while (true)
+                {
+                    try
+                    {
+                        if (!await e.MoveNextAsync()) break;
+                    }
+                    catch (Twain32.Failed ex) when (!any)
+                    {
+                        failed = ex;
+                        break;
+                    }
+                    any = true;
+                    yield return e.Current;
+                }
+            }
+            if (failed is null) yield break;
+            Log.Write($"The scanner's own auto-size didn't work ({failed.Message}); scanning the usual way, jEditor crops each photo");
         }
         ScanOptions Make(bool compat)
         {

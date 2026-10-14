@@ -34,6 +34,7 @@ const Scan = {
     KEY_DETAILS: 'jeditor.scanDetails', // Details showing
     KEY_MODE: 'jeditor.scanMode', // how each scanner is used: glass, feeder or driver
     KEY_SWAP: 'jeditor.scanSwap', // scanners whose front and back are swapped
+    KEY_AUTOSIZE: 'jeditor.scanAutoSize', // feeders that crop each photo themselves (off: jEditor does)
     KEY_OPTS: 'jeditor.scanOpts', // the settings last used
     KEY_SETUPS: 'jeditor.scanSetups', // saved setups: [{ name, …settings }]
     caps: {}, // what each scanner can do (asked once)
@@ -57,6 +58,13 @@ const Scan = {
         document.querySelectorAll('input[name="scan-mode"]').forEach(r => r.addEventListener('change', () => this.syncMode()));
         this.el('scan-driver').addEventListener('change', () => this.syncMode());
         this.el('scan-swap').addEventListener('change', () => this.saveSwap());
+        this.el('scan-autosize').addEventListener('change', () => {
+            const d = this.device();
+            if (!d) return;
+            const all = this.get(this.KEY_AUTOSIZE, {}) || {};
+            all[d.id] = this.el('scan-autosize').checked;
+            this.put(this.KEY_AUTOSIZE, all);
+        });
         ScanPreview.init(boxes => this.boxesChanged(boxes));
         this.el('scan-pv-again').addEventListener('click', () => this.previewGlass());
         this.el('scan-pv-find').addEventListener('click', () => ScanPreview.set(ScanPreview.find(this.el('scan-pv-img'))));
@@ -371,6 +379,8 @@ const Scan = {
             if (r) r.checked = true;
             const swaps = this.get(this.KEY_SWAP, {}) || {};
             this.el('scan-swap').checked = d.id in swaps ? !!swaps[d.id] : /FF-\d|FastFoto/i.test(d.name);
+            const sizes = this.get(this.KEY_AUTOSIZE, {}) || {};
+            this.el('scan-autosize').checked = d.id in sizes ? !!sizes[d.id] : true;
         }
         // A choice the scanner doesn't have: the other one
         const pick = document.querySelector('input[name="scan-mode"]:checked');
@@ -384,6 +394,7 @@ const Scan = {
         for (const m of ['glass', 'feeder', 'driver']) this.el(`scan-help-${m}`).classList.toggle('hidden', m !== mode);
         this.el('scan-mode-row').classList.toggle('hidden', mode === 'driver');
         this.el('scan-swap-row').classList.toggle('hidden', mode !== 'feeder');
+        this.el('scan-autosize-row').classList.toggle('hidden', mode !== 'feeder' || !d || d.driver !== 'twain');
         this.el('scan-sides-row').classList.toggle('hidden', mode !== 'feeder');
         if (panel.dataset.state === 'setup') this.el('scan-go').textContent = mode === 'glass' ? 'Preview' : 'Scan';
         this.preview();
@@ -667,6 +678,7 @@ const Scan = {
             const caps = this.caps[device.id] || {};
             Object.assign(opts, {
                 dpi: o.dpi, gray: o.color === 'gray', sides: o.sides, swap: this.el('scan-swap').checked,
+                autosize: device.driver === 'twain' && this.el('scan-autosize').checked,
                 brightness: o.brightness, contrast: o.contrast, bedW: caps.feedW || 8.5, bedH: caps.feedH || 14
             });
         }
