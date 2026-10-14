@@ -861,7 +861,7 @@ const Scan = {
         const pv = this.pv;
         const names = this.el('scan-pv-names');
         if (!pv || !n) { names.textContent = ''; return; }
-        const { prefix, next, digits } = pv.more ? this.naming(pv.folder) : pv;
+        const { prefix, next, digits } = pv.more ? this.continuing(pv.folder) : pv;
         names.textContent = `Into ${Folders.label(pv.folder)}: ${this.name(prefix, next, digits || 3)}` + (n > 1 ? ` … ${this.name(prefix, next + n - 1, digits || 3)}` : '');
     },
 
@@ -890,12 +890,33 @@ const Scan = {
     // → { count, names, cancelled }
     // jEditor's settings (source 'glass' with crops, or 'feeder'): dpi,
     // gray, bedW, bedH, sides, swap, brightness, contrast, format, quality.
+    // Scan more and Try again: the names the last scan used, carried on
+    // (a prefix typed for it, like Smith-B-, isn't swapped for the folder's
+    // most used one); else as the folder's photos go
+    continuing(folder) {
+        const last = this.lastNaming;
+        if (!last || last.folder !== folder || last.dir !== this.app.dirHandle) return this.naming(folder);
+        let next = last.next;
+        for (const f of this.app.files) {
+            if (Folders.dirOf(f) !== folder) continue;
+            const m = this.PHOTO.exec(f.name);
+            if (m && m[1] === last.prefix) next = Math.max(next, parseInt(m[2], 10) + 1);
+        }
+        return { prefix: last.prefix, next, digits: last.digits };
+    },
+
     async run({ device, driver, folder = '', prefix, next, digits, autoCrop = false, compat, crops, dpi, source = 'driver', ...settings }) {
         const original = arguments[0];
         const app = this.app;
         const native = FolderCache.native();
         if (this.running) throw new Error('A scan is already running');
-        if (prefix === undefined || next === undefined) ({ prefix, next, digits } = this.naming(folder));
+        if (prefix === undefined || next === undefined) ({ prefix, next, digits } = this.continuing(folder));
+        this.lastNaming = { dir: app.dirHandle, folder, prefix, next, digits: digits || 3 };
+        // The names saved move it on (one stopped part way included)
+        const advance = (name) => {
+            const m = this.PHOTO.exec(name.split('/').pop());
+            if (m && m[1] === prefix) this.lastNaming.next = Math.max(this.lastNaming.next, parseInt(m[2], 10) + 1);
+        };
         // TIFFs aren't shown in jEditor, so there's nothing to auto crop
         if (settings.format === 'tiff') autoCrop = false;
         const root = await FolderCache.orderPath(app);
@@ -929,6 +950,7 @@ const Scan = {
         const add = (name) => {
             const rel = folder ? `${folder}/${name}` : name;
             if (!names.includes(rel)) names.push(rel);
+            advance(name);
         };
         let result;
         try {

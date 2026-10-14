@@ -740,6 +740,12 @@ async function newPage(context, baseUrl) {
             await wait(() => app.files.some(f => f.name === 'photo6.jpg'));
             await wait(() => !Scan.running);
             out.more = window.__scanReq.prefix + window.__scanReq.next + '.jpg';
+            // A prefix typed for a scan carries on into Scan more / Try again,
+            // not the folder's most used one
+            await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '', prefix: 'Smith-B-', next: 1, digits: 3 });
+            await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '' });
+            out.typedMore = window.__scanReq.prefix + window.__scanReq.next;
+            Scan.lastNaming = null; // the scans below follow the folder's names again
 
             // Details: the log so far, then new lines as the app writes them
             out.detailsOff = $('scan-log').classList.contains('hidden');
@@ -822,6 +828,7 @@ async function newPage(context, baseUrl) {
         check('... sent with the scan, and remembered for that scanner', r.req.compat === true && r.compatKept, JSON.stringify([r.req.compat, r.compatKept]));
         check('... and crops each scan once it\'s in, without asking', r.cropped === 'c2.jpg,c3.jpg (no question)', r.cropped);
         check('Scan more in the dock carries on the names', r.more === 'photo6.jpg', r.more);
+        check('a typed prefix carries on into the next scan', r.typedMore === 'Smith-B-2', r.typedMore);
         check('a scan that fails says why, and what was saved', /busy/.test(r.err || '') && /didn't finish/.test(r.alert) && /1 photo was saved/.test(r.alert) && !r.running, JSON.stringify([r.err, r.alert]));
         check('while scanning, the dock offers Stop; closing it only makes it small', r.stopOffered && r.small, JSON.stringify([r.stopOffered, r.small]));
         check('Stop ends a scan whose window never shows', r.stopped && r.stopToast === 'Scan stopped', JSON.stringify([r.stopped, r.stopToast]));

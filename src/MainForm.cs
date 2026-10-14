@@ -497,8 +497,11 @@ sealed class MainForm : Form
                 case "openPath":
                 {
                     var path = Str(msg, "path");
-                    if (path is not null && Directory.Exists(path)) OpenFolder(path);
-                    Reply(id, new { ok = path is not null && Directory.Exists(path) });
+                    var there = path is not null && Directory.Exists(path);
+                    // Open in another window already: that one comes forward
+                    if (there && AppWindows.ShowOpen(path!, this)) { Reply(id, new { ok = true, elsewhere = true }); break; }
+                    if (there) OpenFolder(path!);
+                    Reply(id, new { ok = there });
                     break;
                 }
                 case "exists":
@@ -621,6 +624,7 @@ sealed class MainForm : Form
                 {
                     var path = Str(msg, "path");
                     if (path is not null && !(Path.IsPathFullyQualified(path) && Directory.Exists(path))) { Reply(id, new { error = "That folder isn't there" }); break; }
+                    if (path is not null && AppWindows.ShowOpen(path, null)) { Reply(id, new { ok = true, elsewhere = true }); break; }
                     AppWindows.Open(options.ForWindow(path), this);
                     Reply(id, new { ok = true });
                     break;
