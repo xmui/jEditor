@@ -6257,6 +6257,7 @@ const app = {
                 } catch (e) {
                     console.error('Undo failed for', it.file.name, e);
                     failed++;
+                    if (entry.failedFiles) entry.failedFiles.add(it.file);
                 }
             }
         };
@@ -6420,15 +6421,18 @@ const app = {
     async undoSavedEdits(entry) {
         await entry.group.done;
         let failed = 0;
+        // A photo whose bytes couldn't be put back keeps its saved crop, so
+        // its edit isn't kept again (it would be applied a second time)
+        const notBack = new Set();
         try {
-            if (entry.items.length) await this.undoAutoCrop({ items: entry.items, quiet: true });
+            if (entry.items.length) await this.undoAutoCrop({ items: entry.items, quiet: true, failedFiles: notBack });
         } catch (e) {
             failed++;
         }
         for (const it of entry.group.items) {
-            try { await this.undoFileEdit(it); } catch (e) { console.error('Undo failed for', it.file.name, e); failed++; }
+            try { await this.undoFileEdit(it); } catch (e) { console.error('Undo failed for', it.file.name, e); failed++; notBack.add(it.file); }
         }
-        Edits.restore(entry.edits);
+        Edits.restore(entry.edits.filter(e => !notBack.has(e.file)));
         if (failed) throw new Error('some photos could not be put back');
         const n = entry.edits.length;
         this.showToast(`Put back ${n} photo${n === 1 ? '' : 's'} — the edits are kept again`);
