@@ -4223,9 +4223,29 @@ html:not(.native) .native-only {
 
 .scan-dock-foot {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--sp-2);
-    padding: 0 var(--sp-3) var(--sp-3);
+    padding: var(--sp-3);
+    /* Always in sight: the settings scroll behind it */
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    margin-top: auto;
+    border-top: 1px solid var(--border);
+    border-radius: 0 0 var(--r-lg) var(--r-lg);
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+}
+
+/* Scan whole glass: next to Preview, when scanning from the glass */
+#scan-whole {
+    display: none;
+}
+
+.scan-dock[data-state="setup"][data-mode="glass"] #scan-whole {
+    display: inline-flex;
 }
 
 .scan-grow {

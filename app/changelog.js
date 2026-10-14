@@ -7,6 +7,8 @@ const CHANGELOG = [
     {
         version: '1.29.0', date: '2026-10-14',
         items: [
+            'Scan whole glass: next to Preview in the scan dock, it scans the whole glass as one photo at the resolution chosen, with no preview or boxes (Auto crop each photo still trims it to the print, when on).',
+            'The scan and camera docks keep their buttons in sight: the settings scroll behind them, so Scan is never below the fold.',
             'American spelling throughout: color, gray, center, canceled. The scan color choice reads Grayscale.',
             'A project opens in one window only: opening it again (sidebar, Ctrl+click, Open in a new window) brings its window forward, so two windows can\'t write over each other\'s flags and edits.',
             'Scan more and Try again keep the names you typed (Smith-B-006 after Smith-B-005), and Scan or Preview pressed while jEditor is still asking the scanner what it can do waits instead of saying a scan is already running.',

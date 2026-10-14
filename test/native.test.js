@@ -996,6 +996,30 @@ async function newPage(context, baseUrl) {
         check('the glass is remembered for that scanner, and the settings', r2.modeKept && r2.prefs.dpi === 1200 && r2.prefs.color === 'gray' && r2.prefs.format === 'png' && /^glass Preview$/.test(r2.setupMode), JSON.stringify([r2.modeKept, r2.prefs, r2.setupMode]));
         check('Scan more previews again; the names carry on', /photo7\.png/.test(r2.moreNames) && r2.moreDpi === '1200', JSON.stringify([r2.moreNames, r2.moreDpi]));
         check('Stop ends a preview', r2.stopShown && r2.stopped === 'Preview stopped', JSON.stringify([r2.stopShown, r2.stopped]));
+        // Scan whole glass: beside Preview, one photo of the whole glass, no preview
+        const rw = await page.evaluate(async () => {
+            const $ = (id) => document.getElementById(id);
+            const wait = async (f) => { for (let i = 0; i < 100 && !f(); i++) await new Promise(r => setTimeout(r, 50)); };
+            await wait(() => !Scan.running && !Scan.waiting);
+            Scan.setState('setup');
+            const out = { shown: getComputedStyle($('scan-whole')).display !== 'none', go: $('scan-go').textContent };
+            // The buttons stay in sight however far the settings scroll
+            const body = $('scan-form');
+            body.scrollTop = body.scrollHeight;
+            const foot = $('scan-whole').closest('.scan-dock-foot').getBoundingClientRect(), box = body.getBoundingClientRect();
+            out.footInSight = foot.bottom <= box.bottom + 1 && foot.top >= box.top;
+            window.__scanReq = null;
+            window.__previewReq = null;
+            $('scan-whole').click();
+            await wait(() => window.__scanReq && !Scan.running);
+            const q = window.__scanReq || {};
+            out.req = { source: q.source, crops: q.crops, bed: [q.bedW, q.bedH], dpi: q.dpi, previewed: !!window.__previewReq };
+            out.state = $('scan-panel').dataset.state;
+            return out;
+        });
+        check('Scan whole glass sits beside Preview, and the dock\'s buttons stay in sight', rw.shown && rw.go === 'Preview' && rw.footInSight, JSON.stringify(rw));
+        check('Scan whole glass scans the whole glass as one photo, with no preview', rw.req.source === 'glass' && JSON.stringify(rw.req.crops) === '[{"x":0,"y":0,"w":1,"h":1,"angle":0,"turn":0}]'
+            && rw.req.bed[0] > 8 && rw.req.dpi === 1200 && !rw.req.previewed && rw.state === 'done', JSON.stringify(rw));
         check('preview suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }

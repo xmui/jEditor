@@ -109,6 +109,7 @@ const Scan = {
             e.preventDefault();
             this.start();
         });
+        this.el('scan-whole').addEventListener('click', () => this.start({ whole: true }));
         panel.addEventListener('keydown', (e) => {
             if (e.key !== 'Escape' || UI.isOpen()) return;
             e.preventDefault();
@@ -690,7 +691,8 @@ const Scan = {
 
     // ---- Scanning ----
 
-    async start() {
+    // whole: Scan whole glass (one photo of the whole glass, no preview)
+    async start({ whole = false } = {}) {
         if (this.capsLoading) {
             this.status('Waiting for the scanner…');
             await this.capsLoading;
@@ -712,7 +714,25 @@ const Scan = {
         if (state === 'preview') return this.scanBoxes();
         // Scan more: the names carry on from the photos just scanned
         const more = state === 'done';
-        const mode = more ? this.lastMode || this.mode() : this.mode();
+        const mode = whole ? 'whole' : more ? this.lastMode || this.mode() : this.mode();
+        if (mode === 'whole') {
+            // The whole glass as one photo, at the settings chosen: no
+            // preview, no boxes (Auto crop each photo still trims it to the
+            // print, when it's on)
+            this.lastMode = 'whole';
+            const o = this.opts();
+            this.saveOpts(o);
+            const bed = this.bedFor(device, this.caps[device.id] || null);
+            const opts = {
+                device: device.id, driver: device.driver, folder, autoCrop, compat, source: 'glass',
+                crops: [{ x: 0, y: 0, w: 1, h: 1, angle: 0, turn: 0 }],
+                dpi: o.dpi, gray: o.color === 'gray', bedW: bed.w, bedH: bed.h,
+                brightness: o.brightness, contrast: o.contrast, format: o.format, quality: o.quality
+            };
+            if (!more) Object.assign(opts, { prefix, next, digits: this.digits });
+            this.run(opts).catch(() => { /* said already */ });
+            return;
+        }
         const modes = this.modes();
         modes[device.id] = mode;
         this.put(this.KEY_MODE, modes);
