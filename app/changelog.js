@@ -5,6 +5,21 @@
 
 const CHANGELOG = [
     {
+        version: '1.29.0', date: '2026-10-14',
+        items: [
+            'American spelling throughout: color, gray, center, canceled. The scan color choice reads Grayscale.',
+            'A project opens in one window only: opening it again (sidebar, Ctrl+click, Open in a new window) brings its window forward, so two windows can\'t write over each other\'s flags and edits.',
+            'Scan more and Try again keep the names you typed (Smith-B-006 after Smith-B-005), and Scan or Preview pressed while jEditor is still asking the scanner what it can do waits instead of saying a scan is already running.',
+            'Crop saves exactly the crop on screen when you press Save, and the editor waits while it writes. Edits made while Save edits is writing wait for it too, so none is lost or applied twice.',
+            'Duplicates: the search stops when you close it, `Ctrl+Z` restores, and `Enter` on a button presses that button.',
+            'Rename with {date} waits for capture dates instead of using file dates; a failed rename says which photos kept a temporary name.',
+            'Renaming a project keeps its flags and edits in every case, and a photo renamed onto an old name doesn\'t take that photo\'s flags.',
+            'Updates: a stalled download fails with a message instead of hanging, and a setup Windows blocks says so.',
+            'A tethered shot that can\'t be saved is kept in a jEditor-unsaved folder instead of lost; the scan helper is shut down cleanly when a scan ends early.',
+            'Smaller fixes: sidebar photo counts update, Preparing previews no longer sticks, PNG scans show their size and DPI, settings are shared safely between windows, and a crashed page reloads itself.'
+        ]
+    },
+    {
         version: '1.28.0', date: '2026-10-14',
         items: [
             'Shortcut profiles: Keyboard shortcuts (`?`) has a Profile list. Lightroom Classic gives Lightroom\'s keys: `R` crop, `E` single view, `G` grid, `Ctrl+[` and `Ctrl+]` rotate, `P` star, `X` needs rescan, `U` clear, `6`–`9` color labels, `F5` rescan. Make your own with New profile…; each profile keeps its own changes.',

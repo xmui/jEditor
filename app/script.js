@@ -2639,7 +2639,10 @@ const app = {
         if (!FolderCache.enabled(this)) return;
         const keys = this.files.filter(f => f.size > this.THUMB_FAST_PATH_BYTES)
             .map(f => `${f.relPath || f.name}|${f.size}|${f.lastModified}`);
-        FolderCache.flush().then(() => FolderCache.prune(this, keys)).catch(() => { });
+        // Another project opened while the cache was written: these keys
+        // aren't its thumbnails, so nothing of it is pruned
+        const dir = this.dirHandle;
+        FolderCache.flush().then(() => { if (this.dirHandle === dir) return FolderCache.prune(this, keys); }).catch(() => { });
     },
 
     // Remove jEditor's data from the open folder: the trash (deleted photos
