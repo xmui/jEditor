@@ -1019,10 +1019,17 @@
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                 </button>
             </div>
+            <div class="shortcuts-profiles">
+                <label for="shortcuts-profile">Profile</label>
+                <select id="shortcuts-profile" class="field"></select>
+                <button id="shortcuts-profile-new" class="btn secondary" title="A new profile, starting from this one's keys">New profile…</button>
+                <button id="shortcuts-profile-rename" class="btn ghost hidden">Rename…</button>
+                <button id="shortcuts-profile-delete" class="btn ghost hidden">Delete</button>
+            </div>
             <div id="shortcuts-list" class="shortcuts-list"></div>
             <div class="dialog-foot">
                 <span class="dialog-note">Click <b>+</b> to add a key. Click a key to remove it.</span>
-                <button id="shortcuts-reset" class="btn secondary">Reset all to defaults</button>
+                <button id="shortcuts-reset" class="btn secondary">Reset all to this profile's keys</button>
             </div>
         </div>
     </div>

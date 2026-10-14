@@ -3588,6 +3588,46 @@ const app = {
         ['dupes.close', 'dupes', 'Duplicates (WIP)', 'Close', ['Escape']]
     ],
 
+    // Shortcut profiles: a starting set of keys, which can then be changed.
+    // jEditor's own is KEY_ACTIONS' defaults; another lists only the keys it
+    // changes. Profiles made by the user start from one of these (base) and
+    // keep their own changes. Changes are kept per profile in localStorage:
+    // 'jeditor.keys' for jEditor's (as before profiles), 'jeditor.keys.<id>'
+    // for the others; 'jeditor.keyProfile' is the one in use.
+    KEY_PROFILES: {
+        jeditor: { name: 'jEditor' },
+        // Lightroom Classic's Library and Crop keys, where jEditor has the
+        // same action. Its 1–5 are star ratings, so the colour labels are on
+        // 6–9 as there (purple has no key in Lightroom).
+        lightroom: {
+            name: 'Lightroom Classic',
+            keys: {
+                'edit.rotateLeft': ['Ctrl+['],
+                'edit.rotateRight': ['Ctrl+]'],
+                'edit.rotate180': [],
+                'edit.crop': ['R'],
+                'flag.red': ['6'],
+                'flag.yellow': ['7'],
+                'flag.green': ['8'],
+                'flag.blue': ['9'],
+                'flag.purple': [],
+                'view.single': ['E'],
+                'view.toggle': [],
+                'view.zoomIn': ['Ctrl+=', 'Ctrl++'],
+                'view.zoomOut': ['Ctrl+-'],
+                'view.zoomFit': ['Z'],
+                'view.slideshow': ['Ctrl+Enter'],
+                'folders.rail': ['F7'],
+                'app.refresh': ['F5'],
+                'app.shortcuts': ['Ctrl+/', '?'],
+                'crop.save': ['Enter', 'R'],
+                'crop.reset': ['Ctrl+Alt+R'],
+                'crop.rotateLeft': ['Ctrl+['],
+                'crop.rotateRight': ['Ctrl+]']
+            }
+        }
+    },
+
     // Handlers return false when the key doesn't apply right now, which
     // lets the browser's default behaviour through.
     keyHandlers() {
@@ -3711,11 +3751,42 @@ const app = {
         return parts.map(p => names[p] || p).join(' + ');
     },
 
-    loadKeyBindings() {
-        this.keyBindings = {};
-        this.KEY_ACTIONS.forEach(([id, , , , keys]) => { this.keyBindings[id] = [...keys]; });
+    // The user's own profiles: [{ id, name, base }]
+    customKeyProfiles() {
         try {
-            const saved = JSON.parse(localStorage.getItem('jeditor.keys') || 'null');
+            const list = JSON.parse(localStorage.getItem('jeditor.keyProfiles') || '[]');
+            return Array.isArray(list) ? list.filter(p => p && typeof p.id === 'string' && typeof p.name === 'string') : [];
+        } catch (e) { return []; }
+    },
+
+    keyProfiles() {
+        return [
+            ...Object.entries(this.KEY_PROFILES).map(([id, p]) => ({ id, name: p.name, builtIn: true })),
+            ...this.customKeyProfiles()
+        ];
+    },
+
+    // The keys a profile starts with (what Reset goes back to)
+    keyProfileDefaults(id = this.keyProfile) {
+        const custom = this.customKeyProfiles().find(p => p.id === id);
+        const base = this.KEY_PROFILES[custom ? custom.base : id] || this.KEY_PROFILES.jeditor;
+        const out = {};
+        this.KEY_ACTIONS.forEach(([aid, , , , keys]) => { out[aid] = [...((base.keys && base.keys[aid]) || keys)]; });
+        return out;
+    },
+
+    keyStore(id = this.keyProfile) {
+        return id === 'jeditor' ? 'jeditor.keys' : 'jeditor.keys.' + id;
+    },
+
+    loadKeyBindings() {
+        let active = 'jeditor';
+        try { active = localStorage.getItem('jeditor.keyProfile') || 'jeditor'; } catch (e) { /* private mode */ }
+        if (!this.keyProfiles().some(p => p.id === active)) active = 'jeditor';
+        this.keyProfile = active;
+        this.keyBindings = this.keyProfileDefaults();
+        try {
+            const saved = JSON.parse(localStorage.getItem(this.keyStore()) || 'null');
             if (saved && typeof saved === 'object') {
                 for (const [id, keys] of Object.entries(saved)) {
                     if (id in this.keyBindings && Array.isArray(keys)) {
@@ -3729,11 +3800,80 @@ const app = {
 
     saveKeyBindings() {
         const changed = {};
-        this.KEY_ACTIONS.forEach(([id, , , , keys]) => {
-            if (this.keyBindings[id].join('\n') !== keys.join('\n')) changed[id] = this.keyBindings[id];
+        const defaults = this.keyProfileDefaults();
+        this.KEY_ACTIONS.forEach(([id]) => {
+            if (this.keyBindings[id].join('\n') !== defaults[id].join('\n')) changed[id] = this.keyBindings[id];
         });
-        try { localStorage.setItem('jeditor.keys', JSON.stringify(changed)); } catch (e) { /* private mode */ }
+        try { localStorage.setItem(this.keyStore(), JSON.stringify(changed)); } catch (e) { /* private mode */ }
         this.buildKeyMaps();
+    },
+
+    setKeyProfile(id) {
+        if (!this.keyProfiles().some(p => p.id === id)) return;
+        try { localStorage.setItem('jeditor.keyProfile', id); } catch (e) { /* private mode */ }
+        this._recordingKey = null;
+        this.loadKeyBindings();
+        if (this.isShortcutsOpen()) this.renderShortcutsPanel();
+    },
+
+    // A new profile: the keys in use now, under a name, to change from there
+    async newKeyProfile() {
+        const all = this.keyProfiles();
+        const current = all.find(p => p.id === this.keyProfile);
+        const name = await UI.prompt({
+            title: 'New shortcut profile',
+            message: `It starts as a copy of “${current ? current.name : 'jEditor'}”. Change any key after.`,
+            ok: 'Make',
+            input: { label: 'Name', value: '' }
+        });
+        if (name === null || !name.trim()) return;
+        if (all.some(p => p.name.toLowerCase() === name.trim().toLowerCase())) {
+            this.showToast(`There's already a profile called “${name.trim()}”`, 3000);
+            return;
+        }
+        const custom = this.customKeyProfiles().find(p => p.id === this.keyProfile);
+        const base = custom ? custom.base : this.keyProfile;
+        const id = 'custom-' + Date.now().toString(36);
+        const list = [...this.customKeyProfiles(), { id, name: name.trim(), base }];
+        try { localStorage.setItem('jeditor.keyProfiles', JSON.stringify(list)); } catch (e) { return; }
+        const keys = this.keyBindings;
+        this.keyProfile = id;
+        this.keyBindings = keys;
+        this.saveKeyBindings(); // the copy's changes from its base
+        this.setKeyProfile(id);
+        this.showToast(`Made “${name.trim()}”`, 2000);
+    },
+
+    async renameKeyProfile() {
+        const list = this.customKeyProfiles();
+        const p = list.find(x => x.id === this.keyProfile);
+        if (!p) return;
+        const others = this.keyProfiles().filter(x => x.id !== p.id);
+        const name = await UI.prompt({
+            title: 'Rename profile',
+            ok: 'Rename',
+            input: { label: 'Name', value: p.name }
+        });
+        if (name === null || !name.trim()) return;
+        if (others.some(x => x.name.toLowerCase() === name.trim().toLowerCase())) {
+            this.showToast(`There's already a profile called “${name.trim()}”`, 3000);
+            return;
+        }
+        p.name = name.trim();
+        try { localStorage.setItem('jeditor.keyProfiles', JSON.stringify(list)); } catch (e) { /* private mode */ }
+        this.renderShortcutsPanel();
+    },
+
+    async deleteKeyProfile() {
+        const p = this.customKeyProfiles().find(x => x.id === this.keyProfile);
+        if (!p) return;
+        const ok = await UI.confirm({ title: `Delete “${p.name}”?`, message: 'Its keys go. jEditor\'s own keys are used instead.', ok: 'Delete', danger: true });
+        if (!ok) return;
+        try {
+            localStorage.setItem('jeditor.keyProfiles', JSON.stringify(this.customKeyProfiles().filter(x => x.id !== p.id)));
+            localStorage.removeItem(this.keyStore(p.id));
+        } catch (e) { /* private mode */ }
+        this.setKeyProfile('jeditor');
     },
 
     buildKeyMaps() {
@@ -3770,8 +3910,9 @@ const app = {
     },
 
     resetKeys(id = null) {
-        this.KEY_ACTIONS.forEach(([aid, , , , keys]) => {
-            if (!id || aid === id) this.keyBindings[aid] = [...keys];
+        const defaults = this.keyProfileDefaults();
+        this.KEY_ACTIONS.forEach(([aid]) => {
+            if (!id || aid === id) this.keyBindings[aid] = [...defaults[aid]];
         });
         this.saveKeyBindings();
     },
@@ -4036,6 +4177,8 @@ const app = {
         const list = document.getElementById('shortcuts-list');
         const filter = (document.getElementById('shortcuts-filter').value || '').trim().toLowerCase();
         list.innerHTML = '';
+        this.renderKeyProfiles();
+        const profileDefaults = this.keyProfileDefaults();
         const groups = new Map();
         this.KEY_ACTIONS.forEach(a => {
             const [id, , group, label] = a;
@@ -4051,7 +4194,8 @@ const app = {
             const h = document.createElement('h4');
             h.textContent = group;
             section.appendChild(h);
-            actions.forEach(([id, , , label, defaults]) => {
+            actions.forEach(([id, , , label]) => {
+                const defaults = profileDefaults[id];
                 const row = document.createElement('div');
                 row.className = 'sc-row';
                 const name = document.createElement('span');
@@ -4101,6 +4245,24 @@ const app = {
         if (!groups.size) list.textContent = 'No shortcuts match.';
     },
 
+    // The profile picker: every profile, the one in use chosen; rename and
+    // delete only for the user's own
+    renderKeyProfiles() {
+        const sel = document.getElementById('shortcuts-profile');
+        if (!sel) return;
+        sel.innerHTML = '';
+        for (const p of this.keyProfiles()) {
+            const o = document.createElement('option');
+            o.value = p.id;
+            o.textContent = p.name;
+            sel.appendChild(o);
+        }
+        sel.value = this.keyProfile;
+        const own = !this.KEY_PROFILES[this.keyProfile];
+        document.getElementById('shortcuts-profile-rename').classList.toggle('hidden', !own);
+        document.getElementById('shortcuts-profile-delete').classList.toggle('hidden', !own);
+    },
+
     // Capture-phase listener: while recording, the next key press becomes
     // the new binding instead of doing anything else.
     recordKey(e) {
@@ -4131,6 +4293,14 @@ const app = {
             this.showToast('Shortcuts reset to defaults', 2000);
         });
         document.getElementById('shortcuts-filter').addEventListener('input', () => this.renderShortcutsPanel());
+        document.getElementById('shortcuts-profile').addEventListener('change', (e) => {
+            this.setKeyProfile(e.target.value);
+            const p = this.keyProfiles().find(x => x.id === e.target.value);
+            if (p) this.showToast(`Shortcuts: ${p.name}`, 1600);
+        });
+        document.getElementById('shortcuts-profile-new').addEventListener('click', () => this.newKeyProfile());
+        document.getElementById('shortcuts-profile-rename').addEventListener('click', () => this.renameKeyProfile());
+        document.getElementById('shortcuts-profile-delete').addEventListener('click', () => this.deleteKeyProfile());
         // Click on the backdrop closes
         panel.addEventListener('mousedown', (e) => { if (e.target === panel) this.toggleShortcutsPanel(false); });
     },
