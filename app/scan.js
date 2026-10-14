@@ -18,7 +18,7 @@
 // The glass (How → Glass):
 //   preview   the glass, small, with a box round each print found on it
 //             (scan-preview.js); boxes can be moved, resized, tilted, turned,
-//             drawn (or added at a print size) and deleted. The settings sit
+//             drawn (or a print clicked) and deleted. The settings sit
 //             beside it (brightness and contrast show on the preview). Scan:
 //             one scan of the glass, saved as a photo per box. Scan more
 //             previews again.
@@ -69,7 +69,6 @@ const Scan = {
         this.el('scan-pv-again').addEventListener('click', () => this.previewGlass());
         this.el('scan-pv-find').addEventListener('click', () => ScanPreview.set(ScanPreview.find(this.el('scan-pv-img'))));
         this.el('scan-pv-clear').addEventListener('click', () => ScanPreview.set([]));
-        this.el('scan-pv-add').addEventListener('click', () => this.addSizeBox());
         for (const id of ['scan-dpi', 'scan-color', 'scan-sides', 'scan-format', 'scan-quality', 'scan-bright', 'scan-contrast']) {
             this.el(id).addEventListener('input', () => this.optsChanged());
             this.el(id).addEventListener('change', () => this.optsChanged());
@@ -546,16 +545,6 @@ const Scan = {
         if (gray.disabled) this.el('scan-color').value = 'color';
     },
 
-    // A box of a print size, where there's room on the glass
-    addSizeBox() {
-        const pv = this.pv;
-        if (!pv || !pv.bed) return;
-        let [a, b] = this.el('scan-pv-size').value.split('x').map(Number);
-        const tall = this.el('scan-pv-orient').value === 'port';
-        const [wIn, hIn] = tall ? [Math.min(a, b), Math.max(a, b)] : [Math.max(a, b), Math.min(a, b)];
-        ScanPreview.addBox(wIn / pv.bed.w, hIn / pv.bed.h);
-    },
-
     // ---- Where, and what names ----
 
     folders() {
@@ -881,6 +870,6 @@ const Scan = {
         const find = () => names.map(n => app.files.find(f => (f.relPath || f.name) === n)).filter(Boolean);
         for (let i = 0; i < 50 && find().length < names.length; i++) await new Promise(r => setTimeout(r, 200));
         const files = find();
-        if (files.length) await app.batchAutoCrop(files, { ask: false, feeder });
+        if (files.length) await app.batchAutoCrop(files, { ask: false, feeder, scan: true });
     }
 };

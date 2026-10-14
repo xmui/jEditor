@@ -857,8 +857,8 @@ async function newPage(context, baseUrl) {
         await page.mouse.down();
         await page.mouse.move(first.x + rect.w * 0.05, first.y + rect.h * 0.02, { steps: 4 });
         await page.mouse.up();
-        // A tiny click on the glass makes no box
-        await page.mouse.click(rect.x + rect.w * 0.9, rect.y + rect.h * 0.98);
+        // A click on a print boxes it (the third one, taken off above)
+        await page.mouse.click(rect.x + rect.w * 0.47, rect.y + rect.h * 0.6);
         const r2 = await page.evaluate(async () => {
             const out = {};
             const $ = (id) => document.getElementById(id);
@@ -871,15 +871,11 @@ async function newPage(context, baseUrl) {
             // Find prints puts them back
             $('scan-pv-find').click();
             out.found = ScanPreview.boxes.length;
-            // A 4×6 box (tall), where there's room; turned a quarter; the
-            // first one tilted
-            $('scan-pv-size').value = '2.5x3.5';
-            $('scan-pv-orient').value = 'land';
-            $('scan-pv-add').click();
+            // A click where no print is: a box the size of the last one,
+            // there; turned a quarter; the first one tilted
+            ScanPreview.clickBox({ x: 0.6, y: 0.95 });
             const added = ScanPreview.boxes[3];
-            out.sized = [Math.round(added.w * 8.5 * 100) / 100, Math.round(added.h * 11.7 * 100) / 100];
-            // (Least in the way: the glass has no spot quite free for it)
-            out.noOverlap = ScanPreview.boxes.slice(0, 3).reduce((sum, o) => sum + Math.max(0, Math.min(added.x + added.w, o.x + o.w) - Math.max(added.x, o.x)) * Math.max(0, Math.min(added.y + added.h, o.y + o.h) - Math.max(added.y, o.y)), 0) < added.w * added.h * 0.05;
+            out.sized = [Math.round(added.w * 8.5 * 10) / 10, Math.round(added.h * 11.7 * 10) / 10, Math.round((added.x + added.w / 2) * 100) / 100];
             $('scan-pv-boxes').querySelectorAll('.pv-turn')[3].click();
             out.turned = ScanPreview.boxes[3].turn + ' ' + $('scan-pv-boxes').querySelectorAll('.pv-up')[3].style.transform;
             ScanPreview.boxes[0].angle = 4.5;
@@ -949,9 +945,10 @@ async function newPage(context, baseUrl) {
         check('... saying how many, and the names they\'ll get', r.count === '3 photos' && r.go === 'Scan 3 photos' && r.names === 'Into Glass Order: photo3.jpg … photo5.jpg', JSON.stringify([r.count, r.go, r.names]));
         check('resolutions from the scanner (100 dpi and up), 600 to start with', r.dpi === '600' && r.dpis === '150,300,600,1200', JSON.stringify([r.dpi, r.dpis]));
         check('× removes a box', r.afterRemove[0] === 2 && r.afterRemove[1] === 'Scan 2 photos', JSON.stringify(r.afterRemove));
-        check('dragging on the glass draws a box; dragging a box moves it; a click makes none', r2.drawn.length === 3 && r2.drawn[2][0] === 0.1 && r2.drawn[2][1] === 0.85 && r2.drawn[2][2] === 0.4 && r2.drawn[0][0] > 0.06 && r2.go === 'Scan 3 photos', JSON.stringify(r2.drawn));
-        check('Delete removes the selected box; Find prints puts them back', r2.afterDelete === 2 && r2.found === 3, JSON.stringify([r2.afterDelete, r2.found]));
-        check('a print-size box: wallet, wide, at its real size, where there\'s room', r2.sized.join() === '3.5,2.5' && r2.noOverlap, JSON.stringify([r2.sized, r2.noOverlap]));
+        check('dragging on the glass draws a box; dragging a box moves it', r2.drawn.length === 4 && r2.drawn[2][0] === 0.1 && r2.drawn[2][1] === 0.85 && r2.drawn[2][2] === 0.4 && r2.drawn[0][0] > 0.06, JSON.stringify(r2.drawn));
+        check('a click on a print boxes it', near(r2.drawn[3], 0.118, 0.427, 0.706, 0.342) && r2.go === 'Scan 4 photos', JSON.stringify([r2.drawn[3], r2.go]));
+        check('Delete removes the selected box; Find prints puts them back', r2.afterDelete === 3 && r2.found === 3, JSON.stringify([r2.afterDelete, r2.found]));
+        check('a click where there\'s no print: a box the size of the last one, there', Math.abs(r2.sized[0] - 6.2) < 0.4 && Math.abs(r2.sized[1] - 4.2) < 0.4 && r2.sized[2] === 0.6, JSON.stringify(r2.sized));
         check('↻ turns a box a quarter (the arrow shows which way is up); a tilted box shows tilted', r2.turned === '90 rotate(-90deg)' && r2.tiltShown === 'rotate(4.5deg)', JSON.stringify([r2.turned, r2.tiltShown]));
         check('brightness and contrast show on the preview', r2.filter[0] === '0.9' && Math.abs(parseFloat(r2.filter[1]) - 0.15) < 1e-9 && r2.filter[2] === '20', JSON.stringify(r2.filter));
         check('PNG: no quality, and the names end .png', r2.tiff[0] && /photo3\.png … photo6\.png/.test(r2.tiff[1]), JSON.stringify(r2.tiff));

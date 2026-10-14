@@ -145,9 +145,14 @@ const CropAuto = {
     // alone on a sheet-feeder page (detectFeeder). feeder: the photo came
     // from the feeder, so that's tried first; otherwise only a page that
     // plainly is one (background trimmed on three sides) counts as one.
-    find(src, W, H, { feeder = false } = {}) {
-        if (feeder) return this.detectFeeder(src, W, H) || this.detect(src, W, H);
-        return this.detect(src, W, H) || this.detectFeeder(src, W, H, { strict: true });
+    // feeder: it's a sheet-feeder page; scan: it's a scan (just scanned,
+    // or a box of Preview and crop). Neither: could be any photo, so only a
+    // scan that plainly is one is cropped. PhotoFind does the finding; the
+    // feeder finder below is the feeder's second chance.
+    find(src, W, H, { feeder = false, scan = false } = {}) {
+        const found = PhotoFind.single(src, W, H, { feeder, strict: !feeder && !scan });
+        if (found || !feeder) return found;
+        return this.detectFeeder(src, W, H);
     },
 
     // A photo from a sheet feeder (the FastFoto): the page is as long as the

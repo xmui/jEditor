@@ -5780,7 +5780,7 @@ const app = {
 
     // ask: false skips the "Auto crop N photos?" question (scans, see
     // scan.js); feeder: they're from a sheet feeder (CropAuto.detectFeeder)
-    async batchAutoCrop(files, { ask = true, feeder = false } = {}) {
+    async batchAutoCrop(files, { ask = true, feeder = false, scan = false } = {}) {
         if (!this.ensureWritable()) return;
         if (!this.dirHandle) {
             this.showToast('Auto crop needs a folder opened with Open folder');
@@ -5795,7 +5795,7 @@ const app = {
             this.showToast('Auto crop is already running');
             return;
         }
-        if (Edits.on()) return this.batchAutoCropKept(list, { feeder });
+        if (Edits.on()) return this.batchAutoCropKept(list, { feeder, scan });
         if (ask && list.length > 50 && !await UI.confirm({
             title: `Auto crop ${list.length.toLocaleString()} photos?`,
             message: `Each is straightened and cropped to the print found on it. The originals are kept ${FolderCache.native() ? 'by jEditor on this PC' : 'in .jeditor/originals'}, so Ctrl+Z puts them all back.`,
@@ -5817,7 +5817,7 @@ const app = {
                 while (next < list.length) {
                     const f = list[next++];
                     try {
-                        const r = await this.autoCropOne(f, backups, { feeder });
+                        const r = await this.autoCropOne(f, backups, { feeder, scan });
                         if (r === 'none') noEdge++;
                         else if (r === 'same') already++;
                         else {
@@ -5861,7 +5861,7 @@ const app = {
     // Batch Auto crop with Save edits when done: each crop is kept as an
     // edit (nothing is written), so every one can be checked and changed
     // in the crop editor before the edits are saved
-    async batchAutoCropKept(list, { feeder = false } = {}) {
+    async batchAutoCropKept(list, { feeder = false, scan = false } = {}) {
         this._autoCropping = true;
         const total = list.length;
         const key = 'auto-crop';
@@ -5875,7 +5875,7 @@ const app = {
                 while (next < list.length) {
                     const f = list[next++];
                     try {
-                        const ed = await this.detectCrop(f, { feeder });
+                        const ed = await this.detectCrop(f, { feeder, scan });
                         if (!ed) noEdge++;
                         else items.push({ file: f, edit: ed.isIdentity() && !ed.q ? null : ed.snapshot() });
                     } catch (e) {
@@ -5912,7 +5912,7 @@ const app = {
 
     // Auto crop's geometry for one photo, from the photo as it is on disk
     // (not its kept edit): a headless crop editor, or null (no print edge)
-    async detectCrop(file, { feeder = false } = {}) {
+    async detectCrop(file, { feeder = false, scan = false } = {}) {
         if (file._rotationQueue) await file._rotationQueue;
         // Detect on the screen-sized preview, as the editor does
         const src = await this.getDisplaySource(file, { raw: true });
@@ -5927,7 +5927,7 @@ const app = {
             H = bmp.height;
         }
         try {
-            const det = CropAuto.find(bmp, W, H, { feeder });
+            const det = CropAuto.find(bmp, W, H, { feeder, scan });
             if (!det) return null;
             const ed = CropEditor.headless(W, H);
             ed.fitToPrint(det);
@@ -5939,7 +5939,7 @@ const app = {
 
     // One photo: 'none' (no print edge), 'same' (nothing to crop) or the
     // undo item { file, backup }
-    async autoCropOne(file, backups, { feeder = false } = {}) {
+    async autoCropOne(file, backups, { feeder = false, scan = false } = {}) {
         if (file._rotationQueue) await file._rotationQueue;
         // Detect on the screen-sized preview, as the editor does
         const src = await this.getDisplaySource(file, { raw: true });
@@ -5955,7 +5955,7 @@ const app = {
         }
         let ed;
         try {
-            const det = CropAuto.find(bmp, W, H, { feeder });
+            const det = CropAuto.find(bmp, W, H, { feeder, scan });
             if (!det) return 'none';
             ed = CropEditor.headless(W, H);
             ed.fitToPrint(det);

@@ -103,17 +103,31 @@ const PhotoFind = {
             rest = rest.filter(v => !near.has(v));
         }
         const share = clusters.reduce((s, cl) => s + cl.n, 0) / Math.max(1, total);
-        return { clusters, share };
+        // Grain: how much neighbours along the edge differ (shading, which
+        // changes slowly, doesn't count)
+        const diffs = [];
+        const dstep = Math.max(1, Math.floor(w / 500));
+        for (const y of [1, h - 2]) for (let x = 1; x < w - 2; x += dstep) {
+            const p = y * w + x;
+            diffs.push(Math.abs(R[p + 1] - R[p]) + Math.abs(G[p + 1] - G[p]) + Math.abs(B[p + 1] - B[p]));
+        }
+        for (const x of [1, w - 2]) for (let y = 1; y < h - 2; y += dstep) {
+            const p = y * w + x;
+            diffs.push(Math.abs(R[p + w] - R[p]) + Math.abs(G[p + w] - G[p]) + Math.abs(B[p + w] - B[p]));
+        }
+        diffs.sort((a, b) => a - b);
+        const grain = diffs.length ? diffs[diffs.length >> 1] : 1;
+        return { clusters, share, grain };
     },
 
     // Background, flooded in from the edge: 1 where it reaches
-    flood(S, w, h, bg) {
+    flood(S, w, h, bg, fine = false) {
         const [R, G, B] = S;
         const n = w * h;
         const noise = Math.max(1, ...bg.clusters.map(c => c.noise));
         const near = Math.max(30, noise * 5);   // a seed on the edge: this close to a background colour
-        const far = Math.max(70, noise * 9);    // nothing further from one is background
-        const stepMax = Math.max(6, noise * 2.2); // and each step along the way small
+        const far = Math.max(160, noise * 14);  // (lid shading: followed step by step)
+        const stepMax = fine ? Math.max(3, bg.grain * 1.6) : Math.max(6, bg.grain * 3); // each step along the way small
         const nearest = (p) => {
             let m = Infinity;
             for (const cl of bg.clusters) m = Math.min(m, this.dist(R[p], G[p], B[p], cl.c));
@@ -293,70 +307,90 @@ const PhotoFind = {
 
     // Each side moved to the strongest straight edge near it. The flood's
     // edge is usually the print's own; on a white lid it can be a white
-    // border's inner edge, the print's real edge a little way out.
-    refine(rect, L, w, h) {
+    // border's inner edge, the print's real edge a little way out: taken
+    // when it shows on three sides or four, as a border does (a strip of a
+    // feeder's backing below a photo shows on one, and is two backgrounds
+    // meeting, not a print's edge).
+    refine(rect, L, w, h, S, bg) {
         const a = rect.angle * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
         const size = Math.min(rect.w, rect.h);
-        const inward = Math.max(2, size * 0.03), outward = Math.max(3, size * 0.07);
-        const sample = (x, y) => {
+        const inward = Math.max(2, size * 0.03), outward = Math.max(3, size * 0.11);
+        const at = (A, x, y) => {
             const xi = Math.max(0, Math.min(w - 2, Math.floor(x))), yi = Math.max(0, Math.min(h - 2, Math.floor(y)));
-            const fx = x - xi, fy = y - yi, p = yi * w + xi;
-            return (L[p] * (1 - fx) + L[p + 1] * fx) * (1 - fy) + (L[p + w] * (1 - fx) + L[p + w + 1] * fx) * fy;
+            const fx = Math.min(1, Math.max(0, x - xi)), fy = Math.min(1, Math.max(0, y - yi)), p = yi * w + xi;
+            return (A[p] * (1 - fx) + A[p + 1] * fx) * (1 - fy) + (A[p + w] * (1 - fx) + A[p + w + 1] * fx) * fy;
         };
-        // Sides: [normal (outward), half-size along normal, half-size along side, side direction]
+        const cluster = (x, y) => {
+            const r = at(S[0], x, y), g = at(S[1], x, y), b = at(S[2], x, y);
+            let best = -1, bd = Infinity;
+            bg.clusters.forEach((cl, i) => { const dd = this.dist(r, g, b, cl.c); if (dd < bd) { bd = dd; best = i; } });
+            return best;
+        };
         const sides = [
             { n: [s, -c], d: rect.h / 2, len: rect.w / 2, t: [c, s] },   // top
             { n: [-s, c], d: rect.h / 2, len: rect.w / 2, t: [c, s] },   // bottom
             { n: [-c, -s], d: rect.w / 2, len: rect.h / 2, t: [-s, c] }, // left
             { n: [c, s], d: rect.w / 2, len: rect.h / 2, t: [-s, c] }    // right
         ];
-        const moves = sides.map(sd => {
-            const K = 24;
+        const K = 24;
+        const point = (sd, k, o, span = 0.8) => {
+            const tpos = (-span + 2 * span * k / (K - 1)) * sd.len;
+            return [rect.cx + sd.t[0] * tpos + sd.n[0] * (sd.d + o), rect.cy + sd.t[1] * tpos + sd.n[1] * (sd.d + o)];
+        };
+        const found = sides.map(sd => {
             const offs = [];
             for (let o = -inward; o <= outward; o += 0.5) offs.push(o);
-            // Edge strength across the side at each offset: the median of
-            // the brightness step along the normal (most of the side must
-            // have the edge: one photo detail doesn't count)
+            // Edge strength across the side at each offset: the median, along
+            // the side, of a step in brightness or a thin line (a shadow's
+            // outline); most of the side must have it
             const strength = offs.map(o => {
                 const vals = [];
                 for (let k = 0; k < K; k++) {
-                    const tpos = (-0.8 + 1.6 * k / (K - 1)) * sd.len;
-                    const bx = rect.cx + sd.t[0] * tpos + sd.n[0] * (sd.d + o);
-                    const by = rect.cy + sd.t[1] * tpos + sd.n[1] * (sd.d + o);
-                    if (bx < 1 || by < 1 || bx > w - 2 || by > h - 2) continue;
-                    vals.push(Math.abs(sample(bx + sd.n[0], by + sd.n[1]) - sample(bx - sd.n[0], by - sd.n[1])));
+                    const [bx, by] = point(sd, k, o);
+                    if (bx < 2 || by < 2 || bx > w - 3 || by > h - 3) continue;
+                    const m1 = at(L, bx - sd.n[0], by - sd.n[1]), p1 = at(L, bx + sd.n[0], by + sd.n[1]);
+                    const m2 = at(L, bx - 2 * sd.n[0], by - 2 * sd.n[1]), p2 = at(L, bx + 2 * sd.n[0], by + 2 * sd.n[1]), z = at(L, bx, by);
+                    vals.push(Math.max(Math.abs(p1 - m1), Math.abs(2 * z - m2 - p2) / 2));
                 }
                 if (vals.length < K / 2) return 0;
                 vals.sort((p, q) => p - q);
                 return vals[vals.length >> 1];
             });
             const base = strength.slice().sort((p, q) => p - q)[strength.length >> 1];
-            // The flood's own edge (offset 0) unless a clearly straight edge
-            // is near: the strongest within a pixel or two, or further out a
-            // white border's outer edge (bright and plain up to it)
             let best = 0, bestS = -1;
+            offs.forEach((o, i) => { if (Math.abs(o) <= 2 && strength[i] > bestS) { bestS = strength[i]; best = o; } });
+            // A white border's outer edge: further out, the band up to it
+            // bright and plain, and the same background either side of it
+            let border = null;
             offs.forEach((o, i) => {
-                if (Math.abs(o) <= 2 && strength[i] > bestS) { bestS = strength[i]; best = o; }
-            });
-            let out = best;
-            offs.forEach((o, i) => {
-                if (o < size * 0.012 || strength[i] < Math.max(6, base * 3) || strength[i] < bestS * 0.25) return;
-                // The band between: bright and even (a border, not a shadow
-                // or the next print)
+                if (o < size * 0.012 || strength[i] < Math.max(3, base * 3)) return;
                 let sum = 0, sum2 = 0, cnt = 0;
-                for (let k = 0; k < 12; k++) {
-                    const tpos = (-0.7 + 1.4 * k / 11) * sd.len;
-                    for (let f = 0.25; f < 1; f += 0.25) {
-                        const v = sample(rect.cx + sd.t[0] * tpos + sd.n[0] * (sd.d + o * f), rect.cy + sd.t[1] * tpos + sd.n[1] * (sd.d + o * f));
+                for (let k = 0; k < K; k += 2) {
+                    for (let f = 0.3; f < 0.95; f += 0.2) {
+                        const [x, y] = point(sd, k, o * f, 0.7);
+                        const v = at(L, x, y);
                         sum += v; sum2 += v * v; cnt++;
                     }
                 }
-                const mean = sum / cnt, sd2 = Math.sqrt(Math.max(0, sum2 / cnt - mean * mean));
-                if (mean > 150 && sd2 < 22 && o > out) out = o;
+                const mean = sum / cnt, dev = Math.sqrt(Math.max(0, sum2 / cnt - mean * mean));
+                if (mean < 150 || dev > 22) return;
+                if (bg.clusters.length > 1) {
+                    let same = 0, n = 0;
+                    for (let k = 0; k < K; k += 3) {
+                        const [ix, iy] = point(sd, k, o * 0.6, 0.7), [ox, oy] = point(sd, k, o + Math.max(3, size * 0.02), 0.7);
+                        if (ox < 0 || oy < 0 || ox >= w || oy >= h) continue;
+                        n++;
+                        if (cluster(ix, iy) === cluster(ox, oy)) same++;
+                    }
+                    if (n && same < n * 0.7) return;
+                }
+                if (border === null || o > border) border = o;
             });
-            return out;
+            return { best, border };
         });
-        // Opposite sides move the centre and the size
+        // Borders on three sides or four: the print's edge is out there
+        const borders = found.filter(f => f.border !== null);
+        const moves = found.map(f => borders.length >= 3 && f.border !== null ? f.border : f.best);
         const [top, bottom, left, right] = moves;
         const dv = (bottom - top) / 2, du = (right - left) / 2;
         return {
@@ -368,15 +402,67 @@ const PhotoFind = {
         };
     },
 
+    // Prints laid touching, edge to edge, look like one long print. Too
+    // long for one: the straight seam across it where they meet (a line
+    // most of the way across, stronger than anything else there) parts it.
+    seam(rect, L, w, h, depth = 0) {
+        const long = Math.max(rect.w, rect.h), short = Math.min(rect.w, rect.h);
+        if (depth > 2 || long / short < 1.85) return [rect];
+        const a = rect.angle * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+        const alongW = rect.w >= rect.h;
+        // u: across the length; v: the seam's direction
+        const u = alongW ? [c, s] : [-s, c], v = alongW ? [-s, c] : [c, s];
+        const at = (x, y) => {
+            const xi = Math.max(0, Math.min(w - 2, Math.floor(x))), yi = Math.max(0, Math.min(h - 2, Math.floor(y)));
+            const fx = Math.min(1, Math.max(0, x - xi)), fy = Math.min(1, Math.max(0, y - yi)), p = yi * w + xi;
+            return (L[p] * (1 - fx) + L[p + 1] * fx) * (1 - fy) + (L[p + w] * (1 - fx) + L[p + w + 1] * fx) * fy;
+        };
+        const K = 30;
+        const lineStrength = (t) => {
+            const vals = [];
+            for (let k = 0; k < K; k++) {
+                const q = (-0.85 + 1.7 * k / (K - 1)) * short / 2;
+                const x = rect.cx + u[0] * t + v[0] * q, y = rect.cy + u[1] * t + v[1] * q;
+                const m1 = at(x - u[0], y - u[1]), p1 = at(x + u[0], y + u[1]);
+                const m2 = at(x - 2 * u[0], y - 2 * u[1]), p2 = at(x + 2 * u[0], y + 2 * u[1]), z = at(x, y);
+                vals.push(Math.max(Math.abs(p1 - m1), Math.abs(2 * z - m2 - p2) / 2));
+            }
+            vals.sort((p, q) => p - q);
+            return vals[Math.floor(vals.length * 0.3)]; // 70% of the way across at least this strong
+        };
+        const ts = [];
+        for (let t = -0.22 * long; t <= 0.22 * long; t += 0.5) ts.push(t);
+        const str = ts.map(lineStrength);
+        const sorted = str.slice().sort((p, q) => p - q);
+        const typical = sorted[sorted.length >> 1];
+        // The middle's likelier: prints of a size, side by side
+        const score = (i) => str[i] * (1 - 0.4 * Math.abs(ts[i]) / (0.22 * long));
+        let bi = 0;
+        str.forEach((v2, i) => { if (score(i) > score(bi)) bi = i; });
+        if (str[bi] < Math.max(10, typical * 3)) return [rect];
+        const t = ts[bi];
+        const half1 = (long / 2 + t), half2 = (long / 2 - t);
+        const piece = (len, sign) => {
+            const off = sign * (long / 2 - len / 2);
+            const r = { ...rect, cx: rect.cx + u[0] * off, cy: rect.cy + u[1] * off };
+            if (alongW) r.w = len; else r.h = len;
+            r.area = rect.area * len / long;
+            return r;
+        };
+        return [...this.seam(piece(half1, -1), L, w, h, depth + 1), ...this.seam(piece(half2, 1), L, w, h, depth + 1)];
+    },
+
     // ---- What callers use ----
 
     // Every print: the analysis behind single, all and at
-    analyse(px) {
+    // fine: a second, closer look (a pale print on a pale lid, with no
+    // border: the flood takes smaller steps), when the first found nothing
+    analyse(px, fine = false) {
         const { d, w, h } = px;
         const S = this.smooth(d, w, h);
         const bg = this.background(S, w, h);
         if (!bg.clusters.length) return null;
-        const reached = this.flood(S, w, h, bg);
+        const reached = this.flood(S, w, h, bg, fine);
         let fg = new Uint8Array(w * h);
         let bgCount = 0;
         for (let p = 0; p < fg.length; p++) { fg[p] = reached[p] ? 0 : 1; bgCount += reached[p]; }
@@ -391,22 +477,40 @@ const PhotoFind = {
             if (g.pts.length < minArea) continue;
             let r = this.rect(g.pts, w, label, g.id);
             if (!r) continue;
+            const groupTouches = this.touching(r, w, h);
             let parts = r.fill < 0.82 && g.pts.length > minArea * 3 ? this.split(g, w, h) : null;
             for (const one of parts || [r]) {
-                const fine = this.refine(one, L, w, h);
-                fine.id = g.id;
-                rects.push(fine);
+                for (const piece of this.seam(one, L, w, h)) {
+                    const fine = this.refine(piece, L, w, h, S, bg);
+                    fine.id = g.id;
+                    fine.groupTouches = groupTouches;
+                    rects.push(fine);
+                }
             }
         }
-        const edge = 1.5;
-        for (const r of rects) {
-            const cs = this.corners(r);
-            r.touches = {
-                top: cs.some(([, y]) => y <= edge), bottom: cs.some(([, y]) => y >= h - edge),
-                left: cs.some(([x]) => x <= edge), right: cs.some(([x]) => x >= w - edge)
-            };
-        }
+        for (const r of rects) r.touches = this.touching(r, w, h);
         return { rects, bg, bgShare: bgCount / (w * h), label, w, h };
+    },
+
+    // The first look, then the closer one if it found nothing (whose finds
+    // must be clean rectangles: a closer look also sees lid texture)
+    look(px) {
+        const a = this.analyse(px);
+        if (!a || a.rects.length) return a;
+        const b = this.analyse(px, true);
+        if (!b) return a;
+        b.rects = b.rects.filter(r => r.fill >= 0.9 && r.w >= px.w * 0.06 && r.h >= px.h * 0.05);
+        return b;
+    },
+
+    // Which sides of the scan a rectangle reaches
+    touching(r, w, h) {
+        const edge = Math.max(3, Math.min(w, h) * 0.006);
+        const cs = this.corners(r);
+        return {
+            top: cs.some(([, y]) => y <= edge), bottom: cs.some(([, y]) => y >= h - edge),
+            left: cs.some(([x]) => x <= edge), right: cs.some(([x]) => x >= w - edge)
+        };
     },
 
     toSource(r, px) {
@@ -425,15 +529,17 @@ const PhotoFind = {
     // Auto on any photo): only a scan that plainly is one.
     single(src, W, H, { feeder = false, strict = false } = {}) {
         const px = this.pixels(src, W, H);
-        const a = this.analyse(px);
+        const a = this.look(px);
         if (!a || !a.rects.length) return null;
         const { w, h } = px;
         const r = a.rects.slice().sort((p, q) => q.area - p.area)[0];
         if (r.fill < 0.7) return null;
         // Nothing round it: already cropped
         if (r.w >= w * 0.97 && r.h >= h * 0.97) return null;
-        const t = r.touches;
+        const t = r.touches, gt = r.groupTouches || t;
         const sides = [t.top, t.bottom, t.left, t.right].filter(Boolean).length;
+        // (all that it was found in, before any splitting, counts too)
+        if ([gt.top, gt.bottom, gt.left, gt.right].filter(Boolean).length > 2 || (gt.top && gt.bottom) || (gt.left && gt.right)) return null;
         // A print on the glass sits clear of the edge, or against a corner;
         // a feeder's photo against its leading edge. A photo whose own
         // plain sky reached the edge touches three sides: not a print.
@@ -451,7 +557,7 @@ const PhotoFind = {
     // in the source's pixels, biggest first
     all(src, W, H) {
         const px = this.pixels(src, W, H);
-        const a = this.analyse(px);
+        const a = this.look(px);
         if (!a) return [];
         const { w, h } = px;
         return a.rects
@@ -464,7 +570,7 @@ const PhotoFind = {
     // by; null if none
     at(src, W, H, x, y) {
         const px = this.pixels(src, W, H);
-        const a = this.analyse(px);
+        const a = this.look(px);
         if (!a) return null;
         const qx = x / px.sx, qy = y / px.sy;
         const inside = (r) => {

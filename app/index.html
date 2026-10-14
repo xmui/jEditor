@@ -850,34 +850,17 @@
                     <div id="scan-pv-bed" class="scan-pv-bed">
                         <img id="scan-pv-img" alt="" draggable="false" style="filter:url(#scan-pv-adjust)">
                         <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="scan-pv-adjust" color-interpolation-filters="sRGB"><feComponentTransfer><feFuncR id="scan-adj-r" type="linear" slope="1" intercept="0"/><feFuncG id="scan-adj-g" type="linear" slope="1" intercept="0"/><feFuncB id="scan-adj-b" type="linear" slope="1" intercept="0"/></feComponentTransfer></filter></svg>
-                        <div id="scan-pv-boxes" class="scan-pv-boxes" tabindex="0" aria-label="The scanner's glass: drag to mark a photo"></div>
+                        <div id="scan-pv-boxes" class="scan-pv-boxes" tabindex="0" aria-label="The scanner's glass: click a print to box it, or drag to draw a box"></div>
                     </div>
                     <div class="scan-pv-wait" role="status"><span class="scan-dot" aria-hidden="true"></span><span id="scan-pv-wait"></span></div>
                 </div>
                 <div class="scan-pv-side">
                     <div id="scan-pv-count" class="scan-pv-count"></div>
-                    <small class="scan-pv-help">Drag on the glass to add a photo. Drag a box to move it, or its corners to resize it. <kbd>Delete</kbd> removes the selected box.</small>
+                    <small class="scan-pv-help">Click a print to box it, or drag on the glass to draw a box. Drag a box to move it, its corners to resize it, the round handle to tilt it. <kbd>Delete</kbd> removes the selected box.</small>
                     <div class="scan-pv-tools">
                         <button id="scan-pv-again" type="button" class="btn secondary sm" title="Scan the glass again, small (after changing the prints)">Preview again</button>
                         <button id="scan-pv-find" type="button" class="btn ghost sm" title="Put the boxes back where jEditor finds the prints">Find prints</button>
                         <button id="scan-pv-clear" type="button" class="btn ghost sm">Clear boxes</button>
-                    </div>
-                    <div class="scan-field">Add a print-size box
-                        <span class="scan-row">
-                            <select id="scan-pv-size" class="field" aria-label="Print size">
-                                <option value="2.5x3.5">Wallet 2½×3½</option>
-                                <option value="3.5x5">3½×5</option>
-                                <option value="4x6" selected>4×6</option>
-                                <option value="5x7">5×7</option>
-                                <option value="8x10">8×10</option>
-                                <option value="8.5x11">8½×11</option>
-                            </select>
-                            <select id="scan-pv-orient" class="field scan-num" aria-label="Orientation">
-                                <option value="land">Wide</option>
-                                <option value="port">Tall</option>
-                            </select>
-                            <button id="scan-pv-add" type="button" class="btn ghost sm">Add</button>
-                        </span>
                     </div>
                     <div id="scan-opts-pv"></div>
                     <small id="scan-pv-names" class="scan-preview"></small>

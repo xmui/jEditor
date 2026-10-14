@@ -1,7 +1,8 @@
 // Preview and crop (the Windows app, the scan dock): the scanner's whole
 // glass, small, with a box around each print on it. jEditor finds the prints
-// (find); the boxes can be moved, resized, drawn and deleted; Scan then
-// saves each box as its own photo, at full resolution (scan.js, the app).
+// (find, with PhotoFind: each box tilted to its print); a click on a print
+// boxes it; the boxes can be moved, resized, tilted, drawn and deleted; Scan
+// then saves each box as its own photo, at full resolution (scan.js, the app).
 //
 // Boxes are fractions of the glass: { x, y, w, h }, numbered in the order
 // they're saved (reading order when found; drawn ones go last).
@@ -132,29 +133,44 @@ const ScanPreview = {
         });
     },
 
-    // A box of a given size (fractions of the glass), where there's room:
-    // the first spot in reading order that overlaps the other boxes least
-    addBox(w, h) {
-        w = Math.min(w, 1);
-        h = Math.min(h, 1);
-        const overlap = (x, y) => this.boxes.reduce((sum, o) =>
-            sum + Math.max(0, Math.min(x + w, o.x + o.w) - Math.max(x, o.x)) * Math.max(0, Math.min(y + h, o.y + o.h) - Math.max(y, o.y)), 0);
-        const steps = (size) => {
-            const list = [];
-            for (let v = 0; v + size <= 1.0001; v += 0.02) list.push(v);
-            list.push(Math.max(0, 1 - size));
-            return list;
+    // A box round a print (PhotoFind's { cx, cy, w, h, tilt } in the
+    // preview's pixels), with a little glass round it for Auto crop to trim
+    boxFor(f) {
+        const { width: W, height: H } = this.image;
+        const m = Math.min(W, H) * 0.01;
+        const w = f.w + 2 * m, h = f.h + 2 * m;
+        return {
+            x: (f.cx - w / 2) / W, y: (f.cy - h / 2) / H, w: w / W, h: h / H,
+            angle: Math.abs(f.tilt) < 0.3 ? 0 : Math.round(f.tilt * 10) / 10, turn: 0
         };
-        let best = { x: 0, y: 0, o: Infinity };
-        for (const y of steps(h)) {
-            for (const x of steps(w)) {
-                const o = overlap(x, y);
-                if (o < best.o - 1e-9) best = { x, y, o };
-            }
-            if (best.o === 0) break;
+    },
+
+    // A click on the glass: a box round the print there, or (none found)
+    // one the size of the last box, centred on the click
+    clickBox(p) {
+        const img = this.el('scan-pv-img');
+        const { width: W, height: H } = this.image;
+        let f = null;
+        try { f = PhotoFind.at(img, img.naturalWidth || W, img.naturalHeight || H, p.x * (img.naturalWidth || W), p.y * (img.naturalHeight || H)); } catch (e) { /* none */ }
+        let box;
+        if (f) {
+            // (in the image's own pixels, which may not be the preview's)
+            const k = W / (img.naturalWidth || W);
+            box = this.boxFor({ cx: f.cx * k, cy: f.cy * k, w: f.w * k, h: f.h * k, tilt: f.tilt });
+        } else {
+            const size = this.lastSize || { w: 0.3, h: 0.2 };
+            box = { x: Math.max(0, Math.min(1 - size.w, p.x - size.w / 2)), y: Math.max(0, Math.min(1 - size.h, p.y - size.h / 2)), w: size.w, h: size.h, angle: 0, turn: 0 };
         }
-        this.boxes.push({ x: best.x, y: best.y, w, h, angle: 0, turn: 0 });
+        // Already boxed: that box is chosen instead
+        const same = this.boxes.findIndex(b => Math.abs(b.x + b.w / 2 - (box.x + box.w / 2)) < box.w * 0.2 && Math.abs(b.y + b.h / 2 - (box.y + box.h / 2)) < box.h * 0.2);
+        if (same >= 0) {
+            this.sel = same;
+            this.render();
+            return;
+        }
+        this.boxes.push(box);
         this.sel = this.boxes.length - 1;
+        this.lastSize = { w: box.w, h: box.h };
         this.render();
         this.changed();
     },
@@ -239,11 +255,15 @@ const ScanPreview = {
             const b = this.boxes[i];
             if (b.w < this.MIN || b.h < this.MIN) {
                 if (mode === 'draw') {
+                    // A click, not a drag: the print there
                     this.boxes.splice(i, 1);
                     this.sel = -1;
-                } else {
-                    Object.assign(b, start); // too small: as it was
+                    this.clickBox(p0);
+                    return;
                 }
+                Object.assign(b, start); // too small: as it was
+            } else if (mode !== 'move') {
+                this.lastSize = { w: b.w, h: b.h };
             }
             this.render();
             this.changed();
@@ -260,162 +280,10 @@ const ScanPreview = {
     // print and straightens it)
     find(img) {
         const W = img.naturalWidth, H = img.naturalHeight;
-        if (!W || !H) return [];
-        const k = Math.min(1, 640 / Math.max(W, H));
-        const w = Math.max(16, Math.round(W * k)), h = Math.max(16, Math.round(H * k));
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        ctx.drawImage(img, 0, 0, w, h);
-        const d = ctx.getImageData(0, 0, w, h).data;
-        canvas.width = canvas.height = 0;
-        return this.findIn(d, w, h);
-    },
-
-    // RGBA pixels → boxes
-    findIn(d, w, h) {
-        const n = w * h;
-        // The glass (the lid behind the prints): the commonest colour round
-        // the edge
-        const ring = Math.max(2, Math.round(Math.min(w, h) * 0.01));
-        const hist = new Map();
-        const edge = [];
-        for (let y = 0; y < h; y++) {
-            for (let x = 0; x < w; x++) {
-                if (x >= ring && x < w - ring && y >= ring && y < h - ring) continue;
-                const i = (y * w + x) * 4;
-                edge.push(i);
-                const key = (d[i] >> 4) << 8 | (d[i + 1] >> 4) << 4 | (d[i + 2] >> 4);
-                hist.set(key, (hist.get(key) || 0) + 1);
-            }
-        }
-        let best = -1, most = 0;
-        for (const [key, c] of hist) if (c > most) { best = key; most = c; }
-        let br = 0, bg = 0, bb = 0, cnt = 0;
-        const bucket = (i) => (d[i] >> 4) << 8 | (d[i + 1] >> 4) << 4 | (d[i + 2] >> 4);
-        for (const i of edge) if (bucket(i) === best) { br += d[i]; bg += d[i + 1]; bb += d[i + 2]; cnt++; }
-        if (!cnt) return [];
-        br /= cnt; bg /= cnt; bb /= cnt;
-        let noise = 0;
-        for (const i of edge) if (bucket(i) === best) noise += Math.abs(d[i] - br) + Math.abs(d[i + 1] - bg) + Math.abs(d[i + 2] - bb);
-        noise /= cnt;
-
-        // Not glass: a different colour, or an edge (a white-bordered
-        // print on a white lid still has an outline)
-        const lum = new Float32Array(n);
-        for (let p = 0; p < n; p++) lum[p] = d[p * 4] * 0.3 + d[p * 4 + 1] * 0.59 + d[p * 4 + 2] * 0.11;
-        const colourStep = Math.max(42, noise * 6);
-        const edgeStep = Math.max(22, noise * 4);
-        let fg = new Uint8Array(n);
-        for (let y = 0; y < h; y++) {
-            for (let x = 0; x < w; x++) {
-                const p = y * w + x, i = p * 4;
-                const diff = Math.abs(d[i] - br) + Math.abs(d[i + 1] - bg) + Math.abs(d[i + 2] - bb);
-                let g = 0;
-                if (x > 0 && x < w - 1 && y > 0 && y < h - 1) g = Math.abs(lum[p + 1] - lum[p - 1]) + Math.abs(lum[p + w] - lum[p - w]);
-                if (diff > colourStep || g > edgeStep) fg[p] = 1;
-            }
-        }
-        // Close small gaps in outlines
-        fg = this.dilate(fg, w, h, 2);
-
-        // Glass reachable from the edge is outside; everything else is a
-        // print (its inside too, whatever colour)
-        const outside = new Uint8Array(n);
-        const stack = [];
-        const seed = (p) => { if (!fg[p] && !outside[p]) { outside[p] = 1; stack.push(p); } };
-        for (let x = 0; x < w; x++) { seed(x); seed((h - 1) * w + x); }
-        for (let y = 0; y < h; y++) { seed(y * w); seed(y * w + w - 1); }
-        while (stack.length) {
-            const p = stack.pop();
-            const x = p % w;
-            if (x > 0) seed(p - 1);
-            if (x < w - 1) seed(p + 1);
-            if (p >= w) seed(p - w);
-            if (p < n - w) seed(p + w);
-        }
-
-        // Each print: a group of inside pixels
-        const label = new Int32Array(n);
-        const found = [];
-        for (let p0 = 0; p0 < n; p0++) {
-            if (outside[p0] || label[p0]) continue;
-            const id = found.length + 1;
-            let x0 = w, y0 = h, x1 = 0, y1 = 0, area = 0;
-            label[p0] = id;
-            stack.push(p0);
-            while (stack.length) {
-                const p = stack.pop();
-                const x = p % w, y = (p - x) / w;
-                area++;
-                if (x < x0) x0 = x;
-                if (x > x1) x1 = x;
-                if (y < y0) y0 = y;
-                if (y > y1) y1 = y;
-                const visit = (q) => { if (!outside[q] && !label[q]) { label[q] = id; stack.push(q); } };
-                if (x > 0) visit(p - 1);
-                if (x < w - 1) visit(p + 1);
-                if (y > 0) visit(p - w);
-                if (y < h - 1) visit(p + w);
-            }
-            found.push({ x0, y0, x1: x1 + 1, y1: y1 + 1, area });
-        }
-        // Prints, not dust: big enough, and mostly filling their box (a
-        // rectangle, even tilted)
-        let boxes = found.filter(b => {
-            const bw = b.x1 - b.x0, bh = b.y1 - b.y0;
-            return b.area >= n * 0.006 && bw >= w * 0.04 && bh >= h * 0.03 && b.area >= bw * bh * 0.45;
-        });
-        // One inside another (a print's own picture): the outer one
-        boxes = boxes.filter(b => !boxes.some(o => o !== b && o.x0 <= b.x0 && o.y0 <= b.y0 && o.x1 >= b.x1 && o.y1 >= b.y1));
-
-        // A margin of glass round each, short of the next print
-        const margin = Math.round(Math.min(w, h) * 0.025);
-        const padded = boxes.map(b => {
-            const gap = (side) => {
-                let room = margin;
-                for (const o of boxes) {
-                    if (o === b) continue;
-                    const overlapY = Math.min(b.y1, o.y1) > Math.max(b.y0, o.y0);
-                    const overlapX = Math.min(b.x1, o.x1) > Math.max(b.x0, o.x0);
-                    if (side === 'l' && overlapY && o.x1 <= b.x0) room = Math.min(room, Math.floor((b.x0 - o.x1) / 2));
-                    if (side === 'r' && overlapY && o.x0 >= b.x1) room = Math.min(room, Math.floor((o.x0 - b.x1) / 2));
-                    if (side === 't' && overlapX && o.y1 <= b.y0) room = Math.min(room, Math.floor((b.y0 - o.y1) / 2));
-                    if (side === 'b' && overlapX && o.y0 >= b.y1) room = Math.min(room, Math.floor((o.y0 - b.y1) / 2));
-                }
-                return Math.max(0, room);
-            };
-            const x0 = Math.max(0, b.x0 - gap('l')), y0 = Math.max(0, b.y0 - gap('t'));
-            const x1 = Math.min(w, b.x1 + gap('r')), y1 = Math.min(h, b.y1 + gap('b'));
-            return { x: x0 / w, y: y0 / h, w: (x1 - x0) / w, h: (y1 - y0) / h, angle: 0, turn: 0 };
-        });
-        return this.readingOrder(padded);
-    },
-
-    dilate(m, w, h, r) {
-        const tmp = new Uint8Array(w * h), out = new Uint8Array(w * h);
-        for (let y = 0; y < h; y++) {
-            for (let x = 0; x < w; x++) {
-                let v = 0;
-                for (let dx = -r; dx <= r && !v; dx++) {
-                    const xx = x + dx;
-                    if (xx >= 0 && xx < w && m[y * w + xx]) v = 1;
-                }
-                tmp[y * w + x] = v;
-            }
-        }
-        for (let y = 0; y < h; y++) {
-            for (let x = 0; x < w; x++) {
-                let v = 0;
-                for (let dy = -r; dy <= r && !v; dy++) {
-                    const yy = y + dy;
-                    if (yy >= 0 && yy < h && tmp[yy * w + x]) v = 1;
-                }
-                out[y * w + x] = v;
-            }
-        }
-        return out;
+        if (!W || !H || !this.image) return [];
+        const k = this.image.width / W;
+        const found = PhotoFind.all(img, W, H).map(f => this.boxFor({ cx: f.cx * k, cy: f.cy * k, w: f.w * k, h: f.h * k, tilt: f.tilt }));
+        return this.readingOrder(found);
     },
 
     // Rows top to bottom (boxes side by side share a row), each left to right
