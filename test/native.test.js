@@ -139,7 +139,7 @@ const FAKE_NATIVE = `
                 await w.close();
                 scanned(name);
             }
-            if (window.__scanError) throw new Error(window.__scanError);
+            if (window.__scanError) throw Object.assign(new Error(window.__scanError), { code: window.__scanCode || null, names: [] });
             return { count: pages };
         },
         cancelScan() { window.__cancelled = true; if (window.__unhang) window.__unhang(); },
@@ -745,7 +745,20 @@ async function newPage(context, baseUrl) {
             $('uid-ok').click();
             out.running = Scan.running;
             out.detailsOnError = !$('scan-log').classList.contains('hidden') && window.__logWatch;
+
+            // Unplugged partway: a dialog saying what to check; Try again
+            // carries on with the names
+            window.__scanError = 'The scanner isn\'t connected or is turned off';
+            window.__scanCode = 'offline';
+            await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '' }).catch(() => { });
+            await wait(() => UI.isOpen());
+            out.offline = [$('uid-title').textContent, $('uid-text').textContent, $('uid-ok').textContent, $('uid-cancel').textContent];
             window.__scanError = null;
+            window.__scanCode = null;
+            window.__scanReq = null;
+            $('uid-ok').click();
+            await wait(() => window.__scanReq && !Scan.running);
+            out.again = window.__scanReq && window.__scanReq.device === 'EPSON FF-680W' && window.__scanReq.next > 6;
 
             // A scanner that never shows its window: Stop ends it
             window.__scanHang = true;
@@ -800,6 +813,7 @@ async function newPage(context, baseUrl) {
         check('... errors stand out, the scanner driver\'s chatter is dimmed', r.details.err === 'err' && r.details.dim === 'dim', JSON.stringify(r.details));
         check('... and it stops following the log when closed', r.detailsHidden);
         check('... and opens by itself when a scan fails', r.detailsOnError);
+        check('the scanner unplugged partway: a dialog says what to check, and Try again carries on', /isn't answering/.test(r.offline[0]) && /USB cable/.test(r.offline[1]) && r.offline[2] === 'Try again' && r.offline[3] === 'Close' && r.again, JSON.stringify([r.offline, r.again]));
         check('no scanners: says so and what to check', /No scanners found/.test(r.none) && /plugged in/.test(r.none) && /TWAINDSM/.test(r.none) && r.noneDisabled, r.none);
         check('scan suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();

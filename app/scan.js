@@ -747,6 +747,9 @@ const Scan = {
         } catch (e) {
             this.pvError(`The preview didn't work: ${e.message}`);
             this.showDetails(true); // what the driver did
+            if (e.code) {
+                this.trouble(e, pv.device.name, 0).then(again => { if (again) this.previewGlass(); });
+            }
         } finally {
             this.waiting = false;
             panel.classList.remove('waiting');
@@ -777,6 +780,37 @@ const Scan = {
             }
         }
         select.value = (this.get(this.KEY_BED, {}) || {})[device.id] || 'auto';
+    },
+
+    // The scanner went away (unplugged, switched off, asleep), jammed, or
+    // had nothing in its feeder: a dialog saying what to do. → Try again?
+    trouble(e, name, saved) {
+        const kept = saved ? [`${saved} photo${saved === 1 ? ' was' : 's were'} saved before it stopped; Try again carries on with the names after ${saved === 1 ? 'it' : 'them'}.`] : [];
+        if (e.code === 'offline') {
+            return UI.confirm({
+                title: `${name || 'The scanner'} isn't answering`,
+                message: 'It may have been unplugged, switched off, or gone to sleep.',
+                items: ['Check its USB cable at both ends, and that it\'s switched on.', 'Asleep? Press a button on it, or switch it off and on again, and wait for it to be ready.', ...kept],
+                ok: 'Try again',
+                cancel: 'Close'
+            });
+        }
+        if (e.code === 'jam') {
+            return UI.confirm({
+                title: 'Paper jam',
+                message: `${name || 'The scanner'} has a photo stuck in it. Open it, take the photo out gently, and check it's not damaged.`,
+                items: kept,
+                ok: 'Try again',
+                cancel: 'Close'
+            });
+        }
+        return UI.confirm({
+            title: 'Nothing in the feeder',
+            message: 'Load the photos into the feeder (face down, top edge first, unless your scanner says otherwise), then Try again.',
+            items: kept,
+            ok: 'Try again',
+            cancel: 'Close'
+        });
     },
 
     pvError(text) {
@@ -830,6 +864,7 @@ const Scan = {
     // jEditor's settings (source 'glass' with crops, or 'feeder'): dpi,
     // gray, bedW, bedH, sides, swap, brightness, contrast, format, quality.
     async run({ device, driver, folder = '', prefix, next, digits, autoCrop = false, compat, crops, dpi, source = 'driver', ...settings }) {
+        const original = arguments[0];
         const app = this.app;
         const native = FolderCache.native();
         if (this.running) throw new Error('A scan is already running');
@@ -894,10 +929,23 @@ const Scan = {
             this.running = false;
             done(`Stopped: ${e.message}` + (names.length ? ` (${names.length} saved)` : ''), true);
             this.showDetails(true); // what the driver did
-            UI.alert({
-                title: 'The scan didn\'t finish',
-                message: e.message + (names.length ? ` (${names.length} photo${names.length === 1 ? ' was' : 's were'} saved before it stopped.)` : '')
-            });
+            if (e.code) {
+                // Unplugged, off or asleep; jammed; or nothing in the feeder:
+                // say so, and Try again carries on (the names follow on)
+                const saved = names.length;
+                this.trouble(e, scannerName, saved).then(again => {
+                    if (!again) return;
+                    const more = { ...original };
+                    delete more.prefix;
+                    delete more.next;
+                    this.run(more).catch(() => { /* said already */ });
+                });
+            } else {
+                UI.alert({
+                    title: 'The scan didn\'t finish',
+                    message: e.message + (names.length ? ` (${names.length} photo${names.length === 1 ? ' was' : 's were'} saved before it stopped.)` : '')
+                });
+            }
             throw e;
         }
         show();

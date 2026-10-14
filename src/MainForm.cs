@@ -762,7 +762,7 @@ sealed class MainForm : Form
         catch (Exception e)
         {
             Log.Write($"Scan failed: {e}");
-            Reply(id, new { count, names, error = ScanError(e), compat = scanner?.FellBackToCompat ?? false });
+            Reply(id, new { count, names, error = ScanError(e), code = ScanCode(e), compat = scanner?.FellBackToCompat ?? false });
         }
     }
 
@@ -819,7 +819,7 @@ sealed class MainForm : Form
         catch (Exception e)
         {
             Log.Write($"Preview failed: {e}");
-            Reply(id, new { error = ScanError(e) });
+            Reply(id, new { error = ScanError(e), code = ScanCode(e) });
         }
     }
 
@@ -906,6 +906,17 @@ sealed class MainForm : Form
         var bad = Path.GetInvalidFileNameChars();
         return new string((prefix ?? "").Where(c => !bad.Contains(c)).ToArray()).TrimStart();
     }
+
+    // What kind of trouble, for the page's dialog: the scanner gone
+    // (unplugged, off, asleep), paper jammed, or the feeder empty
+    static string? ScanCode(Exception e) => e switch
+    {
+        NAPS2.Scan.Exceptions.DeviceOfflineException or NAPS2.Scan.Exceptions.DeviceNotFoundException or NAPS2.Scan.Exceptions.DeviceCommunicationException => "offline",
+        NAPS2.Scan.Exceptions.DevicePaperJamException => "jam",
+        NAPS2.Scan.Exceptions.DeviceFeederEmptyException => "empty",
+        Twain32.Failed f when f.Message.Contains("isn't there") || f.Message.Contains("CheckDeviceOnline") => "offline",
+        _ => null
+    };
 
     static string ScanError(Exception e) => e switch
     {

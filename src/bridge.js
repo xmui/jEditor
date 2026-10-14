@@ -52,7 +52,7 @@
     });
     const answer = async (type, data, objects) => {
         const { msg, objects: got } = await request(type, data, objects);
-        if (msg.error) throw new Error(msg.error);
+        if (msg.error) throw Object.assign(new Error(msg.error), { code: msg.code || null });
         return { msg, objects: got };
     };
 
@@ -266,6 +266,7 @@
                     const e = new Error(msg.error);
                     e.count = msg.count || 0;
                     e.names = msg.names || [];
+                    e.code = msg.code || null;
                     throw e;
                 }
                 return { count: msg.count || 0, names: msg.names || [], cancelled: !!msg.cancelled };
