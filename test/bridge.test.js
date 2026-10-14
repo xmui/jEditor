@@ -208,7 +208,7 @@ const waitForPost = (page, type) => page.waitForFunction(
             window.__onPost = async (m) => {
                 const reply = (data, objects = []) => setTimeout(() => window.__deliver({ replyTo: m.id, ...data }, objects), 5);
                 if (m.type === 'dataDir') reply({ path: 'C:\\data' }, [await (await navigator.storage.getDirectory()).getDirectoryHandle('appdata', { create: true })]);
-                else if (m.type === 'recycle') { window.__recycledPaths = m.paths; reply({ results: m.paths.map(() => ({ noBin: true })) }); }
+                else if (m.type === 'recycle') { if (!m.paths.some(x => /jEditor smoke/.test(x))) window.__recycledPaths = m.paths; else window.__cleanedUp = m.paths; reply({ results: m.paths.map(() => ({ noBin: true })) }); }
                 else if (m.type === 'smokeCheck') { (window.__checks = window.__checks || []).push(m); reply({ ok: true }); }
                 else if (m.type === 'places') reply({ drives: [{ path: 'C:\\', name: 'Local disk (C:)', kind: 'disk' }], home: [] });
                 else if (m.type === 'listDir') {
@@ -223,6 +223,30 @@ const waitForPost = (page, type) => page.waitForFunction(
                     reply({ counts: m.paths.map(() => n), limit: 1000 });
                 }
                 else if (m.type === 'quickAccess') reply({ folders: [] });
+                else if (m.type === 'makeFolder') {
+                    const path = m.parent + '\\' + m.name;
+                    (window.__folders = window.__folders || new Set()).add(path.toLowerCase());
+                    reply({ path });
+                }
+                else if (m.type === 'renameFolder') {
+                    // As the app does: the folder, then its stored data
+                    const path = m.path.replace(/[^\\]+$/, '') + m.name;
+                    window.__folders.delete(m.path.toLowerCase());
+                    window.__folders.add(path.toLowerCase());
+                    window.__renamed = m;
+                    const all = await (await navigator.storage.getDirectory()).getDirectoryHandle('appdata', { create: true });
+                    const from = await all.getDirectoryHandle(FolderCache.storeName(m.path));
+                    const to = await all.getDirectoryHandle(FolderCache.storeName(path), { create: true });
+                    for await (const h of from.values()) {
+                        if (h.kind !== 'file') continue;
+                        const w = await (await to.getFileHandle(h.name, { create: true })).createWritable();
+                        await w.write(await h.getFile());
+                        await w.close();
+                    }
+                    await all.removeEntry(FolderCache.storeName(m.path), { recursive: true });
+                    reply({ path });
+                }
+                else if (m.type === 'exists') reply({ exists: m.paths.map(p => (window.__folders || new Set()).has(p.toLowerCase())) });
                 else if (m.type === 'newWindow' || m.type === 'split') reply({ ok: true });
                 else if (m.type === 'transfer') reply({ items: m.paths.map(p => ({ from: p, to: m.dest + '\\' + p.split('\\').pop() })) });
                 else if (m.type === 'undoTransfer') reply({ errors: m.items.map(() => null) });
@@ -298,7 +322,7 @@ const waitForPost = (page, type) => page.waitForFunction(
         check('opens the folder and reports the photo count', opened.name === 'Jones' && opened.count === 4, JSON.stringify(opened));
         const smoke = await waitForPost(page, 'smoke');
         check('smoke test: reports success', smoke.ok && smoke.count === 4 && smoke.rotated && smoke.errors.length === 0, JSON.stringify(smoke));
-        check('smoke test: runs the further steps through the app', smoke.steps && smoke.steps.stored === true && smoke.steps.deleted === true && smoke.steps.restored === true && smoke.steps.scanned === true && smoke.steps.fed === true && smoke.steps.cropped === true && smoke.steps.tethered === true && smoke.steps.logged === true && smoke.steps.places === true && smoke.steps.browsed === true && smoke.steps.projects === true && smoke.steps.counted === true && smoke.steps.pins === true && smoke.steps.windows === true && smoke.steps.moved === true && smoke.steps.unmoved === true && smoke.steps.back === true && /v1\.0\.0/.test(smoke.steps.update), JSON.stringify(smoke.steps));
+        check('smoke test: runs the further steps through the app', smoke.steps && smoke.steps.stored === true && smoke.steps.deleted === true && smoke.steps.restored === true && smoke.steps.scanned === true && smoke.steps.fed === true && smoke.steps.cropped === true && smoke.steps.tethered === true && smoke.steps.logged === true && smoke.steps.places === true && smoke.steps.browsed === true && smoke.steps.projects === true && smoke.steps.counted === true && smoke.steps.pins === true && smoke.steps.renamed === true && smoke.steps.windows === true && smoke.steps.moved === true && smoke.steps.unmoved === true && smoke.steps.back === true && /v1\.0\.0/.test(smoke.steps.update), JSON.stringify(smoke.steps));
         const scanned = await page.evaluate(() => ({ scan: window.__scan, check: (window.__checks || []).find(c => c.step === 'scanned') }));
         const teth = await page.evaluate(() => ({ req: window.__tether, check: (window.__checks || []).find(c => c.step === 'tethered') }));
         check('smoke test: tethers the test camera into the order, takes a shot (RAW + JPEG) and disconnects', teth.req && teth.req.camera === 'jeditor-test-camera' && teth.req.folder === 'C:\\Jones' && teth.req.prefix === 'shot_' &&

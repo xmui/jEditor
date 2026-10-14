@@ -12,6 +12,7 @@ const ASSETS = [
     './changelog.js',
     './meta.js',
     './folder-cache.js',
+    './photo-find.js',
     './crop-auto.js',
     './crop.js',
     './dupes.js',

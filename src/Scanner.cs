@@ -49,6 +49,9 @@ sealed class Scanner : IDisposable
         // scanner calls the photo's back its front (the FastFoto does)
         public string Sides { get; init; } = "front";
         public bool Swap { get; init; }
+        // Feeder, TWAIN: the scanner crops each photo itself (its own
+        // auto-size, through the 32-bit helper; see Twain32)
+        public bool AutoSize { get; init; }
         // -100…100, applied by jEditor so every scanner does the same
         public int Brightness { get; init; }
         public int Contrast { get; init; }
@@ -117,6 +120,8 @@ sealed class Scanner : IDisposable
     {
         var options = make(compat);
         bool any = false;
+        int n = 0;
+        var started = System.Diagnostics.Stopwatch.StartNew();
         Exception? failed = null;
         await using (var e = controller.Scan(options, cancel).GetAsyncEnumerator(cancel))
         {
@@ -132,9 +137,11 @@ sealed class Scanner : IDisposable
                     break;
                 }
                 any = true;
+                Log.Write($"Image {++n} came in at {started.Elapsed.TotalSeconds:0.0} s");
                 yield return e.Current;
             }
         }
+        if (failed is null) Log.Write($"The scanner is done: {n} image{(n == 1 ? "" : "s")} in {started.Elapsed.TotalSeconds:0.0} s");
         if (failed is null) yield break;
         Log.Write($"The scanner didn't open ({failed.GetType().Name}: {failed.Message}); trying again in compatibility mode (Older TWAIN mode)");
         await foreach (var image in controller.Scan(make(true), cancel))
@@ -284,6 +291,10 @@ sealed class Scanner : IDisposable
             var options = For(r.DeviceId, r.Driver, compat);
             options.UseNativeUI = true; // the scanner's own window: size detection, resolution, feeder…
             options.DialogParent = owner;
+            // The whole image at once: NAPS2's default with a scanner window
+            // (memory transfer, in small pieces through the 32-bit helper)
+            // kept the FastFoto's window busy long after each photo
+            if (driver == Driver.Twain) options.TwainOptions.TransferMode = TwainTransferMode.Native;
             options.MaxQuality = true;  // kept lossless until saved
             options.Dpi = 300;          // (the scanner's window decides)
             Log.Write(driver == Driver.Twain
@@ -364,6 +375,31 @@ sealed class Scanner : IDisposable
                 else sides[1].Dispose();
             }
             yield break;
+        }
+        // The scanner's own auto-size, if it has it; else the usual way
+        if (r.AutoSize && r.Driver == "twain" && Twain32.Exe is not null)
+        {
+            Exception? failed = null;
+            bool any = false;
+            await using (var e = Twain32.ScanAsync(r.DeviceId, r.Dpi, r.Gray, duplex, true, cancel).GetAsyncEnumerator(cancel))
+            {
+                while (true)
+                {
+                    try
+                    {
+                        if (!await e.MoveNextAsync()) break;
+                    }
+                    catch (Twain32.Failed ex) when (!any)
+                    {
+                        failed = ex;
+                        break;
+                    }
+                    any = true;
+                    yield return e.Current;
+                }
+            }
+            if (failed is null) yield break;
+            Log.Write($"The scanner's own auto-size didn't work ({failed.Message}); scanning the usual way, jEditor crops each photo");
         }
         ScanOptions Make(bool compat)
         {
@@ -533,7 +569,7 @@ sealed class Scanner : IDisposable
         FellBackToCompat = false;
         using var bmp = deviceId == FakeId && fake
             ? await Task.Run(() => FakeBed.Draw(dpi, bedH), cancel)
-            : await ScanBed(c => For(deviceId, driver, c), compat, bedW, bedH, dpi, false, owner, cancel);
+            : await ScanBed(c => For(deviceId, driver, c), compat, bedW, bedH, dpi, false, owner, cancel, "Previewing the glass (small, only to find the prints; the scan itself is at the resolution chosen)");
         using var ms = new MemoryStream();
         SaveJpeg(bmp, ms, 85);
         Log.Write($"Preview: {bmp.Width} × {bmp.Height} at {dpi} dpi");
@@ -541,10 +577,10 @@ sealed class Scanner : IDisposable
     }
 
     // The flatbed, from its top edge down to `height` inches, as one image
-    async Task<Bitmap> ScanBed(Func<bool, ScanOptions> scanner, bool compat, double width, double height, int dpi, bool gray, IntPtr owner, CancellationToken cancel)
+    async Task<Bitmap> ScanBed(Func<bool, ScanOptions> scanner, bool compat, double width, double height, int dpi, bool gray, IntPtr owner, CancellationToken cancel, string what)
     {
         Bitmap? result = null;
-        await foreach (var image in Run(c => BedOptions(scanner(c), width, height, dpi, gray, owner), compat, cancel))
+        await foreach (var image in Run(c => BedOptions(scanner(c), width, height, dpi, gray, owner, what), compat, cancel))
         {
             using (image)
             {
@@ -554,7 +590,7 @@ sealed class Scanner : IDisposable
         return result ?? throw new InvalidOperationException("The scanner sent nothing back");
     }
 
-    static ScanOptions BedOptions(ScanOptions options, double width, double height, int dpi, bool gray, IntPtr owner)
+    static ScanOptions BedOptions(ScanOptions options, double width, double height, int dpi, bool gray, IntPtr owner, string what)
     {
         options.UseNativeUI = false;
         options.DialogParent = owner;
@@ -564,7 +600,7 @@ sealed class Scanner : IDisposable
         options.PageSize = new PageSize(Math.Round((decimal)width, 2), Math.Round((decimal)height, 2), PageSizeUnit.Inch);
         options.PageAlign = HorizontalAlign.Left;
         options.MaxQuality = true;
-        Log.Write($"Scanning the bed: {width:0.##} × {height:0.##} in at {dpi} dpi, {(gray ? "greys" : "colour")}, no scanner window ({options.Driver}, manager {options.TwainOptions.Dsm}, transfer {options.TwainOptions.TransferMode})");
+        Log.Write($"{what}: {width:0.##} × {height:0.##} in at {dpi} dpi, {(gray ? "greys" : "colour")}, no scanner window ({options.Driver}, manager {options.TwainOptions.Dsm}, transfer {options.TwainOptions.TransferMode})");
         return options;
     }
 
@@ -579,7 +615,7 @@ sealed class Scanner : IDisposable
         var dpi = fakeScan ? Math.Min(r.Dpi, 300) : r.Dpi;
         var bmp = fakeScan
             ? await Task.Run(() => FakeBed.Draw(dpi, height), cancel)
-            : await ScanBed(c => For(r.DeviceId, r.Driver, c), r.Compat, r.BedW, height, dpi, r.Gray, owner, cancel);
+            : await ScanBed(c => For(r.DeviceId, r.Driver, c), r.Compat, r.BedW, height, dpi, r.Gray, owner, cancel, "Scanning the glass");
         try
         {
             // Pixels per inch: the image's own resolution if it's believable

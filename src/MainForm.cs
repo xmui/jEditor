@@ -367,6 +367,8 @@ sealed class MainForm : Form
             case "places":
             case "listDir":
             case "listProjects":
+            case "makeFolder":
+            case "renameFolder":
             case "countPhotos":
             case "quickAccess":
             case "eject":
@@ -554,6 +556,35 @@ sealed class MainForm : Form
                     Reply(id, new { projects = list.Select(p => new { name = p.Name, path = p.Path, modified = new DateTimeOffset(p.Modified).ToUnixTimeMilliseconds() }) });
                     break;
                 }
+                case "makeFolder":
+                {
+                    // A new project: a folder in the projects folder
+                    var parent = Str(msg, "parent") ?? "";
+                    var name = (Str(msg, "name") ?? "").Trim();
+                    if (!Path.IsPathFullyQualified(parent) || !Directory.Exists(parent)) { Reply(id, new { error = "The projects folder isn't there" }); break; }
+                    if (FolderRename.NameProblem(name) is { } problem) { Reply(id, new { error = problem }); break; }
+                    var path = Path.Combine(parent, name);
+                    if (Directory.Exists(path) || File.Exists(path)) { Reply(id, new { error = $"There's already a {name} there" }); break; }
+                    Directory.CreateDirectory(path);
+                    Log.Write($"New project: {path}");
+                    Reply(id, new { path });
+                    break;
+                }
+                case "renameFolder":
+                {
+                    // A project or folder renamed, its stored data with it
+                    var path = Str(msg, "path") ?? "";
+                    var name = (Str(msg, "name") ?? "").Trim();
+                    if (!Path.IsPathFullyQualified(path)) { Reply(id, new { error = "Not a folder" }); break; }
+                    if (FolderRename.NameProblem(name) is { } problem) { Reply(id, new { error = problem }); break; }
+                    try { Reply(id, new { path = await Task.Run(() => FolderRename.Rename(path, name)) }); }
+                    catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                    {
+                        Log.Write($"Rename {path} failed: {e.Message}");
+                        Reply(id, new { error = e is UnauthorizedAccessException || e.HResult == unchecked((int)0x80070020) ? "Windows wouldn't rename it: something has a file in it open (Explorer, another program, another jEditor window)" : e.Message });
+                    }
+                    break;
+                }
                 case "countPhotos":
                 {
                     var paths = (msg["paths"] as JsonArray ?? []).Select(p => (string?)p ?? "").ToList();
@@ -731,6 +762,7 @@ sealed class MainForm : Form
             BedH = msg["bedH"]?.GetValue<double>() ?? 0,
             Sides = Str(msg, "sides") is "back" or "both" ? Str(msg, "sides")! : "front",
             Swap = msg["swap"]?.GetValue<bool>() ?? false,
+            AutoSize = msg["autosize"]?.GetValue<bool>() ?? false,
             Brightness = Math.Clamp(msg["brightness"]?.GetValue<int>() ?? 0, -100, 100),
             Contrast = Math.Clamp(msg["contrast"]?.GetValue<int>() ?? 0, -100, 100),
             Format = Str(msg, "format") is "tiff" or "png" ? Str(msg, "format")! : "jpeg",
@@ -761,7 +793,7 @@ sealed class MainForm : Form
         catch (Exception e)
         {
             Log.Write($"Scan failed: {e}");
-            Reply(id, new { count, names, error = ScanError(e), compat = scanner?.FellBackToCompat ?? false });
+            Reply(id, new { count, names, error = ScanError(e), code = ScanCode(e), compat = scanner?.FellBackToCompat ?? false });
         }
     }
 
@@ -818,7 +850,7 @@ sealed class MainForm : Form
         catch (Exception e)
         {
             Log.Write($"Preview failed: {e}");
-            Reply(id, new { error = ScanError(e) });
+            Reply(id, new { error = ScanError(e), code = ScanCode(e) });
         }
     }
 
@@ -905,6 +937,17 @@ sealed class MainForm : Form
         var bad = Path.GetInvalidFileNameChars();
         return new string((prefix ?? "").Where(c => !bad.Contains(c)).ToArray()).TrimStart();
     }
+
+    // What kind of trouble, for the page's dialog: the scanner gone
+    // (unplugged, off, asleep), paper jammed, or the feeder empty
+    static string? ScanCode(Exception e) => e switch
+    {
+        NAPS2.Scan.Exceptions.DeviceOfflineException or NAPS2.Scan.Exceptions.DeviceNotFoundException or NAPS2.Scan.Exceptions.DeviceCommunicationException => "offline",
+        NAPS2.Scan.Exceptions.DevicePaperJamException => "jam",
+        NAPS2.Scan.Exceptions.DeviceFeederEmptyException => "empty",
+        Twain32.Failed f when f.Message.Contains("isn't there") || f.Message.Contains("CheckDeviceOnline") => "offline",
+        _ => null
+    };
 
     static string ScanError(Exception e) => e switch
     {

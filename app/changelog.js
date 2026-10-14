@@ -5,6 +5,19 @@
 
 const CHANGELOG = [
     {
+        version: '1.27.0', date: '2026-10-14',
+        items: [
+            'A new photo finder behind Auto crop, batch Auto crop, feeder scans and Preview and crop. It learns the scan\'s background from its edge (a lid, a feeder\'s backing and the white past a short photo), so it copes with lid shading, dust, dark photos on a dark lid, white-bordered prints on a white lid, tilted prints and prints laid touching. Ordinary photos, even ones with a plain sky, aren\'t taken for scans.',
+            'The FastFoto crops each photo itself: jEditor now turns on the scanner\'s own auto-size (as in Epson\'s software), with no scanner window. Advanced → The scanner crops each photo itself (on to start with); if a scanner can\'t, jEditor scans the usual way and crops each photo.',
+            'Preview and crop: click a print to box it, tilted to match it; or drag to draw a box. The print-size boxes are gone. Choose the glass size under Glass (remembered for each scanner; the OpticBook A300 is known to be A3), and the preview is sharper (about 150 dpi, only to find the prints: the scan itself is at the resolution chosen).',
+            'Each scanned photo opens large as it comes in, like the camera\'s (Show each photo as it comes in).',
+            'A scanner unplugged, switched off or asleep, a paper jam or an empty feeder now gets a proper dialog saying what to check, with Try again (the names carry on).',
+            'Settings are remembered for each scanner; a photo feeder starts at 300 dpi. The scanner\'s own window brings each photo over whole now, which was slow on the FastFoto, and Details times each page.',
+            'New project in the sidebar: names a new folder in your projects folder and opens it.',
+            'Rename projects and folders: right-click one in the sidebar → Rename…, or the pencil on the project card. Its flags, kept edits and thumbnails go with it, and a pin follows it.'
+        ]
+    },
+    {
         version: '1.26.0', date: '2026-10-14',
         items: [
             'Save edits when done, a setting for each project (on its card in the sidebar, or right-click the grid). Crops, straightening, turns and batch Auto crop are kept on the photos instead of being saved into them straight away, so they can be changed as often as you like before anything is written.',

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- jEditor's 32-bit TWAIN helper (Program.cs). .NET Framework 4.8 is on
+       every Windows 10 and 11 PC, so this small exe needs nothing installed;
+       32-bit because most scanners' TWAIN drivers are -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x86</PlatformTarget>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <AssemblyName>jEditor.Twain32</AssemblyName>
+    <RootNamespace>JEditor.Twain32</RootNamespace>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Product>jEditor</Product>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The TWAIN library NAPS2 uses (LGPL-2.1, beside the exe) -->
+    <PackageReference Include="NAPS2.NTwain" Version="1.0.1" />
+    <!-- Builds on any OS (CI checks, quick compiles) -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

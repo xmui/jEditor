@@ -52,7 +52,7 @@
     });
     const answer = async (type, data, objects) => {
         const { msg, objects: got } = await request(type, data, objects);
-        if (msg.error) throw new Error(msg.error);
+        if (msg.error) throw Object.assign(new Error(msg.error), { code: msg.code || null });
         return { msg, objects: got };
     };
 
@@ -227,6 +227,14 @@
         async listProjects(path) {
             return (await answer('listProjects', { path })).msg.projects;
         },
+        // A new folder named `name` in `parent` (a new project) → its path
+        async makeFolder(parent, name) {
+            return (await answer('makeFolder', { parent, name })).msg.path;
+        },
+        // A folder renamed (a project: its stored data follows) → its new path
+        async renameFolder(path, name) {
+            return (await answer('renameFolder', { path, name })).msg.path;
+        },
         // Photos in each folder and its subfolders → { counts: [n, -1 if gone], limit }
         // (counting stops at `limit`)
         async countPhotos(paths) {
@@ -266,6 +274,7 @@
                     const e = new Error(msg.error);
                     e.count = msg.count || 0;
                     e.names = msg.names || [];
+                    e.code = msg.code || null;
                     throw e;
                 }
                 return { count: msg.count || 0, names: msg.names || [], cancelled: !!msg.cancelled };
@@ -550,6 +559,26 @@
                     steps.counted = counts[0] === a.files.length ? true : `counted ${counts[0]} photos, jEditor shows ${a.files.length}`;
                 }
                 steps.pins = Array.isArray(await window.JEditorNative.quickAccess()) || 'no answer';
+                // New project and Rename: a folder made beside this one, with
+                // stored data, renamed; the data must follow it
+                if (here) {
+                    try {
+                        const parent = here.replace(/\\[^\\]+$/, '');
+                        const made = await window.JEditorNative.makeFolder(parent, 'jEditor smoke ' + Date.now().toString(36));
+                        const all = await window.JEditorNative.dataDir();
+                        const store = await all.getDirectoryHandle(FolderCache.storeName(made), { create: true });
+                        await FolderCache.writeJson(store, 'order.json', { path: made, name: made.split('\\').pop(), openedAt: Date.now() });
+                        const renamed = await window.JEditorNative.renameFolder(made, made.split('\\').pop() + ' renamed');
+                        const moved = await all.getDirectoryHandle(FolderCache.storeName(renamed)).then(() => true, () => false);
+                        const left = await all.getDirectoryHandle(FolderCache.storeName(made)).then(() => true, () => false);
+                        const there = (await window.JEditorNative.exists([renamed, made])).join();
+                        steps.renamed = there !== 'true,false' ? `folders after renaming: ${there}` : !moved || left ? 'its stored data didn\'t follow it' : true;
+                        await all.removeEntry(FolderCache.storeName(renamed), { recursive: true }).catch(() => { });
+                        await window.JEditorNative.recycle([renamed]).catch(() => { });
+                    } catch (e) {
+                        steps.renamed = 'failed: ' + e.message;
+                    }
+                }
             }
             // Windows: a second one opens, the two split, and a photo moves
             // into a folder through the app and back (Ctrl+Z)

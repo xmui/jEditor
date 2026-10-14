@@ -139,7 +139,7 @@ const FAKE_NATIVE = `
                 await w.close();
                 scanned(name);
             }
-            if (window.__scanError) throw new Error(window.__scanError);
+            if (window.__scanError) throw Object.assign(new Error(window.__scanError), { code: window.__scanCode || null, names: [] });
             return { count: pages };
         },
         cancelScan() { window.__cancelled = true; if (window.__unhang) window.__unhang(); },
@@ -274,6 +274,23 @@ const FAKE_NATIVE = `
         },
         async undoTransfer(items, copy) { window.__undoTransfer = { items, copy }; return items.map(() => null); },
         async openPath(p) { window.__opened = p; return true; },
+        async renameFolder(p, name) {
+            window.__renamed = [p, name];
+            const parent = p.slice(0, p.lastIndexOf(BS));
+            if (parent === window.__orderRoot) {
+                const disk = await sub('disk');
+                const h = await disk.getDirectoryHandle(p.slice(parent.length + 1));
+                if (h.move) await h.move(name);
+            }
+            return parent + BS + name;
+        },
+        async makeFolder(parent, name) {
+            if (parent !== window.__orderRoot) throw new Error("The projects folder is not there");
+            const disk = await sub('disk');
+            try { await disk.getDirectoryHandle(name); throw new Error('There is already a ' + name + ' there'); } catch (e) { if (!/NotFound/.test(e.name)) throw e; }
+            await disk.getDirectoryHandle(name, { create: true });
+            return parent + BS + name;
+        },
         async exists(paths) { return paths.map(p => !(window.__missing || []).includes(p)); },
         async checkUpdate() { window.__calls.push('checkUpdate'); return window.__update || { newer: false, version: '1.0.0', tag: 'v1.0.0', notes: '' }; },
         async installUpdate(progress) {
@@ -745,7 +762,20 @@ async function newPage(context, baseUrl) {
             $('uid-ok').click();
             out.running = Scan.running;
             out.detailsOnError = !$('scan-log').classList.contains('hidden') && window.__logWatch;
+
+            // Unplugged partway: a dialog saying what to check; Try again
+            // carries on with the names
+            window.__scanError = 'The scanner isn\'t connected or is turned off';
+            window.__scanCode = 'offline';
+            await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '' }).catch(() => { });
+            await wait(() => UI.isOpen());
+            out.offline = [$('uid-title').textContent, $('uid-text').textContent, $('uid-ok').textContent, $('uid-cancel').textContent];
             window.__scanError = null;
+            window.__scanCode = null;
+            window.__scanReq = null;
+            $('uid-ok').click();
+            await wait(() => window.__scanReq && !Scan.running);
+            out.again = window.__scanReq && window.__scanReq.device === 'EPSON FF-680W' && window.__scanReq.next > 6;
 
             // A scanner that never shows its window: Stop ends it
             window.__scanHang = true;
@@ -800,6 +830,7 @@ async function newPage(context, baseUrl) {
         check('... errors stand out, the scanner driver\'s chatter is dimmed', r.details.err === 'err' && r.details.dim === 'dim', JSON.stringify(r.details));
         check('... and it stops following the log when closed', r.detailsHidden);
         check('... and opens by itself when a scan fails', r.detailsOnError);
+        check('the scanner unplugged partway: a dialog says what to check, and Try again carries on', /isn't answering/.test(r.offline[0]) && /USB cable/.test(r.offline[1]) && r.offline[2] === 'Try again' && r.offline[3] === 'Close' && r.again, JSON.stringify([r.offline, r.again]));
         check('no scanners: says so and what to check', /No scanners found/.test(r.none) && /plugged in/.test(r.none) && /TWAINDSM/.test(r.none) && r.noneDisabled, r.none);
         check('scan suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
@@ -857,8 +888,8 @@ async function newPage(context, baseUrl) {
         await page.mouse.down();
         await page.mouse.move(first.x + rect.w * 0.05, first.y + rect.h * 0.02, { steps: 4 });
         await page.mouse.up();
-        // A tiny click on the glass makes no box
-        await page.mouse.click(rect.x + rect.w * 0.9, rect.y + rect.h * 0.98);
+        // A click on a print boxes it (the third one, taken off above)
+        await page.mouse.click(rect.x + rect.w * 0.47, rect.y + rect.h * 0.6);
         const r2 = await page.evaluate(async () => {
             const out = {};
             const $ = (id) => document.getElementById(id);
@@ -871,15 +902,11 @@ async function newPage(context, baseUrl) {
             // Find prints puts them back
             $('scan-pv-find').click();
             out.found = ScanPreview.boxes.length;
-            // A 4×6 box (tall), where there's room; turned a quarter; the
-            // first one tilted
-            $('scan-pv-size').value = '2.5x3.5';
-            $('scan-pv-orient').value = 'land';
-            $('scan-pv-add').click();
+            // A click where no print is: a box the size of the last one,
+            // there; turned a quarter; the first one tilted
+            ScanPreview.clickBox({ x: 0.6, y: 0.95 });
             const added = ScanPreview.boxes[3];
-            out.sized = [Math.round(added.w * 8.5 * 100) / 100, Math.round(added.h * 11.7 * 100) / 100];
-            // (Least in the way: the glass has no spot quite free for it)
-            out.noOverlap = ScanPreview.boxes.slice(0, 3).reduce((sum, o) => sum + Math.max(0, Math.min(added.x + added.w, o.x + o.w) - Math.max(added.x, o.x)) * Math.max(0, Math.min(added.y + added.h, o.y + o.h) - Math.max(added.y, o.y)), 0) < added.w * added.h * 0.05;
+            out.sized = [Math.round(added.w * 8.5 * 10) / 10, Math.round(added.h * 11.7 * 10) / 10, Math.round((added.x + added.w / 2) * 100) / 100];
             $('scan-pv-boxes').querySelectorAll('.pv-turn')[3].click();
             out.turned = ScanPreview.boxes[3].turn + ' ' + $('scan-pv-boxes').querySelectorAll('.pv-up')[3].style.transform;
             ScanPreview.boxes[0].angle = 4.5;
@@ -943,15 +970,16 @@ async function newPage(context, baseUrl) {
         const near = (b, x, y, w, h) => b && b[0] <= x && b[1] <= y && b[0] + b[2] >= x + w && b[1] + b[3] >= y + h && b[2] < w + 0.12 && b[3] < h + 0.1;
         check('How: the OpticBook (a glass) gets the glass, no feeder offered; it says what it does, and the button says Preview', r.modeDefault === 'glass' && r.feederHidden && r.help && r.goLabel === 'Preview', JSON.stringify([r.modeDefault, r.feederHidden, r.help, r.goLabel]));
         check('the settings are in setup, then beside the glass', r.optsInSetup && r.optsBeside);
-        check('it asks the scanner about its glass, then previews it small', r.capsReq && r.capsReq.device === 'wia-1' && r.previewReq && r.previewReq.dpi === 75 && r.previewReq.bedW === 8.5, JSON.stringify([r.capsReq, r.previewReq]));
+        check('it asks the scanner about its glass, then previews it small', r.capsReq && r.capsReq.device === 'wia-1' && r.previewReq && r.previewReq.dpi === 150 && r.previewReq.bedW === 8.5, JSON.stringify([r.capsReq, r.previewReq]));
         check('the dock grows to show the glass', r.wide);
         check('a box round each print, in reading order', r.boxes.length === 3 && r.shown === 3 && near(r.boxes[0], 0.059, 0.043, 0.47, 0.256) && near(r.boxes[1], 0.588, 0.06, 0.353, 0.342) && near(r.boxes[2], 0.118, 0.427, 0.706, 0.342), JSON.stringify(r.boxes));
         check('... saying how many, and the names they\'ll get', r.count === '3 photos' && r.go === 'Scan 3 photos' && r.names === 'Into Glass Order: photo3.jpg … photo5.jpg', JSON.stringify([r.count, r.go, r.names]));
         check('resolutions from the scanner (100 dpi and up), 600 to start with', r.dpi === '600' && r.dpis === '150,300,600,1200', JSON.stringify([r.dpi, r.dpis]));
         check('× removes a box', r.afterRemove[0] === 2 && r.afterRemove[1] === 'Scan 2 photos', JSON.stringify(r.afterRemove));
-        check('dragging on the glass draws a box; dragging a box moves it; a click makes none', r2.drawn.length === 3 && r2.drawn[2][0] === 0.1 && r2.drawn[2][1] === 0.85 && r2.drawn[2][2] === 0.4 && r2.drawn[0][0] > 0.06 && r2.go === 'Scan 3 photos', JSON.stringify(r2.drawn));
-        check('Delete removes the selected box; Find prints puts them back', r2.afterDelete === 2 && r2.found === 3, JSON.stringify([r2.afterDelete, r2.found]));
-        check('a print-size box: wallet, wide, at its real size, where there\'s room', r2.sized.join() === '3.5,2.5' && r2.noOverlap, JSON.stringify([r2.sized, r2.noOverlap]));
+        check('dragging on the glass draws a box; dragging a box moves it', r2.drawn.length === 4 && r2.drawn[2][0] === 0.1 && r2.drawn[2][1] === 0.85 && r2.drawn[2][2] === 0.4 && r2.drawn[0][0] > 0.06, JSON.stringify(r2.drawn));
+        check('a click on a print boxes it', near(r2.drawn[3], 0.118, 0.427, 0.706, 0.342) && r2.go === 'Scan 4 photos', JSON.stringify([r2.drawn[3], r2.go]));
+        check('Delete removes the selected box; Find prints puts them back', r2.afterDelete === 3 && r2.found === 3, JSON.stringify([r2.afterDelete, r2.found]));
+        check('a click where there\'s no print: a box the size of the last one, there', Math.abs(r2.sized[0] - 6.2) < 0.4 && Math.abs(r2.sized[1] - 4.2) < 0.4 && r2.sized[2] === 0.6, JSON.stringify(r2.sized));
         check('↻ turns a box a quarter (the arrow shows which way is up); a tilted box shows tilted', r2.turned === '90 rotate(-90deg)' && r2.tiltShown === 'rotate(4.5deg)', JSON.stringify([r2.turned, r2.tiltShown]));
         check('brightness and contrast show on the preview', r2.filter[0] === '0.9' && Math.abs(parseFloat(r2.filter[1]) - 0.15) < 1e-9 && r2.filter[2] === '20', JSON.stringify(r2.filter));
         check('PNG: no quality, and the names end .png', r2.tiff[0] && /photo3\.png … photo6\.png/.test(r2.tiff[1]), JSON.stringify(r2.tiff));
@@ -991,6 +1019,9 @@ async function newPage(context, baseUrl) {
             out.req = window.__scanReq;
             await wait(() => app.files.some(f => f.name === 'photo4-b.jpg'));
             out.files = app.files.map(f => f.name).sort().join();
+            // The newest photo (not its back) is open, large
+            await wait(() => app.viewMode === 'single' && app.currentFile && app.currentFile.name === 'photo4.jpg');
+            out.shown = app.viewMode + ' ' + (app.currentFile && app.currentFile.name);
             // Swap off: remembered for that scanner
             $('scan-settings').click();
             $('scan-swap').checked = false;
@@ -1004,6 +1035,8 @@ async function newPage(context, baseUrl) {
         check('both sides: each back is named after its front, with -b', /photo3\.jpg and its back photo3-b\.jpg/.test(r.names), r.names);
         check('Scan sends the feeder settings, with no scanner window', r.req && r.req.source === 'feeder' && r.req.sides === 'both' && r.req.swap === true && r.req.dpi === 600 && r.req.bedW === 8.5 && r.req.bedH === 14 && r.req.format === 'jpeg', JSON.stringify(r.req));
         check('... fronts and backs come in', /photo3-b\.jpg,photo3\.jpg,photo4-b\.jpg,photo4\.jpg/.test(r.files), r.files);
+        check('... each photo opens large as it comes in (not the backs)', r.shown === 'single photo4.jpg', r.shown);
+        check('... and the scanner is asked to crop each photo itself (its own auto-size)', r.req && r.req.autosize === true, JSON.stringify(r.req));
         check('the swap is remembered for that scanner', r.swapKept);
         check('feeder suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
@@ -1022,7 +1055,7 @@ async function newPage(context, baseUrl) {
             // The app found the OpticBook only opens in compatibility mode;
             // the other one wouldn't say what it has at all
             window.__capsFor = (o) => /OpticBook/.test(o.device)
-                ? { bedW: 8.5, bedH: 11.7, dpis: [75, 150, 300, 600], gray: true, guessed: false, flatbed: true, feeder: false, compat: true }
+                ? { bedW: 8.27, bedH: 11.69, dpis: [75, 150, 300, 600], gray: true, guessed: true, flatbed: true, feeder: false, compat: true }
                 : { bedW: 8.27, bedH: 11.69, dpis: [75, 150, 300, 600], gray: true, guessed: false, flatbed: false, feeder: false };
             const dir = await makeOrder('Book Order', 1);
             await openOrder(dir);
@@ -1032,7 +1065,7 @@ async function newPage(context, baseUrl) {
             out.kept = !!JSON.parse(localStorage.getItem('jeditor.scanCompat') || '{}')['Plustek OpticBook A300 Plus-TWAIN'];
             out.checked = $('scan-compat').checked;
             out.toast = [...document.querySelectorAll('.toast')].map(t => t.textContent).find(t => /Older TWAIN mode/.test(t)) || '';
-            out.glass = Scan.mode() === 'glass' && $('scan-mode-feeder').classList.contains('hidden');
+            out.glass = Scan.mode() === 'glass';
             // Asked again (next caps, preview, scan) in that mode
             $('scan-device').value = 'Mystery Scanner';
             $('scan-device').dispatchEvent(new Event('change'));
@@ -1043,12 +1076,24 @@ async function newPage(context, baseUrl) {
             $('scan-go').click();
             await wait(() => window.__previewReq);
             out.previewCompat = window.__previewReq.compat === true;
+            // Its glass isn't said, but jEditor knows the A300's: A3
+            out.a3 = [window.__previewReq.bedW, window.__previewReq.bedH, window.__previewReq.dpi];
+            await wait(() => !Scan.waiting);
+            // Another size: remembered, previewed again
+            window.__previewReq = null;
+            $('scan-pv-glass').value = 'letter';
+            $('scan-pv-glass').dispatchEvent(new Event('change'));
+            await wait(() => window.__previewReq);
+            out.letter = [window.__previewReq.bedW, window.__previewReq.bedH];
+            out.kept = JSON.parse(localStorage.getItem('jeditor.scanBed'))['Plustek OpticBook A300 Plus-TWAIN'];
+            await wait(() => !Scan.waiting);
             Scan.close();
             return out;
         });
         check('Older TWAIN mode found by the app is turned on for that scanner, and said', r.kept && r.checked && /OpticBook.*Older TWAIN mode/.test(r.toast), JSON.stringify(r));
         check('... and used from then on', r.previewCompat && r.glass);
         check('a scanner that won\'t say what it has gets both the glass and the feeder offered', r.bothOffered);
+        check('glass size: the A300\'s is known (A3), previewed at about 150 dpi; another size is remembered and previewed again', r.a3.join() === '11.69,16.54,150' && r.letter.join() === '8.5,11' && r.kept === 'letter', JSON.stringify([r.a3, r.letter, r.kept]));
         check('compat suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
@@ -1298,6 +1343,31 @@ async function newPage(context, baseUrl) {
             rowOf(start, 'Beta').querySelector('.sb-main').click();
             await wait(() => window.__opened);
             out.opened = window.__opened;
+            // New project: named, made in the projects folder, opened, listed
+            window.__opened = null;
+            UI.prompt = async () => 'Gamma';
+            start.querySelector('[data-act="newproject"]').click();
+            await wait(() => window.__opened);
+            out.made = window.__opened;
+            await wait(() => names(start).includes('Gamma'));
+            out.listed = names(start).includes('Gamma');
+            // The same name again: says so
+            let said = null;
+            UI.alert = async (o) => { said = o.message; };
+            start.querySelector('[data-act="newproject"]').click();
+            await wait(() => said);
+            out.twice = said;
+            // Rename (right-click): a pinned one's pin follows it
+            Places.pin(window.__orderRoot + String.fromCharCode(92) + 'Gamma', 'Gamma');
+            await wait(() => rowOf(start, 'Gamma'));
+            rowOf(start, 'Gamma').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 50, clientY: 50 }));
+            const item = [...document.querySelectorAll('#context-menu [role="menuitem"]')].find(b => b.textContent === 'Rename…');
+            out.menu = [...document.querySelectorAll('#context-menu [role="menuitem"]')].map(b => b.textContent).join(', ');
+            UI.prompt = async () => 'Gamma Smith';
+            item.click();
+            await wait(() => window.__renamed && Places.pins().some(p => p.name === 'Gamma Smith'));
+            out.renamed = window.__renamed;
+            out.pinMoved = Places.pins().find(p => p.name === 'Gamma Smith').path;
 
             // A project open: its card, and it's marked in the list
             const dir = await (await opfs('disk')).getDirectoryHandle('Alpha');
@@ -1318,6 +1388,16 @@ async function newPage(context, baseUrl) {
             $('sb-card').querySelector('[data-act="pin"]').click();
             await wait(() => [...side.querySelectorAll('.sb-pinned .fr-name')].some(n => n.textContent === 'Alpha'));
             out.pinned = Places.pins().map(p => p.name).join();
+            // Renaming the open project: closed, renamed, opened again at its new name
+            window.__opened = null;
+            UI.prompt = async () => 'Alpha Smith';
+            $('sb-card').querySelector('[data-act="rename"]').click();
+            await wait(() => window.__opened);
+            out.reopened = window.__opened;
+            out.pinRenamed = Places.pins().map(p => p.name).join();
+            const back = await (await opfs('disk')).getDirectoryHandle('Alpha Smith').catch(() => null) || await (await opfs('disk')).getDirectoryHandle('Alpha');
+            await openOrder(back);
+            await wait(() => $('sb-card').querySelector('[data-act="rename"]'));
             // Save edits when done, for this project: kept with its data on the PC
             const deferBox = $('sb-card').querySelector('input[data-act="defer"]');
             out.deferOff = !!deferBox && !deferBox.checked;
@@ -1369,9 +1449,12 @@ async function newPage(context, baseUrl) {
         check('the projects folder\'s projects are listed, newest first, with photo counts', r.projects === 'Beta,Alpha' && r.counts && r.folderName === 'Orders', JSON.stringify([r.projects, r.counts, r.folderName]));
         check('search finds a project', r.search === 'Beta', r.search);
         check('clicking a project opens it', r.opened === 'D:\\Orders\\Beta', r.opened);
+        check('Rename on a project\'s right-click menu; its pin follows it', /Rename…/.test(r.menu) && /Show in Explorer/.test(r.menu) && r.renamed && r.renamed[1] === 'Gamma Smith' && r.pinMoved === 'D:\\Orders\\Gamma Smith', JSON.stringify([r.menu, r.renamed, r.pinMoved]));
+        check('New project: makes the folder in the projects folder, opens it and lists it; a name taken says so', r.made === 'D:\\Orders\\Gamma' && r.listed && /already a Gamma/.test(r.twice || ''), JSON.stringify([r.made, r.listed, r.twice]));
         check('the project card: name, path, photos', /Alpha/.test(r.card) && /D:\\Orders\\Alpha/.test(r.card) && /\d photos/.test(r.card), r.card);
         check('the open project is marked in the list', r.active);
-        check('card buttons: Explorer, Scan, Pin', r.revealed === 'D:\\Orders\\Alpha' && r.scanOpen && r.pinned === 'Alpha', JSON.stringify([r.revealed, r.scanOpen, r.pinned]));
+        check('card: Rename closes the open project, renames it and opens it again', r.reopened === 'D:\\Orders\\Alpha Smith' && r.pinRenamed.split(',').includes('Alpha Smith') && !r.pinRenamed.split(',').includes('Alpha'), JSON.stringify([r.reopened, r.pinRenamed]));
+        check('card buttons: Explorer, Scan, Pin', r.revealed === 'D:\\Orders\\Alpha' && r.scanOpen && r.pinned.split(',').includes('Alpha'), JSON.stringify([r.revealed, r.scanOpen, r.pinned]));
         check('card: Save edits when done turns on for the project, kept on the PC', r.deferOff && r.deferKept, JSON.stringify([r.deferOff, r.deferKept]));
         check('a drive opens out to its folders, in number order', r.inside === 'Order 9,Order 10', r.inside);
         check('browsing: clicking a folder only opens it out, it isn\'t loaded', r.browseOnly);

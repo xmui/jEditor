@@ -44,7 +44,9 @@ const Places = {
         eject: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15h14L12 7z"/><path d="M5 19h14"/></svg>',
         scan: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h16"/><path d="M6 13V5a1 1 0 0 1 1-1h7l4 4v5"/><path d="M5 17h14a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1a1 1 0 0 1 1-1z"/></svg>',
         reveal: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7"/><path d="M10 14 21 3"/><path d="M21 14v7H3V3h7"/></svg>',
-        split: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>'
+        split: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>',
+        plus: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+        rename: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg>'
     },
 
     el(id) { return document.getElementById(id); },
@@ -65,6 +67,14 @@ const Places = {
                 if (row && row.dataset.path) this.open(row.dataset.path);
             });
             box.addEventListener('auxclick', (e) => { if (e.button === 1) this.onClick(e); });
+            // Right-click a folder: open, rename, show in Explorer, pin
+            box.addEventListener('contextmenu', (e) => {
+                const row = e.target.closest('.sb-row');
+                if (!row || !row.dataset.path) return;
+                e.preventDefault();
+                e.stopPropagation();
+                this.app.openContextMenu(this.rowItems(row), e.clientX, e.clientY);
+            });
             box.addEventListener('input', (e) => {
                 if (!e.target.classList.contains('sb-search')) return;
                 this.query = e.target.value;
@@ -169,7 +179,8 @@ const Places = {
         const dir = this.projectsDir();
         const dirName = dir ? (dir.split(/[\\/]/).filter(Boolean).pop() || dir) : '';
         const projects = dir
-            ? `<input class="field sm sb-search" type="search" placeholder="Search projects" value="${this.esc(this.query)}" aria-label="Search projects" spellcheck="false" autocomplete="off">` +
+            ? `<button class="btn secondary sm sb-new" data-act="newproject" title="Make a new folder in ${this.esc(dirName)} and open it">${this.icons.plus}New project</button>` +
+              `<input class="field sm sb-search" type="search" placeholder="Search projects" value="${this.esc(this.query)}" aria-label="Search projects" spellcheck="false" autocomplete="off">` +
               `<div class="sb-projects">${await this.projectRows()}</div>`
             : `<button class="btn secondary sb-choose" data-act="choose">Choose your projects folder…</button>` +
               `<p class="sb-help">The folder your projects are in. Each folder in it is listed here, newest first.</p>`;
@@ -349,6 +360,7 @@ const Places = {
             `<button class="btn primary sm" data-act="scan">${this.icons.scan}Scan</button>` +
             (path ? `<button class="btn secondary sm" data-act="reveal" title="Show in Explorer">${this.icons.reveal}Explorer</button>` : '') +
             `<button class="btn ghost icon sm" data-act="split" title="Split: this project and another window side by side">${this.icons.split}</button>` +
+            (path ? `<button class="btn ghost icon sm" data-act="rename" title="Rename this project">${this.icons.rename}</button>` : '') +
             (path ? `<button class="btn ghost icon sm sb-card-pin${this.isPinned(path) ? ' on' : ''}" data-act="pin" title="${this.isPinned(path) ? 'Unpin' : 'Pin to the sidebar'}">${this.icons.pin}</button>` : '') +
             `</div>` +
             (app.readOnlyMode ? '' : `<label class="sb-card-defer" title="Crops and turns are kept on the photos, to change as often as you like, and saved into them (or exported) when you're done"><input type="checkbox" data-act="defer"${Edits.defer ? ' checked' : ''}><span>Save edits when done</span></label>`);
@@ -361,6 +373,7 @@ const Places = {
     cardAction(act) {
         const path = this._currentPath;
         if (act === 'scan') Scan.open();
+        else if (act === 'rename' && path) this.renameFolder(path);
         else if (act === 'split') Windows.split();
         else if (act === 'reveal' && path) this.native().reveal(path);
         else if (act === 'pin' && path) {
@@ -391,6 +404,7 @@ const Places = {
         const path = row && row.dataset.path;
         if (act === 'section') return this.toggleSection(b.dataset.sec);
         if (act === 'choose') return this.chooseFolder();
+        if (act === 'newproject') return this.newProject();
         if (act === 'all') { this.showAll = true; return this.drawProjects(); }
         if (!path) return;
         if (act === 'open' && (e.ctrlKey || e.button === 1)) return Windows.newWindow(path); // in a window of its own
@@ -424,6 +438,82 @@ const Places = {
         closed.delete('projects');
         this.set(this.KEY_CLOSED, [...closed]);
         await this.refresh();
+    },
+
+    // A sidebar folder's right-click menu
+    rowItems(row) {
+        const path = row.dataset.path;
+        const name = row.querySelector('.fr-name').textContent;
+        const drive = /^[a-z]:\\?$/i.test(path) || /^\\\\[^\\]+\\[^\\]+\\?$/.test(path);
+        const pinned = this.pins().some(p => this.key(p.path) === this.key(path));
+        const items = [];
+        if (this.key(path) !== this.key(this.current())) items.push(['Open as the project', () => this.open(path)]);
+        items.push(['Open in a new window', () => Windows.newWindow(path)]);
+        if (!drive) items.push(['—'], ['Rename…', () => this.renameFolder(path)]);
+        items.push(['—'], ['Show in Explorer', () => this.native().reveal(path)]);
+        items.push([pinned ? 'Unpin' : 'Pin to the sidebar', () => pinned ? this.unpin(path) : this.pin(path, name)]);
+        return items;
+    },
+
+    // Rename a project or folder. Its data (flags, kept edits, thumbnails)
+    // goes with it (the app moves it); the open project, if it's this one
+    // or inside it, is closed first and opened again after, and pins and
+    // the projects folder follow too.
+    async renameFolder(path) {
+        const parts = path.split(/[\\/]/).filter(Boolean);
+        const old = parts[parts.length - 1] || path;
+        const name = await UI.prompt({
+            title: 'Rename',
+            message: 'Its flags, kept edits and thumbnails stay with it.',
+            input: { label: 'New name', value: old },
+            ok: 'Rename'
+        });
+        if (name === null || !name.trim() || name.trim() === old) return;
+        const k = this.key(path).replace(/[\\/]+$/, '');
+        const under = (p) => p && (this.key(p) === k || this.key(p).startsWith(k + '\\'));
+        const moved = (p, to) => to + p.slice(k.length);
+        const cur = this.current();
+        const reopen = under(cur) ? cur : null;
+        if (reopen) await this.app.closeFolder();
+        let to;
+        try {
+            to = await this.native().renameFolder(path, name.trim());
+        } catch (e) {
+            if (reopen) await this.native().openPath(reopen).catch(() => { });
+            UI.alert({ title: `Couldn't rename ${old}`, message: e.message });
+            return;
+        }
+        // Everything that pointed at it, at its new name
+        this.set(this.KEY_PINS, this.pins().map(p => under(p.path) ? { ...p, path: moved(p.path, to), name: this.key(p.path) === k ? name.trim() : p.name } : p));
+        const dir = this.projectsDir();
+        if (under(dir)) this.set(this.KEY_DIR, moved(dir, to));
+        this.expanded = new Set([...this.expanded].map(e => under(e) ? this.key(moved(e, to)) : e));
+        this.listings.clear();
+        if (reopen) await this.native().openPath(moved(reopen, to)).catch(() => { });
+        await this.refresh();
+        this.app.showToast(`Renamed ${old} to ${name.trim()}`, 2500);
+    },
+
+    // A new folder in the projects folder, opened as the project
+    async newProject() {
+        const dir = this.projectsDir();
+        if (!dir) return this.chooseFolder();
+        const dirName = dir.split(/[\\/]/).filter(Boolean).pop() || dir;
+        const name = await UI.prompt({
+            title: 'New project',
+            message: `A new folder in ${dirName}, opened as the project, ready to scan or shoot into.`,
+            input: { label: 'Name', placeholder: 'Smith Order' },
+            ok: 'Create'
+        });
+        if (name === null || !name.trim()) return;
+        try {
+            const path = await this.native().makeFolder(dir, name.trim());
+            this.listings.clear();
+            await this.open(path);
+            this.refresh();
+        } catch (e) {
+            UI.alert({ title: 'Couldn\'t make the project', message: e.message });
+        }
     },
 
     async open(path) {
