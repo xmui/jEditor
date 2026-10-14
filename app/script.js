@@ -5427,6 +5427,24 @@ const app = {
         return ImageMeta.transplant(original, blob, type, w, h);
     },
 
+    // A photo just scanned or shot: open it large once jEditor has it (in
+    // another folder than the one showing: that folder). Not while you're
+    // cropping, renaming or in a dialog.
+    async showWhenIn(rel) {
+        const token = (this._showToken = (this._showToken || 0) + 1);
+        for (let i = 0; i < 40; i++) {
+            if (token !== this._showToken) return; // a newer one came
+            const f = this.files.find(x => (x.relPath || x.name) === rel);
+            if (f) {
+                if (this.cropState.active || UI.isOpen() || Renamer.isOpen) return;
+                if (!Folders.inView(f) && Folders.scope !== null && Folders.scope !== undefined) Folders.setScope(Folders.dirOf(f));
+                this.openSingle(f);
+                return;
+            }
+            await new Promise(r => setTimeout(r, 150));
+        }
+    },
+
     // ---- Context menu ----
 
     initContextMenu() {

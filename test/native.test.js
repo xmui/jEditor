@@ -988,6 +988,9 @@ async function newPage(context, baseUrl) {
             out.req = window.__scanReq;
             await wait(() => app.files.some(f => f.name === 'photo4-b.jpg'));
             out.files = app.files.map(f => f.name).sort().join();
+            // The newest photo (not its back) is open, large
+            await wait(() => app.viewMode === 'single' && app.currentFile && app.currentFile.name === 'photo4.jpg');
+            out.shown = app.viewMode + ' ' + (app.currentFile && app.currentFile.name);
             // Swap off: remembered for that scanner
             $('scan-settings').click();
             $('scan-swap').checked = false;
@@ -1001,6 +1004,8 @@ async function newPage(context, baseUrl) {
         check('both sides: each back is named after its front, with -b', /photo3\.jpg and its back photo3-b\.jpg/.test(r.names), r.names);
         check('Scan sends the feeder settings, with no scanner window', r.req && r.req.source === 'feeder' && r.req.sides === 'both' && r.req.swap === true && r.req.dpi === 600 && r.req.bedW === 8.5 && r.req.bedH === 14 && r.req.format === 'jpeg', JSON.stringify(r.req));
         check('... fronts and backs come in', /photo3-b\.jpg,photo3\.jpg,photo4-b\.jpg,photo4\.jpg/.test(r.files), r.files);
+        check('... each photo opens large as it comes in (not the backs)', r.shown === 'single photo4.jpg', r.shown);
+        check('... and the scanner is asked to crop each photo itself (its own auto-size)', r.req && r.req.autosize === true, JSON.stringify(r.req));
         check('the swap is remembered for that scanner', r.swapKept);
         check('feeder suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();

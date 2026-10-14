@@ -149,6 +149,7 @@ const Scan = {
         this.fillNames();
         const last = this.last();
         this.el('scan-autocrop').checked = !last || last.autoCrop !== false;
+        this.el('scan-show').checked = !last || last.show !== false;
         this.placeOpts('home');
         this.loadOpts();
         this.el('scan-go').focus();
@@ -669,7 +670,7 @@ const Scan = {
             if (compat) all[device.id] = true; else delete all[device.id];
             localStorage.setItem(this.KEY_COMPAT, JSON.stringify(all));
         } catch (e) { /* private */ }
-        try { localStorage.setItem(this.KEY, JSON.stringify({ device: device.id, autoCrop })); } catch (e) { /* private */ }
+        try { localStorage.setItem(this.KEY, JSON.stringify({ device: device.id, autoCrop, show: this.el('scan-show').checked })); } catch (e) { /* private */ }
         const state = this.el('scan-panel').dataset.state;
         if (state === 'preview') return this.scanBoxes();
         // Scan more: the names carry on from the photos just scanned
@@ -879,6 +880,10 @@ const Scan = {
                 this.status(label());
                 this.addThumb(folder, name);
                 show();
+                // The newest one, large (a back stays behind its photo)
+                if (this.el('scan-show').checked && !/-b\.[^.]+$/.test(name) && /\.(jpe?g|png|webp)$/i.test(name)) {
+                    app.showWhenIn(folder ? `${folder}/${name}` : name);
+                }
             });
             (result.names || []).forEach(add); // the full list, in case a message was missed
             this.adoptCompat(device, result);

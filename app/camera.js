@@ -338,7 +338,7 @@ const Camera = {
                     this.addThumb(folder, e.name);
                     this.status(`${this.countText(names)} · last: ${e.name}`);
                     show();
-                    if (this.el('cam-show').checked && /\.(jpe?g|png|webp|tiff?|heic|hif)$/i.test(e.name)) this.showWhenIn(rel);
+                    if (this.el('cam-show').checked && /\.(jpe?g|png|webp|tiff?|heic|hif)$/i.test(e.name)) this.app.showWhenIn(rel);
                 } else if (e.kind === 'status') {
                     this.status(e.text, !!e.error);
                     if (e.error) this.el('cam-panel').classList.remove('shooting');
@@ -385,21 +385,6 @@ const Camera = {
         this.native().tetherShoot();
         clearTimeout(this._shooting);
         this._shooting = setTimeout(() => this.el('cam-panel').classList.remove('shooting'), 8000);
-    },
-
-    // Opens the new photo large once jEditor has it
-    async showWhenIn(rel) {
-        const app = this.app;
-        for (let i = 0; i < 40; i++) {
-            const f = app.files.find(x => (x.relPath || x.name) === rel);
-            if (f) {
-                // In another folder than the one showing: show that folder
-                if (!Folders.inView(f) && Folders.scope !== null && Folders.scope !== undefined) Folders.setScope(Folders.dirOf(f));
-                app.openSingle(f);
-                return;
-            }
-            await new Promise(r => setTimeout(r, 150));
-        }
     },
 
     status(text, error = false) {
