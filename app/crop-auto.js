@@ -150,9 +150,100 @@ const CropAuto = {
     // scan that plainly is one is cropped. PhotoFind does the finding; the
     // feeder finder below is the feeder's second chance.
     find(src, W, H, { feeder = false, scan = false } = {}) {
-        const found = PhotoFind.single(src, W, H, { feeder, strict: !feeder && !scan });
-        if (found || !feeder) return found;
-        return this.detectFeeder(src, W, H);
+        const strict = !feeder && !scan;
+        return PhotoFind.single(src, W, H, { feeder, strict })
+            || (feeder && this.detectFeeder(src, W, H))
+            || this.detectStrips(src, W, H, { strict });
+    },
+
+    // A print the scan cut off at two opposite sides (a print a hair bigger
+    // than the scan area, a feeder page cut to the photo), so the bed shows
+    // only as a strip down each of the other two. Too little bed for the
+    // finders above to know it as one. Each strip: one plain color the
+    // whole way along its outer edge, ending inward at a straight line (the
+    // print's side); the two the same color and parallel, and the other two
+    // sides of the scan not that color. → as detect, or null
+    detectStrips(src, W, H, { strict = false } = {}) {
+        const px = PhotoFind.pixels(src, W, H);
+        const { w, h } = px;
+        const S = PhotoFind.smooth(px.d, w, h);
+        const col = (p) => [S[0][p], S[1][p], S[2][p]];
+        const dist = (a, c) => PhotoFind.dist(a[0], a[1], a[2], c);
+        const median = (v) => v.slice().sort((p, q) => p - q)[v.length >> 1];
+        // topBottom: cut off at the top and bottom, the strips left and right
+        for (const topBottom of [true, false]) {
+            const n = topBottom ? h : w, m = topBottom ? w : h; // along the strips; across them
+            const idx = topBottom ? (i, j) => i * w + j : (i, j) => j * w + i;
+            const lo = Math.round(n * 0.03), hi = Math.round(n * 0.97);
+            const step = Math.max(1, Math.floor(n / 200));
+            const band = Math.max(2, Math.round(m * 0.004));
+            const strips = [];
+            for (const far of [false, true]) {
+                const J = (k) => far ? m - 1 - k : k;
+                // The strip's color, from its outer edge; nearly all of it
+                // that color, the whole way along
+                const samples = [];
+                for (let i = lo; i < hi; i += step) for (let k = 1; k <= band; k++) samples.push(col(idx(i, J(k))));
+                const c = [0, 1, 2].map(ch => median(samples.map(s => s[ch])));
+                const noise = median(samples.map(s => dist(s, c)));
+                if (strict && noise > 20) break;
+                const near = Math.max(24, noise * 4);
+                if (samples.filter(s => dist(s, c) <= near).length < samples.length * 0.9) break;
+                // Line by line, where it stops being that color (a few
+                // pixels in a row, so grain doesn't)
+                const pts = [];
+                let lines = 0;
+                const maxIn = Math.round(m * 0.25);
+                for (let i = lo; i < hi; i += step) {
+                    lines++;
+                    let k = 0, run = 0;
+                    for (; k < maxIn; k++) {
+                        if (dist(col(idx(i, J(k))), c) > near) { if (++run >= 3) break; } else run = 0;
+                    }
+                    if (k < maxIn) pts.push([i, k - 2]);
+                }
+                // The straight line most of them stop at: a print's side.
+                // (Where the photo next to it is much the strip's color,
+                // lines run on past it: those are left out.)
+                const line = this.fitLine(pts, n);
+                if (!line) break;
+                const on = pts.filter(([i, k]) => Math.abs(k - (line.a + line.b * i)) <= 2);
+                let first = Infinity, last = -Infinity;
+                for (const [i] of on) { first = Math.min(first, i); last = Math.max(last, i); }
+                const width = line.a + line.b * n / 2;
+                if (on.length < lines * 0.5 || last - first < n * 0.5 || width < Math.max(2, m * 0.006)) break;
+                strips.push({ a: line.a, b: line.b, c });
+            }
+            if (strips.length < 2) continue;
+            const [s0, s1] = strips;
+            // The same bed both sides; the print's sides parallel
+            if (dist(s0.c, s1.c) > 40 || Math.abs(s0.b + s1.b) > 0.02) continue;
+            const x0 = (i) => s0.a + s0.b * i, x1 = (i) => m - (s1.a + s1.b * i);
+            if (x1(n / 2) - x0(n / 2) < m * 0.5) continue;
+            // Past the other two sides it's the print, not more bed
+            let bed = 0, all = 0;
+            for (const i of [1, 2, n - 2, n - 3]) {
+                for (let k = Math.ceil(x0(i)) + 2; k < x1(i) - 2; k += 2) {
+                    all++;
+                    if (dist(col(idx(i, k)), s0.c) <= 30) bed++;
+                }
+            }
+            if (!all || bed > all * 0.5) continue;
+            // Corners where the strips' edges meet the scan's edge. Tilt
+            // clockwise: a left side leaning left going down; a top that
+            // drops going right.
+            const pt = (i, j) => topBottom ? [j * px.sx, i * px.sy] : [i * px.sx, j * px.sy];
+            const corners = topBottom
+                ? [pt(0, x0(0)), pt(0, x1(0)), pt(n, x1(n)), pt(n, x0(n))]
+                : [pt(0, x0(0)), pt(n, x0(n)), pt(n, x1(n)), pt(0, x1(0))];
+            // (less than a pixel over its length here is no tilt: left
+            // straight, not turned and resampled for nothing)
+            const slope = (s0.b - s1.b) / 2;
+            let tilt = Math.atan(topBottom ? -slope : slope) * 180 / Math.PI;
+            if (Math.abs(slope) * n < 1) tilt = 0;
+            return { tilt, corners, found: 2, scale: Math.max(px.sx, px.sy), finder: 'strips' };
+        }
+        return null;
     },
 
     // A photo from a sheet feeder (the FastFoto): the page is as long as the
