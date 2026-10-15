@@ -653,6 +653,22 @@ const app = {
             e.stopPropagation();
             this.toggleCustomizePanel(false);
         });
+        // A page at a time, chosen on the left (arrow keys move between them)
+        const nav = panel.querySelector('.settings-nav');
+        nav.addEventListener('click', (e) => {
+            const b = e.target.closest('button[data-page]');
+            if (b) this.showSettingsPage(b.dataset.page);
+        });
+        nav.addEventListener('keydown', (e) => {
+            if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+            const tabs = this.settingsPages().map(id => nav.querySelector(`[data-page="${id}"]`));
+            const i = tabs.indexOf(document.activeElement);
+            const to = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1
+                : (i + (e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 1) + tabs.length) % tabs.length;
+            e.preventDefault();
+            this.showSettingsPage(tabs[to].dataset.page);
+            tabs[to].focus();
+        });
 
         // Appearance: one radio group per setting, applied as you pick
         for (const key of Object.keys(this.APPEARANCE)) {
@@ -761,12 +777,38 @@ const app = {
 
     // Opens or closes Settings (the name is from when it was a small
     // "Customize" panel under the header)
-    toggleCustomizePanel(force = null) {
+    toggleCustomizePanel(force = null, page = null) {
         const panel = this.elements.customizePanel;
         const open = force !== null ? force : panel.classList.contains('hidden');
         panel.classList.toggle('hidden', !open);
         this.elements.headerControls.classList.remove('expanded');
-        if (open) this.renderCustomizePanel();
+        if (open) {
+            this.renderCustomizePanel();
+            let last = null;
+            try { last = localStorage.getItem('jeditor.settingsPage'); } catch (e) { /* private mode */ }
+            this.showSettingsPage(page || last || 'appearance');
+        }
+    },
+
+    // The Settings pages there are (Updates: the Windows app only)
+    settingsPages() {
+        return [...this.elements.customizePanel.querySelectorAll('.settings-nav button[data-page]')]
+            .filter(b => getComputedStyle(b).display !== 'none')
+            .map(b => b.dataset.page);
+    },
+
+    showSettingsPage(page) {
+        const panel = this.elements.customizePanel;
+        const pages = this.settingsPages();
+        if (!pages.includes(page)) page = pages[0];
+        panel.querySelectorAll('.settings-nav button[data-page]').forEach(b => {
+            const on = b.dataset.page === page;
+            b.setAttribute('aria-selected', String(on));
+            b.tabIndex = on ? 0 : -1;
+        });
+        panel.querySelectorAll('.settings-section[data-page]').forEach(sec => sec.classList.toggle('active', sec.dataset.page === page));
+        panel.querySelector('.settings-body').scrollTop = 0;
+        try { localStorage.setItem('jeditor.settingsPage', page); } catch (e) { /* private mode */ }
     },
 
     renderCustomizePanel() {

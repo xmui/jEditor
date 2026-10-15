@@ -1029,9 +1029,25 @@ async function newPage(browser, url) {
             out.subtleGlass = css('--glass-filter') === 'none';
             out.surround = getComputedStyle(document.getElementById('main-view')).backgroundColor;
             out.saved = JSON.parse(localStorage.getItem('jeditor.ui'));
+            // A page at a time: Appearance first; Messages on a click, and it's
+            // where Settings opens next time; no Updates page outside the Windows app
+            const shownPage = () => [...document.querySelectorAll('#settings-panel .settings-section')].filter(x => getComputedStyle(x).display !== 'none').map(x => x.dataset.page).join();
+            out.firstPage = shownPage();
+            document.querySelector('.settings-nav [data-page="messages"]').click();
+            out.messagesPage = shownPage() + ' ' + document.querySelector('.settings-nav [data-page="messages"]').getAttribute('aria-selected');
+            out.noUpdates = getComputedStyle(document.querySelector('.settings-nav [data-page="updates"]')).display === 'none';
             // Esc closes it
             document.getElementById('settings-panel').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
             out.closed = !app.isSettingsOpen();
+            app.toggleCustomizePanel(true);
+            out.reopenedOn = shownPage();
+            // Arrow keys move between pages
+            const tab = document.querySelector('.settings-nav [data-page="messages"]');
+            tab.focus();
+            tab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+            out.arrowPage = shownPage() + ' ' + (document.activeElement && document.activeElement.dataset.page);
+            app.showSettingsPage('appearance');
+            app.toggleCustomizePanel(false);
 
             // Window background is the Windows app's: hidden here, and the window stays solid
             out.backdropHidden = ['set-backdrop-row', 'set-transparency-row'].every(id => getComputedStyle(document.getElementById(id)).display === 'none');
@@ -1051,6 +1067,7 @@ async function newPage(browser, url) {
         });
         check('appearance defaults: dark, compact, rich glass, theme surround', r.defaults === 'dark,compact,rich,auto', r.defaults);
         check('Ctrl+, opens Settings; Esc closes it', r.opened && r.closed, JSON.stringify({ o: r.opened, c: r.closed }));
+        check('Settings: a page at a time, Appearance first; a click (or the arrow keys) changes page, and it opens on the last page used', r.firstPage === 'appearance' && r.messagesPage === 'messages true' && r.noUpdates && r.reopenedOn === 'messages' && r.arrowPage === 'projects projects', JSON.stringify([r.firstPage, r.messagesPage, r.noUpdates, r.reopenedOn, r.arrowPage]));
         check('theme, density, glass and surround apply and are remembered',
             r.applied === 'light,comfortable,subtle,grey' && r.lightText && r.comfortable && r.subtleGlass &&
             r.surround === 'rgb(118, 118, 118)' && r.saved.theme === 'light' && r.saved.density === 'comfortable' &&
