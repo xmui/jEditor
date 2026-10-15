@@ -601,7 +601,7 @@ const CropEditor = {
         this.settle(animate);
         if (!quiet) {
             const a = this.angle;
-            this.app.showToast(a ? `Straightened ${a > 0 ? '+' : ''}${a.toFixed(1)}° and cropped to the print` : 'Cropped to the print', 2200);
+            this.app.showToast(a ? `Straightened ${a > 0 ? '+' : ''}${a.toFixed(1)}° and cropped to the print` : 'Cropped to the print', 2200, null, null, { kind: 'crop' });
         }
         return true;
     },

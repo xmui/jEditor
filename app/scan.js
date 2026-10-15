@@ -1070,7 +1070,7 @@ const Scan = {
         const said = `${n} photo${n === 1 ? '' : 's'} into ${Folders.label(folder)}`;
         if (n) {
             done((result.cancelled ? 'Stopped after ' : 'Scanned ') + said + (autoCrop ? ' · auto cropping…' : '') + (source === 'feeder' && !result.cancelled ? '. Load the next batch, then Scan more.' : ''));
-            app.showToast(`Scanned ${said}`, 4000, 'scanned', null, { type: 'success' });
+            app.showToast(`Scanned ${said}`, 4000, 'scanned', null, { type: 'success', kind: 'scan' });
             if (autoCrop) {
                 await this.autoCrop(names, { feeder: source === 'feeder' });
                 if (panel.dataset.state === 'done') this.status((result.cancelled ? 'Stopped after ' : 'Scanned ') + said + ' · auto cropped');

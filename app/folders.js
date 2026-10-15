@@ -535,7 +535,7 @@ const Folders = {
             this.collapsed.delete(parent);
             this.afterChange();
             this.flash(path);
-            this.app.showToast(`Made “${this.baseName(path)}”`, 2000);
+            this.app.showToast(`Made “${this.baseName(path)}”`, 2000, null, null, { kind: 'move' });
         } catch (e) {
             console.error('New folder failed:', e);
             this.app.showToast('Couldn\'t make the folder: ' + e.message, 4000);
@@ -583,7 +583,7 @@ const Folders = {
             }
             this.app.pushUndo({ type: 'folder-delete', path });
             this.afterChange();
-            this.app.showToast(`Deleted the empty folder “${this.baseName(path)}”`, 2500);
+            this.app.showToast(`Deleted the empty folder “${this.baseName(path)}”`, 2500, null, null, { kind: 'move' });
         } catch (e) {
             console.error('Folder delete failed:', e);
             this.app.showToast('Couldn\'t delete the folder: ' + e.message, 4000);
@@ -933,7 +933,7 @@ const Folders = {
                     if (stack[stack.length - 1] === entry) app.undo();
                     else app.showToast('Something else changed since — use Ctrl+Z');
                 }
-            });
+            }, { kind: 'move' });
         }
         if (failed) app.showToast(`Couldn't ${copy ? 'copy' : 'move'} ${failed} photo${failed === 1 ? '' : 's'}`, 4000);
         return entry;
@@ -1018,22 +1018,22 @@ const Folders = {
             const n = entry.items.length;
             app.showToast(entry.copy
                 ? `Removed ${n} cop${n === 1 ? 'y' : 'ies'}`
-                : `Put ${n} photo${n === 1 ? '' : 's'} back`);
+                : `Put ${n} photo${n === 1 ? '' : 's'} back`, 3000, null, null, { kind: 'undo' });
         } else if (entry.type === 'folder-create') {
             let kept = 0;
             for (const p of [...entry.paths].reverse()) {
                 try { if (!(await this.removeIfEmpty(p))) kept++; } catch (e) { kept++; }
             }
             this.afterChange();
-            app.showToast(kept ? 'The new folder has things in it now, so it was kept' : 'Removed the new folder');
+            app.showToast(kept ? 'The new folder has things in it now, so it was kept' : 'Removed the new folder', 3000, null, null, { kind: 'undo' });
         } else if (entry.type === 'folder-rename') {
             await this.renameDir(entry.path, entry.name);
             this.afterChange();
-            app.showToast('Folder name put back');
+            app.showToast('Folder name put back', 3000, null, null, { kind: 'undo' });
         } else if (entry.type === 'folder-delete') {
             await this.createPath('', entry.path);
             this.afterChange();
-            app.showToast(`Folder “${this.baseName(entry.path)}” is back`);
+            app.showToast(`Folder “${this.baseName(entry.path)}” is back`, 3000, null, null, { kind: 'undo' });
         }
     },
 

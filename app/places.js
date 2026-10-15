@@ -495,7 +495,7 @@ const Places = {
         this.listings.clear();
         if (reopen) await this.native().openPath(moved(reopen, to)).catch(() => { });
         await this.refresh();
-        this.app.showToast(`Renamed ${old} to ${name.trim()}`, 2500);
+        this.app.showToast(`Renamed ${old} to ${name.trim()}`, 2500, null, null, { kind: 'rename' });
     },
 
     // A new folder in the projects folder, opened as the project

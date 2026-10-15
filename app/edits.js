@@ -269,7 +269,7 @@ const Edits = {
     undo(entry) {
         this.restore(entry.items);
         const n = entry.items.length;
-        this.app.showToast(`Undid ${entry.label || 'edit'} on ${n === 1 ? entry.items[0].file.name : n + ' photos'}`);
+        this.app.showToast(`Undid ${entry.label || 'edit'} on ${n === 1 ? entry.items[0].file.name : n + ' photos'}`, 3000, null, null, { kind: 'undo' });
     },
 
     // Edits put back (Ctrl+Z). Kept edits need the setting: it comes back

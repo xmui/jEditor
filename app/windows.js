@@ -149,7 +149,7 @@ const Windows = {
         if (done.length) app.pushUndo({ type: 'transfer', items: done.map(i => ({ from: i.from, to: i.to })), copy });
         const where = folder ? `${projectName} / ${folder.split('/').join(' / ')}` : projectName;
         if (done.length) {
-            app.showToast(`${copy ? 'Copied' : 'Moved'} ${done.length} photo${done.length === 1 ? '' : 's'} into ${where} — Ctrl+Z undoes it`, 4000, null, null, { type: 'success' });
+            app.showToast(`${copy ? 'Copied' : 'Moved'} ${done.length} photo${done.length === 1 ? '' : 's'} into ${where} — Ctrl+Z undoes it`, 4000, null, null, { type: 'success', kind: 'move' });
         }
         if (failed.length) {
             app.showToast(`${failed.length} couldn't be ${copy ? 'copied' : 'moved'}: ${failed[0].error}`, 5000);
@@ -163,6 +163,6 @@ const Windows = {
         const failed = errors.filter(Boolean);
         if (this.app.dirHandle) Watch.request({ full: true });
         if (failed.length) this.app.showToast(`Couldn't undo ${failed.length}: ${failed[0]}`, 5000);
-        else this.app.showToast(`Undid ${entry.copy ? 'copying' : 'moving'} ${entry.items.length} photo${entry.items.length === 1 ? '' : 's'}`);
+        else this.app.showToast(`Undid ${entry.copy ? 'copying' : 'moving'} ${entry.items.length} photo${entry.items.length === 1 ? '' : 's'}`, 3000, null, null, { kind: 'undo' });
     }
 };

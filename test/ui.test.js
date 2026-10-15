@@ -1526,6 +1526,8 @@ async function newPage(browser, url) {
             const out = {};
             localStorage.removeItem('jeditor.keys');
             app.loadKeyBindings();
+            // Rotation messages are off to start with (Settings → Messages): on, to check this one
+            app.uiPrefs.toasts.rotate = true;
             const press = (key) => window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
             const a = makeFakeFile('a.jpg', makeJpegBytes(), 'image/jpeg');
             const b = makeFakeFile('b.jpg', makeJpegBytes(), 'image/jpeg');
@@ -3323,6 +3325,49 @@ async function newPage(browser, url) {
         check('feeder page: a tilted photo is straightened and cropped', near(r.tilted, 380, 560) && Math.abs(r.tilted.angle + 1.5) < 0.4, JSON.stringify(r.tilted));
         check('feeder page: found without the hint too; an ordinary photo is left alone', r.unhinted && r.photoAlone, JSON.stringify([r.unhinted, r.photoAlone]));
         check('feeder auto crop suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7s0. Settings → Messages ----
+    console.log('settings: messages');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            localStorage.removeItem('jeditor.ui');
+            app.loadUiPrefs();
+            const shown = (re) => [...document.querySelectorAll('.toast')].some(t => re.test(t.textContent));
+            // Rotation messages are off to start with; the others are on
+            out.defaults = !app.toastOn('rotate') && app.toastOn('flags') && app.toastOn('delete');
+            app.showToast('Turned 1 photo right', 3000, null, null, { kind: 'rotate' });
+            app.showToast('Starred a.jpg', 3000, null, null, { kind: 'flags' });
+            out.rotateHidden = !shown(/Turned 1 photo/);
+            out.flagsShown = shown(/Starred a\.jpg/);
+            // Errors always show, whatever their kind
+            app.showToast('Rotation failed: file in use', 3000, null, null, { kind: 'rotate', type: 'error' });
+            out.errorShown = shown(/Rotation failed/);
+            // The switches in Settings: one per kind, as set; changing one is kept
+            app.toggleCustomizePanel(true);
+            const sw = (k) => document.querySelector(`input[data-toast="${k}"]`);
+            out.switches = document.querySelectorAll('#cust-toasts input[data-toast]').length === app.TOAST_KINDS.length && !sw('rotate').checked && sw('flags').checked;
+            sw('flags').checked = false;
+            sw('flags').dispatchEvent(new Event('change'));
+            sw('rotate').checked = true;
+            sw('rotate').dispatchEvent(new Event('change'));
+            app.toggleCustomizePanel(false);
+            const saved = JSON.parse(localStorage.getItem('jeditor.ui')).toasts;
+            out.saved = saved.flags === false && saved.rotate === true;
+            app.loadUiPrefs();
+            out.kept = !app.toastOn('flags') && app.toastOn('rotate');
+            app.showToast('Starred b.jpg', 3000, null, null, { kind: 'flags' });
+            out.flagsNowHidden = !shown(/Starred b\.jpg/);
+            localStorage.removeItem('jeditor.ui');
+            return out;
+        });
+        check('messages: rotation off to start with, the rest on; a kind turned off doesn\'t show', r.defaults && r.rotateHidden && r.flagsShown, JSON.stringify(r));
+        check('messages: errors show even when their kind is off', r.errorShown);
+        check('messages: a switch per kind in Settings; changes are saved and kept', r.switches && r.saved && r.kept && r.flagsNowHidden, JSON.stringify(r));
+        check('messages suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

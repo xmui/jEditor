@@ -268,7 +268,7 @@ const Flags = {
             : kind === 'star' ? (on ? `Starred ${what}` : `Unstarred ${what}`)
                 : kind === 'rescan' ? (on ? `${what}: needs rescan` : `${what}: rescan flag off`)
                     : (on ? `${this.label(kind)} label on ${what}` : `${this.label(kind)} label off ${what}`);
-        app.showToast(msg, 1600, 'flags', null, { type: 'info', icon: kind === 'star' ? 'star' : 'flag' });
+        app.showToast(msg, 1600, 'flags', null, { type: 'info', icon: kind === 'star' ? 'star' : 'flag', kind: 'flags' });
         return true;
     },
 
@@ -287,7 +287,7 @@ const Flags = {
         }
         this.changed(entry.items.map(it => it.file));
         const n = entry.items.length;
-        this.app.showToast(`Undid flags on ${n === 1 ? entry.items[0].file.name : n + ' photos'}`);
+        this.app.showToast(`Undid flags on ${n === 1 ? entry.items[0].file.name : n + ' photos'}`, 3000, null, null, { kind: 'undo' });
     },
 
     // Badges, counts, the filter (a photo may have left it) and the file
