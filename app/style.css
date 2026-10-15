@@ -655,6 +655,93 @@ header {
 .file-info {
     padding: 0 var(--sp-1);
     max-width: calc(100% - 2 * 220px);
+    /* Off center when a pill on either side needs the room (fit.js) */
+    translate: var(--fi-shift, 0) 0;
+}
+
+/* ---- Fitting a narrow window (fit.js): each row gives up parts in turn ---- */
+
+.interface[data-fit~="sort-short"] .sort-control .i {
+    display: none;
+}
+
+/* The sort as just its icon: the menu is still there, see-through, over it */
+.interface[data-fit~="sort-icon"] .sort-control {
+    position: relative;
+    padding-left: var(--sp-1);
+}
+
+.interface[data-fit~="sort-icon"] .sort-control .i {
+    display: block;
+    position: absolute;
+    left: calc(var(--sp-1) + (var(--ctl-lg) - 8px - var(--icon-sm)) / 2);
+    pointer-events: none;
+}
+
+.interface[data-fit~="sort-icon"] .sort-control select {
+    width: calc(var(--ctl-lg) - 8px);
+    padding: 0;
+    background-image: none;
+    color: transparent;
+}
+
+.interface[data-fit~="sort-icon"] .sort-control select option {
+    color: var(--text-1);
+}
+
+.interface[data-fit~="count-off"] #file-count {
+    display: none;
+}
+
+/* In the grid the folder pill has the top left */
+body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
+    display: none;
+}
+
+/* Header buttons put into More for room: shown when it's opened */
+.header-controls [data-squeezed] {
+    display: none;
+}
+
+.header-controls.expanded [data-squeezed]:not(.hidden) {
+    display: inline-flex;
+}
+
+.interface[data-fit~="edits-short"] .edits-more {
+    display: none;
+}
+
+.interface[data-fit~="sel-icons"] .selection-bar .tb-btn.labelled span {
+    display: none;
+}
+
+.interface[data-fit~="sel-icons"] .selection-bar .tb-btn.labelled {
+    padding: 0 calc((var(--ctl-lg) - 8px - var(--icon-md)) / 2);
+}
+
+.interface[data-fit~="sel-tight"] .selection-bar .tb-sep {
+    display: none;
+}
+
+.interface[data-fit~="size-short"] #grid-size-slider {
+    width: 64px;
+}
+
+.interface[data-fit~="size-short"] .grid-controls {
+    padding: 0 var(--sp-3);
+}
+
+.interface[data-fit~="size-short"] .slider-group {
+    gap: var(--sp-2);
+}
+
+.interface[data-fit~="size-off"] .grid-controls {
+    display: none;
+}
+
+.interface[data-fit~="sel-scroll"] .selection-bar {
+    overflow-x: auto;
+    scrollbar-width: none;
 }
 
 .file-name {
@@ -748,6 +835,18 @@ header {
 
 .header-controls.expanded .hc-extra:not(.hidden) {
     display: inline-flex;
+}
+
+/* Opened on a narrow window: wraps onto more rows, right-aligned,
+   instead of running off the left edge */
+.header-controls.expanded:not(.vertical) {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    height: auto;
+    min-height: var(--ctl-lg);
+    max-width: calc((100vw - 2 * var(--gutter)) / var(--ui-scale, 1));
+    padding: 3px var(--sp-1);
+    border-radius: calc(var(--ctl-lg) / 2);
 }
 
 .header-controls.expanded .hc-more {
@@ -1350,25 +1449,15 @@ body[data-view="single"] .edits-bar {
 }
 
 /* Not enough room beside the selection bar: above the size slider */
-.interface.edits-stacked .edits-bar {
+.interface[data-fit~="edits-stacked"] .edits-bar {
     right: var(--gutter);
     bottom: calc(var(--gutter) + var(--ctl-lg) + var(--sp-2));
 }
 
-.interface.edits-on.edits-stacked .selection-bar {
+.interface.edits-on[data-fit~="edits-stacked"] .selection-bar {
     right: calc(var(--gutter) + var(--size-room, 220px) + var(--sp-2));
 }
 
-/* Less room: just the count ("2 edits"); the rest is in its tooltip */
-@media (max-width: 1300px) {
-    .edits-more {
-        display: none;
-    }
-}
-
-.interface.rail-open .edits-more {
-    display: none;
-}
 
 .edits-icon {
     display: inline-flex;
@@ -1890,7 +1979,8 @@ body[data-view="single"] .edits-bar {
 }
 
 .interface.rail-open .selection-bar {
-    left: var(--rail-room);
+    /* The bar's offsets are scaled with it by the UI size: right by the list */
+    left: calc(var(--rail-room) / var(--ui-scale, 1));
 }
 
 .sel-count {
@@ -2188,6 +2278,11 @@ body[data-view="single"] {
 /* Grid with the folder list open: beside the list */
 body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) {
     --toast-left: var(--rail-room);
+}
+
+/* Grid with the edits bar up above the slider (fit.js): above that too */
+body[data-view="grid"]:has(#main-interface.edits-on[data-fit~="edits-stacked"]:not(.hidden)) {
+    --toast-bottom: calc(var(--gutter) + 2 * var(--ctl-lg) + var(--sp-2) + var(--sp-3));
 }
 
 body:has(#drop-zone:not(.hidden)) {
@@ -3904,34 +3999,11 @@ body.dragging-photos .folder-tile:hover {
 
 /* ---- 16. Responsive ---- */
 
-/* Laptops: with the folder list open there's less room for labels (the
-   bar is centered on the grid, so it would reach the size slider) */
-@media (max-width: 1439px) {
-    .interface.rail-open .selection-bar .tb-btn.labelled span {
-        display: none;
-    }
-    .interface.rail-open .selection-bar .tb-btn.labelled {
-        padding: 0 calc((var(--ctl-lg) - 8px - var(--icon-md)) / 2);
-    }
-}
-
 /* Tablets and small windows */
 @media (max-width: 1023px) {
     :root {
         --gutter: 12px;
         --rail-w: 220px;
-    }
-    .selection-bar .tb-btn.labelled span {
-        display: none;
-    }
-    .selection-bar .tb-btn.labelled {
-        padding: 0 calc((var(--ctl-lg) - 8px - var(--icon-md)) / 2);
-    }
-    .file-info {
-        max-width: calc(100% - 2 * 200px);
-    }
-    .sort-control .i {
-        display: none;
     }
     .crop-tip {
         display: none;
@@ -3948,40 +4020,7 @@ body.dragging-photos .folder-tile:hover {
 
 /* Phones: viewing first */
 @media (max-width: 767px) {
-    header {
-        justify-content: flex-start;
-    }
-    .file-info {
-        max-width: calc(100% - 210px);
-    }
-    .sort-control {
-        display: none;
-    }
-    /* In the grid the folder pill takes the top left */
-    body[data-view="grid"] .file-info {
-        display: none;
-    }
-    body[data-view="grid"] .folder-bar {
-        max-width: calc(100% - 3 * var(--gutter) - 196px) !important;
-    }
-    /* Short labels, no path: same as .tight */
-    .folder-bar .fb-long,
-    .folder-bar .fb-crumbs {
-        display: none;
-    }
-    .folder-bar .fb-short {
-        display: inline;
-    }
-    .selection-bar .tb-sep {
-        display: none;
-    }
-    .grid-controls {
-        display: none;
-    }
-    .selection-bar {
-        left: var(--gutter);
-        right: var(--gutter);
-    }
+    /* The pills give up their parts in turn instead (fit.js) */
     .interface.rail-open .grid-view {
         padding-left: var(--gutter);
     }

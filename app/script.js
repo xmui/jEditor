@@ -209,6 +209,7 @@ const app = {
         Windows.init(this);
         Flags.init(this);
         Edits.init(this);
+        Fit.init();
         History.init(this);
         Watch.init(this);
         this.initContextMenu();
@@ -526,6 +527,8 @@ const app = {
         const controls = this.singleControls();
         if (controls) controls.classList.toggle('off', p.singleControls === false);
         this.applyAppearance();
+        // More shows for buttons squeezed in for room too
+        if (typeof Fit !== 'undefined') Fit.run();
     },
 
     // Theme, density, glass and the color behind photos: attributes on

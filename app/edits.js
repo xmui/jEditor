@@ -469,31 +469,7 @@ const Edits = {
         document.getElementById('edits-save').disabled = !n;
         document.getElementById('edits-discard').classList.toggle('hidden', !n);
         document.getElementById('edits-off').classList.toggle('hidden', !!n);
-        // The selection bar beside it makes room for it (as wide as it is,
-        // and as it changes: its text, or shown again on going back to the grid)
-        const size = document.getElementById('grid-controls');
-        const sel = document.getElementById('selection-bar');
-        const measure = () => {
-            const ew = bar.offsetWidth, sw = size ? size.offsetWidth : 0;
-            iface.style.setProperty('--edits-room', ew + 'px');
-            if (sw) iface.style.setProperty('--size-room', sw + 'px');
-            // Not enough room in the row for the selection bar beside it: it
-            // goes up, above the size slider (edits-stacked)
-            let stacked = false;
-            if (ew && sel && sel.offsetParent !== null) {
-                const box = iface.getBoundingClientRect(), cs = getComputedStyle(iface);
-                const gutter = parseFloat(cs.getPropertyValue('--gutter')) || 16;
-                // Where the selection bar's room starts (after the folder list, if open)
-                const left = parseFloat(getComputedStyle(sel).left) || gutter;
-                const room = box.width - gutter - sw - ew - 16 - left;
-                stacked = sel.offsetWidth > room;
-            }
-            iface.classList.toggle('edits-stacked', stacked);
-        };
-        if (iface && !this._barObserver && typeof ResizeObserver === 'function') {
-            this._barObserver = new ResizeObserver(measure);
-            for (const el of [bar, size, sel, iface]) if (el) this._barObserver.observe(el);
-        }
-        if (iface) measure();
+        // The bottom row makes room for it (fit.js)
+        if (typeof Fit !== 'undefined') Fit.run();
     }
 };
