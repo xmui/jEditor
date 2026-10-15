@@ -538,8 +538,14 @@ async function newPage(context, baseUrl) {
             out.toast2 = toasts();
 
             // A drive without a Recycle Bin: kept in jEditor's trash instead
+            // (copied, not moved: Chromium won't move a file into jEditor's
+            // storage, under AppData, and asks about "system files")
             window.__noBin = true;
+            const realMove = FileSystemFileHandle.prototype.move;
+            out.noBinMoves = 0;
+            FileSystemFileHandle.prototype.move = function (...a) { out.noBinMoves++; return realMove.apply(this, a); };
             await app.moveToTrash([app.files.find(f => f.name === 'photo1.jpg')]);
+            FileSystemFileHandle.prototype.move = realMove;
             const st = await store();
             out.noBinTrash = await names(await st.getDirectoryHandle('trash'));
             out.noBinLeft = await names(dir);
@@ -567,6 +573,7 @@ async function newPage(context, baseUrl) {
         check('the message says Recycle Bin', /Moved 2 to the Recycle Bin/.test(r.toast), r.toast);
         check('Ctrl+Z puts them back, unchanged, out of the bin', r.back.join() === 'Ceremony,photo1.jpg,photo2.jpg,photo3.jpg,photo4.jpg' && r.same && r.binAfter.length === 0 && r.filesAfter === 5, JSON.stringify([r.back, r.binAfter]));
         check('no Recycle Bin on the drive: kept in jEditor\'s storage, not the order', r.noBinTrash.join() === 'photo1.jpg' && !r.noBinLeft.includes('photo1.jpg') && !r.noBinLeft.includes('.jeditor') && /no Recycle Bin/.test(r.noBinToast), JSON.stringify([r.noBinTrash, r.noBinLeft]));
+        check('... copied there, never moved (no "contains system files" prompt)', r.noBinMoves === 0, String(r.noBinMoves));
         check('... and Ctrl+Z restores it', r.noBinBack.includes('photo1.jpg') && !r.noBinBack.includes('.jeditor'), r.noBinBack.join());
         check('a folder whose path isn\'t known: a message, nothing stored, nothing in the folder', /can't tell where this folder is/.test(r.unknownToast) && r.unknownStores === 0 && !r.unknownFolder.includes('.jeditor'), JSON.stringify([r.unknownToast, r.unknownStores, r.unknownFolder]));
         check('recycle suite: no JS errors', errors.length === 0, errors.join('; '));
