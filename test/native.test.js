@@ -1271,7 +1271,14 @@ async function newPage(context, baseUrl) {
             await wait(() => !app.isLoading);
             out.open = !$('main-interface').classList.contains('hidden') && $('drop-zone').classList.contains('hidden');
             out.noAlert = !UI.isOpen();
-            out.message = getComputedStyle($('grid-view'), '::after').content;
+            const box = $('grid-view').querySelector('.grid-empty-box');
+            out.message = box ? box.textContent : '';
+            // Its buttons: Scan opens the scan dock, Explorer shows the folder
+            box.querySelector('.btn.primary').click();
+            out.scanOpened = !$('scan-panel').classList.contains('hidden');
+            Scan.close();
+            [...box.querySelectorAll('.btn')].find(b => b.textContent === 'Show in Explorer').click();
+            out.revealed = window.__revealed;
             out.view = app.viewMode;
             // Scan into it: the photos show up
             window.__scanPages = 2;
@@ -1289,7 +1296,7 @@ async function newPage(context, baseUrl) {
             return out;
         });
         check('an empty folder opens as an empty project, no "No photos found"', r.open && r.noAlert && r.view === 'grid', JSON.stringify(r));
-        check('... saying how to fill it (Scan)', /Scan into this project/.test(r.message), r.message);
+        check('... saying how to fill it, with Scan and Show in Explorer buttons', /Scan into this project/.test(r.message) && /ScanShow in Explorer$/.test(r.message) && r.scanOpened && /Empty Project$/.test(r.revealed || ''), JSON.stringify([r.message, r.scanOpened, r.revealed]));
         check('scanning into it shows the photos', r.names === 'Empty-001.jpg,Empty-002.jpg' && r.files === 2 && r.noMessage, JSON.stringify([r.names, r.files, r.noMessage]));
         check('deleting every photo keeps it open, empty', r.stillOpen && r.emptyAgain, JSON.stringify([r.stillOpen, r.emptyAgain]));
         check('empty project suite: no JS errors', errors.length === 0, errors.join('; '));

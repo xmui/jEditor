@@ -1154,6 +1154,51 @@ const app = {
         }
     },
 
+    // An empty grid says why, with a button for the way out
+    emptyState(files, folderTiles) {
+        if (files.length || folderTiles.length) return null;
+        const grid = this.elements.gridView.classList;
+        const native = document.documentElement.classList.contains('native');
+        let text, actions = [];
+        if (grid.contains('grid-no-match')) {
+            text = 'No photos match the search or the flag filter.';
+            actions.push(['Clear search', () => {
+                const input = document.getElementById('fb-search');
+                if (input) input.value = '';
+                if (Flags.filter) Flags.setFilter(null);
+                Flags.setQuery('');
+            }, true]);
+        } else if (grid.contains('grid-empty-project')) {
+            text = native
+                ? 'No photos here yet. Scan into this project, or add photos in Explorer: they show up as they arrive.'
+                : 'No photos here yet. Add some in Explorer, or drop them here, and they show up as they arrive.';
+            if (native && typeof Scan !== 'undefined') actions.push(['Scan', () => Scan.open(), true]);
+            const path = typeof Places !== 'undefined' && Places.current();
+            if (native && path) actions.push(['Show in Explorer', () => Places.native().reveal(path)]);
+        } else if (grid.contains('grid-empty')) {
+            text = 'No photos here yet. Drag photos onto this folder in the folder list, or select some in All photos and press M.';
+            actions.push(['All photos', () => Folders.setScope(null)]);
+        } else return null;
+        const box = document.createElement('div');
+        box.className = 'grid-empty-box';
+        const p = document.createElement('p');
+        p.textContent = text;
+        box.append(p);
+        if (actions.length) {
+            const row = document.createElement('div');
+            row.className = 'grid-empty-actions';
+            for (const [label, run, primary] of actions) {
+                const b = document.createElement('button');
+                b.className = `btn ${primary ? 'primary' : 'secondary'} sm`;
+                b.textContent = label;
+                b.addEventListener('click', (e) => { e.stopPropagation(); run(); });
+                row.append(b);
+            }
+            box.append(row);
+        }
+        return box;
+    },
+
     // At odd quarter-turns the CSS-rotated image would overflow the
     // container (layout still sees the unrotated box): the scale that fits it
     currentFitScale(r = this.currentCssRotation()) {
@@ -2305,6 +2350,8 @@ const app = {
         // A project with no photos at all yet
         this.elements.gridView.classList.toggle('grid-empty-project', !this.files.length && !folderTiles.length);
         this.elements.gridView.classList.toggle('grid-no-match', !files.length && Flags.active());
+        const empty = this.emptyState(files, folderTiles);
+        if (empty) this.elements.gridView.append(empty);
         Folders.render();
 
         // Chunked render: big folders paint the first screenfuls immediately

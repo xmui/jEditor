@@ -1180,10 +1180,8 @@ header:has(.header-controls.expanded) {
     100% { box-shadow: 0 0 0 0 transparent; }
 }
 
-/* Empty and no-match states */
-.grid-view.grid-empty::after,
-.grid-view.grid-empty-project::after,
-.grid-view.grid-no-match::after {
+/* Empty and no-match states (App.emptyState): why, and the way out */
+.grid-empty-box {
     grid-column: 1 / -1;
     justify-self: center;
     max-width: 380px;
@@ -1197,20 +1195,20 @@ header:has(.header-controls.expanded) {
     border-radius: var(--r-lg);
 }
 
-.grid-view.grid-empty::after {
-    content: 'No photos here yet. Drag photos onto this folder in the folder list, or select some in All photos and press M.';
+/* Photos came in since (scanned, added in Explorer) */
+.grid-view:not(.grid-empty):not(.grid-empty-project):not(.grid-no-match) .grid-empty-box {
+    display: none;
 }
 
-.grid-view.grid-empty-project::after {
-    content: 'No photos here yet. Add some in Explorer, or drop them here, and they show up as they arrive.';
+.grid-empty-box p {
+    margin: 0;
 }
 
-html.native .grid-view.grid-empty-project::after {
-    content: 'No photos here yet. Scan into this project (Scan, at the top), or add photos in Explorer: they show up as they arrive.';
-}
-
-.grid-view.grid-no-match::after {
-    content: 'No photos match. Clear the search or the flag filter (× in the folder pill) to see everything.';
+.grid-empty-actions {
+    display: flex;
+    justify-content: center;
+    gap: var(--sp-2);
+    margin-top: var(--sp-4);
 }
 
 /* A subfolder in the grid: up to four of its photos and its name */

@@ -3132,8 +3132,11 @@ async function newPage(browser, url) {
             out.searchFlag = app.viewFiles().map(x => x.name).sort().join(',');
             Flags.setQuery('nothing-like-this');
             out.noMatch = app.viewFiles().length === 0 && app.elements.gridView.classList.contains('grid-no-match');
-            Flags.clearFilter();
-            out.cleared = app.viewFiles().length === 7;
+            // Its Clear search button shows everything again
+            const clearBtn = app.elements.gridView.querySelector('.grid-empty-box .btn');
+            out.clearLabel = clearBtn && clearBtn.textContent;
+            if (clearBtn) clearBtn.click();
+            out.cleared = app.viewFiles().length === 7 && !Flags.query && !app.elements.gridView.classList.contains('grid-no-match');
             // Ctrl+F opens the search box
             key('f', { ctrlKey: true });
             out.focus = document.activeElement && document.activeElement.id === 'fb-search';
@@ -3155,7 +3158,7 @@ async function newPage(browser, url) {
         check('flags: come back when the order is opened again', r.reloaded);
         check('flags: filter shows only those photos, Ctrl+A selects just them', r.filter === 'IMG_0002.jpg,Smith_01.jpg' && r.selectAll && r.chip, r.filter);
         check('flags: the folder list has a Flags section with counts', r.list.startsWith('star,rescan,blue') && r.list.endsWith('none'), r.list);
-        check('search: by folder, by words, by is:flag; no match says so', r.searchFolder === 'vows.jpg' && r.searchWords === 5 && r.searchFlag === 'IMG_0002.jpg,vows.jpg' && r.noMatch && r.cleared,
+        check('search: by folder, by words, by is:flag; no match says so, and its Clear search button shows everything', r.searchFolder === 'vows.jpg' && r.searchWords === 5 && r.searchFlag === 'IMG_0002.jpg,vows.jpg' && r.noMatch && r.cleared,
             `${r.searchFolder} / ${r.searchWords} / ${r.searchFlag}`);
         check('search: Ctrl+F opens the search box', r.focus);
         check('flags: rescan list names each photo with its folder', /Needs rescan \(2\)/.test(r.listText) && r.listText.includes('Ceremony/vows.jpg'), r.listText);

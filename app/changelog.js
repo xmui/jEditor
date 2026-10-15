@@ -11,7 +11,9 @@ const CHANGELOG = [
             'The pills refit as the photo count ("1446 / 1446") or the sort\'s name changes width, not just when the window does.',
             'The project list shows the open project\'s real photo count (1,446) instead of "1,000+": counting stops at 1,000 for the others, but the open one\'s photos are all known.',
             'Crop on a narrower window: Cancel sits with Save & next and Save on the bottom row, the tools above it, instead of Cancel at the start of the tools and Previous and Reset alone on a row.',
-            'In the single view on a narrow window, messages go up a row instead of running into the prev / rotate / next pill.'
+            'In the single view on a narrow window, messages go up a row instead of running into the prev / rotate / next pill.',
+            'More (the … at the top right) opens its buttons on rows under the usual ones, at the same width, instead of stretching out over the file name; on a narrow window it stays above the folder list.',
+            'An empty grid has a button for the way out: Clear search when nothing matches the search or flag filter, All photos for an empty folder, and Scan or Show in Explorer for a project with no photos yet.'
         ]
     },
     {
