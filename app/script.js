@@ -221,6 +221,13 @@ const app = {
 
         // Header pill: More expander, fullscreen, settings
         this.elements.btnMore.addEventListener('click', () => {
+            // Opened, it keeps its width: the rest go on rows underneath (style.css)
+            const hc = this.elements.headerControls;
+            if (!hc.classList.contains('expanded')) {
+                if (typeof Fit !== 'undefined') Fit.run();
+                const zoom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1;
+                hc.style.setProperty('--hc-w', `${hc.getBoundingClientRect().width / zoom}px`);
+            }
             const open = this.elements.headerControls.classList.toggle('expanded');
             this.elements.btnMore.setAttribute('aria-expanded', String(open));
         });

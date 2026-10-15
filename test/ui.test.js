@@ -3516,6 +3516,12 @@ async function newPage(browser, url) {
                     if (fb.scrollWidth > fb.clientWidth + 1) out.bad.push('folder pill cut off');
                     out.squeezed = document.querySelectorAll('#header-controls [data-squeezed]').length;
                     out.more = shown(document.getElementById('btn-more'));
+                    // More opened: its buttons on rows underneath, never out over the file pill
+                    document.getElementById('btn-more').click();
+                    await frames();
+                    out.bad.push(...check(['.file-info', 'header-controls']).map(b => 'More open: ' + b));
+                    document.getElementById('btn-more').click();
+                    await frames();
                     // Single view: the file pill and the buttons
                     app.openSingle(app.files[0]);
                     await new Promise(res => setTimeout(res, 200));

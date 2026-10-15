@@ -842,16 +842,37 @@ body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
     display: inline-flex;
 }
 
-/* Opened on a narrow window: wraps onto more rows, right-aligned,
-   instead of running off the left edge */
+/* Opened: its buttons go on rows under the usual ones, as wide as the
+   pill was (--hc-w, set as it opens), rather than out over the file pill */
 .header-controls.expanded:not(.vertical) {
     flex-wrap: wrap;
     justify-content: flex-end;
+    width: var(--hc-w, auto);
     height: auto;
     min-height: var(--ctl-lg);
-    max-width: calc((100vw - 2 * var(--gutter)) / var(--ui-scale, 1));
     padding: 3px var(--sp-1);
     border-radius: calc(var(--ctl-lg) / 2);
+}
+
+.header-controls.expanded:not(.vertical) .hc-more {
+    order: 1;
+}
+
+/* Over the folder list where it overlays the grid (narrow windows) */
+header:has(.header-controls.expanded) {
+    z-index: calc(var(--z-floating) + 3);
+}
+
+.header-controls.expanded:not(.vertical)::after {
+    content: '';
+    order: 2;
+    flex-basis: 100%;
+    height: 0;
+}
+
+.header-controls.expanded:not(.vertical) .hc-extra,
+.header-controls.expanded:not(.vertical) [data-squeezed] {
+    order: 3;
 }
 
 .header-controls.expanded .hc-more {
