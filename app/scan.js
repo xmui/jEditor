@@ -110,6 +110,8 @@ const Scan = {
             this.start();
         });
         this.el('scan-whole').addEventListener('click', () => this.start({ whole: true }));
+        this.el('scan-own').addEventListener('click', () => this.ownSettings('show'));
+        this.el('scan-own-forget').addEventListener('click', () => this.ownSettings('forget'));
         panel.addEventListener('keydown', (e) => {
             if (e.key !== 'Escape' || UI.isOpen()) return;
             e.preventDefault();
@@ -427,9 +429,42 @@ const Scan = {
         this.el('scan-mode-row').classList.toggle('hidden', mode === 'driver');
         this.el('scan-swap-row').classList.toggle('hidden', mode !== 'feeder');
         this.el('scan-autosize-row').classList.toggle('hidden', mode !== 'feeder' || !d || d.driver !== 'twain');
+        this.syncOwn(mode === 'feeder' && d && d.driver === 'twain' ? d : null);
         this.el('scan-sides-row').classList.toggle('hidden', mode !== 'feeder');
         if (panel.dataset.state === 'setup') this.el('scan-go').textContent = mode === 'glass' ? 'Preview' : 'Scan';
         this.preview();
+    },
+
+    // Scanner's own settings… (a TWAIN feeder): offered, and whether some
+    // are saved for this scanner
+    async syncOwn(d) {
+        const row = this.el('scan-own-row');
+        row.classList.toggle('hidden', !d);
+        if (!d) return;
+        const native = FolderCache.native();
+        const state = native && native.scannerSettings ? await native.scannerSettings(d.id, 'state').catch(() => null) : null;
+        if (this.device() !== d) return;
+        if (!state || !state.helper) { row.classList.add('hidden'); return; }
+        this.el('scan-own-forget').classList.toggle('hidden', !state.saved);
+        this.el('scan-own').textContent = state.saved ? 'Scanner\'s own settings… (saved)' : 'Scanner\'s own settings…';
+    },
+
+    async ownSettings(act) {
+        const d = this.device();
+        if (!d) return;
+        const btn = this.el('scan-own');
+        btn.disabled = true;
+        if (act === 'show') this.app.showToast('The scanner\'s window opens: choose its settings there, then Save. It may be behind jEditor.', 6000);
+        try {
+            const r = await FolderCache.native().scannerSettings(d.id, act);
+            this.app.showToast(act === 'forget' ? 'Back to the scanner\'s default settings'
+                : r.saved ? 'Saved: feeder scans use the scanner\'s own settings now' : 'Nothing was saved', 3500);
+        } catch (e) {
+            UI.alert({ title: 'The scanner\'s settings didn\'t open', message: e.message });
+        } finally {
+            btn.disabled = false;
+            this.syncOwn(d);
+        }
     },
 
     saveSwap() {
@@ -1035,7 +1070,7 @@ const Scan = {
         const said = `${n} photo${n === 1 ? '' : 's'} into ${Folders.label(folder)}`;
         if (n) {
             done((result.cancelled ? 'Stopped after ' : 'Scanned ') + said + (autoCrop ? ' · auto cropping…' : '') + (source === 'feeder' && !result.cancelled ? '. Load the next batch, then Scan more.' : ''));
-            app.showToast(`Scanned ${said}`, 4000, 'scanned', null, { type: 'success' });
+            app.showToast(`Scanned ${said}`, 4000, 'scanned', null, { type: 'success', kind: 'scan' });
             if (autoCrop) {
                 await this.autoCrop(names, { feeder: source === 'feeder' });
                 if (panel.dataset.state === 'done') this.status((result.cancelled ? 'Stopped after ' : 'Scanned ') + said + ' · auto cropped');

@@ -4,7 +4,13 @@
 // the photo, as the FastFoto does in its own software).
 //
 //   jEditor.Twain32.exe --device <name> --dpi 300 [--gray] [--duplex]
-//                       [--autosize] [--deskew] --out <folder>
+//                       [--autosize] [--deskew] [--settings <file>] --out <folder>
+//   jEditor.Twain32.exe --device <name> --setup --settings-out <file>
+//
+// --setup shows the scanner's own window only to choose its settings (Epson
+// Scan 2's color restoration, enhancements and the like, which TWAIN has no
+// names for); the driver's whole settings are saved to the file, and
+// --settings gives them back to it before a scan.
 //
 // It writes one line per event to stdout:
 //   LOG <text>      what the scanner said yes or no to (for Details)
@@ -52,8 +58,9 @@ sealed class Options
 {
     public string Device = "";
     public int Dpi = 300;
-    public bool Gray, Duplex, AutoSize, Deskew;
+    public bool Gray, Duplex, AutoSize, Deskew, Setup;
     public string Out = "";
+    public string? SettingsIn, SettingsOut;
 
     public static Options Parse(string[] args)
     {
@@ -70,11 +77,15 @@ sealed class Options
                 case "--autosize": o.AutoSize = true; break;
                 case "--deskew": o.Deskew = true; break;
                 case "--out": o.Out = Next(); break;
+                case "--setup": o.Setup = true; break;
+                case "--settings": o.SettingsIn = Next(); break;
+                case "--settings-out": o.SettingsOut = Next(); break;
                 default: throw new ArgumentException("Unknown option " + args[i]);
             }
         }
         if (o.Device.Length == 0) throw new ArgumentException("No --device");
-        if (!Directory.Exists(o.Out)) throw new ArgumentException("No folder to write to");
+        if (o.Setup) { if (o.SettingsOut is null) throw new ArgumentException("No --settings-out"); }
+        else if (!Directory.Exists(o.Out)) throw new ArgumentException("No folder to write to");
         return o;
     }
 }
@@ -147,6 +158,24 @@ sealed class Run : ApplicationContext
             Out.Log($"Scanner: {source.Name} ({source.Manufacturer}, {source.ProductFamily}, driver {source.Version.Info})");
             rc = source.Open();
             if (rc != ReturnCode.Success) { Fail("The scanner's driver wouldn't open: " + Status(session.GetStatus())); return; }
+            if (o.Setup)
+            {
+                // Its window, just for its settings (saved when it closes)
+                Out.Log("Showing the scanner's own settings window");
+                rc = source.Enable(SourceEnableMode.ShowUIOnly, true, window.Handle);
+                if (rc != ReturnCode.Success) Fail("The scanner's settings window didn't open: " + Status(source.GetStatus()));
+                return;
+            }
+            // Settings chosen in its own window (Scanner's own settings…)
+            if (o.SettingsIn is not null && File.Exists(o.SettingsIn))
+            {
+                try
+                {
+                    source.Settings = File.ReadAllBytes(o.SettingsIn);
+                    Out.Log("Its own settings, as chosen in its window: yes");
+                }
+                catch (Exception e) { Out.Log("Its own settings, as chosen in its window: no (" + e.Message + ")"); }
+            }
             Configure(source);
             rc = source.Enable(SourceEnableMode.NoUI, false, window.Handle);
             if (rc != ReturnCode.Success) { Fail("The scanner wouldn't start: " + Status(source.GetStatus())); return; }
@@ -168,6 +197,7 @@ sealed class Run : ApplicationContext
         {
             var supported = caps.CapSupportedCaps.GetValues().ToList();
             Out.Log("Supports: " + string.Join(", ", supported));
+            LogCustom(caps);
         }
         catch (Exception e) { Out.Log("Supports: (couldn't ask: " + e.Message + ")"); }
 
@@ -211,6 +241,27 @@ sealed class Run : ApplicationContext
         catch (Exception) { /* not all of them answer */ }
     }
 
+    // The driver's own capabilities (no TWAIN names), with their values now:
+    // what changes when its settings do
+    static void LogCustom(ICapabilities caps)
+    {
+        var mine = caps.CapSupportedCaps.GetValues().Where(c => (int)c >= 0x8000).ToList();
+        if (mine.Count == 0) return;
+        Out.Log("Its own: " + string.Join(", ", mine.Select(c =>
+        {
+            try { return $"{(int)c}={Show(caps.GetCurrent(c))}"; }
+            catch (Exception) { return $"{(int)c}=?"; }
+        })));
+    }
+
+    static string Show(object? v) => v switch
+    {
+        null => "-",
+        TWFix32 f => Fix(f),
+        string s => '"' + s + '"',
+        _ => v.ToString() ?? "-",
+    };
+
     static string Fix(TWFix32 v) => ((float)v).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 
     void TransferReady(object? sender, TransferReadyEventArgs e)
@@ -248,6 +299,23 @@ sealed class Run : ApplicationContext
     {
         if (finished) return;
         finished = true;
+        // Settings window closed: the driver's settings, kept for its scans
+        if (o.Setup && error is null && source is not null && source.IsOpen)
+        {
+            try
+            {
+                var data = source.Settings;
+                if (data is null || data.Length == 0) error = "The scanner didn't give its settings";
+                else
+                {
+                    File.WriteAllBytes(o.SettingsOut!, data);
+                    Out.Log($"Its settings were saved ({data.Length} bytes)");
+                    try { LogCustom(source.Capabilities); } catch (Exception) { }
+                }
+            }
+            catch (Exception e) { error = "The scanner's settings couldn't be read: " + e.Message; }
+            if (error is not null) Failed = true;
+        }
         try
         {
             if (session is not null)

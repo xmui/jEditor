@@ -195,6 +195,14 @@ const FAKE_NATIVE = `
         tetherAck() { window.__tetherAck && window.__tetherAck(); },
         tetherStop() { window.__tetherEnd(null); },
         tetherSet(o) { window.__tetherCalls.push('set ' + JSON.stringify(o)); },
+        // The scanner's own settings window: saved per scanner
+        async scannerSettings(device, act) {
+            (window.__ownCalls = window.__ownCalls || []).push(act + ' ' + device);
+            window.__ownSaved = window.__ownSaved || {};
+            if (act === 'show') window.__ownSaved[device] = true;
+            if (act === 'forget') delete window.__ownSaved[device];
+            return { saved: !!window.__ownSaved[device], helper: true };
+        },
         // Preview and crop: an 8.5 × 11.7 in glass with three prints on a pale lid
         async scanCaps(o) {
             window.__capsReq = o;
@@ -1040,6 +1048,15 @@ async function newPage(context, baseUrl) {
             out.sidesShown = !$('scan-sides-row').classList.contains('hidden');
             // The FastFoto has its sides the other way round: on to start with
             out.swap = $('scan-swap').checked;
+            // Scanner's own settings…: offered for a TWAIN feeder; saved, then forgotten
+            await wait(() => !$('scan-own-row').classList.contains('hidden'));
+            out.ownShown = !$('scan-own-row').classList.contains('hidden') && $('scan-own-forget').classList.contains('hidden');
+            $('scan-own').click();
+            await wait(() => /saved/.test($('scan-own').textContent));
+            out.ownSaved = $('scan-own').textContent + '|' + !$('scan-own-forget').classList.contains('hidden');
+            $('scan-own-forget').click();
+            await wait(() => $('scan-own-forget').classList.contains('hidden'));
+            out.ownCalls = (window.__ownCalls || []).join(',');
             $('scan-sides').value = 'both';
             $('scan-sides').dispatchEvent(new Event('change'));
             out.names = $('scan-preview').textContent;
@@ -1069,6 +1086,8 @@ async function newPage(context, baseUrl) {
         check('... each photo opens large as it comes in (not the backs)', r.shown === 'single photo4.jpg', r.shown);
         check('... and the scanner is asked to crop each photo itself (its own auto-size)', r.req && r.req.autosize === true, JSON.stringify(r.req));
         check('the swap is remembered for that scanner', r.swapKept);
+        check('Scanner\'s own settings… opens its window, says when settings are saved, and Forget goes back', r.ownShown && r.ownSaved === 'Scanner\'s own settings… (saved)|true'
+            && /^state EPSON FF-680W.*show EPSON FF-680W.*forget EPSON FF-680W/.test(r.ownCalls), JSON.stringify([r.ownShown, r.ownSaved, r.ownCalls]));
         check('feeder suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
@@ -1422,13 +1441,15 @@ async function newPage(context, baseUrl) {
             // Renaming the open project: closed, renamed, opened again at its new name
             window.__opened = null;
             UI.prompt = async () => 'Alpha Smith';
-            $('sb-card').querySelector('[data-act="rename"]').click();
+            // No rename button among the card's buttons: a pencil by the name, and a double-click on it
+            out.noRenameButton = !$('sb-card').querySelector('.btn[data-act="rename"]') && !!$('sb-card').querySelector('.sb-card-name .sb-card-edit');
+            $('sb-card').querySelector('.sb-card-name span').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
             await wait(() => window.__opened);
             out.reopened = window.__opened;
             out.pinRenamed = Places.pins().map(p => p.name).join();
             const back = await (await opfs('disk')).getDirectoryHandle('Alpha Smith').catch(() => null) || await (await opfs('disk')).getDirectoryHandle('Alpha');
             await openOrder(back);
-            await wait(() => $('sb-card').querySelector('[data-act="rename"]'));
+            await wait(() => $('sb-card').querySelector('.sb-card-edit[data-act="rename"]'));
             // Save edits when done, for this project: kept with its data on the PC
             const deferBox = $('sb-card').querySelector('input[data-act="defer"]');
             out.deferOff = !!deferBox && !deferBox.checked;
@@ -1484,6 +1505,7 @@ async function newPage(context, baseUrl) {
         check('New project: makes the folder in the projects folder, opens it and lists it; a name taken says so', r.made === 'D:\\Orders\\Gamma' && r.listed && /already a Gamma/.test(r.twice || ''), JSON.stringify([r.made, r.listed, r.twice]));
         check('the project card: name, path, photos', /Alpha/.test(r.card) && /D:\\Orders\\Alpha/.test(r.card) && /\d photos/.test(r.card), r.card);
         check('the open project is marked in the list', r.active);
+        check('card: no rename button; a pencil by the name, and a double-click on the name renames', r.noRenameButton);
         check('card: Rename closes the open project, renames it and opens it again', r.reopened === 'D:\\Orders\\Alpha Smith' && r.pinRenamed.split(',').includes('Alpha Smith') && !r.pinRenamed.split(',').includes('Alpha'), JSON.stringify([r.reopened, r.pinRenamed]));
         check('card buttons: Explorer, Scan, Pin', r.revealed === 'D:\\Orders\\Alpha' && r.scanOpen && r.pinned.split(',').includes('Alpha'), JSON.stringify([r.revealed, r.scanOpen, r.pinned]));
         check('card: Save edits when done turns on for the project, kept on the PC', r.deferOff && r.deferKept, JSON.stringify([r.deferOff, r.deferKept]));

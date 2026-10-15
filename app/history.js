@@ -174,7 +174,7 @@ const History = {
         }
         if (n > 1 || error) {
             app.showToast(error ? `Went back ${done} of ${n} steps — stopped: ${error}` : `Went back ${n} steps`, error ? 5000 : 2500,
-                null, null, { type: error ? 'error' : 'info' });
+                null, null, { type: error ? 'error' : 'info', kind: 'undo' });
         }
         this.changed();
     }

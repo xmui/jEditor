@@ -400,8 +400,29 @@ const app = {
             theme: 'dark',
             density: 'compact',
             glass: 'rich',
-            surround: 'auto'
+            surround: 'auto',
+            // Which messages show for things done (TOAST_KINDS); errors always do
+            toasts: Object.fromEntries(this.TOAST_KINDS.map(([k, , on]) => [k, on]))
         };
+    },
+
+    // Messages for things done, each kind on or off in Settings → Messages:
+    // [kind, label, on to start with, help]
+    TOAST_KINDS: [
+        ['rotate', 'Rotating', false, 'Turned 1 photo right…'],
+        ['flags', 'Flags and labels', true, 'Starred, needs rescan, color labels'],
+        ['crop', 'Cropping and Auto crop', true, 'Saved, crop kept, auto cropped'],
+        ['move', 'Moving, copying and folders', true, 'Moved to a folder, new folder'],
+        ['delete', 'Deleting', true, 'Moved to the Recycle Bin (Ctrl+Z still restores)'],
+        ['rename', 'Renaming', true, 'Renamed photos and folders'],
+        ['undo', 'Undo', true, 'What Ctrl+Z put back'],
+        ['scan', 'Scanning and the camera', true, 'Scanned, camera connected'],
+        ['load', 'Photos loaded and found', true, 'Loaded, previews ready, new photos in the folder']
+    ],
+
+    toastOn(kind) {
+        const t = this.uiPrefs && this.uiPrefs.toasts;
+        return !t || t[kind] !== false;
     },
 
     loadUiPrefs() {
@@ -426,6 +447,9 @@ const app = {
                 if (typeof saved.thumbContain === 'boolean') this.uiPrefs.thumbContain = saved.thumbContain;
                 if (typeof saved.folderCache === 'boolean') this.uiPrefs.folderCache = saved.folderCache;
                 if (typeof saved.autoCheck === 'boolean') this.uiPrefs.autoCheck = saved.autoCheck;
+                if (saved.toasts && typeof saved.toasts === 'object') {
+                    for (const [k] of this.TOAST_KINDS) if (typeof saved.toasts[k] === 'boolean') this.uiPrefs.toasts[k] = saved.toasts[k];
+                }
                 if (typeof saved.autoUpdate === 'boolean') this.uiPrefs.autoUpdate = saved.autoUpdate;
                 if (typeof saved.accent === 'string' && /^#[0-9a-f]{6}$/i.test(saved.accent)) this.uiPrefs.accent = saved.accent;
                 if (typeof saved.singleControls === 'boolean') this.uiPrefs.singleControls = saved.singleControls;
@@ -597,6 +621,34 @@ const app = {
             this.applyUiPrefs();
         });
 
+        // Messages: a switch per kind
+        const toastList = $('cust-toasts');
+        if (toastList) {
+            for (const [kind, label, , help] of this.TOAST_KINDS) {
+                const row = document.createElement('div');
+                row.className = 'set-row';
+                const id = 'cust-toast-' + kind;
+                const lab = document.createElement('label');
+                lab.className = 'set-label';
+                lab.htmlFor = id;
+                lab.textContent = label;
+                const small = document.createElement('small');
+                small.textContent = help;
+                lab.appendChild(small);
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.id = id;
+                input.className = 'switch';
+                input.dataset.toast = kind;
+                input.addEventListener('change', () => {
+                    this.uiPrefs.toasts = { ...(this.uiPrefs.toasts || {}), [kind]: input.checked };
+                    this.saveUiPrefs();
+                });
+                row.append(lab, input);
+                toastList.appendChild(row);
+            }
+        }
+
         // Folder
         $('cust-auto-check').addEventListener('change', (e) => {
             this.uiPrefs.autoCheck = e.target.checked;
@@ -667,6 +719,7 @@ const app = {
         $('cust-vertical').checked = !!this.uiPrefs.vertical;
         $('cust-folder-cache').checked = this.uiPrefs.folderCache !== false;
         $('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
+        this.elements.customizePanel.querySelectorAll('input[data-toast]').forEach(i => { i.checked = this.toastOn(i.dataset.toast); });
         $('cust-cleanup').disabled = !this.dirHandle;
         $('cust-single-controls').checked = this.uiPrefs.singleControls !== false;
         this.syncAccentPicker();
@@ -1014,7 +1067,27 @@ const app = {
         const f = this.currentFile;
         const readAt = this._displayFile === f && img._savedAtRead !== undefined
             ? img._savedAtRead : (f._savedRotationTotal || 0);
-        return ((f._savedRotationTotal || 0) - readAt) + (f.savingRotation || 0) + (f.pendingRotation || 0);
+        // A kept rotation (Save edits when done): the picture on screen turns
+        // while the turned version is made (turnHeld), then that replaces it
+        const held = this._displayFile === f ? (f._turnHeldView || 0) : 0;
+        return ((f._savedRotationTotal || 0) - readAt) + (f.savingRotation || 0) + (f.pendingRotation || 0) + held;
+    },
+
+    // Kept rotations turn what's on screen first, as an immediate rotation
+    // does, and the redrawn photo takes over once it's ready: without this
+    // the photo just jumped (dimmed, then redrawn)
+    turnHeld(files, deg) {
+        for (const f of files) {
+            f._turnHeld = (f._turnHeld || 0) + deg;
+            for (const holder of [f._gridEl, f._stripEl]) {
+                const img = holder && holder.isConnected && holder.querySelector(':scope > img');
+                if (img && img.src && img.src !== this.BLANK_THUMB) img.style.transform = `rotate(${f._turnHeld}deg)`;
+            }
+            if (this.currentFile === f && this.viewMode === 'single' && this._displayFile === f) {
+                f._turnHeldView = (f._turnHeldView || 0) + deg;
+                this.updateImageTransform();
+            }
+        }
     },
 
     // At odd quarter-turns the CSS-rotated image would overflow the
@@ -1177,7 +1250,7 @@ const app = {
             await Edits.loadFor(1500);
 
             if (this.files.length > 0) {
-                this.showToast(`Loaded ${this.files.length.toLocaleString()} photo${this.files.length === 1 ? '' : 's'}`, 2500);
+                this.showToast(`Loaded ${this.files.length.toLocaleString()} photo${this.files.length === 1 ? '' : 's'}`, 2500, null, null, { kind: 'load' });
                 this.elements.mainInterface.classList.remove('hidden');
 
                 // Force focus settings
@@ -2581,11 +2654,20 @@ const app = {
     deliverThumbnail(fileEntry) {
         const url = fileEntry.thumbnailUrl;
         (fileEntry._thumbWaiters || []).forEach(img => {
+            if (img._interim) {
+                // Its picture already has the turn: straight, with no spin back
+                img._interim = false;
+                const was = img.style.transition;
+                img.style.transition = 'none';
+                img.style.transform = '';
+                requestAnimationFrame(() => requestAnimationFrame(() => { img.style.transition = was; }));
+            }
             img.decoding = 'async';
             img.onerror = () => { if (img.src === fileEntry.thumbnailUrl) this.thumbnailBroken(fileEntry); };
             img.src = url;
         });
         fileEntry._thumbWaiters = [];
+        fileEntry._turnHeld = 0;
         // A tile drawn again while this was being made shows the old one
         for (const holder of [fileEntry._gridEl, fileEntry._stripEl]) {
             const img = holder && holder.isConnected && holder.querySelector(':scope > img');
@@ -2705,7 +2787,7 @@ const app = {
                     if (!showProgress || gen !== this._precacheGen) return;
                     if (done === total) {
                         this.endTask('precache');
-                        this.showToast(`All ${total} previews ready`, 2000);
+                        this.showToast(`All ${total} previews ready`, 2000, null, null, { kind: 'load' });
                         this.pruneFolderCache();
                     } else if (done % 25 === 0) {
                         this.updateTask('precache', `Preparing previews ${done}/${total}`);
@@ -3178,6 +3260,8 @@ const app = {
         }
         this._displayKind = kind;
         this._displayFile = file;
+        // The redrawn photo has the turn in it: the held one is done
+        if (file) file._turnHeldView = 0;
         if (kind === 'thumb') this.sizePlaceholder(el, file);
         el.style.transition = 'none'; // no spin/float from the previous photo's transform
         el.style.opacity = '1';
@@ -3235,8 +3319,9 @@ const app = {
                 };
                 if (ph.complete && ph.naturalWidth) showPlaceholder();
                 else ph.decode().then(showPlaceholder, () => { });
-            } else {
+            } else if (!(file._turnHeldView && this._displayFile === file)) {
                 // Nothing cached yet: dim the previous photo while decoding
+                // (not one turning to its kept rotation: it stays until redrawn)
                 this.elements.currentImage.style.opacity = '0.3';
             }
 
@@ -3411,6 +3496,8 @@ const app = {
     showToast(message, duration = 3000, key = null, action = null, opts = {}) {
         // Going back several steps (history.js) says so once, at the end
         if (this._quietToasts) return;
+        // A kind turned off in Settings → Messages (errors always show)
+        if (opts && opts.kind && opts.type !== 'error' && !this.toastOn(opts.kind)) return;
         let stack = document.getElementById('toast-stack');
         if (!stack) {
             stack = document.createElement('div');
@@ -4405,9 +4492,22 @@ const app = {
     refreshThumbnailUI(file) {
         if (!file) return;
 
+        // A tile turning to a kept rotation keeps its picture until the
+        // redrawn thumbnail replaces it (deliverThumbnail)
+        const keep = (holder) => {
+            const img = file._turnHeld && holder && holder.isConnected && holder.querySelector(':scope > img');
+            if (!img || !img.src || img.src === this.BLANK_THUMB) return false;
+            img._interim = true;
+            Flags.decorate(holder, file);
+            Edits.decorate(holder, file);
+            this.loadImageThumbnail(file, img, true);
+            return true;
+        };
+        const keptStrip = keep(file._stripEl), keptGrid = keep(file._gridEl);
+
         // 1. Refresh Strip Item
         const stripDiv = file._stripEl;
-        if (stripDiv && stripDiv.isConnected) {
+        if (!keptStrip && stripDiv && stripDiv.isConnected) {
             stripDiv.innerHTML = '';
             Flags.decorate(stripDiv, file);
             Edits.decorate(stripDiv, file);
@@ -4416,7 +4516,7 @@ const app = {
 
         // 2. Refresh Grid Item
         const gridDiv = file._gridEl;
-        if (gridDiv && gridDiv.isConnected) {
+        if (!keptGrid && gridDiv && gridDiv.isConnected) {
             gridDiv.innerHTML = '';
             // Recreate Image
             const img = document.createElement('img');
@@ -4468,9 +4568,10 @@ const app = {
         if (Edits.on()) {
             if (this.editsSaving()) return;
             // Kept with the other edits until they're saved
+            this.turnHeld(filesToRotate, deg);
             Edits.rotate(filesToRotate, deg);
             const n = filesToRotate.length;
-            this.showToast(`Turned ${n} photo${n > 1 ? 's' : ''} ${Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left'}`, 1600);
+            this.showToast(`Turned ${n} photo${n > 1 ? 's' : ''} ${Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left'}`, 1600, null, null, { kind: 'rotate' });
             return;
         }
 
@@ -4521,7 +4622,7 @@ const app = {
         // Nothing was saved (all failed): no empty undo step
         if (!group.items.length) this._undoStack = (this._undoStack || []).filter(e => e !== group);
         const how = Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left';
-        this.showToast(ok ? `Rotated ${label} ${how}` : 'Some photos failed to rotate', 2000);
+        this.showToast(ok ? `Rotated ${label} ${how}` : 'Some photos failed to rotate', 2000, null, null, ok ? { kind: 'rotate' } : {});
         this.log('Bulk rotation finished');
     },
 
@@ -4534,7 +4635,11 @@ const app = {
             return Promise.resolve(false);
         }
         // Kept with the other edits until they're saved
-        if (Edits.on()) return Promise.resolve(!this.editsSaving() && Edits.rotate([fileEntry], deg));
+        if (Edits.on()) {
+            if (this.editsSaving()) return Promise.resolve(false);
+            this.turnHeld([fileEntry], deg);
+            return Promise.resolve(Edits.rotate([fileEntry], deg));
+        }
 
         // Instant, stacking preview; the save happens in the background
         fileEntry.pendingRotation = (fileEntry.pendingRotation || 0) + deg;
@@ -4818,10 +4923,10 @@ const app = {
         try {
             if (entry.type === 'bytes') {
                 await this.undoFileEdit(entry);
-                this.showToast(`Undid ${entry.label} on ${entry.file.name}`);
+                this.showToast(`Undid ${entry.label} on ${entry.file.name}`, 3000, null, null, { kind: 'undo' });
             } else if (entry.type === 'rotate') {
                 await this.undoFileEdit(entry);
-                this.showToast(`Undid rotation on ${entry.file.name}`);
+                this.showToast(`Undid rotation on ${entry.file.name}`, 3000, null, null, { kind: 'undo' });
             } else if (entry.type === 'group') {
                 // A rotation of a whole selection: every photo, in one step
                 // (once the batch has finished saving, so none are missed)
@@ -4842,14 +4947,14 @@ const app = {
                     if (many) this.endTask('undo-group');
                 }
                 if (failed) throw new Error(`${failed} photo${failed === 1 ? '' : 's'} could not be put back`);
-                this.showToast(`Undid rotation on ${items.length} photo${items.length === 1 ? '' : 's'}`);
+                this.showToast(`Undid rotation on ${items.length} photo${items.length === 1 ? '' : 's'}`, 3000, null, null, { kind: 'undo' });
             } else if (entry.type === 'rename') {
                 await this.renameFile(entry.file, entry.oldName, { skipUndo: true });
-                this.showToast('Rename undone');
+                this.showToast('Rename undone', 3000, null, null, { kind: 'undo' });
             } else if (entry.type === 'batch-rename') {
                 const ok = await this.renameMany(entry.items.map(it => ({ file: it.file, newName: it.oldName })), { skipUndo: true });
                 if (!ok) throw new Error('could not restore the old names');
-                this.showToast(`Rename undone (${entry.items.length} file${entry.items.length === 1 ? '' : 's'})`);
+                this.showToast(`Rename undone (${entry.items.length} file${entry.items.length === 1 ? '' : 's'})`, 3000, null, null, { kind: 'undo' });
             } else if (entry.type === 'flags') {
                 Flags.undo(entry);
             } else if (entry.type === 'auto-crop') {
@@ -4866,7 +4971,7 @@ const app = {
                 const n = await this.restoreManyFromTrash(entry.items);
                 this.sortFiles();
                 if (n < entry.items.length) this.showToast(`Restored ${n} of ${entry.items.length} photos — the rest are still in ${FolderCache.native() ? 'the Recycle Bin' : '.jeditor/trash'}`, 4000);
-                else this.showToast(`Restored ${n} photo${n > 1 ? 's' : ''}`);
+                else this.showToast(`Restored ${n} photo${n > 1 ? 's' : ''}`, 3000, null, null, { kind: 'undo' });
             }
         } catch (e) {
             console.error('Undo failed:', e);
@@ -4977,7 +5082,7 @@ const app = {
             this.pushUndo({ type: 'trash', items: undoItems });
             const n = undoItems.length;
             const where = binned === n ? 'the Recycle Bin' : binned ? 'the Recycle Bin and jEditor\'s trash' : FolderCache.native() ? 'jEditor\'s trash (this drive has no Recycle Bin)' : 'the trash (.jeditor/trash)';
-            this.showToast(`Moved ${n} to ${where} — Ctrl+Z to restore`, 4000);
+            this.showToast(`Moved ${n} to ${where} — Ctrl+Z to restore`, 4000, null, null, { kind: 'delete' });
         }
         if (alreadyGone.length) {
             const n = alreadyGone.length;
@@ -5939,7 +6044,7 @@ const app = {
             if (none && !had) this.showToast('No changes', 1500);
             else {
                 Edits.set([{ file, edit: none ? null : snap }], 'crop');
-                this.showToast(none ? 'Back to the whole photo' : 'Crop kept — saved into the photo when you save the edits', 2200);
+                this.showToast(none ? 'Back to the whole photo' : 'Crop kept — saved into the photo when you save the edits', 2200, null, null, { kind: 'crop' });
             }
             goNext();
             return;
@@ -5954,7 +6059,7 @@ const app = {
             if (quarter) {
                 const deg = quarter === 3 ? -90 : quarter * 90;
                 this.rotateImage(file, deg);
-                this.showToast(`Rotated ${deg > 0 ? 'right' : 'left'}${Math.abs(deg) === 180 ? ' 180°' : ''}`, 1500);
+                this.showToast(`Rotated ${deg > 0 ? 'right' : 'left'}${Math.abs(deg) === 180 ? ' 180°' : ''}`, 1500, null, null, { kind: 'rotate' });
             } else {
                 this.showToast('No changes to save', 1500);
             }
@@ -6003,7 +6108,7 @@ const app = {
             ed.busy = false;
             this.cancelCrop();
             await this.afterFileChanged(file);
-            this.showToast(`Saved ${w} × ${h}`, 1800);
+            this.showToast(`Saved ${w} × ${h}`, 1800, null, null, { kind: 'crop' });
             goNext();
         } catch (err) {
             console.error('Crop save failed:', err);
@@ -6102,7 +6207,7 @@ const app = {
                 if (stack[stack.length - 1] === entry) this.undo();
                 else this.showToast('Something else changed since — use Ctrl+Z');
             }
-        } : null, { type: failed && !cropped ? 'error' : 'crop' });
+        } : null, { type: failed && !cropped ? 'error' : 'crop', kind: 'crop' });
     },
 
     // Batch Auto crop with Save edits when done: each crop is kept as an
@@ -6154,7 +6259,7 @@ const app = {
                 if (stack[stack.length - 1] === entry) this.undo();
                 else this.showToast('Something else changed since — use Ctrl+Z');
             }
-        } : null, { type: failed && !cropped ? 'error' : 'crop' });
+        } : null, { type: failed && !cropped ? 'error' : 'crop', kind: 'crop' });
     },
 
     // Auto crop's geometry for one photo, from the photo as it is on disk
@@ -6270,7 +6375,7 @@ const app = {
             if (many) this.endTask('undo-auto-crop');
         }
         if (failed) throw new Error(`${failed} photo${failed === 1 ? '' : 's'} could not be put back`);
-        if (!entry.quiet) this.showToast(`Undid auto crop on ${items.length} photo${items.length === 1 ? '' : 's'}`);
+        if (!entry.quiet) this.showToast(`Undid auto crop on ${items.length} photo${items.length === 1 ? '' : 's'}`, 3000, null, null, { kind: 'undo' });
     },
 
     // ---- Saving edits kept until saved (edits.js) ----
@@ -6358,7 +6463,7 @@ const app = {
                 if (stack[stack.length - 1] === entry) this.undo();
                 else this.showToast('Something else changed since — use Ctrl+Z');
             }
-        } : null, { type: failed && !saved ? 'error' : 'crop' });
+        } : null, { type: failed && !saved ? 'error' : 'crop', kind: 'crop' });
         return !failed && !changed;
     },
 
@@ -6438,7 +6543,7 @@ const app = {
         Edits.restore(entry.edits.filter(e => !notBack.has(e.file)));
         if (failed) throw new Error('some photos could not be put back');
         const n = entry.edits.length;
-        this.showToast(`Put back ${n} photo${n === 1 ? '' : 's'} — the edits are kept again`);
+        this.showToast(`Put back ${n} photo${n === 1 ? '' : 's'} — the edits are kept again`, 3000, null, null, { kind: 'undo' });
     }
 };
 

@@ -327,7 +327,7 @@ const Camera = {
                     this.el('cam-title').textContent = `Camera · ${e.name}`;
                     this.viewNote = '';
                     this.syncLive();
-                    app.showToast(`${e.name} connected: F12 takes a photo`, 3000, null, null, { type: 'success' });
+                    app.showToast(`${e.name} connected: F12 takes a photo`, 3000, null, null, { type: 'success', kind: 'scan' });
                 } else if (e.kind === 'frame') {
                     if (this.el('cam-liveview').checked) this.el('cam-frame').src = e.image;
                     else native.tetherAck();

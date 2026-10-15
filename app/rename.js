@@ -333,7 +333,7 @@ const Renamer = {
             const done = await this.app.renameMany(pairs);
             if (done) {
                 this.close();
-                this.app.showToast(`Renamed ${pairs.length.toLocaleString()} photo${pairs.length === 1 ? '' : 's'} — Ctrl+Z to undo`, 3000);
+                this.app.showToast(`Renamed ${pairs.length.toLocaleString()} photo${pairs.length === 1 ? '' : 's'} — Ctrl+Z to undo`, 3000, null, null, { kind: 'rename' });
             } else {
                 this.refresh();
             }

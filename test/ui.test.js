@@ -1526,6 +1526,8 @@ async function newPage(browser, url) {
             const out = {};
             localStorage.removeItem('jeditor.keys');
             app.loadKeyBindings();
+            // Rotation messages are off to start with (Settings → Messages): on, to check this one
+            app.uiPrefs.toasts.rotate = true;
             const press = (key) => window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
             const a = makeFakeFile('a.jpg', makeJpegBytes(), 'image/jpeg');
             const b = makeFakeFile('b.jpg', makeJpegBytes(), 'image/jpeg');
@@ -3323,6 +3325,123 @@ async function newPage(browser, url) {
         check('feeder page: a tilted photo is straightened and cropped', near(r.tilted, 380, 560) && Math.abs(r.tilted.angle + 1.5) < 0.4, JSON.stringify(r.tilted));
         check('feeder page: found without the hint too; an ordinary photo is left alone', r.unhinted && r.photoAlone, JSON.stringify([r.unhinted, r.photoAlone]));
         check('feeder auto crop suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7s0. Settings → Messages ----
+    console.log('settings: messages');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            localStorage.removeItem('jeditor.ui');
+            app.loadUiPrefs();
+            const shown = (re) => [...document.querySelectorAll('.toast')].some(t => re.test(t.textContent));
+            // Rotation messages are off to start with; the others are on
+            out.defaults = !app.toastOn('rotate') && app.toastOn('flags') && app.toastOn('delete');
+            app.showToast('Turned 1 photo right', 3000, null, null, { kind: 'rotate' });
+            app.showToast('Starred a.jpg', 3000, null, null, { kind: 'flags' });
+            out.rotateHidden = !shown(/Turned 1 photo/);
+            out.flagsShown = shown(/Starred a\.jpg/);
+            // Errors always show, whatever their kind
+            app.showToast('Rotation failed: file in use', 3000, null, null, { kind: 'rotate', type: 'error' });
+            out.errorShown = shown(/Rotation failed/);
+            // The switches in Settings: one per kind, as set; changing one is kept
+            app.toggleCustomizePanel(true);
+            const sw = (k) => document.querySelector(`input[data-toast="${k}"]`);
+            out.switches = document.querySelectorAll('#cust-toasts input[data-toast]').length === app.TOAST_KINDS.length && !sw('rotate').checked && sw('flags').checked;
+            sw('flags').checked = false;
+            sw('flags').dispatchEvent(new Event('change'));
+            sw('rotate').checked = true;
+            sw('rotate').dispatchEvent(new Event('change'));
+            app.toggleCustomizePanel(false);
+            const saved = JSON.parse(localStorage.getItem('jeditor.ui')).toasts;
+            out.saved = saved.flags === false && saved.rotate === true;
+            app.loadUiPrefs();
+            out.kept = !app.toastOn('flags') && app.toastOn('rotate');
+            app.showToast('Starred b.jpg', 3000, null, null, { kind: 'flags' });
+            out.flagsNowHidden = !shown(/Starred b\.jpg/);
+            localStorage.removeItem('jeditor.ui');
+            return out;
+        });
+        check('messages: rotation off to start with, the rest on; a kind turned off doesn\'t show', r.defaults && r.rotateHidden && r.flagsShown, JSON.stringify(r));
+        check('messages: errors show even when their kind is off', r.errorShown);
+        check('messages: a switch per kind in Settings; changes are saved and kept', r.switches && r.saved && r.kept && r.flagsNowHidden, JSON.stringify(r));
+        check('messages suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7s1. Kept rotations turn on screen first ----
+    console.log('kept rotations turn on screen');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const until = async (fn, n = 200) => { for (let i = 0; i < n && !(await fn()); i++) await sleep(25); };
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('keptturn', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('keptturn', { create: true });
+            for (const n of ['a.jpg', 'b.jpg']) {
+                const fh = await dir.getFileHandle(n, { create: true });
+                const w = await fh.createWritable(); await w.write(new Blob([await makeRealJpeg(400, 300)], { type: 'image/jpeg' })); await w.close();
+            }
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            await Edits.setDefer(true);
+            const a = app.files.find(x => x.name === 'a.jpg');
+            app.setView('grid');
+            await until(() => { const i = a._gridEl && a._gridEl.querySelector(':scope > img'); return i && i.src && i.src !== app.BLANK_THUMB && i.naturalWidth; });
+            // Grid: the tile's own picture turns (no blank, no spinner), then
+            // the redrawn thumbnail takes its place, straight
+            const tile = a._gridEl.querySelector(':scope > img');
+            const before = tile.src;
+            app.selection = new Set([a]);
+            app.updateSelectionUI();
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: ']', bubbles: true, cancelable: true }));
+            out.tileTurning = a._gridEl.querySelector(':scope > img') === tile && /rotate\(90deg\)/.test(tile.style.transform);
+            await until(() => tile.src !== before);
+            await sleep(60);
+            out.tileDone = a._gridEl.querySelector(':scope > img') === tile && !tile.style.transform && tile.naturalHeight > tile.naturalWidth;
+            // Single view: the photo turns, isn't dimmed, then the redrawn one
+            // replaces it with no turn left over
+            app.openSingle(a);
+            await until(() => app._displayFile === a && app._displayKind === 'full');
+            const shown = app.elements.currentImage;
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: ']', bubbles: true, cancelable: true }));
+            out.viewTurning = app.elements.currentImage === shown && /rotate\(90deg\)/.test(shown.style.transform) && shown.style.opacity !== '0.3';
+            await until(() => app.elements.currentImage !== shown && app._displayKind === 'full');
+            const now = app.elements.currentImage;
+            out.viewDone = /rotate\(0deg\)/.test(now.style.transform) && now.naturalWidth > now.naturalHeight && !a._turnHeldView;
+            out.kept = a._edit && a._edit.q === 2;
+            return out;
+        });
+        // The edits bar: grid only, left of the size slider in the bottom row,
+        // never over the selection bar (above the slider when the row is full)
+        const lay = [];
+        for (const w of [1400, 1100]) {
+            await page.setViewportSize({ width: w, height: 700 });
+            lay.push(await page.evaluate(async () => {
+                app.setView('grid');
+                app.selection = new Set([app.files[0]]);
+                app.updateSelectionUI();
+                await new Promise(res => setTimeout(res, 400));
+                const box = (id) => document.getElementById(id).getBoundingClientRect();
+                const e = box('edits-bar'), s = box('selection-bar'), g = box('grid-controls');
+                const apart = (a, b) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+                const out = { clear: apart(e, s) && apart(e, g) && apart(s, g), leftOfSlider: e.right <= g.left + 1 && Math.abs(e.bottom - g.bottom) < 2, aboveSlider: e.bottom <= g.top };
+                app.openSingle(app.files[0]);
+                await new Promise(res => setTimeout(res, 200));
+                out.hiddenInSingle = getComputedStyle(document.getElementById('edits-bar')).display === 'none';
+                app.setView('grid');
+                return out;
+            }));
+        }
+        check('edits bar: grid only, left of the size slider; above it when the row is full; never over the selection bar',
+            lay[0].clear && lay[0].leftOfSlider && lay[1].clear && (lay[1].leftOfSlider || lay[1].aboveSlider) && lay[0].hiddenInSingle, JSON.stringify(lay));
+        check('kept rotation: the grid tile turns its own picture, then the redrawn one replaces it straight', r.tileTurning && r.tileDone, JSON.stringify(r));
+        check('kept rotation: the big photo turns (not dimmed), then the redrawn one has no turn left over', r.viewTurning && r.viewDone && r.kept, JSON.stringify(r));
+        check('kept rotation suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

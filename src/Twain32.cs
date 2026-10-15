@@ -24,6 +24,62 @@ static class Twain32
     // The scanner said yes to auto-size (it crops each photo itself)
     public static bool AutoSized { get; private set; }
 
+    // The settings chosen in a scanner's own window (Scanner's own
+    // settings…), kept per scanner and given back to its driver each scan
+    public static string SettingsFile(string device) =>
+        Path.Combine(Shell.DataDir, "scanners", string.Concat(device.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)) + ".twain");
+
+    public static bool HasSettings(string device) => File.Exists(SettingsFile(device));
+
+    // The scanner's own window, only to choose its settings; → true when
+    // they were saved
+    public static async Task<bool> SetupAsync(string device)
+    {
+        var exe = Exe ?? throw new Failed("the 32-bit helper isn't installed");
+        var file = SettingsFile(device);
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        var temp = file + ".new";
+        var info = new ProcessStartInfo(exe)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8,
+        };
+        info.ArgumentList.Add("--device"); info.ArgumentList.Add(device);
+        info.ArgumentList.Add("--setup");
+        info.ArgumentList.Add("--settings-out"); info.ArgumentList.Add(temp);
+        Log.Write($"Opening {device}'s own settings window");
+        using var proc = Process.Start(info) ?? throw new Failed("the 32-bit helper didn't start");
+        try
+        {
+            while (true)
+            {
+                var line = await proc.StandardOutput.ReadLineAsync();
+                if (line is null) throw new Failed("the 32-bit helper stopped unexpectedly");
+                if (line.StartsWith("LOG ")) Log.Write("Scanner: " + line[4..]);
+                else if (line.StartsWith("ERROR ")) throw new Failed(line[6..]);
+                else if (line.StartsWith("DONE")) break;
+            }
+            if (!File.Exists(temp)) return false;
+            File.Move(temp, file, true);
+            Log.Write($"{device}: its own settings saved; jEditor's scans use them from now on");
+            return true;
+        }
+        finally
+        {
+            try { if (!proc.HasExited && !proc.WaitForExit(3000)) proc.Kill(); } catch (Exception) { }
+            try { File.Delete(temp); } catch (Exception) { }
+        }
+    }
+
+    public static void ForgetSettings(string device)
+    {
+        try { File.Delete(SettingsFile(device)); } catch (Exception) { }
+        Log.Write($"{device}: its own settings forgotten; scans use its driver's defaults");
+    }
+
     public static async IAsyncEnumerable<Bitmap> ScanAsync(string device, int dpi, bool gray, bool duplex, bool autoSize, [EnumeratorCancellation] CancellationToken cancel)
     {
         var exe = Exe ?? throw new Failed("the 32-bit helper isn't installed");
@@ -44,6 +100,7 @@ static class Twain32
         if (gray) info.ArgumentList.Add("--gray");
         if (duplex) info.ArgumentList.Add("--duplex");
         if (autoSize) { info.ArgumentList.Add("--autosize"); info.ArgumentList.Add("--deskew"); }
+        if (HasSettings(device)) { info.ArgumentList.Add("--settings"); info.ArgumentList.Add(SettingsFile(device)); }
         Log.Write($"Scanning the feeder through jEditor's 32-bit helper: {dpi} dpi, {(gray ? "grayscale" : "color")}, {(duplex ? "both sides" : "one side")}{(autoSize ? ", the scanner's own auto-size" : "")}");
         var started = Stopwatch.StartNew();
         using var proc = Process.Start(info) ?? throw new Failed("the 32-bit helper didn't start");

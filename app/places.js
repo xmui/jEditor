@@ -82,6 +82,11 @@ const Places = {
                 this.drawProjects();
             });
         }
+        this.el('sb-card').addEventListener('dblclick', (e) => {
+            // (not the pencil, which renames on its first click)
+            if (e.target.closest('.sb-card-edit') || UI.isOpen()) return;
+            if (e.target.closest('.sb-card-name[data-rename]')) this.cardAction('rename');
+        });
         this.el('sb-card').addEventListener('click', (e) => {
             const b = e.target.closest('button[data-act]');
             if (b) this.cardAction(b.dataset.act);
@@ -356,14 +361,15 @@ const Places = {
         for (const f of app.files) bytes += f.size || 0;
         const n = app.files.length;
         card.innerHTML =
-            `<div class="sb-card-name" title="${this.esc(app.dirHandle.name)}">${this.icons.project}<span>${this.esc(app.dirHandle.name)}</span></div>` +
+            // The name: double-click it (or its pencil, on hover) to rename
+            `<div class="sb-card-name"${path ? ' data-rename="1"' : ''} title="${this.esc(app.dirHandle.name)}${path ? ' (double-click to rename)' : ''}">${this.icons.project}<span>${this.esc(app.dirHandle.name)}</span>` +
+            (path ? `<button class="sb-card-edit" data-act="rename" title="Rename this project" aria-label="Rename this project">${this.icons.rename}</button>` : '') + `</div>` +
             (path ? `<div class="sb-card-path" title="${this.esc(path)}">${this.esc(path)}</div>` : '') +
             `<div class="sb-card-meta">${n.toLocaleString()} photo${n === 1 ? '' : 's'} · ${app.formatBytes(bytes)}</div>` +
             `<div class="sb-card-btns">` +
             `<button class="btn primary sm" data-act="scan">${this.icons.scan}Scan</button>` +
             (path ? `<button class="btn secondary sm" data-act="reveal" title="Show in Explorer">${this.icons.reveal}Explorer</button>` : '') +
             `<button class="btn ghost icon sm" data-act="split" title="Split: this project and another window side by side">${this.icons.split}</button>` +
-            (path ? `<button class="btn ghost icon sm" data-act="rename" title="Rename this project">${this.icons.rename}</button>` : '') +
             (path ? `<button class="btn ghost icon sm sb-card-pin${this.isPinned(path) ? ' on' : ''}" data-act="pin" title="${this.isPinned(path) ? 'Unpin' : 'Pin to the sidebar'}">${this.icons.pin}</button>` : '') +
             `</div>` +
             (app.readOnlyMode ? '' : `<label class="sb-card-defer" title="Crops and turns are kept on the photos, to change as often as you like, and saved into them (or exported) when you're done"><input type="checkbox" data-act="defer"${Edits.defer ? ' checked' : ''}><span>Save edits when done</span></label>`);
@@ -495,7 +501,7 @@ const Places = {
         this.listings.clear();
         if (reopen) await this.native().openPath(moved(reopen, to)).catch(() => { });
         await this.refresh();
-        this.app.showToast(`Renamed ${old} to ${name.trim()}`, 2500);
+        this.app.showToast(`Renamed ${old} to ${name.trim()}`, 2500, null, null, { kind: 'rename' });
     },
 
     // A new folder in the projects folder, opened as the project

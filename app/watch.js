@@ -568,7 +568,7 @@ const Watch = {
         }
         const msg = parts.join(' · ');
         const action = n ? { label: 'Show', run: () => this.showNew(added) } : null;
-        app.showToast(msg.charAt(0).toUpperCase() + msg.slice(1), n ? 6000 : 4000, 'watch', action, { type: n ? 'photos' : 'info' });
+        app.showToast(msg.charAt(0).toUpperCase() + msg.slice(1), n ? 6000 : 4000, 'watch', action, { type: n ? 'photos' : 'info', kind: 'load' });
     },
 
     // Jump to the first of the new photos (in the order they're shown),

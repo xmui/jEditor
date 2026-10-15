@@ -269,7 +269,7 @@ const Edits = {
     undo(entry) {
         this.restore(entry.items);
         const n = entry.items.length;
-        this.app.showToast(`Undid ${entry.label || 'edit'} on ${n === 1 ? entry.items[0].file.name : n + ' photos'}`);
+        this.app.showToast(`Undid ${entry.label || 'edit'} on ${n === 1 ? entry.items[0].file.name : n + ' photos'}`, 3000, null, null, { kind: 'undo' });
     },
 
     // Edits put back (Ctrl+Z). Kept edits need the setting: it comes back
@@ -452,11 +452,48 @@ const Edits = {
         if (iface) iface.classList.toggle('edits-on', on);
         if (!on) return;
         const n = this.count();
-        document.getElementById('edits-text').textContent = n
-            ? `${n.toLocaleString()} edit${n === 1 ? '' : 's'} not saved yet`
-            : 'Edits are kept until you save';
+        const text = document.getElementById('edits-text');
+        const full = n ? `${n.toLocaleString()} edit${n === 1 ? '' : 's'} not saved yet` : 'Edits are kept until you save';
+        // Short of room, only the count shows (style.css): the rest is its tooltip
+        text.textContent = '';
+        if (n) {
+            text.append(`${n.toLocaleString()} edit${n === 1 ? '' : 's'}`);
+            const more = document.createElement('span');
+            more.className = 'edits-more';
+            more.textContent = ' not saved yet';
+            text.append(more);
+        } else {
+            text.append(full);
+        }
+        text.title = full;
         document.getElementById('edits-save').disabled = !n;
         document.getElementById('edits-discard').classList.toggle('hidden', !n);
         document.getElementById('edits-off').classList.toggle('hidden', !!n);
+        // The selection bar beside it makes room for it (as wide as it is,
+        // and as it changes: its text, or shown again on going back to the grid)
+        const size = document.getElementById('grid-controls');
+        const sel = document.getElementById('selection-bar');
+        const measure = () => {
+            const ew = bar.offsetWidth, sw = size ? size.offsetWidth : 0;
+            iface.style.setProperty('--edits-room', ew + 'px');
+            if (sw) iface.style.setProperty('--size-room', sw + 'px');
+            // Not enough room in the row for the selection bar beside it: it
+            // goes up, above the size slider (edits-stacked)
+            let stacked = false;
+            if (ew && sel && sel.offsetParent !== null) {
+                const box = iface.getBoundingClientRect(), cs = getComputedStyle(iface);
+                const gutter = parseFloat(cs.getPropertyValue('--gutter')) || 16;
+                // Where the selection bar's room starts (after the folder list, if open)
+                const left = parseFloat(getComputedStyle(sel).left) || gutter;
+                const room = box.width - gutter - sw - ew - 16 - left;
+                stacked = sel.offsetWidth > room;
+            }
+            iface.classList.toggle('edits-stacked', stacked);
+        };
+        if (iface && !this._barObserver && typeof ResizeObserver === 'function') {
+            this._barObserver = new ResizeObserver(measure);
+            for (const el of [bar, size, sel, iface]) if (el) this._barObserver.observe(el);
+        }
+        if (iface) measure();
     }
 };
