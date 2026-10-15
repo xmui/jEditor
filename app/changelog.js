@@ -5,6 +5,12 @@
 
 const CHANGELOG = [
     {
+        version: '1.30.3', date: '2026-10-15',
+        items: [
+            'Deleting a photo on a network or USB drive (no Recycle Bin) no longer pops up "Can\'t open this file … contains system files". The photo goes to jEditor\'s trash on this PC, and moving it there was refused by Windows\' web engine; it\'s now copied there and then removed, as already happened after Cancel. Merging an old subfolder\'s .jeditor into the project\'s data could ask the same, once per file: fixed too.'
+        ]
+    },
+    {
         version: '1.30.2', date: '2026-10-15',
         items: [
             'Auto crop on a scan that cut the print off at two opposite sides now works on real scans: 1.30.1 still said no print edge was found when the strips of bed were thin and grainy, because it looked for the bed all round the scan\'s edge first. It now looks at the two strips themselves: each one color the whole way along and ending at a straight edge, the two matching and parallel.'
