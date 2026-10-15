@@ -1447,6 +1447,13 @@ async function newPage(context, baseUrl) {
             await wait(() => rowOf(side, 'Alpha').classList.contains('active'));
             out.card = $('sb-card').textContent.replace(/\s+/g, ' ').trim();
             out.active = rowOf(side, 'Alpha').classList.contains('active');
+            // Counting stops at 1,000 ("1,000+"), but the open project's photos are all known
+            window.__counts = { 'D:\\Orders\\Alpha': 1000, 'D:\\Orders\\Beta': 1000 };
+            Places.counts.clear();
+            await Places.refresh();
+            await wait(() => rowOf(side, 'Beta') && rowOf(side, 'Beta').querySelector('.fr-count').textContent);
+            out.listCounts = ['Alpha', 'Beta'].map(n => rowOf(side, n).querySelector('.fr-count').textContent).join();
+            window.__counts = null;
             $('sb-card').querySelector('[data-act="reveal"]').click();
             await wait(() => window.__revealed);
             out.revealed = window.__revealed;
@@ -1523,6 +1530,7 @@ async function newPage(context, baseUrl) {
         check('New project: makes the folder in the projects folder, opens it and lists it; a name taken says so', r.made === 'D:\\Orders\\Gamma' && r.listed && /already a Gamma/.test(r.twice || ''), JSON.stringify([r.made, r.listed, r.twice]));
         check('the project card: name, path, photos', /Alpha/.test(r.card) && /D:\\Orders\\Alpha/.test(r.card) && /\d photos/.test(r.card), r.card);
         check('the open project is marked in the list', r.active);
+        check('... with its real photo count; others counted up to 1,000+', r.listCounts === '3,1,000+', r.listCounts);
         check('card: no rename button; a pencil by the name, and a double-click on the name renames', r.noRenameButton);
         check('card: Rename closes the open project, renames it and opens it again', r.reopened === 'D:\\Orders\\Alpha Smith' && r.pinRenamed.split(',').includes('Alpha Smith') && !r.pinRenamed.split(',').includes('Alpha'), JSON.stringify([r.reopened, r.pinRenamed]));
         check('card buttons: Explorer, Scan, Pin', r.revealed === 'D:\\Orders\\Alpha' && r.scanOpen && r.pinned.split(',').includes('Alpha'), JSON.stringify([r.revealed, r.scanOpen, r.pinned]));

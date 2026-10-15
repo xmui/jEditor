@@ -215,8 +215,7 @@ const Places = {
     row({ path, name, icon, depth = 0, caret = false, open = false, meta = '', count = false, cls = '', title = '', act = 'open', pin = null, extra = '' }) {
         const k = this.key(path);
         const cur = this.key(this.current()) === k;
-        const c = count ? this.counts.get(k) : undefined;
-        const countText = c === undefined ? '' : c < 0 ? '' : c >= (this.limit || 1000) ? `${c.toLocaleString()}+` : c.toLocaleString();
+        const countText = count ? this.countText(path) : '';
         return `<div class="fr-row sb-row${cur ? ' active' : ''} ${cls}" style="--depth:${depth}" data-path="${this.esc(path)}">` +
             (caret ? `<button class="fr-caret${open ? ' open' : ''}" data-act="toggle" tabindex="-1" title="${open ? 'Fold' : 'Show what\'s inside'}">${this.icons.caret}</button>` : '<span class="fr-caret fr-spacer"></span>') +
             `<button class="sb-main" data-act="${act}" title="${this.esc((title || path) + (act === 'open' ? ' — Ctrl+click opens it in a new window' : ''))}"><span class="sb-icon">${icon}</span><span class="fr-name">${this.esc(name)}</span></button>` +
@@ -338,11 +337,20 @@ const Places = {
     fillCounts() {
         for (const box of this.boxes) {
             box.querySelectorAll('[data-count]').forEach(s => {
-                const c = this.counts.get(this.key(s.dataset.count));
-                if (c === undefined || c < 0) return;
-                s.textContent = c >= (this.limit || 1000) ? `${c.toLocaleString()}+` : c.toLocaleString();
+                const t = this.countText(s.dataset.count);
+                if (t) s.textContent = t;
             });
         }
+    },
+
+    // Photos in a folder: counting stops at the limit ("1,000+"), but the
+    // open project's are all known, so it has its real number
+    countText(path) {
+        const k = this.key(path);
+        if (k === this.key(this.current()) && !this.app.isLoading && this.app.files.length) return this.app.files.length.toLocaleString();
+        const c = this.counts.get(k);
+        if (c === undefined || c < 0) return '';
+        return c >= (this.limit || 1000) ? `${c.toLocaleString()}+` : c.toLocaleString();
     },
 
     // ---- The open project's card ----
