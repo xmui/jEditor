@@ -1441,13 +1441,15 @@ async function newPage(context, baseUrl) {
             // Renaming the open project: closed, renamed, opened again at its new name
             window.__opened = null;
             UI.prompt = async () => 'Alpha Smith';
-            $('sb-card').querySelector('[data-act="rename"]').click();
+            // No rename button among the card's buttons: a pencil by the name, and a double-click on it
+            out.noRenameButton = !$('sb-card').querySelector('.btn[data-act="rename"]') && !!$('sb-card').querySelector('.sb-card-name .sb-card-edit');
+            $('sb-card').querySelector('.sb-card-name span').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
             await wait(() => window.__opened);
             out.reopened = window.__opened;
             out.pinRenamed = Places.pins().map(p => p.name).join();
             const back = await (await opfs('disk')).getDirectoryHandle('Alpha Smith').catch(() => null) || await (await opfs('disk')).getDirectoryHandle('Alpha');
             await openOrder(back);
-            await wait(() => $('sb-card').querySelector('[data-act="rename"]'));
+            await wait(() => $('sb-card').querySelector('.sb-card-edit[data-act="rename"]'));
             // Save edits when done, for this project: kept with its data on the PC
             const deferBox = $('sb-card').querySelector('input[data-act="defer"]');
             out.deferOff = !!deferBox && !deferBox.checked;
@@ -1503,6 +1505,7 @@ async function newPage(context, baseUrl) {
         check('New project: makes the folder in the projects folder, opens it and lists it; a name taken says so', r.made === 'D:\\Orders\\Gamma' && r.listed && /already a Gamma/.test(r.twice || ''), JSON.stringify([r.made, r.listed, r.twice]));
         check('the project card: name, path, photos', /Alpha/.test(r.card) && /D:\\Orders\\Alpha/.test(r.card) && /\d photos/.test(r.card), r.card);
         check('the open project is marked in the list', r.active);
+        check('card: no rename button; a pencil by the name, and a double-click on the name renames', r.noRenameButton);
         check('card: Rename closes the open project, renames it and opens it again', r.reopened === 'D:\\Orders\\Alpha Smith' && r.pinRenamed.split(',').includes('Alpha Smith') && !r.pinRenamed.split(',').includes('Alpha'), JSON.stringify([r.reopened, r.pinRenamed]));
         check('card buttons: Explorer, Scan, Pin', r.revealed === 'D:\\Orders\\Alpha' && r.scanOpen && r.pinned.split(',').includes('Alpha'), JSON.stringify([r.revealed, r.scanOpen, r.pinned]));
         check('card: Save edits when done turns on for the project, kept on the PC', r.deferOff && r.deferKept, JSON.stringify([r.deferOff, r.deferKept]));
