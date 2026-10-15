@@ -3327,20 +3327,24 @@ async function newPage(browser, url) {
             pg.fillStyle = '#050505'; pg.fillRect(0, 420, 900, 180);
             out.photoAlone = !CropAuto.find(photo, 900, 600);
             // A print a hair taller than the scan: cut off top and bottom,
-            // a strip of bed down each side (left wider than right)
+            // a grainy strip of bed down each side (left wider than right),
+            // too little of the scan's edge for the bed to be known as one;
+            // the photo's lower left pale and bluish, much the bed's color
             const cutOff = (tilt) => {
                 const c = document.createElement('canvas');
                 c.width = 1000; c.height = 620;
                 const g = c.getContext('2d');
                 const img = g.createImageData(1000, 620);
                 for (let i = 0; i < img.data.length; i += 4) {
-                    const n = (rnd() - 0.5) * 8;
-                    img.data[i] = 200 + n; img.data[i + 1] = 200 + n; img.data[i + 2] = 222 + n; img.data[i + 3] = 255;
+                    const n = (rnd() - 0.5) * 30;
+                    img.data[i] = 182 + n; img.data[i + 1] = 194 + n; img.data[i + 2] = 232 + n; img.data[i + 3] = 255;
                 }
                 g.putImageData(img, 0, 0);
                 g.save(); g.translate(485, 310); g.rotate(tilt * Math.PI / 180);
                 for (let y = 0; y < 700; y += 25) for (let x = 0; x < 880; x += 40) {
-                    g.fillStyle = `hsl(${Math.floor(rnd() * 360)},45%,${15 + Math.floor(rnd() * 65)}%)`;
+                    const pale = x < 300 && y > 450;
+                    g.fillStyle = pale ? `hsl(${215 + Math.floor(rnd() * 20)},30%,${70 + Math.floor(rnd() * 15)}%)`
+                        : `hsl(${Math.floor(rnd() * 360)},45%,${15 + Math.floor(rnd() * 65)}%)`;
                     g.fillRect(x - 440, y - 350, 40, 25);
                 }
                 g.restore();

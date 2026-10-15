@@ -11,6 +11,12 @@ const CHANGELOG = [
         ]
     },
     {
+        version: '1.30.2', date: '2026-10-15',
+        items: [
+            'Auto crop on a scan that cut the print off at two opposite sides now works on real scans: 1.30.1 still said no print edge was found when the strips of bed were thin and grainy, because it looked for the bed all round the scan\'s edge first. It now looks at the two strips themselves: each one color the whole way along and ending at a straight edge, the two matching and parallel.'
+        ]
+    },
+    {
         version: '1.30.1', date: '2026-10-15',
         items: [
             'Auto crop takes the bed off a scan that cut the print off at two opposite sides (a print a hair bigger than the scan area, or a feeder page cut to the photo): the strips of bed down the other two sides come off, and the photo is straightened by them. Before, Auto said no print edge was found.'
