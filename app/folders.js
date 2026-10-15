@@ -328,7 +328,6 @@ const Folders = {
         };
         if (this.map.has('')) walk('', 0);
         tree.innerHTML = rows.join('');
-        this.el('fr-hint').classList.toggle('hidden', this.hasSubfolders());
         // The total at the bottom: what's being shown (the whole order in All photos)
         const scopeFiles = this.scope === null ? this.app.files : this.app.files.filter(f => this.within(this.dirOf(f), this.scope));
         let bytes = 0;

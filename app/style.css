@@ -1841,12 +1841,6 @@ body[data-view="single"] .edits-bar {
     cursor: inherit;
 }
 
-.fr-hint {
-    margin: var(--sp-2) var(--sp-2) var(--sp-1);
-    color: var(--text-2);
-    font-size: var(--fs-small);
-    line-height: 1.5;
-}
 
 /* Folder list foot: the total of what's shown, then New folder */
 .fr-foot {
@@ -4986,6 +4980,7 @@ html.native {
     display: flex;
     align-items: center;
     gap: var(--sp-2);
+    min-width: 0;
     font-weight: var(--fw-semibold);
 }
 
@@ -5001,25 +4996,33 @@ html.native {
     color: var(--accent-text);
 }
 
-.sb-card-name[data-rename] span {
-    user-select: none; /* a double-click renames, rather than selecting the name */
-}
-
-/* Rename: a pencil by the name on hover, as by a photo's name */
-.sb-card-edit {
-    display: inline-flex;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 22px;
-    margin-left: calc(-1 * var(--sp-1));
-    padding: 0;
+/* The name renames on a click, as the file name in the top pill: a pill
+   behind it and a pencil by it on hover */
+button.sb-card-name {
+    width: calc(100% + 2 * var(--sp-2));
+    height: 28px;
+    margin: -4px calc(-1 * var(--sp-2));
+    padding: 0 var(--sp-2);
     border: none;
     border-radius: var(--r-pill);
     background: transparent;
-    color: var(--text-2);
+    color: inherit;
+    font: inherit;
+    font-weight: var(--fw-semibold);
+    text-align: left;
     cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+button.sb-card-name:hover {
+    background: var(--tb-hover);
+}
+
+.sb-card-name .sb-card-edit {
+    display: inline-flex;
+    flex-shrink: 0;
+    margin-left: calc(-1 * var(--sp-1));
+    color: var(--text-2);
     opacity: 0;
     transition: opacity var(--dur-fast) var(--ease-out);
 }
@@ -5029,13 +5032,8 @@ html.native {
     height: 14px;
 }
 
-.sb-card-edit:hover {
-    background: var(--tb-hover);
-    color: var(--text-1);
-}
-
-.sb-card-name:hover .sb-card-edit,
-.sb-card-edit:focus-visible {
+button.sb-card-name:hover .sb-card-edit,
+button.sb-card-name:focus-visible .sb-card-edit {
     opacity: 1;
 }
 

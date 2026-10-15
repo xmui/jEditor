@@ -14,6 +14,8 @@ const CHANGELOG = [
             'In the single view on a narrow window, messages go up a row instead of running into the prev / rotate / next pill.',
             'More (the … at the top right) opens its buttons on rows under the usual ones, at the same width, instead of stretching out over the file name; on a narrow window it stays above the folder list.',
             'Deleting (or moving away) the selected photos in the grid selects the next photo, as Lightroom does: the selection bar stays, and Delete goes on from there.',
+            'Renaming the open project works like renaming a photo in the top pill: the name on the project card is one button, with a pill behind it and a pencil by it on hover, and a single click renames (no more double-click).',
+            'Fewer explainers in the sidebar: the folder-list hint, the projects-folder note and the empty Pinned note are gone (their buttons say it in their tooltips), and Pinned only shows once something is pinned. Undo history drops its how-to line too. Settings keeps its explanations.',
             'An empty grid has a button for the way out: Clear search when nothing matches the search or flag filter, All photos for an empty folder, and Scan or Show in Explorer for a project with no photos yet.'
         ]
     },

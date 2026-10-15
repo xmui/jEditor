@@ -220,12 +220,11 @@
                     <div class="sb-sec sb-sec-here native-only"><span class="sb-sec-title">This project</span></div>
                     <div id="folder-tree" class="folder-tree"></div>
                     <div id="flag-list" class="flag-list hidden"></div>
-                    <p id="fr-hint" class="fr-hint hidden">Make folders to sort this project. Drag photos onto a folder to move them, or hold <kbd>Ctrl</kbd> to copy. <kbd>M</kbd> moves the selection.</p>
                     <!-- Projects, pinned folders, drives (places.js) -->
                     <div id="sb-places" class="sb-places native-only"></div>
                 </div>
                 <div class="fr-foot">
-                    <button id="fr-new" class="btn ghost fr-new">
+                    <button id="fr-new" class="btn ghost fr-new" title="Make a folder to sort this project: drag photos onto it to move them (hold Ctrl to copy), or M moves the selection">
                         <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
                         New folder
                     </button>
@@ -293,9 +292,8 @@
             <!-- Undo history (history.js) -->
             <div id="history-panel" class="history-panel popover hidden" role="dialog" aria-label="Undo history">
                 <h3 class="section-label">Undo history</h3>
-                <p class="history-hint">Click a step to go back to before it.</p>
                 <div id="history-list" class="history-list"></div>
-                <p id="history-empty" class="history-hint hidden">Nothing to undo yet. Rotations, crops, renames, moves, deletes and flags show up here.</p>
+                <p id="history-empty" class="history-hint hidden">Nothing to undo yet</p>
                 <p class="history-foot">The last 50 steps, while jEditor is open</p>
             </div>
 
