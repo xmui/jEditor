@@ -52,7 +52,7 @@ const Stored = {
         const all = await native.dataDir();
         const out = [];
         for await (const [key, h] of all.entries()) {
-            if (h.kind !== 'directory') continue;
+            if (h.kind !== 'directory' || key === CropLog.DIR) continue; // Auto crop's test scans, not a project
             const info = await this.readJson(h, 'order.json') || {};
             const flags = await this.readJson(h, Flags.FILE);
             const edits = await this.readJson(h, Edits.FILE);

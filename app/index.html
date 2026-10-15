@@ -19,6 +19,7 @@
     <script src="photo-find.js"></script>
     <script src="crop-auto.js"></script>
     <script src="crop.js"></script>
+    <script src="crop-log.js"></script>
     <script src="dupes.js"></script>
     <script src="rename.js"></script>
     <script src="folders.js"></script>
@@ -524,6 +525,23 @@
                         <span class="set-label">Stored projects
                             <small>What jEditor keeps on this PC for each project you've opened, and how much room it takes</small></span>
                         <button id="cust-stored" class="btn secondary">Manage…</button>
+                    </div>
+                </section>
+
+                <section class="settings-section" aria-labelledby="set-h-autocrop">
+                    <h3 id="set-h-autocrop" class="section-label">Auto crop</h3>
+                    <div class="set-row">
+                        <label class="set-label" for="crop-log-on">Keep scans to improve Auto crop
+                            <small>When you save a crop on a photo Auto was used on, the scan and where you cropped it are kept on this PC (up to 1 GB), so a better Auto can be tested on real scans</small></label>
+                        <input type="checkbox" id="crop-log-on" class="switch">
+                    </div>
+                    <div class="set-row">
+                        <span class="set-label">Test scans
+                            <small id="crop-log-count">None kept yet</small></span>
+                        <span class="set-buttons">
+                            <button id="crop-log-export" class="btn secondary">Export…</button>
+                            <button id="crop-log-clear" class="btn secondary danger-text">Clear…</button>
+                        </span>
                     </div>
                 </section>
 

@@ -2734,6 +2734,12 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     text-align: right;
 }
 
+/* Two buttons for one setting (Auto crop's test scans: Export…, Clear…) */
+.set-buttons {
+    display: inline-flex;
+    gap: var(--sp-2);
+}
+
 /* A setting that can't be changed now (the help under its label says why) */
 .set-row.unavailable .seg,
 .set-row.unavailable .set-range {
