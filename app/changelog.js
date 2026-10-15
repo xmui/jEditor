@@ -5,6 +5,16 @@
 
 const CHANGELOG = [
     {
+        version: '1.32.1', date: '2026-10-15',
+        items: [
+            'With photos selected on a narrower window, the selection bar moves off center, beside the size slider, before it gives up its labels or the slider goes.',
+            'The pills refit as the photo count ("1446 / 1446") or the sort\'s name changes width, not just when the window does.',
+            'The project list shows the open project\'s real photo count (1,446) instead of "1,000+": counting stops at 1,000 for the others, but the open one\'s photos are all known.',
+            'Crop on a narrower window: Cancel sits with Save & next and Save on the bottom row, the tools above it, instead of Cancel at the start of the tools and Previous and Reset alone on a row.',
+            'In the single view on a narrow window, messages go up a row instead of running into the prev / rotate / next pill.'
+        ]
+    },
+    {
         version: '1.32.0', date: '2026-10-15',
         items: [
             'A narrow window (half the screen or less, with or without the folder list) keeps every pill whole and none over another. Each row gives up its least needed parts in turn as the window narrows, measured rather than guessed: at the top, the sort becomes just its icon, then the photo count goes, then (in the grid) the file name; then header buttons move into More, least used first. The file pill moves off center rather than run under the buttons. At the bottom, "not saved yet" goes (the count stays), then the selection bar\'s labels, then the edits bar moves up above the size slider, the slider gets shorter, and last it goes (`Ctrl` + wheel still sizes the grid). Messages move up above the edits bar.',

@@ -3562,6 +3562,8 @@ const app = {
             stack.setAttribute('role', 'status');
             stack.setAttribute('aria-live', 'polite');
             document.body.appendChild(stack);
+            // Kept clear of the single view's controls (fit.js)
+            if (typeof Fit !== 'undefined') Fit.watch(stack);
         }
         const live = [...stack.children].filter(t => !t.classList.contains('leaving'));
         let toast = key ? live.find(t => t.dataset.key === key) : null;

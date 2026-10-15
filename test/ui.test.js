@@ -3521,6 +3521,13 @@ async function newPage(browser, url) {
                     await new Promise(res => setTimeout(res, 200));
                     await frames();
                     out.bad.push(...check(['.file-info', 'header-controls']).map(b => 'single: ' + b));
+                    // A message beside the prev / rotate / next pill goes up a row rather than into it
+                    app.showToast('Rotated 3 photos to the right', 3000);
+                    await new Promise(res => setTimeout(res, 150));
+                    await frames();
+                    const t = document.getElementById('toast-stack').lastElementChild.getBoundingClientRect();
+                    const c = document.querySelector('#image-container .controls').getBoundingClientRect();
+                    if (!apart(t, c)) out.bad.push('single: message over the controls');
                     out.name = shown(document.querySelector('.file-info'));
                     app.setView('grid');
                     return out;

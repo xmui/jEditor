@@ -2285,6 +2285,12 @@ body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) {
     --toast-left: var(--rail-room);
 }
 
+/* Single view on a narrow window: above the prev / rotate / next pill
+   rather than into it (fit.js) */
+body[data-view="single"]:has(#main-interface[data-fit~="toast-up"]:not(.hidden)) {
+    --toast-bottom: calc(var(--strip-height, 80px) + 28px + var(--gutter) + var(--ctl-lg) + var(--sp-2));
+}
+
 /* Grid with the edits bar up above the slider (fit.js): above that too */
 body[data-view="grid"]:has(#main-interface.edits-on[data-fit~="edits-stacked"]:not(.hidden)) {
     --toast-bottom: calc(var(--gutter) + 2 * var(--ctl-lg) + var(--sp-2) + var(--sp-3));
@@ -4013,11 +4019,17 @@ body.dragging-photos .folder-tile:hover {
     .crop-tip {
         display: none;
     }
+    /* The tools above; Cancel, Save & next and Save together on the last row */
     .crop-spacer {
+        order: 1;
         flex-basis: 100%;
         height: 0;
     }
+    #crop-cancel {
+        order: 2;
+    }
     .crop-commit {
+        order: 3;
         flex: 1;
         justify-content: flex-end;
     }
