@@ -7,8 +7,8 @@
 //   top left); then header buttons go into More, least used first. The
 //   file pill moves off center when it has to, and the name gives way.
 //
-//   Bottom (grid): "not saved yet" (the count stays), the selection bar's
-//   labels, the edits bar up above the size slider, a shorter slider, the
+//   Bottom (grid): "not saved yet" (the count stays), the selection bar
+//   off center beside the slider, then its labels, the edits bar up above the size slider, a shorter slider, the
 //   separators, then the slider (Ctrl+wheel still sizes); last, the
 //   selection bar scrolls sideways.
 //
@@ -17,7 +17,7 @@
 
 const Fit = {
     TOP: ['sort-short', 'sort-icon', 'count-off'],
-    BOTTOM: ['edits-short', 'sel-icons', 'edits-stacked', 'size-short', 'sel-tight', 'size-off'],
+    BOTTOM: ['edits-short', 'sel-aside', 'sel-icons', 'edits-stacked', 'size-short', 'sel-tight', 'size-off'],
     // Into More first: the least used
     SQUEEZE: ['whatsnew', 'keys', 'dupes', 'fullscreen', 'strip', 'fit', 'customize', 'refresh', 'history', 'camera', 'info', 'scan', 'crop', 'view'],
     GAP: 12,       // between pills, screen pixels
@@ -33,7 +33,7 @@ const Fit = {
         const soon = () => this.soon();
         if (typeof ResizeObserver === 'function') {
             const ro = new ResizeObserver(soon);
-            for (const id of ['main-interface', 'folder-bar', 'header-controls', 'selection-bar', 'edits-bar', 'grid-controls', 'file-name-text', 'selection-count', 'edits-text', 'fb-crumbs'])
+            for (const id of ['main-interface', 'folder-bar', 'header-controls', 'selection-bar', 'edits-bar', 'grid-controls', 'file-name-text', 'file-count', 'sort-mode', 'selection-count', 'edits-text', 'fb-crumbs'])
                 if (this.el(id)) ro.observe(this.el(id));
         }
         // Shown and hidden, the view, the folder list, More opened

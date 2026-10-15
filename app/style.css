@@ -711,6 +711,11 @@ body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
     display: none;
 }
 
+/* Off center, beside the size slider, rather than give up its labels */
+.interface[data-fit~="sel-aside"]:not(.edits-on) .selection-bar {
+    right: calc(var(--gutter) + var(--size-room, 220px) + var(--sp-2));
+}
+
 .interface[data-fit~="sel-icons"] .selection-bar .tb-btn.labelled span {
     display: none;
 }
