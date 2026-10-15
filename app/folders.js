@@ -253,14 +253,18 @@ const Folders = {
     // As wide as it needs, up to the center pill
     fitBar() {
         const bar = this.el('folder-bar');
-        const center = document.querySelector('.file-info');
+        let center = document.querySelector('.file-info');
+        // The file pill given up for room (fit.js): up to the header buttons
+        if (center && center.offsetParent === null) center = document.getElementById('header-controls');
         if (!center || bar.classList.contains('hidden')) return;
         const room = center.getBoundingClientRect().left - bar.getBoundingClientRect().left - 12;
         if (room <= 0) return;
         // The pills follow the UI size setting (CSS zoom): room is in screen pixels
         const zoom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1;
         bar.style.setProperty('--bar-room', `${Math.max(150, Math.floor(room / zoom))}px`);
-        bar.classList.toggle('tight', room / zoom < 230);
+        // Short labels when the long ones would be cut off
+        bar.classList.remove('tight');
+        bar.classList.toggle('tight', room / zoom < 230 || bar.scrollWidth > bar.clientWidth + 1);
     },
 
     folderIcon(cls = '') {

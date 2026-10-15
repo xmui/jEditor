@@ -5,6 +5,14 @@
 
 const CHANGELOG = [
     {
+        version: '1.32.0', date: '2026-10-15',
+        items: [
+            'A narrow window (half the screen or less, with or without the folder list) keeps every pill whole and none over another. Each row gives up its least needed parts in turn as the window narrows, measured rather than guessed: at the top, the sort becomes just its icon, then the photo count goes, then (in the grid) the file name; then header buttons move into More, least used first. The file pill moves off center rather than run under the buttons. At the bottom, "not saved yet" goes (the count stays), then the selection bar\'s labels, then the edits bar moves up above the size slider, the slider gets shorter, and last it goes (`Ctrl` + wheel still sizes the grid). Messages move up above the edits bar.',
+            'More, opened on a narrow window, wraps onto a second row instead of running off the left edge.',
+            'The folder pill switches to its short labels whenever the long ones would be cut off, so its search button no longer disappears.'
+        ]
+    },
+    {
         version: '1.31.1', date: '2026-10-15',
         items: [
             'FastFoto scans no longer come out dark and oversaturated. Epson\'s FastFoto driver sends far more contrast than the FastFoto app saves, with the same stretch on every color, whatever its own settings. A FastFoto now starts at brightness 5, contrast −35 in the scan dock, which matches the app; it\'s said beside the sliders, and changing them is kept as before. This happens once, and only if you hadn\'t set your own brightness or contrast for it.',

@@ -3480,6 +3480,55 @@ async function newPage(browser, url) {
         }
         check('edits bar: grid only, left of the size slider; above it when the row is full; never over the selection bar',
             lay[0].clear && lay[0].leftOfSlider && lay[1].clear && (lay[1].leftOfSlider || lay[1].aboveSlider) && lay[0].hiddenInSingle, JSON.stringify(lay));
+        // A narrow window, with and without the folder list: every pill in
+        // the window, none over another (fit.js gives up parts in turn)
+        const fit = [];
+        for (const w of [1300, 900, 700, 480]) {
+            await page.setViewportSize({ width: w, height: 700 });
+            for (const rail of [true, false]) {
+                fit.push(await page.evaluate(async ({ w, rail }) => {
+                    app.setView('grid');
+                    if (Folders.railOpen() !== rail) Folders.toggleRail();
+                    app.selection = new Set(app.files.slice(0, 2));
+                    app.updateSelectionUI();
+                    const frames = () => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+                    await new Promise(res => setTimeout(res, 300));
+                    await frames();
+                    const shown = (el) => el && el.offsetParent !== null && getComputedStyle(el).display !== 'none';
+                    const apart = (a, b) => a.right <= b.left + 1 || b.right <= a.left + 1 || a.bottom <= b.top + 1 || b.bottom <= a.top + 1;
+                    const check = (ids) => {
+                        const els = ids.map(id => document.getElementById(id) || document.querySelector(id)).filter(shown);
+                        const r = els.map(e => e.getBoundingClientRect());
+                        const bad = [];
+                        r.forEach((a, i) => {
+                            if (a.left < -1 || a.right > innerWidth + 1) bad.push(els[i].id || els[i].className + ' off screen');
+                            for (let j = i + 1; j < r.length; j++) if (!apart(a, r[j])) bad.push((els[i].id || els[i].className) + ' over ' + (els[j].id || els[j].className));
+                        });
+                        return bad;
+                    };
+                    const out = { w, rail, fit: document.getElementById('main-interface').dataset.fit };
+                    // The folder list beside the grid (wide windows): the selection bar keeps to the grid
+                    const railBox = rail && innerWidth >= 768 ? document.getElementById('folder-rail').getBoundingClientRect() : null;
+                    out.bad = [...check(['folder-bar', '.file-info', 'header-controls']), ...check(['selection-bar', 'edits-bar', 'grid-controls'])];
+                    if (railBox && document.getElementById('selection-bar').getBoundingClientRect().left < railBox.right) out.bad.push('selection bar over the folder list');
+                    // Short of room the folder pill doesn't cut its buttons off
+                    const fb = document.getElementById('folder-bar');
+                    if (fb.scrollWidth > fb.clientWidth + 1) out.bad.push('folder pill cut off');
+                    out.squeezed = document.querySelectorAll('#header-controls [data-squeezed]').length;
+                    out.more = shown(document.getElementById('btn-more'));
+                    // Single view: the file pill and the buttons
+                    app.openSingle(app.files[0]);
+                    await new Promise(res => setTimeout(res, 200));
+                    await frames();
+                    out.bad.push(...check(['.file-info', 'header-controls']).map(b => 'single: ' + b));
+                    out.name = shown(document.querySelector('.file-info'));
+                    app.setView('grid');
+                    return out;
+                }, { w, rail }));
+            }
+        }
+        check('narrow windows: no pill over another or off screen, top or bottom, with or without the folder list', fit.every(f => f.bad.length === 0), JSON.stringify(fit.filter(f => f.bad.length)));
+        check('... wide, nothing given up; at 480 header buttons go into More, which shows; the file pill stays in single view', !fit[1].fit && fit[6].squeezed > 0 && fit[6].more && fit.every(f => f.name), JSON.stringify(fit.map(f => [f.w, f.rail, f.fit, f.squeezed, f.more])));
         check('kept rotation: the grid tile turns its own picture, then the redrawn one replaces it straight', r.tileTurning && r.tileDone, JSON.stringify(r));
         check('kept rotation: the big photo turns (not dimmed), then the redrawn one has no turn left over', r.viewTurning && r.viewDone && r.kept, JSON.stringify(r));
         check('kept rotation suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));

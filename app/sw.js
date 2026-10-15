@@ -7,6 +7,7 @@ const ASSETS = [
     './style.css',
     './script.js',
     './ui.js',
+    './fit.js',
     './tokens.css',
     './version.js',
     './changelog.js',
