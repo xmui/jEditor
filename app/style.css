@@ -1317,18 +1317,57 @@ html.native .grid-view.grid-empty-project::after {
 
 /* What's waiting to be saved: a pill under the header */
 .edits-bar {
+    /* Grid only, bottom right, left of the size slider, in the selection
+       bar's row (which makes room for it: --edits-room and --size-room,
+       measured by Edits.updateBar) */
     position: absolute;
-    top: calc(var(--gutter) + var(--ctl-lg) + var(--sp-2));
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: var(--z-floating);
+    right: calc(var(--gutter) + var(--size-room, 220px) + var(--sp-2));
+    bottom: var(--gutter);
+    z-index: calc(var(--z-floating) + 1);
     display: flex;
     align-items: center;
-    gap: var(--sp-2);
+    gap: var(--sp-1);
     max-width: calc(100% - 2 * var(--gutter));
-    padding: 0 var(--sp-1) 0 var(--sp-3);
+    padding: 0 5px 0 var(--sp-3);
     white-space: nowrap;
     animation: bar-in var(--dur-slow) var(--ease-out);
+}
+
+body[data-view="single"] .edits-bar {
+    display: none;
+}
+
+/* Buttons the pill's own shape, inset evenly all round */
+.edits-bar .btn {
+    height: calc(var(--ctl-lg) - 10px);
+    padding: 0 var(--sp-3);
+    border-radius: var(--r-pill);
+}
+
+.interface.edits-on .selection-bar {
+    right: calc(var(--gutter) + var(--size-room, 220px) + var(--edits-room, 0px) + 2 * var(--sp-2));
+    max-width: none;
+}
+
+/* Not enough room beside the selection bar: above the size slider */
+.interface.edits-stacked .edits-bar {
+    right: var(--gutter);
+    bottom: calc(var(--gutter) + var(--ctl-lg) + var(--sp-2));
+}
+
+.interface.edits-on.edits-stacked .selection-bar {
+    right: calc(var(--gutter) + var(--size-room, 220px) + var(--sp-2));
+}
+
+/* Less room: just the count ("2 edits"); the rest is in its tooltip */
+@media (max-width: 1300px) {
+    .edits-more {
+        display: none;
+    }
+}
+
+.interface.rail-open .edits-more {
+    display: none;
 }
 
 .edits-icon {
@@ -1342,16 +1381,13 @@ html.native .grid-view.grid-empty-project::after {
 }
 
 .edits-text {
+    margin-right: var(--sp-1);
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     font-size: var(--fs-small);
 }
 
-/* Room for it above the first row of photos */
-.interface.edits-on .grid-view {
-    padding-top: calc(var(--gutter) + 2 * var(--ctl-lg) + var(--sp-4));
-}
 
 .sb-card-defer {
     display: flex;

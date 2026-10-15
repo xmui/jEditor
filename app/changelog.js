@@ -9,6 +9,7 @@ const CHANGELOG = [
         items: [
             'Scanner\'s own settings… (scan dock → Advanced, for a TWAIN feeder like the FastFoto): opens the scanner\'s own window just to choose its settings, such as Epson\'s color restoration and image enhancements, which jEditor can\'t name. Save there, and jEditor\'s feeder scans use them from then on. Forget goes back to the driver\'s defaults.',
             'Details lists the scanner\'s own settings with their values on each feeder scan, so a change made in its window shows.',
+            'The edits-not-saved bar moved to the grid\'s bottom row, left of the size slider (above it when the row is full), with its buttons sitting evenly in it; it\'s no longer stacked under the file name, and the single view stays clear.',
             'With Save edits when done on, rotating a photo turns it smoothly again (in the grid and the big view) instead of jumping: the photo on screen turns, and the redrawn one takes its place.'
         ]
     },

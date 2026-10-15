@@ -3371,6 +3371,29 @@ async function newPage(browser, url) {
             out.kept = a._edit && a._edit.q === 2;
             return out;
         });
+        // The edits bar: grid only, left of the size slider in the bottom row,
+        // never over the selection bar (above the slider when the row is full)
+        const lay = [];
+        for (const w of [1400, 1100]) {
+            await page.setViewportSize({ width: w, height: 700 });
+            lay.push(await page.evaluate(async () => {
+                app.setView('grid');
+                app.selection = new Set([app.files[0]]);
+                app.updateSelectionUI();
+                await new Promise(res => setTimeout(res, 400));
+                const box = (id) => document.getElementById(id).getBoundingClientRect();
+                const e = box('edits-bar'), s = box('selection-bar'), g = box('grid-controls');
+                const apart = (a, b) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+                const out = { clear: apart(e, s) && apart(e, g) && apart(s, g), leftOfSlider: e.right <= g.left + 1 && Math.abs(e.bottom - g.bottom) < 2, aboveSlider: e.bottom <= g.top };
+                app.openSingle(app.files[0]);
+                await new Promise(res => setTimeout(res, 200));
+                out.hiddenInSingle = getComputedStyle(document.getElementById('edits-bar')).display === 'none';
+                app.setView('grid');
+                return out;
+            }));
+        }
+        check('edits bar: grid only, left of the size slider; above it when the row is full; never over the selection bar',
+            lay[0].clear && lay[0].leftOfSlider && lay[1].clear && (lay[1].leftOfSlider || lay[1].aboveSlider) && lay[0].hiddenInSingle, JSON.stringify(lay));
         check('kept rotation: the grid tile turns its own picture, then the redrawn one replaces it straight', r.tileTurning && r.tileDone, JSON.stringify(r));
         check('kept rotation: the big photo turns (not dimmed), then the redrawn one has no turn left over', r.viewTurning && r.viewDone && r.kept, JSON.stringify(r));
         check('kept rotation suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
