@@ -5,6 +5,12 @@
 
 const CHANGELOG = [
     {
+        version: '1.30.1', date: '2026-10-15',
+        items: [
+            'Auto crop takes the bed off a scan that cut the print off at two opposite sides (a print a hair bigger than the scan area, or a feeder page cut to the photo): the strips of bed down the other two sides come off, and the photo is straightened by them. Before, Auto said no print edge was found.'
+        ]
+    },
+    {
         version: '1.30.0', date: '2026-10-15',
         items: [
             'Scanner\'s own settings… (scan dock → Advanced, for a TWAIN feeder like the FastFoto): opens the scanner\'s own window just to choose its settings, such as Epson\'s color restoration and image enhancements, which jEditor can\'t name. Save there, and jEditor\'s feeder scans use them from then on. Forget goes back to the driver\'s defaults.',
