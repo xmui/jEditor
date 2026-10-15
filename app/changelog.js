@@ -5,6 +5,12 @@
 
 const CHANGELOG = [
     {
+        version: '1.33.0', date: '2026-10-15',
+        items: [
+            'Auto crop test scans, for a better Auto crop: when you save a crop on a photo Auto was used on, jEditor keeps the scan and where you cropped it on this PC (up to 1 GB), with whether Auto\'s crop was kept, corrected, or missed the print. Settings → Auto crop: turn it off, see how many are kept, Export… them to a folder, or Clear… them. Your photos aren\'t touched.'
+        ]
+    },
+    {
         version: '1.32.0', date: '2026-10-15',
         items: [
             'A narrow window (half the screen or less, with or without the folder list) keeps every pill whole and none over another. Each row gives up its least needed parts in turn as the window narrows, measured rather than guessed: at the top, the sort becomes just its icon, then the photo count goes, then (in the grid) the file name; then header buttons move into More, least used first. The file pill moves off center rather than run under the buttons. At the bottom, "not saved yet" goes (the count stays), then the selection bar\'s labels, then the edits bar moves up above the size slider, the slider gets shorter, and last it goes (`Ctrl` + wheel still sizes the grid). Messages move up above the edits bar.',

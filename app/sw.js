@@ -16,6 +16,7 @@ const ASSETS = [
     './photo-find.js',
     './crop-auto.js',
     './crop.js',
+    './crop-log.js',
     './dupes.js',
     './rename.js',
     './folders.js',

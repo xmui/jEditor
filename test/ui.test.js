@@ -1366,6 +1366,59 @@ async function newPage(browser, url) {
             out.autoEach = Math.abs(ed.angle - 2) < 0.15 && ed.history.length === 0;
             ed.setAutoEach(false);
             app.cancelCrop();
+
+            // Auto crop's test set (crop-log.js): each crop saved after Auto
+            // keeps the scan and a label; one cropped by hand, a log line
+            const opfs = await navigator.storage.getDirectory();
+            await opfs.removeEntry(CropLog.DIR, { recursive: true }).catch(() => { });
+            const saveAfter = async (name, bytes, act) => {
+                await open(makeFakeFile(name, bytes, 'image/jpeg'));
+                await act();
+                await app.saveCrop();
+                await CropLog._queue;
+            };
+            const plainJpeg = async () => {
+                const c = document.createElement('canvas');
+                c.width = 900; c.height = 600;
+                const g = c.getContext('2d');
+                for (let y = 0; y < 600; y += 30) for (let x = 0; x < 900; x += 30) {
+                    g.fillStyle = `hsl(${(x * 7 + y * 3) % 360},50%,${30 + (x + y) % 40}%)`;
+                    g.fillRect(x, y, 30, 30);
+                }
+                return new Uint8Array(await (await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9))).arrayBuffer());
+            };
+            const inset = (k) => { const r = ed.rect; ed.setRect({ x0: r.x0 + k, y0: r.y0 + k, x1: r.x1 - k, y1: r.y1 - k }); };
+            await saveAfter('logA.jpg', await scanJpeg(-2, '#0e0e0e'), () => ed.autoDetect({ quiet: true }));
+            await saveAfter('logB.jpg', await scanJpeg(1, '#0e0e0e'), () => { ed.autoDetect({ quiet: true }); inset(25); });
+            await saveAfter('logC.jpg', await plainJpeg(), () => { ed.autoDetect({ quiet: true }); inset(40); });
+            await saveAfter('logD.jpg', await plainJpeg(), () => inset(40));
+            const dir = await opfs.getDirectoryHandle(CropLog.DIR);
+            const names = [];
+            for await (const [n] of dir.entries()) names.push(n);
+            out.logNames = names.sort();
+            const label = async (n) => JSON.parse(await (await (await dir.getFileHandle(n)).getFile()).text());
+            const json = names.filter(n => n.endsWith('.json'));
+            out.logLabels = await Promise.all(json.map(label));
+            const lines = (await (await (await dir.getFileHandle('log.jsonl')).getFile()).text()).trim().split('\n').map(l => JSON.parse(l));
+            out.logLines = lines.map(l => `${l.file}:${l.result}`);
+            const scanB = names.find(n => /logB\.jpg$/.test(n));
+            const keptB = scanB && new Uint8Array(await (await (await dir.getFileHandle(scanB)).getFile()).arrayBuffer());
+            out.logBytes = !!keptB && keptB.length > 1000 && keptB[0] === 0xff && keptB[1] === 0xd8;
+            await CropLog.refresh();
+            out.logCount = document.getElementById('crop-log-count').textContent;
+            // Off: nothing more kept
+            CropLog.setEnabled(false);
+            await saveAfter('logE.jpg', await scanJpeg(0, '#0e0e0e'), () => ed.autoDetect({ quiet: true }));
+            let after = 0;
+            for await (const _ of dir.entries()) after++;
+            out.logOff = after === names.length;
+            CropLog.setEnabled(true);
+            // Clear: all of it gone
+            const realConfirm = UI.confirm;
+            UI.confirm = async () => true;
+            await CropLog.clear();
+            UI.confirm = realConfirm;
+            out.logCleared = await opfs.getDirectoryHandle(CropLog.DIR).then(() => false, () => true);
             return out;
         });
         check('rotate-then-crop: editor sees the rotated photo (200x400)', r.editorDims === '200x400', r.editorDims);
@@ -1388,6 +1441,17 @@ async function newPage(browser, url) {
         check('Save & Next moves on and reopens the editor', r.next);
         check('PNG crop stays PNG and keeps DPI', r.pngType === 'image/png' && r.pngDpi === 300, `${r.pngType} ${r.pngDpi}`);
         check('Auto straightens a tilted print (−3°)', r.autoFound && Math.abs(r.autoAngle + 3) < 0.15, String(r.autoAngle));
+        {
+            const L = r.logLabels || [], by = (f) => L.find(l => l.file === f) || {};
+            const A = by('logA.jpg'), B = by('logB.jpg'), C = by('logC.jpg');
+            check('test set: a scan saved with Auto\'s crop is kept as accepted, with where Auto put the print', A.result === 'accepted' && A.auto && A.auto.found && A.auto.corners.length === 4 && A.saved.crop.length === 4 && A.W === 1200, JSON.stringify(A));
+            check('test set: a scan cropped tighter after Auto is kept as corrected, with how far', B.result === 'corrected' && B.diff > 20, JSON.stringify(B && { result: B.result, diff: B.diff }));
+            check('test set: Auto finding nothing, then a crop by hand, is kept as missed', C.result === 'missed' && C.auto && C.auto.found === false, JSON.stringify(C && C.result));
+            check('test set: the scans themselves are kept, as they were before the save', r.logBytes && r.logNames.filter(n => /^\d{8}T\d{6}-log[ABC]\.jpg$/.test(n)).length === 3 && L.length === 3, r.logNames.join());
+            check('test set: every crop is in the log; one done without Auto has no scan', (r.logLines || []).join() === 'logA.jpg:accepted,logB.jpg:corrected,logC.jpg:missed,logD.jpg:manual' && !r.logNames.some(n => /logD/.test(n)), (r.logLines || []).join());
+            check('test set: Settings shows how many are kept', /^3 scans kept · /.test(r.logCount), r.logCount);
+            check('test set: off keeps nothing; Clear removes it all', r.logOff && r.logCleared, JSON.stringify([r.logOff, r.logCleared]));
+        }
         check('Auto crops to the print (720×480, no bed)', r.autoNoBed && Math.abs(r.autoSize[0] - 720) < 12 && Math.abs(r.autoSize[1] - 480) < 12, JSON.stringify(r.autoSize));
         check('Auto declines a photo with no scanner border', r.autoDeclines);
         check('straightening pivots on the crop center', r.pivot);
