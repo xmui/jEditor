@@ -5,6 +5,12 @@
 
 const CHANGELOG = [
     {
+        version: '1.31.0', date: '2026-10-15',
+        items: [
+            'Settings → Window background (Windows 11, version 22H2 or later): Mica or Acrylic behind jEditor, like the Start menu, so the desktop shows softly through the start screen and the grid. Transparency sets how much shows through. Photos, Crop and Duplicates stay solid, so colors are judged as before. Solid, as before, to start with; it follows Windows\' Transparency effects setting.'
+        ]
+    },
+    {
         version: '1.30.1', date: '2026-10-15',
         items: [
             'Auto crop takes the bed off a scan that cut the print off at two opposite sides (a print a hair bigger than the scan area, or a feeder page cut to the photo): the strips of bed down the other two sides come off, and the photo is straightened by them. Before, Auto said no print edge was found.'

@@ -382,6 +382,92 @@ const waitForPost = (page, type) => page.waitForFunction(
         await plain.context.close();
     }
 
+    console.log('bridge: window background (Mica, Acrylic)');
+    {
+        const { context, page, errors } = await openPage(browser);
+        // jEditor asks for its saved choice at start-up: solid to begin with
+        const first = await waitForPost(page, 'backdrop');
+        check('asks the app for the window background at start-up, solid by default', first.kind === 'none', JSON.stringify(first));
+        const r = await page.evaluate(async (firstId) => {
+            const out = {};
+            // The app: Windows 11 22H2 with Transparency effects on
+            window.__onPost = (m) => {
+                if (m.type === 'backdrop') setTimeout(() => window.__deliver({ replyTo: m.id, supported: true, transparency: true, applied: m.kind !== 'none' }));
+            };
+            window.__deliver({ replyTo: firstId, supported: true, transparency: true, applied: false });
+            const until = async (ok) => { for (let i = 0; i < 100 && !ok(); i++) await new Promise(res => setTimeout(res, 20)); return ok(); };
+            const root = document.documentElement;
+            const alpha = (c) => { const m = c.match(/\/\s*([\d.]+)\)$/) || c.match(/^rgba\([^)]*,\s*([\d.]+)\)$/); return m ? parseFloat(m[1]) : 1; };
+            const bg = (el) => getComputedStyle(el).backgroundColor;
+            const pick = (value) => {
+                const i = document.querySelector(`input[name="set-backdrop"][value="${value}"]`);
+                i.checked = true;
+                i.dispatchEvent(new Event('change', { bubbles: true }));
+            };
+            const slider = document.getElementById('cust-transparency');
+            const help = document.getElementById('set-backdrop-help');
+            await until(() => app.backdropState);
+
+            app.toggleCustomizePanel(true);
+            out.rowShown = getComputedStyle(document.getElementById('set-backdrop-row')).display !== 'none';
+            out.solidChecked = document.querySelector('input[name="set-backdrop"][value="none"]').checked;
+            out.sliderOffWhenSolid = slider.disabled;
+            out.solidBody = alpha(bg(document.body));
+
+            window.__posted.length = 0;
+            pick('mica');
+            out.asked = await until(() => root.classList.contains('backdrop')) && window.__posted.filter(m => m.type === 'backdrop').map(m => m.kind).join();
+            out.micaBody = alpha(bg(document.body));
+            // One tint: html and the start screen add none of their own
+            out.oneLayer = alpha(bg(root)) === 0 && alpha(bg(document.getElementById('drop-zone'))) === 0;
+            out.startGlow = /gradient/.test(getComputedStyle(document.getElementById('drop-zone')).backgroundImage);
+            out.photosSolid = alpha(bg(document.getElementById('main-view'))) === 1 && alpha(bg(document.querySelector('.mode-screen'))) === 1;
+            out.sliderOn = !slider.disabled;
+
+            slider.value = 80;
+            slider.dispatchEvent(new Event('input', { bubbles: true }));
+            out.tint = getComputedStyle(root).getPropertyValue('--backdrop-tint').trim();
+            out.clearerBody = alpha(bg(document.body));
+            out.output = document.getElementById('cust-transparency-out').textContent;
+            out.saved = JSON.parse(localStorage.getItem('jeditor.ui'));
+
+            // Transparency effects turned off in Windows: solid, and Settings says why
+            window.__deliver({ type: 'backdropState', state: { supported: true, transparency: false, applied: false } });
+            out.offSolid = !root.classList.contains('backdrop') && alpha(bg(document.body)) === 1;
+            out.offHelp = help.textContent;
+            out.offSlider = slider.disabled;
+            window.__deliver({ type: 'backdropState', state: { supported: true, transparency: true, applied: true } });
+            out.backOn = root.classList.contains('backdrop');
+
+            // Windows 10: nothing to pick
+            app.setBackdropState({ supported: false, transparency: true, applied: false });
+            out.old = [help.textContent, [...document.querySelectorAll('input[name="set-backdrop"]')].every(i => i.disabled), slider.disabled];
+
+            // Back to solid
+            app.setBackdropState({ supported: true, transparency: true, applied: true });
+            window.__posted.length = 0;
+            pick('none');
+            out.solidAgain = await until(() => !root.classList.contains('backdrop')) && window.__posted.filter(m => m.type === 'backdrop').map(m => m.kind).join();
+            out.solidHelp = help.textContent;
+            return out;
+        }, first.id);
+        check('Settings shows Window background, Solid, with Transparency off until it shows',
+            r.rowShown && r.solidChecked && r.sliderOffWhenSolid && r.solidBody === 1, JSON.stringify(r));
+        check('Mica: asks the app, and the start screen lets it show through',
+            r.asked === 'mica' && r.micaBody === 0.5 && r.oneLayer && r.startGlow && r.sliderOn, JSON.stringify(r));
+        check('photos, Crop and Duplicates stay solid', r.photosSolid);
+        check('Transparency sets the tint and is remembered',
+            r.tint === '20%' && Math.abs(r.clearerBody - 0.2) < 0.01 && r.output === '80%' && r.saved.backdrop === 'mica' && r.saved.transparency === 80, JSON.stringify(r));
+        check('Transparency effects off in Windows: solid, and Settings says where to turn it on',
+            r.offSolid && /Transparency effects/.test(r.offHelp) && r.offSlider && r.backOn, JSON.stringify(r));
+        check('before Windows 11 22H2: the choice is disabled and says why',
+            /Windows 11/.test(r.old[0]) && r.old[1] && r.old[2], JSON.stringify(r.old));
+        check('Solid again asks the app and clears the backdrop',
+            r.solidAgain === 'none' && /Start menu/.test(r.solidHelp), JSON.stringify(r));
+        check('window background: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
     console.log('bridge: only in the Windows app');
     {
         const other = await openPage(browser, { origin: 'https://elsewhere.example' });

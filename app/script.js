@@ -244,6 +244,8 @@ const app = {
         // strip height, thumbnail fit)
         this.loadUiPrefs();
         this.applyUiPrefs();
+        this.applyBackdrop();
+        addEventListener('jeditor-backdrop', (e) => this.setBackdropState(e.detail));
     },
 
     async verifyPermission(fileHandle, readWrite) {
@@ -378,7 +380,8 @@ const app = {
         theme: ['dark', 'light', 'system'],
         density: ['compact', 'comfortable'],
         glass: ['rich', 'subtle'],
-        surround: ['auto', 'black', 'grey', 'light']
+        surround: ['auto', 'black', 'grey', 'light'],
+        backdrop: ['none', 'mica', 'acrylic'] // the Windows app only (applyBackdrop)
     },
 
     defaultUiPrefs() {
@@ -401,6 +404,8 @@ const app = {
             density: 'compact',
             glass: 'rich',
             surround: 'auto',
+            backdrop: 'none', // Settings → Window background: none (solid), mica or acrylic
+            transparency: 50, // how much of the window background shows through (10-100%)
             // Which messages show for things done (TOAST_KINDS); errors always do
             toasts: Object.fromEntries(this.TOAST_KINDS.map(([k, , on]) => [k, on]))
         };
@@ -454,6 +459,7 @@ const app = {
                 if (typeof saved.accent === 'string' && /^#[0-9a-f]{6}$/i.test(saved.accent)) this.uiPrefs.accent = saved.accent;
                 if (typeof saved.singleControls === 'boolean') this.uiPrefs.singleControls = saved.singleControls;
                 if (typeof saved.folderRail === 'boolean') this.uiPrefs.folderRail = saved.folderRail;
+                if (saved.transparency >= 10 && saved.transparency <= 100) this.uiPrefs.transparency = saved.transparency;
                 for (const [k, allowed] of Object.entries(this.APPEARANCE)) {
                     if (allowed.includes(saved[k])) this.uiPrefs[k] = saved[k];
                 }
@@ -539,8 +545,46 @@ const app = {
         root.dataset.density = p.density;
         root.dataset.glass = p.glass;
         root.dataset.surround = p.surround;
+        root.style.setProperty('--window-tint', `${100 - p.transparency}%`);
         const meta = document.querySelector('meta[name="theme-color"]');
         if (meta) meta.content = theme === 'light' ? '#e8e8e8' : '#0b0b0b';
+    },
+
+    // Settings → Window background: Windows 11's Mica or Acrylic behind the
+    // window. The app sets it (src/bridge.js); once it shows, html.backdrop
+    // makes the page's own background see-through (tokens.css). Photos,
+    // crop and duplicates stay solid. Not in a browser.
+    async applyBackdrop() {
+        const native = FolderCache.native();
+        if (!native || !native.backdrop) return;
+        const seq = this._backdropSeq = (this._backdropSeq || 0) + 1;
+        let state = null;
+        try { state = await native.backdrop(this.uiPrefs.backdrop); } catch (e) { /* stays solid */ }
+        if (seq === this._backdropSeq) this.setBackdropState(state); // else a newer pick is on its way
+    },
+
+    // { supported, transparency, applied } from the app
+    setBackdropState(state) {
+        this.backdropState = state || null;
+        document.documentElement.classList.toggle('backdrop', !!(state && state.applied));
+        this.syncBackdropControls();
+    },
+
+    syncBackdropControls() {
+        const row = document.getElementById('set-backdrop-row');
+        if (!row) return;
+        const s = this.backdropState;
+        const supported = !s || s.supported !== false;
+        const help = document.getElementById('set-backdrop-help');
+        if (!help.dataset.text) help.dataset.text = help.textContent;
+        help.textContent = !supported ? 'Needs Windows 11, version 22H2 or later'
+            : s && s.transparency === false ? 'Turn on Transparency effects in Windows Settings → Personalization → Colors to see it'
+            : help.dataset.text;
+        row.classList.toggle('unavailable', !supported);
+        row.querySelectorAll('input').forEach(i => { i.disabled = !supported; });
+        const shows = !!(s && s.applied);
+        document.getElementById('set-transparency-row').classList.toggle('unavailable', !shows);
+        document.getElementById('cust-transparency').disabled = !shows;
     },
 
     // Everything blue follows --accent-color; text on it (--on-accent)
@@ -607,8 +651,15 @@ const app = {
                 this.uiPrefs[key] = r.value;
                 this.saveUiPrefs();
                 this.applyAppearance();
+                if (key === 'backdrop') this.applyBackdrop();
             }));
         }
+        $('cust-transparency').addEventListener('input', (e) => {
+            this.uiPrefs.transparency = parseInt(e.target.value, 10);
+            $('cust-transparency-out').textContent = `${this.uiPrefs.transparency}%`;
+            this.saveUiPrefs();
+            this.applyAppearance();
+        });
         $('cust-accent').addEventListener('click', (e) => {
             const b = e.target.closest('[data-accent]');
             if (b) this.setAccent(b.dataset.accent);
@@ -725,6 +776,9 @@ const app = {
         this.syncAccentPicker();
         $('cust-scale').value = this.uiPrefs.scale;
         $('cust-scale-out').textContent = `${Math.round(this.uiPrefs.scale * 100)}%`;
+        $('cust-transparency').value = this.uiPrefs.transparency;
+        $('cust-transparency-out').textContent = `${this.uiPrefs.transparency}%`;
+        this.syncBackdropControls();
 
         this.uiPrefs.order.forEach(key => {
             if ((key === 'scan' || key === 'camera') && !FolderCache.native()) return; // the Windows app only

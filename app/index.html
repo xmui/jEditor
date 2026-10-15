@@ -477,6 +477,23 @@
                             <label><input type="radio" name="set-glass" value="subtle"><span>Subtle</span></label>
                         </div>
                     </div>
+                    <div id="set-backdrop-row" class="set-row native-only">
+                        <span class="set-label" id="set-backdrop-label">Window background
+                            <small id="set-backdrop-help">Your desktop shows softly through jEditor, like the Start menu. Photos stay solid.</small></span>
+                        <div class="seg" role="radiogroup" aria-labelledby="set-backdrop-label">
+                            <label><input type="radio" name="set-backdrop" value="none"><span>Solid</span></label>
+                            <label><input type="radio" name="set-backdrop" value="mica"><span>Mica</span></label>
+                            <label><input type="radio" name="set-backdrop" value="acrylic"><span>Acrylic</span></label>
+                        </div>
+                    </div>
+                    <div id="set-transparency-row" class="set-row native-only">
+                        <label class="set-label" for="cust-transparency">Transparency
+                            <small>How much of the window background shows through</small></label>
+                        <span class="set-range">
+                            <input type="range" id="cust-transparency" min="10" max="100" step="5" value="50">
+                            <output id="cust-transparency-out" for="cust-transparency">50%</output>
+                        </span>
+                    </div>
                 </section>
 
                 <section class="settings-section" aria-labelledby="set-h-messages">

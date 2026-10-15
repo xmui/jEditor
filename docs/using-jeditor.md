@@ -14,7 +14,7 @@ To install it, see the [README](../README.md). The version number is shown on th
 
 Changes are saved to the original files as you go.
 
-**Settings** (the gear in the toolbar's **More** section, the link on the start screen, or `Ctrl+,`) has the theme (dark, light or match the system), the colour behind photos (black, grey or light, for judging colour), the accent colour, density (Compact or Comfortable), toolbar size and glass (Rich, or Subtle, which is faster on older computers). It also chooses which buttons are in the toolbar.
+**Settings** (the gear in the toolbar's **More** section, the link on the start screen, or `Ctrl+,`) has the theme (dark, light or match the system), the colour behind photos (black, grey or light, for judging colour), the accent colour, density (Compact or Comfortable), toolbar size and glass (Rich, or Subtle, which is faster on older computers). On Windows 11 (22H2 or later), **Window background** puts Mica or Acrylic behind jEditor, like the Start menu, so the desktop shows softly through the start screen and the grid; **Transparency** sets how much shows through. Photos, Crop and Duplicates stay solid, so colors are judged as before. It needs Windows' Transparency effects on (Settings → Personalization → Colors). It also chooses which buttons are in the toolbar.
 
 ## Watching the folder
 
@@ -179,6 +179,6 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `watch.js`: watching the folder for changes, and rescanning
 - `recents.js`: recent orders on the start screen, and spotting a folder that's part of one
 - `ui.js`: the app's own alert / confirm / prompt dialogs, and focus handling for every dialog
-- `tokens.css`: the design tokens (colours, type, spacing, radii, shadows, motion, layers) and the theme, density, glass and surround switches; `style.css` builds every component from them
+- `tokens.css`: the design tokens (colours, type, spacing, radii, shadows, motion, layers) and the theme, density, glass, surround and window background switches; `style.css` builds every component from them
 
 Building, testing and releasing are in the [README](../README.md).

@@ -9,7 +9,8 @@
 //   - gives jEditor window.JEditorNative: storage on this PC for orders'
 //     data, the Recycle Bin, paths on disk, and updates
 //   - turns off the service worker, so a changed UI file is always used
-//   - tells the app when the theme changes, for the title bar's color
+//   - tells the app when the theme changes, for the title bar's color,
+//     and sets the window background (Mica or Acrylic)
 //   - in dev mode: reload and DevTools keys, and changed stylesheets
 //     swapped in without reloading
 //   - runs the smoke test (jEditor.exe --smoke-test <folder>)
@@ -83,6 +84,9 @@
             dispatchEvent(new Event('jeditor-files')); // another window moved photos
         } else if (msg.type === 'drivesChanged') {
             dispatchEvent(new Event('jeditor-drives')); // places.js
+        } else if (msg.type === 'backdropState') {
+            // Transparency effects turned on or off in Windows
+            dispatchEvent(new CustomEvent('jeditor-backdrop', { detail: msg.state }));
         }
     });
 
@@ -364,6 +368,15 @@
         // Undoes one: moved photos go back, copies go → [error or null]
         async undoTransfer(items, copy) {
             return (await answer('undoTransfer', { items, copy: !!copy })).msg.errors;
+        },
+        // Windows 11's Mica or Acrylic behind the page, or none (kind:
+        // 'mica' | 'acrylic' | 'none') → { supported (Windows 11 22H2 or
+        // later), transparency (Windows' Transparency effects), applied }.
+        // Applied, the page's background is clear: the page tints it. A
+        // 'jeditor-backdrop' event on window brings a new state when
+        // Transparency effects is turned on or off.
+        async backdrop(kind) {
+            return (await answer('backdrop', { kind })).msg;
         },
         // Shows jEditor's log in Explorer
         async showLog() {

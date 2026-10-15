@@ -34,7 +34,7 @@ body {
     height: 100%;
     width: 100%;
     overflow: hidden;
-    background: var(--bg-canvas);
+    background: var(--bg-window);
     color: var(--text-1);
     font-family: var(--font-ui);
     font-size: var(--fs-body);
@@ -2639,6 +2639,13 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     text-align: right;
 }
 
+/* A setting that can't be changed now (the help under its label says why) */
+.set-row.unavailable .seg,
+.set-row.unavailable .set-range {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
 /* Accent colour: swatches and a custom pick */
 .accent-swatches {
     display: flex;
@@ -3593,8 +3600,24 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     overflow-y: auto;
     padding: var(--sp-6) var(--sp-4);
     background:
-        radial-gradient(ellipse 60% 50% at 50% 35%, var(--bg-surface), transparent),
-        var(--bg-canvas);
+        radial-gradient(ellipse 60% 50% at 50% 35%, var(--bg-window-glow), transparent),
+        var(--bg-window);
+}
+
+/* With a backdrop (tokens.css), one tint over it, not a layer each:
+   body's, which the canvas takes when html has none. The start screen
+   keeps only its glow, and a project left open under it is hidden rather
+   than showing through. */
+html.backdrop {
+    background: transparent;
+}
+
+html.backdrop .drop-zone {
+    background: radial-gradient(ellipse 60% 50% at 50% 35%, var(--bg-window-glow), transparent);
+}
+
+html.backdrop .drop-zone:not(.hidden) ~ .interface {
+    visibility: hidden;
 }
 
 .drop-content {

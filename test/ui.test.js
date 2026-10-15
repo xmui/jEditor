@@ -1033,6 +1033,13 @@ async function newPage(browser, url) {
             document.getElementById('settings-panel').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
             out.closed = !app.isSettingsOpen();
 
+            // Window background is the Windows app's: hidden here, and the window stays solid
+            out.backdropHidden = ['set-backdrop-row', 'set-transparency-row'].every(id => getComputedStyle(document.getElementById(id)).display === 'none');
+            out.solidWindow = !root.classList.contains('backdrop') && getComputedStyle(document.body).backgroundColor === 'rgb(232, 232, 232)';
+            localStorage.setItem('jeditor.ui', JSON.stringify({ backdrop: 'glass', transparency: 500 }));
+            app.loadUiPrefs();
+            out.badBackdrop = [app.uiPrefs.backdrop, app.uiPrefs.transparency].join();
+
             // The glass no longer follows the photo: no sampler, no classes
             out.noSampler = typeof app.analyzeImageBrightness === 'undefined' && typeof app.applyGlass === 'undefined';
             out.noGlassClasses = !document.body.className.includes('glass-light');
@@ -1049,6 +1056,8 @@ async function newPage(browser, url) {
             r.surround === 'rgb(118, 118, 118)' && r.saved.theme === 'light' && r.saved.density === 'comfortable' &&
             r.saved.glass === 'subtle' && r.saved.surround === 'grey', JSON.stringify(r));
         check('the glass is fixed: it no longer follows the photo', r.noSampler && r.noGlassClasses);
+        check('window background: not in a browser, solid; bad saved values ignored',
+            r.backdropHidden && r.solidWindow && r.badBackdrop === 'none,50', JSON.stringify(r));
         check('appearance suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

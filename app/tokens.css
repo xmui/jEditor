@@ -9,6 +9,10 @@
      data-density   compact | comfortable   (Settings → Density)
      data-glass     rich | subtle           (Settings → Glass)
      data-surround  auto | black | dark | grey | light   (background behind photos)
+   class "backdrop": Windows 11's Mica or Acrylic shows behind the window
+                  (Settings → Window background, in the Windows app); the
+                  window's background is tinted by --window-tint (set from
+                  Settings → Transparency) and photos stay solid
    --accent-color / --on-accent are set from Settings → Accent color.
    ========================================================================== */
 
@@ -149,6 +153,17 @@
 
     /* ---- Surround (behind the photo) ---- */
     --surround: var(--bg-canvas);
+
+    /* ---- The window's own background: the start screen and the grid ----
+       Solid, or with a backdrop the canvas color over it at --backdrop-tint */
+    --backdrop-tint: var(--window-tint, 50%);
+    --bg-window: var(--bg-canvas);
+    --bg-window-glow: var(--bg-surface);
+}
+
+:root.backdrop {
+    --bg-window: color-mix(in srgb, var(--bg-canvas) var(--backdrop-tint), transparent);
+    --bg-window-glow: color-mix(in srgb, var(--bg-surface) var(--backdrop-tint), transparent);
 }
 
 /* ---- Light theme ---- */
@@ -213,6 +228,7 @@
     :root {
         --glass-bg: rgb(24 24 24 / 0.94);
         --glass-filter: none;
+        --backdrop-tint: 100%;
     }
     :root[data-theme="light"] {
         --glass-bg: rgb(250 250 250 / 0.95);
