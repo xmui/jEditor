@@ -1029,9 +1029,25 @@ async function newPage(browser, url) {
             out.subtleGlass = css('--glass-filter') === 'none';
             out.surround = getComputedStyle(document.getElementById('main-view')).backgroundColor;
             out.saved = JSON.parse(localStorage.getItem('jeditor.ui'));
+            // A page at a time: Appearance first; Messages on a click, and it's
+            // where Settings opens next time; no Updates page outside the Windows app
+            const shownPage = () => [...document.querySelectorAll('#settings-panel .settings-section')].filter(x => getComputedStyle(x).display !== 'none').map(x => x.dataset.page).join();
+            out.firstPage = shownPage();
+            document.querySelector('.settings-nav [data-page="messages"]').click();
+            out.messagesPage = shownPage() + ' ' + document.querySelector('.settings-nav [data-page="messages"]').getAttribute('aria-selected');
+            out.noUpdates = getComputedStyle(document.querySelector('.settings-nav [data-page="updates"]')).display === 'none';
             // Esc closes it
             document.getElementById('settings-panel').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
             out.closed = !app.isSettingsOpen();
+            app.toggleCustomizePanel(true);
+            out.reopenedOn = shownPage();
+            // Arrow keys move between pages
+            const tab = document.querySelector('.settings-nav [data-page="messages"]');
+            tab.focus();
+            tab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+            out.arrowPage = shownPage() + ' ' + (document.activeElement && document.activeElement.dataset.page);
+            app.showSettingsPage('appearance');
+            app.toggleCustomizePanel(false);
 
             // Window background is the Windows app's: hidden here, and the window stays solid
             out.backdropHidden = ['set-backdrop-row', 'set-transparency-row'].every(id => getComputedStyle(document.getElementById(id)).display === 'none');
@@ -1051,6 +1067,7 @@ async function newPage(browser, url) {
         });
         check('appearance defaults: dark, compact, rich glass, theme surround', r.defaults === 'dark,compact,rich,auto', r.defaults);
         check('Ctrl+, opens Settings; Esc closes it', r.opened && r.closed, JSON.stringify({ o: r.opened, c: r.closed }));
+        check('Settings: a page at a time, Appearance first; a click (or the arrow keys) changes page, and it opens on the last page used', r.firstPage === 'appearance' && r.messagesPage === 'messages true' && r.noUpdates && r.reopenedOn === 'messages' && r.arrowPage === 'autocrop autocrop', JSON.stringify([r.firstPage, r.messagesPage, r.noUpdates, r.reopenedOn, r.arrowPage]));
         check('theme, density, glass and surround apply and are remembered',
             r.applied === 'light,comfortable,subtle,grey' && r.lightText && r.comfortable && r.subtleGlass &&
             r.surround === 'rgb(118, 118, 118)' && r.saved.theme === 'light' && r.saved.density === 'comfortable' &&
@@ -2245,6 +2262,16 @@ async function newPage(browser, url) {
             out.trashed = inTrash === 1 && app.files.length === 3;
             await app.undo();
             out.restored = app.files.length === 4;
+            // In the grid the next photo is selected, so Delete goes on from there
+            app.setView('grid');
+            const [, b, c] = app.viewFiles();
+            app.currentFile = b; app.selection = new Set([b]); app.updateSelectionUI();
+            await app.moveToTrash([b]);
+            out.nextSelected = app.selection.size === 1 && app.selection.has(c) && app.currentFile === c
+                && !document.getElementById('selection-bar').classList.contains('hidden');
+            await app.undo();
+            app.selection = new Set(); app.updateSelectionUI();
+            out.restored = out.restored && app.files.length === 4;
 
             // A batch: moved into the trash (no bytes rewritten), several at a
             // time; a name already in the trash gets a unique one
@@ -2312,6 +2339,7 @@ async function newPage(browser, url) {
         check('another computer: thumbnails come from the folder', second.thumbsGenerated === 0, String(second.thumbsGenerated));
         check('another computer: duplicate scan reuses fingerprints', second.fingerprintsComputed === 0, String(second.fingerprintsComputed));
         check('delete goes to .jeditor/trash; undo restores', second.trashed && second.restored);
+        check('deleting the selection in the grid selects the next photo', second.nextSelected);
         check('batch delete moves files (no copying), keeps a unique trash name', second.batchMoved && second.batchCurrent);
         check('undo restores the whole batch intact', second.batchRestored);
         check('rotated photo: old cached thumbnail pruned, new one kept', second.prunedTo === 4 && second.prunedOld, String(second.prunedTo));
@@ -3196,8 +3224,11 @@ async function newPage(browser, url) {
             out.searchFlag = app.viewFiles().map(x => x.name).sort().join(',');
             Flags.setQuery('nothing-like-this');
             out.noMatch = app.viewFiles().length === 0 && app.elements.gridView.classList.contains('grid-no-match');
-            Flags.clearFilter();
-            out.cleared = app.viewFiles().length === 7;
+            // Its Clear search button shows everything again
+            const clearBtn = app.elements.gridView.querySelector('.grid-empty-box .btn');
+            out.clearLabel = clearBtn && clearBtn.textContent;
+            if (clearBtn) clearBtn.click();
+            out.cleared = app.viewFiles().length === 7 && !Flags.query && !app.elements.gridView.classList.contains('grid-no-match');
             // Ctrl+F opens the search box
             key('f', { ctrlKey: true });
             out.focus = document.activeElement && document.activeElement.id === 'fb-search';
@@ -3219,7 +3250,7 @@ async function newPage(browser, url) {
         check('flags: come back when the order is opened again', r.reloaded);
         check('flags: filter shows only those photos, Ctrl+A selects just them', r.filter === 'IMG_0002.jpg,Smith_01.jpg' && r.selectAll && r.chip, r.filter);
         check('flags: the folder list has a Flags section with counts', r.list.startsWith('star,rescan,blue') && r.list.endsWith('none'), r.list);
-        check('search: by folder, by words, by is:flag; no match says so', r.searchFolder === 'vows.jpg' && r.searchWords === 5 && r.searchFlag === 'IMG_0002.jpg,vows.jpg' && r.noMatch && r.cleared,
+        check('search: by folder, by words, by is:flag; no match says so, and its Clear search button shows everything', r.searchFolder === 'vows.jpg' && r.searchWords === 5 && r.searchFlag === 'IMG_0002.jpg,vows.jpg' && r.noMatch && r.cleared,
             `${r.searchFolder} / ${r.searchWords} / ${r.searchFlag}`);
         check('search: Ctrl+F opens the search box', r.focus);
         check('flags: rescan list names each photo with its folder', /Needs rescan \(2\)/.test(r.listText) && r.listText.includes('Ceremony/vows.jpg'), r.listText);
@@ -3580,11 +3611,24 @@ async function newPage(browser, url) {
                     if (fb.scrollWidth > fb.clientWidth + 1) out.bad.push('folder pill cut off');
                     out.squeezed = document.querySelectorAll('#header-controls [data-squeezed]').length;
                     out.more = shown(document.getElementById('btn-more'));
+                    // More opened: its buttons on rows underneath, never out over the file pill
+                    document.getElementById('btn-more').click();
+                    await frames();
+                    out.bad.push(...check(['.file-info', 'header-controls']).map(b => 'More open: ' + b));
+                    document.getElementById('btn-more').click();
+                    await frames();
                     // Single view: the file pill and the buttons
                     app.openSingle(app.files[0]);
                     await new Promise(res => setTimeout(res, 200));
                     await frames();
                     out.bad.push(...check(['.file-info', 'header-controls']).map(b => 'single: ' + b));
+                    // A message beside the prev / rotate / next pill goes up a row rather than into it
+                    app.showToast('Rotated 3 photos to the right', 3000);
+                    await new Promise(res => setTimeout(res, 150));
+                    await frames();
+                    const t = document.getElementById('toast-stack').lastElementChild.getBoundingClientRect();
+                    const c = document.querySelector('#image-container .controls').getBoundingClientRect();
+                    if (!apart(t, c)) out.bad.push('single: message over the controls');
                     out.name = shown(document.querySelector('.file-info'));
                     app.setView('grid');
                     return out;

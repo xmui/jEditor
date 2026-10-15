@@ -1276,7 +1276,14 @@ async function newPage(context, baseUrl) {
             await wait(() => !app.isLoading);
             out.open = !$('main-interface').classList.contains('hidden') && $('drop-zone').classList.contains('hidden');
             out.noAlert = !UI.isOpen();
-            out.message = getComputedStyle($('grid-view'), '::after').content;
+            const box = $('grid-view').querySelector('.grid-empty-box');
+            out.message = box ? box.textContent : '';
+            // Its buttons: Scan opens the scan dock, Explorer shows the folder
+            box.querySelector('.btn.primary').click();
+            out.scanOpened = !$('scan-panel').classList.contains('hidden');
+            Scan.close();
+            [...box.querySelectorAll('.btn')].find(b => b.textContent === 'Show in Explorer').click();
+            out.revealed = window.__revealed;
             out.view = app.viewMode;
             // Scan into it: the photos show up
             window.__scanPages = 2;
@@ -1294,7 +1301,7 @@ async function newPage(context, baseUrl) {
             return out;
         });
         check('an empty folder opens as an empty project, no "No photos found"', r.open && r.noAlert && r.view === 'grid', JSON.stringify(r));
-        check('... saying how to fill it (Scan)', /Scan into this project/.test(r.message), r.message);
+        check('... saying how to fill it, with Scan and Show in Explorer buttons', /Scan into this project/.test(r.message) && /ScanShow in Explorer$/.test(r.message) && r.scanOpened && /Empty Project$/.test(r.revealed || ''), JSON.stringify([r.message, r.scanOpened, r.revealed]));
         check('scanning into it shows the photos', r.names === 'Empty-001.jpg,Empty-002.jpg' && r.files === 2 && r.noMessage, JSON.stringify([r.names, r.files, r.noMessage]));
         check('deleting every photo keeps it open, empty', r.stillOpen && r.emptyAgain, JSON.stringify([r.stillOpen, r.emptyAgain]));
         check('empty project suite: no JS errors', errors.length === 0, errors.join('; '));
@@ -1452,6 +1459,13 @@ async function newPage(context, baseUrl) {
             await wait(() => rowOf(side, 'Alpha').classList.contains('active'));
             out.card = $('sb-card').textContent.replace(/\s+/g, ' ').trim();
             out.active = rowOf(side, 'Alpha').classList.contains('active');
+            // Counting stops at 1,000 ("1,000+"), but the open project's photos are all known
+            window.__counts = { 'D:\\Orders\\Alpha': 1000, 'D:\\Orders\\Beta': 1000 };
+            Places.counts.clear();
+            await Places.refresh();
+            await wait(() => rowOf(side, 'Beta') && rowOf(side, 'Beta').querySelector('.fr-count').textContent);
+            out.listCounts = ['Alpha', 'Beta'].map(n => rowOf(side, n).querySelector('.fr-count').textContent).join();
+            window.__counts = null;
             $('sb-card').querySelector('[data-act="reveal"]').click();
             await wait(() => window.__revealed);
             out.revealed = window.__revealed;
@@ -1464,15 +1478,15 @@ async function newPage(context, baseUrl) {
             // Renaming the open project: closed, renamed, opened again at its new name
             window.__opened = null;
             UI.prompt = async () => 'Alpha Smith';
-            // No rename button among the card's buttons: a pencil by the name, and a double-click on it
-            out.noRenameButton = !$('sb-card').querySelector('.btn[data-act="rename"]') && !!$('sb-card').querySelector('.sb-card-name .sb-card-edit');
-            $('sb-card').querySelector('.sb-card-name span').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+            // No rename button among the card's buttons: the name itself, with a pencil by it, renames on a click
+            out.noRenameButton = !$('sb-card').querySelector('.btn[data-act="rename"]') && !!$('sb-card').querySelector('button.sb-card-name[data-act="rename"] .sb-card-edit');
+            $('sb-card').querySelector('.sb-card-name span').click();
             await wait(() => window.__opened);
             out.reopened = window.__opened;
             out.pinRenamed = Places.pins().map(p => p.name).join();
             const back = await (await opfs('disk')).getDirectoryHandle('Alpha Smith').catch(() => null) || await (await opfs('disk')).getDirectoryHandle('Alpha');
             await openOrder(back);
-            await wait(() => $('sb-card').querySelector('.sb-card-edit[data-act="rename"]'));
+            await wait(() => $('sb-card').querySelector('.sb-card-name[data-act="rename"]'));
             // Save edits when done, for this project: kept with its data on the PC
             const deferBox = $('sb-card').querySelector('input[data-act="defer"]');
             out.deferOff = !!deferBox && !deferBox.checked;
@@ -1528,7 +1542,8 @@ async function newPage(context, baseUrl) {
         check('New project: makes the folder in the projects folder, opens it and lists it; a name taken says so', r.made === 'D:\\Orders\\Gamma' && r.listed && /already a Gamma/.test(r.twice || ''), JSON.stringify([r.made, r.listed, r.twice]));
         check('the project card: name, path, photos', /Alpha/.test(r.card) && /D:\\Orders\\Alpha/.test(r.card) && /\d photos/.test(r.card), r.card);
         check('the open project is marked in the list', r.active);
-        check('card: no rename button; a pencil by the name, and a double-click on the name renames', r.noRenameButton);
+        check('... with its real photo count; others counted up to 1,000+', r.listCounts === '3,1,000+', r.listCounts);
+        check('card: no rename button; the name renames on a click, as the file name in the top pill, with a pencil by it', r.noRenameButton);
         check('card: Rename closes the open project, renames it and opens it again', r.reopened === 'D:\\Orders\\Alpha Smith' && r.pinRenamed.split(',').includes('Alpha Smith') && !r.pinRenamed.split(',').includes('Alpha'), JSON.stringify([r.reopened, r.pinRenamed]));
         check('card buttons: Explorer, Scan, Pin', r.revealed === 'D:\\Orders\\Alpha' && r.scanOpen && r.pinned.split(',').includes('Alpha'), JSON.stringify([r.revealed, r.scanOpen, r.pinned]));
         check('card: Save edits when done turns on for the project, kept on the PC', r.deferOff && r.deferKept, JSON.stringify([r.deferOff, r.deferKept]));

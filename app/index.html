@@ -221,12 +221,11 @@
                     <div class="sb-sec sb-sec-here native-only"><span class="sb-sec-title">This project</span></div>
                     <div id="folder-tree" class="folder-tree"></div>
                     <div id="flag-list" class="flag-list hidden"></div>
-                    <p id="fr-hint" class="fr-hint hidden">Make folders to sort this project. Drag photos onto a folder to move them, or hold <kbd>Ctrl</kbd> to copy. <kbd>M</kbd> moves the selection.</p>
                     <!-- Projects, pinned folders, drives (places.js) -->
                     <div id="sb-places" class="sb-places native-only"></div>
                 </div>
                 <div class="fr-foot">
-                    <button id="fr-new" class="btn ghost fr-new">
+                    <button id="fr-new" class="btn ghost fr-new" title="Make a folder to sort this project: drag photos onto it to move them (hold Ctrl to copy), or M moves the selection">
                         <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
                         New folder
                     </button>
@@ -294,9 +293,8 @@
             <!-- Undo history (history.js) -->
             <div id="history-panel" class="history-panel popover hidden" role="dialog" aria-label="Undo history">
                 <h3 class="section-label">Undo history</h3>
-                <p class="history-hint">Click a step to go back to before it.</p>
                 <div id="history-list" class="history-list"></div>
-                <p id="history-empty" class="history-hint hidden">Nothing to undo yet. Rotations, crops, renames, moves, deletes and flags show up here.</p>
+                <p id="history-empty" class="history-hint hidden">Nothing to undo yet</p>
                 <p class="history-foot">The last 50 steps, while jEditor is open</p>
             </div>
 
@@ -413,6 +411,9 @@
 
     <!-- Settings (ui.js + script.js). The cust-* ids are the original
          Customize controls; the header-button list is customize-list. -->
+    <!-- Settings (ui.js + script.js): a page at a time, chosen on the left.
+         The cust-* ids are the original Customize controls; the header-button
+         list is customize-list. -->
     <div id="settings-panel" class="dialog-overlay hidden">
         <div class="dialog settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
             <div class="dialog-head">
@@ -421,167 +422,191 @@
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                 </button>
             </div>
-            <div class="dialog-body settings-body">
-                <section class="settings-section" aria-labelledby="set-h-appearance">
-                    <h3 id="set-h-appearance" class="section-label">Appearance</h3>
-                    <div class="set-row">
-                        <span class="set-label" id="set-theme-label">Theme</span>
-                        <div class="seg" role="radiogroup" aria-labelledby="set-theme-label">
-                            <label><input type="radio" name="set-theme" value="dark"><span>Dark</span></label>
-                            <label><input type="radio" name="set-theme" value="light"><span>Light</span></label>
-                            <label><input type="radio" name="set-theme" value="system"><span>Match system</span></label>
+            <div class="settings-main">
+                <nav class="settings-nav" role="tablist" aria-label="Settings pages">
+                    <button role="tab" data-page="appearance" aria-controls="set-page-appearance"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg><span>Appearance</span></button>
+                    <button role="tab" data-page="toolbar" aria-controls="set-page-toolbar"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="7" x="3" y="4" rx="3.5"/><path d="M7 7.5h.01M11 7.5h.01M15 7.5h.01"/><path d="M4 17h16"/><path d="M4 20h10"/></svg><span>Toolbar &amp; keys</span></button>
+                    <button role="tab" data-page="messages" aria-controls="set-page-messages"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span>Messages</span></button>
+                    <button role="tab" data-page="autocrop" aria-controls="set-page-autocrop"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg><span>Auto crop</span></button>
+                    <button role="tab" data-page="projects" aria-controls="set-page-projects"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>Projects</span></button>
+                    <button role="tab" data-page="updates" class="native-only" aria-controls="set-page-updates"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><span>Updates</span></button>
+                </nav>
+                <div class="dialog-body settings-body">
+                    <section id="set-page-appearance" class="settings-section" data-page="appearance" role="tabpanel" aria-labelledby="set-h-appearance">
+                        <h3 id="set-h-appearance" class="settings-page-title">Appearance</h3>
+                        <h4 class="set-group">Color</h4>
+                        <div class="set-row">
+                            <span class="set-label" id="set-theme-label">Theme</span>
+                            <div class="seg" role="radiogroup" aria-labelledby="set-theme-label">
+                                <label><input type="radio" name="set-theme" value="dark"><span>Dark</span></label>
+                                <label><input type="radio" name="set-theme" value="light"><span>Light</span></label>
+                                <label><input type="radio" name="set-theme" value="system"><span>Match system</span></label>
+                            </div>
                         </div>
-                    </div>
-                    <div class="set-row">
-                        <span class="set-label" id="set-surround-label">Behind photos
-                            <small>The color around a photo affects how you judge it</small></span>
-                        <div class="seg" role="radiogroup" aria-labelledby="set-surround-label">
-                            <label><input type="radio" name="set-surround" value="auto"><span>Theme</span></label>
-                            <label><input type="radio" name="set-surround" value="black"><span>Black</span></label>
-                            <label><input type="radio" name="set-surround" value="grey"><span>Gray</span></label>
-                            <label><input type="radio" name="set-surround" value="light"><span>Light</span></label>
+                        <div class="set-row">
+                            <span class="set-label" id="set-accent-label">Accent color</span>
+                            <div id="cust-accent" class="accent-swatches" role="radiogroup" aria-labelledby="set-accent-label">
+                                <button data-accent="#2563eb" title="Blue" aria-label="Blue" role="radio" style="--sw:#2563eb"></button>
+                                <button data-accent="#7c3aed" title="Violet" aria-label="Violet" role="radio" style="--sw:#7c3aed"></button>
+                                <button data-accent="#db2777" title="Pink" aria-label="Pink" role="radio" style="--sw:#db2777"></button>
+                                <button data-accent="#dc2626" title="Red" aria-label="Red" role="radio" style="--sw:#dc2626"></button>
+                                <button data-accent="#ea580c" title="Orange" aria-label="Orange" role="radio" style="--sw:#ea580c"></button>
+                                <button data-accent="#16a34a" title="Green" aria-label="Green" role="radio" style="--sw:#16a34a"></button>
+                                <button data-accent="#0d9488" title="Teal" aria-label="Teal" role="radio" style="--sw:#0d9488"></button>
+                                <label class="accent-custom" title="Any color">
+                                    <input type="color" id="cust-accent-pick" value="#2563eb" aria-label="Pick any accent color">
+                                </label>
+                            </div>
                         </div>
-                    </div>
-                    <div class="set-row">
-                        <span class="set-label" id="set-accent-label">Accent color</span>
-                        <div id="cust-accent" class="accent-swatches" role="radiogroup" aria-labelledby="set-accent-label">
-                            <button data-accent="#2563eb" title="Blue" aria-label="Blue" role="radio" style="--sw:#2563eb"></button>
-                            <button data-accent="#7c3aed" title="Violet" aria-label="Violet" role="radio" style="--sw:#7c3aed"></button>
-                            <button data-accent="#db2777" title="Pink" aria-label="Pink" role="radio" style="--sw:#db2777"></button>
-                            <button data-accent="#dc2626" title="Red" aria-label="Red" role="radio" style="--sw:#dc2626"></button>
-                            <button data-accent="#ea580c" title="Orange" aria-label="Orange" role="radio" style="--sw:#ea580c"></button>
-                            <button data-accent="#16a34a" title="Green" aria-label="Green" role="radio" style="--sw:#16a34a"></button>
-                            <button data-accent="#0d9488" title="Teal" aria-label="Teal" role="radio" style="--sw:#0d9488"></button>
-                            <label class="accent-custom" title="Any color">
-                                <input type="color" id="cust-accent-pick" value="#2563eb" aria-label="Pick any accent color">
-                            </label>
+                        <div class="set-row">
+                            <span class="set-label" id="set-surround-label">Behind photos
+                                <small>The color around a photo affects how you judge it</small></span>
+                            <div class="seg" role="radiogroup" aria-labelledby="set-surround-label">
+                                <label><input type="radio" name="set-surround" value="auto"><span>Theme</span></label>
+                                <label><input type="radio" name="set-surround" value="black"><span>Black</span></label>
+                                <label><input type="radio" name="set-surround" value="grey"><span>Gray</span></label>
+                                <label><input type="radio" name="set-surround" value="light"><span>Light</span></label>
+                            </div>
                         </div>
-                    </div>
-                    <div class="set-row">
-                        <span class="set-label" id="set-density-label">Density</span>
-                        <div class="seg" role="radiogroup" aria-labelledby="set-density-label">
-                            <label><input type="radio" name="set-density" value="compact"><span>Compact</span></label>
-                            <label><input type="radio" name="set-density" value="comfortable"><span>Comfortable</span></label>
+                        <h4 class="set-group native-only">Window</h4>
+                        <div id="set-backdrop-row" class="set-row native-only">
+                            <span class="set-label" id="set-backdrop-label">Window background
+                                <small id="set-backdrop-help">Your desktop shows softly through jEditor, like the Start menu. Photos stay solid.</small></span>
+                            <div class="seg" role="radiogroup" aria-labelledby="set-backdrop-label">
+                                <label><input type="radio" name="set-backdrop" value="none"><span>Solid</span></label>
+                                <label><input type="radio" name="set-backdrop" value="mica"><span>Mica</span></label>
+                                <label><input type="radio" name="set-backdrop" value="acrylic"><span>Acrylic</span></label>
+                            </div>
                         </div>
-                    </div>
-                    <div class="set-row">
-                        <label class="set-label" for="cust-scale">Toolbar size</label>
-                        <span class="set-range">
-                            <input type="range" id="cust-scale" min="0.8" max="1.6" step="0.1" value="1">
-                            <output id="cust-scale-out" for="cust-scale">100%</output>
-                        </span>
-                    </div>
-                    <div class="set-row">
-                        <span class="set-label" id="set-glass-label">Glass
-                            <small>Subtle is faster on older computers</small></span>
-                        <div class="seg" role="radiogroup" aria-labelledby="set-glass-label">
-                            <label><input type="radio" name="set-glass" value="rich"><span>Rich</span></label>
-                            <label><input type="radio" name="set-glass" value="subtle"><span>Subtle</span></label>
+                        <div id="set-transparency-row" class="set-row native-only">
+                            <label class="set-label" for="cust-transparency">Transparency
+                                <small>How much of the window background shows through</small></label>
+                            <span class="set-range">
+                                <input type="range" id="cust-transparency" min="10" max="100" step="5" value="50">
+                                <output id="cust-transparency-out" for="cust-transparency">50%</output>
+                            </span>
                         </div>
-                    </div>
-                    <div id="set-backdrop-row" class="set-row native-only">
-                        <span class="set-label" id="set-backdrop-label">Window background
-                            <small id="set-backdrop-help">Your desktop shows softly through jEditor, like the Start menu. Photos stay solid.</small></span>
-                        <div class="seg" role="radiogroup" aria-labelledby="set-backdrop-label">
-                            <label><input type="radio" name="set-backdrop" value="none"><span>Solid</span></label>
-                            <label><input type="radio" name="set-backdrop" value="mica"><span>Mica</span></label>
-                            <label><input type="radio" name="set-backdrop" value="acrylic"><span>Acrylic</span></label>
+                        <h4 class="set-group">Look</h4>
+                        <div class="set-row">
+                            <span class="set-label" id="set-glass-label">Glass
+                                <small>Subtle is faster on older computers</small></span>
+                            <div class="seg" role="radiogroup" aria-labelledby="set-glass-label">
+                                <label><input type="radio" name="set-glass" value="rich"><span>Rich</span></label>
+                                <label><input type="radio" name="set-glass" value="subtle"><span>Subtle</span></label>
+                            </div>
                         </div>
-                    </div>
-                    <div id="set-transparency-row" class="set-row native-only">
-                        <label class="set-label" for="cust-transparency">Transparency
-                            <small>How much of the window background shows through</small></label>
-                        <span class="set-range">
-                            <input type="range" id="cust-transparency" min="10" max="100" step="5" value="50">
-                            <output id="cust-transparency-out" for="cust-transparency">50%</output>
-                        </span>
-                    </div>
-                </section>
+                        <div class="set-row">
+                            <span class="set-label" id="set-density-label">Density</span>
+                            <div class="seg" role="radiogroup" aria-labelledby="set-density-label">
+                                <label><input type="radio" name="set-density" value="compact"><span>Compact</span></label>
+                                <label><input type="radio" name="set-density" value="comfortable"><span>Comfortable</span></label>
+                            </div>
+                        </div>
+                        <div class="set-row">
+                            <label class="set-label" for="cust-scale">Toolbar size</label>
+                            <span class="set-range">
+                                <input type="range" id="cust-scale" min="0.8" max="1.6" step="0.1" value="1">
+                                <output id="cust-scale-out" for="cust-scale">100%</output>
+                            </span>
+                        </div>
+                    </section>
 
-                <section class="settings-section" aria-labelledby="set-h-messages">
-                    <h3 id="set-h-messages" class="section-label">Messages</h3>
-                    <p class="set-help">The messages that pop up after you do something. Errors and warnings always show.</p>
-                    <div id="cust-toasts"></div>
-                </section>
+                    <section id="set-page-toolbar" class="settings-section" data-page="toolbar" role="tabpanel" aria-labelledby="set-h-header">
+                        <h3 id="set-h-header" class="settings-page-title">Toolbar &amp; keys</h3>
+                        <h4 class="set-group">Keyboard</h4>
+                        <div class="set-row">
+                            <span class="set-label">Keyboard shortcuts
+                                <small>Change any key, or switch to a profile like Lightroom's</small></span>
+                            <button id="cust-shortcuts" class="btn secondary">Edit shortcuts…</button>
+                        </div>
+                        <h4 class="set-group">Layout</h4>
+                        <div class="set-row">
+                            <label class="set-label" for="cust-vertical">Vertical toolbar</label>
+                            <input type="checkbox" id="cust-vertical" class="switch">
+                        </div>
+                        <div class="set-row">
+                            <label class="set-label" for="cust-single-controls">Buttons above the film strip
+                                <small>Previous, rotate and next in single view. They fade when not in use; the keyboard shortcuts work either way.</small></label>
+                            <input type="checkbox" id="cust-single-controls" class="switch">
+                        </div>
+                        <h4 class="set-group">Toolbar buttons</h4>
+                        <p class="set-help">Drag to reorder, or focus a row and press <kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd>. Choose which buttons show in the toolbar, which go under <b>More</b>, and which are hidden.</p>
+                        <ul id="customize-list" class="customize-list"></ul>
+                        <div class="set-row set-row-end">
+                            <button id="cust-reset" class="btn ghost sm">Reset toolbar layout</button>
+                        </div>
+                    </section>
 
-                <section class="settings-section" aria-labelledby="set-h-folder">
-                    <h3 id="set-h-folder" class="section-label">Folder</h3>
-                    <div class="set-row">
-                        <label class="set-label" for="cust-auto-check">Watch the folder for changes
-                            <small>Photos a scanner saves, or that are removed or edited elsewhere, show up on their own</small></label>
-                        <input type="checkbox" id="cust-auto-check" class="switch">
-                    </div>
-                    <div class="set-row">
-                        <label class="set-label" for="cust-folder-cache"><span data-native-text="Keep a thumbnail cache">Save cache in the folder</span>
-                            <small data-native-text="Thumbnails are kept on this PC, so a project opens fast the next time">Thumbnails go in .jeditor, so any computer that opens the project later starts fast</small></label>
-                        <input type="checkbox" id="cust-folder-cache" class="switch">
-                    </div>
-                    <div class="set-row">
-                        <span class="set-label"><span data-native-text="Clean up this project">Clean up this folder</span>
-                            <small data-native-text="Removes what jEditor keeps on this PC for the open order: cache, flags and Auto crop originals. Photos aren't touched.">Empties the trash and removes the cache, flags and Auto crop originals. Photos aren't touched.</small></span>
-                        <button id="cust-cleanup" class="btn secondary danger-text">Clean up…</button>
-                    </div>
-                    <div class="set-row native-only">
-                        <span class="set-label">Stored projects
-                            <small>What jEditor keeps on this PC for each project you've opened, and how much room it takes</small></span>
-                        <button id="cust-stored" class="btn secondary">Manage…</button>
-                    </div>
-                </section>
+                    <section id="set-page-messages" class="settings-section" data-page="messages" role="tabpanel" aria-labelledby="set-h-messages">
+                        <h3 id="set-h-messages" class="settings-page-title">Messages</h3>
+                        <p class="set-help">The messages that pop up after you do something. Errors and warnings always show.</p>
+                        <div id="cust-toasts"></div>
+                    </section>
 
-                <section class="settings-section" aria-labelledby="set-h-autocrop">
-                    <h3 id="set-h-autocrop" class="section-label">Auto crop</h3>
-                    <div class="set-row">
-                        <label class="set-label" for="crop-log-on">Keep scans to improve Auto crop
-                            <small>When you save a crop on a photo Auto was used on, the scan and where you cropped it are kept on this PC (up to 1 GB), so a better Auto can be tested on real scans</small></label>
-                        <input type="checkbox" id="crop-log-on" class="switch">
-                    </div>
-                    <div class="set-row">
-                        <span class="set-label">Test scans
-                            <small id="crop-log-count">None kept yet</small></span>
-                        <span class="set-buttons">
-                            <button id="crop-log-export" class="btn secondary">Export…</button>
-                            <button id="crop-log-clear" class="btn secondary danger-text">Clear…</button>
-                        </span>
-                    </div>
-                </section>
+                    <section id="set-page-autocrop" class="settings-section" data-page="autocrop" role="tabpanel" aria-labelledby="set-h-autocrop">
+                        <h3 id="set-h-autocrop" class="settings-page-title">Auto crop</h3>
+                        <div class="set-row">
+                            <label class="set-label" for="crop-log-on">Keep scans to improve Auto crop
+                                <small>When you save a crop on a photo Auto was used on, the scan and where you cropped it are kept on this PC (up to 1 GB), so a better Auto can be tested on real scans</small></label>
+                            <input type="checkbox" id="crop-log-on" class="switch">
+                        </div>
+                        <div class="set-row">
+                            <span class="set-label">Test scans
+                                <small id="crop-log-count">None kept yet</small></span>
+                            <span class="set-buttons">
+                                <button id="crop-log-export" class="btn secondary">Export…</button>
+                                <button id="crop-log-clear" class="btn secondary danger-text">Clear…</button>
+                            </span>
+                        </div>
+                    </section>
 
-                <section class="settings-section native-only" aria-labelledby="set-h-updates">
-                    <h3 id="set-h-updates" class="section-label">Updates</h3>
-                    <div class="set-row">
-                        <span class="set-label">jEditor <span id="upd-version"></span>
-                            <small id="upd-status">Not checked yet</small></span>
-                        <button id="upd-check" class="btn secondary">Check for updates</button>
-                    </div>
-                    <div class="set-row">
-                        <label class="set-label" for="upd-auto">Check for updates automatically
-                            <small>Once a day, when jEditor starts</small></label>
-                        <input type="checkbox" id="upd-auto" class="switch">
-                    </div>
-                    <div class="set-row">
-                        <span class="set-label">Log
-                            <small>What jEditor did, step by step (scans, updates): for when something goes wrong</small></span>
-                        <button id="upd-log" class="btn secondary">Show log</button>
-                    </div>
-                </section>
+                    <section id="set-page-projects" class="settings-section" data-page="projects" role="tabpanel" aria-labelledby="set-h-folder">
+                        <h3 id="set-h-folder" class="settings-page-title">Projects</h3>
+                        <div class="set-row">
+                            <label class="set-label" for="cust-auto-check">Watch the folder for changes
+                                <small>Photos a scanner saves, or that are removed or edited elsewhere, show up on their own</small></label>
+                            <input type="checkbox" id="cust-auto-check" class="switch">
+                        </div>
+                        <div class="set-row">
+                            <label class="set-label" for="cust-folder-cache"><span data-native-text="Keep a thumbnail cache">Save cache in the folder</span>
+                                <small data-native-text="Thumbnails are kept on this PC, so a project opens fast the next time">Thumbnails go in .jeditor, so any computer that opens the project later starts fast</small></label>
+                            <input type="checkbox" id="cust-folder-cache" class="switch">
+                        </div>
+                        <h4 class="set-group">Storage</h4>
+                        <div class="set-row native-only">
+                            <span class="set-label">Stored projects
+                                <small>What jEditor keeps on this PC for each project you've opened, and how much room it takes</small></span>
+                            <button id="cust-stored" class="btn secondary">Manage…</button>
+                        </div>
+                        <div class="set-row">
+                            <span class="set-label"><span data-native-text="Clean up this project">Clean up this folder</span>
+                                <small data-native-text="Removes what jEditor keeps on this PC for the open project: cache, flags and Auto crop originals. Photos aren't touched.">Empties the trash and removes the cache, flags and Auto crop originals. Photos aren't touched.</small></span>
+                            <button id="cust-cleanup" class="btn secondary danger-text">Clean up…</button>
+                        </div>
+                    </section>
 
-                <section class="settings-section" aria-labelledby="set-h-header">
-                    <h3 id="set-h-header" class="section-label">Toolbar buttons</h3>
-                    <p class="set-help">Drag to reorder, or focus a row and press <kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd>. Choose which buttons show in the toolbar, which go under <b>More</b>, and which are hidden.</p>
-                    <ul id="customize-list" class="customize-list"></ul>
-                    <div class="set-row">
-                        <label class="set-label" for="cust-single-controls">Buttons above the film strip
-                            <small>Previous, rotate and next in single view. They fade when not in use; the keyboard shortcuts work either way.</small></label>
-                        <input type="checkbox" id="cust-single-controls" class="switch">
-                    </div>
-                    <div class="set-row">
-                        <label class="set-label" for="cust-vertical">Vertical toolbar</label>
-                        <input type="checkbox" id="cust-vertical" class="switch">
-                    </div>
-                    <button id="cust-reset" class="btn ghost">Reset toolbar layout</button>
-                </section>
+                    <section id="set-page-updates" class="settings-section native-only" data-page="updates" role="tabpanel" aria-labelledby="set-h-updates">
+                        <h3 id="set-h-updates" class="settings-page-title">Updates</h3>
+                        <div class="set-row">
+                            <span class="set-label">jEditor <span id="upd-version"></span>
+                                <small id="upd-status">Not checked yet</small></span>
+                            <button id="upd-check" class="btn secondary">Check for updates</button>
+                        </div>
+                        <div class="set-row">
+                            <label class="set-label" for="upd-auto">Check for updates automatically
+                                <small>Once a day, when jEditor starts</small></label>
+                            <input type="checkbox" id="upd-auto" class="switch">
+                        </div>
+                        <h4 class="set-group">Troubleshooting</h4>
+                        <div class="set-row">
+                            <span class="set-label">Log
+                                <small>What jEditor did, step by step (scans, updates): for when something goes wrong</small></span>
+                            <button id="upd-log" class="btn secondary">Show log</button>
+                        </div>
+                    </section>
+                </div>
             </div>
             <div class="dialog-foot">
-                <button id="cust-shortcuts" class="btn ghost">Keyboard shortcuts…</button>
                 <span class="dialog-actions">
                     <button id="settings-done" class="btn primary">Done</button>
                 </span>

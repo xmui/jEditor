@@ -711,6 +711,11 @@ body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
     display: none;
 }
 
+/* Off center, beside the size slider, rather than give up its labels */
+.interface[data-fit~="sel-aside"]:not(.edits-on) .selection-bar {
+    right: calc(var(--gutter) + var(--size-room, 220px) + var(--sp-2));
+}
+
 .interface[data-fit~="sel-icons"] .selection-bar .tb-btn.labelled span {
     display: none;
 }
@@ -837,16 +842,37 @@ body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
     display: inline-flex;
 }
 
-/* Opened on a narrow window: wraps onto more rows, right-aligned,
-   instead of running off the left edge */
+/* Opened: its buttons go on rows under the usual ones, as wide as the
+   pill was (--hc-w, set as it opens), rather than out over the file pill */
 .header-controls.expanded:not(.vertical) {
     flex-wrap: wrap;
     justify-content: flex-end;
+    width: var(--hc-w, auto);
     height: auto;
     min-height: var(--ctl-lg);
-    max-width: calc((100vw - 2 * var(--gutter)) / var(--ui-scale, 1));
     padding: 3px var(--sp-1);
     border-radius: calc(var(--ctl-lg) / 2);
+}
+
+.header-controls.expanded:not(.vertical) .hc-more {
+    order: 1;
+}
+
+/* Over the folder list where it overlays the grid (narrow windows) */
+header:has(.header-controls.expanded) {
+    z-index: calc(var(--z-floating) + 3);
+}
+
+.header-controls.expanded:not(.vertical)::after {
+    content: '';
+    order: 2;
+    flex-basis: 100%;
+    height: 0;
+}
+
+.header-controls.expanded:not(.vertical) .hc-extra,
+.header-controls.expanded:not(.vertical) [data-squeezed] {
+    order: 3;
 }
 
 .header-controls.expanded .hc-more {
@@ -1154,10 +1180,8 @@ body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
     100% { box-shadow: 0 0 0 0 transparent; }
 }
 
-/* Empty and no-match states */
-.grid-view.grid-empty::after,
-.grid-view.grid-empty-project::after,
-.grid-view.grid-no-match::after {
+/* Empty and no-match states (App.emptyState): why, and the way out */
+.grid-empty-box {
     grid-column: 1 / -1;
     justify-self: center;
     max-width: 380px;
@@ -1171,20 +1195,20 @@ body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
     border-radius: var(--r-lg);
 }
 
-.grid-view.grid-empty::after {
-    content: 'No photos here yet. Drag photos onto this folder in the folder list, or select some in All photos and press M.';
+/* Photos came in since (scanned, added in Explorer) */
+.grid-view:not(.grid-empty):not(.grid-empty-project):not(.grid-no-match) .grid-empty-box {
+    display: none;
 }
 
-.grid-view.grid-empty-project::after {
-    content: 'No photos here yet. Add some in Explorer, or drop them here, and they show up as they arrive.';
+.grid-empty-box p {
+    margin: 0;
 }
 
-html.native .grid-view.grid-empty-project::after {
-    content: 'No photos here yet. Scan into this project (Scan, at the top), or add photos in Explorer: they show up as they arrive.';
-}
-
-.grid-view.grid-no-match::after {
-    content: 'No photos match. Clear the search or the flag filter (× in the folder pill) to see everything.';
+.grid-empty-actions {
+    display: flex;
+    justify-content: center;
+    gap: var(--sp-2);
+    margin-top: var(--sp-4);
 }
 
 /* A subfolder in the grid: up to four of its photos and its name */
@@ -1817,12 +1841,6 @@ body[data-view="single"] .edits-bar {
     cursor: inherit;
 }
 
-.fr-hint {
-    margin: var(--sp-2) var(--sp-2) var(--sp-1);
-    color: var(--text-2);
-    font-size: var(--fs-small);
-    line-height: 1.5;
-}
 
 /* Folder list foot: the total of what's shown, then New folder */
 .fr-foot {
@@ -2280,6 +2298,12 @@ body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) {
     --toast-left: var(--rail-room);
 }
 
+/* Single view on a narrow window: above the prev / rotate / next pill
+   rather than into it (fit.js) */
+body[data-view="single"]:has(#main-interface[data-fit~="toast-up"]:not(.hidden)) {
+    --toast-bottom: calc(var(--strip-height, 80px) + 28px + var(--gutter) + var(--ctl-lg) + var(--sp-2));
+}
+
 /* Grid with the edits bar up above the slider (fit.js): above that too */
 body[data-view="grid"]:has(#main-interface.edits-on[data-fit~="edits-stacked"]:not(.hidden)) {
     --toast-bottom: calc(var(--gutter) + 2 * var(--ctl-lg) + var(--sp-2) + var(--sp-3));
@@ -2669,21 +2693,128 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     height: var(--ctl-lg);
 }
 
-/* Settings */
+/* Settings: the pages on the left, one page at a time on the right, at
+   one size so switching pages doesn't make it jump */
 .dialog.settings-card {
-    width: min(620px, 100%);
+    width: min(820px, 100%);
+    height: min(640px, 100%);
+}
+
+.settings-main {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.settings-nav {
+    display: flex;
+    flex-direction: column;
+    flex: none;
+    gap: 2px;
+    width: 190px;
+    padding: var(--sp-3);
+    border-right: 1px solid var(--border-subtle);
+}
+
+.settings-nav button {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    height: 36px;
+    padding: 0 var(--sp-3);
+    border: none;
+    border-radius: var(--r-md);
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-weight: var(--fw-medium);
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.settings-nav button .i {
+    flex: none;
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+}
+
+.settings-nav button:hover {
+    background: var(--tb-hover);
+    color: var(--text-1);
+}
+
+.settings-nav button[aria-selected="true"] {
+    background: var(--accent-soft);
+    color: var(--accent-text);
 }
 
 .settings-body {
-    padding-top: var(--sp-2);
+    flex: 1 1 auto;
+    padding: var(--sp-4) var(--sp-5) var(--sp-5);
 }
 
-.settings-section {
-    padding: var(--sp-4) 0 var(--sp-2);
+.settings-section:not(.active) {
+    display: none;
 }
 
-.settings-section + .settings-section {
+.settings-page-title {
+    margin: 0 0 var(--sp-2);
+    font-size: var(--fs-title, 17px);
+    font-weight: var(--fw-semibold);
+    color: var(--text-1);
+}
+
+/* A few settings that go together, under a small heading */
+.set-group {
+    margin: var(--sp-4) 0 0;
+    padding-top: var(--sp-3);
     border-top: 1px solid var(--border-subtle);
+    color: var(--text-3);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-semibold);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.settings-page-title + .set-group {
+    margin-top: var(--sp-2);
+    padding-top: 0;
+    border-top: none;
+}
+
+/* Done on the right, alone */
+.settings-card .dialog-foot {
+    justify-content: flex-end;
+}
+
+.set-row-end {
+    justify-content: flex-end;
+    min-height: 0;
+}
+
+/* Narrow: the pages in a row across the top */
+@media (max-width: 700px) {
+    .settings-main {
+        flex-direction: column;
+    }
+    .settings-nav {
+        flex-direction: row;
+        width: auto;
+        overflow-x: auto;
+        padding: var(--sp-2) var(--sp-3);
+        border-right: none;
+        border-bottom: 1px solid var(--border-subtle);
+        scrollbar-width: none;
+    }
+    .settings-nav button {
+        flex: none;
+        height: 32px;
+    }
+    .settings-nav button .i {
+        display: none;
+    }
 }
 
 .set-row {
@@ -4014,11 +4145,17 @@ body.dragging-photos .folder-tile:hover {
     .crop-tip {
         display: none;
     }
+    /* The tools above; Cancel, Save & next and Save together on the last row */
     .crop-spacer {
+        order: 1;
         flex-basis: 100%;
         height: 0;
     }
+    #crop-cancel {
+        order: 2;
+    }
     .crop-commit {
+        order: 3;
         flex: 1;
         justify-content: flex-end;
     }
@@ -4956,6 +5093,7 @@ html.native {
     display: flex;
     align-items: center;
     gap: var(--sp-2);
+    min-width: 0;
     font-weight: var(--fw-semibold);
 }
 
@@ -4971,25 +5109,33 @@ html.native {
     color: var(--accent-text);
 }
 
-.sb-card-name[data-rename] span {
-    user-select: none; /* a double-click renames, rather than selecting the name */
-}
-
-/* Rename: a pencil by the name on hover, as by a photo's name */
-.sb-card-edit {
-    display: inline-flex;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 22px;
-    margin-left: calc(-1 * var(--sp-1));
-    padding: 0;
+/* The name renames on a click, as the file name in the top pill: a pill
+   behind it and a pencil by it on hover */
+button.sb-card-name {
+    width: calc(100% + 2 * var(--sp-2));
+    height: 28px;
+    margin: -4px calc(-1 * var(--sp-2));
+    padding: 0 var(--sp-2);
     border: none;
     border-radius: var(--r-pill);
     background: transparent;
-    color: var(--text-2);
+    color: inherit;
+    font: inherit;
+    font-weight: var(--fw-semibold);
+    text-align: left;
     cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+button.sb-card-name:hover {
+    background: var(--tb-hover);
+}
+
+.sb-card-name .sb-card-edit {
+    display: inline-flex;
+    flex-shrink: 0;
+    margin-left: calc(-1 * var(--sp-1));
+    color: var(--text-2);
     opacity: 0;
     transition: opacity var(--dur-fast) var(--ease-out);
 }
@@ -4999,13 +5145,8 @@ html.native {
     height: 14px;
 }
 
-.sb-card-edit:hover {
-    background: var(--tb-hover);
-    color: var(--text-1);
-}
-
-.sb-card-name:hover .sb-card-edit,
-.sb-card-edit:focus-visible {
+button.sb-card-name:hover .sb-card-edit,
+button.sb-card-name:focus-visible .sb-card-edit {
     opacity: 1;
 }
 

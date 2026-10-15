@@ -82,11 +82,6 @@ const Places = {
                 this.drawProjects();
             });
         }
-        this.el('sb-card').addEventListener('dblclick', (e) => {
-            // (not the pencil, which renames on its first click)
-            if (e.target.closest('.sb-card-edit') || UI.isOpen()) return;
-            if (e.target.closest('.sb-card-name[data-rename]')) this.cardAction('rename');
-        });
         this.el('sb-card').addEventListener('click', (e) => {
             const b = e.target.closest('button[data-act]');
             if (b) this.cardAction(b.dataset.act);
@@ -190,8 +185,7 @@ const Places = {
             ? `<button class="btn secondary sm sb-new" data-act="newproject" title="Make a new folder in ${this.esc(dirName)} and open it">${this.icons.plus}New project</button>` +
               `<input class="field sm sb-search" type="search" placeholder="Search projects" value="${this.esc(this.query)}" aria-label="Search projects" spellcheck="false" autocomplete="off">` +
               `<div class="sb-projects">${await this.projectRows()}</div>`
-            : `<button class="btn secondary sb-choose" data-act="choose">Choose your projects folder…</button>` +
-              `<p class="sb-help">The folder your projects are in. Each folder in it is listed here, newest first.</p>`;
+            : `<button class="btn secondary sb-choose" data-act="choose" title="The folder your projects are in: each folder in it is listed here, newest first">Choose your projects folder…</button>`;
         const elsewhere = await this.elsewhereRows();
 
         const pins = await this.pinRows();
@@ -199,7 +193,8 @@ const Places = {
         return section('projects', 'Projects',
             dir ? `<button class="sb-sec-link" data-act="choose" title="${this.esc(dir)} — click to choose another folder">${this.esc(dirName)}</button>` : '',
             projects + (elsewhere ? `<div class="sb-sub">Opened from elsewhere</div>${elsewhere}` : '')) +
-            section('pinned', 'Pinned', '', pins || '<p class="sb-help">Pin folders you use often with the pin by their name. Explorer\'s pinned folders show here too.</p>') +
+            // Nothing pinned yet: no section (the pin by a folder's name adds one)
+            (pins ? section('pinned', 'Pinned', '', pins) : '') +
             section('pc', 'This PC', '', drives || '<p class="sb-help">No drives found</p>');
     },
 
@@ -215,8 +210,7 @@ const Places = {
     row({ path, name, icon, depth = 0, caret = false, open = false, meta = '', count = false, cls = '', title = '', act = 'open', pin = null, extra = '' }) {
         const k = this.key(path);
         const cur = this.key(this.current()) === k;
-        const c = count ? this.counts.get(k) : undefined;
-        const countText = c === undefined ? '' : c < 0 ? '' : c >= (this.limit || 1000) ? `${c.toLocaleString()}+` : c.toLocaleString();
+        const countText = count ? this.countText(path) : '';
         return `<div class="fr-row sb-row${cur ? ' active' : ''} ${cls}" style="--depth:${depth}" data-path="${this.esc(path)}">` +
             (caret ? `<button class="fr-caret${open ? ' open' : ''}" data-act="toggle" tabindex="-1" title="${open ? 'Fold' : 'Show what\'s inside'}">${this.icons.caret}</button>` : '<span class="fr-caret fr-spacer"></span>') +
             `<button class="sb-main" data-act="${act}" title="${this.esc((title || path) + (act === 'open' ? ' — Ctrl+click opens it in a new window' : ''))}"><span class="sb-icon">${icon}</span><span class="fr-name">${this.esc(name)}</span></button>` +
@@ -338,11 +332,20 @@ const Places = {
     fillCounts() {
         for (const box of this.boxes) {
             box.querySelectorAll('[data-count]').forEach(s => {
-                const c = this.counts.get(this.key(s.dataset.count));
-                if (c === undefined || c < 0) return;
-                s.textContent = c >= (this.limit || 1000) ? `${c.toLocaleString()}+` : c.toLocaleString();
+                const t = this.countText(s.dataset.count);
+                if (t) s.textContent = t;
             });
         }
+    },
+
+    // Photos in a folder: counting stops at the limit ("1,000+"), but the
+    // open project's are all known, so it has its real number
+    countText(path) {
+        const k = this.key(path);
+        if (k === this.key(this.current()) && !this.app.isLoading && this.app.files.length) return this.app.files.length.toLocaleString();
+        const c = this.counts.get(k);
+        if (c === undefined || c < 0) return '';
+        return c >= (this.limit || 1000) ? `${c.toLocaleString()}+` : c.toLocaleString();
     },
 
     // ---- The open project's card ----
@@ -361,9 +364,10 @@ const Places = {
         for (const f of app.files) bytes += f.size || 0;
         const n = app.files.length;
         card.innerHTML =
-            // The name: double-click it (or its pencil, on hover) to rename
-            `<div class="sb-card-name"${path ? ' data-rename="1"' : ''} title="${this.esc(app.dirHandle.name)}${path ? ' (double-click to rename)' : ''}">${this.icons.project}<span>${this.esc(app.dirHandle.name)}</span>` +
-            (path ? `<button class="sb-card-edit" data-act="rename" title="Rename this project" aria-label="Rename this project">${this.icons.rename}</button>` : '') + `</div>` +
+            // The name, as the file name in the top pill: click it to rename
+            (path
+                ? `<button class="sb-card-name" data-act="rename" title="${this.esc(app.dirHandle.name)} — click to rename">${this.icons.project}<span>${this.esc(app.dirHandle.name)}</span><span class="sb-card-edit" aria-hidden="true">${this.icons.rename}</span></button>`
+                : `<div class="sb-card-name" title="${this.esc(app.dirHandle.name)}">${this.icons.project}<span>${this.esc(app.dirHandle.name)}</span></div>`) +
             (path ? `<div class="sb-card-path" title="${this.esc(path)}">${this.esc(path)}</div>` : '') +
             `<div class="sb-card-meta">${n.toLocaleString()} photo${n === 1 ? '' : 's'} · ${app.formatBytes(bytes)}</div>` +
             `<div class="sb-card-btns">` +

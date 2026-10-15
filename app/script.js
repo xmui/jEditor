@@ -222,6 +222,13 @@ const app = {
 
         // Header pill: More expander, fullscreen, settings
         this.elements.btnMore.addEventListener('click', () => {
+            // Opened, it keeps its width: the rest go on rows underneath (style.css)
+            const hc = this.elements.headerControls;
+            if (!hc.classList.contains('expanded')) {
+                if (typeof Fit !== 'undefined') Fit.run();
+                const zoom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1;
+                hc.style.setProperty('--hc-w', `${hc.getBoundingClientRect().width / zoom}px`);
+            }
             const open = this.elements.headerControls.classList.toggle('expanded');
             this.elements.btnMore.setAttribute('aria-expanded', String(open));
         });
@@ -647,6 +654,22 @@ const app = {
             e.stopPropagation();
             this.toggleCustomizePanel(false);
         });
+        // A page at a time, chosen on the left (arrow keys move between them)
+        const nav = panel.querySelector('.settings-nav');
+        nav.addEventListener('click', (e) => {
+            const b = e.target.closest('button[data-page]');
+            if (b) this.showSettingsPage(b.dataset.page);
+        });
+        nav.addEventListener('keydown', (e) => {
+            if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+            const tabs = this.settingsPages().map(id => nav.querySelector(`[data-page="${id}"]`));
+            const i = tabs.indexOf(document.activeElement);
+            const to = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1
+                : (i + (e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 1) + tabs.length) % tabs.length;
+            e.preventDefault();
+            this.showSettingsPage(tabs[to].dataset.page);
+            tabs[to].focus();
+        });
 
         // Appearance: one radio group per setting, applied as you pick
         for (const key of Object.keys(this.APPEARANCE)) {
@@ -755,12 +778,38 @@ const app = {
 
     // Opens or closes Settings (the name is from when it was a small
     // "Customize" panel under the header)
-    toggleCustomizePanel(force = null) {
+    toggleCustomizePanel(force = null, page = null) {
         const panel = this.elements.customizePanel;
         const open = force !== null ? force : panel.classList.contains('hidden');
         panel.classList.toggle('hidden', !open);
         this.elements.headerControls.classList.remove('expanded');
-        if (open) this.renderCustomizePanel();
+        if (open) {
+            this.renderCustomizePanel();
+            let last = null;
+            try { last = localStorage.getItem('jeditor.settingsPage'); } catch (e) { /* private mode */ }
+            this.showSettingsPage(page || last || 'appearance');
+        }
+    },
+
+    // The Settings pages there are (Updates: the Windows app only)
+    settingsPages() {
+        return [...this.elements.customizePanel.querySelectorAll('.settings-nav button[data-page]')]
+            .filter(b => getComputedStyle(b).display !== 'none')
+            .map(b => b.dataset.page);
+    },
+
+    showSettingsPage(page) {
+        const panel = this.elements.customizePanel;
+        const pages = this.settingsPages();
+        if (!pages.includes(page)) page = pages[0];
+        panel.querySelectorAll('.settings-nav button[data-page]').forEach(b => {
+            const on = b.dataset.page === page;
+            b.setAttribute('aria-selected', String(on));
+            b.tabIndex = on ? 0 : -1;
+        });
+        panel.querySelectorAll('.settings-section[data-page]').forEach(sec => sec.classList.toggle('active', sec.dataset.page === page));
+        panel.querySelector('.settings-body').scrollTop = 0;
+        try { localStorage.setItem('jeditor.settingsPage', page); } catch (e) { /* private mode */ }
     },
 
     renderCustomizePanel() {
@@ -1147,6 +1196,51 @@ const app = {
                 this.updateImageTransform();
             }
         }
+    },
+
+    // An empty grid says why, with a button for the way out
+    emptyState(files, folderTiles) {
+        if (files.length || folderTiles.length) return null;
+        const grid = this.elements.gridView.classList;
+        const native = document.documentElement.classList.contains('native');
+        let text, actions = [];
+        if (grid.contains('grid-no-match')) {
+            text = 'No photos match the search or the flag filter.';
+            actions.push(['Clear search', () => {
+                const input = document.getElementById('fb-search');
+                if (input) input.value = '';
+                if (Flags.filter) Flags.setFilter(null);
+                Flags.setQuery('');
+            }, true]);
+        } else if (grid.contains('grid-empty-project')) {
+            text = native
+                ? 'No photos here yet. Scan into this project, or add photos in Explorer: they show up as they arrive.'
+                : 'No photos here yet. Add some in Explorer, or drop them here, and they show up as they arrive.';
+            if (native && typeof Scan !== 'undefined') actions.push(['Scan', () => Scan.open(), true]);
+            const path = typeof Places !== 'undefined' && Places.current();
+            if (native && path) actions.push(['Show in Explorer', () => Places.native().reveal(path)]);
+        } else if (grid.contains('grid-empty')) {
+            text = 'No photos here yet. Drag photos onto this folder in the folder list, or select some in All photos and press M.';
+            actions.push(['All photos', () => Folders.setScope(null)]);
+        } else return null;
+        const box = document.createElement('div');
+        box.className = 'grid-empty-box';
+        const p = document.createElement('p');
+        p.textContent = text;
+        box.append(p);
+        if (actions.length) {
+            const row = document.createElement('div');
+            row.className = 'grid-empty-actions';
+            for (const [label, run, primary] of actions) {
+                const b = document.createElement('button');
+                b.className = `btn ${primary ? 'primary' : 'secondary'} sm`;
+                b.textContent = label;
+                b.addEventListener('click', (e) => { e.stopPropagation(); run(); });
+                row.append(b);
+            }
+            box.append(row);
+        }
+        return box;
     },
 
     // At odd quarter-turns the CSS-rotated image would overflow the
@@ -2300,6 +2394,8 @@ const app = {
         // A project with no photos at all yet
         this.elements.gridView.classList.toggle('grid-empty-project', !this.files.length && !folderTiles.length);
         this.elements.gridView.classList.toggle('grid-no-match', !files.length && Flags.active());
+        const empty = this.emptyState(files, folderTiles);
+        if (empty) this.elements.gridView.append(empty);
         Folders.render();
 
         // Chunked render: big folders paint the first screenfuls immediately
@@ -3564,6 +3660,8 @@ const app = {
             stack.setAttribute('role', 'status');
             stack.setAttribute('aria-live', 'polite');
             document.body.appendChild(stack);
+            // Kept clear of the single view's controls (fit.js)
+            if (typeof Fit !== 'undefined') Fit.watch(stack);
         }
         const live = [...stack.children].filter(t => !t.classList.contains('leaving'));
         let toast = key ? live.find(t => t.dataset.key === key) : null;
@@ -5288,6 +5386,9 @@ const app = {
             for (let i = idx + 1; i < view.length && !next && idx !== -1; i++) if (!set.has(view[i])) next = view[i];
             for (let i = idx - 1; i >= 0 && !next; i--) if (!set.has(view[i])) next = view[i];
         }
+        // The whole selection went (deleted, moved): the next photo is
+        // selected, so the selection bar stays and Delete goes on from there
+        const selectionGone = this.selection.size > 0 && [...this.selection].every(f => set.has(f));
         let w = 0;
         for (const f of this.files) if (!set.has(f)) this.files[w++] = f;
         this.files.length = w;
@@ -5313,6 +5414,7 @@ const app = {
                 this.loadFile(next);
             } else {
                 this.currentFile = next;
+                if (selectionGone) this.selection.add(next);
                 this.updateStatusBar();
             }
         }

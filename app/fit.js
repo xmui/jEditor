@@ -7,8 +7,8 @@
 //   top left); then header buttons go into More, least used first. The
 //   file pill moves off center when it has to, and the name gives way.
 //
-//   Bottom (grid): "not saved yet" (the count stays), the selection bar's
-//   labels, the edits bar up above the size slider, a shorter slider, the
+//   Bottom (grid): "not saved yet" (the count stays), the selection bar
+//   off center beside the slider, then its labels, the edits bar up above the size slider, a shorter slider, the
 //   separators, then the slider (Ctrl+wheel still sizes); last, the
 //   selection bar scrolls sideways.
 //
@@ -17,7 +17,7 @@
 
 const Fit = {
     TOP: ['sort-short', 'sort-icon', 'count-off'],
-    BOTTOM: ['edits-short', 'sel-icons', 'edits-stacked', 'size-short', 'sel-tight', 'size-off'],
+    BOTTOM: ['edits-short', 'sel-aside', 'sel-icons', 'edits-stacked', 'size-short', 'sel-tight', 'size-off'],
     // Into More first: the least used
     SQUEEZE: ['whatsnew', 'keys', 'dupes', 'fullscreen', 'strip', 'fit', 'customize', 'refresh', 'history', 'camera', 'info', 'scan', 'crop', 'view'],
     GAP: 12,       // between pills, screen pixels
@@ -32,8 +32,8 @@ const Fit = {
         if (!iface) return;
         const soon = () => this.soon();
         if (typeof ResizeObserver === 'function') {
-            const ro = new ResizeObserver(soon);
-            for (const id of ['main-interface', 'folder-bar', 'header-controls', 'selection-bar', 'edits-bar', 'grid-controls', 'file-name-text', 'selection-count', 'edits-text', 'fb-crumbs'])
+            const ro = this._ro = new ResizeObserver(soon);
+            for (const id of ['main-interface', 'folder-bar', 'header-controls', 'selection-bar', 'edits-bar', 'grid-controls', 'file-name-text', 'file-count', 'sort-mode', 'selection-count', 'edits-text', 'fb-crumbs', 'toast-stack'])
                 if (this.el(id)) ro.observe(this.el(id));
         }
         // Shown and hidden, the view, the folder list, More opened
@@ -44,6 +44,11 @@ const Fit = {
             if (this.el(id)) mo.observe(this.el(id), { attributes: true, attributeFilter: ['class'] });
         window.addEventListener('resize', soon);
         this.run();
+    },
+
+    // Something made later (the messages): watched as it changes size
+    watch(el) {
+        if (this._ro && el) this._ro.observe(el);
     },
 
     // Once a frame: observers fire in bursts
@@ -68,6 +73,7 @@ const Fit = {
         const set = () => { iface.dataset.fit = [...tokens].join(' '); };
         this.fitTop(iface, tokens, set);
         this.fitBottom(iface, tokens, set);
+        this.fitToasts(tokens);
         set();
         if (typeof Folders !== 'undefined' && Folders.fitBar) Folders.fitBar();
     },
@@ -146,6 +152,17 @@ const Fit = {
         if (!more) return;
         const any = hc.querySelector('.hc-extra:not(.hidden), [data-squeezed]');
         more.classList.toggle('hidden', !any);
+    },
+
+    // ---- Single view: messages beside the prev / rotate / next pill ----
+
+    // They share its row; when they'd run into it, they go up a row
+    fitToasts(tokens) {
+        const stack = this.el('toast-stack');
+        const controls = document.querySelector('#image-container .controls');
+        if (!stack || !controls || document.body.dataset.view !== 'single') return;
+        if (!stack.children.length || !this.shown(controls) || controls.classList.contains('off')) return;
+        if (stack.getBoundingClientRect().right + this.GAP > controls.getBoundingClientRect().left) tokens.add('toast-up');
     },
 
     // ---- Bottom: selection bar, edits bar and size slider in the grid ----

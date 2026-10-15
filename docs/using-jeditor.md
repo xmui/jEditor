@@ -14,7 +14,14 @@ To install it, see the [README](../README.md). The version number is shown on th
 
 Changes are saved to the original files as you go.
 
-**Settings** (the gear in the toolbar's **More** section, the link on the start screen, or `Ctrl+,`) has the theme (dark, light or match the system), the colour behind photos (black, grey or light, for judging colour), the accent colour, density (Compact or Comfortable), toolbar size and glass (Rich, or Subtle, which is faster on older computers). On Windows 11 (22H2 or later), **Window background** puts Mica or Acrylic behind jEditor, like the Start menu, so the desktop shows softly through the start screen and the grid; **Transparency** sets how much shows through. Photos, Crop and Duplicates stay solid, so colors are judged as before. It needs Windows' Transparency effects on (Settings → Personalization → Colors). It also chooses which buttons are in the toolbar.
+**Settings** (the gear in the toolbar's **More** section, the link on the start screen, or `Ctrl+,`) has a page for each kind of setting, chosen on the left; it opens on the last one you used.
+
+- **Appearance**: the theme (dark, light or match the system), the accent color and the color behind photos (black, gray or light, for judging color); on Windows 11 (22H2 or later), **Window background** puts Mica or Acrylic behind jEditor, like the Start menu, and **Transparency** sets how much of the desktop shows through (photos, Crop and Duplicates stay solid; it needs Windows' Transparency effects on, in Settings → Personalization → Colors); then glass (Rich, or Subtle, which is faster on older computers), density and toolbar size.
+- **Toolbar & keys**: keyboard shortcuts and their profiles, a vertical toolbar, the buttons above the film strip, and which buttons are in the toolbar.
+- **Messages**: which messages pop up after you do something.
+- **Auto crop**: keeping test scans to improve Auto crop, how many are kept, and exporting or clearing them.
+- **Projects**: watching the folder for changes, the thumbnail cache, stored projects and cleaning up the open one.
+- **Updates**: checking for updates, and the log.
 
 ## Watching the folder
 
