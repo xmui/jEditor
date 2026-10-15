@@ -5190,9 +5190,10 @@ const app = {
         return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
     },
 
-    // One photo into the trash: move it, or copy then delete
+    // One photo into the trash: move it, or copy then delete (always, in the
+    // Windows app: see FolderCache.canMoveIn)
     async trashOne(f, trashDir, trashName) {
-        if (typeof f.handle.move === 'function') {
+        if (typeof f.handle.move === 'function' && FolderCache.canMoveIn()) {
             try {
                 await f.handle.move(trashDir, trashName);
                 return;

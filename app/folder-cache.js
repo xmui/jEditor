@@ -33,6 +33,16 @@ const FolderCache = {
         return window.JEditorNative || null;
     },
 
+    // Whether a photo can be moved (FileSystemHandle.move) into the order's
+    // data. Not in the Windows app: there the data is in jEditor's storage
+    // under AppData, and Chromium won't move a file there. It shows "Can't
+    // open this file … contains system files", and the move fails whichever
+    // button is pressed. Copying there is allowed, and it's another drive
+    // anyway (only network and USB photos come here), so it's no slower.
+    canMoveIn() {
+        return !this.native();
+    },
+
     reset() {
         this._root = null;
         this._touched = null;
@@ -377,7 +387,7 @@ const FolderCache = {
             }
             try {
                 let done = false;
-                if (typeof e.move === 'function') {
+                if (typeof e.move === 'function' && this.canMoveIn()) {
                     try { await e.move(to, name); done = true; } catch (err) { /* copy instead */ }
                 }
                 if (!done) {
