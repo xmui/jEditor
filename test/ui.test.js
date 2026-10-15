@@ -3061,6 +3061,29 @@ async function newPage(browser, url) {
             await until(() => b.size !== before);
             out.edited = b.size !== before;
 
+            // R while the project is still opening waits for it (the load
+            // reads every photo); pressed several times in a row, each new
+            // photo comes in once
+            await put(dir, 'r2.jpg', bytes);
+            await put(dir, 'r3.jpg', bytes);
+            app.isLoading = true;
+            await app.refreshFolder();
+            app.isLoading = false;
+            out.waitedForLoad = !app.files.some(f => f.relPath === 'r2.jpg') && /Still opening/.test([...document.querySelectorAll('.toast')].map(t => t.textContent).join(' '));
+            const presses = [];
+            for (let i = 0; i < 4; i++) presses.push(app.refreshFolder());
+            await Promise.all(presses);
+            await sleep(400);
+            await app.refreshFolder();
+            out.noDoubles = ['r2.jpg', 'r3.jpg'].every(n => app.files.filter(f => f.relPath === n).length === 1)
+                && new Set(app.files.map(f => f.relPath)).size === app.files.length
+                && app.elements.gridView.querySelectorAll('.grid-item').length === app.viewFiles().length;
+            // (gone again, for the counts below)
+            await dir.removeEntry('r2.jpg');
+            await dir.removeEntry('r3.jpg');
+            await app.refreshFolder();
+            await until(() => !app.files.some(f => /^r[23]\.jpg$/.test(f.relPath)));
+
             // Nothing changed: up to date, quickly
             const t0 = performance.now();
             await app.refreshFolder();
@@ -3130,6 +3153,7 @@ async function newPage(browser, url) {
         check('watch: photos removed outside jEditor go', r.removed);
         check('watch: a new folder and its photos show up', r.newFolder);
         check('rescan: photos edited elsewhere are picked up', r.edited);
+        check('rescan: R while the project is still opening waits for it, saying so; pressed several times, each new photo comes in once', r.waitedForLoad && r.noDoubles, JSON.stringify([r.waitedForLoad, r.noDoubles]));
         check('rescan: an unchanged order is up to date', r.upToDate && r.rescanMs < 2000, String(r.rescanMs));
         check('watch: jEditor\'s own rename and trash aren\'t seen as outside changes', r.ownOps);
         check('watch: can be switched off', r.off);
