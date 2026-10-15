@@ -3326,6 +3326,57 @@ async function newPage(browser, url) {
         await page.close();
     }
 
+    // ---- 7s1. Kept rotations turn on screen first ----
+    console.log('kept rotations turn on screen');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const until = async (fn, n = 200) => { for (let i = 0; i < n && !(await fn()); i++) await sleep(25); };
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('keptturn', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('keptturn', { create: true });
+            for (const n of ['a.jpg', 'b.jpg']) {
+                const fh = await dir.getFileHandle(n, { create: true });
+                const w = await fh.createWritable(); await w.write(new Blob([await makeRealJpeg(400, 300)], { type: 'image/jpeg' })); await w.close();
+            }
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            await Edits.setDefer(true);
+            const a = app.files.find(x => x.name === 'a.jpg');
+            app.setView('grid');
+            await until(() => { const i = a._gridEl && a._gridEl.querySelector(':scope > img'); return i && i.src && i.src !== app.BLANK_THUMB && i.naturalWidth; });
+            // Grid: the tile's own picture turns (no blank, no spinner), then
+            // the redrawn thumbnail takes its place, straight
+            const tile = a._gridEl.querySelector(':scope > img');
+            const before = tile.src;
+            app.selection = new Set([a]);
+            app.updateSelectionUI();
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: ']', bubbles: true, cancelable: true }));
+            out.tileTurning = a._gridEl.querySelector(':scope > img') === tile && /rotate\(90deg\)/.test(tile.style.transform);
+            await until(() => tile.src !== before);
+            await sleep(60);
+            out.tileDone = a._gridEl.querySelector(':scope > img') === tile && !tile.style.transform && tile.naturalHeight > tile.naturalWidth;
+            // Single view: the photo turns, isn't dimmed, then the redrawn one
+            // replaces it with no turn left over
+            app.openSingle(a);
+            await until(() => app._displayFile === a && app._displayKind === 'full');
+            const shown = app.elements.currentImage;
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: ']', bubbles: true, cancelable: true }));
+            out.viewTurning = app.elements.currentImage === shown && /rotate\(90deg\)/.test(shown.style.transform) && shown.style.opacity !== '0.3';
+            await until(() => app.elements.currentImage !== shown && app._displayKind === 'full');
+            const now = app.elements.currentImage;
+            out.viewDone = /rotate\(0deg\)/.test(now.style.transform) && now.naturalWidth > now.naturalHeight && !a._turnHeldView;
+            out.kept = a._edit && a._edit.q === 2;
+            return out;
+        });
+        check('kept rotation: the grid tile turns its own picture, then the redrawn one replaces it straight', r.tileTurning && r.tileDone, JSON.stringify(r));
+        check('kept rotation: the big photo turns (not dimmed), then the redrawn one has no turn left over', r.viewTurning && r.viewDone && r.kept, JSON.stringify(r));
+        check('kept rotation suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7s2. Save edits when done ----
     console.log('save edits when done');
     {

@@ -1014,7 +1014,27 @@ const app = {
         const f = this.currentFile;
         const readAt = this._displayFile === f && img._savedAtRead !== undefined
             ? img._savedAtRead : (f._savedRotationTotal || 0);
-        return ((f._savedRotationTotal || 0) - readAt) + (f.savingRotation || 0) + (f.pendingRotation || 0);
+        // A kept rotation (Save edits when done): the picture on screen turns
+        // while the turned version is made (turnHeld), then that replaces it
+        const held = this._displayFile === f ? (f._turnHeldView || 0) : 0;
+        return ((f._savedRotationTotal || 0) - readAt) + (f.savingRotation || 0) + (f.pendingRotation || 0) + held;
+    },
+
+    // Kept rotations turn what's on screen first, as an immediate rotation
+    // does, and the redrawn photo takes over once it's ready: without this
+    // the photo just jumped (dimmed, then redrawn)
+    turnHeld(files, deg) {
+        for (const f of files) {
+            f._turnHeld = (f._turnHeld || 0) + deg;
+            for (const holder of [f._gridEl, f._stripEl]) {
+                const img = holder && holder.isConnected && holder.querySelector(':scope > img');
+                if (img && img.src && img.src !== this.BLANK_THUMB) img.style.transform = `rotate(${f._turnHeld}deg)`;
+            }
+            if (this.currentFile === f && this.viewMode === 'single' && this._displayFile === f) {
+                f._turnHeldView = (f._turnHeldView || 0) + deg;
+                this.updateImageTransform();
+            }
+        }
     },
 
     // At odd quarter-turns the CSS-rotated image would overflow the
@@ -2581,11 +2601,20 @@ const app = {
     deliverThumbnail(fileEntry) {
         const url = fileEntry.thumbnailUrl;
         (fileEntry._thumbWaiters || []).forEach(img => {
+            if (img._interim) {
+                // Its picture already has the turn: straight, with no spin back
+                img._interim = false;
+                const was = img.style.transition;
+                img.style.transition = 'none';
+                img.style.transform = '';
+                requestAnimationFrame(() => requestAnimationFrame(() => { img.style.transition = was; }));
+            }
             img.decoding = 'async';
             img.onerror = () => { if (img.src === fileEntry.thumbnailUrl) this.thumbnailBroken(fileEntry); };
             img.src = url;
         });
         fileEntry._thumbWaiters = [];
+        fileEntry._turnHeld = 0;
         // A tile drawn again while this was being made shows the old one
         for (const holder of [fileEntry._gridEl, fileEntry._stripEl]) {
             const img = holder && holder.isConnected && holder.querySelector(':scope > img');
@@ -3178,6 +3207,8 @@ const app = {
         }
         this._displayKind = kind;
         this._displayFile = file;
+        // The redrawn photo has the turn in it: the held one is done
+        if (file) file._turnHeldView = 0;
         if (kind === 'thumb') this.sizePlaceholder(el, file);
         el.style.transition = 'none'; // no spin/float from the previous photo's transform
         el.style.opacity = '1';
@@ -3235,8 +3266,9 @@ const app = {
                 };
                 if (ph.complete && ph.naturalWidth) showPlaceholder();
                 else ph.decode().then(showPlaceholder, () => { });
-            } else {
+            } else if (!(file._turnHeldView && this._displayFile === file)) {
                 // Nothing cached yet: dim the previous photo while decoding
+                // (not one turning to its kept rotation: it stays until redrawn)
                 this.elements.currentImage.style.opacity = '0.3';
             }
 
@@ -4405,9 +4437,22 @@ const app = {
     refreshThumbnailUI(file) {
         if (!file) return;
 
+        // A tile turning to a kept rotation keeps its picture until the
+        // redrawn thumbnail replaces it (deliverThumbnail)
+        const keep = (holder) => {
+            const img = file._turnHeld && holder && holder.isConnected && holder.querySelector(':scope > img');
+            if (!img || !img.src || img.src === this.BLANK_THUMB) return false;
+            img._interim = true;
+            Flags.decorate(holder, file);
+            Edits.decorate(holder, file);
+            this.loadImageThumbnail(file, img, true);
+            return true;
+        };
+        const keptStrip = keep(file._stripEl), keptGrid = keep(file._gridEl);
+
         // 1. Refresh Strip Item
         const stripDiv = file._stripEl;
-        if (stripDiv && stripDiv.isConnected) {
+        if (!keptStrip && stripDiv && stripDiv.isConnected) {
             stripDiv.innerHTML = '';
             Flags.decorate(stripDiv, file);
             Edits.decorate(stripDiv, file);
@@ -4416,7 +4461,7 @@ const app = {
 
         // 2. Refresh Grid Item
         const gridDiv = file._gridEl;
-        if (gridDiv && gridDiv.isConnected) {
+        if (!keptGrid && gridDiv && gridDiv.isConnected) {
             gridDiv.innerHTML = '';
             // Recreate Image
             const img = document.createElement('img');
@@ -4468,6 +4513,7 @@ const app = {
         if (Edits.on()) {
             if (this.editsSaving()) return;
             // Kept with the other edits until they're saved
+            this.turnHeld(filesToRotate, deg);
             Edits.rotate(filesToRotate, deg);
             const n = filesToRotate.length;
             this.showToast(`Turned ${n} photo${n > 1 ? 's' : ''} ${Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left'}`, 1600);
@@ -4534,7 +4580,11 @@ const app = {
             return Promise.resolve(false);
         }
         // Kept with the other edits until they're saved
-        if (Edits.on()) return Promise.resolve(!this.editsSaving() && Edits.rotate([fileEntry], deg));
+        if (Edits.on()) {
+            if (this.editsSaving()) return Promise.resolve(false);
+            this.turnHeld([fileEntry], deg);
+            return Promise.resolve(Edits.rotate([fileEntry], deg));
+        }
 
         // Instant, stacking preview; the save happens in the background
         fileEntry.pendingRotation = (fileEntry.pendingRotation || 0) + deg;
