@@ -27,6 +27,15 @@ sealed class MainForm : Form
     bool fullScreen;
     FormWindowState stateBeforeFullScreen;
 
+    // The page's color, behind it while it loads and as the window resizes
+    Color background;
+
+    // Settings → Window background: "mica", "acrylic" or "none", and
+    // whether it's showing (Windows 11 22H2 or later, Transparency effects on)
+    string backdrop = "none";
+    bool backdropOn;
+    bool transparencyEffects = Shell.TransparencyEffects();
+
     // Scanning (Scanner.cs): made when first used; one scan at a time
     Scanner? scanner;
     CancellationTokenSource? scanning;
@@ -48,6 +57,7 @@ sealed class MainForm : Form
         FormClosed += (_, _) => AppWindows.Closed(this);
         settings = options.SmokeDir is null ? Settings.Load() : new Settings();
         pendingFolder = options.Folder;
+        backdrop = settings.Backdrop ?? "none";
         if (options.SmokeDir is not null) smoke = new Smoke(this, options.SmokeDir);
 
         Text = "jEditor";
@@ -57,7 +67,13 @@ sealed class MainForm : Form
         Controls.Add(web);
         RestorePlacement();
 
-        HandleCreated += (_, _) => Shell.SetDarkTitleBar(Handle, settings.Dark);
+        HandleCreated += (_, _) =>
+        {
+            Shell.SetDarkTitleBar(Handle, settings.Dark);
+            ApplyBackdrop();
+        };
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+        FormClosed += (_, _) => Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         Load += async (_, _) => await StartAsync();
         FormClosing += (_, _) =>
         {
@@ -399,6 +415,7 @@ sealed class MainForm : Form
             case "pickPath":
             case "showLog":
             case "logTail":
+            case "backdrop":
             case "newWindow":
             case "split":
             case "windows":
@@ -697,6 +714,12 @@ sealed class MainForm : Form
                 }
                 case "logTail":
                     Reply(id, new { lines = Log.Recent(), file = Log.Default() });
+                    break;
+                case "backdrop":
+                    backdrop = Str(msg, "kind") ?? "none";
+                    ApplyBackdrop();
+                    if (smoke is null) Settings.Update(s => s.Backdrop = backdrop);
+                    Reply(id, BackdropState());
                     break;
                 case "pickPath":
                 {
@@ -1100,11 +1123,48 @@ sealed class MainForm : Form
 
     void SetBackground(bool dark, string? cssColor)
     {
-        var color = ParseCssColor(cssColor) ?? (dark ? Color.FromArgb(0x0b, 0x0b, 0x0b) : Color.FromArgb(0xe8, 0xe8, 0xe8));
-        BackColor = color;
-        web.DefaultBackgroundColor = color;
+        background = ParseCssColor(cssColor) ?? (dark ? Color.FromArgb(0x0b, 0x0b, 0x0b) : Color.FromArgb(0xe8, 0xe8, 0xe8));
+        PaintBackground();
+        // Mica and Acrylic follow the title bar's dark or light too
         if (settings.Dark != dark && IsHandleCreated) Shell.SetDarkTitleBar(Handle, dark);
         settings.Dark = dark;
+    }
+
+    // With a backdrop: black, which DWM shows through, and a clear page
+    // background. The page then tints its own background (tokens.css).
+    void PaintBackground()
+    {
+        BackColor = backdropOn ? Color.Black : background;
+        web.DefaultBackgroundColor = backdropOn ? Color.Transparent : background;
+    }
+
+    void ApplyBackdrop()
+    {
+        if (!IsHandleCreated) return;
+        bool want = backdrop is "mica" or "acrylic" && transparencyEffects;
+        bool on = want && Shell.SetBackdrop(Handle, backdrop);
+        if (!on && (backdropOn || want)) Shell.SetBackdrop(Handle, "none");
+        if (want && !on) Log.Write($"Window background {backdrop}: not available on this Windows");
+        else if (on != backdropOn) Log.Write($"Window background: {(on ? backdrop : "solid")}");
+        backdropOn = on;
+        PaintBackground();
+    }
+
+    // What the page's Settings shows: { supported, transparency, applied }
+    object BackdropState() => new { supported = Shell.BackdropSupported, transparency = transparencyEffects, applied = backdropOn };
+
+    // Transparency effects turned on or off in Windows' Settings
+    void OnUserPreferenceChanged(object? sender, Microsoft.Win32.UserPreferenceChangedEventArgs e)
+    {
+        if (e.Category != Microsoft.Win32.UserPreferenceCategory.General || IsDisposed || !IsHandleCreated) return;
+        BeginInvoke(() =>
+        {
+            bool now = Shell.TransparencyEffects();
+            if (now == transparencyEffects) return;
+            transparencyEffects = now;
+            ApplyBackdrop();
+            if (web.CoreWebView2 is not null) Post(new { type = "backdropState", state = BackdropState() });
+        });
     }
 
     static Color? ParseCssColor(string? css)

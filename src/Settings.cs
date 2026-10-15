@@ -3,8 +3,8 @@ using System.Text.Json;
 namespace JEditor;
 
 // %LOCALAPPDATA%\jEditor\window.json: where the window was, the last
-// theme (for the title bar before the page loads), the last folder picked
-// and which version of the UI ran last
+// theme and window background (for before the page loads), the last folder
+// picked and which version of the UI ran last
 sealed class Settings
 {
     public int X { get; set; }
@@ -13,6 +13,9 @@ sealed class Settings
     public int Height { get; set; }
     public bool Maximized { get; set; }
     public bool Dark { get; set; } = true;
+    // Settings → Window background ("none", "mica" or "acrylic"), so a new
+    // window starts with it before its page says so
+    public string? Backdrop { get; set; }
     public string? LastFolder { get; set; }
     public string? UiStamp { get; set; }
 

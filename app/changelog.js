@@ -5,6 +5,12 @@
 
 const CHANGELOG = [
     {
+        version: '1.31.0', date: '2026-10-15',
+        items: [
+            'Settings → Window background (Windows 11, version 22H2 or later): Mica or Acrylic behind jEditor, like the Start menu, so the desktop shows softly through the start screen and the grid. Transparency sets how much shows through. Photos, Crop and Duplicates stay solid, so colors are judged as before. Solid, as before, to start with; it follows Windows\' Transparency effects setting.'
+        ]
+    },
+    {
         version: '1.30.3', date: '2026-10-15',
         items: [
             'Deleting a photo on a network or USB drive (no Recycle Bin) no longer pops up "Can\'t open this file … contains system files". The photo goes to jEditor\'s trash on this PC, and moving it there was refused by Windows\' web engine; it\'s now copied there and then removed, as already happened after Cancel. Merging an old subfolder\'s .jeditor into the project\'s data could ask the same, once per file: fixed too.'
