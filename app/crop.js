@@ -232,6 +232,7 @@ const CropEditor = {
         this.vw = null;
         this.history = [];
         this.future = [];
+        this._auto = null; // what Auto found on this photo (crop-log.js)
         this.root.classList.remove('hidden');
         this.colors = this.themeColors();
         this.el('crop-file').textContent = file.name;
@@ -591,11 +592,13 @@ const CropEditor = {
         if (!this.ready) return false;
         const det = CropAuto.find(this.preview, this.W, this.H);
         if (!det) {
+            CropLog.noteAuto(this, null);
             if (!quiet) this.app.showToast('No print edge found — Auto needs a plain scanner border around the photo', 3500);
             return false;
         }
         this.pushHistory();
         this.fitToPrint(det);
+        CropLog.noteAuto(this, det);
         this.syncAngleUi();
         this.flashGrid();
         this.settle(animate);

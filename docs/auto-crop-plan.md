@@ -1,0 +1,69 @@
+# Auto crop: a rewrite, measured on real scans
+
+Status: step 1 done in 1.33.0 (2026-10-15); collecting scans next.
+
+## Why it leaves small edges
+
+- **Edges are found on a copy about 1000 px across**, about a third of a 600 dpi scan. Each edge can be off by a few full-size pixels, and the soft step from bed to print sits inside that error.
+- **The safety margin is fixed and tiny.** `fitToPrint` insets about 7 px at 600 dpi (0.3 mm), whatever the edge looks like.
+- **Shadows and dark print edges aren't modelled.** A lid shadow, or a print's own dark edge (the line beside the left strip on `img_2517.jpg`), is where the crop stops.
+- **One rectangle is forced on all four sides.** A print slightly out of square, or fed in a hair skewed, shows a sliver on one side.
+- **Four finders with their own rules:** `PhotoFind.single`, `CropAuto.detect`, `detectFeeder` and `detectStrips`. Behaviour varies from scan to scan, and each fix so far patched one of them.
+
+## What others do
+
+- **VueScan** uses an ML model trained on thousands of cropped photos, and lets you adjust the boxes. ([VueScan 9.8.06](https://hamrick.com/blog/vuescan-9-8-06-autocrop-photos.html))
+- **Photoshop's Crop and Straighten Photos** is known for leaving the same thin white edges, and for failing on marks or shadows on the bed. ([Photoshop Gurus](https://www.photoshopgurus.com/forum/threads/cropping-problem.63728), [Adobe community](https://community.adobe.com/questions-712/i-m-having-issue-with-the-automate-crop-and-straighten-tool-in-ps-2022-1130985))
+- **Classic and published pipelines** compare against the lid's colour, then fit a rotated rectangle ([US7623734](https://patents.google.com/patent/US7623734B2/en), [OpenCV](https://ccoderun.ca/programming/doxygen/opencv/tutorial_js_contour_features.html)). HP's adds region merging and a separate skew estimate for each object ([TDCommons](https://www.tdcommons.org/dpubs_series/8778)).
+- **ML corner finders** work on downscaled images, so their corners land 5–10 px off at full size. ([DocAligner](https://pypi.org/project/docaligner-docsaid/))
+
+Finding roughly where each print is, is the easy part. The exact edge needs a pass of its own at full resolution.
+
+## The design: one pipeline, five stages
+
+1. **Coarse: where each print is**, on the small copy, as now, but one finder instead of four. A print's side can be *open*, where the scan cut it off, which replaces the strip special case.
+2. **Candidates scored**: on edge support along each side, rectangularity, and **physical size**. The scan's dpi is known, so 3.5×5, 4×6, 5×7 and 8×10 prints have known pixel sizes, which is a strong check against false finds.
+3. **Each edge refined at full resolution.** Read a narrow full-size band along each coarse side.
+   - Find the edge to a fraction of a pixel at many points along it.
+   - Fit each side as its own line, robust to dust and corners (RANSAC, then least squares on the inliers).
+   - Classify the edge profile, from bed through shadow, dark print edge and white border to the image. Place the cut past the transition by its measured width, not a fixed number of pixels.
+4. **The crop**: the largest upright rectangle inside the four fitted sides, which handles rounded corners and prints out of square. The margin is in mm through the dpi: **Tight / Safe (about 0.5 mm) / Generous**.
+5. **Confidence.** Batch Auto crop flags low-confidence photos for review instead of saving them silently.
+
+It runs in a Web Worker, so the window never stalls. An ML finder (onnxruntime-web) comes later, and only if the classical pipeline still misses on the test set.
+
+## How we'll know it's right
+
+- **A test set of 30–50 real lab scans** (FastFoto feeder pages, the Epson flatbed and the Plustek), weighted to the hard ones: white borders, dark photos, cut-off prints, rounded corners.
+- **Labels from real use.** Step 1 records where Auto put the crop and where it was saved, and keeps the scan, so every correction becomes a test case.
+- **A runner** that scores each scan: bed inside the crop (target 0 px), print lost outside it, and how far each corner is off.
+- **A contact sheet**: every crop drawn on its scan, for checking by eye.
+
+## Steps
+
+| Step | What | Gives |
+|---|---|---|
+| 1 | Correction logging and the test-set format | The data to measure against |
+| 2 | Runner and contact sheet, scoring today's Auto | A baseline number |
+| 3 | Full-resolution edge pass and the mm margin, on today's coarse finders | Most of the small edges gone, early |
+| 4 | One finder with physical-size scoring, replacing the four | Consistent behaviour, fewer misses |
+| 5 | Confidence and flagging in batch | Bad crops caught, not saved |
+| 6 | ML finder, only if needed | |
+
+Each step ships only if it scores no worse than the one before it on the test set.
+
+## Step 1: what's recorded
+
+See [auto-crop-test-set.md](auto-crop-test-set.md) for the format.
+
+- Every crop saved in the crop editor is logged, with Auto's result if Auto ran on that photo.
+- When Auto ran (pressed, or **Every photo**), the scan itself is kept with its label: whether Auto's crop was saved as it was, corrected, or missed.
+- It's kept in jEditor's storage on this PC (in a browser, the browser's private storage), up to 1 GB, oldest first out.
+- Settings → Auto crop: on or off, how many are kept, **Export…** to a folder (to bring them here), and **Clear**.
+
+Not yet covered: batch Auto crop fixed later in the editor. That photo is the already-cropped file, and its original is in `originals/`; linking the two is left for step 2.
+
+## Open questions
+
+- Default margin: Safe (lose about 0.5 mm of photo, never bed) or Tight?
+- Rounded corners and deckled edges: crop inside the curve, or keep the whole print with a little bed?

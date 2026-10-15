@@ -202,6 +202,7 @@ const app = {
         Folders.init(this);
         Recents.init(this);
         Stored.init(this);
+        CropLog.init(this);
         Updates.init(this);
         Scan.init(this);
         Camera.init(this);
@@ -824,6 +825,7 @@ const app = {
         $('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
         this.elements.customizePanel.querySelectorAll('input[data-toast]').forEach(i => { i.checked = this.toastOn(i.dataset.toast); });
         $('cust-cleanup').disabled = !this.dirHandle;
+        CropLog.refresh();
         $('cust-single-controls').checked = this.uiPrefs.singleControls !== false;
         this.syncAccentPicker();
         $('cust-scale').value = this.uiPrefs.scale;
@@ -6184,6 +6186,9 @@ const app = {
         const file = ed.file;
         const snap = ed.snapshot();
         const W = ed.W, H = ed.H;
+        // For Auto crop's test set (crop-log.js): this crop, and Auto's
+        const logged = CropLog.entry(this, ed, file);
+        const bytesNow = () => file.handle.getFile().then(f => f.arrayBuffer());
 
         const goNext = () => {
             if (!next) return;
@@ -6197,6 +6202,7 @@ const app = {
 
         // Save edits when done (edits.js): kept on the photo, not written
         if (Edits.on()) {
+            CropLog.keep(logged, bytesNow);
             const had = !!file._edit;
             const none = ed.isIdentity() && !ed.q;
             this.rememberCrop(snap);
@@ -6213,6 +6219,7 @@ const app = {
         // Only quarter turns and no crop: that's a rotation — do it
         // losslessly through the rotation engine instead of re-encoding
         if (ed.isIdentity()) {
+            if (logged) { const b = bytesNow(); CropLog.keep(logged, () => b); }
             const quarter = ed.q;
             this.rememberCrop(snap);
             this.cancelCrop();
@@ -6233,6 +6240,7 @@ const app = {
             const { type, quality } = this.getSaveFormat(file.name);
             const fileData = await file.handle.getFile();
             const original = new Uint8Array(await fileData.arrayBuffer());
+            CropLog.keep(logged, original);
 
             const canvas = await ed.renderFrozen(fileData, snap, W, H, type, original);
             const w = canvas.width, h = canvas.height;

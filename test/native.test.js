@@ -632,14 +632,19 @@ async function newPage(context, baseUrl) {
             Flags.apply('star', [app.files[0]]);
             await Flags.save();
             await openOrder(await opfs('disk', 'Beta'));
+            // Auto crop's test scans (crop-log.js) are kept beside the
+            // projects' folders, and aren't one
+            await (await opfs('appdata')).getDirectoryHandle(CropLog.DIR, { create: true });
             await Stored.open();
             await wait(() => [...document.querySelectorAll('#stored-list li[data-key]')].some(x => /^Alpha/.test(x.textContent)));
+            const testSetListed = [...document.querySelectorAll('#stored-list li[data-key]')].some(x => x.dataset.key === CropLog.DIR);
             const li = [...document.querySelectorAll('#stored-list li[data-key]')].find(x => /^Alpha/.test(x.textContent));
             li.querySelector('[data-act="open"]').click();
             await wait(() => window.__opened);
-            return { path: window.__opened, closed: document.getElementById('stored-panel').classList.contains('hidden') };
+            return { path: window.__opened, closed: document.getElementById('stored-panel').classList.contains('hidden'), testSetListed };
         });
         check('Open asks the app to open that folder', opened.path === 'D:\\Orders\\Alpha' && opened.closed, JSON.stringify(opened));
+        check('Auto crop\'s test scans aren\'t listed as a project', !opened.testSetListed);
         check('stored orders suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }

@@ -5,7 +5,7 @@
 
 const CHANGELOG = [
     {
-        version: '1.32.1', date: '2026-10-15',
+        version: '1.34.0', date: '2026-10-15',
         items: [
             'With photos selected on a narrower window, the selection bar moves off center, beside the size slider, before it gives up its labels or the slider goes.',
             'The pills refit as the photo count ("1446 / 1446") or the sort\'s name changes width, not just when the window does.',
@@ -14,10 +14,16 @@ const CHANGELOG = [
             'In the single view on a narrow window, messages go up a row instead of running into the prev / rotate / next pill.',
             'More (the … at the top right) opens its buttons on rows under the usual ones, at the same width, instead of stretching out over the file name; on a narrow window it stays above the folder list.',
             'Deleting (or moving away) the selected photos in the grid selects the next photo, as Lightroom does: the selection bar stays, and Delete goes on from there.',
-            'Settings is tidied into pages, chosen on the left (along the top on a narrow window): Appearance (color, window, look), Toolbar & keys (keyboard shortcuts, layout, toolbar buttons), Messages, Projects (watching, cache, storage) and Updates. It opens on the page you used last, keeps one size as you switch, and the arrow keys move between pages. Keyboard shortcuts moved from the bottom of Settings to Toolbar & keys.',
+            'Settings is tidied into pages, chosen on the left (along the top on a narrow window): Appearance (color, window, look), Toolbar & keys (keyboard shortcuts, layout, toolbar buttons), Messages, Projects (watching, cache, storage) and Updates, plus Auto crop (its test scans). It opens on the page you used last, keeps one size as you switch, and the arrow keys move between pages. Keyboard shortcuts moved from the bottom of Settings to Toolbar & keys.',
             'Renaming the open project works like renaming a photo in the top pill: the name on the project card is one button, with a pill behind it and a pencil by it on hover, and a single click renames (no more double-click).',
             'Fewer explainers in the sidebar: the folder-list hint, the projects-folder note and the empty Pinned note are gone (their buttons say it in their tooltips), and Pinned only shows once something is pinned. Undo history drops its how-to line too. Settings keeps its explanations.',
             'An empty grid has a button for the way out: Clear search when nothing matches the search or flag filter, All photos for an empty folder, and Scan or Show in Explorer for a project with no photos yet.'
+        ]
+    },
+    {
+        version: '1.33.0', date: '2026-10-15',
+        items: [
+            'Auto crop test scans, for a better Auto crop: when you save a crop on a photo Auto was used on, jEditor keeps the scan and where you cropped it on this PC (up to 1 GB), with whether Auto\'s crop was kept, corrected, or missed the print. Settings → Auto crop: turn it off, see how many are kept, Export… them to a folder, or Clear… them. Your photos aren\'t touched.'
         ]
     },
     {
