@@ -187,6 +187,13 @@ sealed class Run : ApplicationContext
         Set(o.Duplex ? "Both sides" : "One side", () => caps.CapDuplexEnabled.SetValue(o.Duplex ? BoolType.True : BoolType.False));
         Set(o.Gray ? "Grayscale" : "Color", () => caps.ICapPixelType.SetValue(o.Gray ? PixelType.Gray : PixelType.RGB));
         Set("Inches", () => caps.ICapUnits.SetValue(Unit.Inches));
+        // The driver's own tone settings, as it had them (Epson Scan 2 keeps
+        // its last ones, and a scan with no window uses them), then neutral:
+        // jEditor's brightness and contrast are applied after, on its side
+        try { Out.Log($"Driver had: brightness {Fix(caps.ICapBrightness.GetCurrent())}, contrast {Fix(caps.ICapContrast.GetCurrent())}, gamma {Fix(caps.ICapGamma.GetCurrent())}"); }
+        catch (Exception) { /* not all of them answer */ }
+        Set("Brightness 0", () => caps.ICapBrightness.SetValue(0));
+        Set("Contrast 0", () => caps.ICapContrast.SetValue(0));
         Set($"{o.Dpi} dpi across", () => caps.ICapXResolution.SetValue(o.Dpi));
         Set($"{o.Dpi} dpi down", () => caps.ICapYResolution.SetValue(o.Dpi));
         if (o.AutoSize)
@@ -203,6 +210,8 @@ sealed class Run : ApplicationContext
         try { Out.Log($"Now: auto size {caps.ICapAutoSize.GetCurrent()}, border detection {caps.ICapAutomaticBorderDetection.GetCurrent()}, deskew {caps.ICapAutomaticDeskew.GetCurrent()}, {caps.ICapXResolution.GetCurrent().Whole} dpi"); }
         catch (Exception) { /* not all of them answer */ }
     }
+
+    static string Fix(TWFix32 v) => ((float)v).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 
     void TransferReady(object? sender, TransferReadyEventArgs e)
     {
