@@ -496,7 +496,7 @@ const PhotoFind = {
             }
         }
         for (const r of rects) r.touches = this.touching(r, w, h);
-        return { rects, bg, bgShare: bgCount / (w * h), label, w, h, reached, S };
+        return { rects, bg, bgShare: bgCount / (w * h), label, w, h };
     },
 
     // The first look, then the closer one if it found nothing (whose finds
@@ -545,12 +545,6 @@ const PhotoFind = {
         if (r.w >= w * 0.97 && r.h >= h * 0.97) return null;
         const t = r.touches, gt = r.groupTouches || t;
         const sides = [t.top, t.bottom, t.left, t.right].filter(Boolean).length;
-        // Cut off by the scan at two opposite sides (a print a hair bigger
-        // than the scan, a feeder page cut to the photo), the bed down the
-        // other two: those two strips come off
-        const only = (o, a1, b1) => o[a1] && o[b1] && [o.top, o.bottom, o.left, o.right].filter(Boolean).length === 2;
-        if (only(t, 'top', 'bottom') && only(gt, 'top', 'bottom')) return this.between(a, px, true, strict);
-        if (only(t, 'left', 'right') && only(gt, 'left', 'right')) return this.between(a, px, false, strict);
         // (all that it was found in, before any splitting, counts too)
         if ([gt.top, gt.bottom, gt.left, gt.right].filter(Boolean).length > 2 || (gt.top && gt.bottom) || (gt.left && gt.right)) return null;
         // A print on the glass sits clear of the edge, or against a corner;
@@ -564,79 +558,6 @@ const PhotoFind = {
         }
         const out = this.toSource(r, px);
         return { tilt: out.tilt, corners: out.corners, found: 4 - sides, scale: Math.max(px.sx, px.sy), finder: 'photo' };
-    },
-
-    // A print the scan cut off at its top and bottom (topBottom) or left and
-    // right, found by the strips of bed down the other two sides: each must
-    // run the whole way, end at a straight edge, and match the other (the
-    // same bed, the print's two sides parallel). A photo's own plain wall
-    // or sky doesn't: it isn't the same straight band down both sides.
-    // → as single, or null
-    between(a, px, topBottom, strict) {
-        const { w, h } = px, R = a.reached, S = a.S;
-        const n = topBottom ? h : w, m = topBottom ? w : h;  // along the strips; across them
-        const idx = topBottom ? (i, j) => i * w + j : (i, j) => j * w + i;
-        const tol = Math.max(1.5, m * 0.003);
-        const step = Math.max(1, Math.floor(n / 150));
-        const strips = [];
-        for (const far of [false, true]) {
-            // How far the bed reaches in from this side, line by line
-            const pts = [];
-            for (let i = Math.round(n * 0.03); i < n * 0.97; i += step) {
-                let k = 0;
-                while (k < m && R[idx(i, far ? m - 1 - k : k)]) k++;
-                pts.push([i, k]);
-            }
-            // The straight line it stops at: the medians of each half for a
-            // start (a leak into the print here and there can't pull it),
-            // then least squares on the points near it
-            const med = (v) => v.slice().sort((p, q) => p - q)[v.length >> 1];
-            const h1 = pts.slice(0, pts.length >> 1), h2 = pts.slice(pts.length >> 1);
-            const i1 = med(h1.map(p => p[0])), i2 = med(h2.map(p => p[0]));
-            let b = (med(h2.map(p => p[1])) - med(h1.map(p => p[1]))) / Math.max(1, i2 - i1);
-            let c = med(h1.map(p => p[1])) - b * i1;
-            let inl = pts;
-            for (let pass = 0; pass < 2; pass++) {
-                inl = pts.filter(([i, k]) => Math.abs(k - (c + b * i)) <= tol * (pass ? 1 : 3));
-                if (inl.length < 10) return null;
-                let si = 0, sk = 0, sii = 0, sik = 0;
-                for (const [i, k] of inl) { si += i; sk += k; sii += i * i; sik += i * k; }
-                const den = inl.length * sii - si * si;
-                if (!den) return null;
-                b = (inl.length * sik - si * sk) / den;
-                c = (sk - b * si) / inl.length;
-            }
-            const width = c + b * n / 2;
-            if (inl.length < pts.length * 0.85 || width < Math.max(2, m * 0.006) || Math.abs(b) > 0.17) return null;
-            // The bed's color in the strip, halfway in
-            let r = 0, g = 0, bl = 0;
-            for (const [i, k] of inl) {
-                const p = idx(i, Math.floor(far ? m - 1 - k / 2 : k / 2));
-                r += S[0][p]; g += S[1][p]; bl += S[2][p];
-            }
-            const col = [r, g, bl].map(v => v / inl.length);
-            let cl = 0;
-            a.bg.clusters.forEach((q, ci) => { if (this.dist(...col, q.c) < this.dist(...col, a.bg.clusters[cl].c)) cl = ci; });
-            strips.push({ b, c, cl });
-        }
-        const [near, far] = strips;
-        // Parallel sides, the same bed both sides, a print between
-        if (Math.abs(near.b + far.b) > 0.02 || near.cl !== far.cl) return null;
-        if (strict && a.bg.clusters[near.cl].noise > 14) return null;
-        const at0 = (s, fromFar, i) => fromFar ? m - (s.c + s.b * i) : s.c + s.b * i;
-        if (at0(far, true, n / 2) - at0(near, false, n / 2) < m * 0.5) return null;
-        // The strips' edges are the print's sides; it runs off the scan
-        // past the other two. Corners where they meet the scan's edge.
-        const pos = (i, fromFar) => at0(fromFar ? far : near, fromFar, i);
-        const pt = (i, j) => topBottom ? [j * px.sx, i * px.sy] : [i * px.sx, j * px.sy];
-        const corners = topBottom
-            ? [pt(0, pos(0, false)), pt(0, pos(0, true)), pt(n, pos(n, true)), pt(n, pos(n, false))]
-            : [pt(0, pos(0, false)), pt(n, pos(n, false)), pt(n, pos(n, true)), pt(0, pos(0, true))];
-        // Clockwise tilt: a left side that leans left going down; a top
-        // that drops going right
-        const slope = (near.b - far.b) / 2;
-        const tilt = Math.atan(topBottom ? -slope : slope) * 180 / Math.PI;
-        return { tilt, corners, found: 2, scale: Math.max(px.sx, px.sy), finder: 'photo' };
     },
 
     // Every print on the glass (Preview and crop): { cx, cy, w, h, angle }
