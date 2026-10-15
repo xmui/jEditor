@@ -5342,6 +5342,9 @@ const app = {
             for (let i = idx + 1; i < view.length && !next && idx !== -1; i++) if (!set.has(view[i])) next = view[i];
             for (let i = idx - 1; i >= 0 && !next; i--) if (!set.has(view[i])) next = view[i];
         }
+        // The whole selection went (deleted, moved): the next photo is
+        // selected, so the selection bar stays and Delete goes on from there
+        const selectionGone = this.selection.size > 0 && [...this.selection].every(f => set.has(f));
         let w = 0;
         for (const f of this.files) if (!set.has(f)) this.files[w++] = f;
         this.files.length = w;
@@ -5367,6 +5370,7 @@ const app = {
                 this.loadFile(next);
             } else {
                 this.currentFile = next;
+                if (selectionGone) this.selection.add(next);
                 this.updateStatusBar();
             }
         }

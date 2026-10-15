@@ -13,6 +13,7 @@ const CHANGELOG = [
             'Crop on a narrower window: Cancel sits with Save & next and Save on the bottom row, the tools above it, instead of Cancel at the start of the tools and Previous and Reset alone on a row.',
             'In the single view on a narrow window, messages go up a row instead of running into the prev / rotate / next pill.',
             'More (the … at the top right) opens its buttons on rows under the usual ones, at the same width, instead of stretching out over the file name; on a narrow window it stays above the folder list.',
+            'Deleting (or moving away) the selected photos in the grid selects the next photo, as Lightroom does: the selection bar stays, and Delete goes on from there.',
             'An empty grid has a button for the way out: Clear search when nothing matches the search or flag filter, All photos for an empty folder, and Scan or Show in Explorer for a project with no photos yet.'
         ]
     },

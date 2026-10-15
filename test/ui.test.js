@@ -2181,6 +2181,16 @@ async function newPage(browser, url) {
             out.trashed = inTrash === 1 && app.files.length === 3;
             await app.undo();
             out.restored = app.files.length === 4;
+            // In the grid the next photo is selected, so Delete goes on from there
+            app.setView('grid');
+            const [, b, c] = app.viewFiles();
+            app.currentFile = b; app.selection = new Set([b]); app.updateSelectionUI();
+            await app.moveToTrash([b]);
+            out.nextSelected = app.selection.size === 1 && app.selection.has(c) && app.currentFile === c
+                && !document.getElementById('selection-bar').classList.contains('hidden');
+            await app.undo();
+            app.selection = new Set(); app.updateSelectionUI();
+            out.restored = out.restored && app.files.length === 4;
 
             // A batch: moved into the trash (no bytes rewritten), several at a
             // time; a name already in the trash gets a unique one
@@ -2248,6 +2258,7 @@ async function newPage(browser, url) {
         check('another computer: thumbnails come from the folder', second.thumbsGenerated === 0, String(second.thumbsGenerated));
         check('another computer: duplicate scan reuses fingerprints', second.fingerprintsComputed === 0, String(second.fingerprintsComputed));
         check('delete goes to .jeditor/trash; undo restores', second.trashed && second.restored);
+        check('deleting the selection in the grid selects the next photo', second.nextSelected);
         check('batch delete moves files (no copying), keeps a unique trash name', second.batchMoved && second.batchCurrent);
         check('undo restores the whole batch intact', second.batchRestored);
         check('rotated photo: old cached thumbnail pruned, new one kept', second.prunedTo === 4 && second.prunedOld, String(second.prunedTo));
