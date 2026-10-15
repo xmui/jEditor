@@ -3317,6 +3317,30 @@ async function newPage(browser, url) {
             }
             pg.fillStyle = '#050505'; pg.fillRect(0, 420, 900, 180);
             out.photoAlone = !CropAuto.find(photo, 900, 600);
+            // A print a hair taller than the scan: cut off top and bottom,
+            // a strip of bed down each side (left wider than right)
+            const cutOff = (tilt) => {
+                const c = document.createElement('canvas');
+                c.width = 1000; c.height = 620;
+                const g = c.getContext('2d');
+                const img = g.createImageData(1000, 620);
+                for (let i = 0; i < img.data.length; i += 4) {
+                    const n = (rnd() - 0.5) * 8;
+                    img.data[i] = 200 + n; img.data[i + 1] = 200 + n; img.data[i + 2] = 222 + n; img.data[i + 3] = 255;
+                }
+                g.putImageData(img, 0, 0);
+                g.save(); g.translate(485, 310); g.rotate(tilt * Math.PI / 180);
+                for (let y = 0; y < 700; y += 25) for (let x = 0; x < 880; x += 40) {
+                    g.fillStyle = `hsl(${Math.floor(rnd() * 360)},45%,${15 + Math.floor(rnd() * 65)}%)`;
+                    g.fillRect(x - 440, y - 350, 40, 25);
+                }
+                g.restore();
+                return c;
+            };
+            const c0 = CropAuto.find(cutOff(0), 1000, 620);
+            out.cut = c0 && crop(c0, 1000, 620);
+            const c1 = CropAuto.find(cutOff(-1.2), 1000, 620);
+            out.cutTilted = c1 && crop(c1, 1000, 620);
             return out;
         });
         const near = (c, w, h) => c && c.w > w - 30 && c.w <= w && c.h > h - 30 && c.h <= h && Math.abs(c.cx - 450) <= 8 && Math.abs(c.cy - 280) <= 10;
@@ -3324,6 +3348,10 @@ async function newPage(browser, url) {
         check('feeder page: Auto crop finds the photo, background trimmed off', near(r.straight, 380, 560), JSON.stringify(r.straight));
         check('feeder page: a tilted photo is straightened and cropped', near(r.tilted, 380, 560) && Math.abs(r.tilted.angle + 1.5) < 0.4, JSON.stringify(r.tilted));
         check('feeder page: found without the hint too; an ordinary photo is left alone', r.unhinted && r.photoAlone, JSON.stringify([r.unhinted, r.photoAlone]));
+        const cut = r.cut, ct = r.cutTilted;
+        check('a print cut off top and bottom by the scan: the bed strips either side come off',
+            cut && cut.w > 860 && cut.w <= 880 && cut.h >= 610 && Math.abs(cut.cx - 485) <= 4 && cut.angle === 0, JSON.stringify(cut));
+        check('...and tilted: straightened, no bed left in', ct && Math.abs(ct.angle - 1.2) < 0.3 && ct.w > 850 && ct.w <= 880 && Math.abs(ct.cx - 485) <= 6, JSON.stringify(ct));
         check('feeder auto crop suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
