@@ -287,6 +287,12 @@
         },
         // Preview and crop. What a flatbed can do ({ device, driver, compat })
         // → { bedW, bedH (inches), dpis, gray, guessed }, or null if stopped
+        // A TWAIN scanner's own settings window (act 'show'), forgetting what
+        // was chosen there ('forget'), or whether anything is ('state')
+        // → { saved, helper }
+        async scannerSettings(device, act = 'state') {
+            return (await answer('scannerSettings', { device, act })).msg;
+        },
         async scanCaps(options) {
             const { msg } = await answer('scanCaps', options);
             return msg.cancelled ? null : msg;

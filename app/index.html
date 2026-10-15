@@ -791,6 +791,13 @@
                         <input id="scan-autosize" type="checkbox">
                         <span>The scanner crops each photo itself<small>Its own auto-size, as in its own software (the FastFoto has it). If it can't, jEditor scans the usual way and crops each photo. Remembered for this scanner.</small></span>
                     </label>
+                    <div class="scan-own hidden" id="scan-own-row">
+                        <span class="scan-row">
+                            <button id="scan-own" type="button" class="btn secondary sm">Scanner's own settings…</button>
+                            <button id="scan-own-forget" type="button" class="btn ghost sm hidden" title="Go back to the driver's defaults">Forget</button>
+                        </span>
+                        <small id="scan-own-note">Opens the scanner's own window to choose what jEditor can't, like Epson's color restoration or image enhancements. Save there; feeder scans use them from then on.</small>
+                    </div>
                     <label class="scan-check" for="scan-compat" id="scan-compat-row">
                         <input id="scan-compat" type="checkbox">
                         <span>Older TWAIN mode<small>If the scanner doesn't respond, try this: an older way of talking to its driver (some Plustek ones need it).</small></span>

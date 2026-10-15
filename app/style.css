@@ -4297,6 +4297,22 @@ html:not(.native) .native-only {
     display: none;
 }
 
+.scan-own {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    margin-top: var(--sp-2);
+}
+
+.scan-own.hidden {
+    display: none;
+}
+
+.scan-own small {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
 .scan-check {
     display: flex;
     gap: var(--sp-2);

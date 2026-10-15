@@ -383,6 +383,7 @@ sealed class MainForm : Form
             case "scanners":
             case "scan":
             case "scanCaps":
+            case "scannerSettings":
             case "scanPreview":
             case "cameras":
             case "tether":
@@ -723,6 +724,23 @@ sealed class MainForm : Form
                 case "scanCaps":
                     await ScanCapsAsync(id, msg);
                     break;
+                case "scannerSettings":
+                {
+                    // The scanner's own settings window (a TWAIN scanner, through
+                    // the helper): show it, forget what was saved, or say if any is
+                    var device = Str(msg, "device") ?? "";
+                    var act = Str(msg, "act") ?? "state";
+                    if (device.Length == 0) { Reply(id, new { error = "No scanner" }); break; }
+                    if (act == "forget") Twain32.ForgetSettings(device);
+                    else if (act == "show")
+                    {
+                        if (scanning is not null) { Reply(id, new { error = "The scanner is busy with a scan" }); break; }
+                        try { await Twain32.SetupAsync(device); }
+                        catch (Twain32.Failed e) { Reply(id, new { error = e.Message }); break; }
+                    }
+                    Reply(id, new { saved = Twain32.HasSettings(device), helper = Twain32.Exe is not null });
+                    break;
+                }
                 case "cameras":
                 {
                     var found = await Camera.Tether.FindAsync(options.FakeCamera);

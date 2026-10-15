@@ -195,6 +195,14 @@ const FAKE_NATIVE = `
         tetherAck() { window.__tetherAck && window.__tetherAck(); },
         tetherStop() { window.__tetherEnd(null); },
         tetherSet(o) { window.__tetherCalls.push('set ' + JSON.stringify(o)); },
+        // The scanner's own settings window: saved per scanner
+        async scannerSettings(device, act) {
+            (window.__ownCalls = window.__ownCalls || []).push(act + ' ' + device);
+            window.__ownSaved = window.__ownSaved || {};
+            if (act === 'show') window.__ownSaved[device] = true;
+            if (act === 'forget') delete window.__ownSaved[device];
+            return { saved: !!window.__ownSaved[device], helper: true };
+        },
         // Preview and crop: an 8.5 × 11.7 in glass with three prints on a pale lid
         async scanCaps(o) {
             window.__capsReq = o;
@@ -1040,6 +1048,15 @@ async function newPage(context, baseUrl) {
             out.sidesShown = !$('scan-sides-row').classList.contains('hidden');
             // The FastFoto has its sides the other way round: on to start with
             out.swap = $('scan-swap').checked;
+            // Scanner's own settings…: offered for a TWAIN feeder; saved, then forgotten
+            await wait(() => !$('scan-own-row').classList.contains('hidden'));
+            out.ownShown = !$('scan-own-row').classList.contains('hidden') && $('scan-own-forget').classList.contains('hidden');
+            $('scan-own').click();
+            await wait(() => /saved/.test($('scan-own').textContent));
+            out.ownSaved = $('scan-own').textContent + '|' + !$('scan-own-forget').classList.contains('hidden');
+            $('scan-own-forget').click();
+            await wait(() => $('scan-own-forget').classList.contains('hidden'));
+            out.ownCalls = (window.__ownCalls || []).join(',');
             $('scan-sides').value = 'both';
             $('scan-sides').dispatchEvent(new Event('change'));
             out.names = $('scan-preview').textContent;
@@ -1069,6 +1086,8 @@ async function newPage(context, baseUrl) {
         check('... each photo opens large as it comes in (not the backs)', r.shown === 'single photo4.jpg', r.shown);
         check('... and the scanner is asked to crop each photo itself (its own auto-size)', r.req && r.req.autosize === true, JSON.stringify(r.req));
         check('the swap is remembered for that scanner', r.swapKept);
+        check('Scanner\'s own settings… opens its window, says when settings are saved, and Forget goes back', r.ownShown && r.ownSaved === 'Scanner\'s own settings… (saved)|true'
+            && /^state EPSON FF-680W.*show EPSON FF-680W.*forget EPSON FF-680W/.test(r.ownCalls), JSON.stringify([r.ownShown, r.ownSaved, r.ownCalls]));
         check('feeder suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }

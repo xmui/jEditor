@@ -376,12 +376,13 @@ sealed class Scanner : IDisposable
             }
             yield break;
         }
-        // The scanner's own auto-size, if it has it; else the usual way
-        if (r.AutoSize && r.Driver == "twain" && Twain32.Exe is not null)
+        // The scanner's own auto-size, if it has it, or its own settings
+        // chosen in its window: through the helper; else the usual way
+        if ((r.AutoSize || Twain32.HasSettings(r.DeviceId)) && r.Driver == "twain" && Twain32.Exe is not null)
         {
             Exception? failed = null;
             bool any = false;
-            await using (var e = Twain32.ScanAsync(r.DeviceId, r.Dpi, r.Gray, duplex, true, cancel).GetAsyncEnumerator(cancel))
+            await using (var e = Twain32.ScanAsync(r.DeviceId, r.Dpi, r.Gray, duplex, r.AutoSize, cancel).GetAsyncEnumerator(cancel))
             {
                 while (true)
                 {
