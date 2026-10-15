@@ -5,6 +5,12 @@
 
 const CHANGELOG = [
     {
+        version: '1.29.1', date: '2026-10-15',
+        items: [
+            'FastFoto colors: scans with the scanner cropping each photo itself asked the Epson driver for nothing about brightness and contrast, so it used whatever Epson Scan 2 last saved, which gave strong, oversaturated contrast. jEditor now asks for neutral brightness and contrast (its own sliders still apply), and Details shows what the driver had.'
+        ]
+    },
+    {
         version: '1.29.0', date: '2026-10-14',
         items: [
             'Scan whole glass: next to Preview in the scan dock, it scans the whole glass as one photo at the resolution chosen, with no preview or boxes (Auto crop each photo still trims it to the print, when on).',
