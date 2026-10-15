@@ -217,6 +217,11 @@ sealed class Run : ApplicationContext
         Set(o.Duplex ? "Both sides" : "One side", () => caps.CapDuplexEnabled.SetValue(o.Duplex ? BoolType.True : BoolType.False));
         Set(o.Gray ? "Grayscale" : "Color", () => caps.ICapPixelType.SetValue(o.Gray ? PixelType.Gray : PixelType.RGB));
         Set("Inches", () => caps.ICapUnits.SetValue(Unit.Inches));
+        // 8 bits a channel, after the pixel type (which can reset it): a
+        // deeper picture would be read as linear light when it's saved
+        try { Out.Log($"Driver had: {caps.ICapBitDepth.GetCurrent()} bits, pixel flavor {caps.ICapPixelFlavor.GetCurrent()}, automatic color {caps.ICapAutomaticColorEnabled.GetCurrent()}"); }
+        catch (Exception) { /* not all of them answer */ }
+        Set("8 bits", () => caps.ICapBitDepth.SetValue(8));
         // The driver's own tone settings, as it had them (Epson Scan 2 keeps
         // its last ones, and a scan with no window uses them), then neutral:
         // jEditor's brightness and contrast are applied after, on its side
@@ -238,6 +243,8 @@ sealed class Run : ApplicationContext
         if (o.Deskew) Set("Straighten", () => caps.ICapAutomaticDeskew.SetValue(BoolType.True));
         // What it ended up as
         try { Out.Log($"Now: auto size {caps.ICapAutoSize.GetCurrent()}, border detection {caps.ICapAutomaticBorderDetection.GetCurrent()}, deskew {caps.ICapAutomaticDeskew.GetCurrent()}, {caps.ICapXResolution.GetCurrent().Whole} dpi"); }
+        catch (Exception) { /* not all of them answer */ }
+        try { Out.Log($"Now: {caps.ICapBitDepth.GetCurrent()} bits, brightness {Fix(caps.ICapBrightness.GetCurrent())}, contrast {Fix(caps.ICapContrast.GetCurrent())}, gamma {Fix(caps.ICapGamma.GetCurrent())}"); }
         catch (Exception) { /* not all of them answer */ }
     }
 

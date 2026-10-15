@@ -51,6 +51,10 @@ const Scan = {
     KNOWN_BEDS: [[/OpticBook\s*A300/i, 'a3'], [/Perfection\s*V\d{3}/i, 'epson'], [/OpticBook\s*3[89]00|OpticBook\s*4800/i, 'letter']],
     KEY_OPTS: 'jeditor.scanOpts', // the settings last used
     KEY_DEV_OPTS: 'jeditor.scanOptsBy', // …and with each scanner
+    KEY_TONED: 'jeditor.scanToned', // FastFotos given the app's tone once
+    // Epson's FastFoto driver sends far more contrast than the FastFoto app
+    // saves (darker, oversaturated, shadows lost): this matches the app
+    FASTFOTO_TONE: { brightness: 5, contrast: -35 },
     KEY_SETUPS: 'jeditor.scanSetups', // saved setups: [{ name, …settings }]
     caps: {}, // what each scanner can do (asked once)
     STRIP: 6, // photos shown in the dock
@@ -412,7 +416,7 @@ const Scan = {
             const r = document.querySelector(`input[name="scan-mode"][value="${want}"]`);
             if (r) r.checked = true;
             const swaps = this.get(this.KEY_SWAP, {}) || {};
-            this.el('scan-swap').checked = d.id in swaps ? !!swaps[d.id] : /FF-\d|FastFoto/i.test(d.name);
+            this.el('scan-swap').checked = d.id in swaps ? !!swaps[d.id] : this.isFastFoto(d);
             const sizes = this.get(this.KEY_AUTOSIZE, {}) || {};
             this.el('scan-autosize').checked = d.id in sizes ? !!sizes[d.id] : true;
         }
@@ -522,13 +526,28 @@ const Scan = {
     // suits it (a photo feeder: 300 dpi, plenty for prints and quick)
     loadOptsFor(d) {
         if (!d) return;
+        this.el('scan-tone-note').classList.toggle('hidden', !this.isFastFoto(d));
         const mine = (this.get(this.KEY_DEV_OPTS, {}) || {})[d.id];
+        // A FastFoto starts with the app's tone; once, so they can change it
+        const toned = this.get(this.KEY_TONED, []) || [];
+        if (this.isFastFoto(d) && !toned.includes(d.id)) {
+            this.put(this.KEY_TONED, [...toned, d.id]);
+            const base = mine || { ...(this.get(this.KEY_OPTS, {}) || {}), dpi: this.defaultDpi(d) };
+            const flat = !base.brightness && !base.contrast;
+            this.setOpts(flat ? { ...base, ...this.FASTFOTO_TONE } : base);
+            if (flat) this.saveOpts(this.opts());
+            return;
+        }
         if (mine) return this.setOpts(mine);
         this.setOpts({ ...(this.get(this.KEY_OPTS, {}) || {}), dpi: this.defaultDpi(d) });
     },
 
+    isFastFoto(d) {
+        return !!d && /FF-\d|FastFoto/i.test(d.name || d.id);
+    },
+
     defaultDpi(d) {
-        return d && /FF-\d|FastFoto/i.test(d.name || d.id) ? 300 : 600;
+        return this.isFastFoto(d) ? 300 : 600;
     },
 
     // The last settings used (1.23's resolution and color too)

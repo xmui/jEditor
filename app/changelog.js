@@ -5,6 +5,13 @@
 
 const CHANGELOG = [
     {
+        version: '1.31.1', date: '2026-10-15',
+        items: [
+            'FastFoto scans no longer come out dark and oversaturated. Epson\'s FastFoto driver sends far more contrast than the FastFoto app saves, with the same stretch on every color, whatever its own settings. A FastFoto now starts at brightness 5, contrast −35 in the scan dock, which matches the app; it\'s said beside the sliders, and changing them is kept as before. This happens once, and only if you hadn\'t set your own brightness or contrast for it.',
+            'The scan helper asks a TWAIN feeder for 8 bits a color, and Details says what the scanner sent (bits, and its brightness, contrast and gamma as scanned), for scans whose colors look wrong.'
+        ]
+    },
+    {
         version: '1.31.0', date: '2026-10-15',
         items: [
             'Settings → Window background (Windows 11, version 22H2 or later): Mica or Acrylic behind jEditor, like the Start menu, so the desktop shows softly through the start screen and the grid. Transparency sets how much shows through. Photos, Crop and Duplicates stay solid, so colors are judged as before. Solid, as before, to start with; it follows Windows\' Transparency effects setting.'

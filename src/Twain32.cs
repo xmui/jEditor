@@ -133,10 +133,14 @@ static class Twain32
                     // name is plain ASCII whatever the code page did to the rest
                     var path = Path.Combine(dir, Path.GetFileName(line[5..]));
                     // From memory, so the file can go at once (GDI+ keeps the stream)
-                    var bmp = new Bitmap(new MemoryStream(await File.ReadAllBytesAsync(path, CancellationToken.None)));
+                    var bytes = await File.ReadAllBytesAsync(path, CancellationToken.None);
+                    var bmp = new Bitmap(new MemoryStream(bytes));
                     try { File.Delete(path); } catch (Exception) { }
                     count++;
                     Log.Write($"Side {count}: {bmp.Width} × {bmp.Height} at {started.Elapsed.TotalSeconds:0.0} s");
+                    // What the driver sent, once: for a scan whose colors are off
+                    if (count == 1 && bytes.Length >= 54)
+                        Log.Write($"Its pictures: {BitConverter.ToUInt16(bytes, 28)}-bit, header {BitConverter.ToUInt32(bytes, 14)} bytes, compression {BitConverter.ToUInt32(bytes, 30)}, read as {bmp.PixelFormat}");
                     yield return bmp;
                 }
                 else if (line.StartsWith("DONE"))
