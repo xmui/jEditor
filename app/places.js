@@ -93,6 +93,7 @@ const Places = {
             await Edits.setDefer(box.checked);
             box.checked = Edits.defer;
         });
+        this.initDrag();
         addEventListener('jeditor-drives', () => this.drivesChanged());
         this.refresh();
     },
@@ -207,13 +208,14 @@ const Places = {
         return this.app.dirHandle ? this._currentPath : null;
     },
 
-    row({ path, name, icon, depth = 0, caret = false, open = false, meta = '', count = false, cls = '', title = '', act = 'open', pin = null, extra = '' }) {
+    row({ path, name, icon, depth = 0, caret = false, open = false, meta = '', count = false, cls = '', title = '', act = 'open', pin = null, extra = '', drive = false, sub = '' }) {
         const k = this.key(path);
         const cur = this.key(this.current()) === k;
         const countText = count ? this.countText(path) : '';
-        return `<div class="fr-row sb-row${cur ? ' active' : ''} ${cls}" style="--depth:${depth}" data-path="${this.esc(path)}">` +
+        // A folder drags (onto a drive copies it, onto the sidebar pins it); a drive doesn't
+        return `<div class="fr-row sb-row${cur ? ' active' : ''} ${cls}"${drive ? '' : ' draggable="true"'} style="--depth:${depth}" data-path="${this.esc(path)}">` +
             (caret ? `<button class="fr-caret${open ? ' open' : ''}" data-act="toggle" tabindex="-1" title="${open ? 'Fold' : 'Show what\'s inside'}">${this.icons.caret}</button>` : '<span class="fr-caret fr-spacer"></span>') +
-            `<button class="sb-main" data-act="${act}" title="${this.esc((title || path) + (act === 'open' ? ' — Ctrl+click opens it in a new window' : ''))}"><span class="sb-icon">${icon}</span><span class="fr-name">${this.esc(name)}</span></button>` +
+            `<button class="sb-main" data-act="${act}" title="${this.esc((title || path) + (act === 'open' ? ' — Ctrl+click opens it in a new window' : ''))}"><span class="sb-icon">${icon}</span>${sub ? `<span class="sb-text"><span class="fr-name">${this.esc(name)}</span>${sub}</span>` : `<span class="fr-name">${this.esc(name)}</span>`}</button>` +
             extra +
             (pin !== null ? `<button class="sb-pin${pin ? ' on' : ''}" data-act="${pin ? 'unpin' : 'pin'}" title="${pin ? 'Unpin' : 'Pin to the sidebar'}">${this.icons.pin}</button>` : '') +
             (meta ? `<span class="sb-meta">${this.esc(meta)}</span>` : '') +
@@ -297,15 +299,30 @@ const Places = {
         for (const d of drives) {
             const k = this.key(d.path);
             const usb = d.kind === 'usb';
-            const extra = (this.fresh.has(k) ? '<span class="sb-new">New</span>' : '') +
-                (usb ? `<button class="sb-eject" data-act="eject" title="Eject ${this.esc(d.name)}">${this.icons.eject}</button>` : '');
             const fmt = (n) => this.app.formatBytes(n);
+            // A USB drive says how much room it has left, under its name, with
+            // a bar of how full it is (low, in red: under a tenth free)
+            const used = d.total ? Math.min(100, Math.max(0, Math.round((1 - d.free / d.total) * 100))) : 0;
+            const sub = usb && d.total
+                ? `<span class="sb-free${d.free < d.total / 10 ? ' low' : ''}"><span class="sb-free-bar"><span style="width:${used}%"></span></span>${this.short(d.free)} free</span>`
+                : '';
+            const extra = (this.fresh.has(k) ? '<span class="sb-new-badge">New</span>' : '') +
+                (usb ? `<button class="sb-eject" data-act="eject" title="Eject ${this.esc(d.name)}">${this.icons.eject}</button>` : '');
             html += await this.tree(d.path, d.name, 0, {
                 icon: this.icons[d.kind] || this.icons.disk, count: false,
-                row: { act: 'toggle', cls: usb ? 'sb-usb' : '', extra, title: `${d.name}${d.total ? ` — ${fmt(d.free)} free of ${fmt(d.total)}` : ''}` }
+                row: { act: 'toggle', cls: usb ? 'sb-usb' : '', extra, sub, drive: true, title: `${d.name}${d.total ? ` — ${fmt(d.free)} free of ${fmt(d.total)}` : ''}` }
             });
         }
         return html;
+    },
+
+    // "12 GB", "850 MB": short enough for a row
+    short(n) {
+        if (!(n >= 0)) return '';
+        const gb = n / (1024 * 1024 * 1024);
+        if (gb >= 10) return `${Math.round(gb)} GB`;
+        if (gb >= 1) return `${gb.toFixed(1)} GB`;
+        return `${Math.round(n / (1024 * 1024))} MB`;
     },
 
     // ---- Photo counts, filled in as they come ----
@@ -538,6 +555,190 @@ const Places = {
             this.listings.clear();
             this.refresh();
         }
+    },
+
+    // ---- Dragging folders: onto a drive or folder copies it there, onto
+    // the rest of the sidebar pins it ----
+
+    DRAG_TYPE: 'application/x-jeditor-folder',
+
+    baseName(p) {
+        const parts = String(p).split(/[\\/]/).filter(Boolean);
+        return parts[parts.length - 1] || p;
+    },
+
+    // A drive's own name ("USB drive (E:)"), else the folder's
+    placeName(path) {
+        const d = (this.drives || []).find(x => this.key(x.path) === this.key(path));
+        return d ? d.name : this.baseName(path);
+    },
+
+    within(path, parent) {
+        const p = this.key(path).replace(/[\\/]+$/, ''), q = this.key(parent).replace(/[\\/]+$/, '');
+        return p === q || p.startsWith(q + '\\');
+    },
+
+    parentOf(path) {
+        return String(path).replace(/[\\/]+$/, '').replace(/[\\/][^\\/]*$/, '');
+    },
+
+    initDrag() {
+        // What can be dragged: a folder in the sidebar's lists, and a folder
+        // of the open project (its folder list); folders from Explorer too
+        const start = (e) => {
+            const row = e.target.closest && e.target.closest('.sb-row[data-path], #folder-tree .fr-row[data-folder-path]');
+            // (not a drive itself)
+            if (!row || (this.drives || []).some(d => this.key(d.path) === this.key(row.dataset.path))) return;
+            const path = row.dataset.path !== undefined ? row.dataset.path : this.projectPath(row.dataset.folderPath);
+            if (!path) return;
+            this.dragging = path;
+            e.dataTransfer.effectAllowed = 'copy';
+            e.dataTransfer.setData(this.DRAG_TYPE, path);
+            document.body.classList.add('dragging-folder');
+        };
+        const end = () => {
+            this.dragging = null;
+            this.setDrop(null);
+            document.body.classList.remove('dragging-folder', 'sb-drop');
+        };
+        const tree = this.el('folder-tree');
+        for (const el of [...this.boxes, tree].filter(Boolean)) {
+            el.addEventListener('dragstart', start);
+            el.addEventListener('dragend', end);
+        }
+        // Only folders and files from Explorer, or a folder from here
+        const wanted = (e) => !Folders.dragging && !this.app._dragKey && !!e.dataTransfer &&
+            (this.dragging || [...e.dataTransfer.types].includes('Files'));
+        for (const box of this.boxes) {
+            box.addEventListener('dragover', (e) => {
+                if (!wanted(e)) return;
+                const drop = this.dropAt(e);
+                e.preventDefault();
+                e.stopPropagation();
+                e.dataTransfer.dropEffect = drop ? 'copy' : 'none';
+                this.setDrop(drop);
+                document.body.classList.add('sb-drop');
+            });
+            box.addEventListener('dragleave', (e) => {
+                if (e.relatedTarget && box.contains(e.relatedTarget)) return;
+                this.setDrop(null);
+                document.body.classList.remove('sb-drop');
+            });
+            box.addEventListener('drop', (e) => {
+                if (!wanted(e)) return;
+                e.preventDefault();
+                e.stopPropagation();
+                document.body.classList.remove('drag-over', 'sb-drop');
+                const drop = this.dropAt(e);
+                const from = this.dragging;
+                end();
+                if (!drop) return;
+                if (from) this.dropFolders([from], [], drop);
+                else this.dropFromOutside(e.dataTransfer, drop);
+            });
+        }
+    },
+
+    // A folder of the open project, by its path in the project
+    projectPath(rel) {
+        const root = this.current();
+        if (!root || rel === undefined) return null;
+        return rel ? root.replace(/[\\/]+$/, '') + '\\' + rel.split('/').join('\\') : root;
+    },
+
+    // Where a drop lands: { copy: folder } on a row, { pin: true } elsewhere
+    // in the sidebar's lists; null where it can't go
+    dropAt(e) {
+        const row = e.target.closest && e.target.closest('.sb-row[data-path]');
+        const from = this.dragging;
+        if (row) {
+            const dest = row.dataset.path;
+            if (from && (this.within(dest, from) || this.key(this.parentOf(from)) === this.key(dest.replace(/[\\/]+$/, '')))) return null;
+            return { copy: dest, el: row };
+        }
+        if (from && this.isPinned(from)) return null;
+        return { pin: true, el: e.currentTarget };
+    },
+
+    setDrop(drop) {
+        if (this._dropEl && (!drop || this._dropEl !== drop.el)) {
+            this._dropEl.classList.remove('sb-drop-target', 'sb-pin-target');
+            delete this._dropEl.dataset.dropLabel;
+        }
+        this._dropEl = drop ? drop.el : null;
+        if (!drop) return;
+        drop.el.classList.add(drop.copy ? 'sb-drop-target' : 'sb-pin-target');
+        drop.el.dataset.dropLabel = drop.copy ? `Copy to ${this.placeName(drop.copy)}` : 'Pin to the sidebar';
+    },
+
+    // From Explorer: folders (copied, or pinned) and photos (copied)
+    async dropFromOutside(dt, drop) {
+        const items = [...(dt.items || [])].filter(i => i.kind === 'file');
+        const files = [...(dt.files || [])];
+        if (!files.length) return;
+        const kinds = await Promise.all(items.map(i => typeof i.getAsFileSystemHandle === 'function'
+            ? i.getAsFileSystemHandle().then(h => h && h.kind).catch(() => null) : null));
+        const paths = await this.native().pathsOf(files).catch(() => []);
+        const folders = [], photos = [];
+        paths.forEach((p, i) => {
+            if (!p) return;
+            if (kinds[i] === 'directory') folders.push(p);
+            else if (this.app.isImage(p)) photos.push(p);
+        });
+        this.dropFolders(folders, photos, drop);
+    },
+
+    async dropFolders(folders, photos, drop) {
+        const app = this.app;
+        if (drop.pin) {
+            for (const f of folders) this.pin(f, this.baseName(f));
+            if (folders.length) app.showToast(folders.length === 1 ? `Pinned ${this.baseName(folders[0])}` : `Pinned ${folders.length} folders`, 2500, null, null, { type: 'success' });
+            return;
+        }
+        for (const f of folders) await this.copyInto(f, drop.copy);
+        if (photos.length) {
+            const items = await this.native().transfer(photos, drop.copy, true).catch(e => [{ error: e.message }]);
+            const ok = items.filter(i => i.to).length;
+            app.showToast(ok ? `Copied ${ok} photo${ok === 1 ? '' : 's'} to ${this.placeName(drop.copy)}` : `Couldn't copy the photos: ${(items[0] || {}).error || 'not copied'}`, 4000, null, null, { type: ok ? 'success' : 'error' });
+            this.listings.delete(this.key(drop.copy));
+            this.counts.delete(this.key(drop.copy));
+            this.draw();
+        }
+    },
+
+    // A whole folder copied into another, with how far it's got (and Stop)
+    async copyInto(src, dest) {
+        const app = this.app;
+        const name = this.baseName(src), where = this.placeName(dest);
+        const key = 'copy-' + (this._copyN = (this._copyN || 0) + 1);
+        let job = null;
+        const stop = { label: 'Stop', run: () => { if (job) this.native().cancelCopy(job.copyId); } };
+        let toast = null;
+        const say = (pct) => { toast = app.showToast(`Copying ${name} to ${where}…${pct === null ? '' : ` ${pct}%`}`, 0, key, stop, { type: 'progress' }); };
+        say(null);
+        let last = -1;
+        job = this.native().copyFolder(src, dest, (done, total) => {
+            const pct = total ? Math.min(100, Math.floor(done * 100 / total)) : 100;
+            if (pct !== last) { last = pct; say(pct); }
+        });
+        let r;
+        try {
+            r = await job;
+        } catch (e) {
+            if (toast) app.dismissToast(toast);
+            UI.alert({ title: `Couldn't copy ${name} to ${where}`, message: e.message });
+            return;
+        }
+        if (r.cancelled) {
+            app.showToast(`Stopped copying ${name}: nothing was left on ${where}`, 4000, key, null, { type: 'info' });
+            return;
+        }
+        app.showToast(`Copied ${name} to ${where}`, 6000, key, { label: 'Show', run: () => this.native().reveal(r.to) }, { type: 'success' });
+        // What's in it, and the drive's free space, again
+        this.listings.delete(this.key(dest));
+        this.counts.delete(this.key(dest));
+        this.expanded.add(this.key(dest));
+        this.drivesChanged();
     },
 
     pin(path, name) {

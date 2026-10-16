@@ -252,6 +252,12 @@ const waitForPost = (page, type) => page.waitForFunction(
                 else if (m.type === 'newWindow' || m.type === 'split') reply({ ok: true });
                 else if (m.type === 'transfer') reply({ items: m.paths.map(p => ({ from: p, to: m.dest + '\\' + p.split('\\').pop() })) });
                 else if (m.type === 'undoTransfer') reply({ errors: m.items.map(() => null) });
+                else if (m.type === 'copyFolder') {
+                    // The app's side: how far it's got, then where it went
+                    window.__deliver({ type: 'copyProgress', copy: m.id, done: 5, total: 10 });
+                    reply({ to: m.dest + m.path.split('\\').pop() });
+                }
+                else if (m.type === 'cancelCopy') window.__cancelCopy = m.copy;
                 else if (m.type === 'scanners') reply({ devices: [{ id: 'jeditor-test-scanner', name: 'jEditor test scanner', driver: 'test' }], problems: [] });
                 else if (m.type === 'cameras') reply({ cameras: [{ id: 'jeditor-test-camera', name: 'jEditor test camera', ready: true, note: null }] });
                 else if (m.type === 'tether') {
@@ -325,6 +331,16 @@ const waitForPost = (page, type) => page.waitForFunction(
         const smoke = await waitForPost(page, 'smoke');
         check('smoke test: reports success', smoke.ok && smoke.count === 4 && smoke.rotated && smoke.errors.length === 0, JSON.stringify(smoke));
         check('smoke test: runs the further steps through the app', smoke.steps && smoke.steps.stored === true && smoke.steps.deleted === true && smoke.steps.restored === true && smoke.steps.scanned === true && smoke.steps.fed === true && smoke.steps.cropped === true && smoke.steps.tethered === true && smoke.steps.logged === true && smoke.steps.places === true && smoke.steps.browsed === true && smoke.steps.projects === true && smoke.steps.counted === true && smoke.steps.pins === true && smoke.steps.renamed === true && smoke.steps.windows === true && smoke.steps.moved === true && smoke.steps.unmoved === true && smoke.steps.back === true && /v1\.0\.0/.test(smoke.steps.update), JSON.stringify(smoke.steps));
+        // A folder copied onto a drive: progress as it goes, then where it went; Stop is passed on
+        const copy = await page.evaluate(async () => {
+            const seen = [];
+            const job = window.JEditorNative.copyFolder('C:\\Jones', 'E:\\', (d, t) => seen.push(d + '/' + t));
+            const r = await job;
+            window.JEditorNative.cancelCopy(job.copyId);
+            await new Promise(res => setTimeout(res, 50));
+            return { to: r.to, seen: seen.join(), cancelled: window.__cancelCopy === job.copyId };
+        });
+        check('copyFolder: progress as it goes, then where the copy went; cancelCopy is passed on', copy.to === 'E:\\Jones' && copy.seen === '5/10' && copy.cancelled, JSON.stringify(copy));
         const scanned = await page.evaluate(() => ({ scan: window.__scan, check: (window.__checks || []).find(c => c.step === 'scanned') }));
         const teth = await page.evaluate(() => ({ req: window.__tether, check: (window.__checks || []).find(c => c.step === 'tethered') }));
         check('smoke test: tethers the test camera into the order, takes a shot (RAW + JPEG) and disconnects', teth.req && teth.req.camera === 'jeditor-test-camera' && teth.req.folder === 'C:\\Jones' && teth.req.prefix === 'shot_' &&

@@ -5,6 +5,16 @@
 
 const CHANGELOG = [
     {
+        version: '1.35.0', date: '2026-10-16',
+        items: [
+            'Drag a folder onto a drive (or any folder) in the sidebar to copy it there: a project onto a customer\'s USB stick, say. It says how far it\'s got, with Stop; checks there\'s room first; and a copy that\'s stopped or fails leaves nothing behind. Folders come from the sidebar\'s lists, the open project\'s folder list, or Explorer (photos from Explorer are copied too). jEditor\'s own data stays behind.',
+            'Drag a folder onto the rest of the sidebar to pin it.',
+            'A USB drive in the sidebar shows how much room it has left, under its name, with a bar of how full it is (red when under a tenth is free).',
+            'The New badge on a drive just plugged in sits in its row again, instead of taking a line of its own.',
+            'The sidebar never scrolls sideways: long names are cut with an ellipsis.'
+        ]
+    },
+    {
         version: '1.34.1', date: '2026-10-15',
         items: [
             'Rescan (`R`) no longer shows the same photo two or three times. Pressed while a project was still opening (a big one on a network drive takes a while), it found the photos not read yet and added them, and then the opening added them again. R now waits for the opening, which reads every photo anyway, and says so. Pressed several times in a row, the presses make one rescan, and a photo already shown is never added again.'

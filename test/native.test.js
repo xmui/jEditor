@@ -256,6 +256,19 @@ const FAKE_NATIVE = `
         async quickAccess() { return window.__quick || []; },
         async eject(p) { window.__ejected = p; window.__drives = window.__drives.filter(d => d.path !== p); return { ok: true }; },
         async reveal(p) { window.__revealed = p; return true; },
+        // A folder copied into another: progress, then where it went (__copyError fails it)
+        copyFolder(p, dest, progress) {
+            (window.__copies = window.__copies || []).push({ path: p, dest });
+            const done = (async () => {
+                progress(0, 100); await new Promise(r => setTimeout(r, 30)); progress(50, 100);
+                if (window.__copyError) throw new Error(window.__copyError);
+                return { to: dest.replace(/\\$/, '') + BS + p.split(BS).pop() };
+            })();
+            done.copyId = 1;
+            return done;
+        },
+        cancelCopy() { window.__copyCancelled = true; },
+        async pathsOf(files) { return window.__droppedPaths || []; },
         async pickPath() { return window.__pick || null; },
         // Windows: the other windows are __others; transfers move files in disk/
         setState(st) { window.__state = st; },
@@ -1526,7 +1539,41 @@ async function newPage(context, baseUrl) {
             dispatchEvent(new Event('jeditor-drives'));
             await wait(() => /Backup \(F:\) plugged in/.test(toasts()) && rowOf(side, 'Backup (F:)'));
             out.toast = toasts();
-            out.isNew = !!rowOf(side, 'Backup (F:)').querySelector('.sb-new');
+            out.isNew = !!rowOf(side, 'Backup (F:)').querySelector('.sb-new-badge');
+            // The New badge sits in the row (not a line of its own), with the room left
+            const fRow = rowOf(side, 'Backup (F:)');
+            out.badgeInRow = fRow.querySelector('.sb-new-badge').getBoundingClientRect().width < 60 && fRow.getBoundingClientRect().height < 50;
+            out.free = [...side.querySelectorAll('.sb-usb .sb-free')].map(x => x.textContent + (x.classList.contains('low') ? '!' : '') + x.querySelector('.sb-free-bar > span').style.width).join();
+            // The sidebar never scrolls sideways
+            const sc = side.closest('.sb-scroll');
+            out.noSideScroll = getComputedStyle(sc).overflowX === 'hidden' && sc.scrollWidth <= sc.clientWidth + 1;
+            // A folder dragged onto a drive is copied there, saying how far it's got
+            const drag = (src, dst) => {
+                const dt = new DataTransfer();
+                src.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+                dst.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+                const label = dst.dataset.dropLabel || (dst.closest('.sb-pin-target') || {}).dataset?.dropLabel;
+                dst.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+                src.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
+                return label;
+            };
+            const projRow = [...side.querySelectorAll('.sb-projects .sb-row')].find(r => r.querySelector('.fr-name').textContent === 'Beta');
+            out.dragLabel = drag(projRow, fRow);
+            await wait(() => /Copied Beta to Backup \(F:\)/.test(toasts()));
+            out.copied = JSON.stringify(window.__copies) + ' | ' + toasts();
+            // …onto the sidebar's empty part: pinned
+            const area = side.querySelector('.sb-sec-body') || side;
+            await new Promise(r => setTimeout(r, 300)); // the sidebar draws again after a copy
+            out.pinLabel = drag([...side.querySelectorAll('.sb-projects .sb-row')].find(r => r.querySelector('.fr-name').textContent === 'Beta'), side);
+            out.pinned2 = Places.pins().some(p => p.name === 'Beta');
+            // A failed copy says why
+            window.__copyError = 'Not enough room on F:';
+            UI.alert = async (o) => { out.copyError = o.title + ': ' + o.message; };
+            await wait(() => rowOf(side, 'Backup (F:)') && !side.querySelector('.sb-pin-target'));
+            drag([...side.querySelectorAll('.sb-projects .sb-row')].find(r => r.querySelector('.fr-name').textContent === 'Beta'), rowOf(side, 'Backup (F:)'));
+            await wait(() => out.copyError);
+            window.__copyError = null;
+            void area;
             rowOf(side, 'Backup (F:)').querySelector('[data-act="eject"]').click();
             await wait(() => window.__ejected && !rowOf(side, 'Backup (F:)'));
             out.ejected = window.__ejected;
@@ -1552,6 +1599,11 @@ async function newPage(context, baseUrl) {
         check('... Open makes it the project, and so does a double-click', r.openedUsb === 'E:\\Order 9' && r.dblOpened === 'E:\\Order 10', JSON.stringify([r.openedUsb, r.dblOpened]));
         check('sections fold away and stay folded', r.folded);
         check('a USB drive plugged in is offered and marked New', /Backup \(F:\) plugged in/.test(r.toast) && r.isNew, JSON.stringify([r.toast, r.isNew]));
+        check('the New badge sits in the drive\'s row; a USB drive shows the room it has left (low in red)', r.isNew && r.badgeInRow && r.free === '954 MB free!98%,1.9 GB free!94%', JSON.stringify([r.badgeInRow, r.free]));
+        check('the sidebar never scrolls sideways', r.noSideScroll);
+        check('a folder dragged onto a drive is copied there (saying so); onto the sidebar it\'s pinned; a failed copy says why',
+            r.dragLabel === 'Copy to Backup (F:)' && /"path":"D:\\\\Orders\\\\Beta","dest":"F:\\\\"/.test(r.copied) && /Copied Beta to Backup \(F:\)/.test(r.copied)
+            && r.pinLabel === 'Pin to the sidebar' && r.pinned2 && /Not enough room on F:/.test(r.copyError || ''), JSON.stringify([r.dragLabel, r.copied, r.pinLabel, r.pinned2, r.copyError]));
         check('Eject ejects it and says so', r.ejected === 'F:\\' && r.ejectToast, JSON.stringify([r.ejected, r.ejectToast]));
         check('sidebar suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();

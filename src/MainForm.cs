@@ -39,6 +39,8 @@ sealed class MainForm : Form
     // Scanning (Scanner.cs): made when first used; one scan at a time
     Scanner? scanner;
     CancellationTokenSource? scanning;
+    // Folder copies under way (a project onto a USB drive), by request id
+    readonly Dictionary<long, CancellationTokenSource> copies = new();
     Scanner Scanners => scanner ??= new Scanner(options.FakeScanner);
 
     // Tethered shooting (Camera/Tether.cs): one camera at a time
@@ -421,6 +423,7 @@ sealed class MainForm : Form
             case "windows":
             case "transfer":
             case "undoTransfer":
+            case "copyFolder":
                 var files = FilesOf(e);
                 BeginInvoke(async () => await HandleRequestAsync(msg, files));
                 break;
@@ -429,6 +432,9 @@ sealed class MainForm : Form
                 break;
             case "cancelScan":
                 scanning?.Cancel();
+                break;
+            case "cancelCopy":
+                if (copies.TryGetValue(msg["copy"]?.GetValue<long>() ?? 0, out var copying)) copying.Cancel();
                 break;
             case "tetherShoot":
                 tether?.Shoot();
@@ -693,6 +699,32 @@ sealed class MainForm : Form
                     Log.Write($"{(copy ? "Copied" : "Moved")} {items.Count(i => i.To is not null)} of {items.Count} into {dest}");
                     Reply(id, new { items = items.Select(i => new { from = i.From, to = i.To, error = i.Error }) });
                     AppWindows.PostAll(new { type = "filesChanged" });
+                    break;
+                }
+                case "copyFolder":
+                {
+                    // A whole folder into another (onto a USB drive), with
+                    // how far it's got as it goes ('copyProgress')
+                    var from = Str(msg, "path") ?? "";
+                    var dest = Str(msg, "dest") ?? "";
+                    if (!Path.IsPathFullyQualified(from) || !Path.IsPathFullyQualified(dest)) { Reply(id, new { error = "Not a folder" }); break; }
+                    using var cancel = new CancellationTokenSource();
+                    copies[id] = cancel;
+                    try
+                    {
+                        var to = await Task.Run(() => FolderCopy.Run(from, dest, (done, total) =>
+                            BeginInvoke(() => Post(new { type = "copyProgress", copy = id, done, total })), cancel.Token));
+                        Log.Write($"Copied {from} to {to}");
+                        Reply(id, new { to });
+                        AppWindows.PostAll(new { type = "drivesChanged" }); // free space
+                    }
+                    catch (OperationCanceledException) { Reply(id, new { cancelled = true }); }
+                    catch (Exception ex)
+                    {
+                        Log.Write($"Couldn't copy {from} to {dest}: {ex.Message}");
+                        Reply(id, new { error = ex.Message });
+                    }
+                    finally { copies.Remove(id); }
                     break;
                 }
                 case "undoTransfer":
