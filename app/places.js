@@ -328,6 +328,9 @@ const Places = {
     // ---- Photo counts, filled in as they come ----
 
     loadCounts() {
+        // Rows built before counts came in (a draw waits on the lists) get
+        // the ones known now: only the missing ones are counted below
+        this.fillCounts();
         clearTimeout(this._countTimer);
         this._countTimer = setTimeout(async () => {
             const want = new Set();

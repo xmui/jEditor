@@ -7,7 +7,8 @@ const CHANGELOG = [
     {
         version: '1.35.1', date: '2026-10-16',
         items: [
-            'jEditor is moving back to its first home on GitHub, xmui/jEditor, where it\'s becoming one app for Windows, Mac and the web. Updates now come from there; nothing changes on this PC, and Settings → Updates finds them as before.'
+            'jEditor is moving back to its first home on GitHub, xmui/jEditor, where it\'s becoming one app for Windows, Mac and the web. Updates now come from there; nothing changes on this PC, and Settings → Updates finds them as before.',
+            'A project in the sidebar\'s list no longer sometimes shows no photo count: when the list was drawn again while counting, the count was known but not shown until the next redraw.'
         ]
     },
     {
