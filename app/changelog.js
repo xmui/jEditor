@@ -5,6 +5,12 @@
 
 const CHANGELOG = [
     {
+        version: '1.35.1', date: '2026-10-16',
+        items: [
+            'jEditor is moving back to its first home on GitHub, xmui/jEditor, where it\'s becoming one app for Windows, Mac and the web. Updates now come from there; nothing changes on this PC, and Settings → Updates finds them as before.'
+        ]
+    },
+    {
         version: '1.35.0', date: '2026-10-16',
         items: [
             'Drag a folder onto a drive (or any folder) in the sidebar to copy it there: a project onto a customer\'s USB stick, say. It says how far it\'s got, with Stop; checks there\'s room first; and a copy that\'s stopped or fails leaves nothing behind. Folders come from the sidebar\'s lists, the open project\'s folder list, or Explorer (photos from Explorer are copied too). jEditor\'s own data stays behind.',

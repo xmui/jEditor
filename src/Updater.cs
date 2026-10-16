@@ -7,13 +7,18 @@ using System.Text.RegularExpressions;
 
 namespace JEditor;
 
-// Updates from this repo's GitHub releases: is there a newer one, download
+// Updates from GitHub releases: is there a newer one, download
 // its setup (checked against the SHA-256 GitHub publishes for it), and run
 // it. The setup installs for this user, so no admin; it waits for jEditor
 // to close and opens it again afterwards (/RELAUNCH=1, see jEditor.iss).
 static class Updater
 {
-    const string LatestRelease = "https://api.github.com/repos/xmui/jeditor-windows/releases/latest";
+    // jEditor's repo, and the Windows app's own repo, where releases were
+    // published until 1.35.1 (the app moved back into xmui/jEditor). The
+    // newest of the two wins, so an update is found whichever one has it:
+    // jEditor's latest release is a web one (no setup) until its first
+    // Windows release lands.
+    static readonly string[] Repos = ["xmui/jEditor", "xmui/jeditor-windows"];
 
     static readonly HttpClient http = MakeClient();
 
@@ -28,7 +33,23 @@ static class Updater
 
     public static async Task<Release> LatestAsync()
     {
-        using var res = await http.GetAsync(LatestRelease);
+        Release? newest = null;
+        Exception? failed = null;
+        foreach (var repo in Repos)
+        {
+            try
+            {
+                var release = await LatestAsync(repo);
+                if (newest is null || IsNewer(release.Tag, newest.Tag)) newest = release;
+            }
+            catch (Exception e) { failed ??= e; }
+        }
+        return newest ?? throw failed!;
+    }
+
+    static async Task<Release> LatestAsync(string repo)
+    {
+        using var res = await http.GetAsync($"https://api.github.com/repos/{repo}/releases/latest");
         if ((int)res.StatusCode == 404) throw new InvalidOperationException("No releases yet");
         res.EnsureSuccessStatusCode();
         var json = JsonNode.Parse(await res.Content.ReadAsStringAsync())!;
