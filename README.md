@@ -1,21 +1,33 @@
 # jEditor
 
-A photo viewer for rotating, cropping and straightening folders of photos, built for working through scan orders, as a Windows app. It edits the files on your disk directly. How to use it: [docs/using-jeditor.md](docs/using-jeditor.md).
+A photo viewer for rotating, cropping and straightening folders of photos, built for working through scan orders. It edits the files on your disk directly; nothing is uploaded. How to use it: [docs/using-jeditor.md](docs/using-jeditor.md).
 
-It started as a web app ([xmui/jEditor](https://github.com/xmui/jEditor), now retired; its history is here too). As an app it also:
+One UI (`app/`), three ways to run it:
+
+| | Status | What it has |
+|---|---|---|
+| **Windows app** | Released | Everything: the core below, plus scanning, camera tethering, the projects sidebar with drives, the Recycle Bin, several windows and updates. |
+| **Web** | Coming back (the site still has 1.18.1 for now) | The core, in Chrome or Edge: open, view, rotate, crop and straighten, flags, search, rename, move, delete with undo, export, duplicates, Auto crop and watching the folder. |
+| **Mac app** | Planned | The core, with no permission prompts and folders opened from Finder; then the sidebar, windows and updates. |
+
+[PLAN.md](PLAN.md) has how the three fit together and what comes next. Scanning and tethering are Windows-only for now.
+
+The Windows app also:
 
 - **installs without admin rights.** It goes into your own user folder, like many apps do.
 - **opens folders without asking for permission.** There's no "Let site edit files?" prompt, not even for a recent order after a restart.
 - **uses Windows' own folder picker,** which opens where you picked the last folder, so the next order is a click away.
 - **opens a folder given to it,** for example `jEditor.exe "D:\Orders\Smith"`.
 
-## Installing
+## Installing on Windows
 
 Download **jEditor-Setup-x.y.z.exe** from [Releases](../../releases) and run it. It installs for you only, in `%LOCALAPPDATA%\Programs\jEditor`, with a Start menu shortcut. It doesn't ask for admin rights.
 
 The first time, Windows may say "Windows protected your PC", because the app isn't signed. Click **More info**, then **Run anyway**. It only asks once.
 
-To update, run the newer setup. To uninstall, use Settings → Apps. jEditor's settings and recent orders are kept in `%LOCALAPPDATA%\jEditor` either way.
+Releases up to 1.35.1 are also in [xmui/jeditor-windows](https://github.com/xmui/jeditor-windows/releases), where the Windows app lived from 1.18.1 to 1.35.1; 1.35.1 and later look for updates here.
+
+To update, use Settings → Updates, or run the newer setup. To uninstall, use Settings → Apps. jEditor's settings and recent orders are kept in `%LOCALAPPDATA%\jEditor` either way.
 
 There's also a **portable** zip. Unzip it anywhere and run `jEditor.exe`, with nothing to install.
 
@@ -26,7 +38,7 @@ jEditor needs the Microsoft Edge WebView2 Runtime, which comes with Windows 11 a
 The UI is plain HTML, CSS and JavaScript: the `app` folder here, shipped beside `jEditor.exe`. Colors, type and spacing are in `app/tokens.css`. Changing the UI never needs the exe to be rebuilt. To try a change:
 
 ```
-jEditor.exe --ui C:\path\to\jeditor-windows\app
+jEditor.exe --ui C:\path\to\jEditor\app
 ```
 
 That runs the UI from that folder in **dev mode**:
@@ -46,6 +58,8 @@ A Debug build (`dotnet run --project src`) does this on its own with the repo's 
 - `src/Scanner.cs`: scanning into the open order with [NAPS2.Sdk](https://github.com/cyanfish/naps2) (LGPL-2.1; its DLLs and license ship beside the exe, not inside it, so they can be replaced). TWAIN scanners with 64-bit drivers and WIA scanners work in the app's own process; the scanner's own window sets size and resolution. TWAIN needs `TWAINDSM.dll`, which scanner drivers install in System32 (or put one in `_win64\` beside the exe). `--fake-scanner` adds a test scanner that needs no hardware.
 - `app/`: the UI. It ships beside the exe.
 - `docs/`: how to use jEditor, and the plan from its web app days.
+
+The UI never assumes Windows: everything the app adds goes through `window.JEditorNative` (made by `src/bridge.js`), which is `null` in a browser, and the UI tests run it that way in Chrome.
 - `installer/jEditor.iss`: the per-user installer (Inno Setup).
 
 ## Building
@@ -53,8 +67,8 @@ A Debug build (`dotnet run --project src`) does this on its own with the repo's 
 On Windows, with the .NET 8 SDK and [Inno Setup 6](https://jrsoftware.org/isdl.php):
 
 ```
-git clone https://github.com/xmui/jeditor-windows
-cd jeditor-windows
+git clone https://github.com/xmui/jEditor
+cd jEditor
 ./scripts/build.ps1            # dist\: publish\, the portable zip and the setup
 ./scripts/smoke-test.ps1       # the built app opens a folder and saves a rotation
 ```

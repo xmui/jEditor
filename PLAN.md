@@ -1,20 +1,54 @@
 # jEditor: plan
 
-## Why a Windows app, and why it can work without admin
+## One jEditor: Windows, Mac and web
+
+jEditor is one product, in this repo, shipped three ways from one UI (`app/`):
+
+1. **Windows**: the full app, as it is. Nothing is taken away.
+2. **Mac**: an installed app with the core workflow, native file access (no permission prompts) and folders opened from Finder.
+3. **Web**: back at https://xmui.github.io/jEditor/, the core workflow in Chrome or Edge.
+
+**The core** is what every platform has: open a folder, view, rotate, crop and straighten, flags, search, rename, move, delete with undo, export, duplicates, Auto crop and watching the folder. That's the last web version's features (1.18.1) and everything since that isn't tied to Windows. Hardware and Windows-integration features (scanning, camera tethering, Explorer's pins, the Recycle Bin) stay Windows-only for now; their Mac equivalents are on the back burner.
+
+### Decisions
+
+- **One repo, xmui/jEditor.** The Windows app lived in xmui/jeditor-windows from 1.18.1 to 1.35.1. Its history already contained all of jEditor's, so it came back with nothing lost. Installed copies from before 1.35.1 look for updates only there, so 1.35.1 (released in both) checks both repos and takes the newest; jeditor-windows is archived once the lab PC has it, with its releases kept.
+- **Windows stays .NET 8 + WebView2.** Scanning (NAPS2), the 32-bit TWAIN helper, tethering, the Recycle Bin and the updater are C# and work; no rewrite.
+- **Mac is Electron.** The UI edits files through the File System Access API, which only Chromium has (Safari's WebKit doesn't), so Electron runs the UI exactly as WebView2 does and one test suite covers both. Its host gives the page folder handles backed by the disk by path (through its preload script), as the Windows host does with `CreateWebFileSystemDirectoryHandle`, so there are no prompts and folders open from Finder or a path. Cost: a ~150 MB app.
+- **The web is `app/` as it is,** with no host: `window.JEditorNative` is `null`, as in the UI tests. The site is built from the latest UI, not 1.18.1, at the same address, so people's settings and recent folders carry over.
+- **Hosts say what they can do.** Today the UI asks "is there a host?" and then assumes Windows. Each host will list its features (`scan`, `trash`, `windows`, `places`, `updates`, …) and the UI checks each one, so the Mac app never shows a Scan button that does nothing. The tests run the UI with no host, the Windows host and the Mac host.
+- **One version, one changelog, one release:** the Windows setup and zip, the Mac `.dmg`, `standalone.html`, and the site deployed from the same commit.
+- **Layout, later:** `app/` (the UI), `hosts/windows/` (today's `src/`, `twain32/`, `installer/`), `hosts/mac/`, `test/`, `scripts/`, `docs/`. Moved in its own PR, with nothing else in it.
+
+### Phases
+
+1. **Consolidate (1.35.1).** The Windows app's history comes back here; CI and releases run here; the updater checks both repos. *Then:* archive xmui/jeditor-windows once the lab PC is on 1.35.1. New work starts from this repo.
+2. **Capabilities, then the web.** Hosts list their features and the UI checks them (with tests for each host). Then the Pages workflow deploys the latest UI, and each release attaches `standalone.html`. Until then the site keeps 1.18.1.
+3. **Mac app, core.** Electron host: disk-backed folder handles, the Mac folder picker, opening from Finder and the command line, recent folders by path, Move to Trash, Show in Finder, the title bar following the theme. An unsigned `.dmg` built on GitHub's macOS runners and attached to each release.
+4. **Mac extras.** The projects sidebar (`/Volumes`, Eject), several windows and Split, the update check.
+
+**Before the Mac app goes to customers:** an Apple Developer account ($99 a year), to sign and notarize it. Unsigned, macOS says it "can't be opened" and people have to find Open Anyway in System Settings → Privacy & Security; an unsigned app also can't update itself, only download the new `.dmg`. Adding signing changes CI, not the app.
+
+**Back burner:** scanning on the Mac (Apple's ImageCaptureCore; the FastFoto has Mac drivers), tethering on the Mac, anything hardware-related on the web.
+
+## The Windows app
+
+
+### Why a Windows app, and why it can work without admin
 
 The lab has one Windows PC (an Epson FastFoto FF-680W and a Plustek OpticBook A300). The web app worked there but had limits a browser can't get past: permission prompts, no way to look up from a folder to its order, a `.jeditor` folder that isn't really hidden, no Recycle Bin, and no scanning. See "Native Windows app and in-app scanning" in [docs/jeditor-plan.md](docs/jeditor-plan.md) for the full list, and the lab's scanners.
 
 **Lab PC test (2026-10-12):** MultiMC, an unsigned portable .exe, ran from the user's own folder without admin. So nothing on that PC blocks unsigned apps run from user folders (no AppLocker rule, no Smart App Control). A per-user install of jEditor runs there too. Expect at most a one-time SmartScreen "More info → Run anyway", since a new app has no reputation yet.
 
-## How it's built
+### How it's built
 
 - **.NET 8 WinForms + WebView2.** Not Tauri, and not a rewrite of jEditor's ~12.6k lines. WebView2 is Edge's engine, so jEditor runs as it does in Edge. The deciding feature is `CoreWebView2Environment.CreateWebFileSystemDirectoryHandle` (stable since WebView2 SDK 1.0.2651.64; pinned at 1.0.4258.31): the app makes a real `FileSystemDirectoryHandle` for any path, with edit permission already granted, and posts it to the page. jEditor's File System Access code then works unchanged, with no permission prompts. C# also has NTwain for TWAIN scanning, and easy access to the Recycle Bin, Explorer's thumbnails and the rest of Windows.
-- **One repo.** It started with jEditor (the web app, xmui/jEditor) as a submodule; on 2026-10-12 the UI moved in, with its history, and the web app was retired. Its old plan is in [docs/jeditor-plan.md](docs/jeditor-plan.md). The UI is still standard web code: `src/bridge.js` runs before it and replaces `showDirectoryPicker`. The bridge relies on the `app` object (`openDirectory`, `files`, `rotateImage`, `isLoading`) for opening a folder from the command line and for the smoke test, and on `data-theme` on `<html>` for the title bar. The UI's tests (`test/ui.test.js`) still run it in Chrome.
+- **One repo.** It started in xmui/jeditor-windows with jEditor (the web app, xmui/jEditor) as a submodule; on 2026-10-12 the UI moved in, with its history, and the web app was retired; at 1.35.1 the whole thing came back to xmui/jEditor (above). Its old plan is in [docs/jeditor-plan.md](docs/jeditor-plan.md). The UI is still standard web code: `src/bridge.js` runs before it and replaces `showDirectoryPicker`. The bridge relies on the `app` object (`openDirectory`, `files`, `rotateImage`, `isLoading`) for opening a folder from the command line and for the smoke test, and on `data-theme` on `<html>` for the title bar. The UI's tests (`test/ui.test.js`) still run it in Chrome.
 - **The UI ships as files.** The `app` folder sits beside the exe, so a UI change never needs a rebuild. `--ui <folder>` runs the UI from a checkout in dev mode, where CSS changes show live.
 - **No admin anywhere.** It's a self-contained exe, because a shared .NET runtime would need admin to install. The installer is Inno Setup with `PrivilegesRequired=lowest`: `%LOCALAPPDATA%\Programs\jEditor`, the user's Start menu, and the uninstall entry in HKCU. CI checks nothing lands in Program Files or HKLM.
 - **Origin `https://jeditor.example/`, fixed.** IndexedDB and localStorage (settings, recent orders, the flags cache) are stored under it.
 
-## Phases
+### Phases
 
 1. **Done (this PR): the shell.** The window, the folder picker and handle bridge, dev mode, remembered window position, a dark or light title bar, opening a folder from the command line, the per-user installer and portable zip, and CI with a smoke test on real Windows. Still to try on the lab PC (see the checklist in the PR).
 2. **Recent orders by path, and orders found from any folder.** Store the path of each opened folder, so a subfolder of an order can be recognised even when the order isn't on the Recent list. Recent orders reopen from the path, so they keep working after the WebView2 profile is reset.
@@ -24,7 +58,7 @@ The lab has one Windows PC (an Epson FastFoto FF-680W and a Plustek OpticBook A3
 6. **Sidebar: projects, pinned folders, drives.** Built in 1.20.0 as a Browse tab, redesigned in 1.21.0 from the lab's answers: a floating panel (Ctrl+B) with the open project's card (name, path, photos, Scan, Explorer, pin), its folders, Projects (a projects folder chosen in the app, newest first, photo counts, dates, search; recent ones from elsewhere), Pinned (jEditor's pins and Explorer's Quick Access) and This PC (drives open out in place; USB marked New, with Eject). Clicking a folder opens it as the project. No project status (not wanted). "Order" became "project" on screen.
 6. **Later, if wanted.** An update check (download the new setup, run it, still no admin). A right-click "Open with jEditor" on folders (per-user, in HKCU). Code signing, to drop the SmartScreen warning.
 
-## Things WebView2 might do differently from Chrome
+### Things WebView2 might do differently from Chrome
 
 Check these on the lab PC:
 
