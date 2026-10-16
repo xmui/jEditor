@@ -5,6 +5,12 @@
 
 const CHANGELOG = [
     {
+        version: '1.34.1', date: '2026-10-15',
+        items: [
+            'Rescan (`R`) no longer shows the same photo two or three times. Pressed while a project was still opening (a big one on a network drive takes a while), it found the photos not read yet and added them, and then the opening added them again. R now waits for the opening, which reads every photo anyway, and says so. Pressed several times in a row, the presses make one rescan, and a photo already shown is never added again.'
+        ]
+    },
+    {
         version: '1.34.0', date: '2026-10-15',
         items: [
             'With photos selected on a narrower window, the selection bar moves off center, beside the size slider, before it gives up its labels or the slider goes.',
