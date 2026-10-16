@@ -5067,6 +5067,7 @@ html.native {
 .sb-scroll {
     flex: 1;
     min-height: 0;
+    overflow-x: hidden; /* long names cut with an ellipsis: never scrolled sideways */
     overflow-y: auto;
     margin: 0 calc(-1 * var(--sp-1));
     padding: 0 var(--sp-1);
@@ -5262,6 +5263,108 @@ button.sb-card-name:focus-visible .sb-card-edit {
 
 .sb-row {
     gap: 4px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* A USB drive: its name, and under it how much room it has left */
+.sb-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    padding: 3px 0;
+    line-height: 1.25;
+}
+
+.sb-free {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+    color: var(--text-3);
+    font-size: var(--fs-caption, 11px);
+    font-weight: var(--fw-regular);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.sb-free-bar {
+    flex: none;
+    width: 36px;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 2px;
+    background: var(--border);
+}
+
+.sb-free-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent);
+}
+
+.sb-free.low {
+    color: var(--danger-text, #f87171);
+}
+
+.sb-free.low .sb-free-bar > span {
+    background: var(--danger-text, #f87171);
+}
+
+/* A folder dragged onto a drive or folder: copied there */
+.sb-row.sb-drop-target {
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.sb-row.sb-drop-target > :not(.fr-caret):not(.sb-main) {
+    display: none;
+}
+
+.sb-row.sb-drop-target::after {
+    content: attr(data-drop-label);
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 2px var(--sp-2);
+    border-radius: var(--r-pill);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: var(--fs-caption, 11px);
+    font-weight: var(--fw-semibold);
+    white-space: nowrap;
+}
+
+/* …onto the rest of the sidebar: pinned */
+.sb-pin-target {
+    position: relative;
+    border-radius: var(--r-md);
+    box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.sb-pin-target::before {
+    content: attr(data-drop-label);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: block;
+    margin: var(--sp-1);
+    padding: var(--sp-1) var(--sp-2);
+    border-radius: var(--r-pill);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-semibold);
+    text-align: center;
+}
+
+/* Over the sidebar a drop from Explorer copies or pins, not opens */
+body.sb-drop.drag-over .drop-zone::after,
+body.sb-drop.drag-over #main-interface:not(.hidden)::after {
+    display: none;
 }
 
 .sb-main {
@@ -5361,7 +5464,8 @@ button.sb-card-name:focus-visible .sb-card-edit {
     background: var(--tb-hover);
 }
 
-.sb-new {
+/* A drive plugged in since jEditor started */
+.sb-new-badge {
     flex-shrink: 0;
     padding: 0 5px;
     border-radius: var(--r-xs);

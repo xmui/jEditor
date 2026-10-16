@@ -75,6 +75,8 @@
             onTether(msg);
         } else if (msg.type === 'logLines' && onLogLines) {
             onLogLines(msg.lines || []);
+        } else if (msg.type === 'copyProgress' && copying.has(msg.copy)) {
+            copying.get(msg.copy)(msg.done, msg.total);
         } else if (msg.type === 'scanned' && onScanned) {
             onScanned(msg.name);
         } else if (msg.type === 'notice') {
@@ -184,6 +186,7 @@
     let onScanned = null;
     let onLogLines = null;
     let onTether = null;
+    const copying = new Map(); // folder copy request id → progress(done, total)
     window.JEditorNative = {
         // jEditor's storage on this PC: a folder handle, one subfolder per
         // order (see app/folder-cache.js)
@@ -364,6 +367,31 @@
         // of it ('jeditor-files').
         async transfer(paths, dest, copy) {
             return (await answer('transfer', { paths, dest, copy: !!copy })).msg.items;
+        },
+        // A whole folder (a path) copied into another, under a free name
+        // there; progress(done, total) in bytes as it goes → { to } or
+        // { cancelled }; throws if it couldn't (no room, say). The promise
+        // has a copyId, for cancelCopy.
+        copyFolder(path, dest, progress) {
+            const id = nextId++;
+            copying.set(id, progress || (() => { }));
+            const done = new Promise((resolve) => {
+                pending.set(id, resolve);
+                post({ type: 'copyFolder', id, path, dest });
+            }).then(({ msg }) => {
+                copying.delete(id);
+                if (msg.error) throw new Error(msg.error);
+                return msg.cancelled ? { cancelled: true } : { to: msg.to };
+            });
+            done.copyId = id;
+            return done;
+        },
+        cancelCopy(id) {
+            post({ type: 'cancelCopy', copy: id });
+        },
+        // Where Files dropped from outside (Explorer) are on disk → [path]
+        async pathsOf(files) {
+            return (await request('pathsOf', {}, files)).msg.paths || [];
         },
         // Undoes one: moved photos go back, copies go → [error or null]
         async undoTransfer(items, copy) {
