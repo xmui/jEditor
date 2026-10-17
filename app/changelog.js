@@ -5,6 +5,19 @@
 
 const CHANGELOG = [
     {
+        version: '1.43.0', date: '2026-10-17',
+        items: [
+            'Spot removal in Adjust: click a speck of dust, a scratch or a blemish and it\'s healed from nearby, sized to the speck. Drag from it to choose where it\'s copied from; Heal blends it in, Clone copies exactly. Find dust puts a spot on every speck it finds on a scan, and Clear found takes them off again.',
+            'Masks find the Sky and the Subject in the photo for you, then paint or erase to touch them up.',
+            'RAW files (DNG, CR2, CR3, NEF, ARW, RAF and more) are shown with your photos, from the JPEG inside each one. Crop, adjust and paint them like any photo: the RAW file is never changed, and Export writes a JPEG.',
+            'New, as an experiment (Settings → Experimental): Paint (`B`, or the brush button). Paint over a photo in layers with a brush, pencil, spray and eraser; fill, gradients, lines (with arrows), rectangles, ellipses and text; select by rectangle, ellipse, lasso or colour, then move, scale and turn what\'s selected. Layers have opacity and blend modes. Painting is kept with the photo, to change again any time, and stays put when the photo is cropped later.',
+            'Copy a project to a USB drive or card in one step (the USB button on the project\'s card in the sidebar): the room is checked first, its flags and edits go with it, and Copy and eject ejects the drive when it\'s done.',
+            'A camera\'s card plugged in is offered to import (or `Ctrl+I`): into this project or a new one, in folders by day if you like, only the photos not imported before, and the card ejected after.',
+            'In the Windows app, burn a project to a CD or DVD (the disc button on the project\'s card).',
+            'A project\'s .jeditor folder opened in the Windows or Mac app now keeps its edits, not only its flags.'
+        ]
+    },
+    {
         version: '1.42.0', date: '2026-10-17',
         items: [
             'New, as an experiment (turn it on in Settings → Experimental): Adjust, Lightroom-style (`E`, or the sliders button): exposure, contrast, highlights, shadows, whites and blacks; temperature, tint, vibrance and saturation; levels on a live histogram, a curve, and a color mixer for the hue, saturation and brightness of each color. The photo changes as you drag, even a big scan. Auto sets the levels from the photo, and Auto color takes the cast off a faded print. `\\` shows before and after.',
