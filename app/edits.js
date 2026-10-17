@@ -82,18 +82,20 @@ const Edits = {
     },
 
     // This photo's crops and turns are kept as an edit, not written: the
-    // setting is on, or it has adjustments (which always are), or it's a
-    // RAW (raw.js: never written)
+    // setting is on, or it has adjustments or paint (which always are), or
+    // it's a RAW (raw.js: never written)
     keeps(f) {
-        return this.on() || !!(this.canKeep() && f && ((f._edit && f._edit.adj) || Raw.is(f.name)));
+        return this.on() || !!(this.canKeep() && f && ((f._edit && (f._edit.adj || f._edit.paint)) || Raw.is(f.name)));
     },
 
-    // An edit with these adjustments (null: none), its crop kept
-    withAdj(e, adj) {
+    // An edit with these adjustments (null: none), its crop kept; from: the
+    // edit it replaces, whose paint stays (a crop of a painted photo)
+    withAdj(e, adj, from = null) {
         adj = Develop.clean(adj);
         const out = e ? { ...e, n: { ...e.n } } : { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } };
         if (adj) out.adj = adj;
         else delete out.adj;
+        if (from && from.paint) out.paint = from.paint;
         return this.isNothing(out) ? null : out;
     },
 
@@ -165,6 +167,8 @@ const Edits = {
             const e = this.clean(v);
             if (e) this.orphans.set(k, e);
         }
+        // Paint layers nothing in edits.json uses any more (paint.js)
+        Paint.tidy(Object.values((data && data.edits) || {}).map(v => this.clean(v)).filter(Boolean)).catch(() => { });
         this.updateBar();
         if (typeof Places !== 'undefined' && Places.boxes) Places.drawCard();
         return app.files.filter(f => f._edit);
@@ -185,6 +189,8 @@ const Edits = {
         if (num(v.size)) e.size = v.size;
         const adj = typeof Develop !== 'undefined' ? Develop.clean(v.adj) : null;
         if (adj) e.adj = adj;
+        const paint = typeof Paint !== 'undefined' ? Paint.clean(v.paint) : null;
+        if (paint) e.paint = paint;
         return e;
     },
 
@@ -295,9 +301,9 @@ const Edits = {
         }
     },
 
-    // No turn, no tilt, the whole photo and no adjustments
+    // No turn, no tilt, the whole photo, no adjustments and no paint
     isNothing(e) {
-        return this.wholePhoto(e) && !(e.adj && Develop.active(e.adj));
+        return this.wholePhoto(e) && !(e.adj && Develop.active(e.adj)) && !Paint.has(e);
     },
 
     undo(entry) {
@@ -481,6 +487,7 @@ const Edits = {
 
     // The pencil's tooltip
     describe(e) {
+        if (e.paint && !this.on()) return 'Painted — the photo on disk is unchanged; Export (or Save edits) writes the result';
         if (e.adj && !this.on()) return 'Adjusted — the photo on disk is unchanged; Export (or Save edits) writes the result';
         return 'Edited — not saved into the photo yet';
     },

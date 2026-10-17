@@ -607,6 +607,278 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- Paint ----
+    if (wanted('paint')) {
+        console.log('paint (paint.js, paint-editor.js)');
+        const { page, issues } = await open();
+        const m = await page.evaluate(() => {
+            const out = {};
+            out.clean = JSON.stringify(Paint.clean({ id: 'abc', w: 100, h: 50, layers: [{ id: 'l1', rev: 'r1', name: '  Sky  ', opacity: 3, blend: 'nope', hidden: 1 }, { id: 'BAD', rev: 'x' }] }));
+            out.none = Paint.clean({ id: 'abc', w: 100, h: 50, layers: [] }) === null && Paint.clean({ id: '../x', w: 1, h: 1, layers: [{ id: 'a', rev: 'b' }] }) === null;
+            out.size = JSON.stringify([Paint.sizeFor(6000, 4000), Paint.sizeFor(800, 600)]);
+            return out;
+        });
+        check('paint: the record is checked (names, opacity, blend; bad ids dropped)', m.clean === '{"id":"abc","w":100,"h":50,"layers":[{"id":"l1","rev":"r1","name":"Sky","opacity":1,"blend":"source-over","hidden":true}]}' && m.none, JSON.stringify(m));
+        check('paint: layers at the photo\'s size, a very big one smaller', m.size === '[{"w":3000,"h":2000},{"w":800,"h":600}]', m.size);
+
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                experiment('paint');
+                const W = 400, H = 300;
+                const c = document.createElement('canvas'); c.width = W; c.height = H;
+                const g = c.getContext('2d'); g.fillStyle = '#808080'; g.fillRect(0, 0, W, H);
+                g.fillStyle = '#2050c0'; g.fillRect(250, 50, 100, 100);   // a blue square, for the fill and the wand
+                const dir = await openProject('painted', { 'p.png': await canvasBlob(c, 'image/png') });
+                const f = app.files[0];
+                const before = new Uint8Array(await (await (await dir.getFileHandle('p.png')).getFile()).arrayBuffer());
+                app.openSingle(f);
+                step = 'open';
+                out.button = getComputedStyle(document.getElementById('btn-paint')).display !== 'none';
+                pressKey('b');
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                out.open = P.isOpen && P.W === W && P.layers.length === 1;
+                const st = document.getElementById('paint-stage');
+                const at = (x, y) => { const s = P.V().transformPoint(P.C.transformPoint({ x, y })); const r = P.canvas.getBoundingClientRect(); return { clientX: r.left + s.x, clientY: r.top + s.y }; };
+                const pe = (type, x, y, o = {}) => st.dispatchEvent(new PointerEvent(type, { ...at(x, y), pointerId: 1, bubbles: true, button: 0, ...o }));
+                const px = (l, x, y) => [...P.layers[l].canvas.getContext('2d').getImageData(x, y, 1, 1).data];
+                // A brush stroke, red, across
+                step = 'brush';
+                P.fg = '#ff0000';
+                P.opts.size = 20; P.opts.hardness = 100; P.opts.opacity = 100; P.opts.flow = 100;
+                P.setTool('brush');
+                pe('pointerdown', 50, 100); pe('pointermove', 100, 100); pe('pointermove', 150, 100); pe('pointerup', 150, 100);
+                out.brush = px(0, 100, 100);
+                out.brushEdge = px(0, 100, 130)[3];
+                // Undo, redo
+                pressKey('z', { ctrlKey: true });
+                out.undo = px(0, 100, 100)[3];
+                pressKey('Z', { ctrlKey: true, shiftKey: true });
+                out.redo = px(0, 100, 100)[3];
+                // Half opacity: half covered
+                step = 'opacity';
+                P.opts.opacity = 50;
+                pe('pointerdown', 50, 200); pe('pointermove', 70, 200); pe('pointermove', 90, 200); pe('pointerup', 90, 200);
+                out.half = px(0, 70, 200)[3];
+                P.opts.opacity = 100;
+                // A rectangle, filled, on a new layer
+                step = 'rect';
+                pressKey('N', { ctrlKey: true, shiftKey: true });
+                out.layers = P.layers.length === 2 && P.cur === 1;
+                P.fg = '#00ff00'; P.opts.shapeFill = 'fg'; P.opts.lineWidth = 0;
+                P.setTool('rect');
+                pe('pointerdown', 20, 20); pe('pointermove', 60, 60); pe('pointerup', 60, 60);
+                out.rect = [px(1, 40, 40), px(1, 70, 70)[3]];
+                // The fill: the blue square, sampled from the photo
+                step = 'fill';
+                P.fg = '#ffff00'; P.opts.tolerance = 20; P.opts.contiguous = true; P.opts.sampleAll = true;
+                P.setTool('fill');
+                pe('pointerdown', 300, 100); pe('pointerup', 300, 100);
+                out.fill = [px(1, 260, 60), px(1, 240, 100)[3]];
+                // Text
+                step = 'text';
+                P.fg = '#000000'; P.opts.fontSize = 40;
+                P.setTool('text');
+                pe('pointerdown', 20, 230); pe('pointerup', 20, 230);
+                await sleep(20);
+                const ta = document.getElementById('paint-text');
+                ta.value = 'Hi';
+                ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
+                const tx = P.layers[1].canvas.getContext('2d').getImageData(15, 230, 60, 50).data;
+                let ink = 0; for (let i = 3; i < tx.length; i += 4) if (tx[i] > 128) ink++;
+                out.text = ink;
+                // Select a rectangle, Delete: cleared there only
+                step = 'select';
+                P.setTool('rect-select');
+                pe('pointerdown', 250, 50); pe('pointermove', 290, 150); pe('pointerup', 290, 150);
+                out.selected = !!P.sel && P.sel.box.w >= 39 && P.sel.box.w <= 41;
+                pressKey('Delete');
+                out.cleared = [px(1, 270, 100)[3], px(1, 320, 100)[3]];
+                // The wand picks the rest of the yellow; Move drags it
+                step = 'move';
+                P.setTool('wand');
+                pe('pointerdown', 320, 100); pe('pointerup', 320, 100);
+                out.wand = !!P.sel && P.sel.box.x >= 289 && P.sel.box.x <= 292;
+                P.setTool('move');
+                pe('pointerdown', 320, 100); pe('pointermove', 320, 180); pe('pointerup', 320, 180);
+                pressKey('Enter');
+                out.moved = [px(1, 320, 100)[3], px(1, 320, 180)];
+                out.notDone = P.isOpen;
+                // Done: kept with the photo, the file untouched
+                step = 'done';
+                pressKey('Enter');
+                await until(() => !P.isOpen && f._edit && f._edit.paint);
+                const rec = f._edit.paint;
+                out.kept = rec.layers.length === 2 && rec.w === W;
+                const paintDir = await (await dir.getDirectoryHandle('.jeditor')).getDirectoryHandle('paint');
+                let files = 0;
+                for await (const e of paintDir.values()) files++;
+                out.files = files;
+                const nowBytes = new Uint8Array(await (await (await dir.getFileHandle('p.png')).getFile()).arrayBuffer());
+                out.fileSame = nowBytes.length === before.length && nowBytes.every((v, i) => v === before[i]);
+                // Shown painted
+                step = 'shown';
+                const src = await app.getDisplaySource(f);
+                const img = await pixels(src.blob || await (await fetch(src.url)).blob(), W, H);
+                const shown = (x, y) => [...img.data.subarray((y * W + x) * 4, (y * W + x) * 4 + 3)];
+                out.shown = [shown(100, 100), shown(40, 40), shown(320, 180)];
+                // Opened again: the layers come back as they were
+                step = 'reopen';
+                pressKey('b');
+                await until(() => P.ready);
+                out.reopened = P.layers.length === 2 && px(0, 100, 100)[0] > 200 && px(1, 40, 40)[1] > 200;
+                pressKey('Escape');
+                await until(() => !P.isOpen);
+                // Cropped later: the paint stays where it was on the photo
+                step = 'crop';
+                Edits.set([{ file: f, edit: { ...f._edit, n: { x0: -0.5, y0: -0.5, x1: 0, y1: 0.5 } } }], 'crop');
+                const src2 = await app.getDisplaySource(f);
+                const img2 = await pixels(src2.blob || await (await fetch(src2.url)).blob());
+                out.cropped = [img2.width, [...img2.data.subarray((100 * img2.width + 100) * 4, (100 * img2.width + 100) * 4 + 3)]];
+                // A crop saved in the crop editor keeps the paint
+                step = 'crop editor';
+                pressKey('c');
+                await until(() => CropEditor.ready);
+                pressKey('Enter');
+                await until(() => !CropEditor.isOpen);
+                out.cropKeepsPaint = !!(f._edit && f._edit.paint);
+                // Export: the paint's in it
+                step = 'export';
+                const prompt0 = UI.prompt;
+                UI.prompt = async () => '';
+                await app.exportCopies([f]);
+                UI.prompt = prompt0;
+                const ex = await (await (await dir.getDirectoryHandle('jEditor Export')).getFileHandle('p.png')).getFile();
+                const exImg = await pixels(ex);
+                out.exported = [...exImg.data.subarray((100 * exImg.width + 100) * 4, (100 * exImg.width + 100) * 4 + 3)];
+                // Ctrl+Z (the app's): back to before the crop, paint kept
+                await app.undo();
+                out.undoCrop = !!(f._edit && f._edit.paint);
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint: an experiment with its button; B opens it on the photo', r.button && r.open, JSON.stringify(r));
+        check('paint: a brush stroke paints the layer (hard-edged), Ctrl+Z / Ctrl+Shift+Z inside', r.brush && r.brush[0] === 255 && r.brush[3] === 255 && r.brushEdge === 0 && r.undo === 0 && r.redo === 255, JSON.stringify(r));
+        check('paint: a stroke at 50% opacity covers half, however it overlaps itself', r.half >= 120 && r.half <= 135, JSON.stringify(r));
+        check('paint: a new layer; a filled rectangle on it', r.layers && r.rect && r.rect[0][1] === 255 && r.rect[1] === 0, JSON.stringify(r));
+        check('paint: the fill takes the photo\'s blue square, not beyond it; text is drawn', r.fill && r.fill[0][0] === 255 && r.fill[0][1] === 255 && r.fill[1] === 0 && r.text > 50, JSON.stringify(r));
+        check('paint: a selection; Delete clears only inside it', r.selected && r.cleared[0] === 0 && r.cleared[1] === 255, JSON.stringify(r));
+        check('paint: the wand selects by colour; Move drags it, Enter puts it down', r.wand && r.moved[0] === 0 && r.moved[1][3] === 255 && r.notDone, JSON.stringify(r));
+        check('paint: Done keeps it with the photo (layers in the project\'s folder), the file untouched', r.kept && r.files === 2 && r.fileSame, JSON.stringify(r));
+        check('paint: shown painted; opened again, the layers come back', r.shown && r.shown[0][0] > 200 && r.shown[1][1] > 200 && r.shown[2][0] > 200 && r.reopened, JSON.stringify(r));
+        check('paint: a crop later leaves it where it was; the crop editor keeps it; Export writes it', r.cropped && r.cropped[0] === 200 && r.cropped[1][0] > 200 && r.cropKeepsPaint && r.exported && r.exported[0] > 200 && r.undoCrop, JSON.stringify(r));
+
+        // Opening the project again: layer files nothing uses are deleted
+        const tidy = await page.evaluate(async () => {
+            const dir = await (await (await (await navigator.storage.getDirectory()).getDirectoryHandle('painted')).getDirectoryHandle('.jeditor')).getDirectoryHandle('paint');
+            const junk = await dir.getFileHandle('old-layer-x.png', { create: true });
+            const w = await junk.createWritable(); await w.write(new Blob([new Uint8Array(10)])); await w.close();
+            await sleep(1200);
+            const gone = await Paint.tidy(app.files.map(f => f._edit).filter(Boolean));
+            const names = [];
+            for await (const [n] of dir.entries()) names.push(n);
+            const used = app.files[0]._edit.paint.layers.map(l => Paint.fileName(app.files[0]._edit.paint, l));
+            return { gone, junkGone: !names.includes('old-layer-x.png'), usedKept: used.every(u => names.includes(u)) };
+        });
+        check('paint: opening the project again deletes layer files nothing uses, keeps the rest', tidy.gone >= 1 && tidy.junkGone && tidy.usedKept, JSON.stringify(tidy));
+
+        // Without a project (photos picked on a phone): painted into the photo
+        const p = await page.evaluate(async () => {
+            const bytes = new Uint8Array(await makeRealJpeg(200, 150, { color: '#555' }));
+            await Picked.open([new File([bytes], 'phone.jpg', { type: 'image/jpeg' })]);
+            app.openSingle(app.files[0]);
+            await app.enterPaint();
+            await until(() => PaintEditor.ready);
+            const P = PaintEditor;
+            P.layers[0].canvas.getContext('2d').fillRect(0, 0, 50, 50);
+            P.history.push({ kind: 'px', layer: P.layers[0], r: { x: 0, y: 0, w: 1, h: 1 }, before: new ImageData(1, 1), after: new ImageData(1, 1) });
+            await app.savePaint();
+            const h = app.files[0].handle;
+            await until(() => h.edited);
+            return { edited: !!h.edited, noEdit: !app.files[0]._edit, closed: !P.isOpen };
+        });
+        check('paint: without a project, Done paints it into the photo', p.edited && p.noEdit && p.closed, JSON.stringify(p));
+
+        // On a turned photo; the eraser, gradient, merging, and scaling what's moved
+        const t = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const W = 300, H = 200;
+                const c = document.createElement('canvas'); c.width = W; c.height = H;
+                c.getContext('2d').fillStyle = '#777'; c.getContext('2d').fillRect(0, 0, W, H);
+                await openProject('turned', { 't.png': await canvasBlob(c, 'image/png') });
+                const f = app.files[0];
+                // Turned a quarter right (kept as an edit): shown 200 × 300
+                Edits.set([{ file: f, edit: { q: 1, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } } }], 'rotation');
+                app.openSingle(f);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                out.shownSize = [P.OW, P.OH];
+                const st = document.getElementById('paint-stage');
+                // Points on the picture as shown
+                const at = (ox, oy) => { const s = P.V().transformPoint({ x: ox, y: oy }); const r = P.canvas.getBoundingClientRect(); return { clientX: r.left + s.x, clientY: r.top + s.y }; };
+                const pe = (type, x, y, o = {}) => st.dispatchEvent(new PointerEvent(type, { ...at(x, y), pointerId: 1, bubbles: true, button: 0, ...o }));
+                const shownAt = (layer, ox, oy) => { const l = P.Ci.transformPoint({ x: ox, y: oy }); return [...P.layers[layer].canvas.getContext('2d').getImageData(Math.floor(l.x), Math.floor(l.y), 1, 1).data]; };
+                // A wide rectangle on the picture as shown is wide there
+                step = 'rect';
+                P.fg = '#00ff00'; P.opts.shapeFill = 'fg'; P.opts.lineWidth = 0; P.opts.opacity = 100;
+                P.setTool('rect');
+                pe('pointerdown', 20, 20); pe('pointermove', 180, 60); pe('pointerup', 180, 60);
+                out.rect = [shownAt(0, 170, 40)[3], shownAt(0, 40, 100)[3]];
+                // The eraser takes it off where it goes
+                step = 'eraser';
+                P.opts.size = 20; P.opts.hardness = 100;
+                P.setTool('eraser');
+                pe('pointerdown', 100, 40); pe('pointermove', 110, 40); pe('pointerup', 110, 40);
+                out.erased = [shownAt(0, 105, 40)[3], shownAt(0, 40, 40)[3]];
+                // A gradient on a new layer: foreground at the start, background at the end
+                step = 'gradient';
+                P.addLayer();
+                P.fg = '#ff0000'; P.bg = '#0000ff'; P.opts.gradient = 'linear'; P.opts.gradTo = 'bg';
+                P.setTool('gradient');
+                pe('pointerdown', 0, 150); pe('pointermove', 200, 150); pe('pointerup', 200, 150);
+                const g0 = shownAt(1, 2, 150), g1 = shownAt(1, 198, 150);
+                out.gradient = g0[0] > 200 && g0[2] < 40 && g1[2] > 200 && g1[0] < 40;
+                // Half opacity, merged down: the green shows through red where both are
+                step = 'merge';
+                P.opacityRow.querySelector('input').value = '50';
+                P.opacityRow.querySelector('input').dispatchEvent(new Event('input'));
+                P.opacityRow.querySelector('input').dispatchEvent(new Event('change'));
+                P.mergeDown();
+                const mg = shownAt(0, 40, 40);
+                out.merged = P.layers.length === 1 && mg[0] > 100 && mg[1] > 100;
+                P.undo();
+                out.unmerged = P.layers.length === 2 && P.layers[1].opacity === 0.5 && shownAt(0, 40, 40)[0] === 0;
+                // Move with a selection, then scale it from a corner
+                step = 'transform';
+                P.cur = 0;
+                P.setTool('rect-select');
+                pe('pointerdown', 20, 20); pe('pointermove', 60, 60); pe('pointerup', 60, 60);
+                P.setTool('move');
+                pe('pointerdown', 40, 40); pe('pointermove', 41, 40); pe('pointerup', 41, 40);
+                const h = P.floatHandles();
+                const se = h.corners.find(x => x[0] === 'se')[1];
+                pe('pointerdown', se.x, se.y); pe('pointermove', se.x + 40, se.y + 40); pe('pointerup', se.x + 40, se.y + 40);
+                out.scaled = P.float.t.sx > 2.6 && P.float.t.sx < 3.2 && Math.abs(P.float.t.sx - P.float.t.sy) < 0.2;   // about its middle: 20 px from it to 60
+                P.commitFloat();
+                out.afterScale = [shownAt(0, 75, 75)[1], P.sel && P.sel.box.w > 70];
+                pressKey('Escape');
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint: on a turned photo, shapes are drawn as they look', JSON.stringify(t.shownSize) === '[200,300]' && t.rect && t.rect[0] === 255 && t.rect[1] === 0, JSON.stringify(t));
+        check('paint: the eraser takes off what it goes over', t.erased && t.erased[0] === 0 && t.erased[1] === 255, JSON.stringify(t));
+        check('paint: a gradient from the foreground colour to the background', t.gradient, JSON.stringify(t));
+        check('paint: merging down keeps a layer\'s opacity; Ctrl+Z undoes it', t.merged && t.unmerged, JSON.stringify(t));
+        check('paint: what\'s moved scales from a corner, its selection with it', t.scaled && t.afterScale && t.afterScale[0] === 255 && t.afterScale[1], JSON.stringify(t));
+        check('paint: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     await browser.close();
     server.close();
     console.log(`\n${passed} passed, ${failed} failed`);

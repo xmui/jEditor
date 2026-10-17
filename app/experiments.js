@@ -14,6 +14,11 @@ const Experiments = {
             id: 'adjust', beta: true,
             title: 'Adjust: Lightroom-style editing',
             text: 'Light, color, levels and curves, film looks of real stocks, color grading, masks, spot and dust removal, sharpening and noise reduction (E, or the sliders button). Never changes the photo until you export or save. Adjustments already made stay on the photos when this is off'
+        },
+        {
+            id: 'paint', beta: true,
+            title: 'Paint: brushes, shapes, text and layers',
+            text: 'Paint over a photo in layers (B, or the brush button): brush, pencil, spray, eraser, fill, gradients, lines and shapes, text, and selections to move, scale and turn. Kept with the photo until you export or save. Painting already done stays on the photos when this is off'
         }
     ],
 

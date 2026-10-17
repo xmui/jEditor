@@ -124,7 +124,7 @@ const Adjust = {
 
         this.initLevels();
         this.initCurve();
-        this._resize = new ResizeObserver(() => { this.layout(); this.drawPanels(); this.placeLoupeBox(); AdjustMasks.place(); AdjustMasks.draw(); AdjustSpots.place(); AdjustSpots.draw(); });
+        this._resize = new ResizeObserver(() => { this.layout(); this.drawPanels(); this.placeLoupeBox(); AdjustMasks.place(); AdjustMasks.draw(); AdjustSpots.place(); AdjustSpots.draw(); this.placePaint(); });
         this._resize.observe(this.el('adj-stage'));
         this._resize.observe(this.el('adj-panel'));
     },
@@ -234,13 +234,15 @@ const Adjust = {
         bmp.close();
         this.dropPicture();
         this.base = base;
-        this.paint = (typeof Paint !== 'undefined' && Paint.has(kept)) ? await Paint.prepare(kept, { file }).catch(() => null) : null;
+        // Paint goes over everything (paint.js): shown on top, as it will be
+        const painted = Paint.has(kept) ? await Paint.prepare(kept).catch(() => null) : null;
         if (!current()) { this.dropPicture(); return; }
         const o = this.cropped ? this.cropped.outputRect() : { w: base.width, h: base.height };
         this.el('adj-dims').textContent = `${Math.round(o.w * scale)} × ${Math.round(o.h * scale)}`;
         if (this.gl && this.gl.lost) this.useCpu();
         this.usePicture();
         this.ready = true;
+        this.drawPaint(painted);
         this.layout();
         AdjustMasks.reset();
         AdjustSpots.reset();
@@ -309,17 +311,30 @@ const Adjust = {
         const key = JSON.stringify(spots);
         if (key === this._pictureKey) return false;
         this._pictureKey = key;
-        let pic = this.retouchedBase(spots);
-        if (this.paint) {
-            if (pic === this.base) pic = this.copyCanvas(this.base);
-            else pic = this.copyCanvas(pic);
-            Paint.composite(pic.getContext('2d'), pic.width, pic.height, this.paint);
-        }
+        const pic = this.retouchedBase(spots);
         const shown = this.cropped ? this.cropped.drawOutput(pic) : pic;
         this.setPicture(shown);
         if (shown !== pic) shown.width = shown.height = 0;
-        if (this.paint && pic !== this.base) pic.width = pic.height = 0;
         return true;
+    },
+
+    // The photo's paint, over the picture (its own canvas, laid on top)
+    drawPaint(prepared) {
+        const cv = this.el('adj-paint');
+        if (!cv) return;
+        cv.classList.toggle('hidden', !prepared);
+        if (!prepared) { cv.width = cv.height = 0; return; }
+        const o = this.cropped ? this.cropped.outputRect() : { w: this.base.width, h: this.base.height };
+        cv.width = Math.max(1, Math.round(o.w));
+        cv.height = Math.max(1, Math.round(o.h));
+        Paint.composite(cv, prepared, this.cropped);
+    },
+
+    placePaint() {
+        const cv = this.el('adj-paint');
+        if (!cv || cv.classList.contains('hidden') || !this.ready) return;
+        const cr = this.canvas.getBoundingClientRect(), sr = this.el('adj-stage').getBoundingClientRect();
+        Object.assign(cv.style, { left: `${cr.left - sr.left}px`, top: `${cr.top - sr.top}px`, width: `${cr.width}px`, height: `${cr.height}px` });
     },
 
     // A canvas: what's adjusted from now on
@@ -387,7 +402,7 @@ const Adjust = {
         this._raf = 0;
         this.src = this.out = this.sample = this.sampleOut = this.srcData = null;
         this.dropPicture();
-        this.paint = null;
+        this.drawPaint(null);
         clearTimeout(this._detailTimer);
         clearTimeout(this._loupeTimer);
         if (this.fullCanvas) this.fullCanvas.width = this.fullCanvas.height = 0;
@@ -538,6 +553,7 @@ const Adjust = {
         const s = Math.min((box.width - 2 * pad) / this.w, (box.height - 2 * pad) / this.h, 4);
         this.canvas.style.width = `${Math.max(1, Math.floor(this.w * s))}px`;
         this.canvas.style.height = `${Math.max(1, Math.floor(this.h * s))}px`;
+        this.placePaint();
     },
 
     draw() {
@@ -638,7 +654,7 @@ const Adjust = {
         const spots = this.a.spots;
         this._fullPromise = (async () => {
             const bmp = await createImageBitmap(await this.app.readImage(file));
-            const base = await Retouch.retouched(bmp, { ...(kept || {}), adj: { spots } }, { file });
+            const base = await Retouch.retouched(bmp, { adj: { spots } });
             let c;
             if (kept && !Edits.wholePhoto(kept)) {
                 c = CropEditor.fromSnapshot(bmp.width, bmp.height, kept).drawOutput(base);

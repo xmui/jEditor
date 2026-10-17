@@ -62,14 +62,14 @@ const Retouch = {
         return (adj && Array.isArray(adj.spots) && adj.spots.length) ? adj.spots : null;
     },
 
-    // Anything to do to the photo before it's cropped: spots, paint
+    // Anything to do to the photo before it's cropped (its spots)
     needed(edit) {
-        return !!(this.spotsOf(edit) || (typeof Paint !== 'undefined' && Paint.has(edit)));
+        return !!this.spotsOf(edit);
     },
 
     // The whole photo (an ImageBitmap or canvas, as on disk) with its
-    // spots and paint: a canvas, or `src` itself when there's nothing to do
-    async retouched(src, edit, { file = null } = {}) {
+    // spots: a canvas, or `src` itself when there's nothing to do
+    async retouched(src, edit) {
         if (!this.needed(edit)) return src;
         const c = document.createElement('canvas');
         c.width = src.width;
@@ -78,10 +78,6 @@ const Retouch = {
         ctx.drawImage(src, 0, 0);
         const spots = this.spotsOf(edit);
         if (spots) this.applySpots(ctx, c.width, c.height, spots);
-        if (typeof Paint !== 'undefined' && Paint.has(edit)) {
-            const layers = await Paint.prepare(edit, { file });
-            if (layers) Paint.composite(ctx, c.width, c.height, layers);
-        }
         return c;
     },
 
