@@ -3872,6 +3872,36 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     gap: var(--sp-1);
 }
 
+/* Detail: the 1:1 view, and where it is on the photo */
+.adj-loupe {
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border-radius: var(--r-sm);
+    background: var(--surround);
+}
+
+.adj-hint {
+    margin: var(--sp-1) 0 var(--sp-2);
+    color: var(--text-2);
+    font-size: var(--fs-caption);
+}
+
+.adj-stage {
+    position: relative;
+}
+
+.adjust-editor.adj-detail-open #adj-canvas {
+    cursor: crosshair;
+}
+
+.adj-loupe-box {
+    position: absolute;
+    border: 1.5px solid #fff;
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.5);
+    pointer-events: none;
+}
+
 /* Looks: a strip of the photo with each */
 .adj-look-tabs {
     display: flex;

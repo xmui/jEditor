@@ -270,7 +270,7 @@ const CropEditor = {
         // Adjusted (adjust.js): shown with its adjustments
         const adj = Edits.get(file) && Edits.get(file).adj;
         if (adj && current()) {
-            const shown = await Develop.applyBitmap(preview, adj);
+            const shown = await Develop.applyBitmap(preview, adj, { scale: w ? preview.width / w : 1 });
             if (shown !== preview) { preview.close(); preview = shown; }
         }
         if (!current()) { preview.close(); return; }
