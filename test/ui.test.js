@@ -4203,6 +4203,35 @@ async function newPage(browser, url) {
     }
 
     // ---- 7. file:// — direct open and standalone build ----
+    console.log('beta builds and experiments');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const labels = ['v1.42.0-beta.3', 'v1.41.0-2', 'v1.41.0', 'nonsense'].map(t => Updates.label(t)).join('|');
+            app.toggleCustomizePanel(true);
+            app.showSettingsPage('experimental');
+            const page = document.getElementById('set-page-experimental');
+            const empty = page.classList.contains('active') && /Nothing to try right now/.test(page.textContent);
+            // One being made: off until turned on, and it stays on
+            Experiments.LIST.push({ id: 'paint', title: 'Paint', text: 'Layers, brushes and shapes' });
+            Experiments.render();
+            const off = Experiments.on('paint');
+            let heard = null;
+            addEventListener('jeditor-experiments', (e) => { heard = e.detail; }, { once: true });
+            document.getElementById('exp-paint').click();
+            app.loadUiPrefs();
+            const kept = Experiments.on('paint') && app.uiPrefs.experiments.paint === true;
+            const unknown = Experiments.on('nothing');
+            app.toggleCustomizePanel(false);
+            return { labels, empty, off, heard, kept, unknown };
+        });
+        check('a beta says which ("1.42.0 beta 3"); a re-release, its version', r.labels === '1.42.0 beta 3|1.41.0|1.41.0|nonsense', r.labels);
+        check('Settings → Experimental: nothing to try yet, said plainly', r.empty);
+        check('an experiment is off until turned on; on, it says so and stays on', !r.off && r.heard && r.heard.id === 'paint' && r.heard.on && r.kept && !r.unknown, JSON.stringify(r));
+        check('no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     console.log('photos picked, not a folder (Safari on iPhone and iPad)');
     {
         const page = await browser.newPage({ acceptDownloads: true });

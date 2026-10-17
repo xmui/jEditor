@@ -73,7 +73,8 @@ const app = {
             title.textContent = 'jEditor ';
             const v = document.createElement('span');
             v.className = 'app-version';
-            v.textContent = APP_VERSION;
+            // A beta says which: "1.42.0 beta 3"
+            v.textContent = Updates.label(typeof APP_BUILD !== 'undefined' ? APP_BUILD : 'v' + APP_VERSION);
             title.appendChild(v);
             document.title = 'jEditor ' + APP_VERSION; // the window's title bar
             document.getElementById('btn-whatsnew-start').textContent = `What's new in ${APP_VERSION}`;
@@ -208,6 +209,7 @@ const app = {
         Stored.init(this);
         CropLog.init(this);
         Updates.init(this);
+        Experiments.init(this);
         Scan.init(this);
         Camera.init(this);
         Places.init(this);
@@ -473,6 +475,10 @@ const app = {
                     for (const [k] of this.TOAST_KINDS) if (typeof saved.toasts[k] === 'boolean') this.uiPrefs.toasts[k] = saved.toasts[k];
                 }
                 if (typeof saved.autoUpdate === 'boolean') this.uiPrefs.autoUpdate = saved.autoUpdate;
+                if (typeof saved.betaUpdates === 'boolean') this.uiPrefs.betaUpdates = saved.betaUpdates;
+                if (saved.experiments && typeof saved.experiments === 'object') {
+                    this.uiPrefs.experiments = Object.fromEntries(Object.entries(saved.experiments).filter(([, v]) => typeof v === 'boolean'));
+                }
                 if (typeof saved.accent === 'string' && /^#[0-9a-f]{6}$/i.test(saved.accent)) this.uiPrefs.accent = saved.accent;
                 if (typeof saved.singleControls === 'boolean') this.uiPrefs.singleControls = saved.singleControls;
                 if (typeof saved.folderRail === 'boolean') this.uiPrefs.folderRail = saved.folderRail;

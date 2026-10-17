@@ -1,4 +1,8 @@
-// Updates, in the Windows app (Settings → Updates).
+// Updates, in the apps (Settings → Updates).
+//
+// Beta builds: betas (v1.42.0-beta.N, from the beta branch) are offered
+// too, for trying what's coming; on by default in a beta. Turned off, the
+// next release (newer than any of its betas) takes you back.
 //
 // Once a day when jEditor starts (unless turned off), or when asked, it
 // looks for a newer release on GitHub. A newer one is offered with what's
@@ -15,7 +19,7 @@ const Updates = {
     init(app) {
         this.app = app;
         if (!Host.has('updates')) return;
-        this.el('upd-version').textContent = typeof APP_VERSION !== 'undefined' ? APP_VERSION : '';
+        this.el('upd-version').textContent = typeof APP_VERSION !== 'undefined' ? this.label(typeof APP_BUILD !== 'undefined' ? APP_BUILD : 'v' + APP_VERSION) : '';
         this.el('upd-check').addEventListener('click', () => {
             if (this.latest && this.latest.newer) this.offer(this.latest);
             else this.check({ manual: true });
@@ -27,12 +31,34 @@ const Updates = {
             app.uiPrefs.autoUpdate = e.target.checked;
             app.saveUiPrefs();
         });
+        this.el('upd-beta').addEventListener('change', (e) => {
+            app.uiPrefs.betaUpdates = e.target.checked;
+            app.saveUiPrefs();
+            this.latest = null;
+            this.el('upd-check').textContent = 'Check for updates';
+            this.check({ manual: false });
+        });
         // Once the settings are loaded and jEditor is up
         setTimeout(() => this.start(), 3000);
     },
 
+    // "v1.42.0-beta.3" → "1.42.0 beta 3"; "v1.41.0-2" → "1.41.0"
+    label(tag) {
+        const m = /(\d+\.\d+\.\d+)(?:-beta\.(\d+))?/.exec(String(tag || ''));
+        if (!m) return String(tag || '');
+        return m[2] ? `${m[1]} beta ${m[2]}` : m[1];
+    },
+
+    // Betas offered: as chosen, else yes on a beta (it came from there)
+    beta() {
+        const chosen = this.app.uiPrefs.betaUpdates;
+        if (chosen !== undefined) return !!chosen;
+        return typeof APP_BUILD !== 'undefined' && /-beta\./.test(APP_BUILD);
+    },
+
     start() {
         this.el('upd-auto').checked = this.app.uiPrefs.autoUpdate !== false;
+        this.el('upd-beta').checked = this.beta();
         const last = this.lastCheck();
         if (last) this.status(`Up to date when last checked, ${this.when(last)}`);
         if (this.app.uiPrefs.autoUpdate !== false && Date.now() - last > this.DAY) this.check({ manual: false });
@@ -56,14 +82,15 @@ const Updates = {
         button.disabled = true;
         this.status('Checking…');
         try {
-            const r = await FolderCache.native().checkUpdate();
+            const r = await FolderCache.native().checkUpdate({ beta: this.beta() });
             try { localStorage.setItem(this.KEY, String(Date.now())); } catch (e) { /* private */ }
             this.latest = r;
             if (r.newer) {
-                this.status(`jEditor ${r.version} is available`);
-                button.textContent = `Update to ${r.version}`;
+                const name = this.label(r.tag);
+                this.status(`jEditor ${name} is available`);
+                button.textContent = `Update to ${name}`;
                 if (manual) this.offer(r);
-                else this.app.showToast(`jEditor ${r.version} is available`, 15000, 'update', { label: 'Update…', run: () => this.offer(r) }, { type: 'info' });
+                else this.app.showToast(`jEditor ${name} is available`, 15000, 'update', { label: 'Update…', run: () => this.offer(r) }, { type: 'info' });
             } else {
                 this.status(`Up to date, checked ${this.when(Date.now())}`);
                 if (manual) this.app.showToast('jEditor is up to date', 2500, null, null, { type: 'success' });
@@ -83,8 +110,8 @@ const Updates = {
 
     async offer(r) {
         const ok = await UI.confirm({
-            title: `Update to jEditor ${r.version}?`,
-            message: `You have ${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'an older version'}. ` + (Host.mac()
+            title: `Update to jEditor ${this.label(r.tag)}?`,
+            message: `You have ${typeof APP_VERSION !== 'undefined' ? this.label(typeof APP_BUILD !== 'undefined' ? APP_BUILD : 'v' + APP_VERSION) : 'an older version'}. ` + (Host.mac()
                 ? 'jEditor downloads it, opens it in Finder and quits: drag jEditor into Applications, replacing this one, and open it again. Your edits are already saved.'
                 : 'jEditor closes, installs the update and opens again, in about a minute. Your edits are already saved.'),
             items: this.changes(r.notes),

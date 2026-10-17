@@ -69,6 +69,8 @@ npm run bump 1.x.y     # sets the version in app/version.js, package.json and pa
 
 Add what changed to the top of `app/changelog.js`: it's what the app shows under **What's new**, and the release notes. The tests fail if the current version has no entry. When the bump lands on `main`, the Release workflow builds, tests and publishes the setup, the zip, the Mac .dmg, the Linux AppImage, .deb and pacman package, and `standalone.html` as release `v1.x.y`. Every push to `main` also deploys the web app (the Web app workflow), once the tests pass. Running Release by hand from the Actions tab releases the current version again as `v1.x.y-2` (for a fix to the Windows side alone).
 
+**Betas.** Work that's ready to try but not to release goes to the `beta` branch. Bump the version there past the last release (`npm run bump 1.x.0`, newer than what's out), and every push to `beta` publishes a beta, `v1.x.0-beta.N`, as a GitHub prerelease, built and smoke-tested like a release. The apps with Settings → Updates → Beta builds turned on offer it; Homebrew and the website stay on releases. When it's ready, merge `beta` into `main` with its changelog entry: the release is newer than all its betas, so everyone on a beta moves to it. Unfinished features can ship turned off, in Settings → Experimental (`app/experiments.js`).
+
 If you change `app/icon.png`, run `node scripts/make-icons.js` (the web icons) and `python3 scripts/make-icon.py` (the exe's icon).
 
 ### Command line

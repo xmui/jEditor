@@ -347,8 +347,9 @@
             return [...files].map(f => mac.pathForFile(f));
         },
         // → { current, tag, version, notes, size, newer }
-        async checkUpdate() {
-            return answer('checkUpdate');
+        // beta: betas count too (Settings → Updates → Beta builds)
+        async checkUpdate({ beta = false } = {}) {
+            return answer('checkUpdate', { beta: !!beta });
         },
         // Downloads the newest .dmg, opens it in Finder and quits, so
         // jEditor can be dragged into Applications over this one.

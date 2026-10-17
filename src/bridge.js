@@ -219,9 +219,9 @@
         async exists(paths) {
             return (await answer('exists', { paths })).msg.exists;
         },
-        // → { current, tag, version, notes, size, newer }
-        async checkUpdate() {
-            return (await answer('checkUpdate')).msg;
+        // → { current, tag, version, notes, size, newer }; beta: betas count too
+        async checkUpdate({ beta = false } = {}) {
+            return (await answer('checkUpdate', { beta: !!beta })).msg;
         },
         // The drives on this PC (USB ones too) and the usual folders →
         // { drives: [{ path, name, kind: usb|disk|network|cd, label, total, free }], home: [{ name, path }] }.

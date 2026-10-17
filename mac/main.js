@@ -225,6 +225,8 @@ function mint(wc, dir) {
 // downloaded (checked against GitHub's SHA-256), opened in Finder, and
 // jEditor quits so it can be dragged into Applications over this one.
 const RELEASES = process.env.JEDITOR_RELEASES || 'https://api.github.com/repos/xmui/jEditor/releases/latest';
+// Every release and beta, newest first (Settings → Updates → Beta builds)
+const ALL_RELEASES = process.env.JEDITOR_RELEASES_ALL || 'https://api.github.com/repos/xmui/jEditor/releases?per_page=30';
 let latest = null;
 
 function currentVersion() {
@@ -232,26 +234,49 @@ function currentVersion() {
     return m ? m[1] : '0.0.0';
 }
 
-// "v1.18.1" < "v1.18.1-2" < "v1.19.0"
+// What this build is: the release it was built for (scripts/set-build.js),
+// else v<version>
+function currentTag() {
+    const m = /APP_BUILD = '([^']+)'/.exec(fs.readFileSync(path.join(UI, 'version.js'), 'utf8'));
+    return m ? m[1] : 'v' + currentVersion();
+}
+
+// "v1.18.1" < "v1.18.1-2" < "v1.19.0-beta.1" < "v1.19.0-beta.2" < "v1.19.0":
+// [major, minor, patch, which beta (Infinity: not a beta), -N]
 function parseTag(tag) {
-    const m = /(\d+)\.(\d+)\.(\d+)(?:-(\d+))?/.exec(String(tag));
-    return m ? [+m[1], +m[2], +m[3], m[4] ? +m[4] : 1] : [0, 0, 0, 0];
+    const m = /(\d+)\.(\d+)\.(\d+)(?:-(beta\.)?(\d+))?/.exec(String(tag));
+    if (!m) return [0, 0, 0, Infinity, 0];
+    return m[4] ? [+m[1], +m[2], +m[3], +m[5], 0] : [+m[1], +m[2], +m[3], Infinity, m[5] ? +m[5] : 1];
 }
 function isNewer(tag, than) {
     const a = parseTag(tag), b = parseTag(than);
-    for (let i = 0; i < 4; i++) if (a[i] !== b[i]) return a[i] > b[i];
+    for (let i = 0; i < 5; i++) if (a[i] !== b[i]) return a[i] > b[i];
     return false;
 }
 
-async function checkUpdate() {
-    const res = await net.fetch(RELEASES, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'jEditor' } });
+const appAsset = (json) => (json.assets || []).find(a => (LINUX ? /^jEditor-.*-linux\.AppImage$/i : /^jEditor-.*-mac\.dmg$/i).test(a.name || ''));
+
+async function fetchJson(url) {
+    const res = await net.fetch(url, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'jEditor' } });
     if (res.status === 404) throw new Error('No releases yet');
     if (!res.ok) throw new Error(`GitHub said ${res.status}`);
-    const json = await res.json();
+    return res.json();
+}
+
+// beta: the newest release or beta with this app in it
+async function checkUpdate({ beta = false } = {}) {
+    let json;
+    if (beta) {
+        const all = (await fetchJson(ALL_RELEASES)).filter(r => r && !r.draft && r.tag_name && appAsset(r));
+        json = all.reduce((best, r) => (!best || isNewer(r.tag_name, best.tag_name) ? r : best), null);
+        if (!json) throw new Error('No releases yet');
+    } else {
+        json = await fetchJson(RELEASES);
+    }
     const tag = json.tag_name;
-    const dmg = (json.assets || []).find(a => (LINUX ? /^jEditor-.*-linux\.AppImage$/i : /^jEditor-.*-mac\.dmg$/i).test(a.name || ''));
+    const dmg = appAsset(json);
     if (!tag || !dmg) throw new Error(`Release ${tag || '?'} has no ${LINUX ? 'Linux' : 'Mac'} app to download`);
-    const current = 'v' + currentVersion();
+    const current = currentTag();
     latest = {
         tag, name: dmg.name, url: dmg.browser_download_url, size: dmg.size || 0,
         sha256: typeof dmg.digest === 'string' && dmg.digest.startsWith('sha256:') ? dmg.digest.slice(7).toLowerCase() : null
@@ -261,7 +286,7 @@ async function checkUpdate() {
 
 async function installUpdate(wc) {
     if (!latest) await checkUpdate();
-    if (!isNewer(latest.tag, 'v' + currentVersion())) throw new Error('This is already the newest version');
+    if (!isNewer(latest.tag, currentTag())) throw new Error('This is already the newest version');
     const res = await net.fetch(latest.url);
     if (!res.ok) throw new Error(`The download failed (${res.status})`);
     const total = +res.headers.get('content-length') || latest.size;
@@ -397,7 +422,7 @@ async function handle(rec, type, data) {
             saveSettings();
             return { ok: true };
         case 'checkUpdate':
-            return checkUpdate();
+            return checkUpdate({ beta: !!data.beta });
         case 'installUpdate':
             return installUpdate(wc);
         case 'ready':

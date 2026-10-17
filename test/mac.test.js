@@ -37,12 +37,16 @@ function makeOrder(dir, name, n = 3) {
 }
 
 // Releases, as GitHub's API gives them, from a server here (JEDITOR_RELEASES)
-const releases = { latest: null, files: {} };
+const releases = { latest: null, all: null, files: {} };
 const releaseServer = http.createServer((req, res) => {
     if (req.url === '/latest') {
         if (!releases.latest) { res.writeHead(404); return res.end(); }
         res.writeHead(200, { 'content-type': 'application/json' });
         return res.end(JSON.stringify(releases.latest));
+    }
+    if (req.url === '/all') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        return res.end(JSON.stringify(releases.all || (releases.latest ? [releases.latest] : [])));
     }
     const f = releases.files[req.url];
     if (!f) { res.writeHead(404); return res.end(); }
@@ -55,7 +59,7 @@ async function launch(profile, args = [], env = {}) {
         executablePath: ELECTRON,
         args: [MAC, '--no-sandbox', '--user-data', profile, ...args],
         // The Mac app unless a test asks for Linux's (they all run on Linux too)
-        env: { ...process.env, JEDITOR_PLATFORM: 'mac', JEDITOR_SKIP_PERMISSIONS: '1', JEDITOR_RELEASES: `http://127.0.0.1:${releaseServer.address().port}/latest`, ...env }
+        env: { ...process.env, JEDITOR_PLATFORM: 'mac', JEDITOR_SKIP_PERMISSIONS: '1', JEDITOR_RELEASES: `http://127.0.0.1:${releaseServer.address().port}/latest`, JEDITOR_RELEASES_ALL: `http://127.0.0.1:${releaseServer.address().port}/all`, ...env }
     });
     const page = await app.firstWindow();
     const errors = [];
@@ -667,6 +671,33 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         releases.latest = { ...release('0'.repeat(64)), tag_name: 'v1.0.0' };
         const old = await page.evaluate(() => JEditorNative.checkUpdate().then(r => r.newer));
         check('an older release isn\'t offered', old === false);
+
+        // Beta builds: betas count too, but never a draft, and a release
+        // is newer than its own betas
+        const stable = { ...release('0'.repeat(64)), tag_name: 'v9.1.0' };
+        releases.latest = stable;
+        releases.all = [
+            { ...release('0'.repeat(64)), tag_name: 'v9.3.0-beta.1', draft: true },
+            { ...release('0'.repeat(64)), tag_name: 'v9.2.0-beta.2', prerelease: true },
+            { ...release('0'.repeat(64)), tag_name: 'v9.2.0-beta.1', prerelease: true },
+            stable,
+            { tag_name: 'v9.4.0-beta.1', prerelease: true, assets: [] }
+        ];
+        const tags = await page.evaluate(async () => [
+            (await JEditorNative.checkUpdate()).tag,
+            (await JEditorNative.checkUpdate({ beta: true })).tag
+        ]);
+        check('Beta builds: the newest beta with this app in it (not a draft); off, the release', tags.join() === 'v9.1.0,v9.2.0-beta.2', tags.join());
+        releases.all.unshift({ ...release('0'.repeat(64)), tag_name: 'v9.2.0' });
+        const after = await page.evaluate(async () => (await JEditorNative.checkUpdate({ beta: true })).tag);
+        check('... and its release, once out, is newer than the betas', after === 'v9.2.0', after);
+        const ui = await page.evaluate(async () => {
+            app.uiPrefs.betaUpdates = true;
+            await Updates.check({ manual: false });
+            return { status: document.getElementById('upd-status').textContent, shown: getComputedStyle(document.getElementById('upd-beta').closest('.set-row')).display !== 'none' };
+        });
+        check('Settings → Updates has Beta builds, and says what it found', ui.shown && /jEditor 9\.2\.0 is available/.test(ui.status), JSON.stringify(ui));
+        releases.all = null;
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.evaluate(({ app }) => { app.quit = global.realQuit; });
         await app.close();
