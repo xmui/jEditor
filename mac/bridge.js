@@ -234,8 +234,8 @@
     window.JEditorNative = {
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
-        platform: 'mac',
-        features: ['reveal', 'updates', 'windows', 'places'],
+        platform: mac.platform,
+        features: ['reveal', 'windows', 'places'].concat(mac.updates ? ['updates'] : []),
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage
         async dataDir() {
@@ -354,8 +354,13 @@
         // jEditor can be dragged into Applications over this one.
         // progress(received, total) as it downloads.
         async installUpdate(progress) {
-            onUpdateProgress = progress || null;
-            try { await answer('installUpdate'); } finally { onUpdateProgress = null; }
+            // The end reported here too: IPC may bring the last progress after the answer
+            let last = -1;
+            onUpdateProgress = (got, total) => { last = got; if (progress) progress(got, total); };
+            try {
+                const r = await answer('installUpdate');
+                if (progress && r && r.received > last) progress(r.received, r.total);
+            } finally { onUpdateProgress = null; }
         }
     };
 

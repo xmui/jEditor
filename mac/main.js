@@ -1,5 +1,5 @@
-// jEditor for Mac: the jEditor UI (../app, or Resources/app in the built
-// app) in an Electron window. Electron is Chromium, as WebView2 is on
+// jEditor for Mac and Linux: the jEditor UI (../app, or Resources/app in
+// the built app) in an Electron window. Electron is Chromium, as WebView2 is on
 // Windows, so the UI runs as it does there and in Chrome.
 //
 // The page edits files through the File System Access API. The browser's
@@ -29,6 +29,14 @@ const toolbar = require('./native'); // null without the native module
 // page keeps its own pills. JEDITOR_NATIVE_TOOLBAR=0: the pills anyway.
 const NATIVE_TOOLBAR = process.platform === 'darwin' && !!toolbar && toolbar.supported() && process.env.JEDITOR_NATIVE_TOOLBAR !== '0';
 global.jeditorToolbar = NATIVE_TOOLBAR ? toolbar : null; // for the tests (test/mac.test.js)
+
+// The Linux app is this one with Linux's words (app/host.js), drives
+// (places.js) and updates (an AppImage replaced in place). JEDITOR_PLATFORM:
+// the other one's (the tests run on Linux, as the Mac app or this one)
+const LINUX = (process.env.JEDITOR_PLATFORM || (process.platform === 'linux' ? 'linux' : 'mac')) === 'linux';
+// Where this AppImage is: only an AppImage can update itself (a .deb is
+// updated with the system's own tools)
+const APPIMAGE = process.env.APPIMAGE || null;
 
 // Settings, recent folders and the projects' data are stored under this
 // origin: it must never change
@@ -226,8 +234,8 @@ async function checkUpdate() {
     if (!res.ok) throw new Error(`GitHub said ${res.status}`);
     const json = await res.json();
     const tag = json.tag_name;
-    const dmg = (json.assets || []).find(a => /^jEditor-.*-mac\.dmg$/i.test(a.name || ''));
-    if (!tag || !dmg) throw new Error(`Release ${tag || '?'} has no Mac app to download`);
+    const dmg = (json.assets || []).find(a => (LINUX ? /^jEditor-.*-linux\.AppImage$/i : /^jEditor-.*-mac\.dmg$/i).test(a.name || ''));
+    if (!tag || !dmg) throw new Error(`Release ${tag || '?'} has no ${LINUX ? 'Linux' : 'Mac'} app to download`);
     const current = 'v' + currentVersion();
     latest = {
         tag, name: dmg.name, url: dmg.browser_download_url, size: dmg.size || 0,
@@ -242,7 +250,9 @@ async function installUpdate(wc) {
     const res = await net.fetch(latest.url);
     if (!res.ok) throw new Error(`The download failed (${res.status})`);
     const total = +res.headers.get('content-length') || latest.size;
-    const file = path.join(app.getPath('downloads'), latest.name);
+    // The AppImage is written beside this one, then put in its place
+    const file = LINUX ? APPIMAGE : path.join(app.getPath('downloads'), latest.name);
+    if (!file) throw new Error('Only the AppImage can update itself: update the .deb with your software updater');
     const part = file + '.part';
     const out = fs.createWriteStream(part);
     const hash = crypto.createHash('sha256');
@@ -267,12 +277,20 @@ async function installUpdate(wc) {
         fs.rmSync(part, { force: true });
         throw new Error('The download was damaged (its checksum doesn\'t match). Try again.');
     }
+    if (LINUX) {
+        fs.chmodSync(part, 0o755);
+        fs.renameSync(part, file);
+        log('info', 'Updated: ' + file);
+        setTimeout(() => { app.relaunch({ execPath: file, args: process.argv.slice(1) }); app.quit(); }, 1500);
+        return { ok: true, file, received: got, total };
+    }
     fs.renameSync(part, file);
     const err = await shell.openPath(file);
     if (err) throw new Error('Downloaded to ' + file + ', but it didn\'t open: ' + err);
     log('info', 'Update opened: ' + file);
     setTimeout(() => app.quit(), 1500); // so it can be replaced
-    return { ok: true, file };
+    // (and how much came: the last updateProgress can arrive after this)
+    return { ok: true, file, received: got, total };
 }
 
 // ---- What the page asks for (bridge.js) ----
@@ -551,7 +569,14 @@ function menu() {
         else if (action === 'open') createWindow();
     };
     Menu.setApplicationMenu(Menu.buildFromTemplate([
-        {
+        LINUX ? {
+            label: 'jEditor',
+            submenu: [
+                { label: 'Settings…', accelerator: 'Ctrl+,', click: send('settings') },
+                { type: 'separator' },
+                { role: 'quit' }
+            ]
+        } : {
             role: 'appMenu',
             submenu: [
                 { role: 'about' },
@@ -568,8 +593,8 @@ function menu() {
         {
             label: 'File',
             submenu: [
-                { label: 'New Window', accelerator: 'Cmd+Shift+N', click: () => show(createWindow()) },
-                { label: 'Open Folder…', accelerator: 'Cmd+O', click: send('open') },
+                { label: 'New Window', accelerator: 'CmdOrCtrl+Shift+N', click: () => show(createWindow()) },
+                { label: 'Open Folder…', accelerator: 'CmdOrCtrl+O', click: send('open') },
                 { type: 'separator' },
                 { role: 'close' }
             ]
@@ -609,14 +634,23 @@ function createWindow() {
             vibrancy: 'under-window',
             visualEffectState: 'followWindow',
             backgroundColor: '#00000000'
-        } : { backgroundColor: '#111111' }),
+        } : {
+            backgroundColor: '#111111',
+            // The menu bar shows with Alt; the window's icon for the taskbar
+            autoHideMenuBar: true,
+            icon: path.join(UI, 'icon.png')
+        }),
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             sandbox: true,
             nodeIntegration: false,
             spellcheck: false,
-            additionalArguments: NATIVE_TOOLBAR ? ['--jeditor-native-toolbar'] : []
+            additionalArguments: [
+                ...(NATIVE_TOOLBAR ? ['--jeditor-native-toolbar'] : []),
+                ...(LINUX ? ['--jeditor-linux'] : []),
+                ...(LINUX && !APPIMAGE && !process.env.JEDITOR_RELEASES ? ['--jeditor-no-updates'] : [])
+            ]
         }
     });
     if (NATIVE_TOOLBAR) {

@@ -81,6 +81,16 @@ A Debug build (`dotnet run --project src`) does this on its own with the repo's 
 
 The UI never assumes Windows. Everything an app adds goes through `window.JEditorNative` (made by `src/bridge.js`), which is `null` in a browser. Each app says what it is and lists what it can do (`platform`, `features`), and `app/host.js` hides what it can't (`Host.has('scan')`, `data-needs="scan"`) and puts the system's own words into the page: Explorer or Finder, the Recycle Bin or the Trash. The UI tests run it with no app (the web), the Windows app, and an app with only the core; `test/mac.test.js` runs the real Mac app.
 
+## Installing on Linux
+
+From the [latest release](https://github.com/xmui/jEditor/releases/latest), for 64-bit Linux:
+
+- **AppImage** (any distribution): download `jEditor-x.y.z-linux.AppImage`, make it executable (`chmod +x`, or Properties → Permissions in your file manager) and open it. Settings → Updates replaces it with the new version and restarts. It needs FUSE 2 (`sudo apt install libfuse2t64` on Ubuntu 24.04 if it won't start).
+- **.deb** (Debian, Ubuntu, Mint): `sudo apt install ./jEditor-x.y.z-linux.deb`. It's then in your applications, and in Open With for folders and photos. Update it by installing the new .deb.
+- **Arch Linux** (and Manjaro, EndeavourOS): `sudo pacman -U jEditor-x.y.z-linux.pacman`. The same as the .deb; update it by installing the new one, and `sudo pacman -R jeditor` removes it.
+
+jEditor's settings and each project's data are kept in `~/.config/jEditor`, never in your folders. USB drives and cards mounted in `/media` or `/run/media` show in the sidebar under Locations.
+
 ## Building
 
 On Windows, with the .NET 8 SDK and [Inno Setup 6](https://jrsoftware.org/isdl.php):
@@ -101,11 +111,13 @@ node mac/build.js              # dist/jEditor-x.y.z-mac.dmg, for Apple silicon a
 node scripts/smoke-test-mac.js # the built app opens a folder, edits, deletes and undoes
 ```
 
+On Linux, the same with `node mac/build.js`: `dist/jEditor-x.y.z-linux.AppImage`, `.deb` and `.pacman` (x64; the pacman package needs `bsdtar`, from libarchive-tools); `node scripts/smoke-test-mac.js` then smoke-tests `dist/linux-unpacked`.
+
 `npm run test:mac` runs the Mac app's tests: the real app on folders on disk. Electron runs on Linux too, so they run there as well (`xvfb-run npm run test:mac` without a screen).
 
 `npm test` runs the tests in headless Chrome, on any OS: the bridge's, then the UI's (sorting, rotation, crop, flags, folders and much more). Set `CHROME_PATH` if Chrome isn't found. The project also compiles on Linux and macOS (`dotnet build src`), which is handy for checking a change, but it only runs on Windows.
 
-Every push builds on GitHub Actions: the tests, then on Windows the build, the smoke test and an install/uninstall test, and on a Mac the Mac app's tests, its build and its smoke test. The setup, the zip and the .dmg from each run are on the run's page under **Artifacts**.
+Every push builds on GitHub Actions: the tests, then on Windows the build, the smoke test and an install/uninstall test, on a Mac the Mac app's tests, its build and its smoke test, and on Linux the same tests as the Linux app, its AppImage, .deb and pacman package, and install tests of the .deb on Ubuntu and the pacman package in an Arch Linux container. The setup, the zip, the .dmg and the Linux packages from each run are on the run's page under **Artifacts**.
 
 ### Releasing
 

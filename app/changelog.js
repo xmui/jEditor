@@ -5,6 +5,12 @@
 
 const CHANGELOG = [
     {
+        version: '1.40.0', date: '2026-10-17',
+        items: [
+            'jEditor for Linux, a first version: jEditor-1.40.0-linux.AppImage runs on any 64-bit Linux (make it executable and open it), jEditor-1.40.0-linux.deb installs it on Debian, Ubuntu and Mint, and jEditor-1.40.0-linux.pacman on Arch Linux (sudo pacman -U). It has what the Mac app has: folders opened without asking, the sidebar with your projects, pinned folders and drives (USB drives and cards, with Eject), several windows and Split, and Show in Files. The AppImage updates itself from Settings → Updates.'
+        ]
+    },
+    {
         version: '1.39.0', date: '2026-10-17',
         items: [
             'On macOS 26, jEditor\'s top row is the Mac\'s own toolbar, in real Liquid Glass, as in Apple\'s apps: the window\'s buttons, the photo\'s name and where it is in the project, the folder list, All photos and Folders, sort, your toolbar buttons, More and a Mac search field. Everything works as before, keys and Settings → Toolbar too. The photo starts below the toolbar, so nothing covers it. Earlier macOS keeps jEditor\'s own glass toolbars.',

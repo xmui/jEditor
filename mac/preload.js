@@ -9,5 +9,8 @@ contextBridge.exposeInMainWorld('jeditorMac', {
     onMessage: (listener) => { ipcRenderer.on('jeditor', (e, msg) => listener(msg)); },
     pathForFile: (file) => { try { return webUtils.getPathForFile(file) || null; } catch (e) { return null; } },
     // macOS 26's toolbar holds the top row (main.js)
-    nativeToolbar: process.argv.includes('--jeditor-native-toolbar')
+    nativeToolbar: process.argv.includes('--jeditor-native-toolbar'),
+    // 'mac' or 'linux', and whether this copy can update itself (main.js)
+    platform: process.argv.includes('--jeditor-linux') ? 'linux' : 'mac',
+    updates: !process.argv.includes('--jeditor-no-updates')
 });

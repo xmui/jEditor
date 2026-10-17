@@ -49,8 +49,33 @@ jobs:
           path: dist/jEditor-*-mac.dmg
           if-no-files-found: error
 
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: mac
+      # bsdtar, for the Arch package
+      - run: sudo apt-get install -y libarchive-tools
+      - name: Build
+        run: node build.js
+        working-directory: mac
+      - name: Smoke test
+        run: xvfb-run -a node scripts/smoke-test-mac.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jEditor-linux
+          path: |
+            dist/jEditor-*-linux.AppImage
+            dist/jEditor-*-linux.deb
+            dist/jEditor-*-linux.pacman
+          if-no-files-found: error
+
   release:
-    needs: mac
+    needs: [mac, linux]
     runs-on: windows-latest
     outputs:
       skip: ${{ steps.tag.outputs.skip }}
@@ -107,6 +132,12 @@ jobs:
         with:
           name: jEditor-mac
           path: dist
+      - name: The Linux app
+        if: steps.tag.outputs.skip == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: jEditor-linux
+          path: dist
 
       - name: Release notes
         if: steps.tag.outputs.skip == 'false'
@@ -134,7 +165,7 @@ jobs:
         run: |
           gh release create "${{ steps.tag.outputs.tag }}" --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA `
             --title "jEditor ${{ steps.tag.outputs.version }}" --notes-file release-notes.md `
-            (Get-Item dist/jEditor-Setup-*.exe).FullName (Get-Item dist/jEditor-*-portable.zip).FullName (Get-Item dist/jEditor-*-mac.dmg).FullName (Get-Item standalone.html).FullName
+            (Get-Item dist/jEditor-Setup-*.exe).FullName (Get-Item dist/jEditor-*-portable.zip).FullName (Get-Item dist/jEditor-*-mac.dmg).FullName (Get-Item dist/jEditor-*-linux.AppImage).FullName (Get-Item dist/jEditor-*-linux.deb).FullName (Get-Item dist/jEditor-*-linux.pacman).FullName (Get-Item standalone.html).FullName
 
   # Homebrew (Casks/jeditor.rb): the new version and the .dmg's checksum,
   # as GitHub has it for the release, committed to main
