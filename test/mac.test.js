@@ -117,6 +117,8 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await loaded(page, 4);
         const r = await page.evaluate(async () => ({
             platform: Host.platform(),
+            badge: document.querySelector('#app-title .app-version').textContent,
+            get: document.getElementById('start-get').classList.contains('hidden'),
             scan: getComputedStyle(document.getElementById('btn-scan')).display,
             path: await JEditorNative.folderPath(app.dirHandle),
             perm: await app.dirHandle.queryPermission({ mode: 'readwrite' }),
@@ -124,6 +126,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         }));
         check('opens it, every photo listed', r.files === 'Ceremony/c1.jpg,photo1.jpg,photo2.jpg,photo3.jpg', r.files);
         check('the Mac app, with Mac features only', r.platform === 'mac' && r.scan === 'none', JSON.stringify(r));
+        check('its start screen says so ("Mac · version"), with no download offered', r.badge === `Mac · ${require('../package.json').version}` && r.get, JSON.stringify(r));
         check('it knows the folder\'s path, and may edit it without asking', r.path === smith && r.perm === 'granted', JSON.stringify([r.path, r.perm]));
 
         // Edits go to disk; the project's data stays out of the folder
@@ -726,13 +729,14 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await JEditorNative.installUpdate(() => { });
             return {
                 platform: Host.platform(), data: document.documentElement.dataset.platform,
+                badge: document.querySelector('#app-title .app-version').textContent,
                 files: Host.say('Show in {files}'), keys: Host.say('Ctrl+Z to undo'), computer: Host.say('{computer}'),
                 updates: Host.has('updates'), scan: Host.has('scan'), recycle: Host.has('recycle')
             };
         });
         await new Promise(res => setTimeout(res, 1800));
         const main = await app.evaluate(() => ({ relaunched: global.relaunched, quit: !!global.quitAsked }));
-        check('the Linux app, with Linux\'s words: Files, Ctrl', r.platform === 'linux' && r.data === 'linux' && r.files === 'Show in Files' && r.keys === 'Ctrl+Z to undo' && r.computer === 'this computer', JSON.stringify(r));
+        check('the Linux app, with Linux\'s words: Files, Ctrl', r.platform === 'linux' && r.data === 'linux' && r.badge.startsWith('Linux · ') && r.files === 'Show in Files' && r.keys === 'Ctrl+Z to undo' && r.computer === 'this computer', JSON.stringify(r));
         check('no Windows-only features', r.updates && !r.scan && !r.recycle, JSON.stringify(r));
         check('the new AppImage replaces this one, runnable, and jEditor restarts in it', fs.readFileSync(appImage).equals(image) && (fs.statSync(appImage).mode & 0o111) !== 0 && main.relaunched === appImage && main.quit, JSON.stringify(main));
         check('no JS errors', errors.length === 0, errors.join('; '));

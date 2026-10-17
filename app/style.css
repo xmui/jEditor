@@ -3991,6 +3991,26 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
     text-align: center;
 }
 
+/* Photos picked, not a folder (picked.js): the Save pill */
+.picked-bar {
+    position: fixed;
+    top: calc(var(--top-row) + var(--gutter));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--z-floating);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-4);
+    border-radius: var(--r-pill);
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: var(--glass-filter);
+    backdrop-filter: var(--glass-filter);
+    box-shadow: var(--glass-rim), var(--shadow-2);
+    font-size: var(--fs-small);
+    white-space: nowrap;
+}
+
 /* Recent orders */
 .recents {
     width: 100%;
@@ -4095,6 +4115,48 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
 .recent-list li:hover .recent-when,
 .recent-list li:focus-within .recent-when {
     visibility: hidden;
+}
+
+/* The web version's "get the app" (start.js) */
+.start-get {
+    width: 100%;
+    margin-top: var(--sp-8);
+    padding: var(--sp-4) var(--sp-5);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-lg);
+    background: color-mix(in srgb, var(--bg-surface) 60%, transparent);
+}
+
+.start-get-head {
+    margin: 0 0 var(--sp-3);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.start-get-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-2);
+}
+
+.start-get-others {
+    margin: var(--sp-3) 0 0;
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+}
+
+.start-get-others a {
+    color: var(--text-2);
+}
+
+/* A touch screen with no keyboard: no keyboard shortcuts to show */
+@media (hover: none) and (pointer: coarse) {
+    #btn-shortcuts-start,
+    #btn-shortcuts-start + .start-dot {
+        display: none;
+    }
 }
 
 .start-foot {

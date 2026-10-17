@@ -332,7 +332,43 @@ async function newPage(browser, url) {
             title: document.getElementById('app-title')?.textContent || ''
         }));
         check('APP_VERSION matches package.json', v.appVersion === pkgVersion, `${v.appVersion} vs ${pkgVersion}`);
-        check('version shown on start screen', v.title === `jEditor ${pkgVersion}`, v.title);
+        check('version and build shown on start screen', v.title === `jEditor Web · ${pkgVersion}`, v.title);
+        const get = await page.evaluate(async () => ({
+            devices: [
+                Start.device({ platform: 'Win32', userAgent: 'Mozilla/5.0 (Windows NT 10.0)' }),
+                Start.device({ platform: 'MacIntel', userAgent: 'Macintosh', maxTouchPoints: 0 }),
+                Start.device({ platform: 'MacIntel', userAgent: 'Macintosh', maxTouchPoints: 5 }),
+                Start.device({ platform: 'iPhone', userAgent: 'iPhone OS 18' }),
+                Start.device({ platform: 'Linux x86_64', userAgent: 'X11; Linux x86_64' }),
+                Start.device({ platform: 'Linux armv8l', userAgent: 'Linux; Android 15' })
+            ].join(),
+            shown: !document.getElementById('start-get').classList.contains('hidden'),
+            here: Start.device(),
+            first: document.querySelector('#start-get .btn.primary')?.getAttribute('href') || '',
+            others: document.querySelector('.start-get-others')?.textContent || '',
+            mac: (() => { Start.renderGet('mac'); return [...document.querySelectorAll('#start-get .btn')].map(e => e.getAttribute('href') || e.dataset.copy); })(),
+            ios: (() => { Start.renderGet('ios'); return document.querySelector('.start-get-head').textContent + ' | ' + !!document.querySelector('#start-get .btn.primary'); })(),
+            android: await (async () => {
+                Start.installPrompt = null;
+                Start.renderGet('android');
+                const without = document.querySelector('.start-get-head').textContent;
+                // Chrome's install prompt, kept for the button
+                const e = new Event('beforeinstallprompt');
+                e.prompt = () => { window.prompted = true; };
+                e.userChoice = Promise.resolve({ outcome: 'accepted' });
+                Start.installPrompt = e;
+                Start.renderGet('android');
+                const button = document.querySelector('#start-get .btn.primary');
+                const label = button ? button.textContent : '';
+                if (button) button.click();
+                await new Promise(r => setTimeout(r, 50));
+                return { without, label, prompted: !!window.prompted, after: !!document.querySelector('#start-get .btn.primary') };
+            })()
+        }));
+        check('the web version knows the computer it\'s on (an iPad is the Mac with touch)', get.devices === 'windows,mac,ios,ios,linux,android', get.devices);
+        check('... and offers that app first, then the others', get.shown && get.here === 'linux' && get.first.endsWith(`/releases/latest/download/jEditor-${pkgVersion}-linux.AppImage`) && /Also for Windows and Mac/.test(get.others), JSON.stringify(get));
+        check('... an Android phone gets Install jEditor (Chrome\'s prompt), or where to find it', /Add to Home screen \(or Install app\)/.test(get.android.without) && get.android.label === 'Install jEditor' && get.android.prompted && !get.android.after, JSON.stringify(get.android));
+        check('... a Mac gets the .dmg and the Homebrew command; an iPhone or iPad gets Add to Home Screen', get.mac[0].endsWith(`jEditor-${pkgVersion}-mac.dmg`) && get.mac.some(t => /brew tap xmui\/jeditor/.test(t)) && /Add to Home Screen/.test(get.ios) && /false$/.test(get.ios), JSON.stringify([get.mac, get.ios]));
         await page.close();
     }
 
@@ -4193,6 +4229,69 @@ async function newPage(browser, url) {
         check('Settings → Experimental: nothing to try yet, said plainly', r.empty);
         check('an experiment is off until turned on; on, it says so and stays on', !r.off && r.heard && r.heard.id === 'paint' && r.heard.on && r.kept && !r.unknown, JSON.stringify(r));
         check('no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    console.log('photos picked, not a folder (Safari on iPhone and iPad)');
+    {
+        const page = await browser.newPage({ acceptDownloads: true });
+        const errors = [];
+        page.on('pageerror', e => errors.push(e.message));
+        // Safari: no way to open a folder
+        await page.addInitScript(() => { Object.defineProperty(window, 'showDirectoryPicker', { value: undefined, configurable: true }); });
+        await page.goto(`${baseUrl}/index.html`, { waitUntil: 'networkidle' });
+        await page.evaluate(PAGE_HELPERS);
+        const start = await page.evaluate(() => ({ available: Picked.available(), button: document.getElementById('btn-browse-folder').textContent.trim() }));
+        check('without folders, Open photos picks photos instead', start.available && start.button === 'Open photos', JSON.stringify(start));
+        const jpeg = Buffer.from(await page.evaluate(async () => [...await makeRealJpeg(64, 48, { exif: true })]));
+        await page.setInputFiles('#picked-input', [
+            { name: 'IMG_0001.jpg', mimeType: 'image/jpeg', buffer: jpeg },
+            { name: 'IMG_0002.jpg', mimeType: 'image/jpeg', buffer: jpeg },
+            { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('not a photo') }
+        ]);
+        await page.waitForFunction(() => app.files.length === 2 && !app.isLoading, null, { timeout: 10000 });
+        const opened = await page.evaluate(() => ({ names: app.files.map(f => f.name).join(), pill: document.getElementById('picked-bar').classList.contains('hidden'), view: !document.getElementById('main-interface').classList.contains('hidden') }));
+        check('the photos open (not the other file), with nothing to save yet', opened.names === 'IMG_0001.jpg,IMG_0002.jpg' && opened.pill && opened.view, JSON.stringify(opened));
+        const turned = await page.evaluate(async () => {
+            await app.rotateImage(app.files[0], 90, true);
+            const h = app.files[0].handle;
+            return { edited: h.edited, orientation: readOrientation(new Uint8Array(await (await h.getFile()).arrayBuffer())), pill: document.getElementById('picked-count').textContent, shown: !document.getElementById('picked-bar').classList.contains('hidden') };
+        });
+        check('a turn is kept (losslessly, in place), and Save offers it', turned.edited && turned.orientation === 6 && turned.shown && turned.pill === '1 edited photo', JSON.stringify(turned));
+        await page.evaluate(() => {
+            navigator.canShare = () => true;
+            navigator.share = async ({ files }) => { window.shared = await Promise.all(files.map(async f => [f.name, f.size])); };
+        });
+        await page.click('#picked-save');
+        await page.waitForFunction(() => window.shared, null, { timeout: 5000 }).catch(() => { });
+        const shared = await page.evaluate(() => ({ shared: window.shared, hidden: document.getElementById('picked-bar').classList.contains('hidden') }));
+        check('Save hands it to the share sheet (Save to Photos or Files), and it\'s saved', JSON.stringify(shared.shared && shared.shared.map(x => x[0])) === '["IMG_0001.jpg"]' && shared.hidden, JSON.stringify(shared));
+        // No share sheet: several photos download as a zip
+        await page.evaluate(async () => {
+            delete navigator.canShare; delete navigator.share;
+            Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true });
+            await app.rotateImage(app.files[0], 90, true);
+            await app.rotateImage(app.files[1], 270, true);
+        });
+        const [download] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), page.click('#picked-save')]);
+        const zipPath = await download.path();
+        const zip = fs.readFileSync(zipPath);
+        const entries = [];
+        for (let o = 0; zip.readUInt32LE(o) === 0x04034b50;) {
+            const size = zip.readUInt32LE(o + 18), n = zip.readUInt16LE(o + 26);
+            const name = zip.toString('utf8', o + 30, o + 30 + n), data = zip.subarray(o + 30 + n, o + 30 + n + size);
+            entries.push({ name, ok: require('zlib').crc32(data) === zip.readUInt32LE(o + 14), size });
+            o += 30 + n + size;
+        }
+        const eocd = zip.readUInt32LE(zip.length - 22) === 0x06054b50 && zip.readUInt16LE(zip.length - 12) === 2;
+        check('with no share sheet, several photos download as one zip', download.suggestedFilename() === 'jEditor photos.zip' && eocd && entries.map(e => e.name).join() === 'IMG_0001.jpg,IMG_0002.jpg' && entries.every(e => e.ok && e.size > 0), JSON.stringify([download.suggestedFilename(), entries]));
+        const dupes = await page.evaluate(async () => {
+            const f = async (n) => new File([new Uint8Array(await (await app.files[0].handle.getFile()).arrayBuffer())], n, { type: 'image/jpeg' });
+            await Picked.open([await f('image.jpg'), await f('image.jpg')]);
+            return app.files.map(x => x.name).sort().join();
+        });
+        check('two photos with the same name both open', dupes === 'image (2).jpg,image.jpg', dupes);
+        check('no JS errors', errors.length === 0, errors.join('; '));
         await page.close();
     }
 
