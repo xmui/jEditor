@@ -18,6 +18,7 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, net, protocol, screen, session, shell } = require('electron');
 const crypto = require('crypto');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const places = require('./places');
@@ -427,6 +428,11 @@ async function handle(rec, type, data) {
         }
         case 'smoke': {
             const steps = { ...data.steps, ...smokeSteps };
+            // On macOS 26 (Darwin 25) the built app must have its native
+            // toolbar: a module that didn't load would fall back silently
+            if (process.platform === 'darwin' && parseInt(os.release(), 10) >= 25 && process.env.JEDITOR_NATIVE_TOOLBAR !== '0') {
+                steps.nativeToolbar = NATIVE_TOOLBAR || `no native toolbar (${toolbar ? 'the module says it isn\'t supported' : 'the module didn\'t load'})`;
+            }
             const failed = Object.entries(steps).filter(([, v]) => v !== true);
             const ok = data.ok && !failed.length && !(data.errors || []).length;
             console.log('smoke test ' + (ok ? 'passed' : 'FAILED') + '\n' + JSON.stringify({ steps, errors: data.errors || [], error: data.error || null }, null, 2));
