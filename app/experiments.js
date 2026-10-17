@@ -13,7 +13,7 @@ const Experiments = {
         {
             id: 'adjust', beta: true,
             title: 'Adjust: Lightroom-style editing',
-            text: 'Light, color, levels and curves, film looks of real stocks, color grading, masks, sharpening and noise reduction (E, or the sliders button). Never changes the photo until you export or save. Adjustments already made stay on the photos when this is off'
+            text: 'Light, color, levels and curves, film looks of real stocks, color grading, masks, spot and dust removal, sharpening and noise reduction (E, or the sliders button). Never changes the photo until you export or save. Adjustments already made stay on the photos when this is off'
         }
     ],
 

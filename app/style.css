@@ -3935,6 +3935,18 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     touch-action: none;
 }
 
+/* Spot removal: a small heading for the dust finder */
+.adj-sub {
+    margin: var(--sp-2) 0 var(--sp-1);
+    color: var(--text-2);
+    font-size: var(--fs-caption);
+    font-weight: 600;
+}
+
+#adj-spot-overlay {
+    cursor: crosshair;
+}
+
 /* Detail: the 1:1 view, and where it is on the photo */
 .adj-loupe {
     display: block;

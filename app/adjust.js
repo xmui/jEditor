@@ -83,6 +83,7 @@ const Adjust = {
         this.initLooks();
         this.initWheels();
         AdjustMasks.init(this);
+        AdjustSpots.init(this);
         this.mixerSliders = Develop.HUES.map((h, i) => {
             const row = this.slider(`mix-${h.id}`, h.name, {
                 range: { min: -100, max: 100, step: 1 },
@@ -123,7 +124,7 @@ const Adjust = {
 
         this.initLevels();
         this.initCurve();
-        this._resize = new ResizeObserver(() => { this.layout(); this.drawPanels(); this.placeLoupeBox(); AdjustMasks.place(); AdjustMasks.draw(); });
+        this._resize = new ResizeObserver(() => { this.layout(); this.drawPanels(); this.placeLoupeBox(); AdjustMasks.place(); AdjustMasks.draw(); AdjustSpots.place(); AdjustSpots.draw(); });
         this._resize.observe(this.el('adj-stage'));
         this._resize.observe(this.el('adj-panel'));
     },
@@ -221,20 +222,112 @@ const Adjust = {
         this._fullFor = null;
         this.loupeAt = { u: 0.5, v: 0.5 };
         this._detailKey = null;
-        // Its crop first: adjusted as it will be seen. Masks are placed on
-        // the photo before it: the map from one to the other
-        const cropped = kept && !Edits.wholePhoto(kept) ? CropEditor.fromSnapshot(bmp.width, bmp.height, kept) : null;
-        this.map = Develop.cropMap(cropped, bmp.width, bmp.height);
-        if (cropped) {
-            const c = cropped.drawOutput(bmp);
-            bmp.close();
-            bmp = await createImageBitmap(c);
-            c.width = c.height = 0;
+        // Its crop: adjusted as it will be seen. Masks and spots are placed
+        // on the photo before it: the map from one to the other
+        this.cropped = kept && !Edits.wholePhoto(kept) ? CropEditor.fromSnapshot(bmp.width, bmp.height, kept) : null;
+        this.map = Develop.cropMap(this.cropped, bmp.width, bmp.height);
+        // The whole working copy, kept: spots are done on it, before the crop
+        const base = document.createElement('canvas');
+        base.width = bmp.width;
+        base.height = bmp.height;
+        base.getContext('2d').drawImage(bmp, 0, 0);
+        bmp.close();
+        this.dropPicture();
+        this.base = base;
+        this.paint = (typeof Paint !== 'undefined' && Paint.has(kept)) ? await Paint.prepare(kept, { file }).catch(() => null) : null;
+        if (!current()) { this.dropPicture(); return; }
+        const o = this.cropped ? this.cropped.outputRect() : { w: base.width, h: base.height };
+        this.el('adj-dims').textContent = `${Math.round(o.w * scale)} × ${Math.round(o.h * scale)}`;
+        if (this.gl && this.gl.lost) this.useCpu();
+        this.usePicture();
+        this.ready = true;
+        this.layout();
+        AdjustMasks.reset();
+        AdjustSpots.reset();
+        this.draw();
+    },
+
+    // ---- The picture being adjusted ----
+    //
+    // The working copy with its spots (and paint) done, then cropped: made
+    // again when the spots change. The spots done last are remembered, so
+    // adding one, or dragging the one added last, doesn't do them all again.
+
+    dropPicture() {
+        for (const k of ['base', '_pre', '_all']) {
+            const c = k === 'base' ? this.base : this[k] && this[k].canvas;
+            if (c) c.width = c.height = 0;
         }
-        if (!current()) { bmp.close(); return; }
+        this.base = null;
+        this._pre = this._all = null;
+        this._pictureKey = undefined;
+    },
+
+    copyCanvas(src) {
+        const c = document.createElement('canvas');
+        c.width = src.width;
+        c.height = src.height;
+        c.getContext('2d', { willReadFrequently: true }).drawImage(src, 0, 0);
+        return c;
+    },
+
+    // The working copy with these spots done (a canvas, not to be changed)
+    retouchedBase(spots) {
+        const W = this.base.width, H = this.base.height;
+        const key = (l) => JSON.stringify(l);
+        const all = key(spots);
+        if (!spots.length) return this.base;
+        if (this._all && this._all.key === all) return this._all.canvas;
+        const head = spots.slice(0, -1), headKey = key(head);
+        let pre;
+        if (this._pre && this._pre.key === headKey) pre = this._pre;
+        else if (this._all && this._all.key === headKey) {
+            // One added: what was all of them is the start now
+            if (this._pre) this._pre.canvas.width = this._pre.canvas.height = 0;
+            pre = this._pre = this._all;
+            this._all = null;
+        } else {
+            const c = this.copyCanvas(this.base);
+            Retouch.applySpots(c.getContext('2d', { willReadFrequently: true }), W, H, head);
+            if (this._pre) this._pre.canvas.width = this._pre.canvas.height = 0;
+            pre = this._pre = { key: headKey, canvas: c };
+        }
+        const c = this._all && this._all.canvas !== pre.canvas ? this._all.canvas : document.createElement('canvas');
+        c.width = W;
+        c.height = H;
+        const ctx = c.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(pre.canvas, 0, 0);
+        Retouch.applySpot(ctx, W, H, spots[spots.length - 1]);
+        this._all = { key: all, canvas: c };
+        return c;
+    },
+
+    // The picture made again if the spots changed: true when it was
+    usePicture() {
+        if (!this.base) return false;
+        const spots = this.a.spots || [];
+        const key = JSON.stringify(spots);
+        if (key === this._pictureKey) return false;
+        this._pictureKey = key;
+        let pic = this.retouchedBase(spots);
+        if (this.paint) {
+            if (pic === this.base) pic = this.copyCanvas(this.base);
+            else pic = this.copyCanvas(pic);
+            Paint.composite(pic.getContext('2d'), pic.width, pic.height, this.paint);
+        }
+        const shown = this.cropped ? this.cropped.drawOutput(pic) : pic;
+        this.setPicture(shown);
+        if (shown !== pic) shown.width = shown.height = 0;
+        if (this.paint && pic !== this.base) pic.width = pic.height = 0;
+        return true;
+    },
+
+    // A canvas: what's adjusted from now on
+    setPicture(bmp) {
         this.w = bmp.width;
         this.h = bmp.height;
-        this.el('adj-dims').textContent = `${Math.round(bmp.width * scale)} × ${Math.round(bmp.height * scale)}`;
+        this._detailKey = null;
+        this._looksKey = null;
 
         // What the histogram and Auto look at
         const s = Math.min(1, this.SAMPLE / Math.max(bmp.width, bmp.height));
@@ -252,21 +345,13 @@ const Adjust = {
         sc.height = Math.max(1, Math.round(bmp.height * ts));
         sctx.drawImage(bmp, 0, 0, sc.width, sc.height);
         this.thumb = sctx.getImageData(0, 0, sc.width, sc.height);
-        this._looksKey = null;
         this.sampleOut = new Uint8ClampedArray(this.sample.length);
 
-        if (this.gl && this.gl.lost) this.useCpu();
         if (this.gl) {
             this.gl.setImage(bmp);
             // Big enough for detail to show (a small photo): kept, to do it on
             if (this.pxScale >= 0.5) {
-                const c = document.createElement('canvas');
-                c.width = bmp.width;
-                c.height = bmp.height;
-                const cx = c.getContext('2d', { willReadFrequently: true });
-                cx.drawImage(bmp, 0, 0);
-                this.srcData = cx.getImageData(0, 0, c.width, c.height);
-                c.width = c.height = 0;
+                this.srcData = bmp.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, bmp.width, bmp.height);
             } else {
                 this.srcData = null;
             }
@@ -283,11 +368,6 @@ const Adjust = {
             this.w = c.width;
             this.h = c.height;
         }
-        bmp.close();
-        this.ready = true;
-        this.layout();
-        AdjustMasks.reset();
-        this.draw();
     },
 
     // The GPU went away (or never came): the same on the CPU
@@ -306,6 +386,8 @@ const Adjust = {
         if (this._raf) cancelAnimationFrame(this._raf);
         this._raf = 0;
         this.src = this.out = this.sample = this.sampleOut = this.srcData = null;
+        this.dropPicture();
+        this.paint = null;
         clearTimeout(this._detailTimer);
         clearTimeout(this._loupeTimer);
         if (this.fullCanvas) this.fullCanvas.width = this.fullCanvas.height = 0;
@@ -345,6 +427,7 @@ const Adjust = {
         this.changed();
         this.drawPanels();
         AdjustMasks.sync();
+        AdjustSpots.sync();
     },
 
     undo() {
@@ -377,6 +460,7 @@ const Adjust = {
         if (which === 'effects') for (const [k] of this.EFFECTS) delete a[k];
         if (which === 'detail') for (const [k] of this.DETAIL) delete a[k];
         if (which === 'masks') delete a.masks;
+        if (which === 'spots') delete a.spots;
         if (which === 'look') { delete a.look; delete a.lookAmount; }
         this.setAll(a);
     },
@@ -394,18 +478,31 @@ const Adjust = {
         this.app.showToast(color ? 'Auto color: levels set for each channel' : 'Auto: levels set from the photo', 1600, null, null, { kind: 'adjust' });
     },
 
+    // Settings to put on another photo: its spots are its own
+    portable(adj) {
+        const c = Develop.clean(adj);
+        if (c) delete c.spots;
+        return c && Object.keys(c).length ? c : null;
+    },
+
+    // Other settings, this photo's spots kept
+    withOwnSpots(adj) {
+        const spots = this.a && this.a.spots && this.a.spots.length ? this.a.spots : null;
+        return spots ? { ...(adj || {}), spots } : adj;
+    },
+
     // Copied settings, for this photo or others (Ctrl+Shift+C / V)
     clipboard() {
         if (this._clip === undefined) {
             try { this._clip = JSON.parse(localStorage.getItem('jeditor.adjustCopy') || 'null'); } catch (e) { this._clip = null; }
-            if (this._clip && typeof this._clip === 'object' && 'adj' in this._clip) this._clip = { adj: Develop.clean(this._clip.adj) };
+            if (this._clip && typeof this._clip === 'object' && 'adj' in this._clip) this._clip = { adj: this.portable(this._clip.adj) };
             else this._clip = null;
         }
         return this._clip;
     },
 
     remember(adj) {
-        this._clip = { adj: Develop.clean(adj) };
+        this._clip = { adj: this.portable(adj) };
         try { localStorage.setItem('jeditor.adjustCopy', JSON.stringify(this._clip)); } catch (e) { /* private mode */ }
     },
 
@@ -420,7 +517,7 @@ const Adjust = {
             this.app.showToast('Nothing copied yet: Copy on an adjusted photo first');
             return;
         }
-        this.setAll(clip.adj);
+        this.setAll(this.withOwnSpots(clip.adj));
     },
 
     // ---- Drawing ----
@@ -445,6 +542,7 @@ const Adjust = {
 
     draw() {
         if (!this.ready) return;
+        if (this.usePicture()) this.layout();
         const T = Develop.tables(this.a);
         // Halation's glow, from the whole picture (as saving makes it)
         let glow = null;
@@ -477,6 +575,7 @@ const Adjust = {
         this.hist = Develop.histogram(px);
         this.drawPanels();
         AdjustMasks.draw();
+        AdjustSpots.draw();
         this.looksSoon();
     },
 
@@ -530,14 +629,22 @@ const Adjust = {
     // The photo at full size, cropped as it's being adjusted (for 1:1)
     loadFull() {
         const file = this.file;
-        if (this._fullFor === file) return this._fullPromise;
+        // Made again when the spots change (they're done on it first)
+        const key = JSON.stringify(this.a.spots || []);
+        if (this._fullFor === file && this._fullKey === key) return this._fullPromise;
         this._fullFor = file;
+        this._fullKey = key;
         const kept = Edits.get(file);
+        const spots = this.a.spots;
         this._fullPromise = (async () => {
             const bmp = await createImageBitmap(await file.handle.getFile());
+            const base = await Retouch.retouched(bmp, { ...(kept || {}), adj: { spots } }, { file });
             let c;
             if (kept && !Edits.wholePhoto(kept)) {
-                c = CropEditor.fromSnapshot(bmp.width, bmp.height, kept).drawOutput(bmp);
+                c = CropEditor.fromSnapshot(bmp.width, bmp.height, kept).drawOutput(base);
+                if (base !== bmp) base.width = base.height = 0;
+            } else if (base !== bmp) {
+                c = base;
             } else {
                 c = document.createElement('canvas');
                 c.width = bmp.width;
@@ -545,7 +652,8 @@ const Adjust = {
                 c.getContext('2d').drawImage(bmp, 0, 0);
             }
             bmp.close();
-            if (this.file !== file || !this.isOpen) { c.width = c.height = 0; return null; }
+            if (this.file !== file || !this.isOpen || this._fullKey !== key) { c.width = c.height = 0; return null; }
+            if (this.fullCanvas && this.fullCanvas !== c) this.fullCanvas.width = this.fullCanvas.height = 0;
             this.fullCanvas = c;
             this.fullCtx = c.getContext('2d', { willReadFrequently: true });
             return c;
@@ -564,6 +672,9 @@ const Adjust = {
         const cv = this.el('adj-loupe');
         if (!cv || !this.ready || !this.detailOpen()) return;
         this.placeLoupeBox();
+        if (this.fullCanvas && this._fullKey !== JSON.stringify(this.a.spots || [])) {
+            this.loadFull().then(c => { if (c) this.renderLoupe(); });
+        }
         if (!this.fullCanvas) {
             const ctx = cv.getContext('2d');
             ctx.clearRect(0, 0, cv.width, cv.height);
@@ -689,7 +800,7 @@ const Adjust = {
     presets() {
         try {
             const list = JSON.parse(localStorage.getItem('jeditor.presets') || '[]');
-            return Array.isArray(list) ? list.filter(p => p && typeof p.name === 'string').map(p => ({ name: p.name, adj: Develop.clean(p.adj) })) : [];
+            return Array.isArray(list) ? list.filter(p => p && typeof p.name === 'string').map(p => ({ name: p.name, adj: this.portable(p.adj) })) : [];
         } catch (e) {
             return [];
         }
@@ -701,7 +812,7 @@ const Adjust = {
 
     presetMenu(x, y) {
         const list = this.presets();
-        const items = list.map(p => [p.name, () => this.setAll(p.adj)]);
+        const items = list.map(p => [p.name, () => this.setAll(this.withOwnSpots(p.adj))]);
         if (items.length) items.push(['—']);
         items.push(['Save these settings as a preset…', () => this.savePreset()]);
         if (list.length) {
@@ -712,7 +823,7 @@ const Adjust = {
     },
 
     async savePreset() {
-        const adj = this.result();
+        const adj = this.portable(this.result());
         if (!adj) {
             this.app.showToast('Adjust the photo first: a preset keeps the settings');
             return;

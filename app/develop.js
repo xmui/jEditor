@@ -39,6 +39,8 @@
 //           doesn't move them; sizes are in heights of the photo)
 //   look:   a film look (LOOKS), with lookAmount (0–200%): applied over
 //           everything else, inside the colour table
+//   spots:  spot and dust removal (retouch.js): done on the photo itself,
+//           before it's cropped, so not part of the tables at all
 
 const Develop = {
     SLIDERS: {
@@ -194,6 +196,7 @@ const Develop = {
         out.look = this.look(a.look) ? a.look : null;
         out.mono = this.monoOf(a.mono);
         out.masks = (this.cleanMasks(a.masks) || []).map(m => JSON.parse(JSON.stringify(m)));
+        out.spots = ((typeof Retouch !== 'undefined' && Retouch.cleanSpots(a.spots)) || []).map(s => ({ ...s }));
         return out;
     },
 
@@ -258,6 +261,8 @@ const Develop = {
         if (mono) out.mono = mono;
         const masks = this.cleanMasks(v.masks);
         if (masks) out.masks = masks;
+        const spots = typeof Retouch !== 'undefined' ? Retouch.cleanSpots(v.spots) : null;
+        if (spots) out.spots = spots;
         if (this.look(v.look)) out.look = v.look;
         else delete out.lookAmount;
         return Object.keys(out).length ? out : null;
@@ -265,6 +270,15 @@ const Develop = {
 
     active(adj) {
         return !!this.clean(adj);
+    },
+
+    // Anything for the tables to do (spots aside: they're done before
+    // the crop, by retouch.js), as settings without the spots, or null
+    tonal(adj) {
+        const c = this.clean(adj);
+        if (!c) return null;
+        delete c.spots;
+        return Object.keys(c).length ? c : null;
     },
 
     // ---- Masks: settings for part of the photo ----
@@ -648,12 +662,12 @@ const Develop = {
 
     // Both tables for a set of settings (remembered for the last few)
     tables(adj) {
-        const key = JSON.stringify(this.clean(adj));
+        const key = JSON.stringify(this.tonal(adj));
         this._tables = this._tables || new Map();
         let t = this._tables.get(key);
         if (!t) {
-            const a = this.full(adj);
-            const c = this.clean(adj);
+            const c = this.tonal(adj);
+            const a = this.full(c);
             t = { key, channels: this.channelTables(a), lut: this.colourLut(a), N: this.LUT_SIZE, fx: this.effects(a), masks: this.maskTables(c && c.masks) };
             this._tables.set(key, t);
             if (this._tables.size > 8) this._tables.delete(this._tables.keys().next().value);
@@ -1278,7 +1292,7 @@ void main() {
     // out below a half: it wouldn't show)
     // map: where the picture is on the photo (cropMap; masks need it)
     applyCanvas(canvas, adj, { scale = 1, map = null } = {}) {
-        if (!this.active(adj)) return false;
+        if (!this.tonal(adj)) return false;
         const T = this.tables(adj);
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         const R = this.gpu();
@@ -1468,7 +1482,7 @@ void main() {
 
     // An ImageBitmap with the adjustments (the crop editor's picture)
     async applyBitmap(bmp, adj, opts = {}) {
-        if (!this.active(adj)) return bmp;
+        if (!this.tonal(adj)) return bmp;
         const c = document.createElement('canvas');
         c.width = bmp.width;
         c.height = bmp.height;

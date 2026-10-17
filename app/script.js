@@ -3229,9 +3229,12 @@ const app = {
             let canvas;
             let map;
             try {
+                // Spots and paint first (retouch.js): on the whole photo
+                const base = await Retouch.retouched(bmp, edit, { file });
                 const ed = CropEditor.fromSnapshot(bmp.width, bmp.height, edit);
-                canvas = ed.drawOutput(bmp);
+                canvas = ed.drawOutput(base);
                 map = Develop.cropMap(ed, bmp.width, bmp.height);
+                if (base !== bmp) base.width = base.height = 0;
             } finally {
                 bmp.close();
             }
@@ -5983,7 +5986,7 @@ const app = {
             } catch (e) { /* re-encode */ }
         }
         const { type, quality } = this.getSaveFormat(f.name);
-        const canvas = await CropEditor.renderSnapshot(data, edit, type, original);
+        const canvas = await CropEditor.renderSnapshot(data, edit, type, original, f);
         if (!canvas) return data;
         const w = canvas.width, h = canvas.height;
         const blob = await new Promise(r => canvas.toBlob(r, type, quality));
@@ -6385,7 +6388,9 @@ const app = {
             return;
         }
         if (this.editsSaving()) return;
-        Edits.set(files.map(f => ({ file: f, edit: Edits.withAdj(f._edit || null, clip.adj) })), 'paste');
+        // Each keeps its own spots (they're for its own specks)
+        const own = (f) => f._edit && f._edit.adj && f._edit.adj.spots;
+        Edits.set(files.map(f => ({ file: f, edit: Edits.withAdj(f._edit || null, own(f) ? { ...(clip.adj || {}), spots: own(f) } : clip.adj) })), 'paste');
         const n = files.length;
         this.showToast(`Pasted onto ${n === 1 ? files[0].name : n.toLocaleString() + ' photos'}`, 2000, null, null, { kind: 'adjust' });
     },
@@ -6896,7 +6901,7 @@ const app = {
 
         const { type, quality } = this.getSaveFormat(file.name);
         const original = new Uint8Array(await fileData.arrayBuffer());
-        const canvas = await CropEditor.renderSnapshot(fileData, edit, type, original);
+        const canvas = await CropEditor.renderSnapshot(fileData, edit, type, original, file);
         if (!canvas) throw new Error('nothing to save');
         const w = canvas.width, h = canvas.height;
         let blob = await new Promise(r => canvas.toBlob(r, type, quality));

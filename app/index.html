@@ -21,6 +21,7 @@
     <script src="crop-auto.js"></script>
     <script src="crop.js"></script>
     <script src="crop-log.js"></script>
+    <script src="retouch.js"></script>
     <script src="develop.js"></script>
     <script src="dupes.js"></script>
     <script src="rename.js"></script>
@@ -29,6 +30,7 @@
     <script src="edits.js"></script>
     <script src="adjust.js"></script>
     <script src="adjust-masks.js"></script>
+    <script src="adjust-spots.js"></script>
     <script src="history.js"></script>
     <script src="watch.js"></script>
     <script src="recents.js"></script>
@@ -401,7 +403,7 @@
             <span id="adj-before-tag" class="adj-tag hidden">Before</span>
         </div>
         <div class="adj-body">
-            <div id="adj-stage" class="adj-stage"><canvas id="adj-canvas"></canvas><div id="adj-loupe-box" class="adj-loupe-box hidden" aria-hidden="true"></div><canvas id="adj-overlay" class="adj-overlay hidden"></canvas></div>
+            <div id="adj-stage" class="adj-stage"><canvas id="adj-canvas"></canvas><div id="adj-loupe-box" class="adj-loupe-box hidden" aria-hidden="true"></div><canvas id="adj-overlay" class="adj-overlay hidden"></canvas><canvas id="adj-spot-overlay" class="adj-overlay hidden"></canvas></div>
             <aside id="adj-panel" class="adj-panel" aria-label="Adjustments">
                 <section class="adj-sec adj-hist-box" aria-label="Histogram and levels">
                     <div class="adj-sec-head">
@@ -477,6 +479,26 @@
                         <div id="adj-radial-tools" class="adj-rows hidden"></div>
                         <div id="adj-mask-sliders" class="adj-rows"></div>
                     </div>
+                </details>
+                <details id="adj-spots-sec" class="adj-sec">
+                    <summary><span>Spot removal</span><button class="btn ghost sm adj-sec-reset" data-reset="spots">Reset</button></summary>
+                    <div class="adj-tabs adj-brush-mode" role="group" aria-label="Spot tool">
+                        <button id="adj-spot-heal" class="adj-tab" aria-pressed="true" title="Heal: texture from nearby, blended into the colour and brightness round the spot">Heal</button>
+                        <button id="adj-spot-clone" class="adj-tab" aria-pressed="false" title="Clone: copied from nearby exactly">Clone</button>
+                    </div>
+                    <p id="adj-spot-hint" class="adj-hint"></p>
+                    <div id="adj-spot-tools" class="adj-rows"></div>
+                    <div class="adj-mask-opts">
+                        <label class="adj-check"><input type="checkbox" id="adj-spot-show" checked> Show spots</label>
+                        <button id="adj-spot-delete" class="btn ghost sm danger-text" disabled>Delete</button>
+                    </div>
+                    <div class="adj-sub">Dust on scans</div>
+                    <div id="adj-dust-tools" class="adj-rows"></div>
+                    <div class="adj-mask-add">
+                        <button id="adj-dust-find" class="btn secondary sm" title="Put a heal spot on every speck of dust found">Find dust</button>
+                        <button id="adj-dust-clear" class="btn ghost sm" title="Take off the spots Find dust put on" disabled>Clear found</button>
+                    </div>
+                    <p id="adj-spot-count" class="adj-hint"></p>
                 </details>
                 <details id="adj-detail-sec" class="adj-sec">
                     <summary><span>Detail</span><button class="btn ghost sm adj-sec-reset" data-reset="detail">Reset</button></summary>

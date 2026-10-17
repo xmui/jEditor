@@ -268,7 +268,16 @@ const CropEditor = {
         const data = await file.handle.getFile();
         const dpi = ImageMeta.readDpi(new Uint8Array(await data.slice(0, 256 * 1024).arrayBuffer()));
         // Adjusted (adjust.js): shown with its adjustments
-        const adj = Edits.get(file) && Edits.get(file).adj;
+        const shownEdit = Edits.get(file);
+        const adj = shownEdit && shownEdit.adj;
+        // Spots and paint (retouch.js), then the adjustments
+        if (shownEdit && Retouch.needed(shownEdit) && current()) {
+            const c = await Retouch.retouched(preview, shownEdit, { file });
+            const bmp = await createImageBitmap(c);
+            c.width = c.height = 0;
+            preview.close();
+            preview = bmp;
+        }
         if (adj && current()) {
             const shown = await Develop.applyBitmap(preview, adj, { scale: w ? preview.width / w : 1 });
             if (shown !== preview) { preview.close(); preview = shown; }
@@ -738,13 +747,16 @@ const CropEditor = {
 
     // A snapshot rendered at full resolution from a file's bytes (saving
     // edits kept until saved). Null when it changes nothing.
-    async renderSnapshot(fileData, snap, type, original = null) {
+    async renderSnapshot(fileData, snap, type, original = null, file = null) {
         const bmp = await this.decodeFor(fileData, type, original);
         try {
             const ed = this.fromSnapshot(bmp.width, bmp.height, snap);
             const adj = snap.adj && Develop.active(snap.adj);
             if (ed.isIdentity() && !ed.q && !adj) return null;
-            const canvas = ed.drawOutput(bmp);
+            // Spots and paint (retouch.js) on the whole photo, then the crop
+            const base = await Retouch.retouched(bmp, snap, { file });
+            const canvas = ed.drawOutput(base);
+            if (base !== bmp) base.width = base.height = 0;
             // Its adjustments (adjust.js), after the crop
             if (adj) Develop.applyCanvas(canvas, snap.adj, { map: Develop.cropMap(ed, bmp.width, bmp.height) });
             return canvas;
