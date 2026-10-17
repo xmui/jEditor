@@ -1,5 +1,5 @@
-// The app jEditor runs in: the Windows app (src/bridge.js), the Mac app, or
-// none (a browser). Whatever the app adds is on window.JEditorNative.
+// The app jEditor runs in: the Windows app (src/bridge.js), the Mac or
+// Linux app (mac/), or none (a browser). Whatever the app adds is on window.JEditorNative.
 //
 // Every app gives the page jEditor's storage and paths (dataDir,
 // folderPath, openPath, exists): the order's data is kept by the app, not
@@ -19,7 +19,7 @@
 //   updates      looking for a new version and installing it
 //
 // Wording that names the system's own things comes from here too: in a
-// text, {files} is Explorer or Finder, {computer} this PC or this Mac, and
+// text, {files} is Explorer, Finder or Files, {computer} this PC or this Mac, and
 // {bin} where deleted photos go. On a Mac, keys are said the Mac's way:
 // "Ctrl+Z" is "⌘Z" (the keys themselves already work with ⌘).
 
@@ -29,7 +29,7 @@ const Host = {
         return window.JEditorNative || null;
     },
 
-    // 'windows' or 'mac' (an app), or 'web'
+    // 'windows', 'mac' or 'linux' (an app), or 'web'
     platform() {
         const n = this.get();
         return n ? (n.platform || 'windows') : 'web';
@@ -49,9 +49,10 @@ const Host = {
     words() {
         const app = !!this.get();
         const mac = this.mac();
+        const linux = this.platform() === 'linux';
         return {
-            files: mac ? 'Finder' : 'Explorer',
-            computer: !app ? 'this computer' : mac ? 'this Mac' : 'this PC',
+            files: mac ? 'Finder' : linux ? 'Files' : 'Explorer',
+            computer: !app || linux ? 'this computer' : mac ? 'this Mac' : 'this PC',
             bin: this.has('recycle') ? (mac ? 'the Trash' : 'the Recycle Bin')
                 : app ? 'jEditor\'s trash' : 'the trash in .jeditor'
         };

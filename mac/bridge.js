@@ -234,8 +234,8 @@
     window.JEditorNative = {
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
-        platform: 'mac',
-        features: ['reveal', 'updates', 'windows', 'places'],
+        platform: mac.platform,
+        features: ['reveal', 'windows', 'places'].concat(mac.updates ? ['updates'] : []),
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage
         async dataDir() {

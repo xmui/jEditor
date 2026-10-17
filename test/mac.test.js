@@ -54,7 +54,8 @@ async function launch(profile, args = [], env = {}) {
     const app = await electron.launch({
         executablePath: ELECTRON,
         args: [MAC, '--no-sandbox', '--user-data', profile, ...args],
-        env: { ...process.env, JEDITOR_RELEASES: `http://127.0.0.1:${releaseServer.address().port}/latest`, ...env }
+        // The Mac app unless a test asks for Linux's (they all run on Linux too)
+        env: { ...process.env, JEDITOR_PLATFORM: 'mac', JEDITOR_RELEASES: `http://127.0.0.1:${releaseServer.address().port}/latest`, ...env }
     });
     const page = await app.firstWindow();
     const errors = [];
@@ -566,6 +567,46 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         releases.latest = { ...release('0'.repeat(64)), tag_name: 'v1.0.0' };
         const old = await page.evaluate(() => JEditorNative.checkUpdate().then(r => r.newer));
         check('an older release isn\'t offered', old === false);
+        check('no JS errors', errors.length === 0, errors.join('; '));
+        await app.evaluate(({ app }) => { app.quit = global.realQuit; });
+        await app.close();
+    }
+
+    console.log('linux: the same app, with Linux\'s words, and an AppImage that updates itself');
+    {
+        const port = releaseServer.address().port;
+        const image = crypto.randomBytes(2 * 1024 * 1024 + 5);
+        releases.files['/appimage'] = image;
+        releases.latest = {
+            tag_name: 'v9.2.0', body: '- Linux',
+            assets: [
+                { name: 'jEditor-9.1.0-mac.dmg', browser_download_url: `http://127.0.0.1:${port}/dmg`, size: 1 },
+                { name: 'jEditor-9.2.0-linux.AppImage', browser_download_url: `http://127.0.0.1:${port}/appimage`, size: image.length, digest: 'sha256:' + crypto.createHash('sha256').update(image).digest('hex') }
+            ]
+        };
+        const appImage = path.join(tmp, 'jEditor.AppImage');
+        fs.writeFileSync(appImage, 'the old one');
+        const { app, page, errors } = await launch(path.join(tmp, 'profile-linux'), [smith], { JEDITOR_PLATFORM: 'linux', APPIMAGE: appImage });
+        await loaded(page, 4);
+        await app.evaluate(({ app }) => {
+            global.realQuit = app.quit;
+            app.quit = () => { global.quitAsked = true; };
+            app.relaunch = (o) => { global.relaunched = o.execPath; };
+        });
+        const r = await page.evaluate(async () => {
+            await JEditorNative.checkUpdate();
+            await JEditorNative.installUpdate(() => { });
+            return {
+                platform: Host.platform(), data: document.documentElement.dataset.platform,
+                files: Host.say('Show in {files}'), keys: Host.say('Ctrl+Z to undo'), computer: Host.say('{computer}'),
+                updates: Host.has('updates'), scan: Host.has('scan'), recycle: Host.has('recycle')
+            };
+        });
+        await new Promise(res => setTimeout(res, 1800));
+        const main = await app.evaluate(() => ({ relaunched: global.relaunched, quit: !!global.quitAsked }));
+        check('the Linux app, with Linux\'s words: Files, Ctrl', r.platform === 'linux' && r.data === 'linux' && r.files === 'Show in Files' && r.keys === 'Ctrl+Z to undo' && r.computer === 'this computer', JSON.stringify(r));
+        check('no Windows-only features', r.updates && !r.scan && !r.recycle, JSON.stringify(r));
+        check('the new AppImage replaces this one, runnable, and jEditor restarts in it', fs.readFileSync(appImage).equals(image) && (fs.statSync(appImage).mode & 0o111) !== 0 && main.relaunched === appImage && main.quit, JSON.stringify(main));
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.evaluate(({ app }) => { app.quit = global.realQuit; });
         await app.close();

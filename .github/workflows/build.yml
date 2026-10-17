@@ -100,3 +100,37 @@ jobs:
           name: jEditor-mac
           path: dist/jEditor-*-mac.dmg
           if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm ci
+        working-directory: mac
+      # The Mac app's tests run here too, as the Mac app and as the Linux one
+      - name: App tests
+        run: xvfb-run -a node test/mac.test.js
+      - name: Build
+        run: node build.js
+        working-directory: mac
+      - name: Smoke test
+        run: xvfb-run -a node scripts/smoke-test-mac.js
+      # Installed as a user would (apt), run there, and taken off again
+      - name: Install test
+        run: |
+          sudo apt-get install -y ./dist/jEditor-*-linux.deb
+          test -x /opt/jEditor/jeditor
+          test -f /usr/share/applications/jeditor.desktop
+          xvfb-run -a node scripts/smoke-test-mac.js /opt/jEditor/jeditor
+          sudo apt-get remove -y jeditor
+          test ! -e /opt/jEditor/jeditor
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jEditor-linux
+          path: |
+            dist/jEditor-*-linux.AppImage
+            dist/jEditor-*-linux.deb

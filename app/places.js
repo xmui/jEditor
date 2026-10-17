@@ -208,7 +208,7 @@ const Places = {
             projects + (elsewhere ? `<div class="sb-sub">Opened from elsewhere</div>${elsewhere}` : '')) +
             // Nothing pinned yet: no section (the pin by a folder's name adds one)
             (pins ? section('pinned', 'Pinned', '', pins) : '') +
-            section('pc', Host.mac() ? 'Locations' : 'This PC', '', drives || '<p class="sb-help">No drives found</p>');
+            section('pc', Host.platform() === 'windows' ? 'This PC' : 'Locations', '', drives || '<p class="sb-help">No drives found</p>');
     },
 
     // When: "Today", "Yesterday", "Mon", "Oct 3"

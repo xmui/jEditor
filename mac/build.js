@@ -5,6 +5,10 @@
 //   node build.js             universal: Apple silicon and Intel in one app
 //   node build.js --dir       just the .app, for a quick try
 //
+// On Linux it builds jEditor for Linux instead (x64): an AppImage, which
+// runs anywhere and updates itself, and a .deb (Debian, Ubuntu, Mint),
+// dist/jEditor-<version>-linux.AppImage and jEditor-<version>-linux.deb.
+//
 // The version is jEditor's (app/version.js). The UI (../app) goes in as
 // Resources/app, so it's the same files as the Windows app's.
 //
@@ -22,23 +26,24 @@ const builder = require('electron-builder');
 const ROOT = path.join(__dirname, '..');
 const version = /APP_VERSION = '([0-9.]+)'/.exec(fs.readFileSync(path.join(ROOT, 'app', 'version.js'), 'utf8'))[1];
 const dirOnly = process.argv.includes('--dir');
+const linux = process.platform === 'linux';
 
 // The native toolbar (native/), built for both Macs if it isn't yet
 const toolbarNode = path.join(__dirname, 'native', 'build', 'Release', 'toolbar.node');
-if (!fs.existsSync(toolbarNode)) execFileSync(process.execPath, [path.join(__dirname, 'native', 'build.js')], { stdio: 'inherit' });
+if (!linux && !fs.existsSync(toolbarNode)) execFileSync(process.execPath, [path.join(__dirname, 'native', 'build.js')], { stdio: 'inherit' });
 
 const config = {
     appId: 'com.xmui.jeditor',
     productName: 'jEditor',
     copyright: 'jEditor',
     directories: { output: path.join(ROOT, 'dist'), buildResources: path.join(__dirname, 'build') },
-    files: ['main.js', 'preload.js', 'bridge.js', 'places.js', 'package.json', 'native/index.js', 'native/build/Release/toolbar.node'],
+    files: ['main.js', 'preload.js', 'bridge.js', 'places.js', 'package.json', 'native/index.js', ...(linux ? [] : ['native/build/Release/toolbar.node'])],
     // A native module is loaded from disk, not from inside app.asar
     asarUnpack: ['native/build/Release/*.node'],
     extraResources: [{ from: path.join(ROOT, 'app'), to: 'app', filter: ['**/*'] }],
     extraMetadata: { version },
     asar: true,
-    artifactName: 'jEditor-${version}-mac.${ext}',
+    artifactName: linux ? 'jEditor-${version}-linux.${ext}' : 'jEditor-${version}-mac.${ext}',
     mac: {
         target: dirOnly ? [{ target: 'dir', arch: ['universal'] }] : [{ target: 'dmg', arch: ['universal'] }],
         category: 'public.app-category.photography',
@@ -57,6 +62,19 @@ const config = {
             ]
         }
     },
+    linux: {
+        target: dirOnly ? [{ target: 'dir', arch: ['x64'] }] : [{ target: 'AppImage', arch: ['x64'] }, { target: 'deb', arch: ['x64'] }],
+        category: 'Graphics',
+        icon: path.join(ROOT, 'app', 'icon.png'),
+        executableName: 'jeditor',
+        synopsis: 'Edit and sort a folder of photos',
+        maintainer: 'jEditor <jeditor@users.noreply.github.com>',
+        // Opens a folder (Open With in the file manager), or a photo's folder
+        mimeTypes: ['inode/directory', 'image/jpeg', 'image/png', 'image/webp', 'image/tiff', 'image/gif'],
+        // The running window belongs to jeditor.desktop (package.json's desktopName)
+        syncDesktopName: true
+    },
+    deb: { packageCategory: 'graphics' },
     dmg: {
         title: 'jEditor ${version}',
         contents: [
@@ -67,6 +85,6 @@ const config = {
     publish: null
 };
 
-builder.build({ targets: builder.Platform.MAC.createTarget(), config })
+builder.build({ targets: (linux ? builder.Platform.LINUX : builder.Platform.MAC).createTarget(), config })
     .then(files => console.log('Built:\n' + files.map(f => '  ' + path.relative(ROOT, f)).join('\n')))
     .catch(e => { console.error(e); process.exit(1); });

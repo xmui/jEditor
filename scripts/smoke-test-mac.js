@@ -6,6 +6,7 @@
 //
 //   node scripts/smoke-test-mac.js                    dist/mac-universal/jEditor.app
 //   node scripts/smoke-test-mac.js <path>/jEditor.app
+//   node scripts/smoke-test-mac.js                    on Linux: dist/linux-unpacked/jeditor
 
 const fs = require('fs');
 const os = require('os');
@@ -13,8 +14,10 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const bundle = path.resolve(process.argv[2] || path.join(ROOT, 'dist', 'mac-universal', 'jEditor.app'));
-const exe = path.join(bundle, 'Contents', 'MacOS', 'jEditor');
+// On Linux: the built Linux app (dist/linux-unpacked/jeditor, or an AppImage)
+const linux = process.platform === 'linux';
+const bundle = path.resolve(process.argv[2] || path.join(ROOT, 'dist', linux ? 'linux-unpacked' : 'mac-universal', linux ? 'jeditor' : 'jEditor.app'));
+const exe = linux ? bundle : path.join(bundle, 'Contents', 'MacOS', 'jEditor');
 if (!fs.existsSync(exe)) { console.error('No ' + exe + '; run node mac/build.js first'); process.exit(1); }
 
 // Three small JPEGs, like a scanner's: no orientation tag
@@ -25,7 +28,7 @@ fs.mkdirSync(photos);
 for (let i = 1; i <= 3; i++) fs.writeFileSync(path.join(photos, `scan_000${i}.jpg`), JPEG);
 
 console.log('Smoke test: ' + exe + ' on ' + photos);
-const r = spawnSync(exe, ['--smoke-test', photos, '--user-data', path.join(work, 'profile')], { stdio: 'inherit', timeout: 180000 });
+const r = spawnSync(exe, ['--smoke-test', photos, '--user-data', path.join(work, 'profile'), ...(linux ? ['--no-sandbox'] : [])], { stdio: 'inherit', timeout: 180000 });
 fs.rmSync(work, { recursive: true, force: true });
 if (r.error) { console.error(r.error.message); process.exit(1); }
 process.exit(r.status === 0 ? 0 : 1);

@@ -3,7 +3,9 @@
   "productName": "jEditor",
   "version": "0.0.0",
   "private": true,
-  "description": "jEditor for Mac: the jEditor UI (../app) in an Electron window",
+  "description": "jEditor for Mac and Linux: the jEditor UI (../app) in an Electron window",
+  "homepage": "https://github.com/xmui/jEditor",
+  "desktopName": "jeditor.desktop",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
