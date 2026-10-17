@@ -333,7 +333,7 @@ async function newPage(browser, url) {
         }));
         check('APP_VERSION matches package.json', v.appVersion === pkgVersion, `${v.appVersion} vs ${pkgVersion}`);
         check('version and build shown on start screen', v.title === `jEditor Web · ${pkgVersion}`, v.title);
-        const get = await page.evaluate(() => ({
+        const get = await page.evaluate(async () => ({
             devices: [
                 Start.device({ platform: 'Win32', userAgent: 'Mozilla/5.0 (Windows NT 10.0)' }),
                 Start.device({ platform: 'MacIntel', userAgent: 'Macintosh', maxTouchPoints: 0 }),
@@ -347,10 +347,27 @@ async function newPage(browser, url) {
             first: document.querySelector('#start-get .btn.primary')?.getAttribute('href') || '',
             others: document.querySelector('.start-get-others')?.textContent || '',
             mac: (() => { Start.renderGet('mac'); return [...document.querySelectorAll('#start-get .btn')].map(e => e.getAttribute('href') || e.dataset.copy); })(),
-            ios: (() => { Start.renderGet('ios'); return document.querySelector('.start-get-head').textContent + ' | ' + !!document.querySelector('#start-get .btn.primary'); })()
+            ios: (() => { Start.renderGet('ios'); return document.querySelector('.start-get-head').textContent + ' | ' + !!document.querySelector('#start-get .btn.primary'); })(),
+            android: await (async () => {
+                Start.installPrompt = null;
+                Start.renderGet('android');
+                const without = document.querySelector('.start-get-head').textContent;
+                // Chrome's install prompt, kept for the button
+                const e = new Event('beforeinstallprompt');
+                e.prompt = () => { window.prompted = true; };
+                e.userChoice = Promise.resolve({ outcome: 'accepted' });
+                Start.installPrompt = e;
+                Start.renderGet('android');
+                const button = document.querySelector('#start-get .btn.primary');
+                const label = button ? button.textContent : '';
+                if (button) button.click();
+                await new Promise(r => setTimeout(r, 50));
+                return { without, label, prompted: !!window.prompted, after: !!document.querySelector('#start-get .btn.primary') };
+            })()
         }));
         check('the web version knows the computer it\'s on (an iPad is the Mac with touch)', get.devices === 'windows,mac,ios,ios,linux,android', get.devices);
         check('... and offers that app first, then the others', get.shown && get.here === 'linux' && get.first.endsWith(`/releases/latest/download/jEditor-${pkgVersion}-linux.AppImage`) && /Also for Windows and Mac/.test(get.others), JSON.stringify(get));
+        check('... an Android phone gets Install jEditor (Chrome\'s prompt), or where to find it', /Add to Home screen \(or Install app\)/.test(get.android.without) && get.android.label === 'Install jEditor' && get.android.prompted && !get.android.after, JSON.stringify(get.android));
         check('... a Mac gets the .dmg and the Homebrew command; an iPhone or iPad gets Add to Home Screen', get.mac[0].endsWith(`jEditor-${pkgVersion}-mac.dmg`) && get.mac.some(t => /brew tap xmui\/jeditor/.test(t)) && /Add to Home Screen/.test(get.ios) && /false$/.test(get.ios), JSON.stringify([get.mac, get.ios]));
         await page.close();
     }

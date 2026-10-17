@@ -4067,6 +4067,14 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
     color: var(--text-2);
 }
 
+/* A touch screen with no keyboard: no keyboard shortcuts to show */
+@media (hover: none) and (pointer: coarse) {
+    #btn-shortcuts-start,
+    #btn-shortcuts-start + .start-dot {
+        display: none;
+    }
+}
+
 .start-foot {
     display: flex;
     flex-wrap: wrap;

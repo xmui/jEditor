@@ -1,5 +1,5 @@
 // Photos picked, not a folder: for a browser that can't open folders
-// (Safari on iPhone and iPad, Firefox). "Open photos" brings up the
+// (Safari on iPhone and iPad, Chrome on Android, Firefox). "Open photos" brings up the
 // system's picker (Photos or Files); jEditor edits them as usual, keeping
 // each edit in memory, and Save hands the edited photos back through the
 // share sheet (Save to Photos, Save to Files, or another app), or
@@ -82,7 +82,10 @@ const Picked = {
         const open = document.getElementById('btn-browse-folder');
         if (open) open.lastChild.textContent = ' Open photos';
         const hint = document.querySelector('.drop-hint');
-        if (hint) hint.textContent = 'From Photos or Files. Edited photos are saved with Save, to Photos, Files or anywhere you share them.';
+        const tagline = document.querySelector('.start-tagline');
+        if (tagline) tagline.textContent = 'Rotate, crop and sort photos. Nothing is uploaded.';
+        const where = { ios: 'Photos or Files', android: 'your gallery or files' }[Start.device()] || 'your photos';
+        if (hint) hint.textContent = `From ${where}. Edited photos are saved with Save, to wherever you share them.`;
         this.input = document.createElement('input');
         this.input.type = 'file';
         this.input.multiple = true;
