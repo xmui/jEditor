@@ -2982,6 +2982,73 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     user-select: text;
 }
 
+/* The Mac's permissions (permissions.js) */
+.dialog.perm-card {
+    width: min(560px, 100%);
+}
+
+.perm-intro {
+    margin: 0 0 var(--sp-3);
+    color: var(--text-2);
+}
+
+.perm-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+
+.perm-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-md);
+}
+
+.perm-icon {
+    width: 22px;
+    height: 22px;
+    color: var(--accent-color);
+}
+
+.perm-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.perm-text small {
+    color: var(--text-2);
+}
+
+.perm-status {
+    font-size: 0.85em;
+    color: var(--text-2);
+    white-space: nowrap;
+}
+
+.perm-status.on {
+    color: var(--success);
+    font-weight: 600;
+}
+
+.perm-status.on::before {
+    content: "✓ ";
+}
+
+@media (max-width: 480px) {
+    .perm-row {
+        grid-template-columns: auto 1fr;
+    }
+    .perm-act {
+        grid-column: 2;
+    }
+}
+
 .whatsnew-list {
     overflow-y: auto;
     padding: var(--sp-1) var(--sp-5) var(--sp-4);
@@ -5617,9 +5684,8 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 
 /* ---- The Mac app with macOS 26's own toolbar (bridge.js: html.native-toolbar) ----
    The window's toolbar, in Liquid Glass, is the top row: the page's own
-   pills there go (the toolbar mirrors them), the toolbar moves the window
-   and holds the traffic lights, and what was below the pills starts below
-   it. */
+   pills there go (the toolbar mirrors them), it holds the traffic lights,
+   and what was below the pills starts below it. */
 :root.native-toolbar {
     --top-row: 52px;
 }
@@ -5629,8 +5695,12 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     display: none !important;
 }
 
+/* The page lies under the toolbar (Electron's hidden title bar), so it,
+   not AppKit, gets a press on the toolbar's empty space: that press moves
+   the window only where the page says so. The toolbar's own buttons are
+   above the page and stay clickable. */
 :root.native-toolbar body::before {
-    content: none;
+    height: var(--top-row);
 }
 
 /* The toolbar's edge. Its buttons sit on their own glass, its title on
