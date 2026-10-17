@@ -14,7 +14,7 @@ const Updates = {
 
     init(app) {
         this.app = app;
-        if (!FolderCache.native()) return;
+        if (!Host.has('updates')) return;
         this.el('upd-version').textContent = typeof APP_VERSION !== 'undefined' ? APP_VERSION : '';
         this.el('upd-check').addEventListener('click', () => {
             if (this.latest && this.latest.newer) this.offer(this.latest);

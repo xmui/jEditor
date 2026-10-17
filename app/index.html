@@ -15,6 +15,7 @@
     <script src="version.js"></script>
     <script src="changelog.js"></script>
     <script src="meta.js"></script>
+    <script src="host.js"></script>
     <script src="folder-cache.js"></script>
     <script src="photo-find.js"></script>
     <script src="crop-auto.js"></script>
@@ -61,7 +62,7 @@
                     <ul id="recent-list" class="recent-list"></ul>
                 </div>
                 <!-- Projects, pinned folders, drives (places.js, the Windows app) -->
-                <div id="start-places" class="start-places sb-places native-only"></div>
+                <div id="start-places" class="start-places sb-places" data-needs="places"></div>
                 <div class="start-foot">
                     <button id="btn-shortcuts-start" class="link-btn">Keyboard shortcuts <kbd>?</kbd></button>
                     <span class="start-dot" aria-hidden="true"></span>
@@ -109,10 +110,10 @@
                      data-hc names each control. Default main row:
                      info, view, refresh, crop — the rest live in "More". -->
                 <div class="header-controls toolbar" id="header-controls" role="toolbar" aria-label="Photo actions">
-                    <button id="btn-scan" data-hc="scan" class="tb-btn native-only" title="Scan into this project" aria-label="Scan into this project">
+                    <button id="btn-scan" data-hc="scan" class="tb-btn" data-needs="scan" title="Scan into this project" aria-label="Scan into this project">
                         <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h16"/><path d="M6 13V5a1 1 0 0 1 1-1h7l4 4v5"/><path d="M5 17h14a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1a1 1 0 0 1 1-1z"/></svg>
                     </button>
-                    <button id="btn-camera" data-hc="camera" class="tb-btn native-only" title="Camera: shoot straight into this project (F12 takes a photo)" aria-label="Camera">
+                    <button id="btn-camera" data-hc="camera" class="tb-btn" data-needs="camera" title="Camera: shoot straight into this project (F12 takes a photo)" aria-label="Camera">
                         <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
                     </button>
                     <button id="btn-info" data-hc="info" class="tb-btn" title="File info (I)" aria-label="File info">
@@ -216,13 +217,13 @@
             </nav>
             <aside id="folder-rail" class="folder-rail hidden" aria-label="Sidebar">
                 <!-- The open project (places.js, the Windows app) -->
-                <div id="sb-card" class="sb-card native-only"></div>
+                <div id="sb-card" class="sb-card" data-needs="places"></div>
                 <div class="sb-scroll">
-                    <div class="sb-sec sb-sec-here native-only"><span class="sb-sec-title">This project</span></div>
+                    <div class="sb-sec sb-sec-here" data-needs="places"><span class="sb-sec-title">This project</span></div>
                     <div id="folder-tree" class="folder-tree"></div>
                     <div id="flag-list" class="flag-list hidden"></div>
                     <!-- Projects, pinned folders, drives (places.js) -->
-                    <div id="sb-places" class="sb-places native-only"></div>
+                    <div id="sb-places" class="sb-places" data-needs="places"></div>
                 </div>
                 <div class="fr-foot">
                     <button id="fr-new" class="btn ghost fr-new" title="Make a folder to sort this project: drag photos onto it to move them (hold Ctrl to copy), or M moves the selection">
@@ -277,7 +278,7 @@
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="19" cy="12" r="1.25" fill="currentColor"/></svg>
                 </button>
                 <span class="tb-sep" aria-hidden="true"></span>
-                <button id="btn-trash" class="tb-btn labelled danger" title="Delete: moves to the trash in .jeditor (Delete). Ctrl+Z restores" data-native-title="Delete: moves to the Recycle Bin (Delete). Ctrl+Z restores">
+                <button id="btn-trash" class="tb-btn labelled danger" title="Delete: moves to {bin} (Delete). Ctrl+Z restores">
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                     <span>Delete</span>
                 </button>
@@ -378,7 +379,7 @@
     <div id="dupes-panel" class="dupes-overlay mode-screen hidden" role="dialog" aria-labelledby="dupes-title">
         <div class="dupes-head mode-head">
             <h3 id="dupes-title" class="mode-title">Possible duplicates</h3>
-            <span class="wip-tag" title="Duplicate detection is still being worked on: it can miss some duplicates or group photos that only look alike. Nothing is deleted outright: marked photos go to the trash in .jeditor and Ctrl+Z restores them." data-native-title="Duplicate detection is still being worked on: it can miss some duplicates or group photos that only look alike. Nothing is deleted outright: marked photos go to the Recycle Bin and Ctrl+Z restores them.">Work in progress</span>
+            <span class="wip-tag" title="Duplicate detection is still being worked on: it can miss some duplicates or group photos that only look alike. Nothing is deleted outright: marked photos go to {bin} and Ctrl+Z restores them.">Work in progress</span>
             <span id="dupes-summary" class="dupes-summary"></span>
             <label class="dupes-sens">Sensitivity
                 <select id="dupes-sensitivity" class="field">
@@ -429,7 +430,7 @@
                     <button role="tab" data-page="messages" aria-controls="set-page-messages"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span>Messages</span></button>
                     <button role="tab" data-page="autocrop" aria-controls="set-page-autocrop"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg><span>Auto crop</span></button>
                     <button role="tab" data-page="projects" aria-controls="set-page-projects"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>Projects</span></button>
-                    <button role="tab" data-page="updates" class="native-only" aria-controls="set-page-updates"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><span>Updates</span></button>
+                    <button role="tab" data-page="updates" data-needs="updates" aria-controls="set-page-updates"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><span>Updates</span></button>
                 </nav>
                 <div class="dialog-body settings-body">
                     <section id="set-page-appearance" class="settings-section" data-page="appearance" role="tabpanel" aria-labelledby="set-h-appearance">
@@ -468,8 +469,8 @@
                                 <label><input type="radio" name="set-surround" value="light"><span>Light</span></label>
                             </div>
                         </div>
-                        <h4 class="set-group native-only">Window</h4>
-                        <div id="set-backdrop-row" class="set-row native-only">
+                        <h4 class="set-group" data-needs="backdrop">Window</h4>
+                        <div id="set-backdrop-row" class="set-row" data-needs="backdrop">
                             <span class="set-label" id="set-backdrop-label">Window background
                                 <small id="set-backdrop-help">Your desktop shows softly through jEditor, like the Start menu. Photos stay solid.</small></span>
                             <div class="seg" role="radiogroup" aria-labelledby="set-backdrop-label">
@@ -478,7 +479,7 @@
                                 <label><input type="radio" name="set-backdrop" value="acrylic"><span>Acrylic</span></label>
                             </div>
                         </div>
-                        <div id="set-transparency-row" class="set-row native-only">
+                        <div id="set-transparency-row" class="set-row" data-needs="backdrop">
                             <label class="set-label" for="cust-transparency">Transparency
                                 <small>How much of the window background shows through</small></label>
                             <span class="set-range">
@@ -547,7 +548,7 @@
                         <h3 id="set-h-autocrop" class="settings-page-title">Auto crop</h3>
                         <div class="set-row">
                             <label class="set-label" for="crop-log-on">Keep scans to improve Auto crop
-                                <small>When you save a crop on a photo Auto was used on, the scan and where you cropped it are kept on this PC (up to 1 GB), so a better Auto can be tested on real scans</small></label>
+                                <small>When you save a crop on a photo Auto was used on, the scan and where you cropped it are kept on {computer} (up to 1 GB), so a better Auto can be tested on real scans</small></label>
                             <input type="checkbox" id="crop-log-on" class="switch">
                         </div>
                         <div class="set-row">
@@ -569,23 +570,23 @@
                         </div>
                         <div class="set-row">
                             <label class="set-label" for="cust-folder-cache"><span data-native-text="Keep a thumbnail cache">Save cache in the folder</span>
-                                <small data-native-text="Thumbnails are kept on this PC, so a project opens fast the next time">Thumbnails go in .jeditor, so any computer that opens the project later starts fast</small></label>
+                                <small data-native-text="Thumbnails are kept on {computer}, so a project opens fast the next time">Thumbnails go in .jeditor, so any computer that opens the project later starts fast</small></label>
                             <input type="checkbox" id="cust-folder-cache" class="switch">
                         </div>
                         <h4 class="set-group">Storage</h4>
                         <div class="set-row native-only">
                             <span class="set-label">Stored projects
-                                <small>What jEditor keeps on this PC for each project you've opened, and how much room it takes</small></span>
+                                <small>What jEditor keeps on {computer} for each project you've opened, and how much room it takes</small></span>
                             <button id="cust-stored" class="btn secondary">Manage…</button>
                         </div>
                         <div class="set-row">
                             <span class="set-label"><span data-native-text="Clean up this project">Clean up this folder</span>
-                                <small data-native-text="Removes what jEditor keeps on this PC for the open project: cache, flags and Auto crop originals. Photos aren't touched.">Empties the trash and removes the cache, flags and Auto crop originals. Photos aren't touched.</small></span>
+                                <small data-native-text="Removes what jEditor keeps on {computer} for the open project: cache, flags and Auto crop originals. Photos aren't touched.">Empties the trash and removes the cache, flags and Auto crop originals. Photos aren't touched.</small></span>
                             <button id="cust-cleanup" class="btn secondary danger-text">Clean up…</button>
                         </div>
                     </section>
 
-                    <section id="set-page-updates" class="settings-section native-only" data-page="updates" role="tabpanel" aria-labelledby="set-h-updates">
+                    <section id="set-page-updates" class="settings-section" data-needs="updates" data-page="updates" role="tabpanel" aria-labelledby="set-h-updates">
                         <h3 id="set-h-updates" class="settings-page-title">Updates</h3>
                         <div class="set-row">
                             <span class="set-label">jEditor <span id="upd-version"></span>
@@ -601,7 +602,7 @@
                         <div class="set-row">
                             <span class="set-label">Log
                                 <small>What jEditor did, step by step (scans, updates): for when something goes wrong</small></span>
-                            <button id="upd-log" class="btn secondary">Show log</button>
+                            <button id="upd-log" class="btn secondary" data-needs="log">Show log</button>
                         </div>
                     </section>
                 </div>
@@ -779,7 +780,7 @@
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                 </button>
             </div>
-            <p class="set-help stored-help">For each project you've opened, jEditor keeps its flags, a thumbnail cache and the originals from Auto crop on this PC, never in the project folder. Removing the cache is always safe: it's made again when needed.</p>
+            <p class="set-help stored-help">For each project you've opened, jEditor keeps its flags, a thumbnail cache and the originals from Auto crop on {computer}, never in the project folder. Removing the cache is always safe: it's made again when needed.</p>
             <div id="stored-summary" class="stored-summary"></div>
             <ul id="stored-list" class="stored-list"></ul>
             <div class="dialog-foot">
@@ -791,7 +792,7 @@
     </div>
 
     <!-- The scan dock (scan.js): floats over the photos, never in the way -->
-    <div id="scan-panel" class="scan-dock hidden native-only" role="dialog" aria-labelledby="scan-title" data-state="setup">
+    <div id="scan-panel" class="scan-dock hidden" data-needs="scan" role="dialog" aria-labelledby="scan-title" data-state="setup">
         <div id="scan-head" class="scan-dock-head" title="Drag to move">
             <span class="scan-dot" aria-hidden="true"></span>
             <h2 id="scan-title" class="scan-dock-title">Scan into this project</h2>
@@ -953,7 +954,7 @@
                     <span>Details</span>
                     <span class="scan-grow"></span>
                     <button type="button" class="btn ghost sm" data-log="copy" title="Copy these lines, to send them on">Copy</button>
-                    <button type="button" class="btn ghost sm" data-log="file" title="Show the whole log in Explorer">Log file</button>
+                    <button type="button" class="btn ghost sm" data-log="file" title="Show the whole log in {files}">Log file</button>
                 </div>
                 <div class="log-lines" tabindex="0"></div>
             </div>
@@ -968,7 +969,7 @@
         </form>
     </div>
 
-    <div id="cam-panel" class="scan-dock cam-dock hidden native-only" role="dialog" aria-labelledby="cam-title" data-state="setup">
+    <div id="cam-panel" class="scan-dock cam-dock hidden" data-needs="camera" role="dialog" aria-labelledby="cam-title" data-state="setup">
         <div id="cam-head" class="scan-dock-head" title="Drag to move">
             <span class="scan-dot" aria-hidden="true"></span>
             <h2 id="cam-title" class="scan-dock-title">Camera</h2>
@@ -1031,7 +1032,7 @@
                     <span>Details</span>
                     <span class="scan-grow"></span>
                     <button type="button" class="btn ghost sm" data-log="copy" title="Copy these lines, to send them on">Copy</button>
-                    <button type="button" class="btn ghost sm" data-log="file" title="Show the whole log in Explorer">Log file</button>
+                    <button type="button" class="btn ghost sm" data-log="file" title="Show the whole log in {files}">Log file</button>
                 </div>
                 <div class="log-lines" tabindex="0"></div>
             </div>

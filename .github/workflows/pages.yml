@@ -1,0 +1,57 @@
+name: Web app
+
+# The web app at https://xmui.github.io/jEditor/: the latest UI (app/), with
+# what only the Windows and Mac apps can do left out (app/host.js). Built
+# and deployed on every push to main, once the tests pass. People's
+# settings and recent folders are kept by the browser under this address,
+# so it must not change.
+#
+# The configure-pages step enables Pages on the first run. If that fails
+# with a permissions error, enable it once by hand: repo Settings → Pages →
+# Source: "GitHub Actions", then re-run the workflow.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm test
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+
+  deploy:
+    needs: tests
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      # One self-contained page (scripts and styles inlined), so a browser
+      # can't combine an old index.html with a newer script after a deploy
+      - run: node scripts/build-standalone.js --site _site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

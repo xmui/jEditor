@@ -67,6 +67,8 @@ const FAKE_NATIVE = `
     };
     const tokens = new Map();
     window.JEditorNative = {
+        platform: 'windows',
+        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates'],
         async dataDir() { window.__calls.push('dataDir'); return sub('appdata'); },
         async folderPath(handle) {
             if (window.__unknownPath) return null;
@@ -388,12 +390,15 @@ const HELPERS = `
     window.toasts = () => [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | ');
 `;
 
-async function newPage(context, baseUrl) {
+// host: what the fake app says it is ({ platform, features }); the
+// Windows app's by default
+async function newPage(context, baseUrl, host = null) {
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', e => errors.push(e.message + (process.env.STACKS ? ' @ ' + e.stack : '')));
     page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
     await page.addInitScript(FAKE_NATIVE);
+    if (host) await page.addInitScript(h => Object.assign(window.JEditorNative, h), host);
     await page.goto(`${baseUrl}/index.html`);
     await page.waitForFunction(() => typeof app !== 'undefined' && app.elements);
     await page.evaluate(HELPERS);
@@ -1606,6 +1611,55 @@ async function newPage(context, baseUrl) {
             && r.pinLabel === 'Pin to the sidebar' && r.pinned2 && /Not enough room on F:/.test(r.copyError || ''), JSON.stringify([r.dragLabel, r.copied, r.pinLabel, r.pinned2, r.copyError]));
         check('Eject ejects it and says so', r.ejected === 'F:\\' && r.ejectToast, JSON.stringify([r.ejected, r.ejectToast]));
         check('sidebar suite: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('an app with only the core (as the Mac app will start)');
+    {
+        const context = await browser.newContext();
+        const { page, errors } = await newPage(context, baseUrl, { platform: 'mac', features: ['reveal'] });
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const shown = (el) => !!el && getComputedStyle(el).display !== 'none';
+            const dir = await makeOrder('Mac Order', 3);
+            await openOrder(dir);
+            app.setView('grid');
+            out.buttons = ['btn-scan', 'btn-camera', 'sb-places', 'sb-card', 'start-places', 'upd-log', 'set-backdrop-row', 'scan-panel', 'cam-panel']
+                .filter(id => shown(document.getElementById(id)));
+            out.pages = app.settingsPages();
+            out.windows = Windows.others.length === 0 && !document.querySelector('.fr-row[draggable]');
+            // Nothing says Explorer, Recycle Bin or this PC; no word left as {files}
+            const texts = [];
+            const walk = (el) => {
+                if (el.classList && el.classList.contains('host-missing')) return;
+                for (const a of ['title', 'aria-label', 'data-native-text', 'data-native-title']) if (el.getAttribute && el.getAttribute(a)) texts.push(el.getAttribute(a));
+                for (const c of el.childNodes) c.nodeType === 3 ? texts.push(c.nodeValue) : c.nodeType === 1 && c.tagName !== 'SCRIPT' && walk(c);
+            };
+            walk(document.body);
+            out.windowsWords = texts.filter(t => /Explorer|Recycle Bin|this PC|\{(files|computer|bin)\}/.test(t)).map(t => t.trim().slice(0, 80));
+            out.trashTitle = document.getElementById('btn-trash').title;
+            out.cacheLabel = document.querySelector('[for="cust-folder-cache"] small').textContent;
+            // Deleting: no Recycle Bin, so jEditor's trash; Ctrl+Z restores
+            await app.moveToTrash([app.files.find(f => f.name === 'photo2.jpg')]);
+            out.recycled = window.__calls.filter(c => c.startsWith('recycle'));
+            out.trashed = await names(await (await store()).getDirectoryHandle('trash'));
+            out.toast = toasts();
+            await app.undo();
+            out.back = await names(dir);
+            app.clearSelection();
+            app.toggleInfoPanel(true);
+            await wait(() => /Kept on this Mac/.test(document.getElementById('info-list').textContent));
+            out.info = /Kept on this Mac/.test(document.getElementById('info-list').textContent);
+            out.say = Host.say('Show in {files}');
+            return out;
+        });
+        check('what it can\'t do isn\'t shown: scanning, camera, sidebar places, updates, the log, the window backdrop', r.buttons.length === 0 && !r.pages.includes('updates'), JSON.stringify([r.buttons, r.pages]));
+        check('no windows to drag photos or folders to', r.windows);
+        check('its own words: no Explorer, Recycle Bin or this PC, and no {placeholder} left', r.windowsWords.length === 0 && r.say === 'Show in Finder', JSON.stringify(r.windowsWords));
+        check('the order\'s data is kept by the app ("this Mac")', /this Mac/.test(r.cacheLabel) && r.info, JSON.stringify([r.cacheLabel, r.info]));
+        check('deleting uses jEditor\'s trash (no Recycle Bin asked for) and says so', r.recycled.length === 0 && r.trashed.join() === 'photo2.jpg' && /Moved 1 to jEditor's trash/.test(r.toast) && /jEditor's trash/.test(r.trashTitle), JSON.stringify([r.recycled, r.trashed, r.toast, r.trashTitle]));
+        check('... and Ctrl+Z restores it', r.back.includes('photo2.jpg'), r.back.join());
+        check('core app suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
 

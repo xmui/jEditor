@@ -320,8 +320,8 @@ const Folders = {
             const caret = kids.length && p !== ''
                 ? `<button class="fr-caret${open ? ' open' : ''}" title="${open ? 'Fold' : 'Unfold'}" tabindex="-1"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1.5 6.5 5 3 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`
                 : '<span class="fr-caret fr-spacer"></span>';
-            // (in the Windows app a folder drags onto a drive in the sidebar: places.js)
-            rows.push(`<div tabindex="0" role="button" class="fr-row${this.scope === p ? ' active' : ''}${n ? '' : ' empty'}${p === '' ? ' fr-root' : ''}"${FolderCache.native() ? ' draggable="true"' : ''} ` +
+            // (where the app has the sidebar, a folder drags onto a drive there: places.js)
+            rows.push(`<div tabindex="0" role="button" class="fr-row${this.scope === p ? ' active' : ''}${n ? '' : ' empty'}${p === '' ? ' fr-root' : ''}"${Host.has('places') ? ' draggable="true"' : ''} ` +
                 `data-folder-path="${esc(p)}" style="--depth:${depth}" title="${esc(title)}">` +
                 caret + this.folderIcon('fr-icon') +
                 `<span class="fr-name">${esc(this.nameOf(p))}</span><span class="fr-count">${n ? n.toLocaleString() : ''}</span></div>`);
@@ -1182,7 +1182,7 @@ const Folders = {
         this.renderPicker(true);
         input.focus();
         // The other windows' folders, once known
-        if (typeof Windows !== 'undefined' && FolderCache.native()) {
+        if (typeof Windows !== 'undefined' && Host.has('windows')) {
             Windows.refreshOthers().then(() => {
                 if (this.pickerFiles === files && !this.el('folder-picker').classList.contains('hidden')) this.renderPicker();
             });
@@ -1231,7 +1231,7 @@ const Folders = {
         }
         // Folders of the projects open in other windows
         const others = [];
-        if (typeof Windows !== 'undefined' && FolderCache.native()) {
+        if (typeof Windows !== 'undefined' && Host.has('windows')) {
             for (const w of Windows.others) {
                 for (const p of w.folders || []) {
                     const label = p ? `${w.name} / ${p.split('/').join(' / ')}` : w.name;

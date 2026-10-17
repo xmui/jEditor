@@ -15,7 +15,7 @@ const Windows = {
 
     init(app) {
         this.app = app;
-        if (!this.native()) return;
+        if (!Host.has('windows')) return;
         // Another window moved photos in or out: look again
         addEventListener('jeditor-files', () => { if (app.dirHandle) Watch.request({ full: true }); });
         document.addEventListener('keydown', (e) => {
@@ -38,7 +38,7 @@ const Windows = {
     // ---- What this window shows, for the others ----
 
     publish() {
-        if (!this.native()) return;
+        if (!Host.has('windows')) return;
         clearTimeout(this._publish);
         this._publish = setTimeout(async () => {
             const app = this.app;
@@ -77,7 +77,7 @@ const Windows = {
     // Folders.dragStart: the dragged photos' paths go with them, for a drop
     // in another window
     addDragData(e, files) {
-        if (!this.native()) return;
+        if (!Host.has('windows')) return;
         const paths = files.map(f => this.pathOf(f)).filter(Boolean);
         if (paths.length) e.dataTransfer.setData(this.TYPE, JSON.stringify(paths));
     },

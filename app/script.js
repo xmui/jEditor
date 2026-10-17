@@ -55,8 +55,10 @@ const app = {
         // Debug
         this.log('App Initializing... v' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'dev'));
 
-        // In the Windows app: what only it has, and wording for how it keeps
-        // things (the Recycle Bin, storage on the PC rather than .jeditor)
+        // What the app around jEditor can't do is hidden, and the page gets
+        // this system's words (host.js). In an app: wording for how it keeps
+        // things (storage on the computer rather than .jeditor)
+        Host.apply();
         if (FolderCache.native()) {
             document.documentElement.classList.add('native');
             document.querySelectorAll('[data-native-text]').forEach(el => { el.textContent = el.dataset.nativeText; });
@@ -427,7 +429,7 @@ const app = {
         ['flags', 'Flags and labels', true, 'Starred, needs rescan, color labels'],
         ['crop', 'Cropping and Auto crop', true, 'Saved, crop kept, auto cropped'],
         ['move', 'Moving, copying and folders', true, 'Moved to a folder, new folder'],
-        ['delete', 'Deleting', true, 'Moved to the Recycle Bin (Ctrl+Z still restores)'],
+        ['delete', 'Deleting', true, 'Moved to {bin} (Ctrl+Z still restores)'],
         ['rename', 'Renaming', true, 'Renamed photos and folders'],
         ['undo', 'Undo', true, 'What Ctrl+Z put back'],
         ['scan', 'Scanning and the camera', true, 'Scanned, camera connected'],
@@ -567,7 +569,7 @@ const app = {
     // crop and duplicates stay solid. Not in a browser.
     async applyBackdrop() {
         const native = FolderCache.native();
-        if (!native || !native.backdrop) return;
+        if (!Host.has('backdrop')) return;
         const seq = this._backdropSeq = (this._backdropSeq || 0) + 1;
         let state = null;
         try { state = await native.backdrop(this.uiPrefs.backdrop); } catch (e) { /* stays solid */ }
@@ -711,7 +713,7 @@ const app = {
                 lab.htmlFor = id;
                 lab.textContent = label;
                 const small = document.createElement('small');
-                small.textContent = help;
+                small.textContent = Host.say(help);
                 lab.appendChild(small);
                 const input = document.createElement('input');
                 input.type = 'checkbox';
@@ -835,7 +837,7 @@ const app = {
         this.syncBackdropControls();
 
         this.uiPrefs.order.forEach(key => {
-            if ((key === 'scan' || key === 'camera') && !FolderCache.native()) return; // the Windows app only
+            if ((key === 'scan' || key === 'camera') && !Host.has(key)) return; // only where the app can
             const li = document.createElement('li');
             li.draggable = true;
             li.dataset.key = key;
@@ -1202,7 +1204,7 @@ const app = {
     emptyState(files, folderTiles) {
         if (files.length || folderTiles.length) return null;
         const grid = this.elements.gridView.classList;
-        const native = document.documentElement.classList.contains('native');
+        const scan = Host.has('scan') && typeof Scan !== 'undefined';
         let text, actions = [];
         if (grid.contains('grid-no-match')) {
             text = 'No photos match the search or the flag filter.';
@@ -1213,12 +1215,12 @@ const app = {
                 Flags.setQuery('');
             }, true]);
         } else if (grid.contains('grid-empty-project')) {
-            text = native
-                ? 'No photos here yet. Scan into this project, or add photos in Explorer: they show up as they arrive.'
-                : 'No photos here yet. Add some in Explorer, or drop them here, and they show up as they arrive.';
-            if (native && typeof Scan !== 'undefined') actions.push(['Scan', () => Scan.open(), true]);
+            text = Host.say(scan
+                ? 'No photos here yet. Scan into this project, or add photos in {files}: they show up as they arrive.'
+                : 'No photos here yet. Add some in {files}, or drop them here, and they show up as they arrive.');
+            if (scan) actions.push(['Scan', () => Scan.open(), true]);
             const path = typeof Places !== 'undefined' && Places.current();
-            if (native && path) actions.push(['Show in Explorer', () => Places.native().reveal(path)]);
+            if (Host.has('reveal') && path) actions.push([Host.say('Show in {files}'), () => Host.get().reveal(path)]);
         } else if (grid.contains('grid-empty')) {
             text = 'No photos here yet. Drag photos onto this folder in the folder list, or select some in All photos and press M.';
             actions.push(['All photos', () => Folders.setScope(null)]);
@@ -1905,7 +1907,7 @@ const app = {
         if (Flags.active()) rows.push(['Showing', `${this.viewFiles().length.toLocaleString()} matching the ${Flags.filter ? 'filter' : 'search'}`]);
         // What jEditor itself keeps in the folder (worked out in the background)
         const showOwn = !files && whole && this.dirHandle && !this.readOnlyMode;
-        const label = FolderCache.native() ? 'Kept on this PC' : '.jeditor';
+        const label = FolderCache.native() ? Host.say('Kept on {computer}') : '.jeditor';
         if (showOwn) rows.push(['—'], [label, 'Adding up…', 'info-pending']);
         this.setInfoRows(title, rows);
         if (!showOwn) return;
@@ -2899,7 +2901,7 @@ const app = {
         const native = FolderCache.native();
         const ok = await UI.confirm({
             title: native ? 'Clean up this project?' : 'Clean up this folder?',
-            message: native ? 'Removes what jEditor keeps on this PC for this project. Do this when a project is finished.'
+            message: native ? Host.say('Removes what jEditor keeps on {computer} for this project. Do this when a project is finished.')
                 : 'Do this when a project is finished, before it goes to the customer.',
             items,
             note: 'Your photos are not touched.',
@@ -5127,7 +5129,7 @@ const app = {
             } else if (entry.type === 'trash') {
                 const n = await this.restoreManyFromTrash(entry.items);
                 this.sortFiles();
-                if (n < entry.items.length) this.showToast(`Restored ${n} of ${entry.items.length} photos — the rest are still in ${FolderCache.native() ? 'the Recycle Bin' : '.jeditor/trash'}`, 4000);
+                if (n < entry.items.length) this.showToast(`Restored ${n} of ${entry.items.length} photos — the rest are still in ${Host.words().bin}`, 4000);
                 else this.showToast(`Restored ${n} photo${n > 1 ? 's' : ''}`, 3000, null, null, { kind: 'undo' });
             }
         } catch (e) {
@@ -5203,8 +5205,8 @@ const app = {
         const alreadyGone = [];
         let failed = 0, binned = 0;
         try {
-            // The Recycle Bin first, where there is one
-            if (FolderCache.native()) {
+            // The system's bin first, where the app has one
+            if (Host.has('recycle')) {
                 await Promise.all(list.map(f => f._rotationQueue
                     ? this.withTimeout(f._rotationQueue, this.TRASH_TIMEOUT_MS, 'Waiting for a rotation').catch(() => { }) : null));
                 const results = await this.recycleFiles(list);
@@ -5238,7 +5240,8 @@ const app = {
         if (undoItems.length) {
             this.pushUndo({ type: 'trash', items: undoItems });
             const n = undoItems.length;
-            const where = binned === n ? 'the Recycle Bin' : binned ? 'the Recycle Bin and jEditor\'s trash' : FolderCache.native() ? 'jEditor\'s trash (this drive has no Recycle Bin)' : 'the trash (.jeditor/trash)';
+            const bin = Host.words().bin;
+            const where = binned === n ? bin : binned ? `${bin} and jEditor's trash` : Host.has('recycle') ? `jEditor's trash (this drive has no ${bin.replace(/^the /, '')})` : bin;
             this.showToast(`Moved ${n} to ${where} — Ctrl+Z to restore`, 4000, null, null, { kind: 'delete' });
         }
         if (alreadyGone.length) {
@@ -6318,7 +6321,7 @@ const app = {
         if (Edits.on()) return this.editsSaving() ? undefined : this.batchAutoCropKept(list, { feeder, scan });
         if (ask && list.length > 50 && !await UI.confirm({
             title: `Auto crop ${list.length.toLocaleString()} photos?`,
-            message: `Each is straightened and cropped to the print found on it. The originals are kept ${FolderCache.native() ? 'by jEditor on this PC' : 'in .jeditor/originals'}, so Ctrl+Z puts them all back.`,
+            message: `Each is straightened and cropped to the print found on it. The originals are kept ${FolderCache.native() ? Host.say('by jEditor on {computer}') : 'in .jeditor/originals'}, so Ctrl+Z puts them all back.`,
             ok: 'Auto crop'
         })) return;
         this._autoCropping = true;

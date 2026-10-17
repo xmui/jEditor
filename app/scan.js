@@ -65,7 +65,7 @@ const Scan = {
     init(app) {
         this.app = app;
         const panel = this.el('scan-panel');
-        if (!panel || !FolderCache.native()) return;
+        if (!panel || !Host.has('scan')) return;
         this.el('btn-scan').addEventListener('click', () => this.open());
         this.el('scan-x').addEventListener('click', () => this.close());
         this.el('scan-min').addEventListener('click', () => this.setSmall(!panel.classList.contains('small')));
