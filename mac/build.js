@@ -7,7 +7,9 @@
 //
 // On Linux it builds jEditor for Linux instead (x64): an AppImage, which
 // runs anywhere and updates itself, and a .deb (Debian, Ubuntu, Mint),
-// dist/jEditor-<version>-linux.AppImage and jEditor-<version>-linux.deb.
+// dist/jEditor-<version>-linux.AppImage and jEditor-<version>-linux.deb,
+// and a pacman package for Arch (jEditor-<version>-linux.pacman; building
+// it needs bsdtar: libarchive-tools).
 //
 // The version is jEditor's (app/version.js). The UI (../app) goes in as
 // Resources/app, so it's the same files as the Windows app's.
@@ -41,7 +43,8 @@ const config = {
     // A native module is loaded from disk, not from inside app.asar
     asarUnpack: ['native/build/Release/*.node'],
     extraResources: [{ from: path.join(ROOT, 'app'), to: 'app', filter: ['**/*'] }],
-    extraMetadata: { version },
+    // The Linux packages are called jeditor (apt remove jeditor, pacman -R jeditor)
+    extraMetadata: { version, ...(linux ? { name: 'jeditor' } : {}) },
     asar: true,
     artifactName: linux ? 'jEditor-${version}-linux.${ext}' : 'jEditor-${version}-mac.${ext}',
     mac: {
@@ -63,11 +66,12 @@ const config = {
         }
     },
     linux: {
-        target: dirOnly ? [{ target: 'dir', arch: ['x64'] }] : [{ target: 'AppImage', arch: ['x64'] }, { target: 'deb', arch: ['x64'] }],
+        target: dirOnly ? [{ target: 'dir', arch: ['x64'] }] : [{ target: 'AppImage', arch: ['x64'] }, { target: 'deb', arch: ['x64'] }, { target: 'pacman', arch: ['x64'] }],
         category: 'Graphics',
         icon: path.join(ROOT, 'app', 'icon.png'),
         executableName: 'jeditor',
         synopsis: 'Edit and sort a folder of photos',
+        description: 'jEditor: flag, rotate, crop and sort the photos in a folder, right where they are.',
         maintainer: 'jEditor <jeditor@users.noreply.github.com>',
         // Opens a folder (Open With in the file manager), or a photo's folder
         mimeTypes: ['inode/directory', 'image/jpeg', 'image/png', 'image/webp', 'image/tiff', 'image/gif'],
@@ -75,6 +79,8 @@ const config = {
         syncDesktopName: true
     },
     deb: { packageCategory: 'graphics' },
+    // What Electron needs from Arch (it brings its own ffmpeg, re2 and the rest)
+    pacman: { depends: ['gtk3', 'nss', 'alsa-lib', 'libcups', 'libxss', 'mesa', 'xdg-utils'] },
     dmg: {
         title: 'jEditor ${version}',
         contents: [

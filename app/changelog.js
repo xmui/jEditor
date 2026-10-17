@@ -7,7 +7,7 @@ const CHANGELOG = [
     {
         version: '1.40.0', date: '2026-10-17',
         items: [
-            'jEditor for Linux, a first version: jEditor-1.40.0-linux.AppImage runs on any 64-bit Linux (make it executable and open it), and jEditor-1.40.0-linux.deb installs it on Debian, Ubuntu and Mint. It has what the Mac app has: folders opened without asking, the sidebar with your projects, pinned folders and drives (USB drives and cards, with Eject), several windows and Split, and Show in Files. The AppImage updates itself from Settings → Updates.'
+            'jEditor for Linux, a first version: jEditor-1.40.0-linux.AppImage runs on any 64-bit Linux (make it executable and open it), jEditor-1.40.0-linux.deb installs it on Debian, Ubuntu and Mint, and jEditor-1.40.0-linux.pacman on Arch Linux (sudo pacman -U). It has what the Mac app has: folders opened without asking, the sidebar with your projects, pinned folders and drives (USB drives and cards, with Eject), several windows and Split, and Show in Files. The AppImage updates itself from Settings → Updates.'
         ]
     },
     {

@@ -58,6 +58,8 @@ jobs:
           node-version: 22
       - run: npm ci
         working-directory: mac
+      # bsdtar, for the Arch package
+      - run: sudo apt-get install -y libarchive-tools
       - name: Build
         run: node build.js
         working-directory: mac
@@ -69,6 +71,7 @@ jobs:
           path: |
             dist/jEditor-*-linux.AppImage
             dist/jEditor-*-linux.deb
+            dist/jEditor-*-linux.pacman
           if-no-files-found: error
 
   release:
@@ -162,7 +165,7 @@ jobs:
         run: |
           gh release create "${{ steps.tag.outputs.tag }}" --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA `
             --title "jEditor ${{ steps.tag.outputs.version }}" --notes-file release-notes.md `
-            (Get-Item dist/jEditor-Setup-*.exe).FullName (Get-Item dist/jEditor-*-portable.zip).FullName (Get-Item dist/jEditor-*-mac.dmg).FullName (Get-Item dist/jEditor-*-linux.AppImage).FullName (Get-Item dist/jEditor-*-linux.deb).FullName (Get-Item standalone.html).FullName
+            (Get-Item dist/jEditor-Setup-*.exe).FullName (Get-Item dist/jEditor-*-portable.zip).FullName (Get-Item dist/jEditor-*-mac.dmg).FullName (Get-Item dist/jEditor-*-linux.AppImage).FullName (Get-Item dist/jEditor-*-linux.deb).FullName (Get-Item dist/jEditor-*-linux.pacman).FullName (Get-Item standalone.html).FullName
 
   # Homebrew (Casks/jeditor.rb): the new version and the .dmg's checksum,
   # as GitHub has it for the release, committed to main

@@ -111,6 +111,8 @@ jobs:
       - run: npm ci
       - run: npm ci
         working-directory: mac
+      # bsdtar, for the Arch package
+      - run: sudo apt-get install -y libarchive-tools
       # The Mac app's tests run here too, as the Mac app and as the Linux one
       - name: App tests
         run: xvfb-run -a node test/mac.test.js
@@ -128,9 +130,23 @@ jobs:
           xvfb-run -a node scripts/smoke-test-mac.js /opt/jEditor/jeditor
           sudo apt-get remove -y jeditor
           test ! -e /opt/jEditor/jeditor
+      # The same on Arch Linux, in its own container: pacman installs the
+      # package with its dependencies from Arch's repos, then removes it
+      - name: Arch install test
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/w archlinux:latest bash -c '
+            set -e
+            pacman -Syu --noconfirm --needed xorg-server-xvfb nodejs
+            pacman -U --noconfirm /w/dist/jEditor-*-linux.pacman
+            test -x /opt/jEditor/jeditor
+            test -f /usr/share/applications/jeditor.desktop
+            cd /w && xvfb-run -a node scripts/smoke-test-mac.js /opt/jEditor/jeditor
+            pacman -R --noconfirm jeditor
+            test ! -e /opt/jEditor/jeditor'
       - uses: actions/upload-artifact@v4
         with:
           name: jEditor-linux
           path: |
             dist/jEditor-*-linux.AppImage
             dist/jEditor-*-linux.deb
+            dist/jEditor-*-linux.pacman
