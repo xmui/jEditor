@@ -30,6 +30,13 @@
 //   sharpen (0–150), sharpRadius (px), sharpMask; noise, colorNoise
 //           (Detail: they look at the pixels round each one, so they're
 //           done first, on the photo itself, on the CPU: see applyDetail)
+//   masks:  [{ type: 'linear'|'radial'|'brush', invert, adj: {exposure,
+//           contrast, … MASK_SLIDERS}, linear: [x0, y0, x1, y1], radial:
+//           [cx, cy, rx, ry, angle, feather], brush: [{ size, feather,
+//           flow, erase, pts: [x, y, …] }] }] (Masks: settings for part of
+//           the photo. Places are on the photo as it is on disk, before any
+//           crop or turn — x across 0–1, y down 0–1 — so a crop later
+//           doesn't move them; sizes are in heights of the photo)
 //   look:   a film look (LOOKS), with lookAmount (0–200%): applied over
 //           everything else, inside the colour table
 
@@ -186,6 +193,7 @@ const Develop = {
         for (const [z] of this.ZONES) out.grade[z] = (a.grade && a.grade[z]) ? a.grade[z].slice() : [0, 0, 0];
         out.look = this.look(a.look) ? a.look : null;
         out.mono = this.monoOf(a.mono);
+        out.masks = (this.cleanMasks(a.masks) || []).map(m => JSON.parse(JSON.stringify(m)));
         return out;
     },
 
@@ -248,6 +256,8 @@ const Develop = {
         }
         const mono = this.monoOf(v.mono);
         if (mono) out.mono = mono;
+        const masks = this.cleanMasks(v.masks);
+        if (masks) out.masks = masks;
         if (this.look(v.look)) out.look = v.look;
         else delete out.lookAmount;
         return Object.keys(out).length ? out : null;
@@ -255,6 +265,161 @@ const Develop = {
 
     active(adj) {
         return !!this.clean(adj);
+    },
+
+    // ---- Masks: settings for part of the photo ----
+
+    MAX_MASKS: 8,
+    MASK_SLIDERS: ['exposure', 'contrast', 'highlights', 'shadows', 'whites', 'blacks', 'temp', 'tint', 'vibrance', 'saturation'],
+    MASK_LUT: 17,
+
+    cleanMasks(list) {
+        if (!Array.isArray(list)) return null;
+        const num = (x) => typeof x === 'number' && isFinite(x);
+        const r4 = (x) => +(+x).toFixed(4);
+        const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+        const out = [];
+        for (const m of list.slice(0, this.MAX_MASKS)) {
+            if (!m || typeof m !== 'object') continue;
+            const adj = {};
+            if (m.adj && typeof m.adj === 'object') {
+                for (const k of this.MASK_SLIDERS) {
+                    const r = this.SLIDERS[k];
+                    if (num(m.adj[k]) && m.adj[k]) {
+                        const x = Math.round(clamp(m.adj[k], r.min, r.max) / r.step) * r.step;
+                        if (x) adj[k] = +x.toFixed(2);
+                    }
+                }
+            }
+            const c = { type: m.type, invert: !!m.invert, adj };
+            if (m.type === 'linear' && Array.isArray(m.linear) && m.linear.length === 4 && m.linear.every(num)) {
+                c.linear = m.linear.map(r4);
+                if (c.linear[0] === c.linear[2] && c.linear[1] === c.linear[3]) continue;
+            } else if (m.type === 'radial' && Array.isArray(m.radial) && m.radial.length === 6 && m.radial.every(num)) {
+                const [cx, cy, rx, ry, a, f] = m.radial;
+                c.radial = [r4(cx), r4(cy), r4(clamp(rx, 0.002, 10)), r4(clamp(ry, 0.002, 10)), r4(a), r4(clamp(f, 0, 1))];
+            } else if (m.type === 'brush' && Array.isArray(m.brush)) {
+                let n = 0;
+                c.brush = m.brush.filter(st => st && Array.isArray(st.pts) && st.pts.length >= 2 && st.pts.length % 2 === 0 && st.pts.every(num) && num(st.size))
+                    .map(st => ({ size: r4(clamp(st.size, 0.002, 1)), feather: r4(clamp(num(st.feather) ? st.feather : 0.5, 0, 1)), flow: r4(clamp(num(st.flow) ? st.flow : 1, 0.05, 1)), erase: !!st.erase, pts: st.pts.map(r4) }))
+                    .filter(st => (n += st.pts.length) <= 40000);
+                if (!c.brush.length) continue;
+            } else continue;
+            out.push(c);
+        }
+        return out.length ? out : null;
+    },
+
+    // The map from where a pixel is in the picture shown (0–1 across and
+    // down) to where it is on the photo as it is on disk: ed is a crop
+    // editor on the W × H photo (CropEditor.fromSnapshot), or none
+    cropMap(ed, W, H) {
+        if (!ed) return { m: [1, 0, 0, 0, 1, 0], asp: W / H };
+        const o = ed.outputRect();
+        const [c, s] = ed.cs();
+        return {
+            m: [c * o.w / W, s * o.h / W, (c * o.x0 + s * o.y0) / W + 0.5,
+                -s * o.w / H, c * o.h / H, (-s * o.x0 + c * o.y0) / H + 0.5],
+            asp: W / H
+        };
+    },
+
+    // Each mask's own tables and its shape: what the shader and the CPU need
+    maskTables(masks) {
+        if (!masks) return null;
+        const list = [];
+        let brushes = 0;
+        for (const m of masks) {
+            const a = this.full(m.adj);
+            const e = { type: { linear: 1, radial: 2, brush: 3 }[m.type], inv: m.invert ? 1 : 0, A: [0, 0, 0, 0], B: [0, 0, 0, 0] };
+            e.tone = this.channelTables(a);
+            e.lut = this.colourLut(a, this.MASK_LUT);
+            if (m.type === 'linear') e.A = m.linear;
+            if (m.type === 'radial') { e.A = m.radial.slice(0, 4); e.B = [m.radial[4], m.radial[5], 0, 0]; }
+            if (m.type === 'brush') { e.slot = brushes++; e.strokes = m.brush; }
+            list.push(e);
+        }
+        return { list, brushes, key: JSON.stringify(masks) };
+    },
+
+    // The brush maps for these masks on a photo this shape (remembered)
+    brushFor(M, asp) {
+        if (!M || !M.brushes) return null;
+        const key = M.key + '|' + asp.toFixed(4);
+        if (this._brushKey !== key) {
+            this._brushKey = key;
+            this._brush = this.brushMaps(M.list, asp);
+        }
+        return this._brush;
+    },
+
+    // Brush masks painted onto two 4-channel maps (a channel each), on the
+    // photo as it is on disk, its long side 512: made once per change
+    BRUSH_EDGE: 512,
+    brushMaps(list, asp) {
+        const maps = [];
+        const W = this.BRUSH_EDGE, H = this.BRUSH_EDGE;
+        for (const e of list) {
+            if (e.type !== 3) continue;
+            const c = document.createElement('canvas');
+            c.width = W; c.height = H;
+            const g = c.getContext('2d', { willReadFrequently: true });
+            for (const st of e.strokes) {
+                const r = st.size / 2;
+                g.globalCompositeOperation = st.erase ? 'destination-out' : 'source-over';
+                const dab = (x, y) => {
+                    // Sizes are in heights of the photo; the map is square,
+                    // so a round dab is narrower across by the photo's shape
+                    const rp = r * H;
+                    g.setTransform(1 / asp, 0, 0, 1, x * W, y * H);
+                    const grad = g.createRadialGradient(0, 0, rp * (1 - st.feather) * 0.999, 0, 0, rp);
+                    grad.addColorStop(0, `rgba(255,255,255,${st.flow})`);
+                    grad.addColorStop(1, 'rgba(255,255,255,0)');
+                    g.fillStyle = grad;
+                    g.beginPath();
+                    g.arc(0, 0, rp, 0, Math.PI * 2);
+                    g.fill();
+                };
+                const pts = st.pts;
+                dab(pts[0], pts[1]);
+                for (let i = 2; i < pts.length; i += 2) {
+                    const x0 = pts[i - 2], y0 = pts[i - 1], x1 = pts[i], y1 = pts[i + 1];
+                    const len = Math.hypot((x1 - x0) * asp, y1 - y0), step = Math.max(1e-4, r * 0.25);
+                    const n = Math.max(1, Math.ceil(len / step));
+                    for (let k = 1; k <= n; k++) dab(x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n);
+                }
+            }
+            g.setTransform(1, 0, 0, 1, 0, 0);
+            const px = g.getImageData(0, 0, W, H).data;
+            const slot = e.slot, t = slot >> 2, ch = slot & 3;
+            if (!maps[t]) maps[t] = { w: W, h: H, data: new Uint8Array(W * H * 4) };
+            for (let i = 0; i < W * H; i++) maps[t].data[i * 4 + ch] = px[i * 4 + 3];
+            c.width = c.height = 0;
+        }
+        return maps;
+    },
+
+    // One mask's strength at (u, v) on the photo (asp: its width / height)
+    maskWeight(e, u, v, asp, brush) {
+        let w = 0;
+        const px = u * asp, py = v;
+        if (e.type === 1) {
+            const [x0, y0, x1, y1] = e.A;
+            const dx = (x1 - x0) * asp, dy = y1 - y0;
+            const t = ((px - x0 * asp) * dx + (py - y0) * dy) / (dx * dx + dy * dy);
+            w = 1 - this.smooth(0, 1, t);
+        } else if (e.type === 2) {
+            const [cx, cy, rx, ry] = e.A, [ang, fe] = e.B;
+            const qx = px - cx * asp, qy = py - cy;
+            const c = Math.cos(ang), s = Math.sin(ang);
+            const lx = (c * qx + s * qy) / rx, ly = (-s * qx + c * qy) / ry;
+            const d = Math.sqrt(lx * lx + ly * ly);
+            w = 1 - this.smooth(1 - Math.max(0.01, fe), 1, d);
+        } else if (e.type === 3 && brush) {
+            const m = brush[e.slot >> 2];
+            w = m ? this.brushAt(m, e.slot & 3, u, v) : 0;
+        }
+        return e.inv ? 1 - w : w;
     },
 
     same(a, b) {
@@ -488,7 +653,8 @@ const Develop = {
         let t = this._tables.get(key);
         if (!t) {
             const a = this.full(adj);
-            t = { key, channels: this.channelTables(a), lut: this.colourLut(a), N: this.LUT_SIZE, fx: this.effects(a) };
+            const c = this.clean(adj);
+            t = { key, channels: this.channelTables(a), lut: this.colourLut(a), N: this.LUT_SIZE, fx: this.effects(a), masks: this.maskTables(c && c.masks) };
             this._tables.set(key, t);
             if (this._tables.size > 8) this._tables.delete(this._tables.keys().next().value);
         }
@@ -564,6 +730,16 @@ const Develop = {
         const x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0;
         const cx = (x) => Math.min(map.w - 1, Math.max(0, x)), cy = (y) => Math.min(map.h - 1, Math.max(0, y));
         const at = (x, y) => map.data[cy(y) * map.w + cx(x)];
+        const top = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * tx;
+        const bot = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * tx;
+        return top + (bot - top) * ty;
+    },
+
+    // A brush map's channel at (u, v), as the GPU's linear filtering reads it
+    brushAt(map, ch, u, v) {
+        const fx = u * map.w - 0.5, fy = v * map.h - 0.5;
+        const x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0;
+        const at = (x, y) => map.data[((Math.min(map.h - 1, Math.max(0, y)) * map.w) + Math.min(map.w - 1, Math.max(0, x))) * 4 + ch] / 255;
         const top = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * tx;
         const bot = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * tx;
         return top + (bot - top) * ty;
@@ -652,30 +828,59 @@ const Develop = {
     // RGBA bytes (in place, or into `out`). frame: where these pixels are
     // in the whole picture { x, y, w, W, H, glow } (the effects need it; w
     // is this block's width, glow halation's map); none: no effects
+    // A colour table (N³, RGBA floats) at (r, g, b), trilinear
+    lutAt(lut, N, r, g, b) {
+        const M = N - 1;
+        const fr = Math.min(1, Math.max(0, r)) * M, fg = Math.min(1, Math.max(0, g)) * M, fb = Math.min(1, Math.max(0, b)) * M;
+        const r0 = Math.min(M - 1, fr | 0), g0 = Math.min(M - 1, fg | 0), b0 = Math.min(M - 1, fb | 0);
+        const tr = fr - r0, tg = fg - g0, tb = fb - b0;
+        const at = (x, y, z, k) => lut[((z * N + y) * N + x) * 4 + k];
+        const c = [0, 0, 0];
+        for (let k = 0; k < 3; k++) {
+            const c00 = at(r0, g0, b0, k) * (1 - tr) + at(r0 + 1, g0, b0, k) * tr;
+            const c10 = at(r0, g0 + 1, b0, k) * (1 - tr) + at(r0 + 1, g0 + 1, b0, k) * tr;
+            const c01 = at(r0, g0, b0 + 1, k) * (1 - tr) + at(r0 + 1, g0, b0 + 1, k) * tr;
+            const c11 = at(r0, g0 + 1, b0 + 1, k) * (1 - tr) + at(r0 + 1, g0 + 1, b0 + 1, k) * tr;
+            c[k] = (c00 * (1 - tg) + c10 * tg) * (1 - tb) + (c01 * (1 - tg) + c11 * tg) * tb;
+        }
+        return c;
+    },
+
+    // A channel table (256 per channel) at x (0–1), linear between entries
+    toneAt(tab, c, x) {
+        const f = Math.min(1, Math.max(0, x)) * 255, i = Math.min(254, f | 0), t = f - i;
+        return tab[i * 4 + c] * (1 - t) + tab[(i + 1) * 4 + c] * t;
+    },
+
+    // The masks on one colour at (a, b) across the picture (0–1)
+    masked(M, rgb, a, b, map, brush) {
+        const m = map.m;
+        const u = m[0] * a + m[1] * b + m[2], v = m[3] * a + m[4] * b + m[5];
+        let [r, g, bl] = rgb;
+        for (const e of M.list) {
+            const w = this.maskWeight(e, u, v, map.asp, brush);
+            if (w <= 0) continue;
+            let q = [this.toneAt(e.tone, 0, r), this.toneAt(e.tone, 1, g), this.toneAt(e.tone, 2, bl)];
+            if (e.lut) q = this.lutAt(e.lut, this.MASK_LUT, q[0], q[1], q[2]);
+            r += (q[0] - r) * w; g += (q[1] - g) * w; bl += (q[2] - bl) * w;
+        }
+        return [r, g, bl];
+    },
+
     applyCPU(px, T, out = px, frame = null) {
-        const fx = T.fx;
+        const fx = T.fx, M = frame ? T.masks : null;
         const fw = frame ? frame.w : 0;
-        const ch = T.channels, lut = T.lut, N = T.N, M = N - 1;
+        const map = frame && (frame.map || this.cropMap(null, frame.W, frame.H));
+        const brush = M && M.brushes ? (frame.brush || this.brushFor(M, map.asp)) : null;
+        const ch = T.channels, lut = T.lut, N = T.N;
         for (let i = 0; i < px.length; i += 4) {
             let r = ch[px[i] * 4], g = ch[px[i + 1] * 4 + 1], b = ch[px[i + 2] * 4 + 2];
-            if (lut) {
-                const fr = r * M, fg = g * M, fb = b * M;
-                const r0 = Math.min(M - 1, fr | 0), g0 = Math.min(M - 1, fg | 0), b0 = Math.min(M - 1, fb | 0);
-                const tr = fr - r0, tg = fg - g0, tb = fb - b0;
-                const at = (x, y, z, k) => lut[((z * N + y) * N + x) * 4 + k];
-                const c = [0, 0, 0];
-                for (let k = 0; k < 3; k++) {
-                    const c00 = at(r0, g0, b0, k) * (1 - tr) + at(r0 + 1, g0, b0, k) * tr;
-                    const c10 = at(r0, g0 + 1, b0, k) * (1 - tr) + at(r0 + 1, g0 + 1, b0, k) * tr;
-                    const c01 = at(r0, g0, b0 + 1, k) * (1 - tr) + at(r0 + 1, g0, b0 + 1, k) * tr;
-                    const c11 = at(r0, g0 + 1, b0 + 1, k) * (1 - tr) + at(r0 + 1, g0 + 1, b0 + 1, k) * tr;
-                    c[k] = (c00 * (1 - tg) + c10 * tg) * (1 - tb) + (c01 * (1 - tg) + c11 * tg) * tb;
-                }
-                r = c[0]; g = c[1]; b = c[2];
-            }
-            if (fx && frame) {
+            if (lut) [r, g, b] = this.lutAt(lut, N, r, g, b);
+            if ((fx || M) && frame) {
                 const k = i / 4, x = k % fw, y = (k - x) / fw;
-                [r, g, b] = this.effect(fx, [r, g, b], frame.x + x + 0.5, frame.y + y + 0.5, frame.W, frame.H, frame.glow);
+                const px0 = frame.x + x + 0.5, py0 = frame.y + y + 0.5;
+                if (M) [r, g, b] = this.masked(M, [r, g, b], px0 / frame.W, py0 / frame.H, map, brush);
+                if (fx) [r, g, b] = this.effect(fx, [r, g, b], px0, py0, frame.W, frame.H, frame.glow);
             }
             out[i] = Math.round(r * 255);
             out[i + 1] = Math.round(g * 255);
@@ -769,8 +974,44 @@ uniform vec4 hal;    // halation: amount, colour
 uniform sampler2D glow;
 uniform vec4 frame;  // this block's place in the picture (x, y), and the picture's size
 uniform float tileH;
+// Masks: up to 8, each its own channel row and colour slab, and its shape
+uniform int mCount;
+uniform int mType[8];
+uniform float mInv[8];
+uniform float mHasLut[8];
+uniform vec4 mA[8];
+uniform vec4 mB[8];
+uniform sampler2D mTone;
+uniform sampler3D mLut;
+uniform sampler2D mBrush0;
+uniform sampler2D mBrush1;
+uniform vec3 mapU;
+uniform vec3 mapV;
+uniform float asp;
 float at(float x) { return x * (255.0 / 256.0) + 0.5 / 256.0; }
 float ss(float e0, float e1, float x) { float t = clamp((x - e0) / (e1 - e0), 0.0, 1.0); return t * t * (3.0 - 2.0 * t); }
+float maskW(int k, float u, float v) {
+    float w = 0.0;
+    vec2 P = vec2(u * asp, v);
+    vec4 A = mA[k], B = mB[k];
+    int ty = mType[k];
+    if (ty == 1) {
+        vec2 d = vec2((A.z - A.x) * asp, A.w - A.y);
+        float t = dot(P - vec2(A.x * asp, A.y), d) / dot(d, d);
+        w = 1.0 - ss(0.0, 1.0, t);
+    } else if (ty == 2) {
+        vec2 q = P - vec2(A.x * asp, A.y);
+        float c = cos(B.x), s = sin(B.x);
+        vec2 l = vec2((c * q.x + s * q.y) / A.z, (-s * q.x + c * q.y) / A.w);
+        w = 1.0 - ss(1.0 - max(0.01, B.y), 1.0, length(l));
+    } else if (ty == 3) {
+        int slot = int(B.z + 0.5);
+        vec4 b = slot < 4 ? texture(mBrush0, vec2(u, v)) : texture(mBrush1, vec2(u, v));
+        int ch = slot - (slot / 4) * 4;
+        w = ch == 0 ? b.r : ch == 1 ? b.g : ch == 2 ? b.b : b.a;
+    }
+    return mInv[k] > 0.5 ? 1.0 - w : w;
+}
 uint hash(uvec2 v) {
     v = v * 1664525u + 1013904223u;
     v.x += v.y * 1664525u; v.y += v.x * 1664525u;
@@ -795,6 +1036,22 @@ void main() {
     // Where this pixel is in the whole picture (its middle)
     vec2 p = frame.xy + vec2(gl_FragCoord.x, flip ? gl_FragCoord.y : tileH - gl_FragCoord.y);
     float W = frame.z, H = frame.w;
+    if (mCount > 0) {
+        vec3 ab = vec3(p / vec2(W, H), 1.0);
+        float u = dot(mapU, ab), v = dot(mapV, ab);
+        for (int k = 0; k < 8; k++) {
+            if (k >= mCount) break;
+            float w = maskW(k, u, v);
+            if (w <= 0.0) continue;
+            float row = (float(k) + 0.5) / 8.0;
+            vec3 m = vec3(texture(mTone, vec2(at(clamp(t.r, 0.0, 1.0)), row)).r, texture(mTone, vec2(at(clamp(t.g, 0.0, 1.0)), row)).g, texture(mTone, vec2(at(clamp(t.b, 0.0, 1.0)), row)).b);
+            if (mHasLut[k] > 0.5) {
+                vec3 q = clamp(m, 0.0, 1.0);
+                m = texture(mLut, vec3(q.r * (16.0 / 17.0) + 0.5 / 17.0, q.g * (16.0 / 17.0) + 0.5 / 17.0, (float(k) * 17.0 + q.b * 16.0 + 0.5) / 136.0)).rgb;
+            }
+            t = mix(t, m, w);
+        }
+    }
     if (hal.x != 0.0) {
         float k = hal.x * texture(glow, p / vec2(W, H)).r;
         t = 1.0 - (1.0 - t) * (1.0 - k * hal.yzw);
@@ -877,10 +1134,22 @@ void main() {
         };
         const imgTex = tex(0, gl.TEXTURE_2D), toneTex = tex(1, gl.TEXTURE_2D), lutTex = tex(2, gl.TEXTURE_3D), glowTex = tex(3, gl.TEXTURE_2D);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.R16F, 1, 1, 0, gl.RED, gl.FLOAT, new Float32Array([0]));
+        const mToneTex = tex(4, gl.TEXTURE_2D), mLutTex = tex(5, gl.TEXTURE_3D), mBrushTex = [tex(6, gl.TEXTURE_2D), tex(7, gl.TEXTURE_2D)];
+        for (const [unit, t] of [[6, mBrushTex[0]], [7, mBrushTex[1]]]) {
+            gl.activeTexture(gl.TEXTURE0 + unit);
+            gl.bindTexture(gl.TEXTURE_2D, t);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+        }
         gl.uniform1i(u('img'), 0);
         gl.uniform1i(u('tone'), 1);
         gl.uniform1i(u('lut'), 2);
         gl.uniform1i(u('glow'), 3);
+        gl.uniform1i(u('mTone'), 4);
+        gl.uniform1i(u('mLut'), 5);
+        gl.uniform1i(u('mBrush0'), 6);
+        gl.uniform1i(u('mBrush1'), 7);
+        gl.uniform1i(u('mCount'), 0);
+        let masksKey = null, brushMaps = null;
         const max = gl.getParameter(gl.MAX_TEXTURE_SIZE);
         let tablesKey = null, lost = false;
         canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); lost = true; });
@@ -915,6 +1184,49 @@ void main() {
                 gl.uniform4f(u('vig'), ...fx.vig);
                 gl.uniform3f(u('grain'), ...fx.grain);
                 gl.uniform4f(u('hal'), ...fx.hal);
+                R.setMasks(T.masks);
+            },
+            // Each mask's tables and shape
+            setMasks(M) {
+                const key = M ? M.key : null;
+                if (key === masksKey) return;
+                masksKey = key;
+                const list = M ? M.list : [];
+                gl.uniform1i(u('mCount'), list.length);
+                if (!list.length) return;
+                const N = Develop.MASK_LUT;
+                const tone = new Float32Array(256 * 4 * 8), lut = new Float32Array(N * N * N * 8 * 4);
+                const type = new Int32Array(8), inv = new Float32Array(8), has = new Float32Array(8), A = new Float32Array(32), B = new Float32Array(32);
+                list.forEach((e, k) => {
+                    tone.set(e.tone, k * 256 * 4);
+                    if (e.lut) lut.set(e.lut, k * N * N * N * 4);
+                    type[k] = e.type; inv[k] = e.inv; has[k] = e.lut ? 1 : 0;
+                    A.set(e.A, k * 4);
+                    B.set([e.B[0], e.B[1], e.type === 3 ? e.slot : 0, 0], k * 4);
+                });
+                gl.activeTexture(gl.TEXTURE4);
+                gl.bindTexture(gl.TEXTURE_2D, mToneTex);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, 256, 8, 0, gl.RGBA, gl.FLOAT, tone);
+                gl.activeTexture(gl.TEXTURE5);
+                gl.bindTexture(gl.TEXTURE_3D, mLutTex);
+                gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA16F, N, N, N * 8, 0, gl.RGBA, gl.FLOAT, lut);
+                gl.uniform1iv(u('mType'), type);
+                gl.uniform1fv(u('mInv'), inv);
+                gl.uniform1fv(u('mHasLut'), has);
+                gl.uniform4fv(u('mA'), A);
+                gl.uniform4fv(u('mB'), B);
+            },
+            // The brush masks' maps (brushMaps)
+            setBrush(maps) {
+                if (!maps || maps === brushMaps) return;
+                brushMaps = maps;
+                maps.forEach((m, i) => {
+                    if (!m) return;
+                    gl.activeTexture(gl.TEXTURE6 + i);
+                    gl.bindTexture(gl.TEXTURE_2D, mBrushTex[i]);
+                    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, m.w, m.h, 0, gl.RGBA, gl.UNSIGNED_BYTE, m.data);
+                });
             },
             // Halation's map (glowMap)
             setGlow(map) {
@@ -934,6 +1246,10 @@ void main() {
                 gl.uniform1i(u('flip'), flip ? 1 : 0);
                 const f = frame || { x: 0, y: 0, W: w, H: h };
                 gl.uniform4f(u('frame'), f.x, f.y, f.W, f.H);
+                const map = f.map || Develop.cropMap(null, f.W, f.H);
+                gl.uniform3f(u('mapU'), map.m[0], map.m[1], map.m[2]);
+                gl.uniform3f(u('mapV'), map.m[3], map.m[4], map.m[5]);
+                gl.uniform1f(u('asp'), map.asp);
                 gl.uniform1f(u('tileH'), h);
                 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
             },
@@ -960,7 +1276,8 @@ void main() {
     // size works). True when something changed.
     // scale: this canvas's pixels to one of the photo's (detail is left
     // out below a half: it wouldn't show)
-    applyCanvas(canvas, adj, { scale = 1 } = {}) {
+    // map: where the picture is on the photo (cropMap; masks need it)
+    applyCanvas(canvas, adj, { scale = 1, map = null } = {}) {
         if (!this.active(adj)) return false;
         const T = this.tables(adj);
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -968,6 +1285,9 @@ void main() {
         const tile = R ? Math.min(this.TILE, R.max) : this.TILE;
         const glow = T.fx && T.fx.hal[0] ? this.canvasGlow(canvas, T) : null;
         if (glow && R && !R.lost) R.setGlow(glow);
+        map = map || this.cropMap(null, canvas.width, canvas.height);
+        const brush = this.brushFor(T.masks, map.asp);
+        if (brush && R && !R.lost) R.setBrush(brush);
         const d = scale >= 0.5 ? this.detail(this.full(adj)) : null;
         // Detail reads round each block: from the picture as it was
         let source = null;
@@ -984,7 +1304,7 @@ void main() {
                 const img = d
                     ? this.detailBlock((a, b, c, e) => sctx.getImageData(a, b, c, e), x, y, w, h, canvas.width, canvas.height, d, scale)
                     : ctx.getImageData(x, y, w, h);
-                const frame = { x, y, w, W: canvas.width, H: canvas.height, glow };
+                const frame = { x, y, w, W: canvas.width, H: canvas.height, glow, map, brush };
                 let done = false;
                 if (R && !R.lost) {
                     try {

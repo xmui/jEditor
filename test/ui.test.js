@@ -4426,6 +4426,36 @@ async function newPage(browser, url) {
             small.width = 300; small.height = 200;
             small.getContext('2d').drawImage(c, 0, 0);
             out.previewSkips = Develop.applyCanvas(small, { sharpen: 150 }, { scale: 0.3 }) && small.getContext('2d').getImageData(0, 0, 300, 200).data.every((v, i) => v === img.data[i]);
+            // Masks: each kind the same on the GPU and the CPU, in tiles
+            out.maskWorst = 0;
+            for (const mk of [{ type: 'linear', linear: [0.1, 0.5, 0.6, 0.5], adj: { exposure: 1.5, saturation: -60 } }, { type: 'radial', radial: [0.5, 0.5, 0.3, 0.2, 0.4, 0.5], invert: true, adj: { exposure: -1, temp: 40 } }, { type: 'brush', brush: [{ size: 0.2, feather: 0.5, flow: 1, pts: [0.2, 0.3, 0.7, 0.6] }, { size: 0.05, feather: 0, flow: 1, erase: true, pts: [0.4, 0.4, 0.5, 0.5] }], adj: { exposure: 1, vibrance: 50 } }]) {
+                const adjM = { masks: [mk] };
+                const cv = document.createElement('canvas');
+                cv.width = 300; cv.height = 200;
+                cv.getContext('2d').drawImage(c, 0, 0);
+                Develop.TILE = 64;
+                Develop.applyCanvas(cv, adjM);
+                Develop.TILE = 2048;
+                const gp = cv.getContext('2d').getImageData(0, 0, 300, 200).data;
+                const cp = Develop.applyCPU(new Uint8ClampedArray(img.data), Develop.tables(adjM), new Uint8ClampedArray(img.data.length), { x: 0, y: 0, w: 300, W: 300, H: 200 });
+                for (let i = 0; i < gp.length; i++) out.maskWorst = Math.max(out.maskWorst, Math.abs(gp[i] - cp[i]));
+            }
+            // A mask stays on its spot of the photo when the photo is cropped
+            const flat = document.createElement('canvas');
+            flat.width = 400; flat.height = 200;
+            const fg2 = flat.getContext('2d');
+            fg2.fillStyle = '#606060'; fg2.fillRect(0, 0, 400, 200);
+            const spot = { masks: [{ type: 'radial', radial: [0.25, 0.5, 0.15, 0.15, 0, 0.1], adj: { exposure: 2 } }] };
+            const whole = document.createElement('canvas');
+            whole.width = 400; whole.height = 200;
+            whole.getContext('2d').drawImage(flat, 0, 0);
+            Develop.applyCanvas(whole, spot);
+            const ed = CropEditor.fromSnapshot(400, 200, { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0, y1: 0.5 } });
+            const left = ed.drawOutput(flat);
+            Develop.applyCanvas(left, spot, { map: Develop.cropMap(ed, 400, 200) });
+            const at = (cv, x, y) => cv.getContext('2d').getImageData(x, y, 1, 1).data[0];
+            out.maskCrop = [at(whole, 100, 100), at(left, 100, 100), at(whole, 300, 100), at(left, 180, 100)];
+            out.maskClean = JSON.stringify(Develop.cleanMasks([{ type: 'radial', radial: [0.5, 0.5, 0, 50, 0, 2], adj: { exposure: 9, nope: 3 } }, { type: 'linear', linear: [0.2, 0.2, 0.2, 0.2] }, { type: 'brush', brush: [] }, { type: 'what' }]));
             return out;
         });
         check('adjust: settings kept compact, nothing left is none, out of range brought in',
@@ -4441,6 +4471,9 @@ async function newPage(browser, url) {
         check('adjust: sharpening adds contrast at an edge, not on flat ground', m.sharpen[0] < 80 && m.sharpen[1] > 170 && m.sharpen[2] === 80, JSON.stringify(m.sharpen));
         check('adjust: noise reduction smooths a noisy patch and keeps the edge; color noise takes out colour blotches', m.noise[1] < m.noise[0] / 2 && m.noise[2] && m.colorNoise[1] < m.colorNoise[0] / 2, JSON.stringify([m.noise, m.colorNoise]));
         check('adjust: detail in blocks is the same as all at once, and left out of small previews', m.detailTiles <= 1 && m.previewSkips, JSON.stringify([m.detailTiles, m.previewSkips]));
+        check('adjust: masks (linear, radial, brush with erase) agree on the GPU and the CPU, in tiles', m.maskWorst <= 1, JSON.stringify(m.maskWorst));
+        check('adjust: a mask stays on its spot of the photo when it\'s cropped', m.maskCrop[0] > 150 && Math.abs(m.maskCrop[0] - m.maskCrop[1]) <= 1 && m.maskCrop[2] === 96 && m.maskCrop[3] === 96, JSON.stringify(m.maskCrop));
+        check('adjust: masks are checked (sizes and sliders in range, empty or unknown ones dropped)', m.maskClean === '[{"type":"radial","invert":false,"adj":{"exposure":5},"radial":[0.5,0.5,0.002,10,0,1]}]', m.maskClean);
         check('adjust: halation puts a red glow round a light, nothing far from it', m.halation[0] > 40 && m.halation[0] > m.halation[1] * 2 && m.halation[3] === 0, JSON.stringify(m.halation));
 
         const r = await page.evaluate(async () => {
@@ -4544,6 +4577,31 @@ async function newPage(browser, url) {
             Adjust.setAll(pr.adj);
             out.preset = Adjust.result().grade.s[1] === 100 && Adjust.result().exposure === 1;
             Adjust.resetSection('grading');
+            // Masks: a linear gradient drawn on the photo, a brush painted
+            step = 'masks';
+            const msec = document.getElementById('adj-masks-sec');
+            msec.open = true;
+            msec.dispatchEvent(new Event('toggle'));
+            await sleep(30);
+            const ov = document.getElementById('adj-overlay');
+            const or = ov.getBoundingClientRect();
+            const pd = (type, fx, fy) => ov.dispatchEvent(new PointerEvent(type, { clientX: or.left + or.width * fx, clientY: or.top + or.height * fy, pointerId: 1, bubbles: true }));
+            document.querySelector('[data-add-mask="linear"]').click();
+            pd('pointerdown', 0.5, 0.1); pd('pointermove', 0.5, 0.3); pd('pointermove', 0.5, 0.5); pd('pointerup', 0.5, 0.5);
+            const lin = Adjust.result() && Adjust.result().masks && Adjust.result().masks[0];
+            out.linearDrawn = !!lin && lin.type === 'linear' && Math.abs(lin.linear[1] - 0.1) < 0.02 && Math.abs(lin.linear[3] - 0.5) < 0.02;
+            document.querySelector('[data-add-mask="brush"]').click();
+            pd('pointerdown', 0.2, 0.7); pd('pointermove', 0.4, 0.7); pd('pointermove', 0.6, 0.72); pd('pointerup', 0.6, 0.72);
+            const sl = document.getElementById('adj-mask-exposure');
+            sl.value = '1.5'; sl.dispatchEvent(new Event('input')); sl.dispatchEvent(new Event('change'));
+            await sleep(60);
+            const ms = Adjust.result().masks;
+            out.brushPainted = ms.length === 2 && ms[1].type === 'brush' && ms[1].brush[0].pts.length >= 4 && ms[1].adj.exposure === 1.5;
+            out.maskList = document.querySelectorAll('.adj-mask-item').length === 2;
+            Adjust.resetSection('masks');
+            out.masksReset = !(Adjust.result() || {}).masks;
+            msec.open = false;
+            msec.dispatchEvent(new Event('toggle'));
             // Detail: the 1:1 view, from the full photo, moved by a click
             step = 'detail';
             document.getElementById('adj-detail-sec').open = true;
@@ -4634,6 +4692,7 @@ async function newPage(browser, url) {
         check('adjust: films shown on the photo by process, a click puts one on (with Amount) or takes it off', r.lookThumbGrey && r.lookOn && r.lookOff, JSON.stringify(r));
         check('adjust: a grading wheel takes a hue and strength; presets save and put settings back', r.wheel && r.preset, JSON.stringify(r));
         check('adjust: Detail shows the full photo at 1:1, where you click', r.loupe, JSON.stringify(r));
+        check('adjust: masks drawn and painted on the photo, with their own sliders', r.linearDrawn && r.brushPainted && r.maskList && r.masksReset, JSON.stringify(r));
         check('adjust: Done keeps it with the photo (edits.json), the file untouched, no Save bar', r.kept && r.noBar, JSON.stringify(r));
         check('adjust: the viewer and the thumbnail show it adjusted, with the pencil', r.shownBrighter && r.thumbBrighter && r.pencil, JSON.stringify(r));
         check('adjust: an adjusted photo\'s turn is kept with it; Ctrl+Z takes both back', r.turnKept && r.undone, JSON.stringify(r));
