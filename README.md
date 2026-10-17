@@ -8,7 +8,7 @@ One UI (`app/`), three ways to run it:
 |---|---|---|
 | **Windows app** | Released | Everything: the core below, plus scanning, camera tethering, the projects sidebar with drives, the Recycle Bin, several windows and updates. |
 | **Web** | https://xmui.github.io/jEditor/, and `standalone.html` with each release | The core, in Chrome or Edge: open, view, rotate, crop and straighten, flags, search, rename, move, delete with undo, export, duplicates, Auto crop and watching the folder. |
-| **Mac app** | Released (not signed by Apple yet) | The core, with no permission prompts, the Mac's own folder picker, folders opened from Finder (Open With, or onto the Dock icon) and Show in Finder; the sidebar (projects, pinned folders, drives, Eject), several windows and Split, updates, and Liquid Glass. Not yet: scanning, the camera, the Trash. |
+| **Mac app** | Released (not signed by Apple yet) | The core, with no permission prompts, the Mac's own folder picker, folders opened from Finder (Open With, or onto the Dock icon) and Show in Finder; the sidebar (projects, pinned folders, drives, Eject), several windows and Split, updates, and Liquid Glass (on macOS 26, the Mac's own toolbar). Not yet: scanning, the camera, the Trash. |
 
 [PLAN.md](PLAN.md) has how the three fit together and what comes next. Scanning and tethering are Windows-only for now.
 
@@ -76,6 +76,7 @@ A Debug build (`dotnet run --project src`) does this on its own with the repo's 
 - `app/`: the UI. It ships beside the exe.
 - `docs/`: how to use jEditor, and the plan from its web app days.
 - `installer/jEditor.iss`: the per-user installer (Inno Setup).
+- `mac/native/`: the Mac app's native toolbar (Objective-C++, Node-API): an NSToolbar per window, drawn in Liquid Glass on macOS 26, its items mirroring the page's top row (`bridge.js`); built universal by `node mac/native/build.js` (on a Mac, after `npm ci` there).
 - `mac/`: the Mac app, in Electron (Chromium, as WebView2 is). `main.js` serves the `app` folder at `app://jeditor/` (fixed, like the Windows address) and drops a folder onto the page to give it a real folder handle for any path, with permission granted; `bridge.js` takes the drop in the page, replaces the folder picker with the Mac's, and gives jEditor `JEditorNative`. The projects' data is kept in the app's private storage.
 
 The UI never assumes Windows. Everything an app adds goes through `window.JEditorNative` (made by `src/bridge.js`), which is `null` in a browser. Each app says what it is and lists what it can do (`platform`, `features`), and `app/host.js` hides what it can't (`Host.has('scan')`, `data-needs="scan"`) and puts the system's own words into the page: Explorer or Finder, the Recycle Bin or the Trash. The UI tests run it with no app (the web), the Windows app, and an app with only the core; `test/mac.test.js` runs the real Mac app.
