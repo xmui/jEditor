@@ -304,9 +304,15 @@
         // has a copyId, for cancelCopy.
         copyFolder(path, dest, progress) {
             const id = nextCopy++;
-            copying.set(id, progress || (() => { }));
+            let last = -1;
+            copying.set(id, (got, total) => { last = got; if (progress) progress(got, total); });
             const done = answer('copyFolder', { path, dest, copy: id })
-                .then(msg => (msg.cancelled ? { cancelled: true } : { to: msg.to }))
+                .then(msg => {
+                    if (msg.cancelled) return { cancelled: true };
+                    // The end reported here too: IPC may bring the last progress after the answer
+                    if (progress && typeof msg.done === 'number' && msg.done > last) progress(msg.done, msg.total);
+                    return { to: msg.to };
+                })
                 .finally(() => copying.delete(id));
             done.copyId = id;
             return done;
@@ -367,6 +373,7 @@
             try {
                 const r = await answer('installUpdate');
                 if (progress && r && r.received > last) progress(r.received, r.total);
+                return r;
             } finally { onUpdateProgress = null; }
         }
     };
@@ -413,7 +420,7 @@
         const px = (name) => parseFloat(css.getPropertyValue(name)) || 0;
         const scale = parseFloat(css.getPropertyValue('--ui-scale')) || 1;
         const gutter = px('--gutter');
-        const at = { x: Math.max(12, gutter), y: gutter + (px('--ctl-lg') * scale) / 2 - 7 };
+        const at = { x: Math.max(12, gutter), y: px('--mac-drag') + gutter + (px('--ctl-lg') * scale) / 2 - 7 };
         const key = at.x + ',' + at.y;
         if (key === lastLights) return;
         lastLights = key;

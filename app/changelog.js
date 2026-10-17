@@ -14,7 +14,10 @@ const CHANGELOG = [
             'Masks: change part of the photo. A linear gradient (darken a sky to the horizon), a radial gradient (lift a face, or inverted, darken the edges) or a brush (paint it on, erase it off), each with its own exposure, contrast, tones, white balance, vibrance and saturation, up to eight on a photo. Show mask tints what one covers. Masks stay on their spot when the photo is cropped later.',
             'Adjustments never change the photo: they\'re kept with the project and shown wherever the photo is, so they can be changed again any time. Export writes copies with them, Save edits… writes them into the photos (Ctrl+Z still puts the originals back).',
             'Copy and paste adjustments (`Ctrl+Shift+C`, `Ctrl+Shift+V`) onto one photo or a whole selection in the grid, and Done & next (`Shift+Enter`) to work through a project.',
-            'Export with a longest side now resizes the photo with its edits, not the original.'
+            'Export with a longest side now resizes the photo with its edits, not the original.',
+            'On the Mac, updates install themselves: Settings → Updates downloads the new version, checks it and puts it in place of this one, then jEditor opens again. No more dragging into Applications (jEditor needs to be in Applications for this).',
+            'On Linux, Settings → Updates works for the .deb and Arch package too: it installs the new package with your system\'s installer (asking for your password) and reopens jEditor.',
+            'On the Mac, a taller title bar: more room at the top of the window to drag it by.'
         ]
     },
     {

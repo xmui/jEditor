@@ -31,14 +31,14 @@ brew install --cask xmui/jeditor/jeditor
 
 It isn't signed by Apple yet, so the first time macOS won't open it. Go to **System Settings → Privacy & Security**, find "jEditor was blocked", and click **Open Anyway**. It only asks once.
 
-To update, use Settings → Updates (it downloads the new .dmg and opens it: drag jEditor into Applications again), or `brew upgrade`. jEditor's settings, recent folders and each project's flags and cache are kept in `~/Library/Application Support/jEditor`, never in your folders.
+To update, use Settings → Updates: jEditor downloads the new .dmg, checks it against GitHub's SHA-256, puts the new app in place of itself and opens again. No Apple Developer ID is needed: the new app is checked whole first (`codesign --verify`), and it never went through a browser, so macOS doesn't ask about it again (the first copy, from the website, still goes through Gatekeeper and Open Anyway). That needs jEditor in Applications (or another folder you can write to); run from Downloads or the .dmg, it opens the .dmg in Finder instead, to drag in. Because jEditor isn't signed with a Developer ID, macOS may ask again for Desktop, Documents and Downloads after an update. Or `brew upgrade`. jEditor's settings, recent folders and each project's flags and cache are kept in `~/Library/Application Support/jEditor`, never in your folders.
 
 ## Linux
 
 From the [latest release](https://github.com/xmui/jEditor/releases/latest), for 64-bit Linux:
 
 - **AppImage** (any distribution): download `jEditor-x.y.z-linux.AppImage`, make it executable (`chmod +x`, or Properties → Permissions in your file manager) and open it. Settings → Updates replaces it with the new version and restarts. It needs FUSE 2 (`sudo apt install libfuse2t64` on Ubuntu 24.04 if it won't start).
-- **.deb** (Debian, Ubuntu, Mint): `sudo apt install ./jEditor-x.y.z-linux.deb`. It's then in your applications, and in Open With for folders and photos. Update it by installing the new .deb.
-- **Arch Linux** (and Manjaro, EndeavourOS): `sudo pacman -U jEditor-x.y.z-linux.pacman`. The same as the .deb; update it by installing the new one, and `sudo pacman -R jeditor` removes it.
+- **.deb** (Debian, Ubuntu, Mint): `sudo apt install ./jEditor-x.y.z-linux.deb`. It's then in your applications, and in Open With for folders and photos. Settings → Updates downloads the new .deb and installs it (your password is asked for), then reopens jEditor; without the password, the .deb opens in your software installer instead.
+- **Arch Linux** (and Manjaro, EndeavourOS): `sudo pacman -U jEditor-x.y.z-linux.pacman`. The same as the .deb: Settings → Updates installs the new one with `pacman -U` (your password is asked for), and `sudo pacman -R jeditor` removes it.
 
 jEditor's settings and each project's data are kept in `~/.config/jEditor`, never in your folders. USB drives and cards mounted in `/media` or `/run/media` show in the sidebar under Locations.
