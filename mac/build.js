@@ -14,6 +14,7 @@
 // Developer ID, set CSC_LINK / CSC_KEY_PASSWORD and APPLE_ID etc. and drop
 // `identity` below to sign and notarize.
 
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const builder = require('electron-builder');
@@ -22,12 +23,18 @@ const ROOT = path.join(__dirname, '..');
 const version = /APP_VERSION = '([0-9.]+)'/.exec(fs.readFileSync(path.join(ROOT, 'app', 'version.js'), 'utf8'))[1];
 const dirOnly = process.argv.includes('--dir');
 
+// The native toolbar (native/), built for both Macs if it isn't yet
+const toolbarNode = path.join(__dirname, 'native', 'build', 'Release', 'toolbar.node');
+if (!fs.existsSync(toolbarNode)) execFileSync(process.execPath, [path.join(__dirname, 'native', 'build.js')], { stdio: 'inherit' });
+
 const config = {
     appId: 'com.xmui.jeditor',
     productName: 'jEditor',
     copyright: 'jEditor',
     directories: { output: path.join(ROOT, 'dist'), buildResources: path.join(__dirname, 'build') },
-    files: ['main.js', 'preload.js', 'bridge.js', 'places.js', 'package.json'],
+    files: ['main.js', 'preload.js', 'bridge.js', 'places.js', 'package.json', 'native/index.js', 'native/build/Release/toolbar.node'],
+    // A native module is loaded from disk, not from inside app.asar
+    asarUnpack: ['native/build/Release/*.node'],
     extraResources: [{ from: path.join(ROOT, 'app'), to: 'app', filter: ['**/*'] }],
     extraMetadata: { version },
     asar: true,
@@ -40,6 +47,8 @@ const config = {
         hardenedRuntime: false,
         gatekeeperAssess: false,
         minimumSystemVersion: '12.0',
+        // Already universal (native/build.js), so the same in both halves
+        x64ArchFiles: '**/toolbar.node',
         extendInfo: {
             // Finder's Open With, and the Dock: folders, and photos (their folder opens)
             CFBundleDocumentTypes: [

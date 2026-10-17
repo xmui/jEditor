@@ -54,6 +54,7 @@
     --icon-sm: 16px;
     --icon-md: 20px;
     --gutter: 20px;      /* distance of floating chrome from the window edge */
+    --top-row: calc(var(--gutter) + var(--ctl-lg)); /* where the top row of pills ends */
 
     /* ---- Radii ---- */
     --r-xs: 4px;

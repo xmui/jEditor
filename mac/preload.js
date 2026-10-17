@@ -7,5 +7,7 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 contextBridge.exposeInMainWorld('jeditorMac', {
     request: (type, data) => ipcRenderer.invoke('jeditor', type, data || {}),
     onMessage: (listener) => { ipcRenderer.on('jeditor', (e, msg) => listener(msg)); },
-    pathForFile: (file) => { try { return webUtils.getPathForFile(file) || null; } catch (e) { return null; } }
+    pathForFile: (file) => { try { return webUtils.getPathForFile(file) || null; } catch (e) { return null; } },
+    // macOS 26's toolbar holds the top row (main.js)
+    nativeToolbar: process.argv.includes('--jeditor-native-toolbar')
 });

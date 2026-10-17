@@ -6,3 +6,4 @@ dist/
 node_modules/
 standalone.html
 _site/
+mac/native/build/

@@ -35,6 +35,9 @@ jobs:
       - run: npm ci
       - run: npm ci
         working-directory: mac
+      - name: Native toolbar
+        run: npm ci && node build.js
+        working-directory: mac/native
       - name: Build
         run: node build.js
         working-directory: mac
