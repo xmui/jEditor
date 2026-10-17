@@ -23,7 +23,7 @@ const Adjust = {
 
     LIGHT: [['exposure', 'Exposure'], ['contrast', 'Contrast'], ['highlights', 'Highlights'], ['shadows', 'Shadows'], ['whites', 'Whites'], ['blacks', 'Blacks']],
     COLOR: [['temp', 'Temperature'], ['tint', 'Tint'], ['vibrance', 'Vibrance'], ['saturation', 'Saturation']],
-    EFFECTS: [['vignette', 'Vignette'], ['vigMid', 'Midpoint'], ['vigFeather', 'Feather'], ['vigRound', 'Roundness'], ['grain', 'Grain'], ['grainSize', 'Grain size']],
+    EFFECTS: [['vignette', 'Vignette'], ['vigMid', 'Midpoint'], ['vigFeather', 'Feather'], ['vigRound', 'Roundness'], ['grain', 'Grain'], ['grainSize', 'Grain size'], ['grainColor', 'Grain color'], ['halation', 'Halation']],
     TRACKS: {
         temp: 'linear-gradient(to right, #3f7fe0, #9aa3ad, #e0b23f)',
         tint: 'linear-gradient(to right, #3fbf5a, #9aa3ad, #c84fc8)',
@@ -187,6 +187,8 @@ const Adjust = {
         this.future = [];
         const kept = Edits.get(file);
         this.a = Develop.full(kept && kept.adj);
+        const look = Develop.look(this.a.look);
+        if (look && this._inited && look.process !== this.lookTab) this.showLookTab(look.process);
         this.start = JSON.stringify(Develop.clean(this.a));
         this.root.classList.remove('hidden');
         this.el('adj-file').textContent = file.name;
@@ -409,8 +411,14 @@ const Adjust = {
     draw() {
         if (!this.ready) return;
         const T = Develop.tables(this.a);
+        // Halation's glow, from the whole picture (as saving makes it)
+        let glow = null;
+        if (T.fx && T.fx.hal[0]) {
+            glow = Develop.glowMap(Develop.applyCPU(this.sample, { ...T, fx: null }, this.sampleOut), this.sampleW, this.sampleH);
+        }
         if (this.gl) {
             try {
+                if (glow) this.gl.setGlow(glow);
                 this.gl.setTables(T);
                 this.gl.draw(this.w, this.h, { before: this.before });
             } catch (e) {
@@ -421,11 +429,11 @@ const Adjust = {
             if (this.canvas.height !== this.h) this.canvas.height = this.h;
             if (this.before) this.ctx.putImageData(this.src, 0, 0);
             else {
-                Develop.applyCPU(this.src.data, T, this.out.data, { x: 0, y: 0, w: this.w, W: this.w, H: this.h });
+                Develop.applyCPU(this.src.data, T, this.out.data, { x: 0, y: 0, w: this.w, W: this.w, H: this.h, glow });
                 this.ctx.putImageData(this.out, 0, 0);
             }
         }
-        const px = this.before ? this.sample : Develop.applyCPU(this.sample, T, this.sampleOut, { x: 0, y: 0, w: this.sampleW, W: this.sampleW, H: this.sampleH });
+        const px = this.before ? this.sample : Develop.applyCPU(this.sample, T, this.sampleOut, { x: 0, y: 0, w: this.sampleW, W: this.sampleW, H: this.sampleH, glow });
         this.hist = Develop.histogram(px);
         this.drawPanels();
         this.looksSoon();
@@ -436,26 +444,51 @@ const Adjust = {
     // Film looks (develop.js LOOKS), each shown on this photo as it now is
 
     initLooks() {
+        const tabs = this.el('adj-look-tabs');
+        try { this.lookTab = localStorage.getItem('jeditor.lookTab'); } catch (e) { /* private mode */ }
+        if (!Develop.PROCESSES.some(p => p[0] === this.lookTab)) this.lookTab = 'C-41';
+        for (const [id, label, title] of Develop.PROCESSES) {
+            const b = document.createElement('button');
+            b.className = 'adj-tab';
+            b.dataset.tab = id;
+            b.textContent = label;
+            b.title = title;
+            b.setAttribute('role', 'tab');
+            b.addEventListener('click', () => { b.blur(); this.showLookTab(id); });
+            tabs.appendChild(b);
+        }
         const box = this.el('adj-looks');
-        const tile = (id, name) => {
+        const tile = (look) => {
             const b = document.createElement('button');
             b.className = 'adj-look';
-            b.dataset.look = id || '';
-            b.title = name;
+            b.dataset.look = look ? look.id : '';
+            b.dataset.tab = look ? look.process : '';
+            b.title = look ? `${look.maker} ${look.name} · ${look.code || look.process}\n${look.note}` : 'No look';
             b.innerHTML = '<canvas></canvas><span></span>';
-            b.querySelector('span').textContent = name;
+            b.querySelector('span').textContent = look ? look.name : 'None';
             b.addEventListener('click', () => {
                 b.blur();
                 if (!this.ready) return;
                 this.pushHistory();
-                this.a.look = id;
-                if (!id) this.a.lookAmount = 100;
+                this.a.look = look ? look.id : null;
+                if (!look) this.a.lookAmount = 100;
                 this.changed();
             });
             box.appendChild(b);
         };
-        tile(null, 'None');
-        for (const l of Develop.LOOKS) tile(l.id, l.name);
+        tile(null);
+        for (const l of Develop.LOOKS) tile(l);
+        this.showLookTab(this.lookTab);
+    },
+
+    // One process's films (None is always there)
+    showLookTab(id) {
+        this.lookTab = id;
+        try { localStorage.setItem('jeditor.lookTab', id); } catch (e) { /* private mode */ }
+        for (const b of this.root.querySelectorAll('.adj-look-tabs .adj-tab')) b.setAttribute('aria-selected', String(b.dataset.tab === id));
+        for (const b of this.root.querySelectorAll('.adj-look')) b.classList.toggle('hidden', !!b.dataset.tab && b.dataset.tab !== id);
+        this._looksKey = null;
+        if (this.ready) this.renderLooks();
     },
 
     // The pictures, once the sliders have rested
@@ -470,12 +503,12 @@ const Adjust = {
         const base = { ...(this.result() || {}) };
         delete base.look;
         delete base.lookAmount;
-        const key = JSON.stringify(base);
+        const key = JSON.stringify(base) + this.lookTab;
         if (key === this._looksKey) return;
         this._looksKey = key;
         const { width: w, height: h } = this.thumb;
         const out = new ImageData(w, h);
-        for (const b of this.root.querySelectorAll('.adj-look')) {
+        for (const b of this.root.querySelectorAll('.adj-look:not(.hidden)')) {
             const cv = b.querySelector('canvas');
             cv.width = w;
             cv.height = h;
