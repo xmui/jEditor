@@ -1026,7 +1026,8 @@ async function newPage(browser, url) {
             out.pillHidden = pill.classList.contains('hidden');
             return out;
         });
-        check('default main controls: info, view, refresh, crop, adjust, history', r.defaultMain === 'info,view,refresh,crop,adjust,history', r.defaultMain);
+        // (Adjust, an experiment, shows when it's turned on)
+        check('default main controls: info, view, refresh, crop, history', r.defaultMain === 'info,view,refresh,crop,history', r.defaultMain);
         check('extras live in More (fit, strip, fullscreen, dupes, keys, whatsnew, customize)', r.defaultExtras === 'fit,strip,fullscreen,dupes,keys,whatsnew,customize', r.defaultExtras);
         check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
         // (Adjust, newer than that saved order, goes after Crop)
@@ -4212,7 +4213,7 @@ async function newPage(browser, url) {
             app.toggleCustomizePanel(true);
             app.showSettingsPage('experimental');
             const page = document.getElementById('set-page-experimental');
-            const empty = page.classList.contains('active') && /Nothing to try right now/.test(page.textContent);
+            const listed = page.classList.contains('active') && !!document.getElementById('exp-adjust') && !document.getElementById('exp-adjust').checked;
             // One being made: off until turned on, and it stays on
             Experiments.LIST.push({ id: 'paint', title: 'Paint', text: 'Layers, brushes and shapes' });
             Experiments.render();
@@ -4224,10 +4225,14 @@ async function newPage(browser, url) {
             const kept = Experiments.on('paint') && app.uiPrefs.experiments.paint === true;
             const unknown = Experiments.on('nothing');
             app.toggleCustomizePanel(false);
-            return { labels, empty, off, heard, kept, unknown };
+            // A beta has its experiments on to start with (betaOnly ones too)
+            window.APP_BUILD = 'v9.9.0-beta.1';
+            const betaOn = Experiments.betaBuild() && Experiments.on('adjust');
+            delete window.APP_BUILD;
+            return { labels, listed, off, heard, kept, unknown, betaOn };
         });
         check('a beta says which ("1.42.0 beta 3"); a re-release, its version', r.labels === '1.42.0 beta 3|1.41.0|1.41.0|nonsense', r.labels);
-        check('Settings → Experimental: nothing to try yet, said plainly', r.empty);
+        check('Settings → Experimental lists Adjust, off in a release, on to start with in a beta', r.listed && r.betaOn, JSON.stringify(r));
         check('an experiment is off until turned on; on, it says so and stays on', !r.off && r.heard && r.heard.id === 'paint' && r.heard.on && r.kept && !r.unknown, JSON.stringify(r));
         check('no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
@@ -4523,6 +4528,21 @@ async function newPage(browser, url) {
             app.openSingle(f('a.jpg'));
             const before = await brightness(await blobOf(await app.getDisplaySource(f('a.jpg'))));
 
+            // An experiment in a release: off, nothing of it shows
+            step = 'experiment off';
+            const btn = document.getElementById('btn-adjust');
+            out.offHidden = !Experiments.on('adjust') && getComputedStyle(btn).display === 'none';
+            key('e');
+            await sleep(80);
+            out.offNoKey = !Adjust.isOpen;
+            out.offNoMenu = !app.buildContextItems(null, true).some(it => /Adjust/.test(it[0] || ''));
+            // Turned on in Settings → Experimental
+            app.toggleCustomizePanel(true);
+            app.showSettingsPage('experimental');
+            document.getElementById('exp-adjust').click();
+            app.toggleCustomizePanel(false);
+            out.onShown = Experiments.on('adjust') && getComputedStyle(btn).display !== 'none' && app.buildContextItems(null, true).some(it => it[0] === 'Adjust…');
+
             // E opens Adjust on the photo
             step = 'E opens Adjust';
             key('e');
@@ -4687,6 +4707,7 @@ async function newPage(browser, url) {
             return out;
             })(); } catch (e) { return { error: step + ': ' + e.message }; }
         });
+        check('adjust: an experiment in a release, off until turned on in Settings → Experimental (no button, key or menu)', r.offHidden && r.offNoKey && r.offNoMenu && r.onShown, JSON.stringify(r));
         check('adjust: E opens it on the GPU, with a histogram', r.open, JSON.stringify(r));
         check('adjust: sliders change the photo and its histogram live; Ctrl+Z / Ctrl+Shift+Z inside; \\ shows before', r.live && r.undoInside && r.redoInside && r.beforeShown, JSON.stringify(r));
         check('adjust: films shown on the photo by process, a click puts one on (with Amount) or takes it off', r.lookThumbGrey && r.lookOn && r.lookOff, JSON.stringify(r));

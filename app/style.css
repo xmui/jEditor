@@ -4859,8 +4859,10 @@ html:not(.native) .native-only {
     display: none !important;
 }
 
-/* What the app jEditor runs in can't do (data-needs, host.js) */
-.host-missing {
+/* What the app jEditor runs in can't do (data-needs, host.js), and an
+   experiment that's off (experiments.js) */
+.host-missing,
+.exp-off {
     display: none !important;
 }
 

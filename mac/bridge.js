@@ -441,7 +441,7 @@
     };
     const PRESSED = { info: 'info.circle.fill', strip: 'film.fill', fit: 'rectangle.inset.filled', fullscreen: 'arrow.down.right.and.arrow.up.left' };
     const $ = (id) => document.getElementById(id);
-    const shown = (el) => !!el && !el.classList.contains('hidden') && !el.classList.contains('host-missing');
+    const shown = (el) => !!el && !el.classList.contains('hidden') && !el.classList.contains('host-missing') && !el.classList.contains('exp-off');
     const said = (t) => (typeof Host !== 'undefined' ? Host.say(t || '') : t || '');
 
     function toolbarModel() {

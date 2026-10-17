@@ -93,7 +93,7 @@ It works like Lightroom or Apple Photos: the crop frame stays in the middle of t
 
 ## Adjust: light, color and curves
 
-Like Lightroom's Develop, for one photo at a time: press `E` (or the sliders button, or right-click → **Adjust…**). The photo changes as you drag, on the graphics card, so even a big scan keeps up.
+Like Lightroom's Develop, for one photo at a time: press `E` (or the sliders button, or right-click → **Adjust…**). It's an experiment for now: turn it on in **Settings → Experimental** (betas have it on). Adjustments already made stay on the photos when it's off. The photo changes as you drag, on the graphics card, so even a big scan keeps up.
 
 - **Histogram and levels.** Red, green and blue, with marks at the ends when something clips. The handles under it set the black, mid-grey and white points; the lower two set the output range. Pick **R**, **G** or **B** to set one channel. **Auto** sets the levels from the photo; **Auto color** sets each channel on its own too, which takes the colour cast off a faded print.
 - **Light:** Exposure (in stops), Contrast, Highlights, Shadows, Whites and Blacks.
