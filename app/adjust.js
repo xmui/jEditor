@@ -1,0 +1,691 @@
+// Adjust: light, color, levels, curves and the color mixer, like
+// Lightroom's Develop, on one photo at a time (E, or the sliders button).
+// develop.js does the maths; this is the screen. The photo is shown as
+// it's being changed (on the GPU, so the sliders keep up on a big scan),
+// with its histogram, and Done keeps the settings with the photo: in a
+// project, as an edit (edits.js), never in the file, so they can be
+// changed again later from the photo as it was; Export, or Save edits,
+// writes the result. Without a project (photos picked on a phone,
+// dropped photos) Done writes them into the photo, as a crop does.
+//
+// The photo is adjusted as it's cropped (an edit's crop is applied
+// first), at screen size; saving renders it again at full size.
+
+const Adjust = {
+    isOpen: false,
+    ready: false,
+    file: null,
+    a: null,           // the settings being made (Develop.full)
+    channel: 'rgb',    // levels and curve: all, or red, green, blue
+    mixer: 'hue',      // the color mixer's page: hue, sat, lum
+    before: false,
+
+    LIGHT: [['exposure', 'Exposure'], ['contrast', 'Contrast'], ['highlights', 'Highlights'], ['shadows', 'Shadows'], ['whites', 'Whites'], ['blacks', 'Blacks']],
+    COLOR: [['temp', 'Temperature'], ['tint', 'Tint'], ['vibrance', 'Vibrance'], ['saturation', 'Saturation']],
+    TRACKS: {
+        temp: 'linear-gradient(to right, #3f7fe0, #9aa3ad, #e0b23f)',
+        tint: 'linear-gradient(to right, #3fbf5a, #9aa3ad, #c84fc8)',
+        saturation: 'linear-gradient(to right, #8a8a8a, #e5484d)',
+        vibrance: 'linear-gradient(to right, #8a8a8a, #f76b15)'
+    },
+    EDGE: 2560,        // the working copy's longest side, at most
+    SAMPLE: 320,       // the histogram's and Auto's copy
+
+    el(id) { return document.getElementById(id); },
+
+    init(app) {
+        if (this._inited) return;
+        this._inited = true;
+        this.app = app;
+        this.root = this.el('adjust-editor');
+        this.canvas = this.el('adj-canvas');
+        this.gl = Develop.renderer(this.canvas);
+        if (!this.gl) this.ctx = this.canvas.getContext('2d');
+
+        const bind = (id, fn) => this.el(id).addEventListener('click', (e) => {
+            e.currentTarget.blur();
+            if (this.busy) return;
+            fn();
+        });
+        bind('adj-cancel', () => app.cancelAdjust());
+        bind('adj-done', () => app.saveAdjust());
+        bind('adj-done-next', () => app.saveAdjust({ next: true }));
+        bind('adj-before', () => this.toggleBefore());
+        bind('adj-reset', () => this.reset());
+        bind('adj-copy', () => this.copy());
+        bind('adj-paste', () => this.paste());
+        bind('adj-auto', () => this.auto());
+        bind('adj-auto-color', () => this.auto({ color: true }));
+
+        this.sliders = {};
+        const light = this.el('adj-light'), color = this.el('adj-color');
+        for (const [k, label] of this.LIGHT) light.appendChild(this.slider(k, label));
+        for (const [k, label] of this.COLOR) color.appendChild(this.slider(k, label));
+        this.mixerSliders = Develop.HUES.map((h, i) => {
+            const row = this.slider(`mix-${h.id}`, h.name, {
+                range: { min: -100, max: 100, step: 1 },
+                get: () => this.a.hsl[this.mixer][i],
+                set: (v) => { this.a.hsl[this.mixer][i] = v; }
+            });
+            row.style.setProperty('--swatch', h.color);
+            row.classList.add('adj-mix-row');
+            this.el('adj-mixer').appendChild(row);
+            return row;
+        });
+
+        // Channel tabs (levels and curve share one choice) and the mixer's
+        for (const box of document.querySelectorAll('.adj-chan')) {
+            for (const [c, label, title] of [['rgb', 'RGB', 'All channels'], ['r', 'R', 'Red'], ['g', 'G', 'Green'], ['b', 'B', 'Blue']]) {
+                const b = document.createElement('button');
+                b.className = 'adj-tab';
+                b.dataset.chan = c;
+                b.textContent = label;
+                b.title = title;
+                b.setAttribute('role', 'tab');
+                b.addEventListener('click', () => { b.blur(); this.channel = c; this.sync(); this.drawPanels(); });
+                box.appendChild(b);
+            }
+        }
+        for (const b of this.root.querySelectorAll('.adj-mix-tabs .adj-tab')) {
+            b.addEventListener('click', () => { b.blur(); this.mixer = b.dataset.mix; this.sync(); });
+        }
+        // A section's Reset puts just that section back
+        for (const b of this.root.querySelectorAll('[data-reset]')) {
+            b.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                b.blur();
+                this.resetSection(b.dataset.reset);
+            });
+        }
+
+        this.initLevels();
+        this.initCurve();
+        this._resize = new ResizeObserver(() => { this.layout(); this.drawPanels(); });
+        this._resize.observe(this.el('adj-stage'));
+        this._resize.observe(this.el('adj-panel'));
+    },
+
+    // A slider with its number. opts: { range, get, set } for one that
+    // isn't a plain setting
+    slider(key, label, opts = {}) {
+        const range = opts.range || Develop.SLIDERS[key];
+        const get = opts.get || (() => this.a[key]);
+        const set = opts.set || ((v) => { this.a[key] = v; });
+        const row = document.createElement('div');
+        row.className = 'adj-row';
+        const id = 'adj-' + key;
+        row.innerHTML = `<label class="adj-label" for="${id}"></label>
+            <input type="number" class="adj-num field" aria-label="">
+            <input type="range" class="adj-range" id="${id}">`;
+        const lab = row.querySelector('label'), num = row.querySelector('.adj-num'), input = row.querySelector('.adj-range');
+        lab.textContent = label;
+        lab.title = 'Double-click to reset';
+        num.setAttribute('aria-label', label);
+        for (const x of [input, num]) {
+            x.min = range.min;
+            x.max = range.max;
+            x.step = range.step;
+        }
+        if (this.TRACKS[key]) row.style.setProperty('--track', this.TRACKS[key]);
+        const put = (v, { history = true } = {}) => {
+            v = Math.min(range.max, Math.max(range.min, v));
+            if (history) this.pushHistory();
+            set(v);
+            this.changed();
+        };
+        input.addEventListener('input', () => {
+            if (!this._sliding) { this.pushHistory(); this._sliding = true; }
+            put(parseFloat(input.value), { history: false });
+        });
+        input.addEventListener('change', () => { this._sliding = false; });
+        num.addEventListener('change', () => { put(parseFloat(num.value) || 0); num.blur(); });
+        const zero = () => put(0);
+        lab.addEventListener('dblclick', zero);
+        input.addEventListener('dblclick', zero);
+        row._sync = () => {
+            const v = get();
+            input.value = v;
+            if (document.activeElement !== num) num.value = range.step < 1 ? v.toFixed(2) : Math.round(v);
+            const pos = (x) => ((x - range.min) / (range.max - range.min)) * 100;
+            const zeroAt = pos(Math.max(range.min, Math.min(range.max, 0)));
+            row.style.setProperty('--lo', `${Math.min(zeroAt, pos(v))}%`);
+            row.style.setProperty('--hi', `${Math.max(zeroAt, pos(v))}%`);
+            row.classList.toggle('changed', !!v);
+        };
+        if (!opts.get) this.sliders[key] = row;
+        return row;
+    },
+
+    // ---- Opening and closing ----
+
+    async open(app, file) {
+        this.init(app);
+        this.file = file;
+        this.ready = false;
+        this.isOpen = true;
+        this.before = false;
+        this.history = [];
+        this.future = [];
+        const kept = Edits.get(file);
+        this.a = Develop.full(kept && kept.adj);
+        this.start = JSON.stringify(Develop.clean(this.a));
+        this.root.classList.remove('hidden');
+        this.el('adj-file').textContent = file.name;
+        this.el('adj-dims').textContent = 'Loading…';
+        const keep = Edits.canKeep();
+        this.el('adj-done').title = keep ? 'Keep these adjustments with the photo; the file isn\'t changed (Enter)' : 'Save the adjustments into the photo (Enter)';
+        this.sync();
+
+        const token = this._openToken = (this._openToken || 0) + 1;
+        const current = () => this.isOpen && this.file === file && this._openToken === token;
+        const src = await app.getDisplaySource(file, { raw: true });
+        const blob = src.blob || await (await fetch(src.url)).blob();
+        let bmp = await createImageBitmap(blob);
+        const fullW = src.w || bmp.width;
+        if (Math.max(bmp.width, bmp.height) > this.EDGE) {
+            const s = this.EDGE / Math.max(bmp.width, bmp.height);
+            const small = await createImageBitmap(bmp, { resizeWidth: Math.round(bmp.width * s), resizeHeight: Math.round(bmp.height * s), resizeQuality: 'high' });
+            bmp.close();
+            bmp = small;
+        }
+        const scale = fullW / bmp.width;
+        // Its crop first: adjusted as it will be seen
+        if (kept && !Edits.wholePhoto(kept)) {
+            const c = CropEditor.fromSnapshot(bmp.width, bmp.height, kept).drawOutput(bmp);
+            bmp.close();
+            bmp = await createImageBitmap(c);
+            c.width = c.height = 0;
+        }
+        if (!current()) { bmp.close(); return; }
+        this.w = bmp.width;
+        this.h = bmp.height;
+        this.el('adj-dims').textContent = `${Math.round(bmp.width * scale)} × ${Math.round(bmp.height * scale)}`;
+
+        // What the histogram and Auto look at
+        const s = Math.min(1, this.SAMPLE / Math.max(bmp.width, bmp.height));
+        const sc = document.createElement('canvas');
+        sc.width = Math.max(1, Math.round(bmp.width * s));
+        sc.height = Math.max(1, Math.round(bmp.height * s));
+        const sctx = sc.getContext('2d', { willReadFrequently: true });
+        sctx.drawImage(bmp, 0, 0, sc.width, sc.height);
+        this.sample = sctx.getImageData(0, 0, sc.width, sc.height).data;
+        this.sampleOut = new Uint8ClampedArray(this.sample.length);
+
+        if (this.gl && this.gl.lost) this.useCpu();
+        if (this.gl) {
+            this.gl.setImage(bmp);
+        } else {
+            // No GPU: a smaller working copy, adjusted on the CPU
+            const s2 = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+            const c = document.createElement('canvas');
+            c.width = Math.round(bmp.width * s2);
+            c.height = Math.round(bmp.height * s2);
+            const cx = c.getContext('2d', { willReadFrequently: true });
+            cx.drawImage(bmp, 0, 0, c.width, c.height);
+            this.src = cx.getImageData(0, 0, c.width, c.height);
+            this.out = new ImageData(c.width, c.height);
+            this.w = c.width;
+            this.h = c.height;
+        }
+        bmp.close();
+        this.ready = true;
+        this.layout();
+        this.draw();
+    },
+
+    // The GPU went away (or never came): the same on the CPU
+    useCpu() {
+        const fresh = document.createElement('canvas');
+        fresh.id = 'adj-canvas';
+        this.canvas.replaceWith(fresh);
+        this.canvas = fresh;
+        this.gl = null;
+        this.ctx = fresh.getContext('2d');
+    },
+
+    close() {
+        this.isOpen = false;
+        this.ready = false;
+        if (this._raf) cancelAnimationFrame(this._raf);
+        this._raf = 0;
+        this.src = this.out = this.sample = this.sampleOut = null;
+        if (this.root) this.root.classList.add('hidden');
+        this.file = null;
+    },
+
+    // Settings as kept (null: none)
+    result() {
+        return Develop.clean(this.a);
+    },
+
+    changedSinceOpen() {
+        return JSON.stringify(this.result()) !== this.start;
+    },
+
+    // ---- Changing ----
+
+    changed() {
+        this.sync();
+        this.schedule();
+    },
+
+    pushHistory() {
+        const s = JSON.stringify(this.result());
+        if (this.history[this.history.length - 1] === s) return;
+        this.history.push(s);
+        if (this.history.length > 200) this.history.shift();
+        this.future = [];
+    },
+
+    setAll(adj, { history = true } = {}) {
+        if (history) this.pushHistory();
+        this.a = Develop.full(adj);
+        this.changed();
+        this.drawPanels();
+    },
+
+    undo() {
+        if (!this.history.length) return false;
+        this.future.push(JSON.stringify(this.result()));
+        this.setAll(JSON.parse(this.history.pop()), { history: false });
+        return true;
+    },
+
+    redo() {
+        if (!this.future.length) return false;
+        this.history.push(JSON.stringify(this.result()));
+        this.setAll(JSON.parse(this.future.pop()), { history: false });
+        return true;
+    },
+
+    reset() {
+        if (!this.result()) return;
+        this.setAll(null);
+    },
+
+    resetSection(which) {
+        const a = this.result() || {};
+        if (which === 'light') for (const [k] of this.LIGHT) delete a[k];
+        if (which === 'color') for (const [k] of this.COLOR) delete a[k];
+        if (which === 'levels' && a.levels) delete a.levels[this.channel];
+        if (which === 'curve' && a.curve) delete a.curve[this.channel];
+        if (which === 'mixer') delete a.hsl;
+        this.setAll(a);
+    },
+
+    toggleBefore(on = !this.before) {
+        this.before = on;
+        this.el('adj-before').setAttribute('aria-pressed', String(on));
+        this.el('adj-before-tag').classList.toggle('hidden', !on);
+        this.schedule();
+    },
+
+    auto({ color = false } = {}) {
+        if (!this.ready) return;
+        this.setAll(Develop.auto(this.sample, this.result(), { colour: color }));
+        this.app.showToast(color ? 'Auto color: levels set for each channel' : 'Auto: levels set from the photo', 1600, null, null, { kind: 'adjust' });
+    },
+
+    // Copied settings, for this photo or others (Ctrl+Shift+C / V)
+    clipboard() {
+        if (this._clip === undefined) {
+            try { this._clip = JSON.parse(localStorage.getItem('jeditor.adjustCopy') || 'null'); } catch (e) { this._clip = null; }
+            if (this._clip && typeof this._clip === 'object' && 'adj' in this._clip) this._clip = { adj: Develop.clean(this._clip.adj) };
+            else this._clip = null;
+        }
+        return this._clip;
+    },
+
+    remember(adj) {
+        this._clip = { adj: Develop.clean(adj) };
+        try { localStorage.setItem('jeditor.adjustCopy', JSON.stringify(this._clip)); } catch (e) { /* private mode */ }
+    },
+
+    copy() {
+        this.remember(this.result());
+        this.app.showToast('Copied the adjustments', 1400, null, null, { kind: 'adjust' });
+    },
+
+    paste() {
+        const clip = this.clipboard();
+        if (!clip) {
+            this.app.showToast('Nothing copied yet: Copy on an adjusted photo first');
+            return;
+        }
+        this.setAll(clip.adj);
+    },
+
+    // ---- Drawing ----
+
+    schedule() {
+        if (this._raf || !this.ready) return;
+        this._raf = requestAnimationFrame(() => {
+            this._raf = 0;
+            this.draw();
+        });
+    },
+
+    // The canvas at the stage's size, the photo fitted in it
+    layout() {
+        if (!this.ready) return;
+        const box = this.el('adj-stage').getBoundingClientRect();
+        const pad = 16;
+        const s = Math.min((box.width - 2 * pad) / this.w, (box.height - 2 * pad) / this.h, 4);
+        this.canvas.style.width = `${Math.max(1, Math.floor(this.w * s))}px`;
+        this.canvas.style.height = `${Math.max(1, Math.floor(this.h * s))}px`;
+    },
+
+    draw() {
+        if (!this.ready) return;
+        const T = Develop.tables(this.a);
+        if (this.gl) {
+            try {
+                this.gl.setTables(T);
+                this.gl.draw(this.w, this.h, { before: this.before });
+            } catch (e) {
+                console.warn('Adjust: GPU failed:', e);
+            }
+        } else if (this.src) {
+            if (this.canvas.width !== this.w) this.canvas.width = this.w;
+            if (this.canvas.height !== this.h) this.canvas.height = this.h;
+            if (this.before) this.ctx.putImageData(this.src, 0, 0);
+            else {
+                Develop.applyCPU(this.src.data, T, this.out.data);
+                this.ctx.putImageData(this.out, 0, 0);
+            }
+        }
+        const px = this.before ? this.sample : Develop.applyCPU(this.sample, T, this.sampleOut);
+        this.hist = Develop.histogram(px);
+        this.drawPanels();
+    },
+
+    drawPanels() {
+        if (!this.isOpen) return;
+        this.drawHistogram();
+        this.drawLevels();
+        this.drawCurve();
+    },
+
+    // Every control showing the settings
+    sync() {
+        for (const row of Object.values(this.sliders)) row._sync();
+        for (const row of this.mixerSliders) row._sync();
+        for (const b of this.root.querySelectorAll('.adj-chan .adj-tab')) b.setAttribute('aria-selected', String(b.dataset.chan === this.channel));
+        for (const b of this.root.querySelectorAll('.adj-mix-tabs .adj-tab')) b.setAttribute('aria-selected', String(b.dataset.mix === this.mixer));
+        const l = this.a.levels[this.channel];
+        this.el('adj-levels-read').textContent = `${Math.round(l[0] * 255)} · ${l[1].toFixed(2)} · ${Math.round(l[2] * 255)}` +
+            (l[3] || l[4] !== 1 ? `  →  ${Math.round(l[3] * 255)} – ${Math.round(l[4] * 255)}` : '');
+        const any = !!this.result();
+        this.el('adj-reset').disabled = !any;
+        this.root.classList.toggle('adj-changed', any);
+    },
+
+    css(name) {
+        return getComputedStyle(this.root).getPropertyValue(name).trim();
+    },
+
+    // A canvas at its CSS size, for crisp lines: its 2D context, scaled
+    fit(canvas) {
+        const r = canvas.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+        if (canvas.width !== w) canvas.width = w;
+        if (canvas.height !== h) canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, r.width, r.height);
+        return { ctx, w: r.width, h: r.height };
+    },
+
+    CH_COLORS: { r: '#ff5b5b', g: '#4cd964', b: '#4c8dff' },
+
+    // Red, green and blue over each other (where they meet: grey), or one
+    drawHistogram() {
+        const cv = this.el('adj-hist');
+        if (!cv || !this.hist) return;
+        const { ctx, w, h } = this.fit(cv);
+        const H = this.hist;
+        const chans = this.channel === 'rgb' ? ['r', 'g', 'b'] : [this.channel];
+        // Scaled to the tallest bar but the very ends (clipped pixels pile up there)
+        let peak = 1;
+        for (const c of chans) for (let i = 2; i < 254; i++) peak = Math.max(peak, H[c][i]);
+        ctx.globalCompositeOperation = 'lighter';
+        for (const c of chans) {
+            ctx.fillStyle = this.CH_COLORS[c] + (chans.length > 1 ? 'a0' : 'd0');
+            ctx.beginPath();
+            ctx.moveTo(0, h);
+            for (let i = 0; i < 256; i++) {
+                const y = h - Math.min(1, Math.sqrt(H[c][i] / peak)) * (h - 2);
+                ctx.lineTo((i / 255) * w, y);
+            }
+            ctx.lineTo(w, h);
+            ctx.closePath();
+            ctx.fill();
+        }
+        ctx.globalCompositeOperation = 'source-over';
+        // Clipping: a mark at an end with more than a sliver there
+        const clip = (i) => chans.some(c => H[c][i] > H.n * 0.002);
+        ctx.fillStyle = '#fff';
+        if (clip(0)) ctx.fillRect(0, 0, 3, 8);
+        if (clip(255)) ctx.fillRect(w - 3, 0, 3, 8);
+    },
+
+    // ---- Levels: handles under the histogram ----
+    //
+    // Top row: black, middle grey and white in; below, a gradient with
+    // black and white out
+
+    initLevels() {
+        const cv = this.el('adj-levels');
+        cv.addEventListener('pointerdown', (e) => {
+            if (!this.ready) return;
+            const r = cv.getBoundingClientRect();
+            const x = (e.clientX - r.left) / r.width, y = e.clientY - r.top;
+            const l = this.a.levels[this.channel];
+            const handles = y < 16
+                ? [['in0', l[0]], ['gamma', this.gammaAt(l)], ['in1', l[2]]]
+                : [['out0', l[3]], ['out1', l[4]]];
+            let best = null, dist = 14 / r.width;
+            for (const [k, at] of handles) {
+                const d = Math.abs(at - x);
+                if (d <= dist) { best = k; dist = d; }
+            }
+            if (!best) return;
+            e.preventDefault();
+            cv.setPointerCapture(e.pointerId);
+            this.pushHistory();
+            this._levelDrag = best;
+            this.moveLevel(x);
+        });
+        cv.addEventListener('pointermove', (e) => {
+            if (!this._levelDrag) return;
+            const r = cv.getBoundingClientRect();
+            this.moveLevel((e.clientX - r.left) / r.width);
+        });
+        const end = () => { this._levelDrag = null; };
+        cv.addEventListener('pointerup', end);
+        cv.addEventListener('pointercancel', end);
+        cv.addEventListener('dblclick', () => this.resetSection('levels'));
+    },
+
+    // Where the middle handle sits: the input that comes out as mid grey
+    gammaAt(l) {
+        return l[0] + (l[2] - l[0]) * Math.pow(0.5, l[1]);
+    },
+
+    moveLevel(x) {
+        const l = this.a.levels[this.channel];
+        x = Math.min(1, Math.max(0, x));
+        switch (this._levelDrag) {
+            case 'in0': l[0] = Math.min(x, l[2] - 0.02); break;
+            case 'in1': l[2] = Math.max(x, l[0] + 0.02); break;
+            case 'gamma': {
+                const t = Math.min(0.99, Math.max(0.01, (x - l[0]) / (l[2] - l[0])));
+                l[1] = Math.min(9.99, Math.max(0.1, Math.log(t) / Math.log(0.5)));
+                break;
+            }
+            case 'out0': l[3] = x; break;
+            case 'out1': l[4] = x; break;
+        }
+        this.changed();
+    },
+
+    drawLevels() {
+        const cv = this.el('adj-levels');
+        if (!cv) return;
+        const { ctx, w } = this.fit(cv);
+        const l = this.a.levels[this.channel];
+        const tri = (at, y, up, fill) => {
+            const x = at * w;
+            ctx.beginPath();
+            ctx.moveTo(x, up ? y : y + 8);
+            ctx.lineTo(x - 6, up ? y + 9 : y - 1);
+            ctx.lineTo(x + 6, up ? y + 9 : y - 1);
+            ctx.closePath();
+            ctx.fillStyle = fill;
+            ctx.fill();
+            ctx.strokeStyle = this.css('--text-2') || '#999';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        };
+        const end = this.channel === 'rgb' ? '#ffffff' : this.CH_COLORS[this.channel];
+        tri(l[0], 2, true, '#000');
+        tri(this.gammaAt(l), 2, true, '#808080');
+        tri(l[2], 2, true, end);
+        const g = ctx.createLinearGradient(0, 0, w, 0);
+        g.addColorStop(0, '#000');
+        g.addColorStop(1, end);
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 18, w, 6);
+        tri(l[3], 26, true, '#000');
+        tri(l[4], 26, true, end);
+    },
+
+    // ---- Curve ----
+
+    initCurve() {
+        const cv = this.el('adj-curve');
+        const at = (e) => {
+            const r = cv.getBoundingClientRect();
+            return { x: (e.clientX - r.left) / r.width, y: 1 - (e.clientY - r.top) / r.height, r };
+        };
+        cv.addEventListener('pointerdown', (e) => {
+            if (!this.ready) return;
+            e.preventDefault();
+            const p = at(e);
+            const pts = this.a.curve[this.channel];
+            let i = this.nearPoint(pts, p);
+            this.pushHistory();
+            if (i < 0) {
+                if (pts.length >= 16) return;
+                // A new point on the curve where it was clicked
+                if (pts.some(q => Math.abs(q[0] - p.x) < 0.015)) return;
+                const y = Develop.spline(pts)(p.x);
+                pts.push([p.x, y]);
+                pts.sort((a, b) => a[0] - b[0]);
+                i = pts.findIndex(q => q[0] === p.x);
+            }
+            cv.setPointerCapture(e.pointerId);
+            this._curveDrag = { i };
+            this.changed();
+        });
+        cv.addEventListener('pointermove', (e) => {
+            const d = this._curveDrag;
+            if (!d) return;
+            const p = at(e);
+            const pts = this.a.curve[this.channel];
+            const i = d.i;
+            const lo = i > 0 ? pts[i - 1][0] + 0.01 : 0, hi = i < pts.length - 1 ? pts[i + 1][0] - 0.01 : 1;
+            // Dragged well off the side (not an end): taken away
+            const off = p.y < -0.12 || p.y > 1.12 || p.x < lo - 0.12 || p.x > hi + 0.12;
+            if (off && i > 0 && i < pts.length - 1) {
+                pts.splice(i, 1);
+                this._curveDrag = null;
+                this.changed();
+                return;
+            }
+            pts[i] = [Math.min(hi, Math.max(lo, p.x)), Math.min(1, Math.max(0, p.y))];
+            this.changed();
+        });
+        const end = () => { this._curveDrag = null; };
+        cv.addEventListener('pointerup', end);
+        cv.addEventListener('pointercancel', end);
+        cv.addEventListener('dblclick', (e) => {
+            const pts = this.a.curve[this.channel];
+            const i = this.nearPoint(pts, at(e));
+            if (i > 0 && i < pts.length - 1) {
+                this.pushHistory();
+                pts.splice(i, 1);
+                this.changed();
+            }
+        });
+    },
+
+    nearPoint(pts, p) {
+        const r = p.r;
+        let best = -1, dist = 10;
+        pts.forEach(([x, y], i) => {
+            const d = Math.hypot((x - p.x) * r.width, (y - p.y) * r.height);
+            if (d <= dist) { best = i; dist = d; }
+        });
+        return best;
+    },
+
+    drawCurve() {
+        const cv = this.el('adj-curve');
+        if (!cv) return;
+        const { ctx, w, h } = this.fit(cv);
+        const line = this.css('--border') || '#444';
+        ctx.strokeStyle = line;
+        ctx.lineWidth = 1;
+        for (let k = 1; k < 4; k++) {
+            ctx.beginPath();
+            ctx.moveTo((k / 4) * w, 0); ctx.lineTo((k / 4) * w, h);
+            ctx.moveTo(0, (k / 4) * h); ctx.lineTo(w, (k / 4) * h);
+            ctx.stroke();
+        }
+        // The histogram behind it, faint
+        if (this.hist) {
+            const bins = this.channel === 'rgb' ? this.hist.l : this.hist[this.channel];
+            let peak = 1;
+            for (let i = 2; i < 254; i++) peak = Math.max(peak, bins[i]);
+            ctx.fillStyle = (this.css('--text-2') || '#888') ;
+            ctx.globalAlpha = 0.18;
+            ctx.beginPath();
+            ctx.moveTo(0, h);
+            for (let i = 0; i < 256; i++) ctx.lineTo((i / 255) * w, h - Math.min(1, Math.sqrt(bins[i] / peak)) * h * 0.9);
+            ctx.lineTo(w, h);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(0, h);
+        ctx.lineTo(w, 0);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        const pts = this.a.curve[this.channel];
+        const f = Develop.spline(pts);
+        const color = this.channel === 'rgb' ? (this.css('--text-1') || '#fff') : this.CH_COLORS[this.channel];
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i = 0; i <= 128; i++) {
+            const x = i / 128;
+            const y = f(x);
+            if (i) ctx.lineTo(x * w, (1 - y) * h);
+            else ctx.moveTo(x * w, (1 - y) * h);
+        }
+        ctx.stroke();
+        for (const [x, y] of pts) {
+            ctx.beginPath();
+            ctx.arc(x * w, (1 - y) * h, 4.5, 0, Math.PI * 2);
+            ctx.fillStyle = this.css('--bg-surface') || '#222';
+            ctx.fill();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+    }
+};

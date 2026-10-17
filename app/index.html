@@ -21,11 +21,13 @@
     <script src="crop-auto.js"></script>
     <script src="crop.js"></script>
     <script src="crop-log.js"></script>
+    <script src="develop.js"></script>
     <script src="dupes.js"></script>
     <script src="rename.js"></script>
     <script src="folders.js"></script>
     <script src="flags.js"></script>
     <script src="edits.js"></script>
+    <script src="adjust.js"></script>
     <script src="history.js"></script>
     <script src="watch.js"></script>
     <script src="recents.js"></script>
@@ -140,6 +142,9 @@
                     </button>
                     <button id="btn-crop" data-hc="crop" class="tb-btn" title="Crop and straighten (C)" aria-label="Crop and straighten">
                         <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
+                    </button>
+                    <button id="btn-adjust" data-hc="adjust" class="tb-btn" title="Adjust: light, color, curves (E)" aria-label="Adjust">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>
                     </button>
                     <button id="btn-history" data-hc="history" class="tb-btn" title="Undo history (H)" aria-label="Undo history" aria-haspopup="dialog" aria-expanded="false">
                         <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
@@ -382,6 +387,75 @@
                 <span class="crop-group crop-commit">
                     <button id="crop-save-next" class="btn secondary crop-btn" title="Save, then crop the next photo (Shift+Enter)">Save &amp; next</button>
                     <button id="crop-save" class="btn primary crop-btn" title="Save (Enter)">Save</button>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Adjust: light, color, levels, curves (adjust.js; the maths in develop.js) -->
+    <div id="adjust-editor" class="adjust-editor mode-screen hidden">
+        <div class="mode-head adj-head">
+            <span id="adj-file" class="mode-title"></span>
+            <span id="adj-dims" class="crop-dims"></span>
+            <span id="adj-before-tag" class="adj-tag hidden">Before</span>
+        </div>
+        <div class="adj-body">
+            <div id="adj-stage" class="adj-stage"><canvas id="adj-canvas"></canvas></div>
+            <aside id="adj-panel" class="adj-panel" aria-label="Adjustments">
+                <section class="adj-sec adj-hist-box" aria-label="Histogram and levels">
+                    <div class="adj-sec-head">
+                        <span class="adj-chan adj-tabs" role="tablist" aria-label="Channel"></span>
+                        <span class="adj-sec-acts">
+                            <button id="adj-auto" class="btn ghost sm" title="Auto: set the levels from the photo (Shift+A)">Auto</button>
+                            <button id="adj-auto-color" class="btn ghost sm" title="Auto color: each channel on its own too, which takes the cast off a faded print (Shift+C)">Auto color</button>
+                        </span>
+                    </div>
+                    <canvas id="adj-hist" class="adj-hist"></canvas>
+                    <canvas id="adj-levels" class="adj-levels" title="Levels: drag the black, grey and white handles; the lower two set the output (double-click to reset)"></canvas>
+                    <div class="adj-levels-foot"><span id="adj-levels-read" class="adj-read"></span><button class="btn ghost sm adj-sec-reset" data-reset="levels">Reset</button></div>
+                </section>
+                <details class="adj-sec" open>
+                    <summary><span>Light</span><button class="btn ghost sm adj-sec-reset" data-reset="light">Reset</button></summary>
+                    <div id="adj-light" class="adj-rows"></div>
+                </details>
+                <details class="adj-sec" open>
+                    <summary><span>Color</span><button class="btn ghost sm adj-sec-reset" data-reset="color">Reset</button></summary>
+                    <div id="adj-color" class="adj-rows"></div>
+                </details>
+                <details class="adj-sec" open>
+                    <summary><span>Curve</span><button class="btn ghost sm adj-sec-reset" data-reset="curve">Reset</button></summary>
+                    <div class="adj-sec-head"><span class="adj-chan adj-tabs" role="tablist" aria-label="Channel"></span></div>
+                    <canvas id="adj-curve" class="adj-curve" title="Click to add a point and drag it; drag a point off the side, or double-click it, to take it away"></canvas>
+                </details>
+                <details class="adj-sec">
+                    <summary><span>Color mixer</span><button class="btn ghost sm adj-sec-reset" data-reset="mixer">Reset</button></summary>
+                    <div class="adj-sec-head">
+                        <span class="adj-mix-tabs adj-tabs" role="tablist" aria-label="Change">
+                            <button class="adj-tab" role="tab" data-mix="hue">Hue</button>
+                            <button class="adj-tab" role="tab" data-mix="sat">Saturation</button>
+                            <button class="adj-tab" role="tab" data-mix="lum">Luminance</button>
+                        </span>
+                    </div>
+                    <div id="adj-mixer" class="adj-rows"></div>
+                </details>
+            </aside>
+        </div>
+        <div class="crop-toolbar adj-toolbar">
+            <div class="crop-row">
+                <button id="adj-cancel" class="btn secondary crop-btn" title="Cancel (Esc)">Cancel</button>
+                <span class="crop-group">
+                    <button id="adj-before" class="btn ghost crop-btn" aria-pressed="false" title="Before and after (\)">Before</button>
+                    <button id="adj-reset" class="btn ghost crop-btn" title="Reset everything (R)">Reset</button>
+                </span>
+                <span class="crop-sep" aria-hidden="true"></span>
+                <span class="crop-group">
+                    <button id="adj-copy" class="btn ghost crop-btn" title="Copy these adjustments, to paste onto other photos (Ctrl+Shift+C)">Copy</button>
+                    <button id="adj-paste" class="btn ghost crop-btn" title="Paste the adjustments copied last (Ctrl+Shift+V)">Paste</button>
+                </span>
+                <span class="crop-spacer" aria-hidden="true"></span>
+                <span class="crop-group crop-commit">
+                    <button id="adj-done-next" class="btn secondary crop-btn" title="Done, then adjust the next photo (Shift+Enter)">Done &amp; next</button>
+                    <button id="adj-done" class="btn primary crop-btn" title="Done (Enter)">Done</button>
                 </span>
             </div>
         </div>

@@ -5,6 +5,15 @@
 
 const CHANGELOG = [
     {
+        version: '1.42.0', date: '2026-10-17',
+        items: [
+            'Adjust, Lightroom-style (`E`, or the sliders button): exposure, contrast, highlights, shadows, whites and blacks; temperature, tint, vibrance and saturation; levels on a live histogram, a curve, and a color mixer for the hue, saturation and brightness of each color. The photo changes as you drag, even a big scan. Auto sets the levels from the photo, and Auto color takes the cast off a faded print. `\\` shows before and after.',
+            'Adjustments never change the photo: they\'re kept with the project and shown wherever the photo is, so they can be changed again any time. Export writes copies with them, Save edits… writes them into the photos (Ctrl+Z still puts the originals back).',
+            'Copy and paste adjustments (`Ctrl+Shift+C`, `Ctrl+Shift+V`) onto one photo or a whole selection in the grid, and Done & next (`Shift+Enter`) to work through a project.',
+            'Export with a longest side now resizes the photo with its edits, not the original.'
+        ]
+    },
+    {
         version: '1.41.0', date: '2026-10-17',
         items: [
             'On iPhone, iPad and Android, the web version opens photos: Open photos picks them from Photos, Files or the gallery, edits are kept as you go, and Save… hands them back through the share sheet (Save to Photos, Save to Files, or another app). On Android, Install jEditor keeps it with your apps; on iPhone and iPad, Share → Add to Home Screen.',

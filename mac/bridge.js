@@ -427,7 +427,7 @@
     // it, and the item shows what it does (hidden, off, on). So everything
     // they do, their keys and Settings → Toolbar stay the page's.
     const SYMBOLS = {
-        info: 'info.circle', refresh: 'arrow.clockwise', crop: 'crop', history: 'clock.arrow.circlepath',
+        info: 'info.circle', refresh: 'arrow.clockwise', crop: 'crop', adjust: 'slider.horizontal.3', history: 'clock.arrow.circlepath',
         fit: 'rectangle.inset.filled', strip: 'film', fullscreen: 'arrow.up.left.and.arrow.down.right',
         dupes: 'square.on.square', keys: 'keyboard', whatsnew: 'sparkles', customize: 'gearshape',
         scan: 'scanner', camera: 'camera'
