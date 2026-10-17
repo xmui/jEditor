@@ -4013,6 +4013,40 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
     visibility: hidden;
 }
 
+/* The web version's "get the app" (start.js) */
+.start-get {
+    width: 100%;
+    margin-top: var(--sp-8);
+    padding: var(--sp-4) var(--sp-5);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-lg);
+    background: color-mix(in srgb, var(--bg-surface) 60%, transparent);
+}
+
+.start-get-head {
+    margin: 0 0 var(--sp-3);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.start-get-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-2);
+}
+
+.start-get-others {
+    margin: var(--sp-3) 0 0;
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+}
+
+.start-get-others a {
+    color: var(--text-2);
+}
+
 .start-foot {
     display: flex;
     flex-wrap: wrap;
