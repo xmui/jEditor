@@ -560,7 +560,7 @@ sealed class MainForm : Form
                 }
                 case "checkUpdate":
                 {
-                    var latest = await Updater.LatestAsync();
+                    var latest = await Updater.LatestAsync((bool?)msg["beta"] == true);
                     pendingUpdate = latest;
                     Reply(id, new
                     {

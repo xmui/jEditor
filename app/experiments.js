@@ -1,0 +1,61 @@
+// Experimental features (Settings → Experimental): ones still being made,
+// off until turned on, one at a time. A feature asks Experiments.on(id)
+// before it shows itself; turning one on or off takes effect at once (a
+// 'jeditor-experiments' event on window says so). Betas (Settings →
+// Updates → Beta builds) get new ones first.
+//
+// An experiment: { id, title, text }. When one is done it leaves this
+// list and is simply part of jEditor.
+
+const Experiments = {
+    LIST: [],
+
+    init(app) {
+        this.app = app;
+        this.render();
+    },
+
+    on(id) {
+        const prefs = (this.app && this.app.uiPrefs.experiments) || {};
+        return this.LIST.some(x => x.id === id) && prefs[id] === true;
+    },
+
+    set(id, value) {
+        const app = this.app;
+        app.uiPrefs.experiments = { ...(app.uiPrefs.experiments || {}), [id]: !!value };
+        app.saveUiPrefs();
+        dispatchEvent(new CustomEvent('jeditor-experiments', { detail: { id, on: !!value } }));
+    },
+
+    render() {
+        const list = document.getElementById('exp-list');
+        if (!list) return;
+        list.textContent = '';
+        if (!this.LIST.length) {
+            const p = document.createElement('p');
+            p.className = 'exp-empty';
+            p.textContent = 'Nothing to try right now. New features show up here first, before they\'re finished.';
+            list.appendChild(p);
+            return;
+        }
+        for (const x of this.LIST) {
+            const row = document.createElement('div');
+            row.className = 'set-row';
+            const label = document.createElement('label');
+            label.className = 'set-label';
+            label.htmlFor = 'exp-' + x.id;
+            label.textContent = x.title;
+            const small = document.createElement('small');
+            small.textContent = x.text;
+            label.appendChild(small);
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.className = 'switch';
+            input.id = 'exp-' + x.id;
+            input.checked = this.on(x.id);
+            input.addEventListener('change', () => this.set(x.id, input.checked));
+            row.append(label, input);
+            list.appendChild(row);
+        }
+    }
+};

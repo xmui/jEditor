@@ -31,7 +31,8 @@ static class Updater
             .FirstOrDefault(a => a.Key == "ReleaseTag" && !string.IsNullOrEmpty(a.Value))?.Value
         ?? "v" + Application.ProductVersion;
 
-    public static async Task<Release> LatestAsync()
+    // beta: betas count too (Settings → Updates → Beta builds)
+    public static async Task<Release> LatestAsync(bool beta = false)
     {
         Release? newest = null;
         Exception? failed = null;
@@ -39,7 +40,7 @@ static class Updater
         {
             try
             {
-                var release = await LatestAsync(repo);
+                var release = beta ? await NewestAsync(repo) : await LatestAsync(repo);
                 if (newest is null || IsNewer(release.Tag, newest.Tag)) newest = release;
             }
             catch (Exception e) { failed ??= e; }
@@ -52,7 +53,27 @@ static class Updater
         using var res = await http.GetAsync($"https://api.github.com/repos/{repo}/releases/latest");
         if ((int)res.StatusCode == 404) throw new InvalidOperationException("No releases yet");
         res.EnsureSuccessStatusCode();
-        var json = JsonNode.Parse(await res.Content.ReadAsStringAsync())!;
+        return FromJson(JsonNode.Parse(await res.Content.ReadAsStringAsync())!);
+    }
+
+    // The newest release or beta with a setup to download
+    static async Task<Release> NewestAsync(string repo)
+    {
+        using var res = await http.GetAsync($"https://api.github.com/repos/{repo}/releases?per_page=30");
+        res.EnsureSuccessStatusCode();
+        Release? newest = null;
+        foreach (var json in JsonNode.Parse(await res.Content.ReadAsStringAsync()) as JsonArray ?? [])
+        {
+            if (json is null || (bool?)json["draft"] == true) continue;
+            Release release;
+            try { release = FromJson(json); } catch (InvalidOperationException) { continue; }
+            if (newest is null || IsNewer(release.Tag, newest.Tag)) newest = release;
+        }
+        return newest ?? throw new InvalidOperationException("No releases yet");
+    }
+
+    static Release FromJson(JsonNode json)
+    {
         var tag = (string?)json["tag_name"] ?? throw new InvalidOperationException("The release has no tag");
         var setup = (json["assets"] as JsonArray ?? [])
             .FirstOrDefault(a => Regex.IsMatch((string?)a?["name"] ?? "", @"^jEditor-Setup-.*\.exe$", RegexOptions.IgnoreCase))
@@ -67,20 +88,22 @@ static class Updater
             digest is not null && digest.StartsWith("sha256:") ? digest[7..].ToLowerInvariant() : null);
     }
 
-    // v1.18.1 < v1.18.1-2 < v1.19.0
+    // v1.18.1 < v1.18.1-2 < v1.19.0-beta.1 < v1.19.0-beta.2 < v1.19.0
     public static bool IsNewer(string tag, string than)
     {
-        var (a, an) = Parse(tag);
-        var (b, bn) = Parse(than);
-        return a != b ? a > b : an > bn;
+        var (a, ap, an) = Parse(tag);
+        var (b, bp, bn) = Parse(than);
+        return a != b ? a > b : ap != bp ? ap > bp : an > bn;
     }
 
-    static (Version version, int build) Parse(string tag)
+    // → the version, which beta (int.MaxValue: not a beta), and the -N
+    static (Version version, int beta, int build) Parse(string tag)
     {
-        var m = Regex.Match(tag, @"(\d+)\.(\d+)\.(\d+)(?:-(\d+))?");
-        if (!m.Success) return (new Version(0, 0, 0), 0);
+        var m = Regex.Match(tag, @"(\d+)\.(\d+)\.(\d+)(?:-(beta\.)?(\d+))?");
+        if (!m.Success) return (new Version(0, 0, 0), int.MaxValue, 0);
         var v = new Version(int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), int.Parse(m.Groups[3].Value));
-        return (v, m.Groups[4].Success ? int.Parse(m.Groups[4].Value) : 1);
+        if (m.Groups[4].Success) return (v, int.Parse(m.Groups[5].Value), 0);
+        return (v, int.MaxValue, m.Groups[5].Success ? int.Parse(m.Groups[5].Value) : 1);
     }
 
     // → the downloaded setup's path

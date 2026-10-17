@@ -3907,6 +3907,23 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
     font-size: var(--fs-small);
 }
 
+/* Settings → Experimental (experiments.js) */
+.set-intro {
+    margin: 0 0 var(--sp-3);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.exp-empty {
+    margin: 0;
+    padding: var(--sp-5) var(--sp-4);
+    border: 1px dashed var(--border);
+    border-radius: var(--r-md);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    text-align: center;
+}
+
 /* Recent orders */
 .recents {
     width: 100%;

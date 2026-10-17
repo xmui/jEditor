@@ -31,6 +31,7 @@
     <script src="recents.js"></script>
     <script src="stored.js"></script>
     <script src="updates.js"></script>
+    <script src="experiments.js"></script>
     <script src="logview.js"></script>
     <script src="scan-preview.js"></script>
     <script src="scan.js"></script>
@@ -430,6 +431,7 @@
                     <button role="tab" data-page="messages" aria-controls="set-page-messages"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span>Messages</span></button>
                     <button role="tab" data-page="autocrop" aria-controls="set-page-autocrop"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg><span>Auto crop</span></button>
                     <button role="tab" data-page="projects" aria-controls="set-page-projects"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>Projects</span></button>
+                    <button role="tab" data-page="experimental" aria-controls="set-page-experimental"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6.5L4.6 18.4A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.4-2.6L14 9.5V3"/><path d="M7.5 15h9"/></svg><span>Experimental</span></button>
                     <button role="tab" data-page="updates" data-needs="updates" aria-controls="set-page-updates"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><span>Updates</span></button>
                 </nav>
                 <div class="dialog-body settings-body">
@@ -587,6 +589,12 @@
                         </div>
                     </section>
 
+                    <section id="set-page-experimental" class="settings-section" data-page="experimental" role="tabpanel" aria-labelledby="set-h-experimental">
+                        <h3 id="set-h-experimental" class="settings-page-title">Experimental</h3>
+                        <p class="set-intro">Features still being made, to try before they're finished. Each is off until you turn it on, and may change or go away.</p>
+                        <div id="exp-list"></div>
+                    </section>
+
                     <section id="set-page-updates" class="settings-section" data-needs="updates" data-page="updates" role="tabpanel" aria-labelledby="set-h-updates">
                         <h3 id="set-h-updates" class="settings-page-title">Updates</h3>
                         <div class="set-row">
@@ -598,6 +606,11 @@
                             <label class="set-label" for="upd-auto">Check for updates automatically
                                 <small>Once a day, when jEditor starts</small></label>
                             <input type="checkbox" id="upd-auto" class="switch">
+                        </div>
+                        <div class="set-row">
+                            <label class="set-label" for="upd-beta">Beta builds
+                                <small>Get new features first, in betas, which may have rough edges. Turned off, the next release takes you back.</small></label>
+                            <input type="checkbox" id="upd-beta" class="switch">
                         </div>
                         <h4 class="set-group">Troubleshooting</h4>
                         <div class="set-row">
