@@ -180,11 +180,45 @@
 
     // ---- What the app does for jEditor ----
     let onUpdateProgress = null;
+    let nextCopy = 1;
+    const copying = new Map(); // folder copy id → progress(done, total)
+
+    // A folder renamed from `from` to `to`: the data kept for each project
+    // at or under it (folder-cache.js: a folder per project, named after
+    // its path) is renamed for its new path, and says the new path
+    async function moveStores(from, to) {
+        const all = await window.JEditorNative.dataDir();
+        const trim = (p) => String(p).replace(/\/+$/, '');
+        from = trim(from);
+        to = trim(to);
+        const stores = [];
+        for await (const [name, h] of all.entries()) if (h.kind === 'directory') stores.push([name, h]);
+        for (const [name, h] of stores) {
+            let order;
+            try { order = JSON.parse(await (await (await h.getFileHandle('order.json')).getFile()).text()); } catch (e) { continue; }
+            const p = trim(order.path || '');
+            if (p.toLowerCase() !== from.toLowerCase() && !p.toLowerCase().startsWith(from.toLowerCase() + '/')) continue;
+            const np = to + p.slice(from.length);
+            const target = FolderCache.storeName(np);
+            let dir = h;
+            if (target !== name) {
+                // Data left by an earlier project of that name is set aside
+                try {
+                    const old = await all.getDirectoryHandle(target);
+                    await old.move(all, `${target}-old-${Date.now()}`);
+                } catch (e) { /* none */ }
+                await h.move(all, target);
+                dir = await all.getDirectoryHandle(target);
+            }
+            // Its path written once the data is where that path finds it
+            await FolderCache.writeJson(dir, 'order.json', { ...order, path: np, name: np.split('/').pop() });
+        }
+    }
     window.JEditorNative = {
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: 'mac',
-        features: ['reveal', 'updates', 'windows'],
+        features: ['reveal', 'updates', 'windows', 'places'],
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage
         async dataDir() {
@@ -208,6 +242,60 @@
         // Show a folder in Finder
         async reveal(path) {
             await answer('reveal', { path });
+        },
+        // ---- The sidebar: drives, folders, projects ----
+        // → { drives: [{ path, name, kind: usb|disk|network|cd, label, total, free }], home: [{ name, path }] }.
+        // A 'jeditor-drives' event on window says a drive came or went.
+        async places() {
+            return answer('places');
+        },
+        // A folder's folders → { path, name, parent, folders: [{ name, path }], photos, more }
+        async listDir(path) {
+            return answer('listDir', { path });
+        },
+        // The projects (folders) in a folder, newest first → [{ name, path, modified (ms) }]
+        async listProjects(path) {
+            return (await answer('listProjects', { path })).projects;
+        },
+        // A new folder named `name` in `parent` (a new project) → its path
+        async makeFolder(parent, name) {
+            return (await answer('makeFolder', { parent, name })).path;
+        },
+        // A folder renamed → its new path. The data kept for it, and for the
+        // projects inside it, follows (it's kept here, in the page's storage)
+        async renameFolder(path, name) {
+            const to = (await answer('renameFolder', { path, name })).path;
+            await moveStores(path, to).catch(e => log('warn', 'Rename: the kept data didn\'t follow: ' + e.message));
+            return to;
+        },
+        // Photos in each folder and its subfolders → { counts: [n, -1 if gone], limit }
+        async countPhotos(paths) {
+            return answer('countPhotos', { paths });
+        },
+        // Ejects a drive → { ok, error? }
+        async eject(path) {
+            return answer('eject', { path });
+        },
+        // The Mac's folder picker, just for a path → path, or null if canceled
+        async pickPath(title, start) {
+            const msg = await answer('pickPath', { title, start });
+            return msg.cancelled ? null : msg.path;
+        },
+        // A whole folder (a path) copied into another, under a free name
+        // there; progress(done, total) in bytes as it goes → { to } or
+        // { cancelled }; throws if it couldn't (no room, say). The promise
+        // has a copyId, for cancelCopy.
+        copyFolder(path, dest, progress) {
+            const id = nextCopy++;
+            copying.set(id, progress || (() => { }));
+            const done = answer('copyFolder', { path, dest, copy: id })
+                .then(msg => (msg.cancelled ? { cancelled: true } : { to: msg.to }))
+                .finally(() => copying.delete(id));
+            done.copyId = id;
+            return done;
+        },
+        cancelCopy(id) {
+            mac.request('cancelCopy', { copy: id });
         },
         // ---- Windows: one project each ----
         // Another jEditor window, opening `path` (or the start screen)
@@ -305,6 +393,10 @@
                 log('error', 'Opening the folder failed: ' + (e && e.message || e));
                 if (msg.smoke) mac.request('smoke', { ok: false, error: String(e && e.message || e), errors });
             }
+        } else if (msg.type === 'drivesChanged') {
+            dispatchEvent(new Event('jeditor-drives')); // places.js
+        } else if (msg.type === 'copyProgress') {
+            if (copying.has(msg.copy)) copying.get(msg.copy)(msg.done, msg.total);
         } else if (msg.type === 'filesChanged') {
             dispatchEvent(new Event('jeditor-files')); // another window moved photos
         } else if (msg.type === 'updateProgress') {

@@ -20,6 +20,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
+const places = require('./places');
 
 // Settings, recent folders and the projects' data are stored under this
 // origin: it must never change
@@ -304,6 +305,62 @@ async function handle(rec, type, data) {
             nativeTheme.themeSource = data.dark ? 'dark' : 'light';
             if (data.background) rec.win.setBackgroundColor(data.background);
             return { ok: true };
+        // ---- The sidebar (places.js) ----
+        case 'places': {
+            const drives = await places.drives();
+            return { drives, home: places.home(app) };
+        }
+        case 'listDir': {
+            if (!isDir(data.path)) return { error: 'Not a folder' };
+            const drive = (await places.drives()).find(d => d.path === data.path);
+            return places.listDir(data.path, drive && drive.name);
+        }
+        case 'listProjects':
+            return { projects: await places.listProjects(data.path) };
+        case 'makeFolder':
+            return { path: await places.makeFolder(data.parent, data.name) };
+        case 'renameFolder':
+            return { path: await places.renameFolder(data.path, data.name) };
+        case 'countPhotos': {
+            const counts = await Promise.all((data.paths || []).map(p => (path.isAbsolute(p) ? places.count(p) : -1)));
+            return { counts, limit: places.LIMIT };
+        }
+        case 'eject': {
+            const why = await places.eject(data.path);
+            log('info', `Eject ${data.path}: ${why || 'done'}`);
+            drivesChanged();
+            return why ? { ok: false, error: why } : { ok: true };
+        }
+        case 'pickPath': {
+            const r = await dialog.showOpenDialog(rec.win, {
+                title: data.title || 'Choose a folder',
+                defaultPath: data.start && isDir(data.start) ? data.start : app.getPath('pictures'),
+                buttonLabel: 'Choose',
+                properties: ['openDirectory', 'createDirectory']
+            });
+            return r.canceled || !r.filePaths[0] ? { cancelled: true } : { path: r.filePaths[0] };
+        }
+        case 'copyFolder': {
+            const stop = { stopped: false };
+            copies.set(data.copy, stop);
+            try {
+                const to = await places.copyFolder(data.path, data.dest, (done, total) =>
+                    wc.send('jeditor', { type: 'copyProgress', copy: data.copy, done, total }), stop);
+                log('info', `Copied ${data.path} to ${to}`);
+                drivesChanged();
+                return { to };
+            } catch (e) {
+                if (e.stopped) return { cancelled: true };
+                throw e;
+            } finally {
+                copies.delete(data.copy);
+            }
+        }
+        case 'cancelCopy': {
+            const stop = copies.get(data.copy);
+            if (stop) stop.stopped = true;
+            return { ok: true };
+        }
         // ---- Windows ----
         case 'newWindow':
             if (data.path) {
@@ -370,6 +427,13 @@ ipcMain.handle('jeditor', async (e, type, data) => {
 
 function isDir(p) {
     try { return path.isAbsolute(p) && fs.statSync(p).isDirectory(); } catch (e) { return false; }
+}
+
+const copies = new Map(); // folder copies under way: the page's id → { stopped }
+
+// A drive came or went, or its free space changed: every sidebar again
+function drivesChanged() {
+    for (const r of records()) if (r.ready) r.win.webContents.send('jeditor', { type: 'drivesChanged' });
 }
 
 // Every window looks again (photos moved in or out of its project)
@@ -549,6 +613,7 @@ function start() {
     permissions();
     menu();
     started = true;
+    places.watchDrives(drivesChanged);
     const first = createWindow();
     if (opts.smoke) {
         // The drop needs the window on screen, if only just
