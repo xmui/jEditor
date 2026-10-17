@@ -100,6 +100,9 @@ Like Lightroom's Develop, for one photo at a time: press `E` (or the sliders but
 - **Color:** Temperature, Tint, Vibrance (gentle on colours that are already strong) and Saturation.
 - **Curve:** click to add a point and drag it; drag a point off the side, or double-click it, to take it away. The curve never turns back on itself. **RGB** or one channel.
 - **Color mixer:** the hue, saturation and luminance of reds, oranges, yellows, greens, aquas, blues, purples and magentas, each on its own.
+- **Looks:** film looks, each shown on your photo: portrait film, vivid slide, Kodachrome, faded, teal and orange, cross process, instant, black and white, sepia. Click one to put it on, then set its **Amount** (0–200%); **None** takes it off. A look goes over your own settings, so Auto color and the rest still apply under it. **Presets** saves your own settings under a name and puts them on again.
+- **Color grading:** a wheel each for shadows, midtones and highlights: drag from the middle towards a colour to tint them (further out is stronger), and the slider under each makes them lighter or darker. **Blending** widens the three into each other, **Balance** moves where shadows end and highlights begin. Double-click a wheel to clear it.
+- **Effects:** a **Vignette** (to the left darkens the corners, to the right lightens them) with its **Midpoint**, **Feather** and **Roundness**, and film **Grain** with its size. The vignette is on the photo as cropped.
 - Double-click a slider's name to put it back to 0; each section has its own **Reset**.
 - `\` shows the photo as it was (before and after). `Ctrl+Z` / `Ctrl+Shift+Z` undo and redo inside Adjust.
 - **Copy** and **Paste** (`Ctrl+Shift+C` / `Ctrl+Shift+V`) carry the adjustments to other photos. In the grid, `Ctrl+Shift+V` pastes onto every selected photo; the right-click menu has it too.

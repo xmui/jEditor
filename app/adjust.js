@@ -1,4 +1,5 @@
-// Adjust: light, color, levels, curves and the color mixer, like
+// Adjust: looks, light, color, levels, curves, the color mixer, color
+// grading and effects (vignette, grain), like
 // Lightroom's Develop, on one photo at a time (E, or the sliders button).
 // develop.js does the maths; this is the screen. The photo is shown as
 // it's being changed (on the GPU, so the sliders keep up on a big scan),
@@ -22,6 +23,7 @@ const Adjust = {
 
     LIGHT: [['exposure', 'Exposure'], ['contrast', 'Contrast'], ['highlights', 'Highlights'], ['shadows', 'Shadows'], ['whites', 'Whites'], ['blacks', 'Blacks']],
     COLOR: [['temp', 'Temperature'], ['tint', 'Tint'], ['vibrance', 'Vibrance'], ['saturation', 'Saturation']],
+    EFFECTS: [['vignette', 'Vignette'], ['vigMid', 'Midpoint'], ['vigFeather', 'Feather'], ['vigRound', 'Roundness'], ['grain', 'Grain'], ['grainSize', 'Grain size']],
     TRACKS: {
         temp: 'linear-gradient(to right, #3f7fe0, #9aa3ad, #e0b23f)',
         tint: 'linear-gradient(to right, #3fbf5a, #9aa3ad, #c84fc8)',
@@ -56,11 +58,26 @@ const Adjust = {
         bind('adj-paste', () => this.paste());
         bind('adj-auto', () => this.auto());
         bind('adj-auto-color', () => this.auto({ color: true }));
+        this.el('adj-presets').addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const r = e.currentTarget.getBoundingClientRect();
+            e.currentTarget.blur();
+            this.presetMenu(r.left, r.bottom + 4);
+        });
 
         this.sliders = {};
         const light = this.el('adj-light'), color = this.el('adj-color');
         for (const [k, label] of this.LIGHT) light.appendChild(this.slider(k, label));
         for (const [k, label] of this.COLOR) color.appendChild(this.slider(k, label));
+        const effects = this.el('adj-effects');
+        for (const [k, label] of this.EFFECTS) effects.appendChild(this.slider(k, label));
+        this.el('adj-look-amount').appendChild(this.slider('lookAmount', 'Amount'));
+        const grade = this.el('adj-grade-more');
+        grade.appendChild(this.slider('gradeBlend', 'Blending'));
+        grade.appendChild(this.slider('gradeBalance', 'Balance'));
+        this.initLooks();
+        this.initWheels();
         this.mixerSliders = Develop.HUES.map((h, i) => {
             const row = this.slider(`mix-${h.id}`, h.name, {
                 range: { min: -100, max: 100, step: 1 },
@@ -140,7 +157,7 @@ const Adjust = {
         });
         input.addEventListener('change', () => { this._sliding = false; });
         num.addEventListener('change', () => { put(parseFloat(num.value) || 0); num.blur(); });
-        const zero = () => put(0);
+        const zero = () => put(range.def || 0);
         lab.addEventListener('dblclick', zero);
         input.addEventListener('dblclick', zero);
         row._sync = () => {
@@ -148,10 +165,11 @@ const Adjust = {
             input.value = v;
             if (document.activeElement !== num) num.value = range.step < 1 ? v.toFixed(2) : Math.round(v);
             const pos = (x) => ((x - range.min) / (range.max - range.min)) * 100;
-            const zeroAt = pos(Math.max(range.min, Math.min(range.max, 0)));
+            const def = range.def || 0;
+            const zeroAt = pos(Math.max(range.min, Math.min(range.max, def)));
             row.style.setProperty('--lo', `${Math.min(zeroAt, pos(v))}%`);
             row.style.setProperty('--hi', `${Math.max(zeroAt, pos(v))}%`);
-            row.classList.toggle('changed', !!v);
+            row.classList.toggle('changed', v !== def);
         };
         if (!opts.get) this.sliders[key] = row;
         return row;
@@ -210,6 +228,15 @@ const Adjust = {
         const sctx = sc.getContext('2d', { willReadFrequently: true });
         sctx.drawImage(bmp, 0, 0, sc.width, sc.height);
         this.sample = sctx.getImageData(0, 0, sc.width, sc.height).data;
+        this.sampleW = sc.width;
+        this.sampleH = sc.height;
+        // And the looks' pictures
+        const ts = Math.min(1, 84 / Math.max(bmp.width, bmp.height));
+        sc.width = Math.max(1, Math.round(bmp.width * ts));
+        sc.height = Math.max(1, Math.round(bmp.height * ts));
+        sctx.drawImage(bmp, 0, 0, sc.width, sc.height);
+        this.thumb = sctx.getImageData(0, 0, sc.width, sc.height);
+        this._looksKey = null;
         this.sampleOut = new Uint8ClampedArray(this.sample.length);
 
         if (this.gl && this.gl.lost) this.useCpu();
@@ -311,6 +338,9 @@ const Adjust = {
         if (which === 'levels' && a.levels) delete a.levels[this.channel];
         if (which === 'curve' && a.curve) delete a.curve[this.channel];
         if (which === 'mixer') delete a.hsl;
+        if (which === 'grading') { delete a.grade; delete a.gradeBlend; delete a.gradeBalance; }
+        if (which === 'effects') for (const [k] of this.EFFECTS) delete a[k];
+        if (which === 'look') { delete a.look; delete a.lookAmount; }
         this.setAll(a);
     },
 
@@ -391,13 +421,193 @@ const Adjust = {
             if (this.canvas.height !== this.h) this.canvas.height = this.h;
             if (this.before) this.ctx.putImageData(this.src, 0, 0);
             else {
-                Develop.applyCPU(this.src.data, T, this.out.data);
+                Develop.applyCPU(this.src.data, T, this.out.data, { x: 0, y: 0, w: this.w, W: this.w, H: this.h });
                 this.ctx.putImageData(this.out, 0, 0);
             }
         }
-        const px = this.before ? this.sample : Develop.applyCPU(this.sample, T, this.sampleOut);
+        const px = this.before ? this.sample : Develop.applyCPU(this.sample, T, this.sampleOut, { x: 0, y: 0, w: this.sampleW, W: this.sampleW, H: this.sampleH });
         this.hist = Develop.histogram(px);
         this.drawPanels();
+        this.looksSoon();
+    },
+
+    // ---- Looks ----
+    //
+    // Film looks (develop.js LOOKS), each shown on this photo as it now is
+
+    initLooks() {
+        const box = this.el('adj-looks');
+        const tile = (id, name) => {
+            const b = document.createElement('button');
+            b.className = 'adj-look';
+            b.dataset.look = id || '';
+            b.title = name;
+            b.innerHTML = '<canvas></canvas><span></span>';
+            b.querySelector('span').textContent = name;
+            b.addEventListener('click', () => {
+                b.blur();
+                if (!this.ready) return;
+                this.pushHistory();
+                this.a.look = id;
+                if (!id) this.a.lookAmount = 100;
+                this.changed();
+            });
+            box.appendChild(b);
+        };
+        tile(null, 'None');
+        for (const l of Develop.LOOKS) tile(l.id, l.name);
+    },
+
+    // The pictures, once the sliders have rested
+    looksSoon() {
+        clearTimeout(this._looksTimer);
+        this._looksTimer = setTimeout(() => this.renderLooks(), this._looksKey ? 350 : 0);
+    },
+
+    renderLooks() {
+        if (!this.ready || !this.thumb) return;
+        // Each look over the settings without one
+        const base = { ...(this.result() || {}) };
+        delete base.look;
+        delete base.lookAmount;
+        const key = JSON.stringify(base);
+        if (key === this._looksKey) return;
+        this._looksKey = key;
+        const { width: w, height: h } = this.thumb;
+        const out = new ImageData(w, h);
+        for (const b of this.root.querySelectorAll('.adj-look')) {
+            const cv = b.querySelector('canvas');
+            cv.width = w;
+            cv.height = h;
+            const T = Develop.tables(b.dataset.look ? { ...base, look: b.dataset.look } : base);
+            Develop.applyCPU(this.thumb.data, T, out.data, { x: 0, y: 0, w, W: w, H: h });
+            cv.getContext('2d').putImageData(out, 0, 0);
+        }
+    },
+
+    // ---- Presets: settings saved under a name, for any photo ----
+
+    presets() {
+        try {
+            const list = JSON.parse(localStorage.getItem('jeditor.presets') || '[]');
+            return Array.isArray(list) ? list.filter(p => p && typeof p.name === 'string').map(p => ({ name: p.name, adj: Develop.clean(p.adj) })) : [];
+        } catch (e) {
+            return [];
+        }
+    },
+
+    savePresets(list) {
+        try { localStorage.setItem('jeditor.presets', JSON.stringify(list)); } catch (e) { /* private mode */ }
+    },
+
+    presetMenu(x, y) {
+        const list = this.presets();
+        const items = list.map(p => [p.name, () => this.setAll(p.adj)]);
+        if (items.length) items.push(['—']);
+        items.push(['Save these settings as a preset…', () => this.savePreset()]);
+        if (list.length) {
+            items.push(['—']);
+            for (const p of list) items.push([`Delete “${p.name}”`, () => this.savePresets(this.presets().filter(q => q.name !== p.name)), true]);
+        }
+        this.app.openContextMenu(items, x, y);
+    },
+
+    async savePreset() {
+        const adj = this.result();
+        if (!adj) {
+            this.app.showToast('Adjust the photo first: a preset keeps the settings');
+            return;
+        }
+        const name = await UI.prompt({ title: 'Save a preset', message: 'These settings, to put on other photos from Presets.', ok: 'Save', input: { label: 'Name', value: '' } });
+        if (name === null || !name.trim()) return;
+        const list = this.presets().filter(p => p.name.toLowerCase() !== name.trim().toLowerCase());
+        list.push({ name: name.trim(), adj });
+        list.sort((a, b) => a.name.localeCompare(b.name));
+        this.savePresets(list);
+        this.app.showToast(`Saved the preset “${name.trim()}”`, 1800, null, null, { kind: 'adjust' });
+    },
+
+    // ---- Color grading: a wheel each for shadows, midtones, highlights ----
+    //
+    // The angle is the hue, the distance from the middle how strong;
+    // the slider under it is brightness. Double-click a wheel to clear it.
+
+    initWheels() {
+        const box = this.el('adj-wheels');
+        this.wheels = Develop.ZONES.map(([z, name], i) => {
+            const cell = document.createElement('div');
+            cell.className = 'adj-wheel';
+            cell.innerHTML = '<span class="adj-wheel-name"></span><canvas></canvas>';
+            cell.querySelector('span').textContent = name;
+            const cv = cell.querySelector('canvas');
+            cv.title = `${name}: drag to tint, double-click to clear`;
+            const at = (e) => {
+                const r = cv.getBoundingClientRect();
+                const x = (e.clientX - r.left) / r.width * 2 - 1, y = (e.clientY - r.top) / r.height * 2 - 1;
+                const g = this.a.grade[z];
+                g[0] = Math.round(((Math.atan2(-y, x) * 180 / Math.PI) + 360) % 360);
+                g[1] = Math.round(Math.min(1, Math.hypot(x, y) / 0.9) * 100);
+                this.changed();
+            };
+            cv.addEventListener('pointerdown', (e) => {
+                if (!this.ready) return;
+                e.preventDefault();
+                cv.setPointerCapture(e.pointerId);
+                this.pushHistory();
+                this._wheel = z;
+                at(e);
+            });
+            cv.addEventListener('pointermove', (e) => { if (this._wheel === z) at(e); });
+            const end = () => { this._wheel = null; };
+            cv.addEventListener('pointerup', end);
+            cv.addEventListener('pointercancel', end);
+            cv.addEventListener('dblclick', () => {
+                this.pushHistory();
+                this.a.grade[z] = [0, 0, this.a.grade[z][2]];
+                this.changed();
+            });
+            const lum = this.slider(`grade-${z}`, 'Luminance', {
+                range: { min: -100, max: 100, step: 1 },
+                get: () => this.a.grade[z][2],
+                set: (v) => { this.a.grade[z][2] = v; }
+            });
+            lum.classList.add('adj-wheel-lum');
+            lum.querySelector('.adj-range').title = `${name}: brightness (double-click to reset)`;
+            (this.extraRows || (this.extraRows = [])).push(lum);
+            cell.appendChild(lum);
+            box.appendChild(cell);
+            return { z, cv };
+        });
+    },
+
+    drawWheels() {
+        if (!this.wheels || !this.isOpen) return;
+        for (const { z, cv } of this.wheels) {
+            const { ctx, w, h } = this.fit(cv);
+            const R = Math.min(w, h) / 2 - 2, cx = w / 2, cy = h / 2;
+            // Hues round the ring (red to the right, going anticlockwise), grey in the middle
+            const g = ctx.createConicGradient(0, cx, cy);
+            for (let i = 0; i <= 12; i++) g.addColorStop(i / 12, `hsl(${360 - i * 30}, 75%, 55%)`);
+            ctx.beginPath();
+            ctx.arc(cx, cy, R, 0, Math.PI * 2);
+            ctx.fillStyle = g;
+            ctx.fill();
+            const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
+            rg.addColorStop(0, 'rgba(128,128,128,1)');
+            rg.addColorStop(1, 'rgba(128,128,128,0)');
+            ctx.fillStyle = rg;
+            ctx.fill();
+            const [hue, sat] = this.a.grade[z];
+            const d = sat / 100 * R * 0.9, a = hue * Math.PI / 180;
+            const px = cx + Math.cos(a) * d, py = cy - Math.sin(a) * d;
+            ctx.beginPath();
+            ctx.arc(px, py, 5, 0, Math.PI * 2);
+            ctx.fillStyle = sat ? `hsl(${hue}, 80%, 55%)` : '#808080';
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#fff';
+            ctx.stroke();
+        }
     },
 
     drawPanels() {
@@ -410,9 +620,12 @@ const Adjust = {
     // Every control showing the settings
     sync() {
         for (const row of Object.values(this.sliders)) row._sync();
-        for (const row of this.mixerSliders) row._sync();
+        for (const row of this.mixerSliders.concat(this.extraRows || [])) row._sync();
         for (const b of this.root.querySelectorAll('.adj-chan .adj-tab')) b.setAttribute('aria-selected', String(b.dataset.chan === this.channel));
         for (const b of this.root.querySelectorAll('.adj-mix-tabs .adj-tab')) b.setAttribute('aria-selected', String(b.dataset.mix === this.mixer));
+        for (const b of this.root.querySelectorAll('.adj-look')) b.setAttribute('aria-pressed', String((b.dataset.look || null) === this.a.look));
+        this.el('adj-look-amount').classList.toggle('hidden', !this.a.look);
+        this.drawWheels();
         const l = this.a.levels[this.channel];
         this.el('adj-levels-read').textContent = `${Math.round(l[0] * 255)} · ${l[1].toFixed(2)} · ${Math.round(l[2] * 255)}` +
             (l[3] || l[4] !== 1 ? `  →  ${Math.round(l[3] * 255)} – ${Math.round(l[4] * 255)}` : '');

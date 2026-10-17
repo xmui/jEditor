@@ -3766,7 +3766,7 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     display: none;
 }
 
-.adj-sec > summary > span::before {
+.adj-sec > summary > span:first-child::before {
     content: "";
     display: inline-block;
     width: 0;
@@ -3778,7 +3778,7 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     transition: transform var(--dur-fast) var(--ease-out);
 }
 
-.adj-sec[open] > summary > span::before {
+.adj-sec[open] > summary > span:first-child::before {
     transform: rotate(90deg);
 }
 
@@ -3870,6 +3870,90 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     display: flex;
     flex-direction: column;
     gap: var(--sp-1);
+}
+
+/* Looks: a strip of the photo with each */
+.adj-looks {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-2);
+}
+
+.adj-look {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    padding: 3px;
+    border: 1px solid transparent;
+    border-radius: var(--r-md);
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--fs-caption);
+    cursor: pointer;
+    text-align: center;
+}
+
+.adj-look canvas {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: var(--r-sm);
+    background: var(--surround);
+}
+
+.adj-look span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.adj-look:hover {
+    background: var(--bg-hover);
+}
+
+.adj-look[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--text-1);
+}
+
+/* Color grading: three wheels in a row, brightness under each */
+.adj-wheels {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-2);
+}
+
+.adj-wheel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-1);
+    min-width: 0;
+}
+
+.adj-wheel-name {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.adj-wheel canvas {
+    width: 100%;
+    aspect-ratio: 1;
+    touch-action: none;
+    cursor: crosshair;
+}
+
+.adj-wheel-lum {
+    width: 100%;
+}
+
+.adj-wheel-lum .adj-label,
+.adj-wheel-lum .adj-num {
+    display: none;
 }
 
 /* A slider: its name and number above, the track below, filled from 0 */

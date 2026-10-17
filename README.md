@@ -43,7 +43,7 @@ It only asks once. More in [Installing](docs/installing.md).
 
 - **Whole folders, instantly.** Open a folder and every photo is there, in the grid or one by one with a film strip.
 - **Rotate, crop, straighten.** Saved straight into the file, with undo. **Auto crop** finds the photo in a scan and crops it for you.
-- **Light and color, Lightroom-style.** Exposure, contrast, highlights and shadows, white balance, levels and curves with a live histogram, and a color mixer. Non-destructive: the original is never changed until you export. **Auto color** takes the cast off a faded print.
+- **Light and color, Lightroom-style.** Exposure, contrast, highlights and shadows, white balance, levels and curves with a live histogram, a color mixer, color grading, film looks, vignette and grain. Non-destructive: the original is never changed until you export. **Auto color** takes the cast off a faded print.
 - **Sort the pile.** Flags, search, rename in bulk, move into folders, find duplicates, delete with undo.
 - **Keeps up with you.** It watches the folder, so photos a scanner saves show up on their own.
 - **Projects and drives.** A sidebar with your projects, pinned folders and USB drives, and several windows side by side.
@@ -60,7 +60,7 @@ Windows comes first: it gets everything, and each feature is made best there, th
 | | Windows | Mac | Linux | Web |
 |---|:-:|:-:|:-:|:-:|
 | Rotate, crop, flags, rename, move, duplicates, Auto crop | ✓ | ✓ | ✓ | ✓ |
-| Adjust: light, color, levels, curves, color mixer | ✓ | ✓ | ✓ | ✓ |
+| Adjust: light, color, levels, curves, color mixer, grading, looks, vignette, grain | ✓ | ✓ | ✓ | ✓ |
 | Opens folders with no permission prompts | ✓ | ✓ | ✓ | |
 | Sidebar: projects, pinned folders, drives | ✓ | ✓ | ✓ | |
 | Several windows and Split | ✓ | ✓ | ✓ | |

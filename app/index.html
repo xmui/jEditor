@@ -415,6 +415,13 @@
                     <div class="adj-levels-foot"><span id="adj-levels-read" class="adj-read"></span><button class="btn ghost sm adj-sec-reset" data-reset="levels">Reset</button></div>
                 </section>
                 <details class="adj-sec" open>
+                    <summary><span>Looks</span><span class="adj-sec-acts">
+                        <button id="adj-presets" class="btn ghost sm" title="Your presets: settings saved under a name">Presets</button>
+                        <button class="btn ghost sm adj-sec-reset" data-reset="look">Reset</button></span></summary>
+                    <div id="adj-looks" class="adj-looks" role="group" aria-label="Film looks"></div>
+                    <div id="adj-look-amount" class="adj-rows hidden"></div>
+                </details>
+                <details class="adj-sec" open>
                     <summary><span>Light</span><button class="btn ghost sm adj-sec-reset" data-reset="light">Reset</button></summary>
                     <div id="adj-light" class="adj-rows"></div>
                 </details>
@@ -437,6 +444,15 @@
                         </span>
                     </div>
                     <div id="adj-mixer" class="adj-rows"></div>
+                </details>
+                <details class="adj-sec">
+                    <summary><span>Color grading</span><button class="btn ghost sm adj-sec-reset" data-reset="grading">Reset</button></summary>
+                    <div id="adj-wheels" class="adj-wheels"></div>
+                    <div id="adj-grade-more" class="adj-rows"></div>
+                </details>
+                <details class="adj-sec">
+                    <summary><span>Effects</span><button class="btn ghost sm adj-sec-reset" data-reset="effects">Reset</button></summary>
+                    <div id="adj-effects" class="adj-rows"></div>
                 </details>
             </aside>
         </div>
