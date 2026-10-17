@@ -20,7 +20,6 @@ const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { pathToFileURL } = require('url');
 const places = require('./places');
 const toolbar = require('./native'); // null without the native module
 
@@ -155,23 +154,39 @@ app.on('window-all-closed', () => {
 });
 
 // ---- The UI, served at app://jeditor/ ----
+// Read straight from disk: a file that can't be read is said in the log
+// (a script missing would leave jEditor half started)
+const TYPES = {
+    '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+    '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml',
+    '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.wasm': 'application/wasm', '.webmanifest': 'application/manifest+json'
+};
+async function fileResponse(file, body) {
+    try {
+        const data = body !== undefined ? body : await fs.promises.readFile(file);
+        return new Response(data, { headers: { 'content-type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', 'cache-control': 'no-store' } });
+    } catch (e) {
+        log('error', `Couldn't serve ${file}: ${e.message}`);
+        return new Response('Not found', { status: 404 });
+    }
+}
+
 function serve() {
     protocol.handle(SCHEME, async (req) => {
         const url = new URL(req.url);
         if (url.host !== HOST) return new Response('Not found', { status: 404 });
         let rel = decodeURIComponent(url.pathname);
-        if (rel === '/__host/bridge.js') return net.fetch(pathToFileURL(path.join(__dirname, 'bridge.js')).toString());
+        if (rel === '/__host/bridge.js') return fileResponse(path.join(__dirname, 'bridge.js'));
         if (rel === '/') rel = '/index.html';
         const file = path.join(UI, rel);
         if (!file.startsWith(UI + path.sep)) return new Response('Not found', { status: 404 });
         if (rel === '/index.html') {
             // bridge.js runs before jEditor's own scripts
-            const html = (await fs.promises.readFile(file, 'utf8'))
-                .replace(/<script\b/, '<script src="/__host/bridge.js"></script>\n    <script');
-            return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+            let html;
+            try { html = await fs.promises.readFile(file, 'utf8'); } catch (e) { return fileResponse(file); }
+            return fileResponse(file, html.replace(/<script\b/, '<script src="/__host/bridge.js"></script>\n    <script'));
         }
-        const res = await net.fetch(pathToFileURL(file).toString()).catch(() => null);
-        return res && res.ok ? res : new Response('Not found', { status: 404 });
+        return fileResponse(file);
     });
 }
 
