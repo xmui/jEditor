@@ -55,7 +55,7 @@ async function launch(profile, args = [], env = {}) {
         executablePath: ELECTRON,
         args: [MAC, '--no-sandbox', '--user-data', profile, ...args],
         // The Mac app unless a test asks for Linux's (they all run on Linux too)
-        env: { ...process.env, JEDITOR_PLATFORM: 'mac', JEDITOR_RELEASES: `http://127.0.0.1:${releaseServer.address().port}/latest`, ...env }
+        env: { ...process.env, JEDITOR_PLATFORM: 'mac', JEDITOR_SKIP_PERMISSIONS: '1', JEDITOR_RELEASES: `http://127.0.0.1:${releaseServer.address().port}/latest`, ...env }
     });
     const page = await app.firstWindow();
     const errors = [];
@@ -496,6 +496,53 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             await click('search', '');
             await page.waitForTimeout(600);
 
+            // The toolbar's empty space moves the window: pressed there, it's the
+            // window's (the drag view), not the page's under it
+            const win = () => app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.focus(); return w.getBounds(); });
+            // Away from the screen's edge, so it has room to move
+            await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; const b = w.getBounds(); w.setBounds({ ...b, x: 200, y: 120 }); });
+            await page.waitForTimeout(300);
+            const b0 = await win();
+            const chains = [];
+            let spot = null;
+            for (let f = 0.3; f <= 0.71 && !spot; f += 0.05) {
+                const x = Math.round(b0.width * f);
+                const chain = await app.evaluate(({ BrowserWindow }, [x, y]) => global.jeditorToolbar.hitAt(BrowserWindow.getAllWindows()[0].getNativeWindowHandle(), x, y), [x, 26]);
+                chains.push([x, (chain || []).slice(0, 2).join('<')]);
+                // Not the page (Chromium's view), and not one of the toolbar's controls
+                const page_ = (chain || []).some(c => /RenderWidgetHost|WebContents/.test(c));
+                const control = (chain || []).slice(0, 3).some(c => /Button|Field|Segment|ItemViewer|Search|Control/.test(c));
+                if (chain && chain.length && !page_ && !control) spot = x;
+            }
+            check('a press on the toolbar\'s empty space is the window\'s, not the page\'s', spot !== null, JSON.stringify(chains));
+            // ...and a real drag there moves it (macOS lets this runner post mouse events)
+            if (spot !== null) {
+                const { execFileSync } = require('child_process');
+                const swift = path.join(tmp, 'drag.swift');
+                fs.writeFileSync(swift, [
+                    'import CoreGraphics', 'import ApplicationServices', 'import Foundation',
+                    'let a = CommandLine.arguments.dropFirst().map { Double($0)! }',
+                    'let (x, y, dx) = (a[0], a[1], a[2])',
+                    'func post(_ t: CGEventType, _ px: Double) { CGEvent(mouseEventSource: nil, mouseType: t, mouseCursorPosition: CGPoint(x: px, y: y), mouseButton: .left)?.post(tap: .cghidEventTap); usleep(40000) }',
+                    'post(.mouseMoved, x); post(.leftMouseDown, x)',
+                    'for i in 1...12 { post(.leftMouseDragged, x + dx * Double(i) / 12) }',
+                    'post(.leftMouseUp, x + dx)',
+                    'print(AXIsProcessTrusted() ? "trusted" : "untrusted")'
+                ].join('\n'));
+                let trusted = '?';
+                try { trusted = execFileSync('swift', [swift, String(b0.x + spot), String(b0.y + 26), '-120'], { timeout: 180000 }).toString().trim(); } catch (e) { trusted = 'failed: ' + e.message.split('\n')[0]; }
+                await page.waitForTimeout(500);
+                const b1 = await win();
+                if (b1.x !== b0.x || trusted === 'trusted') {
+                    // Posted events come faster than the drag starts tracking, so the
+                    // first few are lost: it moves most of the way, never off its row
+                    check('... and dragging there moves the window', b0.x - b1.x >= 60 && b0.x - b1.x <= 130 && b1.y === b0.y, JSON.stringify([b0, b1, trusted]));
+                    await app.evaluate(({ BrowserWindow }, b) => BrowserWindow.getAllWindows()[0].setBounds(b), b0);
+                } else {
+                    console.log('        (no real drag: this Mac doesn\'t let the test post mouse events: ' + trusted + ')');
+                }
+            }
+
             // What it looks like: the window, toolbar and all (CI keeps these)
             const shots = process.env.JEDITOR_SCREENSHOTS;
             if (shots) {
@@ -516,6 +563,56 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         }
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.close();
+    }
+
+    console.log('mac: permissions, the first time');
+    {
+        const vols = path.join(tmp, 'PermVolumes');
+        fs.mkdirSync(path.join(vols, 'Card'), { recursive: true });
+        const profile2 = path.join(tmp, 'profile-perm');
+        const first = await launch(profile2, [], { JEDITOR_SKIP_PERMISSIONS: '', JEDITOR_VOLUMES: vols });
+        // Its own folders, so a real Mac never stops to ask here
+        const homes = path.join(tmp, 'PermHome');
+        const dirs = ['desktop', 'documents', 'downloads'].map(k => [k, path.join(homes, k)]);
+        dirs.forEach(([, d]) => fs.mkdirSync(d, { recursive: true }));
+        await first.app.evaluate(({ app }, dirs) => { for (const [k, d] of dirs) app.setPath(k, d); }, dirs);
+        await first.page.waitForSelector('#permissions-panel:not(.hidden)', { timeout: 10000 }).catch(() => { });
+        const rows = () => first.page.evaluate(() => [...document.querySelectorAll('#perm-list .perm-row')].map(r => [r.dataset.id, r.dataset.state, r.querySelector('.perm-act').textContent.trim()]));
+        await first.page.evaluate(() => Permissions.refresh());
+        const before = await rows();
+        const full = before.find(r => r[0] === 'full');
+        check('the first time, it opens on its own: folders, drives, Full Disk Access', JSON.stringify(before.map(r => r[0])) === '["folders","volumes","full"]' && await first.page.evaluate(() => Permissions.isOpen()), JSON.stringify(before));
+        if (full && full[1] === 'granted') {
+            check('... with Full Disk Access, everything is on', before.every(r => r[1] === 'granted'), JSON.stringify(before));
+        } else {
+            check('... each asks (Allow…), Full Disk Access opens System Settings', before[0][1] === 'ask' && before[0][2] === 'Allow…' && before[1][1] === 'ask' && full[2] === 'Open Settings', JSON.stringify(before));
+            await first.page.click('#perm-list .perm-row[data-id="folders"] button');
+            await first.page.waitForFunction(() => document.querySelector('#perm-list .perm-row[data-id="folders"]').dataset.state !== 'ask', null, { timeout: 10000 }).catch(() => { });
+            check('Allow… asks, and then it says On', (await rows())[0][1] === 'granted' && (await rows())[0][2] === 'On', JSON.stringify(await rows()));
+            const opened = await first.app.evaluate(async ({ shell, BrowserWindow }) => {
+                global.openedUrls = [];
+                shell.openExternal = async (u) => { global.openedUrls.push(u); };
+                return true;
+            });
+            await first.page.click('#perm-list .perm-row[data-id="full"] button');
+            await first.page.waitForTimeout(300);
+            const urls = await first.app.evaluate(() => global.openedUrls);
+            check('Open Settings goes to Privacy & Security → Full Disk Access', opened && urls.length === 1 && /Privacy_AllFiles/.test(urls[0]), JSON.stringify(urls));
+        }
+        await first.page.click('#perm-done');
+        check('Done closes it', !(await first.page.evaluate(() => Permissions.isOpen())));
+        check('no JS errors', first.errors.length === 0, first.errors.join('; '));
+        await first.app.close();
+
+        const again = await launch(profile2, [], { JEDITOR_SKIP_PERMISSIONS: '', JEDITOR_VOLUMES: vols });
+        await again.page.waitForTimeout(1500);
+        const auto = await again.page.evaluate(() => Permissions.isOpen());
+        await again.page.evaluate(() => { app.toggleCustomizePanel(true); document.querySelector('[data-page="projects"]').click(); });
+        await again.page.click('#cust-permissions');
+        await again.page.waitForSelector('#permissions-panel:not(.hidden)', { timeout: 5000 }).catch(() => { });
+        check('only the first time on its own; then from Settings → Projects → Permissions', !auto && await again.page.evaluate(() => Permissions.isOpen()));
+        check('no JS errors', again.errors.length === 0, again.errors.join('; '));
+        await again.app.close();
     }
 
     console.log('mac: updates');

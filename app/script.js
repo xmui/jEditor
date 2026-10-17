@@ -210,6 +210,7 @@ const app = {
         Camera.init(this);
         Places.init(this);
         Windows.init(this);
+        Permissions.init(this);
         Flags.init(this);
         Edits.init(this);
         Fit.init();

@@ -20,7 +20,6 @@ const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { pathToFileURL } = require('url');
 const places = require('./places');
 const toolbar = require('./native'); // null without the native module
 
@@ -155,23 +154,39 @@ app.on('window-all-closed', () => {
 });
 
 // ---- The UI, served at app://jeditor/ ----
+// Read straight from disk: a file that can't be read is said in the log
+// (a script missing would leave jEditor half started)
+const TYPES = {
+    '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+    '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml',
+    '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.wasm': 'application/wasm', '.webmanifest': 'application/manifest+json'
+};
+async function fileResponse(file, body) {
+    try {
+        const data = body !== undefined ? body : await fs.promises.readFile(file);
+        return new Response(data, { headers: { 'content-type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', 'cache-control': 'no-store' } });
+    } catch (e) {
+        log('error', `Couldn't serve ${file}: ${e.message}`);
+        return new Response('Not found', { status: 404 });
+    }
+}
+
 function serve() {
     protocol.handle(SCHEME, async (req) => {
         const url = new URL(req.url);
         if (url.host !== HOST) return new Response('Not found', { status: 404 });
         let rel = decodeURIComponent(url.pathname);
-        if (rel === '/__host/bridge.js') return net.fetch(pathToFileURL(path.join(__dirname, 'bridge.js')).toString());
+        if (rel === '/__host/bridge.js') return fileResponse(path.join(__dirname, 'bridge.js'));
         if (rel === '/') rel = '/index.html';
         const file = path.join(UI, rel);
         if (!file.startsWith(UI + path.sep)) return new Response('Not found', { status: 404 });
         if (rel === '/index.html') {
             // bridge.js runs before jEditor's own scripts
-            const html = (await fs.promises.readFile(file, 'utf8'))
-                .replace(/<script\b/, '<script src="/__host/bridge.js"></script>\n    <script');
-            return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+            let html;
+            try { html = await fs.promises.readFile(file, 'utf8'); } catch (e) { return fileResponse(file); }
+            return fileResponse(file, html.replace(/<script\b/, '<script src="/__host/bridge.js"></script>\n    <script'));
         }
-        const res = await net.fetch(pathToFileURL(file).toString()).catch(() => null);
-        return res && res.ok ? res : new Response('Not found', { status: 404 });
+        return fileResponse(file);
     });
 }
 
@@ -293,6 +308,56 @@ async function installUpdate(wc) {
     return { ok: true, file, received: got, total };
 }
 
+// ---- The Mac's privacy settings (app/permissions.js) ----
+// macOS asks before an app reads Desktop, Documents, Downloads or a drive,
+// once each; Full Disk Access ends the asking. A folder that was never
+// asked about can't be checked without asking, so a row is only checked
+// once it has been (settings.asked). JEDITOR_SKIP_PERMISSIONS: the window
+// doesn't open on its own (the tests).
+const PRIVACY = {
+    files: 'x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders',
+    full: 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles'
+};
+const readable = (p) => fs.promises.readdir(p).then(() => true, () => false);
+
+// Only an app with Full Disk Access can read the privacy database itself
+async function fullDiskAccess() {
+    if (process.platform !== 'darwin') return false;
+    try {
+        await (await fs.promises.open(path.join(os.homedir(), 'Library', 'Application Support', 'com.apple.TCC', 'TCC.db'), 'r')).close();
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+const homeFolders = () => ['desktop', 'documents', 'downloads'].map(k => app.getPath(k)).filter(p => fs.existsSync(p));
+const removableDrives = async () => (await places.drives()).filter(d => d.path !== '/' && d.kind !== 'network').map(d => d.path);
+
+async function permissionRows() {
+    const asked = settings.asked || {};
+    const full = await fullDiskAccess();
+    const check = async (id, paths) => {
+        if (full) return 'granted';
+        if (!asked[id]) return 'ask';
+        return (await Promise.all(paths.map(readable))).every(Boolean) ? 'granted' : 'denied';
+    };
+    const drives = await removableDrives();
+    return [
+        { id: 'folders', state: await check('folders', homeFolders()) },
+        { id: 'volumes', state: !drives.length && !full ? 'later' : await check('volumes', drives) },
+        { id: 'full', state: full ? 'granted' : 'off' }
+    ];
+}
+
+// The system's own question comes up as each is first read
+async function askPermission(id) {
+    const paths = id === 'folders' ? homeFolders() : id === 'volumes' ? await removableDrives() : [];
+    for (const p of paths) await readable(p);
+    settings.asked = { ...(settings.asked || {}), [id]: true };
+    saveSettings();
+}
+
 // ---- What the page asks for (bridge.js) ----
 const smokeSteps = {};
 
@@ -318,6 +383,18 @@ async function handle(rec, type, data) {
             return { exists: (data.paths || []).map(p => { try { return fs.statSync(p).isDirectory(); } catch (e) { return false; } }) };
         case 'reveal':
             shell.showItemInFolder(data.path);
+            return { ok: true };
+        case 'permissions':
+            return { rows: await permissionRows(), firstRun: !settings.permissionsSeen && !process.env.JEDITOR_SKIP_PERMISSIONS };
+        case 'askPermission':
+            await askPermission(data.id);
+            return { ok: true };
+        case 'openPermissionSettings':
+            await shell.openExternal(data.id === 'full' ? PRIVACY.full : PRIVACY.files);
+            return { ok: true };
+        case 'permissionsSeen':
+            settings.permissionsSeen = true;
+            saveSettings();
             return { ok: true };
         case 'checkUpdate':
             return checkUpdate();
@@ -582,6 +659,7 @@ function menu() {
                 { role: 'about' },
                 { type: 'separator' },
                 { label: 'Settings…', accelerator: 'Cmd+,', click: send('settings') },
+                { label: 'Permissions…', click: send('permissions') },
                 { type: 'separator' },
                 { role: 'services' },
                 { type: 'separator' },

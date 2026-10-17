@@ -37,6 +37,7 @@
     <script src="camera.js"></script>
     <script src="places.js"></script>
     <script src="windows.js"></script>
+    <script src="permissions.js"></script>
     <script src="fit.js"></script>
     <script src="ui.js"></script>
     <link rel="stylesheet" href="tokens.css">
@@ -564,6 +565,11 @@
 
                     <section id="set-page-projects" class="settings-section" data-page="projects" role="tabpanel" aria-labelledby="set-h-folder">
                         <h3 id="set-h-folder" class="settings-page-title">Projects</h3>
+                        <div class="set-row" data-needs="permissions">
+                            <span class="set-label">Permissions
+                                <small>What macOS lets jEditor open: your folders, USB drives and memory cards</small></span>
+                            <button id="cust-permissions" class="btn secondary">Review…</button>
+                        </div>
                         <div class="set-row">
                             <label class="set-label" for="cust-auto-check">Watch the folder for changes
                                 <small>Photos a scanner saves, or that are removed or edited elsewhere, show up on their own</small></label>
@@ -1083,6 +1089,26 @@
             <div id="whatsnew-list" class="whatsnew-list"></div>
             <div class="dialog-foot">
                 <span class="dialog-note">Downloads and every release: <a href="https://github.com/xmui/jEditor/releases" target="_blank" rel="noopener">GitHub releases</a></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- The Mac's permissions (permissions.js) -->
+    <div id="permissions-panel" class="dialog-overlay hidden" data-needs="permissions">
+        <div class="dialog perm-card" role="dialog" aria-modal="true" aria-labelledby="perm-title">
+            <div class="dialog-head">
+                <h2 id="perm-title" class="dialog-title">Let jEditor open your photos</h2>
+                <button id="perm-close" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+            <div class="dialog-body">
+                <p class="perm-intro">macOS asks before an app opens files in your folders and on drives. Allow these now and jEditor won't stop to ask while you work.</p>
+                <div id="perm-list" class="perm-list"></div>
+            </div>
+            <div class="dialog-foot">
+                <span class="dialog-note">jEditor isn't signed by Apple yet, so after an update macOS may ask again. Settings → Projects → Permissions brings this back.</span>
+                <span class="dialog-actions"><button id="perm-done" class="btn primary">Done</button></span>
             </div>
         </div>
     </div>
