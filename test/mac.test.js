@@ -703,6 +703,74 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await app.close();
     }
 
+    // On a real Mac: the update put in place of the app, from a real .dmg
+    if (process.platform === 'darwin') {
+        console.log('mac: updating in place (no Developer ID)');
+        const { execFileSync } = require('child_process');
+        const port = releaseServer.address().port;
+        // A tiny app, signed ad hoc as jEditor's own builds are
+        const makeApp = (dir, marker, sign = true) => {
+            const app = path.join(dir, 'jEditor.app');
+            fs.mkdirSync(path.join(app, 'Contents', 'MacOS'), { recursive: true });
+            fs.writeFileSync(path.join(app, 'Contents', 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>CFBundleExecutable</key><string>jEditor</string><key>CFBundleIdentifier</key><string>test.jeditor</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>`);
+            fs.writeFileSync(path.join(app, 'Contents', 'MacOS', 'jEditor'), '#!/bin/sh\necho ' + marker + '\n', { mode: 0o755 });
+            if (sign) execFileSync('codesign', ['-s', '-', '--force', app]);
+            return app;
+        };
+        const apps = path.join(tmp, 'Applications');
+        fs.mkdirSync(apps);
+        const installed = makeApp(apps, 'old');
+        const dmgFor = (marker, sign) => {
+            const src = path.join(tmp, 'dmg-src-' + marker);
+            fs.mkdirSync(src);
+            makeApp(src, marker, sign);
+            const dmgFile = path.join(tmp, marker + '.dmg');
+            execFileSync('hdiutil', ['create', '-quiet', '-fs', 'HFS+', '-srcfolder', src, '-format', 'UDZO', dmgFile]);
+            return fs.readFileSync(dmgFile);
+        };
+        const good = dmgFor('new', true);
+        releases.files['/dmg-good'] = good;
+        releases.latest = {
+            tag_name: 'v9.5.0', body: '- In place',
+            assets: [{ name: 'jEditor-9.5.0-mac.dmg', browser_download_url: `http://127.0.0.1:${port}/dmg-good`, size: good.length, digest: 'sha256:' + crypto.createHash('sha256').update(good).digest('hex') }]
+        };
+        const { app, page, errors } = await launch(path.join(tmp, 'profile-inplace'), [], { JEDITOR_APP_BUNDLE: installed });
+        await app.evaluate(({ app, shell }) => {
+            global.realQuit = app.quit;
+            app.quit = () => { global.quitAsked = true; };
+            app.relaunch = () => { global.relaunched = true; };
+            global.opened = [];
+            shell.openPath = async (p) => { global.opened.push(p); return ''; };
+        });
+        const r = await page.evaluate(async () => { await JEditorNative.checkUpdate(); return JEditorNative.installUpdate(() => { }); });
+        await new Promise(res => setTimeout(res, 1800));
+        const main = await app.evaluate(() => ({ relaunched: !!global.relaunched, quit: !!global.quitAsked, opened: global.opened }));
+        const now = fs.readFileSync(path.join(installed, 'Contents', 'MacOS', 'jEditor'), 'utf8');
+        check('the update goes in place of the app (checked with codesign), and jEditor opens again', r.inPlace && /new/.test(now) && main.relaunched && main.quit && !main.opened.length, JSON.stringify({ r, main, now }));
+        await new Promise(res => setTimeout(res, 500));
+        check('... leaving nothing beside it', fs.readdirSync(apps).join() === 'jEditor.app', fs.readdirSync(apps).join());
+
+        // An app that doesn't check out isn't put in: the .dmg opens in Finder
+        const bad = dmgFor('broken', false);
+        releases.files['/dmg-bad'] = bad;
+        releases.latest = {
+            tag_name: 'v9.6.0', body: '- Broken',
+            assets: [{ name: 'jEditor-9.6.0-mac.dmg', browser_download_url: `http://127.0.0.1:${port}/dmg-bad`, size: bad.length, digest: 'sha256:' + crypto.createHash('sha256').update(bad).digest('hex') }]
+        };
+        const downloads = path.join(tmp, 'Downloads-inplace');
+        fs.mkdirSync(downloads);
+        await app.evaluate(({ app }, d) => { app.setPath('downloads', d); global.relaunched = false; }, downloads);
+        const r2 = await page.evaluate(async () => { await JEditorNative.checkUpdate(); return JEditorNative.installUpdate(() => { }); });
+        const main2 = await app.evaluate(() => ({ relaunched: !!global.relaunched, opened: global.opened }));
+        const still = fs.readFileSync(path.join(installed, 'Contents', 'MacOS', 'jEditor'), 'utf8');
+        check('an app that doesn\'t check out isn\'t put in: the .dmg opens in Finder instead', r2.inPlace === false && /new/.test(still) && !main2.relaunched && main2.opened.length === 1 && /9\.6\.0/.test(main2.opened[0]) && fs.readdirSync(apps).join() === 'jEditor.app', JSON.stringify({ r2, main2 }));
+        check('no JS errors', errors.length === 0, errors.join('; '));
+        await app.evaluate(({ app }) => { app.quit = global.realQuit; });
+        await app.close();
+    }
+
     console.log('linux: the same app, with Linux\'s words, and an AppImage that updates itself');
     {
         const port = releaseServer.address().port;
@@ -739,6 +807,59 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         check('the Linux app, with Linux\'s words: Files, Ctrl', r.platform === 'linux' && r.data === 'linux' && r.badge.startsWith('Linux · ') && r.files === 'Show in Files' && r.keys === 'Ctrl+Z to undo' && r.computer === 'this computer', JSON.stringify(r));
         check('no Windows-only features', r.updates && !r.scan && !r.recycle, JSON.stringify(r));
         check('the new AppImage replaces this one, runnable, and jEditor restarts in it', fs.readFileSync(appImage).equals(image) && (fs.statSync(appImage).mode & 0o111) !== 0 && main.relaunched === appImage && main.quit, JSON.stringify(main));
+        check('no JS errors', errors.length === 0, errors.join('; '));
+        await app.evaluate(({ app }) => { app.quit = global.realQuit; });
+        await app.close();
+    }
+
+    console.log('linux: installed from the .deb, updated with the system\'s installer');
+    {
+        const port = releaseServer.address().port;
+        const deb = crypto.randomBytes(1024 * 1024 + 3);
+        releases.files['/deb'] = deb;
+        releases.latest = {
+            tag_name: 'v9.3.0', body: '- Packages',
+            assets: [
+                { name: 'jEditor-9.3.0-linux.AppImage', browser_download_url: `http://127.0.0.1:${port}/appimage`, size: 1 },
+                { name: 'jEditor-9.3.0-linux.deb', browser_download_url: `http://127.0.0.1:${port}/deb`, size: deb.length, digest: 'sha256:' + crypto.createHash('sha256').update(deb).digest('hex') }
+            ]
+        };
+        // pkexec, as it would run the installer: what it was asked, and the package
+        const pk = path.join(tmp, 'pkexec');
+        const asked = path.join(tmp, 'pkexec-args'), got = path.join(tmp, 'pkexec-package');
+        const fakePkexec = (code) => fs.writeFileSync(pk, `#!/bin/sh\necho "$@" > "${asked}"\nfor a; do last="$a"; done\ncp "$last" "${got}"\nexit ${code}\n`, { mode: 0o755 });
+        fakePkexec(0);
+        const downloads = path.join(tmp, 'Downloads-deb');
+        fs.mkdirSync(downloads);
+        const { app, page, errors } = await launch(path.join(tmp, 'profile-deb'), [], { JEDITOR_PLATFORM: 'linux', JEDITOR_LINUX_PACKAGE: 'deb', JEDITOR_PKEXEC: pk });
+        await app.evaluate(({ app, shell }, d) => {
+            app.setPath('downloads', d);
+            global.realQuit = app.quit;
+            app.quit = () => { global.quitAsked = true; };
+            app.relaunch = () => { global.relaunched = true; };
+            global.opened = [];
+            shell.openPath = async (p) => { global.opened.push(p); return ''; };
+        }, downloads);
+        const r = await page.evaluate(async () => {
+            const updates = Host.has('updates');
+            const shown = getComputedStyle(document.querySelector('[data-page="updates"]')).display !== 'none';
+            await JEditorNative.checkUpdate();
+            const res = await JEditorNative.installUpdate(() => { });
+            return { updates, shown, res };
+        });
+        await new Promise(res => setTimeout(res, 1800));
+        const main = await app.evaluate(() => ({ relaunched: !!global.relaunched, quit: !!global.quitAsked, opened: global.opened }));
+        const args = fs.readFileSync(asked, 'utf8').trim();
+        check('Settings → Updates on a .deb install too', r.updates && r.shown, JSON.stringify(r));
+        check('the new .deb (checked) is installed with the system\'s installer, asking for the password, and jEditor opens again',
+            r.res.inPlace && /^\/usr\/bin\/(apt-get install -y --allow-downgrades|dpkg -i) \S+jEditor-9\.3\.0-linux\.deb$/.test(args) && fs.readFileSync(got).equals(deb) && main.relaunched && main.quit && !main.opened.length,
+            JSON.stringify({ args, main }));
+        // The password not given: the package opens with the software installer
+        fakePkexec(126);
+        await app.evaluate(() => { global.relaunched = false; });
+        const r2 = await page.evaluate(async () => { await JEditorNative.checkUpdate(); return JEditorNative.installUpdate(() => { }); });
+        const main2 = await app.evaluate(() => ({ relaunched: !!global.relaunched, opened: global.opened }));
+        check('... and when it isn\'t installed (no password), it opens with the software installer instead', r2.inPlace === false && !main2.relaunched && main2.opened.length === 1 && fs.readFileSync(main2.opened[0]).equals(deb), JSON.stringify({ r2, main2 }));
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.evaluate(({ app }) => { app.quit = global.realQuit; });
         await app.close();

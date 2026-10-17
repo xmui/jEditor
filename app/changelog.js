@@ -13,7 +13,10 @@ const CHANGELOG = [
             'Detail: sharpening (amount, radius, and masking to keep it to the edges), noise reduction that keeps edges, and color noise reduction for blotchy scans. A 1:1 view in the panel shows them on the full photo, where you click.',
             'Adjustments never change the photo: they\'re kept with the project and shown wherever the photo is, so they can be changed again any time. Export writes copies with them, Save edits… writes them into the photos (Ctrl+Z still puts the originals back).',
             'Copy and paste adjustments (`Ctrl+Shift+C`, `Ctrl+Shift+V`) onto one photo or a whole selection in the grid, and Done & next (`Shift+Enter`) to work through a project.',
-            'Export with a longest side now resizes the photo with its edits, not the original.'
+            'Export with a longest side now resizes the photo with its edits, not the original.',
+            'On the Mac, updates install themselves: Settings → Updates downloads the new version, checks it and puts it in place of this one, then jEditor opens again. No more dragging into Applications (jEditor needs to be in Applications for this).',
+            'On Linux, Settings → Updates works for the .deb and Arch package too: it installs the new package with your system\'s installer (asking for your password) and reopens jEditor.',
+            'On the Mac, a taller title bar: more room at the top of the window to drag it by.'
         ]
     },
     {

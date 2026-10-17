@@ -6098,10 +6098,23 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 
 :root[data-platform="mac"] {
     --lights-w: 72px;
+    /* More title bar to take hold of: the top row sits this much lower,
+       and what's above it moves the window too */
+    --mac-drag: 14px;
+    --top-row: calc(var(--gutter) + var(--mac-drag) + var(--ctl-lg));
 }
 
 :root[data-platform="mac"].fullscreen {
     --lights-w: 0px;
+    --mac-drag: 0px;
+}
+
+:root[data-platform="mac"] header {
+    top: var(--mac-drag);
+}
+
+:root[data-platform="mac"] .folder-bar {
+    top: calc(var(--gutter) + var(--mac-drag));
 }
 
 :root[data-platform="mac"] .folder-bar {
@@ -6113,7 +6126,7 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     content: "";
     position: fixed;
     inset: 0 0 auto 0;
-    height: calc(var(--gutter) * 2 + var(--ctl-lg));
+    height: calc(var(--gutter) * 2 + var(--ctl-lg) + var(--mac-drag));
     -webkit-app-region: drag;
     pointer-events: none;
 }
@@ -6154,7 +6167,8 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    pills there go (the toolbar mirrors them), it holds the traffic lights,
    and what was below the pills starts below it. */
 :root.native-toolbar {
-    --top-row: 52px;
+    /* The toolbar, and a strip under it that moves the window too */
+    --top-row: calc(52px + var(--mac-drag));
 }
 
 :root.native-toolbar header,

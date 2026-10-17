@@ -112,7 +112,8 @@ const Updates = {
         const ok = await UI.confirm({
             title: `Update to jEditor ${this.label(r.tag)}?`,
             message: `You have ${typeof APP_VERSION !== 'undefined' ? this.label(typeof APP_BUILD !== 'undefined' ? APP_BUILD : 'v' + APP_VERSION) : 'an older version'}. ` + (Host.mac()
-                ? 'jEditor downloads it, opens it in Finder and quits: drag jEditor into Applications, replacing this one, and open it again. Your edits are already saved.'
+                ? 'jEditor downloads it, puts it in place of this one and opens again, in about a minute. Your edits are already saved.'
+                : Host.platform() === 'linux' ? 'jEditor downloads it, installs it (your password may be asked for) and opens again, in about a minute. Your edits are already saved.'
                 : 'jEditor closes, installs the update and opens again, in about a minute. Your edits are already saved.'),
             items: this.changes(r.notes),
             ok: 'Update now'
@@ -125,11 +126,17 @@ const Updates = {
         app.beginTask('update', 'Downloading the update…');
         try {
             await this.settle();
-            await FolderCache.native().installUpdate((got, total) => {
+            const r = await FolderCache.native().installUpdate((got, total) => {
                 if (total) app.updateTask('update', `Downloading the update… ${Math.round(got / total * 100)}%`);
             });
-            app.updateTask('update', Host.mac() ? 'Opened the update in Finder: drag jEditor into Applications'
+            // The Mac app replaces itself, except where it can't (not in
+            // Applications): then the update opens in Finder, to drag in
+            const opened = r && r.inPlace === false;
+            const finder = Host.mac() && opened;
+            app.updateTask('update', finder ? 'Opened the update in Finder: drag jEditor into Applications'
+                : opened ? 'Opened the update with your software installer'
                 : 'Installing the update — jEditor opens again in a moment');
+            if (opened && r.why) app.showToast(`Opened the update ${finder ? 'in Finder' : 'to install'} (${r.why})`, 8000);
         } catch (e) {
             app.endTask('update');
             UI.alert({ title: 'Couldn\'t update', message: e.message });

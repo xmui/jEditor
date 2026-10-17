@@ -367,6 +367,7 @@
             try {
                 const r = await answer('installUpdate');
                 if (progress && r && r.received > last) progress(r.received, r.total);
+                return r;
             } finally { onUpdateProgress = null; }
         }
     };
@@ -413,7 +414,7 @@
         const px = (name) => parseFloat(css.getPropertyValue(name)) || 0;
         const scale = parseFloat(css.getPropertyValue('--ui-scale')) || 1;
         const gutter = px('--gutter');
-        const at = { x: Math.max(12, gutter), y: gutter + (px('--ctl-lg') * scale) / 2 - 7 };
+        const at = { x: Math.max(12, gutter), y: px('--mac-drag') + gutter + (px('--ctl-lg') * scale) / 2 - 7 };
         const key = at.x + ',' + at.y;
         if (key === lastLights) return;
         lastLights = key;
