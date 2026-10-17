@@ -27,6 +27,7 @@ const toolbar = require('./native'); // null without the native module
 // page's pills mirror into it); before 26, or without the module, the
 // page keeps its own pills. JEDITOR_NATIVE_TOOLBAR=0: the pills anyway.
 const NATIVE_TOOLBAR = process.platform === 'darwin' && !!toolbar && toolbar.supported() && process.env.JEDITOR_NATIVE_TOOLBAR !== '0';
+global.jeditorToolbar = NATIVE_TOOLBAR ? toolbar : null; // for the tests (test/mac.test.js)
 
 // Settings, recent folders and the projects' data are stored under this
 // origin: it must never change

@@ -464,8 +464,8 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             console.log('        (skipped: needs macOS 26 and the native module, native/build.js)');
         } else {
             await loaded(page, 2);
-            const describe = () => app.evaluate(({ BrowserWindow }) => process.mainModule.require('./native').describe(BrowserWindow.getAllWindows()[0].getNativeWindowHandle()));
-            const click = (id, value) => app.evaluate(({ BrowserWindow }, [id, value]) => process.mainModule.require('./native').click(BrowserWindow.getAllWindows()[0].getNativeWindowHandle(), id, value), [id, value]);
+            const describe = () => app.evaluate(({ BrowserWindow }) => global.jeditorToolbar.describe(BrowserWindow.getAllWindows()[0].getNativeWindowHandle()));
+            const click = (id, value) => app.evaluate(({ BrowserWindow }, [id, value]) => global.jeditorToolbar.click(BrowserWindow.getAllWindows()[0].getNativeWindowHandle(), id, value), [id, value]);
             const settle = () => page.waitForTimeout(400);
             await page.evaluate(() => { app.setView('single'); app.loadIndex(0); });
             await settle();
