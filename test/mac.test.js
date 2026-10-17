@@ -472,6 +472,12 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             let d = await describe();
             const ids = d.items.map(i => i.id);
             check('the toolbar is the top row: in Liquid Glass, the page\'s own pills gone', d.visible && d.glass && await page.evaluate(() => getComputedStyle(document.querySelector('header')).display === 'none'), JSON.stringify(d).slice(0, 300));
+            const edge = await page.evaluate(() => {
+                const band = getComputedStyle(document.getElementById('main-interface'), '::before');
+                const photo = document.getElementById('current-image').getBoundingClientRect();
+                return { band: band.content !== 'none' && parseFloat(band.height) >= 52, photoTop: photo.top };
+            });
+            check('the title always has a backing (the toolbar\'s edge), and the photo starts below the toolbar', edge.band && edge.photoTop >= 52, JSON.stringify(edge));
             check('... its title is the photo, its subtitle the project and where it is in it', d.title === '1-white.jpg' && /Glass/.test(d.subtitle) && /1 \/ 2/.test(d.subtitle), JSON.stringify([d.title, d.subtitle]));
             check('... with the page\'s controls: sort, info, view, crop, More (Rename… first)', ['sort', 'hc:info', 'hc:view', 'hc:crop', 'more'].every(i => ids.includes(i)) && d.items.find(i => i.id === 'more').menu[0] === 'Rename…' && d.items.find(i => i.id === 'sort').menu.includes('✓Name (A–Z)'), JSON.stringify(d.items));
             await click('hc:view');
