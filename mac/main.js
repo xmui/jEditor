@@ -458,6 +458,9 @@ function split(rec) {
     [[rec, area.x], [other, area.x + half]].forEach(([r, x]) => {
         if (r.win.isFullScreen()) r.win.setFullScreen(false);
         if (r.win.isMaximized()) r.win.unmaximize();
+        // A small screen's half can be under the usual minimum width
+        const [minW, minH] = r.win.getMinimumSize();
+        if (half < minW) r.win.setMinimumSize(half, minH);
         r.win.setBounds({ x, y: area.y, width: half, height: area.height });
         r.win.show();
     });

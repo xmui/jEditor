@@ -348,6 +348,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         });
         for (const [name, b64] of Object.entries(made)) fs.writeFileSync(path.join(glass, name), Buffer.from(b64, 'base64'));
         await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1200, 800));
+        // The glass as most Macs have it; CI's Macs ask for reduced
+        // transparency (that's checked on its own, below)
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'no-preference' }] });
         await page.evaluate((p) => JEditorNative.openPath(p), glass);
         await loaded(page, 2);
 
@@ -431,9 +435,18 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         check('the traffic lights get their room, and give it back in full screen', r.lightsRoom === 72 && r.fullscreenRoom === 0, JSON.stringify([r.lightsRoom, r.fullscreenRoom]));
         check('the top row moves the window, its buttons don\'t', r.drag === 'drag' && r.noDrag === 'no-drag', JSON.stringify([r.drag, r.noDrag]));
         check('Glass: Off is solid', r.offFilter === 'none' && /^rgb\(/.test(r.offBg), JSON.stringify([r.offFilter, r.offBg]));
+        await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }] });
+        const offReduced = await page.evaluate(() => {
+            app.uiPrefs.glass = 'off';
+            app.applyUiPrefs();
+            const bg = getComputedStyle(document.querySelector('.file-info')).backgroundColor;
+            app.uiPrefs.glass = 'rich';
+            app.applyUiPrefs();
+            return bg;
+        });
+        check('... even with reduced transparency', /^rgb\(/.test(offReduced), offReduced);
 
         // Reduce transparency (System Settings → Accessibility): solid
-        const cdp = await page.context().newCDPSession(page);
         await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }] });
         const reduced = await page.evaluate(() => matchMedia('(prefers-reduced-transparency: reduce)').matches && getComputedStyle(document.querySelector('.file-info')).backdropFilter);
         await cdp.send('Emulation.setEmulatedMedia', { features: [] });
