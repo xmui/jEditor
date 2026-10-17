@@ -1,0 +1,16 @@
+{
+  "name": "jeditor-mac",
+  "productName": "jEditor",
+  "version": "0.0.0",
+  "private": true,
+  "description": "jEditor for Mac: the jEditor UI (../app) in an Electron window",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "node build.js"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3"
+  }
+}

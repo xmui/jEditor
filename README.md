@@ -8,7 +8,7 @@ One UI (`app/`), three ways to run it:
 |---|---|---|
 | **Windows app** | Released | Everything: the core below, plus scanning, camera tethering, the projects sidebar with drives, the Recycle Bin, several windows and updates. |
 | **Web** | https://xmui.github.io/jEditor/, and `standalone.html` with each release | The core, in Chrome or Edge: open, view, rotate, crop and straighten, flags, search, rename, move, delete with undo, export, duplicates, Auto crop and watching the folder. |
-| **Mac app** | Planned | The core, with no permission prompts and folders opened from Finder; then the sidebar, windows and updates. |
+| **Mac app** | First version (not signed by Apple yet) | The core, with no permission prompts, the Mac's own folder picker, folders opened from Finder (Open With, or onto the Dock icon) and Show in Finder. Next: the sidebar, several windows, updates. |
 
 [PLAN.md](PLAN.md) has how the three fit together and what comes next. Scanning and tethering are Windows-only for now.
 
@@ -32,6 +32,14 @@ To update, use Settings → Updates, or run the newer setup. To uninstall, use S
 There's also a **portable** zip. Unzip it anywhere and run `jEditor.exe`, with nothing to install.
 
 jEditor needs the Microsoft Edge WebView2 Runtime, which comes with Windows 11 and up-to-date Windows 10. If it's missing, jEditor offers to download it from Microsoft. It installs without admin rights too.
+
+## Installing on a Mac
+
+Download **jEditor-x.y.z-mac.dmg** from [Releases](../../releases), open it and drag jEditor into Applications. It runs on Apple silicon and Intel Macs, macOS 12 or later.
+
+It isn't signed by Apple yet, so the first time macOS won't open it. Go to **System Settings → Privacy & Security**, find "jEditor was blocked", and click **Open Anyway**. It only asks once.
+
+To update, download the newer .dmg and drag it into Applications again. jEditor's settings, recent folders and each project's flags and cache are kept in `~/Library/Application Support/jEditor`, never in your folders.
 
 ## Changing the look
 
@@ -59,8 +67,9 @@ A Debug build (`dotnet run --project src`) does this on its own with the repo's 
 - `app/`: the UI. It ships beside the exe.
 - `docs/`: how to use jEditor, and the plan from its web app days.
 - `installer/jEditor.iss`: the per-user installer (Inno Setup).
+- `mac/`: the Mac app, in Electron (Chromium, as WebView2 is). `main.js` serves the `app` folder at `app://jeditor/` (fixed, like the Windows address) and drops a folder onto the page to give it a real folder handle for any path, with permission granted; `bridge.js` takes the drop in the page, replaces the folder picker with the Mac's, and gives jEditor `JEditorNative`. The projects' data is kept in the app's private storage.
 
-The UI never assumes Windows. Everything an app adds goes through `window.JEditorNative` (made by `src/bridge.js`), which is `null` in a browser. Each app says what it is and lists what it can do (`platform`, `features`), and `app/host.js` hides what it can't (`Host.has('scan')`, `data-needs="scan"`) and puts the system's own words into the page: Explorer or Finder, the Recycle Bin or the Trash. The UI tests run it with no app (the web), the Windows app, and an app with only the core (as the Mac app will start).
+The UI never assumes Windows. Everything an app adds goes through `window.JEditorNative` (made by `src/bridge.js`), which is `null` in a browser. Each app says what it is and lists what it can do (`platform`, `features`), and `app/host.js` hides what it can't (`Host.has('scan')`, `data-needs="scan"`) and puts the system's own words into the page: Explorer or Finder, the Recycle Bin or the Trash. The UI tests run it with no app (the web), the Windows app, and an app with only the core; `test/mac.test.js` runs the real Mac app.
 
 ## Building
 
@@ -73,9 +82,20 @@ cd jEditor
 ./scripts/smoke-test.ps1       # the built app opens a folder and saves a rotation
 ```
 
+On a Mac, with Node 20:
+
+```
+npm ci && (cd mac && npm ci)
+npm run mac                    # runs the Mac app from this checkout (the UI from app/)
+node mac/build.js              # dist/jEditor-x.y.z-mac.dmg, for Apple silicon and Intel
+node scripts/smoke-test-mac.js # the built app opens a folder, edits, deletes and undoes
+```
+
+`npm run test:mac` runs the Mac app's tests: the real app on folders on disk. Electron runs on Linux too, so they run there as well (`xvfb-run npm run test:mac` without a screen).
+
 `npm test` runs the tests in headless Chrome, on any OS: the bridge's, then the UI's (sorting, rotation, crop, flags, folders and much more). Set `CHROME_PATH` if Chrome isn't found. The project also compiles on Linux and macOS (`dotnet build src`), which is handy for checking a change, but it only runs on Windows.
 
-Every push builds on GitHub Actions: the tests, then on Windows the build, the smoke test and an install/uninstall test. The setup and the zip from each run are on the run's page under **Artifacts**.
+Every push builds on GitHub Actions: the tests, then on Windows the build, the smoke test and an install/uninstall test, and on a Mac the Mac app's tests, its build and its smoke test. The setup, the zip and the .dmg from each run are on the run's page under **Artifacts**.
 
 ### Releasing
 
@@ -83,7 +103,7 @@ Every push builds on GitHub Actions: the tests, then on Windows the build, the s
 npm run bump 1.x.y     # sets the version in app/version.js, package.json and package-lock.json
 ```
 
-Add what changed to the top of `app/changelog.js`: it's what the app shows under **What's new**, and the release notes. The tests fail if the current version has no entry. When the bump lands on `main`, the Release workflow builds, tests and publishes the setup, the zip and `standalone.html` as release `v1.x.y`. Every push to `main` also deploys the web app (the Web app workflow), once the tests pass. Running Release by hand from the Actions tab releases the current version again as `v1.x.y-2` (for a fix to the Windows side alone).
+Add what changed to the top of `app/changelog.js`: it's what the app shows under **What's new**, and the release notes. The tests fail if the current version has no entry. When the bump lands on `main`, the Release workflow builds, tests and publishes the setup, the zip, the Mac .dmg and `standalone.html` as release `v1.x.y`. Every push to `main` also deploys the web app (the Web app workflow), once the tests pass. Running Release by hand from the Actions tab releases the current version again as `v1.x.y-2` (for a fix to the Windows side alone).
 
 If you change `app/icon.png`, run `node scripts/make-icons.js` (the web icons) and `python3 scripts/make-icon.py` (the exe's icon).
 
