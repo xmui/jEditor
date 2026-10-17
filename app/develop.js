@@ -19,6 +19,16 @@
 //   levels: { rgb|r|g|b: [in black, gamma, in white, out black, out white] }
 //   curve:  { rgb|r|g|b: [[x, y], …] } (0–1, from the left)
 //   hsl:    { hue|sat|lum: [8 values, ±100] } (red … magenta, HUES)
+//   grade:  { s|m|h: [hue 0–360, saturation 0–100, luminance ±100] }
+//           (shadows, midtones, highlights), with gradeBlend, gradeBalance
+//   mono:   [red, green, blue] weights: black and white, from linear light
+//           (a film's own sensitivity to each colour)
+//   vignette, vigMid, vigFeather, vigRound; grain, grainSize, grainColor;
+//           halation (the red glow round highlights) (Effects:
+//           they depend on where the pixel is, so they're a GPU stage of
+//           their own after the tables, not part of them)
+//   look:   a film look (LOOKS), with lookAmount (0–200%): applied over
+//           everything else, inside the colour table
 
 const Develop = {
     SLIDERS: {
@@ -31,8 +41,110 @@ const Develop = {
         temp: { min: -100, max: 100, step: 1 },
         tint: { min: -100, max: 100, step: 1 },
         vibrance: { min: -100, max: 100, step: 1 },
-        saturation: { min: -100, max: 100, step: 1 }
+        saturation: { min: -100, max: 100, step: 1 },
+        gradeBlend: { min: 0, max: 100, step: 1, def: 50 },
+        gradeBalance: { min: -100, max: 100, step: 1 },
+        vignette: { min: -100, max: 100, step: 1 },
+        vigMid: { min: 0, max: 100, step: 1, def: 50 },
+        vigFeather: { min: 0, max: 100, step: 1, def: 50 },
+        vigRound: { min: -100, max: 100, step: 1 },
+        grain: { min: 0, max: 100, step: 1 },
+        grainSize: { min: 0, max: 100, step: 1, def: 25 },
+        grainColor: { min: 0, max: 100, step: 1 },
+        halation: { min: 0, max: 100, step: 1 },
+        lookAmount: { min: 0, max: 200, step: 1, def: 100 }
     },
+    ZONES: [['s', 'Shadows'], ['m', 'Midtones'], ['h', 'Highlights']],
+
+    // Film looks: each a real film stock (or a darkroom trick), made as
+    // settings of its own and put over the photo's (Amount 100% is the
+    // film as made; 0 none, 200 twice as strong). Grouped by process:
+    //   C-41  colour negative, as scanned: soft contrast, a gentle
+    //         shoulder in the highlights, lifted blacks, colour grain
+    //   E-6   colour slide (reversal): deep blacks, high contrast and
+    //         saturation, the finest grain
+    //   ECN-2 motion-picture negative (Kodak Vision3): very low contrast,
+    //         wide latitude; without its rem-jet backing (CineStill) the
+    //         highlights get a red halo (halation)
+    //   B&W   each film's own sensitivity to red, green and blue (`mono`,
+    //         on linear light), its contrast and grain
+    // Grain follows speed: fine at 50–100, coarse at 800–3200.
+    PROCESSES: [['C-41', 'Negative', 'Colour negative film (C-41)'], ['E-6', 'Slide', 'Colour slide film (E-6)'], ['ECN-2', 'Cinema', 'Motion-picture film (ECN-2)'], ['B&W', 'B&W', 'Black-and-white film'], ['Creative', 'Creative', 'Darkroom and print looks']],
+    LOOKS: [
+        // ---- C-41 colour negative ----
+        { id: 'portra160', process: 'C-41', name: 'Portra 160', maker: 'Kodak', note: 'Low contrast, natural skin, very fine grain; a touch cooler than 400',
+            adj: { contrast: -16, saturation: -10, curve: { rgb: [[0, 0.035], [0.25, 0.265], [0.5, 0.505], [0.75, 0.75], [1, 0.975]] }, hsl: { hue: [3, 4, -6, -14, -4, 0, 0, 0], sat: [-6, -4, -12, -22, -12, -8, 0, -6], lum: [0, 4, 2, -4, 0, 0, 0, 0] }, grade: { h: [40, 6, 0] }, grain: 8, grainSize: 14, grainColor: 25 } },
+        { id: 'portra400', process: 'C-41', name: 'Portra 400', maker: 'Kodak', note: 'Warm, glowing skin, olive greens, soft highlights, wide latitude',
+            adj: { contrast: -10, temp: 4, curve: { rgb: [[0, 0.04], [0.25, 0.26], [0.75, 0.765], [1, 0.97]], r: [[0, 0], [0.5, 0.51], [1, 1]] }, hsl: { hue: [4, 6, -8, -20, -6, -6, 0, 0], sat: [-2, 0, -10, -24, -14, -10, 0, -4], lum: [0, 6, 4, -2, 0, -4, 0, 0] }, grade: { s: [195, 8, 0], h: [42, 10, 0] }, grain: 14, grainSize: 22, grainColor: 30 } },
+        { id: 'portra800', process: 'C-41', name: 'Portra 800', maker: 'Kodak', note: 'Warmer and richer than 400, deeper colour, more grain',
+            adj: { contrast: -4, temp: 7, saturation: 6, curve: { rgb: [[0, 0.05], [0.3, 0.31], [0.75, 0.77], [1, 0.97]] }, hsl: { hue: [5, 8, -6, -16, 0, -4, 0, 0], sat: [6, 6, -4, -14, -6, 0, 0, 0], lum: [0, 6, 2, 0, 0, -6, 0, 0] }, grade: { s: [200, 10, -2], h: [40, 14, 0] }, grain: 22, grainSize: 32, grainColor: 35 } },
+        { id: 'ektar', process: 'C-41', name: 'Ektar 100', maker: 'Kodak', note: 'The most saturated negative: punchy reds, deep blues, cool, finest grain',
+            adj: { contrast: 18, temp: -4, vibrance: 26, saturation: 10, curve: { rgb: [[0, 0.01], [0.25, 0.22], [0.75, 0.79], [1, 0.99]] }, hsl: { hue: [-2, -6, -6, 6, 4, -6, 0, 0], sat: [20, 14, 4, 10, 12, 22, 6, 6], lum: [-6, -2, 0, -6, 0, -12, 0, 0] }, grain: 6, grainSize: 10, grainColor: 20 } },
+        { id: 'gold', process: 'C-41', name: 'Gold 200', maker: 'Kodak', note: 'Golden and warm, strong yellows, nostalgic grain',
+            adj: { contrast: 6, temp: 14, tint: 4, saturation: 4, curve: { rgb: [[0, 0.04], [0.5, 0.52], [1, 0.97]], b: [[0, 0.02], [0.5, 0.47], [1, 0.95]] }, hsl: { hue: [2, 4, -6, -10, 0, 0, 0, 0], sat: [6, 10, 16, -6, -8, -6, 0, 0], lum: [0, 4, 6, 0, 0, -4, 0, 0] }, grade: { m: [40, 6, 0], h: [45, 16, 2] }, grain: 18, grainSize: 30, grainColor: 35 } },
+        { id: 'ultramax', process: 'C-41', name: 'UltraMax 400', maker: 'Kodak', note: 'Warm, saturated, contrasty everyday film, grainier',
+            adj: { contrast: 14, temp: 9, vibrance: 12, saturation: 8, curve: { rgb: [[0, 0.03], [0.25, 0.235], [0.75, 0.78], [1, 0.98]] }, hsl: { hue: [2, 4, -4, -8, 0, -4, 0, 0], sat: [12, 8, 10, 0, 0, 6, 0, 0], lum: [-4, 2, 4, 0, 0, -6, 0, 0] }, grade: { h: [38, 10, 0] }, grain: 22, grainSize: 34, grainColor: 40 } },
+        { id: 'superia', process: 'C-41', name: 'Superia 400', maker: 'Fujifilm', note: 'Cool with a green bias, punchy greens, cyan skies, magenta reds',
+            adj: { contrast: 10, temp: -6, tint: -6, saturation: 6, curve: { rgb: [[0, 0.03], [0.25, 0.24], [0.75, 0.77], [1, 0.98]], g: [[0, 0.02], [0.5, 0.515], [1, 1]] }, hsl: { hue: [-6, -4, 6, 10, 6, -6, 0, 4], sat: [6, 0, -4, 14, 10, 8, 0, 0], lum: [0, 0, 0, -4, 0, -6, 0, 0] }, grade: { s: [165, 14, -2], h: [55, 6, 0] }, grain: 22, grainSize: 32, grainColor: 40 } },
+        { id: 'pro400h', process: 'C-41', name: 'Pro 400H', maker: 'Fujifilm', note: 'Pastel and airy: minty greens, a cyan cast, lifted shadows',
+            adj: { exposure: 0.15, contrast: -22, tint: -4, saturation: -14, curve: { rgb: [[0, 0.07], [0.25, 0.29], [0.75, 0.78], [1, 0.97]] }, hsl: { hue: [0, 4, 10, 24, 6, -4, 0, 0], sat: [-8, -10, -20, -14, -6, -14, 0, 0], lum: [0, 6, 8, 6, 4, 4, 0, 0] }, grade: { s: [175, 14, 2], h: [60, 6, 0] }, grain: 14, grainSize: 24, grainColor: 30 } },
+        { id: 'c200', process: 'C-41', name: 'C200', maker: 'Fujifilm', note: 'Cool and greenish, muted, plain everyday colour',
+            adj: { contrast: 4, temp: -8, tint: -8, saturation: -8, curve: { rgb: [[0, 0.03], [1, 0.97]] }, hsl: { hue: [-4, 0, 8, 10, 0, -4, 0, 0], sat: [-4, -6, -8, 4, 0, 0, 0, 0] }, grade: { s: [160, 12, 0] }, grain: 18, grainSize: 28, grainColor: 35 } },
+        // ---- E-6 colour slide ----
+        { id: 'velvia50', process: 'E-6', name: 'Velvia 50', maker: 'Fujifilm', note: 'Intense colour, vivid greens and blues, high contrast, magenta shadows',
+            adj: { contrast: 30, blacks: -14, tint: 6, vibrance: 24, saturation: 12, curve: { rgb: [[0, 0], [0.25, 0.19], [0.5, 0.49], [0.75, 0.8], [1, 1]] }, hsl: { hue: [-4, -4, -6, -10, -6, -8, 0, -6], sat: [16, 8, 14, 16, 20, 26, 10, 10], lum: [-6, 0, 0, -16, -6, -16, 0, 0] }, grade: { s: [290, 10, -4] }, grain: 4, grainSize: 8, grainColor: 15 } },
+        { id: 'velvia100', process: 'E-6', name: 'Velvia 100', maker: 'Fujifilm', note: 'Like 50, a little cooler and gentler, magenta-blue skies',
+            adj: { contrast: 26, blacks: -10, temp: -4, tint: 8, vibrance: 24, saturation: 14, curve: { rgb: [[0, 0], [0.25, 0.2], [0.75, 0.79], [1, 1]] }, hsl: { hue: [-6, -4, -4, -8, -4, -6, 0, -6], sat: [14, 6, 10, 12, 16, 22, 8, 10], lum: [-4, 0, 0, -12, -4, -12, 0, 0] }, grade: { s: [300, 10, -4] }, grain: 5, grainSize: 9, grainColor: 15 } },
+        { id: 'provia', process: 'E-6', name: 'Provia 100F', maker: 'Fujifilm', note: 'Neutral and true, slide contrast, slightly cool',
+            adj: { contrast: 16, blacks: -6, temp: -3, vibrance: 10, curve: { rgb: [[0, 0], [0.25, 0.22], [0.75, 0.78], [1, 1]] }, hsl: { sat: [4, 2, 4, 8, 6, 8, 0, 0], lum: [0, 0, 0, -4, 0, -6, 0, 0] }, grain: 5, grainSize: 9, grainColor: 15 } },
+        { id: 'e100', process: 'E-6', name: 'Ektachrome E100', maker: 'Kodak', note: 'Clean and neutral-cool, crisp blues, fine grain',
+            adj: { contrast: 14, blacks: -6, temp: -5, tint: 2, vibrance: 12, curve: { rgb: [[0, 0], [0.25, 0.22], [0.75, 0.78], [1, 1]] }, hsl: { hue: [0, -2, -4, 4, 4, -4, 0, 0], sat: [6, 2, 0, 6, 10, 14, 4, 0], lum: [0, 0, 0, -2, 0, -8, 0, 0] }, grade: { s: [215, 8, -2] }, grain: 5, grainSize: 9, grainColor: 15 } },
+        { id: 'kodachrome', process: 'E-6', code: 'K-14', name: 'Kodachrome 64', maker: 'Kodak', note: 'K-14, not E-6 (gone since 2010): warm, rich reds, deep blues, dense shadows',
+            adj: { contrast: 22, blacks: -8, temp: 6, saturation: 8, curve: { rgb: [[0, 0], [0.25, 0.21], [0.75, 0.79], [1, 0.99]] }, hsl: { hue: [-4, -6, -10, 12, 0, -8, 0, 0], sat: [18, 8, 2, -8, 0, 16, 0, 0], lum: [-8, 0, 0, -6, 0, -14, 0, 0] }, grade: { s: [200, 10, -4], h: [42, 12, 0] }, grain: 8, grainSize: 14, grainColor: 20 } },
+        // ---- ECN-2 motion-picture negative ----
+        { id: 'vision50d', process: 'ECN-2', name: 'Vision3 50D', maker: 'Kodak 5203', note: 'Daylight cinema film: very fine grain, neutral, low contrast, huge latitude',
+            adj: { contrast: -16, saturation: -6, curve: { rgb: [[0, 0.04], [0.25, 0.27], [0.75, 0.76], [1, 0.96]] }, hsl: { sat: [-4, -2, -6, -12, -6, -6, 0, 0] }, grade: { s: [190, 6, 0], h: [40, 6, 0] }, grain: 6, grainSize: 10, grainColor: 20 } },
+        { id: 'vision250d', process: 'ECN-2', name: 'Vision3 250D', maker: 'Kodak 5207', note: 'Daylight cinema film: a little warmer and grainier than 50D',
+            adj: { contrast: -10, temp: 3, saturation: -2, curve: { rgb: [[0, 0.04], [0.25, 0.265], [0.75, 0.765], [1, 0.965]] }, hsl: { sat: [0, 0, -4, -10, -4, -4, 0, 0] }, grade: { s: [190, 8, 0], h: [38, 8, 0] }, grain: 12, grainSize: 20, grainColor: 30 } },
+        { id: 'vision500t', process: 'ECN-2', name: 'Vision3 500T', maker: 'Kodak 5219', note: 'Tungsten cinema film: cool in daylight, teal shadows, warm skin, grain',
+            adj: { contrast: -6, temp: -12, tint: -2, curve: { rgb: [[0, 0.05], [0.25, 0.27], [0.75, 0.77], [1, 0.96]] }, hsl: { hue: [4, 6, -8, -14, 0, -6, 0, 0], sat: [4, 6, -8, -16, -6, 0, 0, 0] }, grade: { s: [190, 18, -2], h: [35, 12, 0] }, grain: 22, grainSize: 32, grainColor: 40 } },
+        { id: 'cinestill800t', process: 'ECN-2', name: 'CineStill 800T', maker: 'Vision3 500T, no rem-jet', note: 'Tungsten, cool and teal, with red halation glowing round the lights',
+            adj: { contrast: -2, temp: -16, tint: -2, curve: { rgb: [[0, 0.05], [0.25, 0.27], [0.75, 0.775], [1, 0.97]] }, hsl: { hue: [6, 6, -8, -14, 0, -6, 0, 0], sat: [8, 6, -8, -16, -4, 4, 0, 0] }, grade: { s: [185, 20, -2], h: [30, 10, 0] }, halation: 60, grain: 26, grainSize: 36, grainColor: 45 } },
+        { id: 'cinestill50d', process: 'ECN-2', name: 'CineStill 50D', maker: 'Vision3 50D, no rem-jet', note: 'Daylight, clean and cool-neutral, with a soft halation',
+            adj: { contrast: -10, temp: -4, saturation: -2, curve: { rgb: [[0, 0.04], [0.25, 0.27], [0.75, 0.765], [1, 0.965]] }, hsl: { sat: [-2, 0, -6, -8, 0, 4, 0, 0] }, grade: { s: [200, 8, 0] }, halation: 32, grain: 8, grainSize: 12, grainColor: 25 } },
+        // ---- Black and white ----
+        { id: 'trix', process: 'B&W', name: 'Tri-X 400', maker: 'Kodak', note: 'The classic: punchy contrast, deep blacks, gritty grain',
+            adj: { mono: [0.24, 0.6, 0.16], contrast: 22, blacks: -8, curve: { rgb: [[0, 0], [0.25, 0.2], [0.75, 0.8], [1, 1]] }, grain: 32, grainSize: 40 } },
+        { id: 'hp5', process: 'B&W', name: 'HP5 Plus', maker: 'Ilford', note: 'Softer and flatter than Tri-X, forgiving, visible grain',
+            adj: { mono: [0.25, 0.58, 0.17], contrast: 6, curve: { rgb: [[0, 0.03], [0.25, 0.245], [0.75, 0.77], [1, 0.98]] }, grain: 30, grainSize: 42 } },
+        { id: 'tmax100', process: 'B&W', name: 'T-Max 100', maker: 'Kodak', note: 'Smooth tones, fine grain, more red sensitivity (lighter skin)',
+            adj: { mono: [0.3, 0.58, 0.12], contrast: 14, curve: { rgb: [[0, 0.01], [0.25, 0.23], [0.75, 0.78], [1, 1]] }, grain: 8, grainSize: 12 } },
+        { id: 'tmax400', process: 'B&W', name: 'T-Max 400', maker: 'Kodak', note: 'Fine grain for its speed, crisp, smooth',
+            adj: { mono: [0.29, 0.58, 0.13], contrast: 16, curve: { rgb: [[0, 0.01], [0.25, 0.225], [0.75, 0.785], [1, 1]] }, grain: 16, grainSize: 22 } },
+        { id: 'fp4', process: 'B&W', name: 'FP4 Plus', maker: 'Ilford', note: 'Fine grain, classic medium contrast',
+            adj: { mono: [0.25, 0.6, 0.15], contrast: 12, curve: { rgb: [[0, 0.02], [0.25, 0.235], [0.75, 0.775], [1, 0.99]] }, grain: 10, grainSize: 16 } },
+        { id: 'panf', process: 'B&W', name: 'Pan F Plus 50', maker: 'Ilford', note: 'Very fine grain, high contrast, rich blacks',
+            adj: { mono: [0.24, 0.6, 0.16], contrast: 28, blacks: -10, curve: { rgb: [[0, 0], [0.25, 0.2], [0.75, 0.81], [1, 1]] }, grain: 5, grainSize: 8 } },
+        { id: 'acros', process: 'B&W', name: 'Acros 100 II', maker: 'Fujifilm', note: 'Orthopanchromatic: reds darker, blue skies lighter; very fine grain',
+            adj: { mono: [0.16, 0.6, 0.24], contrast: 18, blacks: -6, curve: { rgb: [[0, 0], [0.25, 0.215], [0.75, 0.79], [1, 1]] }, grain: 6, grainSize: 10 } },
+        { id: 'delta3200', process: 'B&W', name: 'Delta 3200', maker: 'Ilford', note: 'Low light: big grain, open shadows, soft contrast',
+            adj: { mono: [0.26, 0.58, 0.16], contrast: 4, shadows: 10, curve: { rgb: [[0, 0.05], [0.25, 0.27], [0.75, 0.77], [1, 0.98]] }, grain: 52, grainSize: 62 } },
+        { id: 'sfx', process: 'B&W', name: 'SFX 200', maker: 'Ilford', note: 'Extended red, as with a deep red filter: dark skies, glowing skin',
+            adj: { mono: [0.55, 0.37, 0.08], contrast: 18, curve: { rgb: [[0, 0], [0.25, 0.215], [0.75, 0.79], [1, 1]] }, grain: 18, grainSize: 26 } },
+        // ---- Creative ----
+        { id: 'cross', process: 'Creative', name: 'Cross process', maker: 'E-6 in C-41', note: 'Slide film in negative chemistry: yellow-green highlights, blue shadows, hard contrast',
+            adj: { contrast: 24, saturation: 14, curve: { r: [[0, 0], [0.25, 0.19], [0.75, 0.84], [1, 1]], g: [[0, 0.03], [0.5, 0.56], [1, 1]], b: [[0, 0.14], [0.5, 0.44], [1, 0.82]] }, grain: 10, grainSize: 16, grainColor: 25 } },
+        { id: 'instant', process: 'Creative', name: 'Instant', maker: 'Integral film', note: 'Soft, warm, faded edges, cyan-green shadows',
+            adj: { contrast: -8, temp: 12, tint: -6, saturation: -10, curve: { rgb: [[0, 0.08], [0.5, 0.52], [1, 0.94]] }, grade: { s: [160, 16, 0], h: [50, 16, 4] }, vignette: -22, vigMid: 40, grain: 10 } },
+        { id: 'faded', process: 'Creative', name: 'Faded print', maker: 'An old colour print', note: 'Washed out, lifted blacks, blue shadows',
+            adj: { contrast: -18, saturation: -22, curve: { rgb: [[0, 0.12], [0.3, 0.32], [0.75, 0.74], [1, 0.92]] }, grade: { s: [215, 14, 0], h: [50, 8, 0] } } },
+        { id: 'teal', process: 'Creative', name: 'Teal and orange', maker: 'Film grade', note: 'Teal shadows, orange skin and highlights',
+            adj: { contrast: 14, vibrance: 10, grade: { s: [190, 28, 0], m: [30, 6, 0], h: [35, 22, 0] }, hsl: { hue: [0, -4, -10, 30, 6, -8, 0, 0], sat: [0, 8, -10, -30, 0, 10, 0, 0] } } },
+        { id: 'sepia', process: 'Creative', name: 'Sepia', maker: 'Toned print', note: 'Black and white, toned warm brown',
+            adj: { mono: [0.2126, 0.7152, 0.0722], contrast: 10, grade: { s: [30, 26, 0], m: [38, 24, 0], h: [45, 14, 0] }, curve: { rgb: [[0, 0.05], [1, 0.96]] }, grain: 10 } },
+        { id: 'selenium', process: 'Creative', name: 'Selenium', maker: 'Toned print', note: 'Black and white, cool purple-brown shadows, deep blacks',
+            adj: { mono: [0.24, 0.6, 0.16], contrast: 18, blacks: -6, grade: { s: [300, 14, -2], m: [320, 6, 0] }, grain: 12, grainSize: 20 } }
+    ],
     CHANNELS: ['rgb', 'r', 'g', 'b'],
     HUES: [
         { id: 'red', name: 'Red', at: 0, color: '#e5484d' },
@@ -53,7 +165,7 @@ const Develop = {
     full(adj) {
         const a = adj || {};
         const out = {};
-        for (const k of Object.keys(this.SLIDERS)) out[k] = typeof a[k] === 'number' ? a[k] : 0;
+        for (const [k, r] of Object.entries(this.SLIDERS)) out[k] = typeof a[k] === 'number' ? a[k] : (r.def || 0);
         out.levels = {};
         out.curve = {};
         for (const c of this.CHANNELS) {
@@ -62,7 +174,22 @@ const Develop = {
         }
         out.hsl = {};
         for (const k of ['hue', 'sat', 'lum']) out.hsl[k] = (a.hsl && a.hsl[k]) ? a.hsl[k].slice() : new Array(8).fill(0);
+        out.grade = {};
+        for (const [z] of this.ZONES) out.grade[z] = (a.grade && a.grade[z]) ? a.grade[z].slice() : [0, 0, 0];
+        out.look = this.look(a.look) ? a.look : null;
+        out.mono = this.monoOf(a.mono);
         return out;
+    },
+
+    // Black-and-white weights, adding up to 1, or null
+    monoOf(m) {
+        if (!Array.isArray(m) || m.length !== 3 || !m.every(x => typeof x === 'number' && isFinite(x) && x >= 0)) return null;
+        const sum = m[0] + m[1] + m[2];
+        return sum > 0 ? m.map(x => +(x / sum).toFixed(4)) : null;
+    },
+
+    look(id) {
+        return (typeof id === 'string' && this.LOOKS.find(l => l.id === id)) || null;
     },
 
     // Checked and made compact (only what's changed), or null for none.
@@ -73,9 +200,9 @@ const Develop = {
         const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
         const out = {};
         for (const [k, r] of Object.entries(this.SLIDERS)) {
-            if (num(v[k]) && v[k] !== 0) {
+            if (num(v[k]) && v[k] !== (r.def || 0)) {
                 const x = Math.round(clamp(v[k], r.min, r.max) / r.step) * r.step;
-                if (x) out[k] = +x.toFixed(2);
+                if (x !== (r.def || 0)) out[k] = +x.toFixed(2);
             }
         }
         for (const c of this.CHANNELS) {
@@ -104,6 +231,17 @@ const Develop = {
                 (out.hsl || (out.hsl = {}))[k] = h.map(x => Math.round(clamp(x, -100, 100)));
             }
         }
+        for (const [z] of this.ZONES) {
+            const g = v.grade && v.grade[z];
+            if (Array.isArray(g) && g.length === 3 && g.every(num)) {
+                const q = [Math.round(((g[0] % 360) + 360) % 360), Math.round(clamp(g[1], 0, 100)), Math.round(clamp(g[2], -100, 100))];
+                if (q[1] || q[2]) (out.grade || (out.grade = {}))[z] = q;
+            }
+        }
+        const mono = this.monoOf(v.mono);
+        if (mono) out.mono = mono;
+        if (this.look(v.look)) out.look = v.look;
+        else delete out.lookAmount;
         return Object.keys(out).length ? out : null;
     },
 
@@ -206,10 +344,71 @@ const Develop = {
 
     // The colour mixer, vibrance and saturation, on one colour (0–1)
     colourFn(a) {
+        const own = this.ownColourFn(a);
+        const look = this.look(a.look);
+        if (!look) return own;
+        // The look, over the photo's own settings, by its amount
+        // (a look's own tables never change: made once)
+        this._looks = this._looks || {};
+        const made = this._looks[look.id] || (this._looks[look.id] = (() => {
+            const la = this.full(look.adj);
+            return { lt: this.channelTables(la), lc: this.ownColourFn(la) };
+        })());
+        const { lt, lc } = made;
+        const k = a.lookAmount / 100;
+        const at = (c, x) => {
+            const f = Math.min(255, Math.max(0, x * 255)), i = Math.min(254, f | 0), t = f - i;
+            return lt[i * 4 + c] * (1 - t) + lt[(i + 1) * 4 + c] * t;
+        };
+        return (r, g, b) => {
+            if (own) [r, g, b] = own(r, g, b);
+            let l = [at(0, r), at(1, g), at(2, b)];
+            if (lc) l = lc(l[0], l[1], l[2]);
+            const mix = (x, y) => Math.min(1, Math.max(0, x + (y - x) * k));
+            return [mix(r, l[0]), mix(g, l[1]), mix(b, l[2])];
+        };
+    },
+
+    smooth(e0, e1, x) {
+        const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+        return t * t * (3 - 2 * t);
+    },
+
+    // Colour grading: a tint (hue, strength) and a brightness for the
+    // shadows, midtones and highlights. Blending widens the zones into each
+    // other; Balance moves where they meet. The tint keeps the brightness.
+    gradeFn(a) {
+        const zones = this.ZONES.map(([z]) => a.grade[z]);
+        if (!zones.some(g => g[1] || g[2])) return null;
+        const B = a.gradeBlend / 100, c = 0.5 - 0.3 * a.gradeBalance / 100;
+        const sEnd = c * (0.6 + 0.8 * B), hStart = 1 - (1 - c) * (0.6 + 0.8 * B);
+        const tints = zones.map(([h, s, l]) => {
+            const x = h / 60, C = 1, X = 1 - Math.abs((x % 2) - 1);
+            const rgb = [[C, X, 0], [X, C, 0], [0, C, X], [0, X, C], [X, 0, C], [C, 0, X]][Math.floor(x) % 6];
+            const y = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+            return { d: rgb.map(v => (v - y) * (s / 100) * 0.3), l: l / 100 * 0.2 };
+        });
+        return (r, g, b) => {
+            const L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            const ws = 1 - this.smooth(0, sEnd, L), wh = this.smooth(hStart, 1, L), wm = Math.max(0, 1 - ws - wh);
+            const w = [ws, wm, wh];
+            for (let z = 0; z < 3; z++) {
+                const t = tints[z], k = w[z];
+                if (!k) continue;
+                r += (t.d[0] + t.l) * k; g += (t.d[1] + t.l) * k; b += (t.d[2] + t.l) * k;
+            }
+            return [r, g, b];
+        };
+    },
+
+    // The colour mixer, vibrance, saturation and grading of these settings
+    ownColourFn(a) {
         const hsl = a.hsl;
         const anyHsl = ['hue', 'sat', 'lum'].some(k => hsl[k].some(x => x));
         const sat = 1 + a.saturation / 100, vib = a.vibrance / 100;
-        if (!anyHsl && !a.saturation && !vib) return null;
+        const grade = this.gradeFn(a);
+        const mono = a.mono;
+        if (!anyHsl && !a.saturation && !vib && !grade && !mono) return null;
         const at = this.HUES.map(h => h.at);
         const band = (h, list) => {
             // Between the two nearest colours, eased
@@ -247,6 +446,12 @@ const Develop = {
                 const f = Math.max(0, sat * (1 + vib * (vib > 0 ? (1 - s) * (1 - s) : 1)));
                 r = y + (r - y) * f; g = y + (g - y) * f; b = y + (b - y) * f;
             }
+            // Black and white as the film saw it: its weights on the light
+            if (mono) {
+                const y = this.toGamma(Math.min(1, Math.max(0, mono[0] * this.toLinear(Math.min(1, Math.max(0, r))) + mono[1] * this.toLinear(Math.min(1, Math.max(0, g))) + mono[2] * this.toLinear(Math.min(1, Math.max(0, b))))));
+                r = g = b = y;
+            }
+            if (grade) [r, g, b] = grade(r, g, b);
             return [Math.min(1, Math.max(0, r)), Math.min(1, Math.max(0, g)), Math.min(1, Math.max(0, b))];
         };
     },
@@ -275,17 +480,173 @@ const Develop = {
         let t = this._tables.get(key);
         if (!t) {
             const a = this.full(adj);
-            t = { key, channels: this.channelTables(a), lut: this.colourLut(a), N: this.LUT_SIZE };
+            t = { key, channels: this.channelTables(a), lut: this.colourLut(a), N: this.LUT_SIZE, fx: this.effects(a) };
             this._tables.set(key, t);
             if (this._tables.size > 8) this._tables.delete(this._tables.keys().next().value);
         }
         return t;
     },
 
+    // ---- Effects: vignette and grain ----
+
+    // The vignette and grain to apply (a look's added, by its amount), or
+    // null for none: { vig: [amount, middle, width, roundness], grain:
+    // [amount, cells across the long side] }
+    effects(a) {
+        const look = this.look(a.look);
+        const la = look ? this.full(look.adj) : null, k = look ? a.lookAmount / 100 : 0;
+        const vig = Math.max(-100, Math.min(100, a.vignette + (la ? la.vignette * k : 0)));
+        const grain = Math.min(100, a.grain + (la ? la.grain * k : 0));
+        const hal = Math.min(100, a.halation + (la ? la.halation * k : 0));
+        if (!vig && !grain && !hal) return null;
+        const useOwnVig = a.vignette || !la, useOwnGrain = a.grain || !la;
+        const mid = useOwnVig ? a.vigMid : la.vigMid, feather = useOwnVig ? a.vigFeather : la.vigFeather;
+        const round = useOwnVig ? a.vigRound : la.vigRound, size = useOwnGrain ? a.grainSize : la.grainSize;
+        const color = useOwnGrain ? a.grainColor : la.grainColor;
+        return {
+            vig: [vig / 100, 0.15 + 0.7 * mid / 100, 0.05 + 0.9 * feather / 100, round / 100],
+            grain: [grain / 100 * 0.16, 300 + 1700 * (1 - size / 100), color / 100],
+            // Amount, and its colour: the red of light back through the film base
+            hal: [hal / 100 * 0.9, 1.0, 0.28, 0.1]
+        };
+    },
+
+    // ---- Halation's map ----
+    //
+    // Light from a bright highlight goes through the film, bounces off the
+    // back and comes back as a red glow round it (cinema film without its
+    // backing, CineStill). The glow is the highlights, blurred: made from
+    // a small copy of the whole picture (so every tile, and the preview,
+    // use the same), and looked up by where each pixel is.
+
+    GLOW_EDGE: 320,
+
+    // From RGBA bytes already through the tables: { data, w, h }
+    glowMap(px, w, h) {
+        const n = w * h, a = new Float32Array(n), b = new Float32Array(n);
+        for (let i = 0; i < n; i++) {
+            const L = (0.2126 * px[i * 4] + 0.7152 * px[i * 4 + 1] + 0.0722 * px[i * 4 + 2]) / 255;
+            a[i] = this.smooth(0.72, 1, L);
+        }
+        // Three box blurs, about a Gaussian, 1.2% of the long side
+        const r = Math.max(1, Math.round(0.012 * Math.max(w, h)));
+        const pass = (src, dst, horiz) => {
+            const len = horiz ? w : h, lines = horiz ? h : w;
+            for (let l = 0; l < lines; l++) {
+                const at = (k) => horiz ? l * w + k : k * w + l;
+                let sum = 0;
+                for (let k = -r; k <= r; k++) sum += src[at(Math.min(len - 1, Math.max(0, k)))];
+                for (let k = 0; k < len; k++) {
+                    dst[at(k)] = sum / (2 * r + 1);
+                    sum += src[at(Math.min(len - 1, k + r + 1))] - src[at(Math.max(0, k - r))];
+                }
+            }
+        };
+        for (let i = 0; i < 3; i++) { pass(a, b, true); pass(b, a, false); }
+        // A small light glows as much as a big one, nearly (the blur
+        // spreads it thin)
+        for (let i = 0; i < n; i++) a[i] = Math.min(1, a[i] * 4);
+        return { data: a, w, h };
+    },
+
+    // The map at (u, v) (0–1 across the picture), as the GPU's linear
+    // filtering reads it
+    glowAt(map, u, v) {
+        const fx = u * map.w - 0.5, fy = v * map.h - 0.5;
+        const x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0;
+        const cx = (x) => Math.min(map.w - 1, Math.max(0, x)), cy = (y) => Math.min(map.h - 1, Math.max(0, y));
+        const at = (x, y) => map.data[cy(y) * map.w + cx(x)];
+        const top = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * tx;
+        const bot = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * tx;
+        return top + (bot - top) * ty;
+    },
+
+    // A whole canvas's map (saving, previews): from a small copy of it
+    canvasGlow(canvas, T) {
+        const s = Math.min(1, this.GLOW_EDGE / Math.max(canvas.width, canvas.height));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(canvas.width * s));
+        c.height = Math.max(1, Math.round(canvas.height * s));
+        const g = c.getContext('2d', { willReadFrequently: true });
+        g.drawImage(canvas, 0, 0, c.width, c.height);
+        const px = g.getImageData(0, 0, c.width, c.height).data;
+        return this.glowMap(this.applyCPU(px, { ...T, fx: null }), c.width, c.height);
+    },
+
+    // The same 32-bit hash as the shader's
+    hash(x, y) {
+        x = (Math.imul(x, 1664525) + 1013904223) >>> 0;
+        y = (Math.imul(y, 1664525) + 1013904223) >>> 0;
+        x = (x + Math.imul(y, 1664525)) >>> 0; y = (y + Math.imul(x, 1664525)) >>> 0;
+        x = (x ^ (x >>> 16)) >>> 0; y = (y ^ (y >>> 16)) >>> 0;
+        x = (x + Math.imul(y, 1664525)) >>> 0;
+        return (x ^ (x >>> 16)) >>> 0;
+    },
+
+    // Smooth noise, 0–1, the same as the shader's (off: another field)
+    noise(gx, gy, off = 0) {
+        const ix = Math.floor(gx), iy = Math.floor(gy);
+        let sx = gx - ix, sy = gy - iy;
+        sx = sx * sx * (3 - 2 * sx); sy = sy * sy * (3 - 2 * sy);
+        const h = (x, y) => this.hash(x + off, y) / 4294967295;
+        const top = h(ix, iy) + (h(ix + 1, iy) - h(ix, iy)) * sx;
+        const bot = h(ix, iy + 1) + (h(ix + 1, iy + 1) - h(ix, iy + 1)) * sx;
+        return top + (bot - top) * sy;
+    },
+
+    // One pixel's effects: (px, py) its middle, in a W × H frame; glow:
+    // halation's map
+    effect(fx, rgb, px, py, W, H, glow = null) {
+        let [r, g, b] = rgb;
+        const hl = fx.hal;
+        if (hl[0] && glow) {
+            const k = hl[0] * this.glowAt(glow, px / W, py / H);
+            r = 1 - (1 - r) * (1 - k * hl[1]); g = 1 - (1 - g) * (1 - k * hl[2]); b = 1 - (1 - b) * (1 - k * hl[3]);
+        }
+        const v = fx.vig;
+        if (v[0]) {
+            const ex = (px / W - 0.5) * 2, ey = (py / H - 0.5) * 2;
+            let t;
+            if (v[3] >= 0) {
+                const m = Math.min(W, H) / 2, cx = (px - W / 2) / m, cy = (py - H / 2) / m;
+                const te = Math.hypot(ex, ey) / Math.SQRT2, tc = Math.hypot(cx, cy) / Math.hypot(W / 2 / m, H / 2 / m);
+                t = te + (tc - te) * v[3];
+            } else {
+                const q = 2 - v[3] * 6;
+                t = Math.pow(Math.pow(Math.abs(ex), q) + Math.pow(Math.abs(ey), q), 1 / q) / Math.pow(2, 1 / q);
+            }
+            const f = this.smooth(v[1] - v[2] / 2, v[1] + v[2] / 2, t);
+            if (v[0] < 0) { const k = 1 + v[0] * f; r *= k; g *= k; b *= k; }
+            else { const k = v[0] * f; r += (1 - r) * k; g += (1 - g) * k; b += (1 - b) * k; }
+        }
+        const gr = fx.grain;
+        if (gr[0]) {
+            const cell = Math.max(W, H) / gr[1];
+            const gx = px / cell, gy = py / cell;
+            const n = this.noise(gx, gy) - 0.5;
+            const L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            const k = gr[0] * (0.4 + 2.4 * L * (1 - L));
+            // Colour film's grain is dye clouds: partly its own in each colour
+            const c = gr[2];
+            if (c) {
+                r += (n * (1 - c) + (this.noise(gx, gy, 65537) - 0.5) * c) * k;
+                g += (n * (1 - c) + (this.noise(gx, gy, 131074) - 0.5) * c) * k;
+                b += (n * (1 - c) + (this.noise(gx, gy, 196611) - 0.5) * c) * k;
+            } else {
+                r += n * k; g += n * k; b += n * k;
+            }
+        }
+        return [Math.min(1, Math.max(0, r)), Math.min(1, Math.max(0, g)), Math.min(1, Math.max(0, b))];
+    },
+
     // ---- On the CPU (no WebGL2, histograms, Auto) ----
 
-    // RGBA bytes (in place, or into `out`)
-    applyCPU(px, T, out = px) {
+    // RGBA bytes (in place, or into `out`). frame: where these pixels are
+    // in the whole picture { x, y, w, W, H, glow } (the effects need it; w
+    // is this block's width, glow halation's map); none: no effects
+    applyCPU(px, T, out = px, frame = null) {
+        const fx = T.fx;
+        const fw = frame ? frame.w : 0;
         const ch = T.channels, lut = T.lut, N = T.N, M = N - 1;
         for (let i = 0; i < px.length; i += 4) {
             let r = ch[px[i] * 4], g = ch[px[i + 1] * 4 + 1], b = ch[px[i + 2] * 4 + 2];
@@ -303,6 +664,10 @@ const Develop = {
                     c[k] = (c00 * (1 - tg) + c10 * tg) * (1 - tb) + (c01 * (1 - tg) + c11 * tg) * tb;
                 }
                 r = c[0]; g = c[1]; b = c[2];
+            }
+            if (fx && frame) {
+                const k = i / 4, x = k % fw, y = (k - x) / fw;
+                [r, g, b] = this.effect(fx, [r, g, b], frame.x + x + 0.5, frame.y + y + 0.5, frame.W, frame.H, frame.glow);
             }
             out[i] = Math.round(r * 255);
             out[i + 1] = Math.round(g * 255);
@@ -388,13 +753,73 @@ uniform sampler2D tone;
 uniform sampler3D lut;
 uniform bool useLut;
 uniform bool before;
+uniform bool flip;
 uniform float lutN;
+uniform vec4 vig;    // amount, middle, width, roundness
+uniform vec3 grain;  // amount, cells across the long side, colour
+uniform vec4 hal;    // halation: amount, colour
+uniform sampler2D glow;
+uniform vec4 frame;  // this block's place in the picture (x, y), and the picture's size
+uniform float tileH;
 float at(float x) { return x * (255.0 / 256.0) + 0.5 / 256.0; }
+float ss(float e0, float e1, float x) { float t = clamp((x - e0) / (e1 - e0), 0.0, 1.0); return t * t * (3.0 - 2.0 * t); }
+uint hash(uvec2 v) {
+    v = v * 1664525u + 1013904223u;
+    v.x += v.y * 1664525u; v.y += v.x * 1664525u;
+    v ^= v >> 16u;
+    v.x += v.y * 1664525u;
+    v ^= v >> 16u;
+    return v.x;
+}
+float h01(float x, float y, uint off) { return float(hash(uvec2(uint(x) + off, uint(y)))) / 4294967295.0; }
+float vnoise(vec2 g, uint off) {
+    vec2 i = floor(g), s = g - i;
+    s = s * s * (3.0 - 2.0 * s);
+    float top = mix(h01(i.x, i.y, off), h01(i.x + 1.0, i.y, off), s.x);
+    float bot = mix(h01(i.x, i.y + 1.0, off), h01(i.x + 1.0, i.y + 1.0, off), s.x);
+    return mix(top, bot, s.y);
+}
 void main() {
     vec4 c = texture(img, uv);
     if (before) { o = c; return; }
     vec3 t = vec3(texture(tone, vec2(at(c.r), 0.5)).r, texture(tone, vec2(at(c.g), 0.5)).g, texture(tone, vec2(at(c.b), 0.5)).b);
     if (useLut) t = texture(lut, t * ((lutN - 1.0) / lutN) + 0.5 / lutN).rgb;
+    // Where this pixel is in the whole picture (its middle)
+    vec2 p = frame.xy + vec2(gl_FragCoord.x, flip ? gl_FragCoord.y : tileH - gl_FragCoord.y);
+    float W = frame.z, H = frame.w;
+    if (hal.x != 0.0) {
+        float k = hal.x * texture(glow, p / vec2(W, H)).r;
+        t = 1.0 - (1.0 - t) * (1.0 - k * hal.yzw);
+    }
+    if (vig.x != 0.0) {
+        vec2 e = (p / vec2(W, H) - 0.5) * 2.0;
+        float d;
+        if (vig.w >= 0.0) {
+            float m = min(W, H) / 2.0;
+            vec2 q = (p - vec2(W, H) / 2.0) / m;
+            float te = length(e) / sqrt(2.0), tc = length(q) / length(vec2(W, H) / 2.0 / m);
+            d = te + (tc - te) * vig.w;
+        } else {
+            float k = 2.0 - vig.w * 6.0;
+            d = pow(pow(abs(e.x), k) + pow(abs(e.y), k), 1.0 / k) / pow(2.0, 1.0 / k);
+        }
+        float f = ss(vig.y - vig.z / 2.0, vig.y + vig.z / 2.0, d);
+        if (vig.x < 0.0) t *= 1.0 + vig.x * f;
+        else t += (1.0 - t) * vig.x * f;
+    }
+    if (grain.x != 0.0) {
+        float cell = max(W, H) / grain.y;
+        vec2 g = p / cell;
+        float n = vnoise(g, 0u) - 0.5;
+        float L = dot(t, vec3(0.2126, 0.7152, 0.0722));
+        float k = grain.x * (0.4 + 2.4 * L * (1.0 - L));
+        if (grain.z != 0.0) {
+            vec3 cn = vec3(vnoise(g, 65537u), vnoise(g, 131074u), vnoise(g, 196611u)) - 0.5;
+            t += (n * (1.0 - grain.z) + cn * grain.z) * k;
+        } else {
+            t += n * k;
+        }
+    }
     o = vec4(clamp(t, 0.0, 1.0), c.a);
 }`,
 
@@ -442,10 +867,12 @@ void main() {
             if (target === gl.TEXTURE_3D) gl.texParameteri(target, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
             return t;
         };
-        const imgTex = tex(0, gl.TEXTURE_2D), toneTex = tex(1, gl.TEXTURE_2D), lutTex = tex(2, gl.TEXTURE_3D);
+        const imgTex = tex(0, gl.TEXTURE_2D), toneTex = tex(1, gl.TEXTURE_2D), lutTex = tex(2, gl.TEXTURE_3D), glowTex = tex(3, gl.TEXTURE_2D);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.R16F, 1, 1, 0, gl.RED, gl.FLOAT, new Float32Array([0]));
         gl.uniform1i(u('img'), 0);
         gl.uniform1i(u('tone'), 1);
         gl.uniform1i(u('lut'), 2);
+        gl.uniform1i(u('glow'), 3);
         const max = gl.getParameter(gl.MAX_TEXTURE_SIZE);
         let tablesKey = null, lost = false;
         canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); lost = true; });
@@ -476,15 +903,30 @@ void main() {
                 }
                 gl.uniform1i(u('useLut'), T.lut ? 1 : 0);
                 gl.uniform1f(u('lutN'), T.N);
+                const fx = T.fx || { vig: [0, 0, 1, 0], grain: [0, 1, 0], hal: [0, 0, 0, 0] };
+                gl.uniform4f(u('vig'), ...fx.vig);
+                gl.uniform3f(u('grain'), ...fx.grain);
+                gl.uniform4f(u('hal'), ...fx.hal);
+            },
+            // Halation's map (glowMap)
+            setGlow(map) {
+                gl.activeTexture(gl.TEXTURE3);
+                gl.bindTexture(gl.TEXTURE_2D, glowTex);
+                gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.R16F, map.w, map.h, 0, gl.RED, gl.FLOAT, map.data);
             },
             // The image, at w × h on the canvas. flip: rows top first, as
             // readPixels gives them back
-            draw(w, h, { before = false, flip = false } = {}) {
+            // frame: where it is in the whole picture (the effects need it)
+            draw(w, h, { before = false, flip = false, frame = null } = {}) {
                 if (canvas.width !== w) canvas.width = w;
                 if (canvas.height !== h) canvas.height = h;
                 gl.viewport(0, 0, w, h);
                 gl.uniform1i(u('before'), before ? 1 : 0);
                 gl.uniform1i(u('flip'), flip ? 1 : 0);
+                const f = frame || { x: 0, y: 0, W: w, H: h };
+                gl.uniform4f(u('frame'), f.x, f.y, f.W, f.H);
+                gl.uniform1f(u('tileH'), h);
                 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
             },
             read(w, h) {
@@ -514,23 +956,26 @@ void main() {
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         const R = this.gpu();
         const tile = R ? Math.min(this.TILE, R.max) : this.TILE;
+        const glow = T.fx && T.fx.hal[0] ? this.canvasGlow(canvas, T) : null;
+        if (glow && R && !R.lost) R.setGlow(glow);
         for (let y = 0; y < canvas.height; y += tile) {
             for (let x = 0; x < canvas.width; x += tile) {
                 const w = Math.min(tile, canvas.width - x), h = Math.min(tile, canvas.height - y);
                 const img = ctx.getImageData(x, y, w, h);
+                const frame = { x, y, w, W: canvas.width, H: canvas.height, glow };
                 let done = false;
                 if (R && !R.lost) {
                     try {
                         R.setImage(img);
                         R.setTables(T);
-                        R.draw(w, h, { flip: true });
+                        R.draw(w, h, { flip: true, frame });
                         img.data.set(R.read(w, h));
                         done = !R.lost;
                     } catch (e) {
                         console.warn('Develop: GPU failed, using the CPU:', e);
                     }
                 }
-                if (!done) this.applyCPU(img.data, T);
+                if (!done) this.applyCPU(img.data, T, img.data, frame);
                 ctx.putImageData(img, x, y);
             }
         }

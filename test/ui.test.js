@@ -4351,6 +4351,44 @@ async function newPage(browser, url) {
             const mean = (px, k) => { let s = 0; for (let i = k; i < px.length; i += 4) s += px[i]; return s / (px.length / 4); };
             const spread = (px) => Math.max(mean(px, 0), mean(px, 1), mean(px, 2)) - Math.min(mean(px, 0), mean(px, 1), mean(px, 2));
             out.cast = [Math.round(spread(cast)), Math.round(spread(fixed))];
+            // Grading, looks, vignette and grain: the GPU and the CPU agree too
+            out.fxWorst = 0;
+            for (const fx of [{ grade: { s: [200, 60, -10], h: [40, 40, 10] }, gradeBalance: 30 }, { look: 'instant', lookAmount: 150 }, { vignette: -60, vigRound: 40 }, { vignette: 50, vigRound: -60 }, { grain: 70, grainSize: 60 }, { grain: 60, grainColor: 80 }, { halation: 80 }, { look: 'cinestill800t' }, { look: 'trix' }]) {
+                const cv = document.createElement('canvas');
+                cv.width = 300; cv.height = 200;
+                cv.getContext('2d').drawImage(c, 0, 0);
+                Develop.TILE = 128;
+                Develop.applyCanvas(cv, fx);
+                Develop.TILE = 2048;
+                const gp = cv.getContext('2d').getImageData(0, 0, 300, 200).data;
+                const T = Develop.tables(fx);
+                const glow = T.fx && T.fx.hal[0] ? Develop.canvasGlow(c, T) : null;
+                const cp = Develop.applyCPU(new Uint8ClampedArray(img.data), T, new Uint8ClampedArray(img.data.length), { x: 0, y: 0, w: 300, W: 300, H: 200, glow });
+                for (let i = 0; i < gp.length; i++) out.fxWorst = Math.max(out.fxWorst, Math.abs(gp[i] - cp[i]));
+            }
+            out.defaults = JSON.stringify(Develop.clean({ vigMid: 50, grainSize: 25, lookAmount: 80, gradeBlend: 50, look: 'nope', grade: { s: [400, 0, 0], h: [370, 20, 0] } }));
+            // A vignette darkens the corners, not the middle
+            const grey = new Uint8ClampedArray(100 * 100 * 4).fill(128);
+            const v = Develop.applyCPU(grey, Develop.tables({ vignette: -80 }), new Uint8ClampedArray(grey.length), { x: 0, y: 0, w: 100, W: 100, H: 100 });
+            out.vignette = [v[(50 * 100 + 50) * 4], v[0]];
+            // Every film's settings are kept whole
+            out.looksWhole = Develop.LOOKS.every(l => { const c = Develop.clean(l.adj); return c && Object.keys(l.adj).every(k => k in c); });
+            out.processes = [...new Set(Develop.LOOKS.map(l => l.process))].join();
+            // Black and white films see colours their own way: Acros (orthopanchromatic)
+            // darkens reds and lightens blues, SFX (extended red) the opposite
+            const filmGrey = (look, rgb) => Develop.applyCPU(new Uint8ClampedArray([...rgb, 255]), Develop.tables({ look }), new Uint8ClampedArray(4));
+            const red = [200, 40, 40], blue = [40, 60, 200];
+            const ac = [filmGrey('acros', red), filmGrey('acros', blue)], sf = [filmGrey('sfx', red), filmGrey('sfx', blue)];
+            out.mono = ac[0][0] === ac[0][1] && ac[0][1] === ac[0][2] && ac[0][0] < sf[0][0] && ac[1][0] > sf[1][0];
+            // Halation: a red glow round a light in the dark, none far away
+            const hc = document.createElement('canvas');
+            hc.width = 400; hc.height = 300;
+            const hg = hc.getContext('2d');
+            hg.fillStyle = '#000'; hg.fillRect(0, 0, 400, 300);
+            hg.fillStyle = '#fff'; hg.beginPath(); hg.arc(200, 150, 6, 0, 7); hg.fill();
+            Develop.applyCanvas(hc, { halation: 100 });
+            const near = hg.getImageData(211, 150, 1, 1).data, far = hg.getImageData(20, 20, 1, 1).data;
+            out.halation = [...near.slice(0, 3), far[0]];
             return out;
         });
         check('adjust: settings kept compact, nothing left is none, out of range brought in',
@@ -4358,6 +4396,12 @@ async function newPage(browser, url) {
         check('adjust: no settings change nothing; +1 EV doubles the light; curves never turn back', m.identity && m.exposure && m.monotone, JSON.stringify(m));
         check('adjust: the GPU and the CPU agree (within a level), in tiles too', m.hasGpu && m.gpuCpu <= 1 && m.tiles, JSON.stringify(m));
         check('adjust: Auto color takes the cast off a faded print', m.cast[0] > 40 && m.cast[1] < 8, JSON.stringify(m.cast));
+        check('adjust: grading, looks, vignette and grain agree on the GPU and the CPU, in tiles', m.fxWorst <= 1, JSON.stringify(m.fxWorst));
+        check('adjust: settings at their defaults, an unknown look and an empty wheel aren\'t kept', m.defaults === '{"grade":{"h":[10,20,0]}}', m.defaults);
+        check('adjust: a vignette darkens the corners and leaves the middle', m.vignette[0] === 128 && m.vignette[1] < 60, JSON.stringify(m.vignette));
+        check('adjust: films by process (C-41, E-6, ECN-2, B&W), every one\'s settings kept whole', m.looksWhole && m.processes === 'C-41,E-6,ECN-2,B&W,Creative', JSON.stringify([m.looksWhole, m.processes]));
+        check('adjust: black-and-white films see colour their own way (Acros darkens reds, SFX lightens them)', m.mono, JSON.stringify(m.mono));
+        check('adjust: halation puts a red glow round a light, nothing far from it', m.halation[0] > 40 && m.halation[0] > m.halation[1] * 2 && m.halation[3] === 0, JSON.stringify(m.halation));
 
         const r = await page.evaluate(async () => {
             let step = 'start';
@@ -4424,6 +4468,42 @@ async function newPage(browser, url) {
             out.undoInside = Adjust.a.exposure === 0;
             key('Z', { ctrlKey: true, shiftKey: true });
             out.redoInside = Adjust.a.exposure === 1;
+            // A look: its picture made from this photo, a click puts it on, with an amount
+            step = 'looks';
+            document.querySelector('.adj-look-tabs [data-tab="B&W"]').click();
+            await until(() => document.querySelectorAll('.adj-look canvas').length === Develop.LOOKS.length + 1 && document.querySelector('.adj-look[data-look="trix"] canvas').width > 0);
+            out.tabShowsItsFilms = document.querySelector('.adj-look[data-look="portra400"]').classList.contains('hidden') && !document.querySelector('.adj-look[data-look="trix"]').classList.contains('hidden');
+            const bwThumb = document.querySelector('.adj-look[data-look="trix"] canvas').getContext('2d').getImageData(10, 10, 1, 1).data;
+            out.lookThumbGrey = out.tabShowsItsFilms && Math.abs(bwThumb[0] - bwThumb[1]) <= 3 && Math.abs(bwThumb[1] - bwThumb[2]) <= 3;
+            document.querySelector('.adj-look[data-look="trix"]').click();
+            await sleep(60);
+            out.lookOn = Adjust.result().look === 'trix' && !document.getElementById('adj-look-amount').classList.contains('hidden') && document.querySelector('.adj-look[data-look="trix"]').getAttribute('aria-pressed') === 'true';
+            document.querySelector('.adj-look[data-look=""]').click();
+            document.querySelector('.adj-look-tabs [data-tab="C-41"]').click();
+            out.lookOff = !Adjust.result().look;
+            // A grading wheel: dragged out to the right is red, strong
+            step = 'wheel';
+            const grading = [...document.querySelectorAll('details.adj-sec')].find(d => /Color grading/.test(d.querySelector('summary').textContent));
+            grading.open = true;
+            await sleep(30);
+            const wheel = document.querySelector('.adj-wheel canvas');
+            const wr = wheel.getBoundingClientRect();
+            const pe = (type, x, y) => wheel.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y, pointerId: 1, bubbles: true }));
+            pe('pointerdown', wr.left + wr.width * 0.95, wr.top + wr.height / 2);
+            pe('pointerup', wr.left + wr.width * 0.95, wr.top + wr.height / 2);
+            const g = Adjust.result().grade.s;
+            out.wheel = (g[0] < 5 || g[0] > 355) && g[1] === 100;
+            // Presets: saved under a name, and put on again
+            step = 'presets';
+            const prompt0 = UI.prompt;
+            UI.prompt = async () => 'Red shadows';
+            await Adjust.savePreset();
+            UI.prompt = prompt0;
+            Adjust.reset();
+            const pr = Adjust.presets().find(p => p.name === 'Red shadows');
+            Adjust.setAll(pr.adj);
+            out.preset = Adjust.result().grade.s[1] === 100 && Adjust.result().exposure === 1;
+            Adjust.resetSection('grading');
             // Before and after (\\)
             key('\\');
             await sleep(50);
@@ -4500,6 +4580,8 @@ async function newPage(browser, url) {
         });
         check('adjust: E opens it on the GPU, with a histogram', r.open, JSON.stringify(r));
         check('adjust: sliders change the photo and its histogram live; Ctrl+Z / Ctrl+Shift+Z inside; \\ shows before', r.live && r.undoInside && r.redoInside && r.beforeShown, JSON.stringify(r));
+        check('adjust: films shown on the photo by process, a click puts one on (with Amount) or takes it off', r.lookThumbGrey && r.lookOn && r.lookOff, JSON.stringify(r));
+        check('adjust: a grading wheel takes a hue and strength; presets save and put settings back', r.wheel && r.preset, JSON.stringify(r));
         check('adjust: Done keeps it with the photo (edits.json), the file untouched, no Save bar', r.kept && r.noBar, JSON.stringify(r));
         check('adjust: the viewer and the thumbnail show it adjusted, with the pencil', r.shownBrighter && r.thumbBrighter && r.pencil, JSON.stringify(r));
         check('adjust: an adjusted photo\'s turn is kept with it; Ctrl+Z takes both back', r.turnKept && r.undone, JSON.stringify(r));
