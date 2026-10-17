@@ -188,6 +188,10 @@
     let onTether = null;
     const copying = new Map(); // folder copy request id → progress(done, total)
     window.JEditorNative = {
+        // Which app this is, and what it can do besides storage and paths
+        // (app/host.js says what each feature covers)
+        platform: 'windows',
+        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates'],
         // jEditor's storage on this PC: a folder handle, one subfolder per
         // order (see app/folder-cache.js)
         async dataDir() {

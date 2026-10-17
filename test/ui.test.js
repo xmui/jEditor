@@ -313,6 +313,18 @@ async function newPage(browser, url) {
         check('crop editor + metadata modules loaded', await page.evaluate(() =>
             typeof CropEditor !== 'undefined' && typeof CropGeom !== 'undefined' && typeof ImageMeta !== 'undefined'));
         check('app initialized', await page.evaluate(() => typeof app !== 'undefined'));
+        const web = await page.evaluate(() => {
+            const shown = (el) => !!el && getComputedStyle(el).display !== 'none';
+            return {
+                host: Host.platform(),
+                appOnly: ['btn-scan', 'btn-camera', 'sb-places', 'sb-card', 'start-places', 'upd-log', 'set-backdrop-row'].filter(id => shown(document.getElementById(id))),
+                updates: app.settingsPages().includes('updates'),
+                placeholders: /\{(files|computer|bin)\}/.test(document.body.innerHTML),
+                trashTitle: document.getElementById('btn-trash').title
+            };
+        });
+        check('in a browser: nothing the apps alone can do is shown', web.host === 'web' && web.appOnly.length === 0 && !web.updates, JSON.stringify(web));
+        check('... and the words are filled in ("the trash in .jeditor")', !web.placeholders && /moves to the trash in \.jeditor/.test(web.trashTitle), web.trashTitle);
 
         const pkgVersion = require(path.join(ROOT, 'package.json')).version;
         const v = await page.evaluate(() => ({

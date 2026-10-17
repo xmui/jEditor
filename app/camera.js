@@ -24,7 +24,7 @@ const Camera = {
     init(app) {
         this.app = app;
         const panel = this.el('cam-panel');
-        if (!panel || !this.native()) return;
+        if (!panel || !Host.has('camera')) return;
         this.el('btn-camera').addEventListener('click', () => this.open());
         this.el('cam-x').addEventListener('click', () => this.close());
         this.el('cam-min').addEventListener('click', () => this.setSmall(!panel.classList.contains('small')));

@@ -226,7 +226,7 @@ const CropLog = {
     async clear() {
         const yes = await UI.confirm({
             title: 'Clear the Auto crop test scans?',
-            message: 'The scans kept for testing Auto crop, and the log of crops, are removed from this PC. Your photos aren\'t touched.',
+            message: 'The scans kept for testing Auto crop, and the log of crops, are removed from ' + Host.words().computer + '. Your photos aren\'t touched.',
             ok: 'Clear', danger: true
         });
         if (!yes) return;

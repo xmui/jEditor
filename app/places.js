@@ -56,7 +56,7 @@ const Places = {
 
     init(app) {
         this.app = app;
-        if (!this.native()) return;
+        if (!Host.has('places')) return;
         this.boxes = [this.el('sb-places'), this.el('start-places')].filter(Boolean);
         for (const box of this.boxes) {
             box.addEventListener('click', (e) => this.onClick(e));
@@ -118,7 +118,7 @@ const Places = {
         const dir = this.projectsDir();
         const [places, quick, projects] = await Promise.all([
             native.places().catch(() => ({ drives: [], home: [] })),
-            native.quickAccess().catch(() => []),
+            Host.has('quickAccess') ? native.quickAccess().catch(() => []) : [],
             dir ? native.listProjects(dir).catch(() => null) : Promise.resolve(null)
         ]);
         if (this.drives === null) this.known = new Set(places.drives.map(d => this.key(d.path)));
@@ -215,7 +215,7 @@ const Places = {
         // A folder drags (onto a drive copies it, onto the sidebar pins it); a drive doesn't
         return `<div class="fr-row sb-row${cur ? ' active' : ''} ${cls}"${drive ? '' : ' draggable="true"'} style="--depth:${depth}" data-path="${this.esc(path)}">` +
             (caret ? `<button class="fr-caret${open ? ' open' : ''}" data-act="toggle" tabindex="-1" title="${open ? 'Fold' : 'Show what\'s inside'}">${this.icons.caret}</button>` : '<span class="fr-caret fr-spacer"></span>') +
-            `<button class="sb-main" data-act="${act}" title="${this.esc((title || path) + (act === 'open' ? ' — Ctrl+click opens it in a new window' : ''))}"><span class="sb-icon">${icon}</span>${sub ? `<span class="sb-text"><span class="fr-name">${this.esc(name)}</span>${sub}</span>` : `<span class="fr-name">${this.esc(name)}</span>`}</button>` +
+            `<button class="sb-main" data-act="${act}" title="${this.esc((title || path) + (act === 'open' && Host.has('windows') ? ' — Ctrl+click opens it in a new window' : ''))}"><span class="sb-icon">${icon}</span>${sub ? `<span class="sb-text"><span class="fr-name">${this.esc(name)}</span>${sub}</span>` : `<span class="fr-name">${this.esc(name)}</span>`}</button>` +
             extra +
             (pin !== null ? `<button class="sb-pin${pin ? ' on' : ''}" data-act="${pin ? 'unpin' : 'pin'}" title="${pin ? 'Unpin' : 'Pin to the sidebar'}">${this.icons.pin}</button>` : '') +
             (meta ? `<span class="sb-meta">${this.esc(meta)}</span>` : '') +
@@ -391,9 +391,9 @@ const Places = {
             (path ? `<div class="sb-card-path" title="${this.esc(path)}">${this.esc(path)}</div>` : '') +
             `<div class="sb-card-meta">${n.toLocaleString()} photo${n === 1 ? '' : 's'} · ${app.formatBytes(bytes)}</div>` +
             `<div class="sb-card-btns">` +
-            `<button class="btn primary sm" data-act="scan">${this.icons.scan}Scan</button>` +
-            (path ? `<button class="btn secondary sm" data-act="reveal" title="Show in Explorer">${this.icons.reveal}Explorer</button>` : '') +
-            `<button class="btn ghost icon sm" data-act="split" title="Split: this project and another window side by side">${this.icons.split}</button>` +
+            (Host.has('scan') ? `<button class="btn primary sm" data-act="scan">${this.icons.scan}Scan</button>` : '') +
+            (path && Host.has('reveal') ? `<button class="btn secondary sm" data-act="reveal" title="${Host.say('Show in {files}')}">${this.icons.reveal}${Host.words().files}</button>` : '') +
+            (Host.has('windows') ? `<button class="btn ghost icon sm" data-act="split" title="Split: this project and another window side by side">${this.icons.split}</button>` : '') +
             (path ? `<button class="btn ghost icon sm sb-card-pin${this.isPinned(path) ? ' on' : ''}" data-act="pin" title="${this.isPinned(path) ? 'Unpin' : 'Pin to the sidebar'}">${this.icons.pin}</button>` : '') +
             `</div>` +
             (app.readOnlyMode ? '' : `<label class="sb-card-defer" title="Crops and turns are kept on the photos, to change as often as you like, and saved into them (or exported) when you're done"><input type="checkbox" data-act="defer"${Edits.defer ? ' checked' : ''}><span>Save edits when done</span></label>`);
@@ -418,7 +418,7 @@ const Places = {
     // Called as the sidebar draws (Folders.render), and on going back to
     // the start screen: a different project redraws the lists
     apply() {
-        if (!this.native() || !this.boxes) return;
+        if (!Host.has('places') || !this.boxes) return;
         if (this._dir !== this.app.dirHandle) {
             this._dir = this.app.dirHandle;
             this.counts.clear(); // counted again: scans and moves change them
@@ -441,7 +441,7 @@ const Places = {
         if (act === 'newproject') return this.newProject();
         if (act === 'all') { this.showAll = true; return this.drawProjects(); }
         if (!path) return;
-        if (act === 'open' && (e.ctrlKey || e.button === 1)) return Windows.newWindow(path); // in a window of its own
+        if (act === 'open' && (e.ctrlKey || e.button === 1) && Host.has('windows')) return Windows.newWindow(path); // in a window of its own
         if (act === 'open') return this.open(path);
         if (act === 'toggle') {
             const k = this.key(path);
@@ -482,9 +482,9 @@ const Places = {
         const pinned = this.pins().some(p => this.key(p.path) === this.key(path));
         const items = [];
         if (this.key(path) !== this.key(this.current())) items.push(['Open as the project', () => this.open(path)]);
-        items.push(['Open in a new window', () => Windows.newWindow(path)]);
+        if (Host.has('windows')) items.push(['Open in a new window', () => Windows.newWindow(path)]);
         if (!drive) items.push(['—'], ['Rename…', () => this.renameFolder(path)]);
-        items.push(['—'], ['Show in Explorer', () => this.native().reveal(path)]);
+        if (Host.has('reveal')) items.push(['—'], [Host.say('Show in {files}'), () => this.native().reveal(path)]);
         items.push([pinned ? 'Unpin' : 'Pin to the sidebar', () => pinned ? this.unpin(path) : this.pin(path, name)]);
         return items;
     },
@@ -736,7 +736,7 @@ const Places = {
             app.showToast(`Stopped copying ${name}: nothing was left on ${where}`, 4000, key, null, { type: 'info' });
             return;
         }
-        app.showToast(`Copied ${name} to ${where}`, 6000, key, { label: 'Show', run: () => this.native().reveal(r.to) }, { type: 'success' });
+        app.showToast(`Copied ${name} to ${where}`, 6000, key, Host.has('reveal') ? { label: 'Show', run: () => this.native().reveal(r.to) } : null, { type: 'success' });
         // What's in it, and the drive's free space, again
         this.listings.delete(this.key(dest));
         this.counts.delete(this.key(dest));
