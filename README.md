@@ -37,9 +37,18 @@ jEditor needs the Microsoft Edge WebView2 Runtime, which comes with Windows 11 a
 
 Download **jEditor-x.y.z-mac.dmg** from [Releases](../../releases), open it and drag jEditor into Applications. It runs on Apple silicon and Intel Macs, macOS 12 or later.
 
+Or with [Homebrew](https://brew.sh) (this repo is the tap):
+
+```
+brew tap xmui/jeditor https://github.com/xmui/jEditor
+brew install --cask xmui/jeditor/jeditor
+```
+
+`brew upgrade --cask jeditor` updates it, and every release updates the cask (`Casks/jeditor.rb`).
+
 It isn't signed by Apple yet, so the first time macOS won't open it. Go to **System Settings → Privacy & Security**, find "jEditor was blocked", and click **Open Anyway**. It only asks once.
 
-To update, download the newer .dmg and drag it into Applications again. jEditor's settings, recent folders and each project's flags and cache are kept in `~/Library/Application Support/jEditor`, never in your folders.
+To update, use Settings → Updates (it downloads the new .dmg and opens it: drag jEditor into Applications again), or `brew upgrade`. jEditor's settings, recent folders and each project's flags and cache are kept in `~/Library/Application Support/jEditor`, never in your folders.
 
 ## Changing the look
 

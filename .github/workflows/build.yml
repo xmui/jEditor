@@ -84,6 +84,17 @@ jobs:
         working-directory: mac
       - name: Smoke test
         run: node scripts/smoke-test-mac.js
+      # The tap (this repo) installs the published release and takes it off again
+      - name: Homebrew
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
+        run: |
+          brew tap xmui/jeditor "$GITHUB_WORKSPACE"
+          brew install --cask xmui/jeditor/jeditor
+          test -d /Applications/jEditor.app
+          brew uninstall --cask --zap xmui/jeditor/jeditor
+          test ! -d /Applications/jEditor.app
       - uses: actions/upload-artifact@v4
         with:
           name: jEditor-mac
