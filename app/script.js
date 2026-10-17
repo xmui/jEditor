@@ -78,6 +78,8 @@ const app = {
             document.title = 'jEditor ' + APP_VERSION; // the window's title bar
             document.getElementById('btn-whatsnew-start').textContent = `What's new in ${APP_VERSION}`;
         }
+        // Which jEditor this is, and on the web the app for this computer
+        Start.init();
 
         // Drag and Drop
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
