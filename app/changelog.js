@@ -5,6 +5,18 @@
 
 const CHANGELOG = [
     {
+        version: '1.38.0', date: '2026-10-17',
+        items: [
+            'On the Mac, Liquid Glass: the toolbars, the folder panel, menus and messages take macOS 26\'s look, with a soft sheen and light along their edges, and stay easy to read over any photo. The photos themselves are never under glass. The title bar is gone: the window\'s buttons sit in the top-left corner, in line with the toolbars, and the top row moves the window.',
+            'On the Mac, the sidebar: your projects folder, pinned folders and the drives (Locations), with how many photos each has, New project, Rename (flags and edits go with it), a folder dragged onto a USB drive to copy it, and Eject.',
+            'On the Mac, several windows: File → New Window (⇧⌘N), ⌘-click a project to open it in one, Split puts two side by side, and photos dragged from one into the other move (or copy, with ⌥), with ⌘Z to undo.',
+            'On the Mac, updates: Settings → Updates finds a new version, downloads it and opens it in Finder, to drag into Applications.',
+            'On the Mac, messages say ⌘Z rather than Ctrl+Z.',
+            'Settings → Glass has Off, for solid toolbars and panels.',
+            'A project left in the single photo view is listed in the other windows\' Move to as well (Windows too).'
+        ]
+    },
+    {
         version: '1.37.0', date: '2026-10-17',
         items: [
             'jEditor for Mac, a first version: download jEditor-1.37.0-mac.dmg from the release and drag it into Applications (Apple silicon and Intel, macOS 12 or later). It opens folders without asking for permission, uses the Mac\'s own folder picker, opens folders from Finder (Open With, or dropped on the Dock icon) and shows them in Finder. It has what the web version has; the sidebar, several windows and updates come next. It isn\'t signed by Apple yet: the first time, open it from System Settings → Privacy & Security → Open Anyway.'

@@ -372,14 +372,15 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 const probe = document.createElement('span');
                 document.body.appendChild(probe);
                 const color = (v) => { probe.style.color = `var(${v})`; return getComputedStyle(probe).color.match(/\d+/g).slice(0, 3).map(Number); };
-                const out = { x: r.x, y: r.y, w: r.width, h: r.height, text1: color('--text-1'), text2: color('--text-2') };
+                const out = { x: r.x, y: r.y, w: r.width, h: r.height, dpr: devicePixelRatio, text1: color('--text-1'), text2: color('--text-2') };
                 probe.remove();
                 return out;
             });
             const png = readPng(await page.screenshot());
             // The middle of the pill, clear of its rim
             const samples = [];
-            for (let dx = 0.3; dx <= 0.7; dx += 0.1) samples.push(png.px(Math.round(box.x + box.w * dx), Math.round(box.y + box.h / 2)));
+            // (in screen pixels: twice the page's on a Retina screen)
+            for (let dx = 0.3; dx <= 0.7; dx += 0.1) samples.push(png.px(Math.round((box.x + box.w * dx) * box.dpr), Math.round((box.y + box.h / 2) * box.dpr)));
             const bg = [0, 1, 2].map(k => Math.round(samples.reduce((s, c) => s + c[k], 0) / samples.length));
             await page.evaluate(() => document.getElementById('hide-text').remove());
             return { bg, c1: +contrast(box.text1, bg).toFixed(2), c2: +contrast(box.text2, bg).toFixed(2) };
