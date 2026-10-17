@@ -354,8 +354,13 @@
         // jEditor can be dragged into Applications over this one.
         // progress(received, total) as it downloads.
         async installUpdate(progress) {
-            onUpdateProgress = progress || null;
-            try { await answer('installUpdate'); } finally { onUpdateProgress = null; }
+            // The end reported here too: IPC may bring the last progress after the answer
+            let last = -1;
+            onUpdateProgress = (got, total) => { last = got; if (progress) progress(got, total); };
+            try {
+                const r = await answer('installUpdate');
+                if (progress && r && r.received > last) progress(r.received, r.total);
+            } finally { onUpdateProgress = null; }
         }
     };
 

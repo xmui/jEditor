@@ -282,14 +282,15 @@ async function installUpdate(wc) {
         fs.renameSync(part, file);
         log('info', 'Updated: ' + file);
         setTimeout(() => { app.relaunch({ execPath: file, args: process.argv.slice(1) }); app.quit(); }, 1500);
-        return { ok: true, file };
+        return { ok: true, file, received: got, total };
     }
     fs.renameSync(part, file);
     const err = await shell.openPath(file);
     if (err) throw new Error('Downloaded to ' + file + ', but it didn\'t open: ' + err);
     log('info', 'Update opened: ' + file);
     setTimeout(() => app.quit(), 1500); // so it can be replaced
-    return { ok: true, file };
+    // (and how much came: the last updateProgress can arrive after this)
+    return { ok: true, file, received: got, total };
 }
 
 // ---- What the page asks for (bridge.js) ----
