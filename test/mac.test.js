@@ -176,6 +176,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             app.setPath('downloads', d);
             global.opened = [];
             shell.openPath = async (p) => { global.opened.push(p); return ''; };
+            global.realQuit = app.quit;
             app.quit = () => { global.quitAsked = true; };
         }, downloads);
         const r = await page.evaluate(async () => {
@@ -190,7 +191,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         const file = path.join(downloads, 'jEditor-9.1.0-mac.dmg');
         check('Settings has Updates', r.shown);
         check('a newer release is found, with its notes', r.check.newer && r.check.version === '9.1.0' && /Faster/.test(r.check.notes), JSON.stringify(r.check));
-        check('its .dmg downloads (progress as it goes), checked against its SHA-256', fs.existsSync(file) && fs.readFileSync(file).equals(dmg) && r.seen.length >= 3 && r.seen[r.seen.length - 1][0] === dmg.length, JSON.stringify(r.seen));
+        check('its .dmg downloads (progress as it goes), checked against its SHA-256', fs.existsSync(file) && fs.readFileSync(file).equals(dmg) && r.seen.length >= 2 && r.seen.every(([got, total], i) => total === dmg.length && (!i || got > r.seen[i - 1][0])) && r.seen[r.seen.length - 1][0] === dmg.length, JSON.stringify(r.seen));
         check('... opens in Finder, and jEditor quits so it can be replaced', main.opened.join() === file && main.quit, JSON.stringify(main));
 
         // A damaged download is thrown away; an older release isn't offered
@@ -205,6 +206,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         const old = await page.evaluate(() => JEditorNative.checkUpdate().then(r => r.newer));
         check('an older release isn\'t offered', old === false);
         check('no JS errors', errors.length === 0, errors.join('; '));
+        await app.evaluate(({ app }) => { app.quit = global.realQuit; });
         await app.close();
     }
 
