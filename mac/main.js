@@ -17,6 +17,7 @@
 
 const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, net, protocol, screen, session, shell } = require('electron');
 const crypto = require('crypto');
+const { execFile } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -33,9 +34,19 @@ global.jeditorToolbar = NATIVE_TOOLBAR ? toolbar : null; // for the tests (test/
 // (places.js) and updates (an AppImage replaced in place). JEDITOR_PLATFORM:
 // the other one's (the tests run on Linux, as the Mac app or this one)
 const LINUX = (process.env.JEDITOR_PLATFORM || (process.platform === 'linux' ? 'linux' : 'mac')) === 'linux';
-// Where this AppImage is: only an AppImage can update itself (a .deb is
-// updated with the system's own tools)
+// Where this AppImage is: it updates itself in place
 const APPIMAGE = process.env.APPIMAGE || null;
+// Installed from the .deb or the Arch package: updated with the system's
+// own installer, after asking for the password (pkexec), or null.
+// JEDITOR_LINUX_PACKAGE: say which, for the tests
+function linuxPackage() {
+    if (!LINUX || APPIMAGE) return null;
+    if (process.env.JEDITOR_LINUX_PACKAGE) return process.env.JEDITOR_LINUX_PACKAGE;
+    try { if (fs.existsSync('/var/lib/dpkg/info/jeditor.list')) return 'deb'; } catch (e) { /* no dpkg */ }
+    try { if (fs.readdirSync('/var/lib/pacman/local').some(d => /^jeditor-\d/.test(d))) return 'pacman'; } catch (e) { /* no pacman */ }
+    return null;
+}
+const PACKAGE = linuxPackage();
 
 // Settings, recent folders and the projects' data are stored under this
 // origin: it must never change
@@ -221,9 +232,12 @@ function mint(wc, dir) {
 
 // ---- Updates: the newest release's .dmg ----
 // From jEditor's GitHub releases (JEDITOR_RELEASES: another address, for
-// the tests). Not signed, the app can't replace itself: the .dmg is
-// downloaded (checked against GitHub's SHA-256), opened in Finder, and
-// jEditor quits so it can be dragged into Applications over this one.
+// the tests). The .dmg is downloaded and checked against GitHub's SHA-256;
+// then jEditor puts the app in it in place of itself and opens again
+// (macBundle, replaceBundle), with no Developer ID needed: the new app is
+// checked whole (codesign --verify) before it goes in. Where it can't
+// (run from the Downloads folder or the .dmg, or Applications isn't
+// writable) the .dmg opens in Finder and jEditor quits, to be dragged in.
 const RELEASES = process.env.JEDITOR_RELEASES || 'https://api.github.com/repos/xmui/jEditor/releases/latest';
 // Every release and beta, newest first (Settings → Updates → Beta builds)
 const ALL_RELEASES = process.env.JEDITOR_RELEASES_ALL || 'https://api.github.com/repos/xmui/jEditor/releases?per_page=30';
@@ -254,7 +268,84 @@ function isNewer(tag, than) {
     return false;
 }
 
-const appAsset = (json) => (json.assets || []).find(a => (LINUX ? /^jEditor-.*-linux\.AppImage$/i : /^jEditor-.*-mac\.dmg$/i).test(a.name || ''));
+// The jEditor.app this is running as, or null (not a built app);
+// JEDITOR_APP_BUNDLE: another, for the tests
+function macBundle() {
+    if (LINUX) return null;
+    if (process.env.JEDITOR_APP_BUNDLE) return process.env.JEDITOR_APP_BUNDLE;
+    if (!app.isPackaged || process.platform !== 'darwin') return null;
+    const b = path.resolve(app.getPath('exe'), '..', '..', '..');
+    return b.endsWith('.app') ? b : null;
+}
+
+// It can be replaced where it is: not run from a quarantined copy (macOS
+// runs those from a hidden read-only place, App Translocation) or a .dmg,
+// and its folder is writable
+function canReplace(bundle) {
+    if (!bundle || /\/AppTranslocation\//.test(bundle) || bundle.startsWith('/Volumes/')) return false;
+    try {
+        fs.accessSync(path.dirname(bundle), fs.constants.W_OK);
+        fs.accessSync(bundle, fs.constants.W_OK);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function run(cmd, args) {
+    return new Promise((resolve, reject) => execFile(cmd, args, { timeout: 180000 }, (err, out, errOut) => {
+        if (err) reject(new Error(`${path.basename(cmd)}: ${String(errOut || err.message).trim().split('\n').pop()}`));
+        else resolve(out);
+    }));
+}
+
+// The app in the .dmg, copied in beside this one, checked, then swapped in
+async function replaceBundle(dmg, bundle) {
+    const mnt = fs.mkdtempSync(path.join(os.tmpdir(), 'jeditor-update-'));
+    const staged = path.join(path.dirname(bundle), `.${path.basename(bundle, '.app')}-update.app`);
+    fs.rmSync(staged, { recursive: true, force: true });
+    await run('hdiutil', ['attach', '-nobrowse', '-readonly', '-noautoopen', '-mountpoint', mnt, dmg]);
+    try {
+        const name = fs.readdirSync(mnt).find(n => n.endsWith('.app'));
+        if (!name) throw new Error('there\'s no app in the update');
+        await run('ditto', [path.join(mnt, name), staged]);
+    } finally {
+        await run('hdiutil', ['detach', mnt, '-force']).catch(() => { });
+        fs.rmSync(mnt, { recursive: true, force: true });
+    }
+    try {
+        // Whole, as it was built and signed
+        await run('codesign', ['--verify', '--deep', '--strict', staged]);
+    } catch (e) {
+        fs.rmSync(staged, { recursive: true, force: true });
+        throw new Error('the new app didn\'t check out (' + e.message + ')');
+    }
+    const old = `${bundle}.old`;
+    fs.rmSync(old, { recursive: true, force: true });
+    fs.renameSync(bundle, old);
+    try {
+        fs.renameSync(staged, bundle);
+    } catch (e) {
+        fs.renameSync(old, bundle);
+        throw e;
+    }
+    fs.rm(old, { recursive: true, force: true }, () => { });
+}
+
+// This app's download in a release: the .dmg, the AppImage, or the
+// package it was installed from
+const ASSET = !LINUX ? /^jEditor-.*-mac\.dmg$/i : PACKAGE === 'deb' ? /^jEditor-.*-linux\.deb$/i : PACKAGE === 'pacman' ? /^jEditor-.*-linux\.pacman$/i : /^jEditor-.*-linux\.AppImage$/i;
+const appAsset = (json) => (json.assets || []).find(a => ASSET.test(a.name || ''));
+
+// The package installed with the system's installer, as root: pkexec asks
+// for the password (JEDITOR_PKEXEC: another, for the tests)
+async function installPackage(file) {
+    const pkexec = process.env.JEDITOR_PKEXEC || '/usr/bin/pkexec';
+    if (!fs.existsSync(pkexec)) throw new Error('there\'s no pkexec here to ask for the password');
+    const tool = PACKAGE === 'pacman' ? ['/usr/bin/pacman', '-U', '--noconfirm', file]
+        : fs.existsSync('/usr/bin/apt-get') ? ['/usr/bin/apt-get', 'install', '-y', '--allow-downgrades', file] : ['/usr/bin/dpkg', '-i', file];
+    await run(pkexec, tool);
+}
 
 async function fetchJson(url) {
     const res = await net.fetch(url, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'jEditor' } });
@@ -290,9 +381,13 @@ async function installUpdate(wc) {
     const res = await net.fetch(latest.url);
     if (!res.ok) throw new Error(`The download failed (${res.status})`);
     const total = +res.headers.get('content-length') || latest.size;
-    // The AppImage is written beside this one, then put in its place
-    const file = LINUX ? APPIMAGE : path.join(app.getPath('downloads'), latest.name);
-    if (!file) throw new Error('Only the AppImage can update itself: update the .deb with your software updater');
+    // The AppImage is written beside this one, then put in its place; the
+    // Mac's .dmg to a temporary folder when it's opened here, else Downloads
+    const bundle = macBundle();
+    const inPlace = !LINUX && canReplace(bundle) && process.platform === 'darwin';
+    const temp = inPlace || PACKAGE;
+    const file = LINUX && !PACKAGE ? APPIMAGE : path.join(temp ? fs.mkdtempSync(path.join(os.tmpdir(), 'jeditor-update-')) : app.getPath('downloads'), latest.name);
+    if (!file) throw new Error('This copy of jEditor can\'t update itself: download the new one from GitHub');
     const part = file + '.part';
     const out = fs.createWriteStream(part);
     const hash = crypto.createHash('sha256');
@@ -317,6 +412,25 @@ async function installUpdate(wc) {
         fs.rmSync(part, { force: true });
         throw new Error('The download was damaged (its checksum doesn\'t match). Try again.');
     }
+    if (PACKAGE) {
+        fs.renameSync(part, file);
+        try {
+            await installPackage(file);
+            fs.rm(path.dirname(file), { recursive: true, force: true }, () => { });
+            log('info', `Updated to ${latest.tag} (${PACKAGE})`);
+            setTimeout(() => { app.relaunch(); app.quit(); }, 1200);
+            return { ok: true, inPlace: true, file, received: got, total };
+        } catch (e) {
+            // Not installed (the password asked for and not given, say):
+            // the package in Downloads, opened with the software installer
+            log('warn', 'Couldn\'t install the update: ' + e.message);
+            const dl = path.join(app.getPath('downloads'), latest.name);
+            fs.copyFileSync(file, dl);
+            fs.rm(path.dirname(file), { recursive: true, force: true }, () => { });
+            await shell.openPath(dl);
+            return { ok: true, inPlace: false, why: 'it wasn\'t installed: ' + e.message, file: dl, received: got, total };
+        }
+    }
     if (LINUX) {
         fs.chmodSync(part, 0o755);
         fs.renameSync(part, file);
@@ -325,12 +439,33 @@ async function installUpdate(wc) {
         return { ok: true, file, received: got, total };
     }
     fs.renameSync(part, file);
+    if (inPlace) {
+        try {
+            await replaceBundle(file, bundle);
+            fs.rm(path.dirname(file), { recursive: true, force: true }, () => { });
+            log('info', `Updated in place to ${latest.tag}: ${bundle}`);
+            setTimeout(() => { app.relaunch(); app.quit(); }, 1200);
+            return { ok: true, inPlace: true, file: bundle, received: got, total };
+        } catch (e) {
+            // Then the way that always works: the .dmg, in Finder
+            log('warn', 'Couldn\'t update in place: ' + e.message);
+            const dl = path.join(app.getPath('downloads'), latest.name);
+            fs.copyFileSync(file, dl);
+            fs.rm(path.dirname(file), { recursive: true, force: true }, () => { });
+            return openDmg(dl, got, total, e.message);
+        }
+    }
+    return openDmg(file, got, total, bundle ? 'move jEditor into Applications to have it update itself' : null);
+}
+
+// The .dmg opened in Finder, and jEditor quits so it can be replaced
+async function openDmg(file, got, total, why) {
     const err = await shell.openPath(file);
     if (err) throw new Error('Downloaded to ' + file + ', but it didn\'t open: ' + err);
     log('info', 'Update opened: ' + file);
     setTimeout(() => app.quit(), 1500); // so it can be replaced
     // (and how much came: the last updateProgress can arrive after this)
-    return { ok: true, file, received: got, total };
+    return { ok: true, inPlace: false, why, file, received: got, total };
 }
 
 // ---- The Mac's privacy settings (app/permissions.js) ----
@@ -486,12 +621,17 @@ async function handle(rec, type, data) {
         case 'copyFolder': {
             const stop = { stopped: false };
             copies.set(data.copy, stop);
+            let last = null;
             try {
-                const to = await places.copyFolder(data.path, data.dest, (done, total) =>
-                    wc.send('jeditor', { type: 'copyProgress', copy: data.copy, done, total }), stop);
+                const to = await places.copyFolder(data.path, data.dest, (done, total) => {
+                    last = { done, total };
+                    wc.send('jeditor', { type: 'copyProgress', copy: data.copy, done, total });
+                }, stop);
                 log('info', `Copied ${data.path} to ${to}`);
                 drivesChanged();
-                return { to };
+                // How far it got, with the answer too: IPC can bring the
+                // last copyProgress after it
+                return { to, ...(last || {}) };
             } catch (e) {
                 if (e.stopped) return { cancelled: true };
                 throw e;
@@ -752,7 +892,7 @@ function createWindow() {
             additionalArguments: [
                 ...(NATIVE_TOOLBAR ? ['--jeditor-native-toolbar'] : []),
                 ...(LINUX ? ['--jeditor-linux'] : []),
-                ...(LINUX && !APPIMAGE && !process.env.JEDITOR_RELEASES ? ['--jeditor-no-updates'] : [])
+                ...(LINUX && !APPIMAGE && !PACKAGE && !process.env.JEDITOR_RELEASES ? ['--jeditor-no-updates'] : [])
             ]
         }
     });

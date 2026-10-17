@@ -238,7 +238,7 @@ const CropEditor = {
         this.el('crop-file').textContent = file.name;
         this.el('crop-dims').textContent = 'Loading…';
         // Edits kept until saved (edits.js): the crop is kept, not written
-        const later = Edits.on();
+        const later = Edits.keeps(file);
         this.el('crop-save').textContent = later ? 'Done' : 'Save';
         this.el('crop-save').title = later ? 'Keep this crop; it\'s saved to the file when you save the project\'s edits (Enter)' : 'Save (Enter)';
         this.el('crop-save-next').textContent = later ? 'Done & next' : 'Save & next';
@@ -267,6 +267,12 @@ const CropEditor = {
         }
         const data = await file.handle.getFile();
         const dpi = ImageMeta.readDpi(new Uint8Array(await data.slice(0, 256 * 1024).arrayBuffer()));
+        // Adjusted (adjust.js): shown with its adjustments
+        const adj = Edits.get(file) && Edits.get(file).adj;
+        if (adj && current()) {
+            const shown = await Develop.applyBitmap(preview, adj, { scale: w ? preview.width / w : 1 });
+            if (shown !== preview) { preview.close(); preview = shown; }
+        }
         if (!current()) { preview.close(); return; }
         if (this.preview && this.preview !== preview && this.preview.close) this.preview.close();
         this.preview = preview;
@@ -736,7 +742,12 @@ const CropEditor = {
         const bmp = await this.decodeFor(fileData, type, original);
         try {
             const ed = this.fromSnapshot(bmp.width, bmp.height, snap);
-            return ed.isIdentity() && !ed.q ? null : ed.drawOutput(bmp);
+            const adj = snap.adj && Develop.active(snap.adj);
+            if (ed.isIdentity() && !ed.q && !adj) return null;
+            const canvas = ed.drawOutput(bmp);
+            // Its adjustments (adjust.js), after the crop
+            if (adj) Develop.applyCanvas(canvas, snap.adj, { map: Develop.cropMap(ed, bmp.width, bmp.height) });
+            return canvas;
         } finally {
             bmp.close();
         }

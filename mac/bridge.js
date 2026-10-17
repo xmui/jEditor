@@ -304,9 +304,15 @@
         // has a copyId, for cancelCopy.
         copyFolder(path, dest, progress) {
             const id = nextCopy++;
-            copying.set(id, progress || (() => { }));
+            let last = -1;
+            copying.set(id, (got, total) => { last = got; if (progress) progress(got, total); });
             const done = answer('copyFolder', { path, dest, copy: id })
-                .then(msg => (msg.cancelled ? { cancelled: true } : { to: msg.to }))
+                .then(msg => {
+                    if (msg.cancelled) return { cancelled: true };
+                    // The end reported here too: IPC may bring the last progress after the answer
+                    if (progress && typeof msg.done === 'number' && msg.done > last) progress(msg.done, msg.total);
+                    return { to: msg.to };
+                })
                 .finally(() => copying.delete(id));
             done.copyId = id;
             return done;
@@ -367,6 +373,7 @@
             try {
                 const r = await answer('installUpdate');
                 if (progress && r && r.received > last) progress(r.received, r.total);
+                return r;
             } finally { onUpdateProgress = null; }
         }
     };
@@ -413,7 +420,7 @@
         const px = (name) => parseFloat(css.getPropertyValue(name)) || 0;
         const scale = parseFloat(css.getPropertyValue('--ui-scale')) || 1;
         const gutter = px('--gutter');
-        const at = { x: Math.max(12, gutter), y: gutter + (px('--ctl-lg') * scale) / 2 - 7 };
+        const at = { x: Math.max(12, gutter), y: px('--mac-drag') + gutter + (px('--ctl-lg') * scale) / 2 - 7 };
         const key = at.x + ',' + at.y;
         if (key === lastLights) return;
         lastLights = key;
@@ -427,14 +434,14 @@
     // it, and the item shows what it does (hidden, off, on). So everything
     // they do, their keys and Settings → Toolbar stay the page's.
     const SYMBOLS = {
-        info: 'info.circle', refresh: 'arrow.clockwise', crop: 'crop', history: 'clock.arrow.circlepath',
+        info: 'info.circle', refresh: 'arrow.clockwise', crop: 'crop', adjust: 'slider.horizontal.3', history: 'clock.arrow.circlepath',
         fit: 'rectangle.inset.filled', strip: 'film', fullscreen: 'arrow.up.left.and.arrow.down.right',
         dupes: 'square.on.square', keys: 'keyboard', whatsnew: 'sparkles', customize: 'gearshape',
         scan: 'scanner', camera: 'camera'
     };
     const PRESSED = { info: 'info.circle.fill', strip: 'film.fill', fit: 'rectangle.inset.filled', fullscreen: 'arrow.down.right.and.arrow.up.left' };
     const $ = (id) => document.getElementById(id);
-    const shown = (el) => !!el && !el.classList.contains('hidden') && !el.classList.contains('host-missing');
+    const shown = (el) => !!el && !el.classList.contains('hidden') && !el.classList.contains('host-missing') && !el.classList.contains('exp-off');
     const said = (t) => (typeof Host !== 'undefined' ? Host.say(t || '') : t || '');
 
     function toolbarModel() {

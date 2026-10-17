@@ -5,8 +5,9 @@ const app = {
     viewMode: 'single', // 'single' or 'grid'
     selection: new Set(), // Set of file objects
     readOnlyMode: false, // When true, saving is disabled (legacy drag-drop)
-    cropState: { // True while the Crop & Straighten editor owns the screen (crop.js)
-        active: false
+    cropState: { // True while the Crop & Straighten editor, or Adjust, owns the screen (crop.js, adjust.js)
+        active: false,
+        tool: null // 'adjust' while it's Adjust
     },
     zoom: 1, // Zoom level
     panX: 0, // Pan offset X
@@ -140,6 +141,10 @@ const app = {
 
         // Crop Controls
         if (this.elements.btnCrop) this.elements.btnCrop.addEventListener('click', () => this.enterCrop());
+        document.getElementById('btn-adjust').addEventListener('click', () => this.enterAdjust());
+        // Adjust is an experiment for now (experiments.js): its button and
+        // menus show when it's on
+        addEventListener('jeditor-experiments', () => this.applyExperiments());
 
         // File Info
         if (this.elements.btnInfo) this.elements.btnInfo.addEventListener('click', () => this.toggleInfoPanel());
@@ -405,9 +410,9 @@ const app = {
 
     defaultUiPrefs() {
         return {
-            order: ['scan', 'camera', 'info', 'view', 'refresh', 'crop', 'history', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'whatsnew', 'customize'],
+            order: ['scan', 'camera', 'info', 'view', 'refresh', 'crop', 'adjust', 'history', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'whatsnew', 'customize'],
             placement: { // 'main' | 'more' | 'hidden'
-                scan: 'main', camera: 'main', info: 'main', view: 'main', refresh: 'main', crop: 'main', history: 'main',
+                scan: 'main', camera: 'main', info: 'main', view: 'main', refresh: 'main', crop: 'main', adjust: 'main', history: 'main',
                 fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', keys: 'more', whatsnew: 'more', customize: 'more'
             },
             vertical: false,
@@ -436,6 +441,7 @@ const app = {
         ['rotate', 'Rotating', false, 'Turned 1 photo right…'],
         ['flags', 'Flags and labels', true, 'Starred, needs rescan, color labels'],
         ['crop', 'Cropping and Auto crop', true, 'Saved, crop kept, auto cropped'],
+        ['adjust', 'Adjusting', true, 'Adjustments kept, copied, pasted'],
         ['move', 'Moving, copying and folders', true, 'Moved to a folder, new folder'],
         ['delete', 'Deleting', true, 'Moved to {bin} (Ctrl+Z still restores)'],
         ['rename', 'Renaming', true, 'Renamed photos and folders'],
@@ -549,6 +555,7 @@ const app = {
         const controls = this.singleControls();
         if (controls) controls.classList.toggle('off', p.singleControls === false);
         this.applyAppearance();
+        this.applyExperiments({ panel: false });
         // More shows for buttons squeezed in for room too
         if (typeof Fit !== 'undefined') Fit.run();
     },
@@ -850,6 +857,7 @@ const app = {
 
         this.uiPrefs.order.forEach(key => {
             if ((key === 'scan' || key === 'camera') && !Host.has(key)) return; // only where the app can
+            if (key === 'adjust' && !this.adjustOn()) return; // an experiment, off
             const li = document.createElement('li');
             li.draggable = true;
             li.dataset.key = key;
@@ -3219,11 +3227,15 @@ const app = {
             // Its size in the photo's own pixels (the preview is smaller)
             const scale = Math.max(raw.w || bmp.width, raw.h || bmp.height) / Math.max(bmp.width, bmp.height);
             let canvas;
+            let map;
             try {
-                canvas = CropEditor.fromSnapshot(bmp.width, bmp.height, edit).drawOutput(bmp);
+                const ed = CropEditor.fromSnapshot(bmp.width, bmp.height, edit);
+                canvas = ed.drawOutput(bmp);
+                map = Develop.cropMap(ed, bmp.width, bmp.height);
             } finally {
                 bmp.close();
             }
+            if (edit.adj) Develop.applyCanvas(canvas, edit.adj, { scale: 1 / scale, map });
             const alpha = /\.(png|webp|gif)$/i.test(file.name);
             const out = await new Promise(r => canvas.toBlob(r, alpha ? 'image/png' : 'image/jpeg', 0.92));
             const w = Math.round(canvas.width * scale), h = Math.round(canvas.height * scale);
@@ -3796,6 +3808,9 @@ const app = {
         ['edit.rotateRight', 'global', 'Edit', 'Rotate right (whole selection in grid)', [']', '.', 'Shift+ArrowRight']],
         ['edit.rotate180', 'global', 'Edit', 'Rotate 180° (whole selection in grid)', ['\\']],
         ['edit.crop', 'global', 'Edit', 'Crop & straighten', ['C']],
+        ['edit.adjust', 'global', 'Edit', 'Adjust: light, color, curves', ['E']],
+        ['edit.copyAdjust', 'global', 'Edit', 'Copy the photo\'s adjustments', ['Ctrl+Shift+C']],
+        ['edit.pasteAdjust', 'global', 'Edit', 'Paste adjustments (onto the selection in grid)', ['Ctrl+Shift+V']],
         ['edit.rename', 'global', 'Edit', 'Rename (the selection in grid view)', ['F2']],
         ['edit.trash', 'global', 'Edit', 'Move to trash', ['Delete']],
         ['edit.undo', 'global', 'Edit', 'Undo', ['Ctrl+Z']],
@@ -3853,6 +3868,17 @@ const app = {
         ['crop.previous', 'crop', 'Crop & Straighten', 'Reuse previous crop', ['P']],
         ['crop.selectAll', 'crop', 'Crop & Straighten', 'Select whole image', ['Ctrl+A']],
         ['crop.reset', 'crop', 'Crop & Straighten', 'Reset', ['R']],
+        ['adjust.done', 'adjust', 'Adjust', 'Done', ['Enter']],
+        ['adjust.doneNext', 'adjust', 'Adjust', 'Done, then adjust the next photo', ['Shift+Enter']],
+        ['adjust.cancel', 'adjust', 'Adjust', 'Cancel', ['Escape']],
+        ['adjust.before', 'adjust', 'Adjust', 'Before and after', ['\\']],
+        ['adjust.auto', 'adjust', 'Adjust', 'Auto (levels from the photo)', ['Shift+A']],
+        ['adjust.autoColor', 'adjust', 'Adjust', 'Auto color (each channel)', ['Shift+C']],
+        ['adjust.reset', 'adjust', 'Adjust', 'Reset everything', ['R']],
+        ['adjust.copy', 'adjust', 'Adjust', 'Copy the adjustments', ['Ctrl+Shift+C']],
+        ['adjust.paste', 'adjust', 'Adjust', 'Paste adjustments', ['Ctrl+Shift+V']],
+        ['adjust.undo', 'adjust', 'Adjust', 'Undo', ['Ctrl+Z']],
+        ['adjust.redo', 'adjust', 'Adjust', 'Redo', ['Ctrl+Shift+Z', 'Ctrl+Y']],
         ['dupes.next', 'dupes', 'Duplicates (WIP)', 'Next group', ['ArrowRight']],
         ['dupes.prev', 'dupes', 'Duplicates (WIP)', 'Previous group', ['ArrowLeft']],
         ['dupes.keepBest', 'dupes', 'Duplicates (WIP)', 'Keep suggested, mark the rest', ['K']],
@@ -3879,6 +3905,8 @@ const app = {
                 'edit.rotateRight': ['Ctrl+]'],
                 'edit.rotate180': [],
                 'edit.crop': ['R'],
+                'edit.adjust': ['D'],
+                'app.dupes': [],
                 'flag.red': ['6'],
                 'flag.yellow': ['7'],
                 'flag.green': ['8'],
@@ -3917,6 +3945,9 @@ const app = {
             'edit.rotateRight': () => grid() ? this.rotateBulk(90) : this.rotateCurrent(90),
             'edit.rotate180': () => grid() ? this.rotateBulk(180) : this.rotateCurrent(180),
             'edit.crop': () => this.enterCrop(),
+            'edit.adjust': () => this.adjustOn() ? this.enterAdjust() : false,
+            'edit.copyAdjust': () => this.adjustOn() ? this.copyAdjust() : false,
+            'edit.pasteAdjust': () => this.adjustOn() ? this.pasteAdjust(grid() && this.selection.size ? [...this.selection] : [this.currentFile]) : false,
             'edit.rename': () => this.openRename(grid() && this.selection.size ? [...this.selection] : [this.currentFile]),
             'edit.trash': () => this.moveToTrash(grid() && this.selection.size
                 ? [...this.selection] : [this.currentFile]),
@@ -3988,6 +4019,17 @@ const app = {
             'crop.previous': () => ed.usePrevious(),
             'crop.selectAll': () => ed.selectAll(),
             'crop.reset': () => ed.reset(),
+            'adjust.done': () => this.saveAdjust(),
+            'adjust.doneNext': () => this.saveAdjust({ next: true }),
+            'adjust.cancel': () => this.cancelAdjust(),
+            'adjust.before': () => Adjust.toggleBefore(),
+            'adjust.auto': () => Adjust.auto(),
+            'adjust.autoColor': () => Adjust.auto({ color: true }),
+            'adjust.reset': () => Adjust.reset(),
+            'adjust.copy': () => Adjust.copy(),
+            'adjust.paste': () => Adjust.paste(),
+            'adjust.undo': () => { if (!Adjust.undo()) this.showToast('Nothing to undo', 1200); },
+            'adjust.redo': () => { if (!Adjust.redo()) this.showToast('Nothing to redo', 1200); },
             'dupes.next': () => Dupes.step(1),
             'dupes.prev': () => Dupes.step(-1),
             'dupes.keepBest': () => Dupes.keepBest(),
@@ -4150,7 +4192,7 @@ const app = {
     },
 
     buildKeyMaps() {
-        this._keyMaps = { global: new Map(), crop: new Map(), dupes: new Map() };
+        this._keyMaps = { global: new Map(), crop: new Map(), adjust: new Map(), dupes: new Map() };
         this.KEY_ACTIONS.forEach(([id, ctx]) => {
             (this.keyBindings[id] || []).forEach(combo => {
                 if (!this._keyMaps[ctx].has(combo)) this._keyMaps[ctx].set(combo, id);
@@ -4250,7 +4292,7 @@ const app = {
             return;
         }
 
-        const context = this.cropState.active ? 'crop' : (Dupes.isOpen ? 'dupes' : 'global');
+        const context = this.cropState.active ? (this.cropState.tool === 'adjust' ? 'adjust' : 'crop') : (Dupes.isOpen ? 'dupes' : 'global');
         // Duplicates view: 1–9 mark/unmark the photo with that number
         if (context === 'dupes' && /^[1-9]$/.test(combo)) {
             e.preventDefault();
@@ -4274,6 +4316,12 @@ const app = {
             e.preventDefault();
             return;
         }
+        if (context === 'adjust' && (Adjust.busy || (!Adjust.ready && id !== 'adjust.cancel'))) {
+            e.preventDefault();
+            return;
+        }
+        // A focused button's own Enter/Space press isn't a shortcut there
+        if (context === 'adjust' && e.target && e.target.tagName === 'BUTTON' && (combo === 'Enter' || combo === 'Space')) return;
 
         const handler = this.keyHandlers()[id];
         if (!handler) return;
@@ -4737,14 +4785,19 @@ const app = {
         const skippedGifs = snapshot.length - filesToRotate.length;
         if (skippedGifs > 0) this.showToast(`Skipped ${skippedGifs} GIF${skippedGifs > 1 ? 's' : ''} (rotation would lose animation)`);
         if (filesToRotate.length === 0) return;
-        if (Edits.on()) {
+        // Kept with the other edits until they're saved (all of them with
+        // the setting on; adjusted photos always)
+        const kept = filesToRotate.filter(f => Edits.keeps(f));
+        if (kept.length) {
             if (this.editsSaving()) return;
-            // Kept with the other edits until they're saved
-            this.turnHeld(filesToRotate, deg);
-            Edits.rotate(filesToRotate, deg);
-            const n = filesToRotate.length;
-            this.showToast(`Turned ${n} photo${n > 1 ? 's' : ''} ${Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left'}`, 1600, null, null, { kind: 'rotate' });
-            return;
+            this.turnHeld(kept, deg);
+            Edits.rotate(kept, deg);
+            if (kept.length === filesToRotate.length) {
+                const n = kept.length;
+                this.showToast(`Turned ${n} photo${n > 1 ? 's' : ''} ${Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left'}`, 1600, null, null, { kind: 'rotate' });
+                return;
+            }
+            filesToRotate.splice(0, filesToRotate.length, ...filesToRotate.filter(f => !kept.includes(f)));
         }
 
         // One undo step for the whole selection (added to the history now,
@@ -4807,7 +4860,7 @@ const app = {
             return Promise.resolve(false);
         }
         // Kept with the other edits until they're saved
-        if (Edits.on()) {
+        if (Edits.keeps(fileEntry)) {
             if (this.editsSaving()) return Promise.resolve(false);
             this.turnHeld([fileEntry], deg);
             return Promise.resolve(Edits.rotate([fileEntry], deg));
@@ -5882,7 +5935,7 @@ const app = {
                     const data = await f.handle.getFile();
                     let out = f._edit ? await this.renderEdited(f, data) : data;
                     if (maxEdge > 0) {
-                        const bmp = await createImageBitmap(data);
+                        const bmp = await createImageBitmap(out);
                         const scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
                         if (scale < 1) {
                             const canvas = document.createElement('canvas');
@@ -5922,7 +5975,7 @@ const app = {
         const edit = f._edit;
         const original = new Uint8Array(await data.arrayBuffer());
         const n = edit.n, eq = (a, b) => Math.abs(a - b) < 1e-6;
-        const turnOnly = !edit.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5);
+        const turnOnly = !edit.adj && !edit.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5);
         if (turnOnly && /\.jpe?g$/i.test(f.name)) {
             try {
                 const b = this.rotateJpegLossless(original.buffer, edit.q * 90);
@@ -6000,6 +6053,7 @@ const app = {
                     [`Rotate ${n} right`, () => this.rotateBulk(90)],
                     [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
                     [`Auto crop ${n}`, () => this.batchAutoCrop(sel)],
+                    ...(this.adjustOn() && Adjust.clipboard() ? [[`Paste adjustments onto ${n}`, () => this.pasteAdjust(sel)]] : []),
                     ...(sel.some(f => f._edit) ? [[`Discard edits on ${sel.filter(f => f._edit).length.toLocaleString()}`, () => Edits.discard(sel)]] : []),
                     ['—'],
                     [`Move ${n} to…`, () => Folders.openPicker(sel, 'move')],
@@ -6019,6 +6073,11 @@ const app = {
                 ['Rotate right', () => this.rotateImage(file, 90)],
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
                 ['Crop and straighten', () => { this.openSingle(file); this.enterCrop(); }],
+                ...(this.adjustOn() ? [
+                    ['Adjust…', () => this.enterAdjust(file)],
+                    ...(file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
+                    ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : [])
+                ] : []),
                 ...(file._edit ? [['Discard edit', () => Edits.discard([file])]] : []),
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
@@ -6039,6 +6098,11 @@ const app = {
                 ['Rotate right', () => this.rotateImage(file, 90)],
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
                 ['Crop and straighten', () => this.enterCrop()],
+                ...(this.adjustOn() ? [
+                    ['Adjust…', () => this.enterAdjust()],
+                    ...(file && file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
+                    ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : [])
+                ] : []),
                 ...(file && file._edit ? [['Discard edit', () => Edits.discard([file])]] : []),
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
@@ -6184,6 +6248,148 @@ const app = {
         this.cropState.active = false;
     },
 
+    // ---- Adjust (adjust.js) ----
+
+    // Settings → Experimental → Adjust
+    adjustOn() {
+        return typeof Experiments !== 'undefined' && Experiments.on('adjust');
+    },
+
+    // Experiments turned on or off: what they show
+    // panel: Settings' list of toolbar buttons drawn again too
+    applyExperiments({ panel = true } = {}) {
+        if (typeof Experiments !== 'undefined') Experiments.render();
+        const b = document.getElementById('btn-adjust');
+        if (b) b.classList.toggle('exp-off', !this.adjustOn());
+        if (panel && this.isSettingsOpen()) this.renderCustomizePanel();
+        if (panel && typeof Fit !== 'undefined') Fit.run();
+    },
+
+    async enterAdjust(file = this.currentFile) {
+        if (!file || this.cropState.active) return;
+        if (!this.adjustOn()) {
+            this.showToast('Adjust is in Settings → Experimental');
+            return;
+        }
+        if (!this.ensureWritable()) return;
+        if (this.editsSaving()) return;
+        if (/\.gif$/i.test(file.name)) {
+            this.showToast('GIFs can\'t be adjusted (the animation would be lost)');
+            return;
+        }
+        if (this.currentFile !== file || this.viewMode !== 'single') this.openSingle(file);
+        this.cropState.active = true;
+        this.cropState.tool = 'adjust';
+        this.stopSlideshow();
+        try {
+            if (file._rotationQueue) await file._rotationQueue;
+            await Adjust.open(this, file);
+        } catch (err) {
+            console.error('Adjust open failed:', err);
+            this.cancelAdjust();
+            this.showToast('Could not open this photo to adjust it');
+        }
+    },
+
+    cancelAdjust() {
+        Adjust.close();
+        this.cropState.active = false;
+        this.cropState.tool = null;
+    },
+
+    // Done: kept with the photo in a project; written into it otherwise.
+    // With next: the following photo, adjusted the same way to start from
+    // if it has none of its own (Lightroom's "previous")
+    async saveAdjust({ next = false } = {}) {
+        const ed = Adjust;
+        if (!ed.isOpen || !ed.ready || ed.busy) return;
+        const file = ed.file;
+        const adj = ed.result();
+        const goNext = () => {
+            if (!next) return;
+            if (this.getCurrentIndex() >= this.viewFiles().length - 1) {
+                this.showToast('That was the last photo');
+                return;
+            }
+            this.navigate(1);
+            this.enterAdjust();
+        };
+        if (!ed.changedSinceOpen()) {
+            this.cancelAdjust();
+            if (!next) this.showToast('No changes', 1200);
+            goNext();
+            return;
+        }
+        if (Edits.canKeep()) {
+            this.cancelAdjust();
+            Edits.set([{ file, edit: Edits.withAdj(file._edit || null, adj) }], 'adjustments');
+            this.showToast(adj ? 'Adjusted — the original is kept; Export writes the result' : 'Adjustments taken off', 2200, null, null, { kind: 'adjust' });
+            goNext();
+            return;
+        }
+        // No project: written into the photo, as a crop is
+        ed.busy = true;
+        this.beginTask('adjust-save', 'Saving…');
+        try {
+            const { type, quality } = this.getSaveFormat(file.name);
+            const fileData = await file.handle.getFile();
+            const original = new Uint8Array(await fileData.arrayBuffer());
+            const canvas = await CropEditor.renderSnapshot(fileData, Edits.withAdj(null, adj) || { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } }, type, original);
+            if (!canvas) throw new Error('nothing to save');
+            const w = canvas.width, h = canvas.height;
+            let blob = await new Promise(r => canvas.toBlob(r, type, quality));
+            canvas.width = canvas.height = 0;
+            if (!blob) throw new Error('encoding failed');
+            blob = await ImageMeta.transplant(original, blob, type, w, h);
+            await this.verifyPermission(file.handle, true);
+            file.isBusy = true;
+            try {
+                const writable = await file.handle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+            } finally {
+                file.isBusy = false;
+            }
+            this.pushUndo({ type: 'bytes', file, blob: new Blob([original], { type: fileData.type }), label: 'adjustments' });
+            ed.busy = false;
+            this.cancelAdjust();
+            await this.afterFileChanged(file);
+            this.showToast('Saved the adjustments', 1800, null, null, { kind: 'adjust' });
+            goNext();
+        } catch (err) {
+            console.error('Saving adjustments failed:', err);
+            this.showToast('Couldn\'t save the adjustments: ' + err.message, 4000);
+        } finally {
+            ed.busy = false;
+            this.endTask('adjust-save');
+        }
+    },
+
+    copyAdjust(file = this.currentFile) {
+        if (!file) return;
+        Adjust.remember(file._edit && file._edit.adj);
+        this.showToast(file._edit && file._edit.adj ? `Copied the adjustments of ${file.name}` : 'Copied: no adjustments (pasting takes them off)', 1800, null, null, { kind: 'adjust' });
+    },
+
+    // The copied adjustments onto these photos (their crops stay theirs)
+    pasteAdjust(files) {
+        files = files.filter(f => f && !/\.gif$/i.test(f.name));
+        const clip = Adjust.clipboard();
+        if (!clip) {
+            this.showToast('Nothing copied yet: Copy adjustments on a photo first (Ctrl+Shift+C)');
+            return;
+        }
+        if (!files.length) return;
+        if (!Edits.canKeep()) {
+            this.showToast('Pasting adjustments needs a folder opened with Open folder');
+            return;
+        }
+        if (this.editsSaving()) return;
+        Edits.set(files.map(f => ({ file: f, edit: Edits.withAdj(f._edit || null, clip.adj) })), 'paste');
+        const n = files.length;
+        this.showToast(`Pasted onto ${n === 1 ? files[0].name : n.toLocaleString() + ' photos'}`, 2000, null, null, { kind: 'adjust' });
+    },
+
     getLastCrop() {
         if (this._lastCrop === undefined) {
             try { this._lastCrop = JSON.parse(localStorage.getItem('jeditor.lastCrop') || 'null'); } catch (e) { this._lastCrop = null; }
@@ -6219,15 +6425,16 @@ const app = {
         };
 
         // Save edits when done (edits.js): kept on the photo, not written
-        if (Edits.on()) {
+        // (an adjusted photo's always is, with its adjustments)
+        if (Edits.keeps(file)) {
             CropLog.keep(logged, bytesNow);
-            const had = !!file._edit;
+            const had = file._edit;
             const none = ed.isIdentity() && !ed.q;
             this.rememberCrop(snap);
             this.cancelCrop();
-            if (none && !had) this.showToast('No changes', 1500);
+            if (none && !(had && !Edits.wholePhoto(had))) this.showToast('No changes', 1500);
             else {
-                Edits.set([{ file, edit: none ? null : snap }], 'crop');
+                Edits.set([{ file, edit: Edits.withAdj(none ? null : snap, had && had.adj) }], 'crop');
                 this.showToast(none ? 'Back to the whole photo' : 'Crop kept — saved into the photo when you save the edits', 2200, null, null, { kind: 'crop' });
             }
             goNext();
@@ -6334,6 +6541,14 @@ const app = {
             return;
         }
         if (Edits.on()) return this.editsSaving() ? undefined : this.batchAutoCropKept(list, { feeder, scan });
+        // Adjusted photos keep theirs as edits too
+        const adjusted = list.filter(f => Edits.keeps(f));
+        if (adjusted.length) {
+            if (this.editsSaving()) return;
+            if (adjusted.length === list.length) return this.batchAutoCropKept(list, { feeder, scan });
+            await this.batchAutoCropKept(adjusted, { feeder, scan });
+            list.splice(0, list.length, ...list.filter(f => !adjusted.includes(f)));
+        }
         if (ask && list.length > 50 && !await UI.confirm({
             title: `Auto crop ${list.length.toLocaleString()} photos?`,
             message: `Each is straightened and cropped to the print found on it. The originals are kept ${FolderCache.native() ? Host.say('by jEditor on {computer}') : 'in .jeditor/originals'}, so Ctrl+Z puts them all back.`,
@@ -6415,7 +6630,7 @@ const app = {
                     try {
                         const ed = await this.detectCrop(f, { feeder, scan });
                         if (!ed) noEdge++;
-                        else items.push({ file: f, edit: ed.isIdentity() && !ed.q ? null : ed.snapshot() });
+                        else items.push({ file: f, edit: Edits.withAdj(ed.isIdentity() && !ed.q ? null : ed.snapshot(), f._edit && f._edit.adj) });
                     } catch (e) {
                         console.error('Auto crop failed for', f.name, e);
                         failed++;
@@ -6661,7 +6876,7 @@ const app = {
         const fileData = await file.handle.getFile();
         if (edit.size && fileData.size !== edit.size) return 'changed';
         const n = edit.n, eq = (a, b) => Math.abs(a - b) < 1e-6;
-        if (!edit.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5) && !/\.gif$/i.test(file.name)) {
+        if (!edit.adj && !edit.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5) && !/\.gif$/i.test(file.name)) {
             const q = edit.q % 4;
             delete file._edit;
             file.pendingRotation = q === 3 ? -90 : q * 90;

@@ -5,6 +5,22 @@
 
 const CHANGELOG = [
     {
+        version: '1.42.0', date: '2026-10-17',
+        items: [
+            'New, as an experiment (turn it on in Settings → Experimental): Adjust, Lightroom-style (`E`, or the sliders button): exposure, contrast, highlights, shadows, whites and blacks; temperature, tint, vibrance and saturation; levels on a live histogram, a curve, and a color mixer for the hue, saturation and brightness of each color. The photo changes as you drag, even a big scan. Auto sets the levels from the photo, and Auto color takes the cast off a faded print. `\\` shows before and after.',
+            'Film simulations of real stocks, each shown on your photo, with an Amount from 0 to 200%. Colour negative (C-41): Kodak Portra 160, 400 and 800, Ektar 100, Gold 200, UltraMax 400, Fujifilm Superia 400, Pro 400H and C200. Slide (E-6): Fujichrome Velvia 50 and 100, Provia 100F, Kodak Ektachrome E100, and Kodachrome 64. Cinema (ECN-2): Kodak Vision3 50D, 250D and 500T, CineStill 800T and 50D, with the red halation round the lights. Black and white: Kodak Tri-X 400, T-Max 100 and 400, Ilford HP5 Plus, FP4 Plus, Pan F Plus 50, Delta 3200 and SFX 200, Fujifilm Acros 100 II, each seeing red, green and blue as that film does. And Creative: cross process, instant, faded print, teal and orange, sepia and selenium toning. Presets save your own settings under a name.',
+            'Color grading with three wheels (shadows, midtones, highlights) and their brightness, Blending and Balance; and Effects: a vignette (darker or lighter, with midpoint, feather and roundness), film grain (with colour, as colour film\'s dye clouds) and halation.',
+            'Detail: sharpening (amount, radius, and masking to keep it to the edges), noise reduction that keeps edges, and color noise reduction for blotchy scans. A 1:1 view in the panel shows them on the full photo, where you click.',
+            'Masks: change part of the photo. A linear gradient (darken a sky to the horizon), a radial gradient (lift a face, or inverted, darken the edges) or a brush (paint it on, erase it off), each with its own exposure, contrast, tones, white balance, vibrance and saturation, up to eight on a photo. Show mask tints what one covers. Masks stay on their spot when the photo is cropped later.',
+            'Adjustments never change the photo: they\'re kept with the project and shown wherever the photo is, so they can be changed again any time. Export writes copies with them, Save edits… writes them into the photos (Ctrl+Z still puts the originals back).',
+            'Copy and paste adjustments (`Ctrl+Shift+C`, `Ctrl+Shift+V`) onto one photo or a whole selection in the grid, and Done & next (`Shift+Enter`) to work through a project.',
+            'Export with a longest side now resizes the photo with its edits, not the original.',
+            'On the Mac, updates install themselves: Settings → Updates downloads the new version, checks it and puts it in place of this one, then jEditor opens again. No more dragging into Applications (jEditor needs to be in Applications for this).',
+            'On Linux, Settings → Updates works for the .deb and Arch package too: it installs the new package with your system\'s installer (asking for your password) and reopens jEditor.',
+            'On the Mac, a taller title bar: more room at the top of the window to drag it by.'
+        ]
+    },
+    {
         version: '1.41.0', date: '2026-10-17',
         items: [
             'On iPhone, iPad and Android, the web version opens photos: Open photos picks them from Photos, Files or the gallery, edits are kept as you go, and Save… hands them back through the share sheet (Save to Photos, Save to Files, or another app). On Android, Install jEditor keeps it with your apps; on iPhone and iPad, Share → Add to Home Screen.',

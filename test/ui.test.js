@@ -982,7 +982,7 @@ async function newPage(browser, url) {
             app.uiPrefs.scale = 1.2;
             app.saveUiPrefs();
             app.applyUiPrefs();
-            out.reordered = [...hc.querySelectorAll('[data-hc]')].map(b => b.dataset.hc).slice(0, 2).join(',');
+            out.reordered = [...hc.querySelectorAll('[data-hc]')].map(b => b.dataset.hc).slice(0, 3).join(',');
             out.refreshHidden = document.getElementById('btn-refresh').classList.contains('hidden');
             out.fullscreenMain = !document.getElementById('btn-fullscreen').classList.contains('hc-extra');
             out.vertical = hc.classList.contains('vertical');
@@ -1026,10 +1026,12 @@ async function newPage(browser, url) {
             out.pillHidden = pill.classList.contains('hidden');
             return out;
         });
+        // (Adjust, an experiment, shows when it's turned on)
         check('default main controls: info, view, refresh, crop, history', r.defaultMain === 'info,view,refresh,crop,history', r.defaultMain);
         check('extras live in More (fit, strip, fullscreen, dupes, keys, whatsnew, customize)', r.defaultExtras === 'fit,strip,fullscreen,dupes,keys,whatsnew,customize', r.defaultExtras);
         check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
-        check('reorder + hide + promote via prefs', r.reordered === 'crop,info' && r.refreshHidden && r.fullscreenMain,
+        // (Adjust, newer than that saved order, goes after Crop)
+        check('reorder + hide + promote via prefs', r.reordered === 'crop,adjust,info' && r.refreshHidden && r.fullscreenMain,
             JSON.stringify({ o: r.reordered, h: r.refreshHidden, f: r.fullscreenMain }));
         check('vertical pill + scale + persistence', r.vertical && r.persisted && parseFloat(r.scaleApplied) === 1.2,
             JSON.stringify({ v: r.vertical, p: r.persisted, z: r.scaleApplied }));
@@ -4211,7 +4213,7 @@ async function newPage(browser, url) {
             app.toggleCustomizePanel(true);
             app.showSettingsPage('experimental');
             const page = document.getElementById('set-page-experimental');
-            const empty = page.classList.contains('active') && /Nothing to try right now/.test(page.textContent);
+            const listed = page.classList.contains('active') && !!document.getElementById('exp-adjust') && !document.getElementById('exp-adjust').checked;
             // One being made: off until turned on, and it stays on
             Experiments.LIST.push({ id: 'paint', title: 'Paint', text: 'Layers, brushes and shapes' });
             Experiments.render();
@@ -4223,10 +4225,14 @@ async function newPage(browser, url) {
             const kept = Experiments.on('paint') && app.uiPrefs.experiments.paint === true;
             const unknown = Experiments.on('nothing');
             app.toggleCustomizePanel(false);
-            return { labels, empty, off, heard, kept, unknown };
+            // A beta has its experiments on to start with (betaOnly ones too)
+            window.APP_BUILD = 'v9.9.0-beta.1';
+            const betaOn = Experiments.betaBuild() && Experiments.on('adjust');
+            delete window.APP_BUILD;
+            return { labels, listed, off, heard, kept, unknown, betaOn };
         });
         check('a beta says which ("1.42.0 beta 3"); a re-release, its version', r.labels === '1.42.0 beta 3|1.41.0|1.41.0|nonsense', r.labels);
-        check('Settings → Experimental: nothing to try yet, said plainly', r.empty);
+        check('Settings → Experimental lists Adjust, off in a release, on to start with in a beta', r.listed && r.betaOn, JSON.stringify(r));
         check('an experiment is off until turned on; on, it says so and stays on', !r.off && r.heard && r.heard.id === 'paint' && r.heard.on && r.kept && !r.unknown, JSON.stringify(r));
         check('no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
@@ -4292,6 +4298,447 @@ async function newPage(browser, url) {
         });
         check('two photos with the same name both open', dupes === 'image (2).jpg,image.jpg', dupes);
         check('no JS errors', errors.length === 0, errors.join('; '));
+        await page.close();
+    }
+
+    console.log('adjust (develop.js, adjust.js)');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        // The maths, on the GPU and the CPU
+        const m = await page.evaluate(async () => {
+            const out = {};
+            out.compact = JSON.stringify(Develop.clean({ exposure: 0.5, contrast: 0, levels: { rgb: [0, 1, 1, 0, 1], r: [0.1, 1, 0.9, 0, 1] }, curve: { rgb: [[0, 0], [1, 1]] }, hsl: { sat: [0, 0, 0, 0, 0, 0, 0, 0] } }));
+            out.none = Develop.clean({ exposure: 0, curve: { rgb: [[0, 0], [0.5, 0.5], [1, 1]] } }) === null && !Develop.active({});
+            out.clamped = JSON.stringify(Develop.clean({ exposure: 9, tint: -400, levels: { rgb: [0.8, 50, 0.2, 0, 1] } }));
+            const id = Develop.tables({}).channels;
+            out.identity = [...Array(256).keys()].every(i => Math.abs(id[i * 4] - i / 255) < 1e-6 && Math.abs(id[i * 4 + 2] - i / 255) < 1e-6);
+            // +1 EV doubles the light: mid grey 0.5 → toGamma(2 · toLinear(0.5))
+            const ev = Develop.tables({ exposure: 1 }).channels;
+            out.exposure = Math.abs(ev[128 * 4] - Develop.toGamma(2 * Develop.toLinear(128 / 255))) < 1e-5;
+            // A curve never turns back, however its points sit
+            const f = Develop.spline([[0, 0], [0.2, 0.6], [0.25, 0.62], [1, 1]]);
+            let mono = true, prev = -1;
+            for (let i = 0; i <= 200; i++) { const y = f(i / 200); if (y < prev - 1e-9) mono = false; prev = y; }
+            out.monotone = mono && Math.abs(f(0.2) - 0.6) < 1e-9;
+            // The same picture from the GPU and the CPU (colour table too)
+            const c = document.createElement('canvas');
+            c.width = 300; c.height = 200;
+            const g = c.getContext('2d');
+            const img = g.createImageData(300, 200);
+            for (let i = 0; i < img.data.length; i += 4) {
+                img.data[i] = (i * 7) % 256; img.data[i + 1] = (i * 13) % 256; img.data[i + 2] = (i * 29) % 256; img.data[i + 3] = 255;
+            }
+            g.putImageData(img, 0, 0);
+            const adj = { exposure: 0.4, contrast: 30, shadows: 40, temp: -20, vibrance: 25, saturation: 10, curve: { g: [[0, 0], [0.5, 0.6], [1, 1]] }, hsl: { hue: [20, 0, 0, 0, 0, -30, 0, 0], sat: [0, 0, 0, 40, 0, 0, 0, 0], lum: [0, 0, 0, 0, 0, 30, 0, 0] } };
+            const gpu = document.createElement('canvas');
+            gpu.width = 300; gpu.height = 200;
+            gpu.getContext('2d').drawImage(c, 0, 0);
+            out.hasGpu = !!Develop.gpu();
+            Develop.applyCanvas(gpu, adj);
+            const a = gpu.getContext('2d').getImageData(0, 0, 300, 200).data;
+            const b = Develop.applyCPU(new Uint8ClampedArray(img.data), Develop.tables(adj));
+            let worst = 0;
+            for (let i = 0; i < a.length; i++) worst = Math.max(worst, Math.abs(a[i] - b[i]));
+            out.gpuCpu = worst;
+            // In tiles: the same
+            const tiled = document.createElement('canvas');
+            tiled.width = 300; tiled.height = 200;
+            tiled.getContext('2d').drawImage(c, 0, 0);
+            Develop.TILE = 64;
+            Develop.applyCanvas(tiled, adj);
+            Develop.TILE = 2048;
+            const t = tiled.getContext('2d').getImageData(0, 0, 300, 200).data;
+            out.tiles = t.every((v, i) => Math.abs(v - a[i]) <= 1);
+            // Auto color takes a cast off
+            const cast = new Uint8ClampedArray(64 * 64 * 4);
+            for (let i = 0; i < cast.length; i += 4) { const v = (i / 4) % 64 * 2; cast[i] = 110 + v; cast[i + 1] = 90 + v * 0.8; cast[i + 2] = 60 + v * 0.5; cast[i + 3] = 255; }
+            const fixed = Develop.applyCPU(cast, Develop.tables(Develop.auto(cast, null, { colour: true })), new Uint8ClampedArray(cast.length));
+            const mean = (px, k) => { let s = 0; for (let i = k; i < px.length; i += 4) s += px[i]; return s / (px.length / 4); };
+            const spread = (px) => Math.max(mean(px, 0), mean(px, 1), mean(px, 2)) - Math.min(mean(px, 0), mean(px, 1), mean(px, 2));
+            out.cast = [Math.round(spread(cast)), Math.round(spread(fixed))];
+            // Grading, looks, vignette and grain: the GPU and the CPU agree too
+            out.fxWorst = 0;
+            for (const fx of [{ grade: { s: [200, 60, -10], h: [40, 40, 10] }, gradeBalance: 30 }, { look: 'instant', lookAmount: 150 }, { vignette: -60, vigRound: 40 }, { vignette: 50, vigRound: -60 }, { grain: 70, grainSize: 60 }, { grain: 60, grainColor: 80 }, { halation: 80 }, { look: 'cinestill800t' }, { look: 'trix' }]) {
+                const cv = document.createElement('canvas');
+                cv.width = 300; cv.height = 200;
+                cv.getContext('2d').drawImage(c, 0, 0);
+                Develop.TILE = 128;
+                Develop.applyCanvas(cv, fx);
+                Develop.TILE = 2048;
+                const gp = cv.getContext('2d').getImageData(0, 0, 300, 200).data;
+                const T = Develop.tables(fx);
+                const glow = T.fx && T.fx.hal[0] ? Develop.canvasGlow(c, T) : null;
+                const cp = Develop.applyCPU(new Uint8ClampedArray(img.data), T, new Uint8ClampedArray(img.data.length), { x: 0, y: 0, w: 300, W: 300, H: 200, glow });
+                for (let i = 0; i < gp.length; i++) out.fxWorst = Math.max(out.fxWorst, Math.abs(gp[i] - cp[i]));
+            }
+            out.defaults = JSON.stringify(Develop.clean({ vigMid: 50, grainSize: 25, lookAmount: 80, gradeBlend: 50, look: 'nope', grade: { s: [400, 0, 0], h: [370, 20, 0] } }));
+            // A vignette darkens the corners, not the middle
+            const grey = new Uint8ClampedArray(100 * 100 * 4).fill(128);
+            const v = Develop.applyCPU(grey, Develop.tables({ vignette: -80 }), new Uint8ClampedArray(grey.length), { x: 0, y: 0, w: 100, W: 100, H: 100 });
+            out.vignette = [v[(50 * 100 + 50) * 4], v[0]];
+            // Every film's settings are kept whole
+            out.looksWhole = Develop.LOOKS.every(l => { const c = Develop.clean(l.adj); return c && Object.keys(l.adj).every(k => k in c); });
+            out.processes = [...new Set(Develop.LOOKS.map(l => l.process))].join();
+            // Black and white films see colours their own way: Acros (orthopanchromatic)
+            // darkens reds and lightens blues, SFX (extended red) the opposite
+            const filmGrey = (look, rgb) => Develop.applyCPU(new Uint8ClampedArray([...rgb, 255]), Develop.tables({ look }), new Uint8ClampedArray(4));
+            const red = [200, 40, 40], blue = [40, 60, 200];
+            const ac = [filmGrey('acros', red), filmGrey('acros', blue)], sf = [filmGrey('sfx', red), filmGrey('sfx', blue)];
+            out.mono = ac[0][0] === ac[0][1] && ac[0][1] === ac[0][2] && ac[0][0] < sf[0][0] && ac[1][0] > sf[1][0];
+            // Halation: a red glow round a light in the dark, none far away
+            const hc = document.createElement('canvas');
+            hc.width = 400; hc.height = 300;
+            const hg = hc.getContext('2d');
+            hg.fillStyle = '#000'; hg.fillRect(0, 0, 400, 300);
+            hg.fillStyle = '#fff'; hg.beginPath(); hg.arc(200, 150, 6, 0, 7); hg.fill();
+            Develop.applyCanvas(hc, { halation: 100 });
+            const near = hg.getImageData(211, 150, 1, 1).data, far = hg.getImageData(20, 20, 1, 1).data;
+            out.halation = [...near.slice(0, 3), far[0]];
+            // Detail. Sharpening: more contrast across an edge
+            const edge = new Uint8ClampedArray(40 * 10 * 4);
+            for (let i = 0; i < 400; i++) { const v = i % 40 < 20 ? 80 : 170; edge.set([v, v, v, 255], i * 4); }
+            const sh = Develop.applyDetail(edge.slice(), 40, 10, Develop.detail(Develop.full({ sharpen: 100 })));
+            out.sharpen = [sh[(5 * 40 + 19) * 4], sh[(5 * 40 + 20) * 4], sh[(5 * 40 + 5) * 4]];
+            // Noise reduction: a noisy flat patch smoother, a strong edge kept
+            const noisy = new Uint8ClampedArray(60 * 60 * 4);
+            for (let i = 0; i < 3600; i++) {
+                const base = i % 60 < 30 ? 60 : 200, nz = ((i * 2654435761) >>> 0) % 21 - 10, c = ((i * 40503) >>> 0) % 31 - 15;
+                noisy.set([base + nz + c, base + nz - c, base + nz, 255], i * 4);
+            }
+            const chroma = (px, k, from, to) => { let a = [], s2 = 0; for (let y = 10; y < 50; y++) for (let x = from; x < to; x++) a.push(px[(y * 60 + x) * 4 + k] - px[(y * 60 + x) * 4 + 1]); const m = a.reduce((p, q) => p + q, 0) / a.length; for (const v of a) s2 += (v - m) ** 2; return Math.sqrt(s2 / a.length); };
+            const lum = (px, from, to) => { let a = []; for (let y = 10; y < 50; y++) for (let x = from; x < to; x++) a.push(px[(y * 60 + x) * 4 + 2]); const m = a.reduce((p, q) => p + q, 0) / a.length; return Math.sqrt(a.reduce((p, q) => p + (q - m) ** 2, 0) / a.length); };
+            const nr = Develop.applyDetail(noisy.slice(), 60, 60, Develop.detail(Develop.full({ noise: 80 })));
+            const cn = Develop.applyDetail(noisy.slice(), 60, 60, Develop.detail(Develop.full({ colorNoise: 100 })));
+            out.noise = [Math.round(lum(noisy, 2, 26)), Math.round(lum(nr, 2, 26)), nr[(30 * 60 + 27) * 4 + 2] < 90 && nr[(30 * 60 + 32) * 4 + 2] > 170];
+            out.colorNoise = [Math.round(chroma(noisy, 0, 2, 26)), Math.round(chroma(cn, 0, 2, 26))];
+            // In blocks with margins, the same as all at once; left out of small previews
+            const big = document.createElement('canvas');
+            big.width = 300; big.height = 200;
+            big.getContext('2d').drawImage(c, 0, 0);
+            const big2 = document.createElement('canvas');
+            big2.width = 300; big2.height = 200;
+            big2.getContext('2d').drawImage(c, 0, 0);
+            const det = { sharpen: 80, sharpMask: 30, noise: 50, colorNoise: 40 };
+            Develop.TILE = 64;
+            Develop.applyCanvas(big, det);
+            Develop.TILE = 2048;
+            Develop.applyCanvas(big2, det);
+            const b1 = big.getContext('2d').getImageData(0, 0, 300, 200).data, b2 = big2.getContext('2d').getImageData(0, 0, 300, 200).data;
+            let worstTile = 0;
+            for (let i = 0; i < b1.length; i++) worstTile = Math.max(worstTile, Math.abs(b1[i] - b2[i]));
+            out.detailTiles = worstTile;
+            const small = document.createElement('canvas');
+            small.width = 300; small.height = 200;
+            small.getContext('2d').drawImage(c, 0, 0);
+            out.previewSkips = Develop.applyCanvas(small, { sharpen: 150 }, { scale: 0.3 }) && small.getContext('2d').getImageData(0, 0, 300, 200).data.every((v, i) => v === img.data[i]);
+            // Masks: each kind the same on the GPU and the CPU, in tiles
+            out.maskWorst = 0;
+            for (const mk of [{ type: 'linear', linear: [0.1, 0.5, 0.6, 0.5], adj: { exposure: 1.5, saturation: -60 } }, { type: 'radial', radial: [0.5, 0.5, 0.3, 0.2, 0.4, 0.5], invert: true, adj: { exposure: -1, temp: 40 } }, { type: 'brush', brush: [{ size: 0.2, feather: 0.5, flow: 1, pts: [0.2, 0.3, 0.7, 0.6] }, { size: 0.05, feather: 0, flow: 1, erase: true, pts: [0.4, 0.4, 0.5, 0.5] }], adj: { exposure: 1, vibrance: 50 } }]) {
+                const adjM = { masks: [mk] };
+                const cv = document.createElement('canvas');
+                cv.width = 300; cv.height = 200;
+                cv.getContext('2d').drawImage(c, 0, 0);
+                Develop.TILE = 64;
+                Develop.applyCanvas(cv, adjM);
+                Develop.TILE = 2048;
+                const gp = cv.getContext('2d').getImageData(0, 0, 300, 200).data;
+                const cp = Develop.applyCPU(new Uint8ClampedArray(img.data), Develop.tables(adjM), new Uint8ClampedArray(img.data.length), { x: 0, y: 0, w: 300, W: 300, H: 200 });
+                for (let i = 0; i < gp.length; i++) out.maskWorst = Math.max(out.maskWorst, Math.abs(gp[i] - cp[i]));
+            }
+            // A mask stays on its spot of the photo when the photo is cropped
+            const flat = document.createElement('canvas');
+            flat.width = 400; flat.height = 200;
+            const fg2 = flat.getContext('2d');
+            fg2.fillStyle = '#606060'; fg2.fillRect(0, 0, 400, 200);
+            const spot = { masks: [{ type: 'radial', radial: [0.25, 0.5, 0.15, 0.15, 0, 0.1], adj: { exposure: 2 } }] };
+            const whole = document.createElement('canvas');
+            whole.width = 400; whole.height = 200;
+            whole.getContext('2d').drawImage(flat, 0, 0);
+            Develop.applyCanvas(whole, spot);
+            const ed = CropEditor.fromSnapshot(400, 200, { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0, y1: 0.5 } });
+            const left = ed.drawOutput(flat);
+            Develop.applyCanvas(left, spot, { map: Develop.cropMap(ed, 400, 200) });
+            const at = (cv, x, y) => cv.getContext('2d').getImageData(x, y, 1, 1).data[0];
+            out.maskCrop = [at(whole, 100, 100), at(left, 100, 100), at(whole, 300, 100), at(left, 180, 100)];
+            out.maskClean = JSON.stringify(Develop.cleanMasks([{ type: 'radial', radial: [0.5, 0.5, 0, 50, 0, 2], adj: { exposure: 9, nope: 3 } }, { type: 'linear', linear: [0.2, 0.2, 0.2, 0.2] }, { type: 'brush', brush: [] }, { type: 'what' }]));
+            return out;
+        });
+        check('adjust: settings kept compact, nothing left is none, out of range brought in',
+            m.compact === '{"exposure":0.5,"levels":{"r":[0.1,1,0.9,0,1]}}' && m.none && m.clamped === '{"exposure":5,"tint":-100,"levels":{"rgb":[0.8,9.99,0.81,0,1]}}', JSON.stringify(m));
+        check('adjust: no settings change nothing; +1 EV doubles the light; curves never turn back', m.identity && m.exposure && m.monotone, JSON.stringify(m));
+        check('adjust: the GPU and the CPU agree (within a level), in tiles too', m.hasGpu && m.gpuCpu <= 1 && m.tiles, JSON.stringify(m));
+        check('adjust: Auto color takes the cast off a faded print', m.cast[0] > 40 && m.cast[1] < 8, JSON.stringify(m.cast));
+        check('adjust: grading, looks, vignette and grain agree on the GPU and the CPU, in tiles', m.fxWorst <= 1, JSON.stringify(m.fxWorst));
+        check('adjust: settings at their defaults, an unknown look and an empty wheel aren\'t kept', m.defaults === '{"grade":{"h":[10,20,0]}}', m.defaults);
+        check('adjust: a vignette darkens the corners and leaves the middle', m.vignette[0] === 128 && m.vignette[1] < 60, JSON.stringify(m.vignette));
+        check('adjust: films by process (C-41, E-6, ECN-2, B&W), every one\'s settings kept whole', m.looksWhole && m.processes === 'C-41,E-6,ECN-2,B&W,Creative', JSON.stringify([m.looksWhole, m.processes]));
+        check('adjust: black-and-white films see colour their own way (Acros darkens reds, SFX lightens them)', m.mono, JSON.stringify(m.mono));
+        check('adjust: sharpening adds contrast at an edge, not on flat ground', m.sharpen[0] < 80 && m.sharpen[1] > 170 && m.sharpen[2] === 80, JSON.stringify(m.sharpen));
+        check('adjust: noise reduction smooths a noisy patch and keeps the edge; color noise takes out colour blotches', m.noise[1] < m.noise[0] / 2 && m.noise[2] && m.colorNoise[1] < m.colorNoise[0] / 2, JSON.stringify([m.noise, m.colorNoise]));
+        check('adjust: detail in blocks is the same as all at once, and left out of small previews', m.detailTiles <= 1 && m.previewSkips, JSON.stringify([m.detailTiles, m.previewSkips]));
+        check('adjust: masks (linear, radial, brush with erase) agree on the GPU and the CPU, in tiles', m.maskWorst <= 1, JSON.stringify(m.maskWorst));
+        check('adjust: a mask stays on its spot of the photo when it\'s cropped', m.maskCrop[0] > 150 && Math.abs(m.maskCrop[0] - m.maskCrop[1]) <= 1 && m.maskCrop[2] === 96 && m.maskCrop[3] === 96, JSON.stringify(m.maskCrop));
+        check('adjust: masks are checked (sizes and sliders in range, empty or unknown ones dropped)', m.maskClean === '[{"type":"radial","invert":false,"adj":{"exposure":5},"radial":[0.5,0.5,0.002,10,0,1]}]', m.maskClean);
+        check('adjust: halation puts a red glow round a light, nothing far from it', m.halation[0] > 40 && m.halation[0] > m.halation[1] * 2 && m.halation[3] === 0, JSON.stringify(m.halation));
+
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try { return await (async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const until = async (fn, n = 200) => { for (let i = 0; i < n && !(await fn()); i++) await sleep(50); };
+            const key = (k, o = {}) => window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, ...o }));
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('adjusted', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('adjusted', { create: true });
+            const photo = async (shade) => {
+                const c = document.createElement('canvas');
+                c.width = 640; c.height = 480;
+                const g = c.getContext('2d');
+                const grad = g.createLinearGradient(0, 0, 640, 0);
+                grad.addColorStop(0, `rgb(${shade - 40},${shade - 50},${shade - 60})`);
+                grad.addColorStop(1, `rgb(${shade + 40},${shade + 30},${shade + 20})`);
+                g.fillStyle = grad; g.fillRect(0, 0, 640, 480);
+                return new Blob([await (await new Promise(res => c.toBlob(res, 'image/jpeg', 0.92))).arrayBuffer()], { type: 'image/jpeg' });
+            };
+            const originals = {};
+            for (const [n, s] of [['a.jpg', 100], ['b.jpg', 120]]) {
+                const b = await photo(s);
+                const fh = await dir.getFileHandle(n, { create: true });
+                const w = await fh.createWritable(); await w.write(b); await w.close();
+                originals[n] = new Uint8Array(await b.arrayBuffer());
+            }
+            const bytes = async (d, n) => new Uint8Array(await (await (await d.getFileHandle(n)).getFile()).arrayBuffer());
+            const same = async (n) => { const now = await bytes(dir, n); return now.length === originals[n].length && now.every((v, i) => v === originals[n][i]); };
+            const kept = async () => {
+                try { return JSON.parse(await (await (await (await dir.getDirectoryHandle('.jeditor')).getFileHandle('edits.json')).getFile()).text()); } catch (e) { return null; }
+            };
+            const brightness = async (blob) => {
+                const bmp = await createImageBitmap(blob);
+                const c = document.createElement('canvas'); c.width = 64; c.height = 48;
+                const g = c.getContext('2d'); g.drawImage(bmp, 0, 0, 64, 48); bmp.close();
+                const px = g.getImageData(0, 0, 64, 48).data;
+                let s = 0; for (let i = 0; i < px.length; i += 4) s += px[i] + px[i + 1] + px[i + 2];
+                return s / (px.length / 4) / 3;
+            };
+            const f = (n) => app.files.find(x => x.name === n);
+            const blobOf = async (src) => src.blob || await (await fetch(src.url)).blob();
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            app.openSingle(f('a.jpg'));
+            const before = await brightness(await blobOf(await app.getDisplaySource(f('a.jpg'))));
+
+            // An experiment in a release: off, nothing of it shows
+            step = 'experiment off';
+            const btn = document.getElementById('btn-adjust');
+            out.offHidden = !Experiments.on('adjust') && getComputedStyle(btn).display === 'none';
+            key('e');
+            await sleep(80);
+            out.offNoKey = !Adjust.isOpen;
+            out.offNoMenu = !app.buildContextItems(null, true).some(it => /Adjust/.test(it[0] || ''));
+            // Turned on in Settings → Experimental
+            app.toggleCustomizePanel(true);
+            app.showSettingsPage('experimental');
+            document.getElementById('exp-adjust').click();
+            app.toggleCustomizePanel(false);
+            out.onShown = Experiments.on('adjust') && getComputedStyle(btn).display !== 'none' && app.buildContextItems(null, true).some(it => it[0] === 'Adjust…');
+
+            // E opens Adjust on the photo
+            step = 'E opens Adjust';
+            key('e');
+            await until(() => Adjust.ready);
+            out.open = Adjust.isOpen && !document.getElementById('adjust-editor').classList.contains('hidden') && !!Adjust.gl && !!Adjust.hist && Adjust.hist.n > 0;
+            const histBefore = Adjust.hist.l.reduce((s, v, i) => s + v * i, 0) / Adjust.hist.n;
+            // A slider, as dragged: the photo and histogram follow
+            const slider = document.getElementById('adj-exposure');
+            slider.value = '1'; slider.dispatchEvent(new Event('input'));
+            slider.dispatchEvent(new Event('change'));
+            await sleep(80);
+            const histAfter = Adjust.hist.l.reduce((s, v, i) => s + v * i, 0) / Adjust.hist.n;
+            out.live = histAfter > histBefore + 20 && document.querySelector('#adj-exposure').closest('.adj-row').querySelector('.adj-num').value === '1.00';
+            // Ctrl+Z inside Adjust undoes the slider; Ctrl+Shift+Z redoes it
+            key('z', { ctrlKey: true });
+            out.undoInside = Adjust.a.exposure === 0;
+            key('Z', { ctrlKey: true, shiftKey: true });
+            out.redoInside = Adjust.a.exposure === 1;
+            // A look: its picture made from this photo, a click puts it on, with an amount
+            step = 'looks';
+            document.querySelector('.adj-look-tabs [data-tab="B&W"]').click();
+            await until(() => document.querySelectorAll('.adj-look canvas').length === Develop.LOOKS.length + 1 && document.querySelector('.adj-look[data-look="trix"] canvas').width > 0);
+            out.tabShowsItsFilms = document.querySelector('.adj-look[data-look="portra400"]').classList.contains('hidden') && !document.querySelector('.adj-look[data-look="trix"]').classList.contains('hidden');
+            const bwThumb = document.querySelector('.adj-look[data-look="trix"] canvas').getContext('2d').getImageData(10, 10, 1, 1).data;
+            out.lookThumbGrey = out.tabShowsItsFilms && Math.abs(bwThumb[0] - bwThumb[1]) <= 3 && Math.abs(bwThumb[1] - bwThumb[2]) <= 3;
+            document.querySelector('.adj-look[data-look="trix"]').click();
+            await sleep(60);
+            out.lookOn = Adjust.result().look === 'trix' && !document.getElementById('adj-look-amount').classList.contains('hidden') && document.querySelector('.adj-look[data-look="trix"]').getAttribute('aria-pressed') === 'true';
+            document.querySelector('.adj-look[data-look=""]').click();
+            document.querySelector('.adj-look-tabs [data-tab="C-41"]').click();
+            out.lookOff = !Adjust.result().look;
+            // A grading wheel: dragged out to the right is red, strong
+            step = 'wheel';
+            const grading = [...document.querySelectorAll('details.adj-sec')].find(d => /Color grading/.test(d.querySelector('summary').textContent));
+            grading.open = true;
+            await sleep(30);
+            const wheel = document.querySelector('.adj-wheel canvas');
+            const wr = wheel.getBoundingClientRect();
+            const pe = (type, x, y) => wheel.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y, pointerId: 1, bubbles: true }));
+            pe('pointerdown', wr.left + wr.width * 0.95, wr.top + wr.height / 2);
+            pe('pointerup', wr.left + wr.width * 0.95, wr.top + wr.height / 2);
+            const g = Adjust.result().grade.s;
+            out.wheel = (g[0] < 5 || g[0] > 355) && g[1] === 100;
+            // Presets: saved under a name, and put on again
+            step = 'presets';
+            const prompt0 = UI.prompt;
+            UI.prompt = async () => 'Red shadows';
+            await Adjust.savePreset();
+            UI.prompt = prompt0;
+            Adjust.reset();
+            const pr = Adjust.presets().find(p => p.name === 'Red shadows');
+            Adjust.setAll(pr.adj);
+            out.preset = Adjust.result().grade.s[1] === 100 && Adjust.result().exposure === 1;
+            Adjust.resetSection('grading');
+            // Masks: a linear gradient drawn on the photo, a brush painted
+            step = 'masks';
+            const msec = document.getElementById('adj-masks-sec');
+            msec.open = true;
+            msec.dispatchEvent(new Event('toggle'));
+            await sleep(30);
+            const ov = document.getElementById('adj-overlay');
+            const or = ov.getBoundingClientRect();
+            const pd = (type, fx, fy) => ov.dispatchEvent(new PointerEvent(type, { clientX: or.left + or.width * fx, clientY: or.top + or.height * fy, pointerId: 1, bubbles: true }));
+            document.querySelector('[data-add-mask="linear"]').click();
+            pd('pointerdown', 0.5, 0.1); pd('pointermove', 0.5, 0.3); pd('pointermove', 0.5, 0.5); pd('pointerup', 0.5, 0.5);
+            const lin = Adjust.result() && Adjust.result().masks && Adjust.result().masks[0];
+            out.linearDrawn = !!lin && lin.type === 'linear' && Math.abs(lin.linear[1] - 0.1) < 0.02 && Math.abs(lin.linear[3] - 0.5) < 0.02;
+            document.querySelector('[data-add-mask="brush"]').click();
+            pd('pointerdown', 0.2, 0.7); pd('pointermove', 0.4, 0.7); pd('pointermove', 0.6, 0.72); pd('pointerup', 0.6, 0.72);
+            const sl = document.getElementById('adj-mask-exposure');
+            sl.value = '1.5'; sl.dispatchEvent(new Event('input')); sl.dispatchEvent(new Event('change'));
+            await sleep(60);
+            const ms = Adjust.result().masks;
+            out.brushPainted = ms.length === 2 && ms[1].type === 'brush' && ms[1].brush[0].pts.length >= 4 && ms[1].adj.exposure === 1.5;
+            out.maskList = document.querySelectorAll('.adj-mask-item').length === 2;
+            Adjust.resetSection('masks');
+            out.masksReset = !(Adjust.result() || {}).masks;
+            msec.open = false;
+            msec.dispatchEvent(new Event('toggle'));
+            // Detail: the 1:1 view, from the full photo, moved by a click
+            step = 'detail';
+            document.getElementById('adj-detail-sec').open = true;
+            document.getElementById('adj-detail-sec').dispatchEvent(new Event('toggle'));
+            await until(() => Adjust.fullCanvas && document.getElementById('adj-loupe').width > 1);
+            const lr0 = { ...Adjust._loupeRect };
+            const cr = Adjust.canvas.getBoundingClientRect();
+            document.getElementById('adj-stage').dispatchEvent(new PointerEvent('pointerdown', { clientX: cr.left + cr.width * 0.2, clientY: cr.top + cr.height * 0.3, bubbles: true }));
+            out.loupe = Adjust.fullCanvas.width === 640 && Adjust._loupeRect.x < lr0.x && !document.getElementById('adj-loupe-box').classList.contains('hidden');
+            document.getElementById('adj-detail-sec').open = false;
+            document.getElementById('adj-detail-sec').dispatchEvent(new Event('toggle'));
+            // Before and after (\\)
+            key('\\');
+            await sleep(50);
+            out.beforeShown = Adjust.before && !document.getElementById('adj-before-tag').classList.contains('hidden');
+            key('\\');
+            // Done (Enter): kept with the photo, the file isn't touched
+            step = 'Done';
+            key('Enter');
+            await until(async () => (await kept()) && (await kept()).edits['a.jpg']);
+            const k1 = await kept();
+            out.kept = !Adjust.isOpen && f('a.jpg')._edit && f('a.jpg')._edit.adj.exposure === 1 && k1.defer === false && k1.edits['a.jpg'].adj.exposure === 1 && await same('a.jpg');
+            out.noBar = document.getElementById('edits-bar').classList.contains('hidden');
+            const shown = await app.getDisplaySource(f('a.jpg'));
+            out.shownBrighter = (await brightness(await blobOf(shown))) > before + 25;
+            await until(() => f('a.jpg').thumbnailUrl && !f('a.jpg')._thumbStale);
+            out.thumbBrighter = (await brightness(await (await fetch(f('a.jpg').thumbnailUrl)).blob())) > before + 25;
+            out.pencil = !!document.querySelector('#file-edit:not(.hidden)');
+
+            // A turn on an adjusted photo is kept with it too
+            step = 'turn';
+            await app.rotateImage(f('a.jpg'), 90);
+            out.turnKept = f('a.jpg')._edit.q === 1 && f('a.jpg')._edit.adj.exposure === 1 && await same('a.jpg');
+            // Ctrl+Z: the turn back; again: the adjustment gone
+            await app.undo();
+            await app.undo();
+            out.undone = !f('a.jpg')._edit;
+            // Back, with saturation off too, for the next steps
+            Edits.set([{ file: f('a.jpg'), edit: Edits.withAdj(null, { exposure: 1, saturation: -100 }) }], 'adjustments');
+
+            // Copy and paste onto another photo (grid selection)
+            step = 'paste';
+            app.setView('grid');
+            app.selection = new Set([f('a.jpg')]);
+            app.currentFile = f('a.jpg');
+            app.updateSelectionUI();
+            key('C', { ctrlKey: true, shiftKey: true });
+            app.selection = new Set([f('b.jpg')]);
+            app.currentFile = f('b.jpg');
+            app.updateSelectionUI();
+            key('V', { ctrlKey: true, shiftKey: true });
+            out.pasted = f('b.jpg')._edit && f('b.jpg')._edit.adj.saturation === -100 && await same('b.jpg');
+
+            // Opened again: the adjustments are still there
+            step = 'reopen';
+            await Edits.flush();
+            await app.browseFolder();
+            await until(() => app.files.length === 2 && f('a.jpg') && f('a.jpg')._edit);
+            out.reopened = f('a.jpg')._edit.adj.exposure === 1 && f('b.jpg')._edit.adj.saturation === -100;
+
+            // Export: copies with the adjustments, the originals left alone
+            step = 'export';
+            const prompt = UI.prompt;
+            UI.prompt = async () => '';
+            await app.exportCopies([f('b.jpg')]);
+            UI.prompt = prompt;
+            const ex = await (await (await dir.getDirectoryHandle('jEditor Export')).getFileHandle('b.jpg')).getFile();
+            const exPx = await (async () => {
+                const bmp = await createImageBitmap(ex);
+                const c = document.createElement('canvas'); c.width = 8; c.height = 8;
+                const g = c.getContext('2d'); g.drawImage(bmp, 0, 0, 8, 8); bmp.close();
+                return g.getImageData(4, 4, 1, 1).data;
+            })();
+            out.exported = Math.max(Math.abs(exPx[0] - exPx[1]), Math.abs(exPx[1] - exPx[2])) <= 3 && await same('b.jpg');
+
+            // Save edits: written into the photo, the edit gone
+            step = 'save into photo';
+            const choose = UI.choose;
+            UI.choose = async () => 'ok';
+            await Edits.saveAll({ list: [f('b.jpg')] });
+            UI.choose = choose;
+            out.saved = !f('b.jpg')._edit && !(await same('b.jpg')) && !!f('a.jpg')._edit;
+            return out;
+            })(); } catch (e) { return { error: step + ': ' + e.message }; }
+        });
+        check('adjust: an experiment in a release, off until turned on in Settings → Experimental (no button, key or menu)', r.offHidden && r.offNoKey && r.offNoMenu && r.onShown, JSON.stringify(r));
+        check('adjust: E opens it on the GPU, with a histogram', r.open, JSON.stringify(r));
+        check('adjust: sliders change the photo and its histogram live; Ctrl+Z / Ctrl+Shift+Z inside; \\ shows before', r.live && r.undoInside && r.redoInside && r.beforeShown, JSON.stringify(r));
+        check('adjust: films shown on the photo by process, a click puts one on (with Amount) or takes it off', r.lookThumbGrey && r.lookOn && r.lookOff, JSON.stringify(r));
+        check('adjust: a grading wheel takes a hue and strength; presets save and put settings back', r.wheel && r.preset, JSON.stringify(r));
+        check('adjust: Detail shows the full photo at 1:1, where you click', r.loupe, JSON.stringify(r));
+        check('adjust: masks drawn and painted on the photo, with their own sliders', r.linearDrawn && r.brushPainted && r.maskList && r.masksReset, JSON.stringify(r));
+        check('adjust: Done keeps it with the photo (edits.json), the file untouched, no Save bar', r.kept && r.noBar, JSON.stringify(r));
+        check('adjust: the viewer and the thumbnail show it adjusted, with the pencil', r.shownBrighter && r.thumbBrighter && r.pencil, JSON.stringify(r));
+        check('adjust: an adjusted photo\'s turn is kept with it; Ctrl+Z takes both back', r.turnKept && r.undone, JSON.stringify(r));
+        check('adjust: Ctrl+Shift+C / V copy the adjustments onto other photos', r.pasted, JSON.stringify(r));
+        check('adjust: still there when the project is opened again', r.reopened, JSON.stringify(r));
+        check('adjust: Export writes them, Save edits writes them into the photo', r.exported && r.saved, JSON.stringify(r));
+
+        // Without a project (photos picked on a phone): Done writes the photo
+        const p = await page.evaluate(async () => {
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const bytes = new Uint8Array(await makeRealJpeg(200, 150, { color: '#555' }));
+            await Picked.open([new File([bytes], 'phone.jpg', { type: 'image/jpeg' })]);
+            app.openSingle(app.files[0]);
+            await app.enterAdjust();
+            for (let i = 0; i < 100 && !Adjust.ready; i++) await sleep(30);
+            Adjust.a.exposure = 1.5;
+            Adjust.changed();
+            await app.saveAdjust();
+            const h = app.files[0].handle;
+            for (let i = 0; i < 100 && !h.edited; i++) await sleep(30);
+            const now = new Uint8Array(await (await h.getFile()).arrayBuffer());
+            return { edited: h.edited, changed: now.length !== bytes.length || now.some((v, i) => v !== bytes[i]), noEdit: !app.files[0]._edit, closed: !Adjust.isOpen };
+        });
+        check('adjust: without a project, Done writes the adjustments into the photo', p.edited && p.changed && p.noEdit && p.closed, JSON.stringify(p));
+        check('adjust: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

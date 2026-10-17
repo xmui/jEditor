@@ -4,11 +4,18 @@
 // 'jeditor-experiments' event on window says so). Betas (Settings →
 // Updates → Beta builds) get new ones first.
 //
-// An experiment: { id, title, text }. When one is done it leaves this
-// list and is simply part of jEditor.
+// An experiment: { id, title, text, beta }. beta: on to start with in a
+// beta build (still off in a release until turned on). When one is done
+// it leaves this list and is simply part of jEditor.
 
 const Experiments = {
-    LIST: [],
+    LIST: [
+        {
+            id: 'adjust', beta: true,
+            title: 'Adjust: Lightroom-style editing',
+            text: 'Light, color, levels and curves, film looks of real stocks, color grading, masks, sharpening and noise reduction (E, or the sliders button). Never changes the photo until you export or save. Adjustments already made stay on the photos when this is off'
+        }
+    ],
 
     init(app) {
         this.app = app;
@@ -16,8 +23,16 @@ const Experiments = {
     },
 
     on(id) {
-        const prefs = (this.app && this.app.uiPrefs.experiments) || {};
-        return this.LIST.some(x => x.id === id) && prefs[id] === true;
+        const prefs = (this.app && this.app.uiPrefs && this.app.uiPrefs.experiments) || {};
+        const x = this.LIST.find(e => e.id === id);
+        if (!x) return false;
+        if (typeof prefs[id] === 'boolean') return prefs[id];
+        return !!(x.beta && this.betaBuild());
+    },
+
+    // This is a beta (v1.42.0-beta.3)
+    betaBuild() {
+        return typeof APP_BUILD !== 'undefined' && /-beta\./.test(APP_BUILD);
     },
 
     set(id, value) {

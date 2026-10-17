@@ -51,7 +51,8 @@ Flags are kept with the order, in `.jeditor/flags.json`, so they follow renames 
 - **Rename.** Files are renamed in place. If the new names overlap the old ones (shifting a numbered sequence, say), they go through temporary names first. If a rename fails part-way, every file gets its original name back.
 - **Delete.** Photos are moved to `.jeditor/trash` inside the opened folder, not deleted. `Ctrl+Z` restores them.
 - **Move to a folder.** Photos are moved on disk, which is a rename and instant even for big scans; where a file can't be moved it's copied and the original removed. A copy is a byte-for-byte duplicate. Cached thumbnails and previews follow the photo, so moving doesn't make them again.
-- **Export.** Copies go to a `jEditor Export` folder, optionally resized.
+- **Export.** Copies go to a `jEditor Export` folder, optionally resized, with any adjustments and edits not saved yet.
+- **Adjust.** Never written into the photo in a project: the settings are kept in `.jeditor/edits.json`, and Export (or **Save edits…**) writes the result, re-encoded like a crop, with the metadata carried over. Without a project (photos picked on a phone, or dropped in), **Done** writes them into the photo.
 
 ## The .jeditor folder
 
@@ -60,6 +61,7 @@ jEditor keeps its own data in a `.jeditor` folder inside the folder you open:
 - `trash/` holds deleted photos.
 - `cache/` holds thumbnails and duplicate-finder data.
 - `flags.json` holds the flags (stars, rescan flags, colour labels).
+- `edits.json` holds adjustments (light, color, curves) and edits not saved yet.
 - `originals/` holds the photos as they were before a batch Auto crop, so it can be undone.
 
 If a subfolder has a `.jeditor` of its own (because it was once opened on its own), opening the whole order merges it into the order's: its deleted photos and Auto crop originals move across, named after the subfolder, its flags join the order's, and its cache is dropped. Then it's removed, so the order keeps one `.jeditor`.
@@ -88,6 +90,34 @@ It works like Lightroom or Apple Photos: the crop frame stays in the middle of t
 - Aspect presets: 4×6, 5×7, 8×10, 11×14, square, 3:4, 16:9, original and free. `X` swaps portrait and landscape. A preset fits inside the current crop, so choosing one after Auto never takes in the bed.
 - **Previous** (`P`) applies the last crop again. This is useful when a batch of scans has the same borders.
 - The header shows the output size in pixels, and in inches when the file has a DPI.
+
+## Adjust: light, color and curves
+
+Like Lightroom's Develop, for one photo at a time: press `E` (or the sliders button, or right-click → **Adjust…**). It's an experiment for now: turn it on in **Settings → Experimental** (betas have it on). Adjustments already made stay on the photos when it's off. The photo changes as you drag, on the graphics card, so even a big scan keeps up.
+
+- **Histogram and levels.** Red, green and blue, with marks at the ends when something clips. The handles under it set the black, mid-grey and white points; the lower two set the output range. Pick **R**, **G** or **B** to set one channel. **Auto** sets the levels from the photo; **Auto color** sets each channel on its own too, which takes the colour cast off a faded print.
+- **Light:** Exposure (in stops), Contrast, Highlights, Shadows, Whites and Blacks.
+- **Color:** Temperature, Tint, Vibrance (gentle on colours that are already strong) and Saturation.
+- **Curve:** click to add a point and drag it; drag a point off the side, or double-click it, to take it away. The curve never turns back on itself. **RGB** or one channel.
+- **Color mixer:** the hue, saturation and luminance of reds, oranges, yellows, greens, aquas, blues, purples and magentas, each on its own.
+- **Looks:** film simulations of real stocks, each shown on your photo, by process:
+  - **Negative (C-41):** Kodak Portra 160, 400, 800, Ektar 100, Gold 200, UltraMax 400; Fujifilm Superia 400, Pro 400H, C200. Soft contrast and highlights, lifted blacks, colour grain.
+  - **Slide (E-6):** Fujichrome Velvia 50, 100, Provia 100F; Kodak Ektachrome E100; Kodachrome 64 (K-14). Deep blacks, high contrast and colour, the finest grain.
+  - **Cinema (ECN-2):** Kodak Vision3 50D, 250D, 500T; CineStill 800T and 50D, whose missing rem-jet backing gives the red **halation** round bright lights.
+  - **B&W:** Kodak Tri-X 400, T-Max 100, 400; Ilford HP5 Plus, FP4 Plus, Pan F Plus 50, Delta 3200, SFX 200; Fujifilm Acros 100 II. Each turns colour into grey with that film's own sensitivity to red, green and blue (Acros darkens reds and lightens skies; SFX does the opposite), with its contrast and grain.
+  - **Creative:** cross process (slide film in negative chemistry), instant, faded print, teal and orange, sepia and selenium toning.
+
+  Click one to put it on, then set its **Amount** (0–200%); **None** takes it off. A look goes over your own settings, so Auto color and the rest still apply under it. **Presets** saves your own settings under a name and puts them on again.
+- **Color grading:** a wheel each for shadows, midtones and highlights: drag from the middle towards a colour to tint them (further out is stronger), and the slider under each makes them lighter or darker. **Blending** widens the three into each other, **Balance** moves where shadows end and highlights begin. Double-click a wheel to clear it.
+- **Masks:** for part of the photo. **Linear** (drag across the photo: full where you start, none where you stop, so a sky darkens down to the horizon), **Radial** (drag out from the middle of something: full inside, feathered to nothing at the edge; **Invert** for the outside instead) and **Brush** (paint it on; **Erase** paints it off, with **Size**, **Feather** and **Flow**). Each has its own Exposure, Contrast, Highlights, Shadows, Whites, Blacks, Temperature, Tint, Vibrance and Saturation; up to eight on a photo. Drag a gradient's handles (or inside it) to change it. **Show mask** tints what it covers red. Masks are kept on the photo as it is on disk, so cropping or straightening later doesn't move them off what they're on.
+- **Detail:** **Sharpening** (how much), **Radius** (how fine: 1 for crisp detail, 2–3 for a stronger look) and **Masking** (higher keeps it to edges, off skin and sky); **Noise reduction** smooths grainy or noisy areas while keeping edges, **Color noise** takes out the coloured blotches of a dark or high-ISO scan. These work on the photo's own pixels, so they show at 1:1: the view at the top of the section is the full photo at 1:1, where you click on it (the box on the photo shows where). Export and Save edits apply them at full size.
+- **Effects:** a **Vignette** (to the left darkens the corners, to the right lightens them) with its **Midpoint**, **Feather** and **Roundness**, film **Grain** with its size and **Grain color** (colour film's grain is clouds of dye in each colour), and **Halation**, the red glow round bright lights. The vignette is on the photo as cropped.
+- Double-click a slider's name to put it back to 0; each section has its own **Reset**.
+- `\` shows the photo as it was (before and after). `Ctrl+Z` / `Ctrl+Shift+Z` undo and redo inside Adjust.
+- **Copy** and **Paste** (`Ctrl+Shift+C` / `Ctrl+Shift+V`) carry the adjustments to other photos. In the grid, `Ctrl+Shift+V` pastes onto every selected photo; the right-click menu has it too.
+- **Done** (`Enter`) keeps the adjustments; **Done & next** (`Shift+Enter`) goes on to the next photo.
+
+Adjustments are non-destructive: the photo on disk isn't changed. They're kept with the project (`.jeditor/edits.json`), shown wherever the photo is, and can be changed again any time, from the original. A pencil on the photo says it has them. An adjusted photo keeps its turns and crops the same way, so everything is applied once, from the original. **Export…** writes copies with the adjustments; **Save edits…** (right-click the grid background) writes them into the photos, keeping the originals for `Ctrl+Z`. **Discard edit** takes them off.
 
 ## Folders (collating)
 
@@ -144,6 +174,8 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `\` | Rotate 180° |
 | `Space`, `G`, `S` | Toggle view, grid view, single view |
 | `C` | Crop and straighten |
+| `E` | Adjust: light, color, curves |
+| `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy the photo's adjustments / paste them (onto the selection in grid view) |
 | `+` `-` `0` | Zoom in, zoom out, fit. The mouse wheel zooms on the pointer, up to 3200% (past 100% the pixels show as sharp squares, with no smoothing). Double-click the photo: in to 100% on that spot, again to fit. |
 | `I` | Info: the photo in single view; in the grid, the folder you're in (photos, total size, types, dates, flags, room taken by `.jeditor`), or the selection |
 | `F` | Full screen |
@@ -167,6 +199,8 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `Ctrl+,` | Settings |
 
 In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `\` rotate 180°, `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
+
+In Adjust: `Enter` done, `Shift+Enter` done and next, `Esc` cancel, `\` before and after, `Shift+A` auto, `Shift+C` auto color, `R` reset, `Ctrl+Shift+C` / `Ctrl+Shift+V` copy / paste, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
 In find duplicates: `1`–`9` mark or unmark a photo, `K` keep the suggested photo and mark the rest, `Enter` trash marked and go to the next group, `N` not duplicates, `←` `→` previous / next group, `Esc` close.
 

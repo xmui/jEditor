@@ -3701,6 +3701,491 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     border: 2px solid var(--bg-surface);
 }
 
+/* Adjust (adjust.js): the photo, with the panel of adjustments beside it */
+.adj-head {
+    justify-content: center;
+}
+
+.adj-tag {
+    padding: 2px var(--sp-3);
+    border-radius: var(--r-pill);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+    color: var(--accent-text);
+    font-size: var(--fs-small);
+}
+
+.adj-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+}
+
+.adj-stage {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: var(--surround);
+}
+
+#adj-canvas {
+    display: block;
+    box-shadow: var(--shadow-2);
+}
+
+.adj-panel {
+    width: 300px;
+    flex: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--sp-2) var(--sp-3) var(--sp-4);
+    background: var(--bg-surface);
+    border-left: 1px solid var(--border);
+    zoom: var(--ui-scale, 1);
+}
+
+.adj-sec {
+    padding: var(--sp-2) 0;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.adj-sec > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: var(--ctl-md);
+    cursor: pointer;
+    font-weight: var(--fw-semibold);
+    list-style: none;
+}
+
+.adj-sec > summary::-webkit-details-marker {
+    display: none;
+}
+
+.adj-sec > summary > span:first-child::before {
+    content: "";
+    display: inline-block;
+    width: 0;
+    height: 0;
+    margin: 0 var(--sp-2) 2px 2px;
+    border-left: 5px solid currentColor;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.adj-sec[open] > summary > span:first-child::before {
+    transform: rotate(90deg);
+}
+
+.adj-sec-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-2);
+}
+
+.adj-sec-acts {
+    display: inline-flex;
+    gap: var(--sp-1);
+}
+
+.adj-sec-reset {
+    color: var(--text-2);
+    font-weight: var(--fw-regular);
+}
+
+.adj-tabs {
+    display: inline-flex;
+    padding: 2px;
+    border-radius: var(--r-sm);
+    background: var(--bg-raised);
+}
+
+.adj-tab {
+    min-width: 30px;
+    height: 24px;
+    padding: 0 var(--sp-2);
+    border: 0;
+    border-radius: var(--r-xs);
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--fs-small);
+    cursor: pointer;
+}
+
+.adj-tab[aria-selected="true"] {
+    background: var(--bg-surface);
+    color: var(--text-1);
+    box-shadow: var(--shadow-1);
+}
+
+.adj-hist {
+    display: block;
+    width: 100%;
+    height: 96px;
+    border-radius: var(--r-sm);
+    /* Dark in either theme: the channels add up to white on it */
+    background: #141414;
+}
+
+.adj-levels {
+    display: block;
+    width: 100%;
+    height: 36px;
+    margin-top: var(--sp-1);
+    touch-action: none;
+    cursor: ew-resize;
+}
+
+.adj-levels-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.adj-read {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    font-variant-numeric: tabular-nums;
+}
+
+.adj-curve {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: var(--r-sm);
+    background: var(--surround);
+    touch-action: none;
+    cursor: crosshair;
+}
+
+.adj-rows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+}
+
+/* Masks: the list, and the overlay on the photo for their handles */
+.adj-mask-add {
+    display: flex;
+    gap: var(--sp-1);
+}
+
+.adj-mask-add .btn {
+    flex: 1;
+}
+
+.adj-mask-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: var(--sp-2);
+}
+
+.adj-mask-item {
+    height: var(--ctl-md);
+    padding: 0 var(--sp-2);
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: var(--bg-raised);
+    color: var(--text-2);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.adj-mask-item[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--text-1);
+}
+
+.adj-mask-opts {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-2);
+}
+
+.adj-mask-opts .btn {
+    margin-left: auto;
+}
+
+.adj-check {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    color: var(--text-2);
+    cursor: pointer;
+}
+
+.adj-brush-mode {
+    margin-bottom: var(--sp-2);
+}
+
+.adj-overlay {
+    position: absolute;
+    touch-action: none;
+}
+
+/* Detail: the 1:1 view, and where it is on the photo */
+.adj-loupe {
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border-radius: var(--r-sm);
+    background: var(--surround);
+}
+
+.adj-hint {
+    margin: var(--sp-1) 0 var(--sp-2);
+    color: var(--text-2);
+    font-size: var(--fs-caption);
+}
+
+.adj-stage {
+    position: relative;
+}
+
+.adjust-editor.adj-detail-open #adj-canvas {
+    cursor: crosshair;
+}
+
+.adj-loupe-box {
+    position: absolute;
+    border: 1.5px solid #fff;
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.5);
+    pointer-events: none;
+}
+
+/* Looks: a strip of the photo with each */
+.adj-look-tabs {
+    display: flex;
+    width: 100%;
+}
+
+.adj-look-tabs .adj-tab {
+    flex: 1;
+    min-width: 0;
+    padding: 0 var(--sp-1);
+}
+
+.adj-looks {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-2);
+}
+
+.adj-look {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    padding: 3px;
+    border: 1px solid transparent;
+    border-radius: var(--r-md);
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--fs-caption);
+    cursor: pointer;
+    text-align: center;
+}
+
+.adj-look canvas {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: var(--r-sm);
+    background: var(--surround);
+}
+
+.adj-look span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.adj-look:hover {
+    background: var(--bg-hover);
+}
+
+.adj-look[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--text-1);
+}
+
+/* Color grading: three wheels in a row, brightness under each */
+.adj-wheels {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-2);
+}
+
+.adj-wheel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-1);
+    min-width: 0;
+}
+
+.adj-wheel-name {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.adj-wheel canvas {
+    width: 100%;
+    aspect-ratio: 1;
+    touch-action: none;
+    cursor: crosshair;
+}
+
+.adj-wheel-lum {
+    width: 100%;
+}
+
+.adj-wheel-lum .adj-label,
+.adj-wheel-lum .adj-num {
+    display: none;
+}
+
+/* A slider: its name and number above, the track below, filled from 0 */
+.adj-row {
+    --lo: 50%;
+    --hi: 50%;
+    --track: var(--border);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    column-gap: var(--sp-2);
+}
+
+.adj-label {
+    color: var(--text-2);
+    cursor: default;
+    user-select: none;
+}
+
+.adj-row.changed .adj-label {
+    color: var(--text-1);
+}
+
+.adj-mix-row .adj-label::before {
+    content: "";
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: var(--sp-2);
+    border-radius: 50%;
+    background: var(--swatch);
+}
+
+.adj-num {
+    width: 60px;
+    height: 24px;
+    padding: 0 var(--sp-1);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-small);
+    -moz-appearance: textfield;
+}
+
+.adj-num::-webkit-inner-spin-button,
+.adj-num::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.adj-range {
+    grid-column: 1 / -1;
+    width: 100%;
+    height: 18px;
+    margin: 0;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+}
+
+.adj-range::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 2px;
+    background:
+        linear-gradient(to right, transparent var(--lo), var(--accent) var(--lo), var(--accent) var(--hi), transparent var(--hi)) 0 0 / 100% 100%,
+        var(--track);
+}
+
+.adj-row[style*="--track"] .adj-range::-webkit-slider-runnable-track {
+    background: var(--track);
+}
+
+.adj-range::-moz-range-track {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--track);
+}
+
+.adj-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    margin-top: -5px;
+    border-radius: 50%;
+    background: var(--text-1);
+    border: 2px solid var(--bg-surface);
+    box-shadow: var(--shadow-1);
+}
+
+.adj-range::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--text-1);
+    border: 2px solid var(--bg-surface);
+}
+
+.adj-range:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--r-xs);
+}
+
+.adj-toolbar .crop-btn[aria-pressed="true"] {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent-text);
+}
+
+@media (max-width: 760px) {
+    .adj-body {
+        flex-direction: column;
+    }
+    .adj-stage {
+        flex: 0 0 42%;
+    }
+    .adj-panel {
+        width: auto;
+        flex: 1;
+        border-left: 0;
+        border-top: 1px solid var(--border);
+    }
+    .adj-toolbar .crop-sep,
+    #adj-copy,
+    #adj-paste {
+        display: none;
+    }
+}
+
 /* Duplicates */
 .dupes-head {
     justify-content: flex-start;
@@ -4374,8 +4859,10 @@ html:not(.native) .native-only {
     display: none !important;
 }
 
-/* What the app jEditor runs in can't do (data-needs, host.js) */
-.host-missing {
+/* What the app jEditor runs in can't do (data-needs, host.js), and an
+   experiment that's off (experiments.js) */
+.host-missing,
+.exp-off {
     display: none !important;
 }
 
@@ -5676,10 +6163,23 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 
 :root[data-platform="mac"] {
     --lights-w: 72px;
+    /* More title bar to take hold of: the top row sits this much lower,
+       and what's above it moves the window too */
+    --mac-drag: 14px;
+    --top-row: calc(var(--gutter) + var(--mac-drag) + var(--ctl-lg));
 }
 
 :root[data-platform="mac"].fullscreen {
     --lights-w: 0px;
+    --mac-drag: 0px;
+}
+
+:root[data-platform="mac"] header {
+    top: var(--mac-drag);
+}
+
+:root[data-platform="mac"] .folder-bar {
+    top: calc(var(--gutter) + var(--mac-drag));
 }
 
 :root[data-platform="mac"] .folder-bar {
@@ -5691,7 +6191,7 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     content: "";
     position: fixed;
     inset: 0 0 auto 0;
-    height: calc(var(--gutter) * 2 + var(--ctl-lg));
+    height: calc(var(--gutter) * 2 + var(--ctl-lg) + var(--mac-drag));
     -webkit-app-region: drag;
     pointer-events: none;
 }
@@ -5732,7 +6232,8 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    pills there go (the toolbar mirrors them), it holds the traffic lights,
    and what was below the pills starts below it. */
 :root.native-toolbar {
-    --top-row: 52px;
+    /* The toolbar, and a strip under it that moves the window too */
+    --top-row: calc(52px + var(--mac-drag));
 }
 
 :root.native-toolbar header,
