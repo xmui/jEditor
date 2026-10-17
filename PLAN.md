@@ -38,6 +38,28 @@ jEditor is one product, in this repo, shipped three ways from one UI (`app/`):
 
 **Back burner:** scanning on the Mac (Apple's ImageCaptureCore; the FastFoto has Mac drivers), tethering on the Mac, anything hardware-related on the web.
 
+## Roadmap (set 2026-10-17)
+
+**Rules for everything below.** Windows first: each feature is made the best it can be in the Windows app, then brought to the Mac, Linux and the web as well as each allows. The basic workflow (open a folder, look, rotate, crop, flag, move on) stays fast and responsive: a new feature never slows it, and the tests time it.
+
+### Next update (1.41.0)
+
+1. **Mac: the native toolbar moves the window.** Electron's hidden title bar puts the page under the toolbar, so a press on its empty space went to the page, which wasn't marking it draggable. Now a view behind the toolbar's items (`mac/native`) takes it: dragging moves the window, a double-click does what Desktop & Dock says (zoom, minimise or nothing). The page's own drag strip is back as well. CI drags a real window on macOS 26.
+2. **Mac: a permissions window.** The first time jEditor opens (and from Settings → Projects, or jEditor → Permissions…): Desktop, Documents and Downloads (Allow… brings up macOS's question), USB drives and cards, and Full Disk Access (optional), each saying whether it's on and linking to the right page of System Settings. Camera joins it with the photo booth.
+3. **Each build says what it is.** The start screen names the build ("jEditor for Mac · 1.41.0"); the web version's start screen offers the download for the computer it's on (Windows, Mac, Linux; iPhone and iPad get Add to Home Screen), with the others listed.
+4. **A simpler README.** What jEditor is, a picture, Download for each platform, and the rest further down.
+5. **iPhone and iPad on the web.** Safari can't open folders, so: pick photos (or a folder from Files) to open, edits saved through the share sheet (Save to Photos or Files) or as a zip, and Add to Home Screen. The native iPad app (phase 7 above) stays the long-term answer.
+6. **Beta.** A `beta` branch whose pushes make beta releases (`v1.41.0-beta.N`, GitHub prereleases). Settings → Updates gets a "Beta builds" switch (Windows, Mac AppImage/Linux); Settings gets an Experimental section where unfinished features are turned on one at a time; the website links the newest beta.
+
+### After that, in this order
+
+1. **Lightroom-style editing, non-destructive.** The original is never changed: edits are settings kept in the project's data (as flags are) and applied when the photo is shown; Export writes the finished JPEG, PNG or TIFF. Rotate and crop keep working as they do. Levels and curves with a live histogram, white balance, exposure, contrast, highlights and shadows, HSL and colour grading, sharpening and noise, masks (brush, gradient, and later subject), spot and dust removal, filters and film simulations, presets, copy and paste settings, before and after. Processing on the GPU (WebGL2/WebGPU) so sliders stay live. RAW comes after: first the embedded preview, then full RAW editing.
+2. **Paint, as a tool like Crop.** Layers (kept in the project's data, so a painting can be changed later; the photo gets the flattened result; a layered PSD export later), brushes, pencil, spray, shapes, lines, text, fill and gradients, selection (rectangle, ellipse, lasso, magic wand) with move and transform, eraser, colour picker, undo. In jEditor's own look.
+3. **Drives and import.** Copying a project to a flash drive in one step (with room checked and Eject after), noticing a camera or card when it's plugged in and offering to import, and CD/DVD burning (Windows: IMAPI2).
+4. **Later:** themes and UI theming (colours, density, fonts, and retro looks: XP, 98, Vista, Aqua), the photo booth (webcam with filters), JPEGify and glitch experiments, a slideshow, video and audio viewing and trimming, file conversion on export, and legacy editions: a much smaller build that runs on old Windows (XP/7; today's app needs Windows 10 for WebView2 and .NET 8), after the retro looks.
+
+**Open questions, for when each starts:** which Lightroom tools come first; whether edits are also written to XMP sidecars, for other apps; which disc formats matter (data discs, photo CDs, video DVDs); what an old-Windows build must do (view and flag only, or edit too).
+
 ## The Windows app
 
 

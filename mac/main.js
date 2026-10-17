@@ -293,6 +293,56 @@ async function installUpdate(wc) {
     return { ok: true, file, received: got, total };
 }
 
+// ---- The Mac's privacy settings (app/permissions.js) ----
+// macOS asks before an app reads Desktop, Documents, Downloads or a drive,
+// once each; Full Disk Access ends the asking. A folder that was never
+// asked about can't be checked without asking, so a row is only checked
+// once it has been (settings.asked). JEDITOR_SKIP_PERMISSIONS: the window
+// doesn't open on its own (the tests).
+const PRIVACY = {
+    files: 'x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders',
+    full: 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles'
+};
+const readable = (p) => fs.promises.readdir(p).then(() => true, () => false);
+
+// Only an app with Full Disk Access can read the privacy database itself
+async function fullDiskAccess() {
+    if (process.platform !== 'darwin') return false;
+    try {
+        await (await fs.promises.open(path.join(os.homedir(), 'Library', 'Application Support', 'com.apple.TCC', 'TCC.db'), 'r')).close();
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+const homeFolders = () => ['desktop', 'documents', 'downloads'].map(k => app.getPath(k)).filter(p => fs.existsSync(p));
+const removableDrives = async () => (await places.drives()).filter(d => d.path !== '/' && d.kind !== 'network').map(d => d.path);
+
+async function permissionRows() {
+    const asked = settings.asked || {};
+    const full = await fullDiskAccess();
+    const check = async (id, paths) => {
+        if (full) return 'granted';
+        if (!asked[id]) return 'ask';
+        return (await Promise.all(paths.map(readable))).every(Boolean) ? 'granted' : 'denied';
+    };
+    const drives = await removableDrives();
+    return [
+        { id: 'folders', state: await check('folders', homeFolders()) },
+        { id: 'volumes', state: !drives.length && !full ? 'later' : await check('volumes', drives) },
+        { id: 'full', state: full ? 'granted' : 'off' }
+    ];
+}
+
+// The system's own question comes up as each is first read
+async function askPermission(id) {
+    const paths = id === 'folders' ? homeFolders() : id === 'volumes' ? await removableDrives() : [];
+    for (const p of paths) await readable(p);
+    settings.asked = { ...(settings.asked || {}), [id]: true };
+    saveSettings();
+}
+
 // ---- What the page asks for (bridge.js) ----
 const smokeSteps = {};
 
@@ -318,6 +368,18 @@ async function handle(rec, type, data) {
             return { exists: (data.paths || []).map(p => { try { return fs.statSync(p).isDirectory(); } catch (e) { return false; } }) };
         case 'reveal':
             shell.showItemInFolder(data.path);
+            return { ok: true };
+        case 'permissions':
+            return { rows: await permissionRows(), firstRun: !settings.permissionsSeen && !process.env.JEDITOR_SKIP_PERMISSIONS };
+        case 'askPermission':
+            await askPermission(data.id);
+            return { ok: true };
+        case 'openPermissionSettings':
+            await shell.openExternal(data.id === 'full' ? PRIVACY.full : PRIVACY.files);
+            return { ok: true };
+        case 'permissionsSeen':
+            settings.permissionsSeen = true;
+            saveSettings();
             return { ok: true };
         case 'checkUpdate':
             return checkUpdate();
@@ -582,6 +644,7 @@ function menu() {
                 { role: 'about' },
                 { type: 'separator' },
                 { label: 'Settings…', accelerator: 'Cmd+,', click: send('settings') },
+                { label: 'Permissions…', click: send('permissions') },
                 { type: 'separator' },
                 { role: 'services' },
                 { type: 'separator' },
