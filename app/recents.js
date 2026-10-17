@@ -175,6 +175,8 @@ const Recents = {
         }
         if (!hits.length) return null;
         hits.sort((a, b) => a.path.split('/').length - b.path.split('/').length);
+        // The Windows app keeps no .jeditor in the folders: the closest project
+        if (FolderCache.native()) return hits[0];
         for (const hit of hits) {
             try {
                 await hit.rec.handle.getDirectoryHandle(FolderCache.DIR);
@@ -191,8 +193,9 @@ const Recents = {
         if (!hit) return null;
         const label = hit.path.split('/').join(' / ');
         this.el('op-text').textContent = `“${handle.name}” is inside “${hit.rec.name}”, which you've opened before. ` +
-            `Open the whole order at ${label}? Its trash, cache and flags are kept in the order's .jeditor, ` +
-            'so this folder doesn\'t get one of its own.';
+            `Open the whole project at ${label}? ` + (FolderCache.native()
+                ? 'Its flags and cache are then kept together for the whole project, not separately for this folder.'
+                : 'Its trash, cache and flags are kept in the project\'s .jeditor, so this folder doesn\'t get one of its own.');
         const panel = this.el('order-prompt');
         panel.classList.remove('hidden');
         this.el('op-order').focus();

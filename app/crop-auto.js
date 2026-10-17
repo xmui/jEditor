@@ -1,11 +1,14 @@
 // Finds a print on a flatbed scan: the scanner bed (lid or background) is a
-// uniform colour around the photo, so each side of the print shows up as a
+// uniform color around the photo, so each side of the print shows up as a
 // straight boundary between "bed" and "not bed". Each side is fitted as a
 // line (robust to dust, shadows and photo content that happens to match the
 // bed), which gives the print's tilt and its four corners.
 //
 // Sides where the print touches the edge of the scan (placed against the
 // scanner's corner) have no bed to find; the scan edge stands in for them.
+//
+// A photo from a sheet feeder is found differently (detectFeeder): find()
+// picks.
 
 const CropAuto = {
     MAX_EDGE: 1600, // detection resolution (long side, px)
@@ -138,9 +141,200 @@ const CropAuto = {
         return { tilt, corners, found, scale: Math.max(sx, sy), lines };
     },
 
-    // The bed's colour: whichever corner colour most of the scan's outer ring
+    // A print anywhere jEditor looks for one: on a flatbed (detect), or
+    // alone on a sheet-feeder page (detectFeeder). feeder: the photo came
+    // from the feeder, so that's tried first; otherwise only a page that
+    // plainly is one (background trimmed on three sides) counts as one.
+    // feeder: it's a sheet-feeder page; scan: it's a scan (just scanned,
+    // or a box of Preview and crop). Neither: could be any photo, so only a
+    // scan that plainly is one is cropped. PhotoFind does the finding; the
+    // feeder finder below is the feeder's second chance.
+    find(src, W, H, { feeder = false, scan = false } = {}) {
+        const strict = !feeder && !scan;
+        return PhotoFind.single(src, W, H, { feeder, strict })
+            || (feeder && this.detectFeeder(src, W, H))
+            || this.detectStrips(src, W, H, { strict });
+    },
+
+    // A print the scan cut off at two opposite sides (a print a hair bigger
+    // than the scan area, a feeder page cut to the photo), so the bed shows
+    // only as a strip down each of the other two. Too little bed for the
+    // finders above to know it as one. Each strip: one plain color the
+    // whole way along its outer edge, ending inward at a straight line (the
+    // print's side); the two the same color and parallel, and the other two
+    // sides of the scan not that color. → as detect, or null
+    detectStrips(src, W, H, { strict = false } = {}) {
+        const px = PhotoFind.pixels(src, W, H);
+        const { w, h } = px;
+        const S = PhotoFind.smooth(px.d, w, h);
+        const col = (p) => [S[0][p], S[1][p], S[2][p]];
+        const dist = (a, c) => PhotoFind.dist(a[0], a[1], a[2], c);
+        const median = (v) => v.slice().sort((p, q) => p - q)[v.length >> 1];
+        // topBottom: cut off at the top and bottom, the strips left and right
+        for (const topBottom of [true, false]) {
+            const n = topBottom ? h : w, m = topBottom ? w : h; // along the strips; across them
+            const idx = topBottom ? (i, j) => i * w + j : (i, j) => j * w + i;
+            const lo = Math.round(n * 0.03), hi = Math.round(n * 0.97);
+            const step = Math.max(1, Math.floor(n / 200));
+            const band = Math.max(2, Math.round(m * 0.004));
+            const strips = [];
+            for (const far of [false, true]) {
+                const J = (k) => far ? m - 1 - k : k;
+                // The strip's color, from its outer edge; nearly all of it
+                // that color, the whole way along
+                const samples = [];
+                for (let i = lo; i < hi; i += step) for (let k = 1; k <= band; k++) samples.push(col(idx(i, J(k))));
+                const c = [0, 1, 2].map(ch => median(samples.map(s => s[ch])));
+                const noise = median(samples.map(s => dist(s, c)));
+                if (strict && noise > 20) break;
+                const near = Math.max(24, noise * 4);
+                if (samples.filter(s => dist(s, c) <= near).length < samples.length * 0.9) break;
+                // Line by line, where it stops being that color (a few
+                // pixels in a row, so grain doesn't)
+                const pts = [];
+                let lines = 0;
+                const maxIn = Math.round(m * 0.25);
+                for (let i = lo; i < hi; i += step) {
+                    lines++;
+                    let k = 0, run = 0;
+                    for (; k < maxIn; k++) {
+                        if (dist(col(idx(i, J(k))), c) > near) { if (++run >= 3) break; } else run = 0;
+                    }
+                    if (k < maxIn) pts.push([i, k - 2]);
+                }
+                // The straight line most of them stop at: a print's side.
+                // (Where the photo next to it is much the strip's color,
+                // lines run on past it: those are left out.)
+                const line = this.fitLine(pts, n);
+                if (!line) break;
+                const on = pts.filter(([i, k]) => Math.abs(k - (line.a + line.b * i)) <= 2);
+                let first = Infinity, last = -Infinity;
+                for (const [i] of on) { first = Math.min(first, i); last = Math.max(last, i); }
+                const width = line.a + line.b * n / 2;
+                if (on.length < lines * 0.5 || last - first < n * 0.5 || width < Math.max(2, m * 0.006)) break;
+                strips.push({ a: line.a, b: line.b, c });
+            }
+            if (strips.length < 2) continue;
+            const [s0, s1] = strips;
+            // The same bed both sides; the print's sides parallel
+            if (dist(s0.c, s1.c) > 40 || Math.abs(s0.b + s1.b) > 0.02) continue;
+            const x0 = (i) => s0.a + s0.b * i, x1 = (i) => m - (s1.a + s1.b * i);
+            if (x1(n / 2) - x0(n / 2) < m * 0.5) continue;
+            // Past the other two sides it's the print, not more bed
+            let bed = 0, all = 0;
+            for (const i of [1, 2, n - 2, n - 3]) {
+                for (let k = Math.ceil(x0(i)) + 2; k < x1(i) - 2; k += 2) {
+                    all++;
+                    if (dist(col(idx(i, k)), s0.c) <= 30) bed++;
+                }
+            }
+            if (!all || bed > all * 0.5) continue;
+            // Corners where the strips' edges meet the scan's edge. Tilt
+            // clockwise: a left side leaning left going down; a top that
+            // drops going right.
+            const pt = (i, j) => topBottom ? [j * px.sx, i * px.sy] : [i * px.sx, j * px.sy];
+            const corners = topBottom
+                ? [pt(0, x0(0)), pt(0, x1(0)), pt(n, x1(n)), pt(n, x0(n))]
+                : [pt(0, x0(0)), pt(n, x0(n)), pt(n, x1(n)), pt(0, x1(0))];
+            // (less than a pixel over its length here is no tilt: left
+            // straight, not turned and resampled for nothing)
+            const slope = (s0.b - s1.b) / 2;
+            let tilt = Math.atan(topBottom ? -slope : slope) * 180 / Math.PI;
+            if (Math.abs(slope) * n < 1) tilt = 0;
+            return { tilt, corners, found: 2, scale: Math.max(px.sx, px.sy), finder: 'strips' };
+        }
+        return null;
+    },
+
+    // A photo from a sheet feeder (the FastFoto): the page is as long as the
+    // feeder takes, the photo at its leading edge, and around it two
+    // backgrounds, the scanner's backing beside the photo and plain fill
+    // where the page runs on past it, so there's no one bed color to look
+    // for. A row or column that's all one colour (whatever color) is
+    // background; the photo is the block of rows and columns that aren't.
+    // Its sides are then looked for against the backing beside it, for the
+    // tilt. → as detect, or null
+    detectFeeder(src, W, H, { strict = false } = {}) {
+        const k = Math.min(1, 1000 / Math.max(W, H));
+        const w = Math.max(32, Math.round(W * k)), h = Math.max(32, Math.round(H * k));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(src, 0, 0, w, h);
+        const d = ctx.getImageData(0, 0, w, h).data;
+
+        // The share of a line's pixels unlike the line's own usual color
+        const T = 40;
+        const unlike = (at, n) => {
+            const step = Math.max(1, Math.floor(n / 200));
+            const ch = [[], [], []];
+            for (let t = 0; t < n; t += step) { const i = at(t); ch[0].push(d[i]); ch[1].push(d[i + 1]); ch[2].push(d[i + 2]); }
+            const med = ch.map(v => v.sort((p, q) => p - q)[v.length >> 1]);
+            let c = 0;
+            for (let t = 0; t < n; t++) {
+                const i = at(t);
+                if (Math.abs(d[i] - med[0]) + Math.abs(d[i + 1] - med[1]) + Math.abs(d[i + 2] - med[2]) > T) c++;
+            }
+            return c / n;
+        };
+        // The longest stretch of lines with something on them (short gaps
+        // allowed: a photo can have a plain band across it)
+        const span = (share, gap) => {
+            let best = null, start = -1, last = -1;
+            for (let i = 0; i <= share.length; i++) {
+                const on = i < share.length && share[i] > 0.03;
+                if (on) {
+                    if (start < 0 || i - last > gap) start = i;
+                    last = i;
+                    if (!best || last + 1 - start > best[1] - best[0]) best = [start, last + 1];
+                }
+            }
+            return best;
+        };
+        const rows = Array.from({ length: h }, (_, y) => unlike(t => (y * w + t) * 4, w));
+        const ys = span(rows, Math.max(2, Math.round(h * 0.01)));
+        if (!ys || ys[1] - ys[0] < h * 0.08) return null;
+        const [y0, y1] = ys;
+        const cols = Array.from({ length: w }, (_, x) => unlike(t => ((y0 + t) * w + x) * 4, y1 - y0));
+        const xs = span(cols, Math.max(2, Math.round(w * 0.01)));
+        if (!xs || xs[1] - xs[0] < w * 0.08) return null;
+        const [x0, x1] = xs;
+        // Nothing around it to take off: not a photo on a page
+        const trimmedRows = h - (y1 - y0), left = x0, right = w - x1;
+        if (trimmedRows < h * 0.03 && left < w * 0.02 && right < w * 0.02) return null;
+        if (strict && !(trimmedRows >= h * 0.1 && left >= w * 0.02 && right >= w * 0.02)) return null;
+
+        const sx = W / w, sy = H / h;
+        const box = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+        // The sides, against the backing either side of the photo (only
+        // its own rows: past them the page may be another color)
+        const m = Math.round(Math.min(left, right, w * 0.04));
+        let result = null;
+        if (m >= 3) {
+            const sub = document.createElement('canvas');
+            sub.width = x1 - x0 + 2 * m;
+            sub.height = y1 - y0;
+            sub.getContext('2d').drawImage(canvas, x0 - m, y0, sub.width, sub.height, 0, 0, sub.width, sub.height);
+            const det = this.detect(sub, sub.width, sub.height);
+            sub.width = sub.height = 0;
+            if (det) {
+                const corners = det.corners.map(([x, y]) => [x + x0 - m, y + y0]);
+                const area = (c) => Math.abs(c.reduce((acc, [x, y], i) => { const [u, v] = c[(i + 1) % 4]; return acc + x * v - u * y; }, 0)) / 2;
+                const ratio = area(corners) / area(box);
+                if (ratio > 0.7 && ratio < 1.25) {
+                    result = { tilt: det.tilt, corners: corners.map(([x, y]) => [x * sx, y * sy]), found: det.found, scale: Math.max(sx, sy) };
+                }
+            }
+        }
+        canvas.width = canvas.height = 0;
+        return result || { tilt: 0, corners: box.map(([x, y]) => [x * sx, y * sy]), found: 0, scale: Math.max(sx, sy), feeder: true };
+    },
+
+    // The bed's colour: whichever corner color most of the scan's outer ring
     // agrees with (a print pushed into one corner hides that corner, not
-    // the other three). null when the ring has no dominant colour.
+    // the other three). null when the ring has no dominant color.
     bedColour(d, w, h) {
         const R = Math.max(2, Math.round(Math.min(w, h) * 0.008));
         const ring = [];

@@ -44,7 +44,7 @@ const Watch = {
         this.app = app;
         // Everything that writes to the order folder
         this.guard(app, ['drainRotationQueue', 'moveToTrash', 'undo', 'renameFile', 'renameMany', 'moveFile',
-            'saveCrop', 'cleanUpFolder', 'exportCopies', 'batchAutoCrop']);
+            'saveCrop', 'cleanUpFolder', 'exportCopies', 'batchAutoCrop', 'saveEdits']);
         this.guard(Folders, ['relocate', 'newFolder', 'renameFolder', 'deleteFolder', 'createPath', 'trashQuietly', 'undo', 'removeIfEmpty']);
         window.addEventListener('focus', () => this.onFocus());
         document.addEventListener('visibilitychange', () => {
@@ -88,6 +88,8 @@ const Watch = {
         this.opDepth--;
         this.opGen++;
         Flags.saveSoon(); // renamed or moved photos: flags under their new paths
+        // and kept edits too (edits.json is keyed by path as well)
+        if (typeof Edits !== 'undefined' && this.app.files.some(f => f._edit)) Edits.saveSoon();
         this.app._usage = null; // .jeditor's size may have changed (trash, originals)
         this.app.refreshInfoSoon();
         // A check that came in meanwhile runs now
@@ -131,6 +133,7 @@ const Watch = {
 
     stop() {
         this.gen = (this.gen || 0) + 1;
+        this._unreadable = null;
         if (this.observer) {
             try { this.observer.disconnect(); } catch (e) { /* already gone */ }
             this.observer = null;
@@ -234,10 +237,23 @@ const Watch = {
 
     // ---- Rescan (R) ----
 
-    async rescan() {
+    // R pressed again while one is under way (or waiting) joins it: two
+    // scans at once would each add the same new photos
+    rescan() {
+        if (!this._rescan) this._rescan = this.rescanNow().finally(() => { this._rescan = null; });
+        return this._rescan;
+    },
+
+    async rescanNow() {
         const app = this.app;
         if (!app.dirHandle) return;
-        if (this.running) await this.running;
+        // Still opening: every photo is being read already, and a scan now
+        // would find the ones not read yet and add them a second time
+        if (app.isLoading) {
+            app.showToast('Still opening the project: every photo is being read', 2500, 'rescan-loading');
+            return;
+        }
+        while (this.running) await this.running;
         this.queued = null;
         clearTimeout(this._kickTimer);
         app.beginTask('scan', 'Scanning for new photos…');
@@ -410,11 +426,21 @@ const Watch = {
         // Size and date of the new photos. One a scanner is still writing
         // waits: it's looked at again shortly, and added once it's whole.
         const datas = await this.stat(fresh.map(p => p.handle));
-        const added = [];
+        let added = [];
         const unfinished = new Set();
         for (let i = 0; i < fresh.length; i++) {
             const p = fresh[i], d = datas[i];
-            if (!d) continue;
+            if (!d) {
+                // Can't be read yet (a program still has it open): looked at
+                // again, like one still being written, for a while
+                const tries = (this._unreadable || (this._unreadable = new Map())).get(p.relPath) || 0;
+                if (tries < 20) {
+                    this._unreadable.set(p.relPath, tries + 1);
+                    unfinished.add(Folders.parentOf(p.relPath));
+                }
+                continue;
+            }
+            if (this._unreadable) this._unreadable.delete(p.relPath);
             if (!(await this.complete(d, p.name))) {
                 unfinished.add(Folders.parentOf(p.relPath));
                 continue;
@@ -446,7 +472,7 @@ const Watch = {
         const dirsChanged = newDirs.length > 0 || goneDirs.length > 0;
         for (const [dir, l] of listings) if (l && !l.failed) Folders.register(dir, l.handle);
         goneDirs.forEach(d => Folders.forget(d));
-        this.apply({ added, gone: [...gone], dirsChanged });
+        added = this.apply({ added, gone: [...gone], dirsChanged });
         for (const f of edited) app.afterFileChanged(f);
         app.log(`Folder check: ${listings.size} folder(s) in ${Math.round(performance.now() - t0)} ms — ` +
             `${added.length} new, ${gone.size} gone, ${edited.length} edited`);
@@ -466,26 +492,32 @@ const Watch = {
 
     // ---- Updating the screen ----
 
+    // What was added: a photo already loaded (by its path) never twice
     apply({ added, gone, dirsChanged }) {
         const app = this.app;
+        const goneSet = new Set(gone);
+        const have = new Set(app.files.filter(f => !goneSet.has(f)).map(f => f.relPath || f.name));
+        added = added.filter(f => !have.has(f.relPath) && have.add(f.relPath));
         if (!added.length && !gone.length) {
             if (dirsChanged) Folders.afterChange();
             else Folders.render();
-            return;
+            return added;
         }
         if (gone.length) {
             Flags.forgetFiles(gone);
+            Edits.forgetFiles(gone);
             app.removeFilesFromApp(gone);
         }
         if (!added.length) {
             if (dirsChanged) Folders.afterChange();
-            return;
+            return added;
         }
         const now = Date.now();
         added.forEach(f => { f._arrived = now; });
         const wasEmpty = app.files.length === 0;
         app.files.push(...added);
         Flags.adopt(added);
+        Edits.adopt(added);
         if (wasEmpty) {
             // Everything had gone, and now there's something again
             app.elements.dropZone.classList.add('hidden');
@@ -503,6 +535,7 @@ const Watch = {
             this.insertTiles(added);
         }
         app.precacheThumbnails();
+        return added;
     },
 
     // Slot new photos into the grid and film strip where the sort puts
@@ -531,7 +564,7 @@ const Watch = {
                 nextStrip = item;
             }
         });
-        grid.classList.remove('grid-empty');
+        grid.classList.remove('grid-empty', 'grid-empty-project');
         Folders.render();
         if (!Folders.inView(app.currentFile) && view.length) app.setCurrent(view[0]);
         else if (app.currentFile) app.updateFileCount();
@@ -541,7 +574,9 @@ const Watch = {
     report({ added, gone, edited, manual }) {
         const app = this.app;
         const parts = [];
-        const n = added.length;
+        // New photos just appear (a scanner saving into the order would
+        // otherwise say so for every photo); a rescan (R) still says so
+        const n = manual ? added.length : 0;
         if (n) parts.push(`${n.toLocaleString()} new photo${n === 1 ? '' : 's'}`);
         if (gone) parts.push(`${gone.toLocaleString()} photo${gone === 1 ? '' : 's'} removed from the folder`);
         if (edited) parts.push(`${edited.toLocaleString()} changed on disk`);
@@ -551,7 +586,7 @@ const Watch = {
         }
         const msg = parts.join(' · ');
         const action = n ? { label: 'Show', run: () => this.showNew(added) } : null;
-        app.showToast(msg.charAt(0).toUpperCase() + msg.slice(1), n ? 6000 : 4000, 'watch', action, { type: n ? 'photos' : 'info' });
+        app.showToast(msg.charAt(0).toUpperCase() + msg.slice(1), n ? 6000 : 4000, 'watch', action, { type: n ? 'photos' : 'info', kind: 'load' });
     },
 
     // Jump to the first of the new photos (in the order they're shown),

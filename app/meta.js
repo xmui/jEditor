@@ -1,9 +1,9 @@
 // Image metadata surgery for JPEG and PNG.
 //
 // A canvas re-encode (crop, straighten, non-JPEG rotation) produces a file
-// with no metadata at all: capture date, camera, colour profile and DPI are
+// with no metadata at all: capture date, camera, color profile and DPI are
 // gone. For scan orders that matters — DPI drives print size and the ICC
-// profile drives colour. These helpers copy the metadata that is still
+// profile drives color. These helpers copy the metadata that is still
 // true after an edit from the original file onto the re-encoded one, and
 // patch what changed (orientation, pixel dimensions, stale EXIF thumbnail).
 //
@@ -59,13 +59,13 @@ const ImageMeta = {
     },
 
     // Segments that stay true after re-encoding. Deliberately a whitelist:
-    // Adobe APP14 (colour transform flags) and MPF APP2 (byte offsets into
+    // Adobe APP14 (color transform flags) and MPF APP2 (byte offsets into
     // the old file) would corrupt the new file if copied.
     keepJpegSeg(bytes, seg) {
         const m = seg.marker;
         if (m === 0xE0) return this.hasSig(bytes, seg, 'JFIF\0');          // density / DPI
         if (m === 0xE1) return this.isExifSeg(bytes, seg) || this.isXmpSeg(bytes, seg);
-        if (m === 0xE2) return this.hasSig(bytes, seg, 'ICC_PROFILE\0');   // colour profile
+        if (m === 0xE2) return this.hasSig(bytes, seg, 'ICC_PROFILE\0');   // color profile
         if (m === 0xED) return this.hasSig(bytes, seg, 'Photoshop 3.0\0'); // IPTC, resolution
         if (m === 0xFE) return true;                                       // comment
         return false;
@@ -213,7 +213,9 @@ const ImageMeta = {
 
     // ---- PNG structure ----
 
-    pngChunks(bytes) {
+    // partial: the chunks that are whole in `bytes` (the start of a file),
+    // for reading the header and pHYs, which come before the image data
+    pngChunks(bytes, { partial = false } = {}) {
         const sig = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
         if (bytes.length < 8 || sig.some((b, i) => bytes[i] !== b)) return null;
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -223,7 +225,7 @@ const ImageMeta = {
             const len = view.getUint32(p);
             const type = String.fromCharCode(bytes[p + 4], bytes[p + 5], bytes[p + 6], bytes[p + 7]);
             const end = p + 12 + len;
-            if (end > bytes.length) return null;
+            if (end > bytes.length) return partial ? chunks : null;
             chunks.push({ type, start: p, end, data: p + 8 });
             p = end;
             if (type === 'IEND') break;
@@ -236,7 +238,7 @@ const ImageMeta = {
 
     // ---- Transplant ----
 
-    // Colour components in a JPEG's frame header (3 = YCbCr, 4 = CMYK/YCCK)
+    // Color components in a JPEG's frame header (3 = YCbCr, 4 = CMYK/YCCK)
     jpegComponents(bytes) {
         const segs = this.jpegSegments(bytes) || [];
         for (const s of segs) {
@@ -248,10 +250,10 @@ const ImageMeta = {
         return 0;
     },
 
-    // Should the edit decode without colour conversion? True when the
-    // original's colour profile will be copied onto the result, so the
+    // Should the edit decode without color conversion? True when the
+    // original's color profile will be copied onto the result, so the
     // pixels must stay in that profile's space (decoding to sRGB and then
-    // re-tagging with, say, Adobe RGB would wash the colours out). A CMYK
+    // re-tagging with, say, Adobe RGB would wash the colors out). A CMYK
     // JPEG's profile can't describe the RGB output, so it converts instead.
     canCarryProfile(mime, original = null) {
         if (mime === 'image/png') return true;
@@ -359,7 +361,7 @@ const ImageMeta = {
                 }
                 return null;
             }
-            const chunks = this.pngChunks(bytes);
+            const chunks = this.pngChunks(bytes, { partial: true });
             if (chunks && chunks[0] && chunks[0].type === 'IHDR') {
                 const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
                 return { w: v.getUint32(chunks[0].data), h: v.getUint32(chunks[0].data + 4) };
@@ -403,7 +405,7 @@ const ImageMeta = {
                 }
                 return null;
             }
-            const chunks = this.pngChunks(bytes);
+            const chunks = this.pngChunks(bytes, { partial: true });
             const phys = chunks && chunks.find(c => c.type === 'pHYs');
             if (phys && bytes[phys.data + 8] === 1) {
                 const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);

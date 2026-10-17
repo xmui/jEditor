@@ -49,7 +49,7 @@ const Renamer = {
         const panel = this.el('rename-panel');
         panel.addEventListener('mousedown', (e) => { if (e.target === panel) this.close(); });
         panel.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') { e.preventDefault(); this.close(); }
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.close(); }
             if (e.key === 'Enter' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON') {
                 e.preventDefault();
                 this.apply();
@@ -312,6 +312,9 @@ const Renamer = {
     async apply() {
         if (!this.rows || this._applying) return;
         const o = this.options();
+        // Enter pressed while capture dates are still being read: wait for them
+        if (this.needsDates(o) && this.scope().some(f => f.dateTaken === undefined)) await this.app.ensureDatesTaken();
+        if (!this.isOpen) return;
         // Re-plan against the latest state (another rename may have run)
         this.rows = this.plan(this.scope(), o);
         if (this.rows.some(r => r.error)) { this.render(o); return; }
@@ -330,7 +333,7 @@ const Renamer = {
             const done = await this.app.renameMany(pairs);
             if (done) {
                 this.close();
-                this.app.showToast(`Renamed ${pairs.length.toLocaleString()} photo${pairs.length === 1 ? '' : 's'} — Ctrl+Z to undo`, 3000);
+                this.app.showToast(`Renamed ${pairs.length.toLocaleString()} photo${pairs.length === 1 ? '' : 's'} — Ctrl+Z to undo`, 3000, null, null, { kind: 'rename' });
             } else {
                 this.refresh();
             }

@@ -34,7 +34,7 @@ body {
     height: 100%;
     width: 100%;
     overflow: hidden;
-    background: var(--bg-canvas);
+    background: var(--bg-window);
     color: var(--text-1);
     font-family: var(--font-ui);
     font-size: var(--fs-body);
@@ -364,7 +364,7 @@ a {
     font-size: var(--fs-small);
 }
 
-/* Selects draw their own chevron in the text colour */
+/* Selects draw their own chevron in the text color */
 select.field,
 .sort-control select {
     appearance: none;
@@ -655,6 +655,98 @@ header {
 .file-info {
     padding: 0 var(--sp-1);
     max-width: calc(100% - 2 * 220px);
+    /* Off center when a pill on either side needs the room (fit.js) */
+    translate: var(--fi-shift, 0) 0;
+}
+
+/* ---- Fitting a narrow window (fit.js): each row gives up parts in turn ---- */
+
+.interface[data-fit~="sort-short"] .sort-control .i {
+    display: none;
+}
+
+/* The sort as just its icon: the menu is still there, see-through, over it */
+.interface[data-fit~="sort-icon"] .sort-control {
+    position: relative;
+    padding-left: var(--sp-1);
+}
+
+.interface[data-fit~="sort-icon"] .sort-control .i {
+    display: block;
+    position: absolute;
+    left: calc(var(--sp-1) + (var(--ctl-lg) - 8px - var(--icon-sm)) / 2);
+    pointer-events: none;
+}
+
+.interface[data-fit~="sort-icon"] .sort-control select {
+    width: calc(var(--ctl-lg) - 8px);
+    padding: 0;
+    background-image: none;
+    color: transparent;
+}
+
+.interface[data-fit~="sort-icon"] .sort-control select option {
+    color: var(--text-1);
+}
+
+.interface[data-fit~="count-off"] #file-count {
+    display: none;
+}
+
+/* In the grid the folder pill has the top left */
+body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
+    display: none;
+}
+
+/* Header buttons put into More for room: shown when it's opened */
+.header-controls [data-squeezed] {
+    display: none;
+}
+
+.header-controls.expanded [data-squeezed]:not(.hidden) {
+    display: inline-flex;
+}
+
+.interface[data-fit~="edits-short"] .edits-more {
+    display: none;
+}
+
+/* Off center, beside the size slider, rather than give up its labels */
+.interface[data-fit~="sel-aside"]:not(.edits-on) .selection-bar {
+    right: calc(var(--gutter) + var(--size-room, 220px) + var(--sp-2));
+}
+
+.interface[data-fit~="sel-icons"] .selection-bar .tb-btn.labelled span {
+    display: none;
+}
+
+.interface[data-fit~="sel-icons"] .selection-bar .tb-btn.labelled {
+    padding: 0 calc((var(--ctl-lg) - 8px - var(--icon-md)) / 2);
+}
+
+.interface[data-fit~="sel-tight"] .selection-bar .tb-sep {
+    display: none;
+}
+
+.interface[data-fit~="size-short"] #grid-size-slider {
+    width: 64px;
+}
+
+.interface[data-fit~="size-short"] .grid-controls {
+    padding: 0 var(--sp-3);
+}
+
+.interface[data-fit~="size-short"] .slider-group {
+    gap: var(--sp-2);
+}
+
+.interface[data-fit~="size-off"] .grid-controls {
+    display: none;
+}
+
+.interface[data-fit~="sel-scroll"] .selection-bar {
+    overflow-x: auto;
+    scrollbar-width: none;
 }
 
 .file-name {
@@ -748,6 +840,39 @@ header {
 
 .header-controls.expanded .hc-extra:not(.hidden) {
     display: inline-flex;
+}
+
+/* Opened: its buttons go on rows under the usual ones, as wide as the
+   pill was (--hc-w, set as it opens), rather than out over the file pill */
+.header-controls.expanded:not(.vertical) {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    width: var(--hc-w, auto);
+    height: auto;
+    min-height: var(--ctl-lg);
+    padding: 3px var(--sp-1);
+    border-radius: calc(var(--ctl-lg) / 2);
+}
+
+.header-controls.expanded:not(.vertical) .hc-more {
+    order: 1;
+}
+
+/* Over the folder list where it overlays the grid (narrow windows) */
+header:has(.header-controls.expanded) {
+    z-index: calc(var(--z-floating) + 3);
+}
+
+.header-controls.expanded:not(.vertical)::after {
+    content: '';
+    order: 2;
+    flex-basis: 100%;
+    height: 0;
+}
+
+.header-controls.expanded:not(.vertical) .hc-extra,
+.header-controls.expanded:not(.vertical) [data-squeezed] {
+    order: 3;
 }
 
 .header-controls.expanded .hc-more {
@@ -1055,9 +1180,8 @@ header {
     100% { box-shadow: 0 0 0 0 transparent; }
 }
 
-/* Empty and no-match states */
-.grid-view.grid-empty::after,
-.grid-view.grid-no-match::after {
+/* Empty and no-match states (App.emptyState): why, and the way out */
+.grid-empty-box {
     grid-column: 1 / -1;
     justify-self: center;
     max-width: 380px;
@@ -1071,12 +1195,20 @@ header {
     border-radius: var(--r-lg);
 }
 
-.grid-view.grid-empty::after {
-    content: 'No photos here yet. Drag photos onto this folder in the folder list, or select some in All photos and press M.';
+/* Photos came in since (scanned, added in Explorer) */
+.grid-view:not(.grid-empty):not(.grid-empty-project):not(.grid-no-match) .grid-empty-box {
+    display: none;
 }
 
-.grid-view.grid-no-match::after {
-    content: 'No photos match. Clear the search or the flag filter (× in the folder pill) to see everything.';
+.grid-empty-box p {
+    margin: 0;
+}
+
+.grid-empty-actions {
+    display: flex;
+    justify-content: center;
+    gap: var(--sp-2);
+    margin-top: var(--sp-4);
 }
 
 /* A subfolder in the grid: up to four of its photos and its name */
@@ -1194,7 +1326,7 @@ header {
     -webkit-backdrop-filter: blur(6px);
 }
 
-/* Flag badges on a tile or film-strip item: colour dot, star, rescan */
+/* Flag badges on a tile or film-strip item: color dot, star, rescan */
 .tile-flags {
     position: absolute;
     top: 6px;
@@ -1233,7 +1365,7 @@ header {
     box-shadow: 0 0 0 1.5px rgb(0 0 0 / 0.25);
 }
 
-/* Star and rescan colours on photos (dark chips) stay bright */
+/* Star and rescan colors on photos (dark chips) stay bright */
 .tf-star {
     color: var(--on-photo-star);
 }
@@ -1261,17 +1393,133 @@ header {
     -webkit-backdrop-filter: none;
 }
 
-/* Beside the file name in the centre pill */
+/* Beside the file name in the center pill */
 #file-flags {
     display: inline-flex;
     align-items: center;
     gap: 5px;
 }
 
+/* Save edits when done (edits.js): a pencil on edited photos, top left */
+.tile-edit {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    display: inline-flex;
+    padding: 4px;
+    border-radius: var(--r-pill);
+    background: var(--on-photo-bg);
+    color: var(--on-photo-text);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    pointer-events: none;
+    animation: pop-in var(--dur-slow) var(--ease-spring);
+}
+
+.thumb-item .tile-edit {
+    top: 3px;
+    left: 3px;
+    padding: 2px;
+}
+
+.thumb-item .tile-edit svg {
+    width: 10px;
+    height: 10px;
+}
+
+:root[data-glass="subtle"] .tile-edit {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.file-edit {
+    display: inline-flex;
+    margin-left: 4px;
+    color: var(--accent-text);
+}
+
+/* What's waiting to be saved: a pill under the header */
+.edits-bar {
+    /* Grid only, bottom right, left of the size slider, in the selection
+       bar's row (which makes room for it: --edits-room and --size-room,
+       measured by Edits.updateBar) */
+    position: absolute;
+    right: calc(var(--gutter) + var(--size-room, 220px) + var(--sp-2));
+    bottom: var(--gutter);
+    z-index: calc(var(--z-floating) + 1);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    max-width: calc(100% - 2 * var(--gutter));
+    padding: 0 5px 0 var(--sp-3);
+    white-space: nowrap;
+    animation: bar-in var(--dur-slow) var(--ease-out);
+}
+
+body[data-view="single"] .edits-bar {
+    display: none;
+}
+
+/* Buttons the pill's own shape, inset evenly all round */
+.edits-bar .btn {
+    height: calc(var(--ctl-lg) - 10px);
+    padding: 0 var(--sp-3);
+    border-radius: var(--r-pill);
+}
+
+.interface.edits-on .selection-bar {
+    right: calc(var(--gutter) + var(--size-room, 220px) + var(--edits-room, 0px) + 2 * var(--sp-2));
+    max-width: none;
+}
+
+/* Not enough room beside the selection bar: above the size slider */
+.interface[data-fit~="edits-stacked"] .edits-bar {
+    right: var(--gutter);
+    bottom: calc(var(--gutter) + var(--ctl-lg) + var(--sp-2));
+}
+
+.interface.edits-on[data-fit~="edits-stacked"] .selection-bar {
+    right: calc(var(--gutter) + var(--size-room, 220px) + var(--sp-2));
+}
+
+
+.edits-icon {
+    display: inline-flex;
+    color: var(--accent-text);
+}
+
+.edits-icon .i {
+    width: 16px;
+    height: 16px;
+}
+
+.edits-text {
+    margin-right: var(--sp-1);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: var(--fs-small);
+}
+
+
+.sb-card-defer {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-top: var(--sp-2);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    cursor: pointer;
+}
+
+.sb-card-defer input {
+    margin: 0;
+}
+
 /* ---- 7. Folder pill, folder list, flags, search ---- */
 
 /* Folder pill in grid view, top left, level with the header pills. Kept
-   clear of the centre pill (Folders.fitBar sets --bar-room). */
+   clear of the center pill (Folders.fitBar sets --bar-room). */
 .folder-bar {
     position: absolute;
     top: var(--gutter);
@@ -1295,7 +1543,7 @@ header {
     background: var(--tb-pressed);
 }
 
-/* Not much room beside the centre pill: shorter labels, no path */
+/* Not much room beside the center pill: shorter labels, no path */
 .fb-short,
 .folder-bar.tight .fb-long,
 .folder-bar.tight .fb-crumbs {
@@ -1593,12 +1841,6 @@ header {
     cursor: inherit;
 }
 
-.fr-hint {
-    margin: var(--sp-2) var(--sp-2) var(--sp-1);
-    color: var(--text-2);
-    font-size: var(--fs-small);
-    line-height: 1.5;
-}
 
 /* Folder list foot: the total of what's shown, then New folder */
 .fr-foot {
@@ -1732,13 +1974,13 @@ header {
 
 /* ---- 8. Selection bar, grid size ---- */
 
-/* Centred in the room between the folder list (when open) and the grid
+/* Centered in the room between the folder list (when open) and the grid
    size slider */
 .selection-bar {
     position: absolute;
     bottom: var(--gutter);
     left: var(--gutter);
-    /* Centred on the grid (beside the folder list when it's open), allowing
+    /* Centered on the grid (beside the folder list when it's open), allowing
        for the grid's scrollbar; on a narrow window it runs on over the
        grid size slider */
     right: calc(var(--gutter) + var(--grid-scrollbar, 0px));
@@ -1755,7 +1997,8 @@ header {
 }
 
 .interface.rail-open .selection-bar {
-    left: var(--rail-room);
+    /* The bar's offsets are scaled with it by the UI size: right by the list */
+    left: calc(var(--rail-room) / var(--ui-scale, 1));
 }
 
 .sel-count {
@@ -1817,6 +2060,96 @@ header {
 
 @keyframes popover-in {
     from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+}
+
+/* Undo history drops down under the header pill, like Info */
+.history-panel {
+    position: absolute;
+    top: calc(var(--gutter) + var(--ctl-lg) + var(--sp-2));
+    right: var(--gutter);
+    z-index: var(--z-popover);
+    display: flex;
+    flex-direction: column;
+    width: 320px;
+    max-width: calc(100% - 2 * var(--gutter));
+    max-height: calc(100% - 2 * var(--gutter) - var(--ctl-lg) - var(--sp-2));
+    padding: var(--sp-4) var(--sp-2) var(--sp-3);
+    border-radius: var(--r-lg);
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+}
+
+.history-panel .section-label,
+.history-hint,
+.history-foot {
+    margin: 0 var(--sp-2) var(--sp-2);
+}
+
+.history-hint,
+.history-foot {
+    color: var(--text-2);
+}
+
+.history-foot {
+    margin-top: var(--sp-2);
+    margin-bottom: 0;
+    font-size: var(--fs-caption);
+}
+
+.history-list {
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.history-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--sp-2);
+    width: 100%;
+    padding: 6px var(--sp-2);
+    border: none;
+    border-radius: var(--r-sm);
+    background: none;
+    color: var(--text-1);
+    text-align: left;
+    cursor: pointer;
+}
+
+.history-row:hover,
+.history-row:focus-visible {
+    background: var(--tb-hover);
+    outline: none;
+}
+
+/* Pointing at a step marks it and every newer one: what would be undone */
+.history-list:has(.history-row:hover) .history-row:has(~ .history-row:hover),
+.history-list .history-row:hover {
+    background: var(--tb-hover);
+}
+
+.history-what {
+    font-weight: var(--fw-semibold);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.history-when {
+    color: var(--text-2);
+    font-size: var(--fs-caption);
+}
+
+.history-detail {
+    grid-column: 1 / -1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-2);
+}
+
+.history-panel.busy .history-list {
+    opacity: 0.5;
+    pointer-events: none;
 }
 
 /* File info drops down under the header pill */
@@ -1955,7 +2288,7 @@ body {
     --toast-bottom: calc(var(--gutter) + var(--ctl-lg) + var(--sp-3));
 }
 
-/* Single view: just above the film strip, beside the centred controls */
+/* Single view: just above the film strip, beside the centered controls */
 body[data-view="single"] {
     --toast-bottom: calc(var(--strip-height, 80px) + 28px + var(--gutter));
 }
@@ -1963,6 +2296,17 @@ body[data-view="single"] {
 /* Grid with the folder list open: beside the list */
 body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) {
     --toast-left: var(--rail-room);
+}
+
+/* Single view on a narrow window: above the prev / rotate / next pill
+   rather than into it (fit.js) */
+body[data-view="single"]:has(#main-interface[data-fit~="toast-up"]:not(.hidden)) {
+    --toast-bottom: calc(var(--strip-height, 80px) + 28px + var(--gutter) + var(--ctl-lg) + var(--sp-2));
+}
+
+/* Grid with the edits bar up above the slider (fit.js): above that too */
+body[data-view="grid"]:has(#main-interface.edits-on[data-fit~="edits-stacked"]:not(.hidden)) {
+    --toast-bottom: calc(var(--gutter) + 2 * var(--ctl-lg) + var(--sp-2) + var(--sp-3));
 }
 
 body:has(#drop-zone:not(.hidden)) {
@@ -2349,21 +2693,128 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     height: var(--ctl-lg);
 }
 
-/* Settings */
+/* Settings: the pages on the left, one page at a time on the right, at
+   one size so switching pages doesn't make it jump */
 .dialog.settings-card {
-    width: min(620px, 100%);
+    width: min(820px, 100%);
+    height: min(640px, 100%);
+}
+
+.settings-main {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.settings-nav {
+    display: flex;
+    flex-direction: column;
+    flex: none;
+    gap: 2px;
+    width: 190px;
+    padding: var(--sp-3);
+    border-right: 1px solid var(--border-subtle);
+}
+
+.settings-nav button {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    height: 36px;
+    padding: 0 var(--sp-3);
+    border: none;
+    border-radius: var(--r-md);
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-weight: var(--fw-medium);
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.settings-nav button .i {
+    flex: none;
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+}
+
+.settings-nav button:hover {
+    background: var(--tb-hover);
+    color: var(--text-1);
+}
+
+.settings-nav button[aria-selected="true"] {
+    background: var(--accent-soft);
+    color: var(--accent-text);
 }
 
 .settings-body {
-    padding-top: var(--sp-2);
+    flex: 1 1 auto;
+    padding: var(--sp-4) var(--sp-5) var(--sp-5);
 }
 
-.settings-section {
-    padding: var(--sp-4) 0 var(--sp-2);
+.settings-section:not(.active) {
+    display: none;
 }
 
-.settings-section + .settings-section {
+.settings-page-title {
+    margin: 0 0 var(--sp-2);
+    font-size: var(--fs-title, 17px);
+    font-weight: var(--fw-semibold);
+    color: var(--text-1);
+}
+
+/* A few settings that go together, under a small heading */
+.set-group {
+    margin: var(--sp-4) 0 0;
+    padding-top: var(--sp-3);
     border-top: 1px solid var(--border-subtle);
+    color: var(--text-3);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-semibold);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.settings-page-title + .set-group {
+    margin-top: var(--sp-2);
+    padding-top: 0;
+    border-top: none;
+}
+
+/* Done on the right, alone */
+.settings-card .dialog-foot {
+    justify-content: flex-end;
+}
+
+.set-row-end {
+    justify-content: flex-end;
+    min-height: 0;
+}
+
+/* Narrow: the pages in a row across the top */
+@media (max-width: 700px) {
+    .settings-main {
+        flex-direction: column;
+    }
+    .settings-nav {
+        flex-direction: row;
+        width: auto;
+        overflow-x: auto;
+        padding: var(--sp-2) var(--sp-3);
+        border-right: none;
+        border-bottom: 1px solid var(--border-subtle);
+        scrollbar-width: none;
+    }
+    .settings-nav button {
+        flex: none;
+        height: 32px;
+    }
+    .settings-nav button .i {
+        display: none;
+    }
 }
 
 .set-row {
@@ -2414,6 +2865,19 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     text-align: right;
 }
 
+/* Two buttons for one setting (Auto crop's test scans: Export…, Clear…) */
+.set-buttons {
+    display: inline-flex;
+    gap: var(--sp-2);
+}
+
+/* A setting that can't be changed now (the help under its label says why) */
+.set-row.unavailable .seg,
+.set-row.unavailable .set-range {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
 /* Accent colour: swatches and a custom pick */
 .accent-swatches {
     display: flex;
@@ -2450,7 +2914,7 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     box-shadow: 0 0 0 2px var(--bg-surface), 0 0 0 4px var(--sw);
 }
 
-/* The custom swatch: a rainbow until a colour of its own is picked */
+/* The custom swatch: a rainbow until a color of its own is picked */
 .accent-custom {
     background: conic-gradient(#f87171, #facc15, #4ade80, #60a5fa, #c084fc, #f87171);
     overflow: visible;
@@ -2581,6 +3045,23 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 #shortcuts-filter {
     width: 200px;
+}
+
+.shortcuts-profiles {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-5) 0;
+}
+
+.shortcuts-profiles label {
+    color: var(--text-2);
+}
+
+#shortcuts-profile {
+    width: auto;
+    min-width: 180px;
 }
 
 .shortcuts-list {
@@ -3107,7 +3588,7 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     text-align: right;
 }
 
-/* Straighten slider: a centre tick; the part between 0° and the angle is
+/* Straighten slider: a center tick; the part between 0° and the angle is
    filled (--lo / --hi set by crop.js) */
 .crop-straighten input[type="range"] {
     --lo: 50%;
@@ -3351,8 +3832,24 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     overflow-y: auto;
     padding: var(--sp-6) var(--sp-4);
     background:
-        radial-gradient(ellipse 60% 50% at 50% 35%, var(--bg-surface), transparent),
-        var(--bg-canvas);
+        radial-gradient(ellipse 60% 50% at 50% 35%, var(--bg-window-glow), transparent),
+        var(--bg-window);
+}
+
+/* With a backdrop (tokens.css), one tint over it, not a layer each:
+   body's, which the canvas takes when html has none. The start screen
+   keeps only its glow, and a project left open under it is hidden rather
+   than showing through. */
+html.backdrop {
+    background: transparent;
+}
+
+html.backdrop .drop-zone {
+    background: radial-gradient(ellipse 60% 50% at 50% 35%, var(--bg-window-glow), transparent);
+}
+
+html.backdrop .drop-zone:not(.hidden) ~ .interface {
+    visibility: hidden;
 }
 
 .drop-content {
@@ -3639,43 +4136,26 @@ body.dragging-photos .folder-tile:hover {
 
 /* ---- 16. Responsive ---- */
 
-/* Laptops: with the folder list open there's less room for labels (the
-   bar is centred on the grid, so it would reach the size slider) */
-@media (max-width: 1439px) {
-    .interface.rail-open .selection-bar .tb-btn.labelled span {
-        display: none;
-    }
-    .interface.rail-open .selection-bar .tb-btn.labelled {
-        padding: 0 calc((var(--ctl-lg) - 8px - var(--icon-md)) / 2);
-    }
-}
-
 /* Tablets and small windows */
 @media (max-width: 1023px) {
     :root {
         --gutter: 12px;
         --rail-w: 220px;
     }
-    .selection-bar .tb-btn.labelled span {
-        display: none;
-    }
-    .selection-bar .tb-btn.labelled {
-        padding: 0 calc((var(--ctl-lg) - 8px - var(--icon-md)) / 2);
-    }
-    .file-info {
-        max-width: calc(100% - 2 * 200px);
-    }
-    .sort-control .i {
-        display: none;
-    }
     .crop-tip {
         display: none;
     }
+    /* The tools above; Cancel, Save & next and Save together on the last row */
     .crop-spacer {
+        order: 1;
         flex-basis: 100%;
         height: 0;
     }
+    #crop-cancel {
+        order: 2;
+    }
     .crop-commit {
+        order: 3;
         flex: 1;
         justify-content: flex-end;
     }
@@ -3683,40 +4163,7 @@ body.dragging-photos .folder-tile:hover {
 
 /* Phones: viewing first */
 @media (max-width: 767px) {
-    header {
-        justify-content: flex-start;
-    }
-    .file-info {
-        max-width: calc(100% - 210px);
-    }
-    .sort-control {
-        display: none;
-    }
-    /* In the grid the folder pill takes the top left */
-    body[data-view="grid"] .file-info {
-        display: none;
-    }
-    body[data-view="grid"] .folder-bar {
-        max-width: calc(100% - 3 * var(--gutter) - 196px) !important;
-    }
-    /* Short labels, no path: same as .tight */
-    .folder-bar .fb-long,
-    .folder-bar .fb-crumbs {
-        display: none;
-    }
-    .folder-bar .fb-short {
-        display: inline;
-    }
-    .selection-bar .tb-sep {
-        display: none;
-    }
-    .grid-controls {
-        display: none;
-    }
-    .selection-bar {
-        left: var(--gutter);
-        right: var(--gutter);
-    }
+    /* The pills give up their parts in turn instead (fit.js) */
     .interface.rail-open .grid-view {
         padding-left: var(--gutter);
     }
@@ -3774,4 +4221,1292 @@ body.dragging-photos .folder-tile:hover {
     .dupes-tip {
         display: none;
     }
+}
+
+/* Only in the Windows app (html.native), or only outside it */
+html:not(.native) .native-only {
+    display: none !important;
+}
+
+/* Stored orders (Settings → Stored orders, in the Windows app) */
+.dialog.stored-card {
+    width: min(760px, 100%);
+}
+
+.stored-help {
+    margin: 0;
+    padding: 0 var(--sp-5) var(--sp-3);
+}
+
+.stored-summary {
+    padding: 0 var(--sp-5) var(--sp-2);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.stored-list {
+    list-style: none;
+    margin: 0;
+    padding: 0 var(--sp-5) var(--sp-3);
+    overflow-y: auto;
+}
+
+.stored-list li {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-3) 0;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.stored-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.stored-name {
+    font-weight: var(--fw-medium);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.stored-current {
+    margin-left: var(--sp-2);
+    padding: 1px var(--sp-2);
+    border-radius: var(--r-pill);
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+}
+
+.stored-path,
+.stored-detail {
+    color: var(--text-3);
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.stored-gone .stored-path {
+    color: var(--warning-text);
+}
+
+.stored-actions {
+    display: flex;
+    gap: var(--sp-2);
+    flex-shrink: 0;
+}
+
+.stored-empty {
+    padding: var(--sp-5) 0;
+    color: var(--text-3);
+    text-align: center;
+}
+
+/* Scan (the Windows app) */
+/* The scan dock: a floating panel, not a dialog. States: setup (the
+   choices), scanning (the photos coming in), done (Scan more) */
+.scan-dock {
+    position: fixed;
+    right: var(--gutter);
+    bottom: calc(var(--gutter) + 64px);
+    z-index: calc(var(--z-floating) + 3);
+    display: flex;
+    flex-direction: column;
+    width: min(380px, calc(100vw - 2 * var(--gutter)));
+    max-height: calc(100vh - 2 * var(--gutter) - 64px);
+    border-radius: var(--r-lg);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-4, var(--shadow-2)), var(--highlight);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    color: var(--text-1);
+    font-size: var(--fs-body);
+}
+
+.scan-dock-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+    cursor: move;
+    user-select: none;
+}
+
+.scan-dock-title {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-semibold);
+}
+
+.scan-dot {
+    display: none;
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #3fb950;
+    box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.25);
+    animation: scan-pulse 1.4s ease-in-out infinite;
+}
+
+.scan-dock[data-state="scanning"] .scan-dot {
+    display: block;
+}
+
+@keyframes scan-pulse {
+    50% { opacity: 0.4; }
+}
+
+.scan-dock-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+}
+
+.scan-dock.small .scan-dock-body {
+    display: none;
+}
+
+.scan-dock .scan-body {
+    padding: var(--sp-3);
+}
+
+.scan-dock:not([data-state="setup"]) .scan-body,
+.scan-dock[data-state="setup"] .scan-live,
+.scan-dock:not([data-state="scanning"]) #scan-stop,
+.scan-dock:not([data-state="done"]) #scan-settings,
+.scan-dock[data-state="scanning"] #scan-cancel,
+.scan-dock[data-state="scanning"] #scan-go {
+    display: none;
+}
+
+.scan-live {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-3);
+}
+
+.scan-summary,
+.scan-status {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.scan-status {
+    color: var(--text-1);
+}
+
+.scan-status.error {
+    color: var(--danger-text);
+}
+
+.scan-strip {
+    display: flex;
+    gap: 6px;
+    min-height: 54px;
+    overflow: hidden;
+}
+
+.scan-strip:empty::before {
+    content: 'Waiting for the first photo…';
+    align-self: center;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.scan-dock[data-state="done"] .scan-strip:empty {
+    display: none;
+}
+
+.scan-strip figure {
+    position: relative;
+    flex: none;
+    width: 72px;
+    height: 54px;
+    margin: 0;
+    overflow: hidden;
+    border-radius: var(--r-xs);
+    background: var(--tb-hover);
+}
+
+.scan-strip img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.scan-strip figcaption {
+    position: absolute;
+    left: 4px;
+    bottom: 2px;
+    max-width: calc(100% - 8px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #fff;
+    font-size: 10px;
+    text-shadow: 0 1px 2px #000;
+}
+
+.scan-dock-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-3);
+    /* Always in sight: the settings scroll behind it */
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    margin-top: auto;
+    border-top: 1px solid var(--border);
+    border-radius: 0 0 var(--r-lg) var(--r-lg);
+    /* Nearly solid, so the settings scrolling behind don't show through */
+    background: color-mix(in srgb, var(--bg-surface) 94%, transparent);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+}
+
+/* Scan whole glass: next to Preview, when scanning from the glass */
+#scan-whole {
+    display: none;
+}
+
+.scan-dock[data-state="setup"][data-mode="glass"] #scan-whole {
+    display: inline-flex;
+}
+
+.scan-grow {
+    flex: 1;
+}
+
+.scan-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+}
+
+.scan-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: var(--fs-small);
+    color: var(--text-2);
+}
+
+.scan-row {
+    display: flex;
+    gap: var(--sp-2);
+    align-items: center;
+}
+
+.scan-row .field {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: var(--ctl-lg);
+}
+
+.scan-row .scan-num {
+    flex: 0 0 96px;
+}
+
+.scan-preview {
+    color: var(--text-3);
+}
+
+.scan-note {
+    margin-top: calc(-1 * var(--sp-2));
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.scan-note:empty {
+    display: none;
+}
+
+.scan-own {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    margin-top: var(--sp-2);
+}
+
+.scan-own.hidden {
+    display: none;
+}
+
+.scan-own small {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.scan-check {
+    display: flex;
+    gap: var(--sp-2);
+    align-items: flex-start;
+    cursor: pointer;
+}
+
+.scan-check input {
+    margin-top: 3px;
+}
+
+.scan-check small {
+    display: block;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.scan-body .set-help {
+    margin: 0;
+}
+
+/* jEditor's own scanner settings (scan.js): one block, in setup or beside
+   the glass */
+.scan-dock[data-mode="driver"] #scan-opts-home .scan-opts {
+    display: none;
+}
+
+.scan-opts {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+
+.scan-opts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-2);
+}
+
+.scan-opts-grid .field {
+    width: 100%;
+    min-width: 0;
+}
+
+.scan-slider {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 6px;
+}
+
+.scan-slider output {
+    margin-left: auto;
+    color: var(--text-1);
+    font-variant-numeric: tabular-nums;
+}
+
+.scan-slider input[type="range"] {
+    flex-basis: 100%;
+    width: 100%;
+}
+
+.scan-adv summary {
+    cursor: pointer;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.scan-adv[open] summary {
+    margin-bottom: var(--sp-2);
+}
+
+.scan-adv > label + label {
+    margin-top: var(--sp-2);
+}
+
+/* Preview and crop (scan-preview.js): the dock grows to show the glass */
+.scan-dock[data-state="preview"] {
+    left: 3vw !important;
+    right: 3vw !important;
+    top: 3vh !important;
+    bottom: 3vh !important;
+    width: auto;
+    max-height: none;
+}
+
+.scan-dock[data-state="preview"] .scan-dock-body {
+    flex: 1;
+}
+
+.scan-dock[data-state="preview"] .scan-live,
+.scan-dock:not([data-state="preview"]) .scan-pv {
+    display: none;
+}
+
+.scan-dock[data-state="preview"] #scan-settings {
+    display: inline-flex;
+}
+
+.scan-dock[data-state="preview"].waiting #scan-stop {
+    display: inline-flex;
+}
+
+.scan-dock.waiting .scan-dot {
+    display: block;
+}
+
+.scan-pv {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    gap: var(--sp-3);
+    padding: var(--sp-3);
+}
+
+.scan-pv-stage {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    min-height: 240px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--r-md, 8px);
+    background: rgba(0, 0, 0, 0.28);
+    overflow: hidden;
+}
+
+.scan-pv-bed {
+    position: relative;
+    flex: none;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+
+.scan-pv-bed img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+.scan-pv-bed img:not([src]) {
+    visibility: hidden;
+}
+
+.scan-pv-boxes {
+    position: absolute;
+    inset: 0;
+    cursor: crosshair;
+    touch-action: none;
+    outline: none;
+}
+
+.pv-box {
+    position: absolute;
+    border: 2px solid var(--accent);
+    background: rgba(47, 111, 237, 0.1);
+    cursor: move;
+}
+
+.pv-box.sel {
+    border-color: #fff;
+    box-shadow: 0 0 0 2px var(--accent);
+}
+
+.pv-n {
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    min-width: 20px;
+    padding: 0 6px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 11px;
+    font-weight: var(--fw-semibold);
+    line-height: 18px;
+    text-align: center;
+    pointer-events: none;
+}
+
+.pv-x {
+    position: absolute;
+    right: 3px;
+    top: 3px;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    font: 14px/20px system-ui, sans-serif;
+    cursor: pointer;
+}
+
+.pv-x:hover {
+    background: #d13438;
+}
+
+.pv-up {
+    position: absolute;
+    left: 50%;
+    top: 4px;
+    margin-left: -9px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font: 700 12px/18px system-ui, sans-serif;
+    text-align: center;
+    pointer-events: none;
+}
+
+.pv-turn {
+    position: absolute;
+    right: 27px;
+    top: 3px;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    font: 14px/20px system-ui, sans-serif;
+    cursor: pointer;
+}
+
+.pv-turn:hover {
+    background: var(--accent);
+}
+
+.pv-rot {
+    position: absolute;
+    left: 50%;
+    top: -26px;
+    width: 14px;
+    height: 14px;
+    margin-left: -7px;
+    border: 2px solid var(--accent);
+    border-radius: 50%;
+    background: #fff;
+    cursor: grab;
+    display: none;
+}
+
+.pv-rot::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 12px;
+    width: 2px;
+    height: 12px;
+    background: var(--accent);
+}
+
+.pv-box.sel .pv-rot {
+    display: block;
+}
+
+.pv-h {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--accent);
+    border-radius: 2px;
+    background: #fff;
+}
+
+.pv-h.nw { left: -7px; top: -7px; cursor: nwse-resize; }
+.pv-h.ne { right: -7px; top: -7px; cursor: nesw-resize; }
+.pv-h.se { right: -7px; bottom: -7px; cursor: nwse-resize; }
+.pv-h.sw { left: -7px; bottom: -7px; cursor: nesw-resize; }
+
+.scan-pv-wait {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-2);
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+}
+
+.scan-dock.waiting .scan-pv-wait {
+    display: flex;
+}
+
+.scan-pv-side {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    width: 250px;
+    flex: none;
+    overflow-y: auto;
+}
+
+.scan-pv-count {
+    font-weight: var(--fw-semibold);
+}
+
+.scan-pv-count.error {
+    color: #ff7b72;
+    font-weight: normal;
+}
+
+.scan-pv-help {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.scan-pv-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+}
+
+@media (max-width: 760px) {
+    .scan-pv {
+        flex-direction: column;
+    }
+
+    .scan-pv-side {
+        width: auto;
+    }
+}
+
+/* The camera dock (camera.js): the scan dock's look, live view inside */
+.cam-dock[data-state="live"] {
+    width: min(620px, calc(100vw - 2 * var(--gutter)));
+}
+
+.cam-dock.big {
+    left: 3vw !important;
+    right: 3vw !important;
+    top: 3vh !important;
+    bottom: 3vh !important;
+    width: auto;
+    max-height: none;
+}
+
+.cam-dock.big .scan-dock-body {
+    flex: 1;
+}
+
+.cam-dock.big .cam-live {
+    flex: 1;
+    min-height: 0;
+}
+
+.cam-dock.big .cam-view {
+    flex: 1;
+    aspect-ratio: auto;
+    min-height: 0;
+    max-height: none;
+}
+
+.cam-dock:not([data-state="setup"]) .scan-body,
+.cam-dock[data-state="setup"] .cam-live,
+.cam-dock[data-state="setup"] #cam-stop,
+.cam-dock[data-state="setup"] #cam-take,
+.cam-dock[data-state="setup"] .cam-live-toggle,
+.cam-dock:not([data-state="setup"]) #cam-go,
+.cam-dock:not([data-state="setup"]) #cam-cancel,
+.cam-dock[data-state="setup"] #cam-big {
+    display: none;
+}
+
+.cam-dock[data-state="live"] .scan-dot,
+.cam-dock[data-state="connecting"] .scan-dot {
+    display: block;
+}
+
+.cam-live {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-3);
+}
+
+.cam-view {
+    position: relative;
+    aspect-ratio: 3 / 2;
+    max-height: max(140px, calc(100vh - 420px));
+    border-radius: var(--r-md, 8px);
+    background: #000;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.cam-view img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    user-select: none;
+}
+
+.cam-view img:not([src]) {
+    display: none;
+}
+
+.cam-view-note {
+    position: absolute;
+    inset: auto 0 0 0;
+    padding: 6px 10px;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: var(--fs-small);
+    text-align: center;
+    pointer-events: none;
+}
+
+.cam-view-note:empty {
+    display: none;
+}
+
+.cam-shoot {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    width: 54px;
+    height: 54px;
+    margin-top: -27px;
+    border: 4px solid rgba(255, 255, 255, 0.9);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.25);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    cursor: pointer;
+}
+
+.cam-shoot:hover {
+    background: rgba(255, 255, 255, 0.45);
+}
+
+.cam-shoot:active,
+.cam-dock.shooting .cam-shoot {
+    background: #d13438;
+}
+
+.cam-dock[data-state="connecting"] .cam-shoot {
+    display: none;
+}
+
+.cam-live-toggle {
+    align-items: center;
+}
+
+.cam-live-toggle input {
+    margin-top: 0;
+}
+
+#cam-details[aria-pressed="true"],
+#cam-big[aria-pressed="true"],
+#scan-details[aria-pressed="true"] {
+    color: var(--accent);
+    background: var(--accent-soft, transparent);
+}
+
+/* Details: the app's log, live (logview.js) */
+.log-view {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1, 4px);
+    margin: 0 var(--sp-3) var(--sp-3);
+}
+
+.log-view.hidden {
+    display: none;
+}
+
+.log-view-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1, 4px);
+    font-size: var(--fs-small);
+    color: var(--text-2);
+}
+
+.log-lines {
+    height: 180px;
+    overflow: auto;
+    padding: 6px 8px;
+    border-radius: var(--r-sm, 6px);
+    border: 1px solid var(--border);
+    background: rgba(0, 0, 0, 0.35);
+    color: var(--text-1);
+    font: 11px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+    user-select: text;
+}
+
+.log-lines .dim {
+    color: var(--text-3);
+}
+
+.log-lines .err {
+    color: #ff7b72;
+}
+
+/* The sidebar's places and the project card (places.js, the Windows app) */
+html.native {
+    --rail-w: 290px;
+}
+
+.sb-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-x: hidden; /* long names cut with an ellipsis: never scrolled sideways */
+    overflow-y: auto;
+    margin: 0 calc(-1 * var(--sp-1));
+    padding: 0 var(--sp-1);
+}
+
+.sb-scroll .folder-tree {
+    flex: none;
+    overflow: visible;
+}
+
+.sb-card {
+    flex: none;
+    margin-bottom: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3) var(--sp-3);
+    border-radius: var(--r-md);
+    background: var(--tb-hover);
+}
+
+.sb-card:empty {
+    display: none;
+}
+
+.sb-card-name {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-width: 0;
+    font-weight: var(--fw-semibold);
+}
+
+.sb-card-name span,
+.sb-card-path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-card-name > svg {
+    flex-shrink: 0;
+    color: var(--accent-text);
+}
+
+/* The name renames on a click, as the file name in the top pill: a pill
+   behind it and a pencil by it on hover */
+button.sb-card-name {
+    width: calc(100% + 2 * var(--sp-2));
+    height: 28px;
+    margin: -4px calc(-1 * var(--sp-2));
+    padding: 0 var(--sp-2);
+    border: none;
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: var(--fw-semibold);
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+button.sb-card-name:hover {
+    background: var(--tb-hover);
+}
+
+.sb-card-name .sb-card-edit {
+    display: inline-flex;
+    flex-shrink: 0;
+    margin-left: calc(-1 * var(--sp-1));
+    color: var(--text-2);
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.sb-card-edit svg {
+    width: 14px;
+    height: 14px;
+}
+
+button.sb-card-name:hover .sb-card-edit,
+button.sb-card-name:focus-visible .sb-card-edit {
+    opacity: 1;
+}
+
+.sb-card-path,
+.sb-card-meta {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.sb-card-path {
+    margin-top: 2px;
+}
+
+.sb-card-btns {
+    display: flex;
+    gap: var(--sp-1);
+    margin-top: var(--sp-2);
+}
+
+.sb-card-btns .btn {
+    gap: 6px;
+}
+
+.sb-card-pin.on,
+.sb-pin.on {
+    color: var(--accent-text);
+}
+
+.sb-sec {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    margin: var(--sp-3) 0 2px;
+    min-height: 22px;
+}
+
+.sb-sec-here {
+    margin-top: 0;
+}
+
+.sb-sec-btn,
+.sb-sec-title {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 var(--sp-1);
+    border: none;
+    background: none;
+    color: var(--text-2);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.sb-sec-title {
+    padding-left: var(--sp-2);
+    cursor: default;
+}
+
+.sb-sec-btn:hover {
+    color: var(--text-1);
+}
+
+.sb-sec-caret {
+    display: flex;
+    transform: rotate(90deg);
+    transition: transform var(--dur-base) var(--ease-out);
+}
+
+.sb-sec.closed .sb-sec-caret {
+    transform: none;
+}
+
+.sb-new {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+    justify-content: center;
+    margin: 2px 0 var(--sp-2);
+}
+
+.sb-sec-link {
+    margin-left: auto;
+    max-width: 55%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0 var(--sp-1);
+    border: none;
+    background: none;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    cursor: pointer;
+}
+
+.sb-sec-link:hover {
+    color: var(--text-1);
+    text-decoration: underline;
+}
+
+.sb-search {
+    width: 100%;
+    margin: 2px 0 var(--sp-1);
+}
+
+.sb-sub {
+    margin: var(--sp-2) var(--sp-2) 2px;
+    color: var(--text-3, var(--text-2));
+    font-size: var(--fs-small);
+}
+
+.sb-row {
+    gap: 4px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* A USB drive: its name, and under it how much room it has left */
+.sb-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    padding: 3px 0;
+    line-height: 1.25;
+}
+
+.sb-free {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+    color: var(--text-3);
+    font-size: var(--fs-caption, 11px);
+    font-weight: var(--fw-regular);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.sb-free-bar {
+    flex: none;
+    width: 36px;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 2px;
+    background: var(--border);
+}
+
+.sb-free-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent);
+}
+
+.sb-free.low {
+    color: var(--danger-text, #f87171);
+}
+
+.sb-free.low .sb-free-bar > span {
+    background: var(--danger-text, #f87171);
+}
+
+/* A folder dragged onto a drive or folder: copied there */
+.sb-row.sb-drop-target {
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.sb-row.sb-drop-target > :not(.fr-caret):not(.sb-main) {
+    display: none;
+}
+
+.sb-row.sb-drop-target::after {
+    content: attr(data-drop-label);
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 2px var(--sp-2);
+    border-radius: var(--r-pill);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: var(--fs-caption, 11px);
+    font-weight: var(--fw-semibold);
+    white-space: nowrap;
+}
+
+/* …onto the rest of the sidebar: pinned */
+.sb-pin-target {
+    position: relative;
+    border-radius: var(--r-md);
+    box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.sb-pin-target::before {
+    content: attr(data-drop-label);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: block;
+    margin: var(--sp-1);
+    padding: var(--sp-1) var(--sp-2);
+    border-radius: var(--r-pill);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-semibold);
+    text-align: center;
+}
+
+/* Over the sidebar a drop from Explorer copies or pins, not opens */
+body.sb-drop.drag-over .drop-zone::after,
+body.sb-drop.drag-over #main-interface:not(.hidden)::after {
+    display: none;
+}
+
+.sb-main {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+    height: 100%;
+    min-height: var(--ctl-md);
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.sb-icon {
+    display: flex;
+    flex-shrink: 0;
+    color: var(--text-2);
+}
+
+.sb-row.active .sb-icon,
+.sb-usb .sb-icon {
+    color: var(--accent-text);
+}
+
+.sb-meta {
+    flex-shrink: 0;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.sb-row .fr-count {
+    min-width: 2.2em;
+    text-align: right;
+}
+
+.sb-pin,
+.sb-eject {
+    display: flex;
+    flex-shrink: 0;
+    padding: 2px;
+    border: none;
+    border-radius: var(--r-xs);
+    background: none;
+    color: var(--text-2);
+    cursor: pointer;
+}
+
+.sb-pin,
+.sb-open {
+    opacity: 0;
+}
+
+.sb-open {
+    flex-shrink: 0;
+    height: 22px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-xs);
+    background: var(--tb-hover);
+    color: var(--text-1);
+    font: inherit;
+    font-size: var(--fs-small);
+    cursor: pointer;
+}
+
+.sb-row:hover .sb-open,
+.sb-open:focus-visible {
+    opacity: 1;
+}
+
+.sb-open:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+.sb-pin svg {
+    width: 14px;
+    height: 14px;
+}
+
+.sb-row:hover .sb-pin,
+.sb-pin:focus-visible,
+.sb-pinned .sb-pin {
+    opacity: 1;
+}
+
+.sb-pin:hover,
+.sb-eject:hover {
+    color: var(--text-1);
+    background: var(--tb-hover);
+}
+
+/* A drive plugged in since jEditor started */
+.sb-new-badge {
+    flex-shrink: 0;
+    padding: 0 5px;
+    border-radius: var(--r-xs);
+    background: var(--accent);
+    color: #fff;
+    font-size: 10px;
+    font-weight: var(--fw-semibold);
+    text-transform: uppercase;
+}
+
+.sb-empty,
+.sb-help {
+    margin: 2px 0;
+    padding: 0 var(--sp-2) 0 calc(var(--sp-2) + 16px + var(--depth, 0) * 14px);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.sb-help {
+    padding-left: var(--sp-2);
+    line-height: 1.45;
+}
+
+.sb-choose {
+    width: 100%;
+    margin: var(--sp-1) 0;
+}
+
+.sb-more {
+    margin: 2px var(--sp-2) var(--sp-1);
+    font-size: var(--fs-small);
+}
+
+.start-places {
+    width: 100%;
+    max-height: 46vh;
+    margin-top: var(--sp-6);
+    overflow-y: auto;
+    text-align: left;
+}
+
+.start-places .sb-sec:first-child {
+    margin-top: 0;
 }

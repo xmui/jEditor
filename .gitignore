@@ -1,2 +1,8 @@
+bin/
+obj/
+dist/
+*.user
+.vs/
 node_modules/
+standalone.html
 _site/

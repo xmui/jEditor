@@ -4,7 +4,7 @@
 // images left empty corners inside the crop) and cropped whatever bitmap
 // happened to be on screen — including a stale one after a rotation.
 //
-// Model: the upright image (W × H, EXIF orientation applied) is centred on
+// Model: the upright image (W × H, EXIF orientation applied) is centered on
 // the origin and rotated clockwise by phi = quarterTurns·90° + angle. The
 // crop is an axis-aligned rectangle in that rotated ("output") space and is
 // always kept entirely inside the rotated image, so a straightened crop can
@@ -15,7 +15,7 @@
 // frame sits in the middle of the screen and the photo moves behind it.
 // Drag a handle to resize (the view then glides so the crop fills the screen
 // again), drag inside to move the photo, drag outside to rotate it. Turning
-// pivots on the crop's centre and zooms in just enough to hide the corners.
+// pivots on the crop's center and zooms in just enough to hide the corners.
 
 const CropGeom = {
     rad(deg) { return deg * Math.PI / 180; },
@@ -28,9 +28,9 @@ const CropGeom = {
         return [Math.cos(phi), Math.sin(phi)];
     },
 
-    // Largest s such that the rect centred at (cx, cy) with half-size
+    // Largest s such that the rect centered at (cx, cy) with half-size
     // (a·s, b·s) lies inside the rotated image (inset by m). Negative when
-    // the centre itself is outside.
+    // the center itself is outside.
     maxScale(cx, cy, a, b, W, H, cs, m = 0) {
         const [c, s] = cs;
         const hw = W / 2 - m, hh = H / 2 - m;
@@ -58,14 +58,14 @@ const CropGeom = {
         return { x0: cx - a, y0: cy - b, x1: cx + a, y1: cy + b };
     },
 
-    // Shrink (keeping aspect) and if necessary re-centre a rect so it fits.
+    // Shrink (keeping aspect) and if necessary re-center a rect so it fits.
     fit(r, W, H, cs, m = 0) {
         const cx = (r.x0 + r.x1) / 2, cy = (r.y0 + r.y1) / 2;
         const a = (r.x1 - r.x0) / 2, b = (r.y1 - r.y0) / 2;
         const s = this.maxScale(cx, cy, a, b, W, H, cs, m);
         if (s >= 1) return { ...r };
         if (s > 0.2) return this.scaled(cx, cy, a * s, b * s);
-        // Centre is at (or past) the edge: pull it toward the middle until
+        // Center is at (or past) the edge: pull it toward the middle until
         // a reasonably sized rect fits there.
         const want = Math.min(1, this.maxScale(0, 0, a, b, W, H, cs, m)) * 0.6;
         let lo = 0, hi = 1;
@@ -170,6 +170,7 @@ const CropEditor = {
 
         const bind = (id, fn) => this.el(id).addEventListener('click', (e) => {
             e.currentTarget.blur(); // keep Enter/Space for the editor's shortcuts
+            if (this.busy) return; // saving: the crop being written stays as it is
             fn();
         });
         bind('crop-cancel', () => app.cancelCrop());
@@ -195,6 +196,7 @@ const CropEditor = {
         num.addEventListener('change', () => { this.straighten(parseFloat(num.value) || 0); num.blur(); });
         const wheelNudge = (e) => {
             e.preventDefault();
+            if (!e.deltaY) return; // a sideways scroll doesn't turn it
             this.nudgeAngle((e.deltaY < 0 ? 1 : -1) * (e.shiftKey ? 1 : 0.1));
         };
         slider.addEventListener('wheel', wheelNudge, { passive: false });
@@ -230,32 +232,47 @@ const CropEditor = {
         this.vw = null;
         this.history = [];
         this.future = [];
+        this._auto = null; // what Auto found on this photo (crop-log.js)
         this.root.classList.remove('hidden');
         this.colors = this.themeColors();
         this.el('crop-file').textContent = file.name;
         this.el('crop-dims').textContent = 'Loading…';
+        // Edits kept until saved (edits.js): the crop is kept, not written
+        const later = Edits.on();
+        this.el('crop-save').textContent = later ? 'Done' : 'Save';
+        this.el('crop-save').title = later ? 'Keep this crop; it\'s saved to the file when you save the project\'s edits (Enter)' : 'Save (Enter)';
+        this.el('crop-save-next').textContent = later ? 'Done & next' : 'Save & next';
         this.updateButtons();
         this.resizeCanvas();
 
         // Screen-sized working copy — the viewer's cached preview when there
         // is one (made from the file's current bytes); the full-resolution
-        // render happens on save, from the original.
-        const src = await app.getDisplaySource(file);
-        let preview;
+        // render happens on save, from the original. Always the whole
+        // photo, even with an edit kept until saved (edits.js): that edit
+        // is where the crop starts, so it can be changed
+        // Closed, or opened again, while this one was loading: it stops
+        const token = this._openToken = (this._openToken || 0) + 1;
+        const current = () => this.isOpen && this.file === file && this._openToken === token;
+        const src = await app.getDisplaySource(file, { raw: true });
+        let preview, w, h;
         if (src.isPreview && src.blob) {
             preview = await createImageBitmap(src.blob);
-            this.W = src.w;
-            this.H = src.h;
+            w = src.w;
+            h = src.h;
         } else {
             const data = await file.handle.getFile();
             preview = await createImageBitmap(data); // EXIF orientation applied by default
-            this.W = preview.width;
-            this.H = preview.height;
+            w = preview.width;
+            h = preview.height;
         }
         const data = await file.handle.getFile();
-        if (!this.isOpen || this.file !== file) { preview.close(); return; }
+        const dpi = ImageMeta.readDpi(new Uint8Array(await data.slice(0, 256 * 1024).arrayBuffer()));
+        if (!current()) { preview.close(); return; }
+        if (this.preview && this.preview !== preview && this.preview.close) this.preview.close();
         this.preview = preview;
-        this.dpi = ImageMeta.readDpi(new Uint8Array(await data.slice(0, 256 * 1024).arrayBuffer()));
+        this.W = w;
+        this.H = h;
+        this.dpi = dpi;
 
         this.q = 0;
         this.angle = 0;
@@ -266,8 +283,14 @@ const CropEditor = {
         this.applyAspectToRect(this.rect);
         this.ready = true;
         this.syncAngleUi();
+        const kept = Edits.get(file);
+        if (kept) {
+            this.applySnapshot(kept);
+            this.el('crop-aspect').value = this.aspectKey;
+            this.syncAngleUi();
+        }
         this.vw = this.homeView();
-        if (this.autoEach()) {
+        if (!kept && this.autoEach()) {
             this.autoDetect({ quiet: true, animate: false });
             this.history = []; // the starting point is the detected crop
         }
@@ -300,7 +323,7 @@ const CropEditor = {
         return this.q % 2 ? { w: this.H, h: this.W } : { w: this.W, h: this.H };
     },
 
-    // Output space ↔ the upright image's own (centred) coordinates
+    // Output space ↔ the upright image's own (centered) coordinates
     toImage(p) {
         const [c, s] = this.cs();
         return { x: c * p.x + s * p.y, y: -s * p.x + c * p.y };
@@ -346,7 +369,7 @@ const CropEditor = {
         return this.landscape ? 1 / v : v;
     },
 
-    // Largest rect of the current ratio inside `within`, centred on it
+    // Largest rect of the current ratio inside `within`, centered on it
     aspectRect(within) {
         const r = this.ratio();
         if (!r) return { ...within };
@@ -446,7 +469,7 @@ const CropEditor = {
     // ---- edits ----
 
     // Turn the photo behind the frame. The frame stays put on screen; the
-    // photo pivots on the crop's centre and zooms just enough to fill it.
+    // photo pivots on the crop's center and zooms just enough to fill it.
     setAngle(deg, { flash = false } = {}) {
         if (!this.ready || !isFinite(deg)) return;
         deg = Math.max(-this.MAX_ANGLE, Math.min(this.MAX_ANGLE, Math.round(deg * 100) / 100));
@@ -567,19 +590,21 @@ const CropEditor = {
 
     autoDetect({ quiet = false, animate = true } = {}) {
         if (!this.ready) return false;
-        const det = CropAuto.detect(this.preview, this.W, this.H);
+        const det = CropAuto.find(this.preview, this.W, this.H);
         if (!det) {
+            CropLog.noteAuto(this, null);
             if (!quiet) this.app.showToast('No print edge found — Auto needs a plain scanner border around the photo', 3500);
             return false;
         }
         this.pushHistory();
         this.fitToPrint(det);
+        CropLog.noteAuto(this, det);
         this.syncAngleUi();
         this.flashGrid();
         this.settle(animate);
         if (!quiet) {
             const a = this.angle;
-            this.app.showToast(a ? `Straightened ${a > 0 ? '+' : ''}${a.toFixed(1)}° and cropped to the print` : 'Cropped to the print', 2200);
+            this.app.showToast(a ? `Straightened ${a > 0 ? '+' : ''}${a.toFixed(1)}° and cropped to the print` : 'Cropped to the print', 2200, null, null, { kind: 'crop' });
         }
         return true;
     },
@@ -628,43 +653,90 @@ const CropEditor = {
             return;
         }
         this.pushHistory();
-        this.q = snap.q || 0;
+        this.applySnapshot(snap);
+        this.el('crop-aspect').value = this.aspectKey;
+        this.syncAngleUi();
+        this.settle(false);
+    },
+
+    // Put a snapshot (see above) on this photo: the same turn, tilt and
+    // crop, scaled to its size and kept inside it
+    applySnapshot(snap) {
+        this.q = (((snap.q || 0) % 4) + 4) % 4;
         this.angle = snap.angle || 0;
         this.aspectKey = snap.aspectKey || 'free';
         this.landscape = !!snap.landscape;
-        this.el('crop-aspect').value = this.aspectKey;
         const d = this.turnedDims();
         const n = snap.n;
         this.setRect({ x0: n.x0 * d.w, y0: n.y0 * d.h, x1: n.x1 * d.w, y1: n.y1 * d.h });
         this.refit();
-        this.syncAngleUi();
-        this.settle(false);
+    },
+
+    // A snapshot on a W × H photo, off screen (edits kept until saved, see
+    // edits.js, are snapshots: they're shown and saved through this)
+    fromSnapshot(W, H, snap) {
+        const h = this.headless(W, H);
+        h.applySnapshot(snap);
+        return h;
     },
 
     // ---- output ----
 
     // Render the crop at full resolution from the file's own bytes.
     async renderOutput(fileData, type, original = null) {
-        // EXIF orientation is applied by default ('from-image')
-        const bmp = await createImageBitmap(fileData, {
-            colorSpaceConversion: ImageMeta.canCarryProfile(type, original) ? 'none' : 'default'
-        });
+        const bmp = await this.decodeFor(fileData, type, original);
         try {
             if (bmp.width !== this.W || bmp.height !== this.H) {
                 throw new Error('the file changed on disk — reopen crop');
             }
-            const o = this.outputRect();
-            const canvas = document.createElement('canvas');
-            canvas.width = o.w;
-            canvas.height = o.h;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) throw new Error('image too large to process');
-            const [c, s] = this.cs();
-            ctx.imageSmoothingEnabled = this.angle !== 0;
-            ctx.imageSmoothingQuality = 'high';
-            ctx.setTransform(c, s, -s, c, -o.x0, -o.y0);
-            ctx.drawImage(bmp, -this.W / 2, -this.H / 2);
-            return canvas;
+            return this.drawOutput(bmp);
+        } finally {
+            bmp.close();
+        }
+    },
+
+    // The crop as it was when Save was pressed (snap, on a W × H photo),
+    // whatever happens in the editor while the file is read
+    async renderFrozen(fileData, snap, W, H, type, original = null) {
+        const bmp = await this.decodeFor(fileData, type, original);
+        try {
+            if (bmp.width !== W || bmp.height !== H) throw new Error('the file changed on disk — reopen crop');
+            return this.fromSnapshot(W, H, snap).drawOutput(bmp);
+        } finally {
+            bmp.close();
+        }
+    },
+
+    // EXIF orientation is applied by default ('from-image')
+    decodeFor(fileData, type, original) {
+        return createImageBitmap(fileData, {
+            colorSpaceConversion: ImageMeta.canCarryProfile(type, original) ? 'none' : 'default'
+        });
+    },
+
+    // The crop of `bmp` (W × H) on a canvas of its own
+    drawOutput(bmp) {
+        const o = this.outputRect();
+        const canvas = document.createElement('canvas');
+        canvas.width = o.w;
+        canvas.height = o.h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('image too large to process');
+        const [c, s] = this.cs();
+        ctx.imageSmoothingEnabled = this.angle !== 0;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.setTransform(c, s, -s, c, -o.x0, -o.y0);
+        ctx.drawImage(bmp, -this.W / 2, -this.H / 2);
+        return canvas;
+    },
+
+    // A snapshot rendered at full resolution from a file's bytes (saving
+    // edits kept until saved). Null when it changes nothing.
+    async renderSnapshot(fileData, snap, type, original = null) {
+        const bmp = await this.decodeFor(fileData, type, original);
+        try {
+            const ed = this.fromSnapshot(bmp.width, bmp.height, snap);
+            return ed.isIdentity() && !ed.q ? null : ed.drawOutput(bmp);
         } finally {
             bmp.close();
         }
@@ -688,7 +760,7 @@ const CropEditor = {
         return { w: Math.max(1, this.cssW - 2 * this.PAD), h: Math.max(1, this.cssH - 2 * this.PAD) };
     },
 
-    // The resting view: the crop centred, as large as the stage allows
+    // The resting view: the crop centered, as large as the stage allows
     homeView(r = this.rect) {
         const A = this.avail();
         const d = this.turnedDims();
@@ -725,7 +797,7 @@ const CropEditor = {
         this._anim = requestAnimationFrame(tick);
     },
 
-    // screen = stage centre + s · (output − c)
+    // screen = stage center + s · (output − c)
     view() { return this.vw || this.homeView(); },
     toScreen(x, y, v = this.view()) { return { x: this.cssW / 2 + (x - v.cx) * v.s, y: this.cssH / 2 + (y - v.cy) * v.s }; },
     toOutput(sx, sy, v = this.view()) { return { x: v.cx + (sx - this.cssW / 2) / v.s, y: v.cy + (sy - this.cssH / 2) / v.s }; },
@@ -775,7 +847,7 @@ const CropEditor = {
     },
 
     // The canvas can't use CSS variables: resolve the ones it draws with
-    // (the colour behind photos and the accent) once per opening
+    // (the color behind photos and the accent) once per opening
     themeColors() {
         const probe = document.createElement('span');
         probe.style.display = 'none';
@@ -933,7 +1005,7 @@ const CropEditor = {
     },
 
     onDown(e) {
-        if (!this.ready || e.button !== 0) return;
+        if (!this.ready || this.busy || e.button !== 0) return;
         // Stop any glide where it is: the frame is where the user sees it
         if (this._anim) { cancelAnimationFrame(this._anim); this._anim = 0; }
         const v = { ...this.view() };
@@ -1122,7 +1194,7 @@ const CropEditor = {
                 y0: Math.min(ay, ay + sy * hh), y1: Math.max(ay, ay + sy * hh)
             };
         }
-        // Edge: the other dimension follows, centred
+        // Edge: the other dimension follows, centered
         if (horiz) {
             const hh = (x1 - x0) / ratio;
             return { x0, x1, y0: cy - hh / 2, y1: cy + hh / 2 };

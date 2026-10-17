@@ -1,14 +1,13 @@
 {
   "name": "jeditor",
-  "version": "1.18.1",
+  "version": "1.35.1",
   "private": true,
-  "description": "Minimalist local photo viewer with instant lossless rotation and cropping",
+  "description": "jEditor: a photo viewer for working through scan orders, for Windows, Mac and the web",
   "scripts": {
     "start": "node scripts/serve.js",
-    "build": "node scripts/build-standalone.js",
-    "test": "node test/run.js",
-    "bump": "node scripts/bump-version.js",
-    "build:site": "node scripts/build-standalone.js --site _site"
+    "test": "node test/bridge.test.js && node test/native.test.js && node test/ui.test.js",
+    "build:standalone": "node scripts/build-standalone.js",
+    "bump": "node scripts/bump-version.js"
   },
   "devDependencies": {
     "playwright-core": "^1.45.0"

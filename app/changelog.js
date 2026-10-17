@@ -5,6 +5,258 @@
 
 const CHANGELOG = [
     {
+        version: '1.35.1', date: '2026-10-16',
+        items: [
+            'jEditor is moving back to its first home on GitHub, xmui/jEditor, where it\'s becoming one app for Windows, Mac and the web. Updates now come from there; nothing changes on this PC, and Settings → Updates finds them as before.',
+            'A project in the sidebar\'s list no longer sometimes shows no photo count: when the list was drawn again while counting, the count was known but not shown until the next redraw.'
+        ]
+    },
+    {
+        version: '1.35.0', date: '2026-10-16',
+        items: [
+            'Drag a folder onto a drive (or any folder) in the sidebar to copy it there: a project onto a customer\'s USB stick, say. It says how far it\'s got, with Stop; checks there\'s room first; and a copy that\'s stopped or fails leaves nothing behind. Folders come from the sidebar\'s lists, the open project\'s folder list, or Explorer (photos from Explorer are copied too). jEditor\'s own data stays behind.',
+            'Drag a folder onto the rest of the sidebar to pin it.',
+            'A USB drive in the sidebar shows how much room it has left, under its name, with a bar of how full it is (red when under a tenth is free).',
+            'The New badge on a drive just plugged in sits in its row again, instead of taking a line of its own.',
+            'The sidebar never scrolls sideways: long names are cut with an ellipsis.'
+        ]
+    },
+    {
+        version: '1.34.1', date: '2026-10-15',
+        items: [
+            'Rescan (`R`) no longer shows the same photo two or three times. Pressed while a project was still opening (a big one on a network drive takes a while), it found the photos not read yet and added them, and then the opening added them again. R now waits for the opening, which reads every photo anyway, and says so. Pressed several times in a row, the presses make one rescan, and a photo already shown is never added again.'
+        ]
+    },
+    {
+        version: '1.34.0', date: '2026-10-15',
+        items: [
+            'With photos selected on a narrower window, the selection bar moves off center, beside the size slider, before it gives up its labels or the slider goes.',
+            'The pills refit as the photo count ("1446 / 1446") or the sort\'s name changes width, not just when the window does.',
+            'The project list shows the open project\'s real photo count (1,446) instead of "1,000+": counting stops at 1,000 for the others, but the open one\'s photos are all known.',
+            'Crop on a narrower window: Cancel sits with Save & next and Save on the bottom row, the tools above it, instead of Cancel at the start of the tools and Previous and Reset alone on a row.',
+            'In the single view on a narrow window, messages go up a row instead of running into the prev / rotate / next pill.',
+            'More (the … at the top right) opens its buttons on rows under the usual ones, at the same width, instead of stretching out over the file name; on a narrow window it stays above the folder list.',
+            'Deleting (or moving away) the selected photos in the grid selects the next photo, as Lightroom does: the selection bar stays, and Delete goes on from there.',
+            'Settings is tidied into pages, chosen on the left (along the top on a narrow window): Appearance (color, window, look), Toolbar & keys (keyboard shortcuts, layout, toolbar buttons), Messages, Projects (watching, cache, storage) and Updates, plus Auto crop (its test scans). It opens on the page you used last, keeps one size as you switch, and the arrow keys move between pages. Keyboard shortcuts moved from the bottom of Settings to Toolbar & keys.',
+            'Renaming the open project works like renaming a photo in the top pill: the name on the project card is one button, with a pill behind it and a pencil by it on hover, and a single click renames (no more double-click).',
+            'Fewer explainers in the sidebar: the folder-list hint, the projects-folder note and the empty Pinned note are gone (their buttons say it in their tooltips), and Pinned only shows once something is pinned. Undo history drops its how-to line too. Settings keeps its explanations.',
+            'An empty grid has a button for the way out: Clear search when nothing matches the search or flag filter, All photos for an empty folder, and Scan or Show in Explorer for a project with no photos yet.'
+        ]
+    },
+    {
+        version: '1.33.0', date: '2026-10-15',
+        items: [
+            'Auto crop test scans, for a better Auto crop: when you save a crop on a photo Auto was used on, jEditor keeps the scan and where you cropped it on this PC (up to 1 GB), with whether Auto\'s crop was kept, corrected, or missed the print. Settings → Auto crop: turn it off, see how many are kept, Export… them to a folder, or Clear… them. Your photos aren\'t touched.'
+        ]
+    },
+    {
+        version: '1.32.0', date: '2026-10-15',
+        items: [
+            'A narrow window (half the screen or less, with or without the folder list) keeps every pill whole and none over another. Each row gives up its least needed parts in turn as the window narrows, measured rather than guessed: at the top, the sort becomes just its icon, then the photo count goes, then (in the grid) the file name; then header buttons move into More, least used first. The file pill moves off center rather than run under the buttons. At the bottom, "not saved yet" goes (the count stays), then the selection bar\'s labels, then the edits bar moves up above the size slider, the slider gets shorter, and last it goes (`Ctrl` + wheel still sizes the grid). Messages move up above the edits bar.',
+            'More, opened on a narrow window, wraps onto a second row instead of running off the left edge.',
+            'The folder pill switches to its short labels whenever the long ones would be cut off, so its search button no longer disappears.'
+        ]
+    },
+    {
+        version: '1.31.1', date: '2026-10-15',
+        items: [
+            'FastFoto scans no longer come out dark and oversaturated. Epson\'s FastFoto driver sends far more contrast than the FastFoto app saves, with the same stretch on every color, whatever its own settings. A FastFoto now starts at brightness 5, contrast −35 in the scan dock, which matches the app; it\'s said beside the sliders, and changing them is kept as before. This happens once, and only if you hadn\'t set your own brightness or contrast for it.',
+            'The scan helper asks a TWAIN feeder for 8 bits a color, and Details says what the scanner sent (bits, and its brightness, contrast and gamma as scanned), for scans whose colors look wrong.'
+        ]
+    },
+    {
+        version: '1.31.0', date: '2026-10-15',
+        items: [
+            'Settings → Window background (Windows 11, version 22H2 or later): Mica or Acrylic behind jEditor, like the Start menu, so the desktop shows softly through the start screen and the grid. Transparency sets how much shows through. Photos, Crop and Duplicates stay solid, so colors are judged as before. Solid, as before, to start with; it follows Windows\' Transparency effects setting.'
+        ]
+    },
+    {
+        version: '1.30.3', date: '2026-10-15',
+        items: [
+            'Deleting a photo on a network or USB drive (no Recycle Bin) no longer pops up "Can\'t open this file … contains system files". The photo goes to jEditor\'s trash on this PC, and moving it there was refused by Windows\' web engine; it\'s now copied there and then removed, as already happened after Cancel. Merging an old subfolder\'s .jeditor into the project\'s data could ask the same, once per file: fixed too.'
+        ]
+    },
+    {
+        version: '1.30.2', date: '2026-10-15',
+        items: [
+            'Auto crop on a scan that cut the print off at two opposite sides now works on real scans: 1.30.1 still said no print edge was found when the strips of bed were thin and grainy, because it looked for the bed all round the scan\'s edge first. It now looks at the two strips themselves: each one color the whole way along and ending at a straight edge, the two matching and parallel.'
+        ]
+    },
+    {
+        version: '1.30.1', date: '2026-10-15',
+        items: [
+            'Auto crop takes the bed off a scan that cut the print off at two opposite sides (a print a hair bigger than the scan area, or a feeder page cut to the photo): the strips of bed down the other two sides come off, and the photo is straightened by them. Before, Auto said no print edge was found.'
+        ]
+    },
+    {
+        version: '1.30.0', date: '2026-10-15',
+        items: [
+            'Scanner\'s own settings… (scan dock → Advanced, for a TWAIN feeder like the FastFoto): opens the scanner\'s own window just to choose its settings, such as Epson\'s color restoration and image enhancements, which jEditor can\'t name. Save there, and jEditor\'s feeder scans use them from then on. Forget goes back to the driver\'s defaults.',
+            'Details lists the scanner\'s own settings with their values on each feeder scan, so a change made in its window shows.',
+            'Renaming the open project: double-click its name on the project card, or the pencil that shows by the name on hover (as by a photo\'s name). The rename button is gone from the card.',
+            'Settings → Messages: choose which messages pop up after you do something (rotating, flags, cropping, moving, deleting, renaming, undo, scanning, photos loaded). Rotation messages are off to start with. Errors and warnings always show.',
+            'The edits-not-saved bar moved to the grid\'s bottom row, left of the size slider (above it when the row is full), with its buttons sitting evenly in it; it\'s no longer stacked under the file name, and the single view stays clear.',
+            'With Save edits when done on, rotating a photo turns it smoothly again (in the grid and the big view) instead of jumping: the photo on screen turns, and the redrawn one takes its place.'
+        ]
+    },
+    {
+        version: '1.29.1', date: '2026-10-15',
+        items: [
+            'FastFoto colors: scans with the scanner cropping each photo itself asked the Epson driver for nothing about brightness and contrast, so it used whatever Epson Scan 2 last saved, which gave strong, oversaturated contrast. jEditor now asks for neutral brightness and contrast (its own sliders still apply), and Details shows what the driver had.'
+        ]
+    },
+    {
+        version: '1.29.0', date: '2026-10-14',
+        items: [
+            'Scan whole glass: next to Preview in the scan dock, it scans the whole glass as one photo at the resolution chosen, with no preview or boxes (Auto crop each photo still trims it to the print, when on).',
+            'The scan and camera docks keep their buttons in sight: the settings scroll behind them, so Scan is never below the fold.',
+            'American spelling throughout: color, gray, center, canceled. The scan color choice reads Grayscale.',
+            'A project opens in one window only: opening it again (sidebar, Ctrl+click, Open in a new window) brings its window forward, so two windows can\'t write over each other\'s flags and edits.',
+            'Scan more and Try again keep the names you typed (Smith-B-006 after Smith-B-005), and Scan or Preview pressed while jEditor is still asking the scanner what it can do waits instead of saying a scan is already running.',
+            'Crop saves exactly the crop on screen when you press Save, and the editor waits while it writes. Edits made while Save edits is writing wait for it too, so none is lost or applied twice.',
+            'Duplicates: the search stops when you close it, `Ctrl+Z` restores, and `Enter` on a button presses that button.',
+            'Rename with {date} waits for capture dates instead of using file dates; a failed rename says which photos kept a temporary name.',
+            'Renaming a project keeps its flags and edits in every case, and a photo renamed onto an old name doesn\'t take that photo\'s flags.',
+            'Updates: a stalled download fails with a message instead of hanging, and a setup Windows blocks says so.',
+            'A tethered shot that can\'t be saved is kept in a jEditor-unsaved folder instead of lost; the scan helper is shut down cleanly when a scan ends early.',
+            'Smaller fixes: sidebar photo counts update, Preparing previews no longer sticks, PNG scans show their size and DPI, settings are shared safely between windows, and a crashed page reloads itself.'
+        ]
+    },
+    {
+        version: '1.28.0', date: '2026-10-14',
+        items: [
+            'Shortcut profiles: Keyboard shortcuts (`?`) has a Profile list. Lightroom Classic gives Lightroom\'s keys: `R` crop, `E` single view, `G` grid, `Ctrl+[` and `Ctrl+]` rotate, `P` star, `X` needs rescan, `U` clear, `6`–`9` color labels, `F5` rescan. Make your own with New profile…; each profile keeps its own changes.',
+            'Opening a project while another was still loading could mix their photos and flags; the first open now stops.',
+            'Flags changed just before switching project are saved to it, and can no longer erase the next project\'s flags. Taking the last flag off a photo is saved too.',
+            'Kept edits follow photos that are renamed or moved.',
+            'Renaming a folder only in capitals (wedding → Wedding) while a photo in it is open elsewhere now says it couldn\'t, instead of risking the folder.',
+            'Auto crop no longer fails with "Maximum call stack size exceeded" on prints laid touching.',
+            'The No flag filter shows unflagged photos; Esc in Rename only closes it; a camera date of 0000:00:00 is no date (not 1899).',
+            'FastFoto auto-size scans work when the Windows user name has accents, and closing a window mid-scan no longer shows an error.'
+        ]
+    },
+    {
+        version: '1.27.0', date: '2026-10-14',
+        items: [
+            'A new photo finder behind Auto crop, batch Auto crop, feeder scans and Preview and crop. It learns the scan\'s background from its edge (a lid, a feeder\'s backing and the white past a short photo), so it copes with lid shading, dust, dark photos on a dark lid, white-bordered prints on a white lid, tilted prints and prints laid touching. Ordinary photos, even ones with a plain sky, aren\'t taken for scans.',
+            'The FastFoto crops each photo itself: jEditor now turns on the scanner\'s own auto-size (as in Epson\'s software), with no scanner window. Advanced → The scanner crops each photo itself (on to start with); if a scanner can\'t, jEditor scans the usual way and crops each photo.',
+            'Preview and crop: click a print to box it, tilted to match it; or drag to draw a box. The print-size boxes are gone. Choose the glass size under Glass (remembered for each scanner; the OpticBook A300 is known to be A3), and the preview is sharper (about 150 dpi, only to find the prints: the scan itself is at the resolution chosen).',
+            'Each scanned photo opens large as it comes in, like the camera\'s (Show each photo as it comes in).',
+            'A scanner unplugged, switched off or asleep, a paper jam or an empty feeder now gets a proper dialog saying what to check, with Try again (the names carry on).',
+            'Settings are remembered for each scanner; a photo feeder starts at 300 dpi. The scanner\'s own window brings each photo over whole now, which was slow on the FastFoto, and Details times each page.',
+            'New project in the sidebar: names a new folder in your projects folder and opens it.',
+            'Rename projects and folders: right-click one in the sidebar → Rename…, or the pencil on the project card. Its flags, kept edits and thumbnails go with it, and a pin follows it.'
+        ]
+    },
+    {
+        version: '1.26.0', date: '2026-10-14',
+        items: [
+            'Save edits when done, a setting for each project (on its card in the sidebar, or right-click the grid). Crops, straightening, turns and batch Auto crop are kept on the photos instead of being saved into them straight away, so they can be changed as often as you like before anything is written.',
+            'Recrop any time: Crop opens on the whole photo, at the crop you kept, so nothing is lost by cropping too tight. Batch Auto crop is the same: check each photo (Crop, then `Shift+Enter` for Done & next) and fix the ones it got wrong.',
+            'The grid, film strip and viewer show each photo as it will be saved, with a pencil on the edited ones. The bar under the toolbar counts them, with Save and Discard. Save writes them into the photos (the originals are kept, so `Ctrl+Z` puts them back with the edits kept again) or exports copies of every photo, edited ones with their edits, into "jEditor Export".',
+            'Kept edits stay with the project when jEditor is closed. Right-click a photo for Discard edit.',
+            'Auto crop works on feeder scans (FastFoto): each page comes out the feeder\'s full length with the photo at the top and backing and white around it; Auto crop now finds the photo on such a page, trims everything else and straightens it. Shift+A and the crop editor\'s Auto recognize these pages too, so ones scanned before can be fixed.',
+            'Scanners whose driver won\'t open with the newer TWAIN manager (the OpticBook A300): jEditor now tries again in Older TWAIN mode by itself, and when that works, keeps it on for that scanner and says so. A scanner that won\'t say what it has gets both How choices (the glass and the feeder) instead of none.',
+            'Undo history: the new History button in the toolbar (or `H`) lists every step Ctrl+Z can take back, newest first: what it was, which photos and when. Click a step to go back to before it; jEditor asks first, naming everything that will be undone. Like the other toolbar buttons, it can be moved to More or hidden in Settings.'
+        ]
+    },
+    {
+        version: '1.25.0', date: '2026-10-14',
+        items: [
+            'Scanning uses jEditor\'s own settings now, no scanner window: How picks the glass (preview and crop) or the feeder, from what the scanner has. The scanner\'s own window is still there, under Advanced, for when you need its extras.',
+            'Settings in the scan dock: resolution, color or grayscale, file type (JPEG with a quality, PNG, or TIFF), and brightness and contrast (shown on the preview as you move them). Saved setups keep a combination under a name to pick next time.',
+            'The feeder (FastFoto): Sides is Front, Back or Both; with both, each back is saved beside its photo as Smith-014-b.jpg. The FastFoto sends the back as its front, so jEditor swaps them for it (Advanced → front and back are swapped; remembered for each scanner).',
+            'Preview and crop: tilt a box to match a crooked print with the round handle above it (the photo comes out straight), and ↻ turns it a quarter so the photo comes out the right way up (the arrow shows which way). Add a box at an exact print size (wallet, 3½×5, 4×6, 5×7, 8×10, 8½×11), wide or tall, where there\'s room on the glass.'
+        ]
+    },
+    {
+        version: '1.24.1', date: '2026-10-13',
+        items: [
+            'Browsing in the sidebar no longer opens folders by mistake: in Pinned and This PC, clicking a folder only opens it out to show what\'s inside. Open (beside it when you point at it) or a double-click makes it the project. Projects in your projects folder still open with one click.',
+            'Settings: dragging toolbar controls to reorder them works again (it was taken for photos being dropped in).'
+        ]
+    },
+    {
+        version: '1.24.0', date: '2026-10-13',
+        items: [
+            'Tethered shooting, like Lightroom\'s: Camera in the toolbar connects a Sony Alpha (A7 III, A7 IV and similar) over USB and shoots straight into the open project. Set the camera to PC Remote first: Menu → Network (or Setup) → USB Connection → PC Remote.',
+            'The camera dock shows its live view (bigger with the expand button) and the last photos in. Take a photo with the round button, Take photo, or `F12` anywhere in jEditor; shots taken with the camera\'s own shutter button come in too. Each new photo opens large (it can be turned off).',
+            'Photos are named in the project\'s sequence, like scans (Smith-014.jpg); RAW + JPEG keep one number (Smith-014.arw beside Smith-014.jpg). Keep a copy on the camera\'s card is on to start with.',
+            'Details (`>_`) shows what the camera says, for when it doesn\'t connect. jEditor talks to the camera through Windows\' own driver: nothing else needs installing.'
+        ]
+    },
+    {
+        version: '1.23.0', date: '2026-10-13',
+        items: [
+            'Preview and crop, for a flatbed like the OpticBook: in the scan dock, choose How → Preview and crop. Lay prints on the glass, as many as fit; jEditor previews the glass, with no scanner window, and puts a box round each print it finds.',
+            'Adjust the boxes: drag on the glass to add one, drag a box to move it, or its corners to resize it; × or `Delete` removes one. Choose the resolution (from what the scanner offers; 600 dpi to start with) and color or grayscale, then Scan: the glass is scanned once and each box saved as its own photo, named in order. Auto crop each photo then trims each to its print and straightens it.',
+            'Scan more previews the glass again for the next prints, and the names carry on. How you scan is remembered for each scanner, and Stop works while it previews too.'
+        ]
+    },
+    {
+        version: '1.22.1', date: '2026-10-13',
+        items: [
+            'Details in the scan dock (the `>_` button): jEditor\'s log, live, showing what the scanner\'s driver is doing as it does it. Errors are in red. Copy copies the lines to send on; Log file shows the whole log in Explorer. It opens by itself when a scan fails.',
+            'The log now also says how each TWAIN scan is set up (which TWAIN manager, transfer mode and whether it goes through the 32-bit helper).'
+        ]
+    },
+    {
+        version: '1.22.0', date: '2026-10-13',
+        items: [
+            'Two projects at once: New window (`Ctrl+Shift+N`, or `Ctrl`+click a project in the sidebar) opens another jEditor window, and Split (on the project card) puts this window and another side by side.',
+            'Photos dragged from one window onto a folder in the other, or onto its photos, move there (hold `Ctrl` to copy). `M` lists the other window\'s folders too. `Ctrl+Z` puts them back.',
+            'The scan dock: Scan now opens a panel that floats over the photos instead of a box in the way. Keep working, or work in another window, while it scans: it shows the last photos as they come in, with Stop, then Scan more (the names carry on) or Change settings. Drag it by its title; — makes it small.'
+        ]
+    },
+    {
+        version: '1.21.0', date: '2026-10-13',
+        items: [
+            'A new sidebar. At the top, the open project: its name, where it is, how many photos, and Scan, Show in Explorer and Pin. Then its folders, as before.',
+            'Projects: every project in your projects folder (chosen the first time; click its name to change it), newest first, with how many photos and when each last changed, and a search box. Projects opened from elsewhere are listed under them. Click one to open it.',
+            'Pinned: folders you pin (the pin beside any folder), and the folders pinned in Explorer\'s Quick Access. This PC: the drives, which open out like Explorer\'s. A USB drive plugged in is marked New, and can be ejected from here.',
+            'The start screen shows the same projects, pinned folders and drives.',
+            'A folder with no photos in it opens, ready to scan into or fill from Explorer, instead of saying No photos found. Deleting the last photo keeps the project open too.',
+            'While a scan runs, a message says which scanner and offers Stop, for a scanner whose window never shows. If its driver doesn\'t respond, jEditor gives up on it after 5 seconds and starts the scanning helper afresh next time.',
+            'Compatibility mode in the Scan box, for TWAIN scanners whose window never opens (some Plustek drivers, like the OpticBook\'s): it uses Windows\' older TWAIN manager and takes the whole image at once. Remembered for each scanner.',
+            'Settings → Updates → Show log opens jEditor\'s log in Explorer, to send when something goes wrong.',
+            'Order is now project everywhere on screen.'
+        ]
+    },
+    {
+        version: '1.20.2', date: '2026-10-13',
+        items: [
+            'Updating from inside jEditor no longer fails and rolls back: the setup now waits until jEditor has really closed before replacing its files.',
+            'If an update still doesn\'t install, jEditor opens again on the version you had and says so, with where the setup\'s log is, instead of just closing.'
+        ]
+    },
+    {
+        version: '1.20.1', date: '2026-10-12',
+        items: [
+            'TWAIN scanners (the FastFoto through Epson Scan 2, not just its WIA version) now scan through a small 32-bit helper, the way NAPS2 does, using the scanners\' 32-bit drivers. It brings its own TWAIN manager, so nothing extra needs installing.',
+            'Auto crop each photo (on to start with, in the Scan box): prints of any size are found on each scan and cropped to, as soon as the scan is in. Ctrl+Z puts the scans back as they were.',
+            'Photos added to the open folder (by a scanner, say) just appear, without a message for each batch. R still says what changed.',
+            'jEditor keeps a log of what it does (%LOCALAPPDATA%\\jEditor\\logs), including each scan step by step, for when something goes wrong.'
+        ]
+    },
+    {
+        version: '1.20.0', date: '2026-10-12',
+        items: [
+            'Scan straight into the open order: click Scan in the toolbar, pick the scanner, the folder and the names, and the scanner\'s own window opens (Epson Scan 2, Plustek). Each photo is saved into the order as it\'s scanned and shows up straight away, so a stack in the FastFoto feeder fills the grid while it scans.',
+            'Names follow on from the folder\'s photos (Smith-014.jpg after Smith-013.jpg), each folder with its own sequence, and Scan more carries on where the last scan stopped. Names already taken are skipped, never overwritten.',
+            'Browse other orders, folders and drives: the folder list has a Browse tab with your recent orders (switch with one click), the drives on this PC and the usual folders. Click into any folder to see how many photos it has, then Open as order. The start screen lists the drives too.',
+            'Orders on a USB stick: plugging one in while jEditor is open offers to browse it, and it\'s listed first under Drives. Take it out and Browse steps back out of it.'
+        ]
+    },
+    {
+        version: '1.19.0', date: '2026-10-12',
+        items: [
+            'Order folders now hold only photos. What jEditor keeps for an order (flags, the thumbnail cache, Auto crop originals) is kept on this PC instead of in a .jeditor folder. An order\'s old .jeditor folder is moved out the next time it\'s opened, flags and all.',
+            'Deleted photos go to the Windows Recycle Bin, and `Ctrl+Z` still brings them back. On a network or USB drive, which has no Recycle Bin, jEditor keeps them itself until you clean up.',
+            'Stored orders (Settings → Folder → Manage…) lists every order jEditor keeps data for, newest first, with how much room each takes. Open an order again from there, remove its cache or everything, remove every cache at once, or remove orders whose folder is gone.',
+            'Updates: jEditor looks for a new version once a day (Settings → Updates, where you can also check by hand or turn this off). Click Update and it downloads, installs and opens again on its own, still without admin rights.'
+        ]
+    },
+    {
         version: '1.18.1', date: '2026-10-12',
         items: [
             'Messages and the progress pill moved to the bottom-left corner, so they no longer cover the middle of the photo. In the grid they sit beside the folder list when it\'s open.',
@@ -20,21 +272,21 @@ const CHANGELOG = [
             'The folder list shows the total for what you\'re looking at, such as 1,240 photos · 4.80 GB. Click it for the details. Hovering a folder shows its size too.',
             'The film strip\'s background is always black, in both themes.',
             'In single view, the controls above the film strip fade away a few seconds after they appear, leaving the photo the screen. Move the pointer to where they were and they come back. To do without them altogether, turn off Buttons above the film strip in Settings.',
-            'The selection bar in the grid is centred on the photos again, beside the folder list when it\'s open.',
+            'The selection bar in the grid is centered on the photos again, beside the folder list when it\'s open.',
             'Opening an order whose subfolder has a .jeditor folder of its own (because that subfolder was once opened on its own) merges it into the order\'s and removes it, so the order has just one. Its deleted photos and Auto crop originals move into the order\'s .jeditor, named after the subfolder, and its flags join the order\'s. Its cache is dropped and rebuilt when needed. If anything can\'t be moved, that .jeditor is left where it is.'
         ]
     },
     {
         version: '1.17.0', date: '2026-10-12',
         items: [
-            'A new look: one consistent set of colours, type, spacing, icons and buttons across every screen, with quieter neutral greys so the photo stands out and the accent colour only marking what\'s selected, focused or the main action.',
-            'Settings (the gear, or `Ctrl+,`) replaces Customize controls. New in it: a light theme (or match the system), the colour behind photos (black, grey or light, for judging colour), Comfortable density for bigger text and controls, and Subtle glass, which is faster on older computers.',
+            'A new look: one consistent set of colors, type, spacing, icons and buttons across every screen, with quieter neutral grays so the photo stands out and the accent color only marking what\'s selected, focused or the main action.',
+            'Settings (the gear, or `Ctrl+,`) replaces Customize controls. New in it: a light theme (or match the system), the color behind photos (black, gray or light, for judging color), Comfortable density for bigger text and controls, and Subtle glass, which is faster on older computers.',
             'The toolbars no longer switch between light and dark as you move through bright and dark photos. They stay readable over any photo.',
             'Clean up, Export, error messages and the big Auto crop question are now dialogs in the app instead of browser pop-ups. Clean up lists what it will remove and starts on Cancel.',
             'The selection bar is grouped and never runs off the edge: Rotate, Auto crop, Move to, Rename and Delete, with Export, Copy to and Rotate 180° under ⋯.',
-            'Selected photos show a tick as well as the coloured ring, and the current photo has a white ring of its own, so the two are easy to tell apart. Tiles no longer grow on hover.',
-            'Messages appear at the bottom centre, above the toolbars, instead of covering the folder pill or the top of the grid. In crop and duplicates they appear at the top.',
-            'Crop and straighten: the toolbar is regrouped with Save on the right, and the straighten slider and level line follow the accent colour.',
+            'Selected photos show a tick as well as the colored ring, and the current photo has a white ring of its own, so the two are easy to tell apart. Tiles no longer grow on hover.',
+            'Messages appear at the bottom center, above the toolbars, instead of covering the folder pill or the top of the grid. In crop and duplicates they appear at the top.',
+            'Crop and straighten: the toolbar is regrouped with Save on the right, and the straighten slider and level line follow the accent color.',
             'The start screen is simpler, with Settings and Keyboard shortcuts at the bottom.',
             'Keyboard: every button, the folder list and the flag list can be reached with `Tab`, with a visible focus ring; the right-click menu works with the arrow keys; dialogs keep focus inside until they close. Toolbar buttons can be reordered with `Alt+↑` / `Alt+↓` in Settings.',
             'Works better in a narrow window and on tablets.'
@@ -45,13 +297,13 @@ const CHANGELOG = [
         items: [
             'jEditor watches the open folder. New photos (a scanner saving into the order, say) slot into the grid where they belong without losing your place, with a brief glow, and a message offers Show. Photos deleted or edited in another program are picked up too. Turn it off with Watch the folder for changes in Customize controls.',
             'Rescanning (`R`) and opening a folder are quicker, most of all on a network drive: folders are listed several at a time, and only new photos are opened. An unchanged order rescans in milliseconds. `R` now also notices photos removed or edited elsewhere.',
-            'Flags: `P` stars a photo, `X` marks it as needing a rescan, `1`–`5` give it a colour label (red, yellow, green, blue, purple) and `U` clears them. In the grid they apply to the selection. They show on the tiles, the film strip and beside the file name, and are kept with the order in .jeditor, so they follow renames and moves and go with the order to another computer. `Ctrl+Z` undoes them.',
+            'Flags: `P` stars a photo, `X` marks it as needing a rescan, `1`–`5` give it a color label (red, yellow, green, blue, purple) and `U` clears them. In the grid they apply to the selection. They show on the tiles, the film strip and beside the file name, and are kept with the order in .jeditor, so they follow renames and moves and go with the order to another computer. `Ctrl+Z` undoes them.',
             'The folder list has a Flags section with counts. Click one to show only those photos, then `Ctrl+A` selects them for Move to, Export or Delete. Right-click it to copy or save the list of names: the rescan list for whoever is on the scanner.',
             'The right-click menu starts with a row of flag buttons.',
-            'Search: `Ctrl+F` or `/` (or the magnifier in the folder pill) finds photos by name and folder. Every word you type must match; `is:star`, `is:rescan`, `is:red` and the other colours find flags.',
+            'Search: `Ctrl+F` or `/` (or the magnifier in the folder pill) finds photos by name and folder. Every word you type must match; `is:star`, `is:rescan`, `is:red` and the other colors find flags.',
             'Auto Crop on the selection bar (`Shift+A`) runs Auto on every selected photo in the background: it finds the print, straightens it and crops to it, with the aspect ratio last chosen in the crop editor. Photos with no print edge are left alone. The originals are kept in .jeditor/originals, so one `Ctrl+Z` puts the whole batch back.',
             'Opening a folder that\'s inside an order you\'ve opened before (one on the Recent list) offers to open the whole order at that folder instead, so the order keeps one .jeditor rather than getting a second one in the subfolder.',
-            'Accent colour in Customize controls: pick a swatch or any colour, and everything blue follows it. Text on it turns dark when the colour is light.',
+            'Accent color in Customize controls: pick a swatch or any color, and everything blue follows it. Text on it turns dark when the color is light.',
             'Messages are quieter glass pills that match the top bar, with a small icon for what happened, and slide in and out smoothly. The same message twice shows ×2 instead of stacking, and a message with a button (Undo, Show) stays up while the pointer is on it.',
             'The selection bar keeps clear of the folder list, and of the grid size slider when there\'s room.'
         ]
@@ -141,7 +393,7 @@ const CHANGELOG = [
         items: [
             'Crop and straighten works like Lightroom and Apple Photos: the frame stays in the middle and the photo moves behind it. After resizing, the view zooms so the crop fills the screen.',
             'Drag inside the frame to move the photo, outside it to rotate. Straightening turns the photo around the middle of the crop instead of shrinking the whole picture.',
-            'Hold `Ctrl` (`⌘` on a Mac) and drag along a horizon or print edge to level it. `Shift` keeps the crop\'s shape, `Alt` resizes from the centre.',
+            'Hold `Ctrl` (`⌘` on a Mac) and drag along a horizon or print edge to level it. `Shift` keeps the crop\'s shape, `Alt` resizes from the center.',
             'Auto (`Shift+A`) finds the print on a scan, straightens it and crops to its edges. Every photo runs Auto as each photo opens, for working through an order with `Shift+Enter`.',
             '`Ctrl+Z` and `Ctrl+Shift+Z` undo and redo inside the crop editor.',
             'Dragging outside the frame no longer draws a new crop box; it rotates instead.'
@@ -201,7 +453,7 @@ const CHANGELOG = [
         version: '1.9.0', date: '2026-09-27',
         items: [
             'Rebuilt crop and straighten: always works from the photo on disk, never leaves empty corners, has print-size presets, Previous (reuse the last crop) and Save & Next.',
-            'Crops keep the capture date, camera details, colour profile and DPI.',
+            'Crops keep the capture date, camera details, color profile and DPI.',
             'Rotating scanner JPEGs is lossless, even when they have no orientation tag.',
             'Big scans open instantly from a screen-sized preview; zooming in shows the original.',
             'Keyboard shortcuts can be viewed and changed (`?`).',

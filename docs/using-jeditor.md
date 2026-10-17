@@ -1,0 +1,191 @@
+# Using jEditor
+
+jEditor is a photo viewer for rotating, cropping and straightening folders of photos, built for working through scan orders. It edits the files on your disk directly. Nothing is uploaded.
+
+To install it, see the [README](../README.md). The version number is shown on the start screen.
+
+## Using it
+
+1. Click **Open folder**, or drag a folder onto the window. Subfolders are included. The last six folders you opened are listed under **Recent** on the start screen; click one to open it again, or hover and click × to take it off the list. If you open a folder that's inside an order on the Recent list, jEditor offers to open the whole order at that folder instead, so the order keeps a single `.jeditor` folder. (For now this only works for orders on the Recent list; jEditor can't yet tell from a folder alone which order it's in.)
+2. Move through photos with `←` / `→`. In single view the buttons above the film strip fade away after a few seconds; move the pointer there to bring them back, or turn off **Buttons above the film strip** in Settings to hide them for good. `Space` switches between single view and grid. In the grid, the slider at the bottom right or `Ctrl` + mouse wheel makes the tiles bigger or smaller; the highlighted photo stays where it is on screen.
+3. Rotate with `[` / `]`. In grid view this rotates every selected photo.
+4. Press `C` to crop and straighten. `Enter` saves, `Shift+Enter` saves and opens the next photo, `Esc` cancels.
+5. `Ctrl+Z` undoes the last rotation, crop, rename or delete.
+
+Changes are saved to the original files as you go.
+
+**Settings** (the gear in the toolbar's **More** section, the link on the start screen, or `Ctrl+,`) has a page for each kind of setting, chosen on the left; it opens on the last one you used.
+
+- **Appearance**: the theme (dark, light or match the system), the accent color and the color behind photos (black, gray or light, for judging color); on Windows 11 (22H2 or later), **Window background** puts Mica or Acrylic behind jEditor, like the Start menu, and **Transparency** sets how much of the desktop shows through (photos, Crop and Duplicates stay solid; it needs Windows' Transparency effects on, in Settings → Personalization → Colors); then glass (Rich, or Subtle, which is faster on older computers), density and toolbar size.
+- **Toolbar & keys**: keyboard shortcuts and their profiles, a vertical toolbar, the buttons above the film strip, and which buttons are in the toolbar.
+- **Messages**: which messages pop up after you do something.
+- **Auto crop**: keeping test scans to improve Auto crop, how many are kept, and exporting or clearing them.
+- **Projects**: watching the folder for changes, the thumbnail cache, stored projects and cleaning up the open one.
+- **Updates**: checking for updates, and the log.
+
+## Watching the folder
+
+jEditor keeps an eye on the open folder. Photos a scanner saves into the order show up in the grid on their own, in sort order, without moving your place; they glow briefly, and a message offers **Show**, which jumps to them and selects them. Photos deleted, renamed or edited in another program are picked up too. Where the folder can report its own changes, they show up as they happen; on drives that can't report changes, it's checked when you come back to the window and every so often while it's on screen (less often on a slow drive). Turn off **Watch the folder for changes** in Settings to stop this.
+
+`R` rescans by hand. Folders are listed several at a time, which helps most on a network drive, and only new photos are opened, so an unchanged order of 2000 photos rescans in a fraction of a second. Edited photos are then looked for in the background.
+
+## Flags
+
+Mark photos while you work through an order:
+
+- `P` stars a photo (a pick), `X` marks it as needing a rescan, `1`–`5` give it a colour label (red, yellow, green, blue, purple; the same key again takes it off) and `U` clears all three. In the grid they apply to the selection, in single view to the photo shown. They're also at the top of the right-click menu, and `Ctrl+Z` undoes them.
+- Flags show on the grid tiles, the film strip and beside the file name.
+- The **Flags** section at the bottom of the folder list counts each flag. Click one to show only those photos (click again, or the × on the chip in the folder pill, to show everything). `Ctrl+A` then selects just them, ready for **Move to…**, **Export** (under ⋯ on the selection bar) or **Delete**: moving every "needs rescan" photo into a Rescan folder takes two clicks and `M`.
+- Right-click a flag in the list to **Copy list of names** or **Save list as text…**: one path per line, for whoever is on the scanner.
+
+Flags are kept with the order, in `.jeditor/flags.json`, so they follow renames and moves made in jEditor and go with the order to another computer.
+
+## Search
+
+`Ctrl+F` or `/` (or the magnifier in the folder pill) searches the photos by name and folder as you type. Every word must match, in any order: `smith 004` finds `Smith_0042.jpg`, `ceremony` finds everything in the Ceremony folder. `is:star`, `is:rescan`, `is:flagged`, `is:unflagged` and `is:red` (or another colour) match flags. `Enter` goes back to the grid with the results; `Esc` clears the search. The arrow keys, film strip and `Ctrl+A` cover the results only.
+
+## What it does to your files
+
+- **Rotation.** JPEGs are rotated by changing the EXIF orientation tag, so the image data isn't recompressed. This works on scanner files that have no orientation tag yet. PNG and WebP are re-encoded; PNG stays lossless. GIFs aren't rotated, because that would lose the animation.
+- **Crop and straighten.** The photo is re-encoded in its original format (JPEG at quality 95). EXIF data (capture date, camera), the ICC colour profile, DPI, XMP and IPTC are carried over. The orientation tag is reset, since the pixels are now upright.
+- **Rename.** Files are renamed in place. If the new names overlap the old ones (shifting a numbered sequence, say), they go through temporary names first. If a rename fails part-way, every file gets its original name back.
+- **Delete.** Photos are moved to `.jeditor/trash` inside the opened folder, not deleted. `Ctrl+Z` restores them.
+- **Move to a folder.** Photos are moved on disk, which is a rename and instant even for big scans; where a file can't be moved it's copied and the original removed. A copy is a byte-for-byte duplicate. Cached thumbnails and previews follow the photo, so moving doesn't make them again.
+- **Export.** Copies go to a `jEditor Export` folder, optionally resized.
+
+## The .jeditor folder
+
+jEditor keeps its own data in a `.jeditor` folder inside the folder you open:
+
+- `trash/` holds deleted photos.
+- `cache/` holds thumbnails and duplicate-finder data.
+- `flags.json` holds the flags (stars, rescan flags, colour labels).
+- `originals/` holds the photos as they were before a batch Auto crop, so it can be undone.
+
+If a subfolder has a `.jeditor` of its own (because it was once opened on its own), opening the whole order merges it into the order's: its deleted photos and Auto crop originals move across, named after the subfolder, its flags join the order's, and its cache is dropped. Then it's removed, so the order keeps one `.jeditor`.
+
+Because the cache travels with the folder, a second computer opening the same order (on a shared drive, say) gets its thumbnails and duplicate data straight away. The large screen-sized previews aren't stored there, to keep the folder small; they're kept in jEditor's own storage on the PC instead.
+
+Rotating doesn't throw the cache away. A rotation only changes the photo's orientation tag, so the cached thumbnail and preview get the same tag instead of being made again from the full scan. Opening the folder again after rotating a batch is as quick as opening it with no changes.
+
+When an order is finished, use **Clean up folder…** (right-click the grid background, or **Clean up** in Settings). It empties the trash and removes the cache, the flags and the Auto crop originals; your photos aren't touched. Do this before copying an order to a customer: on Windows a folder starting with a dot is not hidden, so `.jeditor` would otherwise go along with the photos, deleted ones included. To stop jEditor writing a cache at all, turn off **Save cache in the folder** in Settings. The trash and the flags are still kept there either way.
+
+Folders opened with earlier versions may have a `.jeditor-trash` folder; Clean up removes that too.
+
+Some programs, mostly older print and lab software, ignore the EXIF orientation tag and will show a rotated JPEG the old way round. Cropping writes the rotation into the pixels, so a photo that has been cropped is always upright.
+
+## Crop and straighten
+
+It works like Lightroom or Apple Photos: the crop frame stays in the middle of the screen and the photo moves behind it.
+
+- Drag a corner or edge to resize. When you let go, the view zooms so the crop fills the screen again. Drag a handle past the edge of the screen to zoom out and make the crop bigger. Hold `Shift` to keep the shape, or `Alt` to resize from the centre.
+- Drag inside the frame to move the photo. Drag outside it to rotate.
+- Straighten with the slider, or `,` / `.` in 0.1° steps. The photo turns around the middle of the crop and zooms in just enough to hide the corners, so there are never empty corners.
+- To level something, hold `Ctrl` (`⌘` on a Mac) and draw a line along a horizon or the edge of a print. The level tool (`L`) does the same without the key.
+- **Auto** (`Shift+A`) finds the print on a scan, straightens it and crops to its edges. It needs a plain scanner lid or background around the photo (or, when the scan cut the print off at two opposite sides, down the other two), and it leaves a few pixels' margin so none of the bed shows. Turn on **Every photo** to run Auto on each photo as it opens. With `Shift+Enter` (save and next), a scan order then becomes: check the crop, press `Shift+Enter`, repeat.
+- **Batch Auto crop.** In the grid, select photos and press `Shift+A` (or **Auto crop** on the selection bar, or the right-click menu). Auto runs on each of them in the background, with the aspect ratio last chosen in the editor, and saves them. Photos with no print edge, or already cropped to it, are left alone. The originals are kept in `.jeditor/originals`, so one `Ctrl+Z` puts the whole batch back; flip through the results and fix the odd one in the editor.
+- `Ctrl+Z` inside the editor undoes the last adjustment; `Ctrl+Shift+Z` redoes it.
+- Aspect presets: 4×6, 5×7, 8×10, 11×14, square, 3:4, 16:9, original and free. `X` swaps portrait and landscape. A preset fits inside the current crop, so choosing one after Auto never takes in the bed.
+- **Previous** (`P`) applies the last crop again. This is useful when a batch of scans has the same borders.
+- The header shows the output size in pixels, and in inches when the file has a DPI.
+
+## Folders (collating)
+
+Some orders are collated: the photos go into labelled folders. Open the order folder and switch to the grid (`Space`).
+
+- **The folder list** on the left shows every folder, including folders inside folders and empty ones, with how many photos are directly in each. Click a folder to see just its photos. `Ctrl+B` hides the list; the grid then shows a folder's subfolders as tiles at the start, and the folder pill shows where you are. `Backspace` goes up a folder.
+- **All photos** (top of the list, or the switch in the folder pill at the top left) shows every photo in the order, whatever folder it's in, with each photo's folder named on its tile. It's what you see when an order is opened. `A` switches between All photos and the last folder.
+- **Moving.** Drag the selected photos onto a folder, in the list, a folder tile or the breadcrumb. Hold `Ctrl` (or `Alt`) when you let go to copy them instead. Or press `M` (`Shift+M` copies), or use **Move to…** on the selection bar or the right-click menu. That opens a list of folders: type to find one, or type a new name to make that folder and move the photos into it in one go. `Wedding/Speeches` makes a folder inside another.
+- **Name clashes.** If a photo with the same name is already in the folder, you're asked what to do: keep both (the moved photo gets a number, `IMG_0042 (2).jpg`), skip it, or replace the one that's there, which goes to the trash. You can apply the answer to the rest of the clashes. Cancel and nothing is moved.
+- **Folders.** **New folder** at the bottom of the folder list, `Shift+N`, or right-clicking the grid makes one inside the folder you're looking at. Right-click a folder to rename it, make a folder inside it, or delete it once it's empty.
+- In a folder, `←` `→`, the film strip, `Ctrl+A` and **Rename all…** cover that folder's photos only.
+- **Folder details.** The bottom of the folder list shows the total for what you're looking at (`1,240 photos · 4.80 GB`); click it, press `I` in the grid, or right-click a folder for **Folder info**. It lists how many photos there are (directly in the folder and with its subfolders), the total, average and largest size, file types, dates and flags. For the whole order it also shows how much room `.jeditor` takes: trash, cache and Auto crop originals. Select several photos to see the same for the selection.
+
+`Ctrl+Z` undoes a move or copy in one step, together with any photos it replaced and the folder made for it. Making, renaming and deleting folders can be undone too.
+
+## Renaming
+
+Press `F2`, use **Rename…** on the selection bar, or right-click the grid background for **Rename all…**. It works on the selected photos or the whole folder.
+
+- **New names** builds names from a pattern, such as `Smith_{###}` → `Smith_001.jpg`, `Smith_002.jpg`, …
+- **Find & replace** changes part of the existing names, such as replacing `IMG_` with `Smith_`.
+
+Patterns can use `{###}` for a sequence number (one digit per `#`), `{name}` for the current name, and `{date}` / `{time}` for when the photo was taken. Numbers follow the order you choose: the current sort, date taken, name, date modified or file size, ascending or descending, from any start number and step.
+
+The preview shows every old and new name before anything changes. Duplicate names, names already used by other files, and characters Windows doesn't allow are flagged, and the rename won't run until they're fixed. The file extension is always kept, and `Ctrl+Z` undoes the whole rename in one step.
+
+## Finding duplicates (work in progress)
+
+Press `D` in a folder. It looks for:
+
+- exact copies (identical file contents), and
+- the same print scanned more than once, including when it was turned, placed at a different angle, cropped slightly differently, exposed differently, or scanned in black and white.
+
+Scanner bed and film borders are ignored when comparing. Matches are shown in groups, side by side, with a match percentage. The copy with the most pixels is suggested as the one to keep. `K` marks the others and `Enter` moves them to the trash.
+
+It can still miss some re-scans or group photos that look alike, so check each group before trashing. The **Sensitivity** setting trades one for the other.
+
+## If it gets slow
+
+Press `Ctrl+Shift+D` to open the debug console. The yellow lines at the top show what the app is holding and doing: memory, undo history, images decoded, background work, and how long recent photos took to load. A screenshot of it taken while things are slow is the most useful thing to include in a bug report.
+
+It's built and tested for orders of 500–2000 photos. With 2000 scans at 1800×1200: the folder opens and shows the first photo in under half a second, thumbnails take about 20 seconds in the background the first time (under 2 seconds when it's opened again, rotated or not), rotating all 2000 takes about 8 seconds, renaming them about 2 seconds, and a duplicate scan about 20 seconds. Bigger files take longer to thumbnail, though big JPEGs are decoded at a fraction of their size for thumbnails and previews (about 4× faster than a full decode on 20-megapixel scans).
+
+Undo keeps up to 50 steps. Rotating a selection in the grid is one step, however many photos it covers. Rotations are undone by rotating back, so they don't use memory. Crops keep a copy of the original file so they can be undone, up to 256 MB in total; older crop steps are dropped after that.
+
+## Keyboard shortcuts
+
+Press `?` in the app to see all of them. Any shortcut can be changed there. The defaults:
+
+| Key | Action |
+|---|---|
+| `←` `→` | Previous / next photo (`↑` `↓` move by rows in the grid) |
+| `[` `]` or `,` `.` or `Shift+←` `Shift+→` | Rotate left / right |
+| `\` | Rotate 180° |
+| `Space`, `G`, `S` | Toggle view, grid view, single view |
+| `C` | Crop and straighten |
+| `+` `-` `0` | Zoom in, zoom out, fit. The mouse wheel zooms on the pointer, up to 3200% (past 100% the pixels show as sharp squares, with no smoothing). Double-click the photo: in to 100% on that spot, again to fit. |
+| `I` | Info: the photo in single view; in the grid, the folder you're in (photos, total size, types, dates, flags, room taken by `.jeditor`), or the selection |
+| `F` | Full screen |
+| `F2` | Rename (the selected photos in grid view) |
+| `M` / `Shift+M` | Move / copy to a folder (the selection in grid view) |
+| `P` / `X` | Star / needs rescan on or off |
+| `1`–`5` | Red, yellow, green, blue, purple label |
+| `U` | Clear flags |
+| `Shift+A` | Auto crop (the selection in grid view) |
+| `Ctrl+F`, `/` | Search |
+| `Shift+N` | New folder |
+| `A` | Switch between All photos and folders (grid view) |
+| `Backspace` | Up a folder (grid view) |
+| `Ctrl+B` | Show or hide the folder list (grid view) |
+| `Delete` | Move to trash |
+| `Ctrl+Z` | Undo |
+| `Ctrl+A` | Select all (grid view) |
+| `D` | Find duplicates |
+| `R` | Rescan the folder |
+| `?` | Show shortcuts |
+| `Ctrl+,` | Settings |
+
+In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `\` rotate 180°, `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
+
+In find duplicates: `1`–`9` mark or unmark a photo, `K` keep the suggested photo and mark the rest, `Enter` trash marked and go to the next group, `N` not duplicates, `←` `→` previous / next group, `Esc` close.
+
+## Where things are in the code
+
+The UI is plain JavaScript with no dependencies, in `app/`:
+
+- `script.js`: viewer, grid, rotation, file operations, shortcuts
+- `crop.js`: crop and straighten
+- `crop-auto.js`: finding the print on a scan (Auto)
+- `changelog.js`: the list of changes shown in What's new, and the release notes
+- `meta.js`: reading and copying JPEG/PNG metadata
+- `dupes.js`: duplicate finder
+- `rename.js`: batch rename
+- `folders.js`: folders: the folder list, moving and copying photos, making, renaming and deleting folders
+- `flags.js`: flags (star, rescan, colour labels) and search
+- `watch.js`: watching the folder for changes, and rescanning
+- `recents.js`: recent orders on the start screen, and spotting a folder that's part of one
+- `ui.js`: the app's own alert / confirm / prompt dialogs, and focus handling for every dialog
+- `tokens.css`: the design tokens (colours, type, spacing, radii, shadows, motion, layers) and the theme, density, glass, surround and window background switches; `style.css` builds every component from them
+
+Building, testing and releasing are in the [README](../README.md).

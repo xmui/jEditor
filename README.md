@@ -1,202 +1,100 @@
 # jEditor
 
-A photo viewer for rotating, cropping and straightening folders of photos, built for working through scan orders. It runs in the browser and edits the files on your disk directly. Nothing is uploaded.
+A photo viewer for rotating, cropping and straightening folders of photos, built for working through scan orders. It edits the files on your disk directly; nothing is uploaded. How to use it: [docs/using-jeditor.md](docs/using-jeditor.md).
 
-It needs Chrome or Edge to save changes, because it uses the File System Access API. Firefox and Safari can view photos but not save.
+One UI (`app/`), three ways to run it:
 
-## Getting it
+| | Status | What it has |
+|---|---|---|
+| **Windows app** | Released | Everything: the core below, plus scanning, camera tethering, the projects sidebar with drives, the Recycle Bin, several windows and updates. |
+| **Web** | Coming back (the site still has 1.18.1 for now) | The core, in Chrome or Edge: open, view, rotate, crop and straighten, flags, search, rename, move, delete with undo, export, duplicates, Auto crop and watching the folder. |
+| **Mac app** | Planned | The core, with no permission prompts and folders opened from Finder; then the sidebar, windows and updates. |
 
-- **Web app:** open https://xmui.github.io/jEditor/ in Chrome or Edge. Use the install button in the address bar if you want it in its own window. It works offline once installed.
-- **Single file:** download `standalone.html` from [Releases](../../releases) and open it. No server or install needed, and saving works from the local file.
+[PLAN.md](PLAN.md) has how the three fit together and what comes next. Scanning and tethering are Windows-only for now.
 
-The version number is shown on the start screen.
+The Windows app also:
 
-## Using it
+- **installs without admin rights.** It goes into your own user folder, like many apps do.
+- **opens folders without asking for permission.** There's no "Let site edit files?" prompt, not even for a recent order after a restart.
+- **uses Windows' own folder picker,** which opens where you picked the last folder, so the next order is a click away.
+- **opens a folder given to it,** for example `jEditor.exe "D:\Orders\Smith"`.
 
-1. Click **Open folder**, or drag a folder onto the window. Subfolders are included. The last six folders you opened are listed under **Recent** on the start screen; click one to open it again (Chrome may ask once more for permission to edit it), or hover and click × to take it off the list. If you open a folder that's inside an order on the Recent list, jEditor offers to open the whole order at that folder instead, so the order keeps a single `.jeditor` folder. (A browser can't look up from a folder to the one it's in, so this only works for orders it already knows.)
-2. Move through photos with `←` / `→`. In single view the buttons above the film strip fade away after a few seconds; move the pointer there to bring them back, or turn off **Buttons above the film strip** in Settings to hide them for good. `Space` switches between single view and grid. In the grid, the slider at the bottom right or `Ctrl` + mouse wheel makes the tiles bigger or smaller; the highlighted photo stays where it is on screen.
-3. Rotate with `[` / `]`. In grid view this rotates every selected photo.
-4. Press `C` to crop and straighten. `Enter` saves, `Shift+Enter` saves and opens the next photo, `Esc` cancels.
-5. `Ctrl+Z` undoes the last rotation, crop, rename or delete.
+## Installing on Windows
 
-Changes are saved to the original files as you go.
+Download **jEditor-Setup-x.y.z.exe** from [Releases](../../releases) and run it. It installs for you only, in `%LOCALAPPDATA%\Programs\jEditor`, with a Start menu shortcut. It doesn't ask for admin rights.
 
-**Settings** (the gear in the toolbar's **More** section, the link on the start screen, or `Ctrl+,`) has the theme (dark, light or match the system), the colour behind photos (black, grey or light, for judging colour), the accent colour, density (Compact or Comfortable), toolbar size and glass (Rich, or Subtle, which is faster on older computers). It also chooses which buttons are in the toolbar.
+The first time, Windows may say "Windows protected your PC", because the app isn't signed. Click **More info**, then **Run anyway**. It only asks once.
 
-## Watching the folder
+Releases up to 1.35.1 are also in [xmui/jeditor-windows](https://github.com/xmui/jeditor-windows/releases), where the Windows app lived from 1.18.1 to 1.35.1; 1.35.1 and later look for updates here.
 
-jEditor keeps an eye on the open folder. Photos a scanner saves into the order show up in the grid on their own, in sort order, without moving your place; they glow briefly, and a message offers **Show**, which jumps to them and selects them. Photos deleted, renamed or edited in another program are picked up too. In Chrome the folder reports its own changes as they happen; elsewhere, and on drives that can't report changes, it's checked when you come back to the window and every so often while it's on screen (less often on a slow drive). Turn off **Watch the folder for changes** in Settings to stop this.
+To update, use Settings → Updates, or run the newer setup. To uninstall, use Settings → Apps. jEditor's settings and recent orders are kept in `%LOCALAPPDATA%\jEditor` either way.
 
-`R` rescans by hand. Folders are listed several at a time, which helps most on a network drive, and only new photos are opened, so an unchanged order of 2000 photos rescans in a fraction of a second. Edited photos are then looked for in the background.
+There's also a **portable** zip. Unzip it anywhere and run `jEditor.exe`, with nothing to install.
 
-## Flags
+jEditor needs the Microsoft Edge WebView2 Runtime, which comes with Windows 11 and up-to-date Windows 10. If it's missing, jEditor offers to download it from Microsoft. It installs without admin rights too.
 
-Mark photos while you work through an order:
+## Changing the look
 
-- `P` stars a photo (a pick), `X` marks it as needing a rescan, `1`–`5` give it a colour label (red, yellow, green, blue, purple; the same key again takes it off) and `U` clears all three. In the grid they apply to the selection, in single view to the photo shown. They're also at the top of the right-click menu, and `Ctrl+Z` undoes them.
-- Flags show on the grid tiles, the film strip and beside the file name.
-- The **Flags** section at the bottom of the folder list counts each flag. Click one to show only those photos (click again, or the × on the chip in the folder pill, to show everything). `Ctrl+A` then selects just them, ready for **Move to…**, **Export** (under ⋯ on the selection bar) or **Delete**: moving every "needs rescan" photo into a Rescan folder takes two clicks and `M`.
-- Right-click a flag in the list to **Copy list of names** or **Save list as text…**: one path per line, for whoever is on the scanner.
+The UI is plain HTML, CSS and JavaScript: the `app` folder here, shipped beside `jEditor.exe`. Colors, type and spacing are in `app/tokens.css`. Changing the UI never needs the exe to be rebuilt. To try a change:
 
-Flags are kept with the order, in `.jeditor/flags.json`, so they follow renames and moves made in jEditor and go with the order to another computer.
-
-## Search
-
-`Ctrl+F` or `/` (or the magnifier in the folder pill) searches the photos by name and folder as you type. Every word must match, in any order: `smith 004` finds `Smith_0042.jpg`, `ceremony` finds everything in the Ceremony folder. `is:star`, `is:rescan`, `is:flagged`, `is:unflagged` and `is:red` (or another colour) match flags. `Enter` goes back to the grid with the results; `Esc` clears the search. The arrow keys, film strip and `Ctrl+A` cover the results only.
-
-## What it does to your files
-
-- **Rotation.** JPEGs are rotated by changing the EXIF orientation tag, so the image data isn't recompressed. This works on scanner files that have no orientation tag yet. PNG and WebP are re-encoded; PNG stays lossless. GIFs aren't rotated, because that would lose the animation.
-- **Crop and straighten.** The photo is re-encoded in its original format (JPEG at quality 95). EXIF data (capture date, camera), the ICC colour profile, DPI, XMP and IPTC are carried over. The orientation tag is reset, since the pixels are now upright.
-- **Rename.** Files are renamed in place. If the new names overlap the old ones (shifting a numbered sequence, say), they go through temporary names first. If a rename fails part-way, every file gets its original name back.
-- **Delete.** Photos are moved to `.jeditor/trash` inside the opened folder, not deleted. `Ctrl+Z` restores them.
-- **Move to a folder.** Photos are moved on disk, which is a rename and instant even for big scans; where the browser can't move a file it's copied and the original removed. A copy is a byte-for-byte duplicate. Cached thumbnails and previews follow the photo, so moving doesn't make them again.
-- **Export.** Copies go to a `jEditor Export` folder, optionally resized.
-
-## The .jeditor folder
-
-jEditor keeps its own data in a `.jeditor` folder inside the folder you open:
-
-- `trash/` holds deleted photos.
-- `cache/` holds thumbnails and duplicate-finder data.
-- `flags.json` holds the flags (stars, rescan flags, colour labels).
-- `originals/` holds the photos as they were before a batch Auto crop, so it can be undone.
-
-If a subfolder has a `.jeditor` of its own (because it was once opened on its own), opening the whole order merges it into the order's: its deleted photos and Auto crop originals move across, named after the subfolder, its flags join the order's, and its cache is dropped. Then it's removed, so the order keeps one `.jeditor`.
-
-Because the cache travels with the folder, a second computer opening the same order (on a shared drive, say) gets its thumbnails and duplicate data straight away. The large screen-sized previews aren't stored there, to keep the folder small; they're kept in the browser instead.
-
-Rotating doesn't throw the cache away. A rotation only changes the photo's orientation tag, so the cached thumbnail and preview get the same tag instead of being made again from the full scan. Opening the folder again after rotating a batch is as quick as opening it with no changes.
-
-When an order is finished, use **Clean up folder…** (right-click the grid background, or **Clean up** in Settings). It empties the trash and removes the cache, the flags and the Auto crop originals; your photos aren't touched. Do this before copying an order to a customer: on Windows a folder starting with a dot is not hidden, so `.jeditor` would otherwise go along with the photos, deleted ones included. To stop jEditor writing a cache at all, turn off **Save cache in the folder** in Settings. The trash and the flags are still kept there either way.
-
-Folders opened with earlier versions may have a `.jeditor-trash` folder; Clean up removes that too.
-
-Some programs, mostly older print and lab software, ignore the EXIF orientation tag and will show a rotated JPEG the old way round. Cropping writes the rotation into the pixels, so a photo that has been cropped is always upright.
-
-## Crop and straighten
-
-It works like Lightroom or Apple Photos: the crop frame stays in the middle of the screen and the photo moves behind it.
-
-- Drag a corner or edge to resize. When you let go, the view zooms so the crop fills the screen again. Drag a handle past the edge of the screen to zoom out and make the crop bigger. Hold `Shift` to keep the shape, or `Alt` to resize from the centre.
-- Drag inside the frame to move the photo. Drag outside it to rotate.
-- Straighten with the slider, or `,` / `.` in 0.1° steps. The photo turns around the middle of the crop and zooms in just enough to hide the corners, so there are never empty corners.
-- To level something, hold `Ctrl` (`⌘` on a Mac) and draw a line along a horizon or the edge of a print. The level tool (`L`) does the same without the key.
-- **Auto** (`Shift+A`) finds the print on a scan, straightens it and crops to its edges. It needs a plain scanner lid or background around the photo, and it leaves a few pixels' margin so none of the bed shows. Turn on **Every photo** to run Auto on each photo as it opens. With `Shift+Enter` (save and next), a scan order then becomes: check the crop, press `Shift+Enter`, repeat.
-- **Batch Auto crop.** In the grid, select photos and press `Shift+A` (or **Auto crop** on the selection bar, or the right-click menu). Auto runs on each of them in the background, with the aspect ratio last chosen in the editor, and saves them. Photos with no print edge, or already cropped to it, are left alone. The originals are kept in `.jeditor/originals`, so one `Ctrl+Z` puts the whole batch back; flip through the results and fix the odd one in the editor.
-- `Ctrl+Z` inside the editor undoes the last adjustment; `Ctrl+Shift+Z` redoes it.
-- Aspect presets: 4×6, 5×7, 8×10, 11×14, square, 3:4, 16:9, original and free. `X` swaps portrait and landscape. A preset fits inside the current crop, so choosing one after Auto never takes in the bed.
-- **Previous** (`P`) applies the last crop again. This is useful when a batch of scans has the same borders.
-- The header shows the output size in pixels, and in inches when the file has a DPI.
-
-## Folders (collating)
-
-Some orders are collated: the photos go into labelled folders. Open the order folder and switch to the grid (`Space`).
-
-- **The folder list** on the left shows every folder, including folders inside folders and empty ones, with how many photos are directly in each. Click a folder to see just its photos. `Ctrl+B` hides the list; the grid then shows a folder's subfolders as tiles at the start, and the folder pill shows where you are. `Backspace` goes up a folder.
-- **All photos** (top of the list, or the switch in the folder pill at the top left) shows every photo in the order, whatever folder it's in, with each photo's folder named on its tile. It's what you see when an order is opened. `A` switches between All photos and the last folder.
-- **Moving.** Drag the selected photos onto a folder, in the list, a folder tile or the breadcrumb. Hold `Ctrl` (or `Alt`) when you let go to copy them instead. Or press `M` (`Shift+M` copies), or use **Move to…** on the selection bar or the right-click menu. That opens a list of folders: type to find one, or type a new name to make that folder and move the photos into it in one go. `Wedding/Speeches` makes a folder inside another.
-- **Name clashes.** If a photo with the same name is already in the folder, you're asked what to do: keep both (the moved photo gets a number, `IMG_0042 (2).jpg`), skip it, or replace the one that's there, which goes to the trash. You can apply the answer to the rest of the clashes. Cancel and nothing is moved.
-- **Folders.** **New folder** at the bottom of the folder list, `Shift+N`, or right-clicking the grid makes one inside the folder you're looking at. Right-click a folder to rename it, make a folder inside it, or delete it once it's empty.
-- In a folder, `←` `→`, the film strip, `Ctrl+A` and **Rename all…** cover that folder's photos only.
-- **Folder details.** The bottom of the folder list shows the total for what you're looking at (`1,240 photos · 4.80 GB`); click it, press `I` in the grid, or right-click a folder for **Folder info**. It lists how many photos there are (directly in the folder and with its subfolders), the total, average and largest size, file types, dates and flags. For the whole order it also shows how much room `.jeditor` takes: trash, cache and Auto crop originals. Select several photos to see the same for the selection.
-
-`Ctrl+Z` undoes a move or copy in one step, together with any photos it replaced and the folder made for it. Making, renaming and deleting folders can be undone too.
-
-## Renaming
-
-Press `F2`, use **Rename…** on the selection bar, or right-click the grid background for **Rename all…**. It works on the selected photos or the whole folder.
-
-- **New names** builds names from a pattern, such as `Smith_{###}` → `Smith_001.jpg`, `Smith_002.jpg`, …
-- **Find & replace** changes part of the existing names, such as replacing `IMG_` with `Smith_`.
-
-Patterns can use `{###}` for a sequence number (one digit per `#`), `{name}` for the current name, and `{date}` / `{time}` for when the photo was taken. Numbers follow the order you choose: the current sort, date taken, name, date modified or file size, ascending or descending, from any start number and step.
-
-The preview shows every old and new name before anything changes. Duplicate names, names already used by other files, and characters Windows doesn't allow are flagged, and the rename won't run until they're fixed. The file extension is always kept, and `Ctrl+Z` undoes the whole rename in one step.
-
-## Finding duplicates (work in progress)
-
-Press `D` in a folder. It looks for:
-
-- exact copies (identical file contents), and
-- the same print scanned more than once, including when it was turned, placed at a different angle, cropped slightly differently, exposed differently, or scanned in black and white.
-
-Scanner bed and film borders are ignored when comparing. Matches are shown in groups, side by side, with a match percentage. The copy with the most pixels is suggested as the one to keep. `K` marks the others and `Enter` moves them to the trash.
-
-It can still miss some re-scans or group photos that look alike, so check each group before trashing. The **Sensitivity** setting trades one for the other.
-
-## If it gets slow
-
-Press `Ctrl+Shift+D` to open the debug console. The yellow lines at the top show what the app is holding and doing: memory, undo history, images decoded, background work, and how long recent photos took to load. A screenshot of it taken while things are slow is the most useful thing to include in a bug report.
-
-It's built and tested for orders of 500–2000 photos. With 2000 scans at 1800×1200: the folder opens and shows the first photo in under half a second, thumbnails take about 20 seconds in the background the first time (under 2 seconds when it's opened again, rotated or not), rotating all 2000 takes about 8 seconds, renaming them about 2 seconds, and a duplicate scan about 20 seconds. Bigger files take longer to thumbnail, though big JPEGs are decoded at a fraction of their size for thumbnails and previews (about 4× faster than a full decode on 20-megapixel scans).
-
-Undo keeps up to 50 steps. Rotating a selection in the grid is one step, however many photos it covers. Rotations are undone by rotating back, so they don't use memory. Crops keep a copy of the original file so they can be undone, up to 256 MB in total; older crop steps are dropped after that.
-
-## Keyboard shortcuts
-
-Press `?` in the app to see all of them. Any shortcut can be changed there. The defaults:
-
-| Key | Action |
-|---|---|
-| `←` `→` | Previous / next photo (`↑` `↓` move by rows in the grid) |
-| `[` `]` or `,` `.` or `Shift+←` `Shift+→` | Rotate left / right |
-| `\` | Rotate 180° |
-| `Space`, `G`, `S` | Toggle view, grid view, single view |
-| `C` | Crop and straighten |
-| `+` `-` `0` | Zoom in, zoom out, fit. The mouse wheel zooms on the pointer, up to 3200% (past 100% the pixels show as sharp squares, with no smoothing). Double-click the photo: in to 100% on that spot, again to fit. |
-| `I` | Info: the photo in single view; in the grid, the folder you're in (photos, total size, types, dates, flags, room taken by `.jeditor`), or the selection |
-| `F` | Full screen |
-| `F2` | Rename (the selected photos in grid view) |
-| `M` / `Shift+M` | Move / copy to a folder (the selection in grid view) |
-| `P` / `X` | Star / needs rescan on or off |
-| `1`–`5` | Red, yellow, green, blue, purple label |
-| `U` | Clear flags |
-| `Shift+A` | Auto crop (the selection in grid view) |
-| `Ctrl+F`, `/` | Search |
-| `Shift+N` | New folder |
-| `A` | Switch between All photos and folders (grid view) |
-| `Backspace` | Up a folder (grid view) |
-| `Ctrl+B` | Show or hide the folder list (grid view) |
-| `Delete` | Move to trash |
-| `Ctrl+Z` | Undo |
-| `Ctrl+A` | Select all (grid view) |
-| `D` | Find duplicates |
-| `R` | Rescan the folder |
-| `?` | Show shortcuts |
-| `Ctrl+,` | Settings |
-
-In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `\` rotate 180°, `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
-
-In find duplicates: `1`–`9` mark or unmark a photo, `K` keep the suggested photo and mark the rest, `Enter` trash marked and go to the next group, `N` not duplicates, `←` `→` previous / next group, `Esc` close.
-
-## Development
-
-```bash
-npm install
-npm start           # serves app/ at http://localhost:3000
-npm test            # test suite in headless Chromium (set CHROME_PATH if Chrome isn't found)
-npm run build       # rebuilds standalone.html
-npm run build:site  # builds the web app into _site/ (what GitHub Pages serves)
-npm run bump 1.x.y  # sets the version in app/version.js, package.json and package-lock.json
+```
+jEditor.exe --ui C:\path\to\jEditor\app
 ```
 
-The app is plain JavaScript with no dependencies, in `app/`:
+That runs the UI from that folder in **dev mode**:
 
-- `script.js`: viewer, grid, rotation, file operations, shortcuts
-- `crop.js`: crop and straighten
-- `crop-auto.js`: finding the print on a scan (Auto)
-- `changelog.js`: the list of changes shown in What's new
-- `meta.js`: reading and copying JPEG/PNG metadata
-- `dupes.js`: duplicate finder
-- `rename.js`: batch rename
-- `folders.js`: folders: the folder list, moving and copying photos, making, renaming and deleting folders
-- `flags.js`: flags (star, rescan, colour labels) and search
-- `watch.js`: watching the folder for changes, and rescanning
-- `recents.js`: recent orders on the start screen, and spotting a folder that's part of one
-- `ui.js`: the app's own alert / confirm / prompt dialogs, and focus handling for every dialog
-- `tokens.css`: the design tokens (colours, type, spacing, radii, shadows, motion, layers) and the theme, density, glass and surround switches; `style.css` builds every component from them
+- saving a `.css` file restyles the window at once, keeping the open folder
+- saving any other file reloads the page
+- `F5` or `Ctrl+R` reloads, and `F12` opens DevTools
 
-To release, bump the version, add what changed to the top of `app/changelog.js`, commit, and merge to `main`. The changelog is what the app shows under **What's new** and what the GitHub Release notes say; the tests fail if the current version has no entry. The Release workflow then tags the version, builds `standalone.html` and publishes a GitHub Release, and the Pages workflow builds and deploys the web app. Both builds inline every script and stylesheet into one page, so a browser never ends up mixing files from two versions. The tests fail if `app/version.js` and `package.json` disagree.
+A Debug build (`dotnet run --project src`) does this on its own with the repo's `app` folder. `JEDITOR_UI=<folder>` does the same as `--ui`.
 
-If you change `app/icon.png`, run `node scripts/make-icons.js` to regenerate the app icons. On Windows without Node, `start.bat` serves the app locally.
+`npm start` also serves `app/` at http://localhost:3000 for a quick look in Chrome, without the Windows side (no folder picker bridge, so Chrome asks for permission as it always did).
+
+## How it works
+
+- `src/`: a small .NET 8 WinForms app hosting WebView2, Edge's engine. It serves the `app` folder at `https://jeditor.example/`. That address must never change, because jEditor's settings and recent orders are stored under it.
+- `src/bridge.js`: runs in the page before jEditor does. It replaces the browser's folder picker with Windows' own, and the app hands the page a real folder handle made by WebView2 (`CreateWebFileSystemDirectoryHandle`), with permission to edit already granted. The UI's file code is standard web code (the File System Access API), so it also runs in Chrome and in the tests. The bridge also turns off the service worker, reports the theme for the title bar, and runs dev mode and the smoke test.
+- `src/Scanner.cs`: scanning into the open order with [NAPS2.Sdk](https://github.com/cyanfish/naps2) (LGPL-2.1; its DLLs and license ship beside the exe, not inside it, so they can be replaced). TWAIN scanners with 64-bit drivers and WIA scanners work in the app's own process; the scanner's own window sets size and resolution. TWAIN needs `TWAINDSM.dll`, which scanner drivers install in System32 (or put one in `_win64\` beside the exe). `--fake-scanner` adds a test scanner that needs no hardware.
+- `app/`: the UI. It ships beside the exe.
+- `docs/`: how to use jEditor, and the plan from its web app days.
+
+The UI never assumes Windows: everything the app adds goes through `window.JEditorNative` (made by `src/bridge.js`), which is `null` in a browser, and the UI tests run it that way in Chrome.
+- `installer/jEditor.iss`: the per-user installer (Inno Setup).
+
+## Building
+
+On Windows, with the .NET 8 SDK and [Inno Setup 6](https://jrsoftware.org/isdl.php):
+
+```
+git clone https://github.com/xmui/jEditor
+cd jEditor
+./scripts/build.ps1            # dist\: publish\, the portable zip and the setup
+./scripts/smoke-test.ps1       # the built app opens a folder and saves a rotation
+```
+
+`npm test` runs the tests in headless Chrome, on any OS: the bridge's, then the UI's (sorting, rotation, crop, flags, folders and much more). Set `CHROME_PATH` if Chrome isn't found. The project also compiles on Linux and macOS (`dotnet build src`), which is handy for checking a change, but it only runs on Windows.
+
+Every push builds on GitHub Actions: the tests, then on Windows the build, the smoke test and an install/uninstall test. The setup and the zip from each run are on the run's page under **Artifacts**.
+
+### Releasing
+
+```
+npm run bump 1.x.y     # sets the version in app/version.js, package.json and package-lock.json
+```
+
+Add what changed to the top of `app/changelog.js`: it's what the app shows under **What's new**, and the release notes. The tests fail if the current version has no entry. When the bump lands on `main`, the Release workflow builds, tests and publishes the setup and the zip as release `v1.x.y`. Running Release by hand from the Actions tab releases the current version again as `v1.x.y-2` (for a fix to the Windows side alone).
+
+If you change `app/icon.png`, run `node scripts/make-icons.js` (the web icons) and `python3 scripts/make-icon.py` (the exe's icon).
+
+### Command line
+
+| | |
+|---|---|
+| `jEditor.exe [folder]` | open that folder (given a photo: its folder) |
+| `--ui <folder>` | run the UI from that folder, in dev mode |
+| `--log <file>` | write a log |
+| `--smoke-test <folder>` | open the folder, rotate a photo, check it's saved, then exit 0 (passed) or 1 (failed) |
+| `--user-data <folder>` | a different WebView2 profile |
+
+See [PLAN.md](PLAN.md) for what's next.

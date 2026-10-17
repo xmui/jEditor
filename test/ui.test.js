@@ -195,6 +195,9 @@ const PAGE_HELPERS = `
     };
 `;
 
+// Synthetic scans with known answers, for the photo finder (scenes.js)
+const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
+
 async function newPage(browser, url) {
     const page = await browser.newPage();
     const issues = { errors: [], failedRequests: [] };
@@ -911,10 +914,10 @@ async function newPage(browser, url) {
             const out = {};
             localStorage.removeItem('jeditor.ui');
 
-            // Default pill: info, view, refresh, crop visible; rest in "More"
+            // Default pill: info, view, refresh, crop, history visible; rest in "More"
             const hc = document.getElementById('header-controls');
             const visible = [...hc.querySelectorAll('[data-hc]')]
-                .filter(b => !b.classList.contains('hc-extra') && !b.classList.contains('hidden'))
+                .filter(b => !b.classList.contains('hc-extra') && !b.classList.contains('hidden') && getComputedStyle(b).display !== 'none')
                 .map(b => b.dataset.hc);
             out.defaultMain = visible.join(',');
             const extras = [...hc.querySelectorAll('.hc-extra')].map(b => b.dataset.hc);
@@ -926,7 +929,7 @@ async function newPage(browser, url) {
             // Placement + order + vertical + scale via prefs
             app.uiPrefs.placement.fullscreen = 'main';
             app.uiPrefs.placement.refresh = 'hidden';
-            app.uiPrefs.order = ['crop', 'info', 'view', 'refresh', 'fit', 'strip', 'fullscreen', 'customize'];
+            app.uiPrefs.order = ['crop', 'info', 'view', 'refresh', 'history', 'fit', 'strip', 'fullscreen', 'customize'];
             app.uiPrefs.vertical = true;
             app.uiPrefs.scale = 1.2;
             app.saveUiPrefs();
@@ -975,7 +978,7 @@ async function newPage(browser, url) {
             out.pillHidden = pill.classList.contains('hidden');
             return out;
         });
-        check('default main controls: info, view, refresh, crop', r.defaultMain === 'info,view,refresh,crop', r.defaultMain);
+        check('default main controls: info, view, refresh, crop, history', r.defaultMain === 'info,view,refresh,crop,history', r.defaultMain);
         check('extras live in More (fit, strip, fullscreen, dupes, keys, whatsnew, customize)', r.defaultExtras === 'fit,strip,fullscreen,dupes,keys,whatsnew,customize', r.defaultExtras);
         check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
         check('reorder + hide + promote via prefs', r.reordered === 'crop,info' && r.refreshHidden && r.fullscreenMain,
@@ -1026,9 +1029,32 @@ async function newPage(browser, url) {
             out.subtleGlass = css('--glass-filter') === 'none';
             out.surround = getComputedStyle(document.getElementById('main-view')).backgroundColor;
             out.saved = JSON.parse(localStorage.getItem('jeditor.ui'));
+            // A page at a time: Appearance first; Messages on a click, and it's
+            // where Settings opens next time; no Updates page outside the Windows app
+            const shownPage = () => [...document.querySelectorAll('#settings-panel .settings-section')].filter(x => getComputedStyle(x).display !== 'none').map(x => x.dataset.page).join();
+            out.firstPage = shownPage();
+            document.querySelector('.settings-nav [data-page="messages"]').click();
+            out.messagesPage = shownPage() + ' ' + document.querySelector('.settings-nav [data-page="messages"]').getAttribute('aria-selected');
+            out.noUpdates = getComputedStyle(document.querySelector('.settings-nav [data-page="updates"]')).display === 'none';
             // Esc closes it
             document.getElementById('settings-panel').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
             out.closed = !app.isSettingsOpen();
+            app.toggleCustomizePanel(true);
+            out.reopenedOn = shownPage();
+            // Arrow keys move between pages
+            const tab = document.querySelector('.settings-nav [data-page="messages"]');
+            tab.focus();
+            tab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+            out.arrowPage = shownPage() + ' ' + (document.activeElement && document.activeElement.dataset.page);
+            app.showSettingsPage('appearance');
+            app.toggleCustomizePanel(false);
+
+            // Window background is the Windows app's: hidden here, and the window stays solid
+            out.backdropHidden = ['set-backdrop-row', 'set-transparency-row'].every(id => getComputedStyle(document.getElementById(id)).display === 'none');
+            out.solidWindow = !root.classList.contains('backdrop') && getComputedStyle(document.body).backgroundColor === 'rgb(232, 232, 232)';
+            localStorage.setItem('jeditor.ui', JSON.stringify({ backdrop: 'glass', transparency: 500 }));
+            app.loadUiPrefs();
+            out.badBackdrop = [app.uiPrefs.backdrop, app.uiPrefs.transparency].join();
 
             // The glass no longer follows the photo: no sampler, no classes
             out.noSampler = typeof app.analyzeImageBrightness === 'undefined' && typeof app.applyGlass === 'undefined';
@@ -1041,11 +1067,14 @@ async function newPage(browser, url) {
         });
         check('appearance defaults: dark, compact, rich glass, theme surround', r.defaults === 'dark,compact,rich,auto', r.defaults);
         check('Ctrl+, opens Settings; Esc closes it', r.opened && r.closed, JSON.stringify({ o: r.opened, c: r.closed }));
+        check('Settings: a page at a time, Appearance first; a click (or the arrow keys) changes page, and it opens on the last page used', r.firstPage === 'appearance' && r.messagesPage === 'messages true' && r.noUpdates && r.reopenedOn === 'messages' && r.arrowPage === 'autocrop autocrop', JSON.stringify([r.firstPage, r.messagesPage, r.noUpdates, r.reopenedOn, r.arrowPage]));
         check('theme, density, glass and surround apply and are remembered',
             r.applied === 'light,comfortable,subtle,grey' && r.lightText && r.comfortable && r.subtleGlass &&
             r.surround === 'rgb(118, 118, 118)' && r.saved.theme === 'light' && r.saved.density === 'comfortable' &&
             r.saved.glass === 'subtle' && r.saved.surround === 'grey', JSON.stringify(r));
         check('the glass is fixed: it no longer follows the photo', r.noSampler && r.noGlassClasses);
+        check('window background: not in a browser, solid; bad saved values ignored',
+            r.backdropHidden && r.solidWindow && r.badBackdrop === 'none,50', JSON.stringify(r));
         check('appearance suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -1105,7 +1134,7 @@ async function newPage(browser, url) {
         check('compressed image data byte-identical', r.sameData);
         check('browser shows it rotated (40x20 → 20x40)', r.dims === '20x40', r.dims);
         check('XMP orientation kept in agreement', r.xmp);
-        check('CMYK colour profile not copied onto RGB output', r.cmykSafe);
+        check('CMYK color profile not copied onto RGB output', r.cmykSafe);
         check('second rotation writes only the orientation bytes in place', r.inPlace);
         await page.close();
     }
@@ -1229,7 +1258,7 @@ async function newPage(browser, url) {
             out.pngDpi = pd && Math.round(pd.x);
             out.pngType = p.handle.writtenType;
 
-            // ---- Frame-centred editing (Lightroom / Photos style) ----
+            // ---- Frame-centered editing (Lightroom / Photos style) ----
             // A print on a scanner bed: busy blocks, tilted 3° clockwise
             const scanJpeg = async (tilt, bed) => {
                 const c = document.createElement('canvas');
@@ -1354,6 +1383,59 @@ async function newPage(browser, url) {
             out.autoEach = Math.abs(ed.angle - 2) < 0.15 && ed.history.length === 0;
             ed.setAutoEach(false);
             app.cancelCrop();
+
+            // Auto crop's test set (crop-log.js): each crop saved after Auto
+            // keeps the scan and a label; one cropped by hand, a log line
+            const opfs = await navigator.storage.getDirectory();
+            await opfs.removeEntry(CropLog.DIR, { recursive: true }).catch(() => { });
+            const saveAfter = async (name, bytes, act) => {
+                await open(makeFakeFile(name, bytes, 'image/jpeg'));
+                await act();
+                await app.saveCrop();
+                await CropLog._queue;
+            };
+            const plainJpeg = async () => {
+                const c = document.createElement('canvas');
+                c.width = 900; c.height = 600;
+                const g = c.getContext('2d');
+                for (let y = 0; y < 600; y += 30) for (let x = 0; x < 900; x += 30) {
+                    g.fillStyle = `hsl(${(x * 7 + y * 3) % 360},50%,${30 + (x + y) % 40}%)`;
+                    g.fillRect(x, y, 30, 30);
+                }
+                return new Uint8Array(await (await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9))).arrayBuffer());
+            };
+            const inset = (k) => { const r = ed.rect; ed.setRect({ x0: r.x0 + k, y0: r.y0 + k, x1: r.x1 - k, y1: r.y1 - k }); };
+            await saveAfter('logA.jpg', await scanJpeg(-2, '#0e0e0e'), () => ed.autoDetect({ quiet: true }));
+            await saveAfter('logB.jpg', await scanJpeg(1, '#0e0e0e'), () => { ed.autoDetect({ quiet: true }); inset(25); });
+            await saveAfter('logC.jpg', await plainJpeg(), () => { ed.autoDetect({ quiet: true }); inset(40); });
+            await saveAfter('logD.jpg', await plainJpeg(), () => inset(40));
+            const dir = await opfs.getDirectoryHandle(CropLog.DIR);
+            const names = [];
+            for await (const [n] of dir.entries()) names.push(n);
+            out.logNames = names.sort();
+            const label = async (n) => JSON.parse(await (await (await dir.getFileHandle(n)).getFile()).text());
+            const json = names.filter(n => n.endsWith('.json'));
+            out.logLabels = await Promise.all(json.map(label));
+            const lines = (await (await (await dir.getFileHandle('log.jsonl')).getFile()).text()).trim().split('\n').map(l => JSON.parse(l));
+            out.logLines = lines.map(l => `${l.file}:${l.result}`);
+            const scanB = names.find(n => /logB\.jpg$/.test(n));
+            const keptB = scanB && new Uint8Array(await (await (await dir.getFileHandle(scanB)).getFile()).arrayBuffer());
+            out.logBytes = !!keptB && keptB.length > 1000 && keptB[0] === 0xff && keptB[1] === 0xd8;
+            await CropLog.refresh();
+            out.logCount = document.getElementById('crop-log-count').textContent;
+            // Off: nothing more kept
+            CropLog.setEnabled(false);
+            await saveAfter('logE.jpg', await scanJpeg(0, '#0e0e0e'), () => ed.autoDetect({ quiet: true }));
+            let after = 0;
+            for await (const _ of dir.entries()) after++;
+            out.logOff = after === names.length;
+            CropLog.setEnabled(true);
+            // Clear: all of it gone
+            const realConfirm = UI.confirm;
+            UI.confirm = async () => true;
+            await CropLog.clear();
+            UI.confirm = realConfirm;
+            out.logCleared = await opfs.getDirectoryHandle(CropLog.DIR).then(() => false, () => true);
             return out;
         });
         check('rotate-then-crop: editor sees the rotated photo (200x400)', r.editorDims === '200x400', r.editorDims);
@@ -1361,7 +1443,7 @@ async function newPage(browser, url) {
         check('editor closes after save', r.closed);
         check('crop keeps EXIF (Make, DateTimeOriginal)', r.make === 'TestCam' && r.taken, String(r.make));
         check('crop keeps DPI (300)', r.dpi === 300, String(r.dpi));
-        check('crop keeps the ICC colour profile', r.icc);
+        check('crop keeps the ICC color profile', r.icc);
         check('crop resets EXIF orientation to 1 (pixels baked upright)', r.orientationReset === 1, String(r.orientationReset));
         check('undo restores the pre-crop file', r.undone);
         check('straightened crop fits inside the rotated image', r.fitsAt7);
@@ -1376,15 +1458,26 @@ async function newPage(browser, url) {
         check('Save & Next moves on and reopens the editor', r.next);
         check('PNG crop stays PNG and keeps DPI', r.pngType === 'image/png' && r.pngDpi === 300, `${r.pngType} ${r.pngDpi}`);
         check('Auto straightens a tilted print (−3°)', r.autoFound && Math.abs(r.autoAngle + 3) < 0.15, String(r.autoAngle));
+        {
+            const L = r.logLabels || [], by = (f) => L.find(l => l.file === f) || {};
+            const A = by('logA.jpg'), B = by('logB.jpg'), C = by('logC.jpg');
+            check('test set: a scan saved with Auto\'s crop is kept as accepted, with where Auto put the print', A.result === 'accepted' && A.auto && A.auto.found && A.auto.corners.length === 4 && A.saved.crop.length === 4 && A.W === 1200, JSON.stringify(A));
+            check('test set: a scan cropped tighter after Auto is kept as corrected, with how far', B.result === 'corrected' && B.diff > 20, JSON.stringify(B && { result: B.result, diff: B.diff }));
+            check('test set: Auto finding nothing, then a crop by hand, is kept as missed', C.result === 'missed' && C.auto && C.auto.found === false, JSON.stringify(C && C.result));
+            check('test set: the scans themselves are kept, as they were before the save', r.logBytes && r.logNames.filter(n => /^\d{8}T\d{6}-log[ABC]\.jpg$/.test(n)).length === 3 && L.length === 3, r.logNames.join());
+            check('test set: every crop is in the log; one done without Auto has no scan', (r.logLines || []).join() === 'logA.jpg:accepted,logB.jpg:corrected,logC.jpg:missed,logD.jpg:manual' && !r.logNames.some(n => /logD/.test(n)), (r.logLines || []).join());
+            check('test set: Settings shows how many are kept', /^3 scans kept · /.test(r.logCount), r.logCount);
+            check('test set: off keeps nothing; Clear removes it all', r.logOff && r.logCleared, JSON.stringify([r.logOff, r.logCleared]));
+        }
         check('Auto crops to the print (720×480, no bed)', r.autoNoBed && Math.abs(r.autoSize[0] - 720) < 12 && Math.abs(r.autoSize[1] - 480) < 12, JSON.stringify(r.autoSize));
         check('Auto declines a photo with no scanner border', r.autoDeclines);
-        check('straightening pivots on the crop centre', r.pivot);
-        check('resting view: crop centred and filling the stage', r.fills && r.centred);
+        check('straightening pivots on the crop center', r.pivot);
+        check('resting view: crop centered and filling the stage', r.fills && r.centred);
         check('drag inside moves the photo, not the frame', r.panFrameStill && r.panMovedPhoto);
         check('drag outside the frame rotates', r.rotateDrag && r.rotateFrameStill, String(r.rotateDrag));
         check('Ctrl+drag draws a level line', r.ctrlLevel);
         check('editor undo: a run of nudges is one step; redo', r.nudged && r.undoNudges && r.redo);
-        check('handle resize, then the view re-centres', r.resized && r.settled);
+        check('handle resize, then the view re-centers', r.resized && r.settled);
         check('"Every photo" runs Auto as each photo opens', r.autoEach);
         check('crop suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
@@ -1454,12 +1547,77 @@ async function newPage(browser, url) {
         check('key combos format for display', r.format === 'Ctrl + Shift + ←|+', r.format);
         await page.close();
 
+        // Profiles: Lightroom Classic's keys, changes kept per profile, own profiles
+        const { page: pp } = await newPage(browser, `${baseUrl}/index.html`);
+        const rp = await pp.evaluate(async () => {
+            const out = {};
+            for (const k of Object.keys(localStorage)) if (k.startsWith('jeditor.key')) localStorage.removeItem(k);
+            app.loadKeyBindings();
+            // No key does two things in one place, in any built-in profile
+            out.clashes = [];
+            for (const id of Object.keys(app.KEY_PROFILES)) {
+                const keys = app.keyProfileDefaults(id), seen = new Map();
+                for (const [aid, ctx] of app.KEY_ACTIONS) for (const k of keys[aid]) {
+                    const at = ctx + ' ' + k;
+                    if (seen.has(at)) out.clashes.push(`${id}: ${k} → ${seen.get(at)} and ${aid}`);
+                    seen.set(at, aid);
+                }
+            }
+            app.setKeyProfile('lightroom');
+            const kb = app.keyBindings;
+            out.lr = kb['edit.crop'].join() === 'R' && kb['flag.red'].join() === '6' && kb['view.single'].join() === 'E'
+                && kb['edit.rotateLeft'].join() === 'Ctrl+[' && kb['app.refresh'].join() === 'F5' && kb['flag.star'].join() === 'P';
+            // A change in Lightroom's stays there
+            app.assignKey('view.grid', 'Shift+G');
+            out.lrSaved = JSON.parse(localStorage.getItem('jeditor.keys.lightroom'))['view.grid'].includes('Shift+G')
+                && !localStorage.getItem('jeditor.keys');
+            app.setKeyProfile('jeditor');
+            out.back = app.keyBindings['edit.crop'].join() === 'C' && app.keyBindings['view.grid'].join() === 'G';
+            app.setKeyProfile('lightroom');
+            out.kept = app.keyBindings['view.grid'].includes('Shift+G');
+            app.loadKeyBindings();
+            out.remembered = app.keyProfile === 'lightroom';
+            // Reset goes back to Lightroom's keys, not jEditor's
+            app.resetKeys();
+            out.reset = app.keyBindings['view.grid'].join() === 'G' && app.keyBindings['edit.crop'].join() === 'R';
+            // The panel: both profiles listed; a new one from the keys in use
+            app.toggleShortcutsPanel(true);
+            const sel = document.getElementById('shortcuts-profile');
+            out.listed = [...sel.options].map(o => o.textContent).join() === 'jEditor,Lightroom Classic' && sel.value === 'lightroom';
+            out.noRename = document.getElementById('shortcuts-profile-rename').classList.contains('hidden');
+            const made = app.newKeyProfile();
+            await new Promise(r => setTimeout(r, 50));
+            document.getElementById('uid-input').value = 'Ana';
+            document.getElementById('uid-ok').click();
+            await made;
+            out.made = app.keyProfiles().some(p => p.name === 'Ana' && p.id === app.keyProfile)
+                && app.keyBindings['edit.crop'].join() === 'R' && sel.value === app.keyProfile
+                && !document.getElementById('shortcuts-profile-rename').classList.contains('hidden');
+            // Picking from the list switches
+            sel.value = 'jeditor';
+            sel.dispatchEvent(new Event('change'));
+            out.picked = app.keyProfile === 'jeditor' && app.keyBindings['edit.crop'].join() === 'C';
+            app.toggleShortcutsPanel(false);
+            for (const k of Object.keys(localStorage)) if (k.startsWith('jeditor.key')) localStorage.removeItem(k);
+            return out;
+        });
+        check('shortcut profiles: no key does two things', !rp.clashes.length, rp.clashes.join('; '));
+        check('Lightroom Classic profile has Lightroom\'s keys', rp.lr);
+        check('a change is kept in its own profile', rp.lrSaved && rp.back && rp.kept, JSON.stringify(rp));
+        check('the profile in use is remembered', rp.remembered);
+        check('reset goes back to the profile\'s own keys', rp.reset);
+        check('the panel lists profiles; a new one copies the keys in use', rp.listed && rp.noRename && rp.made, JSON.stringify(rp));
+        check('picking a profile in the panel switches to it', rp.picked);
+        await pp.close();
+
         // '\\' turns photos 180°: the current one, the grid selection, and in crop
         const { page: p180, issues: i180 } = await newPage(browser, `${baseUrl}/index.html`);
         const r180 = await p180.evaluate(async () => {
             const out = {};
             localStorage.removeItem('jeditor.keys');
             app.loadKeyBindings();
+            // Rotation messages are off to start with (Settings → Messages): on, to check this one
+            app.uiPrefs.toasts.rotate = true;
             const press = (key) => window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
             const a = makeFakeFile('a.jpg', makeJpegBytes(), 'image/jpeg');
             const b = makeFakeFile('b.jpg', makeJpegBytes(), 'image/jpeg');
@@ -1534,7 +1692,7 @@ async function newPage(browser, url) {
             out.visible = !document.getElementById('image-container').classList.contains('hidden') &&
                 img.naturalWidth === 300 && app.viewMode === 'single';
 
-            // Neighbour is pre-decoded: next photo is on screen synchronously
+            // Neighbor is pre-decoded: next photo is on screen synchronously
             const next = app.files[1];
             for (let i = 0; i < 50 && !(next._decodedEl && next._decodedEl._decoded); i++) await new Promise(res => setTimeout(res, 20));
             app.navigate(1);
@@ -2104,6 +2262,16 @@ async function newPage(browser, url) {
             out.trashed = inTrash === 1 && app.files.length === 3;
             await app.undo();
             out.restored = app.files.length === 4;
+            // In the grid the next photo is selected, so Delete goes on from there
+            app.setView('grid');
+            const [, b, c] = app.viewFiles();
+            app.currentFile = b; app.selection = new Set([b]); app.updateSelectionUI();
+            await app.moveToTrash([b]);
+            out.nextSelected = app.selection.size === 1 && app.selection.has(c) && app.currentFile === c
+                && !document.getElementById('selection-bar').classList.contains('hidden');
+            await app.undo();
+            app.selection = new Set(); app.updateSelectionUI();
+            out.restored = out.restored && app.files.length === 4;
 
             // A batch: moved into the trash (no bytes rewritten), several at a
             // time; a name already in the trash gets a unique one
@@ -2171,6 +2339,7 @@ async function newPage(browser, url) {
         check('another computer: thumbnails come from the folder', second.thumbsGenerated === 0, String(second.thumbsGenerated));
         check('another computer: duplicate scan reuses fingerprints', second.fingerprintsComputed === 0, String(second.fingerprintsComputed));
         check('delete goes to .jeditor/trash; undo restores', second.trashed && second.restored);
+        check('deleting the selection in the grid selects the next photo', second.nextSelected);
         check('batch delete moves files (no copying), keeps a unique trash name', second.batchMoved && second.batchCurrent);
         check('undo restores the whole batch intact', second.batchRestored);
         check('rotated photo: old cached thumbnail pruned, new one kept', second.prunedTo === 4 && second.prunedOld, String(second.prunedTo));
@@ -2831,10 +3000,10 @@ async function newPage(browser, url) {
             out.added = app.files.length === 7 && order === app.viewFiles().map(f => f.name).join(',');
             out.inPlace = app.files.find(f => f.name === 'd.jpg')._gridEl === kept && kept.isConnected;
             out.glow = app.files.find(f => f.name === 'c.jpg')._gridEl.classList.contains('is-new');
-            await until(() => [...document.querySelectorAll('.toast')].some(t => /new photo/.test(t.textContent)));
-            const toast = [...document.querySelectorAll('.toast')].find(t => /new photo/.test(t.textContent));
-            out.toast = !!toast && !!toast.querySelector('.toast-action');
-            if (toast) toast.querySelector('.toast-action').click();
+            // No message for them: they just appear (a scanner adds them one by one)
+            await new Promise(r => setTimeout(r, 800));
+            out.toast = ![...document.querySelectorAll('.toast')].some(t => /new photo/.test(t.textContent));
+            Watch.showNew(['c.jpg', 'e.jpg'].map(n => app.files.find(f => f.name === n)));
             out.shown = ['c.jpg', 'e.jpg'].every(n => app.selection.has(app.files.find(f => f.name === n)));
 
             // A scanner writing a photo: first the start of it, then the
@@ -2891,6 +3060,29 @@ async function newPage(browser, url) {
             await app.refreshFolder();
             await until(() => b.size !== before);
             out.edited = b.size !== before;
+
+            // R while the project is still opening waits for it (the load
+            // reads every photo); pressed several times in a row, each new
+            // photo comes in once
+            await put(dir, 'r2.jpg', bytes);
+            await put(dir, 'r3.jpg', bytes);
+            app.isLoading = true;
+            await app.refreshFolder();
+            app.isLoading = false;
+            out.waitedForLoad = !app.files.some(f => f.relPath === 'r2.jpg') && /Still opening/.test([...document.querySelectorAll('.toast')].map(t => t.textContent).join(' '));
+            const presses = [];
+            for (let i = 0; i < 4; i++) presses.push(app.refreshFolder());
+            await Promise.all(presses);
+            await sleep(400);
+            await app.refreshFolder();
+            out.noDoubles = ['r2.jpg', 'r3.jpg'].every(n => app.files.filter(f => f.relPath === n).length === 1)
+                && new Set(app.files.map(f => f.relPath)).size === app.files.length
+                && app.elements.gridView.querySelectorAll('.grid-item').length === app.viewFiles().length;
+            // (gone again, for the counts below)
+            await dir.removeEntry('r2.jpg');
+            await dir.removeEntry('r3.jpg');
+            await app.refreshFolder();
+            await until(() => !app.files.some(f => /^r[23]\.jpg$/.test(f.relPath)));
 
             // Nothing changed: up to date, quickly
             const t0 = performance.now();
@@ -2956,11 +3148,12 @@ async function newPage(browser, url) {
         console.log(`  info  watching with: ${r.watching}; rescan of an unchanged order: ${r.rescanMs} ms`);
         check('watch: new photos slot into the grid in sort order', r.added, JSON.stringify(r));
         check('watch: existing tiles aren\'t rebuilt; new ones glow', r.inPlace && r.glow);
-        check('watch: toast with Show selects the new photos', r.toast && r.shown);
+        check('watch: no message for new photos; showing them selects them', r.toast && r.shown);
         check('watch: a photo still being written waits, then comes in whole with a real thumbnail', r.notYet && r.wholeSize && r.thumb && r.complete, JSON.stringify(r));
         check('watch: photos removed outside jEditor go', r.removed);
         check('watch: a new folder and its photos show up', r.newFolder);
         check('rescan: photos edited elsewhere are picked up', r.edited);
+        check('rescan: R while the project is still opening waits for it, saying so; pressed several times, each new photo comes in once', r.waitedForLoad && r.noDoubles, JSON.stringify([r.waitedForLoad, r.noDoubles]));
         check('rescan: an unchanged order is up to date', r.upToDate && r.rescanMs < 2000, String(r.rescanMs));
         check('watch: jEditor\'s own rename and trash aren\'t seen as outside changes', r.ownOps);
         check('watch: can be switched off', r.off);
@@ -3055,8 +3248,11 @@ async function newPage(browser, url) {
             out.searchFlag = app.viewFiles().map(x => x.name).sort().join(',');
             Flags.setQuery('nothing-like-this');
             out.noMatch = app.viewFiles().length === 0 && app.elements.gridView.classList.contains('grid-no-match');
-            Flags.clearFilter();
-            out.cleared = app.viewFiles().length === 7;
+            // Its Clear search button shows everything again
+            const clearBtn = app.elements.gridView.querySelector('.grid-empty-box .btn');
+            out.clearLabel = clearBtn && clearBtn.textContent;
+            if (clearBtn) clearBtn.click();
+            out.cleared = app.viewFiles().length === 7 && !Flags.query && !app.elements.gridView.classList.contains('grid-no-match');
             // Ctrl+F opens the search box
             key('f', { ctrlKey: true });
             out.focus = document.activeElement && document.activeElement.id === 'fb-search';
@@ -3071,14 +3267,14 @@ async function newPage(browser, url) {
             out.cleanedUp = !app.files.some(x => x._flags);
             return out;
         });
-        check('flags: P, X and 1–5 set star, rescan and colour on the selection', r.flags && r.badges, JSON.stringify(r));
-        check('flags: P again unstars; Ctrl+Z undoes; a new colour replaces the old', r.toggled && r.undone && r.colourSwap);
+        check('flags: P, X and 1–5 set star, rescan and color on the selection', r.flags && r.badges, JSON.stringify(r));
+        check('flags: P again unstars; Ctrl+Z undoes; a new color replaces the old', r.toggled && r.undone && r.colourSwap);
         check('flags: saved in .jeditor/flags.json, keyed by path', r.saved);
         check('flags: a rename carries them; saved under the new name', r.renamed);
         check('flags: come back when the order is opened again', r.reloaded);
         check('flags: filter shows only those photos, Ctrl+A selects just them', r.filter === 'IMG_0002.jpg,Smith_01.jpg' && r.selectAll && r.chip, r.filter);
         check('flags: the folder list has a Flags section with counts', r.list.startsWith('star,rescan,blue') && r.list.endsWith('none'), r.list);
-        check('search: by folder, by words, by is:flag; no match says so', r.searchFolder === 'vows.jpg' && r.searchWords === 5 && r.searchFlag === 'IMG_0002.jpg,vows.jpg' && r.noMatch && r.cleared,
+        check('search: by folder, by words, by is:flag; no match says so, and its Clear search button shows everything', r.searchFolder === 'vows.jpg' && r.searchWords === 5 && r.searchFlag === 'IMG_0002.jpg,vows.jpg' && r.noMatch && r.cleared,
             `${r.searchFolder} / ${r.searchWords} / ${r.searchFlag}`);
         check('search: Ctrl+F opens the search box', r.focus);
         check('flags: rescan list names each photo with its folder', /Needs rescan \(2\)/.test(r.listText) && r.listText.includes('Ceremony/vows.jpg'), r.listText);
@@ -3149,6 +3345,562 @@ async function newPage(browser, url) {
         check('auto crop: says what it did, with Undo', /Auto-cropped 2 photos — no print found on 1/.test(r.toast), r.toast);
         check('auto crop: originals kept in .jeditor/originals; one Ctrl+Z restores every byte', r.backups === 2 && r.restored && r.backupsAfter === 0, JSON.stringify(r));
         check('auto crop suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7s0. The photo finder (photo-find.js) ----
+    console.log('photo finder');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.evaluate(PHOTO_SCENES);
+        const r = await page.evaluate(() => {
+            const S = Scenes, out = {};
+            const lid = '#ecebe6';
+            const all = (name, bed, prints, opts, W = 1000, H = 1200) => {
+                const c = S.draw(W, H, bed, prints, opts);
+                const found = PhotoFind.all(c, W, H);
+                out[name] = { n: found.length, err: Math.max(...prints.map(p => Math.min(...found.map(f => S.err(f.corners, p)), 999))) };
+            };
+            all('three', lid, [{ x: 300, y: 260, w: 360, h: 240, angle: 3 }, { x: 800, y: 300, w: 240, h: 360, angle: -5 }, { x: 420, y: 800, w: 420, h: 300, angle: 0, kind: 'dark' }], { gradient: 0.12, noise: 6, dust: true });
+            all('whiteBorder', '#f7f7f5', [{ x: 500, y: 450, w: 400, h: 300, angle: -1.5, border: 18, borderColor: '#ffffff' }], { noise: 4 });
+            all('darkOnBlack', '#0a0a0a', [{ x: 500, y: 500, w: 380, h: 280, angle: 4, kind: 'dark' }], { noise: 6 });
+            all('touching', lid, [{ x: 330, y: 400, w: 300, h: 220, angle: 0 }, { x: 631, y: 400, w: 300, h: 220, angle: 0 }], { noise: 5 });
+            all('six', lid, [0, 1, 2, 3, 4, 5].map(i => ({ x: 200 + (i % 2) * 450, y: 180 + Math.floor(i / 2) * 380, w: 360, h: 250, angle: (i - 2.5) * 1.6 })), { noise: 6, dust: true });
+            all('shaded', lid, [{ x: 400, y: 450, w: 400, h: 300, angle: -2 }, { x: 600, y: 950, w: 300, h: 200, angle: 1 }], { gradient: 0.35, noise: 6 });
+            all('panorama', lid, [{ x: 500, y: 400, w: 900, h: 280, angle: 1 }], { noise: 5 });
+            const feeder = (g, W, H) => { g.fillStyle = '#fbfbfb'; g.fillRect(0, 0, W, H); g.fillStyle = '#b4c3d2'; g.fillRect(0, 0, W, 580); };
+            const fp = { x: 450, y: 285, w: 380, h: 560, angle: 1.5 };
+            const f = PhotoFind.single(S.draw(850, 1400, feeder, [fp], { noise: 8 }), 850, 1400, { feeder: true });
+            out.feeder = f ? S.err(f.corners, fp) : 999;
+            const sky = S.draw(900, 600, '#888', [{ x: 450, y: 300, w: 900, h: 600, angle: 0, kind: 'sky' }], {});
+            const plain = S.draw(900, 600, '#888', [{ x: 450, y: 300, w: 900, h: 600, angle: 0 }], {});
+            out.notScans = !PhotoFind.single(sky, 900, 600, { strict: true }) && !PhotoFind.single(plain, 900, 600, { strict: true });
+            return out;
+        });
+        const ok = (k, n, e) => r[k] && r[k].n === n && r[k].err <= e;
+        check('finder: prints on a shaded, dusty lid, tilted, a dark one too', ok('three', 3, 4) && ok('shaded', 2, 4) && ok('darkOnBlack', 1, 5), JSON.stringify([r.three, r.shaded, r.darkOnBlack]));
+        check('finder: a white-bordered print on a white lid, border and all', ok('whiteBorder', 1, 6), JSON.stringify(r.whiteBorder));
+        check('finder: prints laid touching are told apart; a panorama stays whole', ok('touching', 2, 4) && ok('panorama', 1, 4), JSON.stringify([r.touching, r.panorama]));
+        check('finder: six prints at once', ok('six', 6, 4), JSON.stringify(r.six));
+        check('finder: a feeder page (two backgrounds), tilted', r.feeder <= 4, String(r.feeder));
+        check('finder: ordinary photos (one with a plain sky) aren\'t taken for scans', r.notScans);
+        check('finder suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7s1. Auto crop on a sheet-feeder page ----
+    console.log('feeder auto crop');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            let seed = 11;
+            const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+            // Like a FastFoto page: the photo at the leading edge, the bluish
+            // backing beside it, white fill where the page runs on past it
+            const page = (tilt) => {
+                const c = document.createElement('canvas');
+                c.width = 850; c.height = 1400;
+                const g = c.getContext('2d');
+                g.fillStyle = '#fbfbfb'; g.fillRect(0, 0, 850, 1400);
+                const img = g.getImageData(0, 0, 850, 580);
+                for (let i = 0; i < img.data.length; i += 4) {
+                    const n = (rnd() - 0.5) * 14;
+                    img.data[i] = 180 + n; img.data[i + 1] = 195 + n; img.data[i + 2] = 210 + n;
+                }
+                g.putImageData(img, 0, 0);
+                g.save(); g.translate(450, 285); g.rotate(tilt * Math.PI / 180);
+                for (let y = 0; y < 560; y += 28) for (let x = 0; x < 380; x += 38) {
+                    g.fillStyle = `hsl(${Math.floor(rnd() * 360)},50%,${10 + Math.floor(rnd() * 50)}%)`;
+                    g.fillRect(x - 190, y - 280, 38, 28);
+                }
+                g.restore();
+                return c;
+            };
+            const crop = (det, W, H) => {
+                const ed = CropEditor.headless(W, H);
+                ed.aspectKey = 'free';
+                ed.fitToPrint(det);
+                const o = ed.outputRect();
+                const ctr = ed.toImage({ x: (o.x0 + o.x1) / 2, y: (o.y0 + o.y1) / 2 });
+                return { w: o.w, h: o.h, cx: Math.round(ctr.x + W / 2), cy: Math.round(ctr.y + H / 2), angle: ed.angle };
+            };
+            const straight = page(0);
+            out.flatbedMisses = !CropAuto.detect(straight, 850, 1400);
+            const d0 = CropAuto.find(straight, 850, 1400, { feeder: true });
+            out.straight = d0 && crop(d0, 850, 1400);
+            const tilted = page(1.5);
+            const d1 = CropAuto.find(tilted, 850, 1400, { feeder: true });
+            out.tilted = d1 && crop(d1, 850, 1400);
+            // The crop editor's Auto (no hint) knows such a page too
+            out.unhinted = !!CropAuto.find(straight, 850, 1400);
+            // ...but leaves an ordinary photo alone, even one with a plain
+            // dark band along the bottom
+            const photo = document.createElement('canvas');
+            photo.width = 900; photo.height = 600;
+            const pg = photo.getContext('2d');
+            for (let y = 0; y < 600; y += 30) for (let x = 0; x < 900; x += 30) {
+                pg.fillStyle = `hsl(${Math.floor(rnd() * 360)},40%,${20 + Math.floor(rnd() * 50)}%)`;
+                pg.fillRect(x, y, 30, 30);
+            }
+            pg.fillStyle = '#050505'; pg.fillRect(0, 420, 900, 180);
+            out.photoAlone = !CropAuto.find(photo, 900, 600);
+            // A print a hair taller than the scan: cut off top and bottom,
+            // a grainy strip of bed down each side (left wider than right),
+            // too little of the scan's edge for the bed to be known as one;
+            // the photo's lower left pale and bluish, much the bed's color
+            const cutOff = (tilt) => {
+                const c = document.createElement('canvas');
+                c.width = 1000; c.height = 620;
+                const g = c.getContext('2d');
+                const img = g.createImageData(1000, 620);
+                for (let i = 0; i < img.data.length; i += 4) {
+                    const n = (rnd() - 0.5) * 30;
+                    img.data[i] = 182 + n; img.data[i + 1] = 194 + n; img.data[i + 2] = 232 + n; img.data[i + 3] = 255;
+                }
+                g.putImageData(img, 0, 0);
+                g.save(); g.translate(485, 310); g.rotate(tilt * Math.PI / 180);
+                for (let y = 0; y < 700; y += 25) for (let x = 0; x < 880; x += 40) {
+                    const pale = x < 300 && y > 450;
+                    g.fillStyle = pale ? `hsl(${215 + Math.floor(rnd() * 20)},30%,${70 + Math.floor(rnd() * 15)}%)`
+                        : `hsl(${Math.floor(rnd() * 360)},45%,${15 + Math.floor(rnd() * 65)}%)`;
+                    g.fillRect(x - 440, y - 350, 40, 25);
+                }
+                g.restore();
+                return c;
+            };
+            const c0 = CropAuto.find(cutOff(0), 1000, 620);
+            out.cut = c0 && crop(c0, 1000, 620);
+            const c1 = CropAuto.find(cutOff(-1.2), 1000, 620);
+            out.cutTilted = c1 && crop(c1, 1000, 620);
+            return out;
+        });
+        const near = (c, w, h) => c && c.w > w - 30 && c.w <= w && c.h > h - 30 && c.h <= h && Math.abs(c.cx - 450) <= 8 && Math.abs(c.cy - 280) <= 10;
+        check('feeder page: the flatbed finder can\'t see the photo (two backgrounds)', r.flatbedMisses);
+        check('feeder page: Auto crop finds the photo, background trimmed off', near(r.straight, 380, 560), JSON.stringify(r.straight));
+        check('feeder page: a tilted photo is straightened and cropped', near(r.tilted, 380, 560) && Math.abs(r.tilted.angle + 1.5) < 0.4, JSON.stringify(r.tilted));
+        check('feeder page: found without the hint too; an ordinary photo is left alone', r.unhinted && r.photoAlone, JSON.stringify([r.unhinted, r.photoAlone]));
+        const cut = r.cut, ct = r.cutTilted;
+        check('a print cut off top and bottom by the scan: the bed strips either side come off',
+            cut && cut.w > 860 && cut.w <= 880 && cut.h >= 610 && Math.abs(cut.cx - 485) <= 4 && cut.angle === 0, JSON.stringify(cut));
+        check('...and tilted: straightened, no bed left in', ct && Math.abs(ct.angle - 1.2) < 0.3 && ct.w > 850 && ct.w <= 880 && Math.abs(ct.cx - 485) <= 6, JSON.stringify(ct));
+        check('feeder auto crop suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7s0. Settings → Messages ----
+    console.log('settings: messages');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            localStorage.removeItem('jeditor.ui');
+            app.loadUiPrefs();
+            const shown = (re) => [...document.querySelectorAll('.toast')].some(t => re.test(t.textContent));
+            // Rotation messages are off to start with; the others are on
+            out.defaults = !app.toastOn('rotate') && app.toastOn('flags') && app.toastOn('delete');
+            app.showToast('Turned 1 photo right', 3000, null, null, { kind: 'rotate' });
+            app.showToast('Starred a.jpg', 3000, null, null, { kind: 'flags' });
+            out.rotateHidden = !shown(/Turned 1 photo/);
+            out.flagsShown = shown(/Starred a\.jpg/);
+            // Errors always show, whatever their kind
+            app.showToast('Rotation failed: file in use', 3000, null, null, { kind: 'rotate', type: 'error' });
+            out.errorShown = shown(/Rotation failed/);
+            // The switches in Settings: one per kind, as set; changing one is kept
+            app.toggleCustomizePanel(true);
+            const sw = (k) => document.querySelector(`input[data-toast="${k}"]`);
+            out.switches = document.querySelectorAll('#cust-toasts input[data-toast]').length === app.TOAST_KINDS.length && !sw('rotate').checked && sw('flags').checked;
+            sw('flags').checked = false;
+            sw('flags').dispatchEvent(new Event('change'));
+            sw('rotate').checked = true;
+            sw('rotate').dispatchEvent(new Event('change'));
+            app.toggleCustomizePanel(false);
+            const saved = JSON.parse(localStorage.getItem('jeditor.ui')).toasts;
+            out.saved = saved.flags === false && saved.rotate === true;
+            app.loadUiPrefs();
+            out.kept = !app.toastOn('flags') && app.toastOn('rotate');
+            app.showToast('Starred b.jpg', 3000, null, null, { kind: 'flags' });
+            out.flagsNowHidden = !shown(/Starred b\.jpg/);
+            localStorage.removeItem('jeditor.ui');
+            return out;
+        });
+        check('messages: rotation off to start with, the rest on; a kind turned off doesn\'t show', r.defaults && r.rotateHidden && r.flagsShown, JSON.stringify(r));
+        check('messages: errors show even when their kind is off', r.errorShown);
+        check('messages: a switch per kind in Settings; changes are saved and kept', r.switches && r.saved && r.kept && r.flagsNowHidden, JSON.stringify(r));
+        check('messages suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7s1. Kept rotations turn on screen first ----
+    console.log('kept rotations turn on screen');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const until = async (fn, n = 200) => { for (let i = 0; i < n && !(await fn()); i++) await sleep(25); };
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('keptturn', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('keptturn', { create: true });
+            for (const n of ['a.jpg', 'b.jpg']) {
+                const fh = await dir.getFileHandle(n, { create: true });
+                const w = await fh.createWritable(); await w.write(new Blob([await makeRealJpeg(400, 300)], { type: 'image/jpeg' })); await w.close();
+            }
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            await Edits.setDefer(true);
+            const a = app.files.find(x => x.name === 'a.jpg');
+            app.setView('grid');
+            await until(() => { const i = a._gridEl && a._gridEl.querySelector(':scope > img'); return i && i.src && i.src !== app.BLANK_THUMB && i.naturalWidth; });
+            // Grid: the tile's own picture turns (no blank, no spinner), then
+            // the redrawn thumbnail takes its place, straight
+            const tile = a._gridEl.querySelector(':scope > img');
+            const before = tile.src;
+            app.selection = new Set([a]);
+            app.updateSelectionUI();
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: ']', bubbles: true, cancelable: true }));
+            out.tileTurning = a._gridEl.querySelector(':scope > img') === tile && /rotate\(90deg\)/.test(tile.style.transform);
+            await until(() => tile.src !== before);
+            await sleep(60);
+            out.tileDone = a._gridEl.querySelector(':scope > img') === tile && !tile.style.transform && tile.naturalHeight > tile.naturalWidth;
+            // Single view: the photo turns, isn't dimmed, then the redrawn one
+            // replaces it with no turn left over
+            app.openSingle(a);
+            await until(() => app._displayFile === a && app._displayKind === 'full');
+            const shown = app.elements.currentImage;
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: ']', bubbles: true, cancelable: true }));
+            out.viewTurning = app.elements.currentImage === shown && /rotate\(90deg\)/.test(shown.style.transform) && shown.style.opacity !== '0.3';
+            await until(() => app.elements.currentImage !== shown && app._displayKind === 'full');
+            const now = app.elements.currentImage;
+            out.viewDone = /rotate\(0deg\)/.test(now.style.transform) && now.naturalWidth > now.naturalHeight && !a._turnHeldView;
+            out.kept = a._edit && a._edit.q === 2;
+            return out;
+        });
+        // The edits bar: grid only, left of the size slider in the bottom row,
+        // never over the selection bar (above the slider when the row is full)
+        const lay = [];
+        for (const w of [1400, 1100]) {
+            await page.setViewportSize({ width: w, height: 700 });
+            lay.push(await page.evaluate(async () => {
+                app.setView('grid');
+                app.selection = new Set([app.files[0]]);
+                app.updateSelectionUI();
+                await new Promise(res => setTimeout(res, 400));
+                const box = (id) => document.getElementById(id).getBoundingClientRect();
+                const e = box('edits-bar'), s = box('selection-bar'), g = box('grid-controls');
+                const apart = (a, b) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+                const out = { clear: apart(e, s) && apart(e, g) && apart(s, g), leftOfSlider: e.right <= g.left + 1 && Math.abs(e.bottom - g.bottom) < 2, aboveSlider: e.bottom <= g.top };
+                app.openSingle(app.files[0]);
+                await new Promise(res => setTimeout(res, 200));
+                out.hiddenInSingle = getComputedStyle(document.getElementById('edits-bar')).display === 'none';
+                app.setView('grid');
+                return out;
+            }));
+        }
+        check('edits bar: grid only, left of the size slider; above it when the row is full; never over the selection bar',
+            lay[0].clear && lay[0].leftOfSlider && lay[1].clear && (lay[1].leftOfSlider || lay[1].aboveSlider) && lay[0].hiddenInSingle, JSON.stringify(lay));
+        // A narrow window, with and without the folder list: every pill in
+        // the window, none over another (fit.js gives up parts in turn)
+        const fit = [];
+        for (const w of [1300, 900, 700, 480]) {
+            await page.setViewportSize({ width: w, height: 700 });
+            for (const rail of [true, false]) {
+                fit.push(await page.evaluate(async ({ w, rail }) => {
+                    app.setView('grid');
+                    if (Folders.railOpen() !== rail) Folders.toggleRail();
+                    app.selection = new Set(app.files.slice(0, 2));
+                    app.updateSelectionUI();
+                    const frames = () => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+                    await new Promise(res => setTimeout(res, 300));
+                    await frames();
+                    const shown = (el) => el && el.offsetParent !== null && getComputedStyle(el).display !== 'none';
+                    const apart = (a, b) => a.right <= b.left + 1 || b.right <= a.left + 1 || a.bottom <= b.top + 1 || b.bottom <= a.top + 1;
+                    const check = (ids) => {
+                        const els = ids.map(id => document.getElementById(id) || document.querySelector(id)).filter(shown);
+                        const r = els.map(e => e.getBoundingClientRect());
+                        const bad = [];
+                        r.forEach((a, i) => {
+                            if (a.left < -1 || a.right > innerWidth + 1) bad.push(els[i].id || els[i].className + ' off screen');
+                            for (let j = i + 1; j < r.length; j++) if (!apart(a, r[j])) bad.push((els[i].id || els[i].className) + ' over ' + (els[j].id || els[j].className));
+                        });
+                        return bad;
+                    };
+                    const out = { w, rail, fit: document.getElementById('main-interface').dataset.fit };
+                    // The folder list beside the grid (wide windows): the selection bar keeps to the grid
+                    const railBox = rail && innerWidth >= 768 ? document.getElementById('folder-rail').getBoundingClientRect() : null;
+                    out.bad = [...check(['folder-bar', '.file-info', 'header-controls']), ...check(['selection-bar', 'edits-bar', 'grid-controls'])];
+                    if (railBox && document.getElementById('selection-bar').getBoundingClientRect().left < railBox.right) out.bad.push('selection bar over the folder list');
+                    // Short of room the folder pill doesn't cut its buttons off
+                    const fb = document.getElementById('folder-bar');
+                    if (fb.scrollWidth > fb.clientWidth + 1) out.bad.push('folder pill cut off');
+                    out.squeezed = document.querySelectorAll('#header-controls [data-squeezed]').length;
+                    out.more = shown(document.getElementById('btn-more'));
+                    // More opened: its buttons on rows underneath, never out over the file pill
+                    document.getElementById('btn-more').click();
+                    await frames();
+                    out.bad.push(...check(['.file-info', 'header-controls']).map(b => 'More open: ' + b));
+                    document.getElementById('btn-more').click();
+                    await frames();
+                    // Single view: the file pill and the buttons
+                    app.openSingle(app.files[0]);
+                    await new Promise(res => setTimeout(res, 200));
+                    await frames();
+                    out.bad.push(...check(['.file-info', 'header-controls']).map(b => 'single: ' + b));
+                    // A message beside the prev / rotate / next pill goes up a row rather than into it
+                    app.showToast('Rotated 3 photos to the right', 3000);
+                    await new Promise(res => setTimeout(res, 150));
+                    await frames();
+                    const t = document.getElementById('toast-stack').lastElementChild.getBoundingClientRect();
+                    const c = document.querySelector('#image-container .controls').getBoundingClientRect();
+                    if (!apart(t, c)) out.bad.push('single: message over the controls');
+                    out.name = shown(document.querySelector('.file-info'));
+                    app.setView('grid');
+                    return out;
+                }, { w, rail }));
+            }
+        }
+        check('narrow windows: no pill over another or off screen, top or bottom, with or without the folder list', fit.every(f => f.bad.length === 0), JSON.stringify(fit.filter(f => f.bad.length)));
+        check('... wide, nothing given up; at 480 header buttons go into More, which shows; the file pill stays in single view', !fit[1].fit && fit[6].squeezed > 0 && fit[6].more && fit.every(f => f.name), JSON.stringify(fit.map(f => [f.w, f.rail, f.fit, f.squeezed, f.more])));
+        check('kept rotation: the grid tile turns its own picture, then the redrawn one replaces it straight', r.tileTurning && r.tileDone, JSON.stringify(r));
+        check('kept rotation: the big photo turns (not dimmed), then the redrawn one has no turn left over', r.viewTurning && r.viewDone && r.kept, JSON.stringify(r));
+        check('kept rotation suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7s2. Save edits when done ----
+    console.log('save edits when done');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try { return await (async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const until = async (fn, n = 200) => { for (let i = 0; i < n && !(await fn()); i++) await sleep(50); };
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('keptedits', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('keptedits', { create: true });
+            const scan = async (color, tilt) => {
+                const c = document.createElement('canvas');
+                c.width = 900; c.height = 700;
+                const g = c.getContext('2d');
+                g.fillStyle = '#f4f4f2'; g.fillRect(0, 0, 900, 700);
+                g.save(); g.translate(450, 350); g.rotate(tilt * Math.PI / 180);
+                g.fillStyle = color; g.fillRect(-280, -200, 560, 400);
+                g.restore();
+                return new Blob([await (await new Promise(res => c.toBlob(res, 'image/jpeg', 0.92))).arrayBuffer()], { type: 'image/jpeg' });
+            };
+            const files = { 'scan1.jpg': await scan('#2a6', 3), 'scan2.jpg': await scan('#a33', -2), 'plain.jpg': new Blob([await makeRealJpeg(400, 300)], { type: 'image/jpeg' }) };
+            const originals = {};
+            for (const [n, b] of Object.entries(files)) {
+                const fh = await dir.getFileHandle(n, { create: true });
+                const w = await fh.createWritable(); await w.write(b); await w.close();
+                originals[n] = new Uint8Array(await b.arrayBuffer());
+            }
+            const bytes = async (d, n) => new Uint8Array(await (await (await d.getFileHandle(n)).getFile()).arrayBuffer());
+            const same = async (n) => {
+                const now = await bytes(dir, n);
+                return now.length === originals[n].length && now.every((v, i) => v === originals[n][i]);
+            };
+            const untouched = async () => await same('scan1.jpg') && await same('scan2.jpg') && await same('plain.jpg');
+            const dims = async (d, n) => {
+                const bmp = await createImageBitmap(await (await d.getFileHandle(n)).getFile());
+                const x = [bmp.width, bmp.height]; bmp.close(); return x;
+            };
+            const kept = async () => {
+                try { return JSON.parse(await (await (await (await dir.getDirectoryHandle('.jeditor')).getFileHandle('edits.json')).getFile()).text()); } catch (e) { return null; }
+            };
+            const f = (n) => app.files.find(x => x.name === n);
+            const bar = () => document.getElementById('edits-bar');
+            const barText = () => document.getElementById('edits-text').textContent;
+
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            app.setView('grid');
+            out.barOffAtFirst = bar().classList.contains('hidden');
+
+            // Turned on for this project (the grid's menu)
+            step = "Turned on for this project (the grid's menu)";
+            const bg = app.buildContextItems(null, false).find(it => it[0] === 'Save edits when done');
+            bg[1]();
+            await until(async () => (await kept()) && (await kept()).defer);
+            out.on = Edits.on() && !bar().classList.contains('hidden') && /kept until you save/.test(barText()) && (await kept()).defer === true;
+
+            // Batch Auto crop: kept as edits, nothing written
+            step = 'Batch Auto crop: kept as edits, nothing written';
+            app.selection = new Set(app.files);
+            app.updateSelectionUI();
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'A', shiftKey: true, bubbles: true }));
+            await until(() => !app._autoCropping && f('scan1.jpg')._edit && f('scan2.jpg')._edit);
+            out.autoKept = !!f('scan1.jpg')._edit && !!f('scan2.jpg')._edit && !f('plain.jpg')._edit && await untouched();
+            out.autoToast = [...document.querySelectorAll('.toast')].map(t => t.textContent).find(t => /Auto-cropped/.test(t)) || '';
+            out.badges = !!f('scan1.jpg')._gridEl.querySelector('.tile-edit') && !f('plain.jpg')._gridEl.querySelector('.tile-edit');
+            out.barCount = barText();
+            // Shown as it will be saved: the thumbnail and preview are of the print
+            step = 'Shown as it will be saved: the thumbnail and preview are of the print';
+            await until(() => f('scan1.jpg').thumbnailUrl && !f('scan1.jpg')._thumbStale);
+            const tb = await createImageBitmap(await (await fetch(f('scan1.jpg').thumbnailUrl)).blob());
+            out.thumbAspect = tb.width / tb.height;
+            await until(() => f('scan1.jpg')._gridEl.querySelector(':scope > img').src === f('scan1.jpg').thumbnailUrl, 40);
+            out.tileShows = f('scan1.jpg')._gridEl.querySelector(':scope > img').src === f('scan1.jpg').thumbnailUrl;
+            const shown = await app.getDisplaySource(f('scan1.jpg'));
+            out.shown = [shown.w, shown.h];
+
+            // Recrop: the editor opens on the whole photo, at the kept crop
+            step = 'Recrop: the editor opens on the whole photo, at the kept crop';
+            const edit1 = { ...f('scan1.jpg')._edit };
+            app.selection.clear();
+            app.currentFile = f('scan1.jpg');
+            app.setView('single');
+            await app.enterCrop();
+            await until(() => CropEditor.ready);
+            const ed = CropEditor;
+            out.editorWhole = ed.W === 900 && ed.H === 700;
+            out.editorAtKept = Math.abs(ed.angle - edit1.angle) < 1e-6 && Math.abs(ed.snapshot().n.x0 - edit1.n.x0) < 1e-3;
+            out.doneLabel = document.getElementById('crop-save').textContent;
+            ed.setAngle(0);
+            ed.setRect({ x0: -300, y0: -200, x1: 300, y1: 200 });
+            await app.saveCrop();
+            out.recropped = !!f('scan1.jpg')._edit && f('scan1.jpg')._edit.angle === 0 && await untouched();
+            const re = await app.getDisplaySource(f('scan1.jpg'));
+            out.recropShown = [re.w, re.h];
+
+            // A turn is kept too; Ctrl+Z takes it back
+            step = 'A turn is kept too; Ctrl+Z takes it back';
+            await app.rotateImage(f('plain.jpg'), 90);
+            const turned = await app.getDisplaySource(f('plain.jpg'));
+            out.turned = f('plain.jpg')._edit && f('plain.jpg')._edit.q === 1 && turned.w === 300 && turned.h === 400 && await untouched();
+            await app.undo();
+            out.turnUndone = !f('plain.jpg')._edit;
+            await app.rotateImage(f('plain.jpg'), -90);
+
+            // Kept with the project: open it again and they're back
+            step = "Kept with the project: open it again and they're back";
+            // (straight away, the last change maybe not written yet: it is
+            // before the project is read again)
+            await app.openDirectory(dir);
+            // (kept edits can come a moment after the photos)
+            await until(() => app.files.length === 3 && Edits.count() === 3);
+            out.reloaded = Edits.on() && !!f('scan1.jpg')._edit && f('scan1.jpg')._edit.angle === 0 && !!f('plain.jpg')._edit && f('plain.jpg')._edit.q === 3 && /3 edits/.test(barText());
+
+            // Export copies: every photo, the edited ones with their edits
+            step = 'Export copies: every photo, the edited ones with their edits';
+            await until(() => Edits.count() === 3);
+            UI.choose = async () => 'alt';
+            UI.prompt = async () => '';
+            await Edits.saveAll();
+            const exp = await dir.getDirectoryHandle('jEditor Export');
+            out.exported = [await dims(exp, 'scan1.jpg'), await dims(exp, 'scan2.jpg'), await dims(exp, 'plain.jpg')];
+            out.exportLeavesEdits = Edits.count() === 3 && await untouched();
+
+            // Save into the photos
+            step = 'Save into the photos';
+            await until(() => Edits.count() === 3 && !app._savingEdits);
+            UI.choose = async () => 'ok';
+            await Edits.saveAll();
+            out.saved = [await dims(dir, 'scan1.jpg'), await dims(dir, 'scan2.jpg'), await dims(dir, 'plain.jpg')];
+            out.plainLossless = readOrientation(await bytes(dir, 'plain.jpg')) === 8;
+            out.savedClears = Edits.count() === 0 && !f('scan1.jpg')._gridEl.querySelector('.tile-edit') && /kept until you save/.test(barText());
+            const backups = await (await dir.getDirectoryHandle('.jeditor')).getDirectoryHandle('originals');
+            out.backups = 0;
+            for await (const e of backups.values()) out.backups++;
+
+            // One Ctrl+Z: the photos back, the edits kept again
+            step = 'One Ctrl+Z: the photos back, the edits kept again';
+            // (a lossless turn undone keeps its orientation tag: the same
+            // picture, not quite the same bytes)
+            await app.undo();
+            const upright = (await dims(dir, 'plain.jpg')).join('x') === '400x300';
+            out.undoSave = await same('scan1.jpg') && await same('scan2.jpg') && upright && Edits.count() === 3;
+
+            // Turned off with edits waiting: discard them
+            step = 'Turned off with edits waiting: discard them';
+            UI.choose = async () => 'alt';
+            await Edits.setDefer(false);
+            await until(async () => !(await kept()));
+            out.off = !Edits.on() && Edits.count() === 0 && bar().classList.contains('hidden') && !(await kept()) &&
+                await same('scan1.jpg') && (await dims(dir, 'plain.jpg')).join('x') === '400x300';
+            return out;
+            })(); } catch (err) { return { crash: `${step}: ${err.message}`, toasts: [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | ') }; }
+        });
+        check('kept edits: the steps all ran', !r.crash, `${r.crash} — toasts: ${r.toasts}`);
+        if (r.crash) { await page.close(); } else {
+        const inside = (d) => d[0] < 900 && d[1] < 700 && d[0] > 450 && d[1] > 300;
+        check('kept edits: on for the project; the bar shows; saved in edits.json', r.barOffAtFirst && r.on, JSON.stringify(r));
+        check('kept edits: batch Auto crop keeps crops as edits, nothing written', r.autoKept && /check them, then Save/.test(r.autoToast), r.autoToast);
+        check('kept edits: pencil on edited photos; the bar counts them', r.badges && r.barCount === '2 edits not saved yet', r.barCount);
+        check('kept edits: thumbnail and viewer show the photo as it will be saved', r.thumbAspect > 1.33 && r.tileShows && inside(r.shown), `${r.thumbAspect} ${r.tileShows} ${r.shown}`);
+        check('kept edits: recrop opens on the whole photo at the kept crop', r.editorWhole && r.editorAtKept && r.doneLabel === 'Done');
+        check('kept edits: a new crop replaces the kept one, still nothing written', r.recropped && r.recropShown.join('x') === '600x400', String(r.recropShown));
+        check('kept edits: a turn is kept too; Ctrl+Z takes it back', r.turned && r.turnUndone);
+        check('kept edits: still there when the project is opened again', r.reloaded);
+        check('kept edits: export copies all photos with their edits, photos untouched', r.exported[0].join('x') === '600x400' && inside(r.exported[1]) && r.exported[2].join('x') === '300x400' && r.exportLeavesEdits, JSON.stringify(r.exported));
+        check('kept edits: save writes them into the photos (a turn losslessly), originals kept', r.saved[0].join('x') === '600x400' && inside(r.saved[1]) && r.saved[2].join('x') === '300x400' && r.plainLossless && r.savedClears && r.backups === 2, JSON.stringify(r.saved) + ' ' + r.backups);
+        check('kept edits: Ctrl+Z after saving puts the photos back with the edits kept', r.undoSave);
+        check('kept edits: turning it off can discard what is waiting', r.off);
+        check('kept edits suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+        }
+    }
+
+    // ---- 7s3. Undo history ----
+    console.log('undo history');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('history', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('history', { create: true });
+            for (const n of ['a.jpg', 'b.jpg', 'c.jpg']) {
+                const fh = await dir.getFileHandle(n, { create: true });
+                const w = await fh.createWritable(); await w.write(new Blob([await makeRealJpeg(120, 80)], { type: 'image/jpeg' })); await w.close();
+            }
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            app.setView('grid');
+            const f = (n) => app.files.find(x => x.name === n);
+            const key = (k, o = {}) => window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, ...o }));
+
+            out.button = !!document.querySelector('#header-controls [data-hc="history"]:not(.hidden):not(.hc-extra)');
+            key('h');
+            out.empty = History.isOpen() && !document.getElementById('history-empty').classList.contains('hidden');
+            key('Escape');
+            out.closed = !History.isOpen();
+
+            // Four steps: a star, a rename, a red label, a rotation
+            Flags.apply('star', [f('a.jpg')]);
+            await app.renameFile(f('b.jpg'), 'Smith_02.jpg');
+            Flags.apply('red', [f('c.jpg')]);
+            await app.rotateImage(f('c.jpg'), 90);
+            document.getElementById('btn-history').click();
+            const rows = () => [...document.querySelectorAll('#history-list .history-row')];
+            out.rows = rows().map(r => r.querySelector('.history-what').textContent + ':' + r.querySelector('.history-detail').textContent);
+
+            // Back to before the rename: asks first, then undoes three steps
+            let asked = null;
+            UI.confirm = async (o) => { asked = o; return false; };
+            rows()[2].click();
+            await sleep(50);
+            out.askedFirst = !!asked && asked.title === 'Go back 3 steps?' && asked.items.length === 3 && rows().length === 4 && !!f('Smith_02.jpg');
+            UI.confirm = async (o) => { asked = o; return true; };
+            rows()[2].click();
+            for (let i = 0; i < 100 && (History._running || rows().length !== 1); i++) await sleep(50);
+            out.wentBack = rows().length === 1 && !!f('b.jpg') && !Flags.has(f('c.jpg'), 'red') && Flags.has(f('a.jpg'), 'star') && !f('c.jpg').pendingRotation;
+            out.toast = [...document.querySelectorAll('.toast')].map(t => t.textContent).find(t => /Went back/.test(t)) || '';
+            out.left = rows().map(r => r.querySelector('.history-what').textContent).join();
+            // Info closes it
+            app.toggleInfoPanel(true);
+            out.infoCloses = !History.isOpen();
+            return out;
+        });
+        check('history: a toolbar button and H open it; empty says so; Esc closes', r.button && r.empty && r.closed, JSON.stringify(r));
+        check('history: every step, newest first, with what and which photo', JSON.stringify(r.rows) === JSON.stringify(['Rotation:c.jpg', 'Red label:c.jpg', 'Rename:b.jpg → Smith_02.jpg', 'Star:a.jpg']), JSON.stringify(r.rows));
+        check('history: clicking a step asks first, naming what is undone', r.askedFirst);
+        check('history: then goes back to before it, saying so once', r.wentBack && /Went back 3 steps/.test(r.toast) && r.left === 'Star', r.toast + ' ' + r.left);
+        check('history: Info closes it', r.infoCloses);
+        check('history suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
@@ -3245,7 +3997,7 @@ async function newPage(browser, url) {
         check('nested .jeditor: merged into the order\'s and removed', r.removed && r.photos, JSON.stringify(r));
         check('nested .jeditor: its deleted photos move to the order\'s trash, named after the folder', r.trash === 'Ceremony - old (2).jpg,Ceremony - old.jpg', r.trash);
         check('nested .jeditor: its flags join the order\'s under the folder\'s path', r.flag && r.saved);
-        check('nested .jeditor: says so', /Merged the \.jeditor folder in “Ceremony” into this order's \(2 flags, 1 deleted photo\)/.test(r.toast), r.toast);
+        check('nested .jeditor: says so', /Merged the \.jeditor folder in “Ceremony” into this project's \(2 flags, 1 deleted photo\)/.test(r.toast), r.toast);
         check('nested .jeditor suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -3342,7 +4094,7 @@ async function newPage(browser, url) {
             window.dispatchEvent(new KeyboardEvent('keydown', { key: 'i', bubbles: true }));
             await sleep(50);
             let r1 = rows();
-            out.order = title() === 'Order' && r1.Photos === '4' && r1.Size === app.formatBytes(total) && r1.Folders === '1' && /JPEG 3 · PNG 1/.test(r1.Types);
+            out.order = title() === 'Project' && r1.Photos === '4' && r1.Size === app.formatBytes(total) && r1.Folders === '1' && /JPEG 3 · PNG 1/.test(r1.Types);
             for (let i = 0; i < 50 && rows()['.jeditor'] === 'Adding up…'; i++) await sleep(30);
             r1 = rows();
             out.own = r1['.jeditor'] === app.formatBytes(5000) && /1 photo/.test(r1.Trash || '');
@@ -3357,7 +4109,7 @@ async function newPage(browser, url) {
             app.updateSelectionUI();
             await sleep(50);
             const r2 = rows();
-            out.folder = title() === 'Folder' && r2.Name === 'Ceremony' && r2.Photos === '1' && /4 photos/.test(r2['Whole order'] || '');
+            out.folder = title() === 'Folder' && r2.Name === 'Ceremony' && r2.Photos === '1' && /4 photos/.test(r2['Whole project'] || '');
             out.railTotal = document.getElementById('fr-total').textContent === `1 photo · ${app.formatBytes(app.files.find(f => f.name === 'c1.jpg').size)}`;
             // Folder Info from the folder menu, then single view shows the photo
             Folders.setScope(null);
@@ -3370,16 +4122,16 @@ async function newPage(browser, url) {
             out.gb = app.formatBytes(3 * 1024 * 1024 * 1024) === '3.00 GB';
             return out;
         });
-        check('folder details: I in the grid shows the order: photos, size, folders, types', r.order, JSON.stringify(r));
+        check('folder details: I in the grid shows the project: photos, size, folders, types', r.order, JSON.stringify(r));
         check('folder details: how much room .jeditor takes, trash counted', r.own, JSON.stringify(r));
-        check('folder details: a selection, a folder with the whole order, Folder Info in the menu', r.selection && r.folder && r.menu, JSON.stringify(r));
+        check('folder details: a selection, a folder with the whole project, Folder Info in the menu', r.selection && r.folder && r.menu, JSON.stringify(r));
         check('folder details: total under the folder list; single view still shows the photo', r.railTotal && r.single && r.gb, JSON.stringify(r));
         check('folder details suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
-    // ---- 7u. Accent colour ----
-    console.log('accent colour');
+    // ---- 7u. Accent color ----
+    console.log('accent color');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
         const r = await page.evaluate(async () => {
@@ -3387,7 +4139,7 @@ async function newPage(browser, url) {
             const out = {};
             app.setAccent('#16a34a');
             out.green = css('--accent-color') === '#16a34a' && css('--on-accent') === '#fff';
-            await new Promise(res => setTimeout(res, 400)); // the button's colour transition
+            await new Promise(res => setTimeout(res, 400)); // the button's color transition
             out.button = getComputedStyle(document.getElementById('btn-browse-folder')).backgroundColor;
             out.saved = JSON.parse(localStorage.getItem('jeditor.ui')).accent === '#16a34a';
             app.setAccent('#facc15');
@@ -3396,7 +4148,7 @@ async function newPage(browser, url) {
             out.reset = app.uiPrefs.accent === null && css('--accent-color') === '#2563eb';
             return out;
         });
-        check('accent: a colour changes every accent element', r.green && r.button === 'rgb(22, 163, 74)', r.button);
+        check('accent: a color changes every accent element', r.green && r.button === 'rgb(22, 163, 74)', r.button);
         check('accent: remembered; dark text on a light accent; blue resets', r.saved && r.lightText && r.reset, JSON.stringify(r));
         check('accent suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();

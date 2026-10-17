@@ -16,14 +16,27 @@
     <script src="changelog.js"></script>
     <script src="meta.js"></script>
     <script src="folder-cache.js"></script>
+    <script src="photo-find.js"></script>
     <script src="crop-auto.js"></script>
     <script src="crop.js"></script>
+    <script src="crop-log.js"></script>
     <script src="dupes.js"></script>
     <script src="rename.js"></script>
     <script src="folders.js"></script>
     <script src="flags.js"></script>
+    <script src="edits.js"></script>
+    <script src="history.js"></script>
     <script src="watch.js"></script>
     <script src="recents.js"></script>
+    <script src="stored.js"></script>
+    <script src="updates.js"></script>
+    <script src="logview.js"></script>
+    <script src="scan-preview.js"></script>
+    <script src="scan.js"></script>
+    <script src="camera.js"></script>
+    <script src="places.js"></script>
+    <script src="windows.js"></script>
+    <script src="fit.js"></script>
     <script src="ui.js"></script>
     <link rel="stylesheet" href="tokens.css">
     <link rel="stylesheet" href="style.css">
@@ -36,7 +49,7 @@
             <div class="drop-content">
                 <img class="start-icon" src="icon.png" alt="" width="72" height="72">
                 <h1 id="app-title" class="start-title">jEditor</h1>
-                <p class="start-tagline">Rotate, crop and sort scan orders. Edits the files on your disk.</p>
+                <p class="start-tagline">Rotate, crop and sort photos. Edits the files on your disk.</p>
                 <button id="btn-browse-folder" class="btn primary lg start-open">
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
                     Open folder
@@ -47,6 +60,8 @@
                     <h2 class="recents-title">Recent</h2>
                     <ul id="recent-list" class="recent-list"></ul>
                 </div>
+                <!-- Projects, pinned folders, drives (places.js, the Windows app) -->
+                <div id="start-places" class="start-places sb-places native-only"></div>
                 <div class="start-foot">
                     <button id="btn-shortcuts-start" class="link-btn">Keyboard shortcuts <kbd>?</kbd></button>
                     <span class="start-dot" aria-hidden="true"></span>
@@ -94,6 +109,12 @@
                      data-hc names each control. Default main row:
                      info, view, refresh, crop — the rest live in "More". -->
                 <div class="header-controls toolbar" id="header-controls" role="toolbar" aria-label="Photo actions">
+                    <button id="btn-scan" data-hc="scan" class="tb-btn native-only" title="Scan into this project" aria-label="Scan into this project">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h16"/><path d="M6 13V5a1 1 0 0 1 1-1h7l4 4v5"/><path d="M5 17h14a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1a1 1 0 0 1 1-1z"/></svg>
+                    </button>
+                    <button id="btn-camera" data-hc="camera" class="tb-btn native-only" title="Camera: shoot straight into this project (F12 takes a photo)" aria-label="Camera">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                    </button>
                     <button id="btn-info" data-hc="info" class="tb-btn" title="File info (I)" aria-label="File info">
                         <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 16.5V11.5"/><circle cx="12" cy="8" r="0.6" fill="currentColor"/></svg>
                     </button>
@@ -106,6 +127,9 @@
                     </button>
                     <button id="btn-crop" data-hc="crop" class="tb-btn" title="Crop and straighten (C)" aria-label="Crop and straighten">
                         <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
+                    </button>
+                    <button id="btn-history" data-hc="history" class="tb-btn" title="Undo history (H)" aria-label="Undo history" aria-haspopup="dialog" aria-expanded="false">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
                     </button>
                     <button id="btn-toggle-fit" data-hc="fit" class="tb-btn icon-btn" title="Thumbnails: fit or fill" aria-label="Thumbnails: fit or fill">
                         <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><rect width="12" height="8" x="6" y="8" rx="1"/></svg>
@@ -133,6 +157,15 @@
                     </button>
                 </div>
             </header>
+
+            <!-- Save edits when done (edits.js): what's waiting -->
+            <div id="edits-bar" class="edits-bar toolbar hidden" role="toolbar" aria-label="Edits not saved yet">
+                <span class="edits-icon" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg></span>
+                <span id="edits-text" class="edits-text" aria-live="polite"></span>
+                <button id="edits-off" class="btn ghost sm" title="Save each edit straight away again">Turn off</button>
+                <button id="edits-discard" class="btn ghost sm" title="Put the photos back as they are on disk">Discard</button>
+                <button id="edits-save" class="btn primary sm" title="Save the edits into the photos, or export edited copies">Save…</button>
+            </div>
 
             <!-- Main image area -->
             <main id="main-view">
@@ -168,7 +201,7 @@
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
                 </button>
                 <div class="fb-modes seg" role="group" aria-label="Show">
-                    <button id="fb-all" title="Every photo in the order, whatever folder it's in (A)"><span class="fb-long">All photos</span><span class="fb-short">All</span></button>
+                    <button id="fb-all" title="Every photo in the project, whatever folder it's in (A)"><span class="fb-long">All photos</span><span class="fb-short">All</span></button>
                     <button id="fb-folders" title="One folder at a time (A)">Folders</button>
                 </div>
                 <div id="fb-crumbs" class="fb-crumbs"></div>
@@ -181,12 +214,18 @@
                     </button>
                 </div>
             </nav>
-            <aside id="folder-rail" class="folder-rail hidden" aria-label="Folder list">
-                <div id="folder-tree" class="folder-tree"></div>
-                <div id="flag-list" class="flag-list hidden"></div>
-                <p id="fr-hint" class="fr-hint hidden">Make folders to collate this order. Drag photos onto a folder to move them, or hold <kbd>Ctrl</kbd> to copy. <kbd>M</kbd> moves the selection.</p>
+            <aside id="folder-rail" class="folder-rail hidden" aria-label="Sidebar">
+                <!-- The open project (places.js, the Windows app) -->
+                <div id="sb-card" class="sb-card native-only"></div>
+                <div class="sb-scroll">
+                    <div class="sb-sec sb-sec-here native-only"><span class="sb-sec-title">This project</span></div>
+                    <div id="folder-tree" class="folder-tree"></div>
+                    <div id="flag-list" class="flag-list hidden"></div>
+                    <!-- Projects, pinned folders, drives (places.js) -->
+                    <div id="sb-places" class="sb-places native-only"></div>
+                </div>
                 <div class="fr-foot">
-                    <button id="fr-new" class="btn ghost fr-new">
+                    <button id="fr-new" class="btn ghost fr-new" title="Make a folder to sort this project: drag photos onto it to move them (hold Ctrl to copy), or M moves the selection">
                         <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
                         New folder
                     </button>
@@ -238,7 +277,7 @@
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="19" cy="12" r="1.25" fill="currentColor"/></svg>
                 </button>
                 <span class="tb-sep" aria-hidden="true"></span>
-                <button id="btn-trash" class="tb-btn labelled danger" title="Delete: moves to the trash in .jeditor (Delete). Ctrl+Z restores">
+                <button id="btn-trash" class="tb-btn labelled danger" title="Delete: moves to the trash in .jeditor (Delete). Ctrl+Z restores" data-native-title="Delete: moves to the Recycle Bin (Delete). Ctrl+Z restores">
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                     <span>Delete</span>
                 </button>
@@ -251,6 +290,14 @@
             </div>
 
             <!-- File info panel (I) -->
+            <!-- Undo history (history.js) -->
+            <div id="history-panel" class="history-panel popover hidden" role="dialog" aria-label="Undo history">
+                <h3 class="section-label">Undo history</h3>
+                <div id="history-list" class="history-list"></div>
+                <p id="history-empty" class="history-hint hidden">Nothing to undo yet</p>
+                <p class="history-foot">The last 50 steps, while jEditor is open</p>
+            </div>
+
             <div id="info-panel" class="info-panel popover hidden" role="dialog" aria-label="Info">
                 <h3 class="section-label">Info</h3>
                 <dl id="info-list"></dl>
@@ -331,7 +378,7 @@
     <div id="dupes-panel" class="dupes-overlay mode-screen hidden" role="dialog" aria-labelledby="dupes-title">
         <div class="dupes-head mode-head">
             <h3 id="dupes-title" class="mode-title">Possible duplicates</h3>
-            <span class="wip-tag" title="Duplicate detection is still being worked on: it can miss some duplicates or group photos that only look alike. Nothing is deleted outright: marked photos go to the trash in .jeditor and Ctrl+Z restores them.">Work in progress</span>
+            <span class="wip-tag" title="Duplicate detection is still being worked on: it can miss some duplicates or group photos that only look alike. Nothing is deleted outright: marked photos go to the trash in .jeditor and Ctrl+Z restores them." data-native-title="Duplicate detection is still being worked on: it can miss some duplicates or group photos that only look alike. Nothing is deleted outright: marked photos go to the Recycle Bin and Ctrl+Z restores them.">Work in progress</span>
             <span id="dupes-summary" class="dupes-summary"></span>
             <label class="dupes-sens">Sensitivity
                 <select id="dupes-sensitivity" class="field">
@@ -364,6 +411,9 @@
 
     <!-- Settings (ui.js + script.js). The cust-* ids are the original
          Customize controls; the header-button list is customize-list. -->
+    <!-- Settings (ui.js + script.js): a page at a time, chosen on the left.
+         The cust-* ids are the original Customize controls; the header-button
+         list is customize-list. -->
     <div id="settings-panel" class="dialog-overlay hidden">
         <div class="dialog settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
             <div class="dialog-head">
@@ -372,103 +422,191 @@
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                 </button>
             </div>
-            <div class="dialog-body settings-body">
-                <section class="settings-section" aria-labelledby="set-h-appearance">
-                    <h3 id="set-h-appearance" class="section-label">Appearance</h3>
-                    <div class="set-row">
-                        <span class="set-label" id="set-theme-label">Theme</span>
-                        <div class="seg" role="radiogroup" aria-labelledby="set-theme-label">
-                            <label><input type="radio" name="set-theme" value="dark"><span>Dark</span></label>
-                            <label><input type="radio" name="set-theme" value="light"><span>Light</span></label>
-                            <label><input type="radio" name="set-theme" value="system"><span>Match system</span></label>
+            <div class="settings-main">
+                <nav class="settings-nav" role="tablist" aria-label="Settings pages">
+                    <button role="tab" data-page="appearance" aria-controls="set-page-appearance"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg><span>Appearance</span></button>
+                    <button role="tab" data-page="toolbar" aria-controls="set-page-toolbar"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="7" x="3" y="4" rx="3.5"/><path d="M7 7.5h.01M11 7.5h.01M15 7.5h.01"/><path d="M4 17h16"/><path d="M4 20h10"/></svg><span>Toolbar &amp; keys</span></button>
+                    <button role="tab" data-page="messages" aria-controls="set-page-messages"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span>Messages</span></button>
+                    <button role="tab" data-page="autocrop" aria-controls="set-page-autocrop"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg><span>Auto crop</span></button>
+                    <button role="tab" data-page="projects" aria-controls="set-page-projects"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>Projects</span></button>
+                    <button role="tab" data-page="updates" class="native-only" aria-controls="set-page-updates"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><span>Updates</span></button>
+                </nav>
+                <div class="dialog-body settings-body">
+                    <section id="set-page-appearance" class="settings-section" data-page="appearance" role="tabpanel" aria-labelledby="set-h-appearance">
+                        <h3 id="set-h-appearance" class="settings-page-title">Appearance</h3>
+                        <h4 class="set-group">Color</h4>
+                        <div class="set-row">
+                            <span class="set-label" id="set-theme-label">Theme</span>
+                            <div class="seg" role="radiogroup" aria-labelledby="set-theme-label">
+                                <label><input type="radio" name="set-theme" value="dark"><span>Dark</span></label>
+                                <label><input type="radio" name="set-theme" value="light"><span>Light</span></label>
+                                <label><input type="radio" name="set-theme" value="system"><span>Match system</span></label>
+                            </div>
                         </div>
-                    </div>
-                    <div class="set-row">
-                        <span class="set-label" id="set-surround-label">Behind photos
-                            <small>The colour around a photo affects how you judge it</small></span>
-                        <div class="seg" role="radiogroup" aria-labelledby="set-surround-label">
-                            <label><input type="radio" name="set-surround" value="auto"><span>Theme</span></label>
-                            <label><input type="radio" name="set-surround" value="black"><span>Black</span></label>
-                            <label><input type="radio" name="set-surround" value="grey"><span>Grey</span></label>
-                            <label><input type="radio" name="set-surround" value="light"><span>Light</span></label>
+                        <div class="set-row">
+                            <span class="set-label" id="set-accent-label">Accent color</span>
+                            <div id="cust-accent" class="accent-swatches" role="radiogroup" aria-labelledby="set-accent-label">
+                                <button data-accent="#2563eb" title="Blue" aria-label="Blue" role="radio" style="--sw:#2563eb"></button>
+                                <button data-accent="#7c3aed" title="Violet" aria-label="Violet" role="radio" style="--sw:#7c3aed"></button>
+                                <button data-accent="#db2777" title="Pink" aria-label="Pink" role="radio" style="--sw:#db2777"></button>
+                                <button data-accent="#dc2626" title="Red" aria-label="Red" role="radio" style="--sw:#dc2626"></button>
+                                <button data-accent="#ea580c" title="Orange" aria-label="Orange" role="radio" style="--sw:#ea580c"></button>
+                                <button data-accent="#16a34a" title="Green" aria-label="Green" role="radio" style="--sw:#16a34a"></button>
+                                <button data-accent="#0d9488" title="Teal" aria-label="Teal" role="radio" style="--sw:#0d9488"></button>
+                                <label class="accent-custom" title="Any color">
+                                    <input type="color" id="cust-accent-pick" value="#2563eb" aria-label="Pick any accent color">
+                                </label>
+                            </div>
                         </div>
-                    </div>
-                    <div class="set-row">
-                        <span class="set-label" id="set-accent-label">Accent colour</span>
-                        <div id="cust-accent" class="accent-swatches" role="radiogroup" aria-labelledby="set-accent-label">
-                            <button data-accent="#2563eb" title="Blue" aria-label="Blue" role="radio" style="--sw:#2563eb"></button>
-                            <button data-accent="#7c3aed" title="Violet" aria-label="Violet" role="radio" style="--sw:#7c3aed"></button>
-                            <button data-accent="#db2777" title="Pink" aria-label="Pink" role="radio" style="--sw:#db2777"></button>
-                            <button data-accent="#dc2626" title="Red" aria-label="Red" role="radio" style="--sw:#dc2626"></button>
-                            <button data-accent="#ea580c" title="Orange" aria-label="Orange" role="radio" style="--sw:#ea580c"></button>
-                            <button data-accent="#16a34a" title="Green" aria-label="Green" role="radio" style="--sw:#16a34a"></button>
-                            <button data-accent="#0d9488" title="Teal" aria-label="Teal" role="radio" style="--sw:#0d9488"></button>
-                            <label class="accent-custom" title="Any colour">
-                                <input type="color" id="cust-accent-pick" value="#2563eb" aria-label="Pick any accent colour">
-                            </label>
+                        <div class="set-row">
+                            <span class="set-label" id="set-surround-label">Behind photos
+                                <small>The color around a photo affects how you judge it</small></span>
+                            <div class="seg" role="radiogroup" aria-labelledby="set-surround-label">
+                                <label><input type="radio" name="set-surround" value="auto"><span>Theme</span></label>
+                                <label><input type="radio" name="set-surround" value="black"><span>Black</span></label>
+                                <label><input type="radio" name="set-surround" value="grey"><span>Gray</span></label>
+                                <label><input type="radio" name="set-surround" value="light"><span>Light</span></label>
+                            </div>
                         </div>
-                    </div>
-                    <div class="set-row">
-                        <span class="set-label" id="set-density-label">Density</span>
-                        <div class="seg" role="radiogroup" aria-labelledby="set-density-label">
-                            <label><input type="radio" name="set-density" value="compact"><span>Compact</span></label>
-                            <label><input type="radio" name="set-density" value="comfortable"><span>Comfortable</span></label>
+                        <h4 class="set-group native-only">Window</h4>
+                        <div id="set-backdrop-row" class="set-row native-only">
+                            <span class="set-label" id="set-backdrop-label">Window background
+                                <small id="set-backdrop-help">Your desktop shows softly through jEditor, like the Start menu. Photos stay solid.</small></span>
+                            <div class="seg" role="radiogroup" aria-labelledby="set-backdrop-label">
+                                <label><input type="radio" name="set-backdrop" value="none"><span>Solid</span></label>
+                                <label><input type="radio" name="set-backdrop" value="mica"><span>Mica</span></label>
+                                <label><input type="radio" name="set-backdrop" value="acrylic"><span>Acrylic</span></label>
+                            </div>
                         </div>
-                    </div>
-                    <div class="set-row">
-                        <label class="set-label" for="cust-scale">Toolbar size</label>
-                        <span class="set-range">
-                            <input type="range" id="cust-scale" min="0.8" max="1.6" step="0.1" value="1">
-                            <output id="cust-scale-out" for="cust-scale">100%</output>
-                        </span>
-                    </div>
-                    <div class="set-row">
-                        <span class="set-label" id="set-glass-label">Glass
-                            <small>Subtle is faster on older computers</small></span>
-                        <div class="seg" role="radiogroup" aria-labelledby="set-glass-label">
-                            <label><input type="radio" name="set-glass" value="rich"><span>Rich</span></label>
-                            <label><input type="radio" name="set-glass" value="subtle"><span>Subtle</span></label>
+                        <div id="set-transparency-row" class="set-row native-only">
+                            <label class="set-label" for="cust-transparency">Transparency
+                                <small>How much of the window background shows through</small></label>
+                            <span class="set-range">
+                                <input type="range" id="cust-transparency" min="10" max="100" step="5" value="50">
+                                <output id="cust-transparency-out" for="cust-transparency">50%</output>
+                            </span>
                         </div>
-                    </div>
-                </section>
+                        <h4 class="set-group">Look</h4>
+                        <div class="set-row">
+                            <span class="set-label" id="set-glass-label">Glass
+                                <small>Subtle is faster on older computers</small></span>
+                            <div class="seg" role="radiogroup" aria-labelledby="set-glass-label">
+                                <label><input type="radio" name="set-glass" value="rich"><span>Rich</span></label>
+                                <label><input type="radio" name="set-glass" value="subtle"><span>Subtle</span></label>
+                            </div>
+                        </div>
+                        <div class="set-row">
+                            <span class="set-label" id="set-density-label">Density</span>
+                            <div class="seg" role="radiogroup" aria-labelledby="set-density-label">
+                                <label><input type="radio" name="set-density" value="compact"><span>Compact</span></label>
+                                <label><input type="radio" name="set-density" value="comfortable"><span>Comfortable</span></label>
+                            </div>
+                        </div>
+                        <div class="set-row">
+                            <label class="set-label" for="cust-scale">Toolbar size</label>
+                            <span class="set-range">
+                                <input type="range" id="cust-scale" min="0.8" max="1.6" step="0.1" value="1">
+                                <output id="cust-scale-out" for="cust-scale">100%</output>
+                            </span>
+                        </div>
+                    </section>
 
-                <section class="settings-section" aria-labelledby="set-h-folder">
-                    <h3 id="set-h-folder" class="section-label">Folder</h3>
-                    <div class="set-row">
-                        <label class="set-label" for="cust-auto-check">Watch the folder for changes
-                            <small>Photos a scanner saves, or that are removed or edited elsewhere, show up on their own</small></label>
-                        <input type="checkbox" id="cust-auto-check" class="switch">
-                    </div>
-                    <div class="set-row">
-                        <label class="set-label" for="cust-folder-cache">Save cache in the folder
-                            <small>Thumbnails go in .jeditor, so any computer that opens the order later starts fast</small></label>
-                        <input type="checkbox" id="cust-folder-cache" class="switch">
-                    </div>
-                    <div class="set-row">
-                        <span class="set-label">Clean up this folder
-                            <small>Empties the trash and removes the cache, flags and Auto crop originals. Photos aren't touched.</small></span>
-                        <button id="cust-cleanup" class="btn secondary danger-text">Clean up…</button>
-                    </div>
-                </section>
+                    <section id="set-page-toolbar" class="settings-section" data-page="toolbar" role="tabpanel" aria-labelledby="set-h-header">
+                        <h3 id="set-h-header" class="settings-page-title">Toolbar &amp; keys</h3>
+                        <h4 class="set-group">Keyboard</h4>
+                        <div class="set-row">
+                            <span class="set-label">Keyboard shortcuts
+                                <small>Change any key, or switch to a profile like Lightroom's</small></span>
+                            <button id="cust-shortcuts" class="btn secondary">Edit shortcuts…</button>
+                        </div>
+                        <h4 class="set-group">Layout</h4>
+                        <div class="set-row">
+                            <label class="set-label" for="cust-vertical">Vertical toolbar</label>
+                            <input type="checkbox" id="cust-vertical" class="switch">
+                        </div>
+                        <div class="set-row">
+                            <label class="set-label" for="cust-single-controls">Buttons above the film strip
+                                <small>Previous, rotate and next in single view. They fade when not in use; the keyboard shortcuts work either way.</small></label>
+                            <input type="checkbox" id="cust-single-controls" class="switch">
+                        </div>
+                        <h4 class="set-group">Toolbar buttons</h4>
+                        <p class="set-help">Drag to reorder, or focus a row and press <kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd>. Choose which buttons show in the toolbar, which go under <b>More</b>, and which are hidden.</p>
+                        <ul id="customize-list" class="customize-list"></ul>
+                        <div class="set-row set-row-end">
+                            <button id="cust-reset" class="btn ghost sm">Reset toolbar layout</button>
+                        </div>
+                    </section>
 
-                <section class="settings-section" aria-labelledby="set-h-header">
-                    <h3 id="set-h-header" class="section-label">Toolbar buttons</h3>
-                    <p class="set-help">Drag to reorder, or focus a row and press <kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd>. Choose which buttons show in the toolbar, which go under <b>More</b>, and which are hidden.</p>
-                    <ul id="customize-list" class="customize-list"></ul>
-                    <div class="set-row">
-                        <label class="set-label" for="cust-single-controls">Buttons above the film strip
-                            <small>Previous, rotate and next in single view. They fade when not in use; the keyboard shortcuts work either way.</small></label>
-                        <input type="checkbox" id="cust-single-controls" class="switch">
-                    </div>
-                    <div class="set-row">
-                        <label class="set-label" for="cust-vertical">Vertical toolbar</label>
-                        <input type="checkbox" id="cust-vertical" class="switch">
-                    </div>
-                    <button id="cust-reset" class="btn ghost">Reset toolbar layout</button>
-                </section>
+                    <section id="set-page-messages" class="settings-section" data-page="messages" role="tabpanel" aria-labelledby="set-h-messages">
+                        <h3 id="set-h-messages" class="settings-page-title">Messages</h3>
+                        <p class="set-help">The messages that pop up after you do something. Errors and warnings always show.</p>
+                        <div id="cust-toasts"></div>
+                    </section>
+
+                    <section id="set-page-autocrop" class="settings-section" data-page="autocrop" role="tabpanel" aria-labelledby="set-h-autocrop">
+                        <h3 id="set-h-autocrop" class="settings-page-title">Auto crop</h3>
+                        <div class="set-row">
+                            <label class="set-label" for="crop-log-on">Keep scans to improve Auto crop
+                                <small>When you save a crop on a photo Auto was used on, the scan and where you cropped it are kept on this PC (up to 1 GB), so a better Auto can be tested on real scans</small></label>
+                            <input type="checkbox" id="crop-log-on" class="switch">
+                        </div>
+                        <div class="set-row">
+                            <span class="set-label">Test scans
+                                <small id="crop-log-count">None kept yet</small></span>
+                            <span class="set-buttons">
+                                <button id="crop-log-export" class="btn secondary">Export…</button>
+                                <button id="crop-log-clear" class="btn secondary danger-text">Clear…</button>
+                            </span>
+                        </div>
+                    </section>
+
+                    <section id="set-page-projects" class="settings-section" data-page="projects" role="tabpanel" aria-labelledby="set-h-folder">
+                        <h3 id="set-h-folder" class="settings-page-title">Projects</h3>
+                        <div class="set-row">
+                            <label class="set-label" for="cust-auto-check">Watch the folder for changes
+                                <small>Photos a scanner saves, or that are removed or edited elsewhere, show up on their own</small></label>
+                            <input type="checkbox" id="cust-auto-check" class="switch">
+                        </div>
+                        <div class="set-row">
+                            <label class="set-label" for="cust-folder-cache"><span data-native-text="Keep a thumbnail cache">Save cache in the folder</span>
+                                <small data-native-text="Thumbnails are kept on this PC, so a project opens fast the next time">Thumbnails go in .jeditor, so any computer that opens the project later starts fast</small></label>
+                            <input type="checkbox" id="cust-folder-cache" class="switch">
+                        </div>
+                        <h4 class="set-group">Storage</h4>
+                        <div class="set-row native-only">
+                            <span class="set-label">Stored projects
+                                <small>What jEditor keeps on this PC for each project you've opened, and how much room it takes</small></span>
+                            <button id="cust-stored" class="btn secondary">Manage…</button>
+                        </div>
+                        <div class="set-row">
+                            <span class="set-label"><span data-native-text="Clean up this project">Clean up this folder</span>
+                                <small data-native-text="Removes what jEditor keeps on this PC for the open project: cache, flags and Auto crop originals. Photos aren't touched.">Empties the trash and removes the cache, flags and Auto crop originals. Photos aren't touched.</small></span>
+                            <button id="cust-cleanup" class="btn secondary danger-text">Clean up…</button>
+                        </div>
+                    </section>
+
+                    <section id="set-page-updates" class="settings-section native-only" data-page="updates" role="tabpanel" aria-labelledby="set-h-updates">
+                        <h3 id="set-h-updates" class="settings-page-title">Updates</h3>
+                        <div class="set-row">
+                            <span class="set-label">jEditor <span id="upd-version"></span>
+                                <small id="upd-status">Not checked yet</small></span>
+                            <button id="upd-check" class="btn secondary">Check for updates</button>
+                        </div>
+                        <div class="set-row">
+                            <label class="set-label" for="upd-auto">Check for updates automatically
+                                <small>Once a day, when jEditor starts</small></label>
+                            <input type="checkbox" id="upd-auto" class="switch">
+                        </div>
+                        <h4 class="set-group">Troubleshooting</h4>
+                        <div class="set-row">
+                            <span class="set-label">Log
+                                <small>What jEditor did, step by step (scans, updates): for when something goes wrong</small></span>
+                            <button id="upd-log" class="btn secondary">Show log</button>
+                        </div>
+                    </section>
+                </div>
             </div>
             <div class="dialog-foot">
-                <button id="cust-shortcuts" class="btn ghost">Keyboard shortcuts…</button>
                 <span class="dialog-actions">
                     <button id="settings-done" class="btn primary">Done</button>
                 </span>
@@ -597,7 +735,7 @@
     <div id="order-prompt" class="dialog-overlay hidden">
         <div class="dialog prompt-card" role="dialog" aria-modal="true" aria-labelledby="op-title">
             <div class="dialog-head">
-                <h2 id="op-title" class="dialog-title">Part of an order</h2>
+                <h2 id="op-title" class="dialog-title">Part of a project</h2>
             </div>
             <div class="dialog-body fpr-body">
                 <p id="op-text" class="op-text"></p>
@@ -606,7 +744,7 @@
                 <span></span>
                 <span class="dialog-actions rename-actions">
                     <button id="op-folder" class="btn secondary">Just this folder</button>
-                    <button id="op-order" class="btn primary">Open the order</button>
+                    <button id="op-order" class="btn primary">Open the project</button>
                 </span>
             </div>
         </div>
@@ -633,6 +771,281 @@
     </div>
 
     <!-- General-purpose alert / confirm / prompt (ui.js) -->
+    <div id="stored-panel" class="dialog-overlay hidden">
+        <div class="dialog stored-card" role="dialog" aria-modal="true" aria-labelledby="stored-title">
+            <div class="dialog-head">
+                <h2 id="stored-title" class="dialog-title">Stored projects</h2>
+                <button id="stored-close" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+            <p class="set-help stored-help">For each project you've opened, jEditor keeps its flags, a thumbnail cache and the originals from Auto crop on this PC, never in the project folder. Removing the cache is always safe: it's made again when needed.</p>
+            <div id="stored-summary" class="stored-summary"></div>
+            <ul id="stored-list" class="stored-list"></ul>
+            <div class="dialog-foot">
+                <button id="stored-clear-caches" class="btn secondary">Remove all caches</button>
+                <button id="stored-clear-missing" class="btn secondary danger-text">Remove projects that are gone</button>
+                <button id="stored-done" class="btn primary">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- The scan dock (scan.js): floats over the photos, never in the way -->
+    <div id="scan-panel" class="scan-dock hidden native-only" role="dialog" aria-labelledby="scan-title" data-state="setup">
+        <div id="scan-head" class="scan-dock-head" title="Drag to move">
+            <span class="scan-dot" aria-hidden="true"></span>
+            <h2 id="scan-title" class="scan-dock-title">Scan into this project</h2>
+            <button id="scan-details" type="button" class="btn ghost icon sm" title="Details: what the scanner is doing" aria-label="Details" aria-pressed="false">
+                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>
+            </button>
+            <button id="scan-min" type="button" class="btn ghost icon sm" title="Make small" aria-label="Make small">
+                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
+            </button>
+            <button id="scan-x" type="button" class="btn ghost icon sm" title="Close (Esc)" aria-label="Close">
+                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+        </div>
+        <form id="scan-form" class="scan-dock-body">
+            <div id="scan-setup" class="scan-body">
+                <label class="scan-field" for="scan-device">Scanner
+                    <span class="scan-row">
+                        <select id="scan-device" class="field"></select>
+                        <button id="scan-refresh" type="button" class="btn ghost icon" title="Look for scanners again" aria-label="Look for scanners again">
+                            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                        </button>
+                    </span>
+                </label>
+                <div id="scan-problems" class="scan-note"></div>
+                <label class="scan-field" for="scan-folder">Save into
+                    <select id="scan-folder" class="field"></select>
+                </label>
+                <div class="scan-field">Names
+                    <span class="scan-row">
+                        <input id="scan-prefix" class="field" type="text" spellcheck="false" autocomplete="off" aria-label="Name before the number">
+                        <input id="scan-next" class="field scan-num" type="number" min="0" step="1" aria-label="First number">
+                    </span>
+                    <small id="scan-preview" class="scan-preview"></small>
+                </div>
+                <label class="scan-check" for="scan-autocrop">
+                    <input id="scan-autocrop" type="checkbox">
+                    <span>Auto crop each photo<small>Finds the print on each scan and crops to it, whatever its size. Ctrl+Z puts the scans back as they were.</small></span>
+                </label>
+                <label class="scan-check" for="scan-show">
+                    <input id="scan-show" type="checkbox">
+                    <span>Show each photo as it comes in<small>Opens the newest scan large while the rest are scanning.</small></span>
+                </label>
+                <div class="scan-field" id="scan-mode-row">How
+                    <div class="seg scan-mode" role="radiogroup" aria-label="How to scan">
+                        <label id="scan-mode-glass"><input type="radio" name="scan-mode" value="glass" checked><span>Glass: preview and crop</span></label>
+                        <label id="scan-mode-feeder"><input type="radio" name="scan-mode" value="feeder"><span>Feeder</span></label>
+                    </div>
+                </div>
+                <p class="set-help" id="scan-help-glass">Lay prints on the glass, as many as fit. jEditor previews the glass and puts a box round each print; adjust them, then Scan saves each box as its own photo.</p>
+                <p class="set-help hidden" id="scan-help-feeder">Load a stack of photos into the feeder, then Scan: the whole batch goes through in one go, each photo showing up as it's scanned. Then load the next batch and press Scan more: the names carry on.</p>
+                <p class="set-help hidden" id="scan-help-driver">The scanner's own window opens next: choose the resolution and feeder there. Each photo shows up as soon as it's in.</p>
+                <div id="scan-opts-home"></div>
+                <details class="scan-adv" id="scan-adv">
+                    <summary>Advanced</summary>
+                    <label class="scan-check" for="scan-driver">
+                        <input id="scan-driver" type="checkbox">
+                        <span>Use the scanner's own window instead<small>Its own settings (dust removal, color restoration and so on), if jEditor's aren't enough. Remembered for this scanner.</small></span>
+                    </label>
+                    <label class="scan-check" for="scan-swap" id="scan-swap-row">
+                        <input id="scan-swap" type="checkbox">
+                        <span>This scanner's front and back are swapped<small>On if one-sided scans come out showing the back (the FastFoto does this). Remembered for this scanner.</small></span>
+                    </label>
+                    <label class="scan-check" for="scan-autosize" id="scan-autosize-row">
+                        <input id="scan-autosize" type="checkbox">
+                        <span>The scanner crops each photo itself<small>Its own auto-size, as in its own software (the FastFoto has it). If it can't, jEditor scans the usual way and crops each photo. Remembered for this scanner.</small></span>
+                    </label>
+                    <div class="scan-own hidden" id="scan-own-row">
+                        <span class="scan-row">
+                            <button id="scan-own" type="button" class="btn secondary sm">Scanner's own settings…</button>
+                            <button id="scan-own-forget" type="button" class="btn ghost sm hidden" title="Go back to the driver's defaults">Forget</button>
+                        </span>
+                        <small id="scan-own-note">Opens the scanner's own window to choose what jEditor can't, like Epson's color restoration or image enhancements. Save there; feeder scans use them from then on.</small>
+                    </div>
+                    <label class="scan-check" for="scan-compat" id="scan-compat-row">
+                        <input id="scan-compat" type="checkbox">
+                        <span>Older TWAIN mode<small>If the scanner doesn't respond, try this: an older way of talking to its driver (some Plustek ones need it).</small></span>
+                    </label>
+                </details>
+            </div>
+            <div id="scan-opts" class="scan-opts">
+                <div class="scan-opts-row">
+                    <label class="scan-field" for="scan-setup-pick">Setup
+                        <span class="scan-row">
+                            <select id="scan-setup-pick" class="field"><option value="">Custom</option></select>
+                            <button id="scan-setup-save" type="button" class="btn ghost sm" title="Save these settings under a name">Save…</button>
+                            <button id="scan-setup-del" type="button" class="btn ghost icon sm" title="Delete this setup" aria-label="Delete this setup">
+                                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                            </button>
+                        </span>
+                    </label>
+                </div>
+                <div class="scan-opts-grid">
+                    <label class="scan-field" for="scan-dpi">Resolution
+                        <select id="scan-dpi" class="field"></select>
+                    </label>
+                    <label class="scan-field" for="scan-color">Color
+                        <select id="scan-color" class="field">
+                            <option value="color">Color</option>
+                            <option value="gray">Grayscale</option>
+                        </select>
+                    </label>
+                    <label class="scan-field" for="scan-sides" id="scan-sides-row">Sides
+                        <select id="scan-sides" class="field">
+                            <option value="front">Front</option>
+                            <option value="back">Back</option>
+                            <option value="both">Both (backs as -b)</option>
+                        </select>
+                    </label>
+                    <label class="scan-field" for="scan-format">File
+                        <select id="scan-format" class="field">
+                            <option value="jpeg">JPEG</option>
+                            <option value="png">PNG (lossless)</option>
+                            <option value="tiff">TIFF (lossless; jEditor can't show it)</option>
+                        </select>
+                    </label>
+                </div>
+                <label class="scan-field scan-slider" for="scan-quality" id="scan-quality-row">JPEG quality <output id="scan-quality-out">95</output>
+                    <input id="scan-quality" type="range" min="60" max="100" step="1" value="95">
+                </label>
+                <label class="scan-field scan-slider" for="scan-bright">Brightness <output id="scan-bright-out">0</output>
+                    <input id="scan-bright" type="range" min="-100" max="100" step="1" value="0">
+                </label>
+                <label class="scan-field scan-slider" for="scan-contrast">Contrast <output id="scan-contrast-out">0</output>
+                    <input id="scan-contrast" type="range" min="-100" max="100" step="1" value="0">
+                </label>
+                <p class="set-help hidden" id="scan-tone-note">A FastFoto starts at brightness 5, contrast −35: its driver sends more contrast than Epson's FastFoto app saves, and this matches the app.</p>
+            </div>
+            <div id="scan-live" class="scan-live">
+                <div id="scan-summary" class="scan-summary"></div>
+                <div id="scan-strip" class="scan-strip" aria-label="The last photos scanned"></div>
+                <div id="scan-status" class="scan-status" role="status"></div>
+            </div>
+            <div id="scan-pv" class="scan-pv">
+                <div id="scan-pv-stage" class="scan-pv-stage">
+                    <div id="scan-pv-bed" class="scan-pv-bed">
+                        <img id="scan-pv-img" alt="" draggable="false" style="filter:url(#scan-pv-adjust)">
+                        <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="scan-pv-adjust" color-interpolation-filters="sRGB"><feComponentTransfer><feFuncR id="scan-adj-r" type="linear" slope="1" intercept="0"/><feFuncG id="scan-adj-g" type="linear" slope="1" intercept="0"/><feFuncB id="scan-adj-b" type="linear" slope="1" intercept="0"/></feComponentTransfer></filter></svg>
+                        <div id="scan-pv-boxes" class="scan-pv-boxes" tabindex="0" aria-label="The scanner's glass: click a print to box it, or drag to draw a box"></div>
+                    </div>
+                    <div class="scan-pv-wait" role="status"><span class="scan-dot" aria-hidden="true"></span><span id="scan-pv-wait"></span></div>
+                </div>
+                <div class="scan-pv-side">
+                    <div id="scan-pv-count" class="scan-pv-count"></div>
+                    <small class="scan-pv-help">Click a print to box it, or drag on the glass to draw a box. Drag a box to move it, its corners to resize it, the round handle to tilt it. <kbd>Delete</kbd> removes the selected box.</small>
+                    <div class="scan-pv-tools">
+                        <button id="scan-pv-again" type="button" class="btn secondary sm" title="Scan the glass again, small (after changing the prints)">Preview again</button>
+                        <button id="scan-pv-find" type="button" class="btn ghost sm" title="Put the boxes back where jEditor finds the prints">Find prints</button>
+                        <button id="scan-pv-clear" type="button" class="btn ghost sm">Clear boxes</button>
+                    </div>
+                    <label class="scan-field">Glass
+                        <select id="scan-pv-glass" class="field" title="How big the scanner's glass is (remembered for this scanner)"></select>
+                    </label>
+                    <div id="scan-opts-pv"></div>
+                    <small id="scan-pv-names" class="scan-preview"></small>
+                </div>
+            </div>
+            <div id="scan-log" class="log-view hidden" aria-label="Details">
+                <div class="log-view-head">
+                    <span>Details</span>
+                    <span class="scan-grow"></span>
+                    <button type="button" class="btn ghost sm" data-log="copy" title="Copy these lines, to send them on">Copy</button>
+                    <button type="button" class="btn ghost sm" data-log="file" title="Show the whole log in Explorer">Log file</button>
+                </div>
+                <div class="log-lines" tabindex="0"></div>
+            </div>
+            <div class="scan-dock-foot">
+                <button id="scan-stop" type="button" class="btn secondary">Stop</button>
+                <button id="scan-settings" type="button" class="btn ghost">Change settings</button>
+                <span class="scan-grow"></span>
+                <button id="scan-cancel" type="button" class="btn secondary">Cancel</button>
+                <button id="scan-whole" type="button" class="btn secondary" title="The whole glass as one photo, at the resolution chosen: no preview, no boxes">Scan whole glass</button>
+                <button id="scan-go" type="submit" class="btn primary">Scan</button>
+            </div>
+        </form>
+    </div>
+
+    <div id="cam-panel" class="scan-dock cam-dock hidden native-only" role="dialog" aria-labelledby="cam-title" data-state="setup">
+        <div id="cam-head" class="scan-dock-head" title="Drag to move">
+            <span class="scan-dot" aria-hidden="true"></span>
+            <h2 id="cam-title" class="scan-dock-title">Camera</h2>
+            <button id="cam-details" type="button" class="btn ghost icon sm" title="Details: what the camera is doing" aria-label="Details" aria-pressed="false">
+                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>
+            </button>
+            <button id="cam-big" type="button" class="btn ghost icon sm" title="Bigger live view" aria-label="Bigger live view" aria-pressed="false">
+                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+            </button>
+            <button id="cam-min" type="button" class="btn ghost icon sm" title="Make small" aria-label="Make small">
+                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
+            </button>
+            <button id="cam-x" type="button" class="btn ghost icon sm" title="Close (Esc)" aria-label="Close">
+                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+        </div>
+        <form id="cam-form" class="scan-dock-body">
+            <div id="cam-setup" class="scan-body">
+                <label class="scan-field" for="cam-device">Camera
+                    <span class="scan-row">
+                        <select id="cam-device" class="field"></select>
+                        <button id="cam-refresh" type="button" class="btn ghost icon" title="Look for cameras again" aria-label="Look for cameras again">
+                            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                        </button>
+                    </span>
+                </label>
+                <div id="cam-note" class="scan-note"></div>
+                <label class="scan-field" for="cam-folder">Save into
+                    <select id="cam-folder" class="field"></select>
+                </label>
+                <div class="scan-field">Names
+                    <span class="scan-row">
+                        <input id="cam-prefix" class="field" type="text" spellcheck="false" autocomplete="off" aria-label="Name before the number">
+                        <input id="cam-next" class="field scan-num" type="number" min="0" step="1" aria-label="First number">
+                    </span>
+                    <small id="cam-names" class="scan-preview"></small>
+                </div>
+                <label class="scan-check" for="cam-card">
+                    <input id="cam-card" type="checkbox">
+                    <span>Keep a copy on the camera's card<small>Each photo also stays on the memory card, as a backup. Off: they only come to this PC.</small></span>
+                </label>
+                <label class="scan-check" for="cam-show">
+                    <input id="cam-show" type="checkbox">
+                    <span>Show each photo as it comes in<small>Opens the new photo large, as Lightroom does.</small></span>
+                </label>
+                <p class="set-help">On the camera: Menu → Network (or Setup) → USB Connection → <b>PC Remote</b>, then plug it into this PC with a USB cable. Photos taken here (F12) or with the camera's own button come straight into the project, RAW files too.</p>
+            </div>
+            <div id="cam-live" class="cam-live">
+                <div id="cam-view" class="cam-view">
+                    <img id="cam-frame" alt="" draggable="false">
+                    <div id="cam-view-note" class="cam-view-note"></div>
+                    <button id="cam-shoot" type="button" class="cam-shoot" title="Take a photo (F12)" aria-label="Take a photo (F12)"></button>
+                </div>
+                <div id="cam-summary" class="scan-summary"></div>
+                <div id="cam-strip" class="scan-strip" aria-label="The last photos taken"></div>
+                <div id="cam-status" class="scan-status" role="status"></div>
+            </div>
+            <div id="cam-log" class="log-view hidden" aria-label="Details">
+                <div class="log-view-head">
+                    <span>Details</span>
+                    <span class="scan-grow"></span>
+                    <button type="button" class="btn ghost sm" data-log="copy" title="Copy these lines, to send them on">Copy</button>
+                    <button type="button" class="btn ghost sm" data-log="file" title="Show the whole log in Explorer">Log file</button>
+                </div>
+                <div class="log-lines" tabindex="0"></div>
+            </div>
+            <div class="scan-dock-foot">
+                <label class="scan-check cam-live-toggle" for="cam-liveview"><input id="cam-liveview" type="checkbox" checked><span>Live view</span></label>
+                <span class="scan-grow"></span>
+                <button id="cam-cancel" type="button" class="btn secondary">Cancel</button>
+                <button id="cam-stop" type="button" class="btn secondary">Disconnect</button>
+                <button id="cam-go" type="submit" class="btn primary">Connect</button>
+                <button id="cam-take" type="button" class="btn primary">Take photo</button>
+            </div>
+        </form>
+    </div>
+
     <div id="ui-dialog" class="dialog-overlay hidden">
         <div class="dialog prompt-card" role="alertdialog" aria-modal="true" aria-labelledby="uid-title" aria-describedby="uid-text">
             <div class="dialog-head">
@@ -649,6 +1062,7 @@
                 <span></span>
                 <span class="dialog-actions">
                     <button id="uid-cancel" class="btn secondary">Cancel</button>
+                    <button id="uid-alt" class="btn secondary hidden"></button>
                     <button id="uid-ok" class="btn primary">OK</button>
                 </span>
             </div>
@@ -681,10 +1095,17 @@
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                 </button>
             </div>
+            <div class="shortcuts-profiles">
+                <label for="shortcuts-profile">Profile</label>
+                <select id="shortcuts-profile" class="field"></select>
+                <button id="shortcuts-profile-new" class="btn secondary" title="A new profile, starting from this one's keys">New profile…</button>
+                <button id="shortcuts-profile-rename" class="btn ghost hidden">Rename…</button>
+                <button id="shortcuts-profile-delete" class="btn ghost hidden">Delete</button>
+            </div>
             <div id="shortcuts-list" class="shortcuts-list"></div>
             <div class="dialog-foot">
                 <span class="dialog-note">Click <b>+</b> to add a key. Click a key to remove it.</span>
-                <button id="shortcuts-reset" class="btn secondary">Reset all to defaults</button>
+                <button id="shortcuts-reset" class="btn secondary">Reset all to this profile's keys</button>
             </div>
         </div>
     </div>

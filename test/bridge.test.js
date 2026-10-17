@@ -1,0 +1,505 @@
+#!/usr/bin/env node
+// Tests for src/bridge.js: the real jEditor UI (app/) in headless Chromium, served at the Windows app's origin, with
+// a fake chrome.webview standing in for the app. Folders are real
+// FileSystemDirectoryHandles from the browser's private file system, so
+// jEditor reads and writes them as it would a folder on disk.
+//
+//   npm test          (with the UI tests; needs Chrome or Chromium, CHROME_PATH to choose one)
+//   node test/bridge.test.js    just these
+
+const fs = require('fs');
+const path = require('path');
+const { chromium } = require('playwright-core');
+
+const ROOT = path.join(__dirname, '..');
+const UI = path.join(ROOT, 'app');
+const BRIDGE = fs.readFileSync(path.join(ROOT, 'src', 'bridge.js'), 'utf8');
+const ORIGIN = 'https://jeditor.example';
+
+const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
+
+function launchOptions() {
+    const candidates = [
+        process.env.CHROME_PATH,
+        '/opt/pw-browsers/chromium',
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/google-chrome',
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+    ].filter(Boolean);
+    for (const p of candidates) {
+        if (fs.existsSync(p)) return { executablePath: p, args: ['--no-sandbox'] };
+    }
+    return { channel: 'chrome', args: ['--no-sandbox'] };
+}
+
+let passed = 0, failed = 0;
+function check(name, ok, detail = '') {
+    if (ok) { passed++; console.log(`  ok    ${name}`); }
+    else { failed++; console.log(`  FAIL  ${name}${detail ? ' — ' + detail : ''}`); }
+}
+
+// The app's side of chrome.webview: messages the page posts are kept in
+// window.__posted (and passed to window.__onPost if set);
+// window.__deliver(data, objects) sends one to the page.
+const FAKE_WEBVIEW = `
+    window.chrome = window.chrome || {};
+    window.__posted = [];
+    window.__listeners = [];
+    window.chrome.webview = {
+        postMessage(m) { window.__posted.push(m); if (window.__onPost) window.__onPost(m); },
+        // As WebView2: a File from a file handle can't be sent (only ones
+        // dropped or chosen from outside the page can, not made here)
+        postMessageWithAdditionalObjects(m, objects) {
+            if ([...objects].some(o => o instanceof File)) throw new TypeError('Unsupported object in additionalObjects');
+            m.__objects = objects;
+            this.postMessage(m);
+        },
+        addEventListener(type, fn) { if (type === 'message') window.__listeners.push(fn); },
+        removeEventListener() { }
+    };
+    window.__deliver = (data, additionalObjects = []) =>
+        window.__listeners.forEach(fn => fn({ data, additionalObjects }));
+`;
+
+// A folder of real JPEGs in the private file system
+const MAKE_FOLDER = async (name, count) => {
+    const root = await navigator.storage.getDirectory();
+    try { await root.removeEntry(name, { recursive: true }); } catch (e) { }
+    const dir = await root.getDirectoryHandle(name, { create: true });
+    for (let i = 1; i <= count; i++) {
+        const c = document.createElement('canvas');
+        c.width = 120; c.height = 80;
+        const g = c.getContext('2d');
+        g.fillStyle = `hsl(${i * 70},60%,50%)`;
+        g.fillRect(0, 0, 120, 80);
+        const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+        const f = await dir.getFileHandle(`photo${i}.jpg`, { create: true });
+        const w = await f.createWritable();
+        await w.write(blob);
+        await w.close();
+    }
+    return dir;
+};
+
+async function serveUi(context, origin = ORIGIN) {
+    await context.route(origin + '/**', (route) => {
+        const urlPath = decodeURIComponent(new URL(route.request().url()).pathname);
+        const file = path.normalize(path.join(UI, urlPath === '/' ? 'index.html' : urlPath));
+        if (!file.startsWith(UI) || !fs.existsSync(file)) return route.fulfill({ status: 404, body: 'Not found' });
+        route.fulfill({ status: 200, contentType: MIME[path.extname(file)] || 'application/octet-stream', body: fs.readFileSync(file) });
+    });
+}
+
+// A page as the Windows app shows it: fake webview, then the bridge, then
+// jEditor
+async function openPage(browser, { origin = ORIGIN, webview = true, dev = false } = {}) {
+    const context = await browser.newContext();
+    await serveUi(context, origin);
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+    if (webview) await page.addInitScript(FAKE_WEBVIEW);
+    if (dev) await page.addInitScript('window.__jeditorDev = true;');
+    await page.addInitScript(BRIDGE);
+    await page.goto(origin + '/index.html');
+    await page.waitForFunction(() => typeof app !== 'undefined' && app.elements);
+    return { context, page, errors };
+}
+
+const waitForPost = (page, type) => page.waitForFunction(
+    (t) => window.__posted.find(m => m.type === t), type, { timeout: 15000 }).then(h => h.jsonValue());
+
+(async () => {
+    const browser = await chromium.launch(launchOptions());
+
+    console.log('bridge: start-up');
+    {
+        const { context, page, errors } = await openPage(browser);
+        const ready = await waitForPost(page, 'ready');
+        const version = fs.readFileSync(path.join(UI, 'version.js'), 'utf8').match(/APP_VERSION = '([^']+)'/)[1];
+        check('posts ready with jEditor\'s version', ready.version === version, JSON.stringify(ready));
+        const theme = await waitForPost(page, 'theme');
+        check('posts the theme and background color', typeof theme.dark === 'boolean' && /^rgba?\(/.test(theme.background), JSON.stringify(theme));
+
+        const r = await page.evaluate(async () => ({
+            picker: window.showDirectoryPicker.name === 'showDirectoryPicker' && /request\('pickFolder'\)/.test(String(window.showDirectoryPicker)),
+            sw: await navigator.serviceWorker.register('sw.js'),
+            regs: (await navigator.serviceWorker.getRegistrations()).length,
+            recents: Recents.supported()
+        }));
+        check('replaces the folder picker', r.picker);
+        check('no service worker is registered', r.sw === null || r.sw === undefined ? r.regs === 0 : false, JSON.stringify(r));
+        check('recent orders stay available', r.recents);
+
+        // A theme change is reported once
+        await page.evaluate(() => { window.__posted.length = 0; document.documentElement.dataset.theme = 'light'; });
+        const light = await waitForPost(page, 'theme');
+        check('reports a theme change', light.dark === false, JSON.stringify(light));
+        check('start-up: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('bridge: Open folder');
+    {
+        const { context, page, errors } = await openPage(browser);
+        await waitForPost(page, 'ready');
+        // The app answers the picker with a folder of three photos
+        await page.evaluate(async (make) => {
+            const dir = await (eval(make))('Smith Order', 3);
+            window.__onPost = async (m) => {
+                if (m.type === 'pickFolder') setTimeout(() => window.__deliver({ replyTo: m.id, path: 'D:\\Orders\\Smith Order' }, [dir]), 10);
+                // The app's storage (flags and edits are read from it while the folder opens)
+                else if (m.type === 'dataDir') window.__deliver({ replyTo: m.id, path: 'C:\\data' }, [await (await navigator.storage.getDirectory()).getDirectoryHandle('appdata', { create: true })]);
+            };
+        }, MAKE_FOLDER.toString());
+        await page.click('#btn-browse-folder');
+        await page.waitForFunction(() => app.files.length === 3 && !app.isLoading, null, { timeout: 15000 });
+        const r = await page.evaluate(() => ({
+            picks: window.__posted.filter(m => m.type === 'pickFolder').length,
+            name: app.dirHandle && app.dirHandle.name,
+            writable: !app.readOnlyMode
+        }));
+        check('Open folder asks the app once', r.picks === 1, JSON.stringify(r));
+        check('opens the folder the app picked, for editing', r.name === 'Smith Order' && r.writable, JSON.stringify(r));
+
+        // Remembered under Recent, with its handle (once loading has finished)
+        await page.waitForFunction(() => !!Recents.saving, null, { timeout: 15000 });
+        await page.evaluate(() => Recents.saving);
+        const recents = await page.evaluate(async () => (await Recents.list()).map(x => x.name));
+        check('the folder goes on the Recent list', recents[0] === 'Smith Order', JSON.stringify(recents));
+        check('open folder: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('bridge: picker canceled');
+    {
+        const { context, page, errors } = await openPage(browser);
+        await waitForPost(page, 'ready');
+        await page.evaluate(() => {
+            window.__onPost = (m) => { if (m.type === 'pickFolder') setTimeout(() => window.__deliver({ replyTo: m.id, cancelled: true }), 10); };
+        });
+        await page.click('#btn-browse-folder');
+        await page.waitForFunction(() => window.__posted.some(m => m.type === 'pickFolder'));
+        await page.waitForTimeout(300);
+        const r = await page.evaluate(() => ({
+            files: app.files.length,
+            startScreen: !document.getElementById('drop-zone').classList.contains('hidden'),
+            dialog: typeof UI !== 'undefined' && UI.isOpen()
+        }));
+        check('canceling leaves the start screen, with no error message', r.files === 0 && r.startScreen && !r.dialog, JSON.stringify(r));
+        check('cancel: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('bridge: folder from the command line, and the smoke test');
+    {
+        const { context, page, errors } = await openPage(browser);
+        await waitForPost(page, 'ready');
+        const before = await page.evaluate(async (make) => {
+            const dir = await (eval(make))('Jones', 4);
+            window.__dir = dir;
+            const bytes = async () => {
+                const out = [];
+                for await (const h of dir.values()) if (h.kind === 'file') out.push([h.name, new Uint8Array(await (await h.getFile()).arrayBuffer()).join(',')]);
+                return Object.fromEntries(out);
+            };
+            window.__bytes = bytes;
+            // The app's side of the smoke test's further steps
+            window.__onPost = async (m) => {
+                const reply = (data, objects = []) => setTimeout(() => window.__deliver({ replyTo: m.id, ...data }, objects), 5);
+                if (m.type === 'dataDir') reply({ path: 'C:\\data' }, [await (await navigator.storage.getDirectory()).getDirectoryHandle('appdata', { create: true })]);
+                else if (m.type === 'recycle') { if (!m.paths.some(x => /jEditor smoke/.test(x))) window.__recycledPaths = m.paths; else window.__cleanedUp = m.paths; reply({ results: m.paths.map(() => ({ noBin: true })) }); }
+                else if (m.type === 'smokeCheck') { (window.__checks = window.__checks || []).push(m); reply({ ok: true }); }
+                else if (m.type === 'places') reply({ drives: [{ path: 'C:\\', name: 'Local disk (C:)', kind: 'disk' }], home: [] });
+                else if (m.type === 'listDir') {
+                    let n = 0;
+                    for await (const h of dir.values()) if (h.kind === 'file' && /\.jpe?g$/i.test(h.name)) n++;
+                    reply({ path: m.path, name: 'Jones', parent: 'C:\\', folders: [], photos: n, more: false });
+                }
+                else if (m.type === 'listProjects') reply({ projects: [{ name: 'Jones', path: 'C:\\Jones', modified: Date.now() }] });
+                else if (m.type === 'countPhotos') {
+                    let n = 0;
+                    for await (const h of dir.values()) if (h.kind === 'file' && /\.jpe?g$/i.test(h.name)) n++;
+                    reply({ counts: m.paths.map(() => n), limit: 1000 });
+                }
+                else if (m.type === 'quickAccess') reply({ folders: [] });
+                else if (m.type === 'makeFolder') {
+                    const path = m.parent + '\\' + m.name;
+                    (window.__folders = window.__folders || new Set()).add(path.toLowerCase());
+                    reply({ path });
+                }
+                else if (m.type === 'renameFolder') {
+                    // As the app does: the folder, then its stored data
+                    const path = m.path.replace(/[^\\]+$/, '') + m.name;
+                    window.__folders.delete(m.path.toLowerCase());
+                    window.__folders.add(path.toLowerCase());
+                    window.__renamed = m;
+                    const all = await (await navigator.storage.getDirectory()).getDirectoryHandle('appdata', { create: true });
+                    const from = await all.getDirectoryHandle(FolderCache.storeName(m.path));
+                    const to = await all.getDirectoryHandle(FolderCache.storeName(path), { create: true });
+                    for await (const h of from.values()) {
+                        if (h.kind !== 'file') continue;
+                        const w = await (await to.getFileHandle(h.name, { create: true })).createWritable();
+                        await w.write(await h.getFile());
+                        await w.close();
+                    }
+                    await all.removeEntry(FolderCache.storeName(m.path), { recursive: true });
+                    reply({ path });
+                }
+                else if (m.type === 'exists') reply({ exists: m.paths.map(p => (window.__folders || new Set()).has(p.toLowerCase())) });
+                else if (m.type === 'newWindow' || m.type === 'split') reply({ ok: true });
+                else if (m.type === 'transfer') reply({ items: m.paths.map(p => ({ from: p, to: m.dest + '\\' + p.split('\\').pop() })) });
+                else if (m.type === 'undoTransfer') reply({ errors: m.items.map(() => null) });
+                else if (m.type === 'copyFolder') {
+                    // The app's side: how far it's got, then where it went
+                    window.__deliver({ type: 'copyProgress', copy: m.id, done: 5, total: 10 });
+                    reply({ to: m.dest + m.path.split('\\').pop() });
+                }
+                else if (m.type === 'cancelCopy') window.__cancelCopy = m.copy;
+                else if (m.type === 'scanners') reply({ devices: [{ id: 'jeditor-test-scanner', name: 'jEditor test scanner', driver: 'test' }], problems: [] });
+                else if (m.type === 'cameras') reply({ cameras: [{ id: 'jeditor-test-camera', name: 'jEditor test camera', ready: true, note: null }] });
+                else if (m.type === 'tether') {
+                    // The app's side: connected, frames until stopped, a shot as RAW + JPEG
+                    window.__tether = m;
+                    const ev = (e) => window.__deliver({ type: 'tether', session: m.id, ...e });
+                    ev({ kind: 'connected', name: 'jEditor test camera' });
+                    for (let i = 0; i < 3; i++) ev({ kind: 'frame', image: 'data:image/jpeg;base64,' });
+                    window.__tetherReply = () => reply({ count: 2, names: ['shot_001.arw', 'shot_001.jpg'] });
+                    window.__tetherEv = ev;
+                }
+                else if (m.type === 'tetherShoot') {
+                    for (const name of ['shot_001.arw', 'shot_001.jpg']) {
+                        const c = document.createElement('canvas');
+                        c.width = 90; c.height = 60;
+                        const blob = await new Promise(r => c.toBlob(r, 'image/jpeg'));
+                        const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
+                        await w.write(blob);
+                        await w.close();
+                        window.__tetherEv({ kind: 'saved', name });
+                    }
+                }
+                else if (m.type === 'tetherStop') window.__tetherReply();
+                else if (m.type === 'tetherAck' || m.type === 'tetherLive') { /* fine */ }
+                else if (m.type === 'scanCaps') reply({ bedW: 8.5, bedH: 11.7, dpis: [75, 150, 300, 600], gray: true, guessed: false });
+                else if (m.type === 'scanPreview') {
+                    // The test scanner's glass, as the app draws it
+                    const c = document.createElement('canvas');
+                    c.width = Math.round(m.bedW * m.dpi);
+                    c.height = Math.round(m.bedH * m.dpi);
+                    const g = c.getContext('2d');
+                    g.fillStyle = 'rgb(242,242,240)';
+                    g.fillRect(0, 0, c.width, c.height);
+                    for (const [x, y, w, h, col] of [[0.5, 0.5, 4, 3, '#4a6eaa'], [5, 0.7, 3, 4, '#963c5a'], [1, 5, 6, 4, '#287850']]) {
+                        g.fillStyle = col;
+                        g.fillRect(x * m.dpi, y * m.dpi, w * m.dpi, h * m.dpi);
+                    }
+                    reply({ image: c.toDataURL('image/jpeg'), width: c.width, height: c.height, bedW: m.bedW, bedH: m.bedH });
+                }
+                else if (m.type === 'scan') {
+                    // The app's side: three photos into the folder, each posted as it lands
+                    const names = [];
+                    if (!m.crops) window.__scan = m;
+                    else window.__cropScan = m;
+                    for (let i = 0; i < 3; i++) {
+                        const name = m.prefix + String(m.next + i).padStart(m.digits, '0') + '.jpg';
+                        const c = document.createElement('canvas');
+                        c.width = 90; c.height = 60;
+                        c.getContext('2d').fillRect(0, 0, 10 + i, 10);
+                        const blob = await new Promise(r => c.toBlob(r, 'image/jpeg'));
+                        const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
+                        await w.write(blob);
+                        await w.close();
+                        names.push(name);
+                        // The last one's message comes after the reply (as it once did): the reply's list covers it
+                        if (i < 2) window.__deliver({ type: 'scanned', scan: m.id, name });
+                    }
+                    reply({ count: names.length, names });
+                }
+                else if (m.type === 'logTail') reply({ lines: ['10:00:00.000 jEditor 1.0 ready'], file: 'jEditor.log' });
+                else if (m.type === 'logWatch') window.__logWatch = m.on;
+                else if (m.type === 'log' && window.__logWatch) window.__deliver({ type: 'logLines', lines: ['10:00:01.000 page ' + m.level + ': ' + m.text] });
+                else if (m.type === 'checkUpdate') reply({ tag: 'v1.0.0', current: 'v1.0.0', newer: false });
+            };
+            const b = await bytes();
+            window.__deliver({ type: 'openFolder', path: 'C:\\Jones', smoke: true }, [dir]);
+            return b;
+        }, MAKE_FOLDER.toString());
+        const opened = await waitForPost(page, 'opened');
+        check('opens the folder and reports the photo count', opened.name === 'Jones' && opened.count === 4, JSON.stringify(opened));
+        const smoke = await waitForPost(page, 'smoke');
+        check('smoke test: reports success', smoke.ok && smoke.count === 4 && smoke.rotated && smoke.errors.length === 0, JSON.stringify(smoke));
+        check('smoke test: runs the further steps through the app', smoke.steps && smoke.steps.stored === true && smoke.steps.deleted === true && smoke.steps.restored === true && smoke.steps.scanned === true && smoke.steps.fed === true && smoke.steps.cropped === true && smoke.steps.tethered === true && smoke.steps.logged === true && smoke.steps.places === true && smoke.steps.browsed === true && smoke.steps.projects === true && smoke.steps.counted === true && smoke.steps.pins === true && smoke.steps.renamed === true && smoke.steps.windows === true && smoke.steps.moved === true && smoke.steps.unmoved === true && smoke.steps.back === true && /v1\.0\.0/.test(smoke.steps.update), JSON.stringify(smoke.steps));
+        // A folder copied onto a drive: progress as it goes, then where it went; Stop is passed on
+        const copy = await page.evaluate(async () => {
+            const seen = [];
+            const job = window.JEditorNative.copyFolder('C:\\Jones', 'E:\\', (d, t) => seen.push(d + '/' + t));
+            const r = await job;
+            window.JEditorNative.cancelCopy(job.copyId);
+            await new Promise(res => setTimeout(res, 50));
+            return { to: r.to, seen: seen.join(), cancelled: window.__cancelCopy === job.copyId };
+        });
+        check('copyFolder: progress as it goes, then where the copy went; cancelCopy is passed on', copy.to === 'E:\\Jones' && copy.seen === '5/10' && copy.cancelled, JSON.stringify(copy));
+        const scanned = await page.evaluate(() => ({ scan: window.__scan, check: (window.__checks || []).find(c => c.step === 'scanned') }));
+        const teth = await page.evaluate(() => ({ req: window.__tether, check: (window.__checks || []).find(c => c.step === 'tethered') }));
+        check('smoke test: tethers the test camera into the order, takes a shot (RAW + JPEG) and disconnects', teth.req && teth.req.camera === 'jeditor-test-camera' && teth.req.folder === 'C:\\Jones' && teth.req.prefix === 'shot_' &&
+            teth.check && teth.check.connected === true && teth.check.frames >= 3 && teth.check.names.join() === 'shot_001.arw,shot_001.jpg', JSON.stringify(teth));
+        const crop = await page.evaluate(() => ({ scan: window.__cropScan, check: (window.__checks || []).find(c => c.step === 'cropped') }));
+        check('smoke test: previews the test glass, finds its three prints and scans a photo per box', crop.scan && crop.scan.crops.length === 3 && crop.scan.dpi === 150 && crop.scan.bedW === 8.5 &&
+            crop.check && crop.check.names.length === 3 && crop.check.sizes.length === 3 && crop.check.preview.join() === '638,878', JSON.stringify(crop));
+        check('smoke test: scans into the order with the test scanner, named next in its sequence', scanned.scan && scanned.scan.folder === 'C:\\Jones' && scanned.scan.device === 'jeditor-test-scanner' &&
+            scanned.check && scanned.check.names.join() === 'photo5.jpg,photo6.jpg,photo7.jpg' && scanned.check.shown === 3, JSON.stringify(scanned));
+        const after = await page.evaluate(() => window.__bytes());
+        const changed = Object.keys(before).filter(k => before[k] !== after[k]);
+        check('smoke test: the rotation is saved to the file, and only that one', changed.length === 1 && changed[0] === smoke.file, changed.join(', '));
+        const recycled = await page.evaluate(() => window.__recycledPaths || []);
+        check('smoke test: deletes by path, in the folder the app sent', recycled.length === 1 && /^C:\\Jones\\photo\d\.jpg$/.test(recycled[0]), recycled.join());
+        await page.reload();
+        await page.waitForFunction(() => typeof app !== 'undefined' && app.elements && window.JEditorNative);
+        const remembered = await page.evaluate(async () => {
+            const root = await navigator.storage.getDirectory();
+            const other = await root.getDirectoryHandle('Elsewhere', { create: true });
+            return [await JEditorNative.folderPath(await root.getDirectoryHandle('Jones')), await JEditorNative.folderPath(other)];
+        });
+        check('folder paths are remembered after a restart (recent orders); unknown ones are null', remembered[0] === 'C:\\Jones' && remembered[1] === null, JSON.stringify(remembered));
+        check('command line: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('bridge: dev mode');
+    {
+        const { context, page } = await openPage(browser, { dev: true });
+        await waitForPost(page, 'ready');
+        await page.keyboard.press('F5');
+        await page.keyboard.press('Control+r');
+        await page.keyboard.press('F12');
+        const actions = await page.evaluate(() => window.__posted.filter(m => m.type === 'dev').map(m => m.action));
+        check('F5, Ctrl+R and F12 go to the app', actions.join() === 'reload,reload,devtools', actions.join());
+
+        const hrefs = () => page.evaluate(() => [...document.querySelectorAll('link[rel="stylesheet"]')].map(l => l.getAttribute('href')));
+        const old = await hrefs();
+        await page.evaluate(() => window.__deliver({ type: 'reloadCss' }));
+        await page.waitForFunction((n) => {
+            const links = [...document.querySelectorAll('link[rel="stylesheet"]')];
+            return links.length === n && links.every(l => /[?&]v=\d+/.test(l.href));
+        }, old.length, { timeout: 5000 }).catch(() => { });
+        const fresh = await hrefs();
+        check('reloadCss swaps every stylesheet in place', fresh.length === old.length && fresh.every(h => /[?&]v=\d+/.test(h)), fresh.join(', '));
+        const styled = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+        check('the page is still styled after the swap', styled !== 'rgba(0, 0, 0, 0)', styled);
+        await context.close();
+
+        const plain = await openPage(browser);
+        await waitForPost(plain.page, 'ready');
+        await plain.page.keyboard.press('F5');
+        const none = await plain.page.evaluate(() => window.__posted.filter(m => m.type === 'dev').length);
+        check('outside dev mode, F5 stays with jEditor', none === 0);
+        await plain.context.close();
+    }
+
+    console.log('bridge: window background (Mica, Acrylic)');
+    {
+        const { context, page, errors } = await openPage(browser);
+        // jEditor asks for its saved choice at start-up: solid to begin with
+        const first = await waitForPost(page, 'backdrop');
+        check('asks the app for the window background at start-up, solid by default', first.kind === 'none', JSON.stringify(first));
+        const r = await page.evaluate(async (firstId) => {
+            const out = {};
+            // The app: Windows 11 22H2 with Transparency effects on
+            window.__onPost = (m) => {
+                if (m.type === 'backdrop') setTimeout(() => window.__deliver({ replyTo: m.id, supported: true, transparency: true, applied: m.kind !== 'none' }));
+            };
+            window.__deliver({ replyTo: firstId, supported: true, transparency: true, applied: false });
+            const until = async (ok) => { for (let i = 0; i < 100 && !ok(); i++) await new Promise(res => setTimeout(res, 20)); return ok(); };
+            const root = document.documentElement;
+            const alpha = (c) => { const m = c.match(/\/\s*([\d.]+)\)$/) || c.match(/^rgba\([^)]*,\s*([\d.]+)\)$/); return m ? parseFloat(m[1]) : 1; };
+            const bg = (el) => getComputedStyle(el).backgroundColor;
+            const pick = (value) => {
+                const i = document.querySelector(`input[name="set-backdrop"][value="${value}"]`);
+                i.checked = true;
+                i.dispatchEvent(new Event('change', { bubbles: true }));
+            };
+            const slider = document.getElementById('cust-transparency');
+            const help = document.getElementById('set-backdrop-help');
+            await until(() => app.backdropState);
+
+            app.toggleCustomizePanel(true);
+            out.rowShown = getComputedStyle(document.getElementById('set-backdrop-row')).display !== 'none';
+            out.solidChecked = document.querySelector('input[name="set-backdrop"][value="none"]').checked;
+            out.sliderOffWhenSolid = slider.disabled;
+            out.solidBody = alpha(bg(document.body));
+
+            window.__posted.length = 0;
+            pick('mica');
+            out.asked = await until(() => root.classList.contains('backdrop')) && window.__posted.filter(m => m.type === 'backdrop').map(m => m.kind).join();
+            out.micaBody = alpha(bg(document.body));
+            // One tint: html and the start screen add none of their own
+            out.oneLayer = alpha(bg(root)) === 0 && alpha(bg(document.getElementById('drop-zone'))) === 0;
+            out.startGlow = /gradient/.test(getComputedStyle(document.getElementById('drop-zone')).backgroundImage);
+            out.photosSolid = alpha(bg(document.getElementById('main-view'))) === 1 && alpha(bg(document.querySelector('.mode-screen'))) === 1;
+            out.sliderOn = !slider.disabled;
+
+            slider.value = 80;
+            slider.dispatchEvent(new Event('input', { bubbles: true }));
+            out.tint = getComputedStyle(root).getPropertyValue('--backdrop-tint').trim();
+            out.clearerBody = alpha(bg(document.body));
+            out.output = document.getElementById('cust-transparency-out').textContent;
+            out.saved = JSON.parse(localStorage.getItem('jeditor.ui'));
+
+            // Transparency effects turned off in Windows: solid, and Settings says why
+            window.__deliver({ type: 'backdropState', state: { supported: true, transparency: false, applied: false } });
+            out.offSolid = !root.classList.contains('backdrop') && alpha(bg(document.body)) === 1;
+            out.offHelp = help.textContent;
+            out.offSlider = slider.disabled;
+            window.__deliver({ type: 'backdropState', state: { supported: true, transparency: true, applied: true } });
+            out.backOn = root.classList.contains('backdrop');
+
+            // Windows 10: nothing to pick
+            app.setBackdropState({ supported: false, transparency: true, applied: false });
+            out.old = [help.textContent, [...document.querySelectorAll('input[name="set-backdrop"]')].every(i => i.disabled), slider.disabled];
+
+            // Back to solid
+            app.setBackdropState({ supported: true, transparency: true, applied: true });
+            window.__posted.length = 0;
+            pick('none');
+            out.solidAgain = await until(() => !root.classList.contains('backdrop')) && window.__posted.filter(m => m.type === 'backdrop').map(m => m.kind).join();
+            out.solidHelp = help.textContent;
+            return out;
+        }, first.id);
+        check('Settings shows Window background, Solid, with Transparency off until it shows',
+            r.rowShown && r.solidChecked && r.sliderOffWhenSolid && r.solidBody === 1, JSON.stringify(r));
+        check('Mica: asks the app, and the start screen lets it show through',
+            r.asked === 'mica' && r.micaBody === 0.5 && r.oneLayer && r.startGlow && r.sliderOn, JSON.stringify(r));
+        check('photos, Crop and Duplicates stay solid', r.photosSolid);
+        check('Transparency sets the tint and is remembered',
+            r.tint === '20%' && Math.abs(r.clearerBody - 0.2) < 0.01 && r.output === '80%' && r.saved.backdrop === 'mica' && r.saved.transparency === 80, JSON.stringify(r));
+        check('Transparency effects off in Windows: solid, and Settings says where to turn it on',
+            r.offSolid && /Transparency effects/.test(r.offHelp) && r.offSlider && r.backOn, JSON.stringify(r));
+        check('before Windows 11 22H2: the choice is disabled and says why',
+            /Windows 11/.test(r.old[0]) && r.old[1] && r.old[2], JSON.stringify(r.old));
+        check('Solid again asks the app and clears the backdrop',
+            r.solidAgain === 'none' && /Start menu/.test(r.solidHelp), JSON.stringify(r));
+        check('window background: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('bridge: only in the Windows app');
+    {
+        const other = await openPage(browser, { origin: 'https://elsewhere.example' });
+        await other.page.waitForTimeout(300);
+        const r1 = await other.page.evaluate(() => ({ posted: window.__posted.length, native: /native code/.test(String(window.showDirectoryPicker)) }));
+        check('does nothing on another site', r1.posted === 0 && r1.native, JSON.stringify(r1));
+        await other.context.close();
+
+        const browserOnly = await openPage(browser, { webview: false });
+        const r2 = await browserOnly.page.evaluate(() => /native code/.test(String(window.showDirectoryPicker)));
+        check('does nothing in a plain browser', r2);
+        check('plain browser: no JS errors', browserOnly.errors.length === 0, browserOnly.errors.join('; '));
+        await browserOnly.context.close();
+    }
+
+    await browser.close();
+    console.log(`\n${passed} passed, ${failed} failed`);
+    process.exit(failed === 0 ? 0 : 1);
+})().catch(e => { console.error(e); process.exit(1); });

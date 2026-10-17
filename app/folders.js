@@ -12,7 +12,7 @@
 // the rail can show the whole tree. Photos are moved with
 // FileSystemHandle.move() — a rename on disk, instant even for big scans —
 // or copied and the original removed where moving isn't supported. Name
-// clashes are asked about before anything is touched, so a cancelled move
+// clashes are asked about before anything is touched, so a canceled move
 // changes nothing. A move, its replaced photos (to .jeditor/trash) and any
 // folder made for it are undone together with one Ctrl+Z.
 
@@ -38,9 +38,9 @@ const Folders = {
         this.initClash();
         this.initPrompt();
         this.initDrag();
-        // The folder pill gives way to the centre pill as its name changes
-        const centre = document.querySelector('.file-info');
-        if (centre && typeof ResizeObserver === 'function') new ResizeObserver(() => this.fitBar()).observe(centre);
+        // The folder pill gives way to the center pill as its name changes
+        const center = document.querySelector('.file-info');
+        if (center && typeof ResizeObserver === 'function') new ResizeObserver(() => this.fitBar()).observe(center);
         window.addEventListener('resize', () => this.fitBar());
     },
 
@@ -242,23 +242,29 @@ const Folders = {
         if (rail) {
             this.renderRail(counts);
             Flags.renderList();
+            if (typeof Places !== 'undefined') Places.apply();
         }
+        if (typeof Windows !== 'undefined') Windows.publish();
         this.renderBar(counts);
         Flags.syncSearchUI();
         this.fitBar();
     },
 
-    // As wide as it needs, up to the centre pill
+    // As wide as it needs, up to the center pill
     fitBar() {
         const bar = this.el('folder-bar');
-        const centre = document.querySelector('.file-info');
-        if (!centre || bar.classList.contains('hidden')) return;
-        const room = centre.getBoundingClientRect().left - bar.getBoundingClientRect().left - 12;
+        let center = document.querySelector('.file-info');
+        // The file pill given up for room (fit.js): up to the header buttons
+        if (center && center.offsetParent === null) center = document.getElementById('header-controls');
+        if (!center || bar.classList.contains('hidden')) return;
+        const room = center.getBoundingClientRect().left - bar.getBoundingClientRect().left - 12;
         if (room <= 0) return;
         // The pills follow the UI size setting (CSS zoom): room is in screen pixels
         const zoom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1;
         bar.style.setProperty('--bar-room', `${Math.max(150, Math.floor(room / zoom))}px`);
-        bar.classList.toggle('tight', room / zoom < 230);
+        // Short labels when the long ones would be cut off
+        bar.classList.remove('tight');
+        bar.classList.toggle('tight', room / zoom < 230 || bar.scrollWidth > bar.clientWidth + 1);
     },
 
     folderIcon(cls = '') {
@@ -298,7 +304,7 @@ const Folders = {
         const fmt = (n) => this.app.formatBytes(n);
         const rows = [];
         const esc = (s) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-        rows.push(`<div tabindex="0" role="button" class="fr-row fr-all${this.scope === null ? ' active' : ''}" data-scope="all" title="Every photo in the order, whatever folder it's in">` +
+        rows.push(`<div tabindex="0" role="button" class="fr-row fr-all${this.scope === null ? ' active' : ''}" data-scope="all" title="Every photo in the project, whatever folder it's in">` +
             `<span class="fr-caret fr-spacer"></span>` +
             `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>` +
             `<span class="fr-name">All photos</span><span class="fr-count">${total.toLocaleString()}</span></div>`);
@@ -314,7 +320,8 @@ const Folders = {
             const caret = kids.length && p !== ''
                 ? `<button class="fr-caret${open ? ' open' : ''}" title="${open ? 'Fold' : 'Unfold'}" tabindex="-1"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1.5 6.5 5 3 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`
                 : '<span class="fr-caret fr-spacer"></span>';
-            rows.push(`<div tabindex="0" role="button" class="fr-row${this.scope === p ? ' active' : ''}${n ? '' : ' empty'}${p === '' ? ' fr-root' : ''}" ` +
+            // (in the Windows app a folder drags onto a drive in the sidebar: places.js)
+            rows.push(`<div tabindex="0" role="button" class="fr-row${this.scope === p ? ' active' : ''}${n ? '' : ' empty'}${p === '' ? ' fr-root' : ''}"${FolderCache.native() ? ' draggable="true"' : ''} ` +
                 `data-folder-path="${esc(p)}" style="--depth:${depth}" title="${esc(title)}">` +
                 caret + this.folderIcon('fr-icon') +
                 `<span class="fr-name">${esc(this.nameOf(p))}</span><span class="fr-count">${n ? n.toLocaleString() : ''}</span></div>`);
@@ -322,14 +329,13 @@ const Folders = {
         };
         if (this.map.has('')) walk('', 0);
         tree.innerHTML = rows.join('');
-        this.el('fr-hint').classList.toggle('hidden', this.hasSubfolders());
         // The total at the bottom: what's being shown (the whole order in All photos)
         const scopeFiles = this.scope === null ? this.app.files : this.app.files.filter(f => this.within(this.dirOf(f), this.scope));
         let bytes = 0;
         for (const f of scopeFiles) bytes += f.size || 0;
         const totalEl = this.el('fr-total');
         totalEl.textContent = `${scopeFiles.length.toLocaleString()} photo${scopeFiles.length === 1 ? '' : 's'} · ${fmt(bytes)}`;
-        totalEl.title = (this.scope === null ? 'The whole order' : `${this.label(this.scope)}, including subfolders`) + ' — click for details';
+        totalEl.title = (this.scope === null ? 'The whole project' : `${this.label(this.scope)}, including subfolders`) + ' — click for details';
         const active = tree.querySelector('.fr-row.active');
         if (active && (active.offsetTop < tree.scrollTop || active.offsetTop > tree.scrollTop + tree.clientHeight - 30)) {
             tree.scrollTop = active.offsetTop - tree.clientHeight / 2;
@@ -533,7 +539,7 @@ const Folders = {
             this.collapsed.delete(parent);
             this.afterChange();
             this.flash(path);
-            this.app.showToast(`Made “${this.baseName(path)}”`, 2000);
+            this.app.showToast(`Made “${this.baseName(path)}”`, 2000, null, null, { kind: 'move' });
         } catch (e) {
             console.error('New folder failed:', e);
             this.app.showToast('Couldn\'t make the folder: ' + e.message, 4000);
@@ -581,7 +587,7 @@ const Folders = {
             }
             this.app.pushUndo({ type: 'folder-delete', path });
             this.afterChange();
-            this.app.showToast(`Deleted the empty folder “${this.baseName(path)}”`, 2500);
+            this.app.showToast(`Deleted the empty folder “${this.baseName(path)}”`, 2500, null, null, { kind: 'move' });
         } catch (e) {
             console.error('Folder delete failed:', e);
             this.app.showToast('Couldn\'t delete the folder: ' + e.message, 4000);
@@ -614,6 +620,9 @@ const Folders = {
                 moved = false; // folders can't be moved here: copy instead
             }
         }
+        // Copying a folder to its own name in other case would copy it onto
+        // itself, then delete it: never for a case-only change
+        if (caseOnly && cur === oldName) throw new Error('a photo in it may be open in another program');
         if (!moved || cur !== name) {
             const src = await parent.getDirectoryHandle(cur);
             await this.copyTree(src, parent, name);
@@ -714,6 +723,9 @@ const Folders = {
         f.name = name;
         f.parentDir = destDir;
         f.relPath = this.join(dest, name);
+        // Flags or edits left by a photo that once had this path aren't this one's
+        Flags.orphans.delete(f.relPath);
+        if (Edits.orphans) Edits.orphans.delete(f.relPath);
         try {
             const d = await f.handle.getFile();
             f.size = d.size;
@@ -739,6 +751,11 @@ const Folders = {
             lastModified: nd.lastModified
         };
         if (f.dateTaken !== undefined) copy.dateTaken = f.dateTaken;
+        // An edit not saved yet comes along (edits.js), as the thumbnail shows it
+        if (f._edit) {
+            copy._edit = { ...f._edit, size: copy.size };
+            Edits.saveSoon();
+        }
         // Same bytes, same thumbnail
         if (f.thumbnailUrl) {
             try {
@@ -920,25 +937,36 @@ const Folders = {
                     if (stack[stack.length - 1] === entry) app.undo();
                     else app.showToast('Something else changed since — use Ctrl+Z');
                 }
-            });
+            }, { kind: 'move' });
         }
         if (failed) app.showToast(`Couldn't ${copy ? 'copy' : 'move'} ${failed} photo${failed === 1 ? '' : 's'}`, 4000);
         return entry;
     },
 
-    // Photos into .jeditor/trash without an undo step of their own (the
-    // move that replaced them undoes them)
+    // Photos into the trash (the Recycle Bin in the Windows app) without an
+    // undo step of their own (the move that replaced them undoes them)
     async trashQuietly(files) {
         const app = this.app;
+        const items = [];
+        for (const f of files) await this.settle(f);
+        const binned = await app.recycleFiles(files);
+        files = files.filter(f => {
+            const r = binned.get(f);
+            if (r && r.token) items.push({ file: f, recycled: r.token });
+            else if (r && !r.noBin) console.error('Recycle failed for', f.name, r.error || 'gone');
+            return !r || r.noBin;
+        });
+        if (!files.length) {
+            app.removeFilesFromApp(items.map(it => it.file));
+            return items;
+        }
         const trashDir = await FolderCache.trashDir(app);
         const taken = new Set();
         try { for await (const e of trashDir.values()) taken.add(e.name.toLowerCase()); } catch (e) { /* empty */ }
         const stamp = Date.now();
-        const items = [];
         for (let i = 0; i < files.length; i++) {
             const f = files[i];
             try {
-                await this.settle(f);
                 let trashName = f.name;
                 if (taken.has(trashName.toLowerCase())) trashName = `${stamp}_r${i}_${f.name}`;
                 taken.add(trashName.toLowerCase());
@@ -994,22 +1022,22 @@ const Folders = {
             const n = entry.items.length;
             app.showToast(entry.copy
                 ? `Removed ${n} cop${n === 1 ? 'y' : 'ies'}`
-                : `Put ${n} photo${n === 1 ? '' : 's'} back`);
+                : `Put ${n} photo${n === 1 ? '' : 's'} back`, 3000, null, null, { kind: 'undo' });
         } else if (entry.type === 'folder-create') {
             let kept = 0;
             for (const p of [...entry.paths].reverse()) {
                 try { if (!(await this.removeIfEmpty(p))) kept++; } catch (e) { kept++; }
             }
             this.afterChange();
-            app.showToast(kept ? 'The new folder has things in it now, so it was kept' : 'Removed the new folder');
+            app.showToast(kept ? 'The new folder has things in it now, so it was kept' : 'Removed the new folder', 3000, null, null, { kind: 'undo' });
         } else if (entry.type === 'folder-rename') {
             await this.renameDir(entry.path, entry.name);
             this.afterChange();
-            app.showToast('Folder name put back');
+            app.showToast('Folder name put back', 3000, null, null, { kind: 'undo' });
         } else if (entry.type === 'folder-delete') {
             await this.createPath('', entry.path);
             this.afterChange();
-            app.showToast(`Folder “${this.baseName(entry.path)}” is back`);
+            app.showToast(`Folder “${this.baseName(entry.path)}” is back`, 3000, null, null, { kind: 'undo' });
         }
     },
 
@@ -1153,6 +1181,12 @@ const Folders = {
         this.el('folder-picker').classList.remove('hidden');
         this.renderPicker(true);
         input.focus();
+        // The other windows' folders, once known
+        if (typeof Windows !== 'undefined' && FolderCache.native()) {
+            Windows.refreshOthers().then(() => {
+                if (this.pickerFiles === files && !this.el('folder-picker').classList.contains('hidden')) this.renderPicker();
+            });
+        }
     },
 
     closePicker() {
@@ -1195,7 +1229,18 @@ const Folders = {
                 items.push({ kind: 'create', parent: base, name: typed, problem, disabled: !!problem });
             }
         }
-        return items.concat(folders);
+        // Folders of the projects open in other windows
+        const others = [];
+        if (typeof Windows !== 'undefined' && FolderCache.native()) {
+            for (const w of Windows.others) {
+                for (const p of w.folders || []) {
+                    const label = p ? `${w.name} / ${p.split('/').join(' / ')}` : w.name;
+                    if (ql && !label.toLowerCase().replace(/\s*\/\s*/g, '/').includes(ql)) continue;
+                    others.push({ kind: 'window', win: w, path: p, label, depth: 0 });
+                }
+            }
+        }
+        return items.concat(folders, others);
     },
 
     renderPicker(resetHi = false) {
@@ -1234,7 +1279,11 @@ const Folders = {
             row.dataset.i = i;
             row.setAttribute('role', 'option');
             row.style.setProperty('--depth', it.depth || 0);
-            if (it.kind === 'create') {
+            if (it.kind === 'window') {
+                row.innerHTML = this.folderIcon('fp-icon') + '<span class="fp-name"></span><span class="fp-meta"></span>';
+                row.querySelector('.fp-name').textContent = it.label;
+                row.querySelector('.fp-meta').textContent = 'other window';
+            } else if (it.kind === 'create') {
                 const where = it.parent === '' ? this.rootName() : this.nameOf(it.parent);
                 row.innerHTML = `<span class="fp-plus">+</span><span class="fp-name"></span><span class="fp-meta"></span>`;
                 row.querySelector('.fp-name').textContent = `New folder “${it.name.split('/').join(' / ')}”`;
@@ -1254,6 +1303,15 @@ const Folders = {
         const files = this.pickerFiles;
         const copy = this.pickerMode === 'copy';
         if (!files) return;
+        if (item.kind === 'window') {
+            // Into the project in another window
+            this.closePicker();
+            // A rotation still being written lands before the file goes
+            for (const f of files) await this.settle(f);
+            const paths = files.map(f => Windows.pathOf(f)).filter(Boolean);
+            if (paths.length) await Windows.send(paths, item.win.path, item.path, copy, item.win.name);
+            return;
+        }
         let dest = item.path, created = [];
         if (item.kind === 'create') {
             try {
@@ -1393,6 +1451,7 @@ const Folders = {
         this.dragging = [...app.selection];
         e.dataTransfer.effectAllowed = 'copyMove';
         e.dataTransfer.setData(this.DRAG_TYPE, String(this.dragging.length));
+        if (typeof Windows !== 'undefined') Windows.addDragData(e, this.dragging); // for a drop in another window
         const ghost = this.makeGhost(this.dragging, file);
         e.dataTransfer.setDragImage(ghost, 40, 40);
         document.body.classList.add('dragging-photos');
@@ -1445,7 +1504,8 @@ const Folders = {
         this._dropEl = el;
         if (el) {
             el.classList.add('drop-target');
-            const n = this.dragging.length;
+            // From another window the photos can't be counted until they're dropped
+            const n = this.dragging ? this.dragging.length : 1;
             el.dataset.dropLabel = `${copy ? 'Copy' : 'Move'} ${n === 1 ? 'here' : n}`;
         }
     },

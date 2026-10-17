@@ -1,9 +1,10 @@
-// In-app dialogs and dialog keyboard behaviour.
+// In-app dialogs and dialog keyboard behavior.
 //
 // UI.alert / UI.confirm / UI.prompt replace the browser's alert(),
 // confirm() and prompt() with a dialog in the app's own style. Each returns
 // a promise: alert → undefined, confirm → true/false, prompt → the text or
-// null when cancelled.
+// null when canceled. UI.choose has a second answer (alt): 'ok', 'alt'
+// or null.
 //
 // Every .dialog-overlay also gets, without its own code having to ask:
 // focus moved into it when it opens, Tab kept inside it while open, and
@@ -32,6 +33,7 @@ const UI = {
         const box = this.el('ui-dialog');
         this.el('uid-ok').addEventListener('click', () => this.answer(true));
         this.el('uid-cancel').addEventListener('click', () => this.answer(false));
+        this.el('uid-alt').addEventListener('click', () => this.answer('alt'));
         box.addEventListener('mousedown', (e) => {
             if (e.target === box) this.answer(false);
         });
@@ -112,7 +114,8 @@ const UI = {
 
     // ---- alert / confirm / prompt ----
 
-    // opts: { title, message, items: [text], note, ok, cancel, danger, input: { label, value, placeholder, inputMode } }
+    // opts: { title, message, items: [text], note, ok, cancel, danger, input: { label, value, placeholder, inputMode },
+    //        alt, altDanger (choose) }
     // Text only, never HTML: file names go in safely.
     show(kind, opts) {
         this.init();
@@ -161,6 +164,10 @@ const UI = {
         ok.className = 'btn ' + (o.danger ? 'danger' : 'primary');
         cancel.textContent = o.cancel || 'Cancel';
         cancel.classList.toggle('hidden', kind === 'alert');
+        const alt = this.el('uid-alt');
+        alt.textContent = o.alt || '';
+        alt.className = 'btn ' + (o.altDanger ? 'danger' : 'secondary');
+        alt.classList.toggle('hidden', kind !== 'choose');
 
         const box = this.el('ui-dialog');
         box.querySelector('.dialog').setAttribute('role', kind === 'alert' || o.danger ? 'alertdialog' : 'dialog');
@@ -180,11 +187,13 @@ const UI = {
         this.el('ui-dialog').classList.add('hidden');
         if (p.kind === 'alert') p.resolve();
         else if (p.kind === 'confirm') p.resolve(!!yes);
+        else if (p.kind === 'choose') p.resolve(yes === 'alt' ? 'alt' : yes ? 'ok' : null);
         else p.resolve(yes ? this.el('uid-input').value : null);
     },
 
     alert(opts) { return this.show('alert', opts); },
     confirm(opts) { return this.show('confirm', opts); },
+    choose(opts) { return this.show('choose', opts); },
     prompt(opts) { return this.show('prompt', opts); }
 };
 

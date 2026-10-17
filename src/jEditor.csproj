@@ -1,0 +1,107 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>jEditor</AssemblyName>
+    <RootNamespace>JEditor</RootNamespace>
+    <ApplicationIcon>jEditor.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <!-- Lets the project build on Linux and macOS too (CI and quick compile checks) -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Product>jEditor</Product>
+    <Company>jEditor</Company>
+    <Description>jEditor</Description>
+
+    <!-- One self-contained exe: no .NET install on the PC, which would need admin -->
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>embedded</DebugType>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
+    <!-- The WebView2 package also brings its WPF control, which wants a newer
+         WindowsBase; unused here -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
+  </PropertyGroup>
+
+  <!-- The UI: the app/ folder -->
+  <PropertyGroup>
+    <JEditorApp>$(MSBuildThisFileDirectory)..\app\</JEditorApp>
+  </PropertyGroup>
+
+  <!-- Debug builds run the repo's app/ folder in dev mode -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <DefineConstants>$(DefineConstants);DEV_DEFAULT</DefineConstants>
+  </PropertyGroup>
+
+  <!-- The exe's version is jEditor's: the one in app/version.js -->
+  <PropertyGroup Condition="'$(Version)' == '' And Exists('$(JEditorApp)version.js')">
+    <Version>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(JEditorApp)version.js')), "APP_VERSION = '([0-9.]+)'").Groups[1].Value)</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+    <!-- Scanning (Scanner.cs). LGPL-2.1: its DLLs stay beside the exe, not
+         inside it, so they can be replaced (see KeepLgplBeside) -->
+    <PackageReference Include="NAPS2.Sdk" Version="1.5.0" />
+    <PackageReference Include="NAPS2.Images.Gdi" Version="1.5.0" />
+    <!-- NAPS2.Worker.exe: TWAIN in a 32-bit helper process, as NAPS2 does -->
+    <PackageReference Include="NAPS2.Sdk.Worker.Win32" Version="1.5.0" />
+  </ItemGroup>
+
+  <!-- NAPS2.Sdk's licence goes with it -->
+  <ItemGroup>
+    <None Include="$(NuGetPackageRoot)naps2.sdk\1.5.0\LICENSE" Link="licenses\NAPS2.Sdk-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" Condition="'$(NuGetPackageRoot)' != ''" />
+  </ItemGroup>
+
+  <Target Name="KeepLgplBeside" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Update="@(ResolvedFileToPublish)" Condition="$([System.String]::Copy('%(Filename)').StartsWith('NAPS2.'))" ExcludeFromSingleFile="true" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The release this build is for (release.yml: -p:ReleaseTag=v1.2.3-2),
+       so the updater can tell a re-release of the same version is newer -->
+  <ItemGroup Condition="'$(ReleaseTag)' != ''">
+    <AssemblyMetadata Include="ReleaseTag" Value="$(ReleaseTag)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="bridge.js" LogicalName="bridge.js" />
+  </ItemGroup>
+
+  <!-- The 32-bit TWAIN helper (twain32/: the scanner's own auto-size, which
+       NAPS2 can't ask for): built with jEditor, shipped in twain32\ beside it -->
+  <PropertyGroup>
+    <Twain32Project>$(MSBuildThisFileDirectory)..\twain32\jEditor.Twain32.csproj</Twain32Project>
+    <Twain32Out>$(MSBuildThisFileDirectory)..\twain32\bin\$(Configuration)\net48\</Twain32Out>
+  </PropertyGroup>
+  <Target Name="BuildTwain32" BeforeTargets="AssignTargetPaths">
+    <MSBuild Projects="$(Twain32Project)" Targets="Restore" Properties="Configuration=$(Configuration);_Twain32Restore=1"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishDir;OutputPath;ReleaseTag;_IsPublishing" />
+    <MSBuild Projects="$(Twain32Project)" Targets="Build" Properties="Configuration=$(Configuration)"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishDir;OutputPath;ReleaseTag;_IsPublishing" />
+    <ItemGroup>
+      <Twain32Files Include="$(Twain32Out)*.exe;$(Twain32Out)*.dll;$(Twain32Out)*.config" />
+      <Content Include="@(Twain32Files)" Link="twain32\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Shipped as plain files beside the exe (not inside it), so a UI change
+       is a file change, never a rebuild -->
+  <ItemGroup>
+    <Content Include="$(JEditorApp)**\*" LinkBase="app" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+
+  <Target Name="CheckUi" BeforeTargets="Build">
+    <Error Condition="!Exists('$(JEditorApp)index.html')" Text="The UI is missing: no app\index.html" />
+  </Target>
+
+</Project>

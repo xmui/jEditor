@@ -1,8 +1,8 @@
 // Flags and search: marking photos, and narrowing the grid down to some.
 //
 // A photo can have a star (a pick), a "needs rescan" flag (a bad scan to
-// redo) and one colour label. P stars, X marks for rescan, 1–5 set a
-// colour (the same colour again takes it off), U clears all three. In the
+// redo) and one color label. P stars, X marks for rescan, 1–5 set a
+// colour (the same color again takes it off), U clears all three. In the
 // grid they apply to the selection, in single view to the photo shown.
 //
 // Flags are saved with the order, in .jeditor/flags.json, keyed by each
@@ -11,10 +11,10 @@
 // written again after any change. Flags of photos that aren't in the
 // folder any more are kept, in case they come back.
 //
-// The view filter is a flag (★, needs rescan, a colour or "no flag")
+// The view filter is a flag (★, needs rescan, a color or "no flag")
 // and/or a search: words matched against each photo's name and folder,
 // all of them, in any order. `is:star`, `is:rescan`, `is:red` (and the
-// other colours), `is:flagged` and `is:unflagged` match flags in a search.
+// other colors), `is:flagged` and `is:unflagged` match flags in a search.
 // Folders.viewFiles applies it, so the grid, film strip, arrow keys and
 // Ctrl+A all follow it.
 
@@ -23,7 +23,7 @@ const Flags = {
     COLORS: ['red', 'yellow', 'green', 'blue', 'purple'],
     COLOR_HEX: { red: '#f87171', yellow: '#facc15', green: '#4ade80', blue: '#60a5fa', purple: '#c084fc' },
 
-    filter: null, // null | 'star' | 'rescan' | 'none' | a colour
+    filter: null, // null | 'star' | 'rescan' | 'none' | a color
     query: '',
     orphans: new Map(), // path → flags of photos not in the folder now
 
@@ -62,6 +62,8 @@ const Flags = {
 
     // Another folder is being opened
     reset() {
+        clearTimeout(this._saveTimer); // a save due now would land in the next project
+        this._dirty = false;
         this.filter = null;
         this.query = '';
         this.orphans = new Map();
@@ -78,10 +80,10 @@ const Flags = {
     },
     has(f, kind) {
         const fl = f && f._flags;
+        if (kind === 'none') return !fl || (!fl.star && !fl.rescan && !fl.color);
         if (!fl) return false;
         if (kind === 'star') return !!fl.star;
         if (kind === 'rescan') return !!fl.rescan;
-        if (kind === 'none') return !fl.star && !fl.rescan && !fl.color;
         if (kind === 'flagged') return !!(fl.star || fl.rescan || fl.color);
         return fl.color === kind;
     },
@@ -235,8 +237,8 @@ const Flags = {
         return Folders.targets();
     },
 
-    // kind: 'star' | 'rescan' | a colour | 'clear'. Stars and rescan
-    // flags toggle (all on, unless every photo already has it); a colour
+    // kind: 'star' | 'rescan' | a color | 'clear'. Stars and rescan
+    // flags toggle (all on, unless every photo already has it); a color
     // replaces the old one, or comes off if every photo already has it.
     apply(kind, files = this.targets()) {
         const app = this.app;
@@ -258,7 +260,7 @@ const Flags = {
             on = !files.every(f => this.has(f, kind));
             files.forEach(f => this.setOne(f, 'color', on ? kind : null));
         }
-        app.pushUndo({ type: 'flags', items: before });
+        app.pushUndo({ type: 'flags', kind, on, items: before });
         this.changed(files);
         const n = files.length;
         const what = n === 1 ? (files[0].name) : `${n.toLocaleString()} photos`;
@@ -266,7 +268,7 @@ const Flags = {
             : kind === 'star' ? (on ? `Starred ${what}` : `Unstarred ${what}`)
                 : kind === 'rescan' ? (on ? `${what}: needs rescan` : `${what}: rescan flag off`)
                     : (on ? `${this.label(kind)} label on ${what}` : `${this.label(kind)} label off ${what}`);
-        app.showToast(msg, 1600, 'flags', null, { type: 'info', icon: kind === 'star' ? 'star' : 'flag' });
+        app.showToast(msg, 1600, 'flags', null, { type: 'info', icon: kind === 'star' ? 'star' : 'flag', kind: 'flags' });
         return true;
     },
 
@@ -285,7 +287,7 @@ const Flags = {
         }
         this.changed(entry.items.map(it => it.file));
         const n = entry.items.length;
-        this.app.showToast(`Undid flags on ${n === 1 ? entry.items[0].file.name : n + ' photos'}`);
+        this.app.showToast(`Undid flags on ${n === 1 ? entry.items[0].file.name : n + ' photos'}`, 3000, null, null, { kind: 'undo' });
     },
 
     // Badges, counts, the filter (a photo may have left it) and the file
@@ -296,6 +298,7 @@ const Flags = {
             if (f._stripEl) this.decorate(f._stripEl, f);
         });
         this.updateHeader();
+        this._dirty = true; // a flag taken off the last photo still has to be written
         this.saveSoon();
         if (this.filter || /\bis:/.test(this.query)) this.refilter();
         else Folders.render();
@@ -313,7 +316,7 @@ const Flags = {
 
     // ---- Badges ----
 
-    // Top right of a grid tile or film-strip item: ★, rescan, colour dot
+    // Top right of a grid tile or film-strip item: ★, rescan, color dot
     decorate(el, f) {
         if (!this.any(f) && !el.classList.contains('has-flags')) return; // most tiles: nothing to do
         let b = el.querySelector(':scope > .tile-flags');
@@ -340,7 +343,7 @@ const Flags = {
         return h;
     },
 
-    // Beside the file name in the centre pill
+    // Beside the file name in the center pill
     updateHeader() {
         const app = this.app;
         let el = document.getElementById('file-flags');

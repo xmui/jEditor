@@ -55,6 +55,14 @@ const app = {
         // Debug
         this.log('App Initializing... v' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'dev'));
 
+        // In the Windows app: what only it has, and wording for how it keeps
+        // things (the Recycle Bin, storage on the PC rather than .jeditor)
+        if (FolderCache.native()) {
+            document.documentElement.classList.add('native');
+            document.querySelectorAll('[data-native-text]').forEach(el => { el.textContent = el.dataset.nativeText; });
+            document.querySelectorAll('[data-native-title]').forEach(el => { el.title = el.dataset.nativeTitle; });
+        }
+
         // Show the version on the start screen
         this.checkForUpdateNotice();
         const title = document.getElementById('app-title');
@@ -77,8 +85,12 @@ const app = {
             }, false);
         });
 
-        document.body.addEventListener('dragenter', () => {
-            if (Folders.dragging) return; // photos dragged onto a folder, not files from outside
+        // Files from outside only: not photos onto a folder, a toolbar
+        // control being reordered in Settings, or text
+        const fromOutside = (e) => !Folders.dragging && !this._dragKey &&
+            !!e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+        document.body.addEventListener('dragenter', (e) => {
+            if (!fromOutside(e)) return;
             document.body.classList.add('drag-over');
             this.log('Drag Enter');
         });
@@ -89,7 +101,8 @@ const app = {
             }
         });
         document.body.addEventListener('drop', (e) => {
-            if (Folders.dragging) return;
+            document.body.classList.remove('drag-over');
+            if (!fromOutside(e)) return;
             this.log('Drop Event Fired!');
             this.handleDrop(e);
         });
@@ -188,7 +201,17 @@ const app = {
 
         Folders.init(this);
         Recents.init(this);
+        Stored.init(this);
+        CropLog.init(this);
+        Updates.init(this);
+        Scan.init(this);
+        Camera.init(this);
+        Places.init(this);
+        Windows.init(this);
         Flags.init(this);
+        Edits.init(this);
+        Fit.init();
+        History.init(this);
         Watch.init(this);
         this.initContextMenu();
         this.initRubberBand();
@@ -199,6 +222,13 @@ const app = {
 
         // Header pill: More expander, fullscreen, settings
         this.elements.btnMore.addEventListener('click', () => {
+            // Opened, it keeps its width: the rest go on rows underneath (style.css)
+            const hc = this.elements.headerControls;
+            if (!hc.classList.contains('expanded')) {
+                if (typeof Fit !== 'undefined') Fit.run();
+                const zoom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1;
+                hc.style.setProperty('--hc-w', `${hc.getBoundingClientRect().width / zoom}px`);
+            }
             const open = this.elements.headerControls.classList.toggle('expanded');
             this.elements.btnMore.setAttribute('aria-expanded', String(open));
         });
@@ -223,6 +253,8 @@ const app = {
         // strip height, thumbnail fit)
         this.loadUiPrefs();
         this.applyUiPrefs();
+        this.applyBackdrop();
+        addEventListener('jeditor-backdrop', (e) => this.setBackdropState(e.detail));
     },
 
     async verifyPermission(fileHandle, readWrite) {
@@ -257,8 +289,8 @@ const app = {
             await this.openDirectory(dirHandle);
         } catch (err) {
             if (err.name === 'AbortError') {
-                // User cancelled the picker
-                this.log('Folder selection cancelled');
+                // User canceled the picker
+                this.log('Folder selection canceled');
                 return;
             }
             console.error('Browse folder error:', err);
@@ -275,7 +307,14 @@ const app = {
             if (order) return this.openDirectory(order.handle, { scope: order.path });
         }
         this._openScope = scope;
+        // A newer open (or drop) supersedes this one: it stops where it is
+        const gen = this._openGen = (this._openGen || 0) + 1;
+        this.isLoading = true;
         try {
+            // Flags changed just now are written to the project being left
+            // (their save is on a timer, which would otherwise run here)
+            if (this.dirHandle) { try { await Flags.save(); } catch (e) { /* best-effort */ } }
+            if (gen !== this._openGen) return;
             // Reset state
             this.cleanupURLs();
             this.files = [];
@@ -286,9 +325,12 @@ const app = {
             this.elements.dropZone.classList.add('hidden');
 
             await this.scanDirectory(dirHandle);
+            if (gen !== this._openGen) return;
 
             await this.finalizeLoad();
         } catch (err) {
+            if (gen !== this._openGen) return;
+            this.isLoading = false;
             console.error('Open folder error:', err);
             UI.alert({ title: 'Couldn\'t open the folder', message: err.message });
             this.elements.dropZone.classList.remove('hidden');
@@ -321,15 +363,18 @@ const app = {
     //
     // Every header control can be shown in the pill, tucked into the "More"
     // section, or hidden entirely; the order is drag-reorderable in
-    // Settings. Theme, density, glass, the colour behind photos, accent,
+    // Settings. Theme, density, glass, the color behind photos, accent,
     // toolbar size, orientation, film strip height and thumbnail fit are
     // preferences too. Everything persists in localStorage under 'jeditor.ui'.
 
     HC_LABELS: {
+        scan: 'Scan',
+        camera: 'Camera (tethered shooting)',
         info: 'Info',
         view: 'Grid / single view',
         refresh: 'Rescan folder',
         crop: 'Crop and straighten',
+        history: 'Undo history',
         fit: 'Thumbnail fit',
         strip: 'Film strip',
         fullscreen: 'Full screen',
@@ -344,29 +389,54 @@ const app = {
         theme: ['dark', 'light', 'system'],
         density: ['compact', 'comfortable'],
         glass: ['rich', 'subtle'],
-        surround: ['auto', 'black', 'grey', 'light']
+        surround: ['auto', 'black', 'grey', 'light'],
+        backdrop: ['none', 'mica', 'acrylic'] // the Windows app only (applyBackdrop)
     },
 
     defaultUiPrefs() {
         return {
-            order: ['info', 'view', 'refresh', 'crop', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'whatsnew', 'customize'],
+            order: ['scan', 'camera', 'info', 'view', 'refresh', 'crop', 'history', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'whatsnew', 'customize'],
             placement: { // 'main' | 'more' | 'hidden'
-                info: 'main', view: 'main', refresh: 'main', crop: 'main',
+                scan: 'main', camera: 'main', info: 'main', view: 'main', refresh: 'main', crop: 'main', history: 'main',
                 fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', keys: 'more', whatsnew: 'more', customize: 'more'
             },
             vertical: false,
             scale: 1,
             stripHeight: 80,
             thumbContain: true, // fit whole image in tiles by default
-            folderCache: true, // keep thumbnails / duplicate data in the folder's .jeditor
+            folderCache: true, // keep thumbnails / duplicate data with the order's data (folder-cache.js)
+            autoUpdate: true, // the Windows app looks for a new version once a day
             autoCheck: true, // pick up photos added, removed or edited outside jEditor
             accent: null, // the accent colour (#rrggbb); null is the standard blue
             singleControls: true, // previous / rotate / next above the film strip in single view
             theme: 'dark',
             density: 'compact',
             glass: 'rich',
-            surround: 'auto'
+            surround: 'auto',
+            backdrop: 'none', // Settings → Window background: none (solid), mica or acrylic
+            transparency: 50, // how much of the window background shows through (10-100%)
+            // Which messages show for things done (TOAST_KINDS); errors always do
+            toasts: Object.fromEntries(this.TOAST_KINDS.map(([k, , on]) => [k, on]))
         };
+    },
+
+    // Messages for things done, each kind on or off in Settings → Messages:
+    // [kind, label, on to start with, help]
+    TOAST_KINDS: [
+        ['rotate', 'Rotating', false, 'Turned 1 photo right…'],
+        ['flags', 'Flags and labels', true, 'Starred, needs rescan, color labels'],
+        ['crop', 'Cropping and Auto crop', true, 'Saved, crop kept, auto cropped'],
+        ['move', 'Moving, copying and folders', true, 'Moved to a folder, new folder'],
+        ['delete', 'Deleting', true, 'Moved to the Recycle Bin (Ctrl+Z still restores)'],
+        ['rename', 'Renaming', true, 'Renamed photos and folders'],
+        ['undo', 'Undo', true, 'What Ctrl+Z put back'],
+        ['scan', 'Scanning and the camera', true, 'Scanned, camera connected'],
+        ['load', 'Photos loaded and found', true, 'Loaded, previews ready, new photos in the folder']
+    ],
+
+    toastOn(kind) {
+        const t = this.uiPrefs && this.uiPrefs.toasts;
+        return !t || t[kind] !== false;
     },
 
     loadUiPrefs() {
@@ -376,9 +446,7 @@ const app = {
             if (saved) {
                 if (Array.isArray(saved.order)) {
                     // keep unknown-key safety: only accept known keys, append missing
-                    const known = this.uiPrefs.order;
-                    this.uiPrefs.order = saved.order.filter(k => known.includes(k))
-                        .concat(known.filter(k => !saved.order.includes(k)));
+                    this.uiPrefs.order = this.mergeOrder(saved.order, this.uiPrefs.order);
                 }
                 if (saved.placement) {
                     for (const k of Object.keys(this.uiPrefs.placement)) {
@@ -393,14 +461,34 @@ const app = {
                 if (typeof saved.thumbContain === 'boolean') this.uiPrefs.thumbContain = saved.thumbContain;
                 if (typeof saved.folderCache === 'boolean') this.uiPrefs.folderCache = saved.folderCache;
                 if (typeof saved.autoCheck === 'boolean') this.uiPrefs.autoCheck = saved.autoCheck;
+                if (saved.toasts && typeof saved.toasts === 'object') {
+                    for (const [k] of this.TOAST_KINDS) if (typeof saved.toasts[k] === 'boolean') this.uiPrefs.toasts[k] = saved.toasts[k];
+                }
+                if (typeof saved.autoUpdate === 'boolean') this.uiPrefs.autoUpdate = saved.autoUpdate;
                 if (typeof saved.accent === 'string' && /^#[0-9a-f]{6}$/i.test(saved.accent)) this.uiPrefs.accent = saved.accent;
                 if (typeof saved.singleControls === 'boolean') this.uiPrefs.singleControls = saved.singleControls;
                 if (typeof saved.folderRail === 'boolean') this.uiPrefs.folderRail = saved.folderRail;
+                if (saved.transparency >= 10 && saved.transparency <= 100) this.uiPrefs.transparency = saved.transparency;
                 for (const [k, allowed] of Object.entries(this.APPEARANCE)) {
                     if (allowed.includes(saved[k])) this.uiPrefs[k] = saved[k];
                 }
             }
         } catch (e) { /* corrupted prefs → defaults */ }
+    },
+
+    // A saved order of controls, with only known ones; a control added in a
+    // newer version goes after the one before it in the standard order
+    // (Camera after Scan), else at the end
+    mergeOrder(saved, known) {
+        const order = saved.filter(k => known.includes(k));
+        for (const k of known) {
+            if (order.includes(k)) continue;
+            const i = known.indexOf(k);
+            const before = i > 0 && order.includes(known[i - 1]) ? known[i - 1] : null;
+            if (before) order.splice(order.indexOf(before) + 1, 0, k);
+            else order.push(k);
+        }
+        return order;
     },
 
     saveUiPrefs() {
@@ -416,8 +504,7 @@ const app = {
         const container = this.elements.headerControls;
 
         // Controls added in newer versions go at the end of an older layout
-        const known = this.defaultUiPrefs().order;
-        p.order = p.order.filter(k => known.includes(k)).concat(known.filter(k => !p.order.includes(k)));
+        p.order = this.mergeOrder(p.order, this.defaultUiPrefs().order);
 
         // Reorder buttons (More button stays last)
         p.order.forEach(key => {
@@ -448,9 +535,11 @@ const app = {
         const controls = this.singleControls();
         if (controls) controls.classList.toggle('off', p.singleControls === false);
         this.applyAppearance();
+        // More shows for buttons squeezed in for room too
+        if (typeof Fit !== 'undefined') Fit.run();
     },
 
-    // Theme, density, glass and the colour behind photos: attributes on
+    // Theme, density, glass and the color behind photos: attributes on
     // <html> that tokens.css switches on
     applyAppearance() {
         const p = this.uiPrefs;
@@ -467,12 +556,50 @@ const app = {
         root.dataset.density = p.density;
         root.dataset.glass = p.glass;
         root.dataset.surround = p.surround;
+        root.style.setProperty('--window-tint', `${100 - p.transparency}%`);
         const meta = document.querySelector('meta[name="theme-color"]');
         if (meta) meta.content = theme === 'light' ? '#e8e8e8' : '#0b0b0b';
     },
 
+    // Settings → Window background: Windows 11's Mica or Acrylic behind the
+    // window. The app sets it (src/bridge.js); once it shows, html.backdrop
+    // makes the page's own background see-through (tokens.css). Photos,
+    // crop and duplicates stay solid. Not in a browser.
+    async applyBackdrop() {
+        const native = FolderCache.native();
+        if (!native || !native.backdrop) return;
+        const seq = this._backdropSeq = (this._backdropSeq || 0) + 1;
+        let state = null;
+        try { state = await native.backdrop(this.uiPrefs.backdrop); } catch (e) { /* stays solid */ }
+        if (seq === this._backdropSeq) this.setBackdropState(state); // else a newer pick is on its way
+    },
+
+    // { supported, transparency, applied } from the app
+    setBackdropState(state) {
+        this.backdropState = state || null;
+        document.documentElement.classList.toggle('backdrop', !!(state && state.applied));
+        this.syncBackdropControls();
+    },
+
+    syncBackdropControls() {
+        const row = document.getElementById('set-backdrop-row');
+        if (!row) return;
+        const s = this.backdropState;
+        const supported = !s || s.supported !== false;
+        const help = document.getElementById('set-backdrop-help');
+        if (!help.dataset.text) help.dataset.text = help.textContent;
+        help.textContent = !supported ? 'Needs Windows 11, version 22H2 or later'
+            : s && s.transparency === false ? 'Turn on Transparency effects in Windows Settings → Personalization → Colors to see it'
+            : help.dataset.text;
+        row.classList.toggle('unavailable', !supported);
+        row.querySelectorAll('input').forEach(i => { i.disabled = !supported; });
+        const shows = !!(s && s.applied);
+        document.getElementById('set-transparency-row').classList.toggle('unavailable', !shows);
+        document.getElementById('cust-transparency').disabled = !shows;
+    },
+
     // Everything blue follows --accent-color; text on it (--on-accent)
-    // turns dark when the colour is light, so it stays readable
+    // turns dark when the color is light, so it stays readable
     DEFAULT_ACCENT: '#2563eb',
 
     applyAccent(hex) {
@@ -527,6 +654,22 @@ const app = {
             e.stopPropagation();
             this.toggleCustomizePanel(false);
         });
+        // A page at a time, chosen on the left (arrow keys move between them)
+        const nav = panel.querySelector('.settings-nav');
+        nav.addEventListener('click', (e) => {
+            const b = e.target.closest('button[data-page]');
+            if (b) this.showSettingsPage(b.dataset.page);
+        });
+        nav.addEventListener('keydown', (e) => {
+            if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+            const tabs = this.settingsPages().map(id => nav.querySelector(`[data-page="${id}"]`));
+            const i = tabs.indexOf(document.activeElement);
+            const to = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1
+                : (i + (e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 1) + tabs.length) % tabs.length;
+            e.preventDefault();
+            this.showSettingsPage(tabs[to].dataset.page);
+            tabs[to].focus();
+        });
 
         // Appearance: one radio group per setting, applied as you pick
         for (const key of Object.keys(this.APPEARANCE)) {
@@ -535,8 +678,15 @@ const app = {
                 this.uiPrefs[key] = r.value;
                 this.saveUiPrefs();
                 this.applyAppearance();
+                if (key === 'backdrop') this.applyBackdrop();
             }));
         }
+        $('cust-transparency').addEventListener('input', (e) => {
+            this.uiPrefs.transparency = parseInt(e.target.value, 10);
+            $('cust-transparency-out').textContent = `${this.uiPrefs.transparency}%`;
+            this.saveUiPrefs();
+            this.applyAppearance();
+        });
         $('cust-accent').addEventListener('click', (e) => {
             const b = e.target.closest('[data-accent]');
             if (b) this.setAccent(b.dataset.accent);
@@ -548,6 +698,34 @@ const app = {
             this.saveUiPrefs();
             this.applyUiPrefs();
         });
+
+        // Messages: a switch per kind
+        const toastList = $('cust-toasts');
+        if (toastList) {
+            for (const [kind, label, , help] of this.TOAST_KINDS) {
+                const row = document.createElement('div');
+                row.className = 'set-row';
+                const id = 'cust-toast-' + kind;
+                const lab = document.createElement('label');
+                lab.className = 'set-label';
+                lab.htmlFor = id;
+                lab.textContent = label;
+                const small = document.createElement('small');
+                small.textContent = help;
+                lab.appendChild(small);
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.id = id;
+                input.className = 'switch';
+                input.dataset.toast = kind;
+                input.addEventListener('change', () => {
+                    this.uiPrefs.toasts = { ...(this.uiPrefs.toasts || {}), [kind]: input.checked };
+                    this.saveUiPrefs();
+                });
+                row.append(lab, input);
+                toastList.appendChild(row);
+            }
+        }
 
         // Folder
         $('cust-auto-check').addEventListener('change', (e) => {
@@ -563,6 +741,10 @@ const app = {
         $('cust-cleanup').addEventListener('click', () => {
             this.toggleCustomizePanel(false);
             this.cleanUpFolder();
+        });
+        $('cust-stored').addEventListener('click', () => {
+            this.toggleCustomizePanel(false);
+            Stored.open();
         });
 
         // Toolbar buttons
@@ -596,12 +778,38 @@ const app = {
 
     // Opens or closes Settings (the name is from when it was a small
     // "Customize" panel under the header)
-    toggleCustomizePanel(force = null) {
+    toggleCustomizePanel(force = null, page = null) {
         const panel = this.elements.customizePanel;
         const open = force !== null ? force : panel.classList.contains('hidden');
         panel.classList.toggle('hidden', !open);
         this.elements.headerControls.classList.remove('expanded');
-        if (open) this.renderCustomizePanel();
+        if (open) {
+            this.renderCustomizePanel();
+            let last = null;
+            try { last = localStorage.getItem('jeditor.settingsPage'); } catch (e) { /* private mode */ }
+            this.showSettingsPage(page || last || 'appearance');
+        }
+    },
+
+    // The Settings pages there are (Updates: the Windows app only)
+    settingsPages() {
+        return [...this.elements.customizePanel.querySelectorAll('.settings-nav button[data-page]')]
+            .filter(b => getComputedStyle(b).display !== 'none')
+            .map(b => b.dataset.page);
+    },
+
+    showSettingsPage(page) {
+        const panel = this.elements.customizePanel;
+        const pages = this.settingsPages();
+        if (!pages.includes(page)) page = pages[0];
+        panel.querySelectorAll('.settings-nav button[data-page]').forEach(b => {
+            const on = b.dataset.page === page;
+            b.setAttribute('aria-selected', String(on));
+            b.tabIndex = on ? 0 : -1;
+        });
+        panel.querySelectorAll('.settings-section[data-page]').forEach(sec => sec.classList.toggle('active', sec.dataset.page === page));
+        panel.querySelector('.settings-body').scrollTop = 0;
+        try { localStorage.setItem('jeditor.settingsPage', page); } catch (e) { /* private mode */ }
     },
 
     renderCustomizePanel() {
@@ -615,13 +823,19 @@ const app = {
         $('cust-vertical').checked = !!this.uiPrefs.vertical;
         $('cust-folder-cache').checked = this.uiPrefs.folderCache !== false;
         $('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
+        this.elements.customizePanel.querySelectorAll('input[data-toast]').forEach(i => { i.checked = this.toastOn(i.dataset.toast); });
         $('cust-cleanup').disabled = !this.dirHandle;
+        CropLog.refresh();
         $('cust-single-controls').checked = this.uiPrefs.singleControls !== false;
         this.syncAccentPicker();
         $('cust-scale').value = this.uiPrefs.scale;
         $('cust-scale-out').textContent = `${Math.round(this.uiPrefs.scale * 100)}%`;
+        $('cust-transparency').value = this.uiPrefs.transparency;
+        $('cust-transparency-out').textContent = `${this.uiPrefs.transparency}%`;
+        this.syncBackdropControls();
 
         this.uiPrefs.order.forEach(key => {
+            if ((key === 'scan' || key === 'camera') && !FolderCache.native()) return; // the Windows app only
             const li = document.createElement('li');
             li.draggable = true;
             li.dataset.key = key;
@@ -672,7 +886,9 @@ const app = {
             li.addEventListener('dragstart', (e) => {
                 this._dragKey = key;
                 e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', key);
             });
+            li.addEventListener('dragend', () => { this._dragKey = null; });
             li.addEventListener('dragover', (e) => e.preventDefault());
             li.addEventListener('drop', (e) => {
                 e.preventDefault();
@@ -841,7 +1057,7 @@ const app = {
         this.elements.btnToggleStrip.blur(); // Release focus to restore keyboard shortcuts
     },
 
-    // Wheel / trackpad pinch: each notch zooms by the same factor, centred
+    // Wheel / trackpad pinch: each notch zooms by the same factor, centered
     // on the pointer, from 10% of fit up to huge pixels
     handleZoom(e) {
         if (this.viewMode !== 'single') return;
@@ -901,7 +1117,7 @@ const app = {
             this.panX = 0;
             this.panY = 0;
         } else if (img.offsetWidth) {
-            // Where the photo's centre is: the container centres it, plus the
+            // Where the photo's center is: the container centers it, plus the
             // pan. Worked out rather than measured, so a zoom still animating
             // can't throw the anchor off (and exact to the subpixel)
             const cx = box.left + box.width / 2 + this.panX;
@@ -959,7 +1175,72 @@ const app = {
         const f = this.currentFile;
         const readAt = this._displayFile === f && img._savedAtRead !== undefined
             ? img._savedAtRead : (f._savedRotationTotal || 0);
-        return ((f._savedRotationTotal || 0) - readAt) + (f.savingRotation || 0) + (f.pendingRotation || 0);
+        // A kept rotation (Save edits when done): the picture on screen turns
+        // while the turned version is made (turnHeld), then that replaces it
+        const held = this._displayFile === f ? (f._turnHeldView || 0) : 0;
+        return ((f._savedRotationTotal || 0) - readAt) + (f.savingRotation || 0) + (f.pendingRotation || 0) + held;
+    },
+
+    // Kept rotations turn what's on screen first, as an immediate rotation
+    // does, and the redrawn photo takes over once it's ready: without this
+    // the photo just jumped (dimmed, then redrawn)
+    turnHeld(files, deg) {
+        for (const f of files) {
+            f._turnHeld = (f._turnHeld || 0) + deg;
+            for (const holder of [f._gridEl, f._stripEl]) {
+                const img = holder && holder.isConnected && holder.querySelector(':scope > img');
+                if (img && img.src && img.src !== this.BLANK_THUMB) img.style.transform = `rotate(${f._turnHeld}deg)`;
+            }
+            if (this.currentFile === f && this.viewMode === 'single' && this._displayFile === f) {
+                f._turnHeldView = (f._turnHeldView || 0) + deg;
+                this.updateImageTransform();
+            }
+        }
+    },
+
+    // An empty grid says why, with a button for the way out
+    emptyState(files, folderTiles) {
+        if (files.length || folderTiles.length) return null;
+        const grid = this.elements.gridView.classList;
+        const native = document.documentElement.classList.contains('native');
+        let text, actions = [];
+        if (grid.contains('grid-no-match')) {
+            text = 'No photos match the search or the flag filter.';
+            actions.push(['Clear search', () => {
+                const input = document.getElementById('fb-search');
+                if (input) input.value = '';
+                if (Flags.filter) Flags.setFilter(null);
+                Flags.setQuery('');
+            }, true]);
+        } else if (grid.contains('grid-empty-project')) {
+            text = native
+                ? 'No photos here yet. Scan into this project, or add photos in Explorer: they show up as they arrive.'
+                : 'No photos here yet. Add some in Explorer, or drop them here, and they show up as they arrive.';
+            if (native && typeof Scan !== 'undefined') actions.push(['Scan', () => Scan.open(), true]);
+            const path = typeof Places !== 'undefined' && Places.current();
+            if (native && path) actions.push(['Show in Explorer', () => Places.native().reveal(path)]);
+        } else if (grid.contains('grid-empty')) {
+            text = 'No photos here yet. Drag photos onto this folder in the folder list, or select some in All photos and press M.';
+            actions.push(['All photos', () => Folders.setScope(null)]);
+        } else return null;
+        const box = document.createElement('div');
+        box.className = 'grid-empty-box';
+        const p = document.createElement('p');
+        p.textContent = text;
+        box.append(p);
+        if (actions.length) {
+            const row = document.createElement('div');
+            row.className = 'grid-empty-actions';
+            for (const [label, run, primary] of actions) {
+                const b = document.createElement('button');
+                b.className = `btn ${primary ? 'primary' : 'secondary'} sm`;
+                b.textContent = label;
+                b.addEventListener('click', (e) => { e.stopPropagation(); run(); });
+                row.append(b);
+            }
+            box.append(row);
+        }
+        return box;
     },
 
     // At odd quarter-turns the CSS-rotated image would overflow the
@@ -1029,6 +1310,7 @@ const app = {
             // Safety reset
             if (this.isLoading) this.isLoading = false;
             this.isLoading = true;
+            this._openGen = (this._openGen || 0) + 1; // an open in progress stops
 
             this.cleanupURLs();
             this.files = [];
@@ -1117,9 +1399,11 @@ const app = {
         try {
             // Sort initial files
             this.sortFiles(false); // pass false to avoid re-rendering twice
+            // Edits kept until saved: the thumbnails are made with them
+            await Edits.loadFor(1500);
 
             if (this.files.length > 0) {
-                this.showToast(`Loaded ${this.files.length.toLocaleString()} photo${this.files.length === 1 ? '' : 's'}`, 2500);
+                this.showToast(`Loaded ${this.files.length.toLocaleString()} photo${this.files.length === 1 ? '' : 's'}`, 2500, null, null, { kind: 'load' });
                 this.elements.mainInterface.classList.remove('hidden');
 
                 // Force focus settings
@@ -1160,6 +1444,22 @@ const app = {
                 const nested = this._nestedJeditor || [];
                 this._nestedJeditor = null;
                 if (nested.length && this.dirHandle && !this.readOnlyMode) FolderCache.absorbNested(this, nested);
+            } else if (this.dirHandle && !this.readOnlyMode) {
+                // No photos yet: it opens anyway, to scan into, make folders
+                // in, or fill from elsewhere (they show up as they land)
+                this._openScope = null;
+                this.selection.clear();
+                this.currentFile = null;
+                this.elements.mainInterface.classList.remove('hidden');
+                this.elements.mainInterface.setAttribute('tabindex', '-1');
+                this.elements.mainInterface.focus();
+                this.renderThumbnails();
+                this.renderGrid();
+                this.setView('grid');
+                Folders.showEmptyHeader();
+                Recents.remember(this.dirHandle);
+                await Flags.load();
+                Watch.start();
             } else {
                 UI.alert({
                     title: 'No photos found',
@@ -1233,17 +1533,22 @@ const app = {
     // listed several at a time (see Watch.walk), which matters most on a
     // network drive where each listing is a round trip.
     async scanDirectory(dirHandle) {
+        // Another folder opened meanwhile: this one stops adding photos
+        const gen = this._openGen;
         // Paths already loaded, so nothing is added twice
         const seen = new Set(this.files.map(f => f.relPath || f.name));
         this.updateTask('scan', 'Scanning folder…');
         const listings = await Watch.walk([{ path: '', handle: dirHandle }], true);
+        if (gen !== this._openGen) return;
         const pending = [];
         // A subfolder opened on its own before has a .jeditor of its own:
-        // merged into this one once the folder is open (finalizeLoad)
+        // merged into the order's once the folder is open (finalizeLoad). In
+        // the Windows app the order's own .jeditor goes too: its contents
+        // move into the app's storage on the PC (folder-cache.js).
         this._nestedJeditor = [];
         for (const [dir, l] of listings) {
             if (!l || l.failed) continue;
-            if (dir && l.own && l.own.length) this._nestedJeditor.push({ path: dir, parent: l.handle, handles: l.own });
+            if ((dir || FolderCache.native()) && l.own && l.own.length) this._nestedJeditor.push({ path: dir, parent: l.handle, handles: l.own });
             Folders.register(dir, l.handle);
             for (const [name, entry] of l.files) {
                 const relPath = Folders.join(dir, name);
@@ -1261,6 +1566,7 @@ const app = {
             // watch to add once it's whole (only just-changed files are checked)
             const whole = await Promise.all(datas.map((d, j) => d && Date.now() - d.lastModified < Watch.SETTLED_MS
                 ? Watch.complete(d, batch[j].entry.name) : true));
+            if (gen !== this._openGen) return;
             batch.forEach(({ entry, relPath, parentDir }, j) => {
                 const fileData = datas[j];
                 if (!fileData || !whole[j]) return;
@@ -1423,7 +1729,8 @@ const app = {
                 if (exifIfd[0x9003]) {
                     const raw = readAscii(exifIfd[0x9003]); // "YYYY:MM:DD HH:MM:SS"
                     const m = raw && raw.match(/^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
-                    if (m) result.dateTaken = new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+                    // "0000:00:00 00:00:00" is a camera with no clock set: no date
+                    if (m && +m[1] >= 1900 && +m[2] >= 1 && +m[3] >= 1) result.dateTaken = new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
                 }
             }
             return result;
@@ -1435,15 +1742,22 @@ const app = {
     // EXIF metadata cached per file; only the file head is read
     async getExifInfo(file) {
         if (file._exif !== undefined) return file._exif;
-        file._exif = null;
-        if (/\.jpe?g$/i.test(file.name)) {
-            try {
-                const fileData = await file.handle.getFile();
-                const head = await fileData.slice(0, 256 * 1024).arrayBuffer();
-                file._exif = this.readJpegExifInfo(head);
-            } catch (e) { /* leave null */ }
-        }
-        return file._exif;
+        // A read in progress is shared, not answered with "none" meanwhile
+        if (file._exifReading) return file._exifReading;
+        file._exifReading = (async () => {
+            let info = null;
+            if (/\.jpe?g$/i.test(file.name)) {
+                try {
+                    const fileData = await file.handle.getFile();
+                    const head = await fileData.slice(0, 256 * 1024).arrayBuffer();
+                    info = this.readJpegExifInfo(head);
+                } catch (e) { /* none */ }
+            }
+            file._exif = info;
+            file._exifReading = null;
+            return info;
+        })();
+        return file._exifReading;
     },
 
     // The info panel (I): the photo in single view; in the grid, the folder
@@ -1455,6 +1769,7 @@ const app = {
         if (!panel) return;
         const open = forceOpen !== null ? forceOpen : panel.classList.contains('hidden');
         panel.classList.toggle('hidden', !open);
+        if (open && History.isOpen()) History.toggle(false);
         this._infoOpen = open;
         this._infoTarget = open ? target : null;
         if (open) this.refreshInfoPanel();
@@ -1565,7 +1880,7 @@ const app = {
             rows.push(['Photos', files.length.toLocaleString()]);
             rows.push(...this.statRows(this.photoStats(files)));
         } else {
-            title = folder === null ? 'Order' : 'Folder';
+            title = folder === null ? 'Project' : 'Folder';
             const name = folder === null ? Folders.rootName() : Folders.nameOf(folder);
             rows.push(['Name', name]);
             if (folder) rows.push(['Location', `${Folders.rootName()} / ${Folders.label(folder)}`]);
@@ -1583,24 +1898,25 @@ const app = {
             if (here.length !== all.length) rows.splice(rows.findIndex(r => r[0] === 'Size') + 1, 0, ['Size here', this.formatBytes(this.photoStats(here).bytes)]);
             if (!whole) {
                 rows.push(['—']);
-                rows.push(['Whole order', `${plural(this.files.length, 'photo')} · ${this.formatBytes(this.photoStats(this.files).bytes)}`]);
+                rows.push(['Whole project', `${plural(this.files.length, 'photo')} · ${this.formatBytes(this.photoStats(this.files).bytes)}`]);
             }
         }
         // The current filter or search, if any
         if (Flags.active()) rows.push(['Showing', `${this.viewFiles().length.toLocaleString()} matching the ${Flags.filter ? 'filter' : 'search'}`]);
         // What jEditor itself keeps in the folder (worked out in the background)
         const showOwn = !files && whole && this.dirHandle && !this.readOnlyMode;
-        if (showOwn) rows.push(['—'], ['.jeditor', 'Adding up…', 'info-pending']);
+        const label = FolderCache.native() ? 'Kept on this PC' : '.jeditor';
+        if (showOwn) rows.push(['—'], [label, 'Adding up…', 'info-pending']);
         this.setInfoRows(title, rows);
         if (!showOwn) return;
         const own = await this.jeditorUsage();
         if (token !== this._infoToken) return;
-        const i = rows.findIndex(r => r[0] === '.jeditor');
+        const i = rows.findIndex(r => r[0] === label);
         rows.splice(i, 1);
         if (!own || !own.bytes) {
-            rows.splice(i, 0, ['.jeditor', 'empty']);
+            rows.splice(i, 0, [label, 'nothing']);
         } else {
-            const parts = [['.jeditor', this.formatBytes(own.bytes)]];
+            const parts = [[label, this.formatBytes(own.bytes)]];
             if (own.trash.n) parts.push(['  Trash', `${plural(own.trash.n, 'photo')} · ${this.formatBytes(own.trash.bytes)}`]);
             if (own.cache.bytes) parts.push(['  Cache', this.formatBytes(own.cache.bytes)]);
             if (own.originals.n) parts.push(['  Originals', `${plural(own.originals.n, 'photo')} · ${this.formatBytes(own.originals.bytes)}`]);
@@ -1919,12 +2235,37 @@ const app = {
         }
     },
 
+    // Back to the start screen, with everything saved (before ejecting the
+    // drive the project is on: nothing of it may stay open)
+    async closeFolder() {
+        if (!this.dirHandle) return;
+        try { await Flags.save(); } catch (e) { /* best-effort */ }
+        try { await Edits.flush(); } catch (e) { /* best-effort */ }
+        await FolderCache.flush();
+        this.cleanupURLs();
+        FolderCache.reset();
+        this.files = [];
+        this.selection = new Set();
+        this.currentFile = null;
+        this.dirHandle = null;
+        this.elements.gridView.innerHTML = '';
+        this.elements.thumbnailStrip.innerHTML = '';
+        this.elements.mainInterface.classList.add('hidden');
+        this.elements.dropZone.classList.remove('hidden');
+        Places.apply();
+        Windows.publish();
+    },
+
     cleanupURLs() {
         // Drop queued thumbnail work for the folder being replaced
         if (this._thumbQueue) this._thumbQueue.length = 0;
+        // Its jobs were just dropped, so "Preparing previews" can't finish: it goes
+        this._precacheGen = (this._precacheGen || 0) + 1;
+        this.endTask('precache');
         Folders.reset();
         Watch.stop();
         Flags.reset();
+        Edits.reset();
 
         // Revoke all existing object URLs to free memory
         if (this.files) {
@@ -1938,6 +2279,10 @@ const app = {
                     delete file.fullImageUrl;
                 }
                 delete file._decodedEl;
+                if (file._edited) {
+                    URL.revokeObjectURL(file._edited.url);
+                    delete file._edited;
+                }
                 if (file._preview) {
                     URL.revokeObjectURL(file._preview.url);
                     delete file._preview;
@@ -1979,6 +2324,7 @@ const app = {
         div._file = file;
         file._stripEl = div;
         Flags.decorate(div, file);
+        Edits.decorate(div, file);
         div.onclick = () => this.openSingle(file);
         if (this._stripObserver) this._stripObserver.observe(div);
         return div;
@@ -2002,7 +2348,7 @@ const app = {
         } catch (e) { /* ignore */ }
     },
 
-    // Highlight the current photo in the film strip and centre it. Touches
+    // Highlight the current photo in the film strip and center it. Touches
     // only the old and new thumbnail: looping over every strip item and
     // scrollIntoView (which re-lays out the page) cost ~100 ms per step in a
     // 2000-photo folder.
@@ -2044,8 +2390,12 @@ const app = {
         const files = this.viewFiles();
         const folderTiles = Folders.folderTiles();
         this.elements.gridView.append(...folderTiles);
-        this.elements.gridView.classList.toggle('grid-empty', !files.length && !folderTiles.length && Folders.scope !== null);
+        this.elements.gridView.classList.toggle('grid-empty', !files.length && !folderTiles.length && Folders.scope !== null && this.files.length > 0);
+        // A project with no photos at all yet
+        this.elements.gridView.classList.toggle('grid-empty-project', !this.files.length && !folderTiles.length);
         this.elements.gridView.classList.toggle('grid-no-match', !files.length && Flags.active());
+        const empty = this.emptyState(files, folderTiles);
+        if (empty) this.elements.gridView.append(empty);
         Folders.render();
 
         // Chunked render: big folders paint the first screenfuls immediately
@@ -2125,6 +2475,7 @@ const app = {
         if (!file.thumbnailUrl) this.showThumbSpinner(div, img);
         Folders.addChip(div, file);
         Flags.decorate(div, file);
+        Edits.decorate(div, file);
         // Just arrived (auto-check): a brief glow so it's easy to spot
         if (file._arrived && Date.now() - file._arrived < 6000) div.classList.add('is-new');
 
@@ -2166,7 +2517,7 @@ const app = {
             }
             const src = `
             // A JPEG's stored pixel size, from its frame header (null if not a
-            // JPEG). Headers are small; a big one (embedded previews, colour
+            // JPEG). Headers are small; a big one (embedded previews, color
             // profiles) is read further, up to 4 MB.
             const jpegSize = async (file) => {
                 for (let len = 128 * 1024; ; len *= 4) {
@@ -2398,11 +2749,15 @@ const app = {
         // Bytes read now include everything saved so far; any save that
         // lands while we decode shows up in the lag delta below.
         const savedAtRead = fileEntry._savedRotationTotal || 0;
+        const editGen = fileEntry._editGen || 0;
         const fileData = await fileEntry.handle.getFile();
         if (!fileData.size) throw new Error('empty file (still being written?)');
 
         let blob;
-        if (fileData.size <= this.THUMB_FAST_PATH_BYTES) {
+        if (fileEntry._edit) {
+            // Edited, not saved yet: from the edited preview (not cached)
+            blob = await this.editedThumbnail(fileEntry);
+        } else if (fileData.size <= this.THUMB_FAST_PATH_BYTES) {
             // A copy, not the File itself — the File stops being readable
             // once the photo is rotated
             blob = new Blob([await fileData.arrayBuffer()], { type: fileData.type });
@@ -2425,6 +2780,8 @@ const app = {
             if (blob) FolderCache.putThumb(this, cacheKey, blob);
         }
         if (!blob) throw new Error('Thumbnail encode failed');
+        // Its edit changed meanwhile: a newer thumbnail is on the way
+        if ((fileEntry._editGen || 0) !== editGen) return;
 
         if (fileEntry.thumbnailUrl) URL.revokeObjectURL(fileEntry.thumbnailUrl);
         fileEntry.thumbnailUrl = URL.createObjectURL(blob);
@@ -2434,14 +2791,43 @@ const app = {
         this.deliverThumbnail(fileEntry);
     },
 
+    async editedThumbnail(file) {
+        const src = await this.getDisplaySource(file);
+        const bmp = await createImageBitmap(src.blob, { resizeWidth: this.THUMB_WIDTH, resizeQuality: 'medium' });
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = bmp.width;
+            canvas.height = bmp.height;
+            canvas.getContext('2d').drawImage(bmp, 0, 0);
+            const alpha = /\.(png|webp|gif)$/i.test(file.name);
+            return await new Promise(r => canvas.toBlob(r, alpha ? 'image/png' : 'image/jpeg', 0.8));
+        } finally {
+            bmp.close();
+        }
+    },
+
     deliverThumbnail(fileEntry) {
         const url = fileEntry.thumbnailUrl;
         (fileEntry._thumbWaiters || []).forEach(img => {
+            if (img._interim) {
+                // Its picture already has the turn: straight, with no spin back
+                img._interim = false;
+                const was = img.style.transition;
+                img.style.transition = 'none';
+                img.style.transform = '';
+                requestAnimationFrame(() => requestAnimationFrame(() => { img.style.transition = was; }));
+            }
             img.decoding = 'async';
             img.onerror = () => { if (img.src === fileEntry.thumbnailUrl) this.thumbnailBroken(fileEntry); };
             img.src = url;
         });
         fileEntry._thumbWaiters = [];
+        fileEntry._turnHeld = 0;
+        // A tile drawn again while this was being made shows the old one
+        for (const holder of [fileEntry._gridEl, fileEntry._stripEl]) {
+            const img = holder && holder.isConnected && holder.querySelector(':scope > img');
+            if (img && img.src !== url && img.src !== this.BLANK_THUMB) img.src = url;
+        }
         this.applyPreviewRotation(fileEntry);
     },
 
@@ -2490,7 +2876,10 @@ const app = {
         if (!FolderCache.enabled(this)) return;
         const keys = this.files.filter(f => f.size > this.THUMB_FAST_PATH_BYTES)
             .map(f => `${f.relPath || f.name}|${f.size}|${f.lastModified}`);
-        FolderCache.flush().then(() => FolderCache.prune(this, keys)).catch(() => { });
+        // Another project opened while the cache was written: these keys
+        // aren't its thumbnails, so nothing of it is pruned
+        const dir = this.dirHandle;
+        FolderCache.flush().then(() => { if (this.dirHandle === dir) return FolderCache.prune(this, keys); }).catch(() => { });
     },
 
     // Remove jEditor's data from the open folder: the trash (deleted photos
@@ -2500,14 +2889,18 @@ const app = {
         if (!this.ensureWritable()) return;
         const inTrash = await FolderCache.trashCount(this);
         const flagged = Flags.count();
+        const edited = Edits.count();
         const items = [
-            ...(inTrash ? [`Empties the trash: ${inTrash} deleted photo${inTrash === 1 ? '' : 's'} will be gone for good.`] : []),
-            ...(flagged ? [`Removes the flags (stars, rescan flags, colour labels) from ${flagged} photo${flagged === 1 ? '' : 's'}.`] : []),
+            ...(edited ? [`Discards the edits not saved yet on ${edited} photo${edited === 1 ? '' : 's'} (the photos stay as they are on disk).`] : []),
+            ...(inTrash ? [`Empties ${FolderCache.native() ? 'jEditor\'s trash' : 'the trash'}: ${inTrash} deleted photo${inTrash === 1 ? '' : 's'} will be gone for good.`] : []),
+            ...(flagged ? [`Removes the flags (stars, rescan flags, color labels) from ${flagged} photo${flagged === 1 ? '' : 's'}.`] : []),
             'Removes cached thumbnails and duplicate data (rebuilt when needed), and the originals kept for undoing Auto crop.'
         ];
+        const native = FolderCache.native();
         const ok = await UI.confirm({
-            title: 'Clean up this folder?',
-            message: 'Do this when an order is finished, before it goes to the customer.',
+            title: native ? 'Clean up this project?' : 'Clean up this folder?',
+            message: native ? 'Removes what jEditor keeps on this PC for this project. Do this when a project is finished.'
+                : 'Do this when a project is finished, before it goes to the customer.',
             items,
             note: 'Your photos are not touched.',
             ok: 'Clean up',
@@ -2518,9 +2911,11 @@ const app = {
         try {
             await FolderCache.cleanUp(this);
             Flags.clearAll();
+            Edits.clearAll();
             // Trash undo steps can't be undone any more, and flags are gone
-            this._undoStack = (this._undoStack || []).filter(e => !['trash', 'flags', 'auto-crop'].includes(e.type));
-            this.showToast(inTrash ? `Folder cleaned up — trash emptied (${inTrash})` : 'Folder cleaned up', 3000);
+            this._undoStack = (this._undoStack || []).filter(e => !['trash', 'flags', 'auto-crop', 'edits', 'saved-edits'].includes(e.type));
+            const what = native ? 'Project cleaned up' : 'Folder cleaned up';
+            this.showToast(inTrash ? `${what} — trash emptied (${inTrash})` : what, 3000);
         } catch (e) {
             this.showToast('Clean up failed: ' + e.message, 4000);
         } finally {
@@ -2537,16 +2932,17 @@ const app = {
         const total = missing.length;
         const showProgress = total >= 30;
         if (showProgress) this.beginTask('precache', `Preparing previews 0/${total}`);
+        const gen = this._precacheGen = (this._precacheGen || 0) + 1;
         let done = 0;
         missing.forEach(file => {
             this.ensureThumbnail(file, { urgent: false })
                 .catch(() => { })
                 .finally(() => {
                     done++;
-                    if (!showProgress) return;
+                    if (!showProgress || gen !== this._precacheGen) return;
                     if (done === total) {
                         this.endTask('precache');
-                        this.showToast(`All ${total} previews ready`, 2000);
+                        this.showToast(`All ${total} previews ready`, 2000, null, null, { kind: 'load' });
                         this.pruneFolderCache();
                     } else if (done % 25 === 0) {
                         this.updateTask('precache', `Preparing previews ${done}/${total}`);
@@ -2711,6 +3107,7 @@ const app = {
         this.currentFile = file;
         this.elements.fileName.textContent = file.name;
         Flags.updateHeader();
+        Edits.updateHeader();
         this.updateFileCount();
         this.updateStatusBar();
         if (this._infoOpen) this.refreshInfoSoon();
@@ -2725,7 +3122,7 @@ const app = {
     // photo that isn't ready yet shows its cached thumbnail immediately and
     // upgrades to full resolution the moment its decode finishes.
 
-    DECODE_RADIUS: 1, // neighbours kept decoded each side (full-res scans are large)
+    DECODE_RADIUS: 1, // neighbors kept decoded each side (full-res scans are large)
 
     // ---- Display sources: screen-sized previews ----
     //
@@ -2745,7 +3142,10 @@ const app = {
 
     // What to show for `file` at screen size, read from its current bytes:
     // { url, blob?, isPreview, savedAtRead, w, h } with w×h the original size.
-    getDisplaySource(file) {
+    // A photo with an edit not saved yet (edits.js) is shown with it, unless
+    // raw: the crop editor and Auto crop work on the photo as it is.
+    getDisplaySource(file, { raw = false } = {}) {
+        if (!raw && file._edit) return this.editedSource(file);
         if (file._sourcePromise) return file._sourcePromise;
         const p = (async () => {
             while (file.isBusy) await new Promise(r => setTimeout(r, 30));
@@ -2788,6 +3188,67 @@ const app = {
         file._sourcePromise = p;
         p.catch(() => { }).finally(() => { if (file._sourcePromise === p) file._sourcePromise = null; });
         return p;
+    },
+
+    // The photo with its edit, at screen size: made from the photo's own
+    // preview, so it's quick, and it's what Save will write (at full size)
+    editedSource(file) {
+        const gen = file._editGen || 0;
+        if (file._editPromise && file._editPromise._gen === gen) return file._editPromise;
+        const p = (async () => {
+            const edit = file._edit;
+            const raw = await this.getDisplaySource(file, { raw: true });
+            const key = `${raw.url}|${gen}`;
+            if (file._edited && file._edited.key === key) return file._edited;
+            const blob = raw.blob || await (await fetch(raw.url)).blob();
+            const bmp = await createImageBitmap(blob);
+            // Its size in the photo's own pixels (the preview is smaller)
+            const scale = Math.max(raw.w || bmp.width, raw.h || bmp.height) / Math.max(bmp.width, bmp.height);
+            let canvas;
+            try {
+                canvas = CropEditor.fromSnapshot(bmp.width, bmp.height, edit).drawOutput(bmp);
+            } finally {
+                bmp.close();
+            }
+            const alpha = /\.(png|webp|gif)$/i.test(file.name);
+            const out = await new Promise(r => canvas.toBlob(r, alpha ? 'image/png' : 'image/jpeg', 0.92));
+            const w = Math.round(canvas.width * scale), h = Math.round(canvas.height * scale);
+            canvas.width = canvas.height = 0;
+            if (!out) throw new Error('encoding failed');
+            const src = { key, blob: out, url: URL.createObjectURL(out), isPreview: true, edited: true, savedAtRead: raw.savedAtRead, w, h };
+            if ((file._editGen || 0) !== gen) return src; // edited again meanwhile: not kept
+            if (file._edited) URL.revokeObjectURL(file._edited.url);
+            file._edited = src;
+            return src;
+        })();
+        p._gen = gen;
+        file._editPromise = p;
+        p.catch(() => { }).finally(() => { if (file._editPromise === p) file._editPromise = null; });
+        return p;
+    },
+
+    // An edit not saved yet was made, changed or dropped: show the photo
+    // as it now will be
+    editChanged(f) {
+        this.dropEdited(f);
+        f._dims = undefined;
+        f._thumbStale = true;
+        f._sourceGen = (f._sourceGen || 0) + 1; // in-flight decodes won't be cached
+        f._decodePromise = null;
+        this.dropDecoded(f);
+        this.refreshThumbnailUI(f);
+        if (this.currentFile === f && this.viewMode === 'single' && !this.cropState.active) this.loadFile(f);
+        if (this._infoOpen && this.currentFile === f) this.fillInfoPanel(f);
+    },
+
+    // Forget the edited preview (and any being made)
+    dropEdited(f) {
+        f._editGen = (f._editGen || 0) + 1;
+        if (f._edited) {
+            URL.revokeObjectURL(f._edited.url);
+            delete f._edited;
+        }
+        f._editPromise = null;
     },
 
     // A File from getFile() is a snapshot: once the file on disk is written
@@ -2889,6 +3350,7 @@ const app = {
         const el = this.elements.currentImage;
         const file = this._displayFile;
         if (!el || !el._isPreview || !file || file !== this.currentFile || this._upgrading === file) return;
+        if (file._edit) return; // shown edited: the original would show it without
         this._upgrading = file;
         try {
             const src = await this.getOriginalSource(file);
@@ -2953,6 +3415,8 @@ const app = {
         }
         this._displayKind = kind;
         this._displayFile = file;
+        // The redrawn photo has the turn in it: the held one is done
+        if (file) file._turnHeldView = 0;
         if (kind === 'thumb') this.sizePlaceholder(el, file);
         el.style.transition = 'none'; // no spin/float from the previous photo's transform
         el.style.opacity = '1';
@@ -3010,8 +3474,9 @@ const app = {
                 };
                 if (ph.complete && ph.naturalWidth) showPlaceholder();
                 else ph.decode().then(showPlaceholder, () => { });
-            } else {
+            } else if (!(file._turnHeldView && this._displayFile === file)) {
                 // Nothing cached yet: dim the previous photo while decoding
+                // (not one turning to its kept rotation: it stays until redrawn)
                 this.elements.currentImage.style.opacity = '0.3';
             }
 
@@ -3093,6 +3558,11 @@ const app = {
             if (dist > 60 && f._preview && !f._sourcePromise) {
                 URL.revokeObjectURL(f._preview.url);
                 delete f._preview;
+            }
+            // Edited previews too (made again from the preview when needed)
+            if (dist > 60 && f._edited && !f._editPromise) {
+                URL.revokeObjectURL(f._edited.url);
+                delete f._edited;
             }
         });
     },
@@ -3179,6 +3649,10 @@ const app = {
     },
 
     showToast(message, duration = 3000, key = null, action = null, opts = {}) {
+        // Going back several steps (history.js) says so once, at the end
+        if (this._quietToasts) return;
+        // A kind turned off in Settings → Messages (errors always show)
+        if (opts && opts.kind && opts.type !== 'error' && !this.toastOn(opts.kind)) return;
         let stack = document.getElementById('toast-stack');
         if (!stack) {
             stack = document.createElement('div');
@@ -3186,6 +3660,8 @@ const app = {
             stack.setAttribute('role', 'status');
             stack.setAttribute('aria-live', 'polite');
             document.body.appendChild(stack);
+            // Kept clear of the single view's controls (fit.js)
+            if (typeof Fit !== 'undefined') Fit.watch(stack);
         }
         const live = [...stack.children].filter(t => !t.classList.contains('leaving'));
         let toast = key ? live.find(t => t.dataset.key === key) : null;
@@ -3308,6 +3784,7 @@ const app = {
         ['edit.rename', 'global', 'Edit', 'Rename (the selection in grid view)', ['F2']],
         ['edit.trash', 'global', 'Edit', 'Move to trash', ['Delete']],
         ['edit.undo', 'global', 'Edit', 'Undo', ['Ctrl+Z']],
+        ['edit.history', 'global', 'Edit', 'Undo history: go back several steps', ['H']],
         ['edit.selectAll', 'global', 'Edit', 'Select all (grid)', ['Ctrl+A']],
         ['flag.star', 'global', 'Flags', 'Star / unstar', ['P']],
         ['flag.rescan', 'global', 'Flags', 'Needs rescan on / off', ['X']],
@@ -3369,8 +3846,48 @@ const app = {
         ['dupes.close', 'dupes', 'Duplicates (WIP)', 'Close', ['Escape']]
     ],
 
+    // Shortcut profiles: a starting set of keys, which can then be changed.
+    // jEditor's own is KEY_ACTIONS' defaults; another lists only the keys it
+    // changes. Profiles made by the user start from one of these (base) and
+    // keep their own changes. Changes are kept per profile in localStorage:
+    // 'jeditor.keys' for jEditor's (as before profiles), 'jeditor.keys.<id>'
+    // for the others; 'jeditor.keyProfile' is the one in use.
+    KEY_PROFILES: {
+        jeditor: { name: 'jEditor' },
+        // Lightroom Classic's Library and Crop keys, where jEditor has the
+        // same action. Its 1–5 are star ratings, so the color labels are on
+        // 6–9 as there (purple has no key in Lightroom).
+        lightroom: {
+            name: 'Lightroom Classic',
+            keys: {
+                'edit.rotateLeft': ['Ctrl+['],
+                'edit.rotateRight': ['Ctrl+]'],
+                'edit.rotate180': [],
+                'edit.crop': ['R'],
+                'flag.red': ['6'],
+                'flag.yellow': ['7'],
+                'flag.green': ['8'],
+                'flag.blue': ['9'],
+                'flag.purple': [],
+                'view.single': ['E'],
+                'view.toggle': [],
+                'view.zoomIn': ['Ctrl+=', 'Ctrl++'],
+                'view.zoomOut': ['Ctrl+-'],
+                'view.zoomFit': ['Z'],
+                'view.slideshow': ['Ctrl+Enter'],
+                'folders.rail': ['F7'],
+                'app.refresh': ['F5'],
+                'app.shortcuts': ['Ctrl+/', '?'],
+                'crop.save': ['Enter', 'R'],
+                'crop.reset': ['Ctrl+Alt+R'],
+                'crop.rotateLeft': ['Ctrl+['],
+                'crop.rotateRight': ['Ctrl+]']
+            }
+        }
+    },
+
     // Handlers return false when the key doesn't apply right now, which
-    // lets the browser's default behaviour through.
+    // lets the browser's default behavior through.
     keyHandlers() {
         const grid = () => this.viewMode === 'grid';
         const ed = CropEditor;
@@ -3389,6 +3906,7 @@ const app = {
             'edit.trash': () => this.moveToTrash(grid() && this.selection.size
                 ? [...this.selection] : [this.currentFile]),
             'edit.undo': () => this.undo(),
+            'edit.history': () => History.toggle(),
             'edit.selectAll': () => {
                 if (!grid()) return false;
                 this.selection = new Set(this.viewFiles());
@@ -3464,7 +3982,7 @@ const app = {
         };
     },
 
-    // Normalised combo for a keydown: 'Ctrl+Shift+D', 'Shift+ArrowLeft', 'C',
+    // Normalized combo for a keydown: 'Ctrl+Shift+D', 'Shift+ArrowLeft', 'C',
     // '?' … Cmd counts as Ctrl. Shift is implied by printable symbols ('?'
     // already is Shift+/), so it's only named for letters and named keys.
     comboFromEvent(e) {
@@ -3491,11 +4009,42 @@ const app = {
         return parts.map(p => names[p] || p).join(' + ');
     },
 
-    loadKeyBindings() {
-        this.keyBindings = {};
-        this.KEY_ACTIONS.forEach(([id, , , , keys]) => { this.keyBindings[id] = [...keys]; });
+    // The user's own profiles: [{ id, name, base }]
+    customKeyProfiles() {
         try {
-            const saved = JSON.parse(localStorage.getItem('jeditor.keys') || 'null');
+            const list = JSON.parse(localStorage.getItem('jeditor.keyProfiles') || '[]');
+            return Array.isArray(list) ? list.filter(p => p && typeof p.id === 'string' && typeof p.name === 'string') : [];
+        } catch (e) { return []; }
+    },
+
+    keyProfiles() {
+        return [
+            ...Object.entries(this.KEY_PROFILES).map(([id, p]) => ({ id, name: p.name, builtIn: true })),
+            ...this.customKeyProfiles()
+        ];
+    },
+
+    // The keys a profile starts with (what Reset goes back to)
+    keyProfileDefaults(id = this.keyProfile) {
+        const custom = this.customKeyProfiles().find(p => p.id === id);
+        const base = this.KEY_PROFILES[custom ? custom.base : id] || this.KEY_PROFILES.jeditor;
+        const out = {};
+        this.KEY_ACTIONS.forEach(([aid, , , , keys]) => { out[aid] = [...((base.keys && base.keys[aid]) || keys)]; });
+        return out;
+    },
+
+    keyStore(id = this.keyProfile) {
+        return id === 'jeditor' ? 'jeditor.keys' : 'jeditor.keys.' + id;
+    },
+
+    loadKeyBindings() {
+        let active = 'jeditor';
+        try { active = localStorage.getItem('jeditor.keyProfile') || 'jeditor'; } catch (e) { /* private mode */ }
+        if (!this.keyProfiles().some(p => p.id === active)) active = 'jeditor';
+        this.keyProfile = active;
+        this.keyBindings = this.keyProfileDefaults();
+        try {
+            const saved = JSON.parse(localStorage.getItem(this.keyStore()) || 'null');
             if (saved && typeof saved === 'object') {
                 for (const [id, keys] of Object.entries(saved)) {
                     if (id in this.keyBindings && Array.isArray(keys)) {
@@ -3509,11 +4058,80 @@ const app = {
 
     saveKeyBindings() {
         const changed = {};
-        this.KEY_ACTIONS.forEach(([id, , , , keys]) => {
-            if (this.keyBindings[id].join('\n') !== keys.join('\n')) changed[id] = this.keyBindings[id];
+        const defaults = this.keyProfileDefaults();
+        this.KEY_ACTIONS.forEach(([id]) => {
+            if (this.keyBindings[id].join('\n') !== defaults[id].join('\n')) changed[id] = this.keyBindings[id];
         });
-        try { localStorage.setItem('jeditor.keys', JSON.stringify(changed)); } catch (e) { /* private mode */ }
+        try { localStorage.setItem(this.keyStore(), JSON.stringify(changed)); } catch (e) { /* private mode */ }
         this.buildKeyMaps();
+    },
+
+    setKeyProfile(id) {
+        if (!this.keyProfiles().some(p => p.id === id)) return;
+        try { localStorage.setItem('jeditor.keyProfile', id); } catch (e) { /* private mode */ }
+        this._recordingKey = null;
+        this.loadKeyBindings();
+        if (this.isShortcutsOpen()) this.renderShortcutsPanel();
+    },
+
+    // A new profile: the keys in use now, under a name, to change from there
+    async newKeyProfile() {
+        const all = this.keyProfiles();
+        const current = all.find(p => p.id === this.keyProfile);
+        const name = await UI.prompt({
+            title: 'New shortcut profile',
+            message: `It starts as a copy of “${current ? current.name : 'jEditor'}”. Change any key after.`,
+            ok: 'Make',
+            input: { label: 'Name', value: '' }
+        });
+        if (name === null || !name.trim()) return;
+        if (all.some(p => p.name.toLowerCase() === name.trim().toLowerCase())) {
+            this.showToast(`There's already a profile called “${name.trim()}”`, 3000);
+            return;
+        }
+        const custom = this.customKeyProfiles().find(p => p.id === this.keyProfile);
+        const base = custom ? custom.base : this.keyProfile;
+        const id = 'custom-' + Date.now().toString(36);
+        const list = [...this.customKeyProfiles(), { id, name: name.trim(), base }];
+        try { localStorage.setItem('jeditor.keyProfiles', JSON.stringify(list)); } catch (e) { return; }
+        const keys = this.keyBindings;
+        this.keyProfile = id;
+        this.keyBindings = keys;
+        this.saveKeyBindings(); // the copy's changes from its base
+        this.setKeyProfile(id);
+        this.showToast(`Made “${name.trim()}”`, 2000);
+    },
+
+    async renameKeyProfile() {
+        const list = this.customKeyProfiles();
+        const p = list.find(x => x.id === this.keyProfile);
+        if (!p) return;
+        const others = this.keyProfiles().filter(x => x.id !== p.id);
+        const name = await UI.prompt({
+            title: 'Rename profile',
+            ok: 'Rename',
+            input: { label: 'Name', value: p.name }
+        });
+        if (name === null || !name.trim()) return;
+        if (others.some(x => x.name.toLowerCase() === name.trim().toLowerCase())) {
+            this.showToast(`There's already a profile called “${name.trim()}”`, 3000);
+            return;
+        }
+        p.name = name.trim();
+        try { localStorage.setItem('jeditor.keyProfiles', JSON.stringify(list)); } catch (e) { /* private mode */ }
+        this.renderShortcutsPanel();
+    },
+
+    async deleteKeyProfile() {
+        const p = this.customKeyProfiles().find(x => x.id === this.keyProfile);
+        if (!p) return;
+        const ok = await UI.confirm({ title: `Delete “${p.name}”?`, message: 'Its keys go. jEditor\'s own keys are used instead.', ok: 'Delete', danger: true });
+        if (!ok) return;
+        try {
+            localStorage.setItem('jeditor.keyProfiles', JSON.stringify(this.customKeyProfiles().filter(x => x.id !== p.id)));
+            localStorage.removeItem(this.keyStore(p.id));
+        } catch (e) { /* private mode */ }
+        this.setKeyProfile('jeditor');
     },
 
     buildKeyMaps() {
@@ -3550,8 +4168,9 @@ const app = {
     },
 
     resetKeys(id = null) {
-        this.KEY_ACTIONS.forEach(([aid, , , , keys]) => {
-            if (!id || aid === id) this.keyBindings[aid] = [...keys];
+        const defaults = this.keyProfileDefaults();
+        this.KEY_ACTIONS.forEach(([aid]) => {
+            if (!id || aid === id) this.keyBindings[aid] = [...defaults[aid]];
         });
         this.saveKeyBindings();
     },
@@ -3576,7 +4195,7 @@ const app = {
 
         // The rename tool, folder dialogs, Settings and the alert/confirm
         // dialogs handle their own keys
-        if (Renamer.isOpen || Folders.isModalOpen() || Recents.isPromptOpen() || UI.isOpen()) return;
+        if (Renamer.isOpen || Folders.isModalOpen() || Recents.isPromptOpen() || UI.isOpen() || Stored.isOpen() || Scan.isOpen() || Camera.isOpen()) return;
 
         // What's New is modal: Esc closes it
         if (this.isWhatsNewOpen()) {
@@ -3610,6 +4229,11 @@ const app = {
             this.closeContextMenu();
             return;
         }
+        if (combo === 'Escape' && History.isOpen()) {
+            e.preventDefault();
+            History.toggle(false);
+            return;
+        }
 
         const context = this.cropState.active ? 'crop' : (Dupes.isOpen ? 'dupes' : 'global');
         // Duplicates view: 1–9 mark/unmark the photo with that number
@@ -3618,11 +4242,19 @@ const app = {
             Dupes.toggle(parseInt(combo, 10) - 1);
             return;
         }
-        const id = this._keyMaps[context].get(combo);
+        let id = this._keyMaps[context].get(combo);
+        // Duplicates: Undo (it says Ctrl+Z restores) works there too
+        if (!id && context === 'dupes' && this._keyMaps.global.get(combo) === 'edit.undo') id = 'edit.undo';
+        // A focused button's own Enter/Space press isn't a shortcut there
+        if (id && context === 'dupes' && e.target && e.target.tagName === 'BUTTON' && (combo === 'Enter' || combo === 'Space')) return;
         if (!id) return;
         // Only the shortcut list and debug console work from the start screen
         const onStart = this.elements.mainInterface.classList.contains('hidden');
         if (onStart && context === 'global' && !['app.shortcuts', 'app.debug', 'app.settings'].includes(id)) return;
+        if (context === 'crop' && CropEditor.busy) {
+            e.preventDefault(); // saving: the crop being written stays as it is
+            return;
+        }
         if (context === 'crop' && !CropEditor.ready && id !== 'crop.cancel') {
             e.preventDefault();
             return;
@@ -3811,6 +4443,8 @@ const app = {
         const list = document.getElementById('shortcuts-list');
         const filter = (document.getElementById('shortcuts-filter').value || '').trim().toLowerCase();
         list.innerHTML = '';
+        this.renderKeyProfiles();
+        const profileDefaults = this.keyProfileDefaults();
         const groups = new Map();
         this.KEY_ACTIONS.forEach(a => {
             const [id, , group, label] = a;
@@ -3826,7 +4460,8 @@ const app = {
             const h = document.createElement('h4');
             h.textContent = group;
             section.appendChild(h);
-            actions.forEach(([id, , , label, defaults]) => {
+            actions.forEach(([id, , , label]) => {
+                const defaults = profileDefaults[id];
                 const row = document.createElement('div');
                 row.className = 'sc-row';
                 const name = document.createElement('span');
@@ -3876,6 +4511,24 @@ const app = {
         if (!groups.size) list.textContent = 'No shortcuts match.';
     },
 
+    // The profile picker: every profile, the one in use chosen; rename and
+    // delete only for the user's own
+    renderKeyProfiles() {
+        const sel = document.getElementById('shortcuts-profile');
+        if (!sel) return;
+        sel.innerHTML = '';
+        for (const p of this.keyProfiles()) {
+            const o = document.createElement('option');
+            o.value = p.id;
+            o.textContent = p.name;
+            sel.appendChild(o);
+        }
+        sel.value = this.keyProfile;
+        const own = !this.KEY_PROFILES[this.keyProfile];
+        document.getElementById('shortcuts-profile-rename').classList.toggle('hidden', !own);
+        document.getElementById('shortcuts-profile-delete').classList.toggle('hidden', !own);
+    },
+
     // Capture-phase listener: while recording, the next key press becomes
     // the new binding instead of doing anything else.
     recordKey(e) {
@@ -3906,6 +4559,14 @@ const app = {
             this.showToast('Shortcuts reset to defaults', 2000);
         });
         document.getElementById('shortcuts-filter').addEventListener('input', () => this.renderShortcutsPanel());
+        document.getElementById('shortcuts-profile').addEventListener('change', (e) => {
+            this.setKeyProfile(e.target.value);
+            const p = this.keyProfiles().find(x => x.id === e.target.value);
+            if (p) this.showToast(`Shortcuts: ${p.name}`, 1600);
+        });
+        document.getElementById('shortcuts-profile-new').addEventListener('click', () => this.newKeyProfile());
+        document.getElementById('shortcuts-profile-rename').addEventListener('click', () => this.renameKeyProfile());
+        document.getElementById('shortcuts-profile-delete').addEventListener('click', () => this.deleteKeyProfile());
         // Click on the backdrop closes
         panel.addEventListener('mousedown', (e) => { if (e.target === panel) this.toggleShortcutsPanel(false); });
     },
@@ -3967,7 +4628,7 @@ const app = {
     syncGridTile() {
         const grid = this.elements.gridView;
         if (!grid.clientWidth) return;
-        // The selection bar centres on the grid, less its scrollbar
+        // The selection bar centers on the grid, less its scrollbar
         document.documentElement.style.setProperty('--grid-scrollbar', `${grid.offsetWidth - grid.clientWidth}px`);
         const first = parseFloat(getComputedStyle(grid).gridTemplateColumns);
         if (first > 0) document.documentElement.style.setProperty('--grid-tile', `${first}px`);
@@ -3988,17 +4649,31 @@ const app = {
     refreshThumbnailUI(file) {
         if (!file) return;
 
+        // A tile turning to a kept rotation keeps its picture until the
+        // redrawn thumbnail replaces it (deliverThumbnail)
+        const keep = (holder) => {
+            const img = file._turnHeld && holder && holder.isConnected && holder.querySelector(':scope > img');
+            if (!img || !img.src || img.src === this.BLANK_THUMB) return false;
+            img._interim = true;
+            Flags.decorate(holder, file);
+            Edits.decorate(holder, file);
+            this.loadImageThumbnail(file, img, true);
+            return true;
+        };
+        const keptStrip = keep(file._stripEl), keptGrid = keep(file._gridEl);
+
         // 1. Refresh Strip Item
         const stripDiv = file._stripEl;
-        if (stripDiv && stripDiv.isConnected) {
+        if (!keptStrip && stripDiv && stripDiv.isConnected) {
             stripDiv.innerHTML = '';
             Flags.decorate(stripDiv, file);
+            Edits.decorate(stripDiv, file);
             this.loadStripThumbnail(file, stripDiv, true);
         }
 
         // 2. Refresh Grid Item
         const gridDiv = file._gridEl;
-        if (gridDiv && gridDiv.isConnected) {
+        if (!keptGrid && gridDiv && gridDiv.isConnected) {
             gridDiv.innerHTML = '';
             // Recreate Image
             const img = document.createElement('img');
@@ -4014,6 +4689,7 @@ const app = {
 
             Folders.addChip(gridDiv, file);
             Flags.decorate(gridDiv, file);
+            Edits.decorate(gridDiv, file);
 
             // Force reload
             this.loadImageThumbnail(file, img, true);
@@ -4046,11 +4722,20 @@ const app = {
         const skippedGifs = snapshot.length - filesToRotate.length;
         if (skippedGifs > 0) this.showToast(`Skipped ${skippedGifs} GIF${skippedGifs > 1 ? 's' : ''} (rotation would lose animation)`);
         if (filesToRotate.length === 0) return;
+        if (Edits.on()) {
+            if (this.editsSaving()) return;
+            // Kept with the other edits until they're saved
+            this.turnHeld(filesToRotate, deg);
+            Edits.rotate(filesToRotate, deg);
+            const n = filesToRotate.length;
+            this.showToast(`Turned ${n} photo${n > 1 ? 's' : ''} ${Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left'}`, 1600, null, null, { kind: 'rotate' });
+            return;
+        }
 
         // One undo step for the whole selection (added to the history now,
         // filled as each photo is saved)
         let batchDone;
-        const group = { type: 'group', label: 'rotation', items: [], done: new Promise(res => { batchDone = res; }) };
+        const group = { type: 'group', label: 'rotation', items: [], count: filesToRotate.length, done: new Promise(res => { batchDone = res; }) };
         if (filesToRotate.length > 1) {
             this.pushUndo(group);
             for (const file of filesToRotate) file._undoGroup = group;
@@ -4094,7 +4779,7 @@ const app = {
         // Nothing was saved (all failed): no empty undo step
         if (!group.items.length) this._undoStack = (this._undoStack || []).filter(e => e !== group);
         const how = Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left';
-        this.showToast(ok ? `Rotated ${label} ${how}` : 'Some photos failed to rotate', 2000);
+        this.showToast(ok ? `Rotated ${label} ${how}` : 'Some photos failed to rotate', 2000, null, null, ok ? { kind: 'rotate' } : {});
         this.log('Bulk rotation finished');
     },
 
@@ -4105,6 +4790,12 @@ const app = {
         if (/\.gif$/i.test(fileEntry.name)) {
             this.showToast('GIF rotation is not supported (animation would be lost)');
             return Promise.resolve(false);
+        }
+        // Kept with the other edits until they're saved
+        if (Edits.on()) {
+            if (this.editsSaving()) return Promise.resolve(false);
+            this.turnHeld([fileEntry], deg);
+            return Promise.resolve(Edits.rotate([fileEntry], deg));
         }
 
         // Instant, stacking preview; the save happens in the background
@@ -4364,9 +5055,11 @@ const app = {
     pushUndo(entry) {
         if (!this._undoStack) this._undoStack = [];
         const stack = this._undoStack;
+        if (!entry.at) entry.at = Date.now(); // for the undo history (history.js)
         stack.push(entry);
         while (stack.length > this.UNDO_LIMIT ||
             (stack.length > 1 && this.undoBytes() > this.UNDO_MAX_BYTES)) stack.shift();
+        History.changed();
     },
 
     undoBytes() {
@@ -4374,19 +5067,23 @@ const app = {
         return (this._undoStack || []).reduce((n, e) => n + size(e), 0);
     },
 
+    // The newest step taken back. True when it was (the undo history
+    // goes back several steps through this)
     async undo() {
         const entry = (this._undoStack || []).pop();
+        this._undoError = null;
         if (!entry) {
             this.showToast('Nothing to undo');
-            return;
+            return false;
         }
+        History.changed();
         try {
             if (entry.type === 'bytes') {
                 await this.undoFileEdit(entry);
-                this.showToast(`Undid ${entry.label} on ${entry.file.name}`);
+                this.showToast(`Undid ${entry.label} on ${entry.file.name}`, 3000, null, null, { kind: 'undo' });
             } else if (entry.type === 'rotate') {
                 await this.undoFileEdit(entry);
-                this.showToast(`Undid rotation on ${entry.file.name}`);
+                this.showToast(`Undid rotation on ${entry.file.name}`, 3000, null, null, { kind: 'undo' });
             } else if (entry.type === 'group') {
                 // A rotation of a whole selection: every photo, in one step
                 // (once the batch has finished saving, so none are missed)
@@ -4407,30 +5104,41 @@ const app = {
                     if (many) this.endTask('undo-group');
                 }
                 if (failed) throw new Error(`${failed} photo${failed === 1 ? '' : 's'} could not be put back`);
-                this.showToast(`Undid rotation on ${items.length} photo${items.length === 1 ? '' : 's'}`);
+                this.showToast(`Undid rotation on ${items.length} photo${items.length === 1 ? '' : 's'}`, 3000, null, null, { kind: 'undo' });
             } else if (entry.type === 'rename') {
                 await this.renameFile(entry.file, entry.oldName, { skipUndo: true });
-                this.showToast('Rename undone');
+                this.showToast('Rename undone', 3000, null, null, { kind: 'undo' });
             } else if (entry.type === 'batch-rename') {
                 const ok = await this.renameMany(entry.items.map(it => ({ file: it.file, newName: it.oldName })), { skipUndo: true });
                 if (!ok) throw new Error('could not restore the old names');
-                this.showToast(`Rename undone (${entry.items.length} file${entry.items.length === 1 ? '' : 's'})`);
+                this.showToast(`Rename undone (${entry.items.length} file${entry.items.length === 1 ? '' : 's'})`, 3000, null, null, { kind: 'undo' });
             } else if (entry.type === 'flags') {
                 Flags.undo(entry);
             } else if (entry.type === 'auto-crop') {
                 await this.undoAutoCrop(entry);
+            } else if (entry.type === 'edits') {
+                Edits.undo(entry);
+            } else if (entry.type === 'saved-edits') {
+                await this.undoSavedEdits(entry);
             } else if (entry.type === 'relocate' || entry.type.startsWith('folder-')) {
                 await Folders.undo(entry);
+            } else if (entry.type === 'transfer') {
+                await Windows.undo(entry);
             } else if (entry.type === 'trash') {
                 const n = await this.restoreManyFromTrash(entry.items);
                 this.sortFiles();
-                if (n < entry.items.length) this.showToast(`Restored ${n} of ${entry.items.length} photos — the rest are still in .jeditor/trash`, 4000);
-                else this.showToast(`Restored ${n} photo${n > 1 ? 's' : ''}`);
+                if (n < entry.items.length) this.showToast(`Restored ${n} of ${entry.items.length} photos — the rest are still in ${FolderCache.native() ? 'the Recycle Bin' : '.jeditor/trash'}`, 4000);
+                else this.showToast(`Restored ${n} photo${n > 1 ? 's' : ''}`, 3000, null, null, { kind: 'undo' });
             }
         } catch (e) {
             console.error('Undo failed:', e);
+            this._undoError = e.message;
             this.showToast('Undo failed: ' + e.message);
+            return false;
+        } finally {
+            History.changed();
         }
+        return true;
     },
 
     // A file's bytes changed outside the rotation pipeline (undo/restore):
@@ -4443,6 +5151,7 @@ const app = {
         f.savingRotation = 0;
         f.thumbLag = 0;
         f._exif = undefined;
+        f._exifReading = null;
         f.dateTaken = undefined;
         f._dims = undefined;
         f._glass = undefined;
@@ -4469,38 +5178,128 @@ const app = {
 
     // ---- Trash (safe delete) ----
     //
-    // Photos are moved into .jeditor/trash: a rename on disk, instant even
-    // for big scans. Where moving isn't supported they're copied and the
-    // original deleted. Several at a time, and the screen is updated once
-    // at the end, so deleting hundreds of photos takes seconds.
+    // In the Windows app, deleted photos go to the Recycle Bin, all in one
+    // go, and Ctrl+Z takes them back out. Elsewhere, and on a drive with no
+    // Recycle Bin (network, USB), they're moved into the order's trash/
+    // (folder-cache.js): a rename on disk, instant even for big scans, or a
+    // copy and delete where moving isn't possible. Several at a time, and the
+    // screen is updated once at the end, so deleting hundreds of photos
+    // takes seconds.
 
     TRASH_CONCURRENCY: 6,
 
     async moveToTrash(files) {
-        const list = [...new Set(files.filter(Boolean))];
+        let list = [...new Set(files.filter(Boolean))];
         if (!list.length) return;
         if (!this.ensureWritable()) return;
         if (!this.dirHandle) {
             this.showToast('Deleting requires opening a folder (not loose files)');
             return;
         }
+        const many = list.length > 1;
+        if (many) this.beginTask('trash', `Deleting 0/${list.length}`);
+        const moved = new Set();
+        const undoItems = [];
+        const alreadyGone = [];
+        let failed = 0, binned = 0;
+        try {
+            // The Recycle Bin first, where there is one
+            if (FolderCache.native()) {
+                await Promise.all(list.map(f => f._rotationQueue
+                    ? this.withTimeout(f._rotationQueue, this.TRASH_TIMEOUT_MS, 'Waiting for a rotation').catch(() => { }) : null));
+                const results = await this.recycleFiles(list);
+                const rest = [];
+                for (const f of list) {
+                    const r = results.get(f) || {};
+                    if (r.token) {
+                        moved.add(f);
+                        undoItems.push({ file: f, recycled: r.token });
+                        binned++;
+                    } else if (r.gone) {
+                        alreadyGone.push(f);
+                    } else if (r.noBin) {
+                        rest.push(f);
+                    } else {
+                        console.error('Recycle failed for', f.name, r.error);
+                        failed++;
+                    }
+                }
+                list = rest;
+                if (many) this.updateTask('trash', `Deleting ${moved.size + alreadyGone.length + failed}/${moved.size + alreadyGone.length + failed + list.length}`);
+            }
+            if (list.length) failed += await this.trashIntoFolder(list, { moved, undoItems, alreadyGone });
+        } finally {
+            if (many) this.endTask('trash');
+        }
+        Flags.forgetFiles(alreadyGone);
+        Edits.forgetFiles(alreadyGone);
+        this.removeFilesFromApp([...moved].concat(alreadyGone));
+
+        if (undoItems.length) {
+            this.pushUndo({ type: 'trash', items: undoItems });
+            const n = undoItems.length;
+            const where = binned === n ? 'the Recycle Bin' : binned ? 'the Recycle Bin and jEditor\'s trash' : FolderCache.native() ? 'jEditor\'s trash (this drive has no Recycle Bin)' : 'the trash (.jeditor/trash)';
+            this.showToast(`Moved ${n} to ${where} — Ctrl+Z to restore`, 4000, null, null, { kind: 'delete' });
+        }
+        if (alreadyGone.length) {
+            const n = alreadyGone.length;
+            this.showToast(`${n} photo${n === 1 ? ' was' : 's were'} already deleted elsewhere`, 3500, null, null, { type: 'info' });
+        }
+        if (failed) {
+            this.showToast(`Couldn't delete ${failed} photo${failed === 1 ? '' : 's'} — press R to check the folder`, 5000);
+            Watch.request({ full: true }); // see what's really there
+        }
+    },
+
+    // In the Windows app: photos to the Recycle Bin, in one go. → Map of
+    // photo → { token } (Ctrl+Z restores it with this), { noBin } (its drive
+    // has no Recycle Bin), { gone } (deleted already) or { error }
+    async recycleFiles(files) {
+        const out = new Map();
+        const native = FolderCache.native();
+        if (!native || !files.length) return out;
+        const root = await FolderCache.orderPath(this);
+        if (!root) {
+            files.forEach(f => out.set(f, { noBin: true })); // where it is isn't known: jEditor's trash
+            return out;
+        }
+        const ready = [];
+        for (const f of files) {
+            try {
+                await f.handle.getFile(); // still there?
+                const rel = (f.relPath || f.name).split('/').join('\\');
+                ready.push({ f, path: root.replace(/\\$/, '') + '\\' + rel });
+            } catch (e) {
+                out.set(f, e && e.name === 'NotFoundError' ? { gone: true } : { error: e.message });
+            }
+        }
+        if (!ready.length) return out;
+        let results;
+        try {
+            results = await native.recycle(ready.map(r => r.path));
+        } catch (e) {
+            results = [];
+            ready.forEach(r => out.set(r.f, { error: e.message }));
+        }
+        ready.forEach((r, i) => { if (results[i]) out.set(r.f, results[i]); });
+        return out;
+    },
+
+    // Photos into the order's trash/ (no Recycle Bin). Fills in what was
+    // moved; → how many failed
+    async trashIntoFolder(list, { moved, undoItems, alreadyGone }) {
         let trashDir;
         try {
             trashDir = await FolderCache.trashDir(this);
         } catch (e) {
             console.error('Trash unavailable:', e);
             this.showToast('Delete failed: ' + e.message);
-            return;
+            return list.length;
         }
         // Names already in the trash: one listing, not a lookup per photo
         const taken = new Set();
         try { for await (const e of trashDir.values()) taken.add(e.name.toLowerCase()); } catch (e) { /* empty */ }
-
         const many = list.length > 1;
-        if (many) this.beginTask('trash', `Deleting 0/${list.length}`);
-        const moved = new Set();
-        const undoItems = [];
-        const alreadyGone = [];
         let failed = 0, next = 0, done = 0;
         const stamp = Date.now();
         const worker = async () => {
@@ -4529,26 +5328,8 @@ const app = {
                 if (many && (done % 10 === 0 || done === list.length)) this.updateTask('trash', `Deleting ${done}/${list.length}`);
             }
         };
-        try {
-            await Promise.all(Array.from({ length: Math.min(this.TRASH_CONCURRENCY, list.length) }, worker));
-        } finally {
-            if (many) this.endTask('trash');
-        }
-        Flags.forgetFiles(alreadyGone);
-        this.removeFilesFromApp(list.filter(f => moved.has(f)).concat(alreadyGone));
-
-        if (undoItems.length) {
-            this.pushUndo({ type: 'trash', items: undoItems });
-            this.showToast(`Moved ${undoItems.length} to the trash (.jeditor/trash) — Ctrl+Z to restore`, 4000);
-        }
-        if (alreadyGone.length) {
-            const n = alreadyGone.length;
-            this.showToast(`${n} photo${n === 1 ? ' was' : 's were'} already deleted elsewhere`, 3500, null, null, { type: 'info' });
-        }
-        if (failed) {
-            this.showToast(`Couldn't delete ${failed} photo${failed === 1 ? '' : 's'} — press R to check the folder`, 5000);
-            Watch.request({ full: true }); // see what's really there
-        }
+        await Promise.all(Array.from({ length: Math.min(this.TRASH_CONCURRENCY, list.length) }, worker));
+        return failed;
     },
 
     TRASH_TIMEOUT_MS: 30000,
@@ -4566,9 +5347,10 @@ const app = {
         return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
     },
 
-    // One photo into the trash: move it, or copy then delete
+    // One photo into the trash: move it, or copy then delete (always, in the
+    // Windows app: see FolderCache.canMoveIn)
     async trashOne(f, trashDir, trashName) {
-        if (typeof f.handle.move === 'function') {
+        if (typeof f.handle.move === 'function' && FolderCache.canMoveIn()) {
             try {
                 await f.handle.move(trashDir, trashName);
                 return;
@@ -4592,6 +5374,7 @@ const app = {
     // Take photos out of the folder view in one pass
     removeFilesFromApp(gone) {
         if (!gone.length) return;
+        if (gone.some(f => f._edit)) setTimeout(() => Edits.updateBar(), 0);
         const set = new Set(gone);
         const cur = this.currentFile;
         const wasCurrent = set.has(cur);
@@ -4603,6 +5386,9 @@ const app = {
             for (let i = idx + 1; i < view.length && !next && idx !== -1; i++) if (!set.has(view[i])) next = view[i];
             for (let i = idx - 1; i >= 0 && !next; i--) if (!set.has(view[i])) next = view[i];
         }
+        // The whole selection went (deleted, moved): the next photo is
+        // selected, so the selection bar stays and Delete goes on from there
+        const selectionGone = this.selection.size > 0 && [...this.selection].every(f => set.has(f));
         let w = 0;
         for (const f of this.files) if (!set.has(f)) this.files[w++] = f;
         this.files.length = w;
@@ -4612,7 +5398,13 @@ const app = {
             if (f._stripEl) f._stripEl.remove();
         }
 
-        if (this.files.length === 0) {
+        if (this.files.length === 0 && this.dirHandle && !this.readOnlyMode) {
+            // The last photo went: the project stays open, empty
+            this.currentFile = null;
+            this.setView('grid');
+            this.renderGrid();
+            Folders.showEmptyHeader();
+        } else if (this.files.length === 0) {
             this.currentFile = null;
             this.updateStatusBar();
             this.elements.mainInterface.classList.add('hidden');
@@ -4622,6 +5414,7 @@ const app = {
                 this.loadFile(next);
             } else {
                 this.currentFile = next;
+                if (selectionGone) this.selection.add(next);
                 this.updateStatusBar();
             }
         }
@@ -4635,13 +5428,19 @@ const app = {
         Folders.render();
     },
 
-    // Put a photo back from the trash (undo): moved back, or copied
+    // Put a photo back from the trash (undo): out of the Recycle Bin, or
+    // moved back from trash/, or copied
     async restoreFromTrash(item) {
         const { file, trashDir, trashName } = item;
-        const th = await trashDir.getFileHandle(trashName);
         const dest = file.parentDir || this.dirHandle;
         let nh = null;
-        if (typeof th.move === 'function') {
+        if (item.recycled) {
+            const [r] = await FolderCache.native().restore([item.recycled]);
+            if (!r || r.error) throw new Error((r && r.error) || 'not restored');
+            nh = await dest.getFileHandle(file.name);
+        }
+        const th = nh ? null : await trashDir.getFileHandle(trashName);
+        if (!nh && typeof th.move === 'function') {
             try {
                 await th.move(dest, file.name);
                 nh = th;
@@ -4693,7 +5492,10 @@ const app = {
 
     // ---- Capture-date sort support ----
 
+    // One reading at a time: a second call (each keystroke in Rename) waits
+    // for the one running, rather than taking dates still being read as none
     async ensureDatesTaken() {
+        while (this._readingDates) await this._readingDates;
         const missing = this.files.filter(f => f.dateTaken === undefined);
         if (!missing.length) return;
         this.beginTask('taken', 'Reading capture dates…');
@@ -4705,8 +5507,8 @@ const app = {
                 f.dateTaken = (exif && exif.dateTaken) ? exif.dateTaken.getTime() : (f.lastModified || 0);
             }
         });
-        await Promise.all(workers);
-        this.endTask('taken');
+        this._readingDates = Promise.all(workers).finally(() => { this._readingDates = null; this.endTask('taken'); });
+        await this._readingDates;
     },
 
     // ---- Rename ----
@@ -4767,6 +5569,9 @@ const app = {
         }
         file.name = newName;
         if (file.relPath) file.relPath = file.relPath.replace(/[^/]+$/, newName);
+        // Flags or edits left by a photo that once had this name aren't this one's
+        Flags.orphans.delete(file.relPath || file.name);
+        if (Edits.orphans) Edits.orphans.delete(file.relPath || file.name);
         if (this.currentFile === file) {
             this.elements.fileName.textContent = newName;
             this.updateStatusBar();
@@ -4833,11 +5638,22 @@ const app = {
             for (let i = 0; i < back.length; i++) {
                 try { await this.moveFile(back[i], `.jeditor-restoring-${stamp}-${i}${(back[i].name.match(/\.[^.]+$/) || [''])[0]}`); } catch (e) { /* keep going */ }
             }
+            const stuck = [];
             for (const f of back) {
-                try { await this.moveFile(f, original.get(f)); } catch (e) { /* reported below */ }
+                try { await this.moveFile(f, original.get(f)); } catch (e) { stuck.push(f); }
             }
             this.endTask('rename');
-            this.showToast(`Rename failed (${err.message}) — names were put back`, 5000);
+            if (stuck.length) {
+                // Said as it is: some kept a temporary name
+                UI.alert({
+                    title: 'The rename stopped part way',
+                    message: `${err.message}\n\n${stuck.length} photo${stuck.length === 1 ? '' : 's'} couldn't get ${stuck.length === 1 ? 'its' : 'their'} name back and ${stuck.length === 1 ? 'is' : 'are'} still called:`,
+                    items: stuck.slice(0, 12).map(f => `${f.name} (was ${original.get(f)})`).concat(stuck.length > 12 ? [`… and ${stuck.length - 12} more`] : [])
+                });
+                Watch.request({ full: true });
+            } else {
+                this.showToast(`Rename failed (${err.message}) — names were put back`, 5000);
+            }
             return false;
         }
         this.endTask('rename');
@@ -5032,7 +5848,8 @@ const app = {
         const n = list.length;
         const input = await UI.prompt({
             title: n === 1 ? 'Export a copy' : `Export ${n.toLocaleString()} copies`,
-            message: 'Copies go to a "jEditor Export" folder inside this one. The originals aren\'t changed.',
+            message: 'Copies go to a "jEditor Export" folder inside this one. The originals aren\'t changed.' +
+                (list.some(f => f._edit) ? '\n\nPhotos with edits not saved yet are exported with them.' : ''),
             input: { label: 'Longest side in pixels (leave empty for full size)', placeholder: 'Full size', inputMode: 'numeric' },
             ok: 'Export'
         });
@@ -5045,7 +5862,7 @@ const app = {
             for (const f of list) {
                 try {
                     const data = await f.handle.getFile();
-                    let out = data;
+                    let out = f._edit ? await this.renderEdited(f, data) : data;
                     if (maxEdge > 0) {
                         const bmp = await createImageBitmap(data);
                         const scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
@@ -5078,6 +5895,47 @@ const app = {
         } catch (e) {
             this.endTask('export');
             this.showToast('Export failed: ' + e.message);
+        }
+    },
+
+    // A photo with its edit not saved yet (edits.js), at full size, as
+    // saving it would write it
+    async renderEdited(f, data) {
+        const edit = f._edit;
+        const original = new Uint8Array(await data.arrayBuffer());
+        const n = edit.n, eq = (a, b) => Math.abs(a - b) < 1e-6;
+        const turnOnly = !edit.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5);
+        if (turnOnly && /\.jpe?g$/i.test(f.name)) {
+            try {
+                const b = this.rotateJpegLossless(original.buffer, edit.q * 90);
+                if (b) return b;
+            } catch (e) { /* re-encode */ }
+        }
+        const { type, quality } = this.getSaveFormat(f.name);
+        const canvas = await CropEditor.renderSnapshot(data, edit, type, original);
+        if (!canvas) return data;
+        const w = canvas.width, h = canvas.height;
+        const blob = await new Promise(r => canvas.toBlob(r, type, quality));
+        canvas.width = canvas.height = 0;
+        if (!blob) throw new Error('encoding failed');
+        return ImageMeta.transplant(original, blob, type, w, h);
+    },
+
+    // A photo just scanned or shot: open it large once jEditor has it (in
+    // another folder than the one showing: that folder). Not while you're
+    // cropping, renaming or in a dialog.
+    async showWhenIn(rel) {
+        const token = (this._showToken = (this._showToken || 0) + 1);
+        for (let i = 0; i < 40; i++) {
+            if (token !== this._showToken) return; // a newer one came
+            const f = this.files.find(x => (x.relPath || x.name) === rel);
+            if (f) {
+                if (this.cropState.active || UI.isOpen() || Renamer.isOpen) return;
+                if (!Folders.inView(f) && Folders.scope !== null && Folders.scope !== undefined) Folders.setScope(Folders.dirOf(f));
+                this.openSingle(f);
+                return;
+            }
+            await new Promise(r => setTimeout(r, 150));
         }
     },
 
@@ -5124,6 +5982,7 @@ const app = {
                     [`Rotate ${n} right`, () => this.rotateBulk(90)],
                     [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
                     [`Auto crop ${n}`, () => this.batchAutoCrop(sel)],
+                    ...(sel.some(f => f._edit) ? [[`Discard edits on ${sel.filter(f => f._edit).length.toLocaleString()}`, () => Edits.discard(sel)]] : []),
                     ['—'],
                     [`Move ${n} to…`, () => Folders.openPicker(sel, 'move')],
                     [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy')],
@@ -5142,6 +6001,7 @@ const app = {
                 ['Rotate right', () => this.rotateImage(file, 90)],
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
                 ['Crop and straighten', () => { this.openSingle(file); this.enterCrop(); }],
+                ...(file._edit ? [['Discard edit', () => Edits.discard([file])]] : []),
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
                 ['Copy to…', () => Folders.openPicker([file], 'copy')],
@@ -5161,6 +6021,7 @@ const app = {
                 ['Rotate right', () => this.rotateImage(file, 90)],
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
                 ['Crop and straighten', () => this.enterCrop()],
+                ...(file && file._edit ? [['Discard edit', () => Edits.discard([file])]] : []),
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
                 ['Copy to…', () => Folders.openPicker([file], 'copy')],
@@ -5181,13 +6042,17 @@ const app = {
             ...(this.dirHandle ? [['New folder…', () => Folders.newFolder()]] : []),
             ['Rename all…', () => this.openRename([])],
             ['Search…', () => Flags.focusSearch()],
-            [Folders.scope === null ? 'Order info' : 'Folder info', () => this.toggleInfoPanel(true, { folder: Folders.scope })],
+            [Folders.scope === null ? 'Project info' : 'Folder info', () => this.toggleInfoPanel(true, { folder: Folders.scope })],
             ...(this.files.some(f => Flags.has(f, 'rescan'))
                 ? [['Copy rescan list', () => Flags.copyList(this.files.filter(f => Flags.has(f, 'rescan')), 'rescan')]] : []),
             ['Find duplicates… (WIP)', () => this.openDupes()],
             ['Start slideshow', () => this.startSlideshow()],
             ['Full screen', () => this.toggleFullscreen()],
             ['—'],
+            ...(this.dirHandle && !this.readOnlyMode ? [
+                [Edits.defer ? 'Save edits straight away' : 'Save edits when done', () => Edits.setDefer(!Edits.defer)],
+                ...(Edits.count() ? [['Save edits…', () => Edits.saveAll()]] : [])
+            ] : []),
             ['Clean up folder…', () => this.cleanUpFolder()]
         ];
     },
@@ -5275,6 +6140,7 @@ const app = {
         const file = this.currentFile;
         if (!file || this.cropState.active) return;
         if (!this.ensureWritable()) return;
+        if (this.editsSaving()) return;
         if (/\.gif$/i.test(file.name)) {
             this.showToast('Cropping GIFs is not supported (animation would be lost)');
             return;
@@ -5319,6 +6185,10 @@ const app = {
         if (!ed.isOpen || !ed.ready || ed.busy) return;
         const file = ed.file;
         const snap = ed.snapshot();
+        const W = ed.W, H = ed.H;
+        // For Auto crop's test set (crop-log.js): this crop, and Auto's
+        const logged = CropLog.entry(this, ed, file);
+        const bytesNow = () => file.handle.getFile().then(f => f.arrayBuffer());
 
         const goNext = () => {
             if (!next) return;
@@ -5330,16 +6200,33 @@ const app = {
             this.enterCrop();
         };
 
+        // Save edits when done (edits.js): kept on the photo, not written
+        if (Edits.on()) {
+            CropLog.keep(logged, bytesNow);
+            const had = !!file._edit;
+            const none = ed.isIdentity() && !ed.q;
+            this.rememberCrop(snap);
+            this.cancelCrop();
+            if (none && !had) this.showToast('No changes', 1500);
+            else {
+                Edits.set([{ file, edit: none ? null : snap }], 'crop');
+                this.showToast(none ? 'Back to the whole photo' : 'Crop kept — saved into the photo when you save the edits', 2200, null, null, { kind: 'crop' });
+            }
+            goNext();
+            return;
+        }
+
         // Only quarter turns and no crop: that's a rotation — do it
         // losslessly through the rotation engine instead of re-encoding
         if (ed.isIdentity()) {
+            if (logged) { const b = bytesNow(); CropLog.keep(logged, () => b); }
             const quarter = ed.q;
             this.rememberCrop(snap);
             this.cancelCrop();
             if (quarter) {
                 const deg = quarter === 3 ? -90 : quarter * 90;
                 this.rotateImage(file, deg);
-                this.showToast(`Rotated ${deg > 0 ? 'right' : 'left'}${Math.abs(deg) === 180 ? ' 180°' : ''}`, 1500);
+                this.showToast(`Rotated ${deg > 0 ? 'right' : 'left'}${Math.abs(deg) === 180 ? ' 180°' : ''}`, 1500, null, null, { kind: 'rotate' });
             } else {
                 this.showToast('No changes to save', 1500);
             }
@@ -5353,13 +6240,14 @@ const app = {
             const { type, quality } = this.getSaveFormat(file.name);
             const fileData = await file.handle.getFile();
             const original = new Uint8Array(await fileData.arrayBuffer());
+            CropLog.keep(logged, original);
 
-            const canvas = await ed.renderOutput(fileData, type, original);
+            const canvas = await ed.renderFrozen(fileData, snap, W, H, type, original);
             const w = canvas.width, h = canvas.height;
             let blob = await new Promise(r => canvas.toBlob(r, type, quality));
             canvas.width = canvas.height = 0; // release the full-size buffer now
             if (!blob) throw new Error('encoding failed');
-            // Keep EXIF (dates, camera), colour profile and DPI
+            // Keep EXIF (dates, camera), color profile and DPI
             blob = await ImageMeta.transplant(original, blob, type, w, h);
 
             if (this.dirHandle) await this.verifyPermission(this.dirHandle, true);
@@ -5388,7 +6276,7 @@ const app = {
             ed.busy = false;
             this.cancelCrop();
             await this.afterFileChanged(file);
-            this.showToast(`Saved ${w} × ${h}`, 1800);
+            this.showToast(`Saved ${w} × ${h}`, 1800, null, null, { kind: 'crop' });
             goNext();
         } catch (err) {
             console.error('Crop save failed:', err);
@@ -5410,7 +6298,9 @@ const app = {
 
     AUTO_CROP_CONCURRENCY: 2,
 
-    async batchAutoCrop(files) {
+    // ask: false skips the "Auto crop N photos?" question (scans, see
+    // scan.js); feeder: they're from a sheet feeder (CropAuto.detectFeeder)
+    async batchAutoCrop(files, { ask = true, feeder = false, scan = false } = {}) {
         if (!this.ensureWritable()) return;
         if (!this.dirHandle) {
             this.showToast('Auto crop needs a folder opened with Open folder');
@@ -5425,9 +6315,10 @@ const app = {
             this.showToast('Auto crop is already running');
             return;
         }
-        if (list.length > 50 && !await UI.confirm({
+        if (Edits.on()) return this.editsSaving() ? undefined : this.batchAutoCropKept(list, { feeder, scan });
+        if (ask && list.length > 50 && !await UI.confirm({
             title: `Auto crop ${list.length.toLocaleString()} photos?`,
-            message: 'Each is straightened and cropped to the print found on it. The originals are kept in .jeditor/originals, so Ctrl+Z puts them all back.',
+            message: `Each is straightened and cropped to the print found on it. The originals are kept ${FolderCache.native() ? 'by jEditor on this PC' : 'in .jeditor/originals'}, so Ctrl+Z puts them all back.`,
             ok: 'Auto crop'
         })) return;
         this._autoCropping = true;
@@ -5446,7 +6337,7 @@ const app = {
                 while (next < list.length) {
                     const f = list[next++];
                     try {
-                        const r = await this.autoCropOne(f, backups);
+                        const r = await this.autoCropOne(f, backups, { feeder, scan });
                         if (r === 'none') noEdge++;
                         else if (r === 'same') already++;
                         else {
@@ -5484,15 +6375,94 @@ const app = {
                 if (stack[stack.length - 1] === entry) this.undo();
                 else this.showToast('Something else changed since — use Ctrl+Z');
             }
-        } : null, { type: failed && !cropped ? 'error' : 'crop' });
+        } : null, { type: failed && !cropped ? 'error' : 'crop', kind: 'crop' });
+    },
+
+    // Batch Auto crop with Save edits when done: each crop is kept as an
+    // edit (nothing is written), so every one can be checked and changed
+    // in the crop editor before the edits are saved
+    async batchAutoCropKept(list, { feeder = false, scan = false } = {}) {
+        this._autoCropping = true;
+        const total = list.length;
+        const key = 'auto-crop';
+        const items = [];
+        let done = 0, noEdge = 0, failed = 0;
+        const label = () => `Auto crop ${done}/${total}`;
+        this.beginTask(key, label());
+        try {
+            let next = 0;
+            const worker = async () => {
+                while (next < list.length) {
+                    const f = list[next++];
+                    try {
+                        const ed = await this.detectCrop(f, { feeder, scan });
+                        if (!ed) noEdge++;
+                        else items.push({ file: f, edit: ed.isIdentity() && !ed.q ? null : ed.snapshot() });
+                    } catch (e) {
+                        console.error('Auto crop failed for', f.name, e);
+                        failed++;
+                    }
+                    done++;
+                    this.updateTask(key, label());
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(this.AUTO_CROP_CONCURRENCY + 1, list.length) }, worker));
+        } finally {
+            this.endTask(key);
+            this._autoCropping = false;
+        }
+        const cropped = items.filter(it => it.edit).length;
+        if (items.length) Edits.set(items, 'auto crop');
+        const notes = [];
+        if (noEdge) notes.push(`no print found on ${noEdge}`);
+        if (items.length - cropped) notes.push(`${items.length - cropped} already cropped`);
+        if (failed) notes.push(`${failed} failed`);
+        const msg = (cropped ? `Auto-cropped ${cropped} photo${cropped === 1 ? '' : 's'} — check them, then Save` : 'Nothing was cropped') +
+            (notes.length ? ` — ${notes.join(', ')}` : '');
+        const entry = (this._undoStack || [])[(this._undoStack || []).length - 1];
+        this.showToast(msg, cropped ? 6000 : 4000, null, items.length ? {
+            label: 'Undo',
+            run: () => {
+                const stack = this._undoStack || [];
+                if (stack[stack.length - 1] === entry) this.undo();
+                else this.showToast('Something else changed since — use Ctrl+Z');
+            }
+        } : null, { type: failed && !cropped ? 'error' : 'crop', kind: 'crop' });
+    },
+
+    // Auto crop's geometry for one photo, from the photo as it is on disk
+    // (not its kept edit): a headless crop editor, or null (no print edge)
+    async detectCrop(file, { feeder = false, scan = false } = {}) {
+        if (file._rotationQueue) await file._rotationQueue;
+        // Detect on the screen-sized preview, as the editor does
+        const src = await this.getDisplaySource(file, { raw: true });
+        let bmp, W, H;
+        if (src.isPreview && src.blob) {
+            bmp = await createImageBitmap(src.blob);
+            W = src.w;
+            H = src.h;
+        } else {
+            bmp = await createImageBitmap(await file.handle.getFile());
+            W = bmp.width;
+            H = bmp.height;
+        }
+        try {
+            const det = CropAuto.find(bmp, W, H, { feeder, scan });
+            if (!det) return null;
+            const ed = CropEditor.headless(W, H);
+            ed.fitToPrint(det);
+            return ed;
+        } finally {
+            bmp.close();
+        }
     },
 
     // One photo: 'none' (no print edge), 'same' (nothing to crop) or the
     // undo item { file, backup }
-    async autoCropOne(file, backups) {
+    async autoCropOne(file, backups, { feeder = false, scan = false } = {}) {
         if (file._rotationQueue) await file._rotationQueue;
         // Detect on the screen-sized preview, as the editor does
-        const src = await this.getDisplaySource(file);
+        const src = await this.getDisplaySource(file, { raw: true });
         let bmp, W, H;
         if (src.isPreview && src.blob) {
             bmp = await createImageBitmap(src.blob);
@@ -5505,7 +6475,7 @@ const app = {
         }
         let ed;
         try {
-            const det = CropAuto.detect(bmp, W, H);
+            const det = CropAuto.find(bmp, W, H, { feeder, scan });
             if (!det) return 'none';
             ed = CropEditor.headless(W, H);
             ed.fitToPrint(det);
@@ -5563,6 +6533,7 @@ const app = {
                 } catch (e) {
                     console.error('Undo failed for', it.file.name, e);
                     failed++;
+                    if (entry.failedFiles) entry.failedFiles.add(it.file);
                 }
             }
         };
@@ -5572,7 +6543,175 @@ const app = {
             if (many) this.endTask('undo-auto-crop');
         }
         if (failed) throw new Error(`${failed} photo${failed === 1 ? '' : 's'} could not be put back`);
-        this.showToast(`Undid auto crop on ${items.length} photo${items.length === 1 ? '' : 's'}`);
+        if (!entry.quiet) this.showToast(`Undid auto crop on ${items.length} photo${items.length === 1 ? '' : 's'}`, 3000, null, null, { kind: 'undo' });
+    },
+
+    // ---- Saving edits kept until saved (edits.js) ----
+    //
+    // Each photo is rendered at full size from its own bytes, as the crop
+    // editor saves, and written over the photo; a photo only turned is
+    // turned losslessly by the rotation engine. The originals go to
+    // originals/ first, as for batch Auto crop, and one Ctrl+Z puts every
+    // photo back with its edit kept again. True when all were saved.
+
+    // Save edits is writing kept edits into the photos: a new edit made
+    // meanwhile could be dropped or applied twice, so it waits
+    editsSaving() {
+        if (!this._savingEdits) return false;
+        this.showToast('The edits are being saved into the photos. One moment…', 2500);
+        return true;
+    },
+
+    async saveEdits(list) {
+        if (!this.ensureWritable()) return false;
+        if (!this.dirHandle) {
+            this.showToast('Saving edits needs a folder opened with Open folder');
+            return false;
+        }
+        if (this._savingEdits) {
+            this.showToast('The edits are already being saved');
+            return false;
+        }
+        this._savingEdits = true;
+        const total = list.length;
+        const key = 'save-edits';
+        let batchDone;
+        const group = { type: 'group', label: 'rotation', items: [], done: new Promise(res => { batchDone = res; }) };
+        const entry = { type: 'saved-edits', items: [], group, edits: [] };
+        let done = 0, failed = 0, changed = 0;
+        const label = () => `Saving edits ${done}/${total}`;
+        this.beginTask(key, label());
+        try {
+            await this.verifyPermission(this.dirHandle, true);
+            const root = await FolderCache.root(this, true);
+            const backups = await root.getDirectoryHandle('originals', { create: true });
+            let next = 0;
+            const worker = async () => {
+                while (next < list.length) {
+                    const f = list[next++];
+                    const edit = f._edit;
+                    try {
+                        if (!edit) continue;
+                        const r = await this.saveEditOne(f, edit, backups, group);
+                        if (r === 'changed') changed++;
+                        else {
+                            entry.edits.push({ file: f, edit });
+                            if (r !== 'turned') entry.items.push(r);
+                        }
+                    } catch (e) {
+                        console.error('Saving the edit failed for', f.name, e);
+                        failed++;
+                    }
+                    done++;
+                    this.updateTask(key, label());
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(this.AUTO_CROP_CONCURRENCY, list.length) }, worker));
+        } catch (e) {
+            this.showToast('Saving the edits failed: ' + e.message, 4000);
+            return false;
+        } finally {
+            batchDone();
+            this.endTask(key);
+            this._savingEdits = false;
+        }
+        if (entry.edits.length) {
+            this.pushUndo(entry);
+            Edits.changed([]);
+        }
+        const saved = entry.edits.length;
+        const notes = [];
+        if (changed) notes.push(`${changed} changed on disk since the edit, so not saved (open Crop to check them)`);
+        if (failed) notes.push(`${failed} failed`);
+        this.showToast((saved ? `Saved ${saved} edit${saved === 1 ? '' : 's'} into the photos` : 'Nothing was saved') +
+            (notes.length ? ` — ${notes.join(', ')}` : ''), notes.length ? 6000 : 3000, null, saved ? {
+            label: 'Undo',
+            run: () => {
+                const stack = this._undoStack || [];
+                if (stack[stack.length - 1] === entry) this.undo();
+                else this.showToast('Something else changed since — use Ctrl+Z');
+            }
+        } : null, { type: failed && !saved ? 'error' : 'crop', kind: 'crop' });
+        return !failed && !changed;
+    },
+
+    // 'changed' (the photo isn't the one the edit was made on), 'turned'
+    // (only turned: done by the rotation engine) or the undo item
+    // { file, backup, backupName }
+    async saveEditOne(file, edit, backups, group) {
+        if (file._rotationQueue) await file._rotationQueue;
+        const fileData = await file.handle.getFile();
+        if (edit.size && fileData.size !== edit.size) return 'changed';
+        const n = edit.n, eq = (a, b) => Math.abs(a - b) < 1e-6;
+        if (!edit.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5) && !/\.gif$/i.test(file.name)) {
+            const q = edit.q % 4;
+            delete file._edit;
+            file.pendingRotation = q === 3 ? -90 : q * 90;
+            file._undoGroup = group;
+            try {
+                if (!(await this.processRotationQueue(file))) {
+                    file._edit = edit;
+                    throw new Error('could not turn it');
+                }
+            } finally {
+                if (file._undoGroup === group) file._undoGroup = null;
+            }
+            this.dropEdited(file);
+            await this.afterFileChanged(file);
+            return 'turned';
+        }
+
+        const { type, quality } = this.getSaveFormat(file.name);
+        const original = new Uint8Array(await fileData.arrayBuffer());
+        const canvas = await CropEditor.renderSnapshot(fileData, edit, type, original);
+        if (!canvas) throw new Error('nothing to save');
+        const w = canvas.width, h = canvas.height;
+        let blob = await new Promise(r => canvas.toBlob(r, type, quality));
+        canvas.width = canvas.height = 0;
+        if (!blob) throw new Error('encoding failed');
+        blob = await ImageMeta.transplant(original, blob, type, w, h);
+
+        const backupName = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}-${file.name}`;
+        const bh = await backups.getFileHandle(backupName, { create: true });
+        const bw = await bh.createWritable();
+        await bw.write(new Blob([original], { type: fileData.type }));
+        await bw.close();
+
+        file.isBusy = true;
+        try {
+            const writable = await file.handle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+        } finally {
+            file.isBusy = false;
+        }
+        if (file._edit === edit) delete file._edit;
+        file.pendingRotation = 0;
+        file.savingRotation = 0;
+        this.dropEdited(file);
+        await this.afterFileChanged(file);
+        return { file, backup: bh, backupName };
+    },
+
+    // Every photo back as it was, with its edit kept again
+    async undoSavedEdits(entry) {
+        await entry.group.done;
+        let failed = 0;
+        // A photo whose bytes couldn't be put back keeps its saved crop, so
+        // its edit isn't kept again (it would be applied a second time)
+        const notBack = new Set();
+        try {
+            if (entry.items.length) await this.undoAutoCrop({ items: entry.items, quiet: true, failedFiles: notBack });
+        } catch (e) {
+            failed++;
+        }
+        for (const it of entry.group.items) {
+            try { await this.undoFileEdit(it); } catch (e) { console.error('Undo failed for', it.file.name, e); failed++; notBack.add(it.file); }
+        }
+        Edits.restore(entry.edits.filter(e => !notBack.has(e.file)));
+        if (failed) throw new Error('some photos could not be put back');
+        const n = entry.edits.length;
+        this.showToast(`Put back ${n} photo${n === 1 ? '' : 's'} — the edits are kept again`, 3000, null, null, { kind: 'undo' });
     }
 };
 
