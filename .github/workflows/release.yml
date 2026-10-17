@@ -1,7 +1,8 @@
 name: Release
 
-# Publishes a GitHub Release with the Windows setup, the portable zip and
-# standalone.html (the web app as one file) attached.
+# Publishes a GitHub Release with the Windows setup, the portable zip, the
+# Mac app (.dmg, built and smoke-tested on a Mac first) and standalone.html
+# (the web app as one file) attached.
 # Runs by itself when a version bump (npm run bump x.y.z: app/version.js and
 # package.json) lands on main, and can be run by hand from the Actions tab.
 #
@@ -24,7 +25,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm ci
+        working-directory: mac
+      - name: Build
+        run: node build.js
+        working-directory: mac
+      - name: Smoke test
+        run: node scripts/smoke-test-mac.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jEditor-mac
+          path: dist/jEditor-*-mac.dmg
+          if-no-files-found: error
+
   release:
+    needs: mac
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,6 +94,12 @@ jobs:
       - name: Standalone page
         if: steps.tag.outputs.skip == 'false'
         run: node scripts/build-standalone.js
+      - name: The Mac app
+        if: steps.tag.outputs.skip == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: jEditor-mac
+          path: dist
 
       - name: Release notes
         if: steps.tag.outputs.skip == 'false'
@@ -80,6 +109,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { $notes = '' }
           @"
           **Windows:** download **jEditor-Setup-${{ steps.tag.outputs.version }}.exe** and run it: it installs for you only and doesn't need admin rights. The first time, Windows may say it protected your PC: click **More info**, then **Run anyway**. Or unzip **jEditor-${{ steps.tag.outputs.version }}-portable.zip** anywhere and run jEditor.exe.
+
+          **Mac:** download **jEditor-${{ steps.tag.outputs.version }}-mac.dmg**, open it and drag jEditor to Applications. It isn't signed by Apple yet: the first time, macOS won't open it; go to System Settings → Privacy & Security and click **Open Anyway**. It only asks once.
 
           **Web:** open https://xmui.github.io/jEditor/ in Chrome or Edge, or download **standalone.html** and open it: one file, no install. Scanning, the camera and the sidebar's drives are in the Windows app only.
 
@@ -96,4 +127,4 @@ jobs:
         run: |
           gh release create "${{ steps.tag.outputs.tag }}" --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA `
             --title "jEditor ${{ steps.tag.outputs.version }}" --notes-file release-notes.md `
-            (Get-Item dist/jEditor-Setup-*.exe).FullName (Get-Item dist/jEditor-*-portable.zip).FullName (Get-Item standalone.html).FullName
+            (Get-Item dist/jEditor-Setup-*.exe).FullName (Get-Item dist/jEditor-*-portable.zip).FullName (Get-Item dist/jEditor-*-mac.dmg).FullName (Get-Item standalone.html).FullName

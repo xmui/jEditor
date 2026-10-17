@@ -2,8 +2,9 @@ name: Build
 
 # Every push and pull request: the UI and bridge tests (Linux), then on Windows the
 # build, the smoke test (the real app opening a folder and saving a
-# rotation), and an install / uninstall test. The setup and the portable
-# zip are kept as artifacts on the run's page, to try on another PC.
+# rotation), and an install / uninstall test; on a Mac, the Mac app's tests,
+# its build and the same smoke test on the built app. The setup, the
+# portable zip and the .dmg are kept as artifacts on the run's page.
 on:
   push:
     branches: [main]
@@ -52,4 +53,27 @@ jobs:
         with:
           name: jEditor-portable
           path: dist/jEditor-*-portable.zip
+          if-no-files-found: error
+
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm ci
+        working-directory: mac
+      - name: Mac app tests
+        run: node test/mac.test.js
+      - name: Build
+        run: node build.js
+        working-directory: mac
+      - name: Smoke test
+        run: node scripts/smoke-test-mac.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jEditor-mac
+          path: dist/jEditor-*-mac.dmg
           if-no-files-found: error

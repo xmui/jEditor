@@ -5270,8 +5270,10 @@ const app = {
         for (const f of files) {
             try {
                 await f.handle.getFile(); // still there?
-                const rel = (f.relPath || f.name).split('/').join('\\');
-                ready.push({ f, path: root.replace(/\\$/, '') + '\\' + rel });
+                // Joined as the app's paths are: "\" on Windows, "/" on a Mac
+                const sep = root.includes('\\') ? '\\' : '/';
+                const rel = (f.relPath || f.name).split('/').join(sep);
+                ready.push({ f, path: root.replace(/[\\/]$/, '') + sep + rel });
             } catch (e) {
                 out.set(f, e && e.name === 'NotFoundError' ? { gone: true } : { error: e.message });
             }

@@ -5,6 +5,12 @@
 
 const CHANGELOG = [
     {
+        version: '1.37.0', date: '2026-10-17',
+        items: [
+            'jEditor for Mac, a first version: download jEditor-1.37.0-mac.dmg from the release and drag it into Applications (Apple silicon and Intel, macOS 12 or later). It opens folders without asking for permission, uses the Mac\'s own folder picker, opens folders from Finder (Open With, or dropped on the Dock icon) and shows them in Finder. It has what the web version has; the sidebar, several windows and updates come next. It isn\'t signed by Apple yet: the first time, open it from System Settings → Privacy & Security → Open Anyway.'
+        ]
+    },
+    {
         version: '1.36.0', date: '2026-10-17',
         items: [
             'jEditor is on the web again, at xmui.github.io/jEditor, and as one file (standalone.html) with every release: open it in Chrome or Edge. It has everything here but what only an app can do: scanning, the camera, the sidebar\'s projects and drives, several windows, the Recycle Bin and updates. Settings, recent folders and flags from the old web version carry over.',
