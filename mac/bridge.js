@@ -179,11 +179,12 @@
     }
 
     // ---- What the app does for jEditor ----
+    let onUpdateProgress = null;
     window.JEditorNative = {
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: 'mac',
-        features: ['reveal'],
+        features: ['reveal', 'updates'],
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage
         async dataDir() {
@@ -207,6 +208,17 @@
         // Show a folder in Finder
         async reveal(path) {
             await answer('reveal', { path });
+        },
+        // → { current, tag, version, notes, size, newer }
+        async checkUpdate() {
+            return answer('checkUpdate');
+        },
+        // Downloads the newest .dmg, opens it in Finder and quits, so
+        // jEditor can be dragged into Applications over this one.
+        // progress(received, total) as it downloads.
+        async installUpdate(progress) {
+            onUpdateProgress = progress || null;
+            try { await answer('installUpdate'); } finally { onUpdateProgress = null; }
         }
     };
 
@@ -261,6 +273,8 @@
                 log('error', 'Opening the folder failed: ' + (e && e.message || e));
                 if (msg.smoke) mac.request('smoke', { ok: false, error: String(e && e.message || e), errors });
             }
+        } else if (msg.type === 'updateProgress') {
+            if (onUpdateProgress) onUpdateProgress(msg.received, msg.total);
         } else if (msg.type === 'menu') {
             const a = await whenReady();
             if (msg.action === 'open') a.browseFolder();

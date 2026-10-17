@@ -1376,7 +1376,7 @@ const Folders = {
         this.el('fc-keep-note').textContent = `as “${keepName}”`;
         const replace = this.el('fc-replace');
         replace.classList.toggle('hidden', !canReplace);
-        replace.title = 'The photo that\'s there now goes to the trash (Ctrl+Z brings it back)';
+        replace.title = Host.say('The photo that\'s there now goes to the trash (Ctrl+Z brings it back)');
         this.el('fc-all').checked = false;
         this.el('fc-all-row').classList.toggle('hidden', !(rest > 0));
         this.el('fc-rest').textContent = rest === 1 ? 'the 1 other name clash' : `the ${rest} other name clashes`;

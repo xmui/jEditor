@@ -554,7 +554,7 @@ const Dupes = {
         const total = groups.reduce((n, g) => n + g.files.length, 0);
         if (!groups.length) {
             this.renderMessage(this.trashed
-                ? `All done — ${this.trashed} duplicate${this.trashed === 1 ? '' : 's'} moved to the trash (Ctrl+Z restores).`
+                ? Host.say(`All done — ${this.trashed} duplicate${this.trashed === 1 ? '' : 's'} moved to the trash (Ctrl+Z restores).`)
                 : 'No duplicates found. Try “Loose” sensitivity to widen the search.');
             return;
         }

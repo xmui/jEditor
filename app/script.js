@@ -3655,6 +3655,7 @@ const app = {
         if (this._quietToasts) return;
         // A kind turned off in Settings → Messages (errors always show)
         if (opts && opts.kind && opts.type !== 'error' && !this.toastOn(opts.kind)) return;
+        message = Host.say(message);
         let stack = document.getElementById('toast-stack');
         if (!stack) {
             stack = document.createElement('div');

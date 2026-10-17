@@ -6,7 +6,9 @@
 //
 //   (cd mac && npm ci) && node test/mac.test.js
 
+const crypto = require('crypto');
 const fs = require('fs');
+const http = require('http');
 const os = require('os');
 const path = require('path');
 const { _electron: electron } = require('playwright-core');
@@ -34,10 +36,25 @@ function makeOrder(dir, name, n = 3) {
     return order;
 }
 
+// Releases, as GitHub's API gives them, from a server here (JEDITOR_RELEASES)
+const releases = { latest: null, files: {} };
+const releaseServer = http.createServer((req, res) => {
+    if (req.url === '/latest') {
+        if (!releases.latest) { res.writeHead(404); return res.end(); }
+        res.writeHead(200, { 'content-type': 'application/json' });
+        return res.end(JSON.stringify(releases.latest));
+    }
+    const f = releases.files[req.url];
+    if (!f) { res.writeHead(404); return res.end(); }
+    res.writeHead(200, { 'content-length': f.length });
+    res.end(f);
+});
+
 async function launch(profile, args = []) {
     const app = await electron.launch({
         executablePath: ELECTRON,
-        args: [MAC, '--no-sandbox', '--user-data', profile, ...args]
+        args: [MAC, '--no-sandbox', '--user-data', profile, ...args],
+        env: { ...process.env, JEDITOR_RELEASES: `http://127.0.0.1:${releaseServer.address().port}/latest` }
     });
     const page = await app.firstWindow();
     const errors = [];
@@ -53,6 +70,7 @@ const loaded = (page, n) => page.waitForFunction((n) => !app.isLoading && app.fi
 setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a folder that never opened?)'); process.exit(1); }, 180000).unref();
 
 (async () => {
+    await new Promise(r => releaseServer.listen(0, '127.0.0.1', r));
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jeditor-mac-'));
     const profile = path.join(tmp, 'profile');
     const smith = makeOrder(tmp, 'Smith Order');
@@ -138,6 +156,59 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await app.close();
     }
 
+    console.log('mac: updates');
+    {
+        const port = releaseServer.address().port;
+        const dmg = crypto.randomBytes(3 * 1024 * 1024 + 17);
+        const release = (digest) => ({
+            tag_name: 'v9.1.0', body: '## What\'s new\n- Faster\n- Better',
+            assets: [
+                { name: 'jEditor-Setup-9.1.0.exe', browser_download_url: `http://127.0.0.1:${port}/setup`, size: 1 },
+                { name: 'jEditor-9.1.0-mac.dmg', browser_download_url: `http://127.0.0.1:${port}/dmg`, size: dmg.length, digest: 'sha256:' + digest }
+            ]
+        });
+        releases.files['/dmg'] = dmg;
+        releases.latest = release(crypto.createHash('sha256').update(dmg).digest('hex'));
+        const downloads = path.join(tmp, 'Downloads');
+        fs.mkdirSync(downloads);
+        const { app, page, errors } = await launch(profile);
+        await app.evaluate(({ app, shell }, d) => {
+            app.setPath('downloads', d);
+            global.opened = [];
+            shell.openPath = async (p) => { global.opened.push(p); return ''; };
+            app.quit = () => { global.quitAsked = true; };
+        }, downloads);
+        const r = await page.evaluate(async () => {
+            const shown = getComputedStyle(document.querySelector('[data-page="updates"]')).display !== 'none';
+            const check = await JEditorNative.checkUpdate();
+            const seen = [];
+            await JEditorNative.installUpdate((got, total) => seen.push([got, total]));
+            return { shown, check, seen };
+        });
+        await new Promise(res => setTimeout(res, 1800));
+        const main = await app.evaluate(() => ({ opened: global.opened, quit: !!global.quitAsked }));
+        const file = path.join(downloads, 'jEditor-9.1.0-mac.dmg');
+        check('Settings has Updates', r.shown);
+        check('a newer release is found, with its notes', r.check.newer && r.check.version === '9.1.0' && /Faster/.test(r.check.notes), JSON.stringify(r.check));
+        check('its .dmg downloads (progress as it goes), checked against its SHA-256', fs.existsSync(file) && fs.readFileSync(file).equals(dmg) && r.seen.length >= 3 && r.seen[r.seen.length - 1][0] === dmg.length, JSON.stringify(r.seen));
+        check('... opens in Finder, and jEditor quits so it can be replaced', main.opened.join() === file && main.quit, JSON.stringify(main));
+
+        // A damaged download is thrown away; an older release isn't offered
+        fs.rmSync(file);
+        releases.latest = release('0'.repeat(64));
+        const bad = await page.evaluate(async () => {
+            await JEditorNative.checkUpdate();
+            return JEditorNative.installUpdate(() => { }).then(() => 'installed', e => e.message);
+        });
+        check('a damaged download says so, and leaves nothing behind', /damaged/.test(bad) && fs.readdirSync(downloads).length === 0, bad + ' ' + fs.readdirSync(downloads).join());
+        releases.latest = { ...release('0'.repeat(64)), tag_name: 'v1.0.0' };
+        const old = await page.evaluate(() => JEditorNative.checkUpdate().then(r => r.newer));
+        check('an older release isn\'t offered', old === false);
+        check('no JS errors', errors.length === 0, errors.join('; '));
+        await app.close();
+    }
+
+    releaseServer.close();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(`\n${passed} passed, ${failed} failed`);
     process.exit(failed === 0 ? 0 : 1);

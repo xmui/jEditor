@@ -20,7 +20,9 @@
 //
 // Wording that names the system's own things comes from here too: in a
 // text, {files} is Explorer or Finder, {computer} this PC or this Mac, and
-// {bin} where deleted photos go.
+// {bin} where deleted photos go. On a Mac, keys are said the Mac's way:
+// "Ctrl+Z" is "⌘Z" (the keys themselves already work with ⌘).
+
 
 const Host = {
     get() {
@@ -55,10 +57,22 @@ const Host = {
         };
     },
 
-    // "Show in {files}" → "Show in Finder"
+    // "Show in {files}" → "Show in Finder"; on a Mac, "Ctrl+Z" → "⌘Z"
     say(text) {
         const w = this.words();
-        return String(text).replace(/\{(files|computer|bin)\}/g, (m, k) => w[k]);
+        return this.keys(String(text).replace(/\{(files|computer|bin)\}/g, (m, k) => w[k]));
+    },
+
+    // On a Mac: "Ctrl+Z" → "⌘Z", "Ctrl+Shift+Z" → "⇧⌘Z", "Ctrl+click" →
+    // "⌘-click". Ctrl+wheel stays: zooming takes the Ctrl key (or a pinch)
+    // there too.
+    keys(text) {
+        if (!this.mac()) return text;
+        return text.replace(/\bCtrl\+(Alt\+|Shift\+)?(click\b|wheel\b)?/g, (m, mod, word) => {
+            if (word === 'wheel') return m;
+            const pre = mod === 'Shift+' ? '⇧' : mod === 'Alt+' ? '⌥' : '';
+            return word ? `${pre}⌘-${word}` : `${pre}⌘`;
+        });
     },
 
     // Once, as the page starts: hides what the app can't do (data-needs="scan")
@@ -67,12 +81,13 @@ const Host = {
         root.querySelectorAll('[data-needs]').forEach(el => {
             if (!el.dataset.needs.split(/\s+/).every(f => this.has(f))) el.classList.add('host-missing');
         });
+        const said = /\{(files|computer|bin)\}|\bCtrl\+/;
         const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-            acceptNode: n => /\{(files|computer|bin)\}/.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP
+            acceptNode: n => said.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP
         });
         for (let n = walk.nextNode(); n; n = walk.nextNode()) n.nodeValue = this.say(n.nodeValue);
         for (const attr of ['title', 'aria-label', 'placeholder', 'data-native-text', 'data-native-title']) {
-            root.querySelectorAll(`[${attr}*="{"]`).forEach(el => el.setAttribute(attr, this.say(el.getAttribute(attr))));
+            root.querySelectorAll(`[${attr}*="{"], [${attr}*="Ctrl+"]`).forEach(el => el.setAttribute(attr, this.say(el.getAttribute(attr))));
         }
     }
 };

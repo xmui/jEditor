@@ -16,6 +16,7 @@
 //   --smoke-test <folder>        open it, edit, check on disk, exit 0 or 1
 
 const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, net, protocol, session, shell } = require('electron');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -160,6 +161,85 @@ function mint(wc, dir) {
     return run;
 }
 
+// ---- Updates: the newest release's .dmg ----
+// From jEditor's GitHub releases (JEDITOR_RELEASES: another address, for
+// the tests). Not signed, the app can't replace itself: the .dmg is
+// downloaded (checked against GitHub's SHA-256), opened in Finder, and
+// jEditor quits so it can be dragged into Applications over this one.
+const RELEASES = process.env.JEDITOR_RELEASES || 'https://api.github.com/repos/xmui/jEditor/releases/latest';
+let latest = null;
+
+function currentVersion() {
+    const m = /APP_VERSION = '([0-9.]+)'/.exec(fs.readFileSync(path.join(UI, 'version.js'), 'utf8'));
+    return m ? m[1] : '0.0.0';
+}
+
+// "v1.18.1" < "v1.18.1-2" < "v1.19.0"
+function parseTag(tag) {
+    const m = /(\d+)\.(\d+)\.(\d+)(?:-(\d+))?/.exec(String(tag));
+    return m ? [+m[1], +m[2], +m[3], m[4] ? +m[4] : 1] : [0, 0, 0, 0];
+}
+function isNewer(tag, than) {
+    const a = parseTag(tag), b = parseTag(than);
+    for (let i = 0; i < 4; i++) if (a[i] !== b[i]) return a[i] > b[i];
+    return false;
+}
+
+async function checkUpdate() {
+    const res = await net.fetch(RELEASES, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'jEditor' } });
+    if (res.status === 404) throw new Error('No releases yet');
+    if (!res.ok) throw new Error(`GitHub said ${res.status}`);
+    const json = await res.json();
+    const tag = json.tag_name;
+    const dmg = (json.assets || []).find(a => /^jEditor-.*-mac\.dmg$/i.test(a.name || ''));
+    if (!tag || !dmg) throw new Error(`Release ${tag || '?'} has no Mac app to download`);
+    const current = 'v' + currentVersion();
+    latest = {
+        tag, name: dmg.name, url: dmg.browser_download_url, size: dmg.size || 0,
+        sha256: typeof dmg.digest === 'string' && dmg.digest.startsWith('sha256:') ? dmg.digest.slice(7).toLowerCase() : null
+    };
+    return { current, tag, version: parseTag(tag).slice(0, 3).join('.'), notes: json.body || '', size: latest.size, newer: isNewer(tag, current) };
+}
+
+async function installUpdate(wc) {
+    if (!latest) await checkUpdate();
+    if (!isNewer(latest.tag, 'v' + currentVersion())) throw new Error('This is already the newest version');
+    const res = await net.fetch(latest.url);
+    if (!res.ok) throw new Error(`The download failed (${res.status})`);
+    const total = +res.headers.get('content-length') || latest.size;
+    const file = path.join(app.getPath('downloads'), latest.name);
+    const part = file + '.part';
+    const out = fs.createWriteStream(part);
+    const hash = crypto.createHash('sha256');
+    let got = 0, told = 0;
+    try {
+        for await (const chunk of res.body) {
+            hash.update(chunk);
+            got += chunk.length;
+            if (!out.write(chunk)) await new Promise(r => out.once('drain', r));
+            if (got - told >= 1 << 20 || got === total) {
+                told = got;
+                wc.send('jeditor', { type: 'updateProgress', received: got, total });
+            }
+        }
+        await new Promise((resolve, reject) => out.end(err => (err ? reject(err) : resolve())));
+    } catch (e) {
+        out.destroy();
+        fs.rmSync(part, { force: true });
+        throw new Error('The download stopped: ' + e.message);
+    }
+    if (latest.sha256 && hash.digest('hex') !== latest.sha256) {
+        fs.rmSync(part, { force: true });
+        throw new Error('The download was damaged (its checksum doesn\'t match). Try again.');
+    }
+    fs.renameSync(part, file);
+    const err = await shell.openPath(file);
+    if (err) throw new Error('Downloaded to ' + file + ', but it didn\'t open: ' + err);
+    log('info', 'Update opened: ' + file);
+    setTimeout(() => app.quit(), 1500); // so it can be replaced
+    return { ok: true, file };
+}
+
 // ---- What the page asks for (bridge.js) ----
 const smokeSteps = {};
 
@@ -185,6 +265,10 @@ async function handle(wc, type, data) {
         case 'reveal':
             shell.showItemInFolder(data.path);
             return { ok: true };
+        case 'checkUpdate':
+            return checkUpdate();
+        case 'installUpdate':
+            return installUpdate(wc);
         case 'ready':
             pageReady = true;
             flushOpens();

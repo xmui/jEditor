@@ -120,7 +120,10 @@ const UI = {
     show(kind, opts) {
         this.init();
         if (this._pending) this.answer(false); // one at a time
-        const o = typeof opts === 'string' ? { message: opts } : (opts || {});
+        const o = typeof opts === 'string' ? { message: opts } : { ...(opts || {}) };
+        // This system's words and keys (host.js)
+        for (const k of ['title', 'message', 'note']) if (typeof o[k] === 'string') o[k] = Host.say(o[k]);
+        if (Array.isArray(o.items)) o.items = o.items.map(i => (typeof i === 'string' ? Host.say(i) : i));
         this.el('uid-title').textContent = o.title || (kind === 'alert' ? 'jEditor' : 'Are you sure?');
         const text = this.el('uid-text');
         text.textContent = '';

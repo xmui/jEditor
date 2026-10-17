@@ -1636,7 +1636,7 @@ async function newPage(context, baseUrl, host = null) {
                 for (const c of el.childNodes) c.nodeType === 3 ? texts.push(c.nodeValue) : c.nodeType === 1 && c.tagName !== 'SCRIPT' && walk(c);
             };
             walk(document.body);
-            out.windowsWords = texts.filter(t => /Explorer|Recycle Bin|this PC|\{(files|computer|bin)\}/.test(t)).map(t => t.trim().slice(0, 80));
+            out.windowsWords = texts.filter(t => /Explorer|Recycle Bin|this PC|\{(files|computer|bin)\}|Ctrl\+(?!wheel)/.test(t)).map(t => t.trim().slice(0, 80));
             out.trashTitle = document.getElementById('btn-trash').title;
             out.cacheLabel = document.querySelector('[for="cust-folder-cache"] small').textContent;
             // Deleting: no Recycle Bin, so jEditor's trash; Ctrl+Z restores
@@ -1655,9 +1655,9 @@ async function newPage(context, baseUrl, host = null) {
         });
         check('what it can\'t do isn\'t shown: scanning, camera, sidebar places, updates, the log, the window backdrop', r.buttons.length === 0 && !r.pages.includes('updates'), JSON.stringify([r.buttons, r.pages]));
         check('no windows to drag photos or folders to', r.windows);
-        check('its own words: no Explorer, Recycle Bin or this PC, and no {placeholder} left', r.windowsWords.length === 0 && r.say === 'Show in Finder', JSON.stringify(r.windowsWords));
+        check('its own words: no Explorer, Recycle Bin, this PC or Ctrl+, and no {placeholder} left', r.windowsWords.length === 0 && r.say === 'Show in Finder', JSON.stringify(r.windowsWords));
         check('the order\'s data is kept by the app ("this Mac")', /this Mac/.test(r.cacheLabel) && r.info, JSON.stringify([r.cacheLabel, r.info]));
-        check('deleting uses jEditor\'s trash (no Recycle Bin asked for) and says so', r.recycled.length === 0 && r.trashed.join() === 'photo2.jpg' && /Moved 1 to jEditor's trash/.test(r.toast) && /jEditor's trash/.test(r.trashTitle), JSON.stringify([r.recycled, r.trashed, r.toast, r.trashTitle]));
+        check('deleting uses jEditor\'s trash (no Recycle Bin asked for) and says so, with the Mac\'s keys (⌘Z)', r.recycled.length === 0 && r.trashed.join() === 'photo2.jpg' && /Moved 1 to jEditor's trash — ⌘Z to restore/.test(r.toast) && /jEditor's trash/.test(r.trashTitle), JSON.stringify([r.recycled, r.trashed, r.toast, r.trashTitle]));
         check('... and Ctrl+Z restores it', r.back.includes('photo2.jpg'), r.back.join());
         check('core app suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
