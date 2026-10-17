@@ -39,6 +39,8 @@ const ASSETS = [
     './history.js',
     './watch.js',
     './recents.js',
+    './import.js',
+    './disc.js',
     './icon.png',
     './icon-192.png',
     './icon-maskable-512.png',

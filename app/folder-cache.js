@@ -317,7 +317,7 @@ const FolderCache = {
 
     async absorbNested(app, nested) {
         const dir = app.dirHandle;
-        let flags = 0, trashed = 0, merged = 0, kept = 0;
+        let flags = 0, trashed = 0, merged = 0, kept = 0, edits = 0;
         for (const { path, parent, handles } of nested) {
             for (const h of handles) {
                 if (app.dirHandle !== dir) return; // another folder opened meanwhile
@@ -333,13 +333,19 @@ const FolderCache = {
                             const data = JSON.parse(await (await fh.getFile()).text());
                             flags += Flags.mergeFrom(path, (data && data.flags) || {});
                         } catch (e) { /* no flags there */ }
-                        for (const sub of ['trash', 'originals']) {
+                        for (const sub of ['trash', 'originals', Paint.DIR]) {
                             let from;
                             try { from = await h.getDirectoryHandle(sub); } catch (e) { continue; }
-                            const r = await this.moveAll(app, from, sub, path);
+                            const r = await this.moveAll(app, from, sub, path, { keep: sub === Paint.DIR });
                             if (sub === 'trash') trashed += r.moved;
                             ok = ok && r.ok;
                         }
+                        // Kept edits (crops, adjustments, paint: its layers moved first)
+                        try {
+                            const fh = await h.getFileHandle(Edits.FILE);
+                            const data = JSON.parse(await (await fh.getFile()).text());
+                            edits += Edits.mergeFrom(path, (data && data.edits) || {});
+                        } catch (e) { /* no edits there */ }
                     }
                     if (!ok) { kept++; continue; }
                     await parent.removeEntry(h.name, { recursive: true });
@@ -353,13 +359,14 @@ const FolderCache = {
         if (!merged && !kept) return;
         if (nested.every(n => n.path === '')) {
             // The order's own .jeditor, moved out into the app's storage
-            if (merged) app.showToast('Moved this order\'s .jeditor folder out of the order: its flags, deleted photos and Auto crop originals are now kept by jEditor on this PC', 6000, null, null, { type: 'success' });
+            if (merged) app.showToast(Host.say('Moved this order\'s .jeditor folder out of the order: its flags, edits, deleted photos and Auto crop originals are now kept by jEditor on {computer}'), 6000, null, null, { type: 'success' });
             if (kept) app.showToast('Couldn\'t move everything out of this project\'s .jeditor folder — it\'s left where it is', 5000);
             return;
         }
         const where = nested.length === 1 ? `“${nested[0].path.split('/').pop()}”` : `${nested.length} subfolders`;
         const what = [];
         if (flags) what.push(`${flags} flag${flags === 1 ? '' : 's'}`);
+        if (edits) what.push(`${edits} edit${edits === 1 ? '' : 's'}`);
         if (trashed) what.push(`${trashed} deleted photo${trashed === 1 ? '' : 's'}`);
         if (merged) {
             app.showToast(`Merged the .jeditor folder in ${where} into this project's` + (what.length ? ` (${what.join(', ')})` : ''), 5000, null, null, { type: 'success' });
@@ -368,19 +375,25 @@ const FolderCache = {
     },
 
     // Move every file in `from` into .jeditor/<sub>, as "<subfolder> - name"
-    async moveAll(app, from, sub, path) {
+    // (keep: under its own name, one already there by that name being the
+    // same file: paint layers, whose names are unique)
+    async moveAll(app, from, sub, path, { keep = false } = {}) {
         const root = await this.root(app, true);
         if (!root) return { moved: 0, ok: false };
         const to = await root.getDirectoryHandle(sub, { create: true });
         const taken = new Set();
         for await (const e of to.values()) taken.add(e.name.toLowerCase());
-        const prefix = path ? path.split('/').join(' - ') + ' - ' : ''; // '' = the order's own
+        const prefix = path && !keep ? path.split('/').join(' - ') + ' - ' : ''; // '' = the order's own
         let moved = 0, ok = true;
         const entries = [];
         for await (const e of from.values()) entries.push(e);
         for (const e of entries) {
             if (e.kind !== 'file') { ok = false; continue; } // unexpected: leave it be
             let name = prefix + e.name;
+            if (keep && taken.has(name.toLowerCase())) {
+                await from.removeEntry(e.name).catch(() => { ok = false; });
+                continue;
+            }
             const dot = name.lastIndexOf('.');
             for (let n = 2; taken.has(name.toLowerCase()); n++) {
                 name = dot > 0 ? `${prefix}${e.name.slice(0, e.name.lastIndexOf('.'))} (${n})${e.name.slice(e.name.lastIndexOf('.'))}` : `${prefix}${e.name} (${n})`;

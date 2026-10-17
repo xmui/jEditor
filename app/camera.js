@@ -406,10 +406,14 @@ const Camera = {
             if (img) URL.revokeObjectURL(img.src);
             old.remove();
         }
-        if (!/\.(jpe?g|png|webp)$/i.test(name)) return; // RAW: the name shows
+        const raw = Raw.is(name);
+        if (!raw && !/\.(jpe?g|png|webp)$/i.test(name)) return; // anything else: the name shows
         try {
             const dir = await Folders.handleFor(folder);
-            const file = await (await dir.getFileHandle(name)).getFile();
+            let file = await (await dir.getFileHandle(name)).getFile();
+            // A RAW: its own JPEG (raw.js)
+            if (raw) file = await Raw.preview(file);
+            if (!file) return;
             if (!fig.isConnected) return;
             const img = document.createElement('img');
             img.alt = '';

@@ -77,6 +77,8 @@
             onLogLines(msg.lines || []);
         } else if (msg.type === 'copyProgress' && copying.has(msg.copy)) {
             copying.get(msg.copy)(msg.done, msg.total);
+        } else if (msg.type === 'burnProgress' && burning.has(msg.burn)) {
+            burning.get(msg.burn)(msg.done, msg.total);
         } else if (msg.type === 'scanned' && onScanned) {
             onScanned(msg.name);
         } else if (msg.type === 'notice') {
@@ -187,11 +189,12 @@
     let onLogLines = null;
     let onTether = null;
     const copying = new Map(); // folder copy request id → progress(done, total)
+    const burning = new Map(); // disc burn request id → progress(done, total)
     window.JEditorNative = {
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: 'windows',
-        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates'],
+        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn'],
         // jEditor's storage on this PC: a folder handle, one subfolder per
         // order (see app/folder-cache.js)
         async dataDir() {
@@ -201,6 +204,12 @@
         },
         // Where a folder handle is on disk (null: not known)
         folderPath,
+        // A folder handle for a path, with permission to edit it
+        async folderHandle(path) {
+            const { objects } = await answer('folderHandle', { path });
+            if (!objects[0]) throw new Error('That folder isn\'t there');
+            return objects[0];
+        },
         // Files to the Recycle Bin, by path. Per file: { token } (Ctrl+Z:
         // restore), { noBin } (its drive has no Recycle Bin: keep it some
         // other way), { gone } (not there) or { error }
@@ -389,6 +398,25 @@
             });
             done.copyId = id;
             return done;
+        },
+        // The disc burners: [{ id, name, drive, media, blank, free, canWrite }]
+        async burners() {
+            return (await answer('burners')).msg.burners || [];
+        },
+        // A folder (a path) onto the blank disc in a burner, named label;
+        // progress(done, total) in bytes as it goes → { bytes }; throws if
+        // it couldn't (no blank disc, too big). eject: the disc after
+        burn(burner, path, label, progress, eject = true) {
+            const id = nextId++;
+            burning.set(id, progress || (() => { }));
+            return new Promise((resolve) => {
+                pending.set(id, resolve);
+                post({ type: 'burn', id, burner, path, label, eject });
+            }).then(({ msg }) => {
+                burning.delete(id);
+                if (msg.error) throw new Error(msg.error);
+                return { bytes: msg.bytes };
+            });
         },
         cancelCopy(id) {
             post({ type: 'cancelCopy', copy: id });

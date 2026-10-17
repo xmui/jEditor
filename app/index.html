@@ -46,6 +46,8 @@
     <script src="scan.js"></script>
     <script src="camera.js"></script>
     <script src="places.js"></script>
+    <script src="import.js"></script>
+    <script src="disc.js"></script>
     <script src="windows.js"></script>
     <script src="start.js"></script>
     <script src="picked.js"></script>
@@ -999,6 +1001,36 @@
                 <span class="dialog-actions rename-actions">
                     <button id="op-folder" class="btn secondary">Just this folder</button>
                     <button id="op-order" class="btn primary">Open the project</button>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import from a camera's card (import.js) -->
+    <div id="import-panel" class="dialog-overlay hidden">
+        <div class="dialog prompt-card import-card" role="dialog" aria-modal="true" aria-labelledby="import-title">
+            <div class="dialog-head">
+                <h2 id="import-title" class="dialog-title">Import</h2>
+                <button id="import-close" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+            <div class="dialog-body import-body">
+                <p id="import-summary" class="import-summary"></p>
+                <div class="import-to" role="radiogroup" aria-label="Where to">
+                    <label id="import-to-new-row"><input type="radio" name="import-to" id="import-to-new" value="new"> A new project: <input id="import-name" class="field" type="text" spellcheck="false" aria-label="The new project's name"></label>
+                    <label><input type="radio" name="import-to" id="import-to-here" value="here"> <span id="import-to-here-label">Into the open project</span></label>
+                    <label><input type="radio" name="import-to" id="import-to-pick" value="pick"> Into a folder I choose…</label>
+                </div>
+                <label class="import-opt"><input type="checkbox" id="import-new-only" checked> Only photos not imported before</label>
+                <label class="import-opt"><input type="checkbox" id="import-by-date"> In folders by the day they were taken</label>
+                <label class="import-opt" id="import-eject-row"><input type="checkbox" id="import-eject" checked> Eject the card when done</label>
+            </div>
+            <div class="dialog-foot">
+                <span></span>
+                <span class="dialog-actions">
+                    <button id="import-cancel" class="btn secondary">Cancel</button>
+                    <button id="import-go" class="btn primary">Import</button>
                 </span>
             </div>
         </div>

@@ -408,6 +408,8 @@ const Places = {
             (path && Host.has('reveal') ? `<button class="btn secondary sm" data-act="reveal" title="${Host.say('Show in {files}')}">${this.icons.reveal}${Host.words().files}</button>` : '') +
             (Host.has('windows') ? `<button class="btn ghost icon sm" data-act="split" title="Split: this project and another window side by side">${this.icons.split}</button>` : '') +
             (path ? `<button class="btn ghost icon sm sb-card-pin${this.isPinned(path) ? ' on' : ''}" data-act="pin" title="${this.isPinned(path) ? 'Unpin' : 'Pin to the sidebar'}">${this.icons.pin}</button>` : '') +
+            (path && this.usbDrives(path).length ? `<button class="btn ghost icon sm" data-act="todrive" title="Copy to a USB drive or card">${this.icons.usb}</button>` : '') +
+            (path && Host.has('burn') ? `<button class="btn ghost icon sm" data-act="burn" title="Burn to a CD or DVD">${this.icons.cd}</button>` : '') +
             `</div>` +
             (app.readOnlyMode ? '' : `<label class="sb-card-defer" title="Crops and turns are kept on the photos, to change as often as you like, and saved into them (or exported) when you're done"><input type="checkbox" data-act="defer"${Edits.defer ? ' checked' : ''}><span>Save edits when done</span></label>`);
         // The current project is marked in the lists
@@ -421,6 +423,12 @@ const Places = {
         if (act === 'scan') Scan.open();
         else if (act === 'rename' && path) this.renameFolder(path);
         else if (act === 'split') Windows.split();
+        else if (act === 'todrive' && path) {
+            const b = document.querySelector('.sb-card [data-act="todrive"]');
+            const r = b && b.getBoundingClientRect();
+            this.copyToDrive(path, { at: r ? { x: r.left, y: r.bottom + 4 } : null });
+        }
+        else if (act === 'burn' && path) Disc.open(path);
         else if (act === 'reveal' && path) this.native().reveal(path);
         else if (act === 'pin' && path) {
             if (this.isPinned(path)) this.unpin(path);
@@ -499,6 +507,15 @@ const Places = {
         if (!drive) items.push(['—'], ['Rename…', () => this.renameFolder(path)]);
         if (Host.has('reveal')) items.push(['—'], [Host.say('Show in {files}'), () => this.native().reveal(path)]);
         items.push([pinned ? 'Unpin' : 'Pin to the sidebar', () => pinned ? this.unpin(path) : this.pin(path, name)]);
+        // Onto a USB drive or card, burnt to a disc; a card's photos imported
+        const usb = (this.drives || []).find(d => this.key(d.path).replace(/[\\/]+$/, '') === this.key(path).replace(/[\\/]+$/, '') && d.kind === 'usb');
+        if (usb) {
+            items.push(['—']);
+            if (this.current() && !this.within(this.current(), usb.path)) items.push([`Copy ${this.app.dirHandle.name} here`, () => this.copyToDrive(this.current(), { drive: usb })]);
+            items.push(['Import photos from here…', () => Import.open({ path: usb.path, name: usb.name })]);
+        }
+        if (!drive && this.usbDrives(path).length) items.push(['—'], ['Copy to a USB drive or card…', () => this.copyToDrive(path)]);
+        if (!drive && Host.has('burn')) items.push(['Burn to a CD or DVD…', () => Disc.open(path)]);
         return items;
     },
 
@@ -724,7 +741,9 @@ const Places = {
     },
 
     // A whole folder copied into another, with how far it's got (and Stop)
-    async copyInto(src, dest) {
+    // (quiet: no "Copied" message, for whoever asked to say it; the copy's
+    // path, or null if it didn't happen)
+    async copyInto(src, dest, { quiet = false } = {}) {
         const app = this.app;
         const name = this.baseName(src), where = this.placeName(dest);
         const key = 'copy-' + (this._copyN = (this._copyN || 0) + 1);
@@ -744,18 +763,118 @@ const Places = {
         } catch (e) {
             if (toast) app.dismissToast(toast);
             UI.alert({ title: `Couldn't copy ${name} to ${where}`, message: e.message });
-            return;
+            return null;
         }
         if (r.cancelled) {
             app.showToast(`Stopped copying ${name}: nothing was left on ${where}`, 4000, key, null, { type: 'info' });
-            return;
+            return null;
         }
-        app.showToast(`Copied ${name} to ${where}`, 6000, key, Host.has('reveal') ? { label: 'Show', run: () => this.native().reveal(r.to) } : null, { type: 'success' });
+        if (quiet) { if (toast) app.dismissToast(toast); }
+        else app.showToast(`Copied ${name} to ${where}`, 6000, key, Host.has('reveal') ? { label: 'Show', run: () => this.native().reveal(r.to) } : null, { type: 'success' });
         // What's in it, and the drive's free space, again
         this.listings.delete(this.key(dest));
         this.counts.delete(this.key(dest));
         this.expanded.add(this.key(dest));
         this.drivesChanged();
+        return r.to;
+    },
+
+    // ---- A project onto a USB drive or card, in one step ----
+    //
+    // The drive chosen (if there's more than one), room checked, the folder
+    // copied, its flags and edits put with it (a .jeditor folder in the
+    // copy: wherever it's opened next, jEditor takes them in), and the
+    // drive ejected after if you like.
+
+    usbDrives(except = null) {
+        return (this.drives || []).filter(d => d.kind === 'usb' && !(except && this.within(except, d.path)));
+    },
+
+    async copyToDrive(src = this.current(), { drive = null, at = null } = {}) {
+        const app = this.app;
+        if (!src) return;
+        if (!this.drives) await this.refresh().catch(() => { });
+        const drives = this.usbDrives(src);
+        if (!drive) {
+            if (!drives.length) {
+                UI.alert({ title: 'No USB drive or card', message: 'Plug in a USB drive or a memory card, then try again.' });
+                return;
+            }
+            if (drives.length > 1) {
+                // Which one: a menu of them, with room on each
+                const p = at || { x: innerWidth / 2 - 120, y: innerHeight / 3 };
+                app.openContextMenu(drives.map(d => [`${d.name} — ${this.short(d.free)} free`, () => this.copyToDrive(src, { drive: d })]), p.x, p.y);
+                return;
+            }
+            drive = drives[0];
+        }
+        const name = this.baseName(src);
+        const open = this.key(src) === this.key(this.current());
+        // How big it is: the open project's photos, or counted by the app
+        let bytes = 0;
+        if (open) for (const f of app.files) bytes += f.size || 0;
+        const need = bytes ? Math.ceil(bytes * 1.02) + 8 * 1024 * 1024 : 0;
+        if (need && drive.free && need > drive.free) {
+            UI.alert({ title: `Not enough room on ${drive.name}`, message: `${name} needs ${app.formatBytes(need)}, and ${drive.name} has ${app.formatBytes(drive.free)} free.` });
+            return;
+        }
+        const how = await UI.choose({
+            title: `Copy ${name} to ${drive.name}?`,
+            message: (bytes ? `${app.formatBytes(bytes)} of photos; ${app.formatBytes(drive.free)} free on ${drive.name}. ` : '') +
+                'Its flags and edits go with it, for when it\'s opened in jEditor on another computer.',
+            ok: 'Copy and eject',
+            alt: 'Copy'
+        });
+        if (!how) return;
+        // Everything kept written first, so the copy has it all
+        clearTimeout(Flags._saveTimer);
+        await Promise.all([Edits.flush(), Flags.save()].map(p => p.catch(() => { })));
+        const to = await this.copyInto(src, drive.path, { quiet: true });
+        if (!to) return;
+        const carried = await this.carryData(src, to).catch((e) => { console.warn('Couldn\'t put the project\'s data with the copy:', e); return false; });
+        if (how === 'ok') {
+            await this.eject(drive.path, drive.name);
+            return;
+        }
+        app.showToast(`Copied ${name} to ${drive.name}` + (carried ? ', flags and edits too' : ''), 6000, null,
+            { label: 'Eject', run: () => this.eject(drive.path, drive.name) }, { type: 'success' });
+    },
+
+    // The project's data (flags, kept edits and their paint) into a .jeditor
+    // folder in its copy at `to`: true if there was any
+    async carryData(src, to) {
+        const native = this.native();
+        if (!native || typeof native.folderHandle !== 'function') return false;
+        let store = null;
+        if (this.key(src) === this.key(this.current())) store = await FolderCache.root(this.app, false);
+        else {
+            const all = await native.dataDir();
+            try { store = await all.getDirectoryHandle(FolderCache.storeName(src)); } catch (e) { store = null; }
+        }
+        if (!store) return false;
+        const dest = await native.folderHandle(to);
+        let jd = null;
+        const into = async () => jd || (jd = await dest.getDirectoryHandle(FolderCache.DIR, { create: true }));
+        const copyFile = async (from, dir, name) => {
+            const data = await (await from.getFileHandle(name)).getFile();
+            const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
+            await w.write(data);
+            await w.close();
+        };
+        let any = false;
+        for (const name of [Flags.FILE, Edits.FILE]) {
+            try {
+                await store.getFileHandle(name);
+            } catch (e) { continue; }
+            await copyFile(store, await into(), name);
+            any = true;
+        }
+        try {
+            const from = await store.getDirectoryHandle(Paint.DIR);
+            const pd = await (await into()).getDirectoryHandle(Paint.DIR, { create: true });
+            for await (const [n, h] of from.entries()) if (h.kind === 'file') await copyFile(from, pd, n);
+        } catch (e) { /* no paint */ }
+        return any;
     },
 
     pin(path, name) {
@@ -805,6 +924,10 @@ const Places = {
             if (this.known && !this.known.has(k) && d.kind !== 'cd') {
                 this.fresh.add(k);
                 this.app.showToast(`${d.name} plugged in`, 10000, 'drive-' + k, { label: 'Show', run: () => this.reveal(d.path) }, { type: 'info' });
+                // A camera's card: offered to import (import.js)
+                Import.isCard(d).then(card => {
+                    if (card) this.app.showToast(`${d.name}: a camera's card — import its photos?`, 15000, 'drive-' + k, { label: 'Import…', run: () => Import.open({ path: d.path, name: d.name }) }, { type: 'info' });
+                });
             }
         }
         this.known = now;

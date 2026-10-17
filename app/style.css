@@ -4526,6 +4526,40 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     }
 }
 
+/* Import from a card (import.js) */
+.import-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+
+.import-summary {
+    margin: 0 0 var(--sp-1);
+    color: var(--text-2);
+}
+
+.import-to {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-2) 0;
+    border-top: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.import-to label,
+.import-opt {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    cursor: pointer;
+}
+
+.import-to .field {
+    flex: 1;
+    min-width: 0;
+}
+
 /* Duplicates */
 .dupes-head {
     justify-content: flex-start;

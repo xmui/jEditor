@@ -390,6 +390,8 @@ sealed class MainForm : Form
                 smoke?.Report(msg);
                 break;
             case "dataDir":
+            case "folderHandle":
+            case "burners":
             case "pathsOf":
             case "recycle":
             case "restore":
@@ -423,6 +425,7 @@ sealed class MainForm : Form
             case "windows":
             case "transfer":
             case "undoTransfer":
+            case "burn":
             case "copyFolder":
                 var files = FilesOf(e);
                 BeginInvoke(async () => await HandleRequestAsync(msg, files));
@@ -499,6 +502,15 @@ sealed class MainForm : Form
                     Directory.CreateDirectory(Shell.OrdersDir);
                     var handle = FolderHandle(Shell.OrdersDir);
                     Reply(id, handle is null ? new { error = "no storage" } : new { path = Shell.OrdersDir }, handle);
+                    break;
+                }
+                case "folderHandle":
+                {
+                    // A folder by its path, to write into (a project copied
+                    // onto a drive gets its data; a card's photos are read)
+                    var path = Str(msg, "path") ?? "";
+                    var handle = Path.IsPathFullyQualified(path) && Directory.Exists(path) ? FolderHandle(path) : null;
+                    Reply(id, handle is null ? new { error = "That folder isn't there" } : new { path }, handle);
                     break;
                 }
                 case "pathsOf":
@@ -699,6 +711,36 @@ sealed class MainForm : Form
                     Log.Write($"{(copy ? "Copied" : "Moved")} {items.Count(i => i.To is not null)} of {items.Count} into {dest}");
                     Reply(id, new { items = items.Select(i => new { from = i.From, to = i.To, error = i.Error }) });
                     AppWindows.PostAll(new { type = "filesChanged" });
+                    break;
+                }
+                case "burners":
+                {
+                    // The disc burners and what's in them (Burn.cs)
+                    var burners = await Burn.RunAsync(Burn.Burners);
+                    Reply(id, new { burners });
+                    break;
+                }
+                case "burn":
+                {
+                    // A folder onto a blank CD or DVD, with how far it's got
+                    // as it goes ('burnProgress')
+                    var folder = Str(msg, "path") ?? "";
+                    var burner = Str(msg, "burner") ?? "";
+                    var label = Str(msg, "label") ?? "";
+                    var eject = msg["eject"]?.GetValue<bool>() ?? true;
+                    if (!Path.IsPathFullyQualified(folder) || burner.Length == 0) { Reply(id, new { error = "Not a folder" }); break; }
+                    try
+                    {
+                        var written = await Burn.RunAsync(() => Burn.Write(burner, folder, label, eject, (done, total) =>
+                            BeginInvoke(() => Post(new { type = "burnProgress", burn = id, done, total }))));
+                        Log.Write($"Burnt {folder} ({written} bytes)");
+                        Reply(id, new { ok = true, bytes = written });
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Write($"Couldn't burn {folder}: {ex.Message}");
+                        Reply(id, new { error = ex.Message });
+                    }
                     break;
                 }
                 case "copyFolder":

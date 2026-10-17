@@ -65,15 +65,59 @@ const FAKE_NATIVE = `
         }
         return { dir, name: parts[parts.length - 1] };
     };
+    // A path's folder in OPFS (create: made if it isn't there)
+    const pathDir = async (p, create = false) => {
+        const root = window.__orderRoot + '\\\\';
+        let dir, parts;
+        if (p.startsWith(root)) { dir = await sub('disk'); parts = p.slice(root.length).split(BS); }
+        else if (/^[A-Z]:/.test(p)) { dir = await sub('usb-' + p[0]); parts = p.slice(3).split(BS); }
+        else return null;
+        try {
+            for (const x of parts.filter(Boolean)) dir = await dir.getDirectoryHandle(x, { create });
+        } catch (e) { return null; }
+        return dir;
+    };
+    const copyTree = async (from, to) => {
+        for await (const [n, h] of from.entries()) {
+            if (n === '.jeditor') continue;
+            if (h.kind === 'directory') await copyTree(h, await to.getDirectoryHandle(n, { create: true }));
+            else {
+                const w = await (await to.getFileHandle(n, { create: true })).createWritable();
+                await w.write(await h.getFile());
+                await w.close();
+            }
+        }
+    };
     const tokens = new Map();
     window.JEditorNative = {
         platform: 'windows',
-        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates'],
+        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn'],
         async dataDir() { window.__calls.push('dataDir'); return sub('appdata'); },
         async folderPath(handle) {
             if (window.__unknownPath) return null;
             const parts = await (await sub('disk')).resolve(handle);
-            return parts ? [window.__orderRoot, ...parts].join('\\\\') : null;
+            if (parts) return [window.__orderRoot, ...parts].join('\\\\');
+            // On a USB drive: OPFS usb-E is E:\\
+            for await (const [n, h] of (await opfs()).entries()) {
+                if (!n.startsWith('usb-') || h.kind !== 'directory') continue;
+                const p = await h.resolve(handle);
+                if (p) return n.slice(4) + ':' + BS + p.join(BS);
+            }
+            return null;
+        },
+        // A folder handle for a path: D:\\Orders\\… is disk/…, E:\\… is usb-E/…
+        async folderHandle(p) {
+            const dir = await pathDir(p);
+            if (!dir) throw new Error('That folder is not there');
+            return dir;
+        },
+        // Disc burners (__burners); a burn says what it was asked (__burnt)
+        async burners() { return window.__burners || []; },
+        async burn(burner, p, label, progress, eject) {
+            progress(0, 100); await new Promise(r => setTimeout(r, 20)); progress(60, 100);
+            if (window.__burnError) throw new Error(window.__burnError);
+            window.__burnt = { burner, path: p, label, eject };
+            return { bytes: 1234 };
         },
         async recycle(paths) {
             window.__calls.push('recycle:' + paths.length);
@@ -264,7 +308,11 @@ const FAKE_NATIVE = `
             const done = (async () => {
                 progress(0, 100); await new Promise(r => setTimeout(r, 30)); progress(50, 100);
                 if (window.__copyError) throw new Error(window.__copyError);
-                return { to: dest.replace(/\\$/, '') + BS + p.split(BS).pop() };
+                const to = dest.replace(/\\$/, '') + BS + p.split(BS).pop();
+                // Really copied, where both ends are folders here
+                const from = await pathDir(p), into = await pathDir(to, true);
+                if (from && into) await copyTree(from, into);
+                return { to };
             })();
             done.copyId = 1;
             return done;
@@ -405,7 +453,7 @@ async function newPage(context, baseUrl, host = null) {
     // A clean private file system for each test
     await page.evaluate(async () => {
         const root = await navigator.storage.getDirectory();
-        for (const n of ['disk', 'appdata', 'bin']) { try { await root.removeEntry(n, { recursive: true }); } catch (e) { } }
+        for await (const [n] of root.entries()) if (['disk', 'appdata', 'bin'].includes(n) || n.startsWith('usb-')) { try { await root.removeEntry(n, { recursive: true }); } catch (e) { } }
     });
     return { page, errors };
 }
@@ -1267,7 +1315,7 @@ async function newPage(context, baseUrl, host = null) {
         check('keep a copy on the card, show each photo and live view: on to start with', r.defaults.join() === 'true,true,true', r.defaults.join());
         check('Connect asks the app to tether into the project\'s folder, by path', r.req && r.req.camera === 'cam-1' && r.req.folder === 'D:\\Orders\\Shoot Order' && r.req.prefix === 'photo' && r.req.next === 3 && r.req.keepOnCard === true && r.req.live === true, JSON.stringify(r.req));
         check('connected: the live view shows, one frame after another as each is shown', /Sony A7 III/.test(r.title) && r.frames >= 5, JSON.stringify([r.title, r.frames]));
-        check('F12 takes a photo: RAW + JPEG come in, the JPEG into the project', r.files === 'c1.jpg,photo1.jpg,photo2.jpg,photo3.jpg', r.files);
+        check('F12 takes a photo: RAW + JPEG come in, both into the project', r.files === 'c1.jpg,photo1.jpg,photo2.jpg,photo3.arw,photo3.jpg', r.files);
         check('... counted as one photo', /^1 photo · last: photo3\.jpg/.test(r.status) && r.strip === 'photo3.arw,photo3.jpg', JSON.stringify([r.status, r.strip]));
         check('... and the new photo opens large', r.shown === 'photo3.jpg', r.shown);
         check('the round button in the live view takes one too', r.calls.filter(c => c === 'shoot').length === 2, JSON.stringify(r.calls));
@@ -1611,6 +1659,132 @@ async function newPage(context, baseUrl, host = null) {
             && r.pinLabel === 'Pin to the sidebar' && r.pinned2 && /Not enough room on F:/.test(r.copyError || ''), JSON.stringify([r.dragLabel, r.copied, r.pinLabel, r.pinned2, r.copyError]));
         check('Eject ejects it and says so', r.ejected === 'F:\\' && r.ejectToast, JSON.stringify([r.ejected, r.ejectToast]));
         check('sidebar suite: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('drives: a project copied to a USB drive, a card imported, a disc burnt');
+    {
+        const context = await browser.newContext();
+        const { page, errors } = await newPage(context, baseUrl);
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const BS = String.fromCharCode(92);
+                const dir = await makeOrder('Alpha', 3);
+                await openOrder(dir);
+                await Places.refresh();
+                const f = (n) => app.files.find(x => x.name === n);
+                // A flag and an edit, kept on the PC
+                Flags.apply('star', [f('photo1.jpg')]);
+                Edits.set([{ file: f('photo2.jpg'), edit: { q: 1, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } } }], 'rotation');
+                await Edits.flush();
+                step = 'card button';
+                await Places.drawCard();
+                out.cardButton = !!document.querySelector('.sb-card [data-act="todrive"]') && !!document.querySelector('.sb-card [data-act="burn"]');
+                // Copy: room checked, photos and data copied, a message with Eject
+                step = 'copy';
+                const choose0 = UI.choose, alert0 = UI.alert;
+                UI.choose = async (o) => { out.asked = o.title; return 'alt'; };
+                await Places.copyToDrive(Places.current(), { drive: window.__drives.find(d => d.kind === 'usb') });
+                const usb = await opfs('usb-E');
+                const copy = await usb.getDirectoryHandle('Alpha');
+                out.copied = (await names(copy)).filter(n => n.endsWith('.jpg')).length === 3 && await has(copy, 'Ceremony', 'c1.jpg');
+                out.data = await has(copy, '.jeditor', 'flags.json') && await has(copy, '.jeditor', 'edits.json');
+                await wait(() => /Copied Alpha to USB drive \(E:\), flags and edits too/.test(toasts()));
+                out.toast = toasts();
+                // Not enough room: says so, copies nothing
+                step = 'room';
+                window.__copies = [];
+                UI.alert = async (o) => { out.roomAlert = o.title; };
+                await Places.copyToDrive(Places.current(), { drive: { path: 'F:' + BS, name: 'Tiny (F:)', kind: 'usb', free: 1000, total: 2000 } });
+                out.noCopy = !window.__copies.length;
+                // Copy and eject
+                step = 'eject';
+                UI.choose = async () => 'ok';
+                await usb.removeEntry('Alpha', { recursive: true });
+                await Places.copyToDrive(Places.current(), { drive: window.__drives.find(d => d.kind === 'usb') });
+                await wait(() => window.__ejected);
+                out.ejected = window.__ejected === 'E:' + BS;
+                UI.choose = choose0;
+                UI.alert = alert0;
+
+                // Opened from the drive (on another PC, say): its flags and
+                // edits are taken in, the .jeditor folder taken out
+                step = 'opened from the drive';
+                const copied = await (await opfs('usb-E')).getDirectoryHandle('Alpha');
+                await openOrder(copied);
+                await wait(() => !(window.__hasJeditor) && f('photo2.jpg') && f('photo2.jpg')._edit);
+                out.carried = !!(f('photo2.jpg')._edit && f('photo2.jpg')._edit.q === 1) && !!(f('photo1.jpg')._flags && f('photo1.jpg')._flags.star);
+                await wait(async () => !(await has(copied, '.jeditor')));
+                out.jeditorGone = !(await has(copied, '.jeditor'));
+                await openOrder(dir);
+
+                // A camera's card plugged in: offered to import
+                step = 'card';
+                const card = await opfs('usb-G');
+                const dcim = await (await card.getDirectoryHandle('DCIM', { create: true })).getDirectoryHandle('100CANON', { create: true });
+                for (let i = 1; i <= 3; i++) await write(dcim, `IMG_000${i}.JPG`, await jpeg('hsl(' + i * 90 + ',60%,50%)', 'card ' + i));
+                await write(dcim, 'MVI_0004.MOV', new Blob([new Uint8Array(100)]));
+                window.__drives = window.__drives.concat([{ path: 'G:' + BS, name: 'EOS_DIGITAL (G:)', kind: 'usb', total: 32e9, free: 30e9 }]);
+                window.__tree['G:' + BS] = { path: 'G:' + BS, name: 'G:' + BS, parent: null, folders: [{ name: 'DCIM', path: 'G:' + BS + 'DCIM' }], photos: 0, more: false };
+                dispatchEvent(new Event('jeditor-drives'));
+                await wait(() => /a camera's card — import its photos\?/.test(toasts()));
+                out.offered = /EOS_DIGITAL \(G:\): a camera's card/.test(toasts());
+                // Imported into this project, by day
+                step = 'import';
+                const going = Import.open({ path: 'G:' + BS, name: 'EOS_DIGITAL (G:)' });
+                await wait(() => !document.getElementById('import-panel').classList.contains('hidden'));
+                out.summary = document.getElementById('import-summary').textContent;
+                document.getElementById('import-to-here').checked = true;
+                document.getElementById('import-to-here').dispatchEvent(new Event('change'));
+                document.getElementById('import-by-date').checked = false;
+                document.getElementById('import-eject').checked = false;
+                out.goLabel = document.getElementById('import-go').textContent;
+                document.getElementById('import-go').click();
+                await going;
+                const after = await names(dir);
+                out.imported = ['IMG_0001.JPG', 'IMG_0002.JPG', 'IMG_0003.JPG'].every(n => after.includes(n)) && !after.includes('MVI_0004.MOV');
+                await wait(() => /Imported 3 photos from EOS_DIGITAL/.test(toasts()));
+                out.importToast = /Imported 3 photos/.test(toasts());
+                // Again: nothing new
+                step = 'again';
+                const again = Import.open({ path: 'G:' + BS, name: 'EOS_DIGITAL (G:)' });
+                await wait(() => !document.getElementById('import-panel').classList.contains('hidden'));
+                out.nothingNew = document.getElementById('import-go').disabled && /Nothing new/.test(document.getElementById('import-go').textContent) && /0 not imported before/.test(document.getElementById('import-summary').textContent);
+                document.getElementById('import-cancel').click();
+                await again;
+
+                // A disc burnt: edits not saved offered first; the name asked
+                step = 'burn';
+                window.__burners = [{ id: 'b1', name: 'HL-DT-ST DVDRAM', drive: 'F:' + BS, media: 'DVD-R', blank: true, free: 4.7e9, canWrite: true }];
+                UI.choose = async (o) => { out.burnAsked = o.title; return 'alt'; };
+                const prompt0 = UI.prompt;
+                UI.prompt = async (o) => { out.burnPrompt = o.title + ' / ' + o.input.value; return 'Alpha 2026'; };
+                await Disc.open(Places.current());
+                UI.prompt = prompt0;
+                UI.choose = choose0;
+                out.burnt = window.__burnt;
+                await wait(() => /Burnt Alpha to the DVD-R/.test(toasts()));
+                out.burnToast = /Burnt Alpha/.test(toasts());
+                // No blank disc: says so
+                step = 'no disc';
+                window.__burners = [{ id: 'b1', name: 'HL-DT-ST DVDRAM', drive: 'F:' + BS, media: 'none', blank: false, free: 0, canWrite: false }];
+                UI.alert = async (o) => { out.noDisc = o.title + ': ' + o.message; };
+                await Disc.open(Places.current());
+                UI.alert = alert0;
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('drives: the project card offers copying to a USB drive and burning a disc', r.cardButton, JSON.stringify(r));
+        check('drives: a project copied to a USB drive in one step, its flags and edits with it, Eject offered', r.copied && r.data && /Copy Alpha to USB drive/.test(r.asked || '') && /Eject/.test(r.toast || ''), JSON.stringify(r));
+        check('drives: not enough room says so, and nothing\'s copied; Copy and eject ejects', /Not enough room on Tiny/.test(r.roomAlert || '') && r.noCopy && r.ejected, JSON.stringify(r));
+        check('drives: opened from the drive, the project\'s flags and edits are taken in', r.carried && r.jeditorGone, JSON.stringify(r));
+        check('import: a camera\'s card plugged in is offered to import', r.offered, JSON.stringify(r));
+        check('import: its photos (not its videos) copied into the project; nothing new the second time', r.imported && r.importToast && /Import 3 photos/.test(r.goLabel || '') && /3 photos/.test(r.summary || '') && r.nothingNew, JSON.stringify(r));
+        check('burn: edits not saved offered first, the disc named, burnt, and said', /edits not saved yet/.test(r.burnAsked || '') && /DVD-R \/ Alpha/.test(r.burnPrompt || '') && r.burnt && r.burnt.label === 'Alpha 2026' && r.burnt.path === 'D:\\Orders\\Alpha' && r.burnToast, JSON.stringify(r));
+        check('burn: no blank disc in the drive says so', /Put in a blank disc/.test(r.noDisc || ''), JSON.stringify(r));
+        check('drives suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
 

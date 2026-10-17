@@ -174,6 +174,32 @@ const Edits = {
         return app.files.filter(f => f._edit);
     },
 
+    // Edits from a .jeditor found in the project (prefix: the subfolder it
+    // was in; folder-cache.js absorbNested), where the photo has none of
+    // its own already: how many were taken
+    mergeFrom(prefix, saved) {
+        const app = this.app;
+        const byPath = new Map(app.files.map(f => [f.relPath || f.name, f]));
+        const changed = [];
+        let n = 0;
+        for (const [rel, v] of Object.entries(saved || {})) {
+            const e = this.clean(v);
+            if (!e) continue;
+            const path = Folders.join(prefix, rel);
+            const f = byPath.get(path);
+            if (f) {
+                if (f._edit || (e.size && e.size !== f.size)) continue;
+                f._edit = e;
+                changed.push(f);
+            } else if (!this.orphans.has(path)) {
+                this.orphans.set(path, e);
+            } else continue;
+            n++;
+        }
+        if (n) this.changed(changed);
+        return n;
+    },
+
     clean(v) {
         if (!v || typeof v !== 'object' || !v.n) return null;
         const num = (x) => typeof x === 'number' && isFinite(x);

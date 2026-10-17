@@ -225,6 +225,8 @@ const app = {
         Flags.init(this);
         Edits.init(this);
         Paint.init(this);
+        Import.init(this);
+        Disc.init(this);
         Fit.init();
         History.init(this);
         Watch.init(this);
@@ -3864,6 +3866,7 @@ const app = {
         ['view.fullscreen', 'global', 'View', 'Full screen', ['F']],
         ['view.slideshow', 'global', 'View', 'Slideshow', []],
         ['app.dupes', 'global', 'App', 'Find duplicates (WIP)', ['D']],
+        ['app.import', 'global', 'App', 'Import from a camera or card…', ['Ctrl+I']],
         ['app.refresh', 'global', 'App', 'Rescan folder', ['R']],
         ['app.search', 'global', 'App', 'Search photos', ['Ctrl+F', '/']],
         ['app.shortcuts', 'global', 'App', 'Keyboard shortcuts', ['?']],
@@ -4050,6 +4053,7 @@ const app = {
             'view.fullscreen': () => this.toggleFullscreen(),
             'view.slideshow': () => this.startSlideshow(),
             'app.dupes': () => this.openDupes(),
+            'app.import': () => Import.open(),
             'app.refresh': () => this.refreshFolder(),
             'app.search': () => Flags.focusSearch(),
             'app.shortcuts': () => this.toggleShortcutsPanel(),
@@ -4398,7 +4402,7 @@ const app = {
         if (!id) return;
         // Only the shortcut list and debug console work from the start screen
         const onStart = this.elements.mainInterface.classList.contains('hidden');
-        if (onStart && context === 'global' && !['app.shortcuts', 'app.debug', 'app.settings'].includes(id)) return;
+        if (onStart && context === 'global' && !['app.shortcuts', 'app.debug', 'app.settings', 'app.import'].includes(id)) return;
         if (context === 'crop' && CropEditor.busy) {
             e.preventDefault(); // saving: the crop being written stays as it is
             return;
