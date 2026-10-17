@@ -235,7 +235,7 @@
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: mac.platform,
-        features: ['reveal', 'windows', 'places'].concat(mac.updates ? ['updates'] : []),
+        features: ['reveal', 'windows', 'places'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : []),
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage
         async dataDir() {
@@ -354,6 +354,12 @@
         // Downloads the newest .dmg, opens it in Finder and quits, so
         // jEditor can be dragged into Applications over this one.
         // progress(received, total) as it downloads.
+        // The Mac's privacy settings (app/permissions.js): each row's state,
+        // and whether this is the first time (the window opens on its own)
+        permissions: () => answer('permissions'),
+        askPermission: (id) => answer('askPermission', { id }),
+        openPermissionSettings: (id) => answer('openPermissionSettings', { id }),
+        permissionsSeen: () => answer('permissionsSeen'),
         async installUpdate(progress) {
             // The end reported here too: IPC may bring the last progress after the answer
             let last = -1;
@@ -561,6 +567,7 @@
             const a = await whenReady();
             if (msg.action === 'open') a.browseFolder();
             else if (msg.action === 'settings') a.toggleCustomizePanel(true);
+            else if (msg.action === 'permissions') Permissions.open();
         }
     });
 

@@ -10,6 +10,9 @@
 //   focusSearch(handle)         → the search field takes the keys
 //   describe(handle)            → what the toolbar shows (for the tests)
 //   click(handle, id, value)    → as if clicked (for the tests)
+//   hitAt(handle, x, y)         → the views under that point of the window
+//                                 (from its top left, in points), innermost
+//                                 first, by class (for the tests)
 //   detach(handle)
 //
 // An item: { id, kind: button | menu | segment | search | flexible,
@@ -56,6 +59,41 @@ static NSImage *Symbol(NSString *name, NSString *label) {
     return [NSImage imageWithSystemSymbolName:name accessibilityDescription:label];
 }
 
+// The toolbar's empty space moves the window, as in any Mac app. The page
+// lies under the toolbar (Electron's hidden title bar) and would get the
+// press instead, so this view sits behind the toolbar's items, in the
+// title bar, and takes it: a drag moves the window, a double-click does
+// what System Settings → Desktop & Dock says (zoom, minimise or nothing).
+@interface JEDragView : NSView
+@end
+
+@implementation JEDragView
+- (BOOL)mouseDownCanMoveWindow { return YES; }
+- (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
+- (void)mouseDown:(NSEvent *)event {
+    if (event.clickCount == 2) {
+        NSString *action = [NSUserDefaults.standardUserDefaults stringForKey:@"AppleActionOnDoubleClick"];
+        if ([action isEqualToString:@"Minimize"]) [self.window performMiniaturize:nil];
+        else if (![action isEqualToString:@"None"]) [self.window performZoom:nil];
+        return;
+    }
+    [self.window performWindowDragWithEvent:event];
+}
+@end
+
+// Once per title bar (AppKit makes a new one in and out of full screen)
+static void EnsureDragView(NSWindow *w) {
+    NSView *bar = [w standardWindowButton:NSWindowCloseButton].superview;
+    for (NSView *v = bar; v; v = v.superview) {
+        if ([NSStringFromClass([v class]) isEqualToString:@"NSTitlebarView"]) { bar = v; break; }
+    }
+    if (!bar) return;
+    for (NSView *v in bar.subviews) if ([v isKindOfClass:[JEDragView class]]) return;
+    JEDragView *drag = [[JEDragView alloc] initWithFrame:bar.bounds];
+    drag.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [bar addSubview:drag positioned:NSWindowBelow relativeTo:nil];
+}
+
 @interface JEToolbar : NSObject <NSToolbarDelegate, NSSearchFieldDelegate>
 @property (nonatomic, weak) NSWindow *window;
 @property (nonatomic, strong) NSToolbar *toolbar;
@@ -64,6 +102,7 @@ static NSImage *Symbol(NSString *name, NSString *label) {
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSToolbarItem *> *made;
 @property (nonatomic, assign) Napi::ThreadSafeFunction onAction;
 @property (nonatomic, assign) NSInteger generation;
+@property (nonatomic, strong) NSArray *observers;
 @end
 
 static NSMapTable<NSWindow *, JEToolbar *> *controllers;
@@ -201,6 +240,7 @@ static void Send(JEToolbar *t, NSString *ident, id value) {
     w.toolbarStyle = NSWindowToolbarStyleUnified;
     w.titleVisibility = NSWindowTitleVisible;
     self.toolbar.visible = B(model, @"visible", YES);
+    EnsureDragView(w);
 }
 
 - (NSDictionary *)describe {
@@ -269,6 +309,16 @@ static Napi::Value Attach(const Napi::CallbackInfo &info) {
     t.onAction = Napi::ThreadSafeFunction::New(env, info[1].As<Napi::Function>(), "jeditor-toolbar", 0, 1);
     // A toolbar never keeps the app from quitting
     t.onAction.Unref(env);
+    if (!t.observers) {
+        NSMutableArray *obs = [NSMutableArray array];
+        __weak NSWindow *weak = w;
+        for (NSNotificationName name in @[NSWindowDidEnterFullScreenNotification, NSWindowDidExitFullScreenNotification]) {
+            [obs addObject:[NSNotificationCenter.defaultCenter addObserverForName:name object:w queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) {
+                if (weak) EnsureDragView(weak);
+            }]];
+        }
+        t.observers = obs;
+    }
     [controllers setObject:t forKey:w];
     return Napi::Boolean::New(env, true);
 }
@@ -320,10 +370,22 @@ static Napi::Value Click(const Napi::CallbackInfo &info) {
     return Napi::Boolean::New(info.Env(), true);
 }
 
+static Napi::Value HitAt(const Napi::CallbackInfo &info) {
+    NSWindow *w = WindowOf(info[0]);
+    if (!w || !info[1].IsNumber() || !info[2].IsNumber()) return info.Env().Null();
+    NSView *frame = w.contentView.superview;
+    NSPoint p = NSMakePoint(info[1].As<Napi::Number>().DoubleValue(), w.frame.size.height - info[2].As<Napi::Number>().DoubleValue());
+    NSMutableArray *chain = [NSMutableArray array];
+    for (NSView *v = [frame hitTest:[frame convertPoint:p fromView:nil]]; v && v != frame; v = v.superview) [chain addObject:NSStringFromClass([v class])];
+    return ToJS(info.Env(), chain);
+}
+
 static Napi::Value Detach(const Napi::CallbackInfo &info) {
     NSWindow *w = WindowOf(info[0]);
     JEToolbar *t = w ? [controllers objectForKey:w] : nil;
     if (t) {
+        for (id o in t.observers) [NSNotificationCenter.defaultCenter removeObserver:o];
+        t.observers = nil;
         t.onAction.Release();
         w.toolbar = nil;
         [controllers removeObjectForKey:w];
@@ -338,6 +400,7 @@ static Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("focusSearch", Napi::Function::New(env, FocusSearch));
     exports.Set("describe", Napi::Function::New(env, Describe));
     exports.Set("click", Napi::Function::New(env, Click));
+    exports.Set("hitAt", Napi::Function::New(env, HitAt));
     exports.Set("detach", Napi::Function::New(env, Detach));
     return exports;
 }
