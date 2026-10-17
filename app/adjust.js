@@ -23,6 +23,7 @@ const Adjust = {
 
     LIGHT: [['exposure', 'Exposure'], ['contrast', 'Contrast'], ['highlights', 'Highlights'], ['shadows', 'Shadows'], ['whites', 'Whites'], ['blacks', 'Blacks']],
     COLOR: [['temp', 'Temperature'], ['tint', 'Tint'], ['vibrance', 'Vibrance'], ['saturation', 'Saturation']],
+    DETAIL: [['sharpen', 'Sharpening'], ['sharpRadius', 'Radius'], ['sharpMask', 'Masking'], ['noise', 'Noise reduction'], ['colorNoise', 'Color noise']],
     EFFECTS: [['vignette', 'Vignette'], ['vigMid', 'Midpoint'], ['vigFeather', 'Feather'], ['vigRound', 'Roundness'], ['grain', 'Grain'], ['grainSize', 'Grain size'], ['grainColor', 'Grain color'], ['halation', 'Halation']],
     TRACKS: {
         temp: 'linear-gradient(to right, #3f7fe0, #9aa3ad, #e0b23f)',
@@ -70,6 +71,9 @@ const Adjust = {
         const light = this.el('adj-light'), color = this.el('adj-color');
         for (const [k, label] of this.LIGHT) light.appendChild(this.slider(k, label));
         for (const [k, label] of this.COLOR) color.appendChild(this.slider(k, label));
+        const detail = this.el('adj-detail');
+        for (const [k, label] of this.DETAIL) detail.appendChild(this.slider(k, label));
+        this.initLoupe();
         const effects = this.el('adj-effects');
         for (const [k, label] of this.EFFECTS) effects.appendChild(this.slider(k, label));
         this.el('adj-look-amount').appendChild(this.slider('lookAmount', 'Amount'));
@@ -118,7 +122,7 @@ const Adjust = {
 
         this.initLevels();
         this.initCurve();
-        this._resize = new ResizeObserver(() => { this.layout(); this.drawPanels(); });
+        this._resize = new ResizeObserver(() => { this.layout(); this.drawPanels(); this.placeLoupeBox(); });
         this._resize.observe(this.el('adj-stage'));
         this._resize.observe(this.el('adj-panel'));
     },
@@ -210,6 +214,12 @@ const Adjust = {
             bmp = small;
         }
         const scale = fullW / bmp.width;
+        // This working copy's pixels to one of the photo's (detail needs it)
+        this.pxScale = 1 / scale;
+        this.fullCanvas = this.fullCtx = null;
+        this._fullFor = null;
+        this.loupeAt = { u: 0.5, v: 0.5 };
+        this._detailKey = null;
         // Its crop first: adjusted as it will be seen
         if (kept && !Edits.wholePhoto(kept)) {
             const c = CropEditor.fromSnapshot(bmp.width, bmp.height, kept).drawOutput(bmp);
@@ -244,6 +254,18 @@ const Adjust = {
         if (this.gl && this.gl.lost) this.useCpu();
         if (this.gl) {
             this.gl.setImage(bmp);
+            // Big enough for detail to show (a small photo): kept, to do it on
+            if (this.pxScale >= 0.5) {
+                const c = document.createElement('canvas');
+                c.width = bmp.width;
+                c.height = bmp.height;
+                const cx = c.getContext('2d', { willReadFrequently: true });
+                cx.drawImage(bmp, 0, 0);
+                this.srcData = cx.getImageData(0, 0, c.width, c.height);
+                c.width = c.height = 0;
+            } else {
+                this.srcData = null;
+            }
         } else {
             // No GPU: a smaller working copy, adjusted on the CPU
             const s2 = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
@@ -278,7 +300,12 @@ const Adjust = {
         this.ready = false;
         if (this._raf) cancelAnimationFrame(this._raf);
         this._raf = 0;
-        this.src = this.out = this.sample = this.sampleOut = null;
+        this.src = this.out = this.sample = this.sampleOut = this.srcData = null;
+        clearTimeout(this._detailTimer);
+        clearTimeout(this._loupeTimer);
+        if (this.fullCanvas) this.fullCanvas.width = this.fullCanvas.height = 0;
+        this.fullCanvas = this.fullCtx = null;
+        this._fullFor = null;
         if (this.root) this.root.classList.add('hidden');
         this.file = null;
     },
@@ -342,6 +369,7 @@ const Adjust = {
         if (which === 'mixer') delete a.hsl;
         if (which === 'grading') { delete a.grade; delete a.gradeBlend; delete a.gradeBalance; }
         if (which === 'effects') for (const [k] of this.EFFECTS) delete a[k];
+        if (which === 'detail') for (const [k] of this.DETAIL) delete a[k];
         if (which === 'look') { delete a.look; delete a.lookAmount; }
         this.setAll(a);
     },
@@ -416,6 +444,9 @@ const Adjust = {
         if (T.fx && T.fx.hal[0]) {
             glow = Develop.glowMap(Develop.applyCPU(this.sample, { ...T, fx: null }, this.sampleOut), this.sampleW, this.sampleH);
         }
+        this.glow = glow;
+        this.detailSoon();
+        this.loupeSoon();
         if (this.gl) {
             try {
                 if (glow) this.gl.setGlow(glow);
@@ -437,6 +468,131 @@ const Adjust = {
         this.hist = Develop.histogram(px);
         this.drawPanels();
         this.looksSoon();
+    },
+
+    // ---- Detail: sharpening and noise reduction ----
+    //
+    // They work on the photo's own pixels, so they only show near 1:1:
+    // the 1:1 view in the Detail section shows them, from the full photo,
+    // where you click on it. A small photo (shown at half size or more)
+    // gets them in the main view too, a moment after the sliders stop.
+
+    detailOpen() {
+        const sec = this.el('adj-detail-sec');
+        return !!(sec && sec.open);
+    },
+
+    initLoupe() {
+        const sec = this.el('adj-detail-sec');
+        sec.addEventListener('toggle', () => {
+            this.root.classList.toggle('adj-detail-open', sec.open);
+            if (sec.open) this.renderLoupe();
+            this.placeLoupeBox();
+        });
+        // A click on the photo moves the 1:1 view there
+        this.el('adj-stage').addEventListener('pointerdown', (e) => {
+            if (!this.ready || !this.detailOpen()) return;
+            const r = this.canvas.getBoundingClientRect();
+            const u = (e.clientX - r.left) / r.width, v = (e.clientY - r.top) / r.height;
+            if (u < 0 || u > 1 || v < 0 || v > 1) return;
+            this.loupeAt = { u, v };
+            this.renderLoupe();
+        });
+    },
+
+    // The working copy with detail done (debounced: it's on the CPU)
+    detailSoon() {
+        if (!this.gl || !this.srcData) return;
+        const d = Develop.detail(this.a);
+        const key = JSON.stringify(d);
+        if (key === this._detailKey) return;
+        clearTimeout(this._detailTimer);
+        this._detailTimer = setTimeout(() => {
+            if (!this.ready || !this.srcData) return;
+            this._detailKey = key;
+            const img = new ImageData(new Uint8ClampedArray(this.srcData.data), this.srcData.width, this.srcData.height);
+            if (d) Develop.applyDetail(img.data, img.width, img.height, d, this.pxScale);
+            this.gl.setImage(img);
+            this.schedule();
+        }, 250);
+    },
+
+    // The photo at full size, cropped as it's being adjusted (for 1:1)
+    loadFull() {
+        const file = this.file;
+        if (this._fullFor === file) return this._fullPromise;
+        this._fullFor = file;
+        const kept = Edits.get(file);
+        this._fullPromise = (async () => {
+            const bmp = await createImageBitmap(await file.handle.getFile());
+            let c;
+            if (kept && !Edits.wholePhoto(kept)) {
+                c = CropEditor.fromSnapshot(bmp.width, bmp.height, kept).drawOutput(bmp);
+            } else {
+                c = document.createElement('canvas');
+                c.width = bmp.width;
+                c.height = bmp.height;
+                c.getContext('2d').drawImage(bmp, 0, 0);
+            }
+            bmp.close();
+            if (this.file !== file || !this.isOpen) { c.width = c.height = 0; return null; }
+            this.fullCanvas = c;
+            this.fullCtx = c.getContext('2d', { willReadFrequently: true });
+            return c;
+        })().catch((e) => { console.warn('Adjust: no full-size photo for 1:1:', e); return null; });
+        return this._fullPromise;
+    },
+
+    loupeSoon() {
+        if (!this.detailOpen()) return;
+        clearTimeout(this._loupeTimer);
+        this._loupeTimer = setTimeout(() => this.renderLoupe(), 90);
+    },
+
+    // The 1:1 view: the photo's own pixels round the point, as saved
+    renderLoupe() {
+        const cv = this.el('adj-loupe');
+        if (!cv || !this.ready || !this.detailOpen()) return;
+        this.placeLoupeBox();
+        if (!this.fullCanvas) {
+            const ctx = cv.getContext('2d');
+            ctx.clearRect(0, 0, cv.width, cv.height);
+            this.loadFull().then(c => { if (c) this.renderLoupe(); });
+            return;
+        }
+        const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+        const FW = this.fullCanvas.width, FH = this.fullCanvas.height;
+        const lw = Math.max(1, Math.min(FW, Math.round(r.width * dpr))), lh = Math.max(1, Math.min(FH, Math.round(r.height * dpr)));
+        if (cv.width !== lw) cv.width = lw;
+        if (cv.height !== lh) cv.height = lh;
+        const x = Math.min(FW - lw, Math.max(0, Math.round(this.loupeAt.u * FW - lw / 2)));
+        const y = Math.min(FH - lh, Math.max(0, Math.round(this.loupeAt.v * FH - lh / 2)));
+        this._loupeRect = { x: x / FW, y: y / FH, w: lw / FW, h: lh / FH };
+        let img;
+        if (this.before) {
+            img = this.fullCtx.getImageData(x, y, lw, lh);
+        } else {
+            const d = Develop.detail(this.a);
+            img = d ? Develop.detailBlock((a, b, c, e) => this.fullCtx.getImageData(a, b, c, e), x, y, lw, lh, FW, FH, d, 1)
+                : this.fullCtx.getImageData(x, y, lw, lh);
+            Develop.applyCPU(img.data, Develop.tables(this.a), img.data, { x, y, w: lw, W: FW, H: FH, glow: this.glow });
+        }
+        cv.getContext('2d').putImageData(img, 0, 0);
+        this.placeLoupeBox();
+    },
+
+    // Where the 1:1 view is, outlined on the photo
+    placeLoupeBox() {
+        const box = this.el('adj-loupe-box');
+        if (!box) return;
+        const lr = this._loupeRect;
+        if (!this.ready || !this.detailOpen() || !lr) { box.classList.add('hidden'); return; }
+        const cr = this.canvas.getBoundingClientRect(), sr = this.el('adj-stage').getBoundingClientRect();
+        box.style.left = `${cr.left - sr.left + lr.x * cr.width}px`;
+        box.style.top = `${cr.top - sr.top + lr.y * cr.height}px`;
+        box.style.width = `${Math.max(4, lr.w * cr.width)}px`;
+        box.style.height = `${Math.max(4, lr.h * cr.height)}px`;
+        box.classList.remove('hidden');
     },
 
     // ---- Looks ----

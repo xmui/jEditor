@@ -4389,6 +4389,43 @@ async function newPage(browser, url) {
             Develop.applyCanvas(hc, { halation: 100 });
             const near = hg.getImageData(211, 150, 1, 1).data, far = hg.getImageData(20, 20, 1, 1).data;
             out.halation = [...near.slice(0, 3), far[0]];
+            // Detail. Sharpening: more contrast across an edge
+            const edge = new Uint8ClampedArray(40 * 10 * 4);
+            for (let i = 0; i < 400; i++) { const v = i % 40 < 20 ? 80 : 170; edge.set([v, v, v, 255], i * 4); }
+            const sh = Develop.applyDetail(edge.slice(), 40, 10, Develop.detail(Develop.full({ sharpen: 100 })));
+            out.sharpen = [sh[(5 * 40 + 19) * 4], sh[(5 * 40 + 20) * 4], sh[(5 * 40 + 5) * 4]];
+            // Noise reduction: a noisy flat patch smoother, a strong edge kept
+            const noisy = new Uint8ClampedArray(60 * 60 * 4);
+            for (let i = 0; i < 3600; i++) {
+                const base = i % 60 < 30 ? 60 : 200, nz = ((i * 2654435761) >>> 0) % 21 - 10, c = ((i * 40503) >>> 0) % 31 - 15;
+                noisy.set([base + nz + c, base + nz - c, base + nz, 255], i * 4);
+            }
+            const chroma = (px, k, from, to) => { let a = [], s2 = 0; for (let y = 10; y < 50; y++) for (let x = from; x < to; x++) a.push(px[(y * 60 + x) * 4 + k] - px[(y * 60 + x) * 4 + 1]); const m = a.reduce((p, q) => p + q, 0) / a.length; for (const v of a) s2 += (v - m) ** 2; return Math.sqrt(s2 / a.length); };
+            const lum = (px, from, to) => { let a = []; for (let y = 10; y < 50; y++) for (let x = from; x < to; x++) a.push(px[(y * 60 + x) * 4 + 2]); const m = a.reduce((p, q) => p + q, 0) / a.length; return Math.sqrt(a.reduce((p, q) => p + (q - m) ** 2, 0) / a.length); };
+            const nr = Develop.applyDetail(noisy.slice(), 60, 60, Develop.detail(Develop.full({ noise: 80 })));
+            const cn = Develop.applyDetail(noisy.slice(), 60, 60, Develop.detail(Develop.full({ colorNoise: 100 })));
+            out.noise = [Math.round(lum(noisy, 2, 26)), Math.round(lum(nr, 2, 26)), nr[(30 * 60 + 27) * 4 + 2] < 90 && nr[(30 * 60 + 32) * 4 + 2] > 170];
+            out.colorNoise = [Math.round(chroma(noisy, 0, 2, 26)), Math.round(chroma(cn, 0, 2, 26))];
+            // In blocks with margins, the same as all at once; left out of small previews
+            const big = document.createElement('canvas');
+            big.width = 300; big.height = 200;
+            big.getContext('2d').drawImage(c, 0, 0);
+            const big2 = document.createElement('canvas');
+            big2.width = 300; big2.height = 200;
+            big2.getContext('2d').drawImage(c, 0, 0);
+            const det = { sharpen: 80, sharpMask: 30, noise: 50, colorNoise: 40 };
+            Develop.TILE = 64;
+            Develop.applyCanvas(big, det);
+            Develop.TILE = 2048;
+            Develop.applyCanvas(big2, det);
+            const b1 = big.getContext('2d').getImageData(0, 0, 300, 200).data, b2 = big2.getContext('2d').getImageData(0, 0, 300, 200).data;
+            let worstTile = 0;
+            for (let i = 0; i < b1.length; i++) worstTile = Math.max(worstTile, Math.abs(b1[i] - b2[i]));
+            out.detailTiles = worstTile;
+            const small = document.createElement('canvas');
+            small.width = 300; small.height = 200;
+            small.getContext('2d').drawImage(c, 0, 0);
+            out.previewSkips = Develop.applyCanvas(small, { sharpen: 150 }, { scale: 0.3 }) && small.getContext('2d').getImageData(0, 0, 300, 200).data.every((v, i) => v === img.data[i]);
             return out;
         });
         check('adjust: settings kept compact, nothing left is none, out of range brought in',
@@ -4401,6 +4438,9 @@ async function newPage(browser, url) {
         check('adjust: a vignette darkens the corners and leaves the middle', m.vignette[0] === 128 && m.vignette[1] < 60, JSON.stringify(m.vignette));
         check('adjust: films by process (C-41, E-6, ECN-2, B&W), every one\'s settings kept whole', m.looksWhole && m.processes === 'C-41,E-6,ECN-2,B&W,Creative', JSON.stringify([m.looksWhole, m.processes]));
         check('adjust: black-and-white films see colour their own way (Acros darkens reds, SFX lightens them)', m.mono, JSON.stringify(m.mono));
+        check('adjust: sharpening adds contrast at an edge, not on flat ground', m.sharpen[0] < 80 && m.sharpen[1] > 170 && m.sharpen[2] === 80, JSON.stringify(m.sharpen));
+        check('adjust: noise reduction smooths a noisy patch and keeps the edge; color noise takes out colour blotches', m.noise[1] < m.noise[0] / 2 && m.noise[2] && m.colorNoise[1] < m.colorNoise[0] / 2, JSON.stringify([m.noise, m.colorNoise]));
+        check('adjust: detail in blocks is the same as all at once, and left out of small previews', m.detailTiles <= 1 && m.previewSkips, JSON.stringify([m.detailTiles, m.previewSkips]));
         check('adjust: halation puts a red glow round a light, nothing far from it', m.halation[0] > 40 && m.halation[0] > m.halation[1] * 2 && m.halation[3] === 0, JSON.stringify(m.halation));
 
         const r = await page.evaluate(async () => {
@@ -4504,6 +4544,17 @@ async function newPage(browser, url) {
             Adjust.setAll(pr.adj);
             out.preset = Adjust.result().grade.s[1] === 100 && Adjust.result().exposure === 1;
             Adjust.resetSection('grading');
+            // Detail: the 1:1 view, from the full photo, moved by a click
+            step = 'detail';
+            document.getElementById('adj-detail-sec').open = true;
+            document.getElementById('adj-detail-sec').dispatchEvent(new Event('toggle'));
+            await until(() => Adjust.fullCanvas && document.getElementById('adj-loupe').width > 1);
+            const lr0 = { ...Adjust._loupeRect };
+            const cr = Adjust.canvas.getBoundingClientRect();
+            document.getElementById('adj-stage').dispatchEvent(new PointerEvent('pointerdown', { clientX: cr.left + cr.width * 0.2, clientY: cr.top + cr.height * 0.3, bubbles: true }));
+            out.loupe = Adjust.fullCanvas.width === 640 && Adjust._loupeRect.x < lr0.x && !document.getElementById('adj-loupe-box').classList.contains('hidden');
+            document.getElementById('adj-detail-sec').open = false;
+            document.getElementById('adj-detail-sec').dispatchEvent(new Event('toggle'));
             // Before and after (\\)
             key('\\');
             await sleep(50);
@@ -4582,6 +4633,7 @@ async function newPage(browser, url) {
         check('adjust: sliders change the photo and its histogram live; Ctrl+Z / Ctrl+Shift+Z inside; \\ shows before', r.live && r.undoInside && r.redoInside && r.beforeShown, JSON.stringify(r));
         check('adjust: films shown on the photo by process, a click puts one on (with Amount) or takes it off', r.lookThumbGrey && r.lookOn && r.lookOff, JSON.stringify(r));
         check('adjust: a grading wheel takes a hue and strength; presets save and put settings back', r.wheel && r.preset, JSON.stringify(r));
+        check('adjust: Detail shows the full photo at 1:1, where you click', r.loupe, JSON.stringify(r));
         check('adjust: Done keeps it with the photo (edits.json), the file untouched, no Save bar', r.kept && r.noBar, JSON.stringify(r));
         check('adjust: the viewer and the thumbnail show it adjusted, with the pencil', r.shownBrighter && r.thumbBrighter && r.pencil, JSON.stringify(r));
         check('adjust: an adjusted photo\'s turn is kept with it; Ctrl+Z takes both back', r.turnKept && r.undone, JSON.stringify(r));

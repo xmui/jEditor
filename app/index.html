@@ -400,7 +400,7 @@
             <span id="adj-before-tag" class="adj-tag hidden">Before</span>
         </div>
         <div class="adj-body">
-            <div id="adj-stage" class="adj-stage"><canvas id="adj-canvas"></canvas></div>
+            <div id="adj-stage" class="adj-stage"><canvas id="adj-canvas"></canvas><div id="adj-loupe-box" class="adj-loupe-box hidden" aria-hidden="true"></div></div>
             <aside id="adj-panel" class="adj-panel" aria-label="Adjustments">
                 <section class="adj-sec adj-hist-box" aria-label="Histogram and levels">
                     <div class="adj-sec-head">
@@ -450,6 +450,12 @@
                     <summary><span>Color grading</span><button class="btn ghost sm adj-sec-reset" data-reset="grading">Reset</button></summary>
                     <div id="adj-wheels" class="adj-wheels"></div>
                     <div id="adj-grade-more" class="adj-rows"></div>
+                </details>
+                <details id="adj-detail-sec" class="adj-sec">
+                    <summary><span>Detail</span><button class="btn ghost sm adj-sec-reset" data-reset="detail">Reset</button></summary>
+                    <canvas id="adj-loupe" class="adj-loupe" title="1:1, from the full photo: click the photo to look somewhere else"></canvas>
+                    <p class="adj-hint">1:1 — click the photo to look elsewhere</p>
+                    <div id="adj-detail" class="adj-rows"></div>
                 </details>
                 <details class="adj-sec">
                     <summary><span>Effects</span><button class="btn ghost sm adj-sec-reset" data-reset="effects">Reset</button></summary>

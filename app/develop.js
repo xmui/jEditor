@@ -27,6 +27,9 @@
 //           halation (the red glow round highlights) (Effects:
 //           they depend on where the pixel is, so they're a GPU stage of
 //           their own after the tables, not part of them)
+//   sharpen (0–150), sharpRadius (px), sharpMask; noise, colorNoise
+//           (Detail: they look at the pixels round each one, so they're
+//           done first, on the photo itself, on the CPU: see applyDetail)
 //   look:   a film look (LOOKS), with lookAmount (0–200%): applied over
 //           everything else, inside the colour table
 
@@ -51,6 +54,11 @@ const Develop = {
         grain: { min: 0, max: 100, step: 1 },
         grainSize: { min: 0, max: 100, step: 1, def: 25 },
         grainColor: { min: 0, max: 100, step: 1 },
+        sharpen: { min: 0, max: 150, step: 1 },
+        sharpRadius: { min: 0.5, max: 3, step: 0.1, def: 1 },
+        sharpMask: { min: 0, max: 100, step: 1 },
+        noise: { min: 0, max: 100, step: 1 },
+        colorNoise: { min: 0, max: 100, step: 1 },
         halation: { min: 0, max: 100, step: 1 },
         lookAmount: { min: 0, max: 200, step: 1, def: 100 }
     },
@@ -950,7 +958,9 @@ void main() {
 
     // The adjustments drawn onto a 2D canvas, in place (in tiles, so any
     // size works). True when something changed.
-    applyCanvas(canvas, adj) {
+    // scale: this canvas's pixels to one of the photo's (detail is left
+    // out below a half: it wouldn't show)
+    applyCanvas(canvas, adj, { scale = 1 } = {}) {
         if (!this.active(adj)) return false;
         const T = this.tables(adj);
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -958,10 +968,22 @@ void main() {
         const tile = R ? Math.min(this.TILE, R.max) : this.TILE;
         const glow = T.fx && T.fx.hal[0] ? this.canvasGlow(canvas, T) : null;
         if (glow && R && !R.lost) R.setGlow(glow);
+        const d = scale >= 0.5 ? this.detail(this.full(adj)) : null;
+        // Detail reads round each block: from the picture as it was
+        let source = null;
+        if (d) {
+            source = document.createElement('canvas');
+            source.width = canvas.width;
+            source.height = canvas.height;
+            source.getContext('2d', { willReadFrequently: true }).drawImage(canvas, 0, 0);
+        }
+        const sctx = source && source.getContext('2d');
         for (let y = 0; y < canvas.height; y += tile) {
             for (let x = 0; x < canvas.width; x += tile) {
                 const w = Math.min(tile, canvas.width - x), h = Math.min(tile, canvas.height - y);
-                const img = ctx.getImageData(x, y, w, h);
+                const img = d
+                    ? this.detailBlock((a, b, c, e) => sctx.getImageData(a, b, c, e), x, y, w, h, canvas.width, canvas.height, d, scale)
+                    : ctx.getImageData(x, y, w, h);
                 const frame = { x, y, w, W: canvas.width, H: canvas.height, glow };
                 let done = false;
                 if (R && !R.lost) {
@@ -979,17 +1001,159 @@ void main() {
                 ctx.putImageData(img, x, y);
             }
         }
+        if (source) source.width = source.height = 0;
         return true;
     },
 
+    // ---- Detail: sharpening and noise reduction ----
+    //
+    // On the photo before everything else, in brightness and colour
+    // (Y, and the colour differences Cb, Cr), each a pass across then a
+    // pass down:
+    //   noise: an edge-keeping (bilateral) blur of the brightness
+    //   colorNoise: a blur of the colour only, so blotches go and edges stay
+    //   sharpen: an unsharp mask of the brightness (no colour fringes);
+    //            Masking keeps it to the edges, off flat skin and sky
+    // Sizes are in the photo's own pixels: `scale` is how many of this
+    // picture's pixels there are to one of the photo's (a screen-sized
+    // preview is 0.3 or so, where none of it shows: it's left out there).
+
+    detail(a) {
+        if (!a.sharpen && !a.noise && !a.colorNoise) return null;
+        return { amount: a.sharpen / 100 * 1.5, radius: a.sharpRadius, mask: a.sharpMask / 100, noise: a.noise / 100, color: a.colorNoise / 100 };
+    },
+
+    detailSizes(d, s) {
+        const sn = (0.6 + 1.6 * d.noise) * s, sc = (1 + 4 * d.color) * s, sb = d.radius * s;
+        const rn = d.noise ? Math.min(6, Math.ceil(2 * sn)) : 0;
+        const rc = d.color ? Math.min(10, Math.ceil(2 * sc)) : 0;
+        const rb = d.amount ? Math.min(10, Math.ceil(2.5 * sb)) : 0;
+        return { sn, sc, sb, rn, rc, rb, margin: Math.max(rn, rc) + rb + (d.amount ? 1 : 0) };
+    },
+
+    // RGBA bytes (w × h), in place
+    applyDetail(px, w, h, d, s = 1) {
+        const z = this.detailSizes(d, s);
+        const n = w * h;
+        let Y = new Float32Array(n), Cb = new Float32Array(n), Cr = new Float32Array(n);
+        for (let i = 0; i < n; i++) {
+            const r = px[i * 4] / 255, g = px[i * 4 + 1] / 255, b = px[i * 4 + 2] / 255;
+            const y = 0.299 * r + 0.587 * g + 0.114 * b;
+            Y[i] = y; Cb[i] = b - y; Cr[i] = r - y;
+        }
+        const kernel = (sigma, r) => {
+            const k = new Float32Array(2 * r + 1);
+            for (let i = -r; i <= r; i++) k[i + r] = Math.exp(-(i * i) / (2 * Math.max(1e-3, sigma * sigma)));
+            return k;
+        };
+        // One pass across (or down): for each pixel, a weighted sum of its
+        // neighbours along the line, k from -r to r, edges repeated; with
+        // `range`, neighbours unlike it count less (edges are kept)
+        const line = (src, dst, horiz, r, k, range) => {
+            const len = horiz ? w : h, lines = horiz ? h : w, step = horiz ? 1 : w, next = horiz ? w : 1;
+            for (let l = 0; l < lines; l++) {
+                const o = l * next;
+                for (let a = 0; a < len; a++) {
+                    const c = o + a * step, yc = src[c];
+                    let sum = 0, ws = 0;
+                    if (range) {
+                        for (let t = -r; t <= r; t++) {
+                            let b = a + t;
+                            if (b < 0) b = 0; else if (b >= len) b = len - 1;
+                            const v = src[o + b * step];
+                            const dv = v > yc ? v - yc : yc - v;
+                            const q = dv * 1024 + 0.5 | 0;
+                            const wt = k[t + r] * range[q > 1024 ? 1024 : q];
+                            sum += v * wt; ws += wt;
+                        }
+                    } else if (a >= r && a < len - r) {
+                        for (let t = -r; t <= r; t++) {
+                            const wt = k[t + r];
+                            sum += src[c + t * step] * wt; ws += wt;
+                        }
+                    } else {
+                        for (let t = -r; t <= r; t++) {
+                            let b = a + t;
+                            if (b < 0) b = 0; else if (b >= len) b = len - 1;
+                            const wt = k[t + r];
+                            sum += src[o + b * step] * wt; ws += wt;
+                        }
+                    }
+                    dst[c] = sum / ws;
+                }
+            }
+        };
+        // Brightness kept to its edges, colour blurred
+        if (z.rn || z.rc) {
+            const kn = kernel(z.sn, z.rn), kc = kernel(z.sc, z.rc);
+            const sr = 0.015 + 0.1 * d.noise;
+            const range = new Float32Array(1025);
+            for (let i = 0; i <= 1024; i++) range[i] = Math.exp(-((i / 1024) ** 2) / (2 * sr * sr));
+            const tmp = new Float32Array(n), out = new Float32Array(n);
+            if (z.rn) { line(Y, tmp, true, z.rn, kn, range); line(tmp, out, false, z.rn, kn, range); Y = out.slice(); }
+            if (z.rc) {
+                line(Cb, tmp, true, z.rc, kc, null); line(tmp, out, false, z.rc, kc, null); Cb = out.slice();
+                line(Cr, tmp, true, z.rc, kc, null); line(tmp, out, false, z.rc, kc, null); Cr = out.slice();
+            }
+        }
+        if (z.rb) {
+            const kb = kernel(z.sb, z.rb);
+            const tmp = new Float32Array(n), B = new Float32Array(n);
+            line(Y, tmp, true, z.rb, kb, null);
+            line(tmp, B, false, z.rb, kb, null);
+            const t = d.mask * 0.08;
+            const Y2 = new Float32Array(n);
+            for (let y = 0; y < h; y++) {
+                const up = (y > 0 ? y - 1 : 0) * w, down = (y < h - 1 ? y + 1 : h - 1) * w, row = y * w;
+                for (let x = 0; x < w; x++) {
+                    const i = row + x;
+                    let m = 1;
+                    if (d.mask) {
+                        const gx = (Y[row + (x < w - 1 ? x + 1 : x)] - Y[row + (x > 0 ? x - 1 : 0)]) / 2;
+                        const gy = (Y[down + x] - Y[up + x]) / 2;
+                        m = this.smooth(t, t + 0.04, Math.sqrt(gx * gx + gy * gy));
+                    }
+                    Y2[i] = Y[i] + d.amount * (Y[i] - B[i]) * m;
+                }
+            }
+            Y = Y2;
+        }
+        for (let i = 0; i < n; i++) {
+            const y = Y[i], r = y + Cr[i], b = y + Cb[i];
+            const g = (y - 0.299 * r - 0.114 * b) / 0.587;
+            px[i * 4] = Math.round(Math.min(1, Math.max(0, r)) * 255);
+            px[i * 4 + 1] = Math.round(Math.min(1, Math.max(0, g)) * 255);
+            px[i * 4 + 2] = Math.round(Math.min(1, Math.max(0, b)) * 255);
+        }
+        return px;
+    },
+
+    // A block of a picture (x, y, w, h of a W × H source read through
+    // `read(x, y, w, h)` → ImageData) with its detail done: read with a
+    // margin, so its edges have the pixels round them, as if the whole
+    // picture were done at once
+    detailBlock(read, x, y, w, h, W, H, d, s) {
+        const m = this.detailSizes(d, s).margin;
+        const x0 = Math.max(0, x - m), y0 = Math.max(0, y - m);
+        const x1 = Math.min(W, x + w + m), y1 = Math.min(H, y + h + m);
+        const big = read(x0, y0, x1 - x0, y1 - y0);
+        this.applyDetail(big.data, big.width, big.height, d, s);
+        const out = new ImageData(w, h);
+        for (let r = 0; r < h; r++) {
+            const from = ((y - y0 + r) * big.width + (x - x0)) * 4;
+            out.data.set(big.data.subarray(from, from + w * 4), r * w * 4);
+        }
+        return out;
+    },
+
     // An ImageBitmap with the adjustments (the crop editor's picture)
-    async applyBitmap(bmp, adj) {
+    async applyBitmap(bmp, adj, opts = {}) {
         if (!this.active(adj)) return bmp;
         const c = document.createElement('canvas');
         c.width = bmp.width;
         c.height = bmp.height;
         c.getContext('2d').drawImage(bmp, 0, 0);
-        this.applyCanvas(c, adj);
+        this.applyCanvas(c, adj, opts);
         const out = await createImageBitmap(c);
         c.width = c.height = 0;
         return out;

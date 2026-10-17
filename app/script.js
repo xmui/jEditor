@@ -3227,7 +3227,7 @@ const app = {
             } finally {
                 bmp.close();
             }
-            if (edit.adj) Develop.applyCanvas(canvas, edit.adj);
+            if (edit.adj) Develop.applyCanvas(canvas, edit.adj, { scale: 1 / scale });
             const alpha = /\.(png|webp|gif)$/i.test(file.name);
             const out = await new Promise(r => canvas.toBlob(r, alpha ? 'image/png' : 'image/jpeg', 0.92));
             const w = Math.round(canvas.width * scale), h = Math.round(canvas.height * scale);
