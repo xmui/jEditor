@@ -4167,6 +4167,69 @@ async function newPage(browser, url) {
     }
 
     // ---- 7. file:// — direct open and standalone build ----
+    console.log('photos picked, not a folder (Safari on iPhone and iPad)');
+    {
+        const page = await browser.newPage({ acceptDownloads: true });
+        const errors = [];
+        page.on('pageerror', e => errors.push(e.message));
+        // Safari: no way to open a folder
+        await page.addInitScript(() => { Object.defineProperty(window, 'showDirectoryPicker', { value: undefined, configurable: true }); });
+        await page.goto(`${baseUrl}/index.html`, { waitUntil: 'networkidle' });
+        await page.evaluate(PAGE_HELPERS);
+        const start = await page.evaluate(() => ({ available: Picked.available(), button: document.getElementById('btn-browse-folder').textContent.trim() }));
+        check('without folders, Open photos picks photos instead', start.available && start.button === 'Open photos', JSON.stringify(start));
+        const jpeg = Buffer.from(await page.evaluate(async () => [...await makeRealJpeg(64, 48, { exif: true })]));
+        await page.setInputFiles('#picked-input', [
+            { name: 'IMG_0001.jpg', mimeType: 'image/jpeg', buffer: jpeg },
+            { name: 'IMG_0002.jpg', mimeType: 'image/jpeg', buffer: jpeg },
+            { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('not a photo') }
+        ]);
+        await page.waitForFunction(() => app.files.length === 2 && !app.isLoading, null, { timeout: 10000 });
+        const opened = await page.evaluate(() => ({ names: app.files.map(f => f.name).join(), pill: document.getElementById('picked-bar').classList.contains('hidden'), view: !document.getElementById('main-interface').classList.contains('hidden') }));
+        check('the photos open (not the other file), with nothing to save yet', opened.names === 'IMG_0001.jpg,IMG_0002.jpg' && opened.pill && opened.view, JSON.stringify(opened));
+        const turned = await page.evaluate(async () => {
+            await app.rotateImage(app.files[0], 90, true);
+            const h = app.files[0].handle;
+            return { edited: h.edited, orientation: readOrientation(new Uint8Array(await (await h.getFile()).arrayBuffer())), pill: document.getElementById('picked-count').textContent, shown: !document.getElementById('picked-bar').classList.contains('hidden') };
+        });
+        check('a turn is kept (losslessly, in place), and Save offers it', turned.edited && turned.orientation === 6 && turned.shown && turned.pill === '1 edited photo', JSON.stringify(turned));
+        await page.evaluate(() => {
+            navigator.canShare = () => true;
+            navigator.share = async ({ files }) => { window.shared = await Promise.all(files.map(async f => [f.name, f.size])); };
+        });
+        await page.click('#picked-save');
+        await page.waitForFunction(() => window.shared, null, { timeout: 5000 }).catch(() => { });
+        const shared = await page.evaluate(() => ({ shared: window.shared, hidden: document.getElementById('picked-bar').classList.contains('hidden') }));
+        check('Save hands it to the share sheet (Save to Photos or Files), and it\'s saved', JSON.stringify(shared.shared && shared.shared.map(x => x[0])) === '["IMG_0001.jpg"]' && shared.hidden, JSON.stringify(shared));
+        // No share sheet: several photos download as a zip
+        await page.evaluate(async () => {
+            delete navigator.canShare; delete navigator.share;
+            Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true });
+            await app.rotateImage(app.files[0], 90, true);
+            await app.rotateImage(app.files[1], 270, true);
+        });
+        const [download] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), page.click('#picked-save')]);
+        const zipPath = await download.path();
+        const zip = fs.readFileSync(zipPath);
+        const entries = [];
+        for (let o = 0; zip.readUInt32LE(o) === 0x04034b50;) {
+            const size = zip.readUInt32LE(o + 18), n = zip.readUInt16LE(o + 26);
+            const name = zip.toString('utf8', o + 30, o + 30 + n), data = zip.subarray(o + 30 + n, o + 30 + n + size);
+            entries.push({ name, ok: require('zlib').crc32(data) === zip.readUInt32LE(o + 14), size });
+            o += 30 + n + size;
+        }
+        const eocd = zip.readUInt32LE(zip.length - 22) === 0x06054b50 && zip.readUInt16LE(zip.length - 12) === 2;
+        check('with no share sheet, several photos download as one zip', download.suggestedFilename() === 'jEditor photos.zip' && eocd && entries.map(e => e.name).join() === 'IMG_0001.jpg,IMG_0002.jpg' && entries.every(e => e.ok && e.size > 0), JSON.stringify([download.suggestedFilename(), entries]));
+        const dupes = await page.evaluate(async () => {
+            const f = async (n) => new File([new Uint8Array(await (await app.files[0].handle.getFile()).arrayBuffer())], n, { type: 'image/jpeg' });
+            await Picked.open([await f('image.jpg'), await f('image.jpg')]);
+            return app.files.map(x => x.name).sort().join();
+        });
+        check('two photos with the same name both open', dupes === 'image (2).jpg,image.jpg', dupes);
+        check('no JS errors', errors.length === 0, errors.join('; '));
+        await page.close();
+    }
+
     console.log('file:// support');
     for (const [label, target] of [
         ['app/index.html', path.join(ROOT, 'app', 'index.html')],

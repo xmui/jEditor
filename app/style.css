@@ -3907,6 +3907,26 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
     font-size: var(--fs-small);
 }
 
+/* Photos picked, not a folder (picked.js): the Save pill */
+.picked-bar {
+    position: fixed;
+    top: calc(var(--top-row) + var(--gutter));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--z-floating);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-4);
+    border-radius: var(--r-pill);
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: var(--glass-filter);
+    backdrop-filter: var(--glass-filter);
+    box-shadow: var(--glass-rim), var(--shadow-2);
+    font-size: var(--fs-small);
+    white-space: nowrap;
+}
+
 /* Recent orders */
 .recents {
     width: 100%;
