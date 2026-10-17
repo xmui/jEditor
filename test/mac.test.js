@@ -499,6 +499,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             // The toolbar's empty space moves the window: pressed there, it's the
             // window's (the drag view), not the page's under it
             const win = () => app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.focus(); return w.getBounds(); });
+            // Away from the screen's edge, so it has room to move
+            await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; const b = w.getBounds(); w.setBounds({ ...b, x: 200, y: 120 }); });
+            await page.waitForTimeout(300);
             const b0 = await win();
             const chains = [];
             let spot = null;
@@ -531,7 +534,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 await page.waitForTimeout(500);
                 const b1 = await win();
                 if (b1.x !== b0.x || trusted === 'trusted') {
-                    check('... and dragging there moves the window', Math.abs(b1.x - b0.x + 120) <= 12 && b1.y === b0.y, JSON.stringify([b0, b1, trusted]));
+                    // Posted events come faster than the drag starts tracking, so the
+                    // first few are lost: it moves most of the way, never off its row
+                    check('... and dragging there moves the window', b0.x - b1.x >= 60 && b0.x - b1.x <= 130 && b1.y === b0.y, JSON.stringify([b0, b1, trusted]));
                     await app.evaluate(({ BrowserWindow }, b) => BrowserWindow.getAllWindows()[0].setBounds(b), b0);
                 } else {
                     console.log('        (no real drag: this Mac doesn\'t let the test post mouse events: ' + trusted + ')');
