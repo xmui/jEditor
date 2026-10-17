@@ -50,11 +50,11 @@ const releaseServer = http.createServer((req, res) => {
     res.end(f);
 });
 
-async function launch(profile, args = []) {
+async function launch(profile, args = [], env = {}) {
     const app = await electron.launch({
         executablePath: ELECTRON,
         args: [MAC, '--no-sandbox', '--user-data', profile, ...args],
-        env: { ...process.env, JEDITOR_RELEASES: `http://127.0.0.1:${releaseServer.address().port}/latest` }
+        env: { ...process.env, JEDITOR_RELEASES: `http://127.0.0.1:${releaseServer.address().port}/latest`, ...env }
     });
     const page = await app.firstWindow();
     const errors = [];
@@ -204,6 +204,97 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await page.waitForTimeout(500);
         check('opening a folder that\'s open in a window doesn\'t open another', (await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)) === 2);
         check('no JS errors', errors.length === 0 && errors2.length === 0, errors.concat(errors2).join('; '));
+        await app.close();
+    }
+
+    console.log('mac: the sidebar');
+    {
+        // Drives: a folder standing in for /Volumes (JEDITOR_VOLUMES)
+        const volumes = path.join(tmp, 'Volumes');
+        const backup = path.join(volumes, 'Backup');
+        fs.mkdirSync(backup, { recursive: true });
+        const projectsDir = path.join(tmp, 'Projects');
+        fs.mkdirSync(projectsDir);
+        const alpha = makeOrder(projectsDir, 'Alpha', 2);
+        // Many photos, for stopping a copy part way
+        const many = path.join(tmp, 'Many');
+        fs.mkdirSync(many);
+        for (let i = 0; i < 3000; i++) fs.writeFileSync(path.join(many, `p${i}.jpg`), JPEG);
+        const { app, page, errors } = await launch(profile, [], { JEDITOR_VOLUMES: volumes });
+        await app.evaluate(({ dialog }, p) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] }); }, projectsDir);
+        const r = await page.evaluate(async (p) => {
+            const box = document.getElementById('start-places');
+            const shown = getComputedStyle(box).display !== 'none';
+            await Places.chooseFolder();
+            const places = await JEditorNative.places();
+            return {
+                shown,
+                drives: places.drives.map(d => [d.name, d.kind, d.total > 0 && d.free > 0]),
+                heading: [...box.querySelectorAll('.sb-sec-btn')].map(t => t.textContent.trim()),
+                projects: [...box.querySelectorAll('.sb-projects .fr-name')].map(n => n.textContent),
+                counts: (await JEditorNative.countPhotos([p.alpha, p.smith, p.alpha + '-gone'])).counts,
+                listing: await JEditorNative.listDir(p.alpha)
+            };
+        }, { alpha, smith });
+        check('the sidebar is there on the start screen', r.shown);
+        check('drives are listed, under Locations, with their room', JSON.stringify(r.drives) === '[["Backup","usb",true]]' && r.heading.includes('Locations') && !r.heading.includes('This PC'), JSON.stringify([r.drives, r.heading]));
+        check('the projects folder (chosen with the Mac\'s picker) lists its projects', r.projects.includes('Alpha'), r.projects.join());
+        check('photos are counted, in subfolders too; a folder gone is -1', r.counts.join() === '3,4,-1', r.counts.join());
+        check('a folder\'s folders and photos', r.listing.photos === 2 && r.listing.folders.map(f => f.name).join() === 'Ceremony' && r.listing.parent === projectsDir, JSON.stringify(r.listing));
+
+        // New project: a folder in the projects folder, opened
+        await page.evaluate(async () => {
+            UI.prompt = async () => 'Gamma';
+            await Places.newProject();
+            const until = Date.now() + 10000;
+            while ((!app.dirHandle || app.dirHandle.name !== 'Gamma') && Date.now() < until) await new Promise(res => setTimeout(res, 50));
+        });
+        check('New project makes the folder and opens it', fs.existsSync(path.join(projectsDir, 'Gamma')) && await page.evaluate(() => app.dirHandle && app.dirHandle.name) === 'Gamma');
+
+        // Rename: the folder on disk, and the data kept for it follows
+        const renamed = await page.evaluate(async (p) => {
+            await JEditorNative.openPath(p.alpha);
+            Flags.apply('star', [app.files.find(f => f.name === 'photo1.jpg')]);
+            await Flags.save();
+            await app.closeFolder();
+            const to = await JEditorNative.renameFolder(p.alpha, 'Alpha Smith');
+            const all = await JEditorNative.dataDir();
+            const names = [];
+            for await (const [n] of all.entries()) names.push(n);
+            const store = await all.getDirectoryHandle(FolderCache.storeName(to)).catch(() => null);
+            const order = store && JSON.parse(await (await (await store.getFileHandle('order.json')).getFile()).text());
+            const flags = store && JSON.parse(await (await (await store.getFileHandle('flags.json')).getFile()).text());
+            return { to, oldStore: names.includes(FolderCache.storeName(p.alpha)), orderPath: order && order.path, star: !!(flags && flags.flags['photo1.jpg'] && flags.flags['photo1.jpg'].star) };
+        }, { alpha });
+        const alphaTo = path.join(projectsDir, 'Alpha Smith');
+        check('Rename renames the folder on disk', renamed.to === alphaTo && fs.existsSync(alphaTo) && !fs.existsSync(alpha), renamed.to);
+        check('... and its flags go with it', renamed.star && renamed.orderPath === alphaTo && !renamed.oldStore, JSON.stringify(renamed));
+
+        // A whole folder onto the drive; again: a free name
+        const copied = await page.evaluate(async (p) => {
+            const seen = [];
+            const a = await JEditorNative.copyFolder(p.jones, p.backup, (d, t) => seen.push([d, t]));
+            const b = await JEditorNative.copyFolder(p.jones, p.backup, () => { });
+            return { a, b, seen };
+        }, { jones, backup });
+        check('a folder is copied onto a drive, saying how far it\'s got', copied.a.to === path.join(backup, 'Jones') && fs.existsSync(path.join(backup, 'Jones', 'Ceremony', 'c1.jpg')) && copied.seen.length >= 2, JSON.stringify(copied));
+        check('... copied again, it gets a free name', copied.b.to === path.join(backup, 'Jones (2)'));
+        const stopped = await page.evaluate(async (p) => {
+            let job = null, asked = false;
+            job = JEditorNative.copyFolder(p.many, p.backup, () => { if (!asked && job) { asked = true; JEditorNative.cancelCopy(job.copyId); } });
+            return job;
+        }, { many, backup });
+        check('Stop ends a copy and leaves nothing half done', stopped.cancelled === true && !fs.existsSync(path.join(backup, 'Many')), JSON.stringify(stopped) + ' ' + fs.readdirSync(backup).join());
+
+        // Eject: gone from the list
+        const ejected = await page.evaluate(async (p) => {
+            const r = await JEditorNative.eject(p.backup);
+            const until = Date.now() + 5000;
+            while (Places.drives && Places.drives.some(d => d.name === 'Backup') && Date.now() < until) await new Promise(res => setTimeout(res, 100));
+            return { r, listed: (Places.drives || []).map(d => d.name) };
+        }, { backup });
+        check('Eject ejects the drive, and it leaves the list', ejected.r.ok && !ejected.listed.includes('Backup'), JSON.stringify(ejected));
+        check('no JS errors', errors.length === 0, errors.join('; '));
         await app.close();
     }
 

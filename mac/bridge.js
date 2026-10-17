@@ -183,6 +183,26 @@
     let nextCopy = 1;
     const copying = new Map(); // folder copy id → progress(done, total)
 
+    // A folder of the page's storage under another name: its files moved
+    // one by one (Chromium moves files there, not folders; copied where it
+    // can't), then the old one removed → the new folder
+    async function moveDir(src, parent, name) {
+        const dest = await parent.getDirectoryHandle(name, { create: true });
+        for await (const [n, h] of src.entries()) {
+            if (h.kind === 'directory') {
+                await moveDir(h, dest, n);
+            } else if (typeof h.move === 'function') {
+                await h.move(dest, n);
+            } else {
+                const w = await (await dest.getFileHandle(n, { create: true })).createWritable();
+                await w.write(await h.getFile());
+                await w.close();
+            }
+        }
+        await parent.removeEntry(src.name, { recursive: true });
+        return dest;
+    }
+
     // A folder renamed from `from` to `to`: the data kept for each project
     // at or under it (folder-cache.js: a folder per project, named after
     // its path) is renamed for its new path, and says the new path
@@ -203,12 +223,9 @@
             let dir = h;
             if (target !== name) {
                 // Data left by an earlier project of that name is set aside
-                try {
-                    const old = await all.getDirectoryHandle(target);
-                    await old.move(all, `${target}-old-${Date.now()}`);
-                } catch (e) { /* none */ }
-                await h.move(all, target);
-                dir = await all.getDirectoryHandle(target);
+                const old = await all.getDirectoryHandle(target).catch(() => null);
+                if (old) await moveDir(old, all, `${target}-old-${Date.now()}`);
+                dir = await moveDir(h, all, target);
             }
             // Its path written once the data is where that path finds it
             await FolderCache.writeJson(dir, 'order.json', { ...order, path: np, name: np.split('/').pop() });
