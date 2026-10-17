@@ -982,7 +982,7 @@ async function newPage(browser, url) {
             app.uiPrefs.scale = 1.2;
             app.saveUiPrefs();
             app.applyUiPrefs();
-            out.reordered = [...hc.querySelectorAll('[data-hc]')].map(b => b.dataset.hc).slice(0, 2).join(',');
+            out.reordered = [...hc.querySelectorAll('[data-hc]')].map(b => b.dataset.hc).slice(0, 3).join(',');
             out.refreshHidden = document.getElementById('btn-refresh').classList.contains('hidden');
             out.fullscreenMain = !document.getElementById('btn-fullscreen').classList.contains('hc-extra');
             out.vertical = hc.classList.contains('vertical');
@@ -1026,10 +1026,11 @@ async function newPage(browser, url) {
             out.pillHidden = pill.classList.contains('hidden');
             return out;
         });
-        check('default main controls: info, view, refresh, crop, history', r.defaultMain === 'info,view,refresh,crop,history', r.defaultMain);
+        check('default main controls: info, view, refresh, crop, adjust, history', r.defaultMain === 'info,view,refresh,crop,adjust,history', r.defaultMain);
         check('extras live in More (fit, strip, fullscreen, dupes, keys, whatsnew, customize)', r.defaultExtras === 'fit,strip,fullscreen,dupes,keys,whatsnew,customize', r.defaultExtras);
         check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
-        check('reorder + hide + promote via prefs', r.reordered === 'crop,info' && r.refreshHidden && r.fullscreenMain,
+        // (Adjust, newer than that saved order, goes after Crop)
+        check('reorder + hide + promote via prefs', r.reordered === 'crop,adjust,info' && r.refreshHidden && r.fullscreenMain,
             JSON.stringify({ o: r.reordered, h: r.refreshHidden, f: r.fullscreenMain }));
         check('vertical pill + scale + persistence', r.vertical && r.persisted && parseFloat(r.scaleApplied) === 1.2,
             JSON.stringify({ v: r.vertical, p: r.persisted, z: r.scaleApplied }));
@@ -4292,6 +4293,238 @@ async function newPage(browser, url) {
         });
         check('two photos with the same name both open', dupes === 'image (2).jpg,image.jpg', dupes);
         check('no JS errors', errors.length === 0, errors.join('; '));
+        await page.close();
+    }
+
+    console.log('adjust (develop.js, adjust.js)');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        // The maths, on the GPU and the CPU
+        const m = await page.evaluate(async () => {
+            const out = {};
+            out.compact = JSON.stringify(Develop.clean({ exposure: 0.5, contrast: 0, levels: { rgb: [0, 1, 1, 0, 1], r: [0.1, 1, 0.9, 0, 1] }, curve: { rgb: [[0, 0], [1, 1]] }, hsl: { sat: [0, 0, 0, 0, 0, 0, 0, 0] } }));
+            out.none = Develop.clean({ exposure: 0, curve: { rgb: [[0, 0], [0.5, 0.5], [1, 1]] } }) === null && !Develop.active({});
+            out.clamped = JSON.stringify(Develop.clean({ exposure: 9, tint: -400, levels: { rgb: [0.8, 50, 0.2, 0, 1] } }));
+            const id = Develop.tables({}).channels;
+            out.identity = [...Array(256).keys()].every(i => Math.abs(id[i * 4] - i / 255) < 1e-6 && Math.abs(id[i * 4 + 2] - i / 255) < 1e-6);
+            // +1 EV doubles the light: mid grey 0.5 → toGamma(2 · toLinear(0.5))
+            const ev = Develop.tables({ exposure: 1 }).channels;
+            out.exposure = Math.abs(ev[128 * 4] - Develop.toGamma(2 * Develop.toLinear(128 / 255))) < 1e-5;
+            // A curve never turns back, however its points sit
+            const f = Develop.spline([[0, 0], [0.2, 0.6], [0.25, 0.62], [1, 1]]);
+            let mono = true, prev = -1;
+            for (let i = 0; i <= 200; i++) { const y = f(i / 200); if (y < prev - 1e-9) mono = false; prev = y; }
+            out.monotone = mono && Math.abs(f(0.2) - 0.6) < 1e-9;
+            // The same picture from the GPU and the CPU (colour table too)
+            const c = document.createElement('canvas');
+            c.width = 300; c.height = 200;
+            const g = c.getContext('2d');
+            const img = g.createImageData(300, 200);
+            for (let i = 0; i < img.data.length; i += 4) {
+                img.data[i] = (i * 7) % 256; img.data[i + 1] = (i * 13) % 256; img.data[i + 2] = (i * 29) % 256; img.data[i + 3] = 255;
+            }
+            g.putImageData(img, 0, 0);
+            const adj = { exposure: 0.4, contrast: 30, shadows: 40, temp: -20, vibrance: 25, saturation: 10, curve: { g: [[0, 0], [0.5, 0.6], [1, 1]] }, hsl: { hue: [20, 0, 0, 0, 0, -30, 0, 0], sat: [0, 0, 0, 40, 0, 0, 0, 0], lum: [0, 0, 0, 0, 0, 30, 0, 0] } };
+            const gpu = document.createElement('canvas');
+            gpu.width = 300; gpu.height = 200;
+            gpu.getContext('2d').drawImage(c, 0, 0);
+            out.hasGpu = !!Develop.gpu();
+            Develop.applyCanvas(gpu, adj);
+            const a = gpu.getContext('2d').getImageData(0, 0, 300, 200).data;
+            const b = Develop.applyCPU(new Uint8ClampedArray(img.data), Develop.tables(adj));
+            let worst = 0;
+            for (let i = 0; i < a.length; i++) worst = Math.max(worst, Math.abs(a[i] - b[i]));
+            out.gpuCpu = worst;
+            // In tiles: the same
+            const tiled = document.createElement('canvas');
+            tiled.width = 300; tiled.height = 200;
+            tiled.getContext('2d').drawImage(c, 0, 0);
+            Develop.TILE = 64;
+            Develop.applyCanvas(tiled, adj);
+            Develop.TILE = 2048;
+            const t = tiled.getContext('2d').getImageData(0, 0, 300, 200).data;
+            out.tiles = t.every((v, i) => Math.abs(v - a[i]) <= 1);
+            // Auto color takes a cast off
+            const cast = new Uint8ClampedArray(64 * 64 * 4);
+            for (let i = 0; i < cast.length; i += 4) { const v = (i / 4) % 64 * 2; cast[i] = 110 + v; cast[i + 1] = 90 + v * 0.8; cast[i + 2] = 60 + v * 0.5; cast[i + 3] = 255; }
+            const fixed = Develop.applyCPU(cast, Develop.tables(Develop.auto(cast, null, { colour: true })), new Uint8ClampedArray(cast.length));
+            const mean = (px, k) => { let s = 0; for (let i = k; i < px.length; i += 4) s += px[i]; return s / (px.length / 4); };
+            const spread = (px) => Math.max(mean(px, 0), mean(px, 1), mean(px, 2)) - Math.min(mean(px, 0), mean(px, 1), mean(px, 2));
+            out.cast = [Math.round(spread(cast)), Math.round(spread(fixed))];
+            return out;
+        });
+        check('adjust: settings kept compact, nothing left is none, out of range brought in',
+            m.compact === '{"exposure":0.5,"levels":{"r":[0.1,1,0.9,0,1]}}' && m.none && m.clamped === '{"exposure":5,"tint":-100,"levels":{"rgb":[0.8,9.99,0.81,0,1]}}', JSON.stringify(m));
+        check('adjust: no settings change nothing; +1 EV doubles the light; curves never turn back', m.identity && m.exposure && m.monotone, JSON.stringify(m));
+        check('adjust: the GPU and the CPU agree (within a level), in tiles too', m.hasGpu && m.gpuCpu <= 1 && m.tiles, JSON.stringify(m));
+        check('adjust: Auto color takes the cast off a faded print', m.cast[0] > 40 && m.cast[1] < 8, JSON.stringify(m.cast));
+
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try { return await (async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const until = async (fn, n = 200) => { for (let i = 0; i < n && !(await fn()); i++) await sleep(50); };
+            const key = (k, o = {}) => window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, ...o }));
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('adjusted', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('adjusted', { create: true });
+            const photo = async (shade) => {
+                const c = document.createElement('canvas');
+                c.width = 640; c.height = 480;
+                const g = c.getContext('2d');
+                const grad = g.createLinearGradient(0, 0, 640, 0);
+                grad.addColorStop(0, `rgb(${shade - 40},${shade - 50},${shade - 60})`);
+                grad.addColorStop(1, `rgb(${shade + 40},${shade + 30},${shade + 20})`);
+                g.fillStyle = grad; g.fillRect(0, 0, 640, 480);
+                return new Blob([await (await new Promise(res => c.toBlob(res, 'image/jpeg', 0.92))).arrayBuffer()], { type: 'image/jpeg' });
+            };
+            const originals = {};
+            for (const [n, s] of [['a.jpg', 100], ['b.jpg', 120]]) {
+                const b = await photo(s);
+                const fh = await dir.getFileHandle(n, { create: true });
+                const w = await fh.createWritable(); await w.write(b); await w.close();
+                originals[n] = new Uint8Array(await b.arrayBuffer());
+            }
+            const bytes = async (d, n) => new Uint8Array(await (await (await d.getFileHandle(n)).getFile()).arrayBuffer());
+            const same = async (n) => { const now = await bytes(dir, n); return now.length === originals[n].length && now.every((v, i) => v === originals[n][i]); };
+            const kept = async () => {
+                try { return JSON.parse(await (await (await (await dir.getDirectoryHandle('.jeditor')).getFileHandle('edits.json')).getFile()).text()); } catch (e) { return null; }
+            };
+            const brightness = async (blob) => {
+                const bmp = await createImageBitmap(blob);
+                const c = document.createElement('canvas'); c.width = 64; c.height = 48;
+                const g = c.getContext('2d'); g.drawImage(bmp, 0, 0, 64, 48); bmp.close();
+                const px = g.getImageData(0, 0, 64, 48).data;
+                let s = 0; for (let i = 0; i < px.length; i += 4) s += px[i] + px[i + 1] + px[i + 2];
+                return s / (px.length / 4) / 3;
+            };
+            const f = (n) => app.files.find(x => x.name === n);
+            const blobOf = async (src) => src.blob || await (await fetch(src.url)).blob();
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            app.openSingle(f('a.jpg'));
+            const before = await brightness(await blobOf(await app.getDisplaySource(f('a.jpg'))));
+
+            // E opens Adjust on the photo
+            step = 'E opens Adjust';
+            key('e');
+            await until(() => Adjust.ready);
+            out.open = Adjust.isOpen && !document.getElementById('adjust-editor').classList.contains('hidden') && !!Adjust.gl && !!Adjust.hist && Adjust.hist.n > 0;
+            const histBefore = Adjust.hist.l.reduce((s, v, i) => s + v * i, 0) / Adjust.hist.n;
+            // A slider, as dragged: the photo and histogram follow
+            const slider = document.getElementById('adj-exposure');
+            slider.value = '1'; slider.dispatchEvent(new Event('input'));
+            slider.dispatchEvent(new Event('change'));
+            await sleep(80);
+            const histAfter = Adjust.hist.l.reduce((s, v, i) => s + v * i, 0) / Adjust.hist.n;
+            out.live = histAfter > histBefore + 20 && document.querySelector('#adj-exposure').closest('.adj-row').querySelector('.adj-num').value === '1.00';
+            // Ctrl+Z inside Adjust undoes the slider; Ctrl+Shift+Z redoes it
+            key('z', { ctrlKey: true });
+            out.undoInside = Adjust.a.exposure === 0;
+            key('Z', { ctrlKey: true, shiftKey: true });
+            out.redoInside = Adjust.a.exposure === 1;
+            // Before and after (\\)
+            key('\\');
+            await sleep(50);
+            out.beforeShown = Adjust.before && !document.getElementById('adj-before-tag').classList.contains('hidden');
+            key('\\');
+            // Done (Enter): kept with the photo, the file isn't touched
+            step = 'Done';
+            key('Enter');
+            await until(async () => (await kept()) && (await kept()).edits['a.jpg']);
+            const k1 = await kept();
+            out.kept = !Adjust.isOpen && f('a.jpg')._edit && f('a.jpg')._edit.adj.exposure === 1 && k1.defer === false && k1.edits['a.jpg'].adj.exposure === 1 && await same('a.jpg');
+            out.noBar = document.getElementById('edits-bar').classList.contains('hidden');
+            const shown = await app.getDisplaySource(f('a.jpg'));
+            out.shownBrighter = (await brightness(await blobOf(shown))) > before + 25;
+            await until(() => f('a.jpg').thumbnailUrl && !f('a.jpg')._thumbStale);
+            out.thumbBrighter = (await brightness(await (await fetch(f('a.jpg').thumbnailUrl)).blob())) > before + 25;
+            out.pencil = !!document.querySelector('#file-edit:not(.hidden)');
+
+            // A turn on an adjusted photo is kept with it too
+            step = 'turn';
+            await app.rotateImage(f('a.jpg'), 90);
+            out.turnKept = f('a.jpg')._edit.q === 1 && f('a.jpg')._edit.adj.exposure === 1 && await same('a.jpg');
+            // Ctrl+Z: the turn back; again: the adjustment gone
+            await app.undo();
+            await app.undo();
+            out.undone = !f('a.jpg')._edit;
+            // Back, with saturation off too, for the next steps
+            Edits.set([{ file: f('a.jpg'), edit: Edits.withAdj(null, { exposure: 1, saturation: -100 }) }], 'adjustments');
+
+            // Copy and paste onto another photo (grid selection)
+            step = 'paste';
+            app.setView('grid');
+            app.selection = new Set([f('a.jpg')]);
+            app.currentFile = f('a.jpg');
+            app.updateSelectionUI();
+            key('C', { ctrlKey: true, shiftKey: true });
+            app.selection = new Set([f('b.jpg')]);
+            app.currentFile = f('b.jpg');
+            app.updateSelectionUI();
+            key('V', { ctrlKey: true, shiftKey: true });
+            out.pasted = f('b.jpg')._edit && f('b.jpg')._edit.adj.saturation === -100 && await same('b.jpg');
+
+            // Opened again: the adjustments are still there
+            step = 'reopen';
+            await Edits.flush();
+            await app.browseFolder();
+            await until(() => app.files.length === 2 && f('a.jpg') && f('a.jpg')._edit);
+            out.reopened = f('a.jpg')._edit.adj.exposure === 1 && f('b.jpg')._edit.adj.saturation === -100;
+
+            // Export: copies with the adjustments, the originals left alone
+            step = 'export';
+            const prompt = UI.prompt;
+            UI.prompt = async () => '';
+            await app.exportCopies([f('b.jpg')]);
+            UI.prompt = prompt;
+            const ex = await (await (await dir.getDirectoryHandle('jEditor Export')).getFileHandle('b.jpg')).getFile();
+            const exPx = await (async () => {
+                const bmp = await createImageBitmap(ex);
+                const c = document.createElement('canvas'); c.width = 8; c.height = 8;
+                const g = c.getContext('2d'); g.drawImage(bmp, 0, 0, 8, 8); bmp.close();
+                return g.getImageData(4, 4, 1, 1).data;
+            })();
+            out.exported = Math.max(Math.abs(exPx[0] - exPx[1]), Math.abs(exPx[1] - exPx[2])) <= 3 && await same('b.jpg');
+
+            // Save edits: written into the photo, the edit gone
+            step = 'save into photo';
+            const choose = UI.choose;
+            UI.choose = async () => 'ok';
+            await Edits.saveAll({ list: [f('b.jpg')] });
+            UI.choose = choose;
+            out.saved = !f('b.jpg')._edit && !(await same('b.jpg')) && !!f('a.jpg')._edit;
+            return out;
+            })(); } catch (e) { return { error: step + ': ' + e.message }; }
+        });
+        check('adjust: E opens it on the GPU, with a histogram', r.open, JSON.stringify(r));
+        check('adjust: sliders change the photo and its histogram live; Ctrl+Z / Ctrl+Shift+Z inside; \\ shows before', r.live && r.undoInside && r.redoInside && r.beforeShown, JSON.stringify(r));
+        check('adjust: Done keeps it with the photo (edits.json), the file untouched, no Save bar', r.kept && r.noBar, JSON.stringify(r));
+        check('adjust: the viewer and the thumbnail show it adjusted, with the pencil', r.shownBrighter && r.thumbBrighter && r.pencil, JSON.stringify(r));
+        check('adjust: an adjusted photo\'s turn is kept with it; Ctrl+Z takes both back', r.turnKept && r.undone, JSON.stringify(r));
+        check('adjust: Ctrl+Shift+C / V copy the adjustments onto other photos', r.pasted, JSON.stringify(r));
+        check('adjust: still there when the project is opened again', r.reopened, JSON.stringify(r));
+        check('adjust: Export writes them, Save edits writes them into the photo', r.exported && r.saved, JSON.stringify(r));
+
+        // Without a project (photos picked on a phone): Done writes the photo
+        const p = await page.evaluate(async () => {
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const bytes = new Uint8Array(await makeRealJpeg(200, 150, { color: '#555' }));
+            await Picked.open([new File([bytes], 'phone.jpg', { type: 'image/jpeg' })]);
+            app.openSingle(app.files[0]);
+            await app.enterAdjust();
+            for (let i = 0; i < 100 && !Adjust.ready; i++) await sleep(30);
+            Adjust.a.exposure = 1.5;
+            Adjust.changed();
+            await app.saveAdjust();
+            const h = app.files[0].handle;
+            for (let i = 0; i < 100 && !h.edited; i++) await sleep(30);
+            const now = new Uint8Array(await (await h.getFile()).arrayBuffer());
+            return { edited: h.edited, changed: now.length !== bytes.length || now.some((v, i) => v !== bytes[i]), noEdit: !app.files[0]._edit, closed: !Adjust.isOpen };
+        });
+        check('adjust: without a project, Done writes the adjustments into the photo', p.edited && p.changed && p.noEdit && p.closed, JSON.stringify(p));
+        check('adjust: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

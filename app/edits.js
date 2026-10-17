@@ -16,6 +16,12 @@
 // flags.json; see folder-cache.js), so they're still there after closing
 // jEditor. Like flags they live on the photo objects while the project is
 // open, so a rename or a move inside jEditor carries them along.
+//
+// Adjustments (adjust.js: light, color, curves; `adj` on an edit) are
+// always kept this way, whether or not the setting is on: they're never
+// written into the photo until it's saved or exported. A photo with
+// adjustments keeps its crop and turns as an edit too, so everything is
+// applied once, from the original.
 
 const Edits = {
     FILE: 'edits.json',
@@ -42,7 +48,7 @@ const Edits = {
     // waiting in the one being left, which keeps its edits for next time
     reset() {
         const app = this.app;
-        const n = app && app.files ? app.files.filter(f => f._edit).length : 0;
+        const n = app && app.files && this.defer ? app.files.filter(f => f._edit).length : 0;
         const left = this._loadedFor;
         // (once the next one is set: not when the same one is opened again)
         if (n && left) setTimeout(() => {
@@ -66,8 +72,34 @@ const Edits = {
 
     // Edits wait for Save in the open project
     on() {
+        return !!(this.defer && this.canKeep());
+    },
+
+    // There's a project to keep edits in
+    canKeep() {
         const app = this.app;
-        return !!(this.defer && app && app.dirHandle && !app.readOnlyMode);
+        return !!(app && app.dirHandle && !app.readOnlyMode);
+    },
+
+    // This photo's crops and turns are kept as an edit, not written: the
+    // setting is on, or it has adjustments (which always are)
+    keeps(f) {
+        return this.on() || !!(this.canKeep() && f && f._edit && f._edit.adj);
+    },
+
+    // An edit with these adjustments (null: none), its crop kept
+    withAdj(e, adj) {
+        adj = Develop.clean(adj);
+        const out = e ? { ...e, n: { ...e.n } } : { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } };
+        if (adj) out.adj = adj;
+        else delete out.adj;
+        return this.isNothing(out) ? null : out;
+    },
+
+    // No turn, no tilt, the whole photo (adjustments or not)
+    wholePhoto(e) {
+        const n = e.n, eq = (a, b) => Math.abs(a - b) < 1e-6;
+        return !((e.q || 0) % 4) && !e.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5);
     },
 
     get(f) {
@@ -150,6 +182,8 @@ const Edits = {
         if (typeof v.aspectKey === 'string') e.aspectKey = v.aspectKey;
         if (typeof v.landscape === 'boolean') e.landscape = v.landscape;
         if (num(v.size)) e.size = v.size;
+        const adj = typeof Develop !== 'undefined' ? Develop.clean(v.adj) : null;
+        if (adj) e.adj = adj;
         return e;
     },
 
@@ -260,10 +294,9 @@ const Edits = {
         }
     },
 
-    // No turn, no tilt and the whole photo
+    // No turn, no tilt, the whole photo and no adjustments
     isNothing(e) {
-        const n = e.n, eq = (a, b) => Math.abs(a - b) < 1e-6;
-        return !(((e.q || 0) % 4)) && !e.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5);
+        return this.wholePhoto(e) && !(e.adj && Develop.active(e.adj));
     },
 
     undo(entry) {
@@ -272,11 +305,11 @@ const Edits = {
         this.app.showToast(`Undid ${entry.label || 'edit'} on ${n === 1 ? entry.items[0].file.name : n + ' photos'}`, 3000, null, null, { kind: 'undo' });
     },
 
-    // Edits put back (Ctrl+Z). Kept edits need the setting: it comes back
-    // on if it was turned off since
+    // Edits put back (Ctrl+Z). Kept crops need the setting (or
+    // adjustments): it comes back on if it was turned off since
     restore(items) {
         for (const it of items) this.put(it.file, it.edit);
-        if (!this.defer && items.some(it => it.file._edit)) {
+        if (!this.defer && items.some(it => it.file._edit && !it.file._edit.adj)) {
             this.defer = true;
             if (typeof Places !== 'undefined' && Places.boxes) Places.drawCard();
         }
@@ -351,7 +384,9 @@ const Edits = {
             return false;
         }
         if (!on) {
-            const n = this.count();
+            // (adjusted photos keep theirs either way)
+            const waiting = this.edited().filter(f => !f._edit.adj);
+            const n = waiting.length;
             if (n) {
                 const how = await UI.choose({
                     title: `${n.toLocaleString()} edit${n === 1 ? '' : 's'} not saved yet`,
@@ -361,8 +396,8 @@ const Edits = {
                     altDanger: true
                 });
                 if (!how) return false;
-                if (how === 'ok' && !await this.saveAll({ overwrite: true })) return false;
-                if (how === 'alt') this.discard(this.edited());
+                if (how === 'ok' && !await this.saveAll({ overwrite: true, list: waiting })) return false;
+                if (how === 'alt') this.discard(waiting);
             }
         }
         this.defer = on;
@@ -378,9 +413,9 @@ const Edits = {
 
     // Over the photos, or as copies in "jEditor Export". overwrite: skip
     // the question. True when it was done.
-    async saveAll({ overwrite = false } = {}) {
+    async saveAll({ overwrite = false, list = null } = {}) {
         const app = this.app;
-        const list = this.edited();
+        list = list || this.edited();
         if (!list.length) {
             app.showToast('No edits to save');
             return true;
@@ -420,10 +455,10 @@ const Edits = {
         if (!b) {
             b = document.createElement('span');
             b.className = 'tile-edit';
-            b.title = 'Edited — not saved into the photo yet';
             b.innerHTML = this.ICON;
             el.appendChild(b);
         }
+        b.title = this.describe(f._edit);
     },
 
     // Beside the file name: this photo's edit isn't saved yet
@@ -435,11 +470,18 @@ const Edits = {
             el = document.createElement('span');
             el.id = 'file-edit';
             el.className = 'file-edit';
-            el.title = 'Edited — not saved into the photo yet';
             el.innerHTML = this.ICON;
             app.elements.fileName.after(el);
         }
-        el.classList.toggle('hidden', !(app.currentFile && app.currentFile._edit));
+        const e = app.currentFile && app.currentFile._edit;
+        el.classList.toggle('hidden', !e);
+        if (e) el.title = this.describe(e);
+    },
+
+    // The pencil's tooltip
+    describe(e) {
+        if (e.adj && !this.on()) return 'Adjusted — the photo on disk is unchanged; Export (or Save edits) writes the result';
+        return 'Edited — not saved into the photo yet';
     },
 
     // How many are waiting, with Save and Discard
