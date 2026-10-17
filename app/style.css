@@ -3882,6 +3882,10 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     flex: 1;
 }
 
+.adj-mask-add + .adj-mask-add {
+    margin-top: var(--sp-1);
+}
+
 .adj-mask-list {
     display: flex;
     flex-direction: column;

@@ -23,6 +23,7 @@ const ASSETS = [
     './crop.js',
     './crop-log.js',
     './retouch.js',
+    './select.js',
     './develop.js',
     './adjust.js',
     './adjust-masks.js',

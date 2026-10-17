@@ -30,10 +30,12 @@
 //   sharpen (0–150), sharpRadius (px), sharpMask; noise, colorNoise
 //           (Detail: they look at the pixels round each one, so they're
 //           done first, on the photo itself, on the CPU: see applyDetail)
-//   masks:  [{ type: 'linear'|'radial'|'brush', invert, adj: {exposure,
-//           contrast, … MASK_SLIDERS}, linear: [x0, y0, x1, y1], radial:
-//           [cx, cy, rx, ry, angle, feather], brush: [{ size, feather,
-//           flow, erase, pts: [x, y, …] }] }] (Masks: settings for part of
+//   masks:  [{ type: 'linear'|'radial'|'brush'|'sky'|'subject', invert,
+//           adj: {exposure, contrast, … MASK_SLIDERS}, linear: [x0, y0, x1,
+//           y1], radial: [cx, cy, rx, ry, angle, feather], brush: [{ size,
+//           feather, flow, erase, pts: [x, y, …] }], map: { w, h, d } (sky
+//           and subject: found in the photo, select.js; brush strokes touch
+//           them up) }] (Masks: settings for part of
 //           the photo. Places are on the photo as it is on disk, before any
 //           crop or turn — x across 0–1, y down 0–1 — so a crop later
 //           doesn't move them; sizes are in heights of the photo)
@@ -292,6 +294,12 @@ const Develop = {
         const num = (x) => typeof x === 'number' && isFinite(x);
         const r4 = (x) => +(+x).toFixed(4);
         const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+        const strokes = (list) => {
+            let n = 0;
+            return (Array.isArray(list) ? list : []).filter(st => st && Array.isArray(st.pts) && st.pts.length >= 2 && st.pts.length % 2 === 0 && st.pts.every(num) && num(st.size))
+                .map(st => ({ size: r4(clamp(st.size, 0.002, 1)), feather: r4(clamp(num(st.feather) ? st.feather : 0.5, 0, 1)), flow: r4(clamp(num(st.flow) ? st.flow : 1, 0.05, 1)), erase: !!st.erase, pts: st.pts.map(r4) }))
+                .filter(st => (n += st.pts.length) <= 40000);
+        };
         const out = [];
         for (const m of list.slice(0, this.MAX_MASKS)) {
             if (!m || typeof m !== 'object') continue;
@@ -313,11 +321,12 @@ const Develop = {
                 const [cx, cy, rx, ry, a, f] = m.radial;
                 c.radial = [r4(cx), r4(cy), r4(clamp(rx, 0.002, 10)), r4(clamp(ry, 0.002, 10)), r4(a), r4(clamp(f, 0, 1))];
             } else if (m.type === 'brush' && Array.isArray(m.brush)) {
-                let n = 0;
-                c.brush = m.brush.filter(st => st && Array.isArray(st.pts) && st.pts.length >= 2 && st.pts.length % 2 === 0 && st.pts.every(num) && num(st.size))
-                    .map(st => ({ size: r4(clamp(st.size, 0.002, 1)), feather: r4(clamp(num(st.feather) ? st.feather : 0.5, 0, 1)), flow: r4(clamp(num(st.flow) ? st.flow : 1, 0.05, 1)), erase: !!st.erase, pts: st.pts.map(r4) }))
-                    .filter(st => (n += st.pts.length) <= 40000);
+                c.brush = strokes(m.brush);
                 if (!c.brush.length) continue;
+            } else if ((m.type === 'sky' || m.type === 'subject') && typeof Select !== 'undefined' && Select.decode(m.map)) {
+                // Found in the photo (select.js), touched up with the brush
+                c.map = { w: m.map.w, h: m.map.h, d: m.map.d };
+                c.brush = strokes(m.brush);
             } else continue;
             out.push(c);
         }
@@ -345,12 +354,14 @@ const Develop = {
         let brushes = 0;
         for (const m of masks) {
             const a = this.full(m.adj);
-            const e = { type: { linear: 1, radial: 2, brush: 3 }[m.type], inv: m.invert ? 1 : 0, A: [0, 0, 0, 0], B: [0, 0, 0, 0] };
+            const e = { type: { linear: 1, radial: 2, brush: 3, sky: 3, subject: 3 }[m.type], inv: m.invert ? 1 : 0, A: [0, 0, 0, 0], B: [0, 0, 0, 0] };
             e.tone = this.channelTables(a);
             e.lut = this.colourLut(a, this.MASK_LUT);
             if (m.type === 'linear') e.A = m.linear;
             if (m.type === 'radial') { e.A = m.radial.slice(0, 4); e.B = [m.radial[4], m.radial[5], 0, 0]; }
-            if (m.type === 'brush') { e.slot = brushes++; e.strokes = m.brush; }
+            // A brush, or a map found in the photo with brush strokes on it:
+            // painted into a channel of the brush maps either way
+            if (e.type === 3) { e.slot = brushes++; e.strokes = m.brush || []; e.map = m.map || null; }
             list.push(e);
         }
         return { list, brushes, key: JSON.stringify(masks) };
@@ -378,6 +389,21 @@ const Develop = {
             const c = document.createElement('canvas');
             c.width = W; c.height = H;
             const g = c.getContext('2d', { willReadFrequently: true });
+            // A map found in the photo (sky, subject), stretched over it
+            if (e.map) {
+                const q = Select.decode(e.map);
+                const m = document.createElement('canvas');
+                m.width = e.map.w;
+                m.height = e.map.h;
+                const mg = m.getContext('2d');
+                const img = mg.createImageData(e.map.w, e.map.h);
+                for (let i = 0; i < q.length; i++) { img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = 255; img.data[i * 4 + 3] = q[i] * 17; }
+                mg.putImageData(img, 0, 0);
+                g.imageSmoothingEnabled = true;
+                g.imageSmoothingQuality = 'high';
+                g.drawImage(m, 0, 0, W, H);
+                m.width = m.height = 0;
+            }
             for (const st of e.strokes) {
                 const r = st.size / 2;
                 g.globalCompositeOperation = st.erase ? 'destination-out' : 'source-over';

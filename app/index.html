@@ -22,6 +22,7 @@
     <script src="crop.js"></script>
     <script src="crop-log.js"></script>
     <script src="retouch.js"></script>
+    <script src="select.js"></script>
     <script src="develop.js"></script>
     <script src="dupes.js"></script>
     <script src="rename.js"></script>
@@ -460,6 +461,10 @@
                         <button class="btn secondary sm" data-add-mask="linear" title="A gradient across the photo: full where you start dragging, none where you stop">Linear</button>
                         <button class="btn secondary sm" data-add-mask="radial" title="An oval, feathered at its edge: drag out from its middle">Radial</button>
                         <button class="btn secondary sm" data-add-mask="brush" title="Paint the mask on">Brush</button>
+                    </div>
+                    <div class="adj-mask-add">
+                        <button class="btn secondary sm" data-add-mask="sky" title="Find the sky in the photo (touch it up with the brush)">Sky</button>
+                        <button class="btn secondary sm" data-add-mask="subject" title="Find the photo's subject (touch it up with the brush)">Subject</button>
                     </div>
                     <p id="adj-mask-hint" class="adj-hint"></p>
                     <div id="adj-mask-list" class="adj-mask-list"></div>
