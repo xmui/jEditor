@@ -1,6 +1,7 @@
 name: Release
 
-# Publishes a GitHub Release with the setup and the portable zip attached.
+# Publishes a GitHub Release with the Windows setup, the portable zip and
+# standalone.html (the web app as one file) attached.
 # Runs by itself when a version bump (npm run bump x.y.z: app/version.js and
 # package.json) lands on main, and can be run by hand from the Actions tab.
 #
@@ -67,6 +68,9 @@ jobs:
         if: steps.tag.outputs.skip == 'false'
         shell: pwsh
         run: ./scripts/smoke-test.ps1
+      - name: Standalone page
+        if: steps.tag.outputs.skip == 'false'
+        run: node scripts/build-standalone.js
 
       - name: Release notes
         if: steps.tag.outputs.skip == 'false'
@@ -75,9 +79,9 @@ jobs:
           $notes = node scripts/release-notes.js ${{ steps.tag.outputs.version }}
           if ($LASTEXITCODE -ne 0) { $notes = '' }
           @"
-          jEditor ${{ steps.tag.outputs.version }} for Windows. Download **jEditor-Setup-${{ steps.tag.outputs.version }}.exe** and run it: it installs for you only and doesn't need admin rights. The first time, Windows may say it protected your PC: click **More info**, then **Run anyway**.
+          **Windows:** download **jEditor-Setup-${{ steps.tag.outputs.version }}.exe** and run it: it installs for you only and doesn't need admin rights. The first time, Windows may say it protected your PC: click **More info**, then **Run anyway**. Or unzip **jEditor-${{ steps.tag.outputs.version }}-portable.zip** anywhere and run jEditor.exe.
 
-          Or unzip **jEditor-${{ steps.tag.outputs.version }}-portable.zip** anywhere and run jEditor.exe.
+          **Web:** open https://xmui.github.io/jEditor/ in Chrome or Edge, or download **standalone.html** and open it: one file, no install. Scanning, the camera and the sidebar's drives are in the Windows app only.
 
           ## What's new in jEditor ${{ steps.tag.outputs.version }}
 
@@ -91,5 +95,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ steps.tag.outputs.tag }}" --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA `
-            --title "jEditor ${{ steps.tag.outputs.version }} for Windows" --notes-file release-notes.md `
-            (Get-Item dist/jEditor-Setup-*.exe).FullName (Get-Item dist/jEditor-*-portable.zip).FullName
+            --title "jEditor ${{ steps.tag.outputs.version }}" --notes-file release-notes.md `
+            (Get-Item dist/jEditor-Setup-*.exe).FullName (Get-Item dist/jEditor-*-portable.zip).FullName (Get-Item standalone.html).FullName

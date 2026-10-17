@@ -5,6 +5,13 @@
 
 const CHANGELOG = [
     {
+        version: '1.36.0', date: '2026-10-17',
+        items: [
+            'jEditor is on the web again, at xmui.github.io/jEditor, and as one file (standalone.html) with every release: open it in Chrome or Edge. It has everything here but what only an app can do: scanning, the camera, the sidebar\'s projects and drives, several windows, the Recycle Bin and updates. Settings, recent folders and flags from the old web version carry over.',
+            'Ready for a Mac app: jEditor now asks the app it runs in what it can do, and uses its words (Explorer or Finder, the Recycle Bin or the Trash). Nothing changes on Windows.'
+        ]
+    },
+    {
         version: '1.35.1', date: '2026-10-16',
         items: [
             'jEditor is moving back to its first home on GitHub, xmui/jEditor, where it\'s becoming one app for Windows, Mac and the web. Updates now come from there; nothing changes on this PC, and Settings → Updates finds them as before.',

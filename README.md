@@ -7,7 +7,7 @@ One UI (`app/`), three ways to run it:
 | | Status | What it has |
 |---|---|---|
 | **Windows app** | Released | Everything: the core below, plus scanning, camera tethering, the projects sidebar with drives, the Recycle Bin, several windows and updates. |
-| **Web** | Coming back (the site still has 1.18.1 for now) | The core, in Chrome or Edge: open, view, rotate, crop and straighten, flags, search, rename, move, delete with undo, export, duplicates, Auto crop and watching the folder. |
+| **Web** | https://xmui.github.io/jEditor/, and `standalone.html` with each release | The core, in Chrome or Edge: open, view, rotate, crop and straighten, flags, search, rename, move, delete with undo, export, duplicates, Auto crop and watching the folder. |
 | **Mac app** | Planned | The core, with no permission prompts and folders opened from Finder; then the sidebar, windows and updates. |
 
 [PLAN.md](PLAN.md) has how the three fit together and what comes next. Scanning and tethering are Windows-only for now.
@@ -58,9 +58,9 @@ A Debug build (`dotnet run --project src`) does this on its own with the repo's 
 - `src/Scanner.cs`: scanning into the open order with [NAPS2.Sdk](https://github.com/cyanfish/naps2) (LGPL-2.1; its DLLs and license ship beside the exe, not inside it, so they can be replaced). TWAIN scanners with 64-bit drivers and WIA scanners work in the app's own process; the scanner's own window sets size and resolution. TWAIN needs `TWAINDSM.dll`, which scanner drivers install in System32 (or put one in `_win64\` beside the exe). `--fake-scanner` adds a test scanner that needs no hardware.
 - `app/`: the UI. It ships beside the exe.
 - `docs/`: how to use jEditor, and the plan from its web app days.
-
-The UI never assumes Windows: everything the app adds goes through `window.JEditorNative` (made by `src/bridge.js`), which is `null` in a browser, and the UI tests run it that way in Chrome.
 - `installer/jEditor.iss`: the per-user installer (Inno Setup).
+
+The UI never assumes Windows. Everything an app adds goes through `window.JEditorNative` (made by `src/bridge.js`), which is `null` in a browser. Each app says what it is and lists what it can do (`platform`, `features`), and `app/host.js` hides what it can't (`Host.has('scan')`, `data-needs="scan"`) and puts the system's own words into the page: Explorer or Finder, the Recycle Bin or the Trash. The UI tests run it with no app (the web), the Windows app, and an app with only the core (as the Mac app will start).
 
 ## Building
 
@@ -83,7 +83,7 @@ Every push builds on GitHub Actions: the tests, then on Windows the build, the s
 npm run bump 1.x.y     # sets the version in app/version.js, package.json and package-lock.json
 ```
 
-Add what changed to the top of `app/changelog.js`: it's what the app shows under **What's new**, and the release notes. The tests fail if the current version has no entry. When the bump lands on `main`, the Release workflow builds, tests and publishes the setup and the zip as release `v1.x.y`. Running Release by hand from the Actions tab releases the current version again as `v1.x.y-2` (for a fix to the Windows side alone).
+Add what changed to the top of `app/changelog.js`: it's what the app shows under **What's new**, and the release notes. The tests fail if the current version has no entry. When the bump lands on `main`, the Release workflow builds, tests and publishes the setup, the zip and `standalone.html` as release `v1.x.y`. Every push to `main` also deploys the web app (the Web app workflow), once the tests pass. Running Release by hand from the Actions tab releases the current version again as `v1.x.y-2` (for a fix to the Windows side alone).
 
 If you change `app/icon.png`, run `node scripts/make-icons.js` (the web icons) and `python3 scripts/make-icon.py` (the exe's icon).
 
