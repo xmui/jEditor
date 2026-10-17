@@ -5,6 +5,17 @@
 
 const CHANGELOG = [
     {
+        version: '1.41.0', date: '2026-10-17',
+        items: [
+            'On iPhone, iPad and Android, the web version opens photos: Open photos picks them from Photos, Files or the gallery, edits are kept as you go, and Save… hands them back through the share sheet (Save to Photos, Save to Files, or another app). On Android, Install jEditor keeps it with your apps; on iPhone and iPad, Share → Add to Home Screen.',
+            'Beta builds: Settings → Updates → Beta builds gets you new features first, in betas, before they\'re released. Settings → Experimental lists features still being made, each off until you turn it on.',
+            'Each jEditor says which it is on its start screen ("Mac · 1.41.0"), and the web version offers the app for your computer: Windows, Mac or Linux.',
+            'On the Mac (macOS 26), dragging the toolbar\'s empty space moves the window again, and double-clicking it zooms or minimises as you\'ve set in Desktop & Dock.',
+            'On the Mac, the first time jEditor opens, a window lists what macOS asks for (your Desktop, Documents and Downloads, USB drives and cards, and Full Disk Access if you like) and opens the right page of System Settings for each. It\'s in Settings → Projects → Permissions afterwards.',
+            'On the Mac and Linux, jEditor starts more reliably: it reads its own files straight from disk.'
+        ]
+    },
+    {
         version: '1.40.0', date: '2026-10-17',
         items: [
             'jEditor for Linux, a first version: jEditor-1.40.0-linux.AppImage runs on any 64-bit Linux (make it executable and open it), jEditor-1.40.0-linux.deb installs it on Debian, Ubuntu and Mint, and jEditor-1.40.0-linux.pacman on Arch Linux (sudo pacman -U). It has what the Mac app has: folders opened without asking, the sidebar with your projects, pinned folders and drives (USB drives and cards, with Eject), several windows and Split, and Show in Files. The AppImage updates itself from Settings → Updates.'
