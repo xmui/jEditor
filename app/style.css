@@ -5612,14 +5612,15 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     content: "";
     position: absolute;
     inset: 0 0 auto 0;
-    height: calc(var(--top-row) + var(--sp-3));
+    /* Exactly the toolbar: its soft edge fades inside it, never onto the photo */
+    height: var(--top-row);
     z-index: calc(var(--z-chrome) - 1);
     pointer-events: none;
     background: color-mix(in srgb, var(--bg-canvas) 82%, transparent);
     backdrop-filter: blur(16px) saturate(140%);
     -webkit-backdrop-filter: blur(16px) saturate(140%);
-    -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent);
-    mask-image: linear-gradient(to bottom, #000 72%, transparent);
+    -webkit-mask-image: linear-gradient(to bottom, #000 80%, transparent);
+    mask-image: linear-gradient(to bottom, #000 80%, transparent);
 }
 
 :root.native-toolbar #image-container {
