@@ -1,7 +1,8 @@
 // The start screen says which jEditor this is ("Mac · 1.41.0" beside the
 // name), and the web version offers the app for the computer it's on:
 // Windows, Mac or Linux get that download first (the others below it),
-// an iPhone or iPad gets Add to Home Screen.
+// an iPhone or iPad gets Add to Home Screen, an Android phone or tablet
+// Install (Chrome's own prompt, or where to find it).
 
 const Start = {
     RELEASES: 'https://github.com/xmui/jEditor/releases',
@@ -48,6 +49,17 @@ const Start = {
             badge.title = `jEditor for ${name === 'Web' ? 'the web' : name}, version ${typeof APP_VERSION !== 'undefined' ? APP_VERSION : ''}`;
         }
         if (Host.get()) return;
+        // Chrome on Android offers to install the web version as an app:
+        // kept, so the start screen can offer it at the right moment
+        addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            this.installPrompt = e;
+            if (this.device() === 'android') this.renderGet('android');
+        });
+        addEventListener('appinstalled', () => {
+            this.installPrompt = null;
+            if (this.device() === 'android') this.renderGet('android');
+        });
         this.renderGet(this.device());
     },
 
@@ -97,6 +109,24 @@ const Start = {
             }
         } else if (device === 'ios') {
             head.textContent = 'On iPhone and iPad: tap Share, then Add to Home Screen, to keep jEditor with your apps.';
+        } else if (device === 'android') {
+            if (this.installPrompt) {
+                head.textContent = 'Keep jEditor with your apps: it opens full screen, like any other.';
+                const b = document.createElement('button');
+                b.className = 'btn primary';
+                b.textContent = 'Install jEditor';
+                b.addEventListener('click', async () => {
+                    const prompt = this.installPrompt;
+                    if (!prompt) return;
+                    this.installPrompt = null;
+                    prompt.prompt();
+                    try { await prompt.userChoice; } catch (e) { /* closed */ }
+                    this.renderGet('android');
+                });
+                row.appendChild(b);
+            } else {
+                head.textContent = 'On Android: in Chrome, tap ⋮, then Add to Home screen (or Install app), to keep jEditor with your apps.';
+            }
         } else {
             head.textContent = 'jEditor is also an app for Windows, Mac and Linux.';
         }

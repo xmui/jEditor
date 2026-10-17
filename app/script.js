@@ -212,6 +212,7 @@ const app = {
         Camera.init(this);
         Places.init(this);
         Windows.init(this);
+        Picked.init(this);
         Permissions.init(this);
         Flags.init(this);
         Edits.init(this);
@@ -283,7 +284,9 @@ const app = {
         try {
             // Check for File System Access API support
             if (!window.showDirectoryPicker) {
-                this.showToast('Your browser does not support folder selection.');
+                // Safari and Firefox: photos, picked (picked.js)
+                if (Picked.available()) Picked.choose();
+                else this.showToast('Your browser does not support folder selection.');
                 return;
             }
 

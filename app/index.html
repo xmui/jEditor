@@ -38,6 +38,7 @@
     <script src="places.js"></script>
     <script src="windows.js"></script>
     <script src="start.js"></script>
+    <script src="picked.js"></script>
     <script src="permissions.js"></script>
     <script src="fit.js"></script>
     <script src="ui.js"></script>
@@ -75,6 +76,12 @@
                     <button id="btn-whatsnew-start" class="link-btn">What's new</button>
                 </div>
             </div>
+        </div>
+
+        <!-- Photos picked, not a folder (picked.js): their edits, to save -->
+        <div id="picked-bar" class="picked-bar hidden" role="status" aria-live="polite">
+            <span id="picked-count"></span>
+            <button id="picked-save" class="btn primary">Save…</button>
         </div>
 
         <!-- Task pill: spinner + current task; hover reveals every active task -->
