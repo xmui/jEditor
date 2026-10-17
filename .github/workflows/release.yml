@@ -148,9 +148,11 @@ jobs:
           @"
           **Windows:** download **jEditor-Setup-${{ steps.tag.outputs.version }}.exe** and run it: it installs for you only and doesn't need admin rights. The first time, Windows may say it protected your PC: click **More info**, then **Run anyway**. Or unzip **jEditor-${{ steps.tag.outputs.version }}-portable.zip** anywhere and run jEditor.exe.
 
-          **Mac:** download **jEditor-${{ steps.tag.outputs.version }}-mac.dmg**, open it and drag jEditor to Applications. It isn't signed by Apple yet: the first time, macOS won't open it; go to System Settings → Privacy & Security and click **Open Anyway**. It only asks once.
+          **Mac:** download **jEditor-${{ steps.tag.outputs.version }}-mac.dmg**, open it and drag jEditor to Applications. It isn't signed by Apple yet: the first time, macOS won't open it; go to System Settings → Privacy & Security and click **Open Anyway**. It only asks once. Or with Homebrew: **brew tap xmui/jeditor https://github.com/xmui/jEditor**, then **brew install --cask xmui/jeditor/jeditor**.
 
-          **Web:** open https://xmui.github.io/jEditor/ in Chrome or Edge, or download **standalone.html** and open it: one file, no install. Scanning, the camera and the sidebar's drives are in the Windows app only.
+          **Linux** (64-bit): download **jEditor-${{ steps.tag.outputs.version }}-linux.AppImage**, make it executable and open it (it updates itself). Or install **jEditor-${{ steps.tag.outputs.version }}-linux.deb** (**sudo apt install ./jEditor-${{ steps.tag.outputs.version }}-linux.deb**) on Debian, Ubuntu and Mint, or **jEditor-${{ steps.tag.outputs.version }}-linux.pacman** (**sudo pacman -U jEditor-${{ steps.tag.outputs.version }}-linux.pacman**) on Arch.
+
+          **Web:** open https://xmui.github.io/jEditor/ in Chrome or Edge, or download **standalone.html** and open it: one file, no install. The sidebar, several windows and updates are in the apps; scanning and the camera are in the Windows app only.
 
           ## What's new in jEditor ${{ steps.tag.outputs.version }}
 
