@@ -27,7 +27,7 @@ const config = {
     productName: 'jEditor',
     copyright: 'jEditor',
     directories: { output: path.join(ROOT, 'dist'), buildResources: path.join(__dirname, 'build') },
-    files: ['main.js', 'preload.js', 'bridge.js', 'package.json'],
+    files: ['main.js', 'preload.js', 'bridge.js', 'places.js', 'package.json'],
     extraResources: [{ from: path.join(ROOT, 'app'), to: 'app', filter: ['**/*'] }],
     extraMetadata: { version },
     asar: true,

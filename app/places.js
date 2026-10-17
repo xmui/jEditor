@@ -52,6 +52,18 @@ const Places = {
     el(id) { return document.getElementById(id); },
     native() { return FolderCache.native(); },
     key(p) { return String(p || '').toLowerCase(); },
+    // Paths are the app's own: "D:\\Orders" on Windows, "/Volumes/…" on a Mac
+    sep(p) { return String(p || '').includes('\\') ? '\\' : '/'; },
+    // A drive's top folder (a row in This PC / Locations), not a folder on it
+    isDrive(path) {
+        return (this.drives || []).some(d => this.key(d.path).replace(/[\\/]+$/, '') === this.key(path).replace(/[\\/]+$/, '')) ||
+            /^[a-z]:\\?$/i.test(path) || /^\\\\[^\\]+\\[^\\]+\\?$/.test(path);
+    },
+    // Opens in a new window: Ctrl+click on Windows, ⌘-click on a Mac (where
+    // Ctrl+click is the right-click), or the middle button
+    newWindowClick(e) {
+        return Host.has('windows') && (e.button === 1 || (Host.mac() ? e.metaKey : e.ctrlKey));
+    },
     esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); },
 
     init(app) {
@@ -196,7 +208,7 @@ const Places = {
             projects + (elsewhere ? `<div class="sb-sub">Opened from elsewhere</div>${elsewhere}` : '')) +
             // Nothing pinned yet: no section (the pin by a folder's name adds one)
             (pins ? section('pinned', 'Pinned', '', pins) : '') +
-            section('pc', 'This PC', '', drives || '<p class="sb-help">No drives found</p>');
+            section('pc', Host.mac() ? 'Locations' : 'This PC', '', drives || '<p class="sb-help">No drives found</p>');
     },
 
     // When: "Today", "Yesterday", "Mon", "Oct 3"
@@ -215,7 +227,7 @@ const Places = {
         // A folder drags (onto a drive copies it, onto the sidebar pins it); a drive doesn't
         return `<div class="fr-row sb-row${cur ? ' active' : ''} ${cls}"${drive ? '' : ' draggable="true"'} style="--depth:${depth}" data-path="${this.esc(path)}">` +
             (caret ? `<button class="fr-caret${open ? ' open' : ''}" data-act="toggle" tabindex="-1" title="${open ? 'Fold' : 'Show what\'s inside'}">${this.icons.caret}</button>` : '<span class="fr-caret fr-spacer"></span>') +
-            `<button class="sb-main" data-act="${act}" title="${this.esc((title || path) + (act === 'open' && Host.has('windows') ? ' — Ctrl+click opens it in a new window' : ''))}"><span class="sb-icon">${icon}</span>${sub ? `<span class="sb-text"><span class="fr-name">${this.esc(name)}</span>${sub}</span>` : `<span class="fr-name">${this.esc(name)}</span>`}</button>` +
+            `<button class="sb-main" data-act="${act}" title="${this.esc((title || path) + (act === 'open' && Host.has('windows') ? Host.say(' — Ctrl+click opens it in a new window') : ''))}"><span class="sb-icon">${icon}</span>${sub ? `<span class="sb-text"><span class="fr-name">${this.esc(name)}</span>${sub}</span>` : `<span class="fr-name">${this.esc(name)}</span>`}</button>` +
             extra +
             (pin !== null ? `<button class="sb-pin${pin ? ' on' : ''}" data-act="${pin ? 'unpin' : 'pin'}" title="${pin ? 'Unpin' : 'Pin to the sidebar'}">${this.icons.pin}</button>` : '') +
             (meta ? `<span class="sb-meta">${this.esc(meta)}</span>` : '') +
@@ -232,7 +244,7 @@ const Places = {
         const row = { ...(opts.row || {}) };
         if (!opts.project) {
             row.act = 'toggle';
-            row.extra = `<button class="sb-open" data-act="open" title="Open ${this.esc(name)} as the project (or double-click it; Ctrl+click: in a new window)">Open</button>` + (row.extra || '');
+            row.extra = `<button class="sb-open" data-act="open" title="${this.esc(Host.say(`Open ${name} as the project (or double-click it${Host.has('windows') ? '; Ctrl+click: in a new window' : ''})`))}">Open</button>` + (row.extra || '');
         }
         let html = this.row({ path, name, icon: opts.icon || this.icons.folder, depth, caret: true, open, count: opts.count !== false, ...row });
         if (open) {
@@ -267,7 +279,8 @@ const Places = {
         const out = [];
         for (const r of recents) {
             const path = await this.native().folderPath(r.handle).catch(() => null);
-            if (!path || (dir && this.key(path).startsWith(dir.replace(/\\?$/, '\\')))) continue;
+            // (inside the projects folder: listed there already)
+            if (!path || (dir && this.within(path, dir) && this.key(path).replace(/[\\/]+$/, '') !== dir.replace(/[\\/]+$/, ''))) continue;
             out.push(this.row({ path, name: r.name, icon: this.icons.project, meta: this.when(r.openedAt), count: true }));
             if (out.length >= 5) break;
         }
@@ -441,7 +454,7 @@ const Places = {
         if (act === 'newproject') return this.newProject();
         if (act === 'all') { this.showAll = true; return this.drawProjects(); }
         if (!path) return;
-        if (act === 'open' && (e.ctrlKey || e.button === 1) && Host.has('windows')) return Windows.newWindow(path); // in a window of its own
+        if (act === 'open' && this.newWindowClick(e)) return Windows.newWindow(path); // in a window of its own
         if (act === 'open') return this.open(path);
         if (act === 'toggle') {
             const k = this.key(path);
@@ -478,7 +491,7 @@ const Places = {
     rowItems(row) {
         const path = row.dataset.path;
         const name = row.querySelector('.fr-name').textContent;
-        const drive = /^[a-z]:\\?$/i.test(path) || /^\\\\[^\\]+\\[^\\]+\\?$/.test(path);
+        const drive = this.isDrive(path);
         const pinned = this.pins().some(p => this.key(p.path) === this.key(path));
         const items = [];
         if (this.key(path) !== this.key(this.current())) items.push(['Open as the project', () => this.open(path)]);
@@ -504,7 +517,7 @@ const Places = {
         });
         if (name === null || !name.trim() || name.trim() === old) return;
         const k = this.key(path).replace(/[\\/]+$/, '');
-        const under = (p) => p && (this.key(p) === k || this.key(p).startsWith(k + '\\'));
+        const under = (p) => p && (this.key(p) === k || this.key(p).startsWith(k + this.sep(path)));
         const moved = (p, to) => to + p.slice(k.length);
         const cur = this.current();
         const reopen = under(cur) ? cur : null;
@@ -578,7 +591,7 @@ const Places = {
 
     within(path, parent) {
         const p = this.key(path).replace(/[\\/]+$/, ''), q = this.key(parent).replace(/[\\/]+$/, '');
-        return p === q || p.startsWith(q + '\\');
+        return p === q || p.startsWith(q + this.sep(parent));
     },
 
     parentOf(path) {
@@ -646,7 +659,8 @@ const Places = {
     projectPath(rel) {
         const root = this.current();
         if (!root || rel === undefined) return null;
-        return rel ? root.replace(/[\\/]+$/, '') + '\\' + rel.split('/').join('\\') : root;
+        const sep = this.sep(root);
+        return rel ? root.replace(/[\\/]+$/, '') + sep + rel.split('/').join(sep) : root;
     },
 
     // Where a drop lands: { copy: folder } on a row, { pin: true } elsewhere

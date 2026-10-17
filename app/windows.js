@@ -19,7 +19,7 @@ const Windows = {
         // Another window moved photos in or out: look again
         addEventListener('jeditor-files', () => { if (app.dirHandle) Watch.request({ full: true }); });
         document.addEventListener('keydown', (e) => {
-            if (e.ctrlKey && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'n') {
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'n') {
                 e.preventDefault();
                 this.newWindow();
             }
@@ -64,9 +64,11 @@ const Windows = {
     },
 
     join(root, rel) {
-        // A drive's top folder keeps its backslash (E:\, not E:)
+        // A drive's top folder keeps its backslash (E:\, not E:). Joined as
+        // the app's paths are: "\" on Windows, "/" on a Mac
         if (!rel) return String(root);
-        return String(root).replace(/\\$/, '') + '\\' + rel.split('/').join('\\');
+        const sep = String(root).includes('\\') ? '\\' : '/';
+        return String(root).replace(/[\\/]$/, '') + sep + rel.split('/').join(sep);
     },
 
     pathOf(file) {

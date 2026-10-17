@@ -548,7 +548,7 @@ kbd,
     border-radius: var(--r-pill);
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
-    box-shadow: var(--shadow-2), var(--highlight);
+    box-shadow: var(--shadow-2), var(--glass-rim);
     backdrop-filter: var(--glass-filter);
     -webkit-backdrop-filter: var(--glass-filter);
     color: var(--text-1);
@@ -1734,7 +1734,7 @@ body[data-view="single"] .edits-bar {
     border-radius: var(--r-lg);
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
-    box-shadow: var(--shadow-2), var(--highlight);
+    box-shadow: var(--shadow-2), var(--glass-rim);
     backdrop-filter: var(--glass-filter);
     -webkit-backdrop-filter: var(--glass-filter);
     color: var(--text-1);
@@ -2051,7 +2051,7 @@ body[data-view="single"] .edits-bar {
 #context-menu {
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
-    box-shadow: var(--shadow-3), var(--highlight);
+    box-shadow: var(--shadow-3), var(--glass-rim);
     backdrop-filter: var(--glass-filter);
     -webkit-backdrop-filter: var(--glass-filter);
     color: var(--text-1);
@@ -2338,7 +2338,7 @@ body:has(#dupes-panel:not(.hidden)) .task-pill {
     border-radius: var(--r-pill);
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
-    box-shadow: var(--shadow-3), var(--highlight);
+    box-shadow: var(--shadow-3), var(--glass-rim);
     backdrop-filter: var(--glass-filter);
     -webkit-backdrop-filter: var(--glass-filter);
     color: var(--text-1);
@@ -2427,7 +2427,7 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     border-radius: var(--r-xl);
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
-    box-shadow: var(--shadow-3), var(--highlight);
+    box-shadow: var(--shadow-3), var(--glass-rim);
     backdrop-filter: var(--glass-filter);
     -webkit-backdrop-filter: var(--glass-filter);
     color: var(--text-1);
@@ -4327,7 +4327,7 @@ html:not(.native) .native-only {
     border-radius: var(--r-lg);
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
-    box-shadow: var(--shadow-4, var(--shadow-2)), var(--highlight);
+    box-shadow: var(--shadow-4, var(--shadow-2)), var(--glass-rim);
     backdrop-filter: var(--glass-filter);
     -webkit-backdrop-filter: var(--glass-filter);
     color: var(--text-1);
@@ -5514,4 +5514,69 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 
 .start-places .sb-sec:first-child {
     margin-top: 0;
+}
+
+/* ==========================================================================
+   The Mac app's window (data-platform="mac")
+   --------------------------------------------------------------------------
+   No title bar. The traffic lights sit in the top-left corner, centred on
+   the top row of pills (mac/main.js places them from what bridge.js
+   measures), and that row moves the window. The folder pill makes room
+   for them; in full screen they're gone, and so is the room.
+   The start screen shows the Mac's own window material through it (main.js:
+   vibrancy), tinted so its text reads as anywhere else. Photos, the grid
+   and the colour behind photos stay solid.
+   ========================================================================== */
+
+:root[data-platform="mac"] {
+    --lights-w: 72px;
+}
+
+:root[data-platform="mac"].fullscreen {
+    --lights-w: 0px;
+}
+
+:root[data-platform="mac"] .folder-bar {
+    left: calc(var(--gutter) + var(--lights-w));
+}
+
+/* The top row drags the window... */
+:root[data-platform="mac"] body::before {
+    content: "";
+    position: fixed;
+    inset: 0 0 auto 0;
+    height: calc(var(--gutter) * 2 + var(--ctl-lg));
+    -webkit-app-region: drag;
+    pointer-events: none;
+}
+
+/* ...but never what's clicked or typed in */
+:root[data-platform="mac"] :is(button, input, select, textarea, a, label, [role="button"], [tabindex],
+    .toolbar, .file-info, .folder-bar, .folder-rail, .dialog, .toast, .task-pill, #context-menu) {
+    -webkit-app-region: no-drag;
+}
+
+:root[data-platform="mac"],
+:root[data-platform="mac"] body {
+    background: transparent;
+}
+
+:root[data-platform="mac"] .interface {
+    background: var(--bg-canvas);
+}
+
+:root[data-platform="mac"] .drop-zone {
+    background:
+        radial-gradient(ellipse 60% 50% at 50% 35%, color-mix(in srgb, var(--bg-surface) 55%, transparent), transparent),
+        color-mix(in srgb, var(--bg-canvas) 72%, transparent);
+}
+
+:root[data-platform="mac"][data-glass="off"] .drop-zone {
+    background: var(--bg-canvas);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+    :root[data-platform="mac"] .drop-zone {
+        background: var(--bg-canvas);
+    }
 }

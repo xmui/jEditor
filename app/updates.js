@@ -84,7 +84,9 @@ const Updates = {
     async offer(r) {
         const ok = await UI.confirm({
             title: `Update to jEditor ${r.version}?`,
-            message: `You have ${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'an older version'}. jEditor closes, installs the update and opens again, in about a minute. Your edits are already saved.`,
+            message: `You have ${typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'an older version'}. ` + (Host.mac()
+                ? 'jEditor downloads it, opens it in Finder and quits: drag jEditor into Applications, replacing this one, and open it again. Your edits are already saved.'
+                : 'jEditor closes, installs the update and opens again, in about a minute. Your edits are already saved.'),
             items: this.changes(r.notes),
             ok: 'Update now'
         });
@@ -99,7 +101,8 @@ const Updates = {
             await FolderCache.native().installUpdate((got, total) => {
                 if (total) app.updateTask('update', `Downloading the update… ${Math.round(got / total * 100)}%`);
             });
-            app.updateTask('update', 'Installing the update — jEditor opens again in a moment');
+            app.updateTask('update', Host.mac() ? 'Opened the update in Finder: drag jEditor into Applications'
+                : 'Installing the update — jEditor opens again in a moment');
         } catch (e) {
             app.endTask('update');
             UI.alert({ title: 'Couldn\'t update', message: e.message });

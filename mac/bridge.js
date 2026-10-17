@@ -179,11 +179,63 @@
     }
 
     // ---- What the app does for jEditor ----
+    let onUpdateProgress = null;
+    let nextCopy = 1;
+    const copying = new Map(); // folder copy id → progress(done, total)
+
+    // A folder of the page's storage under another name: its files moved
+    // one by one (Chromium moves files there, not folders; copied where it
+    // can't), then the old one removed → the new folder
+    async function moveDir(src, parent, name) {
+        const dest = await parent.getDirectoryHandle(name, { create: true });
+        for await (const [n, h] of src.entries()) {
+            if (h.kind === 'directory') {
+                await moveDir(h, dest, n);
+            } else if (typeof h.move === 'function') {
+                await h.move(dest, n);
+            } else {
+                const w = await (await dest.getFileHandle(n, { create: true })).createWritable();
+                await w.write(await h.getFile());
+                await w.close();
+            }
+        }
+        await parent.removeEntry(src.name, { recursive: true });
+        return dest;
+    }
+
+    // A folder renamed from `from` to `to`: the data kept for each project
+    // at or under it (folder-cache.js: a folder per project, named after
+    // its path) is renamed for its new path, and says the new path
+    async function moveStores(from, to) {
+        const all = await window.JEditorNative.dataDir();
+        const trim = (p) => String(p).replace(/\/+$/, '');
+        from = trim(from);
+        to = trim(to);
+        const stores = [];
+        for await (const [name, h] of all.entries()) if (h.kind === 'directory') stores.push([name, h]);
+        for (const [name, h] of stores) {
+            let order;
+            try { order = JSON.parse(await (await (await h.getFileHandle('order.json')).getFile()).text()); } catch (e) { continue; }
+            const p = trim(order.path || '');
+            if (p.toLowerCase() !== from.toLowerCase() && !p.toLowerCase().startsWith(from.toLowerCase() + '/')) continue;
+            const np = to + p.slice(from.length);
+            const target = FolderCache.storeName(np);
+            let dir = h;
+            if (target !== name) {
+                // Data left by an earlier project of that name is set aside
+                const old = await all.getDirectoryHandle(target).catch(() => null);
+                if (old) await moveDir(old, all, `${target}-old-${Date.now()}`);
+                dir = await moveDir(h, all, target);
+            }
+            // Its path written once the data is where that path finds it
+            await FolderCache.writeJson(dir, 'order.json', { ...order, path: np, name: np.split('/').pop() });
+        }
+    }
     window.JEditorNative = {
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: 'mac',
-        features: ['reveal'],
+        features: ['reveal', 'updates', 'windows', 'places'],
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage
         async dataDir() {
@@ -207,6 +259,103 @@
         // Show a folder in Finder
         async reveal(path) {
             await answer('reveal', { path });
+        },
+        // ---- The sidebar: drives, folders, projects ----
+        // → { drives: [{ path, name, kind: usb|disk|network|cd, label, total, free }], home: [{ name, path }] }.
+        // A 'jeditor-drives' event on window says a drive came or went.
+        async places() {
+            return answer('places');
+        },
+        // A folder's folders → { path, name, parent, folders: [{ name, path }], photos, more }
+        async listDir(path) {
+            return answer('listDir', { path });
+        },
+        // The projects (folders) in a folder, newest first → [{ name, path, modified (ms) }]
+        async listProjects(path) {
+            return (await answer('listProjects', { path })).projects;
+        },
+        // A new folder named `name` in `parent` (a new project) → its path
+        async makeFolder(parent, name) {
+            return (await answer('makeFolder', { parent, name })).path;
+        },
+        // A folder renamed → its new path. The data kept for it, and for the
+        // projects inside it, follows (it's kept here, in the page's storage)
+        async renameFolder(path, name) {
+            const to = (await answer('renameFolder', { path, name })).path;
+            await moveStores(path, to).catch(e => log('warn', 'Rename: the kept data didn\'t follow: ' + e.message));
+            return to;
+        },
+        // Photos in each folder and its subfolders → { counts: [n, -1 if gone], limit }
+        async countPhotos(paths) {
+            return answer('countPhotos', { paths });
+        },
+        // Ejects a drive → { ok, error? }
+        async eject(path) {
+            return answer('eject', { path });
+        },
+        // The Mac's folder picker, just for a path → path, or null if canceled
+        async pickPath(title, start) {
+            const msg = await answer('pickPath', { title, start });
+            return msg.cancelled ? null : msg.path;
+        },
+        // A whole folder (a path) copied into another, under a free name
+        // there; progress(done, total) in bytes as it goes → { to } or
+        // { cancelled }; throws if it couldn't (no room, say). The promise
+        // has a copyId, for cancelCopy.
+        copyFolder(path, dest, progress) {
+            const id = nextCopy++;
+            copying.set(id, progress || (() => { }));
+            const done = answer('copyFolder', { path, dest, copy: id })
+                .then(msg => (msg.cancelled ? { cancelled: true } : { to: msg.to }))
+                .finally(() => copying.delete(id));
+            done.copyId = id;
+            return done;
+        },
+        cancelCopy(id) {
+            mac.request('cancelCopy', { copy: id });
+        },
+        // ---- Windows: one project each ----
+        // Another jEditor window, opening `path` (or the start screen)
+        async newWindow(path) {
+            return (await answer('newWindow', path ? { path } : {})).ok;
+        },
+        // This window on the left half of the screen, another on the right
+        async split() {
+            return (await answer('split')).ok;
+        },
+        // What this window shows, for the others' Move to:
+        // { name, path, folders: ['', 'Ceremony', …] }
+        setState(state) {
+            return mac.request('state', state || {});
+        },
+        // The other windows' projects → [{ id, name, path, folders }]
+        async windows() {
+            return (await answer('windows')).windows;
+        },
+        // Photos (paths) moved or copied into a folder (a path), each under a
+        // free name → [{ from, to } or { from, error }]. Every window hears
+        // of it ('jeditor-files').
+        async transfer(paths, dest, copy) {
+            return (await answer('transfer', { paths, dest, copy: !!copy })).items;
+        },
+        // Undoes one: moved photos go back, copies go → [error or null]
+        async undoTransfer(items, copy) {
+            return (await answer('undoTransfer', { items, copy: !!copy })).errors;
+        },
+        // Where Files dropped from outside (Finder) are on disk → [path]
+        async pathsOf(files) {
+            return [...files].map(f => mac.pathForFile(f));
+        },
+        // → { current, tag, version, notes, size, newer }
+        async checkUpdate() {
+            return answer('checkUpdate');
+        },
+        // Downloads the newest .dmg, opens it in Finder and quits, so
+        // jEditor can be dragged into Applications over this one.
+        // progress(received, total) as it downloads.
+        async installUpdate(progress) {
+            onUpdateProgress = progress || null;
+            try { await answer('installUpdate'); } finally { onUpdateProgress = null; }
         }
     };
 
@@ -243,9 +392,29 @@
         }
     };
 
+    // The traffic lights: in line with the top row of pills (their centre:
+    // the gutter plus half a pill, which the UI scale zooms), and at the
+    // gutter's distance from the left edge. A light is 14px.
+    let lastLights = '';
+    const reportLights = () => {
+        const css = getComputedStyle(document.documentElement);
+        const px = (name) => parseFloat(css.getPropertyValue(name)) || 0;
+        const scale = parseFloat(css.getPropertyValue('--ui-scale')) || 1;
+        const gutter = px('--gutter');
+        const at = { x: Math.max(12, gutter), y: gutter + (px('--ctl-lg') * scale) / 2 - 7 };
+        const key = at.x + ',' + at.y;
+        if (key === lastLights) return;
+        lastLights = key;
+        mac.request('lights', at).then(r => { if (r) document.documentElement.classList.toggle('fullscreen', !!r.fullscreen); });
+    };
+    let lightsTimer = null;
+    const lightsSoon = () => { clearTimeout(lightsTimer); lightsTimer = setTimeout(reportLights, 100); };
+
     whenReady().then(() => {
         reportTheme();
-        new MutationObserver(reportTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+        reportLights();
+        new MutationObserver(() => { reportTheme(); lightsSoon(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-density', 'style'] });
+        addEventListener('resize', lightsSoon);
         mac.request('ready', { version: typeof APP_VERSION !== 'undefined' ? APP_VERSION : null });
     });
 
@@ -261,6 +430,16 @@
                 log('error', 'Opening the folder failed: ' + (e && e.message || e));
                 if (msg.smoke) mac.request('smoke', { ok: false, error: String(e && e.message || e), errors });
             }
+        } else if (msg.type === 'fullscreen') {
+            document.documentElement.classList.toggle('fullscreen', !!msg.on);
+        } else if (msg.type === 'drivesChanged') {
+            dispatchEvent(new Event('jeditor-drives')); // places.js
+        } else if (msg.type === 'copyProgress') {
+            if (copying.has(msg.copy)) copying.get(msg.copy)(msg.done, msg.total);
+        } else if (msg.type === 'filesChanged') {
+            dispatchEvent(new Event('jeditor-files')); // another window moved photos
+        } else if (msg.type === 'updateProgress') {
+            if (onUpdateProgress) onUpdateProgress(msg.received, msg.total);
         } else if (msg.type === 'menu') {
             const a = await whenReady();
             if (msg.action === 'open') a.browseFolder();

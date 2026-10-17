@@ -237,6 +237,9 @@ const Folders = {
         ui.classList.toggle('rail-open', rail);
         this.el('folder-bar').classList.toggle('hidden', !on);
         this.el('folder-rail').classList.toggle('hidden', !rail);
+        // What this window shows, for the others' Move to: in any view, not
+        // just the grid's (a project left in single view was missing there)
+        if (typeof Windows !== 'undefined') Windows.publish();
         if (!on) return;
         const counts = this.counts();
         if (rail) {
@@ -244,7 +247,6 @@ const Folders = {
             Flags.renderList();
             if (typeof Places !== 'undefined') Places.apply();
         }
-        if (typeof Windows !== 'undefined') Windows.publish();
         this.renderBar(counts);
         Flags.syncSearchUI();
         this.fitBar();
@@ -1376,7 +1378,7 @@ const Folders = {
         this.el('fc-keep-note').textContent = `as “${keepName}”`;
         const replace = this.el('fc-replace');
         replace.classList.toggle('hidden', !canReplace);
-        replace.title = 'The photo that\'s there now goes to the trash (Ctrl+Z brings it back)';
+        replace.title = Host.say('The photo that\'s there now goes to the trash (Ctrl+Z brings it back)');
         this.el('fc-all').checked = false;
         this.el('fc-all-row').classList.toggle('hidden', !(rest > 0));
         this.el('fc-rest').textContent = rest === 1 ? 'the 1 other name clash' : `the ${rest} other name clashes`;

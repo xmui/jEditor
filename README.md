@@ -8,7 +8,7 @@ One UI (`app/`), three ways to run it:
 |---|---|---|
 | **Windows app** | Released | Everything: the core below, plus scanning, camera tethering, the projects sidebar with drives, the Recycle Bin, several windows and updates. |
 | **Web** | https://xmui.github.io/jEditor/, and `standalone.html` with each release | The core, in Chrome or Edge: open, view, rotate, crop and straighten, flags, search, rename, move, delete with undo, export, duplicates, Auto crop and watching the folder. |
-| **Mac app** | First version (not signed by Apple yet) | The core, with no permission prompts, the Mac's own folder picker, folders opened from Finder (Open With, or onto the Dock icon) and Show in Finder. Next: the sidebar, several windows, updates. |
+| **Mac app** | Released (not signed by Apple yet) | The core, with no permission prompts, the Mac's own folder picker, folders opened from Finder (Open With, or onto the Dock icon) and Show in Finder; the sidebar (projects, pinned folders, drives, Eject), several windows and Split, updates, and Liquid Glass. Not yet: scanning, the camera, the Trash. |
 
 [PLAN.md](PLAN.md) has how the three fit together and what comes next. Scanning and tethering are Windows-only for now.
 
