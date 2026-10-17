@@ -933,7 +933,7 @@ header:has(.header-controls.expanded) {
 /* Brief zoom readout */
 .zoom-level {
     position: absolute;
-    top: calc(var(--gutter) + var(--ctl-lg) + var(--sp-3));
+    top: calc(var(--top-row) + var(--sp-3));
     left: 50%;
     transform: translateX(-50%);
     z-index: var(--z-chrome);
@@ -1070,7 +1070,7 @@ header:has(.header-controls.expanded) {
     gap: var(--sp-4);
     align-content: start;
     /* Clear the floating header pills and the bottom toolbars */
-    padding: calc(var(--gutter) + var(--ctl-lg) + var(--sp-4)) var(--gutter) calc(var(--gutter) + var(--ctl-lg) + var(--sp-8));
+    padding: calc(var(--top-row) + var(--sp-4)) var(--gutter) calc(var(--gutter) + var(--ctl-lg) + var(--sp-8));
     outline: none;
 }
 
@@ -1723,7 +1723,7 @@ body[data-view="single"] .edits-bar {
 /* The folder list down the left of the grid */
 .folder-rail {
     position: absolute;
-    top: calc(var(--gutter) + var(--ctl-lg) + var(--sp-3));
+    top: calc(var(--top-row) + var(--sp-3));
     left: var(--gutter);
     bottom: var(--gutter);
     z-index: var(--z-chrome);
@@ -2065,14 +2065,14 @@ body[data-view="single"] .edits-bar {
 /* Undo history drops down under the header pill, like Info */
 .history-panel {
     position: absolute;
-    top: calc(var(--gutter) + var(--ctl-lg) + var(--sp-2));
+    top: calc(var(--top-row) + var(--sp-2));
     right: var(--gutter);
     z-index: var(--z-popover);
     display: flex;
     flex-direction: column;
     width: 320px;
     max-width: calc(100% - 2 * var(--gutter));
-    max-height: calc(100% - 2 * var(--gutter) - var(--ctl-lg) - var(--sp-2));
+    max-height: calc(100% - var(--top-row) - var(--gutter) - var(--sp-2));
     padding: var(--sp-4) var(--sp-2) var(--sp-3);
     border-radius: var(--r-lg);
     font-size: var(--fs-small);
@@ -2155,11 +2155,11 @@ body[data-view="single"] .edits-bar {
 /* File info drops down under the header pill */
 .info-panel {
     position: absolute;
-    top: calc(var(--gutter) + var(--ctl-lg) + var(--sp-2));
+    top: calc(var(--top-row) + var(--sp-2));
     right: var(--gutter);
     z-index: var(--z-popover);
     width: 300px;
-    max-height: calc(100% - 2 * var(--gutter) - var(--ctl-lg) - var(--sp-2));
+    max-height: calc(100% - var(--top-row) - var(--gutter) - var(--sp-2));
     overflow-y: auto;
     padding: var(--sp-4);
     border-radius: var(--r-lg);
@@ -5578,5 +5578,65 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 @media (prefers-reduced-transparency: reduce) {
     :root[data-platform="mac"] .drop-zone {
         background: var(--bg-canvas);
+    }
+}
+
+/* ---- The Mac app with macOS 26's own toolbar (bridge.js: html.native-toolbar) ----
+   The window's toolbar, in Liquid Glass, is the top row: the page's own
+   pills there go (the toolbar mirrors them), the toolbar moves the window
+   and holds the traffic lights, and what was below the pills starts below
+   it. */
+:root.native-toolbar {
+    --top-row: 52px;
+}
+
+:root.native-toolbar header,
+:root.native-toolbar .folder-bar {
+    display: none !important;
+}
+
+:root.native-toolbar body::before {
+    content: none;
+}
+
+/* The toolbar's edge. Its buttons sit on their own glass, its title on
+   what's under it: so what passes under the toolbar (the grid, scrolled)
+   is blurred and tinted with the theme's colour, as macOS 26's own scroll
+   edge effect does for native views, and the title always reads. In the
+   single view the photo starts below it: never under the toolbar. */
+:root.native-toolbar .interface {
+    position: relative;
+}
+
+:root.native-toolbar .interface::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    /* Exactly the toolbar: its soft edge fades inside it, never onto the photo */
+    height: var(--top-row);
+    z-index: calc(var(--z-chrome) - 1);
+    pointer-events: none;
+    background: color-mix(in srgb, var(--bg-canvas) 82%, transparent);
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    -webkit-mask-image: linear-gradient(to bottom, #000 80%, transparent);
+    mask-image: linear-gradient(to bottom, #000 80%, transparent);
+}
+
+:root.native-toolbar #image-container {
+    margin-top: var(--top-row);
+}
+
+:root.native-toolbar[data-glass="off"] .interface::before {
+    background: var(--bg-canvas);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+    :root.native-toolbar .interface::before {
+        background: var(--bg-canvas);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
     }
 }

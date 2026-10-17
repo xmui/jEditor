@@ -410,11 +410,120 @@
     let lightsTimer = null;
     const lightsSoon = () => { clearTimeout(lightsTimer); lightsTimer = setTimeout(reportLights, 100); };
 
+    // ---- macOS 26's toolbar: the page's top row, mirrored ----
+    // Each item stands for one of the page's own controls: a click clicks
+    // it, and the item shows what it does (hidden, off, on). So everything
+    // they do, their keys and Settings → Toolbar stay the page's.
+    const SYMBOLS = {
+        info: 'info.circle', refresh: 'arrow.clockwise', crop: 'crop', history: 'clock.arrow.circlepath',
+        fit: 'rectangle.inset.filled', strip: 'film', fullscreen: 'arrow.up.left.and.arrow.down.right',
+        dupes: 'square.on.square', keys: 'keyboard', whatsnew: 'sparkles', customize: 'gearshape',
+        scan: 'scanner', camera: 'camera'
+    };
+    const PRESSED = { info: 'info.circle.fill', strip: 'film.fill', fit: 'rectangle.inset.filled', fullscreen: 'arrow.down.right.and.arrow.up.left' };
+    const $ = (id) => document.getElementById(id);
+    const shown = (el) => !!el && !el.classList.contains('hidden') && !el.classList.contains('host-missing');
+    const said = (t) => (typeof Host !== 'undefined' ? Host.say(t || '') : t || '');
+
+    function toolbarModel() {
+        const a = jeditor();
+        const open = !!(a && a.dirHandle) && shown(a.elements.mainInterface);
+        if (!open) return { visible: false, title: 'jEditor', subtitle: '', items: [] };
+        const items = [];
+        const bar = $('folder-bar');
+        const browsing = shown(bar);
+        if (browsing) {
+            items.push({ id: 'rail', kind: 'button', symbol: 'sidebar.left', label: 'Folder list', tooltip: said($('fb-rail').title), navigational: true });
+            items.push({ id: 'scope', kind: 'segment', segments: ['All photos', 'Folders'], selected: $('fb-all').classList.contains('active') ? 0 : 1, navigational: true });
+        }
+        items.push({ kind: 'flexible' });
+        const chip = $('fb-filter-chip');
+        if (browsing && shown(chip)) items.push({ id: 'filter', kind: 'button', symbol: 'line.3.horizontal.decrease.circle.fill', label: chip.textContent.trim(), tooltip: chip.title });
+        const sort = $('sort-mode');
+        items.push({
+            id: 'sort', kind: 'menu', symbol: 'arrow.up.arrow.down', label: sort.selectedOptions[0] ? sort.selectedOptions[0].textContent : 'Sort', tooltip: 'Sort by',
+            menu: [...sort.options].map(o => ({ id: o.value, label: o.textContent, checked: o.selected }))
+        });
+        const more = [{ id: 'rename', label: 'Rename…', symbol: 'pencil' }, { separator: true }];
+        for (const b of $('header-controls').querySelectorAll('button[data-hc]')) {
+            if (!shown(b)) continue;
+            const key = b.dataset.hc;
+            const on = b.getAttribute('aria-pressed') === 'true' || b.classList.contains('active');
+            const symbol = key === 'view' ? (shown(b.querySelector('.icon-grid')) ? 'square.grid.2x2' : 'photo') : (on && PRESSED[key]) || SYMBOLS[key] || 'circle';
+            const entry = { id: 'hc:' + key, label: b.getAttribute('aria-label') || b.title, symbol, enabled: !b.disabled };
+            if (b.classList.contains('hc-extra')) more.push(entry);
+            else items.push({ ...entry, kind: 'button', tooltip: said(b.title) });
+        }
+        items.push({ id: 'more', kind: 'menu', symbol: 'ellipsis.circle', label: 'More', menu: more });
+        if (browsing) items.push({ id: 'search', kind: 'search', value: $('fb-search').value, placeholder: 'Search' });
+        const crumbs = $('fb-crumbs');
+        const where = browsing && crumbs ? crumbs.textContent.replace(/\s+/g, ' ').trim() : '';
+        return {
+            visible: true,
+            title: $('file-name-text').textContent || a.dirHandle.name,
+            subtitle: [a.dirHandle.name, where, $('file-count').textContent].filter(Boolean).join(' · '),
+            items
+        };
+    }
+
+    let lastToolbar = '';
+    let toolbarTimer = null;
+    const sendToolbar = () => {
+        clearTimeout(toolbarTimer);
+        toolbarTimer = setTimeout(() => {
+            if (!jeditor()) return;
+            const model = toolbarModel();
+            const json = JSON.stringify(model);
+            if (json === lastToolbar) return;
+            lastToolbar = json;
+            mac.request('toolbar', model);
+        }, 30);
+    };
+
+    function onToolbar(id, value) {
+        const click = (el) => el && el.click();
+        if (id === 'rail') click($('fb-rail'));
+        else if (id === 'scope') click(Number(value) === 0 ? $('fb-all') : $('fb-folders'));
+        else if (id === 'filter') click($('fb-filter-chip'));
+        else if (id === 'sort') {
+            const s = $('sort-mode');
+            s.value = value;
+            s.dispatchEvent(new Event('change', { bubbles: true }));
+        } else if (id === 'search') {
+            const input = $('fb-search');
+            input.value = String(value);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        } else if (id === 'more' && value === 'rename') click($('file-name'));
+        else {
+            const key = String(id === 'more' ? value : id).replace(/^hc:/, '');
+            click($('header-controls').querySelector(`button[data-hc="${key}"]`));
+        }
+        sendToolbar();
+    }
+
+    if (mac.nativeToolbar) {
+        document.documentElement.classList.add('native-toolbar');
+        whenReady().then(() => {
+            const watch = new MutationObserver(sendToolbar);
+            for (const el of [document.querySelector('header'), $('folder-bar')]) {
+                watch.observe(el, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'aria-pressed', 'disabled', 'title', 'aria-label'] });
+            }
+            watch.observe(jeditor().elements.mainInterface, { attributes: true, attributeFilter: ['class'] });
+            $('sort-mode').addEventListener('change', sendToolbar);
+            // ⌘F and /: the toolbar's search field, not the hidden one
+            $('fb-search').addEventListener('focus', (e) => {
+                e.target.blur();
+                mac.request('toolbarSearch');
+            });
+            sendToolbar();
+        });
+    }
+
     whenReady().then(() => {
         reportTheme();
-        reportLights();
-        new MutationObserver(() => { reportTheme(); lightsSoon(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-density', 'style'] });
-        addEventListener('resize', lightsSoon);
+        if (!mac.nativeToolbar) reportLights();
+        new MutationObserver(() => { reportTheme(); if (!mac.nativeToolbar) lightsSoon(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-density', 'style'] });
+        if (!mac.nativeToolbar) addEventListener('resize', lightsSoon);
         mac.request('ready', { version: typeof APP_VERSION !== 'undefined' ? APP_VERSION : null });
     });
 
@@ -430,6 +539,8 @@
                 log('error', 'Opening the folder failed: ' + (e && e.message || e));
                 if (msg.smoke) mac.request('smoke', { ok: false, error: String(e && e.message || e), errors });
             }
+        } else if (msg.type === 'toolbar') {
+            onToolbar(msg.id, msg.value);
         } else if (msg.type === 'fullscreen') {
             document.documentElement.classList.toggle('fullscreen', !!msg.on);
         } else if (msg.type === 'drivesChanged') {

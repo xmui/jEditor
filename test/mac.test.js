@@ -333,7 +333,8 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         // Photos to put the glass over: pure white, pure black
         const glass = path.join(tmp, 'Glass');
         fs.mkdirSync(glass);
-        const { app, page, errors } = await launch(profile);
+        // The page's own top row (macOS 26 has the native toolbar instead: below)
+        const { app, page, errors } = await launch(profile, [], { JEDITOR_NATIVE_TOOLBAR: '0' });
         const made = await page.evaluate(async () => {
             const out = {};
             for (const [name, color] of [['1-white.jpg', '#fff'], ['2-black.jpg', '#000']]) {
@@ -451,6 +452,67 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         const reduced = await page.evaluate(() => matchMedia('(prefers-reduced-transparency: reduce)').matches && getComputedStyle(document.querySelector('.file-info')).backdropFilter);
         await cdp.send('Emulation.setEmulatedMedia', { features: [] });
         check('Reduce transparency makes the glass solid', reduced === 'none', reduced);
+        check('no JS errors', errors.length === 0, errors.join('; '));
+        await app.close();
+    }
+
+    console.log('mac: the native toolbar (macOS 26)');
+    {
+        const { app, page, errors } = await launch(profile, [path.join(tmp, 'Glass')]);
+        const native = await page.evaluate(() => !!window.jeditorMac.nativeToolbar);
+        if (!native) {
+            console.log('        (skipped: needs macOS 26 and the native module, native/build.js)');
+        } else {
+            await loaded(page, 2);
+            const describe = () => app.evaluate(({ BrowserWindow }) => global.jeditorToolbar.describe(BrowserWindow.getAllWindows()[0].getNativeWindowHandle()));
+            const click = (id, value) => app.evaluate(({ BrowserWindow }, [id, value]) => global.jeditorToolbar.click(BrowserWindow.getAllWindows()[0].getNativeWindowHandle(), id, value), [id, value]);
+            const settle = () => page.waitForTimeout(400);
+            await page.evaluate(() => { app.setView('single'); app.loadIndex(0); });
+            await settle();
+            let d = await describe();
+            const ids = d.items.map(i => i.id);
+            check('the toolbar is the top row: in Liquid Glass, the page\'s own pills gone', d.visible && d.glass && await page.evaluate(() => getComputedStyle(document.querySelector('header')).display === 'none'), JSON.stringify(d).slice(0, 300));
+            const edge = await page.evaluate(() => {
+                const band = getComputedStyle(document.getElementById('main-interface'), '::before');
+                const photo = document.getElementById('current-image').getBoundingClientRect();
+                return { band: band.content !== 'none' ? parseFloat(band.height) : 0, photoTop: photo.top };
+            });
+            check('the title always has a backing (the toolbar\'s edge), and the photo starts below it, untouched', edge.band >= 52 && edge.photoTop >= edge.band, JSON.stringify(edge));
+            check('... its title is the photo, its subtitle the project and where it is in it', d.title === '1-white.jpg' && /Glass/.test(d.subtitle) && /1 \/ 2/.test(d.subtitle), JSON.stringify([d.title, d.subtitle]));
+            check('... with the page\'s controls: sort, info, view, crop, More (Rename… first)', ['sort', 'hc:info', 'hc:view', 'hc:crop', 'more'].every(i => ids.includes(i)) && d.items.find(i => i.id === 'more').menu[0] === 'Rename…' && d.items.find(i => i.id === 'sort').menu.includes('✓Name (A–Z)'), JSON.stringify(d.items));
+            await click('hc:view');
+            await settle();
+            d = await describe();
+            const view = await page.evaluate(() => app.viewMode);
+            check('a click is the page\'s own: the grid, with the folders and search there now', view === 'grid' && ['rail', 'scope', 'search'].every(i => d.items.some(x => x.id === i)), JSON.stringify([view, d.items.map(i => i.id)]));
+            await click('sort', 'name_desc');
+            await settle();
+            d = await describe();
+            check('sorting from the toolbar sorts, and its menu says so', await page.evaluate(() => app.sortMode) === 'name_desc' && d.items.find(i => i.id === 'sort').menu.includes('✓Name (Z–A)'), JSON.stringify(d.items.find(i => i.id === 'sort')));
+            await click('search', 'black');
+            await page.waitForTimeout(600);
+            check('searching from the toolbar finds photos', await page.evaluate(() => app.viewFiles().map(f => f.name).join()) === '2-black.jpg');
+            await click('search', '');
+            await page.waitForTimeout(600);
+
+            // What it looks like: the window, toolbar and all (CI keeps these)
+            const shots = process.env.JEDITOR_SCREENSHOTS;
+            if (shots) {
+                fs.mkdirSync(shots, { recursive: true });
+                const { execFileSync } = require('child_process');
+                for (const [theme, i, view] of [['dark', 0, 'single'], ['light', 0, 'single'], ['dark', 1, 'single'], ['light', 1, 'grid']]) {
+                    await page.evaluate(([t, i, v]) => { app.uiPrefs.theme = t; app.applyUiPrefs(); app.setView(v); app.loadIndex(i); }, [theme, i, view]);
+                    await page.waitForTimeout(1200);
+                    const id = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getMediaSourceId().split(':')[1]);
+                    try { execFileSync('screencapture', ['-x', '-o', `-l${id}`, path.join(shots, `native-${theme}-${view}-${i}.png`)]); } catch (e) { console.log('        (no screenshot: ' + e.message + ')'); }
+                }
+            }
+
+            await page.evaluate(() => app.closeFolder());
+            await settle();
+            d = await describe();
+            check('on the start screen, no toolbar', d.visible === false, JSON.stringify(d).slice(0, 200));
+        }
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.close();
     }

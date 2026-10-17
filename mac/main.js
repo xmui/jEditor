@@ -21,6 +21,13 @@ const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const places = require('./places');
+const toolbar = require('./native'); // null without the native module
+
+// macOS 26's own toolbar, in Liquid Glass, for the window's top row (the
+// page's pills mirror into it); before 26, or without the module, the
+// page keeps its own pills. JEDITOR_NATIVE_TOOLBAR=0: the pills anyway.
+const NATIVE_TOOLBAR = process.platform === 'darwin' && !!toolbar && toolbar.supported() && process.env.JEDITOR_NATIVE_TOOLBAR !== '0';
+global.jeditorToolbar = NATIVE_TOOLBAR ? toolbar : null; // for the tests (test/mac.test.js)
 
 // Settings, recent folders and the projects' data are stored under this
 // origin: it must never change
@@ -306,9 +313,16 @@ async function handle(rec, type, data) {
             // (on a Mac the window stays clear, for its material)
             if (data.background && process.platform !== 'darwin') rec.win.setBackgroundColor(data.background);
             return { ok: true };
+        case 'toolbar':
+            // What the native toolbar shows: the page's top row (bridge.js)
+            if (NATIVE_TOOLBAR) toolbar.update(rec.win.getNativeWindowHandle(), data);
+            return { ok: NATIVE_TOOLBAR };
+        case 'toolbarSearch':
+            if (NATIVE_TOOLBAR) toolbar.focusSearch(rec.win.getNativeWindowHandle());
+            return { ok: NATIVE_TOOLBAR };
         case 'lights':
             // The traffic lights, centred on the page's top row of pills
-            if (process.platform === 'darwin' && Number.isFinite(data.x) && Number.isFinite(data.y)) {
+            if (process.platform === 'darwin' && !NATIVE_TOOLBAR && Number.isFinite(data.x) && Number.isFinite(data.y)) {
                 rec.win.setWindowButtonPosition({ x: Math.round(data.x), y: Math.round(data.y) });
             }
             rec.lights = { x: data.x, y: data.y };
@@ -584,8 +598,8 @@ function createWindow() {
         // moves the window (style.css), and the Mac's own window material
         // shows through the start screen (the rest of the page is solid)
         ...(mac ? {
-            titleBarStyle: 'hiddenInset',
-            trafficLightPosition: { x: 20, y: 34 },
+            // With the native toolbar, the traffic lights sit in it, as AppKit puts them
+            ...(NATIVE_TOOLBAR ? { titleBarStyle: 'hidden' } : { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 20, y: 34 } }),
             vibrancy: 'under-window',
             visualEffectState: 'followWindow',
             backgroundColor: '#00000000'
@@ -595,9 +609,18 @@ function createWindow() {
             contextIsolation: true,
             sandbox: true,
             nodeIntegration: false,
-            spellcheck: false
+            spellcheck: false,
+            additionalArguments: NATIVE_TOOLBAR ? ['--jeditor-native-toolbar'] : []
         }
     });
+    if (NATIVE_TOOLBAR) {
+        toolbar.attach(win.getNativeWindowHandle(), (id, value) => {
+            if (!win.isDestroyed()) win.webContents.send('jeditor', { type: 'toolbar', id, value });
+        });
+        // The title is the toolbar's (the photo), not the page's
+        win.on('page-title-updated', (e) => e.preventDefault());
+        win.on('close', () => toolbar.detach(win.getNativeWindowHandle()));
+    }
     if (!last && settings.maximized) win.maximize();
     const rec = { win, ready: false, queue: [], state: null, focusedAt: Date.now() };
     const id = win.webContents.id;

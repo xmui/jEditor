@@ -65,8 +65,20 @@ jobs:
       - run: npm ci
       - run: npm ci
         working-directory: mac
+      - name: Native toolbar
+        run: npm ci && node build.js
+        working-directory: mac/native
       - name: Mac app tests
         run: node test/mac.test.js
+        env:
+          JEDITOR_SCREENSHOTS: ${{ runner.temp }}/screenshots
+      - name: Screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-screenshots
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: ignore
       - name: Build
         run: node build.js
         working-directory: mac

@@ -5,6 +5,13 @@
 
 const CHANGELOG = [
     {
+        version: '1.39.0', date: '2026-10-17',
+        items: [
+            'On macOS 26, jEditor\'s top row is the Mac\'s own toolbar, in real Liquid Glass, as in Apple\'s apps: the window\'s buttons, the photo\'s name and where it is in the project, the folder list, All photos and Folders, sort, your toolbar buttons, More and a Mac search field. Everything works as before, keys and Settings → Toolbar too. The photo starts below the toolbar, so nothing covers it. Earlier macOS keeps jEditor\'s own glass toolbars.',
+            'On the Mac, Homebrew: brew tap xmui/jeditor https://github.com/xmui/jEditor, then brew install --cask xmui/jeditor/jeditor (and brew upgrade for new versions).'
+        ]
+    },
+    {
         version: '1.38.0', date: '2026-10-17',
         items: [
             'On the Mac, Liquid Glass: the toolbars, the folder panel, menus and messages take macOS 26\'s look, with a soft sheen and light along their edges, and stay easy to read over any photo. The photos themselves are never under glass. The title bar is gone: the window\'s buttons sit in the top-left corner, in line with the toolbars, and the top row moves the window.',
