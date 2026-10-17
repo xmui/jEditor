@@ -28,6 +28,7 @@
     <script src="flags.js"></script>
     <script src="edits.js"></script>
     <script src="adjust.js"></script>
+    <script src="adjust-masks.js"></script>
     <script src="history.js"></script>
     <script src="watch.js"></script>
     <script src="recents.js"></script>
@@ -400,7 +401,7 @@
             <span id="adj-before-tag" class="adj-tag hidden">Before</span>
         </div>
         <div class="adj-body">
-            <div id="adj-stage" class="adj-stage"><canvas id="adj-canvas"></canvas><div id="adj-loupe-box" class="adj-loupe-box hidden" aria-hidden="true"></div></div>
+            <div id="adj-stage" class="adj-stage"><canvas id="adj-canvas"></canvas><div id="adj-loupe-box" class="adj-loupe-box hidden" aria-hidden="true"></div><canvas id="adj-overlay" class="adj-overlay hidden"></canvas></div>
             <aside id="adj-panel" class="adj-panel" aria-label="Adjustments">
                 <section class="adj-sec adj-hist-box" aria-label="Histogram and levels">
                     <div class="adj-sec-head">
@@ -450,6 +451,32 @@
                     <summary><span>Color grading</span><button class="btn ghost sm adj-sec-reset" data-reset="grading">Reset</button></summary>
                     <div id="adj-wheels" class="adj-wheels"></div>
                     <div id="adj-grade-more" class="adj-rows"></div>
+                </details>
+                <details id="adj-masks-sec" class="adj-sec">
+                    <summary><span>Masks</span><button class="btn ghost sm adj-sec-reset" data-reset="masks">Reset</button></summary>
+                    <div class="adj-mask-add">
+                        <button class="btn secondary sm" data-add-mask="linear" title="A gradient across the photo: full where you start dragging, none where you stop">Linear</button>
+                        <button class="btn secondary sm" data-add-mask="radial" title="An oval, feathered at its edge: drag out from its middle">Radial</button>
+                        <button class="btn secondary sm" data-add-mask="brush" title="Paint the mask on">Brush</button>
+                    </div>
+                    <p id="adj-mask-hint" class="adj-hint"></p>
+                    <div id="adj-mask-list" class="adj-mask-list"></div>
+                    <div id="adj-mask-edit" class="hidden">
+                        <div class="adj-mask-opts">
+                            <label class="adj-check"><input type="checkbox" id="adj-mask-show"> Show mask</label>
+                            <label class="adj-check"><input type="checkbox" id="adj-mask-invert"> Invert</label>
+                            <button id="adj-mask-delete" class="btn ghost sm danger-text">Delete</button>
+                        </div>
+                        <div id="adj-brush-tools-box" class="hidden">
+                            <div class="adj-tabs adj-brush-mode" role="group" aria-label="Brush">
+                                <button id="adj-brush-paint" class="adj-tab" aria-pressed="true">Paint</button>
+                                <button id="adj-brush-erase" class="adj-tab" aria-pressed="false">Erase</button>
+                            </div>
+                            <div id="adj-brush-tools" class="adj-rows"></div>
+                        </div>
+                        <div id="adj-radial-tools" class="adj-rows hidden"></div>
+                        <div id="adj-mask-sliders" class="adj-rows"></div>
+                    </div>
                 </details>
                 <details id="adj-detail-sec" class="adj-sec">
                     <summary><span>Detail</span><button class="btn ghost sm adj-sec-reset" data-reset="detail">Reset</button></summary>

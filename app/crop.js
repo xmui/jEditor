@@ -746,7 +746,7 @@ const CropEditor = {
             if (ed.isIdentity() && !ed.q && !adj) return null;
             const canvas = ed.drawOutput(bmp);
             // Its adjustments (adjust.js), after the crop
-            if (adj) Develop.applyCanvas(canvas, snap.adj);
+            if (adj) Develop.applyCanvas(canvas, snap.adj, { map: Develop.cropMap(ed, bmp.width, bmp.height) });
             return canvas;
         } finally {
             bmp.close();

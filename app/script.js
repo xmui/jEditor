@@ -3222,12 +3222,15 @@ const app = {
             // Its size in the photo's own pixels (the preview is smaller)
             const scale = Math.max(raw.w || bmp.width, raw.h || bmp.height) / Math.max(bmp.width, bmp.height);
             let canvas;
+            let map;
             try {
-                canvas = CropEditor.fromSnapshot(bmp.width, bmp.height, edit).drawOutput(bmp);
+                const ed = CropEditor.fromSnapshot(bmp.width, bmp.height, edit);
+                canvas = ed.drawOutput(bmp);
+                map = Develop.cropMap(ed, bmp.width, bmp.height);
             } finally {
                 bmp.close();
             }
-            if (edit.adj) Develop.applyCanvas(canvas, edit.adj, { scale: 1 / scale });
+            if (edit.adj) Develop.applyCanvas(canvas, edit.adj, { scale: 1 / scale, map });
             const alpha = /\.(png|webp|gif)$/i.test(file.name);
             const out = await new Promise(r => canvas.toBlob(r, alpha ? 'image/png' : 'image/jpeg', 0.92));
             const w = Math.round(canvas.width * scale), h = Math.round(canvas.height * scale);
