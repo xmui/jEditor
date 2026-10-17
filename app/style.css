@@ -3872,6 +3872,69 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     gap: var(--sp-1);
 }
 
+/* Masks: the list, and the overlay on the photo for their handles */
+.adj-mask-add {
+    display: flex;
+    gap: var(--sp-1);
+}
+
+.adj-mask-add .btn {
+    flex: 1;
+}
+
+.adj-mask-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: var(--sp-2);
+}
+
+.adj-mask-item {
+    height: var(--ctl-md);
+    padding: 0 var(--sp-2);
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: var(--bg-raised);
+    color: var(--text-2);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.adj-mask-item[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--text-1);
+}
+
+.adj-mask-opts {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-2);
+}
+
+.adj-mask-opts .btn {
+    margin-left: auto;
+}
+
+.adj-check {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    color: var(--text-2);
+    cursor: pointer;
+}
+
+.adj-brush-mode {
+    margin-bottom: var(--sp-2);
+}
+
+.adj-overlay {
+    position: absolute;
+    touch-action: none;
+}
+
 /* Detail: the 1:1 view, and where it is on the photo */
 .adj-loupe {
     display: block;

@@ -60,7 +60,7 @@ Windows comes first: it gets everything, and each feature is made best there, th
 | | Windows | Mac | Linux | Web |
 |---|:-:|:-:|:-:|:-:|
 | Rotate, crop, flags, rename, move, duplicates, Auto crop | ✓ | ✓ | ✓ | ✓ |
-| Adjust: light, color, levels, curves, color mixer, grading, film looks, sharpening, noise reduction, vignette, grain | ✓ | ✓ | ✓ | ✓ |
+| Adjust: light, color, levels, curves, color mixer, grading, film looks, masks, sharpening, noise reduction, vignette, grain | ✓ | ✓ | ✓ | ✓ |
 | Opens folders with no permission prompts | ✓ | ✓ | ✓ | |
 | Sidebar: projects, pinned folders, drives | ✓ | ✓ | ✓ | |
 | Several windows and Split | ✓ | ✓ | ✓ | |

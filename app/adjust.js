@@ -82,6 +82,7 @@ const Adjust = {
         grade.appendChild(this.slider('gradeBalance', 'Balance'));
         this.initLooks();
         this.initWheels();
+        AdjustMasks.init(this);
         this.mixerSliders = Develop.HUES.map((h, i) => {
             const row = this.slider(`mix-${h.id}`, h.name, {
                 range: { min: -100, max: 100, step: 1 },
@@ -122,7 +123,7 @@ const Adjust = {
 
         this.initLevels();
         this.initCurve();
-        this._resize = new ResizeObserver(() => { this.layout(); this.drawPanels(); this.placeLoupeBox(); });
+        this._resize = new ResizeObserver(() => { this.layout(); this.drawPanels(); this.placeLoupeBox(); AdjustMasks.place(); AdjustMasks.draw(); });
         this._resize.observe(this.el('adj-stage'));
         this._resize.observe(this.el('adj-panel'));
     },
@@ -220,9 +221,12 @@ const Adjust = {
         this._fullFor = null;
         this.loupeAt = { u: 0.5, v: 0.5 };
         this._detailKey = null;
-        // Its crop first: adjusted as it will be seen
-        if (kept && !Edits.wholePhoto(kept)) {
-            const c = CropEditor.fromSnapshot(bmp.width, bmp.height, kept).drawOutput(bmp);
+        // Its crop first: adjusted as it will be seen. Masks are placed on
+        // the photo before it: the map from one to the other
+        const cropped = kept && !Edits.wholePhoto(kept) ? CropEditor.fromSnapshot(bmp.width, bmp.height, kept) : null;
+        this.map = Develop.cropMap(cropped, bmp.width, bmp.height);
+        if (cropped) {
+            const c = cropped.drawOutput(bmp);
             bmp.close();
             bmp = await createImageBitmap(c);
             c.width = c.height = 0;
@@ -282,6 +286,7 @@ const Adjust = {
         bmp.close();
         this.ready = true;
         this.layout();
+        AdjustMasks.reset();
         this.draw();
     },
 
@@ -339,6 +344,7 @@ const Adjust = {
         this.a = Develop.full(adj);
         this.changed();
         this.drawPanels();
+        AdjustMasks.sync();
     },
 
     undo() {
@@ -370,6 +376,7 @@ const Adjust = {
         if (which === 'grading') { delete a.grade; delete a.gradeBlend; delete a.gradeBalance; }
         if (which === 'effects') for (const [k] of this.EFFECTS) delete a[k];
         if (which === 'detail') for (const [k] of this.DETAIL) delete a[k];
+        if (which === 'masks') delete a.masks;
         if (which === 'look') { delete a.look; delete a.lookAmount; }
         this.setAll(a);
     },
@@ -447,11 +454,13 @@ const Adjust = {
         this.glow = glow;
         this.detailSoon();
         this.loupeSoon();
+        const brush = Develop.brushFor(T.masks, this.map.asp);
         if (this.gl) {
             try {
                 if (glow) this.gl.setGlow(glow);
+                if (brush) this.gl.setBrush(brush);
                 this.gl.setTables(T);
-                this.gl.draw(this.w, this.h, { before: this.before });
+                this.gl.draw(this.w, this.h, { before: this.before, frame: { x: 0, y: 0, W: this.w, H: this.h, map: this.map } });
             } catch (e) {
                 console.warn('Adjust: GPU failed:', e);
             }
@@ -460,13 +469,14 @@ const Adjust = {
             if (this.canvas.height !== this.h) this.canvas.height = this.h;
             if (this.before) this.ctx.putImageData(this.src, 0, 0);
             else {
-                Develop.applyCPU(this.src.data, T, this.out.data, { x: 0, y: 0, w: this.w, W: this.w, H: this.h, glow });
+                Develop.applyCPU(this.src.data, T, this.out.data, { x: 0, y: 0, w: this.w, W: this.w, H: this.h, glow, map: this.map, brush });
                 this.ctx.putImageData(this.out, 0, 0);
             }
         }
-        const px = this.before ? this.sample : Develop.applyCPU(this.sample, T, this.sampleOut, { x: 0, y: 0, w: this.sampleW, W: this.sampleW, H: this.sampleH, glow });
+        const px = this.before ? this.sample : Develop.applyCPU(this.sample, T, this.sampleOut, { x: 0, y: 0, w: this.sampleW, W: this.sampleW, H: this.sampleH, glow, map: this.map, brush });
         this.hist = Develop.histogram(px);
         this.drawPanels();
+        AdjustMasks.draw();
         this.looksSoon();
     },
 
@@ -575,7 +585,7 @@ const Adjust = {
             const d = Develop.detail(this.a);
             img = d ? Develop.detailBlock((a, b, c, e) => this.fullCtx.getImageData(a, b, c, e), x, y, lw, lh, FW, FH, d, 1)
                 : this.fullCtx.getImageData(x, y, lw, lh);
-            Develop.applyCPU(img.data, Develop.tables(this.a), img.data, { x, y, w: lw, W: FW, H: FH, glow: this.glow });
+            Develop.applyCPU(img.data, Develop.tables(this.a), img.data, { x, y, w: lw, W: FW, H: FH, glow: this.glow, map: this.map });
         }
         cv.getContext('2d').putImageData(img, 0, 0);
         this.placeLoupeBox();
