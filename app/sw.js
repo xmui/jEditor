@@ -15,6 +15,7 @@ const ASSETS = [
     './host.js',
     './start.js',
     './picked.js',
+    './permissions.js',
     './folder-cache.js',
     './photo-find.js',
     './crop-auto.js',

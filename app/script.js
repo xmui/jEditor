@@ -213,6 +213,7 @@ const app = {
         Places.init(this);
         Windows.init(this);
         Picked.init(this);
+        Permissions.init(this);
         Flags.init(this);
         Edits.init(this);
         Fit.init();

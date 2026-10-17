@@ -17,6 +17,7 @@
 //   backdrop     Mica / Acrylic behind the window
 //   log          the app's log
 //   updates      looking for a new version and installing it
+//   permissions  the Mac's privacy settings jEditor needs, in one window
 //
 // Wording that names the system's own things comes from here too: in a
 // text, {files} is Explorer, Finder or Files, {computer} this PC or this Mac, and
