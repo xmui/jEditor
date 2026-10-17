@@ -64,6 +64,36 @@ async function launch(profile, args = [], env = {}) {
     return { app, page, errors };
 }
 
+// A PNG (a screenshot) → { width, height, px(x, y) → [r, g, b] }
+function readPng(buf) {
+    const zlib = require('zlib');
+    let pos = 8, width = 0, height = 0, type = 0;
+    const idat = [];
+    while (pos < buf.length) {
+        const len = buf.readUInt32BE(pos), kind = buf.toString('latin1', pos + 4, pos + 8), data = buf.subarray(pos + 8, pos + 8 + len);
+        if (kind === 'IHDR') { width = data.readUInt32BE(0); height = data.readUInt32BE(4); type = data[9]; }
+        if (kind === 'IDAT') idat.push(data);
+        pos += 12 + len;
+    }
+    const bpp = type === 6 ? 4 : 3, stride = width * bpp;
+    const raw = zlib.inflateSync(Buffer.concat(idat)), out = Buffer.alloc(stride * height);
+    for (let y = 0; y < height; y++) {
+        const f = raw[y * (stride + 1)], row = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1));
+        for (let x = 0; x < stride; x++) {
+            const a = x >= bpp ? out[y * stride + x - bpp] : 0, b = y ? out[(y - 1) * stride + x] : 0, c = x >= bpp && y ? out[(y - 1) * stride + x - bpp] : 0;
+            const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+            const pred = f === 1 ? a : f === 2 ? b : f === 3 ? (a + b) >> 1 : f === 4 ? (pa <= pb && pa <= pc ? a : pb <= pc ? b : c) : 0;
+            out[y * stride + x] = (row[x] + pred) & 255;
+        }
+    }
+    return { width, height, px: (x, y) => [0, 1, 2].map(i => out[y * stride + x * bpp + i]) };
+}
+
+// WCAG contrast of two sRGB colors
+const lum = ([r, g, b]) => [r, g, b].map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; })
+    .reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
+const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
+
 const loaded = (page, n) => page.waitForFunction((n) => !app.isLoading && app.files.length === n, n, { timeout: 20000 });
 
 // A prompt nobody answers would wait for ever: fail instead
@@ -294,6 +324,119 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             return { r, listed: (Places.drives || []).map(d => d.name) };
         }, { backup });
         check('Eject ejects the drive, and it leaves the list', ejected.r.ok && !ejected.listed.includes('Backup'), JSON.stringify(ejected));
+        check('no JS errors', errors.length === 0, errors.join('; '));
+        await app.close();
+    }
+
+    console.log('mac: Liquid Glass');
+    {
+        // Photos to put the glass over: pure white, pure black
+        const glass = path.join(tmp, 'Glass');
+        fs.mkdirSync(glass);
+        const { app, page, errors } = await launch(profile);
+        const made = await page.evaluate(async () => {
+            const out = {};
+            for (const [name, color] of [['1-white.jpg', '#fff'], ['2-black.jpg', '#000']]) {
+                const c = new OffscreenCanvas(1600, 1067);
+                const g = c.getContext('2d');
+                g.fillStyle = color;
+                g.fillRect(0, 0, 1600, 1067);
+                const b = await c.convertToBlob({ type: 'image/jpeg', quality: 0.95 });
+                out[name] = btoa(String.fromCharCode(...new Uint8Array(await b.arrayBuffer())));
+            }
+            return out;
+        });
+        for (const [name, b64] of Object.entries(made)) fs.writeFileSync(path.join(glass, name), Buffer.from(b64, 'base64'));
+        await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1200, 800));
+        await page.evaluate((p) => JEditorNative.openPath(p), glass);
+        await loaded(page, 2);
+
+        // The pill's glass alone (its text hidden), over each photo, against
+        // the theme's text colors
+        const measure = async (theme, i) => {
+            await page.evaluate(async ([t, i]) => {
+                app.uiPrefs.theme = t;
+                app.uiPrefs.glass = 'rich';
+                app.applyUiPrefs();
+                app.setView('single');
+                app.loadIndex(i);
+                await new Promise(r => setTimeout(r, 900));
+                const s = document.createElement('style');
+                s.id = 'hide-text';
+                s.textContent = '.file-info, .file-info * { color: transparent !important; } .file-info svg { visibility: hidden; }';
+                document.head.appendChild(s);
+            }, [theme, i]);
+            await page.waitForTimeout(300);
+            const box = await page.evaluate(() => {
+                const r = document.querySelector('.file-info').getBoundingClientRect();
+                const probe = document.createElement('span');
+                document.body.appendChild(probe);
+                const color = (v) => { probe.style.color = `var(${v})`; return getComputedStyle(probe).color.match(/\d+/g).slice(0, 3).map(Number); };
+                const out = { x: r.x, y: r.y, w: r.width, h: r.height, text1: color('--text-1'), text2: color('--text-2') };
+                probe.remove();
+                return out;
+            });
+            const png = readPng(await page.screenshot());
+            // The middle of the pill, clear of its rim
+            const samples = [];
+            for (let dx = 0.3; dx <= 0.7; dx += 0.1) samples.push(png.px(Math.round(box.x + box.w * dx), Math.round(box.y + box.h / 2)));
+            const bg = [0, 1, 2].map(k => Math.round(samples.reduce((s, c) => s + c[k], 0) / samples.length));
+            await page.evaluate(() => document.getElementById('hide-text').remove());
+            return { bg, c1: +contrast(box.text1, bg).toFixed(2), c2: +contrast(box.text2, bg).toFixed(2) };
+        };
+        const m = {};
+        for (const theme of ['dark', 'light']) for (const [i, photo] of [[0, 'white'], [1, 'black']]) m[`${theme} over ${photo}`] = await measure(theme, i);
+        const worst = Object.entries(m).sort((a, b) => a[1].c2 - b[1].c2)[0];
+        check('the glass keeps text readable over any photo: 7:1 for text, 4.5:1 for secondary text (measured on screen)',
+            Object.values(m).every(v => v.c1 >= 7 && v.c2 >= 4.5), JSON.stringify(m));
+        console.log(`        (lowest: secondary text ${worst[1].c2}:1, ${worst[0]})`);
+
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const css = (sel, prop) => getComputedStyle(document.querySelector(sel)).getPropertyValue(prop);
+            out.platform = document.documentElement.dataset.platform;
+            out.filter = css('.file-info', 'backdrop-filter');
+            out.rim = css('.file-info', 'box-shadow');
+            // The photo itself is never under glass
+            app.loadIndex(0);
+            await new Promise(r => setTimeout(r, 600));
+            const img = document.getElementById('current-image');
+            const ir = img && img.getBoundingClientRect();
+            const top = ir && document.elementFromPoint(ir.x + ir.width / 2, ir.y + ir.height / 2);
+            out.photoClear = !!top && (top === img || img.contains(top) || top.contains(img));
+            out.photoFilter = img && getComputedStyle(img).backdropFilter;
+            // Room for the traffic lights, given back in full screen
+            app.setView('grid');
+            await new Promise(r => setTimeout(r, 400));
+            const gutter = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gutter'));
+            out.lightsRoom = document.querySelector('.folder-bar').getBoundingClientRect().left - gutter;
+            document.documentElement.classList.add('fullscreen');
+            out.fullscreenRoom = document.querySelector('.folder-bar').getBoundingClientRect().left - gutter;
+            document.documentElement.classList.remove('fullscreen');
+            // The top row moves the window; buttons in it don't
+            out.drag = getComputedStyle(document.body, '::before').getPropertyValue('-webkit-app-region') || getComputedStyle(document.body, '::before').getPropertyValue('app-region');
+            out.noDrag = getComputedStyle(document.querySelector('#header-controls button')).getPropertyValue('-webkit-app-region') || getComputedStyle(document.querySelector('#header-controls button')).getPropertyValue('app-region');
+            // Glass: Off is solid
+            app.uiPrefs.glass = 'off';
+            app.applyUiPrefs();
+            out.offFilter = css('.file-info', 'backdrop-filter');
+            out.offBg = css('.file-info', 'background-color');
+            app.uiPrefs.glass = 'rich';
+            app.applyUiPrefs();
+            return out;
+        });
+        check('the Mac\'s glass: blurred, with light along its edge', r.platform === 'mac' && /blur\(20px\)/.test(r.filter) && /inset/.test(r.rim), JSON.stringify([r.filter, r.rim]));
+        check('the photo is never under glass', r.photoClear && (!r.photoFilter || r.photoFilter === 'none'), JSON.stringify([r.photoClear, r.photoFilter]));
+        check('the traffic lights get their room, and give it back in full screen', r.lightsRoom === 72 && r.fullscreenRoom === 0, JSON.stringify([r.lightsRoom, r.fullscreenRoom]));
+        check('the top row moves the window, its buttons don\'t', r.drag === 'drag' && r.noDrag === 'no-drag', JSON.stringify([r.drag, r.noDrag]));
+        check('Glass: Off is solid', r.offFilter === 'none' && /^rgb\(/.test(r.offBg), JSON.stringify([r.offFilter, r.offBg]));
+
+        // Reduce transparency (System Settings → Accessibility): solid
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }] });
+        const reduced = await page.evaluate(() => matchMedia('(prefers-reduced-transparency: reduce)').matches && getComputedStyle(document.querySelector('.file-info')).backdropFilter);
+        await cdp.send('Emulation.setEmulatedMedia', { features: [] });
+        check('Reduce transparency makes the glass solid', reduced === 'none', reduced);
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.close();
     }

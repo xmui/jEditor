@@ -390,7 +390,7 @@ const app = {
     APPEARANCE: {
         theme: ['dark', 'light', 'system'],
         density: ['compact', 'comfortable'],
-        glass: ['rich', 'subtle'],
+        glass: ['rich', 'subtle', 'off'],
         surround: ['auto', 'black', 'grey', 'light'],
         backdrop: ['none', 'mica', 'acrylic'] // the Windows app only (applyBackdrop)
     },

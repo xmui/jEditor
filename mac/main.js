@@ -303,8 +303,16 @@ async function handle(rec, type, data) {
             return { ok: true };
         case 'theme':
             nativeTheme.themeSource = data.dark ? 'dark' : 'light';
-            if (data.background) rec.win.setBackgroundColor(data.background);
+            // (on a Mac the window stays clear, for its material)
+            if (data.background && process.platform !== 'darwin') rec.win.setBackgroundColor(data.background);
             return { ok: true };
+        case 'lights':
+            // The traffic lights, centred on the page's top row of pills
+            if (process.platform === 'darwin' && Number.isFinite(data.x) && Number.isFinite(data.y)) {
+                rec.win.setWindowButtonPosition({ x: Math.round(data.x), y: Math.round(data.y) });
+            }
+            rec.lights = { x: data.x, y: data.y };
+            return { ok: true, fullscreen: rec.win.isFullScreen() };
         // ---- The sidebar (places.js) ----
         case 'places': {
             const drives = await places.drives();
@@ -562,13 +570,23 @@ function createWindow() {
     // A new window beside the others: a step down and right of the last
     const last = lastFocused();
     const bounds = last ? { ...last.win.getBounds(), x: last.win.getBounds().x + 28, y: last.win.getBounds().y + 28 } : base;
+    const mac = process.platform === 'darwin';
     const win = new BrowserWindow({
         ...bounds,
         minWidth: 640,
         minHeight: 480,
         show: false,
-        backgroundColor: '#111111',
         title: 'jEditor',
+        // No title bar: the traffic lights sit in the page's top row, which
+        // moves the window (style.css), and the Mac's own window material
+        // shows through the start screen (the rest of the page is solid)
+        ...(mac ? {
+            titleBarStyle: 'hiddenInset',
+            trafficLightPosition: { x: 20, y: 34 },
+            vibrancy: 'under-window',
+            visualEffectState: 'followWindow',
+            backgroundColor: '#00000000'
+        } : { backgroundColor: '#111111' }),
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
@@ -592,6 +610,10 @@ function createWindow() {
     });
     win.webContents.on('did-start-loading', () => { rec.ready = false; });
     win.on('focus', () => { rec.focusedAt = Date.now(); });
+    // In full screen the traffic lights are gone, and so is their room
+    const fullscreen = (on) => () => { if (rec.ready) win.webContents.send('jeditor', { type: 'fullscreen', on }); };
+    win.on('enter-full-screen', fullscreen(true));
+    win.on('leave-full-screen', fullscreen(false));
 
     // The last window closed is where the next first one opens
     win.on('close', () => {

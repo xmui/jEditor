@@ -78,6 +78,8 @@ const Host = {
     // Once, as the page starts: hides what the app can't do (data-needs="scan")
     // and puts this system's words into the page's texts and tooltips
     apply(root = document.body) {
+        // For the look of each app (tokens.css: data-platform)
+        document.documentElement.dataset.platform = this.platform();
         root.querySelectorAll('[data-needs]').forEach(el => {
             if (!el.dataset.needs.split(/\s+/).every(f => this.has(f))) el.classList.add('host-missing');
         });

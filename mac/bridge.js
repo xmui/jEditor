@@ -392,9 +392,29 @@
         }
     };
 
+    // The traffic lights: in line with the top row of pills (their centre:
+    // the gutter plus half a pill, which the UI scale zooms), and at the
+    // gutter's distance from the left edge. A light is 14px.
+    let lastLights = '';
+    const reportLights = () => {
+        const css = getComputedStyle(document.documentElement);
+        const px = (name) => parseFloat(css.getPropertyValue(name)) || 0;
+        const scale = parseFloat(css.getPropertyValue('--ui-scale')) || 1;
+        const gutter = px('--gutter');
+        const at = { x: Math.max(12, gutter), y: gutter + (px('--ctl-lg') * scale) / 2 - 7 };
+        const key = at.x + ',' + at.y;
+        if (key === lastLights) return;
+        lastLights = key;
+        mac.request('lights', at).then(r => { if (r) document.documentElement.classList.toggle('fullscreen', !!r.fullscreen); });
+    };
+    let lightsTimer = null;
+    const lightsSoon = () => { clearTimeout(lightsTimer); lightsTimer = setTimeout(reportLights, 100); };
+
     whenReady().then(() => {
         reportTheme();
-        new MutationObserver(reportTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+        reportLights();
+        new MutationObserver(() => { reportTheme(); lightsSoon(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-density', 'style'] });
+        addEventListener('resize', lightsSoon);
         mac.request('ready', { version: typeof APP_VERSION !== 'undefined' ? APP_VERSION : null });
     });
 
@@ -410,6 +430,8 @@
                 log('error', 'Opening the folder failed: ' + (e && e.message || e));
                 if (msg.smoke) mac.request('smoke', { ok: false, error: String(e && e.message || e), errors });
             }
+        } else if (msg.type === 'fullscreen') {
+            document.documentElement.classList.toggle('fullscreen', !!msg.on);
         } else if (msg.type === 'drivesChanged') {
             dispatchEvent(new Event('jeditor-drives')); // places.js
         } else if (msg.type === 'copyProgress') {
