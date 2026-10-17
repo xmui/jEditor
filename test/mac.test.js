@@ -156,6 +156,57 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await app.close();
     }
 
+    console.log('mac: several windows');
+    {
+        const { app, page, errors } = await launch(profile, [smith]);
+        await loaded(page, 4);
+        const opened = app.waitForEvent('window');
+        await page.evaluate((p) => Windows.newWindow(p), jones);
+        const second = await opened;
+        const errors2 = [];
+        second.on('pageerror', e => errors2.push(e.message));
+        await second.waitForFunction(() => typeof app !== 'undefined' && app.elements && !app.isLoading && app.files.length === 3, null, { timeout: 20000 });
+        check('a new window opens the other project', await second.evaluate(() => app.dirHandle.name) === 'Jones');
+
+        // Each sees the other's project, for Move to
+        await second.waitForTimeout(800); // setState is sent a moment after loading
+        const others = await page.evaluate(() => Windows.refreshOthers().then(o => o.map(w => [w.name, w.path, w.folders.join('|')])));
+        check('the other window\'s project is listed, with its folders', others.length === 1 && others[0][0] === 'Jones' && others[0][1] === jones && others[0][2].includes('Ceremony'), JSON.stringify(others));
+
+        // Moved into Jones from Smith's window; the name taken there gets (2)
+        const moved = await page.evaluate(async (dest) => {
+            const p = Windows.pathOf(app.files.find(f => f.name === 'photo2.jpg'));
+            return Windows.send([p], dest, '', false, 'Jones');
+        }, jones);
+        check('a photo moves into the other project, under a free name', moved.length === 1 && moved[0].to === path.join(jones, 'photo2 (2).jpg') && !fs.existsSync(path.join(smith, 'photo2.jpg')) && fs.existsSync(path.join(jones, 'photo2 (2).jpg')), JSON.stringify(moved));
+        await second.waitForFunction(() => app.files.some(f => f.name === 'photo2 (2).jpg'), null, { timeout: 10000 }).catch(() => { });
+        check('... and the other window shows it', await second.evaluate(() => app.files.some(f => f.name === 'photo2 (2).jpg')));
+        await page.evaluate(() => app.undo());
+        check('Ctrl+Z moves it back', fs.existsSync(path.join(smith, 'photo2.jpg')) && !fs.existsSync(path.join(jones, 'photo2 (2).jpg')));
+
+        // Copied into Jones's Ceremony folder; undo removes the copy
+        const copied = await page.evaluate(async (dest) => {
+            const p = Windows.pathOf(app.files.find(f => f.name === 'photo1.jpg'));
+            return Windows.send([p], dest, 'Ceremony', true, 'Jones');
+        }, jones);
+        const copyTo = path.join(jones, 'Ceremony', 'photo1.jpg');
+        check('a photo is copied into a folder of the other project', copied[0] && copied[0].to === copyTo && fs.existsSync(copyTo) && fs.existsSync(path.join(smith, 'photo1.jpg')), JSON.stringify(copied));
+        await page.evaluate(() => app.undo());
+        check('Ctrl+Z removes the copy, the original stays', !fs.existsSync(copyTo) && fs.existsSync(path.join(smith, 'photo1.jpg')));
+
+        // Split: side by side
+        await page.evaluate(() => Windows.split());
+        const bounds = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map(w => w.getBounds()).sort((a, b) => a.x - b.x));
+        check('Split puts the two side by side, half each', bounds.length === 2 && bounds[0].width === bounds[1].width && bounds[1].x === bounds[0].x + bounds[0].width && bounds[0].y === bounds[1].y, JSON.stringify(bounds));
+
+        // A folder already open: its window comes forward, no new one
+        await page.evaluate((p) => Windows.newWindow(p), jones);
+        await page.waitForTimeout(500);
+        check('opening a folder that\'s open in a window doesn\'t open another', (await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)) === 2);
+        check('no JS errors', errors.length === 0 && errors2.length === 0, errors.concat(errors2).join('; '));
+        await app.close();
+    }
+
     console.log('mac: updates');
     {
         const port = releaseServer.address().port;

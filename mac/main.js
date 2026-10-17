@@ -15,7 +15,7 @@
 //   --user-data <folder>         a different profile
 //   --smoke-test <folder>        open it, edit, check on disk, exit 0 or 1
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, net, protocol, session, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, net, protocol, screen, session, shell } = require('electron');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -68,28 +68,49 @@ function log(level, text) {
     (level === 'error' ? console.error : console.log)(line);
 }
 
-// ---- Folders to open: from the command line, Finder, the Dock ----
-let win = null;
-let pageReady = false;
-const toOpen = []; // { path, smoke }
+// ---- Windows: one project each ----
+// webContents id → { win, ready, queue (folders to open once it's ready),
+// state (what it shows: { name, path, folders }), focusedAt }
+const windows = new Map();
+let started = false;
+const early = []; // folders from Finder before there's a window
 
-function openFolder(p, smoke = false) {
+const same = (a, b) => !!a && !!b && path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+const records = () => [...windows.values()];
+const lastFocused = () => records().sort((a, b) => b.focusedAt - a.focusedAt)[0] || null;
+
+function show(rec) {
+    if (rec.win.isMinimized()) rec.win.restore();
+    rec.win.show();
+    rec.win.focus();
+}
+
+function flush(rec) {
+    if (!rec.ready) return;
+    while (rec.queue.length) rec.win.webContents.send('jeditor', { type: 'openFolder', ...rec.queue.shift() });
+}
+
+// Folders to open: from the command line, Finder, the Dock, Open in a new
+// window. Already open in a window: that one comes forward. Else a window
+// with nothing open takes it, or a new one opens.
+function openFolder(p, { smoke = false, fresh = false } = {}) {
     let dir = path.resolve(p);
     try {
         if (!fs.statSync(dir).isDirectory()) dir = path.dirname(dir); // a photo: its folder
     } catch (e) {
         log('warn', `Not opened (${e.code || e.message}): ${dir}`);
-        return;
+        return null;
     }
-    toOpen.push({ path: dir, smoke });
-    flushOpens();
-}
-
-function flushOpens() {
-    if (!win || !pageReady) return;
-    while (toOpen.length) win.webContents.send('jeditor', { type: 'openFolder', ...toOpen.shift() });
-    if (win.isMinimized()) win.restore();
-    win.focus();
+    if (!started) { early.push(dir); return null; }
+    const there = records().find(r => same(r.state && r.state.path, dir) || r.queue.some(q => same(q.path, dir)));
+    if (there && !smoke) { show(there); return there; }
+    // (still loading counts: what's queued opens once it's ready)
+    const empty = !fresh && records().find(r => !(r.state && r.state.path) && !r.queue.length);
+    const rec = empty || createWindow();
+    rec.queue.push({ path: dir, smoke });
+    flush(rec);
+    if (!smoke) show(rec);
+    return rec;
 }
 
 // Finder's Open With and the Dock icon; may come before the app is ready
@@ -104,12 +125,17 @@ if (!opts.smoke && !app.requestSingleInstanceLock()) {
     app.on('second-instance', (e, argv) => {
         const again = parseArgs(argv);
         if (again.folder) openFolder(again.folder);
-        else if (win) win.focus();
+        else if (lastFocused()) show(lastFocused());
+        else createWindow();
     });
     app.whenReady().then(start);
 }
 
-app.on('window-all-closed', () => app.quit());
+// A Mac app stays open with no windows (the Dock brings one back); not
+// so elsewhere (Electron runs these tests on Linux too)
+app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin' || opts.smoke) app.quit();
+});
 
 // ---- The UI, served at app://jeditor/ ----
 function serve() {
@@ -243,10 +269,11 @@ async function installUpdate(wc) {
 // ---- What the page asks for (bridge.js) ----
 const smokeSteps = {};
 
-async function handle(wc, type, data) {
+async function handle(rec, type, data) {
+    const wc = rec.win.webContents;
     switch (type) {
         case 'pickFolder': {
-            const r = await dialog.showOpenDialog(win, {
+            const r = await dialog.showOpenDialog(rec.win, {
                 title: data.title || 'Open a folder of photos',
                 defaultPath: data.defaultPath || settings.lastPicked || app.getPath('pictures'),
                 buttonLabel: 'Open',
@@ -270,13 +297,44 @@ async function handle(wc, type, data) {
         case 'installUpdate':
             return installUpdate(wc);
         case 'ready':
-            pageReady = true;
-            flushOpens();
+            rec.ready = true;
+            flush(rec);
             return { ok: true };
         case 'theme':
             nativeTheme.themeSource = data.dark ? 'dark' : 'light';
-            if (data.background) win.setBackgroundColor(data.background);
+            if (data.background) rec.win.setBackgroundColor(data.background);
             return { ok: true };
+        // ---- Windows ----
+        case 'newWindow':
+            if (data.path) {
+                if (!isDir(data.path)) throw new Error('That folder isn\'t there');
+                openFolder(data.path, { fresh: true });
+            } else {
+                show(createWindow());
+            }
+            return { ok: true };
+        case 'split':
+            split(rec);
+            return { ok: true };
+        case 'state':
+            rec.state = { name: data.name || null, path: data.path || null, folders: Array.isArray(data.folders) ? data.folders : [] };
+            return { ok: true };
+        case 'windows':
+            return {
+                windows: records().filter(r => r !== rec && r.state && r.state.path)
+                    .map(r => ({ id: r.win.webContents.id, name: r.state.name, path: r.state.path, folders: r.state.folders }))
+            };
+        case 'transfer': {
+            const items = await transfer(data.paths || [], data.dest, !!data.copy);
+            log('info', `${data.copy ? 'Copied' : 'Moved'} ${items.filter(i => i.to).length} of ${items.length} into ${data.dest}`);
+            filesChanged();
+            return { items };
+        }
+        case 'undoTransfer': {
+            const errors = await undoTransfer(data.items || [], !!data.copy);
+            filesChanged();
+            return { errors };
+        }
         case 'log':
             log(data.level || 'info', data.text);
             return { ok: true };
@@ -301,17 +359,102 @@ async function handle(wc, type, data) {
 }
 
 ipcMain.handle('jeditor', async (e, type, data) => {
-    if (!win || e.sender !== win.webContents) throw new Error('Not this window');
+    const rec = windows.get(e.sender.id);
+    if (!rec || rec.win.webContents !== e.sender) throw new Error('Not a jEditor window');
     try {
-        return await handle(e.sender, type, data || {});
+        return await handle(rec, type, data || {});
     } catch (err) {
         return { error: err.message || String(err) };
     }
 });
 
+function isDir(p) {
+    try { return path.isAbsolute(p) && fs.statSync(p).isDirectory(); } catch (e) { return false; }
+}
+
+// Every window looks again (photos moved in or out of its project)
+function filesChanged() {
+    for (const r of records()) if (r.ready) r.win.webContents.send('jeditor', { type: 'filesChanged' });
+}
+
+// This window on the left half of its screen, another on the right (the
+// last one used, or a new one)
+function split(rec) {
+    const area = screen.getDisplayMatching(rec.win.getBounds()).workArea;
+    const other = records().filter(r => r !== rec).sort((a, b) => b.focusedAt - a.focusedAt)[0] || createWindow();
+    const half = Math.floor(area.width / 2);
+    [[rec, area.x], [other, area.x + half]].forEach(([r, x]) => {
+        if (r.win.isFullScreen()) r.win.setFullScreen(false);
+        if (r.win.isMaximized()) r.win.unmaximize();
+        r.win.setBounds({ x, y: area.y, width: half, height: area.height });
+        r.win.show();
+    });
+    rec.win.focus();
+}
+
+// ---- Photos between projects (windows), by path ----
+// "Smith.jpg" → "Smith (2).jpg" while the name is taken
+function freeName(dir, name) {
+    const ext = path.extname(name);
+    const stem = name.slice(0, name.length - ext.length);
+    let to = path.join(dir, name);
+    for (let n = 2; fs.existsSync(to); n++) to = path.join(dir, `${stem} (${n})${ext}`);
+    return to;
+}
+
+async function moveFile(from, to) {
+    try {
+        await fs.promises.rename(from, to);
+    } catch (e) {
+        if (e.code !== 'EXDEV') throw e;
+        // Another disk: copied, then the original removed
+        await fs.promises.copyFile(from, to, fs.constants.COPYFILE_EXCL);
+        await fs.promises.unlink(from);
+    }
+}
+
+// → [{ from, to } or { from, error }], each under a free name in dest
+async function transfer(paths, dest, copy) {
+    if (!isDir(dest)) throw new Error('The folder to put them in isn\'t there');
+    const out = [];
+    for (const from of paths) {
+        try {
+            if (!path.isAbsolute(from) || !fs.existsSync(from)) { out.push({ from, error: 'not there any more' }); continue; }
+            if (same(path.dirname(from), dest)) { out.push({ from, error: 'already in that folder' }); continue; }
+            const to = freeName(dest, path.basename(from));
+            if (copy) await fs.promises.copyFile(from, to, fs.constants.COPYFILE_EXCL);
+            else await moveFile(from, to);
+            out.push({ from, to });
+        } catch (e) {
+            out.push({ from, error: e.message });
+        }
+    }
+    return out;
+}
+
+// Undo: the moved ones go back; the copies are removed (they're copies)
+async function undoTransfer(items, copy) {
+    const out = [];
+    for (const { from, to } of items) {
+        try {
+            if (copy) await fs.promises.unlink(to);
+            else if (fs.existsSync(from)) { out.push('another file with that name is in its place'); continue; }
+            else await moveFile(to, from);
+            out.push(null);
+        } catch (e) {
+            out.push(e.message);
+        }
+    }
+    return out;
+}
+
 // ---- The window ----
 function menu() {
-    const send = (action) => () => win && win.webContents.send('jeditor', { type: 'menu', action });
+    const send = (action) => () => {
+        const rec = lastFocused();
+        if (rec) rec.win.webContents.send('jeditor', { type: 'menu', action });
+        else if (action === 'open') createWindow();
+    };
     Menu.setApplicationMenu(Menu.buildFromTemplate([
         {
             role: 'appMenu',
@@ -330,6 +473,7 @@ function menu() {
         {
             label: 'File',
             submenu: [
+                { label: 'New Window', accelerator: 'Cmd+Shift+N', click: () => show(createWindow()) },
                 { label: 'Open Folder…', accelerator: 'Cmd+O', click: send('open') },
                 { type: 'separator' },
                 { role: 'close' }
@@ -350,8 +494,11 @@ function menu() {
 }
 
 function createWindow() {
-    const bounds = settings.bounds || { width: 1280, height: 860 };
-    win = new BrowserWindow({
+    const base = settings.bounds || { width: 1280, height: 860 };
+    // A new window beside the others: a step down and right of the last
+    const last = lastFocused();
+    const bounds = last ? { ...last.win.getBounds(), x: last.win.getBounds().x + 28, y: last.win.getBounds().y + 28 } : base;
+    const win = new BrowserWindow({
         ...bounds,
         minWidth: 640,
         minHeight: 480,
@@ -366,7 +513,10 @@ function createWindow() {
             spellcheck: false
         }
     });
-    if (settings.maximized) win.maximize();
+    if (!last && settings.maximized) win.maximize();
+    const rec = { win, ready: false, queue: [], state: null, focusedAt: Date.now() };
+    const id = win.webContents.id;
+    windows.set(id, rec);
 
     // Nothing but jEditor in the window; links open in the browser
     win.webContents.on('will-navigate', (e, url) => {
@@ -376,37 +526,44 @@ function createWindow() {
         if (/^https?:\/\//.test(url)) shell.openExternal(url);
         return { action: 'deny' };
     });
-    win.webContents.on('did-start-loading', () => { pageReady = false; });
+    win.webContents.on('did-start-loading', () => { rec.ready = false; });
+    win.on('focus', () => { rec.focusedAt = Date.now(); });
 
-    const remember = () => {
-        if (win.isDestroyed()) return;
+    // The last window closed is where the next first one opens
+    win.on('close', () => {
         settings.maximized = win.isMaximized();
         if (!settings.maximized && !win.isFullScreen()) settings.bounds = win.getBounds();
         saveSettings();
-    };
-    win.on('close', remember);
+    });
     win.once('ready-to-show', () => {
         if (!opts.smoke) win.show();
     });
-    win.on('closed', () => { win = null; });
+    win.on('closed', () => windows.delete(id));
 
     win.loadURL(`${ORIGIN}/index.html`);
+    return rec;
 }
 
 function start() {
     serve();
     permissions();
     menu();
-    createWindow();
+    started = true;
+    const first = createWindow();
     if (opts.smoke) {
         // The drop needs the window on screen, if only just
-        win.showInactive();
-        openFolder(opts.smoke, true);
+        first.win.showInactive();
+        first.queue.push({ path: path.resolve(opts.smoke), smoke: true });
         setTimeout(() => {
             console.log('smoke test FAILED: timed out');
             app.exit(1);
         }, 120000);
-    } else if (opts.folder) {
-        openFolder(opts.folder);
+    } else {
+        for (const dir of [opts.folder, ...early].filter(Boolean)) openFolder(dir);
     }
 }
+
+// The Dock icon clicked with no window open
+app.on('activate', () => {
+    if (started && !windows.size) createWindow();
+});

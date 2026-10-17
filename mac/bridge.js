@@ -184,7 +184,7 @@
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: 'mac',
-        features: ['reveal', 'updates'],
+        features: ['reveal', 'updates', 'windows'],
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage
         async dataDir() {
@@ -208,6 +208,38 @@
         // Show a folder in Finder
         async reveal(path) {
             await answer('reveal', { path });
+        },
+        // ---- Windows: one project each ----
+        // Another jEditor window, opening `path` (or the start screen)
+        async newWindow(path) {
+            return (await answer('newWindow', path ? { path } : {})).ok;
+        },
+        // This window on the left half of the screen, another on the right
+        async split() {
+            return (await answer('split')).ok;
+        },
+        // What this window shows, for the others' Move to:
+        // { name, path, folders: ['', 'Ceremony', …] }
+        setState(state) {
+            return mac.request('state', state || {});
+        },
+        // The other windows' projects → [{ id, name, path, folders }]
+        async windows() {
+            return (await answer('windows')).windows;
+        },
+        // Photos (paths) moved or copied into a folder (a path), each under a
+        // free name → [{ from, to } or { from, error }]. Every window hears
+        // of it ('jeditor-files').
+        async transfer(paths, dest, copy) {
+            return (await answer('transfer', { paths, dest, copy: !!copy })).items;
+        },
+        // Undoes one: moved photos go back, copies go → [error or null]
+        async undoTransfer(items, copy) {
+            return (await answer('undoTransfer', { items, copy: !!copy })).errors;
+        },
+        // Where Files dropped from outside (Finder) are on disk → [path]
+        async pathsOf(files) {
+            return [...files].map(f => mac.pathForFile(f));
         },
         // → { current, tag, version, notes, size, newer }
         async checkUpdate() {
@@ -273,6 +305,8 @@
                 log('error', 'Opening the folder failed: ' + (e && e.message || e));
                 if (msg.smoke) mac.request('smoke', { ok: false, error: String(e && e.message || e), errors });
             }
+        } else if (msg.type === 'filesChanged') {
+            dispatchEvent(new Event('jeditor-files')); // another window moved photos
         } else if (msg.type === 'updateProgress') {
             if (onUpdateProgress) onUpdateProgress(msg.received, msg.total);
         } else if (msg.type === 'menu') {
