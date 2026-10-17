@@ -108,7 +108,8 @@ const Picked = {
 
     async open(files) {
         const app = this.app;
-        const photos = files.filter(f => app.isImage(f.name));
+        // RAW files (raw.js) are never written, so they need a folder
+        const photos = files.filter(f => app.isImage(f.name) && !Raw.is(f.name));
         if (!photos.length) {
             if (files.length) UI.alert({ title: 'No photos there', message: 'jEditor opens JPEG, PNG, WebP and GIF photos.' });
             return;

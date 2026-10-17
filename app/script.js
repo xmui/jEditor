@@ -1622,7 +1622,17 @@ const app = {
     },
 
     isImage(name) {
-        return /\.(jpg|jpeg|png|webp|gif)$/i.test(name);
+        return /\.(jpg|jpeg|png|webp|gif)$/i.test(name) || Raw.is(name);
+    },
+
+    // The photo's bytes to decode: the file, or a RAW's own JPEG (raw.js).
+    // Never for writing: a RAW is never written
+    async readImage(file) {
+        const data = await file.handle.getFile();
+        if (!Raw.is(file.name)) return data;
+        const jpeg = await Raw.preview(data);
+        if (!jpeg) throw new Error('no preview found in this RAW file');
+        return jpeg;
     },
 
     // Position of the current photo among the ones being shown (one
@@ -1993,7 +2003,7 @@ const app = {
             } else if (this._displayFile === file && this._displayKind === 'full' && img.naturalWidth > 0) {
                 dims = `${img.naturalWidth} × ${img.naturalHeight}`;
             } else {
-                const bmp = await createImageBitmap(await file.handle.getFile());
+                const bmp = await createImageBitmap(await this.readImage(file));
                 dims = `${bmp.width} × ${bmp.height}`;
                 bmp.close();
             }
@@ -2772,7 +2782,7 @@ const app = {
         // lands while we decode shows up in the lag delta below.
         const savedAtRead = fileEntry._savedRotationTotal || 0;
         const editGen = fileEntry._editGen || 0;
-        const fileData = await fileEntry.handle.getFile();
+        const fileData = await this.readImage(fileEntry);
         if (!fileData.size) throw new Error('empty file (still being written?)');
 
         let blob;
@@ -3175,7 +3185,7 @@ const app = {
             // instead of making a new one from the full scan
             if (file._cacheFrom) await this.carryCache(file).catch(() => { });
             const savedAtRead = file._savedRotationTotal || 0;
-            const data = await file.handle.getFile();
+            const data = await this.readImage(file);
             const edge = this.previewEdge();
             const key = `p|${file.relPath || file.name}|${data.size}|${data.lastModified}|${edge}`;
             if (file._preview && file._preview.key === key) return file._preview;
@@ -3290,7 +3300,7 @@ const app = {
         if (!data) {
             while (file.isBusy) await new Promise(r => setTimeout(r, 30));
             savedAtRead = file._savedRotationTotal || 0;
-            data = await file.handle.getFile();
+            data = await this.readImage(file);
         }
         const version = `${data.size}|${data.lastModified}`;
         if (!file.fullImageUrl || file._fullVersion !== version) {
@@ -5935,7 +5945,8 @@ const app = {
             let done = 0, failed = 0;
             for (const f of list) {
                 try {
-                    const data = await f.handle.getFile();
+                    // A RAW: from its own JPEG, written as a JPEG
+                    const data = await this.readImage(f);
                     let out = f._edit ? await this.renderEdited(f, data) : data;
                     if (maxEdge > 0) {
                         const bmp = await createImageBitmap(out);
@@ -5951,7 +5962,7 @@ const app = {
                         bmp.close();
                     }
                     if (!out) throw new Error('encode failed');
-                    const h = await dir.getFileHandle(f.name, { create: true });
+                    const h = await dir.getFileHandle(Raw.is(f.name) ? Raw.jpegName(f.name) : f.name, { create: true });
                     const w = await h.createWritable();
                     await w.write(out);
                     await w.close();
@@ -6680,7 +6691,7 @@ const app = {
             W = src.w;
             H = src.h;
         } else {
-            bmp = await createImageBitmap(await file.handle.getFile());
+            bmp = await createImageBitmap(await this.readImage(file));
             W = bmp.width;
             H = bmp.height;
         }
@@ -6707,7 +6718,7 @@ const app = {
             W = src.w;
             H = src.h;
         } else {
-            bmp = await createImageBitmap(await file.handle.getFile());
+            bmp = await createImageBitmap(await this.readImage(file));
             W = bmp.width;
             H = bmp.height;
         }
@@ -6805,6 +6816,13 @@ const app = {
         if (!this.dirHandle) {
             this.showToast('Saving edits needs a folder opened with Open folder');
             return false;
+        }
+        // RAW files are never written (raw.js): JPEG copies of them instead
+        const raws = list.filter(f => Raw.is(f.name));
+        if (raws.length) {
+            list = list.filter(f => !Raw.is(f.name));
+            await this.exportCopies(raws);
+            if (!list.length) return true;
         }
         if (this._savingEdits) {
             this.showToast('The edits are already being saved');

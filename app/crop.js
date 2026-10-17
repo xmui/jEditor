@@ -260,12 +260,12 @@ const CropEditor = {
             w = src.w;
             h = src.h;
         } else {
-            const data = await file.handle.getFile();
+            const data = await app.readImage(file);
             preview = await createImageBitmap(data); // EXIF orientation applied by default
             w = preview.width;
             h = preview.height;
         }
-        const data = await file.handle.getFile();
+        const data = await app.readImage(file);
         const dpi = ImageMeta.readDpi(new Uint8Array(await data.slice(0, 256 * 1024).arrayBuffer()));
         // Adjusted (adjust.js): shown with its adjustments
         const shownEdit = Edits.get(file);

@@ -82,9 +82,10 @@ const Edits = {
     },
 
     // This photo's crops and turns are kept as an edit, not written: the
-    // setting is on, or it has adjustments (which always are)
+    // setting is on, or it has adjustments (which always are), or it's a
+    // RAW (raw.js: never written)
     keeps(f) {
-        return this.on() || !!(this.canKeep() && f && f._edit && f._edit.adj);
+        return this.on() || !!(this.canKeep() && f && ((f._edit && f._edit.adj) || Raw.is(f.name)));
     },
 
     // An edit with these adjustments (null: none), its crop kept

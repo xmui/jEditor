@@ -637,7 +637,7 @@ const Adjust = {
         const kept = Edits.get(file);
         const spots = this.a.spots;
         this._fullPromise = (async () => {
-            const bmp = await createImageBitmap(await file.handle.getFile());
+            const bmp = await createImageBitmap(await this.app.readImage(file));
             const base = await Retouch.retouched(bmp, { ...(kept || {}), adj: { spots } }, { file });
             let c;
             if (kept && !Edits.wholePhoto(kept)) {

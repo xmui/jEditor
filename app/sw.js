@@ -22,6 +22,7 @@ const ASSETS = [
     './crop-auto.js',
     './crop.js',
     './crop-log.js',
+    './raw.js',
     './retouch.js',
     './select.js',
     './develop.js',

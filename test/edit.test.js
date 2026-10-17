@@ -442,6 +442,171 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- RAW files ----
+    if (wanted('raw')) {
+        console.log('RAW files (raw.js)');
+        const { page, issues } = await open();
+        await page.evaluate(() => {
+            const jpeg = async (w, h, color) => {
+                const c = document.createElement('canvas'); c.width = w; c.height = h;
+                const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, w, h);
+                g.fillStyle = '#fff'; g.fillRect(0, 0, w / 4, h / 4);   // a corner, to see the turn
+                return new Uint8Array(await (await canvasBlob(c, 'image/jpeg', 0.9)).arrayBuffer());
+            };
+            window.rawJpeg = jpeg;
+            // A DNG: IFD0 (orientation, a tiny thumbnail strip), a SubIFD of
+            // raw data (lossless JPEG: not showable) and one with the preview
+            window.makeDng = async (orientation = 6) => {
+                const thumb = await jpeg(40, 30, '#333'), prev = await jpeg(300, 200, '#c33');
+                // Lossless JPEG (SOF3): a header a browser can't show
+                const raw = new Uint8Array(4000); raw.set([0xFF, 0xD8, 0xFF, 0xC3, 0x00, 0x0B, 8, 0, 10, 0, 10, 1, 1, 0x11, 0]);
+                const parts = [];
+                let off = 8;
+                const ifd = (entries, next = 0) => {
+                    const b = new DataView(new ArrayBuffer(2 + entries.length * 12 + 4));
+                    b.setUint16(0, entries.length, true);
+                    entries.forEach(([tag, type, count, val], i) => {
+                        b.setUint16(2 + i * 12, tag, true); b.setUint16(4 + i * 12, type, true);
+                        b.setUint32(6 + i * 12, count, true);
+                        if (type === 3 && count === 1) b.setUint16(10 + i * 12, val, true); else b.setUint32(10 + i * 12, val, true);
+                    });
+                    b.setUint32(2 + entries.length * 12, next, true);
+                    return new Uint8Array(b.buffer);
+                };
+                // Layout: header, IFD0, SubIFD A, SubIFD B, data
+                const ifd0Len = 2 + 5 * 12 + 4, subLen = 2 + 4 * 12 + 4;
+                const ifd0At = 8, subAAt = ifd0At + ifd0Len, subBAt = subAAt + subLen, dataAt = subBAt + subLen;
+                const subOffsArr = dataAt;                       // two LONGs: the SubIFDs
+                const thumbAt = subOffsArr + 8, rawAt = thumbAt + thumb.length, prevAt = rawAt + raw.length;
+                const hdr = new Uint8Array([0x49, 0x49, 42, 0, 8, 0, 0, 0]);
+                const i0 = ifd([[0x00FE, 4, 1, 1], [0x0103, 3, 1, 7], [0x0111, 4, 1, thumbAt], [0x0112, 3, 1, orientation], [0x014A, 4, 2, subOffsArr]].concat([]).slice(0, 5));
+                const sa = ifd([[0x00FE, 4, 1, 0], [0x0103, 3, 1, 7], [0x0111, 4, 1, rawAt], [0x0117, 4, 1, raw.length]]);
+                const sb = ifd([[0x00FE, 4, 1, 1], [0x0103, 3, 1, 7], [0x0111, 4, 1, prevAt], [0x0117, 4, 1, prev.length]]);
+                const subs = new DataView(new ArrayBuffer(8)); subs.setUint32(0, subAAt, true); subs.setUint32(4, subBAt, true);
+                return new Blob([hdr, i0, sa, sb, new Uint8Array(subs.buffer), thumb, raw, prev], { type: 'image/x-adobe-dng' });
+            };
+            // A CR3: ftyp, moov (Canon's uuid with CMT1, a track whose first
+            // chunk is the full JPEG), a top-level uuid with PRVW, mdat
+            window.makeCr3 = async () => {
+                const full = await jpeg(400, 300, '#36c'), prvw = await jpeg(160, 120, '#3c6');
+                const box = (type, ...body) => {
+                    const len = 8 + body.reduce((n, b) => n + b.length, 0);
+                    const h = new Uint8Array(8); new DataView(h.buffer).setUint32(0, len); h.set([...type].map(c => c.charCodeAt(0)), 4);
+                    const out = new Uint8Array(len); out.set(h); let o = 8; for (const b of body) { out.set(b, o); o += b.length; }
+                    return out;
+                };
+                const u32 = (...v) => { const d = new DataView(new ArrayBuffer(v.length * 4)); v.forEach((x, i) => d.setUint32(i * 4, x)); return new Uint8Array(d.buffer); };
+                const hex = (h) => new Uint8Array(h.match(/../g).map(x => parseInt(x, 16)));
+                const cmt1 = new Uint8Array([0x49, 0x49, 42, 0, 8, 0, 0, 0, 1, 0, 0x12, 0x01, 3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]);
+                const ftyp = box('ftyp', new TextEncoder().encode('crx '), u32(1));
+                const canon = box('uuid', hex('85c0b687820f11e08111f4ce462b6a48'), box('CMT1', cmt1));
+                // The track's sample table, its chunk offset filled in after
+                const build = (mdatAt) => {
+                    const stsz = box('stsz', u32(0, 0, 1, full.length));
+                    const co64 = box('co64', u32(0, 1), new Uint8Array([0, 0, 0, 0]), u32(mdatAt + 8));
+                    const trak = box('trak', box('mdia', box('minf', box('stbl', stsz, co64))));
+                    return box('moov', canon, trak);
+                };
+                const prvBox = box('uuid', hex('eaf42b5e1c984b88b9fbb7dc406e4d16'), u32(0, 0), box('PRVW', u32(0), new Uint8Array([0, 1, 0, 160, 0, 120, 0, 1]), u32(prvw.length), prvw));
+                let moov = build(0);
+                const mdatAt = ftyp.length + moov.length + prvBox.length;
+                moov = build(mdatAt);
+                return new Blob([ftyp, moov, prvBox, box('mdat', full)], { type: 'image/x-canon-cr3' });
+            };
+            window.makeRaf = async () => {
+                const prev = await jpeg(320, 240, '#c90');
+                const h = new Uint8Array(160);
+                h.set(new TextEncoder().encode('FUJIFILMCCD-RAW 0201FF383501'));
+                const v = new DataView(h.buffer); v.setUint32(84, 160); v.setUint32(88, prev.length);
+                return new Blob([h, prev], { type: 'application/octet-stream' });
+            };
+        });
+        const m = await page.evaluate(async () => {
+            const out = {};
+            const size = async (blob) => { const b = await createImageBitmap(blob); const s = [b.width, b.height]; b.close(); return s; };
+            const name = (blob, n) => new File([blob], n, { lastModified: 1700000000000 });
+            const dng = await Raw.preview(name(await makeDng(6), 'a.dng'));
+            out.dng = dng ? await size(dng) : null;   // 300 × 200 turned: 200 × 300
+            out.dngType = dng && dng.type;
+            const dng1 = await Raw.preview(name(await makeDng(1), 'b.dng'));
+            out.dng1 = dng1 ? await size(dng1) : null;
+            const cr3 = await Raw.preview(name(await makeCr3(), 'c.cr3'));
+            out.cr3 = cr3 ? await size(cr3) : null;
+            const raf = await Raw.preview(name(await makeRaf(), 'd.raf'));
+            out.raf = raf ? await size(raf) : null;
+            out.none = await Raw.preview(name(new Blob([new Uint8Array(500)]), 'e.nef')) === null;
+            out.names = [Raw.is('x.CR3'), Raw.is('x.nef'), Raw.is('x.jpg'), Raw.jpegName('IMG_1.cr3')].join();
+            return out;
+        });
+        check('raw: a DNG\'s preview is found (not its lossless raw data, not the thumbnail), turned as the camera was', JSON.stringify(m.dng) === '[200,300]' && m.dngType === 'image/jpeg' && JSON.stringify(m.dng1) === '[300,200]', JSON.stringify(m));
+        check('raw: a CR3\'s full-size JPEG is taken over its small preview; a RAF\'s from its header', JSON.stringify(m.cr3) === '[400,300]' && JSON.stringify(m.raf) === '[320,240]', JSON.stringify(m));
+        check('raw: no preview in it, none; RAW names known', m.none && m.names === 'true,true,false,IMG_1.jpg', JSON.stringify(m));
+
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                experiment('adjust');
+                const dngBlob = await makeDng(1), cr3Blob = await makeCr3();
+                const dir = await openProject('raws', { 'a.dng': dngBlob, 'b.cr3': cr3Blob, 'c.jpg': new Blob([await rawJpeg(200, 150, '#888')], { type: 'image/jpeg' }) });
+                const f = (n) => app.files.find(x => x.name === n);
+                const bytesOf = async (n) => new Uint8Array(await (await (await dir.getFileHandle(n)).getFile()).arrayBuffer());
+                const same = async (n, blob) => { const a = await bytesOf(n), b = new Uint8Array(await blob.arrayBuffer()); return a.length === b.length && a.every((v, i) => v === b[i]); };
+                out.listed = app.files.length === 3;
+                step = 'thumbs';
+                await until(() => f('a.dng').thumbnailUrl && f('b.cr3').thumbnailUrl);
+                out.thumbs = !!(f('a.dng').thumbnailUrl && f('b.cr3').thumbnailUrl);
+                step = 'viewer';
+                app.openSingle(f('b.cr3'));
+                const src = await app.getDisplaySource(f('b.cr3'));
+                const img = await pixels(src.blob || await (await fetch(src.url)).blob());
+                out.viewer = [img.width, img.height, img.data[(150 * img.width + 300) * 4 + 2]];
+                // A turn: kept as an edit, the RAW untouched
+                step = 'turn';
+                await app.rotateImage(f('b.cr3'), 90);
+                await sleep(100);
+                out.turnKept = f('b.cr3')._edit && f('b.cr3')._edit.q === 1 && await same('b.cr3', cr3Blob);
+                // Adjusted: kept
+                step = 'adjust';
+                app.openSingle(f('a.dng'));
+                pressKey('e');
+                await until(() => Adjust.ready);
+                Adjust.a.exposure = 1;
+                Adjust.changed();
+                pressKey('Enter');
+                await until(() => !Adjust.isOpen && f('a.dng')._edit);
+                out.adjustKept = f('a.dng')._edit.adj.exposure === 1 && await same('a.dng', dngBlob);
+                // Export: JPEG copies, named .jpg
+                step = 'export';
+                const prompt0 = UI.prompt;
+                UI.prompt = async () => '';
+                await app.exportCopies([f('a.dng'), f('b.cr3')]);
+                UI.prompt = prompt0;
+                const ex = await dir.getDirectoryHandle('jEditor Export');
+                const exA = await (await ex.getFileHandle('a.jpg')).getFile();
+                const exB = await (await ex.getFileHandle('b.jpg')).getFile();
+                const sz = async (b) => { const bm = await createImageBitmap(b); const s = [bm.width, bm.height]; bm.close(); return s; };
+                out.exported = [...await sz(exA), ...await sz(exB)];
+                // Save edits: RAWs exported, never written
+                step = 'save';
+                const choose = UI.choose;
+                UI.choose = async () => 'ok';
+                UI.prompt = async () => '';
+                await Edits.saveAll({ list: [f('a.dng'), f('b.cr3')] });
+                UI.choose = choose;
+                UI.prompt = prompt0;
+                out.saveNotWritten = await same('a.dng', dngBlob) && await same('b.cr3', cr3Blob) && !!f('b.cr3')._edit;
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('raw: RAW files are listed with the photos and get thumbnails', r.listed && r.thumbs, JSON.stringify(r));
+        check('raw: shown from the JPEG inside', r.viewer && r.viewer[0] === 400 && r.viewer[2] > 150, JSON.stringify(r));
+        check('raw: turns and adjustments are kept as edits, the RAW never written', r.turnKept && r.adjustKept, JSON.stringify(r));
+        check('raw: Export writes JPEG copies (turned, adjusted); Save edits exports them instead of writing', JSON.stringify(r.exported) === '[300,200,300,400]' && r.saveNotWritten, JSON.stringify(r));
+        check('raw: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     await browser.close();
     server.close();
     console.log(`\n${passed} passed, ${failed} failed`);
