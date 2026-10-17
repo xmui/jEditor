@@ -621,12 +621,17 @@ async function handle(rec, type, data) {
         case 'copyFolder': {
             const stop = { stopped: false };
             copies.set(data.copy, stop);
+            let last = null;
             try {
-                const to = await places.copyFolder(data.path, data.dest, (done, total) =>
-                    wc.send('jeditor', { type: 'copyProgress', copy: data.copy, done, total }), stop);
+                const to = await places.copyFolder(data.path, data.dest, (done, total) => {
+                    last = { done, total };
+                    wc.send('jeditor', { type: 'copyProgress', copy: data.copy, done, total });
+                }, stop);
                 log('info', `Copied ${data.path} to ${to}`);
                 drivesChanged();
-                return { to };
+                // How far it got, with the answer too: IPC can bring the
+                // last copyProgress after it
+                return { to, ...(last || {}) };
             } catch (e) {
                 if (e.stopped) return { cancelled: true };
                 throw e;

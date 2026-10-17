@@ -304,9 +304,15 @@
         // has a copyId, for cancelCopy.
         copyFolder(path, dest, progress) {
             const id = nextCopy++;
-            copying.set(id, progress || (() => { }));
+            let last = -1;
+            copying.set(id, (got, total) => { last = got; if (progress) progress(got, total); });
             const done = answer('copyFolder', { path, dest, copy: id })
-                .then(msg => (msg.cancelled ? { cancelled: true } : { to: msg.to }))
+                .then(msg => {
+                    if (msg.cancelled) return { cancelled: true };
+                    // The end reported here too: IPC may bring the last progress after the answer
+                    if (progress && typeof msg.done === 'number' && msg.done > last) progress(msg.done, msg.total);
+                    return { to: msg.to };
+                })
                 .finally(() => copying.delete(id));
             done.copyId = id;
             return done;
