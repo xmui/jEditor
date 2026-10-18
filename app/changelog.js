@@ -5,6 +5,13 @@
 
 const CHANGELOG = [
     {
+        version: '1.43.0', date: '2026-10-18',
+        items: [
+            'Auto crop\'s test scans now include photos cropped by a batch Auto crop (`Shift+A`, or after scanning) and then opened in the crop editor: fixed, they\'re kept as corrected, on the original scan; saved as they were, as right. Before, only photos Auto was used on in the editor counted.',
+            'Settings → Auto crop → Recover: crops fixed in the editor after a batch Auto crop before this version become test scans too, for the open project, from the originals jEditor kept for undoing the batch.'
+        ]
+    },
+    {
         version: '1.42.0', date: '2026-10-17',
         items: [
             'New, as an experiment (turn it on in Settings → Experimental): Adjust, Lightroom-style (`E`, or the sliders button): exposure, contrast, highlights, shadows, whites and blacks; temperature, tint, vibrance and saturation; levels on a live histogram, a curve, and a color mixer for the hue, saturation and brightness of each color. The photo changes as you drag, even a big scan. Auto sets the levels from the photo, and Auto color takes the cast off a faded print. `\\` shows before and after.',
