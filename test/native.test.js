@@ -142,7 +142,7 @@ const FAKE_NATIVE = `
                 scanned(name);
             }
             if (window.__scanError) throw Object.assign(new Error(window.__scanError), { code: window.__scanCode || null, names: [] });
-            return { count: pages };
+            return { count: pages, autosized: !!window.__scanAutosized };
         },
         cancelScan() { window.__cancelled = true; if (window.__unhang) window.__unhang(); },
         // Tethered shooting: the app's side, with a camera that shoots RAW + JPEG
@@ -769,6 +769,12 @@ async function newPage(context, baseUrl, host = null) {
             const realCrop = app.batchAutoCrop;
             app.batchAutoCrop = async (files, opts) => { out.cropped = files.map(f => f.name).join() + (opts && opts.ask === false ? ' (no question)' : ''); };
             await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: 'Ceremony', autoCrop: true });
+            // ... but not when the scanner cropped each photo itself
+            window.__scanAutosized = true;
+            out.croppedAgain = null;
+            app.batchAutoCrop = async (files) => { out.croppedAgain = files.map(f => f.name).join(); };
+            await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: 'Ceremony', autoCrop: true });
+            window.__scanAutosized = false;
             app.batchAutoCrop = realCrop;
 
             // Scan more (in the dock): the names carry on
@@ -865,6 +871,7 @@ async function newPage(context, baseUrl, host = null) {
         check('Compatibility mode: offered for TWAIN scanners only, off to start with', r.compatShown && r.compatHiddenWia, JSON.stringify([r.compatShown, r.compatHiddenWia]));
         check('... sent with the scan, and remembered for that scanner', r.req.compat === true && r.compatKept, JSON.stringify([r.req.compat, r.compatKept]));
         check('... and crops each scan once it\'s in, without asking', r.cropped === 'c2.jpg,c3.jpg (no question)', r.cropped);
+        check('... unless the scanner cropped each photo itself (its own auto-size took)', r.croppedAgain === null, String(r.croppedAgain));
         check('Scan more in the dock carries on the names', r.more === 'photo6.jpg', r.more);
         check('a typed prefix carries on into the next scan', r.typedMore === 'Smith-B-2', r.typedMore);
         check('a scan that fails says why, and what was saved', /busy/.test(r.err || '') && /didn't finish/.test(r.alert) && /1 photo was saved/.test(r.alert) && !r.running, JSON.stringify([r.err, r.alert]));

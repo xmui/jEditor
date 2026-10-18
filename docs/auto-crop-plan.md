@@ -1,6 +1,6 @@
 # Auto crop: a rewrite, measured on real scans
 
-Status: step 1 done in 1.33.0 (2026-10-15); collecting scans next.
+Status: step 1 done in 1.33.0 (2026-10-15). Step 2's runner is `scripts/auto-crop-test.js` ([how to run it](auto-crop-test-set.md#the-runner)); the first test set's baseline is below.
 
 ## Why it leaves small edges
 
@@ -62,6 +62,30 @@ See [auto-crop-test-set.md](auto-crop-test-set.md) for the format.
 - Settings → Auto crop: on or off, how many are kept, **Export…** to a folder (to bring them here), and **Clear**.
 
 Batch Auto crop fixed later in the editor counts too: the crop is mapped back onto the original in `originals/`. **Recover** does that for crops saved before it did ([format](auto-crop-test-set.md#batch-auto-crop)).
+
+## Baseline: the first test set (2026-10-18)
+
+49 FastFoto feeder scans from one order (Lesperance 0118330), 600 dpi, jEditor 1.43.0. The feeder had already cut each scan to its print, so the answer is the whole scan, give or take a millimetre.
+
+| Auto as | right (≤ 1 mm) | close (≤ 3 mm) | wrong | median off |
+|---|---|---|---|---|
+| feeder (`--as feeder`, Auto crop after a feeder scan) | 11 | 6 | 32 | 10.4 mm |
+| the crop editor (`--as editor`) | 34 | 11 | 4 | 0.9 mm |
+
+- **Feeder mode finds a "print" inside a photo that is all print.** A dark band, a log, a window frame or a fireplace is taken for the print's edge, and 20–40% of the photo is cut off. It never leaves bed in (extra ≈ 0%).
+- The editor's Auto finds nothing on 44 of them, which leaves the whole photo: right, or within a millimetre or two.
+- So a scan that is all print needs to be recognized first: no bed along its edges, or a size that is already a standard print size at its dpi (stage 2's size check). In that case, don't crop.
+
+These came from an Epson FF-680W on its default settings, so the scanner had cropped each photo itself (its own auto-size, over TWAIN), and Auto crop then cropped them again. Two fixes followed:
+
+- **Scanning** no longer runs Auto crop when the scanner cropped each photo itself. The Windows app reports this as `autosized` with the scan.
+- **The feeder finder** gives up when there's no backing on either side of the photo. A photo that fills the scan is all print, so its plain rows are part of it.
+
+| Auto as | right | close | wrong | median off |
+|---|---|---|---|---|
+| feeder, after the feeder fix | 15 | 9 | 25 | 4.2 mm |
+
+The 25 still wrong come from the other finders (`PhotoFind.single`, run less strictly for a feeder scan), which find a "print" inside the photo in the same way. The full-resolution edge pass and the physical-size check (steps 3 and 4) are next for those.
 
 ## Open questions
 
