@@ -49,6 +49,7 @@
     <script src="places.js"></script>
     <script src="import.js"></script>
     <script src="blank.js"></script>
+    <script src="modes.js"></script>
     <script src="disc.js"></script>
     <script src="windows.js"></script>
     <script src="start.js"></script>
@@ -72,7 +73,16 @@
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
                     Open folder
                 </button>
-                <p class="drop-hint">or drop a folder anywhere in this window</p>
+                <!-- Where a project opened from here lands (modes.js) -->
+                <div id="start-in" class="start-in hidden">
+                    <span class="start-in-label" id="start-in-label">Start in</span>
+                    <span class="seg start-in-seg" role="radiogroup" aria-labelledby="start-in-label">
+                        <button type="button" role="radio" data-mode="photos" title="Sort, rotate and crop"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Photos</button>
+                        <button type="button" role="radio" data-mode="adjust" title="Light, colour and film looks, photo by photo"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>Adjust</button>
+                        <button type="button" role="radio" data-mode="paint" title="Paint on a photo, or start a new canvas"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L12 14.8 9.2 12z"/><path d="M9.2 12c-2.5 0-4.2 1.6-4.2 4 0 1.5-.8 2.6-2.4 3.4C4.4 21 6.3 21.5 8 21.5c3 0 5-1.9 4.9-4.6z"/></svg>Paint</button>
+                    </span>
+                </div>
+                <p class="drop-hint">or drop a folder anywhere in this window<span id="start-blank-wrap"> · <button id="start-blank" type="button" class="link-btn">New blank canvas…</button></span></p>
                 <!-- Recent orders (recents.js) -->
                 <div id="recents" class="recents hidden">
                     <h2 class="recents-title">Recent</h2>
@@ -1039,51 +1049,86 @@
         </div>
     </div>
 
-    <!-- New blank image (blank.js) -->
+    <!-- Paint: a new canvas, or an image or folder to open (blank.js) -->
     <div id="blank-panel" class="dialog-overlay hidden">
-        <div class="dialog prompt-card blank-card" role="dialog" aria-modal="true" aria-labelledby="blank-title">
-            <div class="dialog-head">
-                <h2 id="blank-title" class="dialog-title">New blank image</h2>
+        <div class="dialog blank-card" role="dialog" aria-modal="true" aria-labelledby="blank-title">
+            <div class="dialog-head blank-head">
+                <h2 id="blank-title" class="dialog-title">Paint</h2>
+                <span class="seg blank-tabs" role="tablist" aria-label="What to paint on">
+                    <button id="blank-tab-new" type="button" role="tab" aria-selected="true" aria-controls="blank-new">New canvas</button>
+                    <button id="blank-tab-open" type="button" role="tab" aria-selected="false" aria-controls="blank-open">Open a file</button>
+                </span>
                 <button id="blank-close" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                 </button>
             </div>
-            <div class="dialog-body blank-body">
-                <label class="blank-field" for="blank-name">Name
-                    <span class="blank-row"><input id="blank-name" class="field" type="text" spellcheck="false" autocomplete="off"><span class="blank-ext">.png</span></span>
-                </label>
-                <label class="blank-field" for="blank-size">Size
-                    <select id="blank-size" class="field"><option value="custom">Custom</option></select>
-                </label>
-                <div class="blank-row blank-dims">
-                    <label class="blank-field" for="blank-w">Width
-                        <input id="blank-w" class="field" type="number" min="1" max="10000" step="1">
+            <div id="blank-new" class="blank-body" role="tabpanel" aria-labelledby="blank-tab-new">
+                <div id="blank-presets" class="blank-presets" role="listbox" aria-label="Sizes"></div>
+                <div class="blank-details">
+                    <label class="blank-field" for="blank-name">Name
+                        <span class="blank-row"><input id="blank-name" class="field" type="text" spellcheck="false" autocomplete="off"><span class="blank-ext">.png</span></span>
                     </label>
-                    <button id="blank-turn" type="button" class="btn ghost icon" title="Swap width and height (portrait ⇄ landscape)" aria-label="Swap width and height">
-                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 3 8l4 4"/><path d="M3 8h13a4 4 0 0 1 4 4"/><path d="m17 20 4-4-4-4"/><path d="M21 16H8a4 4 0 0 1-4-4"/></svg>
-                    </button>
-                    <label class="blank-field" for="blank-h">Height
-                        <input id="blank-h" class="field" type="number" min="1" max="10000" step="1">
-                    </label>
-                    <span class="blank-unit">px</span>
-                </div>
-                <div class="blank-field">Background
-                    <span class="blank-row">
-                        <span class="seg blank-bg" role="radiogroup" aria-label="Background">
-                            <label><input type="radio" name="blank-bg" id="blank-bg-white" value="white" checked><span>White</span></label>
-                            <label><input type="radio" name="blank-bg" id="blank-bg-black" value="black"><span>Black</span></label>
-                            <label><input type="radio" name="blank-bg" id="blank-bg-clear" value="clear"><span>None</span></label>
-                            <label><input type="radio" name="blank-bg" id="blank-bg-color" value="color"><span>Colour</span></label>
+                    <div class="blank-dims">
+                        <label class="blank-field" for="blank-w">Width
+                            <input id="blank-w" class="field" type="number" min="0.01" step="any">
+                        </label>
+                        <button id="blank-turn" type="button" class="btn ghost icon" title="Swap width and height (portrait ⇄ landscape)" aria-label="Swap width and height">
+                            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 3 8l4 4"/><path d="M3 8h13a4 4 0 0 1 4 4"/><path d="m17 20 4-4-4-4"/><path d="M21 16H8a4 4 0 0 1-4-4"/></svg>
+                        </button>
+                        <label class="blank-field" for="blank-h">Height
+                            <input id="blank-h" class="field" type="number" min="0.01" step="any">
+                        </label>
+                        <label class="blank-field" for="blank-unit">Units
+                            <select id="blank-unit" class="field">
+                                <option value="px">Pixels</option>
+                                <option value="in">Inches</option>
+                                <option value="cm">Centimetres</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="blank-two">
+                        <label class="blank-field" for="blank-dpi">Resolution
+                            <select id="blank-dpi" class="field">
+                                <option value="72">72 dpi (screens)</option>
+                                <option value="150">150 dpi</option>
+                                <option value="300">300 dpi (prints)</option>
+                                <option value="600">600 dpi</option>
+                            </select>
+                        </label>
+                        <label class="blank-field" for="blank-where">Save into
+                            <select id="blank-where" class="field"></select>
+                        </label>
+                    </div>
+                    <div class="blank-field">Background
+                        <span class="blank-row">
+                            <span class="seg blank-bg" role="radiogroup" aria-label="Background">
+                                <label><input type="radio" name="blank-bg" id="blank-bg-white" value="white" checked><span>White</span></label>
+                                <label><input type="radio" name="blank-bg" id="blank-bg-black" value="black"><span>Black</span></label>
+                                <label><input type="radio" name="blank-bg" id="blank-bg-clear" value="clear"><span>None</span></label>
+                                <label><input type="radio" name="blank-bg" id="blank-bg-color" value="color"><span>Colour</span></label>
+                            </span>
+                            <input id="blank-color" type="color" value="#d9e4f5" title="The background colour" aria-label="Background colour">
                         </span>
-                        <input id="blank-color" type="color" value="#d9e4f5" title="The background colour" aria-label="Background colour">
-                    </span>
+                    </div>
+                    <div class="blank-preview">
+                        <div id="blank-shape" class="blank-shape" aria-hidden="true"></div>
+                        <small id="blank-info" class="blank-info"></small>
+                    </div>
+                    <div id="blank-error" class="fpr-error" aria-live="polite"></div>
                 </div>
-                <label class="import-opt" for="blank-paint"><input type="checkbox" id="blank-paint" checked> Open it in Paint</label>
-                <small id="blank-info" class="blank-info"></small>
-                <div id="blank-error" class="fpr-error" aria-live="polite"></div>
+            </div>
+            <div id="blank-open" class="blank-open hidden" role="tabpanel" aria-labelledby="blank-tab-open">
+                <button id="blank-open-image" type="button" class="blank-big">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+                    <span><b>An image…</b><small>A photo or picture from anywhere, to paint on. Done paints into it.</small></span>
+                </button>
+                <button id="blank-open-folder" type="button" class="blank-big">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                    <span><b>A folder…</b><small>A folder of photos, opened as a project, its first photo in Paint. The painting is kept with each photo.</small></span>
+                </button>
             </div>
             <div class="dialog-foot">
-                <span id="blank-where" class="dialog-note"></span>
+                <button id="blank-open-instead" type="button" class="btn ghost">Open an image instead…</button>
                 <span class="dialog-actions">
                     <button id="blank-cancel" class="btn secondary">Cancel</button>
                     <button id="blank-go" class="btn primary">Create</button>

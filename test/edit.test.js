@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // jEditor's editing tools, in headless Chromium: spot and dust removal
 // (retouch.js, adjust-spots.js), subject and sky masks, RAW previews, Paint,
-// a new blank image (blank.js) and the wheel the way a Mac does it (wheel.js). Run by `npm test` after the UI suite; on its own:
+// a new blank image (blank.js), the modes (modes.js) and the wheel the way a
+// Mac does it (wheel.js). Run by `npm test` after the UI suite; on its own:
 //   node test/edit.test.js [name …]     (only the sections named)
 
 const { chromium } = require('playwright-core');
@@ -635,7 +636,7 @@ const PROJECT = `
                 const before = new Uint8Array(await (await (await dir.getFileHandle('p.png')).getFile()).arrayBuffer());
                 app.openSingle(f);
                 step = 'open';
-                out.button = getComputedStyle(document.getElementById('btn-paint')).display !== 'none';
+                out.button = Modes.shown().some(m => m[0] === 'paint') && !document.getElementById('mode-float').classList.contains('hidden');
                 pressKey('b');
                 await until(() => PaintEditor.ready);
                 const P = PaintEditor;
@@ -900,15 +901,19 @@ const PROJECT = `
                 out.folderMenu = Folders.contextItems('Art').some(i => i[0] === 'New blank image…');
                 app.setView('grid');
                 out.gridMenu = app.buildContextItems(null, false).some(i => i[0] === 'New blank image…');
-                // The dialog: a size from the list, turned, a colour
+                // The dialog: a size from the list, turned, in pixels, a colour
                 step = 'dialog';
                 const made = Blank.open('Art');
                 await until(() => !$('blank-panel').classList.contains('hidden'));
                 out.name = $('blank-name').value;
-                $('blank-size').value = '4x6';
-                $('blank-size').dispatchEvent(new Event('change'));
+                out.where = $('blank-where').value;
+                out.noTabs = $('blank-panel').querySelector('.blank-tabs').classList.contains('hidden');
+                $('blank-presets').querySelector('[data-key="4x6"]').click();
+                out.inches = [$('blank-w').value, $('blank-h').value, $('blank-unit').value, $('blank-dpi').value];
                 $('blank-turn').click();
-                out.dims = [$('blank-w').value, $('blank-h').value, $('blank-size').value];
+                $('blank-unit').value = 'px';
+                $('blank-unit').dispatchEvent(new Event('change'));
+                out.dims = [$('blank-w').value, $('blank-h').value, $('blank-presets').querySelector('.on') && $('blank-presets').querySelector('.on').dataset.key];
                 $('blank-w').value = '20000';
                 $('blank-w').dispatchEvent(new Event('input'));
                 out.tooBig = $('blank-go').disabled && /at most/.test($('blank-error').textContent);
@@ -916,7 +921,6 @@ const PROJECT = `
                 $('blank-w').dispatchEvent(new Event('input'));
                 $('blank-color').value = '#336699';
                 $('blank-color').dispatchEvent(new Event('input'));
-                out.paintOffered = $('blank-paint').checked;
                 $('blank-go').click();
                 const file = await made;
                 step = 'made';
@@ -925,6 +929,10 @@ const PROJECT = `
                 const img = await pixels(data);
                 out.size = [img.width, img.height];
                 out.pixel = [...img.data.slice(0, 4)];
+                // Its resolution in the PNG (pHYs, pixels per metre: 300 dpi)
+                const bytes = new Uint8Array(await data.arrayBuffer());
+                const at = [...bytes.keys()].find(i => bytes[i] === 0x70 && bytes[i + 1] === 0x48 && bytes[i + 2] === 0x59 && bytes[i + 3] === 0x73);
+                out.ppm = at ? new DataView(bytes.buffer).getUint32(at + 4) : 0;
                 // Opened in Paint (turned on for it)
                 await until(() => PaintEditor.ready);
                 out.inPaint = PaintEditor.isOpen && PaintEditor.file === file && Experiments.on('paint');
@@ -977,9 +985,10 @@ const PROJECT = `
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
         check('blank: offered on a folder\'s menu and the grid\'s background', r.folderMenu && r.gridMenu, JSON.stringify(r));
-        check('blank: a size from the list, turned either way; too big is said', r.name === 'Untitled' && JSON.stringify(r.dims) === '["1800","1200","4x6"]' && r.tooBig, JSON.stringify(r));
-        check('blank: saved as a PNG of that size and colour, in the folder', r.file === 'Art/Untitled.png' && JSON.stringify(r.size) === '[1800,1200]' && JSON.stringify(r.pixel) === '[51,102,153,255]', JSON.stringify(r));
-        check('blank: opened in Paint straight away (Paint turned on for it)', r.paintOffered && r.inPaint, JSON.stringify(r));
+        check('blank: into the folder right-clicked, no Open a file there', r.where === 'Art' && r.noTabs, JSON.stringify(r));
+        check('blank: a print size in inches at 300 dpi; turned; in pixels; too big is said', r.name === 'Untitled' && JSON.stringify(r.inches) === '["4","6","in","300"]' && JSON.stringify(r.dims) === '["1800","1200","4x6"]' && r.tooBig, JSON.stringify(r));
+        check('blank: saved as a PNG of that size and colour, in the folder, with its resolution', r.file === 'Art/Untitled.png' && JSON.stringify(r.size) === '[1800,1200]' && JSON.stringify(r.pixel) === '[51,102,153,255]' && r.ppm === 11811, JSON.stringify(r));
+        check('blank: opened in Paint straight away (Paint turned on for it)', r.inPaint, JSON.stringify(r));
         check('paint: an image dropped on it comes in as a layer of its own, named for it, fitted and floating', r.dropped && r.dropped[0] === 'Layer 1,logo' && r.dropped[1] === 1 && r.dropped[2] === 'move' && r.dropped[3] && r.dropped[4] === 1620, JSON.stringify(r));
         check('paint: Enter puts it down', r.putDown, JSON.stringify(r));
         check('paint: Ctrl+V with an image copied in another app brings it in; Paint\'s own copy when that\'s newer', r.pasted && r.pasted[0] && r.pasted[1] === 3 && r.pasted[2] === 'Pasted' && r.ownPaste, JSON.stringify(r));
@@ -987,6 +996,145 @@ const PROJECT = `
         check('blank: next time, the next name and the same size and background', r.next === 'Untitled-2' && JSON.stringify(r.remembered) === '["1800","1200",true]', JSON.stringify(r));
         check('blank: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
+    }
+
+    // ---- Photos, Adjust and Paint as modes ----
+    if (wanted('modes')) {
+        console.log('modes: Photos, Adjust and Paint (modes.js), Start in, Paint\'s start (blank.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const $ = (id) => document.getElementById(id);
+                const shownEl = (id) => { const e = $(id); return !!e && !e.classList.contains('hidden') && e.getClientRects().length > 0; };
+                // Both off (a release): no switch, no Start in
+                step = 'off';
+                experiment('adjust', false);
+                experiment('paint', false);
+                out.offNone = $('start-in').classList.contains('hidden') && !document.documentElement.classList.contains('modes-on');
+                experiment('adjust');
+                experiment('paint');
+                out.startShown = !$('start-in').classList.contains('hidden') && [...$('start-in').querySelectorAll('[data-mode]')].map(b => b.dataset.mode).join() === 'photos,adjust,paint';
+                // Start in Adjust: a project opened from the landing page lands in Adjust
+                step = 'start in';
+                $('start-in').querySelector('[data-mode="adjust"]').click();
+                out.startKept = app.uiPrefs.startIn === 'adjust' && JSON.parse(localStorage.getItem('jeditor.ui')).startIn === 'adjust';
+                const blob = async (color) => { const c = document.createElement('canvas'); c.width = 120; c.height = 90; const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, 120, 90); return canvasBlob(c); };
+                await openProject('modes', { 'a.png': await blob('#806040'), 'b.png': await blob('#406080'), 'c.png': await blob('#408060') });
+                await until(() => Adjust.ready);
+                out.landedAdjust = Modes.current() === 'adjust' && Adjust.file === app.viewFiles()[0];
+                // The chip over Adjust, and the strip along the bottom
+                out.chipOver = shownEl('mode-float') && /Adjust/.test($('mode-chip-float').textContent);
+                out.strip = $('mode-strip').parentElement === $('adjust-editor') && $('mode-strip').children.length === 3 && $('mode-strip').children[0].classList.contains('active');
+                // Another photo from the strip: still in Adjust, on that one
+                step = 'strip';
+                $('mode-strip').children[1].click();
+                await until(() => Adjust.ready && Adjust.file === app.viewFiles()[1]);
+                out.stepped = Modes.current() === 'adjust' && Adjust.file === app.viewFiles()[1] && $('mode-strip').children[1].classList.contains('active');
+                // To Paint from the chip's menu: Paint on the same photo
+                step = 'to paint';
+                $('mode-chip-float').click();
+                const items = [...document.querySelectorAll('.mode-menu .mode-mi')].map(b => b.textContent);
+                out.menu = items.length === 3 && /Paint/.test(items[2]) && document.querySelector('.mode-menu .mode-mi.on') && /Adjust/.test(document.querySelector('.mode-menu .mode-mi.on').textContent);
+                document.querySelectorAll('.mode-menu .mode-mi')[2].click();
+                await until(() => PaintEditor.ready);
+                out.inPaint = Modes.current() === 'paint' && PaintEditor.file === app.viewFiles()[1] && $('mode-strip').parentElement === $('paint-editor');
+                // A stroke, then another photo: the painting kept on the first
+                step = 'paint step';
+                const P = PaintEditor;
+                const st = $('paint-stage');
+                const at = (x, y) => { const sp = P.V().transformPoint(P.C.transformPoint({ x, y })); const rc = P.canvas.getBoundingClientRect(); return { clientX: rc.left + sp.x, clientY: rc.top + sp.y }; };
+                const pe = (type, x, y) => st.dispatchEvent(new PointerEvent(type, { ...at(x, y), pointerId: 1, bubbles: true, button: 0 }));
+                P.setTool('brush');
+                pe('pointerdown', 20, 40); pe('pointermove', 60, 40); pe('pointerup', 60, 40);
+                const painted = P.file;
+                $('mode-strip').children[2].click();
+                await until(() => PaintEditor.ready && PaintEditor.file === app.viewFiles()[2]);
+                out.kept = !!(painted._edit && painted._edit.paint) && PaintEditor.file === app.viewFiles()[2];
+                // Back to Photos
+                step = 'photos';
+                await Modes.go('photos');
+                out.back = Modes.current() === 'photos' && !PaintEditor.isOpen && !Modes.strip.parentElement;
+                // The grid: with the sidebar open the switch is along its top; closed, a chip in the folder pill
+                step = 'grid';
+                app.setView('grid');
+                app.uiPrefs.folderRail = true;
+                Folders.render();
+                out.seg = shownEl('mode-seg') && [...$('mode-seg').children].map(b => b.dataset.mode).join() === 'photos,adjust,paint' && $('mode-seg').querySelector('.on').dataset.mode === 'photos' && !shownEl('mode-chip-bar') && !shownEl('mode-float');
+                app.uiPrefs.folderRail = false;
+                Folders.render();
+                out.chipBar = shownEl('mode-chip-bar') && !shownEl('mode-seg') && !shownEl('mode-float');
+                // The sidebar's Adjust: on the photo selected
+                app.uiPrefs.folderRail = true;
+                Folders.render();
+                $('mode-seg').querySelector('[data-mode="adjust"]').click();
+                await until(() => Adjust.ready);
+                out.segGo = Modes.current() === 'adjust';
+                $('adj-cancel').click();
+                await until(() => !Adjust.isOpen);
+                // The toolbar's main row has no Adjust or Paint now
+                out.toolbar = app.uiPrefs.placement.adjust === 'more' && app.uiPrefs.placement.paint === 'more';
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('modes: none shown while Adjust and Paint are off; Start in when they\'re on', r.offNone && r.startShown, JSON.stringify(r));
+        check('modes: Start in is remembered; a project opened lands in that mode on its first photo', r.startKept && r.landedAdjust, JSON.stringify(r));
+        check('modes: in Adjust the chip names it, top left, and a strip runs along the bottom', r.chipOver && r.strip, JSON.stringify(r));
+        check('modes: another photo from the strip opens in the same mode', r.stepped, JSON.stringify(r));
+        check('modes: the chip\'s menu switches to Paint, on the same photo', r.menu && r.inPaint, JSON.stringify(r));
+        check('modes: what was painted is kept when another photo is chosen', r.kept, JSON.stringify(r));
+        check('modes: back to Photos closes it', r.back, JSON.stringify(r));
+        check('modes: the sidebar open, the switch is along its top; closed, a chip in the folder pill', r.seg && r.chipBar && r.segGo, JSON.stringify(r));
+        check('modes: Adjust and Paint are off the toolbar\'s main row', r.toolbar, JSON.stringify(r));
+        check('modes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+
+        // The landing page's Paint: a new canvas, or an image or folder to open
+        const p2 = await open();
+        const q = await p2.page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const $ = (id) => document.getElementById(id);
+                experiment('adjust');
+                experiment('paint');
+                $('start-in').querySelector('[data-mode="paint"]').click();
+                await until(() => !$('blank-panel').classList.contains('hidden'));
+                out.dialog = !$('blank-panel').querySelector('.blank-tabs').classList.contains('hidden') && $('blank-title').textContent === 'Paint' && $('blank-where').value === '\u0000pick';
+                // Open a file → An image…: opened on its own, in Paint
+                step = 'image';
+                $('blank-tab-open').click();
+                out.openPane = !$('blank-open').classList.contains('hidden') && $('blank-new').classList.contains('hidden');
+                const c = document.createElement('canvas'); c.width = 100; c.height = 80;
+                c.getContext('2d').fillRect(0, 0, 100, 80);
+                const opfs = await navigator.storage.getDirectory();
+                const fh = await opfs.getFileHandle('loose.png', { create: true });
+                const w = await fh.createWritable(); await w.write(await canvasBlob(c)); await w.close();
+                window.showOpenFilePicker = async () => [fh];
+                $('blank-open-image').click();
+                await until(() => PaintEditor.ready);
+                out.image = PaintEditor.isOpen && app.files.length === 1 && app.files[0].name === 'loose.png' && !app.dirHandle;
+                app.cancelPaint();
+                // New canvas with no project: a folder chosen, opened, the canvas made in it, in Paint
+                step = 'canvas';
+                const dir = await opfs.getDirectoryHandle('canvas-here', { create: true });
+                window.showDirectoryPicker = async () => dir;
+                const made = Blank.open(null, { start: true });
+                await until(() => !$('blank-panel').classList.contains('hidden'));
+                $('blank-presets').querySelector('[data-key="square"]').click();
+                $('blank-go').click();
+                const file = await made;
+                await until(() => PaintEditor.ready);
+                out.canvas = file && file.name === 'Untitled.png' && app.dirHandle === dir && PaintEditor.file === file;
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('modes: Paint on the landing page asks what to paint on (New canvas | Open a file)', q.dialog && q.openPane, JSON.stringify(q));
+        check('modes: An image… opens it on its own, in Paint', q.image, JSON.stringify(q));
+        check('modes: a new canvas with no project open: a folder chosen, the canvas made there, in Paint', q.canvas, JSON.stringify(q));
+        check('modes (landing): no JS errors', p2.issues.errors.length === 0, p2.issues.errors.join('; '));
+        await p2.page.close();
     }
 
     // ---- The wheel on a Mac ----

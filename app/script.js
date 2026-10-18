@@ -250,6 +250,7 @@ const app = {
         Import.init(this);
         Disc.init(this);
         Blank.init(this);
+        Modes.init(this);
         Fit.init();
         History.init(this);
         Watch.init(this);
@@ -441,7 +442,7 @@ const app = {
         return {
             order: ['scan', 'camera', 'info', 'view', 'refresh', 'crop', 'adjust', 'paint', 'history', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'whatsnew', 'customize'],
             placement: { // 'main' | 'more' | 'hidden'
-                scan: 'main', camera: 'main', info: 'main', view: 'main', refresh: 'main', crop: 'main', adjust: 'main', paint: 'main', history: 'main',
+                scan: 'main', camera: 'main', info: 'main', view: 'main', refresh: 'main', crop: 'main', adjust: 'more', paint: 'more', history: 'main',
                 fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', keys: 'more', whatsnew: 'more', customize: 'more'
             },
             vertical: false,
@@ -453,6 +454,8 @@ const app = {
             autoCheck: true, // pick up photos added, removed or edited outside jEditor
             accent: null, // the accent colour (#rrggbb); null is the standard blue
             singleControls: true, // previous / rotate / next above the film strip in single view
+            startIn: 'photos', // the landing page's Start in (modes.js): photos, adjust or paint
+            modes: 1, // 1.43: Adjust and Paint are modes (modes.js), off the toolbar's main row
             theme: 'dark',
             density: 'compact',
             glass: 'rich',
@@ -517,6 +520,11 @@ const app = {
                 if (typeof saved.accent === 'string' && /^#[0-9a-f]{6}$/i.test(saved.accent)) this.uiPrefs.accent = saved.accent;
                 if (typeof saved.singleControls === 'boolean') this.uiPrefs.singleControls = saved.singleControls;
                 if (typeof saved.folderRail === 'boolean') this.uiPrefs.folderRail = saved.folderRail;
+                if (['photos', 'adjust', 'paint'].includes(saved.startIn)) this.uiPrefs.startIn = saved.startIn;
+                // Before the mode switch, Adjust and Paint had buttons on the main row: the switch has them now
+                if (saved.modes !== 1) {
+                    for (const k of ['adjust', 'paint']) if (this.uiPrefs.placement[k] === 'main') this.uiPrefs.placement[k] = 'more';
+                }
                 if (saved.transparency >= 10 && saved.transparency <= 100) this.uiPrefs.transparency = saved.transparency;
                 for (const [k, allowed] of Object.entries(this.APPEARANCE)) {
                     if (allowed.includes(saved[k])) this.uiPrefs[k] = saved[k];
@@ -1478,6 +1486,34 @@ const app = {
         }
     },
 
+    // Image files on their own, not a folder (Paint's Open a file): edited
+    // in place, as dropped files are
+    async openFileHandles(handles) {
+        this._openGen = (this._openGen || 0) + 1;
+        this.isLoading = true;
+        try {
+            this.cleanupURLs();
+            this.files = [];
+            this.dirHandle = null;
+            this.readOnlyMode = false;
+            this.beginTask('scan', 'Opening…');
+            this.elements.dropZone.classList.add('hidden');
+            for (const h of handles) {
+                if (!h || !this.isImage(h.name) || Raw.is(h.name)) continue;
+                const f = await h.getFile();
+                this.files.push({ name: h.name, handle: h, size: f.size, lastModified: f.lastModified });
+            }
+            await this.finalizeLoad();
+        } catch (err) {
+            console.error('Opening files failed:', err);
+            UI.alert({ title: 'Couldn\'t open that', message: err.message });
+            this.elements.dropZone.classList.remove('hidden');
+            this.endTask('scan');
+        } finally {
+            this.isLoading = false;
+        }
+    },
+
     async finalizeLoad() {
         try {
             // Sort initial files
@@ -1527,6 +1563,7 @@ const app = {
                 const nested = this._nestedJeditor || [];
                 this._nestedJeditor = null;
                 if (nested.length && this.dirHandle && !this.readOnlyMode) FolderCache.absorbNested(this, nested);
+                Modes.afterLoad();
             } else if (this.dirHandle && !this.readOnlyMode) {
                 // No photos yet: it opens anyway, to scan into, make folders
                 // in, or fill from elsewhere (they show up as they land)
@@ -6451,18 +6488,21 @@ const app = {
             this.cancelAdjust();
             this.showToast('Could not open this photo to adjust it');
         }
+        Modes.render();
     },
 
     cancelAdjust() {
         Adjust.close();
         this.cropState.active = false;
         this.cropState.tool = null;
+        Modes.render();
     },
 
     // Done: kept with the photo in a project; written into it otherwise.
     // With next: the following photo, adjusted the same way to start from
     // if it has none of its own (Lightroom's "previous")
-    async saveAdjust({ next = false } = {}) {
+    // quiet: no message (another photo chosen in the mode's strip)
+    async saveAdjust({ next = false, quiet = false } = {}) {
         const ed = Adjust;
         if (!ed.isOpen || !ed.ready || ed.busy) return;
         const file = ed.file;
@@ -6478,14 +6518,14 @@ const app = {
         };
         if (!ed.changedSinceOpen()) {
             this.cancelAdjust();
-            if (!next) this.showToast('No changes', 1200);
+            if (!next && !quiet) this.showToast('No changes', 1200);
             goNext();
             return;
         }
         if (Edits.canKeep()) {
             this.cancelAdjust();
             Edits.set([{ file, edit: Edits.withAdj(file._edit || null, adj) }], 'adjustments');
-            this.showToast(adj ? 'Adjusted — the original is kept; Export writes the result' : 'Adjustments taken off', 2200, null, null, { kind: 'adjust' });
+            if (!quiet) this.showToast(adj ? 'Adjusted — the original is kept; Export writes the result' : 'Adjustments taken off', 2200, null, null, { kind: 'adjust' });
             goNext();
             return;
         }
@@ -6516,7 +6556,7 @@ const app = {
             ed.busy = false;
             this.cancelAdjust();
             await this.afterFileChanged(file);
-            this.showToast('Saved the adjustments', 1800, null, null, { kind: 'adjust' });
+            if (!quiet) this.showToast('Saved the adjustments', 1800, null, null, { kind: 'adjust' });
             goNext();
         } catch (err) {
             console.error('Saving adjustments failed:', err);
@@ -6558,23 +6598,26 @@ const app = {
             this.cancelPaint();
             this.showToast('Could not open this photo to paint on it');
         }
+        Modes.render();
     },
 
     cancelPaint() {
         PaintEditor.close();
         this.cropState.active = false;
         this.cropState.tool = null;
+        Modes.render();
     },
 
     // Done: kept with the photo in a project (the layers in its folder);
     // painted into the photo otherwise
-    async savePaint() {
+    // quiet: no message (another photo chosen in the mode's strip)
+    async savePaint({ quiet = false } = {}) {
         const ed = PaintEditor;
         if (!ed.isOpen || !ed.ready || ed.busy) return;
         const file = ed.file;
         if (!ed.changedSinceOpen()) {
             this.cancelPaint();
-            this.showToast('No changes', 1200);
+            if (!quiet) this.showToast('No changes', 1200);
             return;
         }
         ed.busy = true;
@@ -6589,7 +6632,7 @@ const app = {
                 ed.busy = false;
                 this.cancelPaint();
                 Edits.set([{ file, edit: Edits.isNothing(edit) ? null : edit }], 'painting');
-                this.showToast(paint ? 'Painted — the original is kept; Export writes the result' : 'Painting taken off', 2200, null, null, { kind: 'adjust' });
+                if (!quiet) this.showToast(paint ? 'Painted — the original is kept; Export writes the result' : 'Painting taken off', 2200, null, null, { kind: 'adjust' });
                 return;
             }
             // No project: painted into the photo
@@ -6622,7 +6665,7 @@ const app = {
             ed.busy = false;
             this.cancelPaint();
             await this.afterFileChanged(file);
-            this.showToast('Saved the painting', 1800, null, null, { kind: 'adjust' });
+            if (!quiet) this.showToast('Saved the painting', 1800, null, null, { kind: 'adjust' });
         } catch (err) {
             console.error('Saving the painting failed:', err);
             this.showToast('Couldn\'t save the painting: ' + err.message, 4000);

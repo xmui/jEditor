@@ -4572,11 +4572,115 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     min-width: 0;
 }
 
-/* New blank image (blank.js) */
+/* Paint's start: a new canvas, or something to open (blank.js) */
+.dialog.blank-card {
+    width: min(780px, 100%);
+}
+
+.blank-head {
+    gap: var(--sp-3);
+}
+
+.blank-head .dialog-title {
+    margin-right: auto;
+}
+
+.blank-card .dialog-actions {
+    margin-left: auto;
+}
+
+.blank-tabs > button.active {
+    background: var(--seg-active);
+    color: var(--text-1);
+    box-shadow: var(--shadow-1);
+}
+
 .blank-body {
+    display: flex;
+    min-height: 0;
+    padding: 0 !important;
+}
+
+.blank-presets {
+    flex: none;
+    width: 240px;
+    max-height: min(520px, 60vh);
+    overflow-y: auto;
+    padding: var(--sp-2);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.blank-group {
+    margin: var(--sp-2) var(--sp-2) var(--sp-1);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-2);
+}
+
+.blank-preset {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-height: 34px;
+    padding: 0 var(--sp-2);
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-1);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.blank-preset:hover {
+    background: var(--tb-hover);
+}
+
+.blank-preset.on {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.blank-preset i {
+    flex: none;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.blank-preset i b {
+    display: block;
+    background: var(--text-2);
+    border-radius: 1px;
+}
+
+.blank-preset span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.blank-preset small {
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+    font-variant-numeric: tabular-nums;
+}
+
+.blank-details {
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: var(--sp-3);
+    padding: var(--sp-4);
 }
 
 .blank-field {
@@ -4603,23 +4707,22 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     min-width: 0;
 }
 
-.blank-ext,
-.blank-unit {
+.blank-ext {
     color: var(--text-2);
     font-size: var(--fs-small);
 }
 
 .blank-dims {
-    align-items: flex-end;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) minmax(0, 1.1fr);
+    align-items: end;
+    gap: var(--sp-2);
 }
 
-.blank-dims .blank-field {
-    flex: 1;
-}
-
-.blank-dims .btn,
-.blank-dims .blank-unit {
-    margin-bottom: 4px;
+.blank-two {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-2);
 }
 
 .blank-bg span {
@@ -4640,13 +4743,297 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     opacity: 0.45;
 }
 
+.blank-preview {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-4);
+    min-height: 140px;
+    padding: var(--sp-3);
+    border-radius: var(--r-md);
+    background: var(--bg-sunken);
+}
+
+.blank-shape {
+    flex: none;
+    border-radius: 2px;
+    box-shadow: 0 2px 10px rgb(0 0 0 / 0.45);
+}
+
+.blank-shape.clear {
+    background: repeating-conic-gradient(#8a8a8a 0 25%, #d0d0d0 0 50%) 0 0 / 12px 12px;
+}
+
 .blank-info {
-    color: var(--text-3);
+    color: var(--text-2);
     font-size: var(--fs-small);
 }
 
-.blank-body .fpr-error:empty {
+.blank-details .fpr-error:empty {
     display: none;
+}
+
+.blank-open {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    padding: var(--sp-4);
+    min-height: 240px;
+}
+
+.blank-big {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sp-3);
+    padding: var(--sp-4);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    background: var(--bg-raised);
+    color: var(--text-1);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.blank-big:hover {
+    border-color: var(--accent);
+}
+
+.blank-big .i {
+    flex: none;
+    width: 24px;
+    height: 24px;
+}
+
+.blank-big b {
+    display: block;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-semibold);
+}
+
+.blank-big small {
+    display: block;
+    margin-top: 2px;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+@media (max-width: 640px) {
+    .blank-body {
+        flex-direction: column;
+    }
+
+    .blank-presets {
+        width: auto;
+        max-height: 180px;
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .blank-dims {
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    }
+}
+
+/* The modes (modes.js): Photos · Adjust · Paint along the sidebar's top,
+   a chip naming the mode (with a menu) when it's closed */
+.mode-seg {
+    flex: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+    gap: 2px;
+    padding: 3px;
+    margin-bottom: var(--sp-2);
+    border-radius: var(--r-md);
+    background: var(--seg-bg);
+}
+
+.mode-seg > button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 0;
+    height: calc(var(--ctl-md) + 2px);
+    padding: 0 var(--sp-2);
+    border: 0;
+    border-radius: calc(var(--r-md) - 2px);
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--fs-small);
+    font-weight: var(--fw-medium);
+    cursor: pointer;
+}
+
+.mode-seg > button .i {
+    width: 16px;
+    height: 16px;
+    flex: none;
+}
+
+.mode-seg > button:hover {
+    color: var(--text-1);
+}
+
+.mode-seg > button.on {
+    background: var(--seg-active);
+    color: var(--text-1);
+    box-shadow: var(--shadow-1);
+}
+
+.mode-chip {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: calc(var(--ctl-lg) - 14px);
+    padding: 0 var(--sp-2) 0 10px;
+    margin: 0 2px;
+    border: 0;
+    border-radius: var(--r-pill);
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    font-size: var(--fs-small);
+    font-weight: var(--fw-semibold);
+    cursor: pointer;
+}
+
+.mode-chip .i {
+    width: 16px;
+    height: 16px;
+}
+
+.mode-chip .mode-chev {
+    width: 13px;
+    height: 13px;
+    opacity: 0.85;
+}
+
+.mode-chip:hover {
+    filter: brightness(1.1);
+}
+
+.mode-float {
+    position: fixed;
+    top: var(--gutter);
+    left: var(--gutter);
+    z-index: calc(var(--z-floating) + 1);
+}
+
+/* Over Adjust and Paint: in their heads' empty corner */
+.mode-float.over-mode {
+    top: 8px;
+    height: calc(var(--ctl-lg) - 8px);
+    z-index: calc(var(--z-mode) + 1);
+}
+
+.mode-menu {
+    position: fixed;
+    z-index: var(--z-menu);
+    min-width: 200px;
+    padding: 6px;
+    border-radius: var(--r-lg);
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-3);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.mode-mi {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    height: 38px;
+    padding: 0 var(--sp-2);
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-1);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.mode-mi .i {
+    width: 18px;
+    height: 18px;
+    color: var(--text-2);
+}
+
+.mode-mi span {
+    flex: 1;
+}
+
+.mode-mi kbd {
+    font: inherit;
+    font-size: var(--fs-caption);
+    color: var(--text-2);
+    padding: 1px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.mode-mi:hover,
+.mode-mi:focus-visible {
+    background: var(--tb-hover);
+    outline: none;
+}
+
+.mode-mi.on {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.mode-mi.on .i {
+    color: var(--accent-text);
+}
+
+/* The strip in Adjust and Paint: another photo, in the same mode */
+.mode-strip {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    height: 76px;
+    padding: 0 var(--sp-3);
+    overflow-x: auto;
+    overflow-y: hidden;
+    background: var(--strip-bg);
+    border-top: 1px solid var(--border-subtle);
+    scrollbar-width: thin;
+}
+
+.mode-thumb {
+    flex: none;
+    width: 64px;
+    height: 52px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--r-xs);
+    background: var(--tb-hover);
+    overflow: hidden;
+    cursor: pointer;
+    opacity: 0.8;
+}
+
+.mode-thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+}
+
+.mode-thumb:hover {
+    opacity: 1;
+}
+
+.mode-thumb.active {
+    opacity: 1;
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
 }
 
 /* Duplicates */
@@ -4920,6 +5307,42 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
     margin: var(--sp-3) 0 0;
     color: var(--text-2);
     font-size: var(--fs-small);
+}
+
+.drop-hint .link-btn {
+    display: inline;
+    padding: 0;
+    text-decoration: underline;
+    text-decoration-color: var(--border);
+    text-underline-offset: 3px;
+}
+
+/* Start in (modes.js): where a project opened from here lands */
+.start-in {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-3);
+    margin-top: var(--sp-4);
+}
+
+.start-in-label {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.start-in-seg > button {
+    gap: 6px;
+    font-size: var(--fs-small);
+}
+
+.start-in-seg > button .i {
+    width: 15px;
+    height: 15px;
+}
+
+.start-in-seg > button.hidden {
+    display: none;
 }
 
 /* Settings → Experimental (experiments.js) */

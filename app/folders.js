@@ -240,6 +240,7 @@ const Folders = {
         // What this window shows, for the others' Move to: in any view, not
         // just the grid's (a project left in single view was missing there)
         if (typeof Windows !== 'undefined') Windows.publish();
+        if (typeof Modes !== 'undefined') Modes.render();
         if (!on) return;
         const counts = this.counts();
         if (rail) {
