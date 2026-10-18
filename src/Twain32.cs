@@ -125,7 +125,7 @@ static class Twain32
                 {
                     var text = line[4..];
                     Log.Write("Scanner: " + text);
-                    if (text is "Auto size: yes" or "Border detection: yes") AutoSized = true;
+                    if (text is "Auto size: yes" or "Border detection: yes" or "Epson photo auto size: yes") AutoSized = true;
                 }
                 else if (line.StartsWith("PAGE "))
                 {

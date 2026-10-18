@@ -1093,6 +1093,9 @@ const Scan = {
         this.running = false;
         const n = names.length;
         const said = `${n} photo${n === 1 ? '' : 's'} into ${Folders.label(folder)}`;
+        // The scanner cropped each photo itself (its own auto-size, as the
+        // FastFoto's): Auto crop would only find edges inside the photos
+        if (result.autosized) autoCrop = false;
         if (n) {
             done((result.cancelled ? 'Stopped after ' : 'Scanned ') + said + (autoCrop ? ' · auto cropping…' : '') + (source === 'feeder' && !result.cancelled ? '. Load the next batch, then Scan more.' : ''));
             app.showToast(`Scanned ${said}`, 4000, 'scanned', null, { type: 'success', kind: 'scan' });
