@@ -87,6 +87,23 @@ These came from an Epson FF-680W on its default settings, so the scanner had cro
 
 The 25 still wrong come from the other finders (`PhotoFind.single`, run less strictly for a feeder scan), which find a "print" inside the photo in the same way. The full-resolution edge pass and the physical-size check (steps 3 and 4) are next for those.
 
+## Epson scanners: Epson's own crop
+
+The FastFoto software doesn't crop photos itself. It asks Epson Scan 2 for its photo crop with two of the driver's own capabilities, and never sets the standard TWAIN ones:
+
+| Capability | ID | FastFoto sets |
+|---|---|---|
+| `CAP_EP_DESKEWTYPE` | `0x8075` | 1 |
+| `ICAP_EP_AUTOSIZETYPE` | `0x8081` | 0, or 1 for a panorama |
+
+Given the standard ones (auto size, border detection, deskew), as jEditor did, the driver uses its document crop, which leaves backing around a photo. Scanning now asks for the photo crop whenever the scanner offers both capabilities, and jEditor doesn't crop those scans again.
+
+Not yet confirmed on the scanner: which `ICAP_EP_AUTOSIZETYPE` value is the normal photo one (the order in FastFoto's code says 0). The scan's Details log shows what the driver said.
+
+## Other scanners: VueScan's approach
+
+For scanners without Epson's crop (the Plustek OpticBook, the Kodak), Auto crop is to be replaced by VueScan's approach, a model trained on cropped photos ([VueScan 9.8.06](https://hamrick.com/blog/vuescan-9-8-06-autocrop-photos.html)), written as jEditor's own code and trained on jEditor's test sets.
+
 ## Open questions
 
 - Default margin: Safe (lose about 0.5 mm of photo, never bed) or Tight?

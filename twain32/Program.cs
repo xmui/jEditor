@@ -193,9 +193,10 @@ sealed class Run : ApplicationContext
     void Configure(DataSource ds)
     {
         var caps = ds.Capabilities;
+        var supported = new List<CapabilityId>();
         try
         {
-            var supported = caps.CapSupportedCaps.GetValues().ToList();
+            supported = caps.CapSupportedCaps.GetValues().ToList();
             Out.Log("Supports: " + string.Join(", ", supported));
             LogCustom(caps);
         }
@@ -231,7 +232,17 @@ sealed class Run : ApplicationContext
         Set("Contrast 0", () => caps.ICapContrast.SetValue(0));
         Set($"{o.Dpi} dpi across", () => caps.ICapXResolution.SetValue(o.Dpi));
         Set($"{o.Dpi} dpi down", () => caps.ICapYResolution.SetValue(o.Dpi));
-        if (o.AutoSize)
+        // Epson Scan 2 has its own photo crop (the FastFoto's): asked for
+        // with its own two settings, the way the FastFoto software asks. The
+        // standard TWAIN ones below get its document crop instead, which
+        // leaves backing around a photo.
+        bool epsonPhoto = o.AutoSize && supported.Contains(EpsonDeskewType) && supported.Contains(EpsonAutoSizeType);
+        if (epsonPhoto)
+        {
+            Set("Epson photo straighten", () => SetCustom(ds, EpsonDeskewType, 1));
+            Set("Epson photo auto size", () => SetCustom(ds, EpsonAutoSizeType, 0));
+        }
+        else if (o.AutoSize)
         {
             // Every way TWAIN has of saying "find the photo's size yourself":
             // drivers support one or another
@@ -240,12 +251,23 @@ sealed class Run : ApplicationContext
             Set("Border detection", () => caps.ICapAutomaticBorderDetection.SetValue(BoolType.True));
             Set("Length detection", () => caps.ICapAutomaticLengthDetection.SetValue(BoolType.True));
         }
-        if (o.Deskew) Set("Straighten", () => caps.ICapAutomaticDeskew.SetValue(BoolType.True));
+        if (o.Deskew && !epsonPhoto) Set("Straighten", () => caps.ICapAutomaticDeskew.SetValue(BoolType.True));
         // What it ended up as
         try { Out.Log($"Now: auto size {caps.ICapAutoSize.GetCurrent()}, border detection {caps.ICapAutomaticBorderDetection.GetCurrent()}, deskew {caps.ICapAutomaticDeskew.GetCurrent()}, {caps.ICapXResolution.GetCurrent().Whole} dpi"); }
         catch (Exception) { /* not all of them answer */ }
         try { Out.Log($"Now: {caps.ICapBitDepth.GetCurrent()} bits, brightness {Fix(caps.ICapBrightness.GetCurrent())}, contrast {Fix(caps.ICapContrast.GetCurrent())}, gamma {Fix(caps.ICapGamma.GetCurrent())}"); }
         catch (Exception) { /* not all of them answer */ }
+    }
+
+    // Epson Scan 2's own capabilities for its photo crop (CAP_EP_DESKEWTYPE
+    // and ICAP_EP_AUTOSIZETYPE), both one 16-bit value
+    const CapabilityId EpsonDeskewType = (CapabilityId)0x8075;
+    const CapabilityId EpsonAutoSizeType = (CapabilityId)0x8081;
+
+    static ReturnCode SetCustom(DataSource ds, CapabilityId id, ushort value)
+    {
+        using var cap = new TWCapability(id, new TWOneValue { Item = value, ItemType = ItemType.UInt16 });
+        return ds.DGControl.Capability.Set(cap);
     }
 
     // The driver's own capabilities (no TWAIN names), with their values now:
