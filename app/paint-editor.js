@@ -127,6 +127,8 @@ const PaintEditor = {
         bind('paint-swap', () => this.swapColours());
         bind('paint-default', () => this.defaultColours());
         bind('paint-layer-add', () => this.addLayer());
+        bind('paint-import', () => this.pickImage());
+        this.initImport();
         bind('paint-layer-dup', () => this.duplicateLayer());
         bind('paint-layer-up', () => this.moveLayer(1));
         bind('paint-layer-down', () => this.moveLayer(-1));
@@ -1479,6 +1481,7 @@ const PaintEditor = {
         }
         if (this._clip) this._clip.width = this._clip.height = 0;
         this._clip = c;
+        this._clipStale = false;
         this.app.showToast('Copied', 1000);
     },
 
@@ -1496,6 +1499,117 @@ const PaintEditor = {
         this.dropSelection();
         this.setTool('move');
         this.renderSoon();
+    },
+
+    // ---- Images brought in (Import image…, dropped on, or pasted from
+    // another app): each on a layer of its own, named for it, fitted in the
+    // picture and left floating, to move, size and turn before Enter puts
+    // it down ----
+
+    IMPORT_MAX: 4096, // pixels a side kept of an image brought in
+
+    pickImage() {
+        if (!this.ready || this.busy) return;
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*,.dng,.cr2,.cr3,.nef,.arw,.orf,.rw2,.raf,.pef,.srw';
+        input.multiple = true;
+        input.addEventListener('change', () => this.importFiles([...input.files]));
+        input.click();
+    },
+
+    // Files: the images among them, one after another (the last left floating)
+    async importFiles(files) {
+        const images = files.filter(f => /^image\//.test(f.type) || this.app.isImage(f.name));
+        if (!images.length) {
+            if (files.length) this.app.showToast('Only images can be brought into Paint', 2000);
+            return 0;
+        }
+        let n = 0;
+        for (const f of images) if (await this.importImage(f, f.name)) n++;
+        return n;
+    },
+
+    async importImage(blob, name = 'Image') {
+        if (!this.ready || this.busy) return false;
+        if (this.layers.length >= Paint.MAX_LAYERS) {
+            this.app.showToast(`Up to ${Paint.MAX_LAYERS} layers: merge some (Ctrl+E) to bring in more`, 2500);
+            return false;
+        }
+        let bmp;
+        try {
+            const src = Raw.is(name) ? await Raw.preview(blob) : blob;
+            if (!src) throw new Error('no preview in this RAW file');
+            bmp = await createImageBitmap(src, { imageOrientation: 'from-image' });
+        } catch (e) {
+            this.app.showToast(`Couldn't open ${name} as an image`, 2500);
+            return false;
+        }
+        if (!this.isOpen || !this.ready) { bmp.close(); return false; }
+        if (this.float) this.commitFloat();
+        const k = Math.min(1, this.IMPORT_MAX / Math.max(bmp.width, bmp.height));
+        const w = Math.max(1, Math.round(bmp.width * k)), h = Math.max(1, Math.round(bmp.height * k));
+        const fc = this.newCanvas(w, h);
+        const fg = fc.getContext('2d');
+        fg.imageSmoothingQuality = 'high';
+        fg.drawImage(bmp, 0, 0, w, h);
+        bmp.close();
+        // A layer of its own, above this one
+        this.pushState();
+        this.layers.splice(this.cur + 1, 0, this.makeLayer(String(name).replace(/\.[^.]+$/, '').slice(0, 40) || 'Image'));
+        this.cur++;
+        this.afterState();
+        const l = this.layer();
+        this.beginPixels(l);
+        // Fitted in the picture (never made bigger), in the middle of what's on screen
+        const fit = Math.min(1, 0.9 * this.OW / w, 0.9 * this.OH / h);
+        const mid = this.V().inverse().transformPoint({ x: this.cssW / 2, y: this.cssH / 2 });
+        mid.x = Math.max(0, Math.min(this.OW, mid.x));
+        mid.y = Math.max(0, Math.min(this.OH, mid.y));
+        this.float = { canvas: fc, x0: mid.x - w / 2, y0: mid.y - h / 2, w, h, t: { tx: 0, ty: 0, sx: fit, sy: fit, rot: 0 }, layer: l, sel: null };
+        this.dropSelection();
+        this.setTool('move');
+        this.renderSoon();
+        this.app.showToast('Drag it to move it, a corner to size it (Shift keeps its shape); Enter puts it down', 3500);
+        return true;
+    },
+
+    // Dropped on Paint, or pasted from another app (Ctrl+V with nothing
+    // copied in Paint)
+    initImport() {
+        const outside = (e) => this.isOpen && !!e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+        document.addEventListener('dragover', (e) => {
+            if (!outside(e)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'copy';
+        }, true);
+        document.addEventListener('drop', (e) => {
+            if (!outside(e)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            document.body.classList.remove('drag-over');
+            this.importFiles([...e.dataTransfer.files]);
+        }, true);
+        document.addEventListener('paste', (e) => {
+            if (!this.isOpen || !e.clipboardData) return;
+            if (this.app.isTypingTarget(e.target)) return;
+            // Pasted by the key already (a Mac's Edit menu sends both)
+            if (performance.now() - (this._pastedAt || 0) < 300) { e.preventDefault(); return; }
+            const files = [...e.clipboardData.items].filter(i => i.kind === 'file' && /^image\//.test(i.type)).map(i => i.getAsFile()).filter(Boolean);
+            e.preventDefault();
+            if (files.length) this.importImage(files[0], files[0].name && files[0].name !== 'image.png' ? files[0].name : 'Pasted');
+            else this.paste();
+        });
+        // Away to another app: what's copied there may be newer than Paint's own copy
+        window.addEventListener('blur', () => { if (this._clip) this._clipStale = true; });
+    },
+
+    // Ctrl+V: Paint's own copy if it's the newest thing copied; else the
+    // system's clipboard, through the paste event (false: let it come)
+    pasteKey() {
+        if (this._clip && !this._clipStale) { this._pastedAt = performance.now(); this.paste(); return true; }
+        return false;
     },
 
     // ---- Drawn over the photo: selection, shapes being drawn, handles ----

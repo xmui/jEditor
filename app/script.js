@@ -249,6 +249,7 @@ const app = {
         Paint.init(this);
         Import.init(this);
         Disc.init(this);
+        Blank.init(this);
         Fit.init();
         History.init(this);
         Watch.init(this);
@@ -3982,7 +3983,8 @@ const app = {
         ['paint.deselect', 'paint', 'Paint', 'Select nothing', ['Ctrl+D']],
         ['paint.clear', 'paint', 'Paint', 'Delete what\'s selected', ['Delete', 'Backspace']],
         ['paint.copy', 'paint', 'Paint', 'Copy what\'s selected', ['Ctrl+C']],
-        ['paint.paste', 'paint', 'Paint', 'Paste', ['Ctrl+V']],
+        ['paint.paste', 'paint', 'Paint', 'Paste (an image copied in another app comes in as a layer)', ['Ctrl+V']],
+        ['paint.import', 'paint', 'Paint', 'Bring in an image (as a layer)', ['Ctrl+Shift+O']],
         ['paint.newLayer', 'paint', 'Paint', 'New layer', ['Ctrl+Shift+N']],
         ['paint.duplicate', 'paint', 'Paint', 'Duplicate the layer', ['Ctrl+J']],
         ['paint.merge', 'paint', 'Paint', 'Merge the layer down', ['Ctrl+E']],
@@ -4169,7 +4171,8 @@ const app = {
             'paint.deselect': () => PaintEditor.deselect(),
             'paint.clear': () => PaintEditor.clearSelected(),
             'paint.copy': () => PaintEditor.copy(),
-            'paint.paste': () => PaintEditor.paste(),
+            'paint.paste': () => PaintEditor.pasteKey(),
+            'paint.import': () => PaintEditor.pickImage(),
             'paint.newLayer': () => PaintEditor.addLayer(),
             'paint.duplicate': () => PaintEditor.duplicateLayer(),
             'paint.merge': () => PaintEditor.mergeDown(),
@@ -4399,7 +4402,7 @@ const app = {
 
         // The rename tool, folder dialogs, Settings and the alert/confirm
         // dialogs handle their own keys
-        if (Renamer.isOpen || Folders.isModalOpen() || Recents.isPromptOpen() || UI.isOpen() || Stored.isOpen() || Scan.isOpen() || Camera.isOpen()) return;
+        if (Renamer.isOpen || Folders.isModalOpen() || Recents.isPromptOpen() || UI.isOpen() || Stored.isOpen() || Scan.isOpen() || Camera.isOpen() || Blank.isOpen()) return;
 
         // What's New is modal: Esc closes it
         if (this.isWhatsNewOpen()) {
@@ -6278,6 +6281,7 @@ const app = {
             ['Clear selection', () => this.clearSelection()],
             ['—'],
             ...(this.dirHandle ? [['New folder…', () => Folders.newFolder()]] : []),
+            ...(Blank.can() ? [['New blank image…', () => Blank.open()]] : []),
             ['Rename all…', () => this.openRename([])],
             ['Search…', () => Flags.focusSearch()],
             [Folders.scope === null ? 'Project info' : 'Folder info', () => this.toggleInfoPanel(true, { folder: Folders.scope })],

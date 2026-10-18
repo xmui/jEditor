@@ -1152,6 +1152,9 @@ async function newPage(context, baseUrl, host = null) {
             out.shown = app.viewMode + ' ' + (app.currentFile && app.currentFile.name);
             // Swap off: remembered for that scanner
             $('scan-settings').click();
+            // Back in setup, the names carry on after the photos just scanned
+            out.namesAfter = [$('scan-prefix').value, $('scan-next').value];
+            out.howHidden = $('scan-mode-row').classList.contains('hidden');
             $('scan-swap').checked = false;
             $('scan-swap').dispatchEvent(new Event('change'));
             out.swapKept = JSON.parse(localStorage.getItem('jeditor.scanSwap'))['EPSON FF-680W'] === false;
@@ -1173,6 +1176,8 @@ async function newPage(context, baseUrl, host = null) {
         check('... each photo opens large as it comes in (not the backs)', r.shown === 'single photo4.jpg', r.shown);
         check('... and the scanner is asked to crop each photo itself (its own auto-size)', r.req && r.req.autosize === true, JSON.stringify(r.req));
         check('the swap is remembered for that scanner', r.swapKept);
+        check('Change settings after a scan: the names carry on from it (not the numbers taken now)', r.namesAfter[0] === 'photo' && r.namesAfter[1] === '5', JSON.stringify(r.namesAfter));
+        check('a scanner with only a feeder: no How choice shown', r.howHidden);
         check('a FastFoto starts with the FastFoto app\'s tone (brightness 5, contrast -35), said beside the sliders; sent with the scan', r.tone === '5,-35,true' && r.req.brightness === 5 && r.req.contrast === -35, JSON.stringify([r.tone, r.req.brightness, r.req.contrast]));
         check('... once: set back to 0 it stays 0, and other scanners have no note', r.toneKept === '0' && r.otherNote, JSON.stringify([r.toneKept, r.otherNote]));
         check('Scanner\'s own settings… opens its window, says when settings are saved, and Forget goes back', r.ownShown && r.ownSaved === 'Scanner\'s own settings… (saved)|true'

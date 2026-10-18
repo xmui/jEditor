@@ -4367,6 +4367,12 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     gap: 2px;
 }
 
+.paint-import {
+    width: 100%;
+    margin: var(--sp-2) 0;
+    gap: var(--sp-2);
+}
+
 .paint-colors {
     display: flex;
     align-items: center;
@@ -4564,6 +4570,83 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 .import-to .field {
     flex: 1;
     min-width: 0;
+}
+
+/* New blank image (blank.js) */
+.blank-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+
+.blank-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    font-size: var(--fs-small);
+    color: var(--text-2);
+}
+
+.blank-field > .field {
+    width: 100%;
+}
+
+.blank-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+
+.blank-row > .field {
+    flex: 1;
+    min-width: 0;
+}
+
+.blank-ext,
+.blank-unit {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.blank-dims {
+    align-items: flex-end;
+}
+
+.blank-dims .blank-field {
+    flex: 1;
+}
+
+.blank-dims .btn,
+.blank-dims .blank-unit {
+    margin-bottom: 4px;
+}
+
+.blank-bg span {
+    font-size: var(--fs-small);
+}
+
+#blank-color {
+    width: var(--ctl-md);
+    height: var(--ctl-md);
+    padding: 2px;
+    border: 1px solid var(--border-input);
+    border-radius: var(--r-md);
+    background: var(--bg-raised);
+    cursor: pointer;
+}
+
+#blank-color.dim {
+    opacity: 0.45;
+}
+
+.blank-info {
+    color: var(--text-3);
+    font-size: var(--fs-small);
+}
+
+.blank-body .fpr-error:empty {
+    display: none;
 }
 
 /* Duplicates */
@@ -5335,14 +5418,14 @@ html:not(.native) .native-only {
     z-index: calc(var(--z-floating) + 3);
     display: flex;
     flex-direction: column;
-    width: min(380px, calc(100vw - 2 * var(--gutter)));
+    width: min(400px, calc(100vw - 2 * var(--gutter)));
     max-height: calc(100vh - 2 * var(--gutter) - 64px);
     border-radius: var(--r-lg);
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    box-shadow: var(--shadow-4, var(--shadow-2)), var(--glass-rim);
-    backdrop-filter: var(--glass-filter);
-    -webkit-backdrop-filter: var(--glass-filter);
+    /* Solid: fields and text over a see-through, blurred panel repaint
+       badly (and the photos changing behind it as scans land show through) */
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-4, var(--shadow-2));
     color: var(--text-1);
     font-size: var(--fs-body);
 }
@@ -5400,6 +5483,78 @@ html:not(.native) .native-only {
 
 .scan-dock .scan-body {
     padding: var(--sp-3);
+}
+
+.scan-dock #scan-setup {
+    padding: 0;
+    gap: 0;
+}
+
+/* The setup in sections, a line between each */
+.scan-sec {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-3);
+}
+
+.scan-sec + .scan-sec,
+.scan-sec + .scan-adv {
+    border-top: 1px solid var(--border);
+}
+
+.scan-sec > .field {
+    width: 100%;
+}
+
+.scan-sec-head {
+    margin: 0;
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    font-weight: var(--fw-semibold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-2);
+}
+
+.scan-sec-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+}
+
+.scan-sec-bar .scan-sec-head {
+    flex: 1;
+}
+
+.scan-sec-bar select.field {
+    width: auto;
+    max-width: 150px;
+}
+
+.scan-hint {
+    margin: 0;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+}
+
+.scan-mode {
+    align-self: flex-start;
+}
+
+.scan-mode.hidden,
+.scan-mode > label.hidden {
+    display: none;
+}
+
+.scan-checks {
+    gap: var(--sp-2);
+}
+
+#scan-opts-home:empty,
+.scan-dock[data-mode="driver"] #scan-opts-home {
+    display: none;
 }
 
 .scan-dock:not([data-state="setup"]) .scan-body,
@@ -5493,10 +5648,7 @@ html:not(.native) .native-only {
     margin-top: auto;
     border-top: 1px solid var(--border);
     border-radius: 0 0 var(--r-lg) var(--r-lg);
-    /* Nearly solid, so the settings scrolling behind don't show through */
-    background: color-mix(in srgb, var(--bg-surface) 94%, transparent);
-    backdrop-filter: var(--glass-filter);
-    -webkit-backdrop-filter: var(--glass-filter);
+    background: var(--bg-surface);
 }
 
 /* Scan whole glass: next to Preview, when scanning from the glass */
@@ -5535,11 +5687,10 @@ html:not(.native) .native-only {
 .scan-row .field {
     flex: 1 1 auto;
     min-width: 0;
-    height: var(--ctl-lg);
 }
 
 .scan-row .scan-num {
-    flex: 0 0 96px;
+    flex: 0 0 84px;
 }
 
 .scan-preview {
@@ -5595,14 +5746,10 @@ html:not(.native) .native-only {
 
 /* jEditor's own scanner settings (scan.js): one block, in setup or beside
    the glass */
-.scan-dock[data-mode="driver"] #scan-opts-home .scan-opts {
-    display: none;
-}
-
 .scan-opts {
     display: flex;
     flex-direction: column;
-    gap: var(--sp-2);
+    gap: var(--sp-3);
 }
 
 .scan-opts-grid {
@@ -5617,21 +5764,31 @@ html:not(.native) .native-only {
 }
 
 .scan-slider {
-    flex-direction: row;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr) 34px;
     align-items: center;
-    gap: 2px 6px;
+    gap: var(--sp-2);
+    font-size: var(--fs-small);
+    color: var(--text-2);
+}
+
+.scan-slider.hidden {
+    display: none;
 }
 
 .scan-slider output {
-    margin-left: auto;
     color: var(--text-1);
     font-variant-numeric: tabular-nums;
+    text-align: right;
 }
 
 .scan-slider input[type="range"] {
-    flex-basis: 100%;
     width: 100%;
+    margin: 0;
+}
+
+.scan-adv {
+    padding: var(--sp-3);
 }
 
 .scan-adv summary {
@@ -5867,10 +6024,11 @@ html:not(.native) .native-only {
 .scan-pv-side {
     display: flex;
     flex-direction: column;
-    gap: var(--sp-3);
-    width: 250px;
+    width: 300px;
     flex: none;
     overflow-y: auto;
+    margin: calc(-1 * var(--sp-3)) calc(-1 * var(--sp-3)) calc(-1 * var(--sp-3)) 0;
+    border-left: 1px solid var(--border);
 }
 
 .scan-pv-count {
@@ -5890,7 +6048,11 @@ html:not(.native) .native-only {
 .scan-pv-tools {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--sp-2);
+    gap: var(--sp-1);
+}
+
+.scan-pv-side .scan-sec > .field {
+    width: 100%;
 }
 
 @media (max-width: 760px) {
@@ -5900,6 +6062,9 @@ html:not(.native) .native-only {
 
     .scan-pv-side {
         width: auto;
+        margin: 0 calc(-1 * var(--sp-3)) calc(-1 * var(--sp-3));
+        border-left: 0;
+        border-top: 1px solid var(--border);
     }
 }
 

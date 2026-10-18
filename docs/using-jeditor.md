@@ -132,6 +132,8 @@ Paint over a photo in layers, as a tool like Crop: press `B` (or the brush butto
 - **Selections** keep painting inside them. `Shift` adds to a selection, `Alt` takes away; `Ctrl+A` selects everything, `Ctrl+D` nothing; `Delete` clears what's selected; `Ctrl+C` / `Ctrl+V` copy and paste it.
 - **Colours:** the foreground and background swatches (click to choose), a palette (`Alt`-click for the background colour), **Swap** (`X`) and black and white (`D`). `Alt`-click with a brush picks a colour from the photo.
 - **Layers:** add, duplicate, move up and down, merge down, delete, hide, rename (double-click), each with its **Opacity** and a **Blend** mode (Multiply, Screen, Overlay and the rest).
+- **Images:** **Bring in an image…** under the layers (`Ctrl+Shift+O`), drop an image file on Paint, or `Ctrl+V` an image copied in another app. It comes in on a layer of its own, named after it, fitted to the picture and left floating: drag it to move it, a corner to size it (`Shift` keeps its shape), the knob to turn it, and `Enter` puts it down. RAW files come in from the JPEG inside them. (`Ctrl+V` pastes Paint's own copy instead when that's the newest thing you copied.)
+- **A blank canvas:** right-click a folder (or the grid's background) → **New blank image…**: a name, a size (screens, social posts, prints at 300 dpi, the photo you're looking at, or any width and height up to 10,000 pixels, either way round) and a background (white, black, none or a colour). It's saved as a PNG in that folder and opens in Paint straight away.
 - The wheel zooms; hold `Space` (or the Hand) and drag to move about; `0` fits the photo, `1` is 100%. `Ctrl+Z` / `Ctrl+Shift+Z` undo and redo inside Paint.
 
 Painting goes on last, over the photo as it's cropped and adjusted, so it looks as you painted it. It's non-destructive like the rest: the layers are kept with the project (in `.jeditor/paint`), so the painting can be opened and changed again, and a crop later leaves it where it was. **Export…** and **Save edits…** write it into copies or the photos. Without a project (photos picked on a phone), **Done** paints into the photo.
@@ -152,7 +154,7 @@ Some orders are collated: the photos go into labelled folders. Open the order fo
 - **All photos** (top of the list, or the switch in the folder pill at the top left) shows every photo in the order, whatever folder it's in, with each photo's folder named on its tile. It's what you see when an order is opened. `A` switches between All photos and the last folder.
 - **Moving.** Drag the selected photos onto a folder, in the list, a folder tile or the breadcrumb. Hold `Ctrl` (or `Alt`) when you let go to copy them instead. Or press `M` (`Shift+M` copies), or use **Move to…** on the selection bar or the right-click menu. That opens a list of folders: type to find one, or type a new name to make that folder and move the photos into it in one go. `Wedding/Speeches` makes a folder inside another.
 - **Name clashes.** If a photo with the same name is already in the folder, you're asked what to do: keep both (the moved photo gets a number, `IMG_0042 (2).jpg`), skip it, or replace the one that's there, which goes to the trash. You can apply the answer to the rest of the clashes. Cancel and nothing is moved.
-- **Folders.** **New folder** at the bottom of the folder list, `Shift+N`, or right-clicking the grid makes one inside the folder you're looking at. Right-click a folder to rename it, make a folder inside it, or delete it once it's empty.
+- **Folders.** **New folder** at the bottom of the folder list, `Shift+N`, or right-clicking the grid makes one inside the folder you're looking at. Right-click a folder to rename it, make a folder inside it, make a **New blank image…** in it (to paint on), or delete it once it's empty.
 - In a folder, `←` `→`, the film strip, `Ctrl+A` and **Rename all…** cover that folder's photos only.
 - **Folder details.** The bottom of the folder list shows the total for what you're looking at (`1,240 photos · 4.80 GB`); click it, press `I` in the grid, or right-click a folder for **Folder info**. It lists how many photos there are (directly in the folder and with its subfolders), the total, average and largest size, file types, dates and flags. For the whole order it also shows how much room `.jeditor` takes: trash, cache and Auto crop originals. Select several photos to see the same for the selection.
 
@@ -229,7 +231,7 @@ In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel,
 
 In Adjust: `Enter` done, `Shift+Enter` done and next, `Esc` cancel, `\` before and after, `Shift+A` auto, `Shift+C` auto color, `R` reset, `Ctrl+Shift+C` / `Ctrl+Shift+V` copy / paste, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
-In Paint: `Enter` done (or put down what's being moved), `Esc` cancel, `V` move, `M` rectangle / ellipse select, `L` lasso, `W` magic wand, `B` brush, `N` pencil, `E` eraser, `G` fill / gradient, `U` line, `R` rectangle, `O` ellipse, `T` text, `I` colour picker, `H` hand, `[` `]` brush size, `X` swap colours, `D` black and white, `Ctrl+A` / `Ctrl+D` select all / nothing, `Delete` clear the selection, `Ctrl+C` / `Ctrl+V` copy / paste, `Ctrl+Shift+N` new layer, `Ctrl+J` duplicate the layer, `Ctrl+E` merge down, `0` fit, `1` 100%, `+` `-` zoom, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
+In Paint: `Enter` done (or put down what's being moved), `Esc` cancel, `V` move, `M` rectangle / ellipse select, `L` lasso, `W` magic wand, `B` brush, `N` pencil, `E` eraser, `G` fill / gradient, `U` line, `R` rectangle, `O` ellipse, `T` text, `I` colour picker, `H` hand, `[` `]` brush size, `X` swap colours, `D` black and white, `Ctrl+A` / `Ctrl+D` select all / nothing, `Delete` clear the selection, `Ctrl+C` / `Ctrl+V` copy / paste (an image copied in another app comes in as a layer), `Ctrl+Shift+O` bring in an image, `Ctrl+Shift+N` new layer, `Ctrl+J` duplicate the layer, `Ctrl+E` merge down, `0` fit, `1` 100%, `+` `-` zoom, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
 In find duplicates: `1`–`9` mark or unmark a photo, `K` keep the suggested photo and mark the rest, `Enter` trash marked and go to the next group, `N` not duplicates, `←` `→` previous / next group, `Esc` close.
 
@@ -245,6 +247,7 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `raw.js`: RAW files, from the JPEG inside them
 - `paint.js`, `paint-editor.js`: Paint (the layers kept with the photo, and the screen)
 - `import.js`: importing from a camera's card
+- `blank.js`: a new blank image (right-click a folder), to paint on
 - `disc.js`: burning a CD or DVD (the Windows app's `src/Burn.cs`)
 - `crop-auto.js`: finding the print on a scan (Auto)
 - `changelog.js`: the list of changes shown in What's new, and the release notes

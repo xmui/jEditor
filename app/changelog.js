@@ -14,6 +14,9 @@ const CHANGELOG = [
             'Copy a project to a USB drive or card in one step (the USB button on the project\'s card in the sidebar): the room is checked first, its flags and edits go with it, and Copy and eject ejects the drive when it\'s done.',
             'A camera\'s card plugged in is offered to import (or `Ctrl+I`): into this project or a new one, in folders by day if you like, only the photos not imported before, and the card ejected after.',
             'In the Windows app, burn a project to a CD or DVD (the disc button on the project\'s card).',
+            'Paint can bring in images: Bring in an image… under the layers (`Ctrl+Shift+O`), drop an image on it, or paste one copied in another app. Each comes in on a layer of its own, fitted and ready to move, size and turn.',
+            'Right-click a folder (or the grid) → New blank image…: any size, from screens and social posts to prints at 300 dpi, on white, black, a colour or nothing, saved as a PNG and opened in Paint.',
+            'The scanner window is cleaner: its settings in sections, every box the same height and solid behind (nothing showing through or flickering), and after a scan the names carry on from it instead of showing numbers that are already taken.',
             'A project\'s .jeditor folder opened in the Windows or Mac app now keeps its edits, not only its flags.',
             'Smooth scrolling on the Mac: a mouse\'s wheel glides instead of jumping a notch at a time, everywhere that scrolls. On a trackpad, two fingers move a zoomed photo about (in Paint too) and a pinch zooms it, following your fingers at once; pinching the grid resizes the thumbnails as far as you pinch, and the film strip scrolls with a sideways swipe.'
         ]

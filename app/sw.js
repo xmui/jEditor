@@ -41,6 +41,7 @@ const ASSETS = [
     './watch.js',
     './recents.js',
     './import.js',
+    './blank.js',
     './disc.js',
     './icon.png',
     './icon-192.png',

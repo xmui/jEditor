@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // jEditor's editing tools, in headless Chromium: spot and dust removal
 // (retouch.js, adjust-spots.js), subject and sky masks, RAW previews, Paint,
-// and the wheel the way a Mac does it (wheel.js). Run by `npm test` after the UI suite; on its own:
+// a new blank image (blank.js) and the wheel the way a Mac does it (wheel.js). Run by `npm test` after the UI suite; on its own:
 //   node test/edit.test.js [name …]     (only the sections named)
 
 const { chromium } = require('playwright-core');
@@ -876,6 +876,116 @@ const PROJECT = `
         check('paint: merging down keeps a layer\'s opacity; Ctrl+Z undoes it', t.merged && t.unmerged, JSON.stringify(t));
         check('paint: what\'s moved scales from a corner, its selection with it', t.scaled && t.afterScale && t.afterScale[0] === 255 && t.afterScale[1], JSON.stringify(t));
         check('paint: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- A new blank image; images brought into Paint ----
+    if (wanted('blank')) {
+        console.log('a new blank image, images brought into Paint (blank.js, paint-editor.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                experiment('paint', false);
+                const c = document.createElement('canvas'); c.width = 200; c.height = 150;
+                c.getContext('2d').fillRect(0, 0, 200, 150);
+                const dir = await openProject('blanks', { 'a.png': await canvasBlob(c) });
+                const sub = await dir.getDirectoryHandle('Art', { create: true });
+                await app.browseFolder();
+                await until(() => Folders.map.has('Art'));
+                const $ = (id) => document.getElementById(id);
+                // On the folder's menu and the grid's background
+                step = 'menus';
+                out.folderMenu = Folders.contextItems('Art').some(i => i[0] === 'New blank image…');
+                app.setView('grid');
+                out.gridMenu = app.buildContextItems(null, false).some(i => i[0] === 'New blank image…');
+                // The dialog: a size from the list, turned, a colour
+                step = 'dialog';
+                const made = Blank.open('Art');
+                await until(() => !$('blank-panel').classList.contains('hidden'));
+                out.name = $('blank-name').value;
+                $('blank-size').value = '4x6';
+                $('blank-size').dispatchEvent(new Event('change'));
+                $('blank-turn').click();
+                out.dims = [$('blank-w').value, $('blank-h').value, $('blank-size').value];
+                $('blank-w').value = '20000';
+                $('blank-w').dispatchEvent(new Event('input'));
+                out.tooBig = $('blank-go').disabled && /at most/.test($('blank-error').textContent);
+                $('blank-w').value = '1800';
+                $('blank-w').dispatchEvent(new Event('input'));
+                $('blank-color').value = '#336699';
+                $('blank-color').dispatchEvent(new Event('input'));
+                out.paintOffered = $('blank-paint').checked;
+                $('blank-go').click();
+                const file = await made;
+                step = 'made';
+                out.file = file && file.relPath;
+                const data = await (await (await sub.getFileHandle('Untitled.png')).getFile());
+                const img = await pixels(data);
+                out.size = [img.width, img.height];
+                out.pixel = [...img.data.slice(0, 4)];
+                // Opened in Paint (turned on for it)
+                await until(() => PaintEditor.ready);
+                out.inPaint = PaintEditor.isOpen && PaintEditor.file === file && Experiments.on('paint');
+                // Next time: the name after it
+                step = 'images';
+                const P = PaintEditor;
+                const red = document.createElement('canvas'); red.width = 3000; red.height = 1500;
+                red.getContext('2d').fillStyle = '#ff0000'; red.getContext('2d').fillRect(0, 0, 3000, 1500);
+                const logo = new File([await canvasBlob(red)], 'logo.png', { type: 'image/png' });
+                // Dropped on Paint: a layer of its own, named for it, floating, fitted
+                const dt = new DataTransfer();
+                dt.items.add(logo);
+                const st = $('paint-stage');
+                st.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+                st.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+                await until(() => P.float);
+                out.dropped = [P.layers.map(l => l.name).join(), P.cur, P.tool, !!P.float, Math.round(P.float.w * P.float.t.sx)];
+                pressKey('Enter');
+                const lp = [...P.layers[1].canvas.getContext('2d').getImageData(Math.round(P.W / 2), Math.round(P.H / 2), 1, 1).data];
+                out.putDown = !P.float && lp[0] === 255 && lp[3] === 255;
+                // Pasted from another app (Ctrl+V, nothing copied in Paint)
+                const cd = new DataTransfer();
+                cd.items.add(new File([await canvasBlob(red)], 'image.png', { type: 'image/png' }));
+                const handled = !window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true, cancelable: true }));
+                document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: cd, bubbles: true, cancelable: true }));
+                await until(() => P.float);
+                out.pasted = [!handled, P.layers.length, P.layers[P.cur].name];
+                pressKey('Escape');
+                // Paint's own copy, when it's the newest: Ctrl+V pastes it
+                P.copy();
+                const own = !window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true, cancelable: true }));
+                out.ownPaste = own && !!P.float;
+                pressKey('Escape');
+                // Not an image: said so
+                await P.importFiles([new File(['hi'], 'notes.txt', { type: 'text/plain' })]);
+                out.notImage = /Only images/.test(document.body.textContent);
+                // Undo takes the layer off again
+                const n = P.layers.length;
+                pressKey('z', { ctrlKey: true });
+                pressKey('z', { ctrlKey: true });
+                out.undone = P.layers.length === n - 1;
+                app.cancelPaint();
+                const again = Blank.open('Art');
+                await until(() => !$('blank-panel').classList.contains('hidden'));
+                out.next = $('blank-name').value;
+                out.remembered = [$('blank-w').value, $('blank-h').value, $('blank-bg-color').checked];
+                Blank.close(false);
+                await again;
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('blank: offered on a folder\'s menu and the grid\'s background', r.folderMenu && r.gridMenu, JSON.stringify(r));
+        check('blank: a size from the list, turned either way; too big is said', r.name === 'Untitled' && JSON.stringify(r.dims) === '["1800","1200","4x6"]' && r.tooBig, JSON.stringify(r));
+        check('blank: saved as a PNG of that size and colour, in the folder', r.file === 'Art/Untitled.png' && JSON.stringify(r.size) === '[1800,1200]' && JSON.stringify(r.pixel) === '[51,102,153,255]', JSON.stringify(r));
+        check('blank: opened in Paint straight away (Paint turned on for it)', r.paintOffered && r.inPaint, JSON.stringify(r));
+        check('paint: an image dropped on it comes in as a layer of its own, named for it, fitted and floating', r.dropped && r.dropped[0] === 'Layer 1,logo' && r.dropped[1] === 1 && r.dropped[2] === 'move' && r.dropped[3] && r.dropped[4] === 1620, JSON.stringify(r));
+        check('paint: Enter puts it down', r.putDown, JSON.stringify(r));
+        check('paint: Ctrl+V with an image copied in another app brings it in; Paint\'s own copy when that\'s newer', r.pasted && r.pasted[0] && r.pasted[1] === 3 && r.pasted[2] === 'Pasted' && r.ownPaste, JSON.stringify(r));
+        check('paint: what isn\'t an image is said so; Ctrl+Z takes an image off again', r.notImage && r.undone, JSON.stringify(r));
+        check('blank: next time, the next name and the same size and background', r.next === 'Untitled-2' && JSON.stringify(r.remembered) === '["1800","1200",true]', JSON.stringify(r));
+        check('blank: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
