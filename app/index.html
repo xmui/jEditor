@@ -16,6 +16,7 @@
     <script src="changelog.js"></script>
     <script src="meta.js"></script>
     <script src="host.js"></script>
+    <script src="wheel.js"></script>
     <script src="folder-cache.js"></script>
     <script src="photo-find.js"></script>
     <script src="crop-auto.js"></script>
@@ -47,6 +48,8 @@
     <script src="camera.js"></script>
     <script src="places.js"></script>
     <script src="import.js"></script>
+    <script src="blank.js"></script>
+    <script src="modes.js"></script>
     <script src="disc.js"></script>
     <script src="windows.js"></script>
     <script src="start.js"></script>
@@ -70,7 +73,16 @@
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
                     Open folder
                 </button>
-                <p class="drop-hint">or drop a folder anywhere in this window</p>
+                <!-- Where a project opened from here lands (modes.js) -->
+                <div id="start-in" class="start-in hidden">
+                    <span class="start-in-label" id="start-in-label">Start in</span>
+                    <span class="seg start-in-seg" role="radiogroup" aria-labelledby="start-in-label">
+                        <button type="button" role="radio" data-mode="photos" title="Sort, rotate and crop"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Photos</button>
+                        <button type="button" role="radio" data-mode="adjust" title="Light, colour and film looks, photo by photo"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>Adjust</button>
+                        <button type="button" role="radio" data-mode="paint" title="Paint on a photo, or start a new canvas"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L12 14.8 9.2 12z"/><path d="M9.2 12c-2.5 0-4.2 1.6-4.2 4 0 1.5-.8 2.6-2.4 3.4C4.4 21 6.3 21.5 8 21.5c3 0 5-1.9 4.9-4.6z"/></svg>Paint</button>
+                    </span>
+                </div>
+                <p class="drop-hint">or drop a folder anywhere in this window<span id="start-blank-wrap"> · <button id="start-blank" type="button" class="link-btn">New blank canvas…</button></span></p>
                 <!-- Recent orders (recents.js) -->
                 <div id="recents" class="recents hidden">
                     <h2 class="recents-title">Recent</h2>
@@ -410,6 +422,14 @@
             <span id="adj-file" class="mode-title"></span>
             <span id="adj-dims" class="crop-dims"></span>
             <span id="adj-before-tag" class="adj-tag hidden">Before</span>
+            <!-- No Done bar: what's done is kept; the mode switch (or Esc) goes back to Photos -->
+            <span class="mode-head-acts" role="toolbar" aria-label="Adjust">
+                <button id="adj-before" class="btn ghost sm" aria-pressed="false" title="Before and after (\)">Before</button>
+                <button id="adj-reset" class="btn ghost sm" title="Reset everything (R)">Reset</button>
+                <span class="mode-head-sep" aria-hidden="true"></span>
+                <button id="adj-copy" class="btn ghost sm" title="Copy these adjustments, to paste onto other photos (Ctrl+Shift+C)">Copy</button>
+                <button id="adj-paste" class="btn ghost sm" title="Paste the adjustments copied last (Ctrl+Shift+V)">Paste</button>
+            </span>
         </div>
         <div class="adj-body">
             <div id="adj-stage" class="adj-stage"><canvas id="adj-canvas"></canvas><canvas id="adj-paint" class="adj-paint hidden" aria-hidden="true"></canvas><div id="adj-loupe-box" class="adj-loupe-box hidden" aria-hidden="true"></div><canvas id="adj-overlay" class="adj-overlay hidden"></canvas><canvas id="adj-spot-overlay" class="adj-overlay hidden"></canvas></div>
@@ -525,25 +545,6 @@
                 </details>
             </aside>
         </div>
-        <div class="crop-toolbar adj-toolbar">
-            <div class="crop-row">
-                <button id="adj-cancel" class="btn secondary crop-btn" title="Cancel (Esc)">Cancel</button>
-                <span class="crop-group">
-                    <button id="adj-before" class="btn ghost crop-btn" aria-pressed="false" title="Before and after (\)">Before</button>
-                    <button id="adj-reset" class="btn ghost crop-btn" title="Reset everything (R)">Reset</button>
-                </span>
-                <span class="crop-sep" aria-hidden="true"></span>
-                <span class="crop-group">
-                    <button id="adj-copy" class="btn ghost crop-btn" title="Copy these adjustments, to paste onto other photos (Ctrl+Shift+C)">Copy</button>
-                    <button id="adj-paste" class="btn ghost crop-btn" title="Paste the adjustments copied last (Ctrl+Shift+V)">Paste</button>
-                </span>
-                <span class="crop-spacer" aria-hidden="true"></span>
-                <span class="crop-group crop-commit">
-                    <button id="adj-done-next" class="btn secondary crop-btn" title="Done, then adjust the next photo (Shift+Enter)">Done &amp; next</button>
-                    <button id="adj-done" class="btn primary crop-btn" title="Done (Enter)">Done</button>
-                </span>
-            </div>
-        </div>
     </div>
 
     <!-- Paint (paint-editor.js; layers kept by paint.js) -->
@@ -551,6 +552,13 @@
         <div class="mode-head paint-head">
             <span id="paint-file" class="mode-title"></span>
             <span id="paint-dims" class="crop-dims"></span>
+            <span class="mode-head-acts" role="toolbar" aria-label="Paint">
+                <button id="paint-undo" class="btn ghost sm" title="Undo (Ctrl+Z)">Undo</button>
+                <button id="paint-redo" class="btn ghost sm" title="Redo (Ctrl+Shift+Z)">Redo</button>
+                <span class="mode-head-sep" aria-hidden="true"></span>
+                <button id="paint-zoom-fit" class="btn ghost sm" title="Fit the photo (0)">Fit</button>
+                <button id="paint-zoom-1" class="btn ghost sm" title="Actual pixels (1)">100%</button>
+            </span>
         </div>
         <div id="paint-options" class="paint-options" role="toolbar" aria-label="Tool options"></div>
         <div class="paint-body">
@@ -583,6 +591,7 @@
                         </span>
                     </div>
                     <div id="paint-layer-list" class="paint-layer-list" role="listbox" aria-label="Layers"></div>
+                    <button id="paint-import" class="btn secondary sm paint-import" title="An image from a file, as a layer of its own (Ctrl+Shift+O). Or drop one here, or paste one copied in another app"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>Bring in an image…</button>
                     <div class="paint-layer-props">
                         <label class="paint-prop">Blend
                             <select id="paint-layer-blend" class="field"></select>
@@ -591,24 +600,6 @@
                     </div>
                 </section>
             </aside>
-        </div>
-        <div class="crop-toolbar paint-toolbar">
-            <div class="crop-row">
-                <button id="paint-cancel" class="btn secondary crop-btn" title="Cancel (Esc)">Cancel</button>
-                <span class="crop-group">
-                    <button id="paint-undo" class="btn ghost crop-btn" title="Undo (Ctrl+Z)">Undo</button>
-                    <button id="paint-redo" class="btn ghost crop-btn" title="Redo (Ctrl+Shift+Z)">Redo</button>
-                </span>
-                <span class="crop-sep" aria-hidden="true"></span>
-                <span class="crop-group">
-                    <button id="paint-zoom-fit" class="btn ghost crop-btn" title="Fit the photo (0)">Fit</button>
-                    <button id="paint-zoom-1" class="btn ghost crop-btn" title="Actual pixels (1)">100%</button>
-                </span>
-                <span class="crop-spacer" aria-hidden="true"></span>
-                <span class="crop-group crop-commit">
-                    <button id="paint-done" class="btn primary crop-btn" title="Done (Enter)">Done</button>
-                </span>
-            </div>
         </div>
     </div>
 
@@ -796,6 +787,13 @@
                             <span class="set-buttons">
                                 <button id="crop-log-export" class="btn secondary">Export…</button>
                                 <button id="crop-log-clear" class="btn secondary danger-text">Clear…</button>
+                            </span>
+                        </div>
+                        <div class="set-row">
+                            <span class="set-label">Fixed after batch Auto crop
+                                <small>Crops fixed in the editor after a batch Auto crop weren't kept at first. Recover adds the open project's from the originals jEditor kept, with where Auto puts the crop on each.</small></span>
+                            <span class="set-buttons">
+                                <button id="crop-log-recover" class="btn secondary">Recover</button>
                             </span>
                         </div>
                     </section>
@@ -1036,6 +1034,94 @@
         </div>
     </div>
 
+    <!-- Paint: a new canvas, or an image or folder to open (blank.js) -->
+    <div id="blank-panel" class="dialog-overlay hidden">
+        <div class="dialog blank-card" role="dialog" aria-modal="true" aria-labelledby="blank-title">
+            <div class="dialog-head blank-head">
+                <h2 id="blank-title" class="dialog-title">Paint</h2>
+                <span class="seg blank-tabs" role="tablist" aria-label="What to paint on">
+                    <button id="blank-tab-new" type="button" role="tab" aria-selected="true" aria-controls="blank-new">New canvas</button>
+                    <button id="blank-tab-open" type="button" role="tab" aria-selected="false" aria-controls="blank-open">Open a file</button>
+                </span>
+                <button id="blank-close" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+            <div id="blank-new" class="blank-body" role="tabpanel" aria-labelledby="blank-tab-new">
+                <div id="blank-presets" class="blank-presets" role="listbox" aria-label="Sizes"></div>
+                <div class="blank-details">
+                    <label class="blank-field" for="blank-name">Name
+                        <span class="blank-row"><input id="blank-name" class="field" type="text" spellcheck="false" autocomplete="off"><span class="blank-ext">.png</span></span>
+                    </label>
+                    <div class="blank-dims">
+                        <label class="blank-field" for="blank-w">Width
+                            <input id="blank-w" class="field" type="number" min="0.01" step="any">
+                        </label>
+                        <button id="blank-turn" type="button" class="btn ghost icon" title="Swap width and height (portrait ⇄ landscape)" aria-label="Swap width and height">
+                            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 3 8l4 4"/><path d="M3 8h13a4 4 0 0 1 4 4"/><path d="m17 20 4-4-4-4"/><path d="M21 16H8a4 4 0 0 1-4-4"/></svg>
+                        </button>
+                        <label class="blank-field" for="blank-h">Height
+                            <input id="blank-h" class="field" type="number" min="0.01" step="any">
+                        </label>
+                        <label class="blank-field" for="blank-unit">Units
+                            <select id="blank-unit" class="field">
+                                <option value="px">Pixels</option>
+                                <option value="in">Inches</option>
+                                <option value="cm">Centimetres</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="blank-two">
+                        <label class="blank-field" for="blank-dpi">Resolution
+                            <select id="blank-dpi" class="field">
+                                <option value="72">72 dpi (screens)</option>
+                                <option value="150">150 dpi</option>
+                                <option value="300">300 dpi (prints)</option>
+                                <option value="600">600 dpi</option>
+                            </select>
+                        </label>
+                        <label class="blank-field" for="blank-where">Save into
+                            <select id="blank-where" class="field"></select>
+                        </label>
+                    </div>
+                    <div class="blank-field">Background
+                        <span class="blank-row">
+                            <span class="seg blank-bg" role="radiogroup" aria-label="Background">
+                                <label><input type="radio" name="blank-bg" id="blank-bg-white" value="white" checked><span>White</span></label>
+                                <label><input type="radio" name="blank-bg" id="blank-bg-black" value="black"><span>Black</span></label>
+                                <label><input type="radio" name="blank-bg" id="blank-bg-clear" value="clear"><span>None</span></label>
+                                <label><input type="radio" name="blank-bg" id="blank-bg-color" value="color"><span>Colour</span></label>
+                            </span>
+                            <input id="blank-color" type="color" value="#d9e4f5" title="The background colour" aria-label="Background colour">
+                        </span>
+                    </div>
+                    <div class="blank-preview">
+                        <div id="blank-shape" class="blank-shape" aria-hidden="true"></div>
+                        <small id="blank-info" class="blank-info"></small>
+                    </div>
+                    <div id="blank-error" class="fpr-error" aria-live="polite"></div>
+                </div>
+            </div>
+            <div id="blank-open" class="blank-open hidden" role="tabpanel" aria-labelledby="blank-tab-open">
+                <button id="blank-open-image" type="button" class="blank-big">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+                    <span><b>An image…</b><small>A photo or picture from anywhere, to paint on. The painting goes into it when you leave Paint.</small></span>
+                </button>
+                <button id="blank-open-folder" type="button" class="blank-big">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                    <span><b>A folder…</b><small>A folder of photos, opened as a project, its first photo in Paint. The painting is kept with each photo.</small></span>
+                </button>
+            </div>
+            <div class="dialog-foot">
+                <button id="blank-open-instead" type="button" class="btn ghost">Open an image instead…</button>
+                <span class="dialog-actions">
+                    <button id="blank-cancel" class="btn secondary">Cancel</button>
+                    <button id="blank-go" class="btn primary">Create</button>
+                </span>
+            </div>
+        </div>
+    </div>
+
     <!-- Folder name (new folder, rename folder) -->
     <div id="folder-prompt" class="dialog-overlay hidden">
         <div class="dialog prompt-card" role="dialog" aria-modal="true" aria-labelledby="fpr-title">
@@ -1093,43 +1179,43 @@
         </div>
         <form id="scan-form" class="scan-dock-body">
             <div id="scan-setup" class="scan-body">
-                <label class="scan-field" for="scan-device">Scanner
+                <section class="scan-sec">
+                    <h3 class="scan-sec-head">Scanner</h3>
                     <span class="scan-row">
-                        <select id="scan-device" class="field"></select>
+                        <select id="scan-device" class="field" aria-label="Scanner"></select>
                         <button id="scan-refresh" type="button" class="btn ghost icon" title="Look for scanners again" aria-label="Look for scanners again">
                             <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
                         </button>
                     </span>
-                </label>
-                <div id="scan-problems" class="scan-note"></div>
-                <label class="scan-field" for="scan-folder">Save into
-                    <select id="scan-folder" class="field"></select>
-                </label>
-                <div class="scan-field">Names
-                    <span class="scan-row">
-                        <input id="scan-prefix" class="field" type="text" spellcheck="false" autocomplete="off" aria-label="Name before the number">
-                        <input id="scan-next" class="field scan-num" type="number" min="0" step="1" aria-label="First number">
-                    </span>
-                    <small id="scan-preview" class="scan-preview"></small>
-                </div>
-                <label class="scan-check" for="scan-autocrop">
-                    <input id="scan-autocrop" type="checkbox">
-                    <span>Auto crop each photo<small>Finds the print on each scan and crops to it, whatever its size. Ctrl+Z puts the scans back as they were.</small></span>
-                </label>
-                <label class="scan-check" for="scan-show">
-                    <input id="scan-show" type="checkbox">
-                    <span>Show each photo as it comes in<small>Opens the newest scan large while the rest are scanning.</small></span>
-                </label>
-                <div class="scan-field" id="scan-mode-row">How
-                    <div class="seg scan-mode" role="radiogroup" aria-label="How to scan">
-                        <label id="scan-mode-glass"><input type="radio" name="scan-mode" value="glass" checked><span>Glass: preview and crop</span></label>
+                    <div id="scan-problems" class="scan-note"></div>
+                    <div class="seg scan-mode" id="scan-mode-row" role="radiogroup" aria-label="How to scan">
+                        <label id="scan-mode-glass"><input type="radio" name="scan-mode" value="glass" checked><span>Glass</span></label>
                         <label id="scan-mode-feeder"><input type="radio" name="scan-mode" value="feeder"><span>Feeder</span></label>
                     </div>
-                </div>
-                <p class="set-help" id="scan-help-glass">Lay prints on the glass, as many as fit. jEditor previews the glass and puts a box round each print; adjust them, then Scan saves each box as its own photo.</p>
-                <p class="set-help hidden" id="scan-help-feeder">Load a stack of photos into the feeder, then Scan: the whole batch goes through in one go, each photo showing up as it's scanned. Then load the next batch and press Scan more: the names carry on.</p>
-                <p class="set-help hidden" id="scan-help-driver">The scanner's own window opens next: choose the resolution and feeder there. Each photo shows up as soon as it's in.</p>
-                <div id="scan-opts-home"></div>
+                    <p class="scan-hint" id="scan-help-glass">Lay prints on the glass, as many as fit. jEditor previews it and boxes each print; each box is saved as its own photo.</p>
+                    <p class="scan-hint hidden" id="scan-help-feeder">Load a stack into the feeder: the whole batch goes through, each photo showing up as it's scanned. Then load the next and Scan more.</p>
+                    <p class="scan-hint hidden" id="scan-help-driver">The scanner's own window opens next: choose the resolution and feeder there.</p>
+                </section>
+                <section class="scan-sec">
+                    <h3 class="scan-sec-head">Save to</h3>
+                    <select id="scan-folder" class="field" aria-label="Folder"></select>
+                    <span class="scan-row">
+                        <input id="scan-prefix" class="field" type="text" spellcheck="false" autocomplete="off" aria-label="Name before the number" title="The name before the number">
+                        <input id="scan-next" class="field scan-num" type="number" min="0" step="1" aria-label="First number" title="The first number">
+                    </span>
+                    <small id="scan-preview" class="scan-preview"></small>
+                </section>
+                <section class="scan-sec" id="scan-opts-home"></section>
+                <section class="scan-sec scan-checks">
+                    <label class="scan-check" for="scan-autocrop" title="Finds the print on each scan and crops to it, whatever its size. Ctrl+Z puts the scans back as they were.">
+                        <input id="scan-autocrop" type="checkbox">
+                        <span>Auto crop each photo</span>
+                    </label>
+                    <label class="scan-check" for="scan-show" title="Opens the newest scan large while the rest are scanning.">
+                        <input id="scan-show" type="checkbox">
+                        <span>Show each photo as it comes in</span>
+                    </label>
+                </section>
                 <details class="scan-adv" id="scan-adv">
                     <summary>Advanced</summary>
                     <label class="scan-check" for="scan-driver">
@@ -1158,16 +1244,13 @@
                 </details>
             </div>
             <div id="scan-opts" class="scan-opts">
-                <div class="scan-opts-row">
-                    <label class="scan-field" for="scan-setup-pick">Setup
-                        <span class="scan-row">
-                            <select id="scan-setup-pick" class="field"><option value="">Custom</option></select>
-                            <button id="scan-setup-save" type="button" class="btn ghost sm" title="Save these settings under a name">Save…</button>
-                            <button id="scan-setup-del" type="button" class="btn ghost icon sm" title="Delete this setup" aria-label="Delete this setup">
-                                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                            </button>
-                        </span>
-                    </label>
+                <div class="scan-sec-bar">
+                    <h3 class="scan-sec-head">Settings</h3>
+                    <select id="scan-setup-pick" class="field sm" aria-label="Saved setup" title="Saved setups"><option value="">Custom</option></select>
+                    <button id="scan-setup-save" type="button" class="btn ghost sm" title="Save these settings under a name">Save…</button>
+                    <button id="scan-setup-del" type="button" class="btn ghost icon sm" title="Delete this setup" aria-label="Delete this setup">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                    </button>
                 </div>
                 <div class="scan-opts-grid">
                     <label class="scan-field" for="scan-dpi">Resolution
@@ -1194,16 +1277,19 @@
                         </select>
                     </label>
                 </div>
-                <label class="scan-field scan-slider" for="scan-quality" id="scan-quality-row">JPEG quality <output id="scan-quality-out">95</output>
+                <label class="scan-slider" for="scan-quality" id="scan-quality-row"><span>JPEG quality</span>
                     <input id="scan-quality" type="range" min="60" max="100" step="1" value="95">
+                    <output id="scan-quality-out">95</output>
                 </label>
-                <label class="scan-field scan-slider" for="scan-bright">Brightness <output id="scan-bright-out">0</output>
+                <label class="scan-slider" for="scan-bright"><span>Brightness</span>
                     <input id="scan-bright" type="range" min="-100" max="100" step="1" value="0">
+                    <output id="scan-bright-out">0</output>
                 </label>
-                <label class="scan-field scan-slider" for="scan-contrast">Contrast <output id="scan-contrast-out">0</output>
+                <label class="scan-slider" for="scan-contrast"><span>Contrast</span>
                     <input id="scan-contrast" type="range" min="-100" max="100" step="1" value="0">
+                    <output id="scan-contrast-out">0</output>
                 </label>
-                <p class="set-help hidden" id="scan-tone-note">A FastFoto starts at brightness 5, contrast −35: its driver sends more contrast than Epson's FastFoto app saves, and this matches the app.</p>
+                <p class="scan-hint hidden" id="scan-tone-note">A FastFoto starts at brightness 5, contrast −35: its driver sends more contrast than Epson's FastFoto app saves, and this matches the app.</p>
             </div>
             <div id="scan-live" class="scan-live">
                 <div id="scan-summary" class="scan-summary"></div>
@@ -1220,18 +1306,21 @@
                     <div class="scan-pv-wait" role="status"><span class="scan-dot" aria-hidden="true"></span><span id="scan-pv-wait"></span></div>
                 </div>
                 <div class="scan-pv-side">
-                    <div id="scan-pv-count" class="scan-pv-count"></div>
-                    <small class="scan-pv-help">Click a print to box it, or drag on the glass to draw a box. Drag a box to move it, its corners to resize it, the round handle to tilt it. <kbd>Delete</kbd> removes the selected box.</small>
-                    <div class="scan-pv-tools">
-                        <button id="scan-pv-again" type="button" class="btn secondary sm" title="Scan the glass again, small (after changing the prints)">Preview again</button>
-                        <button id="scan-pv-find" type="button" class="btn ghost sm" title="Put the boxes back where jEditor finds the prints">Find prints</button>
-                        <button id="scan-pv-clear" type="button" class="btn ghost sm">Clear boxes</button>
-                    </div>
-                    <label class="scan-field">Glass
-                        <select id="scan-pv-glass" class="field" title="How big the scanner's glass is (remembered for this scanner)"></select>
-                    </label>
-                    <div id="scan-opts-pv"></div>
-                    <small id="scan-pv-names" class="scan-preview"></small>
+                    <section class="scan-sec">
+                        <div id="scan-pv-count" class="scan-pv-count"></div>
+                        <small class="scan-hint">Click a print to box it, or drag on the glass to draw one. Drag a box to move it, a corner to resize, the round handle to tilt. <kbd>Delete</kbd> removes the selected box.</small>
+                        <div class="scan-pv-tools">
+                            <button id="scan-pv-again" type="button" class="btn secondary sm" title="Scan the glass again, small (after changing the prints)">Preview again</button>
+                            <button id="scan-pv-find" type="button" class="btn ghost sm" title="Put the boxes back where jEditor finds the prints">Find prints</button>
+                            <button id="scan-pv-clear" type="button" class="btn ghost sm">Clear</button>
+                        </div>
+                        <small id="scan-pv-names" class="scan-preview"></small>
+                    </section>
+                    <section class="scan-sec">
+                        <h3 class="scan-sec-head">Glass</h3>
+                        <select id="scan-pv-glass" class="field" aria-label="Glass size" title="How big the scanner's glass is (remembered for this scanner)"></select>
+                    </section>
+                    <section class="scan-sec" id="scan-opts-pv"></section>
                 </div>
             </div>
             <div id="scan-log" class="log-view hidden" aria-label="Details">

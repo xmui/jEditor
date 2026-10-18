@@ -213,6 +213,8 @@ const Edits = {
         if (typeof v.aspectKey === 'string') e.aspectKey = v.aspectKey;
         if (typeof v.landscape === 'boolean') e.landscape = v.landscape;
         if (num(v.size)) e.size = v.size;
+        // Batch Auto crop's crop, for its test set (crop-log.js)
+        if (v.auto && v.auto.found && Array.isArray(v.auto.crop) && Array.isArray(v.auto.corners)) e.auto = v.auto;
         const adj = typeof Develop !== 'undefined' ? Develop.clean(v.adj) : null;
         if (adj) e.adj = adj;
         const paint = typeof Paint !== 'undefined' ? Paint.clean(v.paint) : null;

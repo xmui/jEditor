@@ -51,7 +51,17 @@ const releaseServer = http.createServer((req, res) => {
     const f = releases.files[req.url];
     if (!f) { res.writeHead(404); return res.end(); }
     res.writeHead(200, { 'content-length': f.length });
-    res.end(f);
+    // In pieces, a moment apart, as over a network: sent whole, a fast
+    // machine can take it in one chunk, and there's no progress to see
+    const PIECE = 256 * 1024;
+    let at = 0;
+    const next = () => {
+        if (at >= f.length) return res.end();
+        res.write(f.subarray(at, at + PIECE));
+        at += PIECE;
+        setTimeout(next, 2);
+    };
+    next();
 });
 
 async function launch(profile, args = [], env = {}) {

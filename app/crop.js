@@ -110,6 +110,90 @@ const CropGeom = {
         return r;
     },
 
+    // The turned image's extent across a line: x = at (axis 'x': its top
+    // and bottom there) or y = at (axis 'y': its left and right). → [lo, hi]
+    // or null outside it. Inset by m, as maxScale is
+    extent(axis, at, W, H, cs, m = 0) {
+        const [c, s] = cs;
+        const hw = W / 2 - m, hh = H / 2 - m;
+        // Image space (u, v) → output: x = c·u − s·v, y = s·u + c·v
+        const pts = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([u, v]) => ({ x: c * u - s * v, y: s * u + c * v }));
+        const a = axis, b = axis === 'x' ? 'y' : 'x';
+        let lo = Infinity, hi = -Infinity;
+        for (let i = 0; i < 4; i++) {
+            const P = pts[i], Q = pts[(i + 1) % 4];
+            if ((P[a] - at) * (Q[a] - at) > 0) continue;
+            if (Math.abs(Q[a] - P[a]) < 1e-12) { lo = Math.min(lo, P[b], Q[b]); hi = Math.max(hi, P[b], Q[b]); continue; }
+            const t = (at - P[a]) / (Q[a] - P[a]);
+            const y = P[b] + t * (Q[b] - P[b]);
+            lo = Math.min(lo, y);
+            hi = Math.max(hi, y);
+        }
+        return lo <= hi ? [lo, hi] : null;
+    },
+
+    // A side dragged out (handle e, w, n or s) on a turned photo, its
+    // opposite side staying put. Where one of its corners meets the photo's
+    // slanted edge it doesn't stop: first the crop slides along the side,
+    // out of the way, keeping its size; when sliding can't help any more it
+    // gets shorter, just enough for the side to keep following the pointer
+    // to the photo's edge. Worked out from the start of the drag (target),
+    // so dragging back in gives the size back. `reached`: how far it got
+    // as it was; → the rect, or null when this gets it no further.
+    slideSide(target, handle, reached, W, H, cs, m = 0, minSize = 1) {
+        const key = { e: 'x1', w: 'x0', s: 'y1', n: 'y0' }[handle];
+        if (!key) return null;
+        const out = key === 'x1' || key === 'y1' ? 1 : -1;
+        if ((target[key] - reached[key]) * out <= 1e-6) return null;
+        const axis = key[0]; // the dragged side runs across this axis
+        const across = axis === 'x' ? 'y' : 'x';
+        const fixed = target[axis + (key[1] === '1' ? '0' : '1')];
+        const eps = 1e-6;
+        // The room across, where both the fixed side and the dragged one can be
+        const room = (v) => {
+            const e1 = this.extent(axis, fixed, W, H, cs, m), e2 = this.extent(axis, v, W, H, cs, m);
+            if (!e1 || !e2) return null;
+            return [Math.max(e1[0], e2[0]) + eps, Math.min(e1[1], e2[1]) - eps];
+        };
+        const span = (r) => (r ? r[1] - r[0] : -Infinity);
+        // Somewhere the side can be: room enough, and not past the photo's
+        // edge facing it. Along the slanted top and bottom the room closes
+        // slowly (the crop gets a little shorter as the side goes); the edge
+        // the side runs into closes it fast (into the corner's wedge), and
+        // that's where it stops: both its corners at the edge
+        const band = (v) => {
+            const r = room(v);
+            if (span(r) < minSize) return null;
+            const d = 0.5;
+            if ((span(r) - span(room(v + out * d))) / d > 1) return null;
+            return r;
+        };
+        // The side as far out as there's room for (the room shrinks steadily
+        // the further out it goes, so a bisection finds the end of it)
+        let lo = reached[key], hi = target[key];
+        if (band(hi)) lo = hi;
+        else {
+            if (!band(lo)) return null;
+            for (let i = 0; i < 50; i++) {
+                const mid = (lo + hi) / 2;
+                if (band(mid)) lo = mid; else hi = mid;
+            }
+        }
+        if ((lo - reached[key]) * out <= 1e-6) return null;
+        const [a, b] = band(lo);
+        // Its size across kept if it fits there (slid as little as it can), else all the room there is
+        const p0 = target[across + '0'], p1 = target[across + '1'], size = p1 - p0;
+        let q0, q1;
+        if (b - a >= size) {
+            q0 = Math.min(Math.max(p0, a), b - size);
+            q1 = q0 + size;
+        } else {
+            q0 = a;
+            q1 = b;
+        }
+        return { ...target, [key]: lo, [across + '0']: q0, [across + '1']: q1 };
+    },
+
     // Axis-aligned size of the rotated image
     bounds(W, H, cs) {
         const [c, s] = cs;
@@ -312,6 +396,7 @@ const CropEditor = {
         const kept = Edits.get(file);
         if (kept) {
             this.applySnapshot(kept);
+            this._auto = kept.auto || null; // batch Auto crop's (crop-log.js)
             this.el('crop-aspect').value = this.aspectKey;
             this.syncAngleUi();
         }
@@ -1113,7 +1198,12 @@ const CropEditor = {
         const st = d.start;
         const ratio = this.ratio() || (shift ? (st.x1 - st.x0) / (st.y1 - st.y0) : 0);
         const target = this.resizeTarget(st, d.handle, P, minSize, ratio, alt);
-        const next = CropGeom.clampToward(this.rect, target, this.W, this.H, this.cs(), this.margin(), !ratio);
+        let next = CropGeom.clampToward(this.rect, target, this.W, this.H, this.cs(), this.margin(), !ratio);
+        // A side meeting the edge at one corner slides along, rather than stopping
+        if (!ratio && !alt && d.handle.length === 1) {
+            const slid = CropGeom.slideSide(target, d.handle, next, this.W, this.H, this.cs(), this.margin(), minSize);
+            if (slid) next = slid;
+        }
         this.setRect(next);
     },
 

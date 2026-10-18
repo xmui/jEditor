@@ -194,12 +194,16 @@ const Scan = {
 
     setState(state) {
         const panel = this.el('scan-panel');
+        const was = panel.dataset.state;
         panel.dataset.state = state;
         this.el('scan-go').textContent = state === 'done' ? 'Scan more' : 'Scan';
         this.el('scan-cancel').textContent = state === 'done' ? 'Done' : 'Cancel';
         if (state === 'setup') {
             this.el('scan-title').textContent = 'Scan into this project';
             this.el('scan-go').disabled = !(this.devices && this.devices.length);
+            // Back from a scan: the names carry on from it (not the numbers
+            // the boxes had before it, which are taken now)
+            if (was && was !== 'setup' && this.el('scan-folder').options.length) this.fillNames();
             this.placeOpts('home');
             this.syncMode();
         }
@@ -430,7 +434,8 @@ const Scan = {
         const panel = this.el('scan-panel');
         panel.dataset.mode = mode;
         for (const m of ['glass', 'feeder', 'driver']) this.el(`scan-help-${m}`).classList.toggle('hidden', m !== mode);
-        this.el('scan-mode-row').classList.toggle('hidden', mode === 'driver');
+        // Only one way (a feeder alone, or the scanner's window): no choice shown
+        this.el('scan-mode-row').classList.toggle('hidden', mode === 'driver' || !(hasGlass && hasFeeder));
         this.el('scan-swap-row').classList.toggle('hidden', mode !== 'feeder');
         this.el('scan-autosize-row').classList.toggle('hidden', mode !== 'feeder' || !d || d.driver !== 'twain');
         this.syncOwn(mode === 'feeder' && d && d.driver === 'twain' ? d : null);
@@ -716,8 +721,9 @@ const Scan = {
         return { prefix: (word.charAt(0).toUpperCase() + word.slice(1) || 'Scan') + '-', next: 1, digits: 3 };
     },
 
+    // The folder's next names: carrying on from the last scan into it
     fillNames() {
-        const n = this.naming(this.el('scan-folder').value);
+        const n = this.continuing(this.el('scan-folder').value);
         this.el('scan-prefix').value = n.prefix;
         this.el('scan-next').value = n.next;
         this.digits = n.digits;

@@ -5,7 +5,7 @@
 
 const CHANGELOG = [
     {
-        version: '1.43.0', date: '2026-10-17',
+        version: '1.44.0', date: '2026-10-18',
         items: [
             'Spot removal in Adjust: click a speck of dust, a scratch or a blemish and it\'s healed from nearby, sized to the speck. Drag from it to choose where it\'s copied from; Heal blends it in, Clone copies exactly. Find dust puts a spot on every speck it finds on a scan, and Clear found takes them off again.',
             'Masks find the Sky and the Subject in the photo for you, then paint or erase to touch them up.',
@@ -14,7 +14,21 @@ const CHANGELOG = [
             'Copy a project to a USB drive or card in one step (the USB button on the project\'s card in the sidebar): the room is checked first, its flags and edits go with it, and Copy and eject ejects the drive when it\'s done.',
             'A camera\'s card plugged in is offered to import (or `Ctrl+I`): into this project or a new one, in folders by day if you like, only the photos not imported before, and the card ejected after.',
             'In the Windows app, burn a project to a CD or DVD (the disc button on the project\'s card).',
-            'A project\'s .jeditor folder opened in the Windows or Mac app now keeps its edits, not only its flags.'
+            'Photos, Adjust and Paint are modes now, like Lightroom\'s: switch at the top of the sidebar, or with the chip top left when it\'s closed (in single view, and over Adjust and Paint too). Adjust and Paint have no Done bar any more: what you do is kept as you go, as in Lightroom (Esc goes back to Photos, where Ctrl+Z takes it off again), and a film strip runs along the bottom: choose another photo and it opens in the same mode. The Adjust and Paint buttons moved to the toolbar\'s ⋯ menu.',
+            'The start page has Start in: Photos, Adjust or Paint, remembered, so a project opens straight into the mode you want. Paint there asks what to paint on: a new canvas (print sizes in inches at 300 dpi, screens and social posts, or any size in pixels, inches or centimetres) or an image or folder to open.',
+            'Paint can bring in images: Bring in an image… under the layers (`Ctrl+Shift+O`), drop an image on it, or paste one copied in another app. Each comes in on a layer of its own, fitted and ready to move, size and turn.',
+            'Right-click a folder (or the grid) → New blank image…: any size, from screens and social posts to prints at 300 dpi, on white, black, a colour or nothing, saved as a PNG (with its resolution, so it prints at size) and opened in Paint.',
+            'The scanner window is cleaner: its settings in sections, every box the same height and solid behind (nothing showing through or flickering), and after a scan the names carry on from it instead of showing numbers that are already taken.',
+            'Crop: dragging a side out on a straightened photo no longer stops when one of its corners meets the photo\'s slanted edge. The crop slides out of the way (or, when it can\'t, gets a little shorter), so the side keeps following you to the photo\'s edge; the opposite side stays put.',
+            'A project\'s .jeditor folder opened in the Windows or Mac app now keeps its edits, not only its flags.',
+            'Smooth scrolling on the Mac: a mouse\'s wheel glides instead of jumping a notch at a time, everywhere that scrolls. On a trackpad, two fingers move a zoomed photo about (in Paint too) and a pinch zooms it, following your fingers at once; pinching the grid resizes the thumbnails as far as you pinch, and the film strip scrolls with a sideways swipe.'
+        ]
+    },
+    {
+        version: '1.43.0', date: '2026-10-18',
+        items: [
+            'Auto crop\'s test scans now include photos cropped by a batch Auto crop (`Shift+A`, or after scanning) and then opened in the crop editor: fixed, they\'re kept as corrected, on the original scan; saved as they were, as right. Before, only photos Auto was used on in the editor counted.',
+            'Settings → Auto crop → Recover: crops fixed in the editor after a batch Auto crop before this version become test scans too, for the open project, from the originals jEditor kept for undoing the batch.'
         ]
     },
     {

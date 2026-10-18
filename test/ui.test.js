@@ -842,7 +842,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         });
         // (Adjust, an experiment, shows when it's turned on)
         check('default main controls: info, view, refresh, crop, history', r.defaultMain === 'info,view,refresh,crop,history', r.defaultMain);
-        check('extras live in More (fit, strip, fullscreen, dupes, keys, whatsnew, customize)', r.defaultExtras === 'fit,strip,fullscreen,dupes,keys,whatsnew,customize', r.defaultExtras);
+        // (Adjust and Paint too: the mode switch has them)
+        check('extras live in More (adjust, paint, fit, strip, fullscreen, dupes, keys, whatsnew, customize)', r.defaultExtras === 'adjust,paint,fit,strip,fullscreen,dupes,keys,whatsnew,customize', r.defaultExtras);
         check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
         // (Adjust, newer than that saved order, goes after Crop, and Paint after it)
         check('reorder + hide + promote via prefs', r.reordered === 'crop,adjust,paint' && r.refreshHidden && r.fullscreenMain,
@@ -2606,7 +2607,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('folders: moved photos keep their cached thumbnail and preview', r.cacheCarried);
         check('folders: folder list can be hidden (remembered)', r.railHidden);
         check('folders: Rename All in a folder covers that folder only', r.renameScope === 'Wedding/b.jpg,Wedding/w1.jpg|All photos in Wedding (2)', r.renameScope);
-        check('folders: folder menu', r.menu === 'Open|Folder info|—|New folder inside…|Rename folder…|—|Delete folder', r.menu);
+        check('folders: folder menu', r.menu === 'Open|Folder info|—|New folder inside…|New blank image…|Rename folder…|—|Delete folder', r.menu);
         check('path chip: shown in single view, hidden in the grid', r.chipSingle && !r.chipGrid, `${r.chipSingle}/${r.chipGrid}`);
         check('folders: grid rows keep their gap (tiles never overlap)', r.rowGap === 16 && r.square, `gap=${r.rowGap}`);
         check('folders: folder menu moves or copies the selection there', r.menuSel === 'Open|Folder info|—|Move 2 photos here|Copy 2 photos here', r.menuSel);
@@ -3201,6 +3202,70 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.restored = await same('scan1.jpg') && await same('scan2.jpg');
             out.backupsAfter = 0;
             for await (const e of backups.values()) out.backupsAfter++;
+
+            // Auto crop's test set (crop-log.js): a photo batch Auto crop
+            // cropped, then fixed in the editor, is a test scan of the
+            // original, with the crop put back onto it
+            await opfs.removeEntry(CropLog.DIR, { recursive: true }).catch(() => { });
+            {
+                const b = await scan('#36c', 1.5);
+                const fh = await dir.getFileHandle('scan3.jpg', { create: true });
+                const w = await fh.createWritable(); await w.write(b); await w.close();
+                originals['scan3.jpg'] = new Uint8Array(await b.arrayBuffer());
+            }
+            await app.browseFolder();
+            app.setView('grid');
+            app.selection = new Set(app.files);
+            app.updateSelectionUI();
+            const runs = (app._undoStack || []).length;
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'A', shiftKey: true, bubbles: true }));
+            for (let i = 0; i < 200 && (app._autoCropping || (app._undoStack || []).length === runs); i++) await new Promise(res => setTimeout(res, 50));
+            app.selection.clear();
+            const f = (n) => app.files.find(x => x.name === n);
+            const ed = CropEditor;
+            const edit = async (n, act) => {
+                app.currentFile = f(n);
+                app.setView('single');
+                await app.enterCrop();
+                for (let i = 0; i < 100 && !ed.ready; i++) await new Promise(res => setTimeout(res, 20));
+                await act();
+            };
+            const inset = (k) => { const r = ed.rect; ed.setRect({ x0: r.x0 + k, y0: r.y0 + k, x1: r.x1 - k, y1: r.y1 - k }); };
+            // Fixed: 20 px in on every side
+            await edit('scan1.jpg', () => inset(20));
+            out.fixedSize = [ed.outputRect().w, ed.outputRect().h];
+            await app.saveCrop();
+            // Saved as it was (Save, nothing changed); and a photo batch Auto
+            // crop left alone, saved as it is: not a test
+            await edit('scan2.jpg', () => { });
+            await app.saveCrop();
+            await edit('plain.jpg', () => { });
+            await app.saveCrop();
+            await CropLog._queue;
+            // Fixed before this was kept: a log line only, as it used to be;
+            // Recover makes it a test scan
+            await edit('scan3.jpg', () => inset(30));
+            const legacy = CropLog.entry(app, ed, f('scan3.jpg'));
+            CropLog.setEnabled(false);
+            await app.saveCrop();
+            CropLog.setEnabled(true);
+            await CropLog.write(legacy);
+            await CropLog.recover();
+            const log = await opfs.getDirectoryHandle(CropLog.DIR);
+            const names = [];
+            for await (const [n] of log.entries()) names.push(n);
+            out.logNames = names.sort();
+            const read = async (n) => (await (await log.getFileHandle(n)).getFile());
+            const label = async (re) => { const n = names.find(x => re.test(x) && x.endsWith('.json')); return n ? JSON.parse(await (await read(n)).text()) : null; };
+            const kept = async (re) => { const n = names.find(x => re.test(x) && !x.endsWith('.json')); return n ? new Uint8Array(await (await read(n)).arrayBuffer()) : null; };
+            const sameBytes = (a, b) => !!a && a.length === b.length && a.every((v, i) => v === b[i]);
+            out.l1 = await label(/scan1\.jpg/);
+            out.l2 = await label(/scan2\.jpg/);
+            out.l3 = await label(/scan3\.jpg/);
+            out.scans = sameBytes(await kept(/scan1\.jpg/), originals['scan1.jpg']) && sameBytes(await kept(/scan2\.jpg/), originals['scan2.jpg']) && sameBytes(await kept(/scan3\.jpg/), originals['scan3.jpg']);
+            await CropLog.refresh();
+            out.count = document.getElementById('crop-log-count').textContent;
+            out.lines = (await (await read('log.jsonl')).text()).trim().split('\n').map(l => JSON.parse(l)).map(l => `${l.file}:${l.result}${l.recovered ? ':recovered' : ''}`);
             return out;
         });
         const inside = (d) => d[0] < 900 && d[1] < 700 && d[0] > 450 && d[1] > 300;
@@ -3208,6 +3273,24 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('auto crop: a photo with no print edge is left alone', r.plain.join('x') === '400x300', r.plain.join('x'));
         check('auto crop: says what it did, with Undo', /Auto-cropped 2 photos — no print found on 1/.test(r.toast), r.toast);
         check('auto crop: originals kept in .jeditor/originals; one Ctrl+Z restores every byte', r.backups === 2 && r.restored && r.backupsAfter === 0, JSON.stringify(r));
+        {
+            // scan1's print: 560 × 400 at (450, 350), turned 3°; the fix took
+            // 20 px off each side of Auto's crop
+            const L = r.l1 || {}, q = (L.saved && L.saved.crop) || [];
+            const len = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+            const mid = q.length === 4 ? [(q[0][0] + q[2][0]) / 2, (q[0][1] + q[2][1]) / 2] : [0, 0];
+            const turn = q.length === 4 ? Math.atan2(q[1][1] - q[0][1], q[1][0] - q[0][0]) * 180 / Math.PI : 0;
+            const fs = r.fixedSize || [];
+            check('test set: a batch Auto crop fixed in the editor is kept as corrected, on the original scan', L.result === 'corrected' && L.batch === true && L.W === 900 && L.H === 700 && L.auto && L.auto.found, JSON.stringify(L));
+            check('test set: its crop is put back onto the scan: where it was, the size saved, turned with the print',
+                Math.abs(mid[0] - 450) < 4 && Math.abs(mid[1] - 350) < 4 && Math.abs(len(q[0], q[1]) - fs[0]) < 1.5 && Math.abs(len(q[1], q[2]) - fs[1]) < 1.5 && Math.abs(turn - 3) < 0.3 && L.diff > 25 && L.diff < 32,
+                JSON.stringify({ mid, turn, sides: q.length === 4 && [len(q[0], q[1]), len(q[1], q[2])], fs, diff: L.diff }));
+            check('test set: a batch Auto crop saved as it was is kept as accepted', r.l2 && r.l2.result === 'accepted' && r.l2.batch && r.l2.W === 900, JSON.stringify(r.l2));
+            check('test set: Recover turns a crop fixed before this into a test scan, from the originals', r.l3 && r.l3.result === 'corrected' && r.l3.batch && r.l3.recovered && r.l3.W === 900, JSON.stringify(r.l3));
+            check('test set: the scans kept are the originals, byte for byte', r.scans && /^3 scans kept/.test(r.count), (r.logNames || []).join() + ' ' + r.count);
+            check('test set: the log has each, the recovered one in place; a photo batch Auto crop left alone isn\'t a test',
+                (r.lines || []).join() === 'scan1.jpg:corrected,scan2.jpg:accepted,scan3.jpg:corrected:recovered', (r.lines || []).join());
+        }
         check('auto crop suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -3592,6 +3675,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
 
             // Batch Auto crop: kept as edits, nothing written
             step = 'Batch Auto crop: kept as edits, nothing written';
+            const opfsRoot = await navigator.storage.getDirectory();
+            await opfsRoot.removeEntry(CropLog.DIR, { recursive: true }).catch(() => { });
             app.selection = new Set(app.files);
             app.updateSelectionUI();
             window.dispatchEvent(new KeyboardEvent('keydown', { key: 'A', shiftKey: true, bubbles: true }));
@@ -3626,6 +3711,15 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             ed.setRect({ x0: -300, y0: -200, x1: 300, y1: 200 });
             await app.saveCrop();
             out.recropped = !!f('scan1.jpg')._edit && f('scan1.jpg')._edit.angle === 0 && await untouched();
+            // Auto's crop went with the kept edit: a test scan (crop-log.js)
+            await CropLog._queue;
+            {
+                const log = await opfsRoot.getDirectoryHandle(CropLog.DIR);
+                for await (const [n, h] of log.entries()) {
+                    if (/scan1\.jpg\.json$/.test(n)) out.keptLabel = JSON.parse(await (await h.getFile()).text());
+                    else if (/scan1\.jpg$/.test(n)) out.keptScan = (await h.getFile()).size === originals['scan1.jpg'].length;
+                }
+            }
             const re = await app.getDisplaySource(f('scan1.jpg'));
             out.recropShown = [re.w, re.h];
 
@@ -3696,6 +3790,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('kept edits: thumbnail and viewer show the photo as it will be saved', r.thumbAspect > 1.33 && r.tileShows && inside(r.shown), `${r.thumbAspect} ${r.tileShows} ${r.shown}`);
         check('kept edits: recrop opens on the whole photo at the kept crop', r.editorWhole && r.editorAtKept && r.doneLabel === 'Done');
         check('kept edits: a new crop replaces the kept one, still nothing written', r.recropped && r.recropShown.join('x') === '600x400', String(r.recropShown));
+        check('kept edits: a batch Auto crop changed in the editor is an Auto crop test (corrected), with the photo as the scan', r.keptLabel && r.keptLabel.result === 'corrected' && r.keptLabel.auto && r.keptLabel.auto.found && r.keptLabel.W === 900 && r.keptScan, JSON.stringify(r.keptLabel && { result: r.keptLabel.result, W: r.keptLabel.W, scan: r.keptScan }));
         check('kept edits: a turn is kept too; Ctrl+Z takes it back', r.turned && r.turnUndone);
         check('kept edits: still there when the project is opened again', r.reloaded);
         check('kept edits: export copies all photos with their edits, photos untouched', r.exported[0].join('x') === '600x400' && inside(r.exported[1]) && r.exported[2].join('x') === '300x400' && r.exportLeavesEdits, JSON.stringify(r.exported));
@@ -4355,7 +4450,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.showSettingsPage('experimental');
             document.getElementById('exp-adjust').click();
             app.toggleCustomizePanel(false);
-            out.onShown = Experiments.on('adjust') && getComputedStyle(btn).display !== 'none' && app.buildContextItems(null, true).some(it => it[0] === 'Adjust…');
+            // The mode switch (modes.js) offers it, top left in single view
+            out.onShown = Experiments.on('adjust') && Modes.shown().some(m => m[0] === 'adjust') && !document.getElementById('mode-float').classList.contains('hidden') && app.buildContextItems(null, true).some(it => it[0] === 'Adjust…');
 
             // E opens Adjust on the photo
             step = 'E opens Adjust';

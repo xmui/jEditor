@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // jEditor's editing tools, in headless Chromium: spot and dust removal
 // (retouch.js, adjust-spots.js), subject and sky masks, RAW previews, Paint,
-// and drives and import. Run by `npm test` after the UI suite; on its own:
+// a new blank image (blank.js), the modes (modes.js), crop's sliding sides and
+// the wheel the way a Mac does it (wheel.js). Run by `npm test` after the UI suite; on its own:
 //   node test/edit.test.js [name …]     (only the sections named)
 
 const { chromium } = require('playwright-core');
@@ -635,7 +636,7 @@ const PROJECT = `
                 const before = new Uint8Array(await (await (await dir.getFileHandle('p.png')).getFile()).arrayBuffer());
                 app.openSingle(f);
                 step = 'open';
-                out.button = getComputedStyle(document.getElementById('btn-paint')).display !== 'none';
+                out.button = Modes.shown().some(m => m[0] === 'paint') && !document.getElementById('mode-float').classList.contains('hidden');
                 pressKey('b');
                 await until(() => PaintEditor.ready);
                 const P = PaintEditor;
@@ -876,6 +877,418 @@ const PROJECT = `
         check('paint: merging down keeps a layer\'s opacity; Ctrl+Z undoes it', t.merged && t.unmerged, JSON.stringify(t));
         check('paint: what\'s moved scales from a corner, its selection with it', t.scaled && t.afterScale && t.afterScale[0] === 255 && t.afterScale[1], JSON.stringify(t));
         check('paint: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- A new blank image; images brought into Paint ----
+    if (wanted('blank')) {
+        console.log('a new blank image, images brought into Paint (blank.js, paint-editor.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                experiment('paint', false);
+                const c = document.createElement('canvas'); c.width = 200; c.height = 150;
+                c.getContext('2d').fillRect(0, 0, 200, 150);
+                const dir = await openProject('blanks', { 'a.png': await canvasBlob(c) });
+                const sub = await dir.getDirectoryHandle('Art', { create: true });
+                await app.browseFolder();
+                await until(() => Folders.map.has('Art'));
+                const $ = (id) => document.getElementById(id);
+                // On the folder's menu and the grid's background
+                step = 'menus';
+                out.folderMenu = Folders.contextItems('Art').some(i => i[0] === 'New blank image…');
+                app.setView('grid');
+                out.gridMenu = app.buildContextItems(null, false).some(i => i[0] === 'New blank image…');
+                // The dialog: a size from the list, turned, in pixels, a colour
+                step = 'dialog';
+                const made = Blank.open('Art');
+                await until(() => !$('blank-panel').classList.contains('hidden'));
+                out.name = $('blank-name').value;
+                out.where = $('blank-where').value;
+                out.noTabs = $('blank-panel').querySelector('.blank-tabs').classList.contains('hidden');
+                $('blank-presets').querySelector('[data-key="4x6"]').click();
+                out.inches = [$('blank-w').value, $('blank-h').value, $('blank-unit').value, $('blank-dpi').value];
+                $('blank-turn').click();
+                $('blank-unit').value = 'px';
+                $('blank-unit').dispatchEvent(new Event('change'));
+                out.dims = [$('blank-w').value, $('blank-h').value, $('blank-presets').querySelector('.on') && $('blank-presets').querySelector('.on').dataset.key];
+                $('blank-w').value = '20000';
+                $('blank-w').dispatchEvent(new Event('input'));
+                out.tooBig = $('blank-go').disabled && /at most/.test($('blank-error').textContent);
+                $('blank-w').value = '1800';
+                $('blank-w').dispatchEvent(new Event('input'));
+                $('blank-color').value = '#336699';
+                $('blank-color').dispatchEvent(new Event('input'));
+                $('blank-go').click();
+                const file = await made;
+                step = 'made';
+                out.file = file && file.relPath;
+                const data = await (await (await sub.getFileHandle('Untitled.png')).getFile());
+                const img = await pixels(data);
+                out.size = [img.width, img.height];
+                out.pixel = [...img.data.slice(0, 4)];
+                // Its resolution in the PNG (pHYs, pixels per metre: 300 dpi)
+                const bytes = new Uint8Array(await data.arrayBuffer());
+                const at = [...bytes.keys()].find(i => bytes[i] === 0x70 && bytes[i + 1] === 0x48 && bytes[i + 2] === 0x59 && bytes[i + 3] === 0x73);
+                out.ppm = at ? new DataView(bytes.buffer).getUint32(at + 4) : 0;
+                // Opened in Paint (turned on for it)
+                await until(() => PaintEditor.ready);
+                out.inPaint = PaintEditor.isOpen && PaintEditor.file === file && Experiments.on('paint');
+                // Next time: the name after it
+                step = 'images';
+                const P = PaintEditor;
+                const red = document.createElement('canvas'); red.width = 3000; red.height = 1500;
+                red.getContext('2d').fillStyle = '#ff0000'; red.getContext('2d').fillRect(0, 0, 3000, 1500);
+                const logo = new File([await canvasBlob(red)], 'logo.png', { type: 'image/png' });
+                // Dropped on Paint: a layer of its own, named for it, floating, fitted
+                const dt = new DataTransfer();
+                dt.items.add(logo);
+                const st = $('paint-stage');
+                st.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+                st.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+                await until(() => P.float);
+                out.dropped = [P.layers.map(l => l.name).join(), P.cur, P.tool, !!P.float, Math.round(P.float.w * P.float.t.sx)];
+                pressKey('Enter');
+                const lp = [...P.layers[1].canvas.getContext('2d').getImageData(Math.round(P.W / 2), Math.round(P.H / 2), 1, 1).data];
+                out.putDown = !P.float && lp[0] === 255 && lp[3] === 255;
+                // Pasted from another app (Ctrl+V, nothing copied in Paint)
+                const cd = new DataTransfer();
+                cd.items.add(new File([await canvasBlob(red)], 'image.png', { type: 'image/png' }));
+                const handled = !window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true, cancelable: true }));
+                document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: cd, bubbles: true, cancelable: true }));
+                await until(() => P.float);
+                out.pasted = [!handled, P.layers.length, P.layers[P.cur].name];
+                pressKey('Escape');
+                // Paint's own copy, when it's the newest: Ctrl+V pastes it
+                P.copy();
+                const own = !window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true, cancelable: true }));
+                out.ownPaste = own && !!P.float;
+                pressKey('Escape');
+                // Not an image: said so
+                await P.importFiles([new File(['hi'], 'notes.txt', { type: 'text/plain' })]);
+                out.notImage = /Only images/.test(document.body.textContent);
+                // Undo takes the layer off again
+                const n = P.layers.length;
+                pressKey('z', { ctrlKey: true });
+                pressKey('z', { ctrlKey: true });
+                out.undone = P.layers.length === n - 1;
+                app.cancelPaint();
+                const again = Blank.open('Art');
+                await until(() => !$('blank-panel').classList.contains('hidden'));
+                out.next = $('blank-name').value;
+                out.remembered = [$('blank-w').value, $('blank-h').value, $('blank-bg-color').checked];
+                Blank.close(false);
+                await again;
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('blank: offered on a folder\'s menu and the grid\'s background', r.folderMenu && r.gridMenu, JSON.stringify(r));
+        check('blank: into the folder right-clicked, no Open a file there', r.where === 'Art' && r.noTabs, JSON.stringify(r));
+        check('blank: a print size in inches at 300 dpi; turned; in pixels; too big is said', r.name === 'Untitled' && JSON.stringify(r.inches) === '["4","6","in","300"]' && JSON.stringify(r.dims) === '["1800","1200","4x6"]' && r.tooBig, JSON.stringify(r));
+        check('blank: saved as a PNG of that size and colour, in the folder, with its resolution', r.file === 'Art/Untitled.png' && JSON.stringify(r.size) === '[1800,1200]' && JSON.stringify(r.pixel) === '[51,102,153,255]' && r.ppm === 11811, JSON.stringify(r));
+        check('blank: opened in Paint straight away (Paint turned on for it)', r.inPaint, JSON.stringify(r));
+        check('paint: an image dropped on it comes in as a layer of its own, named for it, fitted and floating', r.dropped && r.dropped[0] === 'Layer 1,logo' && r.dropped[1] === 1 && r.dropped[2] === 'move' && r.dropped[3] && r.dropped[4] === 1620, JSON.stringify(r));
+        check('paint: Enter puts it down', r.putDown, JSON.stringify(r));
+        check('paint: Ctrl+V with an image copied in another app brings it in; Paint\'s own copy when that\'s newer', r.pasted && r.pasted[0] && r.pasted[1] === 3 && r.pasted[2] === 'Pasted' && r.ownPaste, JSON.stringify(r));
+        check('paint: what isn\'t an image is said so; Ctrl+Z takes an image off again', r.notImage && r.undone, JSON.stringify(r));
+        check('blank: next time, the next name and the same size and background', r.next === 'Untitled-2' && JSON.stringify(r.remembered) === '["1800","1200",true]', JSON.stringify(r));
+        check('blank: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- Photos, Adjust and Paint as modes ----
+    if (wanted('modes')) {
+        console.log('modes: Photos, Adjust and Paint (modes.js), Start in, Paint\'s start (blank.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const $ = (id) => document.getElementById(id);
+                const shownEl = (id) => { const e = $(id); return !!e && !e.classList.contains('hidden') && e.getClientRects().length > 0; };
+                // Both off (a release): no switch, no Start in
+                step = 'off';
+                experiment('adjust', false);
+                experiment('paint', false);
+                out.offNone = $('start-in').classList.contains('hidden') && !document.documentElement.classList.contains('modes-on');
+                experiment('adjust');
+                experiment('paint');
+                out.startShown = !$('start-in').classList.contains('hidden') && [...$('start-in').querySelectorAll('[data-mode]')].map(b => b.dataset.mode).join() === 'photos,adjust,paint';
+                // Start in Adjust: a project opened from the landing page lands in Adjust
+                step = 'start in';
+                $('start-in').querySelector('[data-mode="adjust"]').click();
+                out.startKept = app.uiPrefs.startIn === 'adjust' && JSON.parse(localStorage.getItem('jeditor.ui')).startIn === 'adjust';
+                const blob = async (color) => { const c = document.createElement('canvas'); c.width = 120; c.height = 90; const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, 120, 90); return canvasBlob(c); };
+                await openProject('modes', { 'a.png': await blob('#806040'), 'b.png': await blob('#406080'), 'c.png': await blob('#408060') });
+                await until(() => Adjust.ready && Modes.strip.parentElement);
+                out.landedAdjust = Modes.current() === 'adjust' && Adjust.file === app.viewFiles()[0];
+                // The chip over Adjust, and the strip along the bottom
+                out.chipOver = shownEl('mode-float') && /Adjust/.test($('mode-chip-float').textContent);
+                out.strip = Modes.strip.parentElement === $('adjust-editor') && Modes.strip.children.length === 3 && Modes.strip.children[0].classList.contains('active');
+                // Another photo from the strip: still in Adjust, on that one
+                step = 'strip';
+                Modes.strip.children[1].click();
+                await until(() => Adjust.ready && Adjust.file === app.viewFiles()[1]);
+                out.stepped = Modes.current() === 'adjust' && Adjust.file === app.viewFiles()[1] && Modes.strip.children[1].classList.contains('active');
+                // To Paint from the chip's menu: Paint on the same photo
+                step = 'to paint';
+                $('mode-chip-float').click();
+                const items = [...document.querySelectorAll('.mode-menu .mode-mi')].map(b => b.textContent);
+                out.menu = items.length === 3 && /Paint/.test(items[2]) && document.querySelector('.mode-menu .mode-mi.on') && /Adjust/.test(document.querySelector('.mode-menu .mode-mi.on').textContent);
+                document.querySelectorAll('.mode-menu .mode-mi')[2].click();
+                await until(() => PaintEditor.ready && Modes.strip.parentElement === $('paint-editor'));
+                out.inPaint = Modes.current() === 'paint' && PaintEditor.file === app.viewFiles()[1] && Modes.strip.parentElement === $('paint-editor');
+                // A stroke, then another photo: the painting kept on the first
+                step = 'paint step';
+                const P = PaintEditor;
+                const st = $('paint-stage');
+                const at = (x, y) => { const sp = P.V().transformPoint(P.C.transformPoint({ x, y })); const rc = P.canvas.getBoundingClientRect(); return { clientX: rc.left + sp.x, clientY: rc.top + sp.y }; };
+                const pe = (type, x, y) => st.dispatchEvent(new PointerEvent(type, { ...at(x, y), pointerId: 1, bubbles: true, button: 0 }));
+                P.setTool('brush');
+                pe('pointerdown', 20, 40); pe('pointermove', 60, 40); pe('pointerup', 60, 40);
+                const painted = P.file;
+                Modes.strip.children[2].click();
+                await until(() => PaintEditor.ready && PaintEditor.file === app.viewFiles()[2]);
+                out.kept = !!(painted._edit && painted._edit.paint) && PaintEditor.file === app.viewFiles()[2];
+                // Back to Photos
+                step = 'photos';
+                await Modes.go('photos');
+                out.back = Modes.current() === 'photos' && !PaintEditor.isOpen && !Modes.strip.parentElement;
+                // The grid: with the sidebar open the switch is along its top; closed, a chip in the folder pill
+                step = 'grid';
+                app.setView('grid');
+                app.uiPrefs.folderRail = true;
+                Folders.render();
+                out.seg = shownEl('mode-seg') && [...$('mode-seg').children].map(b => b.dataset.mode).join() === 'photos,adjust,paint' && $('mode-seg').querySelector('.on').dataset.mode === 'photos' && !shownEl('mode-chip-bar') && !shownEl('mode-float');
+                app.uiPrefs.folderRail = false;
+                Folders.render();
+                out.chipBar = shownEl('mode-chip-bar') && !shownEl('mode-seg') && !shownEl('mode-float');
+                // The sidebar's Adjust: on the photo selected
+                app.uiPrefs.folderRail = true;
+                Folders.render();
+                $('mode-seg').querySelector('[data-mode="adjust"]').click();
+                await until(() => Adjust.ready);
+                out.segGo = Modes.current() === 'adjust';
+                // No Done bar: Esc goes back to Photos
+                out.noBar = !document.querySelector('#adjust-editor .crop-toolbar') && !document.querySelector('#paint-editor .crop-toolbar') && !$('adj-done') && !$('paint-done');
+                pressKey('Escape');
+                await until(() => !Adjust.isOpen);
+                out.escBack = Modes.current() === 'photos';
+                // The toolbar's main row has no Adjust or Paint now
+                out.toolbar = app.uiPrefs.placement.adjust === 'more' && app.uiPrefs.placement.paint === 'more';
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('modes: none shown while Adjust and Paint are off; Start in when they\'re on', r.offNone && r.startShown, JSON.stringify(r));
+        check('modes: Start in is remembered; a project opened lands in that mode on its first photo', r.startKept && r.landedAdjust, JSON.stringify(r));
+        check('modes: in Adjust the chip names it, top left, and a strip runs along the bottom', r.chipOver && r.strip, JSON.stringify(r));
+        check('modes: another photo from the strip opens in the same mode', r.stepped, JSON.stringify(r));
+        check('modes: the chip\'s menu switches to Paint, on the same photo', r.menu && r.inPaint, JSON.stringify(r));
+        check('modes: what was painted is kept when another photo is chosen', r.kept, JSON.stringify(r));
+        check('modes: back to Photos closes it', r.back, JSON.stringify(r));
+        check('modes: the sidebar open, the switch is along its top; closed, a chip in the folder pill', r.seg && r.chipBar && r.segGo, JSON.stringify(r));
+        check('modes: Adjust and Paint are off the toolbar\'s main row', r.toolbar, JSON.stringify(r));
+        check('modes: no Done bar in Adjust or Paint; Esc goes back to Photos', r.noBar && r.escBack, JSON.stringify(r));
+        check('modes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+
+        // The landing page's Paint: a new canvas, or an image or folder to open
+        const p2 = await open();
+        const q = await p2.page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const $ = (id) => document.getElementById(id);
+                experiment('adjust');
+                experiment('paint');
+                $('start-in').querySelector('[data-mode="paint"]').click();
+                await until(() => !$('blank-panel').classList.contains('hidden'));
+                out.dialog = !$('blank-panel').querySelector('.blank-tabs').classList.contains('hidden') && $('blank-title').textContent === 'Paint' && $('blank-where').value === '\u0000pick';
+                // Open a file → An image…: opened on its own, in Paint
+                step = 'image';
+                $('blank-tab-open').click();
+                out.openPane = !$('blank-open').classList.contains('hidden') && $('blank-new').classList.contains('hidden');
+                const c = document.createElement('canvas'); c.width = 100; c.height = 80;
+                c.getContext('2d').fillRect(0, 0, 100, 80);
+                const opfs = await navigator.storage.getDirectory();
+                const fh = await opfs.getFileHandle('loose.png', { create: true });
+                const w = await fh.createWritable(); await w.write(await canvasBlob(c)); await w.close();
+                window.showOpenFilePicker = async () => [fh];
+                $('blank-open-image').click();
+                await until(() => PaintEditor.ready);
+                out.image = PaintEditor.isOpen && app.files.length === 1 && app.files[0].name === 'loose.png' && !app.dirHandle;
+                app.cancelPaint();
+                // New canvas with no project: a folder chosen, opened, the canvas made in it, in Paint
+                step = 'canvas';
+                const dir = await opfs.getDirectoryHandle('canvas-here', { create: true });
+                window.showDirectoryPicker = async () => dir;
+                const made = Blank.open(null, { start: true });
+                await until(() => !$('blank-panel').classList.contains('hidden'));
+                $('blank-presets').querySelector('[data-key="square"]').click();
+                $('blank-go').click();
+                const file = await made;
+                await until(() => PaintEditor.ready);
+                out.canvas = file && file.name === 'Untitled.png' && app.dirHandle === dir && PaintEditor.file === file;
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('modes: Paint on the landing page asks what to paint on (New canvas | Open a file)', q.dialog && q.openPane, JSON.stringify(q));
+        check('modes: An image… opens it on its own, in Paint', q.image, JSON.stringify(q));
+        check('modes: a new canvas with no project open: a folder chosen, the canvas made there, in Paint', q.canvas, JSON.stringify(q));
+        check('modes (landing): no JS errors', p2.issues.errors.length === 0, p2.issues.errors.join('; '));
+        await p2.page.close();
+    }
+
+    // ---- Crop: a side dragged into a turned photo's edge slides, then gets shorter ----
+    if (wanted('crop')) {
+        console.log('crop: a side slides along a slanted edge, then gets shorter (crop.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(() => {
+            const G = CropGeom, W = 2000, H = 1500, m = 1;
+            const drag = (cs, st, handle, key, to, minSize = 10) => {
+                const t = { ...st, [key]: to };
+                const before = G.clampToward(st, t, W, H, cs, m, true);
+                const after = G.slideSide(t, handle, before, W, H, cs, m, minSize) || before;
+                return { before, after, fits: G.fits(after, W, H, cs, m) };
+            };
+            const out = {};
+            // Turned 0.5°, a print near the top of a scan: its crop touches the top edge
+            const cs = G.cosSin(0, 0.5);
+            const top = Math.max(G.extent('x', -500, W, H, cs, m)[0], G.extent('x', 300, W, H, cs, m)[0]) + 0.01;
+            const nearTop = { x0: -500, y0: top, x1: 300, y1: top + 600 };
+            const a = drag(cs, nearTop, 'e', 'x1', 1400);
+            out.slid = [a.before.x1, a.after.x1, a.after.x0, a.after.y1 - a.after.y0, a.after.y0 - nearTop.y0, a.fits];
+            // A little way out: slid only as much as it needs
+            const b = drag(cs, nearTop, 'e', 'x1', 600);
+            out.little = [b.after.x1, b.after.y0 - nearTop.y0, b.fits];
+            // Turned 3°, the crop as tall as it can be: it can't slide, so it gets a little shorter
+            const cs3 = G.cosSin(0, 3);
+            const e1 = G.extent('x', -800, W, H, cs3, m), e2 = G.extent('x', 600, W, H, cs3, m);
+            const tall = { x0: -800, y0: Math.max(e1[0], e2[0]) + 0.01, x1: 600, y1: Math.min(e1[1], e2[1]) - 0.01 };
+            const c = drag(cs3, tall, 'e', 'x1', 1400);
+            out.shorter = [c.before.x1, c.after.x1, c.after.x0, (tall.y1 - tall.y0) - (c.after.y1 - c.after.y0), c.fits];
+            // ...and it stops at the photo's edge facing it, not in the corner's wedge
+            const e3 = G.extent('y', (c.after.y0 + c.after.y1) / 2, W, H, cs3, m);
+            out.atEdge = e3[1] - c.after.x1;
+            // Not turned: the side stops at the edge
+            const cs0 = G.cosSin(0, 0);
+            const d = drag(cs0, { x0: -500, y0: -749, x1: 300, y1: -149 }, 'e', 'x1', 1400);
+            out.flat = [d.before.x1, d.after.x1];
+            return out;
+        });
+        check('crop: turned 0.5°, a side whose corner meets the top edge slides along and goes on to the photo\'s edge', r.slid[0] < 310 && r.slid[1] > 985 && r.slid[2] === -500 && Math.abs(r.slid[3] - 600) < 1e-6 && r.slid[4] > 0 && r.slid[4] < 10 && r.slid[5], JSON.stringify(r));
+        check('crop: it slides only as much as it needs', Math.abs(r.little[0] - 600) < 1e-6 && r.little[1] > 0 && r.little[1] < 3 && r.little[2], JSON.stringify(r));
+        check('crop: as tall as it can be, it gets a little shorter instead, the other side staying put', r.shorter[1] > r.shorter[0] + 50 && r.shorter[2] === -800 && r.shorter[3] > 0 && r.shorter[3] < 120 && r.shorter[4], JSON.stringify(r));
+        check('crop: ...and stops at the photo\'s edge facing it', r.atEdge >= 0 && r.atEdge < 60, JSON.stringify(r));
+        check('crop: not turned, the side stops at the edge', Math.abs(r.flat[0] - 999) < 0.01 && Math.abs(r.flat[1] - 999) < 0.01, JSON.stringify(r));
+        check('crop: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- The wheel on a Mac ----
+    if (wanted('wheel')) {
+        console.log('the wheel on a Mac (wheel.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                // Which is which
+                step = 'kinds';
+                const kind = (e) => { Wheel._last = null; return Wheel.kind({ deltaMode: 0, deltaX: 0, deltaY: 0, ctrlKey: false, ...e }); };
+                out.kinds = [
+                    kind({ ctrlKey: true, deltaY: 3 }),                       // a pinch
+                    kind({ deltaY: 4.5, wheelDeltaY: -13.5 }),                 // fingers (Chromium: -3 × deltaY)
+                    kind({ deltaY: 100, wheelDeltaY: -120 }),                  // a mouse's notch
+                    kind({ deltaX: 12, deltaY: 1, wheelDeltaY: -3 }),          // sideways: fingers
+                    kind({ deltaMode: 1, deltaY: 3 })                          // lines: a wheel
+                ].join();
+                // A gesture keeps its kind (its momentum looks like a mouse's sometimes)
+                Wheel._last = null;
+                Wheel.kind({ deltaMode: 0, deltaX: 0, deltaY: 2, wheelDeltaY: -6 });
+                out.gesture = Wheel.kind({ deltaMode: 0, deltaX: 0, deltaY: 120, wheelDeltaY: -120 });
+                Wheel._last = null;
+
+                // A mouse's notches glide on a Mac, and only there
+                step = 'glide';
+                const box = document.createElement('div');
+                Object.assign(box.style, { position: 'fixed', left: '0', top: '0', width: '300px', height: '200px', overflowY: 'auto', zIndex: 99999 });
+                box.innerHTML = '<div style="height:3000px"></div>';
+                document.body.appendChild(box);
+                const notch = (target, o = {}) => { Wheel._last = null; const e = new WheelEvent('wheel', { deltaY: 3, deltaMode: 1, bubbles: true, cancelable: true, ...o }); target.dispatchEvent(e); return e; };
+                const mac0 = Host.mac;
+                Host.mac = () => false;
+                const native = notch(box.firstChild);
+                out.notMac = !native.defaultPrevented;
+                Host.mac = () => true;
+                const e1 = notch(box.firstChild);
+                // Where it is each frame, until it's still: somewhere between, on the way
+                const seen = [];
+                const t0 = performance.now();
+                while (performance.now() - t0 < 600) {
+                    await new Promise(r => requestAnimationFrame(r));
+                    seen.push(box.scrollTop);
+                }
+                out.glide = [e1.defaultPrevented, seen.some(v => v > 0 && v < 120), box.scrollTop];
+                // Notches add up while it's still going
+                notch(box.firstChild); notch(box.firstChild);
+                await sleep(400);
+                out.added = box.scrollTop;
+                // Fingers aren't touched (they're smooth already)
+                Wheel._last = null;
+                const finger = new WheelEvent('wheel', { deltaY: 4.5, deltaX: 1, bubbles: true, cancelable: true });
+                box.firstChild.dispatchEvent(finger);
+                out.fingers = !finger.defaultPrevented;
+                // At the end of what scrolls, nothing to glide
+                box.scrollTop = box.scrollHeight;
+                out.atEnd = !notch(box.firstChild).defaultPrevented;
+                box.remove();
+
+                // The viewer: two fingers move a zoomed photo, a pinch zooms
+                step = 'viewer';
+                const c = scene(800, 600);
+                await openProject('wheel', { 'w.jpg': await canvasBlob(c, 'image/jpeg', 0.9), 'v.jpg': await canvasBlob(c, 'image/jpeg', 0.9) });
+                app.openSingle(app.files[0]);
+                await until(() => app.elements.currentImage.naturalWidth > 0);
+                const ic = app.elements.imageContainer;
+                const wheel = (o) => { Wheel._last = null; ic.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 400, clientY: 300, ...o })); };
+                wheel({ deltaY: 4, deltaX: 3 });                       // fingers, at fit: nothing
+                out.fitStays = app.zoom === 1;
+                app.zoomTo(3);
+                const z = app.zoom, px = app.panX, py = app.panY;
+                wheel({ deltaX: 30, deltaY: 20 });
+                out.panned = app.zoom === z && Math.abs(app.panX - (px - 30)) < 1e-6 && Math.abs(app.panY - (py - 20)) < 1e-6 && app.elements.currentImage.classList.contains('follow');
+                wheel({ deltaY: -20, ctrlKey: true });
+                out.pinched = app.zoom > z;
+                const z2 = app.zoom;
+                wheel({ deltaY: -3, deltaMode: 1 });                   // a mouse: zooms
+                out.mouseZooms = app.zoom > z2;
+                await sleep(250);
+                out.followOff = !app.elements.currentImage.classList.contains('follow');
+
+                // The grid: a pinch by how much the fingers move, a notch a step
+                step = 'grid';
+                app.setView('grid');
+                const slider = app.elements.gridSizeSlider;
+                slider.value = 160; app.setGridSize(160);
+                const gv = app.elements.gridView;
+                for (let i = 0; i < 6; i++) gv.dispatchEvent(new WheelEvent('wheel', { deltaY: -2, ctrlKey: true, bubbles: true, cancelable: true }));
+                await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+                out.pinchGrid = +slider.value;
+                gv.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, bubbles: true, cancelable: true }));
+                await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+                out.notchGrid = +slider.value;
+                Host.mac = mac0;
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('wheel: a pinch, two fingers and a mouse told apart; a gesture keeps its kind', r.kinds === 'pinch,trackpad,mouse,trackpad,mouse' && r.gesture === 'trackpad', JSON.stringify(r));
+        check('wheel: on a Mac a mouse\'s notches glide (and add up), not elsewhere; fingers and the end of the page are left alone', r.notMac && r.glide && r.glide[0] && r.glide[1] && r.glide[2] === 120 && r.added === 360 && r.fingers && r.atEnd, JSON.stringify(r));
+        check('wheel: in the viewer two fingers move a zoomed photo (at once), a pinch and a mouse zoom; at fit, fingers do nothing', r.fitStays && r.panned && r.pinched && r.mouseZooms && r.followOff, JSON.stringify(r));
+        check('wheel: pinching the grid zooms it by how much the fingers move; a Ctrl+notch is a step', r.pinchGrid > 160 && r.pinchGrid <= 182 && r.notchGrid === r.pinchGrid + 20, JSON.stringify(r));
+        check('wheel: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

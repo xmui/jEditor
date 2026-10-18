@@ -19,7 +19,7 @@ Changes are saved to the original files as you go.
 - **Appearance**: the theme (dark, light or match the system), the accent color and the color behind photos (black, gray or light, for judging color); on Windows 11 (22H2 or later), **Window background** puts Mica or Acrylic behind jEditor, like the Start menu, and **Transparency** sets how much of the desktop shows through (photos, Crop and Duplicates stay solid; it needs Windows' Transparency effects on, in Settings → Personalization → Colors); then glass (Rich, or Subtle, which is faster on older computers), density and toolbar size.
 - **Toolbar & keys**: keyboard shortcuts and their profiles, a vertical toolbar, the buttons above the film strip, and which buttons are in the toolbar.
 - **Messages**: which messages pop up after you do something.
-- **Auto crop**: keeping test scans to improve Auto crop, how many are kept, and exporting or clearing them.
+- **Auto crop**: keeping test scans to improve Auto crop, how many are kept, and exporting, recovering or clearing them.
 - **Projects**: watching the folder for changes, the thumbnail cache, stored projects and cleaning up the open one.
 - **Updates**: checking for updates, and the log.
 
@@ -52,7 +52,7 @@ Flags are kept with the order, in `.jeditor/flags.json`, so they follow renames 
 - **Delete.** Photos are moved to `.jeditor/trash` inside the opened folder, not deleted. `Ctrl+Z` restores them.
 - **Move to a folder.** Photos are moved on disk, which is a rename and instant even for big scans; where a file can't be moved it's copied and the original removed. A copy is a byte-for-byte duplicate. Cached thumbnails and previews follow the photo, so moving doesn't make them again.
 - **Export.** Copies go to a `jEditor Export` folder, optionally resized, with any adjustments and edits not saved yet.
-- **Adjust.** Never written into the photo in a project: the settings are kept in `.jeditor/edits.json`, and Export (or **Save edits…**) writes the result, re-encoded like a crop, with the metadata carried over. Without a project (photos picked on a phone, or dropped in), **Done** writes them into the photo.
+- **Adjust.** Never written into the photo in a project: the settings are kept in `.jeditor/edits.json`, and Export (or **Save edits…**) writes the result, re-encoded like a crop, with the metadata carried over. Without a project (photos picked on a phone, or dropped in), they're written into the photo when you leave Adjust.
 
 ## The .jeditor folder
 
@@ -80,7 +80,7 @@ Some programs, mostly older print and lab software, ignore the EXIF orientation 
 
 It works like Lightroom or Apple Photos: the crop frame stays in the middle of the screen and the photo moves behind it.
 
-- Drag a corner or edge to resize. When you let go, the view zooms so the crop fills the screen again. Drag a handle past the edge of the screen to zoom out and make the crop bigger. Hold `Shift` to keep the shape, or `Alt` to resize from the centre.
+- Drag a corner or edge to resize. When you let go, the view zooms so the crop fills the screen again. Drag a handle past the edge of the screen to zoom out and make the crop bigger. Hold `Shift` to keep the shape, or `Alt` to resize from the centre. On a straightened photo, a side dragged out whose corner meets the photo's slanted edge doesn't stop there: the crop slides out of the way (keeping its size), or when it can't, gets a little shorter, so the side keeps following your pointer to the photo's edge. The opposite side stays where it is.
 - Drag inside the frame to move the photo. Drag outside it to rotate.
 - Straighten with the slider, or `,` / `.` in 0.1° steps. The photo turns around the middle of the crop and zooms in just enough to hide the corners, so there are never empty corners.
 - To level something, hold `Ctrl` (`⌘` on a Mac) and draw a line along a horizon or the edge of a print. The level tool (`L`) does the same without the key.
@@ -116,13 +116,21 @@ Like Lightroom's Develop, for one photo at a time: press `E` (or the sliders but
 - Double-click a slider's name to put it back to 0; each section has its own **Reset**.
 - `\` shows the photo as it was (before and after). `Ctrl+Z` / `Ctrl+Shift+Z` undo and redo inside Adjust.
 - **Copy** and **Paste** (`Ctrl+Shift+C` / `Ctrl+Shift+V`) carry the adjustments to other photos. In the grid, `Ctrl+Shift+V` pastes onto every selected photo; the right-click menu has it too.
-- **Done** (`Enter`) keeps the adjustments; **Done & next** (`Shift+Enter`) goes on to the next photo.
+- There's no Done button: what you do is kept as you go. Leave with the mode switch, `Esc` or `Enter` (back to Photos), or click another photo in the strip; `Shift+Enter` goes on to the next photo. `Ctrl+Z` in Photos takes a whole visit's adjustments off again.
 
 Adjustments are non-destructive: the photo on disk isn't changed. They're kept with the project (`.jeditor/edits.json`), shown wherever the photo is, and can be changed again any time, from the original. A pencil on the photo says it has them. An adjusted photo keeps its turns and crops the same way, so everything is applied once, from the original. **Export…** writes copies with the adjustments; **Save edits…** (right-click the grid background) writes them into the photos, keeping the originals for `Ctrl+Z`. **Discard edit** takes them off.
 
 ## RAW files
 
 RAW files from cameras (DNG, CR2, CR3, NEF, ARW, RAF, ORF, RW2, PEF, SRW and the rest) are listed with the other photos and shown from the full-size JPEG the camera puts inside each one, turned as the camera was held. They can be flagged, renamed, moved, cropped, adjusted and painted on like any photo, but a RAW file is never written: its turns, crops and adjustments are always kept as edits, and **Export** (or **Save edits**) writes a JPEG copy (`IMG_0042.cr3` → `IMG_0042.jpg`). Editing the raw sensor data itself (rather than its JPEG) comes later.
+
+## Photos, Adjust and Paint
+
+jEditor has three modes, like Lightroom's modules: **Photos** (sorting, rotating, cropping), **Adjust** and **Paint**. With the sidebar open, switch along its top; with it closed, the chip at the top left names the mode you're in and its menu switches (it's there in single view, and over Adjust and Paint too). `E` and `B` still open Adjust and Paint, and `Esc` goes back to Photos.
+
+Adjust and Paint have no Done bar: what you do is kept as you go, as in Lightroom (`Ctrl+Z` in Photos takes it off again). Their few buttons (Before, Reset, Copy, Paste; Undo, Redo, Fit, 100%) are at the top right. A film strip runs along the bottom: click another photo and it opens in the same mode. Adjust and Paint only show while they're turned on in **Settings → Experimental**; their toolbar buttons are in the ⋯ menu.
+
+The start page's **Start in** (Photos, Adjust or Paint) is remembered: a project you open from there lands in that mode, on its first photo. **Paint** there (or **New blank canvas…**) asks what to paint on: a **New canvas** (below), or **Open a file**: **An image…** opens a single picture on its own (the painting goes into it when you leave Paint), **A folder…** opens a folder of photos as a project in Paint.
 
 ## Paint
 
@@ -132,9 +140,11 @@ Paint over a photo in layers, as a tool like Crop: press `B` (or the brush butto
 - **Selections** keep painting inside them. `Shift` adds to a selection, `Alt` takes away; `Ctrl+A` selects everything, `Ctrl+D` nothing; `Delete` clears what's selected; `Ctrl+C` / `Ctrl+V` copy and paste it.
 - **Colours:** the foreground and background swatches (click to choose), a palette (`Alt`-click for the background colour), **Swap** (`X`) and black and white (`D`). `Alt`-click with a brush picks a colour from the photo.
 - **Layers:** add, duplicate, move up and down, merge down, delete, hide, rename (double-click), each with its **Opacity** and a **Blend** mode (Multiply, Screen, Overlay and the rest).
+- **Images:** **Bring in an image…** under the layers (`Ctrl+Shift+O`), drop an image file on Paint, or `Ctrl+V` an image copied in another app. It comes in on a layer of its own, named after it, fitted to the picture and left floating: drag it to move it, a corner to size it (`Shift` keeps its shape), the knob to turn it, and `Enter` puts it down. RAW files come in from the JPEG inside them. (`Ctrl+V` pastes Paint's own copy instead when that's the newest thing you copied.)
+- **A blank canvas:** right-click a folder (or the grid's background) → **New blank image…**, or the start page's Paint. Pick a size from the list (prints at 300 dpi in inches, screens and social posts, the photo you're looking at, the last one you made) or type one in pixels, inches or centimetres at a resolution (72 to 600 dpi), up to 10,000 pixels a side, either way round; a background (white, black, none or a colour); and the folder to save into (with no project open, you choose one and it opens as the project). It's saved as a PNG carrying its resolution, so it prints at that size, and opens in Paint straight away.
 - The wheel zooms; hold `Space` (or the Hand) and drag to move about; `0` fits the photo, `1` is 100%. `Ctrl+Z` / `Ctrl+Shift+Z` undo and redo inside Paint.
 
-Painting goes on last, over the photo as it's cropped and adjusted, so it looks as you painted it. It's non-destructive like the rest: the layers are kept with the project (in `.jeditor/paint`), so the painting can be opened and changed again, and a crop later leaves it where it was. **Export…** and **Save edits…** write it into copies or the photos. Without a project (photos picked on a phone), **Done** paints into the photo.
+Painting goes on last, over the photo as it's cropped and adjusted, so it looks as you painted it. It's non-destructive like the rest: the layers are kept with the project (in `.jeditor/paint`), so the painting can be opened and changed again, and a crop later leaves it where it was. **Export…** and **Save edits…** write it into copies or the photos. Without a project (photos picked on a phone, or an image opened on its own), leaving Paint paints into the photo.
 
 ## Drives, cards and discs
 
@@ -152,7 +162,7 @@ Some orders are collated: the photos go into labelled folders. Open the order fo
 - **All photos** (top of the list, or the switch in the folder pill at the top left) shows every photo in the order, whatever folder it's in, with each photo's folder named on its tile. It's what you see when an order is opened. `A` switches between All photos and the last folder.
 - **Moving.** Drag the selected photos onto a folder, in the list, a folder tile or the breadcrumb. Hold `Ctrl` (or `Alt`) when you let go to copy them instead. Or press `M` (`Shift+M` copies), or use **Move to…** on the selection bar or the right-click menu. That opens a list of folders: type to find one, or type a new name to make that folder and move the photos into it in one go. `Wedding/Speeches` makes a folder inside another.
 - **Name clashes.** If a photo with the same name is already in the folder, you're asked what to do: keep both (the moved photo gets a number, `IMG_0042 (2).jpg`), skip it, or replace the one that's there, which goes to the trash. You can apply the answer to the rest of the clashes. Cancel and nothing is moved.
-- **Folders.** **New folder** at the bottom of the folder list, `Shift+N`, or right-clicking the grid makes one inside the folder you're looking at. Right-click a folder to rename it, make a folder inside it, or delete it once it's empty.
+- **Folders.** **New folder** at the bottom of the folder list, `Shift+N`, or right-clicking the grid makes one inside the folder you're looking at. Right-click a folder to rename it, make a folder inside it, make a **New blank image…** in it (to paint on), or delete it once it's empty.
 - In a folder, `←` `→`, the film strip, `Ctrl+A` and **Rename all…** cover that folder's photos only.
 - **Folder details.** The bottom of the folder list shows the total for what you're looking at (`1,240 photos · 4.80 GB`); click it, press `I` in the grid, or right-click a folder for **Folder info**. It lists how many photos there are (directly in the folder and with its subfolders), the total, average and largest size, file types, dates and flags. For the whole order it also shows how much room `.jeditor` takes: trash, cache and Auto crop originals. Select several photos to see the same for the selection.
 
@@ -202,7 +212,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `E` | Adjust: light, color, curves |
 | `B` | Paint: brushes, shapes, text and layers |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy the photo's adjustments / paste them (onto the selection in grid view) |
-| `+` `-` `0` | Zoom in, zoom out, fit. The mouse wheel zooms on the pointer, up to 3200% (past 100% the pixels show as sharp squares, with no smoothing). Double-click the photo: in to 100% on that spot, again to fit. |
+| `+` `-` `0` | Zoom in, zoom out, fit. The mouse wheel zooms on the pointer, up to 3200% (past 100% the pixels show as sharp squares, with no smoothing). Double-click the photo: in to 100% on that spot, again to fit. On a Mac's trackpad, pinch to zoom and move a zoomed photo with two fingers. |
 | `I` | Info: the photo in single view; in the grid, the folder you're in (photos, total size, types, dates, flags, room taken by `.jeditor`), or the selection |
 | `F` | Full screen |
 | `F2` | Rename (the selected photos in grid view) |
@@ -229,7 +239,7 @@ In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel,
 
 In Adjust: `Enter` done, `Shift+Enter` done and next, `Esc` cancel, `\` before and after, `Shift+A` auto, `Shift+C` auto color, `R` reset, `Ctrl+Shift+C` / `Ctrl+Shift+V` copy / paste, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
-In Paint: `Enter` done (or put down what's being moved), `Esc` cancel, `V` move, `M` rectangle / ellipse select, `L` lasso, `W` magic wand, `B` brush, `N` pencil, `E` eraser, `G` fill / gradient, `U` line, `R` rectangle, `O` ellipse, `T` text, `I` colour picker, `H` hand, `[` `]` brush size, `X` swap colours, `D` black and white, `Ctrl+A` / `Ctrl+D` select all / nothing, `Delete` clear the selection, `Ctrl+C` / `Ctrl+V` copy / paste, `Ctrl+Shift+N` new layer, `Ctrl+J` duplicate the layer, `Ctrl+E` merge down, `0` fit, `1` 100%, `+` `-` zoom, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
+In Paint: `Enter` done (or put down what's being moved), `Esc` cancel, `V` move, `M` rectangle / ellipse select, `L` lasso, `W` magic wand, `B` brush, `N` pencil, `E` eraser, `G` fill / gradient, `U` line, `R` rectangle, `O` ellipse, `T` text, `I` colour picker, `H` hand, `[` `]` brush size, `X` swap colours, `D` black and white, `Ctrl+A` / `Ctrl+D` select all / nothing, `Delete` clear the selection, `Ctrl+C` / `Ctrl+V` copy / paste (an image copied in another app comes in as a layer), `Ctrl+Shift+O` bring in an image, `Ctrl+Shift+N` new layer, `Ctrl+J` duplicate the layer, `Ctrl+E` merge down, `0` fit, `1` 100%, `+` `-` zoom, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
 In find duplicates: `1`–`9` mark or unmark a photo, `K` keep the suggested photo and mark the rest, `Enter` trash marked and go to the next group, `N` not duplicates, `←` `→` previous / next group, `Esc` close.
 
@@ -245,6 +255,8 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `raw.js`: RAW files, from the JPEG inside them
 - `paint.js`, `paint-editor.js`: Paint (the layers kept with the photo, and the screen)
 - `import.js`: importing from a camera's card
+- `blank.js`: Paint's start: a new canvas (right-click a folder, or the start page's Paint), or an image or folder to open
+- `modes.js`: Photos, Adjust and Paint as modes: the switch (sidebar, chip), the strip in Adjust and Paint, Start in
 - `disc.js`: burning a CD or DVD (the Windows app's `src/Burn.cs`)
 - `crop-auto.js`: finding the print on a scan (Auto)
 - `changelog.js`: the list of changes shown in What's new, and the release notes

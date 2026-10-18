@@ -61,7 +61,7 @@ See [auto-crop-test-set.md](auto-crop-test-set.md) for the format.
 - It's kept in jEditor's storage on this PC (in a browser, the browser's private storage), up to 1 GB, oldest first out.
 - Settings → Auto crop: on or off, how many are kept, **Export…** to a folder (to bring them here), and **Clear**.
 
-Not yet covered: batch Auto crop fixed later in the editor. That photo is the already-cropped file, and its original is in `originals/`; linking the two is left for step 2.
+Batch Auto crop fixed later in the editor counts too: the crop is mapped back onto the original in `originals/`. **Recover** does that for crops saved before it did ([format](auto-crop-test-set.md#batch-auto-crop)).
 
 ## Open questions
 

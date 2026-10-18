@@ -240,6 +240,7 @@ const Folders = {
         // What this window shows, for the others' Move to: in any view, not
         // just the grid's (a project left in single view was missing there)
         if (typeof Windows !== 'undefined') Windows.publish();
+        if (typeof Modes !== 'undefined') Modes.render();
         if (!on) return;
         const counts = this.counts();
         if (rail) {
@@ -1102,6 +1103,7 @@ const Folders = {
             items.push([`Copy ${what} here`, () => this.relocate(sel, path, { copy: true })]);
         }
         items.push(['—'], ['New folder inside…', () => this.newFolder(path)]);
+        if (Blank.can()) items.push(['New blank image…', () => Blank.open(path)]);
         if (path) {
             items.push(['Rename folder…', () => this.renameFolder(path)]);
             const empty = !app.files.some(f => this.within(this.dirOf(f), path)) && !this.children(path).length;
