@@ -5,6 +5,12 @@
 
 const CHANGELOG = [
     {
+        version: '1.44.1', date: '2026-10-18',
+        items: [
+            'Closing the window in Adjust or Paint with something not kept yet asks Keep your changes? first (Keep, Don\'t keep or Cancel), instead of losing it.'
+        ]
+    },
+    {
         version: '1.44.0', date: '2026-10-18',
         items: [
             'Spot removal in Adjust: click a speck of dust, a scratch or a blemish and it\'s healed from nearby, sized to the speck. Drag from it to choose where it\'s copied from; Heal blends it in, Clone copies exactly. Find dust puts a spot on every speck it finds on a scan, and Clear found takes them off again.',

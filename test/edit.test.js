@@ -1071,6 +1071,30 @@ const PROJECT = `
                 $('mode-seg').querySelector('[data-mode="adjust"]').click();
                 await until(() => Adjust.ready);
                 out.segGo = Modes.current() === 'adjust';
+                // Closing the window in Adjust: held (the app asks the page first)
+                step = 'closing';
+                const held = [];
+                window.JEditorNative = { features: [], holdClose: (f) => held.push(f) };
+                Modes._held = undefined;
+                Modes.render();
+                delete window.JEditorNative;
+                out.holds = held.length === 1 && typeof held[0] === 'function';
+                // Nothing done: it closes, nothing asked
+                out.closeAtOnce = await Modes.closing() === true && $('ui-dialog').classList.contains('hidden');
+                // Something done: "Keep your changes?"; Cancel stays, Keep keeps and closes
+                const adjFile = Adjust.file;
+                Adjust.setAll({ exposure: 1 });
+                let asked = Modes.closing();
+                await until(() => !$('ui-dialog').classList.contains('hidden'));
+                out.askText = $('uid-title').textContent === 'Keep your changes?' && $('uid-ok').textContent === 'Keep' && /Don.t keep/.test($('uid-alt').textContent);
+                $('uid-cancel').click();
+                out.cancelStays = await asked === false && Adjust.isOpen;
+                asked = Modes.closing();
+                await until(() => !$('ui-dialog').classList.contains('hidden'));
+                $('uid-ok').click();
+                out.keepKeeps = await asked === true && !Adjust.isOpen && !!(adjFile._edit && adjFile._edit.adj && adjFile._edit.adj.exposure === 1);
+                $('mode-seg').querySelector('[data-mode="adjust"]').click();
+                await until(() => Adjust.ready);
                 // No Done bar: Esc goes back to Photos
                 out.noBar = !document.querySelector('#adjust-editor .crop-toolbar') && !document.querySelector('#paint-editor .crop-toolbar') && !$('adj-done') && !$('paint-done');
                 pressKey('Escape');
@@ -1090,6 +1114,8 @@ const PROJECT = `
         check('modes: back to Photos closes it', r.back, JSON.stringify(r));
         check('modes: the sidebar open, the switch is along its top; closed, a chip in the folder pill', r.seg && r.chipBar && r.segGo, JSON.stringify(r));
         check('modes: Adjust and Paint are off the toolbar\'s main row', r.toolbar, JSON.stringify(r));
+        check('modes: closing the window in Adjust or Paint is held for the page', r.holds && r.closeAtOnce, JSON.stringify(r));
+        check('modes: closing with changes asks "Keep your changes?"; Cancel stays, Keep keeps them', r.askText && r.cancelStays && r.keepKeeps, JSON.stringify(r));
         check('modes: no Done bar in Adjust or Paint; Esc goes back to Photos', r.noBar && r.escBack, JSON.stringify(r));
         check('modes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();

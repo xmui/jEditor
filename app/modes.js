@@ -46,6 +46,12 @@ const Modes = {
             seg.setAttribute('aria-label', 'Mode');
             rail.prepend(seg);
         }
+        // In a browser, leaving the page with something not kept asks too
+        // (the apps ask in closing(); a held beforeunload there would just
+        // stop the window closing)
+        addEventListener('beforeunload', (e) => {
+            if (!Host.get() && this.unkept()) { e.preventDefault(); e.returnValue = ''; }
+        });
         // The chip, in the folder pill (after the sidebar button) and on its own
         const bar = this.el('folder-bar');
         if (bar) {
@@ -304,6 +310,45 @@ const Modes = {
         }
         this.placeStrip(mode);
         this.renderStart();
+        // Closing the window asks first while in Adjust or Paint
+        this.holdClose(mode !== 'photos');
+    },
+
+    holdClose(on) {
+        const n = Host.get();
+        if (!n || !n.holdClose || this._held === on) return;
+        this._held = on;
+        n.holdClose(on ? () => this.closing() : null);
+    },
+
+    // Anything done in Adjust or Paint that isn't kept yet
+    unkept() {
+        const mode = this.current();
+        const ed = mode === 'adjust' ? Adjust : mode === 'paint' ? PaintEditor : null;
+        return !!ed && ed.isOpen && (ed.busy || (ed.ready && ed.changedSinceOpen()));
+    },
+
+    // The window closing in Adjust or Paint: "Keep your changes?" (true: close)
+    async closing() {
+        if (this.unkept()) {
+            const adjust = this.current() === 'adjust';
+            const ed = adjust ? Adjust : PaintEditor;
+            const choice = await UI.choose({
+                title: 'Keep your changes?',
+                message: `What you did to ${ed.file ? ed.file.name : 'this photo'} in ${adjust ? 'Adjust' : 'Paint'} isn't kept yet.`,
+                ok: 'Keep',
+                alt: 'Don\'t keep',
+                altDanger: true
+            });
+            if (!choice) return false;
+            if (choice === 'ok') {
+                while (ed.busy) await new Promise(r => setTimeout(r, 100));
+                // (Not kept: saving said why, and the window stays)
+                if (!(await this.leave(true))) return false;
+            }
+        }
+        await Edits.flush().catch(() => { });
+        return true;
     },
 
     visible(id) {

@@ -77,8 +77,9 @@ sealed class MainForm : Form
         Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
         FormClosed += (_, _) => Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         Load += async (_, _) => await StartAsync();
-        FormClosing += (_, _) =>
+        FormClosing += (_, e) =>
         {
+            if (HoldClose(e.CloseReason)) { e.Cancel = true; return; }
             SavePlacement();
             scanning?.Cancel();
             tether?.Stop();
@@ -86,6 +87,25 @@ sealed class MainForm : Form
         FormClosed += (_, _) => scanner?.Dispose();
         Log.Line += LogLine;
         FormClosed += (_, _) => Log.Line -= LogLine;
+    }
+
+    // Closing while the page holds it (in Adjust or Paint: app/modes.js):
+    // the page asks "Keep your changes?" and answers { type: 'closeWindow', ok }.
+    // A page that doesn't hear it (closeHeard) in a few seconds doesn't hold
+    // the window: closing again closes.
+    bool holdClose, closeOk, closeHeard;
+    DateTime closeAsked;
+
+    bool HoldClose(CloseReason why)
+    {
+        if (!holdClose || closeOk || why != CloseReason.UserClosing || smoke is not null || web.CoreWebView2 is null) return false;
+        if (closeAsked != default && !closeHeard && DateTime.UtcNow - closeAsked > TimeSpan.FromSeconds(5)) return false;
+        if (closeAsked == default)
+        {
+            closeAsked = DateTime.UtcNow;
+            Post(new { type = "closing" });
+        }
+        return true;
     }
 
     // The scan dock's Details: new log lines, sent on in small batches while
@@ -193,6 +213,7 @@ sealed class MainForm : Form
 
     public void CloseNow()
     {
+        closeOk = true;
         if (IsHandleCreated) BeginInvoke(Close); else Close();
     }
 
@@ -359,6 +380,8 @@ sealed class MainForm : Form
                 });
                 break;
             case "ready":
+                holdClose = closeHeard = false;
+                closeAsked = default;
                 Log.Write($"jEditor {Str(msg, "version")} ready");
                 if (options.UpdateFailedLog is string setupLog)
                 {
@@ -432,6 +455,21 @@ sealed class MainForm : Form
                 break;
             case "state":
                 PageState = msg;
+                break;
+            case "holdClose":
+                holdClose = msg["on"]?.GetValue<bool>() ?? false;
+                break;
+            case "closeHeard":
+                closeHeard = true;
+                break;
+            case "closeWindow":
+                closeAsked = default;
+                closeHeard = false;
+                if (msg["ok"]?.GetValue<bool>() ?? false)
+                {
+                    closeOk = true;
+                    BeginInvoke(Close);
+                }
                 break;
             case "cancelScan":
                 scanning?.Cancel();
