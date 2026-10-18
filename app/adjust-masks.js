@@ -8,6 +8,8 @@
 //   Radial gradient: drag out from the middle; inside full, feathered to
 //     none at the edge (a face lifted, or with Invert, the edges darkened)
 //   Brush: paint it on; Erase paints it off. Size, Feather and Flow.
+//   Sky, Subject: found in the photo (select.js), then touched up with the
+//     brush the same way
 //
 // Places are kept on the photo as it is on disk, not as cropped (see
 // Develop.cropMap), so cropping later doesn't move a mask off its subject.
@@ -19,7 +21,7 @@ const AdjustMasks = {
     mode: null,       // drawing a new 'linear' or 'radial'; 'erase' with the brush
     brush: { size: 8, feather: 50, flow: 100 },   // % of the photo's height, %, %
     showMask: false,
-    LABEL: { linear: 'Linear gradient', radial: 'Radial gradient', brush: 'Brush' },
+    LABEL: { linear: 'Linear gradient', radial: 'Radial gradient', brush: 'Brush', sky: 'Sky', subject: 'Subject' },
 
     el(id) { return document.getElementById(id); },
 
@@ -109,6 +111,10 @@ const AdjustMasks = {
             ed.app.showToast(`Up to ${Develop.MAX_MASKS} masks on a photo`);
             return;
         }
+        if (type === 'sky' || type === 'subject') {
+            this.find(type);
+            return;
+        }
         if (type === 'brush') {
             ed.pushHistory();
             this.masks().push({ type: 'brush', invert: false, adj: {}, brush: [] });
@@ -121,6 +127,44 @@ const AdjustMasks = {
         }
         this.sync();
         ed.changed();
+    },
+
+    // Sky or Subject: found on the working copy (the whole photo, before
+    // its crop, as masks are placed)
+    async find(type) {
+        const ed = this.ed, app = ed.app;
+        if (this._finding) return;
+        this._finding = true;
+        app.beginTask('select', type === 'sky' ? 'Finding the sky…' : 'Finding the subject…');
+        try {
+            await new Promise(r => setTimeout(r, 30));
+            if (!ed.ready || !ed.base) return;
+            const map = type === 'sky' ? Select.sky(ed.base) : Select.subject(ed.base);
+            if (!map) {
+                app.showToast(type === 'sky' ? 'No sky found in this photo. Try a Linear gradient, or the Brush' : 'No clear subject found. Try the Brush, or a Radial gradient', 3200);
+                return;
+            }
+            ed.pushHistory();
+            this.masks().push({ type, invert: false, adj: {}, map, brush: [] });
+            this.sel = this.masks().length - 1;
+            this.mode = null;
+            this.showMask = true;
+            this.el('adj-mask-show').checked = true;
+            this.sync();
+            ed.changed();
+            app.showToast(type === 'sky' ? 'Sky found: set its sliders, or paint and erase to touch it up' : 'Subject found: set its sliders, or paint and erase to touch it up', 2600, null, null, { kind: 'adjust' });
+        } catch (e) {
+            console.error('Finding a mask failed:', e);
+            app.showToast('Couldn\'t look for it: ' + e.message, 3000);
+        } finally {
+            this._finding = false;
+            app.endTask('select');
+        }
+    },
+
+    // Painted with the brush: a brush mask, or a found one touched up
+    paintable(m) {
+        return !!m && (m.type === 'brush' || m.type === 'sky' || m.type === 'subject');
     },
 
     remove(i) {
@@ -149,7 +193,7 @@ const AdjustMasks = {
         });
         const m = this.current();
         this.el('adj-mask-edit').classList.toggle('hidden', !m);
-        this.el('adj-brush-tools-box').classList.toggle('hidden', !(m && m.type === 'brush'));
+        this.el('adj-brush-tools-box').classList.toggle('hidden', !this.paintable(m));
         this.el('adj-radial-tools').classList.toggle('hidden', !(m && m.type === 'radial'));
         if (m) this.el('adj-mask-invert').checked = !!m.invert;
         this.el('adj-brush-paint').setAttribute('aria-pressed', String(this.mode !== 'erase'));
@@ -157,10 +201,11 @@ const AdjustMasks = {
         const hint = this.el('adj-mask-hint');
         hint.textContent = this.mode === 'linear' ? 'Drag across the photo: full where you start, none where you stop'
             : this.mode === 'radial' ? 'Drag out from the middle of what to change'
+            : m && m.type !== 'brush' && this.paintable(m) ? (this.mode === 'erase' ? 'Paint over the mask to take some off' : `Found in the photo: paint to add to the ${m.type}, or Erase to take some off`)
             : m && m.type === 'brush' ? (this.mode === 'erase' ? 'Paint over the mask to take it off' : 'Paint over what to change')
             : m ? 'Drag the handles on the photo' : 'Add a mask to change part of the photo';
         this.cv.classList.toggle('hidden', !this.active());
-        this.cv.style.cursor = this.mode === 'linear' || this.mode === 'radial' ? 'crosshair' : m && m.type === 'brush' ? 'none' : 'default';
+        this.cv.style.cursor = this.mode === 'linear' || this.mode === 'radial' ? 'crosshair' : this.paintable(m) ? 'none' : 'default';
         this.place();
         this.draw();
     },
@@ -244,8 +289,9 @@ const AdjustMasks = {
             this.mode = null;
             return;
         }
-        if (m && m.type === 'brush') {
+        if (this.paintable(m)) {
             ed.pushHistory();
+            if (!m.brush) m.brush = [];
             m.brush.push({ size: this.brush.size / 100, feather: this.brush.feather / 100, flow: this.brush.flow / 100, erase: this.mode === 'erase', pts: [p.u, p.v] });
             this.drag = { kind: 'paint', last: p };
             ed.changed();
@@ -395,7 +441,7 @@ const AdjustMasks = {
             ctx.stroke();
         }
         // The brush, where it would paint
-        if (m && m.type === 'brush' && this.hover) {
+        if (this.paintable(m) && this.hover) {
             const r = this.brush.size / 100 / 2 * this.heightPx();
             ctx.beginPath();
             ctx.arc(this.hover.x, this.hover.y, r, 0, Math.PI * 2);

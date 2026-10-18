@@ -244,6 +244,12 @@
         },
         // Where a folder handle is on disk (null: not known)
         folderPath,
+        // A folder handle for a path, with permission to edit it
+        async folderHandle(path) {
+            const ok = (await answer('exists', { paths: [path] })).exists[0];
+            if (!ok) throw new Error('That folder isn\'t there');
+            return handleFor(path);
+        },
         // Open a folder by its path (a project from the stored list)
         async openPath(path) {
             const a = await whenReady();

@@ -260,18 +260,38 @@ const CropEditor = {
             w = src.w;
             h = src.h;
         } else {
-            const data = await file.handle.getFile();
+            const data = await app.readImage(file);
             preview = await createImageBitmap(data); // EXIF orientation applied by default
             w = preview.width;
             h = preview.height;
         }
-        const data = await file.handle.getFile();
+        const data = await app.readImage(file);
         const dpi = ImageMeta.readDpi(new Uint8Array(await data.slice(0, 256 * 1024).arrayBuffer()));
         // Adjusted (adjust.js): shown with its adjustments
-        const adj = Edits.get(file) && Edits.get(file).adj;
+        const shownEdit = Edits.get(file);
+        const adj = shownEdit && shownEdit.adj;
+        // Spots (retouch.js), then the adjustments, then paint (paint.js)
+        if (shownEdit && Retouch.needed(shownEdit) && current()) {
+            const c = await Retouch.retouched(preview, shownEdit);
+            const bmp = await createImageBitmap(c);
+            c.width = c.height = 0;
+            preview.close();
+            preview = bmp;
+        }
         if (adj && current()) {
             const shown = await Develop.applyBitmap(preview, adj, { scale: w ? preview.width / w : 1 });
             if (shown !== preview) { preview.close(); preview = shown; }
+        }
+        if (Paint.has(shownEdit) && current()) {
+            const c = document.createElement('canvas');
+            c.width = preview.width;
+            c.height = preview.height;
+            c.getContext('2d').drawImage(preview, 0, 0);
+            await Paint.onto(c, shownEdit, null);
+            const bmp = await createImageBitmap(c);
+            c.width = c.height = 0;
+            preview.close();
+            preview = bmp;
         }
         if (!current()) { preview.close(); return; }
         if (this.preview && this.preview !== preview && this.preview.close) this.preview.close();
@@ -743,10 +763,15 @@ const CropEditor = {
         try {
             const ed = this.fromSnapshot(bmp.width, bmp.height, snap);
             const adj = snap.adj && Develop.active(snap.adj);
-            if (ed.isIdentity() && !ed.q && !adj) return null;
-            const canvas = ed.drawOutput(bmp);
+            if (ed.isIdentity() && !ed.q && !adj && !Paint.has(snap)) return null;
+            // Spots (retouch.js) on the whole photo, then the crop
+            const base = await Retouch.retouched(bmp, snap);
+            const canvas = ed.drawOutput(base);
+            if (base !== bmp) base.width = base.height = 0;
             // Its adjustments (adjust.js), after the crop
             if (adj) Develop.applyCanvas(canvas, snap.adj, { map: Develop.cropMap(ed, bmp.width, bmp.height) });
+            // And paint over it all (paint.js)
+            await Paint.onto(canvas, snap, ed);
             return canvas;
         } finally {
             bmp.close();

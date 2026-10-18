@@ -215,13 +215,13 @@ const waitForPost = (page, type) => page.waitForFunction(
                 else if (m.type === 'places') reply({ drives: [{ path: 'C:\\', name: 'Local disk (C:)', kind: 'disk' }], home: [] });
                 else if (m.type === 'listDir') {
                     let n = 0;
-                    for await (const h of dir.values()) if (h.kind === 'file' && /\.jpe?g$/i.test(h.name)) n++;
+                    for await (const h of dir.values()) if (h.kind === 'file' && app.isImage(h.name)) n++; // as the app counts: RAW too
                     reply({ path: m.path, name: 'Jones', parent: 'C:\\', folders: [], photos: n, more: false });
                 }
                 else if (m.type === 'listProjects') reply({ projects: [{ name: 'Jones', path: 'C:\\Jones', modified: Date.now() }] });
                 else if (m.type === 'countPhotos') {
                     let n = 0;
-                    for await (const h of dir.values()) if (h.kind === 'file' && /\.jpe?g$/i.test(h.name)) n++;
+                    for await (const h of dir.values()) if (h.kind === 'file' && app.isImage(h.name)) n++; // as the app counts: RAW too
                     reply({ counts: m.paths.map(() => n), limit: 1000 });
                 }
                 else if (m.type === 'quickAccess') reply({ folders: [] });
@@ -258,6 +258,17 @@ const waitForPost = (page, type) => page.waitForFunction(
                     reply({ to: m.dest + m.path.split('\\').pop() });
                 }
                 else if (m.type === 'cancelCopy') window.__cancelCopy = m.copy;
+                else if (m.type === 'folderHandle') {
+                    if (m.path === 'E:\\Jones') reply({ path: m.path }, [await (await navigator.storage.getDirectory()).getDirectoryHandle('on-e', { create: true })]);
+                    else reply({ error: 'That folder isn\'t there' });
+                }
+                else if (m.type === 'burners') reply({ burners: [{ id: 'b1', name: 'DVD burner', drive: 'F:\\', media: 'DVD-R', blank: true, free: 4.7e9, canWrite: true }] });
+                else if (m.type === 'burn') {
+                    // The app's side: how far it's got, then done
+                    window.__burnAsked = m;
+                    window.__deliver({ type: 'burnProgress', burn: m.id, done: 30, total: 100 });
+                    reply({ ok: true, bytes: 100 });
+                }
                 else if (m.type === 'scanners') reply({ devices: [{ id: 'jeditor-test-scanner', name: 'jEditor test scanner', driver: 'test' }], problems: [] });
                 else if (m.type === 'cameras') reply({ cameras: [{ id: 'jeditor-test-camera', name: 'jEditor test camera', ready: true, note: null }] });
                 else if (m.type === 'tether') {
@@ -341,6 +352,22 @@ const waitForPost = (page, type) => page.waitForFunction(
             return { to: r.to, seen: seen.join(), cancelled: window.__cancelCopy === job.copyId };
         });
         check('copyFolder: progress as it goes, then where the copy went; cancelCopy is passed on', copy.to === 'E:\\Jones' && copy.seen === '5/10' && copy.cancelled, JSON.stringify(copy));
+        // A folder handle for a path; burners; a burn with how far it's got
+        const more = await page.evaluate(async () => {
+            const out = {};
+            const n = window.JEditorNative;
+            out.handle = (await n.folderHandle('E:\\Jones')).name;
+            out.missing = await n.folderHandle('E:\\Nope').then(() => 'found', e => e.message);
+            out.burners = (await n.burners()).map(b => b.name).join();
+            const seen = [];
+            out.burnt = await n.burn('b1', 'C:\\Jones', 'Jones', (d, t) => seen.push(d + '/' + t), false);
+            out.seen = seen.join();
+            out.asked = window.__burnAsked && [window.__burnAsked.burner, window.__burnAsked.path, window.__burnAsked.label, window.__burnAsked.eject].join();
+            out.feature = Host.has('burn');
+            return out;
+        });
+        check('folderHandle: a handle for a path, an error for one that isn\'t there; burners and burn (progress, then done)',
+            more.handle === 'on-e' && /isn't there/.test(more.missing) && more.burners === 'DVD burner' && more.burnt.bytes === 100 && more.seen === '30/100' && more.asked === 'b1,C:\\Jones,Jones,false' && more.feature, JSON.stringify(more));
         const scanned = await page.evaluate(() => ({ scan: window.__scan, check: (window.__checks || []).find(c => c.step === 'scanned') }));
         const teth = await page.evaluate(() => ({ req: window.__tether, check: (window.__checks || []).find(c => c.step === 'tethered') }));
         check('smoke test: tethers the test camera into the order, takes a shot (RAW + JPEG) and disconnects', teth.req && teth.req.camera === 'jeditor-test-camera' && teth.req.folder === 'C:\\Jones' && teth.req.prefix === 'shot_' &&

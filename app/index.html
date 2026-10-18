@@ -21,6 +21,9 @@
     <script src="crop-auto.js"></script>
     <script src="crop.js"></script>
     <script src="crop-log.js"></script>
+    <script src="raw.js"></script>
+    <script src="retouch.js"></script>
+    <script src="select.js"></script>
     <script src="develop.js"></script>
     <script src="dupes.js"></script>
     <script src="rename.js"></script>
@@ -29,6 +32,9 @@
     <script src="edits.js"></script>
     <script src="adjust.js"></script>
     <script src="adjust-masks.js"></script>
+    <script src="adjust-spots.js"></script>
+    <script src="paint.js"></script>
+    <script src="paint-editor.js"></script>
     <script src="history.js"></script>
     <script src="watch.js"></script>
     <script src="recents.js"></script>
@@ -40,6 +46,8 @@
     <script src="scan.js"></script>
     <script src="camera.js"></script>
     <script src="places.js"></script>
+    <script src="import.js"></script>
+    <script src="disc.js"></script>
     <script src="windows.js"></script>
     <script src="start.js"></script>
     <script src="picked.js"></script>
@@ -146,6 +154,9 @@
                     </button>
                     <button id="btn-adjust" data-hc="adjust" class="tb-btn" title="Adjust: light, color, curves (E)" aria-label="Adjust">
                         <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+                    </button>
+                    <button id="btn-paint" data-hc="paint" class="tb-btn" title="Paint: brushes, shapes, text and layers (B)" aria-label="Paint">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L12 14.8 9.2 12z"/><path d="M9.2 12c-2.5 0-4.2 1.6-4.2 4 0 1.5-.8 2.6-2.4 3.4C4.4 21 6.3 21.5 8 21.5c3 0 5-1.9 4.9-4.6z"/></svg>
                     </button>
                     <button id="btn-history" data-hc="history" class="tb-btn" title="Undo history (H)" aria-label="Undo history" aria-haspopup="dialog" aria-expanded="false">
                         <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
@@ -401,7 +412,7 @@
             <span id="adj-before-tag" class="adj-tag hidden">Before</span>
         </div>
         <div class="adj-body">
-            <div id="adj-stage" class="adj-stage"><canvas id="adj-canvas"></canvas><div id="adj-loupe-box" class="adj-loupe-box hidden" aria-hidden="true"></div><canvas id="adj-overlay" class="adj-overlay hidden"></canvas></div>
+            <div id="adj-stage" class="adj-stage"><canvas id="adj-canvas"></canvas><canvas id="adj-paint" class="adj-paint hidden" aria-hidden="true"></canvas><div id="adj-loupe-box" class="adj-loupe-box hidden" aria-hidden="true"></div><canvas id="adj-overlay" class="adj-overlay hidden"></canvas><canvas id="adj-spot-overlay" class="adj-overlay hidden"></canvas></div>
             <aside id="adj-panel" class="adj-panel" aria-label="Adjustments">
                 <section class="adj-sec adj-hist-box" aria-label="Histogram and levels">
                     <div class="adj-sec-head">
@@ -459,6 +470,10 @@
                         <button class="btn secondary sm" data-add-mask="radial" title="An oval, feathered at its edge: drag out from its middle">Radial</button>
                         <button class="btn secondary sm" data-add-mask="brush" title="Paint the mask on">Brush</button>
                     </div>
+                    <div class="adj-mask-add">
+                        <button class="btn secondary sm" data-add-mask="sky" title="Find the sky in the photo (touch it up with the brush)">Sky</button>
+                        <button class="btn secondary sm" data-add-mask="subject" title="Find the photo's subject (touch it up with the brush)">Subject</button>
+                    </div>
                     <p id="adj-mask-hint" class="adj-hint"></p>
                     <div id="adj-mask-list" class="adj-mask-list"></div>
                     <div id="adj-mask-edit" class="hidden">
@@ -477,6 +492,26 @@
                         <div id="adj-radial-tools" class="adj-rows hidden"></div>
                         <div id="adj-mask-sliders" class="adj-rows"></div>
                     </div>
+                </details>
+                <details id="adj-spots-sec" class="adj-sec">
+                    <summary><span>Spot removal</span><button class="btn ghost sm adj-sec-reset" data-reset="spots">Reset</button></summary>
+                    <div class="adj-tabs adj-brush-mode" role="group" aria-label="Spot tool">
+                        <button id="adj-spot-heal" class="adj-tab" aria-pressed="true" title="Heal: texture from nearby, blended into the colour and brightness round the spot">Heal</button>
+                        <button id="adj-spot-clone" class="adj-tab" aria-pressed="false" title="Clone: copied from nearby exactly">Clone</button>
+                    </div>
+                    <p id="adj-spot-hint" class="adj-hint"></p>
+                    <div id="adj-spot-tools" class="adj-rows"></div>
+                    <div class="adj-mask-opts">
+                        <label class="adj-check"><input type="checkbox" id="adj-spot-show" checked> Show spots</label>
+                        <button id="adj-spot-delete" class="btn ghost sm danger-text" disabled>Delete</button>
+                    </div>
+                    <div class="adj-sub">Dust on scans</div>
+                    <div id="adj-dust-tools" class="adj-rows"></div>
+                    <div class="adj-mask-add">
+                        <button id="adj-dust-find" class="btn secondary sm" title="Put a heal spot on every speck of dust found">Find dust</button>
+                        <button id="adj-dust-clear" class="btn ghost sm" title="Take off the spots Find dust put on" disabled>Clear found</button>
+                    </div>
+                    <p id="adj-spot-count" class="adj-hint"></p>
                 </details>
                 <details id="adj-detail-sec" class="adj-sec">
                     <summary><span>Detail</span><button class="btn ghost sm adj-sec-reset" data-reset="detail">Reset</button></summary>
@@ -506,6 +541,72 @@
                 <span class="crop-group crop-commit">
                     <button id="adj-done-next" class="btn secondary crop-btn" title="Done, then adjust the next photo (Shift+Enter)">Done &amp; next</button>
                     <button id="adj-done" class="btn primary crop-btn" title="Done (Enter)">Done</button>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Paint (paint-editor.js; layers kept by paint.js) -->
+    <div id="paint-editor" class="paint-editor mode-screen hidden">
+        <div class="mode-head paint-head">
+            <span id="paint-file" class="mode-title"></span>
+            <span id="paint-dims" class="crop-dims"></span>
+        </div>
+        <div id="paint-options" class="paint-options" role="toolbar" aria-label="Tool options"></div>
+        <div class="paint-body">
+            <div id="paint-tools" class="paint-tools" role="toolbar" aria-label="Tools" aria-orientation="vertical"></div>
+            <div id="paint-stage" class="paint-stage">
+                <canvas id="paint-canvas"></canvas>
+                <textarea id="paint-text" class="paint-text hidden" spellcheck="false" aria-label="Text"></textarea>
+            </div>
+            <aside class="paint-panel" aria-label="Colours and layers">
+                <section class="paint-sec">
+                    <div class="paint-sec-head"><span>Colour</span></div>
+                    <div class="paint-colors">
+                        <label class="paint-swatch paint-fg" title="Foreground colour (the brush, shapes, text, fill)"><input type="color" id="paint-fg" value="#e5484d" aria-label="Foreground colour"></label>
+                        <label class="paint-swatch paint-bg" title="Background colour (gradients, shape fills)"><input type="color" id="paint-bg" value="#ffffff" aria-label="Background colour"></label>
+                        <button id="paint-swap" class="btn ghost sm" title="Swap the colours (X)">Swap</button>
+                        <button id="paint-default" class="btn ghost sm" title="Black and white (D)">Reset</button>
+                    </div>
+                    <div id="paint-palette" class="paint-palette" role="group" aria-label="Colours"></div>
+                </section>
+                <section class="paint-sec paint-layers-sec">
+                    <div class="paint-sec-head">
+                        <span>Layers</span>
+                        <span class="paint-layer-acts">
+                            <button id="paint-layer-add" class="btn ghost sm icon" title="New layer (Ctrl+Shift+N)" aria-label="New layer"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+                            <button id="paint-layer-dup" class="btn ghost sm icon" title="Duplicate the layer (Ctrl+J)" aria-label="Duplicate the layer"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/></svg></button>
+                            <button id="paint-layer-up" class="btn ghost sm icon" title="Move the layer up" aria-label="Move the layer up"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></button>
+                            <button id="paint-layer-down" class="btn ghost sm icon" title="Move the layer down" aria-label="Move the layer down"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+                            <button id="paint-layer-merge" class="btn ghost sm icon" title="Merge into the layer below (Ctrl+E)" aria-label="Merge down"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></button>
+                            <button id="paint-layer-delete" class="btn ghost sm icon" title="Delete the layer" aria-label="Delete the layer"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
+                        </span>
+                    </div>
+                    <div id="paint-layer-list" class="paint-layer-list" role="listbox" aria-label="Layers"></div>
+                    <div class="paint-layer-props">
+                        <label class="paint-prop">Blend
+                            <select id="paint-layer-blend" class="field"></select>
+                        </label>
+                        <div id="paint-layer-opacity" class="adj-rows"></div>
+                    </div>
+                </section>
+            </aside>
+        </div>
+        <div class="crop-toolbar paint-toolbar">
+            <div class="crop-row">
+                <button id="paint-cancel" class="btn secondary crop-btn" title="Cancel (Esc)">Cancel</button>
+                <span class="crop-group">
+                    <button id="paint-undo" class="btn ghost crop-btn" title="Undo (Ctrl+Z)">Undo</button>
+                    <button id="paint-redo" class="btn ghost crop-btn" title="Redo (Ctrl+Shift+Z)">Redo</button>
+                </span>
+                <span class="crop-sep" aria-hidden="true"></span>
+                <span class="crop-group">
+                    <button id="paint-zoom-fit" class="btn ghost crop-btn" title="Fit the photo (0)">Fit</button>
+                    <button id="paint-zoom-1" class="btn ghost crop-btn" title="Actual pixels (1)">100%</button>
+                </span>
+                <span class="crop-spacer" aria-hidden="true"></span>
+                <span class="crop-group crop-commit">
+                    <button id="paint-done" class="btn primary crop-btn" title="Done (Enter)">Done</button>
                 </span>
             </div>
         </div>
@@ -900,6 +1001,36 @@
                 <span class="dialog-actions rename-actions">
                     <button id="op-folder" class="btn secondary">Just this folder</button>
                     <button id="op-order" class="btn primary">Open the project</button>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import from a camera's card (import.js) -->
+    <div id="import-panel" class="dialog-overlay hidden">
+        <div class="dialog prompt-card import-card" role="dialog" aria-modal="true" aria-labelledby="import-title">
+            <div class="dialog-head">
+                <h2 id="import-title" class="dialog-title">Import</h2>
+                <button id="import-close" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+            <div class="dialog-body import-body">
+                <p id="import-summary" class="import-summary"></p>
+                <div class="import-to" role="radiogroup" aria-label="Where to">
+                    <label id="import-to-new-row"><input type="radio" name="import-to" id="import-to-new" value="new"> A new project: <input id="import-name" class="field" type="text" spellcheck="false" aria-label="The new project's name"></label>
+                    <label><input type="radio" name="import-to" id="import-to-here" value="here"> <span id="import-to-here-label">Into the open project</span></label>
+                    <label><input type="radio" name="import-to" id="import-to-pick" value="pick"> Into a folder I choose…</label>
+                </div>
+                <label class="import-opt"><input type="checkbox" id="import-new-only" checked> Only photos not imported before</label>
+                <label class="import-opt"><input type="checkbox" id="import-by-date"> In folders by the day they were taken</label>
+                <label class="import-opt" id="import-eject-row"><input type="checkbox" id="import-eject" checked> Eject the card when done</label>
+            </div>
+            <div class="dialog-foot">
+                <span></span>
+                <span class="dialog-actions">
+                    <button id="import-cancel" class="btn secondary">Cancel</button>
+                    <button id="import-go" class="btn primary">Import</button>
                 </span>
             </div>
         </div>

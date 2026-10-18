@@ -323,6 +323,17 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             return job;
         }, { many, backup });
         check('Stop ends a copy and leaves nothing half done', stopped.cancelled === true && !fs.existsSync(path.join(backup, 'Many')), JSON.stringify(stopped) + ' ' + fs.readdirSync(backup).join());
+        // A folder handle for a path: written into (a project's data put with its copy)
+        const handled = await page.evaluate(async (p) => {
+            const dir = await JEditorNative.folderHandle(p.to);
+            const jd = await dir.getDirectoryHandle('.jeditor', { create: true });
+            const w = await (await jd.getFileHandle('flags.json', { create: true })).createWritable();
+            await w.write('{"flags":{}}');
+            await w.close();
+            const missing = await JEditorNative.folderHandle(p.to + '-nope').then(() => 'found', e => e.message);
+            return { name: dir.name, missing };
+        }, { to: copied.a.to });
+        check('folderHandle: a handle for a folder by its path, to write into; none for one that isn\'t there', handled.name === 'Jones' && fs.existsSync(path.join(copied.a.to, '.jeditor', 'flags.json')) && /isn't there/.test(handled.missing), JSON.stringify(handled));
 
         // Eject: gone from the list
         const ejected = await page.evaluate(async (p) => {

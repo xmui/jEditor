@@ -142,6 +142,7 @@ const app = {
         // Crop Controls
         if (this.elements.btnCrop) this.elements.btnCrop.addEventListener('click', () => this.enterCrop());
         document.getElementById('btn-adjust').addEventListener('click', () => this.enterAdjust());
+        document.getElementById('btn-paint').addEventListener('click', () => this.enterPaint());
         // Adjust is an experiment for now (experiments.js): its button and
         // menus show when it's on
         addEventListener('jeditor-experiments', () => this.applyExperiments());
@@ -223,6 +224,9 @@ const app = {
         Permissions.init(this);
         Flags.init(this);
         Edits.init(this);
+        Paint.init(this);
+        Import.init(this);
+        Disc.init(this);
         Fit.init();
         History.init(this);
         Watch.init(this);
@@ -389,6 +393,8 @@ const app = {
         view: 'Grid / single view',
         refresh: 'Rescan folder',
         crop: 'Crop and straighten',
+        adjust: 'Adjust',
+        paint: 'Paint',
         history: 'Undo history',
         fit: 'Thumbnail fit',
         strip: 'Film strip',
@@ -410,9 +416,9 @@ const app = {
 
     defaultUiPrefs() {
         return {
-            order: ['scan', 'camera', 'info', 'view', 'refresh', 'crop', 'adjust', 'history', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'whatsnew', 'customize'],
+            order: ['scan', 'camera', 'info', 'view', 'refresh', 'crop', 'adjust', 'paint', 'history', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'whatsnew', 'customize'],
             placement: { // 'main' | 'more' | 'hidden'
-                scan: 'main', camera: 'main', info: 'main', view: 'main', refresh: 'main', crop: 'main', adjust: 'main', history: 'main',
+                scan: 'main', camera: 'main', info: 'main', view: 'main', refresh: 'main', crop: 'main', adjust: 'main', paint: 'main', history: 'main',
                 fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', keys: 'more', whatsnew: 'more', customize: 'more'
             },
             vertical: false,
@@ -858,6 +864,7 @@ const app = {
         this.uiPrefs.order.forEach(key => {
             if ((key === 'scan' || key === 'camera') && !Host.has(key)) return; // only where the app can
             if (key === 'adjust' && !this.adjustOn()) return; // an experiment, off
+            if (key === 'paint' && !this.paintOn()) return;
             const li = document.createElement('li');
             li.draggable = true;
             li.dataset.key = key;
@@ -1622,7 +1629,17 @@ const app = {
     },
 
     isImage(name) {
-        return /\.(jpg|jpeg|png|webp|gif)$/i.test(name);
+        return /\.(jpg|jpeg|png|webp|gif)$/i.test(name) || Raw.is(name);
+    },
+
+    // The photo's bytes to decode: the file, or a RAW's own JPEG (raw.js).
+    // Never for writing: a RAW is never written
+    async readImage(file) {
+        const data = await file.handle.getFile();
+        if (!Raw.is(file.name)) return data;
+        const jpeg = await Raw.preview(data);
+        if (!jpeg) throw new Error('no preview found in this RAW file');
+        return jpeg;
     },
 
     // Position of the current photo among the ones being shown (one
@@ -1993,7 +2010,7 @@ const app = {
             } else if (this._displayFile === file && this._displayKind === 'full' && img.naturalWidth > 0) {
                 dims = `${img.naturalWidth} × ${img.naturalHeight}`;
             } else {
-                const bmp = await createImageBitmap(await file.handle.getFile());
+                const bmp = await createImageBitmap(await this.readImage(file));
                 dims = `${bmp.width} × ${bmp.height}`;
                 bmp.close();
             }
@@ -2772,7 +2789,7 @@ const app = {
         // lands while we decode shows up in the lag delta below.
         const savedAtRead = fileEntry._savedRotationTotal || 0;
         const editGen = fileEntry._editGen || 0;
-        const fileData = await fileEntry.handle.getFile();
+        const fileData = await this.readImage(fileEntry);
         if (!fileData.size) throw new Error('empty file (still being written?)');
 
         let blob;
@@ -3175,7 +3192,7 @@ const app = {
             // instead of making a new one from the full scan
             if (file._cacheFrom) await this.carryCache(file).catch(() => { });
             const savedAtRead = file._savedRotationTotal || 0;
-            const data = await file.handle.getFile();
+            const data = await this.readImage(file);
             const edge = this.previewEdge();
             const key = `p|${file.relPath || file.name}|${data.size}|${data.lastModified}|${edge}`;
             if (file._preview && file._preview.key === key) return file._preview;
@@ -3227,15 +3244,20 @@ const app = {
             // Its size in the photo's own pixels (the preview is smaller)
             const scale = Math.max(raw.w || bmp.width, raw.h || bmp.height) / Math.max(bmp.width, bmp.height);
             let canvas;
-            let map;
+            let map, ed;
             try {
-                const ed = CropEditor.fromSnapshot(bmp.width, bmp.height, edit);
-                canvas = ed.drawOutput(bmp);
+                // Spots first (retouch.js): on the whole photo
+                const base = await Retouch.retouched(bmp, edit);
+                ed = CropEditor.fromSnapshot(bmp.width, bmp.height, edit);
+                canvas = ed.drawOutput(base);
                 map = Develop.cropMap(ed, bmp.width, bmp.height);
+                if (base !== bmp) base.width = base.height = 0;
             } finally {
                 bmp.close();
             }
             if (edit.adj) Develop.applyCanvas(canvas, edit.adj, { scale: 1 / scale, map });
+            // And paint over it all (paint.js)
+            await Paint.onto(canvas, edit, ed);
             const alpha = /\.(png|webp|gif)$/i.test(file.name);
             const out = await new Promise(r => canvas.toBlob(r, alpha ? 'image/png' : 'image/jpeg', 0.92));
             const w = Math.round(canvas.width * scale), h = Math.round(canvas.height * scale);
@@ -3287,7 +3309,7 @@ const app = {
         if (!data) {
             while (file.isBusy) await new Promise(r => setTimeout(r, 30));
             savedAtRead = file._savedRotationTotal || 0;
-            data = await file.handle.getFile();
+            data = await this.readImage(file);
         }
         const version = `${data.size}|${data.lastModified}`;
         if (!file.fullImageUrl || file._fullVersion !== version) {
@@ -3809,6 +3831,7 @@ const app = {
         ['edit.rotate180', 'global', 'Edit', 'Rotate 180° (whole selection in grid)', ['\\']],
         ['edit.crop', 'global', 'Edit', 'Crop & straighten', ['C']],
         ['edit.adjust', 'global', 'Edit', 'Adjust: light, color, curves', ['E']],
+        ['edit.paint', 'global', 'Edit', 'Paint: brushes, shapes, text and layers', ['B']],
         ['edit.copyAdjust', 'global', 'Edit', 'Copy the photo\'s adjustments', ['Ctrl+Shift+C']],
         ['edit.pasteAdjust', 'global', 'Edit', 'Paste adjustments (onto the selection in grid)', ['Ctrl+Shift+V']],
         ['edit.rename', 'global', 'Edit', 'Rename (the selection in grid view)', ['F2']],
@@ -3843,6 +3866,7 @@ const app = {
         ['view.fullscreen', 'global', 'View', 'Full screen', ['F']],
         ['view.slideshow', 'global', 'View', 'Slideshow', []],
         ['app.dupes', 'global', 'App', 'Find duplicates (WIP)', ['D']],
+        ['app.import', 'global', 'App', 'Import from a camera or card…', ['Ctrl+I']],
         ['app.refresh', 'global', 'App', 'Rescan folder', ['R']],
         ['app.search', 'global', 'App', 'Search photos', ['Ctrl+F', '/']],
         ['app.shortcuts', 'global', 'App', 'Keyboard shortcuts', ['?']],
@@ -3879,6 +3903,40 @@ const app = {
         ['adjust.paste', 'adjust', 'Adjust', 'Paste adjustments', ['Ctrl+Shift+V']],
         ['adjust.undo', 'adjust', 'Adjust', 'Undo', ['Ctrl+Z']],
         ['adjust.redo', 'adjust', 'Adjust', 'Redo', ['Ctrl+Shift+Z', 'Ctrl+Y']],
+        ['paint.done', 'paint', 'Paint', 'Done (or put down what\'s being moved)', ['Enter']],
+        ['paint.cancel', 'paint', 'Paint', 'Cancel (or put back what\'s being moved)', ['Escape']],
+        ['paint.undo', 'paint', 'Paint', 'Undo', ['Ctrl+Z']],
+        ['paint.redo', 'paint', 'Paint', 'Redo', ['Ctrl+Shift+Z', 'Ctrl+Y']],
+        ['paint.move', 'paint', 'Paint', 'Move', ['V']],
+        ['paint.rectSelect', 'paint', 'Paint', 'Rectangle select', ['M']],
+        ['paint.lasso', 'paint', 'Paint', 'Lasso', ['L']],
+        ['paint.wand', 'paint', 'Paint', 'Magic wand', ['W']],
+        ['paint.brush', 'paint', 'Paint', 'Brush', ['B']],
+        ['paint.pencil', 'paint', 'Paint', 'Pencil', ['N']],
+        ['paint.eraser', 'paint', 'Paint', 'Eraser', ['E']],
+        ['paint.fill', 'paint', 'Paint', 'Fill', ['G']],
+        ['paint.line', 'paint', 'Paint', 'Line', ['U']],
+        ['paint.rect', 'paint', 'Paint', 'Rectangle', ['R']],
+        ['paint.ellipse', 'paint', 'Paint', 'Ellipse', ['O']],
+        ['paint.text', 'paint', 'Paint', 'Text', ['T']],
+        ['paint.picker', 'paint', 'Paint', 'Colour picker', ['I']],
+        ['paint.hand', 'paint', 'Paint', 'Hand', ['H']],
+        ['paint.smaller', 'paint', 'Paint', 'Brush smaller', ['[']],
+        ['paint.bigger', 'paint', 'Paint', 'Brush bigger', [']']],
+        ['paint.swap', 'paint', 'Paint', 'Swap the colours', ['X']],
+        ['paint.colours', 'paint', 'Paint', 'Black and white', ['D']],
+        ['paint.selectAll', 'paint', 'Paint', 'Select all', ['Ctrl+A']],
+        ['paint.deselect', 'paint', 'Paint', 'Select nothing', ['Ctrl+D']],
+        ['paint.clear', 'paint', 'Paint', 'Delete what\'s selected', ['Delete', 'Backspace']],
+        ['paint.copy', 'paint', 'Paint', 'Copy what\'s selected', ['Ctrl+C']],
+        ['paint.paste', 'paint', 'Paint', 'Paste', ['Ctrl+V']],
+        ['paint.newLayer', 'paint', 'Paint', 'New layer', ['Ctrl+Shift+N']],
+        ['paint.duplicate', 'paint', 'Paint', 'Duplicate the layer', ['Ctrl+J']],
+        ['paint.merge', 'paint', 'Paint', 'Merge the layer down', ['Ctrl+E']],
+        ['paint.fit', 'paint', 'Paint', 'Fit the photo', ['0']],
+        ['paint.actual', 'paint', 'Paint', 'Actual pixels', ['1']],
+        ['paint.zoomIn', 'paint', 'Paint', 'Zoom in', ['+', '=']],
+        ['paint.zoomOut', 'paint', 'Paint', 'Zoom out', ['-']],
         ['dupes.next', 'dupes', 'Duplicates (WIP)', 'Next group', ['ArrowRight']],
         ['dupes.prev', 'dupes', 'Duplicates (WIP)', 'Previous group', ['ArrowLeft']],
         ['dupes.keepBest', 'dupes', 'Duplicates (WIP)', 'Keep suggested, mark the rest', ['K']],
@@ -3946,6 +4004,7 @@ const app = {
             'edit.rotate180': () => grid() ? this.rotateBulk(180) : this.rotateCurrent(180),
             'edit.crop': () => this.enterCrop(),
             'edit.adjust': () => this.adjustOn() ? this.enterAdjust() : false,
+            'edit.paint': () => this.paintOn() ? this.enterPaint() : false,
             'edit.copyAdjust': () => this.adjustOn() ? this.copyAdjust() : false,
             'edit.pasteAdjust': () => this.adjustOn() ? this.pasteAdjust(grid() && this.selection.size ? [...this.selection] : [this.currentFile]) : false,
             'edit.rename': () => this.openRename(grid() && this.selection.size ? [...this.selection] : [this.currentFile]),
@@ -3994,6 +4053,7 @@ const app = {
             'view.fullscreen': () => this.toggleFullscreen(),
             'view.slideshow': () => this.startSlideshow(),
             'app.dupes': () => this.openDupes(),
+            'app.import': () => Import.open(),
             'app.refresh': () => this.refreshFolder(),
             'app.search': () => Flags.focusSearch(),
             'app.shortcuts': () => this.toggleShortcutsPanel(),
@@ -4030,6 +4090,40 @@ const app = {
             'adjust.paste': () => Adjust.paste(),
             'adjust.undo': () => { if (!Adjust.undo()) this.showToast('Nothing to undo', 1200); },
             'adjust.redo': () => { if (!Adjust.redo()) this.showToast('Nothing to redo', 1200); },
+            'paint.done': () => { if (PaintEditor.float) PaintEditor.commitFloat(); else this.savePaint(); },
+            'paint.cancel': () => { if (PaintEditor.float) PaintEditor.cancelFloat(); else this.cancelPaint(); },
+            'paint.undo': () => { if (!PaintEditor.undo()) this.showToast('Nothing to undo', 1200); },
+            'paint.redo': () => { if (!PaintEditor.redo()) this.showToast('Nothing to redo', 1200); },
+            'paint.move': () => PaintEditor.setTool('move'),
+            'paint.rectSelect': () => PaintEditor.setTool(PaintEditor.tool === 'rect-select' ? 'ellipse-select' : 'rect-select'),
+            'paint.lasso': () => PaintEditor.setTool('lasso'),
+            'paint.wand': () => PaintEditor.setTool('wand'),
+            'paint.brush': () => PaintEditor.setTool('brush'),
+            'paint.pencil': () => PaintEditor.setTool('pencil'),
+            'paint.eraser': () => PaintEditor.setTool('eraser'),
+            'paint.fill': () => PaintEditor.setTool(PaintEditor.tool === 'fill' ? 'gradient' : 'fill'),
+            'paint.line': () => PaintEditor.setTool('line'),
+            'paint.rect': () => PaintEditor.setTool('rect'),
+            'paint.ellipse': () => PaintEditor.setTool('ellipse'),
+            'paint.text': () => PaintEditor.setTool('text'),
+            'paint.picker': () => PaintEditor.setTool('picker'),
+            'paint.hand': () => PaintEditor.setTool('hand'),
+            'paint.smaller': () => { PaintEditor.opts.size = Math.max(1, Math.round(PaintEditor.opts.size / 1.25)); PaintEditor.buildOptions(); PaintEditor.renderSoon(); },
+            'paint.bigger': () => { PaintEditor.opts.size = Math.min(400, Math.round(PaintEditor.opts.size * 1.25) + 1); PaintEditor.buildOptions(); PaintEditor.renderSoon(); },
+            'paint.swap': () => PaintEditor.swapColours(),
+            'paint.colours': () => PaintEditor.defaultColours(),
+            'paint.selectAll': () => PaintEditor.selectAll(),
+            'paint.deselect': () => PaintEditor.deselect(),
+            'paint.clear': () => PaintEditor.clearSelected(),
+            'paint.copy': () => PaintEditor.copy(),
+            'paint.paste': () => PaintEditor.paste(),
+            'paint.newLayer': () => PaintEditor.addLayer(),
+            'paint.duplicate': () => PaintEditor.duplicateLayer(),
+            'paint.merge': () => PaintEditor.mergeDown(),
+            'paint.fit': () => PaintEditor.fit(),
+            'paint.actual': () => PaintEditor.zoomTo(1),
+            'paint.zoomIn': () => PaintEditor.zoomTo(PaintEditor.view.z * 1.25),
+            'paint.zoomOut': () => PaintEditor.zoomTo(PaintEditor.view.z / 1.25),
             'dupes.next': () => Dupes.step(1),
             'dupes.prev': () => Dupes.step(-1),
             'dupes.keepBest': () => Dupes.keepBest(),
@@ -4192,7 +4286,7 @@ const app = {
     },
 
     buildKeyMaps() {
-        this._keyMaps = { global: new Map(), crop: new Map(), adjust: new Map(), dupes: new Map() };
+        this._keyMaps = { global: new Map(), crop: new Map(), adjust: new Map(), paint: new Map(), dupes: new Map() };
         this.KEY_ACTIONS.forEach(([id, ctx]) => {
             (this.keyBindings[id] || []).forEach(combo => {
                 if (!this._keyMaps[ctx].has(combo)) this._keyMaps[ctx].set(combo, id);
@@ -4292,7 +4386,8 @@ const app = {
             return;
         }
 
-        const context = this.cropState.active ? (this.cropState.tool === 'adjust' ? 'adjust' : 'crop') : (Dupes.isOpen ? 'dupes' : 'global');
+        const tool = this.cropState.tool;
+        const context = this.cropState.active ? (tool === 'adjust' || tool === 'paint' ? tool : 'crop') : (Dupes.isOpen ? 'dupes' : 'global');
         // Duplicates view: 1–9 mark/unmark the photo with that number
         if (context === 'dupes' && /^[1-9]$/.test(combo)) {
             e.preventDefault();
@@ -4307,7 +4402,7 @@ const app = {
         if (!id) return;
         // Only the shortcut list and debug console work from the start screen
         const onStart = this.elements.mainInterface.classList.contains('hidden');
-        if (onStart && context === 'global' && !['app.shortcuts', 'app.debug', 'app.settings'].includes(id)) return;
+        if (onStart && context === 'global' && !['app.shortcuts', 'app.debug', 'app.settings', 'app.import'].includes(id)) return;
         if (context === 'crop' && CropEditor.busy) {
             e.preventDefault(); // saving: the crop being written stays as it is
             return;
@@ -4320,6 +4415,11 @@ const app = {
             e.preventDefault();
             return;
         }
+        if (context === 'paint' && (PaintEditor.busy || (!PaintEditor.ready && id !== 'paint.cancel'))) {
+            e.preventDefault();
+            return;
+        }
+        if (context === 'paint' && e.target && e.target.tagName === 'BUTTON' && (combo === 'Enter' || combo === 'Space')) return;
         // A focused button's own Enter/Space press isn't a shortcut there
         if (context === 'adjust' && e.target && e.target.tagName === 'BUTTON' && (combo === 'Enter' || combo === 'Space')) return;
 
@@ -5932,7 +6032,8 @@ const app = {
             let done = 0, failed = 0;
             for (const f of list) {
                 try {
-                    const data = await f.handle.getFile();
+                    // A RAW: from its own JPEG, written as a JPEG
+                    const data = await this.readImage(f);
                     let out = f._edit ? await this.renderEdited(f, data) : data;
                     if (maxEdge > 0) {
                         const bmp = await createImageBitmap(out);
@@ -5948,7 +6049,7 @@ const app = {
                         bmp.close();
                     }
                     if (!out) throw new Error('encode failed');
-                    const h = await dir.getFileHandle(f.name, { create: true });
+                    const h = await dir.getFileHandle(Raw.is(f.name) ? Raw.jpegName(f.name) : f.name, { create: true });
                     const w = await h.createWritable();
                     await w.write(out);
                     await w.close();
@@ -5975,7 +6076,7 @@ const app = {
         const edit = f._edit;
         const original = new Uint8Array(await data.arrayBuffer());
         const n = edit.n, eq = (a, b) => Math.abs(a - b) < 1e-6;
-        const turnOnly = !edit.adj && !edit.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5);
+        const turnOnly = !edit.adj && !edit.paint && !edit.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5);
         if (turnOnly && /\.jpe?g$/i.test(f.name)) {
             try {
                 const b = this.rotateJpegLossless(original.buffer, edit.q * 90);
@@ -6078,6 +6179,7 @@ const app = {
                     ...(file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
                     ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : [])
                 ] : []),
+                ...(this.paintOn() ? [['Paint…', () => this.enterPaint(file)]] : []),
                 ...(file._edit ? [['Discard edit', () => Edits.discard([file])]] : []),
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
@@ -6103,6 +6205,7 @@ const app = {
                     ...(file && file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
                     ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : [])
                 ] : []),
+                ...(this.paintOn() ? [['Paint…', () => this.enterPaint()]] : []),
                 ...(file && file._edit ? [['Discard edit', () => Edits.discard([file])]] : []),
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
@@ -6261,6 +6364,8 @@ const app = {
         if (typeof Experiments !== 'undefined') Experiments.render();
         const b = document.getElementById('btn-adjust');
         if (b) b.classList.toggle('exp-off', !this.adjustOn());
+        const pb = document.getElementById('btn-paint');
+        if (pb) pb.classList.toggle('exp-off', !this.paintOn());
         if (panel && this.isSettingsOpen()) this.renderCustomizePanel();
         if (panel && typeof Fit !== 'undefined') Fit.run();
     },
@@ -6365,6 +6470,111 @@ const app = {
         }
     },
 
+    // ---- Paint (paint-editor.js; kept by paint.js) ----
+
+    // Settings → Experimental → Paint
+    paintOn() {
+        return typeof Experiments !== 'undefined' && Experiments.on('paint');
+    },
+
+    async enterPaint(file = this.currentFile) {
+        if (!file) return;
+        if (!this.paintOn()) {
+            this.showToast('Paint is in Settings → Experimental');
+            return;
+        }
+        if (!this.ensureWritable()) return;
+        if (this.editsSaving()) return;
+        if (/\.gif$/i.test(file.name)) {
+            this.showToast('GIFs can\'t be painted on (the animation would be lost)');
+            return;
+        }
+        if (this.currentFile !== file || this.viewMode !== 'single') this.openSingle(file);
+        this.cropState.active = true;
+        this.cropState.tool = 'paint';
+        this.stopSlideshow();
+        try {
+            if (file._rotationQueue) await file._rotationQueue;
+            await PaintEditor.open(this, file);
+        } catch (err) {
+            console.error('Paint open failed:', err);
+            this.cancelPaint();
+            this.showToast('Could not open this photo to paint on it');
+        }
+    },
+
+    cancelPaint() {
+        PaintEditor.close();
+        this.cropState.active = false;
+        this.cropState.tool = null;
+    },
+
+    // Done: kept with the photo in a project (the layers in its folder);
+    // painted into the photo otherwise
+    async savePaint() {
+        const ed = PaintEditor;
+        if (!ed.isOpen || !ed.ready || ed.busy) return;
+        const file = ed.file;
+        if (!ed.changedSinceOpen()) {
+            this.cancelPaint();
+            this.showToast('No changes', 1200);
+            return;
+        }
+        ed.busy = true;
+        this.beginTask('paint-save', 'Saving the painting…');
+        try {
+            if (Edits.canKeep()) {
+                const paint = await ed.keep();
+                const base = file._edit || { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } };
+                const edit = { ...base, n: { ...base.n } };
+                if (paint) edit.paint = paint;
+                else delete edit.paint;
+                ed.busy = false;
+                this.cancelPaint();
+                Edits.set([{ file, edit: Edits.isNothing(edit) ? null : edit }], 'painting');
+                this.showToast(paint ? 'Painted — the original is kept; Export writes the result' : 'Painting taken off', 2200, null, null, { kind: 'adjust' });
+                return;
+            }
+            // No project: painted into the photo
+            const layers = ed.layersNow();
+            const { type, quality } = this.getSaveFormat(file.name);
+            const fileData = await file.handle.getFile();
+            const original = new Uint8Array(await fileData.arrayBuffer());
+            const bmp = await createImageBitmap(fileData);
+            const canvas = document.createElement('canvas');
+            canvas.width = bmp.width;
+            canvas.height = bmp.height;
+            canvas.getContext('2d').drawImage(bmp, 0, 0);
+            bmp.close();
+            Paint.composite(canvas, layers, null);
+            const w = canvas.width, h = canvas.height;
+            let blob = await new Promise(r => canvas.toBlob(r, type, quality));
+            canvas.width = canvas.height = 0;
+            if (!blob) throw new Error('encoding failed');
+            blob = await ImageMeta.transplant(original, blob, type, w, h);
+            await this.verifyPermission(file.handle, true);
+            file.isBusy = true;
+            try {
+                const writable = await file.handle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+            } finally {
+                file.isBusy = false;
+            }
+            this.pushUndo({ type: 'bytes', file, blob: new Blob([original], { type: fileData.type }), label: 'painting' });
+            ed.busy = false;
+            this.cancelPaint();
+            await this.afterFileChanged(file);
+            this.showToast('Saved the painting', 1800, null, null, { kind: 'adjust' });
+        } catch (err) {
+            console.error('Saving the painting failed:', err);
+            this.showToast('Couldn\'t save the painting: ' + err.message, 4000);
+        } finally {
+            ed.busy = false;
+            this.endTask('paint-save');
+        }
+    },
+
     copyAdjust(file = this.currentFile) {
         if (!file) return;
         Adjust.remember(file._edit && file._edit.adj);
@@ -6385,7 +6595,9 @@ const app = {
             return;
         }
         if (this.editsSaving()) return;
-        Edits.set(files.map(f => ({ file: f, edit: Edits.withAdj(f._edit || null, clip.adj) })), 'paste');
+        // Each keeps its own spots (they're for its own specks)
+        const own = (f) => f._edit && f._edit.adj && f._edit.adj.spots;
+        Edits.set(files.map(f => ({ file: f, edit: Edits.withAdj(f._edit || null, own(f) ? { ...(clip.adj || {}), spots: own(f) } : clip.adj) })), 'paste');
         const n = files.length;
         this.showToast(`Pasted onto ${n === 1 ? files[0].name : n.toLocaleString() + ' photos'}`, 2000, null, null, { kind: 'adjust' });
     },
@@ -6434,7 +6646,7 @@ const app = {
             this.cancelCrop();
             if (none && !(had && !Edits.wholePhoto(had))) this.showToast('No changes', 1500);
             else {
-                Edits.set([{ file, edit: Edits.withAdj(none ? null : snap, had && had.adj) }], 'crop');
+                Edits.set([{ file, edit: Edits.withAdj(none ? null : snap, had && had.adj, had) }], 'crop');
                 this.showToast(none ? 'Back to the whole photo' : 'Crop kept — saved into the photo when you save the edits', 2200, null, null, { kind: 'crop' });
             }
             goNext();
@@ -6630,7 +6842,7 @@ const app = {
                     try {
                         const ed = await this.detectCrop(f, { feeder, scan });
                         if (!ed) noEdge++;
-                        else items.push({ file: f, edit: Edits.withAdj(ed.isIdentity() && !ed.q ? null : ed.snapshot(), f._edit && f._edit.adj) });
+                        else items.push({ file: f, edit: Edits.withAdj(ed.isIdentity() && !ed.q ? null : ed.snapshot(), f._edit && f._edit.adj, f._edit) });
                     } catch (e) {
                         console.error('Auto crop failed for', f.name, e);
                         failed++;
@@ -6675,7 +6887,7 @@ const app = {
             W = src.w;
             H = src.h;
         } else {
-            bmp = await createImageBitmap(await file.handle.getFile());
+            bmp = await createImageBitmap(await this.readImage(file));
             W = bmp.width;
             H = bmp.height;
         }
@@ -6702,7 +6914,7 @@ const app = {
             W = src.w;
             H = src.h;
         } else {
-            bmp = await createImageBitmap(await file.handle.getFile());
+            bmp = await createImageBitmap(await this.readImage(file));
             W = bmp.width;
             H = bmp.height;
         }
@@ -6800,6 +7012,13 @@ const app = {
         if (!this.dirHandle) {
             this.showToast('Saving edits needs a folder opened with Open folder');
             return false;
+        }
+        // RAW files are never written (raw.js): JPEG copies of them instead
+        const raws = list.filter(f => Raw.is(f.name));
+        if (raws.length) {
+            list = list.filter(f => !Raw.is(f.name));
+            await this.exportCopies(raws);
+            if (!list.length) return true;
         }
         if (this._savingEdits) {
             this.showToast('The edits are already being saved');

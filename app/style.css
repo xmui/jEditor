@@ -3820,7 +3820,8 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     cursor: pointer;
 }
 
-.adj-tab[aria-selected="true"] {
+.adj-tab[aria-selected="true"],
+.adj-tab[aria-pressed="true"] {
     background: var(--bg-surface);
     color: var(--text-1);
     box-shadow: var(--shadow-1);
@@ -3882,6 +3883,10 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     flex: 1;
 }
 
+.adj-mask-add + .adj-mask-add {
+    margin-top: var(--sp-1);
+}
+
 .adj-mask-list {
     display: flex;
     flex-direction: column;
@@ -3933,6 +3938,24 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 .adj-overlay {
     position: absolute;
     touch-action: none;
+}
+
+/* The photo's paint (paint.js), laid over the picture being adjusted */
+.adj-paint {
+    position: absolute;
+    pointer-events: none;
+}
+
+/* Spot removal: a small heading for the dust finder */
+.adj-sub {
+    margin: var(--sp-2) 0 var(--sp-1);
+    color: var(--text-2);
+    font-size: var(--fs-caption);
+    font-weight: 600;
+}
+
+#adj-spot-overlay {
+    cursor: crosshair;
 }
 
 /* Detail: the 1:1 view, and where it is on the photo */
@@ -4184,6 +4207,357 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     #adj-paste {
         display: none;
     }
+}
+
+/* Paint (paint-editor.js): tools down the left, the photo, colours and
+   layers on the right, the chosen tool's options along the top */
+.paint-head {
+    justify-content: center;
+}
+
+.paint-options {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2) var(--sp-4);
+    min-height: 40px;
+    padding: var(--sp-1) var(--sp-4);
+    border-top: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-surface);
+    font-size: var(--fs-small);
+    zoom: var(--ui-scale, 1);
+}
+
+.paint-opt {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    color: var(--text-2);
+    white-space: nowrap;
+}
+
+.paint-opt input[type="range"] {
+    width: 110px;
+}
+
+.paint-opt .paint-num {
+    width: 3.5em;
+    color: var(--text-1);
+    font-variant-numeric: tabular-nums;
+}
+
+.paint-opt select,
+.paint-opt input[type="text"] {
+    height: var(--ctl-sm, 26px);
+}
+
+.paint-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+}
+
+.paint-tools {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--sp-2) var(--sp-1);
+    overflow-y: auto;
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border);
+    zoom: var(--ui-scale, 1);
+}
+
+.paint-tool {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-2);
+    cursor: pointer;
+}
+
+.paint-tool:hover {
+    background: var(--bg-hover);
+    color: var(--text-1);
+}
+
+.paint-tool[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--text-1);
+}
+
+.paint-tool-sep {
+    height: 1px;
+    margin: var(--sp-1) var(--sp-1);
+    background: var(--border-subtle);
+}
+
+.paint-stage {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    background: var(--surround);
+    touch-action: none;
+}
+
+#paint-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.paint-text {
+    position: absolute;
+    min-width: 2em;
+    margin: 0;
+    padding: 0;
+    border: 1px dashed rgb(255 255 255 / 0.8);
+    outline: 1px dashed rgb(0 0 0 / 0.6);
+    background: transparent;
+    resize: none;
+    overflow: hidden;
+    line-height: 1.2;
+    white-space: pre;
+    transform-origin: 0 0;
+}
+
+.paint-panel {
+    width: 260px;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--sp-2) var(--sp-3) var(--sp-4);
+    background: var(--bg-surface);
+    border-left: 1px solid var(--border);
+    zoom: var(--ui-scale, 1);
+}
+
+.paint-sec {
+    padding: var(--sp-2) 0;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.paint-sec-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: var(--ctl-md);
+    font-weight: var(--fw-semibold);
+}
+
+.paint-layer-acts {
+    display: inline-flex;
+    gap: 2px;
+}
+
+.paint-colors {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+
+.paint-swatch {
+    position: relative;
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.paint-swatch input {
+    position: absolute;
+    inset: -8px;
+    width: calc(100% + 16px);
+    height: calc(100% + 16px);
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+}
+
+.paint-bg {
+    width: 26px;
+    height: 26px;
+    margin-left: -14px;
+    margin-top: 18px;
+}
+
+.paint-palette {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 4px;
+    margin-top: var(--sp-2);
+}
+
+.paint-palette button {
+    aspect-ratio: 1;
+    border: 1px solid var(--border);
+    border-radius: var(--r-xs);
+    cursor: pointer;
+}
+
+.paint-layer-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: var(--sp-1) 0 var(--sp-2);
+}
+
+.paint-layer {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-height: 44px;
+    padding: 3px var(--sp-1);
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: var(--bg-raised);
+    cursor: pointer;
+}
+
+.paint-layer[aria-selected="true"] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.paint-layer canvas {
+    flex: none;
+    width: 48px;
+    height: 36px;
+    border-radius: var(--r-xs);
+    background: repeating-conic-gradient(#999 0% 25%, #ddd 0% 50%) 0 0 / 8px 8px;
+    object-fit: contain;
+}
+
+.paint-layer-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.paint-layer.hidden-layer .paint-layer-name,
+.paint-layer.hidden-layer canvas {
+    opacity: 0.45;
+}
+
+.paint-eye {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: var(--r-xs);
+    background: transparent;
+    color: var(--text-2);
+    cursor: pointer;
+}
+
+.paint-prop {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-1);
+    color: var(--text-2);
+}
+
+@media (max-width: 760px) {
+    .paint-head {
+        min-height: 0;
+        padding: var(--sp-2) var(--sp-4);
+    }
+    .paint-options {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding: var(--sp-1) var(--sp-3);
+    }
+    .paint-body {
+        flex-direction: column;
+    }
+    .paint-tools {
+        flex-direction: row;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+    }
+    .paint-tool {
+        flex: none;
+    }
+    .paint-tool-sep {
+        flex: none;
+        width: 1px;
+        height: auto;
+    }
+    .paint-stage {
+        flex: 1 1 60%;
+    }
+    .paint-panel {
+        width: auto;
+        flex: 0 0 auto;
+        max-height: 24vh;
+        padding-top: 0;
+        border-left: 0;
+        border-top: 1px solid var(--border);
+    }
+    .paint-palette {
+        grid-template-columns: repeat(16, 1fr);
+        gap: 2px;
+    }
+    .paint-toolbar {
+        margin: var(--sp-2) var(--sp-3) var(--sp-3);
+    }
+    .paint-toolbar .crop-sep,
+    #paint-zoom-1 {
+        display: none;
+    }
+}
+
+/* Import from a card (import.js) */
+.import-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+
+.import-summary {
+    margin: 0 0 var(--sp-1);
+    color: var(--text-2);
+}
+
+.import-to {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-2) 0;
+    border-top: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.import-to label,
+.import-opt {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    cursor: pointer;
+}
+
+.import-to .field {
+    flex: 1;
+    min-width: 0;
 }
 
 /* Duplicates */
