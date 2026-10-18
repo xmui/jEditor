@@ -5,6 +5,14 @@
 
 const CHANGELOG = [
     {
+        version: '1.43.1', date: '2026-10-18',
+        items: [
+            'Scanning on a sheet feeder that crops each photo itself (the Epson FastFoto, as it comes) no longer has Auto crop cut into the photos afterwards: the scanner has already cropped them, so Auto crop is skipped.',
+            'Auto crop on a feeder scan no longer takes a plain band across a photo (a dark sky, a window frame) for the edge of the print when the photo fills the scan.',
+            'Auto crop\'s test scans: one saved with Auto\'s crop is kept as right again (a scan\'s resolution stopped it), and a crop turned a quarter is no longer counted as moved.'
+        ]
+    },
+    {
         version: '1.43.0', date: '2026-10-18',
         items: [
             'Auto crop\'s test scans now include photos cropped by a batch Auto crop (`Shift+A`, or after scanning) and then opened in the crop editor: fixed, they\'re kept as corrected, on the original scan; saved as they were, as right. Before, only photos Auto was used on in the editor counted.',
