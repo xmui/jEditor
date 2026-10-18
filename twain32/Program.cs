@@ -117,6 +117,7 @@ sealed class Run : ApplicationContext
     int pages;
     bool finished;
     bool ownSettings; // settings from its own window were given back to it
+    bool fileXfer;    // sides come as files the driver writes, not in memory
     public bool Failed { get; private set; }
 
     public Run(Options o)
@@ -232,7 +233,19 @@ sealed class Run : ApplicationContext
             if (epsonPhoto) Set("Epson photo straighten", () => SetCustom(ds, EpsonDeskewType, 1));
         }
 
-        Set("Native transfer", () => caps.ICapXferMech.SetValue(XferMech.Native));
+        // The FastFoto software has the driver write each side to a TIFF
+        // file; the rest come straight from memory
+        if (epsonPhoto)
+        {
+            try
+            {
+                fileXfer = caps.ICapXferMech.SetValue(XferMech.File) == ReturnCode.Success
+                    && caps.ICapImageFileFormat.SetValue(FileFormat.Tiff) == ReturnCode.Success;
+            }
+            catch (Exception) { fileXfer = false; }
+            Out.Log($"Epson photo file transfer (TIFF): {(fileXfer ? "yes" : "no")}");
+        }
+        if (!fileXfer) Set("Native transfer", () => caps.ICapXferMech.SetValue(XferMech.Native));
         Set("No progress window", () => caps.CapIndicators.SetValue(BoolType.False));
         Set("Feeder", () => caps.CapFeederEnabled.SetValue(BoolType.True));
         Set(o.Duplex ? "Both sides" : "One side", () => caps.CapDuplexEnabled.SetValue(o.Duplex ? BoolType.True : BoolType.False));
@@ -318,6 +331,14 @@ sealed class Run : ApplicationContext
         {
             Out.Log("Stopping after this photo");
             e.CancelAll = true;
+            return;
+        }
+        // A file transfer: the driver writes the side to this TIFF
+        if (fileXfer)
+        {
+            var tif = Path.Combine(o.Out, $"side-{pages + 1:0000}.tif");
+            var rc = e.DataSource.DGControl.SetupFileXfer.Set(new TWSetupFileXfer { FileName = tif, Format = FileFormat.Tiff });
+            if (rc != ReturnCode.Success) Out.Log("The scanner wouldn't take a file to write: " + rc);
         }
     }
 
@@ -325,6 +346,15 @@ sealed class Run : ApplicationContext
     {
         try
         {
+            if (e.FileDataPath is { } tif)
+            {
+                // Handed on as a BMP, as a memory transfer is
+                var bmp = Path.Combine(o.Out, $"side-{++pages:0000}.bmp");
+                using (var img = System.Drawing.Image.FromFile(tif)) img.Save(bmp, System.Drawing.Imaging.ImageFormat.Bmp);
+                File.Delete(tif);
+                Out.Line("PAGE " + bmp);
+                return;
+            }
             using var stream = e.GetNativeImageStream();
             if (stream is null) { Out.Log("A side came with no picture"); return; }
             var path = Path.Combine(o.Out, $"side-{++pages:0000}.bmp");
