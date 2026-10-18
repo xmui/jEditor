@@ -418,7 +418,7 @@ async function installUpdate(wc) {
             await installPackage(file);
             fs.rm(path.dirname(file), { recursive: true, force: true }, () => { });
             log('info', `Updated to ${latest.tag} (${PACKAGE})`);
-            setTimeout(() => { app.relaunch(); app.quit(); }, 1200);
+            setTimeout(() => { app.relaunch(); quitNow(); }, 1200);
             return { ok: true, inPlace: true, file, received: got, total };
         } catch (e) {
             // Not installed (the password asked for and not given, say):
@@ -435,7 +435,7 @@ async function installUpdate(wc) {
         fs.chmodSync(part, 0o755);
         fs.renameSync(part, file);
         log('info', 'Updated: ' + file);
-        setTimeout(() => { app.relaunch({ execPath: file, args: process.argv.slice(1) }); app.quit(); }, 1500);
+        setTimeout(() => { app.relaunch({ execPath: file, args: process.argv.slice(1) }); quitNow(); }, 1500);
         return { ok: true, file, received: got, total };
     }
     fs.renameSync(part, file);
@@ -444,7 +444,7 @@ async function installUpdate(wc) {
             await replaceBundle(file, bundle);
             fs.rm(path.dirname(file), { recursive: true, force: true }, () => { });
             log('info', `Updated in place to ${latest.tag}: ${bundle}`);
-            setTimeout(() => { app.relaunch(); app.quit(); }, 1200);
+            setTimeout(() => { app.relaunch(); quitNow(); }, 1200);
             return { ok: true, inPlace: true, file: bundle, received: got, total };
         } catch (e) {
             // Then the way that always works: the .dmg, in Finder
@@ -463,7 +463,7 @@ async function openDmg(file, got, total, why) {
     const err = await shell.openPath(file);
     if (err) throw new Error('Downloaded to ' + file + ', but it didn\'t open: ' + err);
     log('info', 'Update opened: ' + file);
-    setTimeout(() => app.quit(), 1500); // so it can be replaced
+    setTimeout(() => quitNow(), 1500); // so it can be replaced
     // (and how much came: the last updateProgress can arrive after this)
     return { ok: true, inPlace: false, why, file, received: got, total };
 }
@@ -562,12 +562,31 @@ async function handle(rec, type, data) {
             return installUpdate(wc);
         case 'ready':
             rec.ready = true;
+            rec.holdClose = rec.closeHeard = false;
+            rec.closeAsked = 0;
             flush(rec);
             return { ok: true };
         case 'theme':
             nativeTheme.themeSource = data.dark ? 'dark' : 'light';
             // (on a Mac the window stays clear, for its material)
             if (data.background && process.platform !== 'darwin') rec.win.setBackgroundColor(data.background);
+            return { ok: true };
+        case 'holdClose':
+            rec.holdClose = !!data.on;
+            return { ok: true };
+        case 'closeHeard':
+            rec.closeHeard = true;
+            return { ok: true };
+        case 'closeWindow':
+            rec.closeAsked = 0;
+            rec.closeHeard = false;
+            if (!data.ok) {
+                quitting = false;
+                return { ok: true };
+            }
+            rec.closeOk = true;
+            // (Quitting goes on: the other windows may ask too)
+            setImmediate(() => (quitting ? app.quit() : rec.win.close()));
             return { ok: true };
         case 'toolbar':
             // What the native toolbar shows: the page's top row (bridge.js)
@@ -902,7 +921,6 @@ function createWindow() {
         });
         // The title is the toolbar's (the photo), not the page's
         win.on('page-title-updated', (e) => e.preventDefault());
-        win.on('close', () => toolbar.detach(win.getNativeWindowHandle()));
     }
     if (!last && settings.maximized) win.maximize();
     const rec = { win, ready: false, queue: [], state: null, focusedAt: Date.now() };
@@ -924,8 +942,10 @@ function createWindow() {
     win.on('enter-full-screen', fullscreen(true));
     win.on('leave-full-screen', fullscreen(false));
 
-    // The last window closed is where the next first one opens
-    win.on('close', () => {
+    win.on('close', (e) => {
+        if (holdClose(rec)) { e.preventDefault(); return; }
+        if (NATIVE_TOOLBAR) toolbar.detach(win.getNativeWindowHandle());
+        // The last window closed is where the next first one opens
         settings.maximized = win.isMaximized();
         if (!settings.maximized && !win.isFullScreen()) settings.bounds = win.getBounds();
         saveSettings();
@@ -937,6 +957,28 @@ function createWindow() {
 
     win.loadURL(`${ORIGIN}/index.html`);
     return rec;
+}
+
+// Closing while the page holds it (in Adjust or Paint: app/modes.js): the
+// page asks "Keep your changes?" and answers closeWindow. A page that doesn't
+// hear it (closeHeard) in a few seconds doesn't hold the window: closing
+// again closes. Quitting for an update (quitNow) is never held.
+let quitting = false, leaving = false;
+app.on('before-quit', () => { quitting = true; });
+
+function holdClose(rec) {
+    if (!rec.holdClose || rec.closeOk || leaving || opts.smoke || !rec.ready) return false;
+    if (rec.closeAsked && !rec.closeHeard && Date.now() - rec.closeAsked > 5000) return false;
+    if (!rec.closeAsked) {
+        rec.closeAsked = Date.now();
+        rec.win.webContents.send('jeditor', { type: 'closing' });
+    }
+    return true;
+}
+
+function quitNow() {
+    leaving = true;
+    app.quit();
 }
 
 function start() {

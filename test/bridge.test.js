@@ -511,6 +511,37 @@ const waitForPost = (page, type) => page.waitForFunction(
         await context.close();
     }
 
+    console.log('bridge: closing the window (holdClose)');
+    {
+        const { context, page, errors } = await openPage(browser);
+        await waitForPost(page, 'ready');
+        const r = await page.evaluate(async () => {
+            const until = async (ok) => { for (let i = 0; i < 100 && !ok(); i++) await new Promise(res => setTimeout(res, 20)); return ok(); };
+            const of = (t) => window.__posted.filter(m => m.type === t);
+            const out = {};
+            let answer = false;
+            window.__posted.length = 0;
+            JEditorNative.holdClose(async () => answer);
+            out.held = of('holdClose').map(m => m.on).join();
+            // The page says no: heard at once, then not closed
+            window.__deliver({ type: 'closing' });
+            await until(() => of('closeWindow').length === 1);
+            out.no = of('closeHeard').length === 1 && of('closeWindow')[0].ok === false;
+            // Yes: closed
+            answer = true;
+            window.__deliver({ type: 'closing' });
+            await until(() => of('closeWindow').length === 2);
+            out.yes = of('closeWindow')[1].ok === true;
+            JEditorNative.holdClose(null);
+            out.released = of('holdClose').map(m => m.on).join();
+            return out;
+        });
+        check('holdClose tells the app; closing asks the page and says whether to close',
+            r.held === 'true' && r.no && r.yes && r.released === 'true,false', JSON.stringify(r));
+        check('closing: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
     console.log('bridge: only in the Windows app');
     {
         const other = await openPage(browser, { origin: 'https://elsewhere.example' });

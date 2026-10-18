@@ -357,6 +357,33 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await app.close();
     }
 
+    console.log('mac: closing in Adjust or Paint (holdClose)');
+    {
+        const { app, page, errors } = await launch(profile);
+        await page.waitForTimeout(500); // the page's ready
+        await page.evaluate(() => {
+            window.__asked = 0;
+            window.__answer = false;
+            JEditorNative.holdClose(async () => { window.__asked++; return window.__answer; });
+        });
+        await page.waitForTimeout(300);
+        const count = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);
+        // The page says no: the window stays
+        await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+        await page.waitForFunction(() => window.__asked === 1, null, { timeout: 5000 }).catch(() => { });
+        await page.waitForTimeout(500);
+        const stayed = await page.evaluate(() => window.__asked) === 1 && await count() === 1;
+        check('closing while held asks the page; its no keeps the window open', stayed);
+        check('holdClose: no JS errors', errors.length === 0, errors.join('; '));
+        // Yes: closed (and on Linux, with the last window, jEditor quits)
+        const exited = new Promise(res => app.process().once('exit', () => res(true)));
+        await page.evaluate(() => { window.__answer = true; });
+        await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+        const closed = await Promise.race([exited, new Promise(res => setTimeout(() => res(false), 8000))]);
+        check('... its yes closes it', closed);
+        await app.close().catch(() => { });
+    }
+
     console.log('mac: Liquid Glass');
     {
         // Photos to put the glass over: pure white, pure black

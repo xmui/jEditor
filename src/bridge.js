@@ -73,6 +73,8 @@
             onUpdateProgress(msg.received, msg.total);
         } else if (msg.type === 'tether' && onTether) {
             onTether(msg);
+        } else if (msg.type === 'closing') {
+            closing();
         } else if (msg.type === 'logLines' && onLogLines) {
             onLogLines(msg.lines || []);
         } else if (msg.type === 'copyProgress' && copying.has(msg.copy)) {
@@ -188,6 +190,15 @@
     let onScanned = null;
     let onLogLines = null;
     let onTether = null;
+    let onClosing = null;
+    // The window closing while the page holds it (holdClose): heard at
+    // once, then closed if the page's answer says so
+    const closing = async () => {
+        post({ type: 'closeHeard' });
+        let ok = true;
+        try { if (onClosing) ok = await onClosing(); } catch (e) { log('error', 'Closing: ' + (e && e.message || e)); }
+        post({ type: 'closeWindow', ok: !!ok });
+    };
     const copying = new Map(); // folder copy request id → progress(done, total)
     const burning = new Map(); // disc burn request id → progress(done, total)
     window.JEditorNative = {
@@ -445,6 +456,12 @@
         // The log's last lines → { lines, file }
         async logTail() {
             return (await answer('logTail')).msg;
+        },
+        // Closing the window asks ask() first, and closes if it resolves
+        // true ("Keep your changes?" in Adjust and Paint); null lets go
+        holdClose(ask) {
+            onClosing = ask || null;
+            post({ type: 'holdClose', on: !!ask });
         },
         // lines(array) with each new batch of log lines; null stops
         watchLog(lines) {

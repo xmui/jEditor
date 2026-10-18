@@ -180,6 +180,7 @@
 
     // ---- What the app does for jEditor ----
     let onUpdateProgress = null;
+    let onClosing = null; // holdClose
     let nextCopy = 1;
     const copying = new Map(); // folder copy id → progress(done, total)
 
@@ -372,6 +373,12 @@
         askPermission: (id) => answer('askPermission', { id }),
         openPermissionSettings: (id) => answer('openPermissionSettings', { id }),
         permissionsSeen: () => answer('permissionsSeen'),
+        // Closing the window asks ask() first, and closes if it resolves
+        // true ("Keep your changes?" in Adjust and Paint); null lets go
+        holdClose(ask) {
+            onClosing = ask || null;
+            mac.request('holdClose', { on: !!ask });
+        },
         async installUpdate(progress) {
             // The end reported here too: IPC may bring the last progress after the answer
             let last = -1;
@@ -574,6 +581,12 @@
             if (copying.has(msg.copy)) copying.get(msg.copy)(msg.done, msg.total);
         } else if (msg.type === 'filesChanged') {
             dispatchEvent(new Event('jeditor-files')); // another window moved photos
+        } else if (msg.type === 'closing') {
+            // Heard at once (main.js), then closed if the page says so
+            mac.request('closeHeard');
+            let ok = true;
+            try { if (onClosing) ok = await onClosing(); } catch (e) { log('error', 'Closing: ' + (e && e.message || e)); }
+            mac.request('closeWindow', { ok: !!ok });
         } else if (msg.type === 'updateProgress') {
             if (onUpdateProgress) onUpdateProgress(msg.received, msg.total);
         } else if (msg.type === 'menu') {
