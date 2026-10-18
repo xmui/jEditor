@@ -1141,34 +1141,48 @@ const PROJECT = `
         await p2.page.close();
     }
 
-    // ---- Crop: a side dragged into an edge slides along ----
+    // ---- Crop: a side dragged into a turned photo's edge slides, then gets shorter ----
     if (wanted('crop')) {
-        console.log('crop: a side slides along a slanted edge (crop.js)');
+        console.log('crop: a side slides along a slanted edge, then gets shorter (crop.js)');
         const { page, issues } = await open();
         const r = await page.evaluate(() => {
-            const G = CropGeom, W = 1000, H = 800, cs = G.cosSin(0, 8), m = 1;
-            // Near the top of a photo turned 8°: dragging the right side out
-            const start = { x0: -150, y0: -380, x1: 150, y1: -280 };
-            const target = { ...start, x1: 700 };
-            const reached = G.clampToward(start, target, W, H, cs, m, true);
-            const slid = G.slideSide(target, 'e', reached, W, H, cs, m);
-            // A little way out: only as much slide as it needs
-            const near = { ...start, x1: reached.x1 + 40 };
-            const nearSlid = G.slideSide(near, 'e', G.clampToward(start, near, W, H, cs, m, true), W, H, cs, m);
-            // Not turned: the side meets the edge with both corners at once, so it stops
-            const cs0 = G.cosSin(0, 0);
-            const t0 = { ...start, x1: 900 };
-            const r0 = G.clampToward(start, t0, W, H, cs0, m, true);
-            return {
-                reached: reached.x1, slid, fits: !!slid && G.fits(slid, W, H, cs, m),
-                kept: !!slid && slid.x0 === start.x0 && Math.abs((slid.y1 - slid.y0) - 100) < 1e-6,
-                near: nearSlid && [nearSlid.x1 - near.x1, nearSlid.y0 - start.y0], nearFits: !!nearSlid && G.fits(nearSlid, W, H, cs, m),
-                flat: [r0.x1, G.slideSide(t0, 'e', r0, W, H, cs0, m)]
+            const G = CropGeom, W = 2000, H = 1500, m = 1;
+            const drag = (cs, st, handle, key, to, minSize = 10) => {
+                const t = { ...st, [key]: to };
+                const before = G.clampToward(st, t, W, H, cs, m, true);
+                const after = G.slideSide(t, handle, before, W, H, cs, m, minSize) || before;
+                return { before, after, fits: G.fits(after, W, H, cs, m) };
             };
+            const out = {};
+            // Turned 0.5°, a print near the top of a scan: its crop touches the top edge
+            const cs = G.cosSin(0, 0.5);
+            const top = Math.max(G.extent('x', -500, W, H, cs, m)[0], G.extent('x', 300, W, H, cs, m)[0]) + 0.01;
+            const nearTop = { x0: -500, y0: top, x1: 300, y1: top + 600 };
+            const a = drag(cs, nearTop, 'e', 'x1', 1400);
+            out.slid = [a.before.x1, a.after.x1, a.after.x0, a.after.y1 - a.after.y0, a.after.y0 - nearTop.y0, a.fits];
+            // A little way out: slid only as much as it needs
+            const b = drag(cs, nearTop, 'e', 'x1', 600);
+            out.little = [b.after.x1, b.after.y0 - nearTop.y0, b.fits];
+            // Turned 3°, the crop as tall as it can be: it can't slide, so it gets a little shorter
+            const cs3 = G.cosSin(0, 3);
+            const e1 = G.extent('x', -800, W, H, cs3, m), e2 = G.extent('x', 600, W, H, cs3, m);
+            const tall = { x0: -800, y0: Math.max(e1[0], e2[0]) + 0.01, x1: 600, y1: Math.min(e1[1], e2[1]) - 0.01 };
+            const c = drag(cs3, tall, 'e', 'x1', 1400);
+            out.shorter = [c.before.x1, c.after.x1, c.after.x0, (tall.y1 - tall.y0) - (c.after.y1 - c.after.y0), c.fits];
+            // ...and it stops at the photo's edge facing it, not in the corner's wedge
+            const e3 = G.extent('y', (c.after.y0 + c.after.y1) / 2, W, H, cs3, m);
+            out.atEdge = e3[1] - c.after.x1;
+            // Not turned: the side stops at the edge
+            const cs0 = G.cosSin(0, 0);
+            const d = drag(cs0, { x0: -500, y0: -749, x1: 300, y1: -149 }, 'e', 'x1', 1400);
+            out.flat = [d.before.x1, d.after.x1];
+            return out;
         });
-        check('crop: a side meeting a slanted edge at one corner slides along and keeps extending', r.slid && r.slid.x1 > r.reached + 300 && r.fits && r.kept, JSON.stringify(r));
-        check('crop: it slides only as far as it needs to', r.near && Math.abs(r.near[0]) < 1e-3 && r.near[1] > 0 && r.near[1] < 60 && r.nearFits, JSON.stringify(r));
-        check('crop: not turned, the side stops at the edge (both corners there)', Math.abs(r.flat[0] - 499) < 0.01 && r.flat[1] === null, JSON.stringify(r));
+        check('crop: turned 0.5°, a side whose corner meets the top edge slides along and goes on to the photo\'s edge', r.slid[0] < 310 && r.slid[1] > 985 && r.slid[2] === -500 && Math.abs(r.slid[3] - 600) < 1e-6 && r.slid[4] > 0 && r.slid[4] < 10 && r.slid[5], JSON.stringify(r));
+        check('crop: it slides only as much as it needs', Math.abs(r.little[0] - 600) < 1e-6 && r.little[1] > 0 && r.little[1] < 3 && r.little[2], JSON.stringify(r));
+        check('crop: as tall as it can be, it gets a little shorter instead, the other side staying put', r.shorter[1] > r.shorter[0] + 50 && r.shorter[2] === -800 && r.shorter[3] > 0 && r.shorter[3] < 120 && r.shorter[4], JSON.stringify(r));
+        check('crop: ...and stops at the photo\'s edge facing it', r.atEdge >= 0 && r.atEdge < 60, JSON.stringify(r));
+        check('crop: not turned, the side stops at the edge', Math.abs(r.flat[0] - 999) < 0.01 && Math.abs(r.flat[1] - 999) < 0.01, JSON.stringify(r));
         check('crop: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
