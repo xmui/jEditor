@@ -251,11 +251,16 @@ sealed class Run : ApplicationContext
         // standard TWAIN ones below get its document crop instead, which
         // leaves backing around a photo.
         // Its photo tone: the gamma the FastFoto software asks for, in place
-        // of the driver's 2.2
-        if (epson && !ownSettings) Set("Epson photo gamma 1.8", () => caps.ICapGamma.SetValue(1.8f));
+        // of the driver's 2.2 (settings from its own window keep 2.2 too)
+        if (epson) Set("Epson photo gamma 1.8", () => caps.ICapGamma.SetValue(1.8f));
         bool epsonPhoto = epson && o.AutoSize;
         if (epsonPhoto)
         {
+            // TWAIN's own auto-size off first: left on (settings from its
+            // window keep them on), the driver crops as for a document
+            Set("Standard auto size off", () => caps.ICapAutoSize.SetValue(AutoSize.None));
+            Set("Standard border detection off", () => caps.ICapAutomaticBorderDetection.SetValue(BoolType.False));
+            Set("Standard straighten off", () => caps.ICapAutomaticDeskew.SetValue(BoolType.False));
             Set("Epson photo straighten", () => SetCustom(ds, EpsonDeskewType, 1));
             Set("Epson photo auto size", () => SetCustom(ds, EpsonAutoSizeType, 0));
         }
@@ -274,6 +279,8 @@ sealed class Run : ApplicationContext
         catch (Exception) { /* not all of them answer */ }
         try { Out.Log($"Now: {caps.ICapBitDepth.GetCurrent()} bits, brightness {Fix(caps.ICapBrightness.GetCurrent())}, contrast {Fix(caps.ICapContrast.GetCurrent())}, gamma {Fix(caps.ICapGamma.GetCurrent())}"); }
         catch (Exception) { /* not all of them answer */ }
+        // Epson's own, as they ended up (32885 straighten, 32897 auto size)
+        if (epson) try { LogCustom(caps); } catch (Exception) { }
     }
 
     // Epson Scan 2's own capabilities for its photo crop (CAP_EP_DESKEWTYPE
