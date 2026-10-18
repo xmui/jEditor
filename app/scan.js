@@ -51,10 +51,6 @@ const Scan = {
     KNOWN_BEDS: [[/OpticBook\s*A300/i, 'a3'], [/Perfection\s*V\d{3}/i, 'epson'], [/OpticBook\s*3[89]00|OpticBook\s*4800/i, 'letter']],
     KEY_OPTS: 'jeditor.scanOpts', // the settings last used
     KEY_DEV_OPTS: 'jeditor.scanOptsBy', // …and with each scanner
-    KEY_TONED: 'jeditor.scanToned', // FastFotos given the app's tone once
-    // Epson's FastFoto driver sends far more contrast than the FastFoto app
-    // saves (darker, oversaturated, shadows lost): this matches the app
-    FASTFOTO_TONE: { brightness: 5, contrast: -35 },
     KEY_SETUPS: 'jeditor.scanSetups', // saved setups: [{ name, …settings }]
     caps: {}, // what each scanner can do (asked once)
     STRIP: 6, // photos shown in the dock
@@ -156,7 +152,9 @@ const Scan = {
         this.fillFolders();
         this.fillNames();
         const last = this.last();
-        this.el('scan-autocrop').checked = !last || last.autoCrop !== false;
+        // Off unless turned on. Kept as autoCropOn: autoCrop is the old
+        // choice, made when it was on to start with, so it isn't read
+        this.el('scan-autocrop').checked = !!last && last.autoCropOn === true;
         this.el('scan-show').checked = !last || last.show !== false;
         this.placeOpts('home');
         this.loadOpts();
@@ -531,18 +529,7 @@ const Scan = {
     // suits it (a photo feeder: 300 dpi, plenty for prints and quick)
     loadOptsFor(d) {
         if (!d) return;
-        this.el('scan-tone-note').classList.toggle('hidden', !this.isFastFoto(d));
         const mine = (this.get(this.KEY_DEV_OPTS, {}) || {})[d.id];
-        // A FastFoto starts with the app's tone; once, so they can change it
-        const toned = this.get(this.KEY_TONED, []) || [];
-        if (this.isFastFoto(d) && !toned.includes(d.id)) {
-            this.put(this.KEY_TONED, [...toned, d.id]);
-            const base = mine || { ...(this.get(this.KEY_OPTS, {}) || {}), dpi: this.defaultDpi(d) };
-            const flat = !base.brightness && !base.contrast;
-            this.setOpts(flat ? { ...base, ...this.FASTFOTO_TONE } : base);
-            if (flat) this.saveOpts(this.opts());
-            return;
-        }
         if (mine) return this.setOpts(mine);
         this.setOpts({ ...(this.get(this.KEY_OPTS, {}) || {}), dpi: this.defaultDpi(d) });
     },
@@ -769,7 +756,7 @@ const Scan = {
             if (compat) all[device.id] = true; else delete all[device.id];
             localStorage.setItem(this.KEY_COMPAT, JSON.stringify(all));
         } catch (e) { /* private */ }
-        try { localStorage.setItem(this.KEY, JSON.stringify({ device: device.id, autoCrop, show: this.el('scan-show').checked })); } catch (e) { /* private */ }
+        try { localStorage.setItem(this.KEY, JSON.stringify({ device: device.id, autoCropOn: autoCrop, show: this.el('scan-show').checked })); } catch (e) { /* private */ }
         const state = this.el('scan-panel').dataset.state;
         if (state === 'preview') return this.scanBoxes();
         // Scan more: the names carry on from the photos just scanned
