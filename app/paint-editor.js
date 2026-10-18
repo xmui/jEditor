@@ -13,7 +13,8 @@
 //     keeps lines to 45° and shapes square
 //   Text (T): click, type, Ctrl+Enter (or a click elsewhere) puts it down
 //   Picker (I): the colour under it (Alt-click with any brush does too)
-//   Hand (H, or hold Space): move about; the wheel zooms
+//   Hand (H, or hold Space): move about; the wheel zooms (on a Mac's
+//     trackpad, two fingers move about and a pinch zooms)
 //
 // Everything is drawn on the photo as it is shown (cropped and turned as
 // its edit says), and kept on the photo as it is on disk, so a crop later
@@ -178,7 +179,15 @@ const PaintEditor = {
             if (!this.ready) return;
             e.preventDefault();
             const r = this.canvas.getBoundingClientRect();
-            const k = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015));
+            // On a Mac (wheel.js): two fingers move about, a pinch zooms
+            if (Host.mac() && Wheel.kind(e) === 'trackpad') {
+                this.view.x -= e.deltaX;
+                this.view.y -= e.deltaY;
+                this.positionText();
+                this.renderSoon();
+                return;
+            }
+            const k = Math.exp(-Wheel.pixels(e).y * (e.ctrlKey ? 0.01 : 0.0015));
             this.zoomAt(this.view.z * k, e.clientX - r.left, e.clientY - r.top);
         }, { passive: false });
         st.addEventListener('dblclick', (e) => { if (this.tool === 'hand') this.fit(); });

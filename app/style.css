@@ -925,6 +925,12 @@ header:has(.header-controls.expanded) {
     image-rendering: pixelated;
 }
 
+/* Fingers on a trackpad, or the mouse dragging the photo: it follows them
+   at once (script.js followFingers) */
+#current-image.follow {
+    transition: opacity 0.05s ease;
+}
+
 /* Double-click zoom: a smoother move than the wheel's quick steps */
 #current-image.zoom-animate {
     transition: transform 0.24s var(--ease-out), opacity 0.05s ease;

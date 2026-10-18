@@ -162,14 +162,18 @@ const app = {
         document.addEventListener('mousemove', (e) => this.handlePanMove(e));
         document.addEventListener('mouseup', () => this.handlePanEnd());
 
-        // Thumbnail Strip Scroll
+        // Film strip: the wheel's up and down scroll it along. A sideways
+        // trackpad swipe scrolls it itself (with its momentum); a mouse's
+        // notches glide on a Mac (wheel.js)
         this.elements.thumbnailStrip.addEventListener('wheel', (e) => {
-            if (e.deltaY !== 0) {
-                // Translate vertical scroll to horizontal
-                e.preventDefault();
-                this.elements.thumbnailStrip.scrollLeft += e.deltaY;
-            }
-        });
+            const strip = this.elements.thumbnailStrip;
+            if (e.ctrlKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+            e.preventDefault();
+            const d = Wheel.pixels(e, strip);
+            if (Host.mac() && Wheel.kind(e) === 'mouse') Wheel.glide(strip, 'x', d.y);
+            else strip.scrollLeft += d.y;
+        }, { passive: false });
+        Wheel.install();
 
         // Thumbnail Fit Toggle
         document.getElementById('btn-toggle-fit').addEventListener('click', () => this.toggleThumbnailFit());
@@ -200,14 +204,32 @@ const app = {
         // Click the file name to rename
         this.elements.fileNameBtn.addEventListener('click', () => this.promptRename());
 
-        // Ctrl+wheel zooms the grid
+        // Ctrl+wheel zooms the grid: a notch a step; a trackpad's pinch (a
+        // stream of small Ctrl+wheel events) by as much as the fingers move,
+        // once a frame
         this.elements.gridView.addEventListener('wheel', (e) => {
             if (!e.ctrlKey) return;
             e.preventDefault();
             const slider = this.elements.gridSizeSlider;
-            const next = Math.max(80, Math.min(400, parseInt(slider.value, 10) - Math.sign(e.deltaY) * 20));
-            slider.value = next;
-            this.setGridSize(next);
+            const now = this._gridPinch != null ? this._gridPinch : parseInt(slider.value, 10);
+            const dy = Wheel.pixels(e).y;
+            const notch = e.deltaMode !== 0 || Math.abs(dy) >= 50;
+            const next = Math.max(80, Math.min(400, notch ? now - Math.sign(dy) * 20 : now * Math.exp(-dy * 0.01)));
+            if (notch && this._gridPinch == null) {
+                slider.value = next;
+                this.setGridSize(next);
+                return;
+            }
+            this._gridPinch = next;
+            if (this._gridPinchRaf) return;
+            this._gridPinchRaf = requestAnimationFrame(() => {
+                this._gridPinchRaf = 0;
+                const px = Math.round(this._gridPinch);
+                this._gridPinch = null;
+                if (px === parseInt(slider.value, 10)) return;
+                slider.value = px;
+                this.setGridSize(px);
+            });
         }, { passive: false });
 
         Folders.init(this);
@@ -1095,8 +1117,37 @@ const app = {
         let dy = e.deltaY;
         if (e.deltaMode === 1) dy *= 16;       // lines
         else if (e.deltaMode === 2) dy *= 400; // pages
+        // On a Mac, as its own apps do (wheel.js): a pinch zooms, two fingers
+        // move a zoomed photo about, a mouse's wheel zooms. Fingers follow at
+        // once (no easing behind them)
+        if (Host.mac()) {
+            const kind = Wheel.kind(e);
+            if (kind === 'pinch') {
+                this.followFingers();
+                this.zoomTo(this.zoom * Math.exp(-Math.max(-60, Math.min(60, dy)) * 0.01), e.clientX, e.clientY);
+                return;
+            }
+            if (kind === 'trackpad') {
+                if (this.zoom <= 1 || !this.currentFile) return;
+                this.followFingers();
+                this.panX -= e.deltaX;
+                this.panY -= e.deltaY;
+                this.updateImageTransform();
+                return;
+            }
+        }
         dy = Math.max(-300, Math.min(300, dy));
         this.zoomTo(this.zoom * Math.exp(-dy * 0.002), e.clientX, e.clientY);
+    },
+
+    // The photo moves with the fingers (or the mouse dragging it) as they
+    // go, without the short easing the wheel's steps get; back to that a
+    // moment after they stop
+    followFingers() {
+        const img = this.elements.currentImage;
+        img.classList.add('follow');
+        clearTimeout(this._followTimer);
+        this._followTimer = setTimeout(() => { if (!this.isPanning) img.classList.remove('follow'); }, 160);
     },
 
     // ---- Zoom ----
@@ -1304,6 +1355,7 @@ const app = {
         e.preventDefault();
 
         this.isPanning = true;
+        this.elements.currentImage.classList.add('follow');
         this.panStartX = e.clientX - this.panX;
         this.panStartY = e.clientY - this.panY;
         this.elements.imageContainer.style.cursor = 'grabbing';
@@ -1320,6 +1372,7 @@ const app = {
     handlePanEnd() {
         if (!this.isPanning) return;
         this.isPanning = false;
+        this.elements.currentImage.classList.remove('follow');
         this.elements.imageContainer.style.cursor = this.zoom > 1 ? 'grab' : 'default';
     },
 

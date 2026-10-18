@@ -14,7 +14,8 @@ const CHANGELOG = [
             'Copy a project to a USB drive or card in one step (the USB button on the project\'s card in the sidebar): the room is checked first, its flags and edits go with it, and Copy and eject ejects the drive when it\'s done.',
             'A camera\'s card plugged in is offered to import (or `Ctrl+I`): into this project or a new one, in folders by day if you like, only the photos not imported before, and the card ejected after.',
             'In the Windows app, burn a project to a CD or DVD (the disc button on the project\'s card).',
-            'A project\'s .jeditor folder opened in the Windows or Mac app now keeps its edits, not only its flags.'
+            'A project\'s .jeditor folder opened in the Windows or Mac app now keeps its edits, not only its flags.',
+            'Smooth scrolling on the Mac: a mouse\'s wheel glides instead of jumping a notch at a time, everywhere that scrolls. On a trackpad, two fingers move a zoomed photo about (in Paint too) and a pinch zooms it, following your fingers at once; pinching the grid resizes the thumbnails as far as you pinch, and the film strip scrolls with a sideways swipe.'
         ]
     },
     {

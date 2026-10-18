@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // jEditor's editing tools, in headless Chromium: spot and dust removal
 // (retouch.js, adjust-spots.js), subject and sky masks, RAW previews, Paint,
-// and drives and import. Run by `npm test` after the UI suite; on its own:
+// and the wheel the way a Mac does it (wheel.js). Run by `npm test` after the UI suite; on its own:
 //   node test/edit.test.js [name …]     (only the sections named)
 
 const { chromium } = require('playwright-core');
@@ -876,6 +876,111 @@ const PROJECT = `
         check('paint: merging down keeps a layer\'s opacity; Ctrl+Z undoes it', t.merged && t.unmerged, JSON.stringify(t));
         check('paint: what\'s moved scales from a corner, its selection with it', t.scaled && t.afterScale && t.afterScale[0] === 255 && t.afterScale[1], JSON.stringify(t));
         check('paint: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- The wheel on a Mac ----
+    if (wanted('wheel')) {
+        console.log('the wheel on a Mac (wheel.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                // Which is which
+                step = 'kinds';
+                const kind = (e) => { Wheel._last = null; return Wheel.kind({ deltaMode: 0, deltaX: 0, deltaY: 0, ctrlKey: false, ...e }); };
+                out.kinds = [
+                    kind({ ctrlKey: true, deltaY: 3 }),                       // a pinch
+                    kind({ deltaY: 4.5, wheelDeltaY: -13.5 }),                 // fingers (Chromium: -3 × deltaY)
+                    kind({ deltaY: 100, wheelDeltaY: -120 }),                  // a mouse's notch
+                    kind({ deltaX: 12, deltaY: 1, wheelDeltaY: -3 }),          // sideways: fingers
+                    kind({ deltaMode: 1, deltaY: 3 })                          // lines: a wheel
+                ].join();
+                // A gesture keeps its kind (its momentum looks like a mouse's sometimes)
+                Wheel._last = null;
+                Wheel.kind({ deltaMode: 0, deltaX: 0, deltaY: 2, wheelDeltaY: -6 });
+                out.gesture = Wheel.kind({ deltaMode: 0, deltaX: 0, deltaY: 120, wheelDeltaY: -120 });
+                Wheel._last = null;
+
+                // A mouse's notches glide on a Mac, and only there
+                step = 'glide';
+                const box = document.createElement('div');
+                Object.assign(box.style, { position: 'fixed', left: '0', top: '0', width: '300px', height: '200px', overflowY: 'auto', zIndex: 99999 });
+                box.innerHTML = '<div style="height:3000px"></div>';
+                document.body.appendChild(box);
+                const notch = (target, o = {}) => { Wheel._last = null; const e = new WheelEvent('wheel', { deltaY: 3, deltaMode: 1, bubbles: true, cancelable: true, ...o }); target.dispatchEvent(e); return e; };
+                const mac0 = Host.mac;
+                Host.mac = () => false;
+                const native = notch(box.firstChild);
+                out.notMac = !native.defaultPrevented;
+                Host.mac = () => true;
+                const e1 = notch(box.firstChild);
+                // Where it is each frame, until it's still: somewhere between, on the way
+                const seen = [];
+                const t0 = performance.now();
+                while (performance.now() - t0 < 600) {
+                    await new Promise(r => requestAnimationFrame(r));
+                    seen.push(box.scrollTop);
+                }
+                out.glide = [e1.defaultPrevented, seen.some(v => v > 0 && v < 120), box.scrollTop];
+                // Notches add up while it's still going
+                notch(box.firstChild); notch(box.firstChild);
+                await sleep(400);
+                out.added = box.scrollTop;
+                // Fingers aren't touched (they're smooth already)
+                Wheel._last = null;
+                const finger = new WheelEvent('wheel', { deltaY: 4.5, deltaX: 1, bubbles: true, cancelable: true });
+                box.firstChild.dispatchEvent(finger);
+                out.fingers = !finger.defaultPrevented;
+                // At the end of what scrolls, nothing to glide
+                box.scrollTop = box.scrollHeight;
+                out.atEnd = !notch(box.firstChild).defaultPrevented;
+                box.remove();
+
+                // The viewer: two fingers move a zoomed photo, a pinch zooms
+                step = 'viewer';
+                const c = scene(800, 600);
+                await openProject('wheel', { 'w.jpg': await canvasBlob(c, 'image/jpeg', 0.9), 'v.jpg': await canvasBlob(c, 'image/jpeg', 0.9) });
+                app.openSingle(app.files[0]);
+                await until(() => app.elements.currentImage.naturalWidth > 0);
+                const ic = app.elements.imageContainer;
+                const wheel = (o) => { Wheel._last = null; ic.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 400, clientY: 300, ...o })); };
+                wheel({ deltaY: 4, deltaX: 3 });                       // fingers, at fit: nothing
+                out.fitStays = app.zoom === 1;
+                app.zoomTo(3);
+                const z = app.zoom, px = app.panX, py = app.panY;
+                wheel({ deltaX: 30, deltaY: 20 });
+                out.panned = app.zoom === z && Math.abs(app.panX - (px - 30)) < 1e-6 && Math.abs(app.panY - (py - 20)) < 1e-6 && app.elements.currentImage.classList.contains('follow');
+                wheel({ deltaY: -20, ctrlKey: true });
+                out.pinched = app.zoom > z;
+                const z2 = app.zoom;
+                wheel({ deltaY: -3, deltaMode: 1 });                   // a mouse: zooms
+                out.mouseZooms = app.zoom > z2;
+                await sleep(250);
+                out.followOff = !app.elements.currentImage.classList.contains('follow');
+
+                // The grid: a pinch by how much the fingers move, a notch a step
+                step = 'grid';
+                app.setView('grid');
+                const slider = app.elements.gridSizeSlider;
+                slider.value = 160; app.setGridSize(160);
+                const gv = app.elements.gridView;
+                for (let i = 0; i < 6; i++) gv.dispatchEvent(new WheelEvent('wheel', { deltaY: -2, ctrlKey: true, bubbles: true, cancelable: true }));
+                await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+                out.pinchGrid = +slider.value;
+                gv.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, bubbles: true, cancelable: true }));
+                await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+                out.notchGrid = +slider.value;
+                Host.mac = mac0;
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('wheel: a pinch, two fingers and a mouse told apart; a gesture keeps its kind', r.kinds === 'pinch,trackpad,mouse,trackpad,mouse' && r.gesture === 'trackpad', JSON.stringify(r));
+        check('wheel: on a Mac a mouse\'s notches glide (and add up), not elsewhere; fingers and the end of the page are left alone', r.notMac && r.glide && r.glide[0] && r.glide[1] && r.glide[2] === 120 && r.added === 360 && r.fingers && r.atEnd, JSON.stringify(r));
+        check('wheel: in the viewer two fingers move a zoomed photo (at once), a pinch and a mouse zoom; at fit, fingers do nothing', r.fitStays && r.panned && r.pinched && r.mouseZooms && r.followOff, JSON.stringify(r));
+        check('wheel: pinching the grid zooms it by how much the fingers move; a Ctrl+notch is a step', r.pinchGrid > 160 && r.pinchGrid <= 182 && r.notchGrid === r.pinchGrid + 20, JSON.stringify(r));
+        check('wheel: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

@@ -13,6 +13,7 @@ const ASSETS = [
     './changelog.js',
     './meta.js',
     './host.js',
+    './wheel.js',
     './experiments.js',
     './start.js',
     './picked.js',
