@@ -7,7 +7,9 @@ const CHANGELOG = [
     {
         version: '1.44.1', date: '2026-10-18',
         items: [
-            'Closing the window in Adjust or Paint with something not kept yet asks Keep your changes? first (Keep, Don\'t keep or Cancel), instead of losing it.'
+            'Closing the window in Adjust or Paint with something not kept yet asks Keep your changes? first (Keep, Don\'t keep or Cancel), instead of losing it.',
+            'Scanning on an Epson sheet feeder (the FastFoto): each photo is cropped and straightened by Epson\'s own photo crop, the one FastFoto\'s software uses, so less of the scanner\'s backing is left around it.',
+            'Scanning on an Epson sheet feeder starts from the scanner\'s own defaults with FastFoto\'s photo tone, so colours come out as they do in FastFoto\'s software, not stronger. Settings chosen in Epson\'s window (Scanner\'s own settings…) are still used when you\'ve chosen them.'
         ]
     },
     {
@@ -28,6 +30,14 @@ const CHANGELOG = [
             'Crop: dragging a side out on a straightened photo no longer stops when one of its corners meets the photo\'s slanted edge. The crop slides out of the way (or, when it can\'t, gets a little shorter), so the side keeps following you to the photo\'s edge; the opposite side stays put.',
             'A project\'s .jeditor folder opened in the Windows or Mac app now keeps its edits, not only its flags.',
             'Smooth scrolling on the Mac: a mouse\'s wheel glides instead of jumping a notch at a time, everywhere that scrolls. On a trackpad, two fingers move a zoomed photo about (in Paint too) and a pinch zooms it, following your fingers at once; pinching the grid resizes the thumbnails as far as you pinch, and the film strip scrolls with a sideways swipe.'
+        ]
+    },
+    {
+        version: '1.43.1', date: '2026-10-18',
+        items: [
+            'Scanning on a sheet feeder that crops each photo itself (the Epson FastFoto, as it comes) no longer has Auto crop cut into the photos afterwards: the scanner has already cropped them, so Auto crop is skipped.',
+            'Auto crop on a feeder scan no longer takes a plain band across a photo (a dark sky, a window frame) for the edge of the print when the photo fills the scan.',
+            'Auto crop\'s test scans: one saved with Auto\'s crop is kept as right again (a scan\'s resolution stopped it), and a crop turned a quarter is no longer counted as moved.'
         ]
     },
     {

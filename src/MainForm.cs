@@ -967,11 +967,13 @@ sealed class MainForm : Form
                 if (InvokeRequired) Invoke(() => Post(new { type = "scanned", scan = id, name }));
                 else Post(new { type = "scanned", scan = id, name });
             }, cancel));
-            Reply(id, new { count, names, compat = scanner?.FellBackToCompat ?? false });
+            // autosized: the scanner cropped each photo itself (its own
+            // auto-size took), so jEditor's Auto crop has nothing to do
+            Reply(id, new { count, names, compat = scanner?.FellBackToCompat ?? false, autosized = request.AutoSize && Twain32.AutoSized });
         }
         catch (OperationCanceledException)
         {
-            Reply(id, new { count, names, cancelled = true, compat = scanner?.FellBackToCompat ?? false });
+            Reply(id, new { count, names, cancelled = true, compat = scanner?.FellBackToCompat ?? false, autosized = request.AutoSize && Twain32.AutoSized });
         }
         catch (Exception e)
         {

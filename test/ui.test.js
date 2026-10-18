@@ -1288,6 +1288,12 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.logBytes = !!keptB && keptB.length > 1000 && keptB[0] === 0xff && keptB[1] === 0xd8;
             await CropLog.refresh();
             out.logCount = document.getElementById('crop-log-count').textContent;
+            // A scan's dpi ({ x, y } from its file) gives the tolerance; a
+            // crop turned a quarter is the same crop, from another corner
+            const Q = [[10, 20], [610, 20], [610, 420], [10, 420]];
+            const judged = CropLog.judge({ dpi: { x: 600, y: 600 }, auto: { found: true, crop: Q }, saved: { none: false, crop: Q.map(([x, y]) => [x + 2, y]) } });
+            out.logDpi = judged.result === 'accepted' && CropLog.dpiOf({ x: 600, y: 600 }) === 600;
+            out.logTurned = CropLog.apart(Q, [Q[3], Q[0], Q[1], Q[2]]) === 0 && CropLog.apart(Q, Q.map(([x, y]) => [x + 30, y])) === 30;
             // Off: nothing more kept
             CropLog.setEnabled(false);
             await saveAfter('logE.jpg', await scanJpeg(0, '#0e0e0e'), () => ed.autoDetect({ quiet: true }));
@@ -1332,6 +1338,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             check('test set: the scans themselves are kept, as they were before the save', r.logBytes && r.logNames.filter(n => /^\d{8}T\d{6}-log[ABC]\.jpg$/.test(n)).length === 3 && L.length === 3, r.logNames.join());
             check('test set: every crop is in the log; one done without Auto has no scan', (r.logLines || []).join() === 'logA.jpg:accepted,logB.jpg:corrected,logC.jpg:missed,logD.jpg:manual' && !r.logNames.some(n => /logD/.test(n)), (r.logLines || []).join());
             check('test set: Settings shows how many are kept', /^3 scans kept · /.test(r.logCount), r.logCount);
+            check('test set: a scan with a dpi saved with Auto\'s crop is accepted; its dpi is kept as a number', r.logDpi);
+            check('test set: a crop turned a quarter isn\'t counted as moved', r.logTurned);
             check('test set: off keeps nothing; Clear removes it all', r.logOff && r.logCleared, JSON.stringify([r.logOff, r.logCleared]));
         }
         check('Auto crops to the print (720×480, no bed)', r.autoNoBed && Math.abs(r.autoSize[0] - 720) < 12 && Math.abs(r.autoSize[1] - 480) < 12, JSON.stringify(r.autoSize));
@@ -3392,6 +3400,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             }
             pg.fillStyle = '#050505'; pg.fillRect(0, 420, 900, 180);
             out.photoAlone = !CropAuto.find(photo, 900, 600);
+            // The feeder's finder too: a photo that fills the scan (the
+            // feeder cut it to the print) has no backing beside it
+            out.photoAloneFeeder = !CropAuto.detectFeeder(photo, 900, 600);
             // A print a hair taller than the scan: cut off top and bottom,
             // a grainy strip of bed down each side (left wider than right),
             // too little of the scan's edge for the bed to be known as one;
@@ -3427,6 +3438,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('feeder page: Auto crop finds the photo, background trimmed off', near(r.straight, 380, 560), JSON.stringify(r.straight));
         check('feeder page: a tilted photo is straightened and cropped', near(r.tilted, 380, 560) && Math.abs(r.tilted.angle + 1.5) < 0.4, JSON.stringify(r.tilted));
         check('feeder page: found without the hint too; an ordinary photo is left alone', r.unhinted && r.photoAlone, JSON.stringify([r.unhinted, r.photoAlone]));
+        check('feeder finder: a photo that fills the scan, with a plain band across it, isn\'t cropped to the band', r.photoAloneFeeder);
         const cut = r.cut, ct = r.cutTilted;
         check('a print cut off top and bottom by the scan: the bed strips either side come off',
             cut && cut.w > 860 && cut.w <= 880 && cut.h >= 610 && Math.abs(cut.cx - 485) <= 4 && cut.angle === 0, JSON.stringify(cut));

@@ -98,9 +98,17 @@ const CropLog = {
         };
     },
 
-    // How far apart two crops are: the farthest corner, in pixels
+    // How far apart two crops are: the farthest corner from its nearest in
+    // the other, in pixels (a crop turned a quarter starts at another corner)
     apart(a, b) {
-        return Math.max(...a.map(([x, y], i) => Math.hypot(x - b[i][0], y - b[i][1])));
+        const far = (p, q) => Math.max(...p.map(([x, y]) => Math.min(...q.map(([u, v]) => Math.hypot(x - u, y - v)))));
+        return Math.max(far(a, b), far(b, a));
+    },
+
+    // The scan's dpi as a number (ImageMeta.readDpi gives { x, y })
+    dpiOf(d) {
+        const v = d && typeof d === 'object' ? d.x : d;
+        return typeof v === 'number' && v > 0 ? Math.round(v) : null;
     },
 
     // The editor's crop, about to be saved → a log entry (null: off).
@@ -117,7 +125,7 @@ const CropLog = {
             version: typeof APP_VERSION !== 'undefined' ? APP_VERSION : null,
             project: app.dirHandle ? app.dirHandle.name : null,
             file: file.relPath || file.name,
-            W: ed.W, H: ed.H, dpi: ed.dpi || null,
+            W: ed.W, H: ed.H, dpi: this.dpiOf(ed.dpi),
             result: 'manual', diff: null,
             auto,
             saved: { none, crop: this.quad(ed), angle: ed.angle, q: ed.q, w: o.w, h: o.h, aspect: ed.aspectKey }
@@ -131,7 +139,7 @@ const CropLog = {
         const auto = e.auto;
         // A change smaller than this (0.25 mm at the scan's dpi) is Auto's
         // crop saved as it was
-        const tol = Math.max(3, (e.dpi || 0) * 0.25 / 25.4);
+        const tol = Math.max(3, (this.dpiOf(e.dpi) || 0) * 0.25 / 25.4);
         e.result = 'manual';
         e.diff = null;
         if (auto && auto.found) {

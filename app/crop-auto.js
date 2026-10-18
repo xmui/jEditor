@@ -304,6 +304,9 @@ const CropAuto = {
         // Nothing around it to take off: not a photo on a page
         const trimmedRows = h - (y1 - y0), left = x0, right = w - x1;
         if (trimmedRows < h * 0.03 && left < w * 0.02 && right < w * 0.02) return null;
+        // No backing either side: the photo fills the scan (one the feeder
+        // already cut to the print), and the plain rows are part of it
+        if (left < w * 0.01 && right < w * 0.01) return null;
         if (strict && !(trimmedRows >= h * 0.1 && left >= w * 0.02 && right >= w * 0.02)) return null;
 
         const sx = W / w, sy = H / h;
