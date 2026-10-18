@@ -19,6 +19,7 @@ const CHANGELOG = [
             'Paint can bring in images: Bring in an image… under the layers (`Ctrl+Shift+O`), drop an image on it, or paste one copied in another app. Each comes in on a layer of its own, fitted and ready to move, size and turn.',
             'Right-click a folder (or the grid) → New blank image…: any size, from screens and social posts to prints at 300 dpi, on white, black, a colour or nothing, saved as a PNG (with its resolution, so it prints at size) and opened in Paint.',
             'The scanner window is cleaner: its settings in sections, every box the same height and solid behind (nothing showing through or flickering), and after a scan the names carry on from it instead of showing numbers that are already taken.',
+            'Crop: dragging a side out on a straightened photo no longer stops when one corner meets the edge. The crop slides along so the side keeps following, until both its corners are at the edges.',
             'A project\'s .jeditor folder opened in the Windows or Mac app now keeps its edits, not only its flags.',
             'Smooth scrolling on the Mac: a mouse\'s wheel glides instead of jumping a notch at a time, everywhere that scrolls. On a trackpad, two fingers move a zoomed photo about (in Paint too) and a pinch zooms it, following your fingers at once; pinching the grid resizes the thumbnails as far as you pinch, and the film strip scrolls with a sideways swipe.'
         ]

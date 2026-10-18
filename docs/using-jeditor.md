@@ -80,7 +80,7 @@ Some programs, mostly older print and lab software, ignore the EXIF orientation 
 
 It works like Lightroom or Apple Photos: the crop frame stays in the middle of the screen and the photo moves behind it.
 
-- Drag a corner or edge to resize. When you let go, the view zooms so the crop fills the screen again. Drag a handle past the edge of the screen to zoom out and make the crop bigger. Hold `Shift` to keep the shape, or `Alt` to resize from the centre.
+- Drag a corner or edge to resize. When you let go, the view zooms so the crop fills the screen again. Drag a handle past the edge of the screen to zoom out and make the crop bigger. Hold `Shift` to keep the shape, or `Alt` to resize from the centre. On a straightened photo, a side dragged out that meets the photo's slanted edge at one corner slides along it, so it keeps following your pointer until both its corners are at the edges.
 - Drag inside the frame to move the photo. Drag outside it to rotate.
 - Straighten with the slider, or `,` / `.` in 0.1° steps. The photo turns around the middle of the crop and zooms in just enough to hide the corners, so there are never empty corners.
 - To level something, hold `Ctrl` (`⌘` on a Mac) and draw a line along a horizon or the edge of a print. The level tool (`L`) does the same without the key.

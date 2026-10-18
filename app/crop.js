@@ -110,6 +110,58 @@ const CropGeom = {
         return r;
     },
 
+    // A side dragged out (handle e, w, n or s) that meets the image's edge
+    // at one of its corners (a straightened photo's slanted edge) doesn't
+    // stop there: the rect slides along that side, away from the edge, as
+    // far as it needs, so the side keeps following the pointer, until both
+    // its corners are at edges. `reached` is how far it got without
+    // sliding; → the rect, or null when sliding gets it no further.
+    slideSide(target, handle, reached, W, H, cs, m = 0) {
+        const key = { e: 'x1', w: 'x0', s: 'y1', n: 'y0' }[handle];
+        if (!key) return null;
+        const out = key === 'x1' || key === 'y1' ? 1 : -1;
+        if ((target[key] - reached[key]) * out <= 1e-6) return null;
+        const along = key[0] === 'x' ? 'y' : 'x'; // the slide is along the side
+        const shift = (r, d) => ({ ...r, [along + '0']: r[along + '0'] + d, [along + '1']: r[along + '1'] + d });
+        const fit = (r, d) => {
+            const q = shift(r, d);
+            return this.maxScale((q.x0 + q.x1) / 2, (q.y0 + q.y1) / 2, (q.x1 - q.x0) / 2, (q.y1 - q.y0) / 2, W, H, cs, m);
+        };
+        const ok = 1 - 1e-9;
+        const span = 2 * (W + H);
+        // The slide nearest where it was that fits, or null. How well it
+        // fits is concave in the slide (a min of linear terms)
+        const place = (r) => {
+            if (fit(r, 0) >= ok) return 0;
+            let lo = -span, hi = span;
+            for (let i = 0; i < 90; i++) {
+                const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3;
+                if (fit(r, m1) < fit(r, m2)) lo = m1; else hi = m2;
+            }
+            const best = (lo + hi) / 2;
+            if (fit(r, best) < ok) return null;
+            let a = 0, b = best;
+            for (let i = 0; i < 50; i++) {
+                const mid = (a + b) / 2;
+                if (fit(r, mid) >= ok) b = mid; else a = mid;
+            }
+            return b;
+        };
+        const at = (v) => ({ ...target, [key]: v });
+        // The side as far out as some slide lets it go
+        let lo = reached[key], hi = target[key];
+        if (place(at(hi)) !== null) lo = hi;
+        else {
+            for (let i = 0; i < 40; i++) {
+                const mid = (lo + hi) / 2;
+                if (place(at(mid)) !== null) lo = mid; else hi = mid;
+            }
+        }
+        if ((lo - reached[key]) * out <= 1e-6) return null;
+        const d = place(at(lo));
+        return d === null ? null : shift(at(lo), d);
+    },
+
     // Axis-aligned size of the rotated image
     bounds(W, H, cs) {
         const [c, s] = cs;
@@ -1113,7 +1165,12 @@ const CropEditor = {
         const st = d.start;
         const ratio = this.ratio() || (shift ? (st.x1 - st.x0) / (st.y1 - st.y0) : 0);
         const target = this.resizeTarget(st, d.handle, P, minSize, ratio, alt);
-        const next = CropGeom.clampToward(this.rect, target, this.W, this.H, this.cs(), this.margin(), !ratio);
+        let next = CropGeom.clampToward(this.rect, target, this.W, this.H, this.cs(), this.margin(), !ratio);
+        // A side meeting the edge at one corner slides along, rather than stopping
+        if (!ratio && !alt && d.handle.length === 1) {
+            const slid = CropGeom.slideSide(target, d.handle, next, this.W, this.H, this.cs(), this.margin());
+            if (slid) next = slid;
+        }
         this.setRect(next);
     },
 

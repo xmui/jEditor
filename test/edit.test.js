@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // jEditor's editing tools, in headless Chromium: spot and dust removal
 // (retouch.js, adjust-spots.js), subject and sky masks, RAW previews, Paint,
-// a new blank image (blank.js), the modes (modes.js) and the wheel the way a
-// Mac does it (wheel.js). Run by `npm test` after the UI suite; on its own:
+// a new blank image (blank.js), the modes (modes.js), crop's sliding sides and
+// the wheel the way a Mac does it (wheel.js). Run by `npm test` after the UI suite; on its own:
 //   node test/edit.test.js [name …]     (only the sections named)
 
 const { chromium } = require('playwright-core');
@@ -1139,6 +1139,38 @@ const PROJECT = `
         check('modes: a new canvas with no project open: a folder chosen, the canvas made there, in Paint', q.canvas, JSON.stringify(q));
         check('modes (landing): no JS errors', p2.issues.errors.length === 0, p2.issues.errors.join('; '));
         await p2.page.close();
+    }
+
+    // ---- Crop: a side dragged into an edge slides along ----
+    if (wanted('crop')) {
+        console.log('crop: a side slides along a slanted edge (crop.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(() => {
+            const G = CropGeom, W = 1000, H = 800, cs = G.cosSin(0, 8), m = 1;
+            // Near the top of a photo turned 8°: dragging the right side out
+            const start = { x0: -150, y0: -380, x1: 150, y1: -280 };
+            const target = { ...start, x1: 700 };
+            const reached = G.clampToward(start, target, W, H, cs, m, true);
+            const slid = G.slideSide(target, 'e', reached, W, H, cs, m);
+            // A little way out: only as much slide as it needs
+            const near = { ...start, x1: reached.x1 + 40 };
+            const nearSlid = G.slideSide(near, 'e', G.clampToward(start, near, W, H, cs, m, true), W, H, cs, m);
+            // Not turned: the side meets the edge with both corners at once, so it stops
+            const cs0 = G.cosSin(0, 0);
+            const t0 = { ...start, x1: 900 };
+            const r0 = G.clampToward(start, t0, W, H, cs0, m, true);
+            return {
+                reached: reached.x1, slid, fits: !!slid && G.fits(slid, W, H, cs, m),
+                kept: !!slid && slid.x0 === start.x0 && Math.abs((slid.y1 - slid.y0) - 100) < 1e-6,
+                near: nearSlid && [nearSlid.x1 - near.x1, nearSlid.y0 - start.y0], nearFits: !!nearSlid && G.fits(nearSlid, W, H, cs, m),
+                flat: [r0.x1, G.slideSide(t0, 'e', r0, W, H, cs0, m)]
+            };
+        });
+        check('crop: a side meeting a slanted edge at one corner slides along and keeps extending', r.slid && r.slid.x1 > r.reached + 300 && r.fits && r.kept, JSON.stringify(r));
+        check('crop: it slides only as far as it needs to', r.near && Math.abs(r.near[0]) < 1e-3 && r.near[1] > 0 && r.near[1] < 60 && r.nearFits, JSON.stringify(r));
+        check('crop: not turned, the side stops at the edge (both corners there)', Math.abs(r.flat[0] - 499) < 0.01 && r.flat[1] === null, JSON.stringify(r));
+        check('crop: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
     }
 
     // ---- The wheel on a Mac ----
