@@ -118,6 +118,7 @@ sealed class Run : ApplicationContext
     bool finished;
     bool ownSettings; // settings from its own window were given back to it
     bool fileXfer;    // sides come as files the driver writes, not in memory
+    bool epsonPhoto;  // set up as the FastFoto software sets it up
     public bool Failed { get; private set; }
 
     public Run(Options o)
@@ -168,8 +169,19 @@ sealed class Run : ApplicationContext
                 if (rc != ReturnCode.Success) Fail("The scanner's settings window didn't open: " + Status(source.GetStatus()));
                 return;
             }
+            // An Epson Scan 2 feeder that crops photos itself (the FastFoto)
+            // is set up exactly as the FastFoto software does it, which never
+            // gives it settings from its window
+            try
+            {
+                var supported = source.Capabilities.CapSupportedCaps.GetValues().ToList();
+                epsonPhoto = o.AutoSize && supported.Contains(EpsonDeskewType) && supported.Contains(EpsonAutoSizeType);
+            }
+            catch (Exception) { epsonPhoto = false; }
+            if (epsonPhoto && o.SettingsIn is not null && File.Exists(o.SettingsIn))
+                Out.Log("Its own settings, as chosen in its window: set aside (Epson photo scan)");
             // Settings chosen in its own window (Scanner's own settings…)
-            if (o.SettingsIn is not null && File.Exists(o.SettingsIn))
+            else if (o.SettingsIn is not null && File.Exists(o.SettingsIn))
             {
                 try
                 {
@@ -215,37 +227,26 @@ sealed class Run : ApplicationContext
             catch (Exception e) { Out.Log($"{what}: no ({e.Message})"); }
         }
 
-        // Epson Scan 2 keeps the last settings from its own window (color
-        // adjustments among them) for scans with no window, so the FastFoto
-        // software starts each scan from its defaults, then asks for its
-        // photo straightening straight away. Its photo crop is the driver's
-        // defaults plus these, so a photo scan starts there even when
-        // settings from its window were given; other scans keep those.
+        // An Epson Scan 2 feeder that crops photos itself (the FastFoto):
+        // asked exactly as the FastFoto software asks, nothing more
         bool epson = supported.Contains(EpsonDeskewType) && supported.Contains(EpsonAutoSizeType);
-        bool epsonPhoto = epson && o.AutoSize;
-        if (epson && (!ownSettings || epsonPhoto))
+        if (epsonPhoto)
         {
-            Set(ownSettings ? "Epson defaults (its window's settings set aside)" : "Epson defaults", () =>
+            ConfigureEpsonPhoto(ds, caps, Set);
+            return;
+        }
+
+        // Epson Scan 2 keeps the last settings from its own window (color
+        // adjustments among them) for scans with no window: start from its
+        // defaults, unless settings chosen in its window are wanted
+        if (epson && !ownSettings)
+            Set("Epson defaults", () =>
             {
                 using var all = new TWCapability(CapabilityId.CapSupportedCaps);
                 return ds.DGControl.Capability.ResetAll(all);
             });
-            if (epsonPhoto) Set("Epson photo straighten", () => SetCustom(ds, EpsonDeskewType, 1));
-        }
 
-        // The FastFoto software has the driver write each side to a TIFF
-        // file; the rest come straight from memory
-        if (epsonPhoto)
-        {
-            try
-            {
-                fileXfer = caps.ICapXferMech.SetValue(XferMech.File) == ReturnCode.Success
-                    && caps.ICapImageFileFormat.SetValue(FileFormat.Tiff) == ReturnCode.Success;
-            }
-            catch (Exception) { fileXfer = false; }
-            Out.Log($"Epson photo file transfer (TIFF): {(fileXfer ? "yes" : "no")}");
-        }
-        if (!fileXfer) Set("Native transfer", () => caps.ICapXferMech.SetValue(XferMech.Native));
+        Set("Native transfer", () => caps.ICapXferMech.SetValue(XferMech.Native));
         Set("No progress window", () => caps.CapIndicators.SetValue(BoolType.False));
         Set("Feeder", () => caps.CapFeederEnabled.SetValue(BoolType.True));
         Set(o.Duplex ? "Both sides" : "One side", () => caps.CapDuplexEnabled.SetValue(o.Duplex ? BoolType.True : BoolType.False));
@@ -265,14 +266,7 @@ sealed class Run : ApplicationContext
         Set("Contrast 0", () => caps.ICapContrast.SetValue(0));
         Set($"{o.Dpi} dpi across", () => caps.ICapXResolution.SetValue(o.Dpi));
         Set($"{o.Dpi} dpi down", () => caps.ICapYResolution.SetValue(o.Dpi));
-        // Its photo tone: the gamma the FastFoto software asks for, in place
-        // of the driver's 2.2 (settings from its own window keep 2.2 too)
-        if (epson) Set("Epson photo gamma 1.8", () => caps.ICapGamma.SetValue(1.8f));
-        // TWAIN's standard auto-size stays as the driver's defaults have it,
-        // as in the FastFoto software (with it turned off, the FF-680W read
-        // its straightening back as 0); 0 is a photo, 1 a panorama
-        if (epsonPhoto) Set("Epson photo auto size", () => SetCustom(ds, EpsonAutoSizeType, 0));
-        else if (o.AutoSize)
+        if (o.AutoSize)
         {
             // Every way TWAIN has of saying "find the photo's size yourself":
             // drivers support one or another
@@ -281,24 +275,68 @@ sealed class Run : ApplicationContext
             Set("Border detection", () => caps.ICapAutomaticBorderDetection.SetValue(BoolType.True));
             Set("Length detection", () => caps.ICapAutomaticLengthDetection.SetValue(BoolType.True));
         }
-        if (o.Deskew && !epsonPhoto) Set("Straighten", () => caps.ICapAutomaticDeskew.SetValue(BoolType.True));
-        // What it ended up as
+        if (o.Deskew) Set("Straighten", () => caps.ICapAutomaticDeskew.SetValue(BoolType.True));
+        LogNow(caps);
+    }
+
+    // The FastFoto software's capabilities, in its order, as its own log
+    // shows them (%APPDATA%\Epson\FastFoto\Logs\current.log): the driver's
+    // defaults, then these and nothing else. Anything more (the feeder,
+    // units, bit depth, brightness) is left as the driver has it there too.
+    void ConfigureEpsonPhoto(DataSource ds, ICapabilities caps, Action<string, Func<ReturnCode>> Set)
+    {
+        Set("Epson defaults", () =>
+        {
+            using var all = new TWCapability(CapabilityId.CapSupportedCaps);
+            return ds.DGControl.Capability.ResetAll(all);
+        });
+        Set("Epson photo straighten", () => SetCustom(ds, EpsonDeskewType, 1));
+        Set($"{o.Dpi} dpi across", () => caps.ICapXResolution.SetValue(o.Dpi));
+        Set($"{o.Dpi} dpi down", () => caps.ICapYResolution.SetValue(o.Dpi));
+        Set(o.Gray ? "Grayscale" : "Color", () => caps.ICapPixelType.SetValue(o.Gray ? PixelType.Gray : PixelType.RGB));
+        // Each side written to a TIFF file, handed on as a BMP
+        try
+        {
+            fileXfer = caps.ICapImageFileFormat.SetValue(FileFormat.Tiff) == ReturnCode.Success
+                && caps.ICapXferMech.SetValue(XferMech.File) == ReturnCode.Success;
+        }
+        catch (Exception) { fileXfer = false; }
+        Out.Log($"Epson photo file transfer (TIFF): {(fileXfer ? "yes" : "no")}");
+        if (!fileXfer) Set("Native transfer", () => caps.ICapXferMech.SetValue(XferMech.Native));
+        Set("Epson suppress device errors", () => SetCustom(ds, EpsonSuppressDeviceError, 1, ItemType.Bool));
+        Set("No progress window", () => caps.CapIndicators.SetValue(BoolType.False));
+        Set("Epson blank page skip off", () => SetCustom(ds, EpsonBlankPageSkip, 0));
+        Set(o.Duplex ? "Both sides" : "One side", () => caps.CapDuplexEnabled.SetValue(o.Duplex ? BoolType.True : BoolType.False));
+        Set("Epson streak reduction", () => SetCustom(ds, EpsonVerticalNoiseReduction, 1, ItemType.Bool));
+        Set("Epson photo auto size", () => SetCustom(ds, EpsonAutoSizeType, 0)); // 1: a panorama
+        Set("Epson double-feed detection off", () => SetCustom(ds, EpsonDoubleFeedDetection, 0)); // as for instant photos
+        Set("Epson unevenness correction", () => SetCustom(ds, EpsonUnevennessCorrection, 1, ItemType.Bool));
+        Set("Epson photo gamma 1.8", () => caps.ICapGamma.SetValue(1.8f));
+        LogNow(caps);
+    }
+
+    // What it ended up as
+    static void LogNow(ICapabilities caps)
+    {
         try { Out.Log($"Now: auto size {caps.ICapAutoSize.GetCurrent()}, border detection {caps.ICapAutomaticBorderDetection.GetCurrent()}, deskew {caps.ICapAutomaticDeskew.GetCurrent()}, {caps.ICapXResolution.GetCurrent().Whole} dpi"); }
         catch (Exception) { /* not all of them answer */ }
         try { Out.Log($"Now: {caps.ICapBitDepth.GetCurrent()} bits, brightness {Fix(caps.ICapBrightness.GetCurrent())}, contrast {Fix(caps.ICapContrast.GetCurrent())}, gamma {Fix(caps.ICapGamma.GetCurrent())}"); }
         catch (Exception) { /* not all of them answer */ }
-        // Epson's own, as they ended up (32885 straighten, 32897 auto size)
-        if (epson) try { LogCustom(caps); } catch (Exception) { }
+        try { LogCustom(caps); } catch (Exception) { }
     }
 
-    // Epson Scan 2's own capabilities for its photo crop (CAP_EP_DESKEWTYPE
-    // and ICAP_EP_AUTOSIZETYPE), both one 16-bit value
-    const CapabilityId EpsonDeskewType = (CapabilityId)0x8075;
-    const CapabilityId EpsonAutoSizeType = (CapabilityId)0x8081;
+    // Epson Scan 2's own capabilities (names from its es2twain.dll)
+    const CapabilityId EpsonDeskewType = (CapabilityId)0x8075;            // CAP_EP_DESKEWTYPE
+    const CapabilityId EpsonAutoSizeType = (CapabilityId)0x8081;          // ICAP_EP_AUTOSIZETYPE
+    const CapabilityId EpsonSuppressDeviceError = (CapabilityId)0x8057;   // CAP_EP_SUPPRESSDEVICEERROR
+    const CapabilityId EpsonBlankPageSkip = (CapabilityId)0x8053;         // ICAP_EP_BLANKPAGESKIP
+    const CapabilityId EpsonVerticalNoiseReduction = (CapabilityId)0x8080; // ICAP_EP_VERTICALNOISEREDUCTION
+    const CapabilityId EpsonDoubleFeedDetection = (CapabilityId)0x804E;   // ICAP_EP_DOUBLEFEEDDETECTION
+    const CapabilityId EpsonUnevennessCorrection = (CapabilityId)0x8083;  // ICAP_EP_UNEVENNESSCORRECTION
 
-    static ReturnCode SetCustom(DataSource ds, CapabilityId id, ushort value)
+    static ReturnCode SetCustom(DataSource ds, CapabilityId id, ushort value, ItemType type = ItemType.UInt16)
     {
-        using var cap = new TWCapability(id, new TWOneValue { Item = value, ItemType = ItemType.UInt16 });
+        using var cap = new TWCapability(id, new TWOneValue { Item = value, ItemType = type });
         return ds.DGControl.Capability.Set(cap);
     }
 
