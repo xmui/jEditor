@@ -5,7 +5,7 @@
 
 const CHANGELOG = [
     {
-        version: '1.43.0', date: '2026-10-17',
+        version: '1.44.0', date: '2026-10-18',
         items: [
             'Spot removal in Adjust: click a speck of dust, a scratch or a blemish and it\'s healed from nearby, sized to the speck. Drag from it to choose where it\'s copied from; Heal blends it in, Clone copies exactly. Find dust puts a spot on every speck it finds on a scan, and Clear found takes them off again.',
             'Masks find the Sky and the Subject in the photo for you, then paint or erase to touch them up.',
@@ -22,6 +22,13 @@ const CHANGELOG = [
             'Crop: dragging a side out on a straightened photo no longer stops when one of its corners meets the photo\'s slanted edge. The crop slides out of the way (or, when it can\'t, gets a little shorter), so the side keeps following you to the photo\'s edge; the opposite side stays put.',
             'A project\'s .jeditor folder opened in the Windows or Mac app now keeps its edits, not only its flags.',
             'Smooth scrolling on the Mac: a mouse\'s wheel glides instead of jumping a notch at a time, everywhere that scrolls. On a trackpad, two fingers move a zoomed photo about (in Paint too) and a pinch zooms it, following your fingers at once; pinching the grid resizes the thumbnails as far as you pinch, and the film strip scrolls with a sideways swipe.'
+        ]
+    },
+    {
+        version: '1.43.0', date: '2026-10-18',
+        items: [
+            'Auto crop\'s test scans now include photos cropped by a batch Auto crop (`Shift+A`, or after scanning) and then opened in the crop editor: fixed, they\'re kept as corrected, on the original scan; saved as they were, as right. Before, only photos Auto was used on in the editor counted.',
+            'Settings → Auto crop → Recover: crops fixed in the editor after a batch Auto crop before this version become test scans too, for the open project, from the originals jEditor kept for undoing the batch.'
         ]
     },
     {

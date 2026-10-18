@@ -396,6 +396,7 @@ const CropEditor = {
         const kept = Edits.get(file);
         if (kept) {
             this.applySnapshot(kept);
+            this._auto = kept.auto || null; // batch Auto crop's (crop-log.js)
             this.el('crop-aspect').value = this.aspectKey;
             this.syncAngleUi();
         }

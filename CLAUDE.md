@@ -1,6 +1,8 @@
-# jEditor
+# jEditor: notes for Claude
 
-**What jEditor is: three apps in one, and easy to use.**
+## What jEditor is
+
+**Three apps in one, and easy to use.**
 
 1. A simple, handy photo viewer and editor, like Preview on the Mac (Photos mode: look, rotate, crop, flag, rename, move on).
 2. A photo editor like Lightroom (Adjust mode).
@@ -9,3 +11,19 @@
 **The rule above all others:** it must be intuitive, with never too much on the screen. Each mode shows only what it needs. Extra controls go in menus and right-click menus, not on toolbars. A new feature has to fit without adding clutter; when in doubt, show less. Make mockups and let the owner choose before big layout changes.
 
 More: `PLAN.md` (the plan and roadmap), `docs/using-jeditor.md` (the user guide and code map). Feature work goes to the `beta` branch; `npm test` runs the suites (`test/mac.test.js` needs a display: `xvfb-run -a`).
+
+## Builds and releases
+
+Most changes are only being tried out, on Windows. Build Windows only
+unless the user says they're testing on Mac or Linux:
+
+- **Pull requests** build and test Windows (plus the UI and bridge tests).
+  Add the `build:mac` or `build:linux` label to a PR to build that app too.
+  Adding the label starts just that build.
+- **Betas** (a push to `beta`) have the Windows app and the web page only,
+  unless the last commit's message says `[mac]`, `[linux]` or `[all]`.
+- **Releases** (a version bump merged to `main`) always build every app,
+  because Homebrew and the Mac and Linux updaters need them.
+
+Don't bump the version or push to `main` or `beta` for a release without
+asking first, since both publish (`.github/workflows/release.yml`).

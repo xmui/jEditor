@@ -19,7 +19,7 @@ Changes are saved to the original files as you go.
 - **Appearance**: the theme (dark, light or match the system), the accent color and the color behind photos (black, gray or light, for judging color); on Windows 11 (22H2 or later), **Window background** puts Mica or Acrylic behind jEditor, like the Start menu, and **Transparency** sets how much of the desktop shows through (photos, Crop and Duplicates stay solid; it needs Windows' Transparency effects on, in Settings → Personalization → Colors); then glass (Rich, or Subtle, which is faster on older computers), density and toolbar size.
 - **Toolbar & keys**: keyboard shortcuts and their profiles, a vertical toolbar, the buttons above the film strip, and which buttons are in the toolbar.
 - **Messages**: which messages pop up after you do something.
-- **Auto crop**: keeping test scans to improve Auto crop, how many are kept, and exporting or clearing them.
+- **Auto crop**: keeping test scans to improve Auto crop, how many are kept, and exporting, recovering or clearing them.
 - **Projects**: watching the folder for changes, the thumbnail cache, stored projects and cleaning up the open one.
 - **Updates**: checking for updates, and the log.
 

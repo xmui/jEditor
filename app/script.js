@@ -6769,7 +6769,7 @@ const app = {
         // Only quarter turns and no crop: that's a rotation — do it
         // losslessly through the rotation engine instead of re-encoding
         if (ed.isIdentity()) {
-            if (logged) { const b = bytesNow(); CropLog.keep(logged, () => b); }
+            if (logged) { const b = logged.auto ? bytesNow() : null; CropLog.keep(logged, () => b); }
             const quarter = ed.q;
             this.rememberCrop(snap);
             this.cancelCrop();
@@ -6955,7 +6955,14 @@ const app = {
                     try {
                         const ed = await this.detectCrop(f, { feeder, scan });
                         if (!ed) noEdge++;
-                        else items.push({ file: f, edit: Edits.withAdj(ed.isIdentity() && !ed.q ? null : ed.snapshot(), f._edit && f._edit.adj, f._edit) });
+                        else {
+                            // (the photo's paint kept: withAdj's third argument)
+                            const edit = Edits.withAdj(ed.isIdentity() && !ed.q ? null : ed.snapshot(), f._edit && f._edit.adj, f._edit);
+                            // Auto's crop goes with it, for its test set
+                            // when it's checked in the editor (crop-log.js)
+                            if (edit && !ed.isIdentity()) edit.auto = ed._auto;
+                            items.push({ file: f, edit });
+                        }
                     } catch (e) {
                         console.error('Auto crop failed for', f.name, e);
                         failed++;
@@ -7009,6 +7016,7 @@ const app = {
             if (!det) return null;
             const ed = CropEditor.headless(W, H);
             ed.fitToPrint(det);
+            ed._auto = CropLog.autoOf(ed, det);
             return ed;
         } finally {
             bmp.close();

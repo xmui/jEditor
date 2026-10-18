@@ -1,18 +1,34 @@
 name: Build
 
-# Every push and pull request: the UI and bridge tests (Linux), then on Windows the
-# build, the smoke test (the real app opening a folder and saving a
-# rotation), and an install / uninstall test; on a Mac, the Mac app's tests,
-# its build and the same smoke test on the built app. The setup, the
-# portable zip and the .dmg are kept as artifacts on the run's page.
+# Every push to main and pull request: the UI and bridge tests (Linux), then
+# on Windows the build, the smoke test (the real app opening a folder and
+# saving a rotation), and an install / uninstall test. Most changes are tried
+# on Windows, so the Mac and Linux apps are built only when asked: a pull
+# request labelled build:mac or build:linux (adding the label builds just
+# that one), or a run by hand with Mac or Linux ticked. On a Mac, the Mac
+# app's tests, its build and the same smoke test on the built app; on Linux,
+# the same tests, the build and install tests. The setup, the portable zip,
+# the .dmg and the Linux packages are kept as artifacts on the run's page.
 on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
+    inputs:
+      mac:
+        description: Build and test the Mac app
+        type: boolean
+        default: false
+      linux:
+        description: Build and test the Linux app
+        type: boolean
+        default: false
 
 jobs:
   tests:
+    # (a label added: only what it asks for runs)
+    if: github.event.action != 'labeled'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,6 +41,7 @@ jobs:
           CHROME_PATH: /usr/bin/google-chrome
 
   windows:
+    if: github.event.action != 'labeled'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,6 +73,10 @@ jobs:
           if-no-files-found: error
 
   mac:
+    if: >-
+      inputs.mac ||
+      (github.event.action == 'labeled' && github.event.label.name == 'build:mac') ||
+      (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'build:mac'))
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -102,6 +123,10 @@ jobs:
           if-no-files-found: error
 
   linux:
+    if: >-
+      inputs.linux ||
+      (github.event.action == 'labeled' && github.event.label.name == 'build:linux') ||
+      (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'build:linux'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
