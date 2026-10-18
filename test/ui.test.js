@@ -3585,6 +3585,9 @@ async function newPage(browser, url) {
             }
             pg.fillStyle = '#050505'; pg.fillRect(0, 420, 900, 180);
             out.photoAlone = !CropAuto.find(photo, 900, 600);
+            // The feeder's finder too: a photo that fills the scan (the
+            // feeder cut it to the print) has no backing beside it
+            out.photoAloneFeeder = !CropAuto.detectFeeder(photo, 900, 600);
             // A print a hair taller than the scan: cut off top and bottom,
             // a grainy strip of bed down each side (left wider than right),
             // too little of the scan's edge for the bed to be known as one;
@@ -3620,6 +3623,7 @@ async function newPage(browser, url) {
         check('feeder page: Auto crop finds the photo, background trimmed off', near(r.straight, 380, 560), JSON.stringify(r.straight));
         check('feeder page: a tilted photo is straightened and cropped', near(r.tilted, 380, 560) && Math.abs(r.tilted.angle + 1.5) < 0.4, JSON.stringify(r.tilted));
         check('feeder page: found without the hint too; an ordinary photo is left alone', r.unhinted && r.photoAlone, JSON.stringify([r.unhinted, r.photoAlone]));
+        check('feeder finder: a photo that fills the scan, with a plain band across it, isn\'t cropped to the band', r.photoAloneFeeder);
         const cut = r.cut, ct = r.cutTilted;
         check('a print cut off top and bottom by the scan: the bed strips either side come off',
             cut && cut.w > 860 && cut.w <= 880 && cut.h >= 610 && Math.abs(cut.cx - 485) <= 4 && cut.angle === 0, JSON.stringify(cut));
