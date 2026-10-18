@@ -116,6 +116,7 @@ sealed class Run : ApplicationContext
     volatile bool stop;
     int pages;
     bool finished;
+    bool ownSettings; // settings from its own window were given back to it
     public bool Failed { get; private set; }
 
     public Run(Options o)
@@ -172,6 +173,7 @@ sealed class Run : ApplicationContext
                 try
                 {
                     source.Settings = File.ReadAllBytes(o.SettingsIn);
+                    ownSettings = true;
                     Out.Log("Its own settings, as chosen in its window: yes");
                 }
                 catch (Exception e) { Out.Log("Its own settings, as chosen in its window: no (" + e.Message + ")"); }
@@ -212,6 +214,18 @@ sealed class Run : ApplicationContext
             catch (Exception e) { Out.Log($"{what}: no ({e.Message})"); }
         }
 
+        // Epson Scan 2 keeps the last settings from its own window (color
+        // adjustments among them) for scans with no window, so the FastFoto
+        // software starts each scan from its defaults. Not when settings
+        // chosen in its window are what's wanted.
+        bool epson = supported.Contains(EpsonDeskewType) && supported.Contains(EpsonAutoSizeType);
+        if (epson && !ownSettings)
+            Set("Epson defaults", () =>
+            {
+                using var all = new TWCapability(CapabilityId.CapSupportedCaps);
+                return ds.DGControl.Capability.ResetAll(all);
+            });
+
         Set("Native transfer", () => caps.ICapXferMech.SetValue(XferMech.Native));
         Set("No progress window", () => caps.CapIndicators.SetValue(BoolType.False));
         Set("Feeder", () => caps.CapFeederEnabled.SetValue(BoolType.True));
@@ -236,7 +250,10 @@ sealed class Run : ApplicationContext
         // with its own two settings, the way the FastFoto software asks. The
         // standard TWAIN ones below get its document crop instead, which
         // leaves backing around a photo.
-        bool epsonPhoto = o.AutoSize && supported.Contains(EpsonDeskewType) && supported.Contains(EpsonAutoSizeType);
+        // Its photo tone: the gamma the FastFoto software asks for, in place
+        // of the driver's 2.2
+        if (epson && !ownSettings) Set("Epson photo gamma 1.8", () => caps.ICapGamma.SetValue(1.8f));
+        bool epsonPhoto = epson && o.AutoSize;
         if (epsonPhoto)
         {
             Set("Epson photo straighten", () => SetCustom(ds, EpsonDeskewType, 1));
