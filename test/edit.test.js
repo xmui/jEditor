@@ -1022,24 +1022,24 @@ const PROJECT = `
                 out.startKept = app.uiPrefs.startIn === 'adjust' && JSON.parse(localStorage.getItem('jeditor.ui')).startIn === 'adjust';
                 const blob = async (color) => { const c = document.createElement('canvas'); c.width = 120; c.height = 90; const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, 120, 90); return canvasBlob(c); };
                 await openProject('modes', { 'a.png': await blob('#806040'), 'b.png': await blob('#406080'), 'c.png': await blob('#408060') });
-                await until(() => Adjust.ready);
+                await until(() => Adjust.ready && Modes.strip.parentElement);
                 out.landedAdjust = Modes.current() === 'adjust' && Adjust.file === app.viewFiles()[0];
                 // The chip over Adjust, and the strip along the bottom
                 out.chipOver = shownEl('mode-float') && /Adjust/.test($('mode-chip-float').textContent);
-                out.strip = $('mode-strip').parentElement === $('adjust-editor') && $('mode-strip').children.length === 3 && $('mode-strip').children[0].classList.contains('active');
+                out.strip = Modes.strip.parentElement === $('adjust-editor') && Modes.strip.children.length === 3 && Modes.strip.children[0].classList.contains('active');
                 // Another photo from the strip: still in Adjust, on that one
                 step = 'strip';
-                $('mode-strip').children[1].click();
+                Modes.strip.children[1].click();
                 await until(() => Adjust.ready && Adjust.file === app.viewFiles()[1]);
-                out.stepped = Modes.current() === 'adjust' && Adjust.file === app.viewFiles()[1] && $('mode-strip').children[1].classList.contains('active');
+                out.stepped = Modes.current() === 'adjust' && Adjust.file === app.viewFiles()[1] && Modes.strip.children[1].classList.contains('active');
                 // To Paint from the chip's menu: Paint on the same photo
                 step = 'to paint';
                 $('mode-chip-float').click();
                 const items = [...document.querySelectorAll('.mode-menu .mode-mi')].map(b => b.textContent);
                 out.menu = items.length === 3 && /Paint/.test(items[2]) && document.querySelector('.mode-menu .mode-mi.on') && /Adjust/.test(document.querySelector('.mode-menu .mode-mi.on').textContent);
                 document.querySelectorAll('.mode-menu .mode-mi')[2].click();
-                await until(() => PaintEditor.ready);
-                out.inPaint = Modes.current() === 'paint' && PaintEditor.file === app.viewFiles()[1] && $('mode-strip').parentElement === $('paint-editor');
+                await until(() => PaintEditor.ready && Modes.strip.parentElement === $('paint-editor'));
+                out.inPaint = Modes.current() === 'paint' && PaintEditor.file === app.viewFiles()[1] && Modes.strip.parentElement === $('paint-editor');
                 // A stroke, then another photo: the painting kept on the first
                 step = 'paint step';
                 const P = PaintEditor;
@@ -1049,7 +1049,7 @@ const PROJECT = `
                 P.setTool('brush');
                 pe('pointerdown', 20, 40); pe('pointermove', 60, 40); pe('pointerup', 60, 40);
                 const painted = P.file;
-                $('mode-strip').children[2].click();
+                Modes.strip.children[2].click();
                 await until(() => PaintEditor.ready && PaintEditor.file === app.viewFiles()[2]);
                 out.kept = !!(painted._edit && painted._edit.paint) && PaintEditor.file === app.viewFiles()[2];
                 // Back to Photos
@@ -1071,8 +1071,11 @@ const PROJECT = `
                 $('mode-seg').querySelector('[data-mode="adjust"]').click();
                 await until(() => Adjust.ready);
                 out.segGo = Modes.current() === 'adjust';
-                $('adj-cancel').click();
+                // No Done bar: Esc goes back to Photos
+                out.noBar = !document.querySelector('#adjust-editor .crop-toolbar') && !document.querySelector('#paint-editor .crop-toolbar') && !$('adj-done') && !$('paint-done');
+                pressKey('Escape');
                 await until(() => !Adjust.isOpen);
+                out.escBack = Modes.current() === 'photos';
                 // The toolbar's main row has no Adjust or Paint now
                 out.toolbar = app.uiPrefs.placement.adjust === 'more' && app.uiPrefs.placement.paint === 'more';
                 return out;
@@ -1087,6 +1090,7 @@ const PROJECT = `
         check('modes: back to Photos closes it', r.back, JSON.stringify(r));
         check('modes: the sidebar open, the switch is along its top; closed, a chip in the folder pill', r.seg && r.chipBar && r.segGo, JSON.stringify(r));
         check('modes: Adjust and Paint are off the toolbar\'s main row', r.toolbar, JSON.stringify(r));
+        check('modes: no Done bar in Adjust or Paint; Esc goes back to Photos', r.noBar && r.escBack, JSON.stringify(r));
         check('modes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
 

@@ -52,7 +52,7 @@ Flags are kept with the order, in `.jeditor/flags.json`, so they follow renames 
 - **Delete.** Photos are moved to `.jeditor/trash` inside the opened folder, not deleted. `Ctrl+Z` restores them.
 - **Move to a folder.** Photos are moved on disk, which is a rename and instant even for big scans; where a file can't be moved it's copied and the original removed. A copy is a byte-for-byte duplicate. Cached thumbnails and previews follow the photo, so moving doesn't make them again.
 - **Export.** Copies go to a `jEditor Export` folder, optionally resized, with any adjustments and edits not saved yet.
-- **Adjust.** Never written into the photo in a project: the settings are kept in `.jeditor/edits.json`, and Export (or **Save edits…**) writes the result, re-encoded like a crop, with the metadata carried over. Without a project (photos picked on a phone, or dropped in), **Done** writes them into the photo.
+- **Adjust.** Never written into the photo in a project: the settings are kept in `.jeditor/edits.json`, and Export (or **Save edits…**) writes the result, re-encoded like a crop, with the metadata carried over. Without a project (photos picked on a phone, or dropped in), they're written into the photo when you leave Adjust.
 
 ## The .jeditor folder
 
@@ -116,7 +116,7 @@ Like Lightroom's Develop, for one photo at a time: press `E` (or the sliders but
 - Double-click a slider's name to put it back to 0; each section has its own **Reset**.
 - `\` shows the photo as it was (before and after). `Ctrl+Z` / `Ctrl+Shift+Z` undo and redo inside Adjust.
 - **Copy** and **Paste** (`Ctrl+Shift+C` / `Ctrl+Shift+V`) carry the adjustments to other photos. In the grid, `Ctrl+Shift+V` pastes onto every selected photo; the right-click menu has it too.
-- **Done** (`Enter`) keeps the adjustments; **Done & next** (`Shift+Enter`) goes on to the next photo.
+- There's no Done button: what you do is kept as you go. Leave with the mode switch, `Esc` or `Enter` (back to Photos), or click another photo in the strip; `Shift+Enter` goes on to the next photo. `Ctrl+Z` in Photos takes a whole visit's adjustments off again.
 
 Adjustments are non-destructive: the photo on disk isn't changed. They're kept with the project (`.jeditor/edits.json`), shown wherever the photo is, and can be changed again any time, from the original. A pencil on the photo says it has them. An adjusted photo keeps its turns and crops the same way, so everything is applied once, from the original. **Export…** writes copies with the adjustments; **Save edits…** (right-click the grid background) writes them into the photos, keeping the originals for `Ctrl+Z`. **Discard edit** takes them off.
 
@@ -126,11 +126,11 @@ RAW files from cameras (DNG, CR2, CR3, NEF, ARW, RAF, ORF, RW2, PEF, SRW and the
 
 ## Photos, Adjust and Paint
 
-jEditor has three modes, like Lightroom's modules: **Photos** (sorting, rotating, cropping), **Adjust** and **Paint**. With the sidebar open, switch along its top; with it closed, the chip at the top left names the mode you're in and its menu switches (it's there in single view, and over Adjust and Paint too). `E` and `B` still open Adjust and Paint, and `Esc` (or Done, or Cancel) goes back to Photos.
+jEditor has three modes, like Lightroom's modules: **Photos** (sorting, rotating, cropping), **Adjust** and **Paint**. With the sidebar open, switch along its top; with it closed, the chip at the top left names the mode you're in and its menu switches (it's there in single view, and over Adjust and Paint too). `E` and `B` still open Adjust and Paint, and `Esc` goes back to Photos.
 
-In Adjust and Paint a film strip runs along the bottom: click another photo and it opens in the same mode, with what you did on the last one kept (as Done would). Adjust and Paint only show while they're turned on in **Settings → Experimental**; their toolbar buttons are in the ⋯ menu.
+Adjust and Paint have no Done bar: what you do is kept as you go, as in Lightroom (`Ctrl+Z` in Photos takes it off again). Their few buttons (Before, Reset, Copy, Paste; Undo, Redo, Fit, 100%) are at the top right. A film strip runs along the bottom: click another photo and it opens in the same mode. Adjust and Paint only show while they're turned on in **Settings → Experimental**; their toolbar buttons are in the ⋯ menu.
 
-The start page's **Start in** (Photos, Adjust or Paint) is remembered: a project you open from there lands in that mode, on its first photo. **Paint** there (or **New blank canvas…**) asks what to paint on: a **New canvas** (below), or **Open a file**: **An image…** opens a single picture on its own (Done paints into it), **A folder…** opens a folder of photos as a project in Paint.
+The start page's **Start in** (Photos, Adjust or Paint) is remembered: a project you open from there lands in that mode, on its first photo. **Paint** there (or **New blank canvas…**) asks what to paint on: a **New canvas** (below), or **Open a file**: **An image…** opens a single picture on its own (the painting goes into it when you leave Paint), **A folder…** opens a folder of photos as a project in Paint.
 
 ## Paint
 
@@ -144,7 +144,7 @@ Paint over a photo in layers, as a tool like Crop: press `B` (or the brush butto
 - **A blank canvas:** right-click a folder (or the grid's background) → **New blank image…**, or the start page's Paint. Pick a size from the list (prints at 300 dpi in inches, screens and social posts, the photo you're looking at, the last one you made) or type one in pixels, inches or centimetres at a resolution (72 to 600 dpi), up to 10,000 pixels a side, either way round; a background (white, black, none or a colour); and the folder to save into (with no project open, you choose one and it opens as the project). It's saved as a PNG carrying its resolution, so it prints at that size, and opens in Paint straight away.
 - The wheel zooms; hold `Space` (or the Hand) and drag to move about; `0` fits the photo, `1` is 100%. `Ctrl+Z` / `Ctrl+Shift+Z` undo and redo inside Paint.
 
-Painting goes on last, over the photo as it's cropped and adjusted, so it looks as you painted it. It's non-destructive like the rest: the layers are kept with the project (in `.jeditor/paint`), so the painting can be opened and changed again, and a crop later leaves it where it was. **Export…** and **Save edits…** write it into copies or the photos. Without a project (photos picked on a phone), **Done** paints into the photo.
+Painting goes on last, over the photo as it's cropped and adjusted, so it looks as you painted it. It's non-destructive like the rest: the layers are kept with the project (in `.jeditor/paint`), so the painting can be opened and changed again, and a crop later leaves it where it was. **Export…** and **Save edits…** write it into copies or the photos. Without a project (photos picked on a phone, or an image opened on its own), leaving Paint paints into the photo.
 
 ## Drives, cards and discs
 

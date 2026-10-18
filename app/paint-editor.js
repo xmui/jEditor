@@ -118,8 +118,6 @@ const PaintEditor = {
             tools.appendChild(b);
         }
         const bind = (id, fn) => this.el(id).addEventListener('click', (e) => { e.currentTarget.blur(); if (!this.busy) fn(); });
-        bind('paint-cancel', () => app.cancelPaint());
-        bind('paint-done', () => app.savePaint());
         bind('paint-undo', () => this.undo());
         bind('paint-redo', () => this.redo());
         bind('paint-zoom-fit', () => this.fit());
@@ -257,7 +255,6 @@ const PaintEditor = {
         this.root.classList.remove('hidden');
         this.el('paint-file').textContent = file.name;
         this.el('paint-dims').textContent = 'Loading…';
-        this.el('paint-done').title = Edits.canKeep() ? 'Keep the painting with the photo; the file isn\'t changed (Enter)' : 'Paint it into the photo (Enter)';
         const token = this._token = (this._token || 0) + 1;
         const current = () => this.isOpen && this.file === file && this._token === token;
 

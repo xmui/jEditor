@@ -7,9 +7,10 @@
 //   single view, Adjust  the same chip on its own, top left (#mode-float)
 //   and Paint
 //
-// In Adjust and Paint a film strip runs along the bottom (#mode-strip):
-// another photo is kept as it is (as Done would) and opened in the same
-// mode. Done, Cancel and Esc are as before: back to Photos.
+// Adjust and Paint have no Done bar: what's done is kept as you go, as in
+// Lightroom. The switch, Esc or Enter go back to Photos keeping it (and
+// Ctrl+Z there takes it off again); a film strip runs along the bottom
+// (#mode-strip), and another photo there opens in the same mode.
 //
 // The landing page's Start in (Photos · Adjust · Paint, remembered) is
 // where a project opened from it lands; Paint there asks what to paint on
@@ -204,6 +205,17 @@ const Modes = {
             this._busy = false;
             this.render();
         }
+    },
+
+    // The photo before or after this one (Shift+Enter), in the same mode
+    stepBy(dir = 1) {
+        const app = this.app;
+        const files = app.viewFiles();
+        const mode = this.current();
+        const cur = mode === 'adjust' ? Adjust.file : mode === 'paint' ? PaintEditor.file : app.currentFile;
+        const f = files[files.indexOf(cur) + dir];
+        if (!f) { app.showToast(dir > 0 ? 'That was the last photo' : 'That was the first photo', 1500); return; }
+        return this.step(f);
     },
 
     // ---- The landing page ----

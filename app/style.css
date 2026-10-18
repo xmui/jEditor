@@ -3522,6 +3522,29 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     padding: var(--sp-3) var(--sp-5);
 }
 
+/* Adjust's and Paint's few buttons, on the right of the head (no Done bar) */
+.adj-head,
+.paint-head {
+    position: relative;
+}
+
+.mode-head-acts {
+    position: absolute;
+    right: var(--sp-4);
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.mode-head-sep {
+    width: 1px;
+    height: 18px;
+    margin: 0 var(--sp-1);
+    background: var(--border);
+}
+
 .mode-title {
     margin: 0;
     font-size: var(--fs-title);
@@ -4189,9 +4212,8 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     border-radius: var(--r-xs);
 }
 
-.adj-toolbar .crop-btn[aria-pressed="true"] {
+.mode-head-acts .btn[aria-pressed="true"] {
     background: var(--accent-soft);
-    border-color: var(--accent);
     color: var(--accent-text);
 }
 
@@ -4208,7 +4230,7 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
         border-left: 0;
         border-top: 1px solid var(--border);
     }
-    .adj-toolbar .crop-sep,
+    .mode-head-acts .mode-head-sep,
     #adj-copy,
     #adj-paste {
         display: none;
@@ -4529,10 +4551,6 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
         grid-template-columns: repeat(16, 1fr);
         gap: 2px;
     }
-    .paint-toolbar {
-        margin: var(--sp-2) var(--sp-3) var(--sp-3);
-    }
-    .paint-toolbar .crop-sep,
     #paint-zoom-1 {
         display: none;
     }

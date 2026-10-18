@@ -7,8 +7,8 @@
 //                way; white, black, see-through or a colour; saved as a PNG
 //                (with its resolution, so it prints at that size) in a folder
 //                of the project, or a folder chosen, and opened in Paint
-//   Open a file  an image from anywhere, opened on its own (Done paints into
-//                it), or a folder of photos, opened as a project in Paint
+//   Open a file  an image from anywhere, opened on its own (leaving Paint paints
+//                into it), or a folder of photos, opened as a project in Paint
 
 const Blank = {
     MAX: 10000, // pixels a side
@@ -458,7 +458,7 @@ const Blank = {
 
     // ---- Open a file ----
 
-    // An image on its own: Done paints into it. Where the browser can't
+    // An image on its own: leaving Paint paints into it. Where the browser can't
     // give a file to write to, the phone's way (picked.js: Save hands it back)
     async openImage() {
         const app = this.app;

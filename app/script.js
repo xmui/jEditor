@@ -1394,6 +1394,19 @@ const app = {
     async handleDrop(e) {
         document.body.classList.remove('drag-over');
         e.preventDefault();
+        // The drop's handles, asked for now: a drop's data goes once anything is awaited
+        const handlesOf = (items) => items.map(item => {
+            if (item.kind !== 'file') return null;
+            if (typeof item.getAsFileSystemHandle === 'function') return item.getAsFileSystemHandle();
+            return Promise.resolve(item.webkitGetAsEntry());
+        }).filter(p => p !== null);
+        let early = null;
+        // Dropped over Adjust or Paint: what was done there is kept first
+        if (Modes.current() !== 'photos') {
+            const dropped = [...e.dataTransfer.items];
+            early = { items: dropped, handles: handlesOf(dropped) };
+            if (!(await Modes.leave(true))) return;
+        }
 
         try {
             this.log('Entering handleDrop...');
@@ -1413,7 +1426,7 @@ const app = {
                 this.elements.dropZone.classList.add('hidden');
             }
 
-            const items = [...e.dataTransfer.items];
+            const items = early ? early.items : [...e.dataTransfer.items];
             if (!items || items.length === 0) throw new Error('No items dropped.');
 
             this.updateTask('scan', `Processing ${items.length} items…`);
@@ -1421,13 +1434,8 @@ const app = {
 
             // Try modern File System Access API first (supports writing)
             // Capture all handles/entries synchronously before DataTransfer expires
-            const handlePromises = items.map(item => {
-                if (item.kind !== 'file') return null;
-                // Try modern API first
-                if (typeof item.getAsFileSystemHandle === 'function') return item.getAsFileSystemHandle();
-                // Fallback to legacy
-                return Promise.resolve(item.webkitGetAsEntry());
-            }).filter(p => p !== null);
+            // Modern API first (it can write), else the legacy entries
+            const handlePromises = early ? early.handles : handlesOf(items);
 
             const droppedHandles = await Promise.all(handlePromises);
 
@@ -3983,9 +3991,9 @@ const app = {
         ['crop.previous', 'crop', 'Crop & Straighten', 'Reuse previous crop', ['P']],
         ['crop.selectAll', 'crop', 'Crop & Straighten', 'Select whole image', ['Ctrl+A']],
         ['crop.reset', 'crop', 'Crop & Straighten', 'Reset', ['R']],
-        ['adjust.done', 'adjust', 'Adjust', 'Done', ['Enter']],
-        ['adjust.doneNext', 'adjust', 'Adjust', 'Done, then adjust the next photo', ['Shift+Enter']],
-        ['adjust.cancel', 'adjust', 'Adjust', 'Cancel', ['Escape']],
+        ['adjust.done', 'adjust', 'Adjust', 'Back to Photos (what you did is kept)', ['Enter']],
+        ['adjust.doneNext', 'adjust', 'Adjust', 'The next photo, in Adjust', ['Shift+Enter']],
+        ['adjust.cancel', 'adjust', 'Adjust', 'Back to Photos (what you did is kept)', ['Escape']],
         ['adjust.before', 'adjust', 'Adjust', 'Before and after', ['\\']],
         ['adjust.auto', 'adjust', 'Adjust', 'Auto (levels from the photo)', ['Shift+A']],
         ['adjust.autoColor', 'adjust', 'Adjust', 'Auto color (each channel)', ['Shift+C']],
@@ -3994,8 +4002,8 @@ const app = {
         ['adjust.paste', 'adjust', 'Adjust', 'Paste adjustments', ['Ctrl+Shift+V']],
         ['adjust.undo', 'adjust', 'Adjust', 'Undo', ['Ctrl+Z']],
         ['adjust.redo', 'adjust', 'Adjust', 'Redo', ['Ctrl+Shift+Z', 'Ctrl+Y']],
-        ['paint.done', 'paint', 'Paint', 'Done (or put down what\'s being moved)', ['Enter']],
-        ['paint.cancel', 'paint', 'Paint', 'Cancel (or put back what\'s being moved)', ['Escape']],
+        ['paint.done', 'paint', 'Paint', 'Put down what\'s being moved, or back to Photos (what you did is kept)', ['Enter']],
+        ['paint.cancel', 'paint', 'Paint', 'Put back what\'s being moved, or back to Photos (what you did is kept)', ['Escape']],
         ['paint.undo', 'paint', 'Paint', 'Undo', ['Ctrl+Z']],
         ['paint.redo', 'paint', 'Paint', 'Redo', ['Ctrl+Shift+Z', 'Ctrl+Y']],
         ['paint.move', 'paint', 'Paint', 'Move', ['V']],
@@ -4171,9 +4179,10 @@ const app = {
             'crop.previous': () => ed.usePrevious(),
             'crop.selectAll': () => ed.selectAll(),
             'crop.reset': () => ed.reset(),
-            'adjust.done': () => this.saveAdjust(),
-            'adjust.doneNext': () => this.saveAdjust({ next: true }),
-            'adjust.cancel': () => this.cancelAdjust(),
+            // No Done or Cancel: Adjust keeps what's done, as Lightroom does
+            'adjust.done': () => Modes.go('photos'),
+            'adjust.doneNext': () => Modes.stepBy(1),
+            'adjust.cancel': () => (Adjust.ready ? Modes.go('photos') : this.cancelAdjust()),
             'adjust.before': () => Adjust.toggleBefore(),
             'adjust.auto': () => Adjust.auto(),
             'adjust.autoColor': () => Adjust.auto({ color: true }),
@@ -4182,8 +4191,12 @@ const app = {
             'adjust.paste': () => Adjust.paste(),
             'adjust.undo': () => { if (!Adjust.undo()) this.showToast('Nothing to undo', 1200); },
             'adjust.redo': () => { if (!Adjust.redo()) this.showToast('Nothing to redo', 1200); },
-            'paint.done': () => { if (PaintEditor.float) PaintEditor.commitFloat(); else this.savePaint(); },
-            'paint.cancel': () => { if (PaintEditor.float) PaintEditor.cancelFloat(); else this.cancelPaint(); },
+            'paint.done': () => { if (PaintEditor.float) PaintEditor.commitFloat(); else Modes.go('photos'); },
+            'paint.cancel': () => {
+                if (PaintEditor.float) PaintEditor.cancelFloat();
+                else if (PaintEditor.ready) Modes.go('photos');
+                else this.cancelPaint();
+            },
             'paint.undo': () => { if (!PaintEditor.undo()) this.showToast('Nothing to undo', 1200); },
             'paint.redo': () => { if (!PaintEditor.redo()) this.showToast('Nothing to redo', 1200); },
             'paint.move': () => PaintEditor.setTool('move'),

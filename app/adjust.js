@@ -50,9 +50,6 @@ const Adjust = {
             if (this.busy) return;
             fn();
         });
-        bind('adj-cancel', () => app.cancelAdjust());
-        bind('adj-done', () => app.saveAdjust());
-        bind('adj-done-next', () => app.saveAdjust({ next: true }));
         bind('adj-before', () => this.toggleBefore());
         bind('adj-reset', () => this.reset());
         bind('adj-copy', () => this.copy());
@@ -199,8 +196,6 @@ const Adjust = {
         this.root.classList.remove('hidden');
         this.el('adj-file').textContent = file.name;
         this.el('adj-dims').textContent = 'Loading…';
-        const keep = Edits.canKeep();
-        this.el('adj-done').title = keep ? 'Keep these adjustments with the photo; the file isn\'t changed (Enter)' : 'Save the adjustments into the photo (Enter)';
         this.sync();
 
         const token = this._openToken = (this._openToken || 0) + 1;
