@@ -216,15 +216,21 @@ sealed class Run : ApplicationContext
 
         // Epson Scan 2 keeps the last settings from its own window (color
         // adjustments among them) for scans with no window, so the FastFoto
-        // software starts each scan from its defaults. Not when settings
-        // chosen in its window are what's wanted.
+        // software starts each scan from its defaults, then asks for its
+        // photo straightening straight away. Its photo crop is the driver's
+        // defaults plus these, so a photo scan starts there even when
+        // settings from its window were given; other scans keep those.
         bool epson = supported.Contains(EpsonDeskewType) && supported.Contains(EpsonAutoSizeType);
-        if (epson && !ownSettings)
-            Set("Epson defaults", () =>
+        bool epsonPhoto = epson && o.AutoSize;
+        if (epson && (!ownSettings || epsonPhoto))
+        {
+            Set(ownSettings ? "Epson defaults (its window's settings set aside)" : "Epson defaults", () =>
             {
                 using var all = new TWCapability(CapabilityId.CapSupportedCaps);
                 return ds.DGControl.Capability.ResetAll(all);
             });
+            if (epsonPhoto) Set("Epson photo straighten", () => SetCustom(ds, EpsonDeskewType, 1));
+        }
 
         Set("Native transfer", () => caps.ICapXferMech.SetValue(XferMech.Native));
         Set("No progress window", () => caps.CapIndicators.SetValue(BoolType.False));
@@ -246,24 +252,13 @@ sealed class Run : ApplicationContext
         Set("Contrast 0", () => caps.ICapContrast.SetValue(0));
         Set($"{o.Dpi} dpi across", () => caps.ICapXResolution.SetValue(o.Dpi));
         Set($"{o.Dpi} dpi down", () => caps.ICapYResolution.SetValue(o.Dpi));
-        // Epson Scan 2 has its own photo crop (the FastFoto's): asked for
-        // with its own two settings, the way the FastFoto software asks. The
-        // standard TWAIN ones below get its document crop instead, which
-        // leaves backing around a photo.
         // Its photo tone: the gamma the FastFoto software asks for, in place
         // of the driver's 2.2 (settings from its own window keep 2.2 too)
         if (epson) Set("Epson photo gamma 1.8", () => caps.ICapGamma.SetValue(1.8f));
-        bool epsonPhoto = epson && o.AutoSize;
-        if (epsonPhoto)
-        {
-            // TWAIN's own auto-size off first: left on (settings from its
-            // window keep them on), the driver crops as for a document
-            Set("Standard auto size off", () => caps.ICapAutoSize.SetValue(AutoSize.None));
-            Set("Standard border detection off", () => caps.ICapAutomaticBorderDetection.SetValue(BoolType.False));
-            Set("Standard straighten off", () => caps.ICapAutomaticDeskew.SetValue(BoolType.False));
-            Set("Epson photo straighten", () => SetCustom(ds, EpsonDeskewType, 1));
-            Set("Epson photo auto size", () => SetCustom(ds, EpsonAutoSizeType, 0));
-        }
+        // TWAIN's standard auto-size stays as the driver's defaults have it,
+        // as in the FastFoto software (with it turned off, the FF-680W read
+        // its straightening back as 0); 0 is a photo, 1 a panorama
+        if (epsonPhoto) Set("Epson photo auto size", () => SetCustom(ds, EpsonAutoSizeType, 0));
         else if (o.AutoSize)
         {
             // Every way TWAIN has of saying "find the photo's size yourself":
