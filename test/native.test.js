@@ -915,7 +915,7 @@ async function newPage(context, baseUrl, host = null) {
         check('Scan asks the app to scan into the order\'s folder, by path', r.req && r.req.folder === 'D:\\Orders\\Scan Order' && r.req.device === 'EPSON FF-680W' && r.req.driver === 'twain' && r.req.prefix === 'photo' && r.req.next === 4, JSON.stringify(r.req));
         check('scanned photos show up in the order', r.files === 'Ceremony/c1.jpg,photo1.jpg,photo2.jpg,photo3.jpg,photo4.jpg,photo5.jpg', r.files);
         check('a message says how many', /Scanned 2 photos into Scan Order/.test(r.toast), r.toast);
-        check('Auto crop each photo is on to start with', r.autoCropDefault);
+        check('Auto crop each photo is off to start with', r.autoCropDefault === false);
         check('Compatibility mode: offered for TWAIN scanners only, off to start with', r.compatShown && r.compatHiddenWia, JSON.stringify([r.compatShown, r.compatHiddenWia]));
         check('... sent with the scan, and remembered for that scanner', r.req.compat === true && r.compatKept, JSON.stringify([r.req.compat, r.compatKept]));
         check('... and crops each scan once it\'s in, without asking', r.cropped === 'c2.jpg,c3.jpg (no question)', r.cropped);
@@ -1133,8 +1133,8 @@ async function newPage(context, baseUrl, host = null) {
             out.sidesShown = !$('scan-sides-row').classList.contains('hidden');
             // The FastFoto has its sides the other way round: on to start with
             out.swap = $('scan-swap').checked;
-            // Its tone: the FastFoto app's, said beside the sliders
-            out.tone = [$('scan-bright').value, $('scan-contrast').value, !$('scan-tone-note').classList.contains('hidden')].join();
+            // Its tone: neutral (the TWAIN helper asks the driver for FastFoto's)
+            out.tone = [$('scan-bright').value, $('scan-contrast').value].join();
             // Scanner's own settings…: offered for a TWAIN feeder; saved, then forgotten
             await wait(() => !$('scan-own-row').classList.contains('hidden'));
             out.ownShown = !$('scan-own-row').classList.contains('hidden') && $('scan-own-forget').classList.contains('hidden');
@@ -1165,13 +1165,11 @@ async function newPage(context, baseUrl, host = null) {
             $('scan-swap').checked = false;
             $('scan-swap').dispatchEvent(new Event('change'));
             out.swapKept = JSON.parse(localStorage.getItem('jeditor.scanSwap'))['EPSON FF-680W'] === false;
-            // The tone set back to 0 stays 0: given once only
-            $('scan-contrast').value = '0';
+            // A tone chosen for it is kept for it
+            $('scan-contrast').value = '-20';
             $('scan-contrast').dispatchEvent(new Event('change'));
             Scan.loadOptsFor(Scan.device());
             out.toneKept = $('scan-contrast').value;
-            Scan.loadOptsFor({ id: 'wia-1', name: 'OpticBook A300' });
-            out.otherNote = $('scan-tone-note').classList.contains('hidden');
             Scan.close();
             return out;
         });
@@ -1185,8 +1183,8 @@ async function newPage(context, baseUrl, host = null) {
         check('the swap is remembered for that scanner', r.swapKept);
         check('Change settings after a scan: the names carry on from it (not the numbers taken now)', r.namesAfter[0] === 'photo' && r.namesAfter[1] === '5', JSON.stringify(r.namesAfter));
         check('a scanner with only a feeder: no How choice shown', r.howHidden);
-        check('a FastFoto starts with the FastFoto app\'s tone (brightness 5, contrast -35), said beside the sliders; sent with the scan', r.tone === '5,-35,true' && r.req.brightness === 5 && r.req.contrast === -35, JSON.stringify([r.tone, r.req.brightness, r.req.contrast]));
-        check('... once: set back to 0 it stays 0, and other scanners have no note', r.toneKept === '0' && r.otherNote, JSON.stringify([r.toneKept, r.otherNote]));
+        check('a FastFoto starts at brightness 0, contrast 0 (its driver gives FastFoto\'s tone); sent with the scan', r.tone === '0,0' && r.req.brightness === 0 && r.req.contrast === 0, JSON.stringify([r.tone, r.req.brightness, r.req.contrast]));
+        check('... and a tone chosen for it is kept', r.toneKept === '-20', JSON.stringify(r.toneKept));
         check('Scanner\'s own settings… opens its window, says when settings are saved, and Forget goes back', r.ownShown && r.ownSaved === 'Scanner\'s own settings… (saved)|true'
             && /^state EPSON FF-680W.*show EPSON FF-680W.*forget EPSON FF-680W/.test(r.ownCalls), JSON.stringify([r.ownShown, r.ownSaved, r.ownCalls]));
         check('feeder suite: no JS errors', errors.length === 0, errors.join('; '));
