@@ -214,6 +214,7 @@ sealed class Run : ApplicationContext
             supported = caps.CapSupportedCaps.GetValues().ToList();
             Out.Log("Supports: " + string.Join(", ", supported));
             LogCustom(caps);
+            LogChoices(caps);
         }
         catch (Exception e) { Out.Log("Supports: (couldn't ask: " + e.Message + ")"); }
 
@@ -350,6 +351,28 @@ sealed class Run : ApplicationContext
         {
             try { return $"{(int)c}={Show(caps.GetCurrent(c))}"; }
             catch (Exception) { return $"{(int)c}=?"; }
+        })));
+    }
+
+    // What each of the driver's own capabilities can be set to: with the
+    // values above, it shows what a choice in its window sends
+    static void LogChoices(ICapabilities caps)
+    {
+        var mine = caps.CapSupportedCaps.GetValues().Where(c => (int)c >= 0x8000).ToList();
+        if (mine.Count == 0) return;
+        Out.Log("Its own choices: " + string.Join("; ", mine.Select(c =>
+        {
+            try
+            {
+                var r = caps.GetValuesRaw(c);
+                return r.ContainerType switch
+                {
+                    ContainerType.Range => $"{(int)c} {Show(r.RangeMinValue)}..{Show(r.RangeMaxValue)} by {Show(r.RangeStepSize)}",
+                    ContainerType.OneValue => $"{(int)c} only {Show(r.OneValue)}",
+                    _ => $"{(int)c} {string.Join("|", r.EnumerateCapValues().Select(Show))}",
+                };
+            }
+            catch (Exception) { return $"{(int)c} ?"; }
         })));
     }
 
