@@ -9,7 +9,11 @@ const CHANGELOG = [
         items: [
             'Closing the window in Adjust or Paint with something not kept yet asks Keep your changes? first (Keep, Don\'t keep or Cancel), instead of losing it.',
             'Scanning on an Epson sheet feeder (the FastFoto): each photo is cropped and straightened by Epson\'s own photo crop, the one FastFoto\'s software uses, so less of the scanner\'s backing is left around it.',
-            'Scanning on an Epson sheet feeder starts from the scanner\'s own defaults with FastFoto\'s photo tone, so colours come out as they do in FastFoto\'s software, not stronger. Settings chosen in Epson\'s window (Scanner\'s own settings…) are still used when you\'ve chosen them.'
+            'Scanning on an Epson sheet feeder starts from the scanner\'s own defaults with FastFoto\'s photo tone, so colours come out as they do in FastFoto\'s software, not stronger. Settings chosen in Epson\'s window (Scanner\'s own settings…) are still used when you\'ve chosen them.',
+            'The scan window\'s choices are on/off switches, in two groups: Each photo (Auto crop, Show each one as it comes in) and The scanner (it crops each photo itself, and on an Epson feeder FastFoto\'s Curled photo correction and Reduce lines and streaks, both on to start with).',
+            'The scan window always opens on screen: a spot it was dragged to in a bigger window is pulled back in, and it fits below that spot, scrolling inside.',
+            'Paint starts with the photo as the bottom layer, locked, and a new layer on it ready to paint on.',
+            'The debug console (`Ctrl+Shift+D`) is a switch in Settings → Toolbar & keys, off to start with, so the shortcut does nothing until it\'s turned on.'
         ]
     },
     {

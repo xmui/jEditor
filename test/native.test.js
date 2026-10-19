@@ -1135,6 +1135,22 @@ async function newPage(context, baseUrl, host = null) {
             out.swap = $('scan-swap').checked;
             // Its tone: neutral (the TWAIN helper asks the driver for FastFoto's)
             out.tone = [$('scan-bright').value, $('scan-contrast').value].join();
+            // The scanner's own fixes, as switches: on, as FastFoto has them;
+            // gone when it doesn't crop itself (they go with its own crop)
+            const shownRow = (id) => !$(id).classList.contains('hidden');
+            out.fixes = [shownRow('scan-even-row'), shownRow('scan-streaks-row'), $('scan-even').checked, $('scan-streaks').checked].join();
+            $('scan-autosize').checked = false;
+            $('scan-autosize').dispatchEvent(new Event('change'));
+            out.fixesOff = [shownRow('scan-even-row'), shownRow('scan-streaks-row')].join();
+            $('scan-autosize').checked = true;
+            $('scan-autosize').dispatchEvent(new Event('change'));
+            $('scan-streaks').checked = false;
+            $('scan-streaks').dispatchEvent(new Event('change'));
+            // On screen: a spot dragged to in a bigger window is pulled back in
+            localStorage.setItem('jeditor.scanDock', JSON.stringify({ x: 20, y: innerHeight + 500 }));
+            Scan.fitDock();
+            const dock = $('scan-panel').getBoundingClientRect();
+            out.onScreen = dock.bottom <= innerHeight && dock.top >= 0;
             // Scanner's own settings…: offered for a TWAIN feeder; saved, then forgotten
             await wait(() => !$('scan-own-row').classList.contains('hidden'));
             out.ownShown = !$('scan-own-row').classList.contains('hidden') && $('scan-own-forget').classList.contains('hidden');
@@ -1180,6 +1196,9 @@ async function newPage(context, baseUrl, host = null) {
         check('... fronts and backs come in', /photo3-b\.jpg,photo3\.jpg,photo4-b\.jpg,photo4\.jpg/.test(r.files), r.files);
         check('... each photo opens large as it comes in (not the backs)', r.shown === 'single photo4.jpg', r.shown);
         check('... and the scanner is asked to crop each photo itself (its own auto-size)', r.req && r.req.autosize === true, JSON.stringify(r.req));
+        check('its own fixes are switches, on to start with, shown only with its own crop', r.fixes === 'true,true,true,true' && r.fixesOff === 'false,false', JSON.stringify([r.fixes, r.fixesOff]));
+        check('the scan window is pulled back on screen when its spot is off it (a smaller window)', r.onScreen);
+        check('... one turned off is sent off', r.req && r.req.even === true && r.req.streaks === false, JSON.stringify(r.req));
         check('the swap is remembered for that scanner', r.swapKept);
         check('Change settings after a scan: the names carry on from it (not the numbers taken now)', r.namesAfter[0] === 'photo' && r.namesAfter[1] === '5', JSON.stringify(r.namesAfter));
         check('a scanner with only a feeder: no How choice shown', r.howHidden);

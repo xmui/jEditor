@@ -796,6 +796,11 @@ const app = {
             this.uiPrefs.folderCache = e.target.checked;
             this.saveUiPrefs();
         });
+        $('cust-debug').addEventListener('change', (e) => {
+            this.uiPrefs.debugConsole = e.target.checked;
+            this.saveUiPrefs();
+            if (!e.target.checked && $('debug-console').classList.contains('open')) this.toggleDebugConsole();
+        });
         $('cust-cleanup').addEventListener('click', () => {
             this.toggleCustomizePanel(false);
             this.cleanUpFolder();
@@ -879,6 +884,7 @@ const app = {
             if (r) r.checked = true;
         }
         $('cust-vertical').checked = !!this.uiPrefs.vertical;
+        $('cust-debug').checked = !!this.uiPrefs.debugConsole;
         $('cust-folder-cache').checked = this.uiPrefs.folderCache !== false;
         $('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
         this.elements.customizePanel.querySelectorAll('input[data-toast]').forEach(i => { i.checked = this.toastOn(i.dataset.toast); });
@@ -4546,9 +4552,11 @@ const app = {
         Dupes.open();
     },
 
+    // Only when turned on in Settings (off to start with)
     toggleDebugConsole() {
         const debugEl = document.getElementById('debug-console');
         if (!debugEl) return;
+        if (!this.uiPrefs.debugConsole && !debugEl.classList.contains('open')) return;
         const show = debugEl.classList.toggle('open');
         this.log(show ? 'Console Show' : 'Console Hide');
         clearInterval(this._perfTimer);

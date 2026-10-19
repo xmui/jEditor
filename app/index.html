@@ -750,6 +750,11 @@
                                 <small>Change any key, or switch to a profile like Lightroom's</small></span>
                             <button id="cust-shortcuts" class="btn secondary">Edit shortcuts…</button>
                         </div>
+                        <div class="set-row">
+                            <label class="set-label" for="cust-debug">Debug console
+                                <small>Ctrl+Shift+D shows what jEditor is holding and doing, for troubleshooting slowdowns. Off: the shortcut does nothing.</small></label>
+                            <input type="checkbox" id="cust-debug" class="switch">
+                        </div>
                         <h4 class="set-group">Layout</h4>
                         <div class="set-row">
                             <label class="set-label" for="cust-vertical">Vertical toolbar</label>
@@ -1207,14 +1212,39 @@
                 </section>
                 <section class="scan-sec" id="scan-opts-home"></section>
                 <section class="scan-sec scan-checks">
-                    <label class="scan-check" for="scan-autocrop" title="Finds the print on each scan and crops to it, whatever its size. Ctrl+Z puts the scans back as they were.">
-                        <input id="scan-autocrop" type="checkbox">
-                        <span>Auto crop each photo</span>
-                    </label>
-                    <label class="scan-check" for="scan-show" title="Opens the newest scan large while the rest are scanning.">
-                        <input id="scan-show" type="checkbox">
-                        <span>Show each photo as it comes in</span>
-                    </label>
+                    <h3 class="scan-sec-head">Each photo</h3>
+                    <div class="scan-switches">
+                        <label class="scan-switch" for="scan-autocrop">
+                            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
+                            <span>Auto crop<small>jEditor finds each print and crops to it.</small></span>
+                            <input id="scan-autocrop" type="checkbox" class="switch">
+                        </label>
+                        <label class="scan-switch" for="scan-show">
+                            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <span>Show each one as it comes in<small>Opens the newest scan large.</small></span>
+                            <input id="scan-show" type="checkbox" class="switch">
+                        </label>
+                    </div>
+                    <div class="scan-hw" id="scan-hw">
+                        <h3 class="scan-sec-head">The scanner</h3>
+                        <div class="scan-switches">
+                            <label class="scan-switch" for="scan-autosize" id="scan-autosize-row">
+                                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="7" y="8" width="10" height="8" rx="1"/></svg>
+                                <span>Crops each photo itself<small>Its own crop, as in FastFoto.</small></span>
+                                <input id="scan-autosize" type="checkbox" class="switch">
+                            </label>
+                            <label class="scan-switch" for="scan-even" id="scan-even-row">
+                                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M12 8h7M12 12h9M12 16h7"/></svg>
+                                <span>Curled photo correction<small>Evens out the edges of curled photos.</small></span>
+                                <input id="scan-even" type="checkbox" class="switch">
+                            </label>
+                            <label class="scan-switch" for="scan-streaks" id="scan-streaks-row">
+                                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v16M12 4v16M17 4v16"/></svg>
+                                <span>Reduce lines and streaks<small>From dust inside the feeder.</small></span>
+                                <input id="scan-streaks" type="checkbox" class="switch">
+                            </label>
+                        </div>
+                    </div>
                 </section>
                 <details class="scan-adv" id="scan-adv">
                     <summary>Advanced</summary>
@@ -1225,10 +1255,6 @@
                     <label class="scan-check" for="scan-swap" id="scan-swap-row">
                         <input id="scan-swap" type="checkbox">
                         <span>This scanner's front and back are swapped<small>On if one-sided scans come out showing the back (the FastFoto does this). Remembered for this scanner.</small></span>
-                    </label>
-                    <label class="scan-check" for="scan-autosize" id="scan-autosize-row">
-                        <input id="scan-autosize" type="checkbox">
-                        <span>The scanner crops each photo itself<small>Its own auto-size, as in its own software (the FastFoto has it). If it can't, jEditor scans the usual way and crops each photo. Remembered for this scanner.</small></span>
                     </label>
                     <div class="scan-own hidden" id="scan-own-row">
                         <span class="scan-row">

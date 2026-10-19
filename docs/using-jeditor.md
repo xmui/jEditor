@@ -192,7 +192,7 @@ It can still miss some re-scans or group photos that look alike, so check each g
 
 ## If it gets slow
 
-Press `Ctrl+Shift+D` to open the debug console. The yellow lines at the top show what the app is holding and doing: memory, undo history, images decoded, background work, and how long recent photos took to load. A screenshot of it taken while things are slow is the most useful thing to include in a bug report.
+Turn on **Debug console** in Settings → Toolbar & keys (it's off to start with), then press `Ctrl+Shift+D` to open it. The yellow lines at the top show what the app is holding and doing: memory, undo history, images decoded, background work, and how long recent photos took to load. A screenshot of it taken while things are slow is the most useful thing to include in a bug report.
 
 It's built and tested for orders of 500–2000 photos. With 2000 scans at 1800×1200: the folder opens and shows the first photo in under half a second, thumbnails take about 20 seconds in the background the first time (under 2 seconds when it's opened again, rotated or not), rotating all 2000 takes about 8 seconds, renaming them about 2 seconds, and a duplicate scan about 20 seconds. Bigger files take longer to thumbnail, though big JPEGs are decoded at a fraction of their size for thumbnails and previews (about 4× faster than a full decode on 20-megapixel scans).
 

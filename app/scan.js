@@ -36,6 +36,7 @@ const Scan = {
     KEY_SWAP: 'jeditor.scanSwap', // scanners whose front and back are swapped
     KEY_AUTOSIZE: 'jeditor.scanAutoSize', // feeders that crop each photo themselves (off: jEditor does)
     KEY_BED: 'jeditor.scanBed', // each scanner's glass size, when chosen
+    KEY_EPSON: 'jeditor.scanEpson', // an Epson feeder's own fixes, when changed: { even, streaks }
 
     // Glass sizes (inches). Auto: what the scanner says, else what jEditor
     // knows of the model, else A4
@@ -79,7 +80,9 @@ const Scan = {
             const all = this.get(this.KEY_AUTOSIZE, {}) || {};
             all[d.id] = this.el('scan-autosize').checked;
             this.put(this.KEY_AUTOSIZE, all);
+            this.syncMode();
         });
+        for (const id of ['scan-even', 'scan-streaks']) this.el(id).addEventListener('change', () => this.saveEpson());
         ScanPreview.init(boxes => this.boxesChanged(boxes));
         this.el('scan-pv-again').addEventListener('click', () => this.previewGlass());
         this.el('scan-pv-find').addEventListener('click', () => ScanPreview.set(ScanPreview.find(this.el('scan-pv-img'))));
@@ -148,6 +151,7 @@ const Scan = {
         panel.classList.remove('hidden');
         this.setSmall(false);
         this.setState('setup');
+        this.fitDock();
         if (this.detailsWanted()) this.showDetails(true);
         this.fillFolders();
         this.fillNames();
@@ -187,6 +191,7 @@ const Scan = {
 
     setSmall(small) {
         this.el('scan-panel').classList.toggle('small', small);
+        if (this.fitDock) this.fitDock();
         this.el('scan-min').title = small ? 'Show it all' : 'Make small';
     },
 
@@ -209,21 +214,28 @@ const Scan = {
         if (state === 'done') this.el('scan-go').disabled = false;
     },
 
-    // Dragged by its title; stays where it was put
+    // Dragged by its title; stays where it was put. Fitted on screen each
+    // time it opens and when the window changes size (a spot chosen in a
+    // big window would leave it hanging off a small one), going back to
+    // that spot when there's room again
     initDrag() {
         const panel = this.el('scan-panel');
         const head = this.el('scan-head');
         const place = (x, y) => {
+            panel.style.removeProperty('--dock-max');
             const r = panel.getBoundingClientRect();
             x = Math.max(4, Math.min(innerWidth - r.width - 4, x));
-            y = Math.max(4, Math.min(innerHeight - 40, y));
+            y = Math.max(4, Math.min(innerHeight - r.height - 4, y));
             Object.assign(panel.style, { left: `${x}px`, top: `${y}px`, right: 'auto', bottom: 'auto' });
+            panel.style.setProperty('--dock-max', `${innerHeight - y - 4}px`);
             return { x, y };
         };
-        try {
-            const pos = JSON.parse(localStorage.getItem(this.KEY_POS) || 'null');
-            if (pos) requestAnimationFrame(() => place(pos.x, pos.y));
-        } catch (e) { /* none */ }
+        this.fitDock = () => {
+            let want = null;
+            try { want = JSON.parse(localStorage.getItem(this.KEY_POS) || 'null'); } catch (e) { /* none */ }
+            if (want && !panel.classList.contains('hidden')) place(want.x, want.y);
+        };
+        addEventListener('resize', () => this.fitDock());
         head.addEventListener('pointerdown', (e) => {
             if (e.button !== 0 || e.target.closest('button')) return;
             const r = panel.getBoundingClientRect();
@@ -234,7 +246,8 @@ const Scan = {
             const up = () => {
                 head.removeEventListener('pointermove', move);
                 head.removeEventListener('pointerup', up);
-                if (pos) try { localStorage.setItem(this.KEY_POS, JSON.stringify(pos)); } catch (err) { /* private */ }
+                if (!pos) return;
+                try { localStorage.setItem(this.KEY_POS, JSON.stringify(pos)); } catch (err) { /* private */ }
             };
             head.addEventListener('pointermove', move);
             head.addEventListener('pointerup', up);
@@ -421,6 +434,10 @@ const Scan = {
             this.el('scan-swap').checked = d.id in swaps ? !!swaps[d.id] : this.isFastFoto(d);
             const sizes = this.get(this.KEY_AUTOSIZE, {}) || {};
             this.el('scan-autosize').checked = d.id in sizes ? !!sizes[d.id] : true;
+            // As FastFoto has them unless changed: both on
+            const fixes = (this.get(this.KEY_EPSON, {}) || {})[d.id] || {};
+            this.el('scan-even').checked = fixes.even !== false;
+            this.el('scan-streaks').checked = fixes.streaks !== false;
         }
         // A choice the scanner doesn't have: the other one
         const pick = document.querySelector('input[name="scan-mode"]:checked');
@@ -435,7 +452,12 @@ const Scan = {
         // Only one way (a feeder alone, or the scanner's window): no choice shown
         this.el('scan-mode-row').classList.toggle('hidden', mode === 'driver' || !(hasGlass && hasFeeder));
         this.el('scan-swap-row').classList.toggle('hidden', mode !== 'feeder');
-        this.el('scan-autosize-row').classList.toggle('hidden', mode !== 'feeder' || !d || d.driver !== 'twain');
+        const autosize = mode === 'feeder' && !!d && d.driver === 'twain';
+        this.el('scan-autosize-row').classList.toggle('hidden', !autosize);
+        // Epson's own fixes: sent with its own crop (Twain32's Epson photo scan)
+        const epson = autosize && this.isFastFoto(d) && this.el('scan-autosize').checked;
+        this.el('scan-even-row').classList.toggle('hidden', !epson);
+        this.el('scan-streaks-row').classList.toggle('hidden', !epson);
         this.syncOwn(mode === 'feeder' && d && d.driver === 'twain' ? d : null);
         this.el('scan-sides-row').classList.toggle('hidden', mode !== 'feeder');
         if (panel.dataset.state === 'setup') this.el('scan-go').textContent = mode === 'glass' ? 'Preview' : 'Scan';
@@ -472,6 +494,14 @@ const Scan = {
             btn.disabled = false;
             this.syncOwn(d);
         }
+    },
+
+    saveEpson() {
+        const d = this.device();
+        if (!d) return;
+        const all = this.get(this.KEY_EPSON, {}) || {};
+        all[d.id] = { even: this.el('scan-even').checked, streaks: this.el('scan-streaks').checked };
+        this.put(this.KEY_EPSON, all);
     },
 
     saveSwap() {
@@ -796,6 +826,7 @@ const Scan = {
             Object.assign(opts, {
                 dpi: o.dpi, gray: o.color === 'gray', sides: o.sides, swap: this.el('scan-swap').checked,
                 autosize: device.driver === 'twain' && this.el('scan-autosize').checked,
+                even: this.el('scan-even').checked, streaks: this.el('scan-streaks').checked,
                 brightness: o.brightness, contrast: o.contrast, bedW: caps.feedW || 8.5, bedH: caps.feedH || 14
             });
         }

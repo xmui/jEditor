@@ -641,6 +641,10 @@ const PROJECT = `
                 await until(() => PaintEditor.ready);
                 const P = PaintEditor;
                 out.open = P.isOpen && P.W === W && P.layers.length === 1;
+                // To start: the photo locked at the bottom, a new layer on it chosen
+                const rows = [...document.querySelectorAll('#paint-layer-list .paint-layer')];
+                out.start = rows.length === 2 && rows[1].classList.contains('paint-photo-layer') && rows[1].getAttribute('aria-disabled') === 'true' &&
+                    rows[0].getAttribute('aria-selected') === 'true' && P.cur === 0;
                 const st = document.getElementById('paint-stage');
                 const at = (x, y) => { const s = P.V().transformPoint(P.C.transformPoint({ x, y })); const r = P.canvas.getBoundingClientRect(); return { clientX: r.left + s.x, clientY: r.top + s.y }; };
                 const pe = (type, x, y, o = {}) => st.dispatchEvent(new PointerEvent(type, { ...at(x, y), pointerId: 1, bubbles: true, button: 0, ...o }));
@@ -793,6 +797,7 @@ const PROJECT = `
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
         check('paint: an experiment with its button; B opens it on the photo', r.button && r.open, JSON.stringify(r));
+        check('paint: starts with the photo locked as the bottom layer and a new layer on it', r.start, JSON.stringify(r));
         check('paint: the photo is drawn at screen size once for a view, again when it zooms', r.shownKept && r.shownRedrawn, JSON.stringify([r.shownKept, r.shownRedrawn]));
         check('paint: a brush stroke paints the layer (hard-edged), Ctrl+Z / Ctrl+Shift+Z inside', r.brush && r.brush[0] === 255 && r.brush[3] === 255 && r.brushEdge === 0 && r.undo === 0 && r.redo === 255, JSON.stringify(r));
         check('paint: a stroke at 50% opacity covers half, however it overlaps itself', r.half >= 120 && r.half <= 135, JSON.stringify(r));

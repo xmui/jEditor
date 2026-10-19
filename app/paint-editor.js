@@ -334,7 +334,7 @@ const PaintEditor = {
         const all = [this.photo, this.backdrop, this.stroke, this.before, this.sel && this.sel.mask, this.sel && this.sel.edge, this.float && this.float.canvas, this._scratch, this._shown && this._shown.canvas];
         for (const l of this.layers || []) all.push(l.canvas);
         for (const c of all) if (c) c.width = c.height = 0;
-        this.photo = this.backdrop = this.stroke = this.before = this._scratch = this._shown = null;
+        this.photo = this.backdrop = this.stroke = this.before = this._scratch = this._shown = this._photoThumb = null;
         this.layers = [];
         this.sel = this.float = null;
     },
@@ -1783,6 +1783,31 @@ const PaintEditor = {
             row.addEventListener('dblclick', () => this.renameLayer(i));
             list.appendChild(row);
         }
+        // The photo: the bottom layer, locked (painting goes on the layers
+        // above it, so it's never changed)
+        const base = document.createElement('div');
+        base.className = 'paint-layer paint-photo-layer';
+        base.setAttribute('role', 'option');
+        base.setAttribute('aria-selected', 'false');
+        base.setAttribute('aria-disabled', 'true');
+        base.title = 'The photo is locked: paint on a layer above it';
+        base.innerHTML = '<span class="paint-eye paint-lock"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span><canvas></canvas><span class="paint-layer-name">Photo</span>';
+        // Made small once for each photo, not on every redraw of the list
+        if (this.backdrop && (!this._photoThumb || this._photoThumb.src !== this.backdrop)) {
+            const t = document.createElement('canvas');
+            t.width = 96;
+            t.height = 72;
+            const pa = this.backdrop.width / this.backdrop.height;
+            const bw = pa > 96 / 72 ? 96 : 72 * pa, bh = pa > 96 / 72 ? 96 / pa : 72;
+            t.getContext('2d').drawImage(this.backdrop, (96 - bw) / 2, (72 - bh) / 2, bw, bh);
+            this._photoThumb = { src: this.backdrop, canvas: t };
+        }
+        const bc = base.querySelector('canvas');
+        bc.width = 96;
+        bc.height = 72;
+        if (this._photoThumb) bc.getContext('2d').drawImage(this._photoThumb.canvas, 0, 0);
+        base.addEventListener('click', () => this.app.showToast('The photo is locked: paint on a layer above it', 2000));
+        list.appendChild(base);
         const l = this.layer();
         if (l) this.el('paint-layer-blend').value = l.blend;
         this.opacityRow._sync();

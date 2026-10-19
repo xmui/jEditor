@@ -1590,9 +1590,14 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.readOnlyMode = false;
             const snap = app.perfSnapshot().join('\n');
             out.perf = /Undo: \d+ steps/.test(snap) && /Images decoded/.test(snap) && /Photo load/.test(snap);
+            // Off in Settings to start with: the shortcut does nothing
+            app.toggleDebugConsole();
+            out.debugOff = !document.getElementById('debug-console').classList.contains('open');
+            app.uiPrefs.debugConsole = true;
             app.toggleDebugConsole();
             out.perfShown = /Thumbnails:/.test(document.getElementById('debug-perf').textContent);
             app.toggleDebugConsole();
+            app.uiPrefs.debugConsole = false;
             app.selection = new Set([app.files[0]]);
             app.updateSelectionUI();
             out.selectionText = document.getElementById('selection-count').textContent;
@@ -1615,6 +1620,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('selection count reads "1 selected"', r.selectionText === '1 selected', r.selectionText);
         check('back in the grid, only the current photo is selected (no stale rings)', r.noStaleRings && r.onlyCurrentRinged,
             JSON.stringify({ stale: !r.noStaleRings, only: r.onlyCurrentRinged }));
+        check('debug console is off until turned on in Settings', r.debugOff);
         check('debug console shows a performance readout', r.perf && r.perfShown);
         check('viewer suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
