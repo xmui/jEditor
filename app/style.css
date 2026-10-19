@@ -3592,6 +3592,48 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     touch-action: none;
 }
 
+/* Zoom, over the photo (crop.js) */
+.crop-zoom {
+    position: absolute;
+    right: var(--sp-3);
+    bottom: var(--sp-3);
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: var(--r-pill);
+    background: var(--on-photo-bg);
+    color: var(--on-photo-text);
+    zoom: var(--ui-scale, 1);
+}
+
+.crop-zoom-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: var(--fs-small);
+    font-weight: var(--fw-semibold);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+}
+
+.crop-zoom-btn:hover {
+    background: rgb(255 255 255 / 0.16);
+}
+
+.crop-zoom-level {
+    min-width: 48px;
+    padding: 0 var(--sp-2);
+}
+
 .crop-toolbar {
     align-self: center;
     display: flex;
@@ -5757,7 +5799,8 @@ body.dragging-photos .folder-tile:hover {
         flex: 1;
         min-width: 0;
     }
-    .crop-straighten > span:first-child {
+    .crop-straighten > span:first-child,
+    .crop-row-straighten .crop-btn-label {
         display: none;
     }
     .crop-straighten input[type="range"] {
