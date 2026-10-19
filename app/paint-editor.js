@@ -559,13 +559,7 @@ const PaintEditor = {
             ctx.setTransform(LD);
             let src = l.canvas;
             // The stroke being made, shown as it'll go on
-            if (i === this.cur && this.drag && this.drag.stroke) {
-                src = this.scratch();
-                const g = src.getContext('2d');
-                g.globalCompositeOperation = 'copy';
-                g.drawImage(l.canvas, 0, 0);
-                this.putStroke(g);
-            }
+            if (i === this.cur && this.drag && this.drag.stroke) src = this.preview(l);
             ctx.drawImage(src, 0, 0);
             if (i === this.cur && this.float) this.drawFloat(ctx, VD);
             ctx.restore();
@@ -594,6 +588,36 @@ const PaintEditor = {
         g.drawImage(this.backdrop, 0, 0);
         this._shown = { key, src: this.backdrop, canvas: out };
         return out;
+    },
+
+    // The layer with the stroke so far on it, to show: kept from frame to
+    // frame and redone only where the stroke has reached since the last
+    // (the whole layer each frame was too much for a laptop's graphics)
+    preview(l) {
+        const d = this.drag, sc = this.scratch(), g = sc.getContext('2d');
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        if (!d.preview) {
+            g.globalCompositeOperation = 'copy';
+            g.drawImage(l.canvas, 0, 0);
+            g.globalCompositeOperation = 'source-over';
+            d.preview = true;
+            d.fresh = d.dirty && { ...d.dirty };
+        }
+        const f = d.fresh;
+        d.fresh = null;
+        if (!f) return sc;
+        const x = Math.max(0, Math.floor(f.x0)), y = Math.max(0, Math.floor(f.y0));
+        const w = Math.min(this.W, Math.ceil(f.x1)) - x, h = Math.min(this.H, Math.ceil(f.y1)) - y;
+        if (w <= 0 || h <= 0) return sc;
+        g.save();
+        g.beginPath();
+        g.rect(x, y, w, h);
+        g.clip(); // ('copy' clears whatever's outside it)
+        g.globalCompositeOperation = 'copy';
+        g.drawImage(l.canvas, x, y, w, h, x, y, w, h);
+        g.restore();
+        this.putStroke(g, { x, y, w, h });
+        return sc;
     },
 
     // A spare layer-sized canvas
@@ -809,6 +833,10 @@ const PaintEditor = {
 
     grow(r) {
         const d = this.drag;
+        // Where it's grown since the stroke was last shown (preview)
+        const f = d.fresh;
+        d.fresh = f ? { x0: Math.min(f.x0, r.x), y0: Math.min(f.y0, r.y), x1: Math.max(f.x1, r.x + r.w), y1: Math.max(f.y1, r.y + r.h) }
+            : { x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.y + r.h };
         if (!d.dirty) d.dirty = { x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.y + r.h };
         else {
             d.dirty.x0 = Math.min(d.dirty.x0, r.x); d.dirty.y0 = Math.min(d.dirty.y0, r.y);
@@ -881,16 +909,19 @@ const PaintEditor = {
     },
 
     // The stroke onto a layer's context (the layer itself, or the preview
-    // of it): inside the selection, with the tool's opacity
-    putStroke(g) {
+    // of it): inside the selection, with the tool's opacity. r: only there
+    putStroke(g, r = null) {
         const d = this.drag;
         if (this.sel) {
             const sg = this.stroke.getContext('2d');
+            sg.save();
+            if (r) { sg.beginPath(); sg.rect(r.x, r.y, r.w, r.h); sg.clip(); }
             sg.globalCompositeOperation = 'destination-in';
             sg.drawImage(this.sel.mask, 0, 0);
-            sg.globalCompositeOperation = 'source-over';
+            sg.restore();
         }
         g.save();
+        if (r) { g.beginPath(); g.rect(r.x, r.y, r.w, r.h); g.clip(); }
         g.globalAlpha = this.opts.opacity / 100;
         g.globalCompositeOperation = d && d.tool === 'eraser' ? 'destination-out' : 'source-over';
         g.drawImage(this.stroke, 0, 0);

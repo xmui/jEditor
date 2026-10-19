@@ -675,6 +675,26 @@ const PROJECT = `
                 P.opts.opacity = 50;
                 pe('pointerdown', 50, 200); pe('pointermove', 70, 200); pe('pointermove', 90, 200); pe('pointerup', 90, 200);
                 out.half = px(0, 70, 200)[3];
+                // As it's drawn, the stroke shows exactly as it goes on: the
+                // preview is redone only where the stroke reached since the
+                // last frame, over the red stroke, soft, at half opacity
+                step = 'preview';
+                P.opts.hardness = 40;
+                const previewOff = (tool) => {
+                    P.setTool(tool);
+                    pe('pointerdown', 40, 60);
+                    for (const [x, y] of [[80, 90], [120, 110], [160, 95], [200, 140], [150, 160]]) { pe('pointermove', x, y); P.render({ quick: true }); }
+                    const shownNow = P.scratch().getContext('2d').getImageData(0, 0, W, H).data.slice();
+                    pe('pointerup', 150, 160);
+                    const went = P.layers[0].canvas.getContext('2d').getImageData(0, 0, W, H).data;
+                    let off = 0;
+                    for (let i = 0; i < went.length; i++) off = Math.max(off, Math.abs(went[i] - shownNow[i]));
+                    return off;
+                };
+                out.previewOff = [previewOff('brush'), previewOff('eraser')];
+                pressKey('z', { ctrlKey: true }); pressKey('z', { ctrlKey: true }); // (the checks below expect the layer as it was)
+                P.setTool('brush');
+                P.opts.hardness = 100;
                 P.opts.opacity = 100;
                 // A rectangle, filled, on a new layer
                 step = 'rect';
@@ -776,6 +796,7 @@ const PROJECT = `
         check('paint: the photo is drawn at screen size once for a view, again when it zooms', r.shownKept && r.shownRedrawn, JSON.stringify([r.shownKept, r.shownRedrawn]));
         check('paint: a brush stroke paints the layer (hard-edged), Ctrl+Z / Ctrl+Shift+Z inside', r.brush && r.brush[0] === 255 && r.brush[3] === 255 && r.brushEdge === 0 && r.undo === 0 && r.redo === 255, JSON.stringify(r));
         check('paint: a stroke at 50% opacity covers half, however it overlaps itself', r.half >= 120 && r.half <= 135, JSON.stringify(r));
+        check('paint: a stroke shows as it\'s drawn exactly as it goes on (redone only where it reached), and the eraser too', String(r.previewOff) === '0,0', String(r.previewOff));
         check('paint: a new layer; a filled rectangle on it', r.layers && r.rect && r.rect[0][1] === 255 && r.rect[1] === 0, JSON.stringify(r));
         check('paint: the fill takes the photo\'s blue square, not beyond it; text is drawn', r.fill && r.fill[0][0] === 255 && r.fill[0][1] === 255 && r.fill[1] === 0 && r.text > 50, JSON.stringify(r));
         check('paint: a selection; Delete clears only inside it', r.selected && r.cleared[0] === 0 && r.cleared[1] === 255, JSON.stringify(r));
