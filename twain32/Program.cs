@@ -59,6 +59,9 @@ sealed class Options
     public string Device = "";
     public int Dpi = 300;
     public bool Gray, Duplex, AutoSize, Deskew, Setup;
+    // Epson photo scans: FastFoto's Curled photo correction (unevenness
+    // correction) and Reduce lines and streaks (vertical noise reduction)
+    public bool Even = true, Streaks = true;
     public string Out = "";
     public string? SettingsIn, SettingsOut;
 
@@ -76,6 +79,8 @@ sealed class Options
                 case "--duplex": o.Duplex = true; break;
                 case "--autosize": o.AutoSize = true; break;
                 case "--deskew": o.Deskew = true; break;
+                case "--no-even": o.Even = false; break;
+                case "--no-streaks": o.Streaks = false; break;
                 case "--out": o.Out = Next(); break;
                 case "--setup": o.Setup = true; break;
                 case "--settings": o.SettingsIn = Next(); break;
@@ -307,10 +312,10 @@ sealed class Run : ApplicationContext
         Set("No progress window", () => caps.CapIndicators.SetValue(BoolType.False));
         Set("Epson blank page skip off", () => SetCustom(ds, EpsonBlankPageSkip, 0));
         Set(o.Duplex ? "Both sides" : "One side", () => caps.CapDuplexEnabled.SetValue(o.Duplex ? BoolType.True : BoolType.False));
-        Set("Epson streak reduction", () => SetCustom(ds, EpsonVerticalNoiseReduction, 1, ItemType.Bool));
+        Set($"Epson streak reduction {(o.Streaks ? "on" : "off")}", () => SetCustom(ds, EpsonVerticalNoiseReduction, (ushort)(o.Streaks ? 1 : 0), ItemType.Bool));
         Set("Epson photo auto size", () => SetCustom(ds, EpsonAutoSizeType, 0)); // 1: a panorama
         Set("Epson double-feed detection off", () => SetCustom(ds, EpsonDoubleFeedDetection, 0)); // as for instant photos
-        Set("Epson unevenness correction", () => SetCustom(ds, EpsonUnevennessCorrection, 1, ItemType.Bool));
+        Set($"Epson unevenness correction {(o.Even ? "on" : "off")}", () => SetCustom(ds, EpsonUnevennessCorrection, (ushort)(o.Even ? 1 : 0), ItemType.Bool));
         Set("Epson photo gamma 1.8", () => caps.ICapGamma.SetValue(1.8f));
         LogNow(caps);
     }

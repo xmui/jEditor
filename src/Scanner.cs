@@ -52,6 +52,10 @@ sealed class Scanner : IDisposable
         // Feeder, TWAIN: the scanner crops each photo itself (its own
         // auto-size, through the 32-bit helper; see Twain32)
         public bool AutoSize { get; init; }
+        // With an Epson feeder's own crop: FastFoto's Curled photo correction
+        // (unevenness correction) and Reduce lines and streaks
+        public bool Even { get; init; } = true;
+        public bool Streaks { get; init; } = true;
         // -100…100, applied by jEditor so every scanner does the same
         public int Brightness { get; init; }
         public int Contrast { get; init; }
@@ -382,7 +386,7 @@ sealed class Scanner : IDisposable
         {
             Exception? failed = null;
             bool any = false;
-            await using (var e = Twain32.ScanAsync(r.DeviceId, r.Dpi, r.Gray, duplex, r.AutoSize, cancel).GetAsyncEnumerator(cancel))
+            await using (var e = Twain32.ScanAsync(r.DeviceId, r.Dpi, r.Gray, duplex, r.AutoSize, r.Even, r.Streaks, cancel).GetAsyncEnumerator(cancel))
             {
                 while (true)
                 {

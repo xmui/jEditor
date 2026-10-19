@@ -80,7 +80,7 @@ static class Twain32
         Log.Write($"{device}: its own settings forgotten; scans use its driver's defaults");
     }
 
-    public static async IAsyncEnumerable<Bitmap> ScanAsync(string device, int dpi, bool gray, bool duplex, bool autoSize, [EnumeratorCancellation] CancellationToken cancel)
+    public static async IAsyncEnumerable<Bitmap> ScanAsync(string device, int dpi, bool gray, bool duplex, bool autoSize, bool even, bool streaks, [EnumeratorCancellation] CancellationToken cancel)
     {
         var exe = Exe ?? throw new Failed("the 32-bit helper isn't installed");
         AutoSized = false;
@@ -100,6 +100,8 @@ static class Twain32
         if (gray) info.ArgumentList.Add("--gray");
         if (duplex) info.ArgumentList.Add("--duplex");
         if (autoSize) { info.ArgumentList.Add("--autosize"); info.ArgumentList.Add("--deskew"); }
+        if (!even) info.ArgumentList.Add("--no-even");
+        if (!streaks) info.ArgumentList.Add("--no-streaks");
         if (HasSettings(device)) { info.ArgumentList.Add("--settings"); info.ArgumentList.Add(SettingsFile(device)); }
         Log.Write($"Scanning the feeder through jEditor's 32-bit helper: {dpi} dpi, {(gray ? "grayscale" : "color")}, {(duplex ? "both sides" : "one side")}{(autoSize ? ", the scanner's own auto-size" : "")}");
         var started = Stopwatch.StartNew();

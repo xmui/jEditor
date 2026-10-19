@@ -946,6 +946,8 @@ sealed class MainForm : Form
             Sides = Str(msg, "sides") is "back" or "both" ? Str(msg, "sides")! : "front",
             Swap = msg["swap"]?.GetValue<bool>() ?? false,
             AutoSize = msg["autosize"]?.GetValue<bool>() ?? false,
+            Even = msg["even"]?.GetValue<bool>() ?? true,
+            Streaks = msg["streaks"]?.GetValue<bool>() ?? true,
             Brightness = Math.Clamp(msg["brightness"]?.GetValue<int>() ?? 0, -100, 100),
             Contrast = Math.Clamp(msg["contrast"]?.GetValue<int>() ?? 0, -100, 100),
             Format = Str(msg, "format") is "tiff" or "png" ? Str(msg, "format")! : "jpeg",

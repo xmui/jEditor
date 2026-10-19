@@ -1726,6 +1726,23 @@ const PaintEditor = {
             row.addEventListener('dblclick', () => this.renameLayer(i));
             list.appendChild(row);
         }
+        // The photo: the bottom layer, locked (painting goes on the layers
+        // above it, so it's never changed)
+        const base = document.createElement('div');
+        base.className = 'paint-layer paint-photo-layer';
+        base.setAttribute('role', 'option');
+        base.setAttribute('aria-selected', 'false');
+        base.setAttribute('aria-disabled', 'true');
+        base.title = 'The photo is locked: paint on a layer above it';
+        base.innerHTML = '<span class="paint-eye paint-lock"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span><canvas></canvas><span class="paint-layer-name">Photo</span>';
+        const bc = base.querySelector('canvas');
+        bc.width = 96;
+        bc.height = 72;
+        const pa = this.backdrop ? this.backdrop.width / this.backdrop.height : asp;
+        const bw = pa > 96 / 72 ? 96 : 72 * pa, bh = pa > 96 / 72 ? 96 / pa : 72;
+        if (this.backdrop) bc.getContext('2d').drawImage(this.backdrop, (96 - bw) / 2, (72 - bh) / 2, bw, bh);
+        base.addEventListener('click', () => this.app.showToast('The photo is locked: paint on a layer above it', 2000));
+        list.appendChild(base);
         const l = this.layer();
         if (l) this.el('paint-layer-blend').value = l.blend;
         this.opacityRow._sync();

@@ -4499,6 +4499,21 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     cursor: pointer;
 }
 
+.paint-lock {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: default;
+}
+
+.paint-photo-layer {
+    cursor: default;
+}
+
+.paint-photo-layer .paint-layer-name {
+    color: var(--text-2);
+}
+
 .paint-prop {
     display: flex;
     align-items: center;
@@ -5860,7 +5875,8 @@ html:not(.native) .native-only {
     display: flex;
     flex-direction: column;
     width: min(400px, calc(100vw - 2 * var(--gutter)));
-    max-height: calc(100vh - 2 * var(--gutter) - 64px);
+    /* --dock-max: below where it was dragged to (scan.js) */
+    max-height: var(--dock-max, calc(100vh - 2 * var(--gutter) - 64px));
     border-radius: var(--r-lg);
     /* Solid: fields and text over a see-through, blurred panel repaint
        badly (and the photos changing behind it as scans land show through) */
@@ -6162,6 +6178,67 @@ html:not(.native) .native-only {
 .scan-own small {
     color: var(--text-2);
     font-size: var(--fs-small);
+}
+
+/* On/off rows (Each photo, The scanner): icon, name and hint, a switch */
+.scan-switches {
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--r-md);
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    overflow: hidden;
+}
+
+.scan-switch {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
+    min-height: 44px;
+    box-sizing: border-box;
+    cursor: pointer;
+}
+
+.scan-switch:not(.hidden) ~ .scan-switch:not(.hidden) {
+    border-top: 1px solid var(--border);
+}
+
+.scan-switch.hidden {
+    display: none;
+}
+
+.scan-switch:hover {
+    background: var(--bg-hover);
+}
+
+.scan-switch > .i {
+    flex: none;
+    color: var(--text-2);
+}
+
+.scan-switch > span {
+    flex: 1;
+    min-width: 0;
+}
+
+.scan-switch small {
+    display: block;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+}
+
+.scan-hw {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    margin-top: var(--sp-2);
+}
+
+/* Nothing this scanner can do itself: no heading either */
+.scan-hw:not(:has(.scan-switch:not(.hidden))) {
+    display: none;
 }
 
 .scan-check {
