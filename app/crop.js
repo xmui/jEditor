@@ -16,6 +16,11 @@
 // Drag a handle to resize (the view then glides so the crop fills the screen
 // again), drag inside to move the photo, drag outside to rotate it. Turning
 // pivots on the crop's center and zooms in just enough to hide the corners.
+//
+// For a closer look at an edge: the loupe shows the corner or edge being
+// dragged, close up, in a top corner of the stage; and the wheel, + and −
+// zoom the view (see "zoom" below). Both draw from the full-size photo once
+// it's needed, since the working copy is only screen-sized.
 
 const CropGeom = {
     rad(deg) { return deg * Math.PI / 180; },
@@ -220,6 +225,9 @@ const CropEditor = {
     MAX_ZOOM: 4,   // the resting view magnifies at most this much past whole-photo fit
     ANIM_MS: 220,
     HISTORY: 100,
+    MAX_SCALE: 16,     // zoomed in, at most this many screen px per photo pixel (1600%)
+    LOUPE: 220,        // the loupe's side, in screen px, at most
+    DETAIL_PX: 48e6,   // the full-size copy for close-ups has at most this many pixels
 
     // Curved double arrow, shown outside the frame where dragging rotates
     ROTATE_CURSOR: 'url("data:image/svg+xml,' + encodeURIComponent(
@@ -268,6 +276,10 @@ const CropEditor = {
         bind('crop-auto-each', () => this.setAutoEach(!this.autoEach()));
         bind('crop-previous', () => this.usePrevious());
         bind('crop-reset', () => this.reset());
+        bind('crop-loupe', () => this.setLoupe(!this.loupeOn()));
+        bind('crop-zoom-in', () => this.zoomBy(1.25));
+        bind('crop-zoom-out', () => this.zoomBy(0.8));
+        bind('crop-zoom-fit', () => this.fitView());
 
         const slider = this.el('crop-angle');
         const num = this.el('crop-angle-num');
@@ -291,14 +303,25 @@ const CropEditor = {
         cv.addEventListener('pointermove', (e) => this.onMove(e));
         cv.addEventListener('pointerup', (e) => this.onUp(e));
         cv.addEventListener('pointercancel', (e) => this.onUp(e));
-        // Ctrl/⌘ turns the pointer into the level tool
-        const mod = (e) => { if (this.isOpen && !this.drag) this.updateCursor(e); };
+        cv.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
+        cv.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); }); // no autoscroll
+        // Ctrl/⌘ turns the pointer into the level tool; Space held, a hand
+        // that moves the view
+        const mod = (e) => {
+            if (!this.isOpen) return;
+            if (e.key === ' ' && !(e.target && e.target.closest && e.target.closest('input, select, textarea, button'))) {
+                this._space = e.type === 'keydown';
+                if (this._space) e.preventDefault();
+            }
+            if (!this.drag) this.updateCursor(e);
+        };
         window.addEventListener('keydown', mod);
         window.addEventListener('keyup', mod);
+        window.addEventListener('blur', () => { this._space = false; });
 
         const mac = /Mac|iPhone|iPad/.test(navigator.platform || '');
         this.el('crop-tip').textContent =
-            `Drag the photo to move it · drag outside the frame to rotate · ${mac ? '⌘' : 'Ctrl'}+drag along a straight line to level it`;
+            `Drag the photo to move it · drag outside the frame to rotate · ${mac ? '⌘' : 'Ctrl'}+drag along a straight line to level it · scroll to zoom`;
 
         this._resizeObs = new ResizeObserver(() => this.resizeCanvas());
         this._resizeObs.observe(cv.parentElement);
@@ -314,6 +337,9 @@ const CropEditor = {
         this.level = false;
         this.drag = null;
         this.vw = null;
+        this.zoomed = false;
+        this.updateZoomUi();
+        this.dropDetail();
         this.history = [];
         this.future = [];
         this._auto = null; // what Auto found on this photo (crop-log.js)
@@ -416,6 +442,7 @@ const CropEditor = {
         if (this._anim) cancelAnimationFrame(this._anim);
         this._anim = 0;
         if (this.preview) { this.preview.close(); this.preview = null; }
+        this.dropDetail();
         clearTimeout(this._gridTimer);
         if (this.root) this.root.classList.add('hidden');
         this.file = null;
@@ -611,7 +638,7 @@ const CropEditor = {
         this.base = { c: this.base.c, a: this.base.b, b: this.base.a };
         this.landscape = !this.landscape;
         this.refit();
-        this.settle(false);
+        this.fitView(false);
     },
 
     // Upside down: the same crop, turned half way round
@@ -620,7 +647,7 @@ const CropEditor = {
         this.pushHistory();
         this.q = (this.q + 2) % 4;
         this.refit();
-        this.settle(false);
+        this.fitView(false);
     },
 
     setAspect(key) {
@@ -633,7 +660,7 @@ const CropEditor = {
         const r = this.rect;
         this.landscape = (r.x1 - r.x0) >= (r.y1 - r.y0);
         this.applyAspectToRect(r);
-        this.settle();
+        this.fitView();
     },
 
     cycleAspect() {
@@ -657,14 +684,14 @@ const CropEditor = {
         const a = (r.x1 - r.x0) / 2, b = (r.y1 - r.y0) / 2;
         this.landscape = b > a;
         this.setRect(this.fitRect(CropGeom.scaled(cx, cy, b, a)));
-        this.settle();
+        this.fitView();
     },
 
     selectAll() {
         if (!this.ready) return;
         this.pushHistory();
         this.applyAspectToRect(this.fullRect());
-        this.settle();
+        this.fitView();
     },
 
     reset() {
@@ -677,7 +704,7 @@ const CropEditor = {
         this.syncAngleUi();
         this.updateButtons();
         this.applyAspectToRect(this.fullRect());
-        this.settle(false);
+        this.fitView(false);
     },
 
     toggleLevel() {
@@ -712,7 +739,7 @@ const CropEditor = {
         CropLog.noteAuto(this, det);
         this.syncAngleUi();
         this.flashGrid();
-        this.settle(animate);
+        this.fitView(animate);
         if (!quiet) {
             const a = this.angle;
             this.app.showToast(a ? `Straightened ${a > 0 ? '+' : ''}${a.toFixed(1)}° and cropped to the print` : 'Cropped to the print', 2200, null, null, { kind: 'crop' });
@@ -767,7 +794,7 @@ const CropEditor = {
         this.applySnapshot(snap);
         this.el('crop-aspect').value = this.aspectKey;
         this.syncAngleUi();
-        this.settle(false);
+        this.fitView(false);
     },
 
     // Put a snapshot (see above) on this photo: the same turn, tilt and
@@ -873,7 +900,7 @@ const CropEditor = {
         this.cssH = box.height;
         this.canvas.width = Math.max(1, Math.round(box.width * dpr));
         this.canvas.height = Math.max(1, Math.round(box.height * dpr));
-        if (this.ready && !this.drag) this.vw = this.homeView();
+        if (this.ready && !this.drag) this.vw = this.zoomed && this.vw ? this.clampView(this.vw) : this.homeView();
         this.render();
     },
 
@@ -890,10 +917,16 @@ const CropEditor = {
         return { s, cx: (r.x0 + r.x1) / 2, cy: (r.y0 + r.y1) / 2 };
     },
 
-    // Glide to the resting view (or jump there)
+    // Glide to the resting view (or jump there). Zoomed, the view stays
+    // where it was put
     settle(animate = true) {
         if (this._anim) cancelAnimationFrame(this._anim);
         this._anim = 0;
+        if (this.zoomed && this.vw) {
+            this.vw = this.clampView(this.vw);
+            this.render();
+            return;
+        }
         const to = this.homeView();
         const from = this.vw;
         const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -947,6 +980,10 @@ const CropEditor = {
         eachBtn.classList.toggle('active', each);
         eachBtn.setAttribute('aria-pressed', each ? 'true' : 'false');
         this.el('crop-previous').disabled = !this.app.getLastCrop();
+        const loupe = this.loupeOn();
+        const loupeBtn = this.el('crop-loupe');
+        loupeBtn.classList.toggle('active', loupe);
+        loupeBtn.setAttribute('aria-pressed', loupe ? 'true' : 'false');
         this.updateHint();
         if (this.canvas) this.canvas.style.cursor = this.level ? 'crosshair' : 'default';
     },
@@ -998,9 +1035,7 @@ const CropEditor = {
         const k = dpr * v.s;
         ctx.setTransform(k * c, k * s, -k * s, k * c,
             dpr * (this.cssW / 2 - v.cx * v.s), dpr * (this.cssH / 2 - v.cy * v.s));
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(this.preview, -this.W / 2, -this.H / 2, this.W, this.H);
+        this.drawPhoto(ctx, v.s, this.zoomed);
 
         // Everything below is in CSS pixels
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1082,7 +1117,253 @@ const CropEditor = {
                 ctx.fillText(`${t > 0 ? '+' : ''}${t.toFixed(1)}°`, q.x + 10, q.y - 10);
             }
         }
+        this.drawLoupe(ctx, v, colors);
         this.updateDims();
+        this.updateZoomUi();
+    },
+
+    // The photo, at `s` screen px per photo pixel, under the transform set.
+    // Close up (crisp), pixels bigger than about two on screen are shown as
+    // they are, not blurred.
+    drawPhoto(ctx, s, crisp = false) {
+        const src = this.source(s);
+        ctx.imageSmoothingEnabled = !crisp || s * (window.devicePixelRatio || 1) * this.W / src.width < 2;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(src, -this.W / 2, -this.H / 2, this.W, this.H);
+    },
+
+    // What to draw the photo from at `s`: the working copy, or the full-size
+    // one once the working copy would be blown up (and it's in)
+    source(s) {
+        const need = s * (window.devicePixelRatio || 1) * this.W > this.preview.width * 1.2;
+        if (need) this.ensureDetail();
+        return need && this.detail ? this.detail : this.preview;
+    },
+
+    // The photo at full size for close-ups, read from disk the first time
+    // one needs it (once per opening). Very large scans are kept to
+    // DETAIL_PX, still far more than the working copy.
+    ensureDetail() {
+        if (this.detail || this._detailTried || !this.ready) return;
+        if (this.preview.width >= this.W * 0.95) return; // the working copy is the photo
+        this._detailTried = true;
+        const file = this.file, token = this._openToken;
+        const current = () => this.isOpen && this.file === file && this._openToken === token;
+        (async () => {
+            const data = await file.handle.getFile();
+            const k = Math.min(1, Math.sqrt(this.DETAIL_PX / (this.W * this.H)));
+            let bmp = await createImageBitmap(data, k < 1
+                ? { resizeWidth: Math.round(this.W * k), resizeHeight: Math.round(this.H * k), resizeQuality: 'high' }
+                : {});
+            // Not the photo the editor has (changed on disk, or turned): not used
+            if (Math.abs(bmp.width / bmp.height - this.W / this.H) > 0.01) { bmp.close(); return; }
+            const adj = Edits.get(file) && Edits.get(file).adj;
+            if (adj && current()) {
+                // Shown with its adjustments, as the working copy is, or not at all
+                const shown = await Develop.applyBitmap(bmp, adj, { scale: bmp.width / this.W }).catch((err) => { bmp.close(); throw err; });
+                if (shown !== bmp) { bmp.close(); bmp = shown; }
+            }
+            if (!current()) { bmp.close(); return; }
+            this.detail = bmp;
+            this.render();
+        })().catch(() => { /* close-ups stay on the working copy */ });
+    },
+
+    dropDetail() {
+        if (this.detail) this.detail.close();
+        this.detail = null;
+        this._detailTried = false;
+    },
+
+    // ---- loupe: the edge being dragged, close up ----
+
+    loupeOn() {
+        try { return localStorage.getItem('jeditor.cropLoupe') !== '0'; } catch (e) { return true; }
+    },
+
+    setLoupe(on) {
+        try { localStorage.setItem('jeditor.cropLoupe', on ? '1' : '0'); } catch (e) { /* private mode */ }
+        this.updateButtons();
+        this.render();
+    },
+
+    // Where the loupe looks, in output space: the corner being dragged, the
+    // spot on the edge across from the pointer, or the end of a level line.
+    // null when it isn't showing.
+    loupeFocus() {
+        const d = this.drag;
+        if (!d || !this.loupeOn()) return null;
+        if (d.mode === 'level') return d.b;
+        if (d.mode !== 'resize') return null;
+        const r = this.outputRect(), h = d.handle;
+        const P = this.toOutput(this._hover.x, this._hover.y);
+        const x = h.includes('w') ? r.x0 : h.includes('e') ? r.x1 : Math.max(r.x0, Math.min(r.x1, P.x));
+        const y = h.includes('n') ? r.y0 : h.includes('s') ? r.y1 : Math.max(r.y0, Math.min(r.y1, P.y));
+        return { x, y };
+    },
+
+    // The loupe's square: a top corner, the other one when the pointer
+    // comes near it. null when the stage is too small for one.
+    loupeBox() {
+        const size = Math.round(Math.min(this.LOUPE, this.cssW * 0.34, this.cssH * 0.45));
+        if (size < 96) return null;
+        const M = 12, p = this._hover;
+        const at = (side) => ({ x: side === 'left' ? M : this.cssW - M - size, y: M, size });
+        let b = at(this._loupeSide);
+        if (p.x > b.x - 2 * M && p.x < b.x + size + 2 * M && p.y < b.y + size + 2 * M) {
+            this._loupeSide = this._loupeSide === 'left' ? 'right' : 'left';
+            b = at(this._loupeSide);
+        }
+        return b;
+    },
+
+    // How close the loupe is, in screen px per photo pixel: the photo's own
+    // pixels (100%) when that's at least 3× the view, but at most 8 screen
+    // px a pixel unless the view itself is near that
+    loupeScale(s) {
+        return Math.max(s * 2, Math.min(Math.max(s * 3, 1), 8));
+    },
+
+    drawLoupe(ctx, v, colors) {
+        const F = this.loupeFocus();
+        const B = F && this.loupeBox();
+        if (!B) return;
+        const dpr = window.devicePixelRatio || 1;
+        const ls = this.loupeScale(v.s);
+        const mx = B.x + B.size / 2, my = B.y + B.size / 2;
+        const at = (x, y) => ({ x: mx + (x - F.x) * ls, y: my + (y - F.y) * ls });
+        const round = (path) => {
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(B.x, B.y, B.size, B.size, 10); else ctx.rect(B.x, B.y, B.size, B.size);
+            if (path) ctx.rect(path.x, path.y, path.w, path.h);
+        };
+
+        ctx.save();
+        round();
+        ctx.clip();
+        ctx.fillStyle = colors.bg;
+        ctx.fillRect(B.x, B.y, B.size, B.size);
+        const [c, s] = this.cs();
+        const k = dpr * ls;
+        ctx.setTransform(k * c, k * s, -k * s, k * c, dpr * (mx - F.x * ls), dpr * (my - F.y * ls));
+        this.drawPhoto(ctx, ls, true);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        // The crop as it will be saved (whole pixels): outside it dimmed
+        const o = this.outputRect();
+        const a = at(o.x0, o.y0), b = at(o.x1, o.y1);
+        const R = { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y };
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
+        round(R);
+        ctx.fill('evenodd');
+        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(R.x, R.y, R.w, R.h);
+        if (this.drag.mode === 'level') {
+            const p = at(this.drag.a.x, this.drag.a.y), q = at(this.drag.b.x, this.drag.b.y);
+            ctx.strokeStyle = colors.accent;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 4]);
+            ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // How close, in the corner
+        const t = `${Math.round(ls * 100)}%`;
+        ctx.font = '600 11px system-ui, sans-serif';
+        const tw = ctx.measureText(t).width;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(B.x + 8, B.y + B.size - 28, tw + 14, 20, 10); else ctx.rect(B.x + 8, B.y + B.size - 28, tw + 14, 20);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.fillText(t, B.x + 15, B.y + B.size - 14);
+        ctx.restore();
+
+        // A ring that reads on light and dark photos
+        round();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+        ctx.stroke();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+        ctx.stroke();
+    },
+
+    // ---- zoom: a closer look while cropping ----
+    //
+    // The view rests on the crop (homeView) and glides back to it after each
+    // change. Zoomed (the wheel or a pinch, + and −, or the view moved with
+    // Space or the middle button held) it stays where it was put instead,
+    // through drags and straightening, until Fit or a change to the whole
+    // crop: the aspect, a quarter turn, Auto, Reset, Previous.
+
+    // The view's scale: from the whole photo (or the crop, if that's
+    // smaller) up to MAX_SCALE
+    scaleLimits() {
+        const A = this.avail();
+        const b = CropGeom.bounds(this.W, this.H, this.cs());
+        const home = this.homeView().s;
+        return { min: Math.min(home, A.w / b.w, A.h / b.h), max: Math.max(home, this.MAX_SCALE), home };
+    },
+
+    // The middle of the view stays on the photo
+    clampView(v) {
+        const b = CropGeom.bounds(this.W, this.H, this.cs());
+        return {
+            s: v.s,
+            cx: Math.max(-b.w / 2, Math.min(b.w / 2, v.cx)),
+            cy: Math.max(-b.h / 2, Math.min(b.h / 2, v.cy))
+        };
+    },
+
+    // Zoom by `factor`, keeping the screen point (x, y) where it is. Back
+    // across the resting view, it rests there again.
+    zoomAt(factor, x = this.cssW / 2, y = this.cssH / 2) {
+        if (!this.ready) return;
+        const d = this.drag;
+        if (d && d.mode !== 'resize' && d.mode !== 'level') return; // those hold on to the view they started with
+        if (this._anim) { cancelAnimationFrame(this._anim); this._anim = 0; }
+        const v = this.view(), lim = this.scaleLimits();
+        const s = Math.max(lim.min, Math.min(lim.max, v.s * factor));
+        if (s === v.s) return;
+        if (!d && this.zoomed && ((v.s > lim.home) !== (s > lim.home) || Math.abs(s / lim.home - 1) < 0.02)) {
+            this.fitView();
+            return;
+        }
+        const P = this.toOutput(x, y, v);
+        this.zoomed = true;
+        this.vw = this.clampView({ s, cx: P.x - (x - this.cssW / 2) / s, cy: P.y - (y - this.cssH / 2) / s });
+        // Mid-drag, the handle stays under the pointer
+        if (d && d.mode === 'resize' && d.last) this.dragTo(d.last.p, d.last.shift, d.last.alt);
+        else this.render();
+    },
+
+    zoomBy(factor) { this.zoomAt(factor); },
+
+    // Back to resting on the crop
+    fitView(animate = true) {
+        this.zoomed = false;
+        this.settle(animate);
+    },
+
+    // The wheel (or a trackpad pinch) zooms about the pointer, as in the viewer
+    onWheel(e) {
+        e.preventDefault();
+        if (!this.ready) return;
+        let dy = e.deltaY;
+        if (e.deltaMode === 1) dy *= 16;       // lines
+        else if (e.deltaMode === 2) dy *= 400; // pages
+        dy = Math.max(-300, Math.min(300, dy));
+        if (!dy) return;
+        const p = this.point(e);
+        this.zoomAt(Math.exp(-dy * 0.002), p.x, p.y);
+    },
+
+    updateZoomUi() {
+        const t = this.zoomed ? `${Math.round(this.view().s * 100)}%` : 'Fit';
+        const el = this.el('crop-zoom-fit');
+        if (el.textContent !== t) el.textContent = t;
     },
 
     // ---- pointer interaction ----
@@ -1119,6 +1400,7 @@ const CropEditor = {
 
     updateCursor(e) {
         if (!this.ready || !this.canvas) return;
+        if (this._space) { this.canvas.style.cursor = 'grab'; return; }
         if (this.level || e.ctrlKey || e.metaKey) { this.canvas.style.cursor = 'crosshair'; return; }
         if (!this._hover) return;
         const h = this.hit(this._hover);
@@ -1126,13 +1408,22 @@ const CropEditor = {
     },
 
     onDown(e) {
-        if (!this.ready || this.busy || e.button !== 0) return;
+        // The middle button, or the left with Space held, moves the view
+        const moveView = e.button === 1 || (e.button === 0 && this._space);
+        if (!this.ready || this.busy || (e.button !== 0 && !moveView)) return;
         // Stop any glide where it is: the frame is where the user sees it
         if (this._anim) { cancelAnimationFrame(this._anim); this._anim = 0; }
         const v = { ...this.view() };
         this.vw = v;
         const p = this.point(e);
+        this._hover = p;
+        this._loupeSide = p.x < this.cssW / 2 ? 'right' : 'left';
         try { this.canvas.setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
+        if (moveView) {
+            this.drag = { mode: 'view', v, p };
+            this.canvas.style.cursor = 'grabbing';
+            return;
+        }
         this.pushHistory();
         const r = this.rect;
         if (this.level || e.ctrlKey || e.metaKey) {
@@ -1172,6 +1463,12 @@ const CropEditor = {
         const v = this.view();
         if (d.mode === 'level') {
             d.b = this.toOutput(p.x, p.y, v);
+            this.render();
+            return;
+        }
+        if (d.mode === 'view') {
+            this.zoomed = true;
+            this.vw = this.clampView({ s: d.v.s, cx: d.v.cx - (p.x - d.p.x) / d.v.s, cy: d.v.cy - (p.y - d.p.y) / d.v.s });
             this.render();
             return;
         }
@@ -1256,6 +1553,10 @@ const CropEditor = {
         this.drag = null;
         this.stopPush();
         try { this.canvas.releasePointerCapture(e.pointerId); } catch (err) { /* already released */ }
+        if (d.mode === 'view') {
+            this.updateCursor(e);
+            return;
+        }
         if (d.mode === 'level') {
             const t = this.levelAngle(d.a, d.b);
             this.level = false;

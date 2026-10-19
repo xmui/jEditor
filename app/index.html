@@ -360,6 +360,15 @@
         </div>
         <div class="crop-stage">
             <canvas id="crop-canvas"></canvas>
+            <div class="crop-zoom" role="group" aria-label="Zoom">
+                <button id="crop-zoom-out" class="crop-zoom-btn" title="Zoom out (−)" aria-label="Zoom out">
+                    <svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
+                </button>
+                <button id="crop-zoom-fit" class="crop-zoom-btn crop-zoom-level" title="Fit the crop to the window (Z). Scroll on the photo to zoom; hold Space and drag to look around">Fit</button>
+                <button id="crop-zoom-in" class="crop-zoom-btn" title="Zoom in (+)" aria-label="Zoom in">
+                    <svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg>
+                </button>
+            </div>
         </div>
         <div class="crop-toolbar">
             <div class="crop-row crop-row-straighten">
@@ -371,9 +380,13 @@
                         <span aria-hidden="true">°</span>
                     </span>
                 </label>
-                <button id="crop-level" class="btn ghost crop-btn" title="Level tool: draw along something that should be straight (L, or hold Ctrl/⌘ and drag)">
+                <button id="crop-level" class="btn ghost crop-btn" aria-label="Level" title="Level tool: draw along something that should be straight (L, or hold Ctrl/⌘ and drag)">
                     <svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 17 22 7"/><circle cx="12" cy="12" r="2.5"/></svg>
-                    Level
+                    <span class="crop-btn-label">Level</span>
+                </button>
+                <button id="crop-loupe" class="btn ghost crop-btn" aria-pressed="true" aria-label="Loupe" title="Loupe: a close-up of the corner or edge you're dragging, in a corner of the window (M)">
+                    <svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+                    <span class="crop-btn-label">Loupe</span>
                 </button>
             </div>
             <div class="crop-row">

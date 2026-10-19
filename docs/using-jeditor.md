@@ -84,6 +84,8 @@ It works like Lightroom or Apple Photos: the crop frame stays in the middle of t
 - Drag inside the frame to move the photo. Drag outside it to rotate.
 - Straighten with the slider, or `,` / `.` in 0.1° steps. The photo turns around the middle of the crop and zooms in just enough to hide the corners, so there are never empty corners.
 - To level something, hold `Ctrl` (`⌘` on a Mac) and draw a line along a horizon or the edge of a print. The level tool (`L`) does the same without the key.
+- **Loupe** (`M`): while you drag a corner or edge, or draw a level line, a close-up of that spot shows in a top corner of the window, at the photo's own pixels, with the crop's edge exactly where it will be saved. It moves to the other corner if your pointer comes near it. It's on to start with; turn it off with the button or `M`.
+- **Zoom** for a closer look: scroll on the photo (or pinch on a trackpad) to zoom in and out where the pointer is, or use `+` and `-` and the buttons in the bottom corner. Hold `Space` and drag, or drag with the middle button, to look around. Zoomed in, the view stays put while you drag and straighten; **Fit** (`Z`) goes back to the whole crop, as do a new aspect, a quarter turn, **Auto**, **Previous** and **Reset**. Close-ups use the full-size photo, not the screen-sized copy, once it's loaded.
 - **Auto** (`Shift+A`) finds the print on a scan, straightens it and crops to its edges. It needs a plain scanner lid or background around the photo (or, when the scan cut the print off at two opposite sides, down the other two), and it leaves a few pixels' margin so none of the bed shows. Turn on **Every photo** to run Auto on each photo as it opens. With `Shift+Enter` (save and next), a scan order then becomes: check the crop, press `Shift+Enter`, repeat.
 - **Batch Auto crop.** In the grid, select photos and press `Shift+A` (or **Auto crop** on the selection bar, or the right-click menu). Auto runs on each of them in the background, with the aspect ratio last chosen in the editor, and saves them. Photos with no print edge, or already cropped to it, are left alone. The originals are kept in `.jeditor/originals`, so one `Ctrl+Z` puts the whole batch back; flip through the results and fix the odd one in the editor.
 - `Ctrl+Z` inside the editor undoes the last adjustment; `Ctrl+Shift+Z` redoes it.
@@ -235,7 +237,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `?` | Show shortcuts |
 | `Ctrl+,` | Settings |
 
-In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `\` rotate 180°, `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
+In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `\` rotate 180°, `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `M` loupe, `+` `-` zoom, `Z` fit, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
 In Adjust: `Enter` done, `Shift+Enter` done and next, `Esc` cancel, `\` before and after, `Shift+A` auto, `Shift+C` auto color, `R` reset, `Ctrl+Shift+C` / `Ctrl+Shift+V` copy / paste, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 

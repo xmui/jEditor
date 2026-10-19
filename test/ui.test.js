@@ -1239,7 +1239,64 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             for (let i = 0; i < 150 && (ed._anim || ed.drag); i++) await new Promise(res => setTimeout(res, 20)); // the glide
             const f3 = frame(), st3 = stage();
             out.settled = Math.abs((f3[0] + f3[2]) / 2 - st3.width / 2) < 1 && Math.abs((f3[1] + f3[3]) / 2 - st3.height / 2) < 1;
+
+            // Loupe: while a handle is dragged, a close-up of that corner in
+            // a top corner away from the pointer; off, none
+            ed.setLoupe(true);
+            ed.setRect({ x0: -150, y0: -100, x1: 150, y1: 100 });
+            ed.settle(false);
+            const f4 = frame();
+            ptr('pointerdown', f4[0], f4[1]); ptr('pointermove', f4[0] + 10, f4[1] + 8);
+            const lf = ed.loupeFocus(), lb = ed.loupeBox(), o4 = ed.outputRect();
+            out.loupe = !!lf && lf.x === o4.x0 && lf.y === o4.y0 && !!lb && lb.x > stage().width / 2
+                && ed.loupeScale(ed.view().s) >= 2 * ed.view().s;
+            ed.setLoupe(false);
+            out.loupeOff = ed.loupeFocus() === null && document.getElementById('crop-loupe').getAttribute('aria-pressed') === 'false';
+            ed.setLoupe(true);
+            ptr('pointerup', f4[0] + 10, f4[1] + 8);
+            out.loupeGone = ed.loupeFocus() === null;
+
+            // Zoom: the wheel zooms about the pointer; the view stays zoomed
+            // through a resize; Fit (and a new aspect) rest on the crop again
+            ed.setRect({ x0: -150, y0: -100, x1: 150, y1: 100 });
+            ed.fitView(false);
+            const home = ed.view().s, f5 = frame();
+            const wheel = (x, y, dy) => ed.canvas.dispatchEvent(new WheelEvent('wheel', { clientX: stage().left + x, clientY: stage().top + y, deltaY: dy, bubbles: true, cancelable: true }));
+            const under = ed.toOutput(f5[2], f5[3]);
+            wheel(f5[2], f5[3], -300);
+            const anchored = ed.toOutput(f5[2], f5[3]);
+            out.zoomIn = ed.zoomed && ed.view().s > home * 1.5 && Math.hypot(anchored.x - under.x, anchored.y - under.y) < 0.5
+                && /^\d+%$/.test(document.getElementById('crop-zoom-fit').textContent);
+            const vz = { ...ed.view() }, f6 = frame();
+            ptr('pointerdown', f6[2], f6[3]); ptr('pointermove', f6[2] - 20, f6[3] - 20); ptr('pointerup', f6[2] - 20, f6[3] - 20);
+            out.zoomKept = ed.rect.x1 < 149 && ed.zoomed && ed.view().s === vz.s && ed.view().cx === vz.cx;
+            // Space held: dragging moves the view, not the crop
+            const r6 = JSON.stringify(ed.rect);
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
+            ptr('pointerdown', 300, 200); ptr('pointermove', 260, 180); ptr('pointerup', 260, 180);
+            window.dispatchEvent(new KeyboardEvent('keyup', { key: ' ' }));
+            out.spacePan = JSON.stringify(ed.rect) === r6 && Math.abs(ed.view().cx - vz.cx - 40 / vz.s) < 1e-6;
+            ed.fitView(false);
+            out.zoomFit = !ed.zoomed && Math.abs(ed.view().s - home) < 1e-6 && document.getElementById('crop-zoom-fit').textContent === 'Fit';
+            ed.zoomBy(2);
+            ed.zoomBy(0.5);
+            out.zoomBackRests = !ed.zoomed;
+            ed.zoomBy(2);
+            ed.setAspect('1:1');
+            out.aspectFits = !ed.zoomed;
+            ed.setAspect('free');
             app.cancelCrop();
+
+            // Close-ups draw from the full-size photo, not the screen-sized
+            // working copy
+            const big = makeFakeFile('big.jpg', await makeRealJpeg(2800, 1900, {}), 'image/jpeg');
+            await open(big);
+            const small = ed.preview.width < ed.W;
+            ed.zoomBy(4);
+            for (let i = 0; i < 100 && !ed.detail; i++) await new Promise(res => setTimeout(res, 20));
+            out.detail = small && !!ed.detail && ed.detail.width === 2800 && ed.source(ed.view().s) === ed.detail;
+            app.cancelCrop();
+            out.detailDropped = !ed.detail;
 
             // "Every photo": Auto runs as the editor opens
             ed.setAutoEach(true);
@@ -1351,6 +1408,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('Ctrl+drag draws a level line', r.ctrlLevel);
         check('editor undo: a run of nudges is one step; redo', r.nudged && r.undoNudges && r.redo);
         check('handle resize, then the view re-centers', r.resized && r.settled);
+        check('loupe: a close-up of the dragged corner, away from the pointer; can be turned off', r.loupe && r.loupeOff && r.loupeGone, JSON.stringify([r.loupe, r.loupeOff, r.loupeGone]));
+        check('zoom: the wheel zooms about the pointer, and it stays zoomed through a resize', r.zoomIn && r.zoomKept, JSON.stringify([r.zoomIn, r.zoomKept]));
+        check('zoom: Space+drag moves the view, not the crop', r.spacePan);
+        check('zoom: Fit, zooming back, or a new aspect rest on the crop again', r.zoomFit && r.zoomBackRests && r.aspectFits, JSON.stringify([r.zoomFit, r.zoomBackRests, r.aspectFits]));
+        check('close-ups use the full-size photo, dropped on close', r.detail && r.detailDropped, JSON.stringify([r.detail, r.detailDropped]));
         check('"Every photo" runs Auto as each photo opens', r.autoEach);
         check('crop suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
