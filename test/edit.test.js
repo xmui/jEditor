@@ -645,6 +645,18 @@ const PROJECT = `
                 const at = (x, y) => { const s = P.V().transformPoint(P.C.transformPoint({ x, y })); const r = P.canvas.getBoundingClientRect(); return { clientX: r.left + s.x, clientY: r.top + s.y }; };
                 const pe = (type, x, y, o = {}) => st.dispatchEvent(new PointerEvent(type, { ...at(x, y), pointerId: 1, bubbles: true, button: 0, ...o }));
                 const px = (l, x, y) => [...P.layers[l].canvas.getContext('2d').getImageData(x, y, 1, 1).data];
+                // The photo is drawn at screen size once for a view, and again
+                // only when the view changes (a fine downscale every frame lagged)
+                step = 'shown';
+                P.render();
+                const cached = P._shown && P._shown.canvas, cachedKey = P._shown && P._shown.key;
+                P.render({ quick: true });
+                out.shownKept = !!cached && P._shown.canvas === cached && P._shown.key === cachedKey;
+                const key = P._shown.key;
+                P.zoomTo(P.view.z * 1.5);
+                P.render();
+                out.shownRedrawn = P._shown.key !== key;
+                P.fit();
                 // A brush stroke, red, across
                 step = 'brush';
                 P.fg = '#ff0000';
@@ -761,6 +773,7 @@ const PROJECT = `
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
         check('paint: an experiment with its button; B opens it on the photo', r.button && r.open, JSON.stringify(r));
+        check('paint: the photo is drawn at screen size once for a view, again when it zooms', r.shownKept && r.shownRedrawn, JSON.stringify([r.shownKept, r.shownRedrawn]));
         check('paint: a brush stroke paints the layer (hard-edged), Ctrl+Z / Ctrl+Shift+Z inside', r.brush && r.brush[0] === 255 && r.brush[3] === 255 && r.brushEdge === 0 && r.undo === 0 && r.redo === 255, JSON.stringify(r));
         check('paint: a stroke at 50% opacity covers half, however it overlaps itself', r.half >= 120 && r.half <= 135, JSON.stringify(r));
         check('paint: a new layer; a filled rectangle on it', r.layers && r.rect && r.rect[0][1] === 255 && r.rect[1] === 0, JSON.stringify(r));

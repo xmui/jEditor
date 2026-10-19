@@ -323,6 +323,7 @@ const PaintEditor = {
         this.ready = false;
         if (this._raf) cancelAnimationFrame(this._raf);
         this._raf = 0;
+        clearTimeout(this._fine);
         this.dropCanvases();
         this.history = this.future = [];
         if (this.root) this.root.classList.add('hidden');
@@ -330,10 +331,10 @@ const PaintEditor = {
     },
 
     dropCanvases() {
-        const all = [this.photo, this.backdrop, this.stroke, this.before, this.sel && this.sel.mask, this.sel && this.sel.edge, this.float && this.float.canvas, this._scratch];
+        const all = [this.photo, this.backdrop, this.stroke, this.before, this.sel && this.sel.mask, this.sel && this.sel.edge, this.float && this.float.canvas, this._scratch, this._shown && this._shown.canvas];
         for (const l of this.layers || []) all.push(l.canvas);
         for (const c of all) if (c) c.width = c.height = 0;
-        this.photo = this.backdrop = this.stroke = this.before = this._scratch = null;
+        this.photo = this.backdrop = this.stroke = this.before = this._scratch = this._shown = null;
         this.layers = [];
         this.sel = this.float = null;
     },
@@ -520,26 +521,30 @@ const PaintEditor = {
         return { sx, sy, ox: o.x, oy: o.y, x: l.x, y: l.y };
     },
 
+    // The next frame, quickly (a stroke, the brush following the pointer);
+    // the fine one once things stop
     renderSoon() {
         if (this._raf || !this.ready) return;
-        this._raf = requestAnimationFrame(() => { this._raf = 0; this.render(); });
+        this._raf = requestAnimationFrame(() => { this._raf = 0; this.render({ quick: true }); });
     },
 
-    render() {
+    render({ quick = false } = {}) {
         if (!this.ready) return;
+        clearTimeout(this._fine);
+        quick = quick || !!this.drag;
+        if (quick) this._fine = setTimeout(() => this.render(), 200);
         const ctx = this.canvas.getContext('2d');
         const dpr = this.dpr || 1;
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         const VD = new DOMMatrix([dpr, 0, 0, dpr, 0, 0]).multiply(this.V());
+        // The photo, drawn at screen size once for this view (a fine
+        // downscale of a big photo every frame is what made strokes lag)
+        ctx.drawImage(this.shown(VD), 0, 0);
         ctx.setTransform(VD);
         ctx.imageSmoothingEnabled = this.view.z < 2;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.shadowColor = 'rgba(0,0,0,0.35)';
-        ctx.shadowBlur = 12;
-        ctx.drawImage(this.backdrop, 0, 0);
-        ctx.shadowColor = 'transparent';
-        ctx.shadowBlur = 0;
+        // Layers: the quick downscale while drawing, the fine one once it stops
+        ctx.imageSmoothingQuality = quick ? 'low' : 'high';
         // Clipped to the picture (a crop shows only its part of the layers)
         ctx.save();
         ctx.beginPath();
@@ -568,6 +573,27 @@ const PaintEditor = {
         ctx.restore();
         this.drawSelection(ctx, VD, LD);
         this.drawGuides(ctx, VD, LD);
+    },
+
+    // The photo with its shadow, at screen size for the view VD: kept
+    // until the view, the window or the photo changes
+    shown(VD) {
+        const c = this.canvas;
+        const key = [c.width, c.height, VD.a, VD.b, VD.c, VD.d, VD.e, VD.f].join();
+        const cache = this._shown;
+        if (cache && cache.key === key && cache.src === this.backdrop) return cache.canvas;
+        const out = cache && cache.canvas.width === c.width && cache.canvas.height === c.height ? cache.canvas : this.newCanvas(c.width, c.height);
+        const g = out.getContext('2d');
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, out.width, out.height);
+        g.setTransform(VD);
+        g.imageSmoothingEnabled = this.view.z < 2;
+        g.imageSmoothingQuality = 'high';
+        g.shadowColor = 'rgba(0,0,0,0.35)';
+        g.shadowBlur = 12;
+        g.drawImage(this.backdrop, 0, 0);
+        this._shown = { key, src: this.backdrop, canvas: out };
+        return out;
     },
 
     // A spare layer-sized canvas
