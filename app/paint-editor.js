@@ -323,6 +323,7 @@ const PaintEditor = {
         this.ready = false;
         if (this._raf) cancelAnimationFrame(this._raf);
         this._raf = 0;
+        clearTimeout(this._fine);
         this.dropCanvases();
         this.history = this.future = [];
         if (this.root) this.root.classList.add('hidden');
@@ -330,10 +331,10 @@ const PaintEditor = {
     },
 
     dropCanvases() {
-        const all = [this.photo, this.backdrop, this.stroke, this.before, this.sel && this.sel.mask, this.sel && this.sel.edge, this.float && this.float.canvas, this._scratch];
+        const all = [this.photo, this.backdrop, this.stroke, this.before, this.sel && this.sel.mask, this.sel && this.sel.edge, this.float && this.float.canvas, this._scratch, this._shown && this._shown.canvas];
         for (const l of this.layers || []) all.push(l.canvas);
         for (const c of all) if (c) c.width = c.height = 0;
-        this.photo = this.backdrop = this.stroke = this.before = this._scratch = null;
+        this.photo = this.backdrop = this.stroke = this.before = this._scratch = this._shown = this._photoThumb = null;
         this.layers = [];
         this.sel = this.float = null;
     },
@@ -520,26 +521,30 @@ const PaintEditor = {
         return { sx, sy, ox: o.x, oy: o.y, x: l.x, y: l.y };
     },
 
+    // The next frame, quickly (a stroke, the brush following the pointer);
+    // the fine one once things stop
     renderSoon() {
         if (this._raf || !this.ready) return;
-        this._raf = requestAnimationFrame(() => { this._raf = 0; this.render(); });
+        this._raf = requestAnimationFrame(() => { this._raf = 0; this.render({ quick: true }); });
     },
 
-    render() {
+    render({ quick = false } = {}) {
         if (!this.ready) return;
+        clearTimeout(this._fine);
+        quick = quick || !!this.drag;
+        if (quick) this._fine = setTimeout(() => this.render(), 200);
         const ctx = this.canvas.getContext('2d');
         const dpr = this.dpr || 1;
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         const VD = new DOMMatrix([dpr, 0, 0, dpr, 0, 0]).multiply(this.V());
+        // The photo, drawn at screen size once for this view (a fine
+        // downscale of a big photo every frame is what made strokes lag)
+        ctx.drawImage(this.shown(VD), 0, 0);
         ctx.setTransform(VD);
         ctx.imageSmoothingEnabled = this.view.z < 2;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.shadowColor = 'rgba(0,0,0,0.35)';
-        ctx.shadowBlur = 12;
-        ctx.drawImage(this.backdrop, 0, 0);
-        ctx.shadowColor = 'transparent';
-        ctx.shadowBlur = 0;
+        // Layers: the quick downscale while drawing, the fine one once it stops
+        ctx.imageSmoothingQuality = quick ? 'low' : 'high';
         // Clipped to the picture (a crop shows only its part of the layers)
         ctx.save();
         ctx.beginPath();
@@ -554,13 +559,7 @@ const PaintEditor = {
             ctx.setTransform(LD);
             let src = l.canvas;
             // The stroke being made, shown as it'll go on
-            if (i === this.cur && this.drag && this.drag.stroke) {
-                src = this.scratch();
-                const g = src.getContext('2d');
-                g.globalCompositeOperation = 'copy';
-                g.drawImage(l.canvas, 0, 0);
-                this.putStroke(g);
-            }
+            if (i === this.cur && this.drag && this.drag.stroke) src = this.preview(l);
             ctx.drawImage(src, 0, 0);
             if (i === this.cur && this.float) this.drawFloat(ctx, VD);
             ctx.restore();
@@ -568,6 +567,57 @@ const PaintEditor = {
         ctx.restore();
         this.drawSelection(ctx, VD, LD);
         this.drawGuides(ctx, VD, LD);
+    },
+
+    // The photo with its shadow, at screen size for the view VD: kept
+    // until the view, the window or the photo changes
+    shown(VD) {
+        const c = this.canvas;
+        const key = [c.width, c.height, VD.a, VD.b, VD.c, VD.d, VD.e, VD.f].join();
+        const cache = this._shown;
+        if (cache && cache.key === key && cache.src === this.backdrop) return cache.canvas;
+        const out = cache && cache.canvas.width === c.width && cache.canvas.height === c.height ? cache.canvas : this.newCanvas(c.width, c.height);
+        const g = out.getContext('2d');
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, out.width, out.height);
+        g.setTransform(VD);
+        g.imageSmoothingEnabled = this.view.z < 2;
+        g.imageSmoothingQuality = 'high';
+        g.shadowColor = 'rgba(0,0,0,0.35)';
+        g.shadowBlur = 12;
+        g.drawImage(this.backdrop, 0, 0);
+        this._shown = { key, src: this.backdrop, canvas: out };
+        return out;
+    },
+
+    // The layer with the stroke so far on it, to show: kept from frame to
+    // frame and redone only where the stroke has reached since the last
+    // (the whole layer each frame was too much for a laptop's graphics)
+    preview(l) {
+        const d = this.drag, sc = this.scratch(), g = sc.getContext('2d');
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        if (!d.preview) {
+            g.globalCompositeOperation = 'copy';
+            g.drawImage(l.canvas, 0, 0);
+            g.globalCompositeOperation = 'source-over';
+            d.preview = true;
+            d.fresh = d.dirty && { ...d.dirty };
+        }
+        const f = d.fresh;
+        d.fresh = null;
+        if (!f) return sc;
+        const x = Math.max(0, Math.floor(f.x0)), y = Math.max(0, Math.floor(f.y0));
+        const w = Math.min(this.W, Math.ceil(f.x1)) - x, h = Math.min(this.H, Math.ceil(f.y1)) - y;
+        if (w <= 0 || h <= 0) return sc;
+        g.save();
+        g.beginPath();
+        g.rect(x, y, w, h);
+        g.clip(); // ('copy' clears whatever's outside it)
+        g.globalCompositeOperation = 'copy';
+        g.drawImage(l.canvas, x, y, w, h, x, y, w, h);
+        g.restore();
+        this.putStroke(g, { x, y, w, h });
+        return sc;
     },
 
     // A spare layer-sized canvas
@@ -783,6 +833,10 @@ const PaintEditor = {
 
     grow(r) {
         const d = this.drag;
+        // Where it's grown since the stroke was last shown (preview)
+        const f = d.fresh;
+        d.fresh = f ? { x0: Math.min(f.x0, r.x), y0: Math.min(f.y0, r.y), x1: Math.max(f.x1, r.x + r.w), y1: Math.max(f.y1, r.y + r.h) }
+            : { x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.y + r.h };
         if (!d.dirty) d.dirty = { x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.y + r.h };
         else {
             d.dirty.x0 = Math.min(d.dirty.x0, r.x); d.dirty.y0 = Math.min(d.dirty.y0, r.y);
@@ -855,16 +909,19 @@ const PaintEditor = {
     },
 
     // The stroke onto a layer's context (the layer itself, or the preview
-    // of it): inside the selection, with the tool's opacity
-    putStroke(g) {
+    // of it): inside the selection, with the tool's opacity. r: only there
+    putStroke(g, r = null) {
         const d = this.drag;
         if (this.sel) {
             const sg = this.stroke.getContext('2d');
+            sg.save();
+            if (r) { sg.beginPath(); sg.rect(r.x, r.y, r.w, r.h); sg.clip(); }
             sg.globalCompositeOperation = 'destination-in';
             sg.drawImage(this.sel.mask, 0, 0);
-            sg.globalCompositeOperation = 'source-over';
+            sg.restore();
         }
         g.save();
+        if (r) { g.beginPath(); g.rect(r.x, r.y, r.w, r.h); g.clip(); }
         g.globalAlpha = this.opts.opacity / 100;
         g.globalCompositeOperation = d && d.tool === 'eraser' ? 'destination-out' : 'source-over';
         g.drawImage(this.stroke, 0, 0);
@@ -1735,12 +1792,20 @@ const PaintEditor = {
         base.setAttribute('aria-disabled', 'true');
         base.title = 'The photo is locked: paint on a layer above it';
         base.innerHTML = '<span class="paint-eye paint-lock"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span><canvas></canvas><span class="paint-layer-name">Photo</span>';
+        // Made small once for each photo, not on every redraw of the list
+        if (this.backdrop && (!this._photoThumb || this._photoThumb.src !== this.backdrop)) {
+            const t = document.createElement('canvas');
+            t.width = 96;
+            t.height = 72;
+            const pa = this.backdrop.width / this.backdrop.height;
+            const bw = pa > 96 / 72 ? 96 : 72 * pa, bh = pa > 96 / 72 ? 96 / pa : 72;
+            t.getContext('2d').drawImage(this.backdrop, (96 - bw) / 2, (72 - bh) / 2, bw, bh);
+            this._photoThumb = { src: this.backdrop, canvas: t };
+        }
         const bc = base.querySelector('canvas');
         bc.width = 96;
         bc.height = 72;
-        const pa = this.backdrop ? this.backdrop.width / this.backdrop.height : asp;
-        const bw = pa > 96 / 72 ? 96 : 72 * pa, bh = pa > 96 / 72 ? 96 / pa : 72;
-        if (this.backdrop) bc.getContext('2d').drawImage(this.backdrop, (96 - bw) / 2, (72 - bh) / 2, bw, bh);
+        if (this._photoThumb) bc.getContext('2d').drawImage(this._photoThumb.canvas, 0, 0);
         base.addEventListener('click', () => this.app.showToast('The photo is locked: paint on a layer above it', 2000));
         list.appendChild(base);
         const l = this.layer();
