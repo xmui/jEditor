@@ -544,6 +544,9 @@ const Scan = {
         if (!d) return;
         // Asked already: its resolutions (not the last scanner's)
         if (this.caps[d.id]) return this.fillDpis(this.caps[d.id]);
+        // Until it answers, or if it never does (a slow or stuck driver):
+        // the usual ones, so there's always a resolution to choose
+        this.fillDpis({ dpis: [], dpisSure: false, asking: true });
         if (this.running || this.waiting) return;
         let asked;
         this.capsLoading = asked = FolderCache.native().scanCaps({ device: d.id, driver: d.driver, compat: d.driver === 'twain' && !!this.compat()[d.id] })
@@ -556,7 +559,7 @@ const Scan = {
         if (this.capsLoading === asked) this.capsLoading = null;
         if (this.device() === d) {
             this.syncMode(true);
-            if (this.caps[d.id]) this.fillDpis(this.caps[d.id]);
+            this.fillDpis(this.caps[d.id] || { dpis: [], dpisSure: false });
         }
     },
 
@@ -819,7 +822,8 @@ const Scan = {
     fillDpis(caps) {
         const select = this.el('scan-dpi');
         const dpis = (caps.dpis || []).filter(d => d >= 100);
-        const list = dpis.length ? dpis : caps.optical >= 100 ? [150, 200, 300, 400, 600, 1200].filter(d => d <= caps.optical) : [300, 600];
+        const usual = [150, 200, 300, 400, 600, 1200];
+        const list = dpis.length ? dpis : caps.optical >= 100 ? usual.filter(d => d <= caps.optical) : usual;
         const d = this.device();
         const mine = d && (this.get(this.KEY_DEV_OPTS, {}) || {})[d.id];
         const want = (mine && mine.dpi) || (d ? this.defaultDpi(d) : 0) || +select.value || (this.get(this.KEY_OPTS, {}) || {}).dpi;
@@ -834,7 +838,8 @@ const Scan = {
         select.value = list.includes(want) ? want : below.length ? below[below.length - 1] : list[0];
         select.title = caps.optical >= 100 ? `Up to ${caps.optical} dpi, the scanner's optical resolution` : '';
         const unsure = this.el('scan-dpi-note');
-        unsure.textContent = caps.dpisSure === false ? 'The scanner didn\'t say which resolutions it has: these are the usual ones. If one doesn\'t work, choose a lower one.' : '';
+        unsure.textContent = caps.asking ? 'Asking the scanner which resolutions it has…'
+            : caps.dpisSure === false ? 'The scanner didn\'t say which resolutions it has: these are the usual ones. If one doesn\'t work, choose a lower one.' : '';
         unsure.classList.toggle('hidden', caps.dpisSure !== false);
         const gray = this.el('scan-color').querySelector('option[value="gray"]');
         gray.hidden = gray.disabled = caps.gray === false;

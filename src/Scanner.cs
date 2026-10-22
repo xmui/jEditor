@@ -555,10 +555,13 @@ sealed class Scanner : IDisposable
     }
 
     // The resolutions to offer from what a driver says: a range (or a long
-    // list) as the usual steps inside it
-    static List<int> Offered(IReadOnlyCollection<int> values) =>
-        values.Count > 12 ? CommonDpis.Where(d => d >= values.Min() && d <= values.Max()).ToList()
-        : values.Distinct().OrderBy(d => d).ToList();
+    // list) as the usual steps inside it; never none
+    static List<int> Offered(IReadOnlyCollection<int> values)
+    {
+        var dpis = values.Count > 12 ? CommonDpis.Where(d => d >= values.Min() && d <= values.Max()).ToList()
+            : values.Where(d => d > 0).Distinct().OrderBy(d => d).ToList();
+        return dpis.Count > 0 ? dpis : CommonDpis.Where(d => d <= 1200).ToList();
+    }
 
     async Task<Caps> NapsCapsAsync(string deviceId, string driver, bool compat, CancellationToken cancel)
     {

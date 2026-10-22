@@ -1310,6 +1310,27 @@ async function newPage(context, baseUrl, host = null) {
             $('scan-device').dispatchEvent(new Event('change'));
             await wait(() => Scan.caps['Mystery']);
             out.unsure = !$('scan-dpi-note').classList.contains('hidden') && /didn't say/.test($('scan-dpi-note').textContent);
+            // One that's slow to answer, or never does, or fails: there are
+            // always resolutions to choose (an empty list was a bug)
+            const capsFor = window.__capsFor;
+            const listedBefore = window.__scanners;
+            window.__capsFor = (o) => /Slow/.test(o.device) ? new Promise(() => {})
+                : /Broken/.test(o.device) ? Promise.reject(new Error('The scanner sent nothing back')) : capsFor(o);
+            window.__scanners = JSON.parse(JSON.stringify(listedBefore));
+            window.__scanners.devices.push({ id: 'Slow', name: 'Slow', driver: 'twain', found: true }, { id: 'Broken', name: 'Broken', driver: 'twain', found: true });
+            await Scan.loadDevices(true);
+            const dpiNow = () => [...$('scan-dpi').options].map(o => o.value).join();
+            $('scan-device').value = 'Slow';
+            $('scan-device').dispatchEvent(new Event('change'));
+            await wait(() => /Asking/.test($('scan-dpi-note').textContent));
+            out.slow = dpiNow() + ' ' + !$('scan-dpi-note').classList.contains('hidden');
+            $('scan-device').value = 'Broken';
+            $('scan-device').dispatchEvent(new Event('change'));
+            await wait(() => /didn't say/.test($('scan-dpi-note').textContent));
+            out.broken = dpiNow();
+            window.__capsFor = capsFor;
+            window.__scanners = listedBefore;
+            await Scan.loadDevices(true);
             // Plugged in while the dock is open: the list follows, the choice kept
             Scan.showAllScanners = false;
             $('scan-device').value = 'EPSON FF-680W';
@@ -1378,6 +1399,8 @@ async function newPage(context, baseUrl, host = null) {
         check('... one that scans all the same (on the network) stays listed', r.beforeScan === 'Mystery, More: 1 not plugged in…' && r.kept === 'EPSON FF-680W, Mystery', JSON.stringify([r.beforeScan, r.kept]));
         check('resolutions: the scanner\'s own, up to its optical one', r.dpis === '100,200,300,600 | Up to 600 dpi, the scanner\'s optical resolution' && r.sureNote, r.dpis);
         check('... a scanner that didn\'t say: the usual ones, and the dock says so', r.unsure);
+        check('... one still being asked: the usual resolutions meanwhile, and it says so', r.slow === '150,200,300,400,600,1200 true', r.slow);
+        check('... one that fails to answer: the usual resolutions, never an empty list', r.broken === '150,200,300,400,600,1200', r.broken);
         check('... back to a scanner asked already: its own resolutions, not the last one\'s', r.backTo === '100,200,300,600 true', r.backTo);
         check('grayscale, backs and its own crop aren\'t offered when the scanner can\'t', r.gray && r.sides && r.autosize, JSON.stringify([r.gray, r.sides, r.autosize]));
         check('glass sizes: none bigger than the scanner\'s glass', r.beds === 'auto,a4,letter,epson', r.beds);
