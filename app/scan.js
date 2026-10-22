@@ -815,9 +815,9 @@ const Scan = {
         this.fillSetups('');
     },
 
-    // Resolutions the scanner has (100 dpi and up, none above its optical
-    // one: the app leaves those out); the last one used, else the nearest
-    // below it. Grayscale only if it has it. Unsure (the driver didn't
+    // Resolutions the scanner has (100 dpi and up; those above its optical
+    // one under their own heading, interpolated); the last one used, else
+    // the nearest below it. Grayscale only if it has it. Unsure (the driver didn't
     // say): the usual ones, and the dock says so
     fillDpis(caps) {
         const select = this.el('scan-dpi');
@@ -828,11 +828,18 @@ const Scan = {
         const mine = d && (this.get(this.KEY_DEV_OPTS, {}) || {})[d.id];
         const want = (mine && mine.dpi) || (d ? this.defaultDpi(d) : 0) || +select.value || (this.get(this.KEY_OPTS, {}) || {}).dpi;
         select.innerHTML = '';
+        const made = caps.optical >= 100 ? list.filter(d => d > caps.optical) : [];
+        let group = null;
         for (const d of list) {
             const o = document.createElement('option');
             o.value = d;
-            o.textContent = `${d} dpi`;
-            select.appendChild(o);
+            o.textContent = made.includes(d) ? `${d} dpi (interpolated)` : `${d} dpi`;
+            if (made.includes(d) && !group) {
+                group = document.createElement('optgroup');
+                group.label = `Interpolated: more pixels, no more detail than ${caps.optical} dpi`;
+                select.appendChild(group);
+            }
+            (made.includes(d) ? group : select).appendChild(o);
         }
         const below = list.filter(d => d <= want);
         select.value = list.includes(want) ? want : below.length ? below[below.length - 1] : list[0];

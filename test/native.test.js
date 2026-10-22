@@ -1328,6 +1328,15 @@ async function newPage(context, baseUrl, host = null) {
             $('scan-device').dispatchEvent(new Event('change'));
             await wait(() => /didn't say/.test($('scan-dpi-note').textContent));
             out.broken = dpiNow();
+            // Above its optical one (made by the driver): offered, labelled
+            Scan.caps['Interp'] = { bedW: 8.5, bedH: 11.7, dpis: [300, 600, 1200], gray: true, flatbed: false, feeder: true, dpisSure: true, optical: 600 };
+            window.__scanners.devices.push({ id: 'Interp', name: 'Interp', driver: 'twain', found: true });
+            await Scan.loadDevices(true);
+            $('scan-device').value = 'Interp';
+            $('scan-device').dispatchEvent(new Event('change'));
+            await wait(() => /interpolated/.test($('scan-dpi').textContent));
+            const g = $('scan-dpi').querySelector('optgroup');
+            out.interp = dpiNow() + ' | ' + (g ? [...g.children].map(o => o.textContent).join() : 'no group');
             window.__capsFor = capsFor;
             window.__scanners = listedBefore;
             await Scan.loadDevices(true);
@@ -1401,6 +1410,7 @@ async function newPage(context, baseUrl, host = null) {
         check('... a scanner that didn\'t say: the usual ones, and the dock says so', r.unsure);
         check('... one still being asked: the usual resolutions meanwhile, and it says so', r.slow === '150,200,300,400,600,1200 true', r.slow);
         check('... one that fails to answer: the usual resolutions, never an empty list', r.broken === '150,200,300,400,600,1200', r.broken);
+        check('... above its optical resolution: offered under their own heading, labelled interpolated', r.interp === '300,600,1200 | 1200 dpi (interpolated)', r.interp);
         check('... back to a scanner asked already: its own resolutions, not the last one\'s', r.backTo === '100,200,300,600 true', r.backTo);
         check('grayscale, backs and its own crop aren\'t offered when the scanner can\'t', r.gray && r.sides && r.autosize, JSON.stringify([r.gray, r.sides, r.autosize]));
         check('glass sizes: none bigger than the scanner\'s glass', r.beds === 'auto,a4,letter,epson', r.beds);
