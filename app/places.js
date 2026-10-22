@@ -39,6 +39,7 @@ const Places = {
         usb: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="9" width="10" height="13" rx="2"/><path d="M9 9V3h6v6"/><path d="M11 5.5h.01M13 5.5h.01"/></svg>',
         disk: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M5.5 13 8 4h8l2.5 9"/><path d="M17 17h.01"/></svg>',
         network: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="7" rx="2"/><path d="M7 6.5h.01"/><path d="M12 10v5"/><path d="M4 19h16"/><circle cx="12" cy="17" r="2"/></svg>',
+        export: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M20 15v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4"/></svg>',
         cd: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/></svg>',
         caret: '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1.5 6.5 5 3 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
         eject: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15h14L12 7z"/><path d="M5 19h14"/></svg>',
@@ -408,9 +409,9 @@ const Places = {
             (path && Host.has('reveal') ? `<button class="btn secondary sm" data-act="reveal" title="${Host.say('Show in {files}')}">${this.icons.reveal}${Host.words().files}</button>` : '') +
             (Host.has('windows') ? `<button class="btn ghost icon sm" data-act="split" title="Split: this project and another window side by side">${this.icons.split}</button>` : '') +
             (path ? `<button class="btn ghost icon sm sb-card-pin${this.isPinned(path) ? ' on' : ''}" data-act="pin" title="${this.isPinned(path) ? 'Unpin' : 'Pin to the sidebar'}">${this.icons.pin}</button>` : '') +
-            (path && this.usbDrives(path).length ? `<button class="btn ghost icon sm" data-act="todrive" title="Copy to a USB drive or card">${this.icons.usb}</button>` : '') +
-            (path && Host.has('burn') ? `<button class="btn ghost icon sm" data-act="burn" title="Burn to a CD or DVD">${this.icons.cd}</button>` : '') +
             `</div>` +
+            // Taking it off this computer: a USB drive, a disc, copies (export.js)
+            (path ? `<button class="btn secondary sm sb-card-export" data-act="export" title="Copy it to a USB drive or card${Host.has('burn') ? ', burn it to a disc' : ''}, or export copies of the photos">${this.icons.export}Export<span>${Host.has('places') ? 'USB drive' : ''}${Host.has('burn') ? ' · disc' : ''} · copies</span></button>` : '') +
             (app.readOnlyMode ? '' : `<label class="sb-card-defer" title="Crops and turns are kept on the photos, to change as often as you like, and saved into them (or exported) when you're done"><input type="checkbox" data-act="defer"${Edits.defer ? ' checked' : ''}><span>Save edits when done</span></label>`);
         // The current project is marked in the lists
         for (const box of this.boxes) {
@@ -423,12 +424,7 @@ const Places = {
         if (act === 'scan') Scan.open();
         else if (act === 'rename' && path) this.renameFolder(path);
         else if (act === 'split') Windows.split();
-        else if (act === 'todrive' && path) {
-            const b = document.querySelector('.sb-card [data-act="todrive"]');
-            const r = b && b.getBoundingClientRect();
-            this.copyToDrive(path, { at: r ? { x: r.left, y: r.bottom + 4 } : null });
-        }
-        else if (act === 'burn' && path) Disc.open(path);
+        else if (act === 'export' && path) Export.open({ path });
         else if (act === 'reveal' && path) this.native().reveal(path);
         else if (act === 'pin' && path) {
             if (this.isPinned(path)) this.unpin(path);
@@ -511,11 +507,10 @@ const Places = {
         const usb = (this.drives || []).find(d => this.key(d.path).replace(/[\\/]+$/, '') === this.key(path).replace(/[\\/]+$/, '') && d.kind === 'usb');
         if (usb) {
             items.push(['—']);
-            if (this.current() && !this.within(this.current(), usb.path)) items.push([`Copy ${this.app.dirHandle.name} here`, () => this.copyToDrive(this.current(), { drive: usb })]);
+            if (this.current() && !this.within(this.current(), usb.path)) items.push([`Copy ${this.app.dirHandle.name} here…`, () => Export.open({ path: this.current(), tab: 'usb', drive: usb.path })]);
             items.push(['Import photos from here…', () => Import.open({ path: usb.path, name: usb.name })]);
         }
-        if (!drive && this.usbDrives(path).length) items.push(['—'], ['Copy to a USB drive or card…', () => this.copyToDrive(path)]);
-        if (!drive && Host.has('burn')) items.push(['Burn to a CD or DVD…', () => Disc.open(path)]);
+        if (!drive) items.push(['—'], ['Export: USB drive' + (Host.has('burn') ? ', disc' : '') + ', copies…', () => Export.open({ path })]);
         return items;
     },
 
@@ -790,7 +785,8 @@ const Places = {
         return (this.drives || []).filter(d => d.kind === 'usb' && !(except && this.within(except, d.path)));
     },
 
-    async copyToDrive(src = this.current(), { drive = null, at = null } = {}) {
+    // `eject` (true or false): chosen already, in the Export window
+    async copyToDrive(src = this.current(), { drive = null, at = null, eject = null } = {}) {
         const app = this.app;
         if (!src) return;
         if (!this.drives) await this.refresh().catch(() => { });
@@ -818,7 +814,7 @@ const Places = {
             UI.alert({ title: `Not enough room on ${drive.name}`, message: `${name} needs ${app.formatBytes(need)}, and ${drive.name} has ${app.formatBytes(drive.free)} free.` });
             return;
         }
-        const how = await UI.choose({
+        const how = eject !== null ? (eject ? 'ok' : 'alt') : await UI.choose({
             title: `Copy ${name} to ${drive.name}?`,
             message: (bytes ? `${app.formatBytes(bytes)} of photos; ${app.formatBytes(drive.free)} free on ${drive.name}. ` : '') +
                 'Its flags and edits go with it, for when it\'s opened in jEditor on another computer.',
