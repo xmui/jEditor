@@ -75,7 +75,7 @@ sealed class Scanner : IDisposable
     // say, so A4), resolutions, and its feeder (the longest page) and sides.
     // Compat: it only answered in compatibility mode (see Request).
     // DpisSure: the resolutions are the driver's own (else the usual ones),
-    // none above Optical, its optical resolution (0: not said). AutoSize:
+    // any above Optical, its optical resolution (0: not said), interpolated. AutoSize:
     // it can crop each photo itself (null: not said)
     public sealed record Caps(double BedW, double BedH, List<int> Dpis, bool Gray, bool Guessed,
         bool Flatbed = true, bool Feeder = false, bool Duplex = false, double FeedW = 0, double FeedH = 0, bool Compat = false,
@@ -523,8 +523,8 @@ sealed class Scanner : IDisposable
 
     static readonly int[] CommonDpis = [75, 100, 150, 200, 300, 400, 600, 800, 1200, 1600, 2400];
 
-    // NAPS2's answer, then (TWAIN) the helper's: a driver offers resolutions
-    // above its optical one, made up by stretching, and those aren't offered
+    // NAPS2's answer, then (TWAIN) the helper's: its optical resolution, so
+    // the ones a driver makes up above it (interpolated) can be labelled
     public async Task<Caps> CapsAsync(string deviceId, string driver, bool compat, CancellationToken cancel)
     {
         var caps = await NapsCapsAsync(deviceId, driver, compat, cancel);
@@ -547,18 +547,22 @@ sealed class Scanner : IDisposable
         }
         if (said.Optical >= 100)
         {
-            var real = dpis.Where(d => d <= said.Optical).ToList();
-            dpis = real.Count > 0 ? real : [said.Optical];
-            Log.Write($"Resolutions offered: {string.Join(", ", dpis)} (up to its optical {said.Optical} dpi)");
+            // Those above it are kept: the driver makes them by interpolating
+            // (more pixels, no more detail), and the dock labels them so
+            if (!dpis.Any(d => d <= said.Optical)) dpis = [said.Optical, .. dpis];
+            Log.Write($"Resolutions offered: {string.Join(", ", dpis)} (optical {said.Optical} dpi; any above it interpolated)");
         }
         return caps with { Dpis = dpis, DpisSure = sure, Optical = Math.Max(0, said.Optical), AutoSize = said.AutoSize };
     }
 
     // The resolutions to offer from what a driver says: a range (or a long
-    // list) as the usual steps inside it
-    static List<int> Offered(IReadOnlyCollection<int> values) =>
-        values.Count > 12 ? CommonDpis.Where(d => d >= values.Min() && d <= values.Max()).ToList()
-        : values.Distinct().OrderBy(d => d).ToList();
+    // list) as the usual steps inside it; never none
+    static List<int> Offered(IReadOnlyCollection<int> values)
+    {
+        var dpis = values.Count > 12 ? CommonDpis.Where(d => d >= values.Min() && d <= values.Max()).ToList()
+            : values.Where(d => d > 0).Distinct().OrderBy(d => d).ToList();
+        return dpis.Count > 0 ? dpis : CommonDpis.Where(d => d <= 1200).ToList();
+    }
 
     async Task<Caps> NapsCapsAsync(string deviceId, string driver, bool compat, CancellationToken cancel)
     {
