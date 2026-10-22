@@ -51,7 +51,7 @@ Flags are kept with the order, in `.jeditor/flags.json`, so they follow renames 
 - **Rename.** Files are renamed in place. If the new names overlap the old ones (shifting a numbered sequence, say), they go through temporary names first. If a rename fails part-way, every file gets its original name back.
 - **Delete.** Photos are moved to `.jeditor/trash` inside the opened folder, not deleted. `Ctrl+Z` restores them.
 - **Move to a folder.** Photos are moved on disk, which is a rename and instant even for big scans; where a file can't be moved it's copied and the original removed. A copy is a byte-for-byte duplicate. Cached thumbnails and previews follow the photo, so moving doesn't make them again.
-- **Export.** Copies go to a `jEditor Export` folder, optionally resized, with any adjustments and edits not saved yet.
+- **Export.** Copies go to a `jEditor Export` folder (or onto a USB drive, or a folder you choose), optionally resized, with any adjustments and edits not saved yet.
 - **Adjust.** Never written into the photo in a project: the settings are kept in `.jeditor/edits.json`, and Export (or **Save edits…**) writes the result, re-encoded like a crop, with the metadata carried over. Without a project (photos picked on a phone, or dropped in), they're written into the photo when you leave Adjust.
 
 ## The .jeditor folder
@@ -150,11 +150,15 @@ Painting goes on last, over the photo as it's cropped and adjusted, so it looks 
 
 ## Drives, cards and discs
 
+**Export** on the project's card in the sidebar (or right-click a project, or **Export…** under ⋯ on the selection bar) opens one window for taking photos off this computer. Each choice says what goes and whether it fits before anything starts, and drives and discs show up as they're put in:
+
+- **USB drive or card** (Windows, Mac and Linux): the whole project, copied in one step, with how far it's got. Each drive is listed with the room left on it. The project's flags and edits go with it, so when it's opened in jEditor on another computer they're all there. **Eject it when it's done** ejects the drive after.
+- **CD or DVD** (Windows): the burner, whether there's a blank disc in it and whether the project fits, the disc's name, and (with edits not saved yet) whether to save them into the photos first, since the disc gets the photos as they are on disk. The disc comes out when it's done.
+- **Copies** (everywhere): copies of the selected photos, all of them or the starred ones, full size or smaller (the longest side: 4000, 3000, 2048, 1600, 1080 px or any other), with edits not saved yet in them, and RAWs as JPEGs. They go into `jEditor Export` in the project, into `jEditor Export` on a USB drive, or into a folder you choose.
+
 In the Windows, Mac and Linux apps:
 
-- **Copy to a USB drive or card in one step:** the USB button on the project's card in the sidebar (or right-click a project, or a drive). The drive is chosen if there's more than one, the room on it is checked first, and the project is copied with how far it's got. Its flags and edits go with it, so when it's opened in jEditor on another computer they're all there. **Copy and eject** ejects the drive when it's done.
 - **Importing from a camera's card:** when a card with a DCIM folder is plugged in, jEditor offers to import it; or press `Ctrl+I` (in a browser, choose the card's folder). The photos go into the open project, a new project in your projects folder (named for the day and the card), or a folder you choose; into a folder per day if you like; only the ones not imported before; and the card is ejected after if you like. RAW files come too; videos stay on the card.
-- **Burning a CD or DVD** (Windows): the disc button on the project's card, or right-click a project. jEditor finds the burner, checks there's a blank disc with room, offers to save edits into the photos first (the disc gets the photos as they are on disk), names the disc for the project and ejects it when it's done.
 
 ## Folders (collating)
 
@@ -260,6 +264,7 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `blank.js`: Paint's start: a new canvas (right-click a folder, or the start page's Paint), or an image or folder to open
 - `modes.js`: Photos, Adjust and Paint as modes: the switch (sidebar, chip), the strip in Adjust and Paint, Start in
 - `disc.js`: burning a CD or DVD (the Windows app's `src/Burn.cs`)
+- `export.js`: the Export window (a USB drive, a disc, or copies)
 - `crop-auto.js`: finding the print on a scan (Auto)
 - `changelog.js`: the list of changes shown in What's new, and the release notes
 - `meta.js`: reading and copying JPEG/PNG metadata

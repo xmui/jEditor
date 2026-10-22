@@ -51,6 +51,7 @@
     <script src="blank.js"></script>
     <script src="modes.js"></script>
     <script src="disc.js"></script>
+    <script src="export.js"></script>
     <script src="windows.js"></script>
     <script src="start.js"></script>
     <script src="picked.js"></script>
@@ -948,6 +949,27 @@
                 <span class="dialog-actions rename-actions">
                     <button id="rename-cancel" class="btn secondary">Cancel</button>
                     <button id="rename-apply" class="btn primary">Rename</button>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Export: a USB drive, a disc, or copies (export.js) -->
+    <div id="export-panel" class="dialog-overlay hidden">
+        <div class="dialog export-card" role="dialog" aria-modal="true" aria-labelledby="ex-title">
+            <div class="dialog-head">
+                <h2 id="ex-title" class="dialog-title">Export</h2>
+                <button id="ex-close" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+            <div id="ex-tabs" class="ex-tabs seg" role="tablist" aria-label="Where to"></div>
+            <div id="ex-body" class="dialog-body ex-body"></div>
+            <div class="dialog-foot">
+                <span id="ex-note" class="dialog-note" aria-live="polite"></span>
+                <span class="dialog-actions">
+                    <button id="ex-cancel" class="btn secondary">Cancel</button>
+                    <button id="ex-go" class="btn primary">Export</button>
                 </span>
             </div>
         </div>

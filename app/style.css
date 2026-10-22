@@ -3369,6 +3369,174 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     font-family: var(--font-ui);
 }
 
+/* Export (export.js): a USB drive, a disc, or copies */
+.dialog.export-card {
+    width: min(560px, 100%);
+    max-height: min(680px, 100%);
+}
+
+.ex-tabs {
+    align-self: flex-start;
+    margin: var(--sp-4) var(--sp-5) 0;
+}
+
+.ex-tabs.hidden {
+    display: none;
+}
+
+.ex-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+
+.ex-lead {
+    margin: 0;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+}
+
+.ex-list {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    overflow: hidden;
+}
+
+.ex-item {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    min-height: 52px;
+    padding: var(--sp-2) var(--sp-3);
+    cursor: pointer;
+}
+
+.ex-item + .ex-item {
+    border-top: 1px solid var(--border);
+}
+
+.ex-item:hover {
+    background: var(--bg-hover);
+}
+
+.ex-item:has(input:checked) {
+    background: var(--accent-soft);
+}
+
+.ex-item input {
+    margin: 0;
+}
+
+.ex-icon {
+    display: flex;
+    color: var(--text-2);
+}
+
+.ex-name {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+}
+
+.ex-name > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ex-name small,
+.ex-opt small {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.ex-bar {
+    flex: none;
+    width: 64px;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--border);
+    overflow: hidden;
+}
+
+.ex-bar > span {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+}
+
+.ex-bar.low > span {
+    background: var(--danger, #e5484d);
+}
+
+.ex-fit {
+    flex: none;
+    font-size: var(--fs-small);
+    white-space: nowrap;
+}
+
+.ex-fit.ok {
+    color: var(--success-text, #3fb950);
+}
+
+.ex-fit.no {
+    color: var(--danger-text, #ff7b72);
+}
+
+.ex-empty {
+    padding: var(--sp-5);
+    border: 1px dashed var(--border);
+    border-radius: var(--r-md);
+    color: var(--text-2);
+    text-align: center;
+}
+
+.ex-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+
+.ex-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    font-weight: var(--fw-semibold);
+}
+
+.ex-field .field {
+    font-weight: normal;
+}
+
+.ex-px {
+    width: 96px;
+}
+
+.ex-opts {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-weight: normal;
+}
+
+.ex-opt,
+.ex-check {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-2);
+    padding: 4px 0;
+    cursor: pointer;
+}
+
+.ex-opt > span {
+    display: flex;
+    flex-direction: column;
+}
+
 /* Move / copy picker */
 .dialog.folder-card {
     width: min(520px, 100%);
@@ -6913,6 +7081,19 @@ button.sb-card-name:focus-visible .sb-card-edit {
 
 .sb-card-btns .btn {
     gap: 6px;
+}
+
+.sb-card-export {
+    width: 100%;
+    margin-top: var(--sp-2);
+    gap: 6px;
+    justify-content: flex-start;
+}
+
+.sb-card-export > span {
+    margin-left: auto;
+    color: var(--text-2);
+    font-weight: normal;
 }
 
 .sb-card-pin.on,

@@ -249,6 +249,7 @@ const app = {
         Paint.init(this);
         Import.init(this);
         Disc.init(this);
+        Export.init(this);
         Blank.init(this);
         Modes.init(this);
         Fit.init();
@@ -4466,7 +4467,7 @@ const app = {
 
         // The rename tool, folder dialogs, Settings and the alert/confirm
         // dialogs handle their own keys
-        if (Renamer.isOpen || Folders.isModalOpen() || Recents.isPromptOpen() || UI.isOpen() || Stored.isOpen() || Scan.isOpen() || Camera.isOpen() || Blank.isOpen()) return;
+        if (Renamer.isOpen || Folders.isModalOpen() || Export.isOpen() || Recents.isPromptOpen() || UI.isOpen() || Stored.isOpen() || Scan.isOpen() || Camera.isOpen() || Blank.isOpen()) return;
 
         // What's New is modal: Esc closes it
         if (this.isWhatsNewOpen()) {
@@ -6131,7 +6132,11 @@ const app = {
 
     // ---- Export copies ----
 
-    async exportCopies(files) {
+    // Copies of `files` (edits in them, RAWs as JPEGs). From the Export
+    // window (export.js): `maxEdge` (0: full size) and `dir`, the folder
+    // they go into, called `where`; else asked here, into "jEditor Export"
+    // in the project
+    async exportCopies(files, { maxEdge = null, dir = null, where = '"jEditor Export"' } = {}) {
         const list = files.filter(Boolean);
         if (!list.length) return;
         if (!this.dirHandle) {
@@ -6139,18 +6144,21 @@ const app = {
             return;
         }
         const n = list.length;
-        const input = await UI.prompt({
-            title: n === 1 ? 'Export a copy' : `Export ${n.toLocaleString()} copies`,
-            message: 'Copies go to a "jEditor Export" folder inside this one. The originals aren\'t changed.' +
-                (list.some(f => f._edit) ? '\n\nPhotos with edits not saved yet are exported with them.' : ''),
-            input: { label: 'Longest side in pixels (leave empty for full size)', placeholder: 'Full size', inputMode: 'numeric' },
-            ok: 'Export'
-        });
-        if (input === null) return;
-        const maxEdge = parseInt(input, 10) || 0;
+        if (maxEdge === null) {
+            const input = await UI.prompt({
+                title: n === 1 ? 'Export a copy' : `Export ${n.toLocaleString()} copies`,
+                message: 'Copies go to a "jEditor Export" folder inside this one. The originals aren\'t changed.' +
+                    (list.some(f => f._edit) ? '\n\nPhotos with edits not saved yet are exported with them.' : ''),
+                input: { label: 'Longest side in pixels (leave empty for full size)', placeholder: 'Full size', inputMode: 'numeric' },
+                ok: 'Export'
+            });
+            if (input === null) return;
+            maxEdge = parseInt(input, 10) || 0;
+        }
 
         try {
-            const dir = await this.dirHandle.getDirectoryHandle('jEditor Export', { create: true });
+            dir = dir || await this.dirHandle.getDirectoryHandle('jEditor Export', { create: true });
+            this.beginTask('export', `Exporting 0/${list.length}`);
             let done = 0, failed = 0;
             for (const f of list) {
                 try {
@@ -6184,8 +6192,9 @@ const app = {
             }
             this.endTask('export');
             this.showToast(
-                failed ? `Exported ${done}, ${failed} failed` : `Exported ${done} to "jEditor Export"`
-            );
+                failed ? `Exported ${done}, ${failed} failed` : `Exported ${done} to ${where}`
+            , 4000, null, null, failed ? {} : { type: 'success' });
+            return { done, failed };
         } catch (e) {
             this.endTask('export');
             this.showToast('Export failed: ' + e.message);
@@ -6282,7 +6291,7 @@ const app = {
                     [`Move ${n} to…`, () => Folders.openPicker(sel, 'move')],
                     [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy')],
                     [`Rename ${n}…`, () => this.openRename(sel)],
-                    [`Export ${n} copies…`, () => this.exportCopies(sel)],
+                    [`Export ${n}…`, () => Export.open({ files: sel })],
                     ['—'],
                     [`Delete ${n}`, () => this.moveToTrash(sel), true]
                 ];
@@ -6308,7 +6317,7 @@ const app = {
                 ['Copy to…', () => Folders.openPicker([file], 'copy')],
                 ['Rename…', () => this.promptRename(file)],
                 ['File info', () => { this.toggleInfoPanel(true, { file }); }],
-                ['Export a copy…', () => this.exportCopies([file])],
+                ['Export…', () => Export.open({ files: [file] })],
                 ['—'],
                 ['Delete', () => this.moveToTrash([file]), true]
             ];
@@ -6334,7 +6343,7 @@ const app = {
                 ['Copy to…', () => Folders.openPicker([file], 'copy')],
                 ['Rename…', () => this.promptRename(file)],
                 ['File info', () => this.toggleInfoPanel(true)],
-                ['Export a copy…', () => this.exportCopies([file])],
+                ['Export…', () => Export.open({ files: [file] })],
                 ['—'],
                 ['Full screen', () => this.toggleFullscreen()],
                 ['Start slideshow', () => this.startSlideshow()],
@@ -6374,7 +6383,7 @@ const app = {
             ['—'],
             [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
             [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy')],
-            [sel.length === 1 ? 'Export a copy…' : `Export ${n} copies…`, () => this.exportCopies(sel)],
+            [`Export ${n}…`, () => Export.open({ files: sel })],
             ['—'],
             ['Select all', () => { this.selection = new Set(this.viewFiles()); this.updateSelectionUI(); }]
         ];
