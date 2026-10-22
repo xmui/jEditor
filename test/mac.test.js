@@ -325,7 +325,12 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             const b = await JEditorNative.copyFolder(p.jones, p.backup, () => { });
             return { a, b, seen };
         }, { jones, backup });
-        check('a folder is copied onto a drive, saying how far it\'s got', copied.a.to === path.join(backup, 'Jones') && fs.existsSync(path.join(backup, 'Jones', 'Ceremony', 'c1.jpg')) && copied.seen.length >= 2, JSON.stringify(copied));
+        // (How far it's got: progress can come after the answer, and a small
+        // copy may be over before any but the end is heard, so the end is
+        // what must be said, and it never goes backwards)
+        const ends = copied.seen.length > 0 && copied.seen[copied.seen.length - 1][0] === copied.seen[0][1] && copied.seen[0][1] > 0
+            && copied.seen.every((x, i) => i === 0 || x[0] >= copied.seen[i - 1][0]);
+        check('a folder is copied onto a drive, saying how far it\'s got', copied.a.to === path.join(backup, 'Jones') && fs.existsSync(path.join(backup, 'Jones', 'Ceremony', 'c1.jpg')) && ends, JSON.stringify(copied));
         check('... copied again, it gets a free name', copied.b.to === path.join(backup, 'Jones (2)'));
         const stopped = await page.evaluate(async (p) => {
             let job = null, asked = false;
