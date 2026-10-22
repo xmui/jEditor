@@ -45,6 +45,7 @@ const ASSETS = [
     './import.js',
     './blank.js',
     './modes.js',
+    './themes.js',
     './disc.js',
     './export.js',
     './icon.png',

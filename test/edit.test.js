@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // jEditor's editing tools, in headless Chromium: spot and dust removal
 // (retouch.js, adjust-spots.js), subject and sky masks, RAW previews, Paint,
-// a new blank image (blank.js), the modes (modes.js), crop's sliding sides and
-// the wheel the way a Mac does it (wheel.js). Run by `npm test` after the UI suite; on its own:
+// a new blank image (blank.js), the modes (modes.js), crop's sliding sides,
+// the wheel the way a Mac does it (wheel.js) and the themes (themes.js). Run by `npm test` after the UI suite; on its own:
 //   node test/edit.test.js [name …]     (only the sections named)
 
 const { chromium } = require('playwright-core');
@@ -19,7 +19,7 @@ const only = process.argv.slice(2);
 const wanted = (name) => !only.length || only.includes(name);
 
 // In-page: a folder of photos in the browser's private storage, opened as
-// the project; turning an experiment on
+// the project
 const PROJECT = `
     window.sleep = (ms) => new Promise(res => setTimeout(res, ms));
     window.until = async (fn, n = 200) => { for (let i = 0; i < n && !(await fn()); i++) await sleep(50); };
@@ -37,7 +37,6 @@ const PROJECT = `
         await until(() => app.files.length === Object.keys(photos).length);
         return dir;
     };
-    window.experiment = (id, on = true) => Experiments.set(id, on);
     window.canvasBlob = (c, type = 'image/png', q) => new Promise(res => c.toBlob(res, type, q));
     window.pixels = async (blob, w, h) => {
         const bmp = await createImageBitmap(blob);
@@ -157,7 +156,6 @@ const PROJECT = `
             let step = 'start';
             try {
                 const out = {};
-                experiment('adjust');
                 const W = 640, H = 480;
                 const specks = [{ x: 200, y: 240, r: 6, color: '#000' }, { x: 420, y: 120, r: 4, color: '#fff' }, { x: 520, y: 380, r: 3, color: '#000' }];
                 const dir = await openProject('spotted', {
@@ -390,7 +388,6 @@ const PROJECT = `
             let step = 'start';
             try {
                 const out = {};
-                experiment('adjust');
                 const W = 480, H = 320;
                 const c = document.createElement('canvas'); c.width = W; c.height = H;
                 const g = c.getContext('2d');
@@ -547,7 +544,6 @@ const PROJECT = `
             let step = 'start';
             try {
                 const out = {};
-                experiment('adjust');
                 const dngBlob = await makeDng(1), cr3Blob = await makeCr3();
                 const dir = await openProject('raws', { 'a.dng': dngBlob, 'b.cr3': cr3Blob, 'c.jpg': new Blob([await rawJpeg(200, 150, '#888')], { type: 'image/jpeg' }) });
                 const f = (n) => app.files.find(x => x.name === n);
@@ -626,7 +622,6 @@ const PROJECT = `
             let step = 'start';
             try {
                 const out = {};
-                experiment('paint');
                 const W = 400, H = 300;
                 const c = document.createElement('canvas'); c.width = W; c.height = H;
                 const g = c.getContext('2d'); g.fillStyle = '#808080'; g.fillRect(0, 0, W, H);
@@ -796,7 +791,7 @@ const PROJECT = `
                 return out;
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
-        check('paint: an experiment with its button; B opens it on the photo', r.button && r.open, JSON.stringify(r));
+        check('paint: its button; B opens it on the photo', r.button && r.open, JSON.stringify(r));
         check('paint: starts with the photo locked as the bottom layer and a new layer on it', r.start, JSON.stringify(r));
         check('paint: the photo is drawn at screen size once for a view, again when it zooms', r.shownKept && r.shownRedrawn, JSON.stringify([r.shownKept, r.shownRedrawn]));
         check('paint: a brush stroke paints the layer (hard-edged), Ctrl+Z / Ctrl+Shift+Z inside', r.brush && r.brush[0] === 255 && r.brush[3] === 255 && r.brushEdge === 0 && r.undo === 0 && r.redo === 255, JSON.stringify(r));
@@ -927,7 +922,6 @@ const PROJECT = `
             let step = 'start';
             try {
                 const out = {};
-                experiment('paint', false);
                 const c = document.createElement('canvas'); c.width = 200; c.height = 150;
                 c.getContext('2d').fillRect(0, 0, 200, 150);
                 const dir = await openProject('blanks', { 'a.png': await canvasBlob(c) });
@@ -972,9 +966,9 @@ const PROJECT = `
                 const bytes = new Uint8Array(await data.arrayBuffer());
                 const at = [...bytes.keys()].find(i => bytes[i] === 0x70 && bytes[i + 1] === 0x48 && bytes[i + 2] === 0x59 && bytes[i + 3] === 0x73);
                 out.ppm = at ? new DataView(bytes.buffer).getUint32(at + 4) : 0;
-                // Opened in Paint (turned on for it)
+                // Opened in Paint
                 await until(() => PaintEditor.ready);
-                out.inPaint = PaintEditor.isOpen && PaintEditor.file === file && Experiments.on('paint');
+                out.inPaint = PaintEditor.isOpen && PaintEditor.file === file;
                 // Next time: the name after it
                 step = 'images';
                 const P = PaintEditor;
@@ -1047,13 +1041,7 @@ const PROJECT = `
                 const out = {};
                 const $ = (id) => document.getElementById(id);
                 const shownEl = (id) => { const e = $(id); return !!e && !e.classList.contains('hidden') && e.getClientRects().length > 0; };
-                // Both off (a release): no switch, no Start in
-                step = 'off';
-                experiment('adjust', false);
-                experiment('paint', false);
-                out.offNone = $('start-in').classList.contains('hidden') && !document.documentElement.classList.contains('modes-on');
-                experiment('adjust');
-                experiment('paint');
+                step = 'start';
                 out.startShown = !$('start-in').classList.contains('hidden') && [...$('start-in').querySelectorAll('[data-mode]')].map(b => b.dataset.mode).join() === 'photos,adjust,paint';
                 // Start in Adjust: a project opened from the landing page lands in Adjust
                 step = 'start in';
@@ -1144,7 +1132,7 @@ const PROJECT = `
                 return out;
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
-        check('modes: none shown while Adjust and Paint are off; Start in when they\'re on', r.offNone && r.startShown, JSON.stringify(r));
+        check('modes: Start in offers Photos, Adjust and Paint', r.startShown, JSON.stringify(r));
         check('modes: Start in is remembered; a project opened lands in that mode on its first photo', r.startKept && r.landedAdjust, JSON.stringify(r));
         check('modes: in Adjust the chip names it, top left, and a strip runs along the bottom', r.chipOver && r.strip, JSON.stringify(r));
         check('modes: another photo from the strip opens in the same mode', r.stepped, JSON.stringify(r));
@@ -1166,8 +1154,6 @@ const PROJECT = `
             try {
                 const out = {};
                 const $ = (id) => document.getElementById(id);
-                experiment('adjust');
-                experiment('paint');
                 $('start-in').querySelector('[data-mode="paint"]').click();
                 await until(() => !$('blank-panel').classList.contains('hidden'));
                 out.dialog = !$('blank-panel').querySelector('.blank-tabs').classList.contains('hidden') && $('blank-title').textContent === 'Paint' && $('blank-where').value === '\u0000pick';
@@ -1354,6 +1340,119 @@ const PROJECT = `
         check('wheel: in the viewer two fingers move a zoomed photo (at once), a pinch and a mouse zoom; at fit, fingers do nothing', r.fitStays && r.panned && r.pinched && r.mouseZooms && r.followOff, JSON.stringify(r));
         check('wheel: pinching the grid zooms it by how much the fingers move; a Ctrl+notch is a step', r.pinchGrid > 160 && r.pinchGrid <= 182 && r.notchGrid === r.pinchGrid + 20, JSON.stringify(r));
         check('wheel: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- Themes ----
+    if (wanted('themes')) {
+        console.log('themes (themes.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const $ = (id) => document.getElementById(id);
+                const root = document.documentElement;
+                const blob = async (color) => { const c = document.createElement('canvas'); c.width = 160; c.height = 120; const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, 160, 120); g.fillStyle = '#fff'; g.fillRect(40, 30, 60, 50); return canvasBlob(c); };
+                await openProject('Summer', { 'a.png': await blob('#806040'), 'b.png': await blob('#406080'), 'c.png': await blob('#408060') });
+                await until(() => app.files.every(f => f.thumbnailUrl));
+                // In a browser: no themes, nothing of them in Settings
+                step = 'browser';
+                app.toggleCustomizePanel(true);
+                app.showSettingsPage('appearance');
+                out.browserNone = !Themes.can() && $('set-themes').classList.contains('hidden') && !Experiments.shown().some(x => x.id === 'themes');
+                // An app with them (the Windows app's title bar calls)
+                step = 'app';
+                const calls = [];
+                window.JEditorNative = { platform: 'windows', features: ['themes'], titleBar: (on) => calls.push('titleBar:' + on), windowAction: (a) => calls.push(a) };
+                out.offInRelease = Experiments.shown().some(x => x.id === 'themes') && !Experiments.on('themes');
+                Experiments.set('themes', true);
+                app.renderCustomizePanel();
+                const cards = [...$('set-themes').querySelectorAll('.theme-card')];
+                out.gallery = cards.map(c => c.dataset.skin).join() === ',xp/royale,snow/finder,mac84/finder' && cards[0].classList.contains('active');
+                // Royale: its stylesheets, the docked layout, light, its title bar and menu bar
+                step = 'royale';
+                cards[1].click();
+                await until(() => !root.classList.contains('theme-loading'));
+                out.on = root.dataset.skin === 'xp' && root.dataset.layout === 'docked' && root.dataset.theme === 'light' && app.uiPrefs.skin === 'xp/royale'
+                    && [...document.querySelectorAll('link[data-theme]')].map(l => l.getAttribute('href')).join() === 'themes/docked.css,themes/xp/luna.css,themes/xp/office.css,themes/xp/royale.css';
+                out.styled = getComputedStyle(document.querySelector('.interface')).display === 'grid' && /Tahoma/.test(getComputedStyle(document.body).fontFamily);
+                out.ownBar = calls.includes('titleBar:true') && !!$('th-top') && $('th-top').contains($('th-titlebar')) && $('th-top').contains($('th-menubar'))
+                    && parseFloat(getComputedStyle(root).getPropertyValue('--th-top')) > 40;
+                app.setView('grid');
+                await until(() => $('th-titlebar').querySelector('.th-title').textContent === 'Summer - jEditor');
+                out.title = $('th-titlebar').querySelector('.th-title').textContent === 'Summer - jEditor';
+                app.openSingle(app.files[1]);
+                await until(() => $('th-titlebar').querySelector('.th-title').textContent === 'b.png - jEditor');
+                out.titleFollows = true;
+                app.setView('grid');
+                // The window's buttons go to the app
+                $('th-titlebar').querySelector('.th-min').click();
+                $('th-titlebar').querySelector('.th-max').click();
+                $('th-titlebar').querySelector('.th-close').click();
+                out.caps = calls.slice(-3).join() === 'minimize,maximize,close';
+                dispatchEvent(new CustomEvent('jeditor-window', { detail: { maximized: true } }));
+                out.maxed = $('th-titlebar').classList.contains('maximized');
+                // Fitting stands down: docked bars have room for everything
+                out.noFit = !$('main-interface').dataset.fit && !document.querySelector('[data-squeezed]');
+                // The stylesheets write the folder's name and the counts from the app
+                out.facts = $('fb-crumbs').dataset.folder === 'Summer' && $('folder-bar').dataset.info.startsWith('3 items') && $('btn-clear-selection').dataset.total === '3';
+                // The menu bar: jEditor's commands, with their keys
+                step = 'menus';
+                const edit = [...$('th-menubar').querySelectorAll('.th-menu')].find(b => b.textContent === 'Edit');
+                edit.click();
+                const menu = $('context-menu');
+                out.menu = !!menu && menu.classList.contains('th-dropdown') && edit.classList.contains('open')
+                    && [...menu.querySelectorAll('button')].some(b => /^Select all/.test(b.textContent) && b.querySelector('.ctx-key') && b.querySelector('.ctx-key').textContent === 'Ctrl+A');
+                [...menu.querySelectorAll('button')].find(b => /^Select all/.test(b.textContent)).click();
+                await until(() => !edit.classList.contains('open'));
+                out.ran = app.selection.size === 3 && !$('context-menu');
+                // A variant: Royale Red, another stylesheet on top
+                step = 'variant';
+                Themes.choose('xp/red');
+                await until(() => !root.classList.contains('theme-loading'));
+                out.variant = [...document.querySelectorAll('link[data-theme]')].pop().getAttribute('href') === 'themes/xp/red.css';
+                // Aperture is dark
+                Themes.choose('snow/aperture');
+                await until(() => !root.classList.contains('theme-loading'));
+                out.dark = root.dataset.skin === 'snow' && root.dataset.theme === 'dark' && !$('th-menubar');
+                // 1984: its own setting, the thumbnails dithered to one bit
+                step = '1984';
+                Themes.choose('mac84/finder');
+                await until(() => !root.classList.contains('theme-loading'));
+                app.renderCustomizePanel();
+                out.setting = root.dataset.tsThumbs === 'dither' && !!document.querySelector('#set-theme-settings input[value="grey"]');
+                const img = () => app.files[0]._gridEl.querySelector('img');
+                await until(() => img().src.startsWith('data:image/png'));
+                out.dithered = img().src.startsWith('data:image/png') && !!img().dataset.undithered;
+                document.querySelector('#set-theme-settings input[value="colour"]').click();
+                await until(() => !img().src.startsWith('data:'));
+                out.colour = root.dataset.tsThumbs === 'colour' && app.uiPrefs.skinSettings.mac84.thumbs === 'colour' && img().src === app.files[0].thumbnailUrl;
+                // Back to jEditor's own look: all of it gone, Windows' title bar back
+                step = 'off';
+                Themes.choose('');
+                out.off = !root.dataset.skin && !root.dataset.layout && !$('th-top') && !document.querySelector('link[data-theme]')
+                    && calls[calls.length - 1] === 'titleBar:false' && root.dataset.theme === app.uiPrefs.theme;
+                // The experiment turned off takes a chosen theme off too
+                Themes.choose('xp/royale');
+                Experiments.set('themes', false);
+                out.expOff = !root.dataset.skin && !$('th-top');
+                app.toggleCustomizePanel(false);
+                delete window.JEditorNative;
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('themes: none in a browser; in the apps an experiment, off in a release', r.browserNone && r.offInRelease, JSON.stringify(r));
+        check('themes: Settings → Appearance shows them as a gallery, jEditor\'s own look first', r.gallery, JSON.stringify(r));
+        check('themes: one chosen puts its stylesheets on, docked, in its own light or dark', r.on && r.styled && r.dark, JSON.stringify(r));
+        check('themes: its own title bar and menu bar along the top; Windows\' title bar goes', r.ownBar, JSON.stringify(r));
+        check('themes: the title bar names the folder or photo; its buttons work the window', r.title && r.titleFollows && r.caps && r.maxed, JSON.stringify(r));
+        check('themes: no fitting in docked bars; the folder\'s name and counts are the real ones', r.noFit && r.facts, JSON.stringify(r));
+        check('themes: the menu bar\'s menus run jEditor\'s commands and show their keys', r.menu && r.ran, JSON.stringify(r));
+        check('themes: a variant is one stylesheet more', r.variant, JSON.stringify(r));
+        check('themes: 1984\'s Thumbnails setting: dithered to one bit, or in colour again', r.setting && r.dithered && r.colour, JSON.stringify(r));
+        check('themes: back to jEditor\'s look (or the experiment off) takes all of it off', r.off && r.expOff, JSON.stringify(r));
+        check('themes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

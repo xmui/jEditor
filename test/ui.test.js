@@ -201,6 +201,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             Array.isArray(e.items) && e.items.length && e.items.every(t => typeof t === 'string' && t.trim())));
         const notes = notesFor(pkgVersion, log);
         check('release notes come from the changelog', !!notes && notes.startsWith('- ' + log[0].items[0]));
+        const made = notesFor('3.0.0', [
+            { version: '3.0.0', items: ['three'] }, { version: '2.1.0', beta: true, items: ['two one'] },
+            { version: '2.0.0', beta: true, items: ['two'] }, { version: '1.0.0', items: ['one'] }]);
+        check('a release\'s notes take in the betas before it, never released, and stop at the last release',
+            /^- three\n[^]*2\.1\.0 beta[^]*- two one[^]*2\.0\.0 beta[^]*- two\n$/.test(made) && !made.includes('- one'), made);
 
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
         const r = await page.evaluate(() => {
@@ -879,7 +884,6 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.pillHidden = pill.classList.contains('hidden');
             return out;
         });
-        // (Adjust, an experiment, shows when it's turned on)
         check('default main controls: info, view, refresh, crop, history', r.defaultMain === 'info,view,refresh,crop,history', r.defaultMain);
         // (Adjust and Paint too: the mode switch has them)
         check('extras live in More (adjust, paint, fit, strip, fullscreen, dupes, keys, whatsnew, customize)', r.defaultExtras === 'adjust,paint,fit,strip,fullscreen,dupes,keys,whatsnew,customize', r.defaultExtras);
@@ -4289,27 +4293,32 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.toggleCustomizePanel(true);
             app.showSettingsPage('experimental');
             const page = document.getElementById('set-page-experimental');
-            const listed = page.classList.contains('active') && !!document.getElementById('exp-adjust') && !document.getElementById('exp-adjust').checked;
+            // Adjust and Paint aren't experiments any more
+            const listed = page.classList.contains('active') && !document.getElementById('exp-adjust') && !document.getElementById('exp-paint');
             // One being made: off until turned on, and it stays on
-            Experiments.LIST.push({ id: 'paint', title: 'Paint', text: 'Layers, brushes and shapes' });
+            const saved = Experiments.LIST;
+            Experiments.LIST = [{ id: 'trial', title: 'Trial', text: 'Being made', beta: true }];
             Experiments.render();
-            const off = Experiments.on('paint');
+            const off = Experiments.on('trial');
             let heard = null;
             addEventListener('jeditor-experiments', (e) => { heard = e.detail; }, { once: true });
-            document.getElementById('exp-paint').click();
+            document.getElementById('exp-trial').click();
             app.loadUiPrefs();
-            const kept = Experiments.on('paint') && app.uiPrefs.experiments.paint === true;
+            const kept = Experiments.on('trial') && app.uiPrefs.experiments.trial === true;
             const unknown = Experiments.on('nothing');
-            app.toggleCustomizePanel(false);
-            // A beta has its experiments on to start with (betaOnly ones too)
+            // A beta has its experiments on to start with
+            delete app.uiPrefs.experiments.trial;
             window.APP_BUILD = 'v9.9.0-beta.1';
-            const betaOn = Experiments.betaBuild() && Experiments.on('adjust');
+            const betaOn = Experiments.betaBuild() && Experiments.on('trial');
             delete window.APP_BUILD;
+            Experiments.LIST = saved;
+            Experiments.render();
+            app.toggleCustomizePanel(false);
             return { labels, listed, off, heard, kept, unknown, betaOn };
         });
         check('a beta says which ("1.42.0 beta 3"); a re-release, its version', r.labels === '1.42.0 beta 3|1.41.0|1.41.0|nonsense', r.labels);
-        check('Settings → Experimental lists Adjust, off in a release, on to start with in a beta', r.listed && r.betaOn, JSON.stringify(r));
-        check('an experiment is off until turned on; on, it says so and stays on', !r.off && r.heard && r.heard.id === 'paint' && r.heard.on && r.kept && !r.unknown, JSON.stringify(r));
+        check('Settings → Experimental: Adjust and Paint no longer listed; one being made is on to start with in a beta', r.listed && r.betaOn, JSON.stringify(r));
+        check('an experiment is off until turned on; on, it says so and stays on', !r.off && r.heard && r.heard.id === 'trial' && r.heard.on && r.kept && !r.unknown, JSON.stringify(r));
         check('no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -4604,21 +4613,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.openSingle(f('a.jpg'));
             const before = await brightness(await blobOf(await app.getDisplaySource(f('a.jpg'))));
 
-            // An experiment in a release: off, nothing of it shows
-            step = 'experiment off';
-            const btn = document.getElementById('btn-adjust');
-            out.offHidden = !Experiments.on('adjust') && getComputedStyle(btn).display === 'none';
-            key('e');
-            await sleep(80);
-            out.offNoKey = !Adjust.isOpen;
-            out.offNoMenu = !app.buildContextItems(null, true).some(it => /Adjust/.test(it[0] || ''));
-            // Turned on in Settings → Experimental
-            app.toggleCustomizePanel(true);
-            app.showSettingsPage('experimental');
-            document.getElementById('exp-adjust').click();
-            app.toggleCustomizePanel(false);
-            // The mode switch (modes.js) offers it, top left in single view
-            out.onShown = Experiments.on('adjust') && Modes.shown().some(m => m[0] === 'adjust') && !document.getElementById('mode-float').classList.contains('hidden') && app.buildContextItems(null, true).some(it => it[0] === 'Adjust…');
+            // Part of jEditor in a release, nothing to turn on: the mode
+            // switch (modes.js) offers it, top left in single view, and the
+            // right-click menu
+            step = 'shown';
+            out.onShown = Modes.shown().some(m => m[0] === 'adjust') && !document.getElementById('mode-float').classList.contains('hidden') && app.buildContextItems(null, true).some(it => it[0] === 'Adjust…');
 
             // E opens Adjust on the photo
             step = 'E opens Adjust';
@@ -4784,7 +4783,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             return out;
             })(); } catch (e) { return { error: step + ': ' + e.message }; }
         });
-        check('adjust: an experiment in a release, off until turned on in Settings → Experimental (no button, key or menu)', r.offHidden && r.offNoKey && r.offNoMenu && r.onShown, JSON.stringify(r));
+        check('adjust: part of jEditor in a release, nothing to turn on (the mode switch and the menu offer it)', r.onShown, JSON.stringify(r));
         check('adjust: E opens it on the GPU, with a histogram', r.open, JSON.stringify(r));
         check('adjust: sliders change the photo and its histogram live; Ctrl+Z / Ctrl+Shift+Z inside; \\ shows before', r.live && r.undoInside && r.redoInside && r.beforeShown, JSON.stringify(r));
         check('adjust: films shown on the photo by process, a click puts one on (with Amount) or takes it off', r.lookThumbGrey && r.lookOn && r.lookOff, JSON.stringify(r));

@@ -252,6 +252,7 @@ const app = {
         Export.init(this);
         Blank.init(this);
         Modes.init(this);
+        Themes.init(this);
         Fit.init();
         History.init(this);
         Watch.init(this);
@@ -458,6 +459,8 @@ const app = {
             startIn: 'photos', // the landing page's Start in (modes.js): photos, adjust or paint
             modes: 1, // 1.43: Adjust and Paint are modes (modes.js), off the toolbar's main row
             theme: 'dark',
+            skin: '', // a theme (themes.js): 'xp/royale'; '' is jEditor's own look
+            skinSettings: {}, // each theme's own settings, by theme
             density: 'compact',
             glass: 'rich',
             surround: 'auto',
@@ -594,6 +597,9 @@ const app = {
         if (controls) controls.classList.toggle('off', p.singleControls === false);
         this.applyAppearance();
         this.applyExperiments({ panel: false });
+        Themes.apply();
+        // Start in, remembered, on the landing page
+        if (typeof Modes !== 'undefined') Modes.renderStart();
         // More shows for buttons squeezed in for room too
         if (typeof Fit !== 'undefined') Fit.run();
     },
@@ -608,9 +614,10 @@ const app = {
             const follow = () => { if (this.uiPrefs.theme === 'system') this.applyAppearance(); };
             if (this._systemTheme.addEventListener) this._systemTheme.addEventListener('change', follow);
         }
-        const theme = p.theme === 'system'
+        // A theme (themes.js) is made for light or dark
+        const theme = (typeof Themes !== 'undefined' && Themes.mode()) || (p.theme === 'system'
             ? (this._systemTheme && this._systemTheme.matches ? 'light' : 'dark')
-            : p.theme;
+            : p.theme);
         root.dataset.theme = theme;
         root.dataset.density = p.density;
         root.dataset.glass = p.glass;
@@ -890,6 +897,7 @@ const app = {
         $('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
         this.elements.customizePanel.querySelectorAll('input[data-toast]').forEach(i => { i.checked = this.toastOn(i.dataset.toast); });
         $('cust-cleanup').disabled = !this.dirHandle;
+        Themes.render();
         CropLog.refresh();
         $('cust-single-controls').checked = this.uiPrefs.singleControls !== false;
         this.syncAccentPicker();
@@ -901,8 +909,6 @@ const app = {
 
         this.uiPrefs.order.forEach(key => {
             if ((key === 'scan' || key === 'camera') && !Host.has(key)) return; // only where the app can
-            if (key === 'adjust' && !this.adjustOn()) return; // an experiment, off
-            if (key === 'paint' && !this.paintOn()) return;
             const li = document.createElement('li');
             li.draggable = true;
             li.dataset.key = key;
@@ -2588,6 +2594,7 @@ const app = {
     makeGridTile(file, observer) {
         const div = document.createElement('div');
         div.className = 'grid-item';
+        div.dataset.name = file.name; // a theme's tile caption (themes.js)
         div._file = file;
         file._gridEl = div;
         // Tiles are built in chunks: each one starts in the right state
@@ -4115,10 +4122,10 @@ const app = {
             'edit.rotateRight': () => grid() ? this.rotateBulk(90) : this.rotateCurrent(90),
             'edit.rotate180': () => grid() ? this.rotateBulk(180) : this.rotateCurrent(180),
             'edit.crop': () => this.enterCrop(),
-            'edit.adjust': () => this.adjustOn() ? this.enterAdjust() : false,
-            'edit.paint': () => this.paintOn() ? this.enterPaint() : false,
-            'edit.copyAdjust': () => this.adjustOn() ? this.copyAdjust() : false,
-            'edit.pasteAdjust': () => this.adjustOn() ? this.pasteAdjust(grid() && this.selection.size ? [...this.selection] : [this.currentFile]) : false,
+            'edit.adjust': () => this.enterAdjust(),
+            'edit.paint': () => this.enterPaint(),
+            'edit.copyAdjust': () => this.copyAdjust(),
+            'edit.pasteAdjust': () => this.pasteAdjust(grid() && this.selection.size ? [...this.selection] : [this.currentFile]),
             'edit.rename': () => this.openRename(grid() && this.selection.size ? [...this.selection] : [this.currentFile]),
             'edit.trash': () => this.moveToTrash(grid() && this.selection.size
                 ? [...this.selection] : [this.currentFile]),
@@ -5884,6 +5891,7 @@ const app = {
         }
         const gridImg = file._gridEl && file._gridEl.querySelector('img');
         if (gridImg) gridImg.alt = newName;
+        if (file._gridEl) file._gridEl.dataset.name = newName;
     },
 
     // Rename many files at once ([{ file, newName }], names already
@@ -6296,8 +6304,12 @@ const app = {
                     [`Rotate ${n} right`, () => this.rotateBulk(90)],
                     [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
                     [`Auto crop ${n}`, () => this.batchAutoCrop(sel)],
+<<<<<<< HEAD
                     [`Turn ${n} upright`, () => this.turnUpright(sel)],
                     ...(this.adjustOn() && Adjust.clipboard() ? [[`Paste adjustments onto ${n}`, () => this.pasteAdjust(sel)]] : []),
+=======
+                    ...(Adjust.clipboard() ? [[`Paste adjustments onto ${n}`, () => this.pasteAdjust(sel)]] : []),
+>>>>>>> origin/beta
                     ...(sel.some(f => f._edit) ? [[`Discard edits on ${sel.filter(f => f._edit).length.toLocaleString()}`, () => Edits.discard(sel)]] : []),
                     ['—'],
                     [`Move ${n} to…`, () => Folders.openPicker(sel, 'move')],
@@ -6318,12 +6330,10 @@ const app = {
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
                 ['Turn upright', () => this.turnUpright([file])],
                 ['Crop and straighten', () => { this.openSingle(file); this.enterCrop(); }],
-                ...(this.adjustOn() ? [
-                    ['Adjust…', () => this.enterAdjust(file)],
-                    ...(file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
-                    ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : [])
-                ] : []),
-                ...(this.paintOn() ? [['Paint…', () => this.enterPaint(file)]] : []),
+                ['Adjust…', () => this.enterAdjust(file)],
+                ...(file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
+                ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : []),
+                ['Paint…', () => this.enterPaint(file)],
                 ...(file._edit ? [['Discard edit', () => Edits.discard([file])]] : []),
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
@@ -6345,12 +6355,10 @@ const app = {
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
                 ['Turn upright', () => this.turnUpright([file])],
                 ['Crop and straighten', () => this.enterCrop()],
-                ...(this.adjustOn() ? [
-                    ['Adjust…', () => this.enterAdjust()],
-                    ...(file && file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
-                    ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : [])
-                ] : []),
-                ...(this.paintOn() ? [['Paint…', () => this.enterPaint()]] : []),
+                ['Adjust…', () => this.enterAdjust()],
+                ...(file && file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
+                ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : []),
+                ['Paint…', () => this.enterPaint()],
                 ...(file && file._edit ? [['Discard edit', () => Edits.discard([file])]] : []),
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
@@ -6499,29 +6507,16 @@ const app = {
 
     // ---- Adjust (adjust.js) ----
 
-    // Settings → Experimental → Adjust
-    adjustOn() {
-        return typeof Experiments !== 'undefined' && Experiments.on('adjust');
-    },
-
     // Experiments turned on or off: what they show
     // panel: Settings' list of toolbar buttons drawn again too
     applyExperiments({ panel = true } = {}) {
         if (typeof Experiments !== 'undefined') Experiments.render();
-        const b = document.getElementById('btn-adjust');
-        if (b) b.classList.toggle('exp-off', !this.adjustOn());
-        const pb = document.getElementById('btn-paint');
-        if (pb) pb.classList.toggle('exp-off', !this.paintOn());
         if (panel && this.isSettingsOpen()) this.renderCustomizePanel();
         if (panel && typeof Fit !== 'undefined') Fit.run();
     },
 
     async enterAdjust(file = this.currentFile) {
         if (!file || this.cropState.active) return;
-        if (!this.adjustOn()) {
-            this.showToast('Adjust is in Settings → Experimental');
-            return;
-        }
         if (!this.ensureWritable()) return;
         if (this.editsSaving()) return;
         if (/\.gif$/i.test(file.name)) {
@@ -6621,17 +6616,8 @@ const app = {
 
     // ---- Paint (paint-editor.js; kept by paint.js) ----
 
-    // Settings → Experimental → Paint
-    paintOn() {
-        return typeof Experiments !== 'undefined' && Experiments.on('paint');
-    },
-
     async enterPaint(file = this.currentFile) {
         if (!file) return;
-        if (!this.paintOn()) {
-            this.showToast('Paint is in Settings → Experimental');
-            return;
-        }
         if (!this.ensureWritable()) return;
         if (this.editsSaving()) return;
         if (/\.gif$/i.test(file.name)) {

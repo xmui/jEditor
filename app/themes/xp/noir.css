@@ -1,0 +1,43 @@
+/* ==========================================================================
+   XP Royale Noir: the dark sibling of Royale. Graphite glass for
+   the title and the command bars, light panes, a cool blue-green glow.
+   ========================================================================== */
+
+:root[data-skin="xp"] {
+    --r-face: #e9eaea;
+    --r-title: linear-gradient(180deg, #73807f 0%, #4a5554 12%, #303939 40%, #1b2222 50%, #0c1111 58%, #050909 78%, #1b2424 94%, #000 100%);
+    --r-title-hi: #94a1a0;
+    --r-title-shadow: 0 1px 1px #000;
+    --r-frame: linear-gradient(180deg, #2d3535, #0a0e0e);
+    --r-cap: linear-gradient(180deg, #a7b3b2 0%, #65716f 40%, #3a4544 50%, #1d2626 58%, #141c1c 78%, #43504f 100%);
+    --r-cap-edge: #b8c4c3;
+    --r-close: linear-gradient(180deg, #f7b2a8 0%, #e2604f 40%, #c9402c 50%, #b8220f 58%, #ab1f0c 78%, #d9533f 100%);
+    --o-dock: linear-gradient(180deg, #3c4545, #262d2d);
+    --o-dock-solid: #2c3333;
+    --o-bar: linear-gradient(180deg, #6a7473 0%, #4e5756 40%, #3e4646 48%, #333b3b 56%, #2b3232 100%);
+    --o-bar-edge: #101616;
+    --o-grip: #0e1313;
+    --o-hot: linear-gradient(180deg, #e9fbf8 0%, #bfeee6 46%, #94e0d3 50%, #bfeee6 100%);
+    --o-hot-edge: #1b8f80;
+    --o-on: linear-gradient(180deg, #bdebe3 0%, #8cd8ca 46%, #62c6b4 50%, #93dccf 100%);
+    --o-line: #2e3636;
+    --o-head: linear-gradient(180deg, #59625f 0%, #454d4d 40%, #363d3d 48%, #2c3333 56%, #252b2b 100%);
+    --o-title: #e8f2f1;
+    --o-status: linear-gradient(180deg, #4e5757 0%, #3d4545 40%, #323939 48%, #2a3030 56%, #313838 100%);
+    --o-sel: #d4efea;
+    --o-pane: linear-gradient(180deg, #fbfcfc, #e5e9e9);
+    --o-pane-line: #c2cccb;
+    --o-link: #13695f;
+    --o-text: #eef3f3;
+    --o-text-shadow: 0 -1px 0 rgb(0 0 0 / 0.6);
+    --xp-hilite: #1e8a7c;
+    --r-thumb: linear-gradient(90deg, #e9eeee 0%, #ccd6d5 46%, #aebcbb 50%, #c6d1d0 100%);
+    --r-thumb-edge: #7d8b8a;
+}
+/* light text on the dark bars: the label in the status bar, the folder name */
+:root[data-skin="xp"] .grid-controls,
+:root[data-skin="xp"] .grid-controls::before { color: #e8efee; }
+:root[data-skin="xp"] #th-menubar::before,
+:root[data-skin="xp"] header .toolbar::before,
+:root[data-skin="xp"] header .file-info::before { background-image: radial-gradient(circle at 1px 1px, #0b1010 0.9px, transparent 1px), radial-gradient(circle at 2px 2px, #6d7877 0.9px, transparent 1px); }
+:root[data-skin="xp"] #btn-crop { --ico: url(../xp/icons/crop-light.svg); }

@@ -52,6 +52,7 @@
     <script src="import.js"></script>
     <script src="blank.js"></script>
     <script src="modes.js"></script>
+    <script src="themes.js"></script>
     <script src="disc.js"></script>
     <script src="export.js"></script>
     <script src="windows.js"></script>
@@ -680,9 +681,14 @@
                 <div class="dialog-body settings-body">
                     <section id="set-page-appearance" class="settings-section" data-page="appearance" role="tabpanel" aria-labelledby="set-h-appearance">
                         <h3 id="set-h-appearance" class="settings-page-title">Appearance</h3>
+                        <!-- Themes (themes.js): in the apps, an experiment for now -->
+                        <h4 class="set-group set-themes-part hidden">Theme</h4>
+                        <div id="set-themes" class="theme-gallery set-themes-part hidden" role="radiogroup" aria-label="Theme"></div>
+                        <div id="set-theme-settings" class="set-themes-part hidden"></div>
                         <h4 class="set-group">Color</h4>
-                        <div class="set-row">
-                            <span class="set-label" id="set-theme-label">Theme</span>
+                        <div class="set-row" id="set-theme-row">
+                            <span class="set-label" id="set-theme-label"><span id="set-theme-name">Theme</span>
+                                <small id="set-theme-decided" class="hidden">The theme chosen above decides this</small></span>
                             <div class="seg" role="radiogroup" aria-labelledby="set-theme-label">
                                 <label><input type="radio" name="set-theme" value="dark"><span>Dark</span></label>
                                 <label><input type="radio" name="set-theme" value="light"><span>Light</span></label>

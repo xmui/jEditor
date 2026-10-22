@@ -1,11 +1,33 @@
 // What's new, newest first. Shown in the app (What's New) and used as the
 // GitHub release notes. Every version bump needs an entry here: the tests
 // check that the first entry is the current APP_VERSION.
-// Text between `backticks` is shown as a key.
+// Text between `backticks` is shown as a key. beta: only ever a beta, never
+// released; the release after it says what it had too (its notes).
 
 const CHANGELOG = [
     {
-        version: '1.44.1', date: '2026-10-18',
+        version: '1.46.0', date: '2026-10-22', beta: true,
+        items: [
+            'New, as an experiment in the Windows app (on in betas): themes, in Settings → Appearance. jEditor as an app of another time, the same jEditor laid out the way that era\'s apps were, with its own title bar and a menu bar: Windows XP in Royale, Royale Noir and Royale Red; Snow Leopard as Finder or Aperture (dark); and 1984, the first Macintosh in one bit, whose Thumbnails setting shows the grid dithered (as MacPaint did), in black and white, or in colour. The menus have jEditor\'s commands with their keys; the title bar moves, maximises and closes the window. jEditor, first in the gallery, is the look you know.'
+        ]
+    },
+    {
+        version: '1.45.0', date: '2026-10-22',
+        items: [
+            'Adjust and Paint are part of jEditor now, no longer experiments: no need to turn them on in Settings → Experimental. Switch modes at the top of the sidebar, or press `E` for Adjust and `B` for Paint.',
+            'Export is one window, from the Export button on a project\'s card: copy the project to a USB drive or card (with the room left on it, and Eject when it\'s done), burn it to a CD or DVD, or make copies of the selected photos, all of them or the starred, full size or smaller, into the project, onto a drive or into a folder you choose.',
+            'Move to… and Copy to… go to any folder, outside the project too: Other folders on this PC… browses the drives, projects and the usual folders (type a name to make a new folder there), Choose a folder… opens the system\'s own folder window, and the last folders used are listed straight away. `Ctrl+Z` puts them back.',
+            'Crop: while you drag a corner or side, a close-up of that spot shows in a corner at the photo\'s own pixels, with the crop\'s edge where it will be saved (the Loupe button, or `M`). The wheel or a pinch zooms the crop view about the pointer, + and - too; Space+drag or the middle button moves it, and `Z` fits it again.',
+            'The scanner list has only the scanners plugged in and on (the rest under More), and it updates itself when one is plugged in or taken out. Each scanner offers only what it can do: its own resolutions, grey, both sides and glass sizes only where it has them.',
+            'Resolutions in the scan window are never empty: the usual ones show at once while jEditor asks the scanner, and stay if it never answers. Resolutions above the scanner\'s optical one (an Epson\'s 1200 dpi from its 600) are offered under their own heading, Interpolated: more pixels, no more detail.',
+            'The scan window can be resized by its edges and corners, and keeps its size; the photos coming in fill it. Show each one as it comes in is a switch in it while it scans.',
+            'Auto crop each photo in the scan window is off to start with, so scans that are already right aren\'t cropped again. Turned on, it stays on.',
+            'Scanning on an Epson FastFoto is set up exactly as FastFoto\'s own software sets it up, in the same order, with the photos sent as TIFF files, so its crops and colours match FastFoto\'s.',
+            'Paint\'s brushes keep up with the pointer on a big photo, without lagging behind.'
+        ]
+    },
+    {
+        version: '1.44.1', date: '2026-10-18', beta: true,
         items: [
             'Turn upright (`Shift+U`, or the right-click menu) turns photos the right way up: jEditor\'s own small network looks at each one and turns it only when it\'s sure, and one `Ctrl+Z` undoes them all. The scan window does it to each photo as it comes in (Turn upright, on to start with), turning each back with its front.',
             'Closing the window in Adjust or Paint with something not kept yet asks Keep your changes? first (Keep, Don\'t keep or Cancel), instead of losing it.',
@@ -18,7 +40,7 @@ const CHANGELOG = [
         ]
     },
     {
-        version: '1.44.0', date: '2026-10-18',
+        version: '1.44.0', date: '2026-10-18', beta: true,
         items: [
             'Spot removal in Adjust: click a speck of dust, a scratch or a blemish and it\'s healed from nearby, sized to the speck. Drag from it to choose where it\'s copied from; Heal blends it in, Clone copies exactly. Find dust puts a spot on every speck it finds on a scan, and Clear found takes them off again.',
             'Masks find the Sky and the Subject in the photo for you, then paint or erase to touch them up.',
