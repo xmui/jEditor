@@ -20,6 +20,8 @@ const ASSETS = [
     './permissions.js',
     './folder-cache.js',
     './photo-find.js',
+    './upright-model.js',
+    './upright.js',
     './crop-auto.js',
     './crop.js',
     './crop-log.js',

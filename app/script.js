@@ -3961,6 +3961,7 @@ const app = {
         ['flag.purple', 'global', 'Flags', 'Purple label', ['5']],
         ['flag.clear', 'global', 'Flags', 'Clear flags', ['U']],
         ['edit.autoCrop', 'global', 'Edit', 'Auto crop the selection (grid)', ['Shift+A']],
+        ['edit.upright', 'global', 'Edit', 'Turn upright (the selection, or the photo)', ['Shift+U']],
         ['edit.moveTo', 'global', 'Folders', 'Move to a folder…', ['M']],
         ['edit.copyTo', 'global', 'Folders', 'Copy to a folder…', ['Shift+M']],
         ['folders.new', 'global', 'Folders', 'New folder', ['Shift+N']],
@@ -4144,6 +4145,7 @@ const app = {
             'flag.purple': () => Flags.apply('purple'),
             'flag.clear': () => Flags.apply('clear'),
             'edit.autoCrop': () => this.batchAutoCrop(Folders.targets()),
+            'edit.upright': () => this.turnUpright(Folders.targets()),
             'edit.moveTo': () => Folders.openPicker(Folders.targets(), 'move'),
             'edit.copyTo': () => Folders.openPicker(Folders.targets(), 'copy'),
             'folders.new': () => this.dirHandle ? Folders.newFolder() : false,
@@ -5004,13 +5006,20 @@ const app = {
     // is re-read or re-decoded after a rotation — that's what makes it snappy.
     // Lags reset to 0 whenever a preview is regenerated from fresh disk bytes.
 
-    async rotateBulk(deg) {
-        if (this.selection.size === 0) return;
+    // `turns`: each photo's own turn (Turn upright), in place of `deg`
+    async rotateBulk(deg, turns = null) {
+        if (!turns && this.selection.size === 0) return;
         if (!this.ensureWritable()) return;
+        const degOf = (f) => turns ? turns.get(f) : deg;
+        const byTurn = (files) => {
+            const m = new Map();
+            for (const f of files) m.set(degOf(f), [...(m.get(degOf(f)) || []), f]);
+            return m;
+        };
 
         // Snapshot the selection NOW: photos the user clicks or selects while
         // this batch is saving must never join it.
-        const snapshot = [...this.selection];
+        const snapshot = turns ? [...turns.keys()] : [...this.selection];
         const filesToRotate = snapshot.filter(f => !/\.gif$/i.test(f.name));
         const skippedGifs = snapshot.length - filesToRotate.length;
         if (skippedGifs > 0) this.showToast(`Skipped ${skippedGifs} GIF${skippedGifs > 1 ? 's' : ''} (rotation would lose animation)`);
@@ -5020,11 +5029,13 @@ const app = {
         const kept = filesToRotate.filter(f => Edits.keeps(f));
         if (kept.length) {
             if (this.editsSaving()) return;
-            this.turnHeld(kept, deg);
-            Edits.rotate(kept, deg);
+            for (const [d, files] of byTurn(kept)) {
+                this.turnHeld(files, d);
+                Edits.rotate(files, d);
+            }
             if (kept.length === filesToRotate.length) {
                 const n = kept.length;
-                this.showToast(`Turned ${n} photo${n > 1 ? 's' : ''} ${Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left'}`, 1600, null, null, { kind: 'rotate' });
+                this.showToast(`Turned ${n} photo${n > 1 ? 's' : ''} ${turns ? 'upright' : Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left'}`, 1600, null, null, { kind: 'rotate' });
                 return;
             }
             filesToRotate.splice(0, filesToRotate.length, ...filesToRotate.filter(f => !kept.includes(f)));
@@ -5041,7 +5052,7 @@ const app = {
 
         // Instant preview on every selected photo, before any disk work
         for (const file of filesToRotate) {
-            file.pendingRotation = (file.pendingRotation || 0) + deg;
+            file.pendingRotation = (file.pendingRotation || 0) + degOf(file);
             this.applyPreviewRotation(file);
         }
 
@@ -5076,7 +5087,7 @@ const app = {
         batchDone();
         // Nothing was saved (all failed): no empty undo step
         if (!group.items.length) this._undoStack = (this._undoStack || []).filter(e => e !== group);
-        const how = Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left';
+        const how = turns ? 'upright' : Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left';
         this.showToast(ok ? `Rotated ${label} ${how}` : 'Some photos failed to rotate', 2000, null, null, ok ? { kind: 'rotate' } : {});
         this.log('Bulk rotation finished');
     },
@@ -6293,6 +6304,7 @@ const app = {
                     [`Rotate ${n} right`, () => this.rotateBulk(90)],
                     [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
                     [`Auto crop ${n}`, () => this.batchAutoCrop(sel)],
+                    [`Turn ${n} upright`, () => this.turnUpright(sel)],
                     ...(Adjust.clipboard() ? [[`Paste adjustments onto ${n}`, () => this.pasteAdjust(sel)]] : []),
                     ...(sel.some(f => f._edit) ? [[`Discard edits on ${sel.filter(f => f._edit).length.toLocaleString()}`, () => Edits.discard(sel)]] : []),
                     ['—'],
@@ -6312,6 +6324,7 @@ const app = {
                 ['Rotate left', () => this.rotateImage(file, -90)],
                 ['Rotate right', () => this.rotateImage(file, 90)],
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
+                ['Turn upright', () => this.turnUpright([file])],
                 ['Crop and straighten', () => { this.openSingle(file); this.enterCrop(); }],
                 ['Adjust…', () => this.enterAdjust(file)],
                 ...(file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
@@ -6336,6 +6349,7 @@ const app = {
                 ['Rotate left', () => this.rotateImage(file, -90)],
                 ['Rotate right', () => this.rotateImage(file, 90)],
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
+                ['Turn upright', () => this.turnUpright([file])],
                 ['Crop and straighten', () => this.enterCrop()],
                 ['Adjust…', () => this.enterAdjust()],
                 ...(file && file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
@@ -6857,6 +6871,47 @@ const app = {
 
     // ask: false skips the "Auto crop N photos?" question (scans, see
     // scan.js); feeder: they're from a sheet feeder (CropAuto.detectFeeder)
+    // Turn upright (Shift+U, and after a scan): each photo turned the way
+    // up Upright finds, when it's sure; one undo step for them all.
+    // `backs`: a scan's backs, turned with their fronts. Returns how many
+    // were turned.
+    async turnUpright(files, { backs = null, quiet = false } = {}) {
+        files = files.filter(f => !/\.gif$/i.test(f.name));
+        if (!files.length || !this.ensureWritable()) return 0;
+        if (!Upright.load()) { if (!quiet) this.showToast('Turn upright isn\'t available here'); return 0; }
+        const task = 'upright-' + (this._batchSeq = (this._batchSeq || 0) + 1);
+        this.beginTask(task, `Finding which way is up (${files.length})…`);
+        const turns = new Map();
+        try {
+            for (const [i, f] of files.entries()) {
+                if (f._rotationQueue) await f._rotationQueue;
+                let g = null;
+                try { g = await Upright.guess(await this.readImage(f)); } catch (e) { this.log(`Turn upright: ${f.name}: ${e.message}`); }
+                // Turns from the file as saved; a turn waiting with its other
+                // edits is taken off
+                const held = (f._edit && f._edit.q) || 0;
+                const q = g && g.sure >= Upright.SURE ? ((g.turns - held) % 4 + 4) % 4 : 0;
+                if (g) this.log(`Turn upright: ${f.name}: ${g.turns * 90}° (${Math.round(g.sure * 100)}% sure)${q ? '' : ', left as it is'}`);
+                if (q) {
+                    turns.set(f, q === 3 ? -90 : q * 90);
+                    const back = backs && backs.get(f);
+                    if (back) turns.set(back, q === 3 ? -90 : q * 90);
+                }
+                if (files.length > 10 && i % 10 === 9) this.updateTask(task, `Finding which way is up (${i + 1}/${files.length})…`);
+                await new Promise(r => setTimeout(r, 0));
+            }
+        } finally {
+            this.endTask(task);
+        }
+        const n = [...turns.keys()].filter(f => files.includes(f)).length;
+        if (!turns.size) {
+            if (!quiet) this.showToast(files.length === 1 ? 'It looks upright already' : 'They all look upright already', 2000);
+            return 0;
+        }
+        await this.rotateBulk(0, turns);
+        return n;
+    },
+
     async batchAutoCrop(files, { ask = true, feeder = false, scan = false } = {}) {
         if (!this.ensureWritable()) return;
         if (!this.dirHandle) {

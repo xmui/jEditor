@@ -8,6 +8,7 @@ const CHANGELOG = [
     {
         version: '1.46.0', date: '2026-10-22', beta: true,
         items: [
+            'Turn upright (`Shift+U`, or the right-click menu) turns photos the right way up: jEditor\'s own small network looks at each one and turns it only when it\'s sure, and one `Ctrl+Z` undoes them all. The scan window does it to each photo as it comes in (Turn upright, on to start with), turning each back with its front.',
             'New, as an experiment in the Windows app (on in betas): themes, in Settings → Appearance. jEditor as an app of another time, the same jEditor laid out the way that era\'s apps were, with its own title bar and a menu bar: Windows XP in Royale, Royale Noir and Royale Red; Snow Leopard as Finder or Aperture (dark); and 1984, the first Macintosh in one bit, whose Thumbnails setting shows the grid dithered (as MacPaint did), in black and white, or in colour. The menus have jEditor\'s commands with their keys; the title bar moves, maximises and closes the window. jEditor, first in the gallery, is the look you know.'
         ]
     },
