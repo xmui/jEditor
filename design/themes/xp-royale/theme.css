@@ -1,0 +1,126 @@
+/* ==========================================================================
+   XP take B in Royale, the glossy theme of Media Center Edition 2005: a
+   cooler grey face, title bars and buttons with a hard glass highlight on
+   the top half, a glow instead of Luna's orange on hover. Every colour is
+   a token here, so Zune and Royale Noir are only a palette each.
+   ========================================================================== */
+
+:root[data-skin="xp"] {
+    /* the window */
+    --r-face: #ebe9ed;
+    --r-title: linear-gradient(180deg, #8cbcfd 0%, #6aa3f8 10%, #4b8bf2 40%, #2a68dc 50%, #1554d4 58%, #0b44c0 78%, #1d5ed8 94%, #0a3aa8 100%);
+    --r-title-hi: #a9cbff;
+    --r-title-text: #fff;
+    --r-title-shadow: 1px 1px 1px #082a86;
+    --r-frame: linear-gradient(180deg, #1a5bd6, #0c3fb2);
+    --r-cap: linear-gradient(180deg, #c3dbfd 0%, #8ab6f7 40%, #4a82e6 50%, #2c66db 58%, #2a63d8 78%, #6098f2 100%);
+    --r-cap-edge: #e6efff;
+    --r-close: linear-gradient(180deg, #fcc7b0 0%, #f6905f 40%, #e2622c 50%, #d23c06 58%, #cf3a08 78%, #f0784a 100%);
+    /* command bars */
+    --o-dock: linear-gradient(90deg, #d6e2f6, #e8eef9 60%, #f0f4fb);
+    --o-dock-solid: #dfe7f6;
+    --o-bar: linear-gradient(180deg, #ffffff 0%, #f1f6fe 40%, #e3ecfa 48%, #d7e3f7 56%, #c9d9f3 100%);
+    --o-bar-edge: #7f9acb;
+    --o-grip: #5a75a8;
+    --o-hot: linear-gradient(180deg, #f2f8ff 0%, #d4e6fd 46%, #b5d3fa 50%, #cfe3fd 100%);
+    --o-hot-edge: #3b78dc;
+    --o-on: linear-gradient(180deg, #c4dcfb 0%, #9cc2f5 46%, #80aef0 50%, #a9cbf6 100%);
+    --o-line: #8fa6cf;
+    --o-head: linear-gradient(180deg, #ffffff 0%, #eef3fc 40%, #e2eaf8 48%, #d6e1f4 56%, #cbd9f1 100%);
+    --o-title: #0f3c9c;
+    --o-status: linear-gradient(180deg, #f7f9fd 0%, #e6ecf7 40%, #dce4f4 48%, #d4dff2 56%, #dfe7f6 100%);
+    --o-sel: #d3e3fb;
+    --o-pane: linear-gradient(180deg, #fbfcfe, #e5ecf8);
+    --o-pane-line: #b5c7e8;
+    --o-link: #1a4fb5;
+    --o-text: #000;
+    --o-text-shadow: none;
+    /* highlight, scroll bars */
+    --xp-hilite: #3a7de4;
+    --r-thumb: linear-gradient(90deg, #e9f1fe 0%, #c9dcfa 46%, #a9c6f4 50%, #c2d8f8 100%);
+    --r-thumb-edge: #7f9acb;
+    --r-track: linear-gradient(90deg, #f1f1f4, #fbfbfc 40%, #ffffff 60%, #f1f1f4);
+    --r-glyph: #2c4d8c;
+    --xp-face: var(--r-face);
+    --bg-window: var(--r-face);
+}
+
+/* ---- The window: glossy title, a thin frame ---- */
+:root[data-skin="xp"] .interface {
+    border-width: 3px;
+    border-image: var(--r-frame) 1;
+    background: var(--r-face);
+}
+:root[data-skin="xp"] #th-titlebar {
+    margin: 0 -3px;
+    height: 30px;
+    border-radius: 7px 7px 0 0;
+    background: var(--r-title);
+    box-shadow: inset 0 1px 0 var(--r-title-hi), inset 1px 0 0 rgb(255 255 255 / 0.25), inset -1px 0 0 rgb(0 0 0 / 0.2);
+    color: var(--r-title-text);
+}
+:root[data-skin="xp"] .th-title { text-shadow: var(--r-title-shadow); }
+:root[data-skin="xp"] .th-caps { gap: 3px; }
+:root[data-skin="xp"] .th-caps button {
+    width: 22px; height: 22px;
+    border: 1px solid var(--r-cap-edge);
+    border-radius: 4px;
+    background: var(--r-cap);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25), inset 0 0 1px rgb(255 255 255 / 0.6);
+}
+:root[data-skin="xp"] .th-caps .th-close { background: var(--r-close); }
+
+/* ---- Menu bar and toolbars ---- */
+:root[data-skin="xp"] .th-menu,
+:root[data-skin="xp"] .tb-btn,
+:root[data-skin="xp"] .file-name,
+:root[data-skin="xp"] #file-count,
+:root[data-skin="xp"] .sort-control::before,
+:root[data-skin="xp"] .fb-modes button { color: var(--o-text); text-shadow: var(--o-text-shadow); }
+:root[data-skin="xp"] .th-menu { border-radius: 3px; }
+:root[data-skin="xp"] .th-menu:hover { color: #000; text-shadow: none; }
+:root[data-skin="xp"] header .toolbar,
+:root[data-skin="xp"] header .file-info { border-radius: 4px; box-shadow: inset 0 0 0 1px var(--o-bar-edge), inset 0 2px 0 rgb(255 255 255 / 0.5), 0 1px 0 rgb(255 255 255 / 0.5); }
+/* hover and pressed glow, rounded like Royale's buttons */
+:root[data-skin="xp"] .tb-btn,
+:root[data-skin="xp"] .fb-modes button { border-radius: 3px; }
+:root[data-skin="xp"] .tb-btn:hover:not(:disabled),
+:root[data-skin="xp"] .tb-btn.active,
+:root[data-skin="xp"] .tb-btn[aria-pressed="true"],
+:root[data-skin="xp"] .fb-modes button.active,
+:root[data-skin="xp"] .th-menu:hover { box-shadow: 0 0 3px rgb(255 255 255 / 0.9) inset; }
+:root[data-skin="xp"] .tb-btn:hover:not(:disabled) { color: #000; text-shadow: none; }
+:root[data-skin="xp"] .fb-modes button.active { color: #000; text-shadow: none; }
+
+/* ---- Panes, list, status ---- */
+:root[data-skin="xp"] .folder-rail::before,
+:root[data-skin="xp"] .sel-count { background-color: transparent; }
+:root[data-skin="xp"] .grid-item.selected { border-radius: 3px; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.7) !important; }
+:root[data-skin="xp"] .fr-row.active .fr-name { border-radius: 2px; }
+
+/* Royale's push buttons and combo boxes */
+:root[data-skin="xp"] .sort-control select,
+:root[data-skin="xp"] select {
+    border-color: var(--o-line);
+    border-radius: 3px;
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 0h7L3.5 4z' fill='%23333'/%3E%3C/svg%3E") no-repeat right 5px center,
+        var(--r-thumb) no-repeat right 1px center / 15px 16px,
+        #fff;
+}
+:root[data-skin="xp"] input[type="range"]::-webkit-slider-thumb { border-radius: 3px; border-color: var(--o-hot-edge); background: var(--o-hot); }
+
+/* ---- Glossy scroll bars ---- */
+:root[data-skin="xp"] ::-webkit-scrollbar { background: #fbfbfc; }
+:root[data-skin="xp"] ::-webkit-scrollbar-track { background: var(--r-track); }
+:root[data-skin="xp"] ::-webkit-scrollbar-thumb {
+    border: 1px solid #fff;
+    border-radius: 4px;
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='7'%3E%3Cg fill='%23fff'%3E%3Crect y='0' width='7' height='1'/%3E%3Crect y='3' width='7' height='1'/%3E%3Crect y='6' width='7' height='1'/%3E%3C/g%3E%3Cg fill='%23000' fill-opacity='.25'%3E%3Crect y='1' width='7' height='1'/%3E%3Crect y='4' width='7' height='1'/%3E%3C/g%3E%3C/svg%3E") no-repeat center,
+        var(--r-thumb);
+    box-shadow: inset 0 0 0 1px var(--r-thumb-edge);
+}
+:root[data-skin="xp"] ::-webkit-scrollbar-button:single-button { border-radius: 4px; background-color: transparent; background-image: var(--r-thumb); box-shadow: inset 0 0 0 1px var(--r-thumb-edge); }
+:root[data-skin="xp"] ::-webkit-scrollbar-button:vertical:decrement { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6'%3E%3Cpath d='M1 5l3.5-3.5L8 5' fill='none' stroke='%23333' stroke-width='2'/%3E%3C/svg%3E") no-repeat center, var(--r-thumb); }
+:root[data-skin="xp"] ::-webkit-scrollbar-button:vertical:increment { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' fill='none' stroke='%23333' stroke-width='2'/%3E%3C/svg%3E") no-repeat center, var(--r-thumb); }

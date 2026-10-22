@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // jEditor's editing tools, in headless Chromium: spot and dust removal
 // (retouch.js, adjust-spots.js), subject and sky masks, RAW previews, Paint,
-// a new blank image (blank.js), the modes (modes.js), crop's sliding sides and
-// the wheel the way a Mac does it (wheel.js). Run by `npm test` after the UI suite; on its own:
+// a new blank image (blank.js), the modes (modes.js), crop's sliding sides,
+// the wheel the way a Mac does it (wheel.js) and the themes (themes.js). Run by `npm test` after the UI suite; on its own:
 //   node test/edit.test.js [name …]     (only the sections named)
 
 const { chromium } = require('playwright-core');
@@ -1340,6 +1340,119 @@ const PROJECT = `
         check('wheel: in the viewer two fingers move a zoomed photo (at once), a pinch and a mouse zoom; at fit, fingers do nothing', r.fitStays && r.panned && r.pinched && r.mouseZooms && r.followOff, JSON.stringify(r));
         check('wheel: pinching the grid zooms it by how much the fingers move; a Ctrl+notch is a step', r.pinchGrid > 160 && r.pinchGrid <= 182 && r.notchGrid === r.pinchGrid + 20, JSON.stringify(r));
         check('wheel: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- Themes ----
+    if (wanted('themes')) {
+        console.log('themes (themes.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const $ = (id) => document.getElementById(id);
+                const root = document.documentElement;
+                const blob = async (color) => { const c = document.createElement('canvas'); c.width = 160; c.height = 120; const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, 160, 120); g.fillStyle = '#fff'; g.fillRect(40, 30, 60, 50); return canvasBlob(c); };
+                await openProject('Summer', { 'a.png': await blob('#806040'), 'b.png': await blob('#406080'), 'c.png': await blob('#408060') });
+                await until(() => app.files.every(f => f.thumbnailUrl));
+                // In a browser: no themes, nothing of them in Settings
+                step = 'browser';
+                app.toggleCustomizePanel(true);
+                app.showSettingsPage('appearance');
+                out.browserNone = !Themes.can() && $('set-themes').classList.contains('hidden') && !Experiments.shown().some(x => x.id === 'themes');
+                // An app with them (the Windows app's title bar calls)
+                step = 'app';
+                const calls = [];
+                window.JEditorNative = { platform: 'windows', features: ['themes'], titleBar: (on) => calls.push('titleBar:' + on), windowAction: (a) => calls.push(a) };
+                out.offInRelease = Experiments.shown().some(x => x.id === 'themes') && !Experiments.on('themes');
+                Experiments.set('themes', true);
+                app.renderCustomizePanel();
+                const cards = [...$('set-themes').querySelectorAll('.theme-card')];
+                out.gallery = cards.map(c => c.dataset.skin).join() === ',xp/royale,snow/finder,mac84/finder' && cards[0].classList.contains('active');
+                // Royale: its stylesheets, the docked layout, light, its title bar and menu bar
+                step = 'royale';
+                cards[1].click();
+                await until(() => !root.classList.contains('theme-loading'));
+                out.on = root.dataset.skin === 'xp' && root.dataset.layout === 'docked' && root.dataset.theme === 'light' && app.uiPrefs.skin === 'xp/royale'
+                    && [...document.querySelectorAll('link[data-theme]')].map(l => l.getAttribute('href')).join() === 'themes/docked.css,themes/xp/luna.css,themes/xp/office.css,themes/xp/royale.css';
+                out.styled = getComputedStyle(document.querySelector('.interface')).display === 'grid' && /Tahoma/.test(getComputedStyle(document.body).fontFamily);
+                out.ownBar = calls.includes('titleBar:true') && !!$('th-top') && $('th-top').contains($('th-titlebar')) && $('th-top').contains($('th-menubar'))
+                    && parseFloat(getComputedStyle(root).getPropertyValue('--th-top')) > 40;
+                app.setView('grid');
+                await until(() => $('th-titlebar').querySelector('.th-title').textContent === 'Summer - jEditor');
+                out.title = $('th-titlebar').querySelector('.th-title').textContent === 'Summer - jEditor';
+                app.openSingle(app.files[1]);
+                await until(() => $('th-titlebar').querySelector('.th-title').textContent === 'b.png - jEditor');
+                out.titleFollows = true;
+                app.setView('grid');
+                // The window's buttons go to the app
+                $('th-titlebar').querySelector('.th-min').click();
+                $('th-titlebar').querySelector('.th-max').click();
+                $('th-titlebar').querySelector('.th-close').click();
+                out.caps = calls.slice(-3).join() === 'minimize,maximize,close';
+                dispatchEvent(new CustomEvent('jeditor-window', { detail: { maximized: true } }));
+                out.maxed = $('th-titlebar').classList.contains('maximized');
+                // Fitting stands down: docked bars have room for everything
+                out.noFit = !$('main-interface').dataset.fit && !document.querySelector('[data-squeezed]');
+                // The stylesheets write the folder's name and the counts from the app
+                out.facts = $('fb-crumbs').dataset.folder === 'Summer' && $('folder-bar').dataset.info.startsWith('3 items') && $('btn-clear-selection').dataset.total === '3';
+                // The menu bar: jEditor's commands, with their keys
+                step = 'menus';
+                const edit = [...$('th-menubar').querySelectorAll('.th-menu')].find(b => b.textContent === 'Edit');
+                edit.click();
+                const menu = $('context-menu');
+                out.menu = !!menu && menu.classList.contains('th-dropdown') && edit.classList.contains('open')
+                    && [...menu.querySelectorAll('button')].some(b => /^Select all/.test(b.textContent) && b.querySelector('.ctx-key') && b.querySelector('.ctx-key').textContent === 'Ctrl+A');
+                [...menu.querySelectorAll('button')].find(b => /^Select all/.test(b.textContent)).click();
+                await until(() => !edit.classList.contains('open'));
+                out.ran = app.selection.size === 3 && !$('context-menu');
+                // A variant: Royale Red, another stylesheet on top
+                step = 'variant';
+                Themes.choose('xp/red');
+                await until(() => !root.classList.contains('theme-loading'));
+                out.variant = [...document.querySelectorAll('link[data-theme]')].pop().getAttribute('href') === 'themes/xp/red.css';
+                // Aperture is dark
+                Themes.choose('snow/aperture');
+                await until(() => !root.classList.contains('theme-loading'));
+                out.dark = root.dataset.skin === 'snow' && root.dataset.theme === 'dark' && !$('th-menubar');
+                // 1984: its own setting, the thumbnails dithered to one bit
+                step = '1984';
+                Themes.choose('mac84/finder');
+                await until(() => !root.classList.contains('theme-loading'));
+                app.renderCustomizePanel();
+                out.setting = root.dataset.tsThumbs === 'dither' && !!document.querySelector('#set-theme-settings input[value="grey"]');
+                const img = () => app.files[0]._gridEl.querySelector('img');
+                await until(() => img().src.startsWith('data:image/png'));
+                out.dithered = img().src.startsWith('data:image/png') && !!img().dataset.undithered;
+                document.querySelector('#set-theme-settings input[value="colour"]').click();
+                await until(() => !img().src.startsWith('data:'));
+                out.colour = root.dataset.tsThumbs === 'colour' && app.uiPrefs.skinSettings.mac84.thumbs === 'colour' && img().src === app.files[0].thumbnailUrl;
+                // Back to jEditor's own look: all of it gone, Windows' title bar back
+                step = 'off';
+                Themes.choose('');
+                out.off = !root.dataset.skin && !root.dataset.layout && !$('th-top') && !document.querySelector('link[data-theme]')
+                    && calls[calls.length - 1] === 'titleBar:false' && root.dataset.theme === app.uiPrefs.theme;
+                // The experiment turned off takes a chosen theme off too
+                Themes.choose('xp/royale');
+                Experiments.set('themes', false);
+                out.expOff = !root.dataset.skin && !$('th-top');
+                app.toggleCustomizePanel(false);
+                delete window.JEditorNative;
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('themes: none in a browser; in the apps an experiment, off in a release', r.browserNone && r.offInRelease, JSON.stringify(r));
+        check('themes: Settings → Appearance shows them as a gallery, jEditor\'s own look first', r.gallery, JSON.stringify(r));
+        check('themes: one chosen puts its stylesheets on, docked, in its own light or dark', r.on && r.styled && r.dark, JSON.stringify(r));
+        check('themes: its own title bar and menu bar along the top; Windows\' title bar goes', r.ownBar, JSON.stringify(r));
+        check('themes: the title bar names the folder or photo; its buttons work the window', r.title && r.titleFollows && r.caps && r.maxed, JSON.stringify(r));
+        check('themes: no fitting in docked bars; the folder\'s name and counts are the real ones', r.noFit && r.facts, JSON.stringify(r));
+        check('themes: the menu bar\'s menus run jEditor\'s commands and show their keys', r.menu && r.ran, JSON.stringify(r));
+        check('themes: a variant is one stylesheet more', r.variant, JSON.stringify(r));
+        check('themes: 1984\'s Thumbnails setting: dithered to one bit, or in colour again', r.setting && r.dithered && r.colour, JSON.stringify(r));
+        check('themes: back to jEditor\'s look (or the experiment off) takes all of it off', r.off && r.expOff, JSON.stringify(r));
+        check('themes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

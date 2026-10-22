@@ -69,6 +69,15 @@ const Fit = {
     run() {
         const iface = this.el('main-interface');
         if (!iface || iface.classList.contains('hidden') || !iface.offsetWidth) return;
+        // A theme's docked bars (themes.js) have room for everything
+        if (document.documentElement.dataset.layout === 'docked') {
+            for (const b of document.querySelectorAll('[data-squeezed]')) delete b.dataset.squeezed;
+            const fi = document.querySelector('.file-info');
+            if (fi) fi.style.maxWidth = '';
+            iface.dataset.fit = '';
+            this.syncMore(this.el('header-controls'), this.el('btn-more'));
+            return;
+        }
         const tokens = new Set();
         const set = () => { iface.dataset.fit = [...tokens].join(' '); };
         this.fitTop(iface, tokens, set);

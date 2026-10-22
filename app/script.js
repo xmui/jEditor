@@ -252,6 +252,7 @@ const app = {
         Export.init(this);
         Blank.init(this);
         Modes.init(this);
+        Themes.init(this);
         Fit.init();
         History.init(this);
         Watch.init(this);
@@ -458,6 +459,8 @@ const app = {
             startIn: 'photos', // the landing page's Start in (modes.js): photos, adjust or paint
             modes: 1, // 1.43: Adjust and Paint are modes (modes.js), off the toolbar's main row
             theme: 'dark',
+            skin: '', // a theme (themes.js): 'xp/royale'; '' is jEditor's own look
+            skinSettings: {}, // each theme's own settings, by theme
             density: 'compact',
             glass: 'rich',
             surround: 'auto',
@@ -594,6 +597,7 @@ const app = {
         if (controls) controls.classList.toggle('off', p.singleControls === false);
         this.applyAppearance();
         this.applyExperiments({ panel: false });
+        Themes.apply();
         // Start in, remembered, on the landing page
         if (typeof Modes !== 'undefined') Modes.renderStart();
         // More shows for buttons squeezed in for room too
@@ -610,9 +614,10 @@ const app = {
             const follow = () => { if (this.uiPrefs.theme === 'system') this.applyAppearance(); };
             if (this._systemTheme.addEventListener) this._systemTheme.addEventListener('change', follow);
         }
-        const theme = p.theme === 'system'
+        // A theme (themes.js) is made for light or dark
+        const theme = (typeof Themes !== 'undefined' && Themes.mode()) || (p.theme === 'system'
             ? (this._systemTheme && this._systemTheme.matches ? 'light' : 'dark')
-            : p.theme;
+            : p.theme);
         root.dataset.theme = theme;
         root.dataset.density = p.density;
         root.dataset.glass = p.glass;
@@ -892,6 +897,7 @@ const app = {
         $('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
         this.elements.customizePanel.querySelectorAll('input[data-toast]').forEach(i => { i.checked = this.toastOn(i.dataset.toast); });
         $('cust-cleanup').disabled = !this.dirHandle;
+        Themes.render();
         CropLog.refresh();
         $('cust-single-controls').checked = this.uiPrefs.singleControls !== false;
         this.syncAccentPicker();
@@ -2588,6 +2594,7 @@ const app = {
     makeGridTile(file, observer) {
         const div = document.createElement('div');
         div.className = 'grid-item';
+        div.dataset.name = file.name; // a theme's tile caption (themes.js)
         div._file = file;
         file._gridEl = div;
         // Tiles are built in chunks: each one starts in the right state
@@ -5873,6 +5880,7 @@ const app = {
         }
         const gridImg = file._gridEl && file._gridEl.querySelector('img');
         if (gridImg) gridImg.alt = newName;
+        if (file._gridEl) file._gridEl.dataset.name = newName;
     },
 
     // Rename many files at once ([{ file, newName }], names already

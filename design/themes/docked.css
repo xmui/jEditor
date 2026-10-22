@@ -1,0 +1,107 @@
+/* ==========================================================================
+   Layout part "docked": the floating pills become bars along the window's
+   edges, the way any desktop app of the 2000s was laid out. Same elements,
+   same order; a theme that asks for this part then dresses the bars.
+   Areas: title, menu (theme parts), tools (header), addr (folder bar),
+   tasks + side (left column), main, resize, strip, bot (selection, edits,
+   grid size), status.
+   ========================================================================== */
+
+:root[data-layout~="docked"] .interface:not(.hidden) {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto auto auto auto;
+    grid-template-areas:
+        "title title"
+        "menu menu"
+        "tools tools"
+        "addr addr"
+        "tasks main"
+        "side main"
+        "side resize"
+        "side strip"
+        "bot bot"
+        "status status";
+}
+/* The bottom bar's own background, under whatever sits in it */
+:root[data-layout~="docked"] body[data-view="grid"] .interface::after {
+    content: "";
+    grid-area: bot;
+    z-index: 0;
+    min-height: var(--dock-bot-h, 32px);
+    background: var(--dock-bot-bg, var(--bg-surface));
+    border-top: var(--dock-bot-line, 1px solid var(--border));
+}
+:root[data-layout~="docked"] #th-titlebar { grid-area: title; }
+:root[data-layout~="docked"] #th-menubar { grid-area: menu; }
+
+:root[data-layout~="docked"] header {
+    grid-area: tools;
+    position: relative;
+    padding: 0;
+    pointer-events: auto;
+    justify-content: flex-start;
+    align-items: stretch;
+    z-index: var(--z-floating);
+}
+:root[data-layout~="docked"] .toolbar,
+:root[data-layout~="docked"] .file-info {
+    zoom: 1;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    animation: none;
+}
+:root[data-layout~="docked"] .file-info { translate: none; max-width: none !important; } /* fit.js sets it inline */
+
+:root[data-layout~="docked"] .folder-bar {
+    grid-area: addr;
+    position: relative;
+    top: auto; left: auto;
+    max-width: none;
+    overflow: visible;
+}
+:root[data-layout~="docked"] .folder-rail {
+    grid-area: side;
+    position: relative;
+    top: auto; left: auto; bottom: auto;
+    min-height: 0;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+:root[data-layout~="docked"] .interface.rail-open .grid-view { padding-left: 0; }
+:root[data-layout~="docked"] #main-view,
+:root[data-layout~="docked"] .grid-view { grid-area: main; min-height: 0; }
+:root[data-layout~="docked"] .grid-view { padding: var(--dock-grid-pad, 16px); }
+:root[data-layout~="docked"] .strip-resize { grid-area: resize; margin: 0; }
+:root[data-layout~="docked"] .thumbnails { grid-area: strip; }
+:root[data-layout~="docked"] .status-bar { grid-area: status; }
+
+:root[data-layout~="docked"] .selection-bar,
+:root[data-layout~="docked"] .grid-controls,
+:root[data-layout~="docked"] .edits-bar {
+    grid-area: bot;
+    position: relative;
+    inset: auto;
+    z-index: 1;
+    margin: 0;
+    align-self: center;
+}
+:root[data-layout~="docked"] .selection-bar { justify-self: start; max-width: none; }
+:root[data-layout~="docked"] .interface.rail-open .selection-bar { left: auto; }
+:root[data-layout~="docked"] .grid-controls { justify-self: end; }
+:root[data-layout~="docked"] .edits-bar { justify-self: center; }
+
+/* Prev / rotate / next: a bar of its own under the photo */
+:root[data-layout~="docked"] #image-container { padding-bottom: var(--dock-controls-h, 44px); }
+:root[data-layout~="docked"] .controls {
+    left: 0; right: 0; bottom: 0;
+    height: var(--dock-controls-h, 44px);
+    transform: none;
+    justify-content: center;
+    border-radius: 0;
+}
+:root[data-layout~="docked"] .controls.idle { opacity: 1; transform: none; transition: none; }
+:root[data-layout~="docked"] .controls.idle button { pointer-events: auto; }
+:root[data-layout~="docked"] .zoom-level { top: 12px; }
+:root[data-layout~="docked"] .header-controls { position: relative; top: auto; right: auto; }
