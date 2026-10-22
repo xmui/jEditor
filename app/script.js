@@ -594,6 +594,8 @@ const app = {
         if (controls) controls.classList.toggle('off', p.singleControls === false);
         this.applyAppearance();
         this.applyExperiments({ panel: false });
+        // Start in, remembered, on the landing page
+        if (typeof Modes !== 'undefined') Modes.renderStart();
         // More shows for buttons squeezed in for room too
         if (typeof Fit !== 'undefined') Fit.run();
     },
@@ -901,8 +903,6 @@ const app = {
 
         this.uiPrefs.order.forEach(key => {
             if ((key === 'scan' || key === 'camera') && !Host.has(key)) return; // only where the app can
-            if (key === 'adjust' && !this.adjustOn()) return; // an experiment, off
-            if (key === 'paint' && !this.paintOn()) return;
             const li = document.createElement('li');
             li.draggable = true;
             li.dataset.key = key;
@@ -4114,10 +4114,10 @@ const app = {
             'edit.rotateRight': () => grid() ? this.rotateBulk(90) : this.rotateCurrent(90),
             'edit.rotate180': () => grid() ? this.rotateBulk(180) : this.rotateCurrent(180),
             'edit.crop': () => this.enterCrop(),
-            'edit.adjust': () => this.adjustOn() ? this.enterAdjust() : false,
-            'edit.paint': () => this.paintOn() ? this.enterPaint() : false,
-            'edit.copyAdjust': () => this.adjustOn() ? this.copyAdjust() : false,
-            'edit.pasteAdjust': () => this.adjustOn() ? this.pasteAdjust(grid() && this.selection.size ? [...this.selection] : [this.currentFile]) : false,
+            'edit.adjust': () => this.enterAdjust(),
+            'edit.paint': () => this.enterPaint(),
+            'edit.copyAdjust': () => this.copyAdjust(),
+            'edit.pasteAdjust': () => this.pasteAdjust(grid() && this.selection.size ? [...this.selection] : [this.currentFile]),
             'edit.rename': () => this.openRename(grid() && this.selection.size ? [...this.selection] : [this.currentFile]),
             'edit.trash': () => this.moveToTrash(grid() && this.selection.size
                 ? [...this.selection] : [this.currentFile]),
@@ -6285,7 +6285,7 @@ const app = {
                     [`Rotate ${n} right`, () => this.rotateBulk(90)],
                     [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
                     [`Auto crop ${n}`, () => this.batchAutoCrop(sel)],
-                    ...(this.adjustOn() && Adjust.clipboard() ? [[`Paste adjustments onto ${n}`, () => this.pasteAdjust(sel)]] : []),
+                    ...(Adjust.clipboard() ? [[`Paste adjustments onto ${n}`, () => this.pasteAdjust(sel)]] : []),
                     ...(sel.some(f => f._edit) ? [[`Discard edits on ${sel.filter(f => f._edit).length.toLocaleString()}`, () => Edits.discard(sel)]] : []),
                     ['—'],
                     [`Move ${n} to…`, () => Folders.openPicker(sel, 'move')],
@@ -6305,12 +6305,10 @@ const app = {
                 ['Rotate right', () => this.rotateImage(file, 90)],
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
                 ['Crop and straighten', () => { this.openSingle(file); this.enterCrop(); }],
-                ...(this.adjustOn() ? [
-                    ['Adjust…', () => this.enterAdjust(file)],
-                    ...(file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
-                    ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : [])
-                ] : []),
-                ...(this.paintOn() ? [['Paint…', () => this.enterPaint(file)]] : []),
+                ['Adjust…', () => this.enterAdjust(file)],
+                ...(file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
+                ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : []),
+                ['Paint…', () => this.enterPaint(file)],
                 ...(file._edit ? [['Discard edit', () => Edits.discard([file])]] : []),
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
@@ -6331,12 +6329,10 @@ const app = {
                 ['Rotate right', () => this.rotateImage(file, 90)],
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
                 ['Crop and straighten', () => this.enterCrop()],
-                ...(this.adjustOn() ? [
-                    ['Adjust…', () => this.enterAdjust()],
-                    ...(file && file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
-                    ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : [])
-                ] : []),
-                ...(this.paintOn() ? [['Paint…', () => this.enterPaint()]] : []),
+                ['Adjust…', () => this.enterAdjust()],
+                ...(file && file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
+                ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : []),
+                ['Paint…', () => this.enterPaint()],
                 ...(file && file._edit ? [['Discard edit', () => Edits.discard([file])]] : []),
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
@@ -6485,29 +6481,16 @@ const app = {
 
     // ---- Adjust (adjust.js) ----
 
-    // Settings → Experimental → Adjust
-    adjustOn() {
-        return typeof Experiments !== 'undefined' && Experiments.on('adjust');
-    },
-
     // Experiments turned on or off: what they show
     // panel: Settings' list of toolbar buttons drawn again too
     applyExperiments({ panel = true } = {}) {
         if (typeof Experiments !== 'undefined') Experiments.render();
-        const b = document.getElementById('btn-adjust');
-        if (b) b.classList.toggle('exp-off', !this.adjustOn());
-        const pb = document.getElementById('btn-paint');
-        if (pb) pb.classList.toggle('exp-off', !this.paintOn());
         if (panel && this.isSettingsOpen()) this.renderCustomizePanel();
         if (panel && typeof Fit !== 'undefined') Fit.run();
     },
 
     async enterAdjust(file = this.currentFile) {
         if (!file || this.cropState.active) return;
-        if (!this.adjustOn()) {
-            this.showToast('Adjust is in Settings → Experimental');
-            return;
-        }
         if (!this.ensureWritable()) return;
         if (this.editsSaving()) return;
         if (/\.gif$/i.test(file.name)) {
@@ -6607,17 +6590,8 @@ const app = {
 
     // ---- Paint (paint-editor.js; kept by paint.js) ----
 
-    // Settings → Experimental → Paint
-    paintOn() {
-        return typeof Experiments !== 'undefined' && Experiments.on('paint');
-    },
-
     async enterPaint(file = this.currentFile) {
         if (!file) return;
-        if (!this.paintOn()) {
-            this.showToast('Paint is in Settings → Experimental');
-            return;
-        }
         if (!this.ensureWritable()) return;
         if (this.editsSaving()) return;
         if (/\.gif$/i.test(file.name)) {

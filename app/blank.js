@@ -451,7 +451,6 @@ const Blank = {
         // Out of Adjust or Paint first (what was done there kept)
         if (Modes.current() !== 'photos' && !(await Modes.leave(true))) return file;
         app.openSingle(file);
-        if (!app.paintOn()) Experiments.set('paint', true);
         await app.enterPaint(file);
         return file;
     },

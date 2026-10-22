@@ -19,7 +19,7 @@ const only = process.argv.slice(2);
 const wanted = (name) => !only.length || only.includes(name);
 
 // In-page: a folder of photos in the browser's private storage, opened as
-// the project; turning an experiment on
+// the project
 const PROJECT = `
     window.sleep = (ms) => new Promise(res => setTimeout(res, ms));
     window.until = async (fn, n = 200) => { for (let i = 0; i < n && !(await fn()); i++) await sleep(50); };
@@ -37,7 +37,6 @@ const PROJECT = `
         await until(() => app.files.length === Object.keys(photos).length);
         return dir;
     };
-    window.experiment = (id, on = true) => Experiments.set(id, on);
     window.canvasBlob = (c, type = 'image/png', q) => new Promise(res => c.toBlob(res, type, q));
     window.pixels = async (blob, w, h) => {
         const bmp = await createImageBitmap(blob);
@@ -157,7 +156,6 @@ const PROJECT = `
             let step = 'start';
             try {
                 const out = {};
-                experiment('adjust');
                 const W = 640, H = 480;
                 const specks = [{ x: 200, y: 240, r: 6, color: '#000' }, { x: 420, y: 120, r: 4, color: '#fff' }, { x: 520, y: 380, r: 3, color: '#000' }];
                 const dir = await openProject('spotted', {
@@ -390,7 +388,6 @@ const PROJECT = `
             let step = 'start';
             try {
                 const out = {};
-                experiment('adjust');
                 const W = 480, H = 320;
                 const c = document.createElement('canvas'); c.width = W; c.height = H;
                 const g = c.getContext('2d');
@@ -547,7 +544,6 @@ const PROJECT = `
             let step = 'start';
             try {
                 const out = {};
-                experiment('adjust');
                 const dngBlob = await makeDng(1), cr3Blob = await makeCr3();
                 const dir = await openProject('raws', { 'a.dng': dngBlob, 'b.cr3': cr3Blob, 'c.jpg': new Blob([await rawJpeg(200, 150, '#888')], { type: 'image/jpeg' }) });
                 const f = (n) => app.files.find(x => x.name === n);
@@ -626,7 +622,6 @@ const PROJECT = `
             let step = 'start';
             try {
                 const out = {};
-                experiment('paint');
                 const W = 400, H = 300;
                 const c = document.createElement('canvas'); c.width = W; c.height = H;
                 const g = c.getContext('2d'); g.fillStyle = '#808080'; g.fillRect(0, 0, W, H);
@@ -796,7 +791,7 @@ const PROJECT = `
                 return out;
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
-        check('paint: an experiment with its button; B opens it on the photo', r.button && r.open, JSON.stringify(r));
+        check('paint: its button; B opens it on the photo', r.button && r.open, JSON.stringify(r));
         check('paint: starts with the photo locked as the bottom layer and a new layer on it', r.start, JSON.stringify(r));
         check('paint: the photo is drawn at screen size once for a view, again when it zooms', r.shownKept && r.shownRedrawn, JSON.stringify([r.shownKept, r.shownRedrawn]));
         check('paint: a brush stroke paints the layer (hard-edged), Ctrl+Z / Ctrl+Shift+Z inside', r.brush && r.brush[0] === 255 && r.brush[3] === 255 && r.brushEdge === 0 && r.undo === 0 && r.redo === 255, JSON.stringify(r));
@@ -927,7 +922,6 @@ const PROJECT = `
             let step = 'start';
             try {
                 const out = {};
-                experiment('paint', false);
                 const c = document.createElement('canvas'); c.width = 200; c.height = 150;
                 c.getContext('2d').fillRect(0, 0, 200, 150);
                 const dir = await openProject('blanks', { 'a.png': await canvasBlob(c) });
@@ -972,9 +966,9 @@ const PROJECT = `
                 const bytes = new Uint8Array(await data.arrayBuffer());
                 const at = [...bytes.keys()].find(i => bytes[i] === 0x70 && bytes[i + 1] === 0x48 && bytes[i + 2] === 0x59 && bytes[i + 3] === 0x73);
                 out.ppm = at ? new DataView(bytes.buffer).getUint32(at + 4) : 0;
-                // Opened in Paint (turned on for it)
+                // Opened in Paint
                 await until(() => PaintEditor.ready);
-                out.inPaint = PaintEditor.isOpen && PaintEditor.file === file && Experiments.on('paint');
+                out.inPaint = PaintEditor.isOpen && PaintEditor.file === file;
                 // Next time: the name after it
                 step = 'images';
                 const P = PaintEditor;
@@ -1047,13 +1041,7 @@ const PROJECT = `
                 const out = {};
                 const $ = (id) => document.getElementById(id);
                 const shownEl = (id) => { const e = $(id); return !!e && !e.classList.contains('hidden') && e.getClientRects().length > 0; };
-                // Both off (a release): no switch, no Start in
-                step = 'off';
-                experiment('adjust', false);
-                experiment('paint', false);
-                out.offNone = $('start-in').classList.contains('hidden') && !document.documentElement.classList.contains('modes-on');
-                experiment('adjust');
-                experiment('paint');
+                step = 'start';
                 out.startShown = !$('start-in').classList.contains('hidden') && [...$('start-in').querySelectorAll('[data-mode]')].map(b => b.dataset.mode).join() === 'photos,adjust,paint';
                 // Start in Adjust: a project opened from the landing page lands in Adjust
                 step = 'start in';
@@ -1144,7 +1132,7 @@ const PROJECT = `
                 return out;
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
-        check('modes: none shown while Adjust and Paint are off; Start in when they\'re on', r.offNone && r.startShown, JSON.stringify(r));
+        check('modes: Start in offers Photos, Adjust and Paint', r.startShown, JSON.stringify(r));
         check('modes: Start in is remembered; a project opened lands in that mode on its first photo', r.startKept && r.landedAdjust, JSON.stringify(r));
         check('modes: in Adjust the chip names it, top left, and a strip runs along the bottom', r.chipOver && r.strip, JSON.stringify(r));
         check('modes: another photo from the strip opens in the same mode', r.stepped, JSON.stringify(r));
@@ -1166,8 +1154,6 @@ const PROJECT = `
             try {
                 const out = {};
                 const $ = (id) => document.getElementById(id);
-                experiment('adjust');
-                experiment('paint');
                 $('start-in').querySelector('[data-mode="paint"]').click();
                 await until(() => !$('blank-panel').classList.contains('hidden'));
                 out.dialog = !$('blank-panel').querySelector('.blank-tabs').classList.contains('hidden') && $('blank-title').textContent === 'Paint' && $('blank-where').value === '\u0000pick';

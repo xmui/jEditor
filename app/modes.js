@@ -15,9 +15,6 @@
 // The landing page's Start in (Photos · Adjust · Paint, remembered) is
 // where a project opened from it lands; Paint there asks what to paint on
 // (blank.js: a new canvas, or an image or folder to open).
-//
-// A mode only shows while it's turned on (Settings → Experimental); with
-// neither on there's no switch at all.
 
 const Modes = {
     LIST: [
@@ -100,7 +97,6 @@ const Modes = {
             if (this.menu && !this.menu.contains(e.target) && !e.target.closest('.mode-chip')) this.closeMenu();
         }, true);
         addEventListener('resize', () => this.closeMenu());
-        addEventListener('jeditor-experiments', () => this.render());
         this.render();
     },
 
@@ -119,15 +115,12 @@ const Modes = {
     },
 
     on(mode) {
-        const app = this.app;
-        if (mode === 'adjust') return app.adjustOn();
-        if (mode === 'paint') return app.paintOn();
-        return mode === 'photos';
+        return this.LIST.some(([m]) => m === mode);
     },
 
-    // The modes shown: Photos, and whichever of the others are on
+    // The modes shown: Photos, Adjust and Paint
     shown() {
-        return this.LIST.filter(([m]) => this.on(m));
+        return this.LIST;
     },
 
     current() {
@@ -171,10 +164,7 @@ const Modes = {
         this.closeMenu();
         const from = this.current();
         if (mode === from || this._busy) return;
-        if (!this.on(mode)) {
-            app.showToast(`${mode === 'adjust' ? 'Adjust' : 'Paint'} is in Settings → Experimental`);
-            return;
-        }
+        if (!this.on(mode)) return;
         if (from === 'photos' && app.cropState.active) {
             app.showToast('Finish cropping first (Enter, or Esc)', 2000);
             return;
