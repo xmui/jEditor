@@ -43,6 +43,8 @@
     <script src="updates.js"></script>
     <script src="experiments.js"></script>
     <script src="logview.js"></script>
+    <script src="upright-model.js"></script>
+    <script src="upright.js"></script>
     <script src="scan-preview.js"></script>
     <script src="scan.js"></script>
     <script src="camera.js"></script>
@@ -1254,6 +1256,11 @@
                             <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
                             <span>Auto crop<small>jEditor finds each print and crops to it.</small></span>
                             <input id="scan-autocrop" type="checkbox" class="switch">
+                        </label>
+                        <label class="scan-switch" for="scan-upright">
+                            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+                            <span>Turn upright<small>Turns each photo the right way up, when it's sure.</small></span>
+                            <input id="scan-upright" type="checkbox" class="switch">
                         </label>
                         <label class="scan-switch" for="scan-show">
                             <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>

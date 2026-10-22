@@ -7,6 +7,7 @@ const CHANGELOG = [
     {
         version: '1.44.1', date: '2026-10-18',
         items: [
+            'Turn upright (`Shift+U`, or the right-click menu) turns photos the right way up: jEditor\'s own small network looks at each one and turns it only when it\'s sure, and one `Ctrl+Z` undoes them all. The scan window does it to each photo as it comes in (Turn upright, on to start with), turning each back with its front.',
             'Closing the window in Adjust or Paint with something not kept yet asks Keep your changes? first (Keep, Don\'t keep or Cancel), instead of losing it.',
             'Scanning on an Epson sheet feeder (the FastFoto): each photo is cropped and straightened by Epson\'s own photo crop, the one FastFoto\'s software uses, so less of the scanner\'s backing is left around it.',
             'Scanning on an Epson sheet feeder starts from the scanner\'s own defaults with FastFoto\'s photo tone, so colours come out as they do in FastFoto\'s software, not stronger. Settings chosen in Epson\'s window (Scanner\'s own settings…) are still used when you\'ve chosen them.',

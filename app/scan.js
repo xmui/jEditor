@@ -178,6 +178,8 @@ const Scan = {
         // choice, made when it was on to start with, so it isn't read
         this.el('scan-autocrop').checked = !!last && last.autoCropOn === true;
         this.el('scan-show').checked = this.el('scan-show-live').checked = !last || last.show !== false;
+        // On unless turned off (as in FastFoto)
+        this.el('scan-upright').checked = !last || last.upright !== false;
         this.placeOpts('home');
         this.loadOpts();
         this.el('scan-go').focus();
@@ -948,7 +950,7 @@ const Scan = {
             if (compat) all[device.id] = true; else delete all[device.id];
             localStorage.setItem(this.KEY_COMPAT, JSON.stringify(all));
         } catch (e) { /* private */ }
-        try { localStorage.setItem(this.KEY, JSON.stringify({ device: device.id, autoCropOn: autoCrop, show: this.el('scan-show').checked })); } catch (e) { /* private */ }
+        try { localStorage.setItem(this.KEY, JSON.stringify({ device: device.id, autoCropOn: autoCrop, show: this.el('scan-show').checked, upright: this.el('scan-upright').checked })); } catch (e) { /* private */ }
         const state = this.el('scan-panel').dataset.state;
         if (state === 'preview') return this.scanBoxes();
         // Scan more: the names carry on from the photos just scanned
@@ -1293,6 +1295,10 @@ const Scan = {
                 await this.autoCrop(names, { feeder: source === 'feeder' });
                 if (panel.dataset.state === 'done') this.status((result.cancelled ? 'Stopped after ' : 'Scanned ') + said + ' · auto cropped');
             }
+            if (this.el('scan-upright').checked) {
+                const turned = await this.upright(names);
+                if (turned && panel.dataset.state === 'done') this.status(`${this.el('scan-status').textContent} · ${turned} turned upright`);
+            }
         } else if (result.cancelled) {
             done('Scan stopped');
             app.showToast('Scan stopped', 2500, null, null, { type: 'info' });
@@ -1305,6 +1311,21 @@ const Scan = {
 
     // Prints come in all sizes: each scan is cropped to the print on it
     // (Auto crop; the originals are kept, so Ctrl+Z undoes it)
+    // Turn upright: each front turned the right way up, its back (-b) with it
+    async upright(names) {
+        const app = this.app;
+        const find = () => names.map(n => app.files.find(f => (f.relPath || f.name) === n)).filter(Boolean);
+        for (let i = 0; i < 50 && find().length < names.length; i++) await new Promise(r => setTimeout(r, 200));
+        const files = find();
+        const fronts = files.filter(f => !/-b\.[^.]+$/.test(f.name));
+        const backs = new Map();
+        for (const f of fronts) {
+            const back = files.find(b => b.name === f.name.replace(/(\.[^.]+)$/, '-b$1'));
+            if (back) backs.set(f, back);
+        }
+        return fronts.length ? app.turnUpright(fronts, { backs, quiet: true }) : 0;
+    },
+
     async autoCrop(names, { feeder = false } = {}) {
         const app = this.app;
         const find = () => names.map(n => app.files.find(f => (f.relPath || f.name) === n)).filter(Boolean);

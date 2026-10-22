@@ -87,6 +87,7 @@ It works like Lightroom or Apple Photos: the crop frame stays in the middle of t
 - **Loupe** (`M`): while you drag a corner or edge, or draw a level line, a close-up of that spot shows in a top corner of the window, at the photo's own pixels, with the crop's edge exactly where it will be saved. It moves to the other corner if your pointer comes near it. It's on to start with; turn it off with the button or `M`.
 - **Zoom** for a closer look: scroll on the photo (or pinch on a trackpad) to zoom in and out where the pointer is, or use `+` and `-` and the buttons in the bottom corner. Hold `Space` and drag, or drag with the middle button, to look around. Zoomed in, the view stays put while you drag and straighten; **Fit** (`Z`) goes back to the whole crop, as do a new aspect, a quarter turn, **Auto**, **Previous** and **Reset**. Close-ups use the full-size photo, not the screen-sized copy, once it's loaded.
 - **Auto** (`Shift+A`) finds the print on a scan, straightens it and crops to its edges. It needs a plain scanner lid or background around the photo (or, when the scan cut the print off at two opposite sides, down the other two), and it leaves a few pixels' margin so none of the bed shows. Turn on **Every photo** to run Auto on each photo as it opens. With `Shift+Enter` (save and next), a scan order then becomes: check the crop, press `Shift+Enter`, repeat.
+- **Turn upright** (`Shift+U`, or Turn upright in the right-click menu) turns the photo, or every photo selected in the grid, the right way up. jEditor's own small network looks at each one (in `upright.js`; how it was trained is in `tools/upright`) and only turns a photo when it's sure, so some are left for you. Each is turned the way the rotate buttons turn them, and one `Ctrl+Z` undoes them all. **Turn upright** in the scan window does it to each photo as it's scanned (on to start with), and turns a photo's back with its front.
 - **Batch Auto crop.** In the grid, select photos and press `Shift+A` (or **Auto crop** on the selection bar, or the right-click menu). Auto runs on each of them in the background, with the aspect ratio last chosen in the editor, and saves them. Photos with no print edge, or already cropped to it, are left alone. The originals are kept in `.jeditor/originals`, so one `Ctrl+Z` puts the whole batch back; flip through the results and fix the odd one in the editor.
 - `Ctrl+Z` inside the editor undoes the last adjustment; `Ctrl+Shift+Z` redoes it.
 - Aspect presets: 4×6, 5×7, 8×10, 11×14, square, 3:4, 16:9, original and free. `X` swaps portrait and landscape. A preset fits inside the current crop, so choosing one after Auto never takes in the bed.
@@ -227,6 +228,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `1`–`5` | Red, yellow, green, blue, purple label |
 | `U` | Clear flags |
 | `Shift+A` | Auto crop (the selection in grid view) |
+| `Shift+U` | Turn upright (the selection, or the photo) |
 | `Ctrl+F`, `/` | Search |
 | `Shift+N` | New folder |
 | `A` | Switch between All photos and folders (grid view) |
