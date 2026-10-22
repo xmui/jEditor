@@ -6304,12 +6304,8 @@ const app = {
                     [`Rotate ${n} right`, () => this.rotateBulk(90)],
                     [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
                     [`Auto crop ${n}`, () => this.batchAutoCrop(sel)],
-<<<<<<< HEAD
                     [`Turn ${n} upright`, () => this.turnUpright(sel)],
-                    ...(this.adjustOn() && Adjust.clipboard() ? [[`Paste adjustments onto ${n}`, () => this.pasteAdjust(sel)]] : []),
-=======
                     ...(Adjust.clipboard() ? [[`Paste adjustments onto ${n}`, () => this.pasteAdjust(sel)]] : []),
->>>>>>> origin/beta
                     ...(sel.some(f => f._edit) ? [[`Discard edits on ${sel.filter(f => f._edit).length.toLocaleString()}`, () => Edits.discard(sel)]] : []),
                     ['—'],
                     [`Move ${n} to…`, () => Folders.openPicker(sel, 'move')],
