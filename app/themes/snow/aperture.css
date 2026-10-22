@@ -1,8 +1,8 @@
 /* ==========================================================================
-   Snow Leopard, take C: jEditor as a pro app of 2010, the Aperture 3 kind.
-   Same Cocoa parts as take A, all in dark graphite: a dark unified toolbar
-   with smoky capsules, an inspector with tabs, a near-black browser where
-   the chosen photos get a white frame. Builds on take A.
+   Snow Leopard, Aperture: jEditor as a pro app of 2010, the Aperture 3 kind.
+   Same Cocoa parts as Finder, all in dark graphite: a dark unified toolbar
+   with smoky capsules, an inspector with its tab, a near-black browser where
+   the chosen photos get a white frame. Builds on finder.css.
    ========================================================================== */
 
 :root[data-skin="snow"] {

@@ -6,6 +6,12 @@
 
 const CHANGELOG = [
     {
+        version: '1.46.0', date: '2026-10-22', beta: true,
+        items: [
+            'New, as an experiment in the Windows app (on in betas): themes, in Settings → Appearance. jEditor as an app of another time, the same jEditor laid out the way that era\'s apps were, with its own title bar and a menu bar: Windows XP in Royale, Royale Noir and Royale Red; Snow Leopard as Finder or Aperture (dark); and 1984, the first Macintosh in one bit, whose Thumbnails setting shows the grid dithered (as MacPaint did), in black and white, or in colour. The menus have jEditor\'s commands with their keys; the title bar moves, maximises and closes the window. jEditor, first in the gallery, is the look you know.'
+        ]
+    },
+    {
         version: '1.45.0', date: '2026-10-22',
         items: [
             'Adjust and Paint are part of jEditor now, no longer experiments: no need to turn them on in Settings → Experimental. Switch modes at the top of the sidebar, or press `E` for Adjust and `B` for Paint.',

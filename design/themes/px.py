@@ -188,7 +188,7 @@ I['prev'] = """
 ................
 ................
 ................"""
-I['trash'] = open('icons/trash.png','rb') and None
+I['trash'] = None  # drawn by hand: app/themes/mac84/px/trash.png
 def save(name, art, flip=False):
     rows = [r for r in art.strip('\n').split('\n')]
     assert len(rows) == 16, (name, len(rows))
@@ -199,7 +199,7 @@ def save(name, art, flip=False):
             X = 15 - x if flip else x
             if c == '#': im.putpixel((X, y), (0, 0, 0, 255))
             elif c == 'o': im.putpixel((X, y), (255, 255, 255, 255))
-    im.save(f'px/{name}.png')
+    im.save(f'../../app/themes/mac84/px/{name}.png')
 for k, v in I.items():
     if v: save(k, v)
 save('rotr', I['rotl'], flip=True)

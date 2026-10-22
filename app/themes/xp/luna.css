@@ -1,7 +1,7 @@
 /* ==========================================================================
    Windows XP, the shared part of every XP take: Luna's tokens, the window
    frame, title bar and menu bar, combo boxes, buttons, the notification
-   balloon and the scroll bars. Each take adds its own layout on top.
+   balloon and the scroll bars. office.css adds the layout on top.
    ==========================================================================*/
 
 @font-face { font-family: "jE Tahoma"; src: url(../xp/fonts/tahoma.ttf) format("truetype"); font-weight: 400; }
