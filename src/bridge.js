@@ -90,6 +90,8 @@
             dispatchEvent(new Event('jeditor-files')); // another window moved photos
         } else if (msg.type === 'drivesChanged') {
             dispatchEvent(new Event('jeditor-drives')); // places.js
+        } else if (msg.type === 'devicesChanged') {
+            dispatchEvent(new Event('jeditor-devices')); // scan.js: a scanner plugged in or out
         } else if (msg.type === 'backdropState') {
             // Transparency effects turned on or off in Windows
             dispatchEvent(new CustomEvent('jeditor-backdrop', { detail: msg.state }));

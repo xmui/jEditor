@@ -180,8 +180,10 @@ sealed class MainForm : Form
     // ---- Drives plugged in or taken out (USB orders) ----
     // Windows tells every window; the page is told once things settle
 
-    const int WM_DEVICECHANGE = 0x0219, DBT_DEVICEARRIVAL = 0x8000, DBT_DEVICEREMOVECOMPLETE = 0x8004;
-    System.Windows.Forms.Timer? drivesTimer;
+    // Any device (a scanner) plugged in or taken out: DBT_DEVNODES_CHANGED,
+    // told to the page as devicesChanged (the scan dock's list)
+    const int WM_DEVICECHANGE = 0x0219, DBT_DEVICEARRIVAL = 0x8000, DBT_DEVICEREMOVECOMPLETE = 0x8004, DBT_DEVNODES_CHANGED = 0x0007;
+    System.Windows.Forms.Timer? drivesTimer, devicesTimer;
 
     protected override void WndProc(ref Message m)
     {
@@ -198,6 +200,20 @@ sealed class MainForm : Form
             }
             drivesTimer.Stop();
             drivesTimer.Start();
+        }
+        if (m.Msg == WM_DEVICECHANGE && m.WParam == DBT_DEVNODES_CHANGED)
+        {
+            if (devicesTimer is null)
+            {
+                devicesTimer = new System.Windows.Forms.Timer { Interval = 1500 };
+                devicesTimer.Tick += (_, _) =>
+                {
+                    devicesTimer.Stop();
+                    if (web.CoreWebView2 is not null) Post(new { type = "devicesChanged" });
+                };
+            }
+            devicesTimer.Stop();
+            devicesTimer.Start();
         }
         base.WndProc(ref m);
     }
@@ -850,7 +866,7 @@ sealed class MainForm : Form
                 case "scanners":
                 {
                     var (devices, problems) = await Scanners.ListAsync();
-                    Reply(id, new { devices = devices.Select(d => new { id = d.Id, name = d.Name, driver = d.Driver }), problems });
+                    Reply(id, new { devices = devices.Select(d => new { id = d.Id, name = d.Name, driver = d.Driver, found = d.Found }), problems });
                     break;
                 }
                 case "scan":
@@ -1008,7 +1024,7 @@ sealed class MainForm : Form
         try
         {
             var caps = await Stoppable(cancel => Scanners.CapsAsync(Str(msg, "device") ?? "", Str(msg, "driver") ?? "twain", msg["compat"]?.GetValue<bool>() ?? false, cancel));
-            Reply(id, new { bedW = caps.BedW, bedH = caps.BedH, dpis = caps.Dpis, gray = caps.Gray, guessed = caps.Guessed, flatbed = caps.Flatbed, feeder = caps.Feeder, duplex = caps.Duplex, feedW = caps.FeedW, feedH = caps.FeedH, compat = caps.Compat });
+            Reply(id, new { bedW = caps.BedW, bedH = caps.BedH, dpis = caps.Dpis, gray = caps.Gray, guessed = caps.Guessed, flatbed = caps.Flatbed, feeder = caps.Feeder, duplex = caps.Duplex, feedW = caps.FeedW, feedH = caps.FeedH, compat = caps.Compat, dpisSure = caps.DpisSure, optical = caps.Optical, autoSize = caps.AutoSize });
         }
         catch (OperationCanceledException) { Reply(id, new { cancelled = true }); }
         catch (Exception e)
