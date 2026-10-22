@@ -375,11 +375,19 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         const stayed = await page.evaluate(() => window.__asked) === 1 && await count() === 1;
         check('closing while held asks the page; its no keeps the window open', stayed);
         check('holdClose: no JS errors', errors.length === 0, errors.join('; '));
-        // Yes: closed (and on Linux, with the last window, jEditor quits)
+        // Yes: closed. On Linux, with the last window, jEditor quits; a Mac
+        // keeps running with no window, as Mac apps do
         const exited = new Promise(res => app.process().once('exit', () => res(true)));
         await page.evaluate(() => { window.__answer = true; });
         await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
-        const closed = await Promise.race([exited, new Promise(res => setTimeout(() => res(false), 8000))]);
+        const gone = async () => {
+            for (let i = 0; i < 80; i++) {
+                try { if (await count() === 0) return true; } catch (e) { return true; } // quit
+                await new Promise(res => setTimeout(res, 100));
+            }
+            return false;
+        };
+        const closed = await Promise.race([exited, gone()]);
         check('... its yes closes it', closed);
         await app.close().catch(() => { });
     }
