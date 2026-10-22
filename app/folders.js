@@ -240,6 +240,7 @@ const Folders = {
         // What this window shows, for the others' Move to: in any view, not
         // just the grid's (a project left in single view was missing there)
         if (typeof Windows !== 'undefined') Windows.publish();
+        if (typeof Modes !== 'undefined') Modes.render();
         if (!on) return;
         const counts = this.counts();
         if (rail) {
@@ -1025,6 +1026,8 @@ const Folders = {
             app.showToast(entry.copy
                 ? `Removed ${n} cop${n === 1 ? 'y' : 'ies'}`
                 : `Put ${n} photo${n === 1 ? '' : 's'} back`, 3000, null, null, { kind: 'undo' });
+        } else if (entry.type === 'folder-out') {
+            await this.undoOut(entry);
         } else if (entry.type === 'folder-create') {
             let kept = 0;
             for (const p of [...entry.paths].reverse()) {
@@ -1102,6 +1105,7 @@ const Folders = {
             items.push([`Copy ${what} here`, () => this.relocate(sel, path, { copy: true })]);
         }
         items.push(['—'], ['New folder inside…', () => this.newFolder(path)]);
+        if (Blank.can()) items.push(['New blank image…', () => Blank.open(path)]);
         if (path) {
             items.push(['Rename folder…', () => this.renameFolder(path)]);
             const empty = !app.files.some(f => this.within(this.dirOf(f), path)) && !this.children(path).length;
@@ -1142,6 +1146,13 @@ const Folders = {
             this.renderPicker();
             input.focus();
         }));
+        this.el('fp-where').addEventListener('click', (e) => {
+            const b = e.target.closest('[data-path]');
+            if (!b) return;
+            if (b.dataset.path === '\u0000back') this.browseUp();
+            else this.browseTo(b.dataset.path || null);
+            input.focus();
+        });
         this.el('fp-list').addEventListener('click', (e) => {
             const row = e.target.closest('.fp-row');
             if (!row || row.classList.contains('disabled')) return;
@@ -1157,6 +1168,7 @@ const Folders = {
                 this.renderPicker();
             };
             if (e.key === 'Escape') { e.preventDefault(); this.closePicker(); }
+            else if (e.key === 'Backspace' && this.browse && !input.value) { e.preventDefault(); this.browseUp(); }
             else if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
             else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
             else if (e.key === 'Enter') {
@@ -1178,6 +1190,7 @@ const Folders = {
         this.pickerFiles = files;
         this.pickerMode = mode;
         this.pickerHi = -1;
+        this.browse = null;
         const input = this.el('fp-filter');
         input.value = '';
         this.el('folder-picker').classList.remove('hidden');
@@ -1194,9 +1207,11 @@ const Folders = {
     closePicker() {
         this.hideModal('folder-picker');
         this.pickerFiles = null;
+        this.browse = null;
     },
 
     pickerList() {
+        if (this.browse) return this.browseList();
         const q = this.el('fp-filter').value.trim();
         const ql = q.toLowerCase().replace(/\s*\/\s*/g, '/');
         const copy = this.pickerMode === 'copy';
@@ -1242,7 +1257,7 @@ const Folders = {
                 }
             }
         }
-        return items.concat(folders, others);
+        return items.concat(folders, others, this.elsewhereItems(ql));
     },
 
     renderPicker(resetHi = false) {
@@ -1251,13 +1266,26 @@ const Folders = {
         this.el('fp-title').textContent = `${copy ? 'Copy' : 'Move'} ${n === 1 ? `“${this.pickerFiles[0].name}”` : `${n} photos`} to…`;
         this.el('folder-picker').querySelectorAll('.fp-mode button').forEach(b =>
             b.classList.toggle('active', b.dataset.mode === this.pickerMode));
-        this.el('fp-foot').textContent = `↑↓ choose · Enter ${copy ? 'copies' : 'moves'} · type a new name to make a folder (“Wedding/Speeches” makes one inside another)`;
+        this.el('fp-foot').textContent = this.browse
+            ? `↑↓ choose · Enter opens a folder, or ${copy ? 'copies' : 'moves'} them into this one · Backspace goes up · type a name for a new folder here`
+            : `↑↓ choose · Enter ${copy ? 'copies' : 'moves'} · type a new name to make a folder (“Wedding/Speeches” makes one inside another)`;
+        this.renderWhere();
+        this.el('fp-filter').placeholder = this.browse
+            ? (this.browse.path ? 'Find a folder here, or type a name for a new one' : 'Find a drive or folder')
+            : 'Find a folder, or type a name for a new one';
         const items = this.pickerList();
         this.pickerItems = items;
         if (resetHi || this.pickerHi < 0 || this.pickerHi >= items.length || (items[this.pickerHi] && items[this.pickerHi].disabled)) {
             let hi = -1;
             const q = this.el('fp-filter').value.trim();
-            if (!q && this.lastDest !== null) hi = items.findIndex(it => it.kind === 'folder' && it.path === this.lastDest && !it.disabled);
+            if (!q && this.lastDest !== null && !this.browse) hi = items.findIndex(it => it.kind === 'folder' && it.path === this.lastDest && !it.disabled);
+            // Browsing: the first folder (Move here is a click or two away)
+            if (hi === -1 && !q && this.browse && this.browse.path) hi = items.findIndex(it => it.kind === 'nav');
+            if (hi === -1 && q && this.browse) {
+                // Browsing: a folder of that name, else making it
+                hi = items.findIndex(it => it.kind === 'nav' && it.label.toLowerCase() === q.toLowerCase());
+                if (hi === -1) hi = items.findIndex(it => it.kind === 'newhere' && !it.disabled);
+            }
             if (hi === -1 && q) {
                 // A typed name that matches a folder exactly picks it;
                 // otherwise making the new folder comes first
@@ -1271,20 +1299,30 @@ const Folders = {
         if (!items.length) {
             const empty = document.createElement('div');
             empty.className = 'fp-empty';
-            empty.textContent = 'No folders match';
+            empty.textContent = this.browse && this.browse.loading ? 'Looking…' : this.browse && this.browse.error ? this.browse.error : 'No folders match';
             list.appendChild(empty);
             return;
         }
         items.forEach((it, i) => {
             const row = document.createElement('div');
-            row.className = 'fp-row' + (i === this.pickerHi ? ' hi' : '') + (it.disabled ? ' disabled' : '') + (it.kind === 'create' ? ' create' : '');
+            row.className = 'fp-row' + (i === this.pickerHi ? ' hi' : '') + (it.disabled ? ' disabled' : '') +
+                (it.kind === 'create' || it.kind === 'newhere' ? ' create' : '') + (it.kind === 'head' ? ' head' : '') + (it.kind === 'here' ? ' here' : '');
             row.dataset.i = i;
             row.setAttribute('role', 'option');
             row.style.setProperty('--depth', it.depth || 0);
-            if (it.kind === 'window') {
+            if (it.kind === 'head') {
+                row.textContent = it.label;
+                row.setAttribute('role', 'presentation');
+            } else if (it.kind === 'window') {
                 row.innerHTML = this.folderIcon('fp-icon') + '<span class="fp-name"></span><span class="fp-meta"></span>';
                 row.querySelector('.fp-name').textContent = it.label;
                 row.querySelector('.fp-meta').textContent = 'other window';
+            } else if (it.label !== undefined) {
+                // Elsewhere: a place outside the project, or a way to find one
+                row.innerHTML = (it.kind === 'newhere' ? '<span class="fp-plus">+</span>' : it.icon || this.folderIcon('fp-icon')) + '<span class="fp-name"></span><span class="fp-meta"></span>';
+                row.querySelector('.fp-name').textContent = it.label;
+                row.querySelector('.fp-meta').textContent = it.meta || '';
+                if (it.title) row.title = it.title;
             } else if (it.kind === 'create') {
                 const where = it.parent === '' ? this.rootName() : this.nameOf(it.parent);
                 row.innerHTML = `<span class="fp-plus">+</span><span class="fp-name"></span><span class="fp-meta"></span>`;
@@ -1305,6 +1343,34 @@ const Folders = {
         const files = this.pickerFiles;
         const copy = this.pickerMode === 'copy';
         if (!files) return;
+        if (item.kind === 'browse') return this.browseTo(null);
+        if (item.kind === 'nav') return this.browseTo(item.path);
+        if (item.kind === 'path' || item.kind === 'here') return this.sendOut(item.path);
+        if (item.kind === 'pick') {
+            const path = await this.native().pickPath(`${copy ? 'Copy' : 'Move'} ${files.length === 1 ? `“${files[0].name}”` : `${files.length} photos`} to`, this.outPlaces()[0] || null).catch(() => null);
+            if (path && this.pickerFiles === files) this.sendOut(path);
+            return;
+        }
+        if (item.kind === 'newhere') {
+            let made;
+            try {
+                made = await this.native().makeFolder(this.browse.path, item.name);
+            } catch (e) {
+                this.app.showToast('Couldn\'t make the folder: ' + e.message, 4000);
+                return;
+            }
+            return this.sendOut(made);
+        }
+        if (item.kind === 'pickweb') {
+            let dir;
+            try {
+                dir = await window.showDirectoryPicker({ id: 'jeditor-move-to', mode: 'readwrite' });
+            } catch (e) {
+                return; // not chosen
+            }
+            if (this.pickerFiles === files) this.sendToHandle(dir);
+            return;
+        }
         if (item.kind === 'window') {
             // Into the project in another window
             this.closePicker();
@@ -1331,6 +1397,227 @@ const Folders = {
             this.afterChange();
         }
         if (created.length) this.flash(dest);
+    },
+
+    // ---- Elsewhere: any folder, outside the project ----
+    // The apps (places): folders moved or copied to lately, the drives,
+    // pinned folders and the folders on them to browse (the picker becomes
+    // a folder browser: Move here, or a new folder there), and the
+    // system's own folder dialog. A browser: its own folder picker. A
+    // folder inside the project is a move within it, as above.
+
+    KEY_OUT: 'jeditor.moveOut', // the last folders outside the project moved or copied to
+
+    native() { return FolderCache.native(); },
+
+    outPlaces() {
+        try { return JSON.parse(localStorage.getItem(this.KEY_OUT) || '[]') || []; } catch (e) { return []; }
+    },
+
+    rememberPlace(path) {
+        const list = [path, ...this.outPlaces().filter(p => Places.key(p) !== Places.key(path))].slice(0, 5);
+        try { localStorage.setItem(this.KEY_OUT, JSON.stringify(list)); } catch (e) { /* private */ }
+    },
+
+    elsewhereItems(ql) {
+        const items = [];
+        if (Host.has('places')) {
+            const root = Windows.root();
+            for (const path of this.outPlaces()) {
+                if (root && Places.within(path, root)) continue;
+                if (ql && !path.toLowerCase().replace(/[\\/]+/g, '/').includes(ql)) continue;
+                items.push({ kind: 'path', path, label: Places.placeName(path), meta: Places.parentOf(path) || path, title: path });
+            }
+            items.push({ kind: 'browse', label: Host.say('Other folders on {computer}…'), meta: 'drives, pinned folders' });
+            items.push({ kind: 'pick', label: 'Choose a folder…', meta: Host.say('{files}\'s window') });
+        } else if (typeof window.showDirectoryPicker === 'function') {
+            items.push({ kind: 'pickweb', label: 'Choose a folder…', meta: 'anywhere' });
+        }
+        return items.length ? [{ kind: 'head', label: 'Elsewhere', disabled: true }, ...items] : [];
+    },
+
+    // The browser's rows: Move here (a folder) or the places to start from
+    // (none chosen yet), then its folders, and a new folder typed
+    browseList() {
+        const b = this.browse;
+        const copy = this.pickerMode === 'copy';
+        const q = this.el('fp-filter').value.trim();
+        const ql = q.toLowerCase();
+        const items = [];
+        if (b.path) items.push({ kind: 'here', path: b.path, label: `${copy ? 'Copy' : 'Move'} here: ${Places.placeName(b.path)}`, meta: b.path, title: b.path, icon: '<span class="fp-plus">↵</span>' });
+        let last = null;
+        for (const f of b.folders || []) {
+            if (ql && !f.name.toLowerCase().includes(ql)) continue;
+            if (f.group && f.group !== last) items.push({ kind: 'head', label: f.group, disabled: true });
+            last = f.group;
+            items.push({ kind: 'nav', path: f.path, label: f.name, meta: f.meta || '', icon: f.icon, title: f.path });
+        }
+        if (b.path && q && !(b.folders || []).some(f => f.name.toLowerCase() === ql)) {
+            const problem = this.nameProblem(q);
+            items.push({ kind: 'newhere', name: q, label: `New folder “${q}”`, meta: problem || `in ${Places.placeName(b.path)}`, disabled: !!problem });
+        }
+        return items;
+    },
+
+    // Into a folder (null: the places to start from)
+    async browseTo(path) {
+        const files = this.pickerFiles;
+        const b = this.browse = { path, folders: [], loading: true };
+        this.el('fp-filter').value = '';
+        this.renderPicker(true);
+        try {
+            if (path) {
+                const l = await this.native().listDir(path);
+                b.parent = l.parent || null;
+                b.folders = (l.folders || []).map(f => ({ name: f.name, path: f.path }));
+            } else {
+                b.folders = await this.startPlaces();
+            }
+        } catch (e) {
+            b.error = `Couldn't open it: ${e.message}`;
+        }
+        b.loading = false;
+        if (this.browse === b && this.pickerFiles === files) this.renderPicker(true);
+    },
+
+    browseUp() {
+        const b = this.browse;
+        if (!b) return;
+        if (!b.path) { this.browse = null; this.renderPicker(true); return; }
+        // A drive's top folder: back to the places to start from
+        this.browseTo(b.parent && Places.key(b.parent) !== Places.key(b.path) ? b.parent : null);
+    },
+
+    // Drives, the usual folders, pinned folders and the projects folder
+    async startPlaces() {
+        const places = await this.native().places().catch(() => ({ drives: [], home: [] }));
+        const out = [];
+        const seen = new Set();
+        const add = (group, name, path, icon, meta = '') => {
+            if (!path || seen.has(Places.key(path))) return;
+            seen.add(Places.key(path));
+            out.push({ group, name, path, icon, meta });
+        };
+        const fmt = (n) => this.app.formatBytes(n);
+        for (const d of (places.drives || []).slice().sort((a, b) => a.path.localeCompare(b.path))) {
+            add('Drives', d.name, d.path, `<span class="fp-icon">${Places.icons[d.kind] || Places.icons.disk}</span>`, d.total ? `${fmt(d.free)} free` : '');
+        }
+        const dir = Places.projectsDir();
+        if (dir) add('Folders', Places.baseName(dir), dir, `<span class="fp-icon">${Places.icons.project}</span>`, 'projects');
+        for (const p of Places.pins()) add('Folders', p.name, p.path, `<span class="fp-icon">${Places.icons.pin}</span>`, 'pinned');
+        for (const h of places.home || []) add('Folders', h.name, h.path, null);
+        return out;
+    },
+
+    // The where bar while browsing: ← and the path, each part a link
+    renderWhere() {
+        const bar = this.el('fp-where');
+        const b = this.browse;
+        bar.classList.toggle('hidden', !b);
+        if (!b) return;
+        const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        let html = `<button class="btn ghost icon sm" data-path="\u0000back" title="Back (Backspace)" aria-label="Back"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>`;
+        html += `<button class="fp-crumb" data-path="">${esc(Host.say('{computer}').replace(/^this /, 'This '))}</button>`;
+        if (b.path) {
+            const sep = Places.sep(b.path);
+            const parts = b.path.split(/[\\/]/).filter(Boolean);
+            let acc = '';
+            parts.forEach((part, i) => {
+                acc = i === 0 ? (b.path.startsWith('/') ? '/' + part : part + sep) : acc.replace(/[\\/]$/, '') + sep + part;
+                html += `<span class="fp-sep">›</span><button class="fp-crumb" data-path="${esc(acc)}">${esc(part)}</button>`;
+            });
+        }
+        bar.innerHTML = html;
+    },
+
+    // Into a folder outside the project, by path (the apps): moved or
+    // copied there by the app, Ctrl+Z puts them back. One inside the
+    // project is a move within it
+    async sendOut(dest) {
+        const files = this.pickerFiles;
+        const copy = this.pickerMode === 'copy';
+        if (!files) return;
+        this.closePicker();
+        const root = Windows.root();
+        if (root && Places.within(dest, root)) {
+            const rel = dest.replace(/[\\/]+$/, '').slice(root.replace(/[\\/]+$/, '').length).split(/[\\/]/).filter(Boolean).join('/');
+            const known = this.find(rel);
+            if (known !== null) return this.relocate(files, known, { copy });
+        }
+        for (const f of files) await this.settle(f);
+        const paths = files.map(f => Windows.pathOf(f)).filter(Boolean);
+        if (!paths.length) {
+            this.app.showToast('jEditor can\'t tell where these photos are on disk', 4000);
+            return;
+        }
+        const items = await Windows.send(paths, dest, '', copy, Places.placeName(dest));
+        if (items && items.some(i => i.to)) this.rememberPlace(dest);
+    },
+
+    // A browser: into a folder chosen with its own picker. Ctrl+Z puts
+    // them back (or removes the copies)
+    async sendToHandle(dir) {
+        const app = this.app;
+        const files = this.pickerFiles;
+        const copy = this.pickerMode === 'copy';
+        if (!files) return;
+        this.closePicker();
+        const inside = await app.dirHandle.resolve(dir).catch(() => null);
+        if (inside) {
+            const known = this.find(inside.join('/'));
+            if (known !== null) return this.relocate(files, known, { copy });
+        }
+        const taken = new Set();
+        try { for await (const k of dir.keys()) taken.add(k.toLowerCase()); } catch (e) { /* none */ }
+        const items = [];
+        let failed = 0, why = '';
+        for (const f of files) {
+            await this.settle(f);
+            const name = taken.has(f.name.toLowerCase()) ? this.freeName(f.name, taken) : f.name;
+            taken.add(name.toLowerCase());
+            const fromDir = f.parentDir || app.dirHandle;
+            try {
+                if (copy) {
+                    const data = await f.handle.getFile();
+                    const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
+                    await w.write(data);
+                    await w.close();
+                } else {
+                    await this.transferFile(f.handle, fromDir, dir, name);
+                }
+                items.push({ name, fromDir, fromName: f.name, fromRel: this.dirOf(f) });
+            } catch (e) {
+                failed++;
+                why = why || e.message;
+            }
+        }
+        const n = items.length;
+        if (n) {
+            app.pushUndo({ type: 'folder-out', dir, items, copy, where: dir.name });
+            app.showToast(`${copy ? 'Copied' : 'Moved'} ${n} photo${n === 1 ? '' : 's'} into ${dir.name} — Ctrl+Z undoes it`, 4000, null, null, { type: 'success', kind: 'move' });
+        }
+        if (failed) app.showToast(`${failed} couldn't be ${copy ? 'copied' : 'moved'}: ${why}`, 5000);
+        if (!copy && n) Watch.request({ full: true });
+    },
+
+    async undoOut(entry) {
+        const app = this.app;
+        let failed = 0;
+        for (const it of entry.items) {
+            try {
+                if (entry.copy) await entry.dir.removeEntry(it.name);
+                else {
+                    const h = await entry.dir.getFileHandle(it.name);
+                    await this.transferFile(h, entry.dir, it.fromDir, it.fromName);
+                }
+            } catch (e) {
+                failed++;
+            }
+        }
+        if (!entry.copy) Watch.request({ full: true });
+        if (failed) throw new Error(`${failed} photo${failed === 1 ? '' : 's'} could not be put back`);
+        const n = entry.items.length;
+        app.showToast(entry.copy ? `Removed ${n} cop${n === 1 ? 'y' : 'ies'}` : `Put ${n} photo${n === 1 ? '' : 's'} back`, 3000, null, null, { kind: 'undo' });
     },
 
     // ---- Name clash ----

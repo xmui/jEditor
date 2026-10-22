@@ -13,23 +13,9 @@ const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright-core');
 const { createServer } = require('../scripts/serve.js');
+const { launchOptions, PAGE_HELPERS, newPage } = require('./page-helpers.js');
 
 const ROOT = path.join(__dirname, '..');
-
-function launchOptions() {
-    const candidates = [
-        process.env.CHROME_PATH,
-        '/opt/pw-browsers/chromium',
-        '/usr/bin/chromium',
-        '/usr/bin/chromium-browser',
-        '/usr/bin/google-chrome',
-        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
-    ].filter(Boolean);
-    for (const p of candidates) {
-        if (fs.existsSync(p)) return { executablePath: p, args: ['--no-sandbox'] };
-    }
-    return { channel: 'chrome', args: ['--no-sandbox'] };
-}
 
 let passed = 0, failed = 0;
 function check(name, ok, detail = '') {
@@ -37,180 +23,8 @@ function check(name, ok, detail = '') {
     else { failed++; console.log(`  FAIL  ${name}${detail ? ' — ' + detail : ''}`); }
 }
 
-// Shared in-page helpers, injected into every test page.
-const PAGE_HELPERS = `
-    // A fake FileSystemFileHandle backed by in-memory bytes.
-    window.makeHandle = (name, bytes, type) => {
-        const h = {
-            kind: 'file', name, writes: 0,
-            bytes: new Uint8Array(bytes),
-            getFile: async () => new File([h.bytes], name, { type, lastModified: Date.now() }),
-            // Like FileSystemFileHandle: whole-file writes, or positional
-            // writes on top of the existing data with keepExistingData
-            createWritable: async (opts) => {
-                let buf = opts && opts.keepExistingData ? new Uint8Array(h.bytes) : new Uint8Array(0);
-                return {
-                    write: async (d) => {
-                        if (d && d.type === 'write') {
-                            const data = new Uint8Array(d.data.buffer ? d.data : await d.data.arrayBuffer());
-                            if (d.position + data.length > buf.length) {
-                                const grown = new Uint8Array(d.position + data.length);
-                                grown.set(buf);
-                                buf = grown;
-                            }
-                            buf.set(data, d.position);
-                            h.inPlaceWrites = (h.inPlaceWrites || 0) + 1;
-                        } else {
-                            buf = new Uint8Array(await d.arrayBuffer());
-                            h.writtenType = d.type;
-                        }
-                    },
-                    close: async () => { h.bytes = buf; h.writes++; },
-                    abort: async () => { }
-                };
-            },
-            queryPermission: async () => 'granted',
-            requestPermission: async () => 'granted'
-        };
-        return h;
-    };
-    window.makeFakeFile = (name, bytes, type, size, mtime) => {
-        const handle = makeHandle(name, bytes, type);
-        return { name, handle, size: size ?? bytes.length, lastModified: mtime ?? Date.now() };
-    };
-    // Minimal JPEG byte stream: SOI + (optional segments) + SOS + EOI.
-    window.makeJpegBytes = (segments = []) => {
-        const parts = [[0xFF, 0xD8], ...segments.map(s => [...s]), [0xFF, 0xDA, 0x00, 0x02], [0xFF, 0xD9]];
-        return parts.flat();
-    };
-    window.readOrientation = (bytes) => {
-        const view = new DataView(new Uint8Array(bytes).buffer);
-        const loc = app.findJpegOrientation(view);
-        if (!loc || loc.insert) return null;
-        return view.getUint16(loc.valueOffset, loc.littleEndian);
-    };
-    // Real, decodable JPEG with optional metadata: EXIF (Make "TestCam" +
-    // DateTimeOriginal, no Orientation — like a scanner), JFIF DPI, an
-    // ICC_PROFILE segment, and XMP carrying tiff:Orientation.
-    window.makeRealJpeg = async (w, h, { exif = false, dpi = 0, icc = false, color = '#3a7', xmpOrientation = 0 } = {}) => {
-        const c = document.createElement('canvas');
-        c.width = w; c.height = h;
-        const g = c.getContext('2d');
-        g.fillStyle = color; g.fillRect(0, 0, w, h);
-        const bytes = new Uint8Array(await (await new Promise(r => c.toBlob(r, 'image/jpeg', 0.95))).arrayBuffer());
-        const segs = ImageMeta.jpegSegments(bytes);
-        const body = bytes.subarray(segs.find(s => s.marker !== 0xE0).start);
-        const seg = (marker, payload) => {
-            const len = payload.length + 2;
-            return [0xFF, marker, len >> 8, len & 0xFF, ...payload];
-        };
-        const ascii = (t) => [...t].map(ch => ch.charCodeAt(0));
-        const parts = [[0xFF, 0xD8]];
-        if (dpi) parts.push(seg(0xE0, [...ascii('JFIF'), 0, 1, 2, 1, dpi >> 8, dpi & 0xFF, dpi >> 8, dpi & 0xFF, 0, 0]));
-        if (exif) {
-            const make = [...ascii('TestCam'), 0];
-            const date = [...ascii('2024:06:15 13:45:00'), 0];
-            const makeOff = 38, exifOff = makeOff + make.length, dateOff = exifOff + 18;
-            const t = new DataView(new ArrayBuffer(dateOff + date.length));
-            t.setUint16(0, 0x4D4D); t.setUint16(2, 42); t.setUint32(4, 8); t.setUint16(8, 2);
-            t.setUint16(10, 0x010F); t.setUint16(12, 2); t.setUint32(14, make.length); t.setUint32(18, makeOff);
-            t.setUint16(22, 0x8769); t.setUint16(24, 4); t.setUint32(26, 1); t.setUint32(30, exifOff);
-            t.setUint32(34, 0);
-            make.forEach((b, i) => t.setUint8(makeOff + i, b));
-            t.setUint16(exifOff, 1);
-            t.setUint16(exifOff + 2, 0x9003); t.setUint16(exifOff + 4, 2);
-            t.setUint32(exifOff + 6, date.length); t.setUint32(exifOff + 10, dateOff);
-            t.setUint32(exifOff + 14, 0);
-            date.forEach((b, i) => t.setUint8(dateOff + i, b));
-            parts.push(seg(0xE1, [...ascii('Exif'), 0, 0, ...new Uint8Array(t.buffer)]));
-        }
-        if (xmpOrientation) {
-            parts.push(seg(0xE1, [...ascii('http://ns.adobe.com/xap/1.0/'), 0,
-                ...ascii('<x:xmpmeta><rdf:Description tiff:Orientation="' + xmpOrientation + '"/></x:xmpmeta>')]));
-        }
-        if (icc) parts.push(seg(0xE2, [...ascii('ICC_PROFILE'), 0, 1, 1, ...new Array(128).fill(0)]));
-        const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0) + body.length);
-        let o = 0;
-        for (const p of parts) { out.set(p, o); o += p.length; }
-        out.set(body, o);
-        return out;
-    };
-    // Real PNG with a pHYs chunk (DPI) right after IHDR
-    window.makeRealPng = async (w, h, dpi) => {
-        const c = document.createElement('canvas');
-        c.width = w; c.height = h;
-        c.getContext('2d').fillRect(0, 0, w, h);
-        const png = new Uint8Array(await (await new Promise(r => c.toBlob(r, 'image/png'))).arrayBuffer());
-        const table = Array.from({ length: 256 }, (_, n) => {
-            let x = n;
-            for (let k = 0; k < 8; k++) x = x & 1 ? 0xEDB88320 ^ (x >>> 1) : x >>> 1;
-            return x >>> 0;
-        });
-        const crc = (bytes) => {
-            let x = 0xFFFFFFFF;
-            for (const b of bytes) x = table[(x ^ b) & 0xFF] ^ (x >>> 8);
-            return (x ^ 0xFFFFFFFF) >>> 0;
-        };
-        const ppm = Math.round(dpi / 0.0254);
-        const typeAndData = new Uint8Array(13);
-        typeAndData.set([0x70, 0x48, 0x59, 0x73]); // 'pHYs'
-        const tv = new DataView(typeAndData.buffer);
-        tv.setUint32(4, ppm); tv.setUint32(8, ppm); typeAndData[12] = 1;
-        const chunk = new Uint8Array(21);
-        const cv = new DataView(chunk.buffer);
-        cv.setUint32(0, 9);
-        chunk.set(typeAndData, 4);
-        cv.setUint32(17, crc(typeAndData));
-        const ihdrEnd = 8 + 25;
-        const out = new Uint8Array(png.length + chunk.length);
-        out.set(png.subarray(0, ihdrEnd));
-        out.set(chunk, ihdrEnd);
-        out.set(png.subarray(ihdrEnd), ihdrEnd + chunk.length);
-        return out;
-    };
-    // Fake FileSystemDirectoryHandle backed by Maps
-    window.makeDir = (name) => {
-        const dirs = new Map(), files = new Map();
-        const dir = {
-            kind: 'directory', name, _files: files, _dirs: dirs,
-            getDirectoryHandle: async (n, o) => {
-                if (!dirs.has(n)) {
-                    if (!o || !o.create) { const e = new Error('nf'); e.name = 'NotFoundError'; throw e; }
-                    dirs.set(n, makeDir(n));
-                }
-                return dirs.get(n);
-            },
-            getFileHandle: async (n, o) => {
-                if (!files.has(n)) {
-                    if (!o || !o.create) { const e = new Error('nf'); e.name = 'NotFoundError'; throw e; }
-                    files.set(n, makeHandle(n, [], 'image/jpeg'));
-                }
-                return files.get(n);
-            },
-            removeEntry: async (n) => { files.delete(n); },
-            queryPermission: async () => 'granted',
-            requestPermission: async () => 'granted'
-        };
-        return dir;
-    };
-`;
-
 // Synthetic scans with known answers, for the photo finder (scenes.js)
 const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
-
-async function newPage(browser, url) {
-    const page = await browser.newPage();
-    const issues = { errors: [], failedRequests: [] };
-    page.on('pageerror', e => issues.errors.push('PAGEERROR: ' + e.message));
-    page.on('console', m => { if (m.type() === 'error') issues.errors.push('CONSOLE: ' + m.text()); });
-    page.on('requestfailed', r => issues.failedRequests.push(r.url()));
-    page.on('response', r => { if (r.status() >= 400) issues.failedRequests.push(r.status() + ' ' + r.url()); });
-    // THROTTLE=6 npm test: run pages on a slowed CPU, to catch tests that rely on timing
-    if (process.env.THROTTLE) { const cdp = await page.context().newCDPSession(page); await cdp.send('Emulation.setCPUThrottlingRate', { rate: +process.env.THROTTLE }); }
-    await page.goto(url, { waitUntil: 'networkidle' });
-    await page.evaluate(PAGE_HELPERS);
-    return { page, issues };
-}
 
 (async () => {
     // ---- 0. PWA static checks: manifest, icons, service worker assets ----
@@ -387,6 +201,11 @@ async function newPage(browser, url) {
             Array.isArray(e.items) && e.items.length && e.items.every(t => typeof t === 'string' && t.trim())));
         const notes = notesFor(pkgVersion, log);
         check('release notes come from the changelog', !!notes && notes.startsWith('- ' + log[0].items[0]));
+        const made = notesFor('3.0.0', [
+            { version: '3.0.0', items: ['three'] }, { version: '2.1.0', beta: true, items: ['two one'] },
+            { version: '2.0.0', beta: true, items: ['two'] }, { version: '1.0.0', items: ['one'] }]);
+        check('a release\'s notes take in the betas before it, never released, and stop at the last release',
+            /^- three\n[^]*2\.1\.0 beta[^]*- two one[^]*2\.0\.0 beta[^]*- two\n$/.test(made) && !made.includes('- one'), made);
 
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
         const r = await page.evaluate(() => {
@@ -1026,12 +845,12 @@ async function newPage(browser, url) {
             out.pillHidden = pill.classList.contains('hidden');
             return out;
         });
-        // (Adjust, an experiment, shows when it's turned on)
         check('default main controls: info, view, refresh, crop, history', r.defaultMain === 'info,view,refresh,crop,history', r.defaultMain);
-        check('extras live in More (fit, strip, fullscreen, dupes, keys, whatsnew, customize)', r.defaultExtras === 'fit,strip,fullscreen,dupes,keys,whatsnew,customize', r.defaultExtras);
+        // (Adjust and Paint too: the mode switch has them)
+        check('extras live in More (adjust, paint, fit, strip, fullscreen, dupes, keys, whatsnew, customize)', r.defaultExtras === 'adjust,paint,fit,strip,fullscreen,dupes,keys,whatsnew,customize', r.defaultExtras);
         check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
-        // (Adjust, newer than that saved order, goes after Crop)
-        check('reorder + hide + promote via prefs', r.reordered === 'crop,adjust,info' && r.refreshHidden && r.fullscreenMain,
+        // (Adjust, newer than that saved order, goes after Crop, and Paint after it)
+        check('reorder + hide + promote via prefs', r.reordered === 'crop,adjust,paint' && r.refreshHidden && r.fullscreenMain,
             JSON.stringify({ o: r.reordered, h: r.refreshHidden, f: r.fullscreenMain }));
         check('vertical pill + scale + persistence', r.vertical && r.persisted && parseFloat(r.scaleApplied) === 1.2,
             JSON.stringify({ v: r.vertical, p: r.persisted, z: r.scaleApplied }));
@@ -1424,7 +1243,64 @@ async function newPage(browser, url) {
             for (let i = 0; i < 150 && (ed._anim || ed.drag); i++) await new Promise(res => setTimeout(res, 20)); // the glide
             const f3 = frame(), st3 = stage();
             out.settled = Math.abs((f3[0] + f3[2]) / 2 - st3.width / 2) < 1 && Math.abs((f3[1] + f3[3]) / 2 - st3.height / 2) < 1;
+
+            // Loupe: while a handle is dragged, a close-up of that corner in
+            // a top corner away from the pointer; off, none
+            ed.setLoupe(true);
+            ed.setRect({ x0: -150, y0: -100, x1: 150, y1: 100 });
+            ed.settle(false);
+            const f4 = frame();
+            ptr('pointerdown', f4[0], f4[1]); ptr('pointermove', f4[0] + 10, f4[1] + 8);
+            const lf = ed.loupeFocus(), lb = ed.loupeBox(), o4 = ed.outputRect();
+            out.loupe = !!lf && lf.x === o4.x0 && lf.y === o4.y0 && !!lb && lb.x > stage().width / 2
+                && ed.loupeScale(ed.view().s) >= 2 * ed.view().s;
+            ed.setLoupe(false);
+            out.loupeOff = ed.loupeFocus() === null && document.getElementById('crop-loupe').getAttribute('aria-pressed') === 'false';
+            ed.setLoupe(true);
+            ptr('pointerup', f4[0] + 10, f4[1] + 8);
+            out.loupeGone = ed.loupeFocus() === null;
+
+            // Zoom: the wheel zooms about the pointer; the view stays zoomed
+            // through a resize; Fit (and a new aspect) rest on the crop again
+            ed.setRect({ x0: -150, y0: -100, x1: 150, y1: 100 });
+            ed.fitView(false);
+            const home = ed.view().s, f5 = frame();
+            const wheel = (x, y, dy) => ed.canvas.dispatchEvent(new WheelEvent('wheel', { clientX: stage().left + x, clientY: stage().top + y, deltaY: dy, bubbles: true, cancelable: true }));
+            const under = ed.toOutput(f5[2], f5[3]);
+            wheel(f5[2], f5[3], -300);
+            const anchored = ed.toOutput(f5[2], f5[3]);
+            out.zoomIn = ed.zoomed && ed.view().s > home * 1.5 && Math.hypot(anchored.x - under.x, anchored.y - under.y) < 0.5
+                && /^\d+%$/.test(document.getElementById('crop-zoom-fit').textContent);
+            const vz = { ...ed.view() }, f6 = frame();
+            ptr('pointerdown', f6[2], f6[3]); ptr('pointermove', f6[2] - 20, f6[3] - 20); ptr('pointerup', f6[2] - 20, f6[3] - 20);
+            out.zoomKept = ed.rect.x1 < 149 && ed.zoomed && ed.view().s === vz.s && ed.view().cx === vz.cx;
+            // Space held: dragging moves the view, not the crop
+            const r6 = JSON.stringify(ed.rect);
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
+            ptr('pointerdown', 300, 200); ptr('pointermove', 260, 180); ptr('pointerup', 260, 180);
+            window.dispatchEvent(new KeyboardEvent('keyup', { key: ' ' }));
+            out.spacePan = JSON.stringify(ed.rect) === r6 && Math.abs(ed.view().cx - vz.cx - 40 / vz.s) < 1e-6;
+            ed.fitView(false);
+            out.zoomFit = !ed.zoomed && Math.abs(ed.view().s - home) < 1e-6 && document.getElementById('crop-zoom-fit').textContent === 'Fit';
+            ed.zoomBy(2);
+            ed.zoomBy(0.5);
+            out.zoomBackRests = !ed.zoomed;
+            ed.zoomBy(2);
+            ed.setAspect('1:1');
+            out.aspectFits = !ed.zoomed;
+            ed.setAspect('free');
             app.cancelCrop();
+
+            // Close-ups draw from the full-size photo, not the screen-sized
+            // working copy
+            const big = makeFakeFile('big.jpg', await makeRealJpeg(2800, 1900, {}), 'image/jpeg');
+            await open(big);
+            const small = ed.preview.width < ed.W;
+            ed.zoomBy(4);
+            for (let i = 0; i < 100 && !ed.detail; i++) await new Promise(res => setTimeout(res, 20));
+            out.detail = small && !!ed.detail && ed.detail.width === 2800 && ed.source(ed.view().s) === ed.detail;
+            app.cancelCrop();
+            out.detailDropped = !ed.detail;
 
             // "Every photo": Auto runs as the editor opens
             ed.setAutoEach(true);
@@ -1536,6 +1412,11 @@ async function newPage(browser, url) {
         check('Ctrl+drag draws a level line', r.ctrlLevel);
         check('editor undo: a run of nudges is one step; redo', r.nudged && r.undoNudges && r.redo);
         check('handle resize, then the view re-centers', r.resized && r.settled);
+        check('loupe: a close-up of the dragged corner, away from the pointer; can be turned off', r.loupe && r.loupeOff && r.loupeGone, JSON.stringify([r.loupe, r.loupeOff, r.loupeGone]));
+        check('zoom: the wheel zooms about the pointer, and it stays zoomed through a resize', r.zoomIn && r.zoomKept, JSON.stringify([r.zoomIn, r.zoomKept]));
+        check('zoom: Space+drag moves the view, not the crop', r.spacePan);
+        check('zoom: Fit, zooming back, or a new aspect rest on the crop again', r.zoomFit && r.zoomBackRests && r.aspectFits, JSON.stringify([r.zoomFit, r.zoomBackRests, r.aspectFits]));
+        check('close-ups use the full-size photo, dropped on close', r.detail && r.detailDropped, JSON.stringify([r.detail, r.detailDropped]));
         check('"Every photo" runs Auto as each photo opens', r.autoEach);
         check('crop suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
@@ -1775,9 +1656,14 @@ async function newPage(browser, url) {
             app.readOnlyMode = false;
             const snap = app.perfSnapshot().join('\n');
             out.perf = /Undo: \d+ steps/.test(snap) && /Images decoded/.test(snap) && /Photo load/.test(snap);
+            // Off in Settings to start with: the shortcut does nothing
+            app.toggleDebugConsole();
+            out.debugOff = !document.getElementById('debug-console').classList.contains('open');
+            app.uiPrefs.debugConsole = true;
             app.toggleDebugConsole();
             out.perfShown = /Thumbnails:/.test(document.getElementById('debug-perf').textContent);
             app.toggleDebugConsole();
+            app.uiPrefs.debugConsole = false;
             app.selection = new Set([app.files[0]]);
             app.updateSelectionUI();
             out.selectionText = document.getElementById('selection-count').textContent;
@@ -1800,6 +1686,7 @@ async function newPage(browser, url) {
         check('selection count reads "1 selected"', r.selectionText === '1 selected', r.selectionText);
         check('back in the grid, only the current photo is selected (no stale rings)', r.noStaleRings && r.onlyCurrentRinged,
             JSON.stringify({ stale: !r.noStaleRings, only: r.onlyCurrentRinged }));
+        check('debug console is off until turned on in Settings', r.debugOff);
         check('debug console shows a performance readout', r.perf && r.perfShown);
         check('viewer suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
@@ -2800,7 +2687,7 @@ async function newPage(browser, url) {
         check('folders: moved photos keep their cached thumbnail and preview', r.cacheCarried);
         check('folders: folder list can be hidden (remembered)', r.railHidden);
         check('folders: Rename All in a folder covers that folder only', r.renameScope === 'Wedding/b.jpg,Wedding/w1.jpg|All photos in Wedding (2)', r.renameScope);
-        check('folders: folder menu', r.menu === 'Open|Folder info|—|New folder inside…|Rename folder…|—|Delete folder', r.menu);
+        check('folders: folder menu', r.menu === 'Open|Folder info|—|New folder inside…|New blank image…|Rename folder…|—|Delete folder', r.menu);
         check('path chip: shown in single view, hidden in the grid', r.chipSingle && !r.chipGrid, `${r.chipSingle}/${r.chipGrid}`);
         check('folders: grid rows keep their gap (tiles never overlap)', r.rowGap === 16 && r.square, `gap=${r.rowGap}`);
         check('folders: folder menu moves or copies the selection there', r.menuSel === 'Open|Folder info|—|Move 2 photos here|Copy 2 photos here', r.menuSel);
@@ -2827,6 +2714,54 @@ async function newPage(browser, url) {
         check('folders: drag onto a folder moves', dragged.moved && dragged.kept, JSON.stringify(dragged));
         check('folders: Ctrl+drag copies', copied);
         check('folders suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    console.log('folders: any folder, in a browser');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const opfs = await navigator.storage.getDirectory();
+            for (const n of ['outweb', 'elsewhere']) try { await opfs.removeEntry(n, { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('outweb', { create: true });
+            const away = await opfs.getDirectoryHandle('elsewhere', { create: true });
+            const put = async (d, name, color) => {
+                const w = await (await d.getFileHandle(name, { create: true })).createWritable();
+                await w.write(new Blob([await makeRealJpeg(300, 200, { color })], { type: 'image/jpeg' }));
+                await w.close();
+            };
+            await put(dir, 'a.jpg', '#c33');
+            await put(dir, 'b.jpg', '#3c3');
+            await put(away, 'a.jpg', '#333'); // taken there: the copy is a (2)
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            const names = async (d) => { const n = []; for await (const k of d.keys()) n.push(k); return n.sort().join(','); };
+            const rows = () => [...document.querySelectorAll('#fp-list .fp-row')].map(r => (r.classList.contains('head') ? '#' : '') + r.textContent.trim());
+            const f = (n) => app.files.find(x => x.name === n);
+            window.showDirectoryPicker = async () => away;
+            // Copy: into the folder chosen, under a free name
+            Folders.openPicker([f('a.jpg')], 'copy');
+            out.rows = rows().join(' | ');
+            [...document.querySelectorAll('#fp-list .fp-row')].find(r => /Choose a folder/.test(r.textContent)).click();
+            await new Promise(res => { const t = setInterval(async () => { if (/a \(2\)/.test(await names(away))) { clearInterval(t); res(); } }, 50); });
+            out.copied = await names(away);
+            await app.undo();
+            out.uncopied = await names(away);
+            // Move: out of the project; Ctrl+Z brings it back
+            Folders.openPicker([f('b.jpg')], 'move');
+            [...document.querySelectorAll('#fp-list .fp-row')].find(r => /Choose a folder/.test(r.textContent)).click();
+            await new Promise(res => { const t = setInterval(() => { if (!f('b.jpg')) { clearInterval(t); res(); } }, 50); });
+            out.moved = [await names(away), await names(dir)];
+            await app.undo();
+            await new Promise(res => { const t = setInterval(() => { if (f('b.jpg')) { clearInterval(t); res(); } }, 50); });
+            out.back = [await names(away), (await names(dir)).replace(/,?\.jeditor/, '')];
+            return out;
+        });
+        check('any folder (browser): Move to… offers its own folder picker, under Elsewhere', /#Elsewhere \| .*Choose a folder…/.test(r.rows) && !/Other folders/.test(r.rows), r.rows);
+        check('... a copy goes there under a free name; Ctrl+Z removes it', r.copied === 'a (2).jpg,a.jpg' && r.uncopied === 'a.jpg', JSON.stringify([r.copied, r.uncopied]));
+        check('... a move takes it out of the project; Ctrl+Z puts it back', r.moved[0] === 'a.jpg,b.jpg' && !/b\.jpg/.test(r.moved[1]) && r.back[0] === 'a.jpg' && /b\.jpg/.test(r.back[1]), JSON.stringify([r.moved, r.back]));
+        check('any folder (browser): no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
@@ -4319,27 +4254,32 @@ async function newPage(browser, url) {
             app.toggleCustomizePanel(true);
             app.showSettingsPage('experimental');
             const page = document.getElementById('set-page-experimental');
-            const listed = page.classList.contains('active') && !!document.getElementById('exp-adjust') && !document.getElementById('exp-adjust').checked;
+            // Adjust and Paint aren't experiments any more
+            const listed = page.classList.contains('active') && !document.getElementById('exp-adjust') && !document.getElementById('exp-paint');
             // One being made: off until turned on, and it stays on
-            Experiments.LIST.push({ id: 'paint', title: 'Paint', text: 'Layers, brushes and shapes' });
+            const saved = Experiments.LIST;
+            Experiments.LIST = [{ id: 'trial', title: 'Trial', text: 'Being made', beta: true }];
             Experiments.render();
-            const off = Experiments.on('paint');
+            const off = Experiments.on('trial');
             let heard = null;
             addEventListener('jeditor-experiments', (e) => { heard = e.detail; }, { once: true });
-            document.getElementById('exp-paint').click();
+            document.getElementById('exp-trial').click();
             app.loadUiPrefs();
-            const kept = Experiments.on('paint') && app.uiPrefs.experiments.paint === true;
+            const kept = Experiments.on('trial') && app.uiPrefs.experiments.trial === true;
             const unknown = Experiments.on('nothing');
-            app.toggleCustomizePanel(false);
-            // A beta has its experiments on to start with (betaOnly ones too)
+            // A beta has its experiments on to start with
+            delete app.uiPrefs.experiments.trial;
             window.APP_BUILD = 'v9.9.0-beta.1';
-            const betaOn = Experiments.betaBuild() && Experiments.on('adjust');
+            const betaOn = Experiments.betaBuild() && Experiments.on('trial');
             delete window.APP_BUILD;
+            Experiments.LIST = saved;
+            Experiments.render();
+            app.toggleCustomizePanel(false);
             return { labels, listed, off, heard, kept, unknown, betaOn };
         });
         check('a beta says which ("1.42.0 beta 3"); a re-release, its version', r.labels === '1.42.0 beta 3|1.41.0|1.41.0|nonsense', r.labels);
-        check('Settings → Experimental lists Adjust, off in a release, on to start with in a beta', r.listed && r.betaOn, JSON.stringify(r));
-        check('an experiment is off until turned on; on, it says so and stays on', !r.off && r.heard && r.heard.id === 'paint' && r.heard.on && r.kept && !r.unknown, JSON.stringify(r));
+        check('Settings → Experimental: Adjust and Paint no longer listed; one being made is on to start with in a beta', r.listed && r.betaOn, JSON.stringify(r));
+        check('an experiment is off until turned on; on, it says so and stays on', !r.off && r.heard && r.heard.id === 'trial' && r.heard.on && r.kept && !r.unknown, JSON.stringify(r));
         check('no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -4634,20 +4574,11 @@ async function newPage(browser, url) {
             app.openSingle(f('a.jpg'));
             const before = await brightness(await blobOf(await app.getDisplaySource(f('a.jpg'))));
 
-            // An experiment in a release: off, nothing of it shows
-            step = 'experiment off';
-            const btn = document.getElementById('btn-adjust');
-            out.offHidden = !Experiments.on('adjust') && getComputedStyle(btn).display === 'none';
-            key('e');
-            await sleep(80);
-            out.offNoKey = !Adjust.isOpen;
-            out.offNoMenu = !app.buildContextItems(null, true).some(it => /Adjust/.test(it[0] || ''));
-            // Turned on in Settings → Experimental
-            app.toggleCustomizePanel(true);
-            app.showSettingsPage('experimental');
-            document.getElementById('exp-adjust').click();
-            app.toggleCustomizePanel(false);
-            out.onShown = Experiments.on('adjust') && getComputedStyle(btn).display !== 'none' && app.buildContextItems(null, true).some(it => it[0] === 'Adjust…');
+            // Part of jEditor in a release, nothing to turn on: the mode
+            // switch (modes.js) offers it, top left in single view, and the
+            // right-click menu
+            step = 'shown';
+            out.onShown = Modes.shown().some(m => m[0] === 'adjust') && !document.getElementById('mode-float').classList.contains('hidden') && app.buildContextItems(null, true).some(it => it[0] === 'Adjust…');
 
             // E opens Adjust on the photo
             step = 'E opens Adjust';
@@ -4813,7 +4744,7 @@ async function newPage(browser, url) {
             return out;
             })(); } catch (e) { return { error: step + ': ' + e.message }; }
         });
-        check('adjust: an experiment in a release, off until turned on in Settings → Experimental (no button, key or menu)', r.offHidden && r.offNoKey && r.offNoMenu && r.onShown, JSON.stringify(r));
+        check('adjust: part of jEditor in a release, nothing to turn on (the mode switch and the menu offer it)', r.onShown, JSON.stringify(r));
         check('adjust: E opens it on the GPU, with a histogram', r.open, JSON.stringify(r));
         check('adjust: sliders change the photo and its histogram live; Ctrl+Z / Ctrl+Shift+Z inside; \\ shows before', r.live && r.undoInside && r.redoInside && r.beforeShown, JSON.stringify(r));
         check('adjust: films shown on the photo by process, a click puts one on (with Amount) or takes it off', r.lookThumbGrey && r.lookOn && r.lookOff, JSON.stringify(r));

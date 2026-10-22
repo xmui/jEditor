@@ -65,15 +65,59 @@ const FAKE_NATIVE = `
         }
         return { dir, name: parts[parts.length - 1] };
     };
+    // A path's folder in OPFS (create: made if it isn't there)
+    const pathDir = async (p, create = false) => {
+        const root = window.__orderRoot + '\\\\';
+        let dir, parts;
+        if (p.startsWith(root)) { dir = await sub('disk'); parts = p.slice(root.length).split(BS); }
+        else if (/^[A-Z]:/.test(p)) { dir = await sub('usb-' + p[0]); parts = p.slice(3).split(BS); }
+        else return null;
+        try {
+            for (const x of parts.filter(Boolean)) dir = await dir.getDirectoryHandle(x, { create });
+        } catch (e) { return null; }
+        return dir;
+    };
+    const copyTree = async (from, to) => {
+        for await (const [n, h] of from.entries()) {
+            if (n === '.jeditor') continue;
+            if (h.kind === 'directory') await copyTree(h, await to.getDirectoryHandle(n, { create: true }));
+            else {
+                const w = await (await to.getFileHandle(n, { create: true })).createWritable();
+                await w.write(await h.getFile());
+                await w.close();
+            }
+        }
+    };
     const tokens = new Map();
     window.JEditorNative = {
         platform: 'windows',
-        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates'],
+        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn'],
         async dataDir() { window.__calls.push('dataDir'); return sub('appdata'); },
         async folderPath(handle) {
             if (window.__unknownPath) return null;
             const parts = await (await sub('disk')).resolve(handle);
-            return parts ? [window.__orderRoot, ...parts].join('\\\\') : null;
+            if (parts) return [window.__orderRoot, ...parts].join('\\\\');
+            // On a USB drive: OPFS usb-E is E:\\
+            for await (const [n, h] of (await opfs()).entries()) {
+                if (!n.startsWith('usb-') || h.kind !== 'directory') continue;
+                const p = await h.resolve(handle);
+                if (p) return n.slice(4) + ':' + BS + p.join(BS);
+            }
+            return null;
+        },
+        // A folder handle for a path: D:\\Orders\\… is disk/…, E:\\… is usb-E/…
+        async folderHandle(p) {
+            const dir = await pathDir(p);
+            if (!dir) throw new Error('That folder is not there');
+            return dir;
+        },
+        // Disc burners (__burners); a burn says what it was asked (__burnt)
+        async burners() { return window.__burners || []; },
+        async burn(burner, p, label, progress, eject) {
+            progress(0, 100); await new Promise(r => setTimeout(r, 20)); progress(60, 100);
+            if (window.__burnError) throw new Error(window.__burnError);
+            window.__burnt = { burner, path: p, label, eject };
+            return { bytes: 1234 };
         },
         async recycle(paths) {
             window.__calls.push('recycle:' + paths.length);
@@ -264,7 +308,11 @@ const FAKE_NATIVE = `
             const done = (async () => {
                 progress(0, 100); await new Promise(r => setTimeout(r, 30)); progress(50, 100);
                 if (window.__copyError) throw new Error(window.__copyError);
-                return { to: dest.replace(/\\$/, '') + BS + p.split(BS).pop() };
+                const to = dest.replace(/\\$/, '') + BS + p.split(BS).pop();
+                // Really copied, where both ends are folders here
+                const from = await pathDir(p), into = await pathDir(to, true);
+                if (from && into) await copyTree(from, into);
+                return { to };
             })();
             done.copyId = 1;
             return done;
@@ -405,7 +453,7 @@ async function newPage(context, baseUrl, host = null) {
     // A clean private file system for each test
     await page.evaluate(async () => {
         const root = await navigator.storage.getDirectory();
-        for (const n of ['disk', 'appdata', 'bin']) { try { await root.removeEntry(n, { recursive: true }); } catch (e) { } }
+        for await (const [n] of root.entries()) if (['disk', 'appdata', 'bin'].includes(n) || n.startsWith('usb-')) { try { await root.removeEntry(n, { recursive: true }); } catch (e) { } }
     });
     return { page, errors };
 }
@@ -867,7 +915,7 @@ async function newPage(context, baseUrl, host = null) {
         check('Scan asks the app to scan into the order\'s folder, by path', r.req && r.req.folder === 'D:\\Orders\\Scan Order' && r.req.device === 'EPSON FF-680W' && r.req.driver === 'twain' && r.req.prefix === 'photo' && r.req.next === 4, JSON.stringify(r.req));
         check('scanned photos show up in the order', r.files === 'Ceremony/c1.jpg,photo1.jpg,photo2.jpg,photo3.jpg,photo4.jpg,photo5.jpg', r.files);
         check('a message says how many', /Scanned 2 photos into Scan Order/.test(r.toast), r.toast);
-        check('Auto crop each photo is on to start with', r.autoCropDefault);
+        check('Auto crop each photo is off to start with', r.autoCropDefault === false);
         check('Compatibility mode: offered for TWAIN scanners only, off to start with', r.compatShown && r.compatHiddenWia, JSON.stringify([r.compatShown, r.compatHiddenWia]));
         check('... sent with the scan, and remembered for that scanner', r.req.compat === true && r.compatKept, JSON.stringify([r.req.compat, r.compatKept]));
         check('... and crops each scan once it\'s in, without asking', r.cropped === 'c2.jpg,c3.jpg (no question)', r.cropped);
@@ -1085,8 +1133,24 @@ async function newPage(context, baseUrl, host = null) {
             out.sidesShown = !$('scan-sides-row').classList.contains('hidden');
             // The FastFoto has its sides the other way round: on to start with
             out.swap = $('scan-swap').checked;
-            // Its tone: the FastFoto app's, said beside the sliders
-            out.tone = [$('scan-bright').value, $('scan-contrast').value, !$('scan-tone-note').classList.contains('hidden')].join();
+            // Its tone: neutral (the TWAIN helper asks the driver for FastFoto's)
+            out.tone = [$('scan-bright').value, $('scan-contrast').value].join();
+            // The scanner's own fixes, as switches: on, as FastFoto has them;
+            // gone when it doesn't crop itself (they go with its own crop)
+            const shownRow = (id) => !$(id).classList.contains('hidden');
+            out.fixes = [shownRow('scan-even-row'), shownRow('scan-streaks-row'), $('scan-even').checked, $('scan-streaks').checked].join();
+            $('scan-autosize').checked = false;
+            $('scan-autosize').dispatchEvent(new Event('change'));
+            out.fixesOff = [shownRow('scan-even-row'), shownRow('scan-streaks-row')].join();
+            $('scan-autosize').checked = true;
+            $('scan-autosize').dispatchEvent(new Event('change'));
+            $('scan-streaks').checked = false;
+            $('scan-streaks').dispatchEvent(new Event('change'));
+            // On screen: a spot dragged to in a bigger window is pulled back in
+            localStorage.setItem('jeditor.scanDock', JSON.stringify({ x: 20, y: innerHeight + 500 }));
+            Scan.fitDock();
+            const dock = $('scan-panel').getBoundingClientRect();
+            out.onScreen = dock.bottom <= innerHeight && dock.top >= 0;
             // Scanner's own settings…: offered for a TWAIN feeder; saved, then forgotten
             await wait(() => !$('scan-own-row').classList.contains('hidden'));
             out.ownShown = !$('scan-own-row').classList.contains('hidden') && $('scan-own-forget').classList.contains('hidden');
@@ -1111,16 +1175,17 @@ async function newPage(context, baseUrl, host = null) {
             out.shown = app.viewMode + ' ' + (app.currentFile && app.currentFile.name);
             // Swap off: remembered for that scanner
             $('scan-settings').click();
+            // Back in setup, the names carry on after the photos just scanned
+            out.namesAfter = [$('scan-prefix').value, $('scan-next').value];
+            out.howHidden = $('scan-mode-row').classList.contains('hidden');
             $('scan-swap').checked = false;
             $('scan-swap').dispatchEvent(new Event('change'));
             out.swapKept = JSON.parse(localStorage.getItem('jeditor.scanSwap'))['EPSON FF-680W'] === false;
-            // The tone set back to 0 stays 0: given once only
-            $('scan-contrast').value = '0';
+            // A tone chosen for it is kept for it
+            $('scan-contrast').value = '-20';
             $('scan-contrast').dispatchEvent(new Event('change'));
             Scan.loadOptsFor(Scan.device());
             out.toneKept = $('scan-contrast').value;
-            Scan.loadOptsFor({ id: 'wia-1', name: 'OpticBook A300' });
-            out.otherNote = $('scan-tone-note').classList.contains('hidden');
             Scan.close();
             return out;
         });
@@ -1131,9 +1196,14 @@ async function newPage(context, baseUrl, host = null) {
         check('... fronts and backs come in', /photo3-b\.jpg,photo3\.jpg,photo4-b\.jpg,photo4\.jpg/.test(r.files), r.files);
         check('... each photo opens large as it comes in (not the backs)', r.shown === 'single photo4.jpg', r.shown);
         check('... and the scanner is asked to crop each photo itself (its own auto-size)', r.req && r.req.autosize === true, JSON.stringify(r.req));
+        check('its own fixes are switches, on to start with, shown only with its own crop', r.fixes === 'true,true,true,true' && r.fixesOff === 'false,false', JSON.stringify([r.fixes, r.fixesOff]));
+        check('the scan window is pulled back on screen when its spot is off it (a smaller window)', r.onScreen);
+        check('... one turned off is sent off', r.req && r.req.even === true && r.req.streaks === false, JSON.stringify(r.req));
         check('the swap is remembered for that scanner', r.swapKept);
-        check('a FastFoto starts with the FastFoto app\'s tone (brightness 5, contrast -35), said beside the sliders; sent with the scan', r.tone === '5,-35,true' && r.req.brightness === 5 && r.req.contrast === -35, JSON.stringify([r.tone, r.req.brightness, r.req.contrast]));
-        check('... once: set back to 0 it stays 0, and other scanners have no note', r.toneKept === '0' && r.otherNote, JSON.stringify([r.toneKept, r.otherNote]));
+        check('Change settings after a scan: the names carry on from it (not the numbers taken now)', r.namesAfter[0] === 'photo' && r.namesAfter[1] === '5', JSON.stringify(r.namesAfter));
+        check('a scanner with only a feeder: no How choice shown', r.howHidden);
+        check('a FastFoto starts at brightness 0, contrast 0 (its driver gives FastFoto\'s tone); sent with the scan', r.tone === '0,0' && r.req.brightness === 0 && r.req.contrast === 0, JSON.stringify([r.tone, r.req.brightness, r.req.contrast]));
+        check('... and a tone chosen for it is kept', r.toneKept === '-20', JSON.stringify(r.toneKept));
         check('Scanner\'s own settings… opens its window, says when settings are saved, and Forget goes back', r.ownShown && r.ownSaved === 'Scanner\'s own settings… (saved)|true'
             && /^state EPSON FF-680W.*show EPSON FF-680W.*forget EPSON FF-680W/.test(r.ownCalls), JSON.stringify([r.ownShown, r.ownSaved, r.ownCalls]));
         check('feeder suite: no JS errors', errors.length === 0, errors.join('; '));
@@ -1193,6 +1263,242 @@ async function newPage(context, baseUrl, host = null) {
         check('a scanner that won\'t say what it has gets both the glass and the feeder offered', r.bothOffered);
         check('glass size: the A300\'s is known (A3), previewed at about 150 dpi; another size is remembered and previewed again', r.a3.join() === '11.69,16.54,150' && r.letter.join() === '8.5,11' && r.kept === 'letter', JSON.stringify([r.a3, r.letter, r.kept]));
         check('compat suite: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('native: only the scanners plugged in, and only what each can do');
+    {
+        const context = await browser.newContext({ viewport: { width: 1280, height: 860 } });
+        const { page, errors } = await newPage(context, baseUrl);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const $ = (id) => document.getElementById(id);
+            const names = () => [...$('scan-device').options].map(o => (o.parentElement.tagName === 'OPTGROUP' ? '~' : '') + o.textContent).join(', ');
+            // The FastFoto is plugged in, the OpticBook's driver is there but
+            // the scanner isn't, and the app can't tell for the third
+            window.__scanners = { devices: [
+                { id: 'EPSON FF-680W', name: 'EPSON FF-680W', driver: 'twain', found: true },
+                { id: 'Plustek OpticBook A300', name: 'Plustek OpticBook A300', driver: 'twain', found: false },
+                { id: 'Mystery', name: 'Mystery', driver: 'twain', found: null }], problems: [] };
+            window.__capsFor = (o) => /EPSON/.test(o.device)
+                ? { bedW: 8.5, bedH: 11.7, dpis: [100, 200, 300, 600], gray: false, guessed: false, flatbed: false, feeder: true, duplex: false, dpisSure: true, optical: 600, autoSize: false }
+                : /OpticBook/.test(o.device)
+                    ? { bedW: 8.5, bedH: 11.7, dpis: [150, 300, 600], gray: true, guessed: false, flatbed: true, feeder: false, duplex: false, dpisSure: true, optical: 600 }
+                    : { bedW: 8.27, bedH: 11.69, dpis: [75, 150, 300, 600, 1200], gray: true, guessed: true, flatbed: true, feeder: true, dpisSure: false };
+            const dir = await makeOrder('Plugged Order', 2);
+            await openOrder(dir);
+            $('btn-scan').click();
+            await wait(() => !$('scan-device').disabled && Scan.caps['EPSON FF-680W']);
+            out.listed = names();
+            // Resolutions: the scanner's own, none above its optical one
+            out.dpis = [...$('scan-dpi').options].map(o => o.value).join() + ' | ' + $('scan-dpi').title;
+            out.sureNote = $('scan-dpi-note').classList.contains('hidden');
+            // No grayscale, no backs, no crop of its own: not offered
+            out.gray = $('scan-color').querySelector('option[value="gray"]').hidden;
+            out.sides = $('scan-sides-row').classList.contains('hidden') && $('scan-sides').value === 'front';
+            out.autosize = $('scan-autosize-row').classList.contains('hidden');
+            // More…: the ones not found, under their own heading
+            $('scan-device').value = Scan.MORE;
+            $('scan-device').dispatchEvent(new Event('change'));
+            out.more = names() + ' | ' + $('scan-device').value;
+            await wait(() => Scan.caps['Plustek OpticBook A300']);
+            // Glass sizes: none bigger than its glass
+            await Scan.fillBeds(Scan.device());
+            out.beds = [...$('scan-pv-glass').options].map(o => o.value).join();
+            // Unsure: the usual ones, and it says so
+            $('scan-device').value = 'Mystery';
+            $('scan-device').dispatchEvent(new Event('change'));
+            await wait(() => Scan.caps['Mystery']);
+            out.unsure = !$('scan-dpi-note').classList.contains('hidden') && /didn't say/.test($('scan-dpi-note').textContent);
+            // One that's slow to answer, or never does, or fails: there are
+            // always resolutions to choose (an empty list was a bug)
+            const capsFor = window.__capsFor;
+            const listedBefore = window.__scanners;
+            window.__capsFor = (o) => /Slow/.test(o.device) ? new Promise(() => {})
+                : /Broken/.test(o.device) ? Promise.reject(new Error('The scanner sent nothing back')) : capsFor(o);
+            window.__scanners = JSON.parse(JSON.stringify(listedBefore));
+            window.__scanners.devices.push({ id: 'Slow', name: 'Slow', driver: 'twain', found: true }, { id: 'Broken', name: 'Broken', driver: 'twain', found: true });
+            await Scan.loadDevices(true);
+            const dpiNow = () => [...$('scan-dpi').options].map(o => o.value).join();
+            $('scan-device').value = 'Slow';
+            $('scan-device').dispatchEvent(new Event('change'));
+            await wait(() => /Asking/.test($('scan-dpi-note').textContent));
+            out.slow = dpiNow() + ' ' + !$('scan-dpi-note').classList.contains('hidden');
+            $('scan-device').value = 'Broken';
+            $('scan-device').dispatchEvent(new Event('change'));
+            await wait(() => /didn't say/.test($('scan-dpi-note').textContent));
+            out.broken = dpiNow();
+            // Above its optical one (made by the driver): offered, labelled
+            Scan.caps['Interp'] = { bedW: 8.5, bedH: 11.7, dpis: [300, 600, 1200], gray: true, flatbed: false, feeder: true, dpisSure: true, optical: 600 };
+            window.__scanners.devices.push({ id: 'Interp', name: 'Interp', driver: 'twain', found: true });
+            await Scan.loadDevices(true);
+            $('scan-device').value = 'Interp';
+            $('scan-device').dispatchEvent(new Event('change'));
+            await wait(() => /interpolated/.test($('scan-dpi').textContent));
+            const g = $('scan-dpi').querySelector('optgroup');
+            out.interp = dpiNow() + ' | ' + (g ? [...g.children].map(o => o.textContent).join() : 'no group');
+            window.__capsFor = capsFor;
+            window.__scanners = listedBefore;
+            await Scan.loadDevices(true);
+            // Plugged in while the dock is open: the list follows, the choice kept
+            Scan.showAllScanners = false;
+            $('scan-device').value = 'EPSON FF-680W';
+            $('scan-device').dispatchEvent(new Event('change'));
+            window.__scanners = JSON.parse(JSON.stringify(window.__scanners));
+            window.__scanners.devices[1].found = true;
+            dispatchEvent(new Event('jeditor-devices'));
+            await wait(() => !/~/.test(names()));
+            out.plugged = names() + ' | ' + $('scan-device').value;
+            // Back to a scanner asked already: its own resolutions again
+            out.backTo = [...$('scan-dpi').options].map(o => o.value).join() + ' ' + $('scan-dpi-note').classList.contains('hidden');
+            // None plugged in: all listed, and it says so
+            window.__scanners = { devices: [{ id: 'EPSON FF-680W', name: 'EPSON FF-680W', driver: 'twain', found: false }], problems: [] };
+            await Scan.loadDevices(true);
+            out.none = names() + ' | ' + $('scan-problems').textContent;
+            // ... and one that scans all the same (on the network) stays listed
+            window.__scanners = { devices: [{ id: 'EPSON FF-680W', name: 'EPSON FF-680W', driver: 'twain', found: false }, { id: 'Mystery', name: 'Mystery', driver: 'twain', found: null }], problems: [] };
+            await Scan.loadDevices(true);
+            out.beforeScan = names();
+            await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '', source: 'feeder', dpi: 300 });
+            await Scan.loadDevices(true);
+            out.kept = names();
+
+            // Show each one: a switch while it scans, the same as the setting
+            $('scan-show').checked = true;
+            window.__scanHang = true;
+            const hung = Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '', source: 'feeder', dpi: 300 });
+            await wait(() => $('scan-panel').dataset.state === 'scanning');
+            const live = $('scan-show-live');
+            out.liveShown = live.offsetParent !== null && live.checked;
+            live.click();
+            out.liveOff = !$('scan-show').checked && JSON.parse(localStorage.getItem('jeditor.scan')).show === false;
+            $('scan-stop').click();
+            await hung;
+            window.__scanHang = false;
+            out.liveHidden = live.offsetParent === null;
+            Scan.setState('setup');
+            return out;
+        });
+        // Resized by a corner: kept, and fitted to the window
+        const before = await page.evaluate(() => document.getElementById('scan-panel').getBoundingClientRect().toJSON());
+        const grip = await page.evaluate(() => document.querySelector('#scan-panel .scan-grip[data-edge="nw"]').getBoundingClientRect().toJSON());
+        await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(grip.x - 200, grip.y - 150, { steps: 4 });
+        await page.mouse.up();
+        const sized = await page.evaluate(() => {
+            const p = document.getElementById('scan-panel');
+            return { rect: p.getBoundingClientRect().toJSON(), kept: JSON.parse(localStorage.getItem('jeditor.scanDockSize')), sized: p.classList.contains('sized') };
+        });
+        await page.setViewportSize({ width: 700, height: 500 });
+        const small = await page.evaluate(async () => {
+            await new Promise(r => setTimeout(r, 100));
+            return document.getElementById('scan-panel').getBoundingClientRect().toJSON();
+        });
+        await page.setViewportSize({ width: 1280, height: 860 });
+        const reset = await page.evaluate(async () => {
+            document.querySelector('#scan-panel .scan-grip[data-edge="se"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+            const p = document.getElementById('scan-panel');
+            return { sized: p.classList.contains('sized'), kept: localStorage.getItem('jeditor.scanDockSize'), w: p.getBoundingClientRect().width };
+        });
+        check('only the scanners plugged in are listed (and one that can\'t be told); the rest under More…', r.listed === 'EPSON FF-680W, Mystery, More: 1 not plugged in…', r.listed);
+        check('... More… lists them, under their own heading, and picks one', r.more === 'EPSON FF-680W, Mystery, ~Plustek OpticBook A300 | Plustek OpticBook A300', r.more);
+        check('... one plugged in while the dock is open is listed, the choice kept', r.plugged === 'EPSON FF-680W, Plustek OpticBook A300, Mystery | EPSON FF-680W', r.plugged);
+        check('... none plugged in: all listed, and it says so', r.none === '~EPSON FF-680W | None of these seem to be plugged in. Is the scanner plugged in and turned on? One on the network can still be chosen.', r.none);
+        check('... one that scans all the same (on the network) stays listed', r.beforeScan === 'Mystery, More: 1 not plugged in…' && r.kept === 'EPSON FF-680W, Mystery', JSON.stringify([r.beforeScan, r.kept]));
+        check('resolutions: the scanner\'s own, up to its optical one', r.dpis === '100,200,300,600 | Up to 600 dpi, the scanner\'s optical resolution' && r.sureNote, r.dpis);
+        check('... a scanner that didn\'t say: the usual ones, and the dock says so', r.unsure);
+        check('... one still being asked: the usual resolutions meanwhile, and it says so', r.slow === '150,200,300,400,600,1200 true', r.slow);
+        check('... one that fails to answer: the usual resolutions, never an empty list', r.broken === '150,200,300,400,600,1200', r.broken);
+        check('... above its optical resolution: offered under their own heading, labelled interpolated', r.interp === '300,600,1200 | 1200 dpi (interpolated)', r.interp);
+        check('... back to a scanner asked already: its own resolutions, not the last one\'s', r.backTo === '100,200,300,600 true', r.backTo);
+        check('grayscale, backs and its own crop aren\'t offered when the scanner can\'t', r.gray && r.sides && r.autosize, JSON.stringify([r.gray, r.sides, r.autosize]));
+        check('glass sizes: none bigger than the scanner\'s glass', r.beds === 'auto,a4,letter,epson', r.beds);
+        check('show each one: a switch while it scans, the same setting, remembered', r.liveShown && r.liveOff && r.liveHidden, JSON.stringify([r.liveShown, r.liveOff, r.liveHidden]));
+        check('the dock resizes by its corners, and the size is kept', sized.sized && sized.rect.width > before.width + 150 && sized.rect.height >= before.height && sized.kept && Math.abs(sized.kept.w - sized.rect.width) < 2, JSON.stringify([before, sized]));
+        check('... no bigger than a smaller window', small.width <= 692 && small.height <= 492 && small.x >= 0 && small.y >= 0, JSON.stringify(small));
+        check('... double-click an edge: its usual size', !reset.sized && reset.kept === null && Math.round(reset.w) === 400, JSON.stringify(reset));
+        check('plugged suite: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('native: move or copy to any folder, outside the project too');
+    {
+        const context = await browser.newContext();
+        const { page, errors } = await newPage(context, baseUrl);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const $ = (id) => document.getElementById(id);
+            const BS = String.fromCharCode(92);
+            const rows = () => [...document.querySelectorAll('#fp-list .fp-row')].map(r => (r.classList.contains('head') ? '#' : '') + (r.querySelector('.fp-name') ? r.querySelector('.fp-name').textContent : r.textContent));
+            const row = (re) => [...document.querySelectorAll('#fp-list .fp-row')].find(r => re.test(r.textContent));
+            const key = (k) => $('folder-picker').dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+            // D: has the projects folder, D:\Orders; the archive is a project there
+            window.__drives = window.__drives.concat([{ path: 'D:' + BS, name: 'Data (D:)', kind: 'disk', total: 2e12, free: 1e12 }]);
+            const archive = await makeOrder('Archive', 0);
+            Object.assign(window.__tree, {
+                ['D:' + BS]: { path: 'D:' + BS, name: 'D:' + BS, parent: null, folders: [{ name: 'Orders', path: 'D:' + BS + 'Orders' }] },
+                ['D:' + BS + 'Orders']: { path: 'D:' + BS + 'Orders', name: 'Orders', parent: 'D:' + BS, folders: [{ name: 'Archive', path: 'D:' + BS + 'Orders' + BS + 'Archive' }, { name: 'Out Order', path: 'D:' + BS + 'Orders' + BS + 'Out Order' }] },
+                ['D:' + BS + 'Orders' + BS + 'Archive']: { path: 'D:' + BS + 'Orders' + BS + 'Archive', name: 'Archive', parent: 'D:' + BS + 'Orders', folders: [{ name: 'Ceremony', path: 'D:' + BS + 'Orders' + BS + 'Archive' + BS + 'Ceremony' }] }
+            });
+            const dir = await makeOrder('Out Order', 4);
+            await openOrder(dir);
+            const file = (n) => app.files.find(f => f.name === n);
+            Folders.openPicker([file('photo1.jpg')], 'move');
+            out.list = rows().join(', ');
+            // Other folders on this PC: drives, then folders
+            row(/Other folders on this PC/).click();
+            await wait(() => rows().some(t => /Data \(D:\)/.test(t)));
+            out.start = rows().join(', ');
+            row(/Data \(D:\)/).click();
+            await wait(() => rows().includes('Orders'));
+            row(/^Orders/).click();
+            await wait(() => rows().includes('Archive'));
+            row(/^Archive/).click();
+            await wait(() => rows().includes('Ceremony'));
+            out.where = [...$('fp-where').querySelectorAll('.fp-crumb')].map(b => b.textContent).join(' › ');
+            out.inside = rows().join(', ');
+            // Backspace: up a folder
+            key('Backspace');
+            await wait(() => rows().includes('Out Order'));
+            out.up = [...$('fp-where').querySelectorAll('.fp-crumb')].map(b => b.textContent).join(' › ');
+            // A new folder typed there: made, and the photo moved into it
+            $('fp-filter').value = 'Picks';
+            $('fp-filter').dispatchEvent(new Event('input'));
+            out.newRow = rows().join(', ');
+            out.hiNew = document.querySelector('#fp-list .fp-row.hi').textContent;
+            key('Enter');
+            await wait(() => window.__transfer);
+            out.moved = window.__transfer;
+            await wait(() => !file('photo1.jpg'));
+            out.gone = !file('photo1.jpg');
+            out.toast = toasts();
+            out.history = History.describe(app._undoStack[app._undoStack.length - 1]);
+            // Next time: the folder is offered straight away, under Elsewhere
+            window.__transfer = null;
+            Folders.openPicker([file('photo2.jpg')], 'copy');
+            out.recent = rows().join(', ');
+            row(/^Picks/).click();
+            await wait(() => window.__transfer);
+            out.copied = window.__transfer;
+            // Choose a folder… (Explorer's window); one inside the project is a move within it
+            window.__transfer = null;
+            window.__pick = 'D:' + BS + 'Orders' + BS + 'Out Order' + BS + 'Ceremony';
+            Folders.openPicker([file('photo3.jpg')], 'move');
+            row(/Choose a folder/).click();
+            await wait(() => file('photo3.jpg') && file('photo3.jpg').relPath === 'Ceremony/photo3.jpg');
+            out.within = !window.__transfer;
+            return out;
+        });
+        check('Move to… offers folders elsewhere: other folders on this PC, and Explorer\'s window', /#Elsewhere, Other folders on this PC…, Choose a folder…$/.test(r.list), r.list);
+        check('... browsing starts at the drives and the usual folders', r.start === '#Drives, Local disk (C:), Data (D:), USB drive (E:), #Folders, Desktop', r.start);
+        check('... into a folder: Move here first, then its folders; the path above, each part a link', r.inside === 'Move here: Archive, Ceremony' && r.where === 'This PC › D: › Orders › Archive', JSON.stringify([r.inside, r.where]));
+        check('... Backspace goes up a folder', /› Orders$/.test(r.up), r.up);
+        check('... a name typed there: a new folder, and they go into it', r.newRow === 'Move here: Orders, New folder “Picks”' && /New folder/.test(r.hiNew) && r.moved.dest === 'D:\\Orders\\Picks' && r.moved.copy === false && r.gone, JSON.stringify([r.newRow, r.hiNew, r.moved]));
+        check('... said, with Ctrl+Z (and in History)', /Moved 1 photo into Picks — Ctrl\+Z undoes it/.test(r.toast) && r.history.what === 'Move' && r.history.detail === '1 photo to Picks', JSON.stringify([r.toast, r.history]));
+        check('a folder used is offered next time, under Elsewhere (and copies there)', /#Elsewhere, Picks, Other folders/.test(r.recent) && r.copied.copy === true && r.copied.dest === 'D:\\Orders\\Picks', JSON.stringify([r.recent, r.copied]));
+        check('Choose a folder… inside the project moves it within the project', r.within);
+        check('any folder: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
 
@@ -1274,7 +1580,7 @@ async function newPage(context, baseUrl, host = null) {
         check('keep a copy on the card, show each photo and live view: on to start with', r.defaults.join() === 'true,true,true', r.defaults.join());
         check('Connect asks the app to tether into the project\'s folder, by path', r.req && r.req.camera === 'cam-1' && r.req.folder === 'D:\\Orders\\Shoot Order' && r.req.prefix === 'photo' && r.req.next === 3 && r.req.keepOnCard === true && r.req.live === true, JSON.stringify(r.req));
         check('connected: the live view shows, one frame after another as each is shown', /Sony A7 III/.test(r.title) && r.frames >= 5, JSON.stringify([r.title, r.frames]));
-        check('F12 takes a photo: RAW + JPEG come in, the JPEG into the project', r.files === 'c1.jpg,photo1.jpg,photo2.jpg,photo3.jpg', r.files);
+        check('F12 takes a photo: RAW + JPEG come in, both into the project', r.files === 'c1.jpg,photo1.jpg,photo2.jpg,photo3.arw,photo3.jpg', r.files);
         check('... counted as one photo', /^1 photo · last: photo3\.jpg/.test(r.status) && r.strip === 'photo3.arw,photo3.jpg', JSON.stringify([r.status, r.strip]));
         check('... and the new photo opens large', r.shown === 'photo3.jpg', r.shown);
         check('the round button in the live view takes one too', r.calls.filter(c => c === 'shoot').length === 2, JSON.stringify(r.calls));
@@ -1618,6 +1924,219 @@ async function newPage(context, baseUrl, host = null) {
             && r.pinLabel === 'Pin to the sidebar' && r.pinned2 && /Not enough room on F:/.test(r.copyError || ''), JSON.stringify([r.dragLabel, r.copied, r.pinLabel, r.pinned2, r.copyError]));
         check('Eject ejects it and says so', r.ejected === 'F:\\' && r.ejectToast, JSON.stringify([r.ejected, r.ejectToast]));
         check('sidebar suite: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('drives: a project copied to a USB drive, a card imported, a disc burnt');
+    {
+        const context = await browser.newContext();
+        const { page, errors } = await newPage(context, baseUrl);
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const BS = String.fromCharCode(92);
+                const dir = await makeOrder('Alpha', 3);
+                await openOrder(dir);
+                await Places.refresh();
+                const f = (n) => app.files.find(x => x.name === n);
+                // A flag and an edit, kept on the PC
+                Flags.apply('star', [f('photo1.jpg')]);
+                Edits.set([{ file: f('photo2.jpg'), edit: { q: 1, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } } }], 'rotation');
+                await Edits.flush();
+                step = 'card button';
+                await Places.drawCard();
+                out.cardButton = !!document.querySelector('.sb-card [data-act="export"]') && !document.querySelector('.sb-card [data-act="todrive"]');
+                // Copy: room checked, photos and data copied, a message with Eject
+                step = 'copy';
+                const choose0 = UI.choose, alert0 = UI.alert;
+                UI.choose = async (o) => { out.asked = o.title; return 'alt'; };
+                await Places.copyToDrive(Places.current(), { drive: window.__drives.find(d => d.kind === 'usb') });
+                const usb = await opfs('usb-E');
+                const copy = await usb.getDirectoryHandle('Alpha');
+                out.copied = (await names(copy)).filter(n => n.endsWith('.jpg')).length === 3 && await has(copy, 'Ceremony', 'c1.jpg');
+                out.data = await has(copy, '.jeditor', 'flags.json') && await has(copy, '.jeditor', 'edits.json');
+                await wait(() => /Copied Alpha to USB drive \(E:\), flags and edits too/.test(toasts()));
+                out.toast = toasts();
+                // Not enough room: says so, copies nothing
+                step = 'room';
+                window.__copies = [];
+                UI.alert = async (o) => { out.roomAlert = o.title; };
+                await Places.copyToDrive(Places.current(), { drive: { path: 'F:' + BS, name: 'Tiny (F:)', kind: 'usb', free: 1000, total: 2000 } });
+                out.noCopy = !window.__copies.length;
+                // Copy and eject
+                step = 'eject';
+                UI.choose = async () => 'ok';
+                await usb.removeEntry('Alpha', { recursive: true });
+                await Places.copyToDrive(Places.current(), { drive: window.__drives.find(d => d.kind === 'usb') });
+                await wait(() => window.__ejected);
+                out.ejected = window.__ejected === 'E:' + BS;
+                UI.choose = choose0;
+                UI.alert = alert0;
+
+                // Opened from the drive (on another PC, say): its flags and
+                // edits are taken in, the .jeditor folder taken out
+                step = 'opened from the drive';
+                const copied = await (await opfs('usb-E')).getDirectoryHandle('Alpha');
+                await openOrder(copied);
+                await wait(() => !(window.__hasJeditor) && f('photo2.jpg') && f('photo2.jpg')._edit);
+                out.carried = !!(f('photo2.jpg')._edit && f('photo2.jpg')._edit.q === 1) && !!(f('photo1.jpg')._flags && f('photo1.jpg')._flags.star);
+                await wait(async () => !(await has(copied, '.jeditor')));
+                out.jeditorGone = !(await has(copied, '.jeditor'));
+                await openOrder(dir);
+
+                // A camera's card plugged in: offered to import
+                step = 'card';
+                const card = await opfs('usb-G');
+                const dcim = await (await card.getDirectoryHandle('DCIM', { create: true })).getDirectoryHandle('100CANON', { create: true });
+                for (let i = 1; i <= 3; i++) await write(dcim, `IMG_000${i}.JPG`, await jpeg('hsl(' + i * 90 + ',60%,50%)', 'card ' + i));
+                await write(dcim, 'MVI_0004.MOV', new Blob([new Uint8Array(100)]));
+                window.__drives = window.__drives.concat([{ path: 'G:' + BS, name: 'EOS_DIGITAL (G:)', kind: 'usb', total: 32e9, free: 30e9 }]);
+                window.__tree['G:' + BS] = { path: 'G:' + BS, name: 'G:' + BS, parent: null, folders: [{ name: 'DCIM', path: 'G:' + BS + 'DCIM' }], photos: 0, more: false };
+                dispatchEvent(new Event('jeditor-drives'));
+                await wait(() => /a camera's card — import its photos\?/.test(toasts()));
+                out.offered = /EOS_DIGITAL \(G:\): a camera's card/.test(toasts());
+                // Imported into this project, by day
+                step = 'import';
+                const going = Import.open({ path: 'G:' + BS, name: 'EOS_DIGITAL (G:)' });
+                await wait(() => !document.getElementById('import-panel').classList.contains('hidden'));
+                out.summary = document.getElementById('import-summary').textContent;
+                document.getElementById('import-to-here').checked = true;
+                document.getElementById('import-to-here').dispatchEvent(new Event('change'));
+                document.getElementById('import-by-date').checked = false;
+                document.getElementById('import-eject').checked = false;
+                out.goLabel = document.getElementById('import-go').textContent;
+                document.getElementById('import-go').click();
+                await going;
+                const after = await names(dir);
+                out.imported = ['IMG_0001.JPG', 'IMG_0002.JPG', 'IMG_0003.JPG'].every(n => after.includes(n)) && !after.includes('MVI_0004.MOV');
+                await wait(() => /Imported 3 photos from EOS_DIGITAL/.test(toasts()));
+                out.importToast = /Imported 3 photos/.test(toasts());
+                // Again: nothing new
+                step = 'again';
+                const again = Import.open({ path: 'G:' + BS, name: 'EOS_DIGITAL (G:)' });
+                await wait(() => !document.getElementById('import-panel').classList.contains('hidden'));
+                out.nothingNew = document.getElementById('import-go').disabled && /Nothing new/.test(document.getElementById('import-go').textContent) && /0 not imported before/.test(document.getElementById('import-summary').textContent);
+                document.getElementById('import-cancel').click();
+                await again;
+
+                // A disc burnt: edits not saved offered first; the name asked
+                step = 'burn';
+                window.__burners = [{ id: 'b1', name: 'HL-DT-ST DVDRAM', drive: 'F:' + BS, media: 'DVD-R', blank: true, free: 4.7e9, canWrite: true }];
+                UI.choose = choose0;
+                const $ = (id) => document.getElementById(id);
+                Disc.open(Places.current());
+                await wait(() => $('ex-label'));
+                out.burnAsked = $('ex-body').textContent;
+                out.burnPrompt = $('ex-title').textContent + ' / ' + $('ex-label').value + ' / ' + $('ex-go').textContent;
+                $('ex-label').value = 'Alpha 2026';
+                $('ex-label').dispatchEvent(new Event('input', { bubbles: true }));
+                $('ex-save-first').click(); // burnt as they are
+                $('ex-go').click();
+                await wait(() => window.__burnt);
+                out.burnt = window.__burnt;
+                await wait(() => /Burnt Alpha to the DVD-R/.test(toasts()));
+                out.burnToast = /Burnt Alpha/.test(toasts());
+                // No blank disc: says so
+                step = 'no disc';
+                window.__burners = [{ id: 'b1', name: 'HL-DT-ST DVDRAM', drive: 'F:' + BS, media: 'none', blank: false, free: 0, canWrite: false }];
+                Disc.open(Places.current());
+                await wait(() => /No disc/.test($('ex-body').textContent));
+                out.noDisc = $('ex-go').disabled + ' ' + $('ex-note').textContent;
+                $('ex-cancel').click();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('drives: the project card has one Export button (USB drive, disc, copies)', r.cardButton, JSON.stringify(r));
+        check('drives: a project copied to a USB drive in one step, its flags and edits with it, Eject offered', r.copied && r.data && /Copy Alpha to USB drive/.test(r.asked || '') && /Eject/.test(r.toast || ''), JSON.stringify(r));
+        check('drives: not enough room says so, and nothing\'s copied; Copy and eject ejects', /Not enough room on Tiny/.test(r.roomAlert || '') && r.noCopy && r.ejected, JSON.stringify(r));
+        check('drives: opened from the drive, the project\'s flags and edits are taken in', r.carried && r.jeditorGone, JSON.stringify(r));
+        check('import: a camera\'s card plugged in is offered to import', r.offered, JSON.stringify(r));
+        check('import: its photos (not its videos) copied into the project; nothing new the second time', r.imported && r.importToast && /Import 3 photos/.test(r.goLabel || '') && /3 photos/.test(r.summary || '') && r.nothingNew, JSON.stringify(r));
+        check('burn: in Export, the burner and its blank disc, edits offered to save first, the disc named, burnt, and said', /Save the edits into 1 photo first/.test(r.burnAsked || '') && /Blank DVD-R/.test(r.burnAsked || '') && r.burnPrompt === 'Export Alpha / Alpha / Burn to the DVD-R' && r.burnt && r.burnt.label === 'Alpha 2026' && r.burnt.path === 'D:\\Orders\\Alpha' && r.burnToast, JSON.stringify(r));
+        check('burn: no blank disc in the drive says so, and Burn waits', /^true Put a blank disc in/.test(r.noDisc || ''), JSON.stringify(r));
+        check('drives suite: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('export: one window for a USB drive, a disc and copies');
+    {
+        const context = await browser.newContext();
+        const { page, errors } = await newPage(context, baseUrl);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const $ = (id) => document.getElementById(id);
+            const BS = String.fromCharCode(92);
+            const opfs = async (n) => (await navigator.storage.getDirectory()).getDirectoryHandle(n, { create: true });
+            for (const n of ['usb-E']) try { await (await navigator.storage.getDirectory()).removeEntry(n, { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await makeOrder('Beta', 3);
+            await openOrder(dir);
+            await Places.refresh();
+            const f = (n) => app.files.find(x => x.name === n);
+            Flags.apply('star', [f('photo2.jpg'), f('photo3.jpg')]);
+            window.__burners = [{ id: 'b1', name: 'HL-DT-ST DVDRAM', drive: 'F:' + BS, media: 'DVD-R', blank: true, free: 4.7e9, canWrite: true }];
+            // From the project card: the USB drive to start with, room shown
+            await Places.drawCard();
+            document.querySelector('.sb-card [data-act="export"]').click();
+            await wait(() => !$('export-panel').classList.contains('hidden') && /Disc|DVD/.test($('ex-tabs').textContent));
+            out.tabs = [...$('ex-tabs').querySelectorAll('button')].map(b => b.textContent + (b.classList.contains('active') ? '*' : '')).join(', ');
+            out.usb = $('ex-body').textContent.replace(/\s+/g, ' ').trim();
+            out.usbGo = $('ex-go').textContent;
+            // Copy, not ejected after: no more questions
+            $('ex-eject').click();
+            const choose0 = UI.choose;
+            UI.choose = async () => { out.askedAgain = true; return null; };
+            $('ex-go').click();
+            await wait(() => /Copied Beta to USB drive/.test(toasts()));
+            UI.choose = choose0;
+            out.copied = !!(await (await opfs('usb-E')).getDirectoryHandle('Beta').catch(() => null));
+            out.ejected = window.__ejected || null;
+            // Copies of the selected photos, smaller, into the project's export folder
+            Export.open({ files: [f('photo1.jpg')] });
+            out.copiesTab = [...$('ex-tabs').querySelectorAll('button.active')].map(b => b.textContent).join();
+            out.which = [...$('ex-body').querySelectorAll('input[name="ex-which"]')].map(i => i.parentElement.textContent.trim() + (i.checked ? '*' : '')).join(' | ');
+            // (Other…: a size typed)
+            $('ex-size').value = 'custom';
+            $('ex-size').dispatchEvent(new Event('change', { bubbles: true }));
+            $('ex-size-px').value = '100';
+            $('ex-size-px').dispatchEvent(new Event('input', { bubbles: true }));
+            out.copiesGo = $('ex-go').textContent;
+            $('ex-go').click();
+            await wait(() => /Exported 1 to "jEditor Export"/.test(toasts()));
+            const exported = await (await dir.getDirectoryHandle('jEditor Export')).getFileHandle('photo1.jpg').then(h => h.getFile());
+            const bmp = await createImageBitmap(exported);
+            out.size = Math.max(bmp.width, bmp.height);
+            // The starred, onto the USB drive
+            Export.open({ tab: 'copies' });
+            [...$('ex-body').querySelectorAll('input[name="ex-which"]')].find(i => i.value === 'star').click();
+            [...$('ex-body').querySelectorAll('input[name="ex-where"]')].find(i => i.value.startsWith('drive:')).click();
+            out.starGo = $('ex-go').textContent;
+            $('ex-go').click();
+            await wait(() => /Exported 2 to USB drive/.test(toasts()));
+            const onUsb = await (await (await opfs('usb-E')).getDirectoryHandle('jEditor Export')).getDirectoryHandle('Beta');
+            const names = [];
+            for await (const k of onUsb.keys()) names.push(k);
+            out.onUsb = names.sort().join();
+            // Remembered: the size, not the drive
+            out.kept = JSON.parse(localStorage.getItem('jeditor.export'));
+            // ⋯ on the selection bar: Export… opens it on Copies
+            app.selection = new Set([f('photo1.jpg'), f('photo2.jpg')]);
+            const item = app.selectionMoreItems().find(i => /^Export/.test(i[0]));
+            out.menu = item[0];
+            item[1]();
+            out.fromMenu = $('ex-title').textContent + ' / ' + $('ex-go').textContent;
+            $('ex-cancel').click();
+            out.closed = $('export-panel').classList.contains('hidden');
+            return out;
+        });
+        check('export: the project card opens one window: USB drive or card, CD or DVD, Copies', r.tabs === 'USB drive or card*, CD or DVD, Copies', r.tabs);
+        check('... USB: the drive, its room and whether it fits; Eject after offered', /USB drive \(E:\)/.test(r.usb) && /free of/.test(r.usb) && /Fits/.test(r.usb) && /Eject it when it's done/.test(r.usb) && r.usbGo === 'Copy to USB drive (E:)', JSON.stringify([r.usb, r.usbGo]));
+        check('... copied in one step (no more questions), not ejected when that\'s off', r.copied && !r.askedAgain && !r.ejected, JSON.stringify(r));
+        check('... Copies: opened with the photos selected, smaller, into "jEditor Export"', r.copiesTab === 'Copies' && /photo selected\*/.test(r.which) && /2 starred/.test(r.which) && r.copiesGo === 'Export 1 copy' && r.size === 100, JSON.stringify(r));
+        check('... the starred onto the USB drive, in its own folder', r.starGo === 'Export 2 copies' && r.onUsb === 'photo2.jpg,photo3.jpg', JSON.stringify([r.starGo, r.onUsb]));
+        check('... the size is remembered, a drive isn\'t', r.kept.size === 100 && r.kept.where === 'project', JSON.stringify(r.kept));
+        check('... ⋯ on the selection bar opens it, on the selection', r.menu === 'Export 2…' && r.fromMenu === 'Export 2 photos / Export 2 copies' && r.closed, JSON.stringify([r.menu, r.fromMenu]));
+        check('export: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
 

@@ -51,7 +51,17 @@ const releaseServer = http.createServer((req, res) => {
     const f = releases.files[req.url];
     if (!f) { res.writeHead(404); return res.end(); }
     res.writeHead(200, { 'content-length': f.length });
-    res.end(f);
+    // In pieces, a moment apart, as over a network: sent whole, a fast
+    // machine can take it in one chunk, and there's no progress to see
+    const PIECE = 256 * 1024;
+    let at = 0;
+    const next = () => {
+        if (at >= f.length) return res.end();
+        res.write(f.subarray(at, at + PIECE));
+        at += PIECE;
+        setTimeout(next, 2);
+    };
+    next();
 });
 
 async function launch(profile, args = [], env = {}) {
@@ -315,7 +325,12 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             const b = await JEditorNative.copyFolder(p.jones, p.backup, () => { });
             return { a, b, seen };
         }, { jones, backup });
-        check('a folder is copied onto a drive, saying how far it\'s got', copied.a.to === path.join(backup, 'Jones') && fs.existsSync(path.join(backup, 'Jones', 'Ceremony', 'c1.jpg')) && copied.seen.length >= 2, JSON.stringify(copied));
+        // (How far it's got: progress can come after the answer, and a small
+        // copy may be over before any but the end is heard, so the end is
+        // what must be said, and it never goes backwards)
+        const ends = copied.seen.length > 0 && copied.seen[copied.seen.length - 1][0] === copied.seen[0][1] && copied.seen[0][1] > 0
+            && copied.seen.every((x, i) => i === 0 || x[0] >= copied.seen[i - 1][0]);
+        check('a folder is copied onto a drive, saying how far it\'s got', copied.a.to === path.join(backup, 'Jones') && fs.existsSync(path.join(backup, 'Jones', 'Ceremony', 'c1.jpg')) && ends, JSON.stringify(copied));
         check('... copied again, it gets a free name', copied.b.to === path.join(backup, 'Jones (2)'));
         const stopped = await page.evaluate(async (p) => {
             let job = null, asked = false;
@@ -323,6 +338,17 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             return job;
         }, { many, backup });
         check('Stop ends a copy and leaves nothing half done', stopped.cancelled === true && !fs.existsSync(path.join(backup, 'Many')), JSON.stringify(stopped) + ' ' + fs.readdirSync(backup).join());
+        // A folder handle for a path: written into (a project's data put with its copy)
+        const handled = await page.evaluate(async (p) => {
+            const dir = await JEditorNative.folderHandle(p.to);
+            const jd = await dir.getDirectoryHandle('.jeditor', { create: true });
+            const w = await (await jd.getFileHandle('flags.json', { create: true })).createWritable();
+            await w.write('{"flags":{}}');
+            await w.close();
+            const missing = await JEditorNative.folderHandle(p.to + '-nope').then(() => 'found', e => e.message);
+            return { name: dir.name, missing };
+        }, { to: copied.a.to });
+        check('folderHandle: a handle for a folder by its path, to write into; none for one that isn\'t there', handled.name === 'Jones' && fs.existsSync(path.join(copied.a.to, '.jeditor', 'flags.json')) && /isn't there/.test(handled.missing), JSON.stringify(handled));
 
         // Eject: gone from the list
         const ejected = await page.evaluate(async (p) => {
@@ -334,6 +360,41 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         check('Eject ejects the drive, and it leaves the list', ejected.r.ok && !ejected.listed.includes('Backup'), JSON.stringify(ejected));
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.close();
+    }
+
+    console.log('mac: closing in Adjust or Paint (holdClose)');
+    {
+        const { app, page, errors } = await launch(profile);
+        await page.waitForTimeout(500); // the page's ready
+        await page.evaluate(() => {
+            window.__asked = 0;
+            window.__answer = false;
+            JEditorNative.holdClose(async () => { window.__asked++; return window.__answer; });
+        });
+        await page.waitForTimeout(300);
+        const count = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);
+        // The page says no: the window stays
+        await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+        await page.waitForFunction(() => window.__asked === 1, null, { timeout: 5000 }).catch(() => { });
+        await page.waitForTimeout(500);
+        const stayed = await page.evaluate(() => window.__asked) === 1 && await count() === 1;
+        check('closing while held asks the page; its no keeps the window open', stayed);
+        check('holdClose: no JS errors', errors.length === 0, errors.join('; '));
+        // Yes: closed. On Linux, with the last window, jEditor quits; a Mac
+        // keeps running with no window, as Mac apps do
+        const exited = new Promise(res => app.process().once('exit', () => res(true)));
+        await page.evaluate(() => { window.__answer = true; });
+        await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+        const gone = async () => {
+            for (let i = 0; i < 80; i++) {
+                try { if (await count() === 0) return true; } catch (e) { return true; } // quit
+                await new Promise(res => setTimeout(res, 100));
+            }
+            return false;
+        };
+        const closed = await Promise.race([exited, gone()]);
+        check('... its yes closes it', closed);
+        await app.close().catch(() => { });
     }
 
     console.log('mac: Liquid Glass');

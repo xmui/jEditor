@@ -215,13 +215,13 @@ const waitForPost = (page, type) => page.waitForFunction(
                 else if (m.type === 'places') reply({ drives: [{ path: 'C:\\', name: 'Local disk (C:)', kind: 'disk' }], home: [] });
                 else if (m.type === 'listDir') {
                     let n = 0;
-                    for await (const h of dir.values()) if (h.kind === 'file' && /\.jpe?g$/i.test(h.name)) n++;
+                    for await (const h of dir.values()) if (h.kind === 'file' && app.isImage(h.name)) n++; // as the app counts: RAW too
                     reply({ path: m.path, name: 'Jones', parent: 'C:\\', folders: [], photos: n, more: false });
                 }
                 else if (m.type === 'listProjects') reply({ projects: [{ name: 'Jones', path: 'C:\\Jones', modified: Date.now() }] });
                 else if (m.type === 'countPhotos') {
                     let n = 0;
-                    for await (const h of dir.values()) if (h.kind === 'file' && /\.jpe?g$/i.test(h.name)) n++;
+                    for await (const h of dir.values()) if (h.kind === 'file' && app.isImage(h.name)) n++; // as the app counts: RAW too
                     reply({ counts: m.paths.map(() => n), limit: 1000 });
                 }
                 else if (m.type === 'quickAccess') reply({ folders: [] });
@@ -258,6 +258,17 @@ const waitForPost = (page, type) => page.waitForFunction(
                     reply({ to: m.dest + m.path.split('\\').pop() });
                 }
                 else if (m.type === 'cancelCopy') window.__cancelCopy = m.copy;
+                else if (m.type === 'folderHandle') {
+                    if (m.path === 'E:\\Jones') reply({ path: m.path }, [await (await navigator.storage.getDirectory()).getDirectoryHandle('on-e', { create: true })]);
+                    else reply({ error: 'That folder isn\'t there' });
+                }
+                else if (m.type === 'burners') reply({ burners: [{ id: 'b1', name: 'DVD burner', drive: 'F:\\', media: 'DVD-R', blank: true, free: 4.7e9, canWrite: true }] });
+                else if (m.type === 'burn') {
+                    // The app's side: how far it's got, then done
+                    window.__burnAsked = m;
+                    window.__deliver({ type: 'burnProgress', burn: m.id, done: 30, total: 100 });
+                    reply({ ok: true, bytes: 100 });
+                }
                 else if (m.type === 'scanners') reply({ devices: [{ id: 'jeditor-test-scanner', name: 'jEditor test scanner', driver: 'test' }], problems: [] });
                 else if (m.type === 'cameras') reply({ cameras: [{ id: 'jeditor-test-camera', name: 'jEditor test camera', ready: true, note: null }] });
                 else if (m.type === 'tether') {
@@ -341,6 +352,22 @@ const waitForPost = (page, type) => page.waitForFunction(
             return { to: r.to, seen: seen.join(), cancelled: window.__cancelCopy === job.copyId };
         });
         check('copyFolder: progress as it goes, then where the copy went; cancelCopy is passed on', copy.to === 'E:\\Jones' && copy.seen === '5/10' && copy.cancelled, JSON.stringify(copy));
+        // A folder handle for a path; burners; a burn with how far it's got
+        const more = await page.evaluate(async () => {
+            const out = {};
+            const n = window.JEditorNative;
+            out.handle = (await n.folderHandle('E:\\Jones')).name;
+            out.missing = await n.folderHandle('E:\\Nope').then(() => 'found', e => e.message);
+            out.burners = (await n.burners()).map(b => b.name).join();
+            const seen = [];
+            out.burnt = await n.burn('b1', 'C:\\Jones', 'Jones', (d, t) => seen.push(d + '/' + t), false);
+            out.seen = seen.join();
+            out.asked = window.__burnAsked && [window.__burnAsked.burner, window.__burnAsked.path, window.__burnAsked.label, window.__burnAsked.eject].join();
+            out.feature = Host.has('burn');
+            return out;
+        });
+        check('folderHandle: a handle for a path, an error for one that isn\'t there; burners and burn (progress, then done)',
+            more.handle === 'on-e' && /isn't there/.test(more.missing) && more.burners === 'DVD burner' && more.burnt.bytes === 100 && more.seen === '30/100' && more.asked === 'b1,C:\\Jones,Jones,false' && more.feature, JSON.stringify(more));
         const scanned = await page.evaluate(() => ({ scan: window.__scan, check: (window.__checks || []).find(c => c.step === 'scanned') }));
         const teth = await page.evaluate(() => ({ req: window.__tether, check: (window.__checks || []).find(c => c.step === 'tethered') }));
         check('smoke test: tethers the test camera into the order, takes a shot (RAW + JPEG) and disconnects', teth.req && teth.req.camera === 'jeditor-test-camera' && teth.req.folder === 'C:\\Jones' && teth.req.prefix === 'shot_' &&
@@ -481,6 +508,37 @@ const waitForPost = (page, type) => page.waitForFunction(
         check('Solid again asks the app and clears the backdrop',
             r.solidAgain === 'none' && /Start menu/.test(r.solidHelp), JSON.stringify(r));
         check('window background: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('bridge: closing the window (holdClose)');
+    {
+        const { context, page, errors } = await openPage(browser);
+        await waitForPost(page, 'ready');
+        const r = await page.evaluate(async () => {
+            const until = async (ok) => { for (let i = 0; i < 100 && !ok(); i++) await new Promise(res => setTimeout(res, 20)); return ok(); };
+            const of = (t) => window.__posted.filter(m => m.type === t);
+            const out = {};
+            let answer = false;
+            window.__posted.length = 0;
+            JEditorNative.holdClose(async () => answer);
+            out.held = of('holdClose').map(m => m.on).join();
+            // The page says no: heard at once, then not closed
+            window.__deliver({ type: 'closing' });
+            await until(() => of('closeWindow').length === 1);
+            out.no = of('closeHeard').length === 1 && of('closeWindow')[0].ok === false;
+            // Yes: closed
+            answer = true;
+            window.__deliver({ type: 'closing' });
+            await until(() => of('closeWindow').length === 2);
+            out.yes = of('closeWindow')[1].ok === true;
+            JEditorNative.holdClose(null);
+            out.released = of('holdClose').map(m => m.on).join();
+            return out;
+        });
+        check('holdClose tells the app; closing asks the page and says whether to close',
+            r.held === 'true' && r.no && r.yes && r.released === 'true,false', JSON.stringify(r));
+        check('closing: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
 

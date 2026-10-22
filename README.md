@@ -43,7 +43,8 @@ It only asks once. More in [Installing](docs/installing.md).
 
 - **Whole folders, instantly.** Open a folder and every photo is there, in the grid or one by one with a film strip.
 - **Rotate, crop, straighten.** Saved straight into the file, with undo. **Auto crop** finds the photo in a scan and crops it for you.
-- **Light and color, Lightroom-style** (experimental: Settings → Experimental). Exposure, contrast, highlights and shadows, white balance, levels and curves with a live histogram, a color mixer, color grading, film looks, vignette and grain. Non-destructive: the original is never changed until you export. **Auto color** takes the cast off a faded print.
+- **Light and color, Lightroom-style.** Exposure, contrast, highlights and shadows, white balance, levels and curves with a live histogram, a color mixer, color grading, film looks, vignette and grain. Non-destructive: the original is never changed until you export. **Auto color** takes the cast off a faded print. Spot and dust removal, and masks that find the sky and the subject.
+- **Paint.** Brushes, shapes, text and layers over a photo, or on a new canvas.
 - **Sort the pile.** Flags, search, rename in bulk, move into folders, find duplicates, delete with undo.
 - **Keeps up with you.** It watches the folder, so photos a scanner saves show up on their own.
 - **Projects and drives.** A sidebar with your projects, pinned folders and USB drives, and several windows side by side.
@@ -60,7 +61,8 @@ Windows comes first: it gets everything, and each feature is made best there, th
 | | Windows | Mac | Linux | Web |
 |---|:-:|:-:|:-:|:-:|
 | Rotate, crop, flags, rename, move, duplicates, Auto crop | ✓ | ✓ | ✓ | ✓ |
-| Adjust (experimental): light, color, levels, curves, color mixer, grading, film looks, masks, sharpening, noise reduction, vignette, grain | ✓ | ✓ | ✓ | ✓ |
+| Adjust: light, color, levels, curves, color mixer, grading, film looks, masks, sharpening, noise reduction, vignette, grain | ✓ | ✓ | ✓ | ✓ |
+| Paint: brushes, shapes, text and layers | ✓ | ✓ | ✓ | ✓ |
 | Opens folders with no permission prompts | ✓ | ✓ | ✓ | |
 | Sidebar: projects, pinned folders, drives | ✓ | ✓ | ✓ | |
 | Several windows and Split | ✓ | ✓ | ✓ | |
@@ -78,6 +80,6 @@ Everything that's only on some platforms, why, and what it would take to bring i
 - [Installing](docs/installing.md): where things go, updating, removing
 - [Developing](docs/developing.md): how it's built, building it yourself, releasing
 - [Platforms](docs/platforms.md): what runs where, and how that's decided
-- [Roadmap](PLAN.md): what's next, from Lightroom-style editing to a paint tool
+- [Roadmap](PLAN.md): what's next
 
 <sub>Photos in the screenshots: [Unsplash](https://unsplash.com), via [Lorem Picsum](https://picsum.photos).</sub>

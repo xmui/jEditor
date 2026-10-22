@@ -9,13 +9,7 @@
 // it leaves this list and is simply part of jEditor.
 
 const Experiments = {
-    LIST: [
-        {
-            id: 'adjust', beta: true,
-            title: 'Adjust: Lightroom-style editing',
-            text: 'Light, color, levels and curves, film looks of real stocks, color grading, masks, sharpening and noise reduction (E, or the sliders button). Never changes the photo until you export or save. Adjustments already made stay on the photos when this is off'
-        }
-    ],
+    LIST: [],
 
     init(app) {
         this.app = app;

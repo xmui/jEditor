@@ -27,7 +27,7 @@ Checked by `test/parity.test.js`: each ✓ must match the app's `features` list,
 | `scan` | Scanning into the project (TWAIN, WIA) | ✓ | | | | not yet on Mac and Linux; browser |
 | `camera` | Tethered shooting | ✓ | | | | not yet on Mac and Linux; browser |
 | `log` | The app's log, in Settings | ✓ | | | | not yet on Mac and Linux; browser |
-| `burn` | Burning a project onto a CD or DVD | ✓ | | | | not yet on Mac and Linux; browser (in the 1.44 beta) |
+| `burn` | Burning a project onto a CD or DVD | ✓ | | | | not yet on Mac and Linux; browser |
 | `quickAccess` | Explorer's Quick Access in the sidebar's Pinned | ✓ | | | | system |
 | `backdrop` | Mica or Acrylic behind the window | ✓ | | | | system |
 | `permissions` | The Mac's privacy settings jEditor needs, in one window | | ✓ | | | system |
@@ -36,7 +36,7 @@ Linux updates cover the AppImage, the `.deb` and the Arch package. The Mac app a
 
 ## The same everywhere
 
-These don't depend on the app, so every platform has them: viewing, rotating, cropping and Auto crop, flags, rename, move, duplicates, import from a card, Save edits when done, and export. The experiments in **Settings → Experimental** (Adjust, Paint) are the same everywhere too.
+These don't depend on the app, so every platform has them: viewing, rotating, cropping and Auto crop, flags, rename, move, duplicates, import from a card, Save edits when done, and export. Adjust and Paint, and the experiments in **Settings → Experimental**, are the same everywhere too.
 
 Some things work everywhere but are kept in a different place:
 

@@ -1,18 +1,22 @@
 // Scanning (the Windows app): photos from a scanner straight into the open
 // project, in the scan dock: a panel floating over the photos (drag it by
-// its title, make it small with —) that never blocks anything, so you can
-// keep working, or work in another window, while it scans.
+// its title, resize it by its edges, make it small with —) that never blocks
+// anything, so you can keep working, or work in another window, while it
+// scans.
 //
-//   setup     which scanner, which folder of the project and how to name the
+//   setup     which scanner (only those plugged in and on; the rest under
+//             More…), which folder of the project and how to name the
 //             photos: next in the folder's sequence (Smith-014.jpg after
 //             Smith-013.jpg), worked out from what's there; How (the glass
 //             or the feeder, from what the scanner has) and jEditor's own
 //             settings: resolution, color, sides (feeder: backs saved as
 //             Smith-014-b.jpg), file type and quality, brightness and
-//             contrast, and saved setups. No scanner window: Advanced has
-//             the scanner's own window, for when jEditor's aren't enough.
+//             contrast, and saved setups; only what the scanner can do
+//             (resolutions up to its optical one, grayscale, backs, its
+//             own crop). No scanner window: Advanced has the scanner's own
+//             window, for when jEditor's aren't enough.
 //   scanning  the last photos in, as they land (each also shows up in the
-//             grid straight away), and Stop
+//             grid straight away), Show each one turned on or off, and Stop
 //   done      how many, and Scan more (names carry on), Change settings
 //
 // The glass (How → Glass):
@@ -36,6 +40,10 @@ const Scan = {
     KEY_SWAP: 'jeditor.scanSwap', // scanners whose front and back are swapped
     KEY_AUTOSIZE: 'jeditor.scanAutoSize', // feeders that crop each photo themselves (off: jEditor does)
     KEY_BED: 'jeditor.scanBed', // each scanner's glass size, when chosen
+    KEY_EPSON: 'jeditor.scanEpson', // an Epson feeder's own fixes, when changed: { even, streaks }
+    KEY_KEEP: 'jeditor.scanKeep', // scanners kept listed though not found plugged in (on the network)
+    KEY_SIZE: 'jeditor.scanDockSize', // the dock's size, when it was resized
+    MORE: '\u0000more', // the scanner list's More… item
 
     // Glass sizes (inches). Auto: what the scanner says, else what jEditor
     // knows of the model, else A4
@@ -51,13 +59,10 @@ const Scan = {
     KNOWN_BEDS: [[/OpticBook\s*A300/i, 'a3'], [/Perfection\s*V\d{3}/i, 'epson'], [/OpticBook\s*3[89]00|OpticBook\s*4800/i, 'letter']],
     KEY_OPTS: 'jeditor.scanOpts', // the settings last used
     KEY_DEV_OPTS: 'jeditor.scanOptsBy', // …and with each scanner
-    KEY_TONED: 'jeditor.scanToned', // FastFotos given the app's tone once
-    // Epson's FastFoto driver sends far more contrast than the FastFoto app
-    // saves (darker, oversaturated, shadows lost): this matches the app
-    FASTFOTO_TONE: { brightness: 5, contrast: -35 },
     KEY_SETUPS: 'jeditor.scanSetups', // saved setups: [{ name, …settings }]
     caps: {}, // what each scanner can do (asked once)
     STRIP: 6, // photos shown in the dock
+    STRIP_SIZED: 60, // …once it's been made bigger
     PHOTO: /^(.*?)(\d+)\.(jpe?g|tiff?|png|webp)$/i,
 
     el(id) { return document.getElementById(id); },
@@ -83,7 +88,12 @@ const Scan = {
             const all = this.get(this.KEY_AUTOSIZE, {}) || {};
             all[d.id] = this.el('scan-autosize').checked;
             this.put(this.KEY_AUTOSIZE, all);
+            this.syncMode();
         });
+        for (const id of ['scan-even', 'scan-streaks']) this.el(id).addEventListener('change', () => this.saveEpson());
+        // Show each one: in the settings, and while it scans
+        this.el('scan-show').addEventListener('change', () => this.setShow(this.el('scan-show').checked));
+        this.el('scan-show-live').addEventListener('change', () => this.setShow(this.el('scan-show-live').checked, true));
         ScanPreview.init(boxes => this.boxesChanged(boxes));
         this.el('scan-pv-again').addEventListener('click', () => this.previewGlass());
         this.el('scan-pv-find').addEventListener('click', () => ScanPreview.set(ScanPreview.find(this.el('scan-pv-img'))));
@@ -105,7 +115,14 @@ const Scan = {
         this.el('scan-setup-save').addEventListener('click', () => this.saveSetup());
         this.el('scan-setup-del').addEventListener('click', () => this.deleteSetup());
         this.el('scan-details').addEventListener('click', () => this.showDetails(!this.details.shown, true));
-        this.el('scan-device').addEventListener('change', () => { this.syncCompat(); this.syncMode(true); this.loadOptsFor(this.device()); this.loadCaps(); });
+        this.el('scan-device').addEventListener('change', () => {
+            if (this.el('scan-device').value === this.MORE) this.showMoreScanners();
+            this.syncCompat(); this.syncMode(true); this.loadOptsFor(this.device()); this.loadCaps();
+        });
+        // A scanner plugged in or out while the dock is open: the list follows
+        addEventListener('jeditor-devices', () => {
+            if (this.visible() && this.devices && !this.running && !this.waiting && panel.dataset.state === 'setup') this.loadDevices(true, true);
+        });
         this.el('scan-folder').addEventListener('change', () => this.fillNames());
         this.el('scan-prefix').addEventListener('input', () => this.preview());
         this.el('scan-next').addEventListener('input', () => this.preview());
@@ -152,12 +169,15 @@ const Scan = {
         panel.classList.remove('hidden');
         this.setSmall(false);
         this.setState('setup');
+        this.fitDock();
         if (this.detailsWanted()) this.showDetails(true);
         this.fillFolders();
         this.fillNames();
         const last = this.last();
-        this.el('scan-autocrop').checked = !last || last.autoCrop !== false;
-        this.el('scan-show').checked = !last || last.show !== false;
+        // Off unless turned on. Kept as autoCropOn: autoCrop is the old
+        // choice, made when it was on to start with, so it isn't read
+        this.el('scan-autocrop').checked = !!last && last.autoCropOn === true;
+        this.el('scan-show').checked = this.el('scan-show-live').checked = !last || last.show !== false;
         this.placeOpts('home');
         this.loadOpts();
         this.el('scan-go').focus();
@@ -172,6 +192,14 @@ const Scan = {
         if (this.waiting) FolderCache.native().cancelScan(); // a preview: stop it
         this.el('scan-panel').classList.add('hidden');
         if (this.details.shown) this.details.hide(); // (still wanted next time)
+    },
+
+    // Show each one as it comes in: both switches, remembered. Turned on
+    // while it scans: the newest one so far, large, at once
+    setShow(on, live = false) {
+        this.el('scan-show').checked = this.el('scan-show-live').checked = on;
+        this.put(this.KEY, { ...(this.last() || {}), show: on });
+        if (on && live && this.running && this.newest) this.app.showWhenIn(this.newest);
     },
 
     // ---- Details ----
@@ -189,17 +217,22 @@ const Scan = {
 
     setSmall(small) {
         this.el('scan-panel').classList.toggle('small', small);
+        if (this.fitDock) this.fitDock();
         this.el('scan-min').title = small ? 'Show it all' : 'Make small';
     },
 
     setState(state) {
         const panel = this.el('scan-panel');
+        const was = panel.dataset.state;
         panel.dataset.state = state;
         this.el('scan-go').textContent = state === 'done' ? 'Scan more' : 'Scan';
         this.el('scan-cancel').textContent = state === 'done' ? 'Done' : 'Cancel';
         if (state === 'setup') {
             this.el('scan-title').textContent = 'Scan into this project';
             this.el('scan-go').disabled = !(this.devices && this.devices.length);
+            // Back from a scan: the names carry on from it (not the numbers
+            // the boxes had before it, which are taken now)
+            if (was && was !== 'setup' && this.el('scan-folder').options.length) this.fillNames();
             this.placeOpts('home');
             this.syncMode();
         }
@@ -207,21 +240,42 @@ const Scan = {
         if (state === 'done') this.el('scan-go').disabled = false;
     },
 
-    // Dragged by its title; stays where it was put
+    // Dragged by its title; stays where it was put. Fitted on screen each
+    // time it opens and when the window changes size (a spot chosen in a
+    // big window would leave it hanging off a small one), going back to
+    // that spot when there's room again
     initDrag() {
         const panel = this.el('scan-panel');
         const head = this.el('scan-head');
         const place = (x, y) => {
+            panel.style.removeProperty('--dock-max');
             const r = panel.getBoundingClientRect();
             x = Math.max(4, Math.min(innerWidth - r.width - 4, x));
-            y = Math.max(4, Math.min(innerHeight - 40, y));
+            y = Math.max(4, Math.min(innerHeight - r.height - 4, y));
             Object.assign(panel.style, { left: `${x}px`, top: `${y}px`, right: 'auto', bottom: 'auto' });
+            panel.style.setProperty('--dock-max', `${innerHeight - y - 4}px`);
             return { x, y };
         };
-        try {
-            const pos = JSON.parse(localStorage.getItem(this.KEY_POS) || 'null');
-            if (pos) requestAnimationFrame(() => place(pos.x, pos.y));
-        } catch (e) { /* none */ }
+        // Its size, when it was resized: no bigger than the window
+        const size = () => {
+            const want = this.get(this.KEY_SIZE, null);
+            panel.classList.toggle('sized', !!want);
+            if (!want) {
+                panel.style.removeProperty('width');
+                panel.style.removeProperty('height');
+                return;
+            }
+            panel.style.width = `${Math.min(want.w, innerWidth - 8)}px`;
+            panel.style.height = `${Math.min(want.h, innerHeight - 8)}px`;
+        };
+        this.fitDock = () => {
+            size();
+            let want = null;
+            try { want = JSON.parse(localStorage.getItem(this.KEY_POS) || 'null'); } catch (e) { /* none */ }
+            if (want && !panel.classList.contains('hidden')) place(want.x, want.y);
+        };
+        this.initResize(place, size);
+        addEventListener('resize', () => this.fitDock());
         head.addEventListener('pointerdown', (e) => {
             if (e.button !== 0 || e.target.closest('button')) return;
             const r = panel.getBoundingClientRect();
@@ -232,10 +286,56 @@ const Scan = {
             const up = () => {
                 head.removeEventListener('pointermove', move);
                 head.removeEventListener('pointerup', up);
-                if (pos) try { localStorage.setItem(this.KEY_POS, JSON.stringify(pos)); } catch (err) { /* private */ }
+                if (!pos) return;
+                try { localStorage.setItem(this.KEY_POS, JSON.stringify(pos)); } catch (err) { /* private */ }
             };
             head.addEventListener('pointermove', move);
             head.addEventListener('pointerup', up);
+        });
+    },
+
+    // Resized by its edges and corners, as a window is; the size is kept,
+    // and where it was put with it. Double-click an edge: its usual size
+    initResize(place, size) {
+        const panel = this.el('scan-panel');
+        const MIN_W = 340, MIN_H = 220;
+        panel.querySelectorAll('.scan-grip').forEach(grip => {
+            const edge = grip.dataset.edge;
+            grip.addEventListener('dblclick', () => {
+                try { localStorage.removeItem(this.KEY_SIZE); } catch (e) { /* private */ }
+                this.fitDock();
+            });
+            grip.addEventListener('pointerdown', (e) => {
+                if (e.button !== 0) return;
+                e.preventDefault();
+                const r = panel.getBoundingClientRect();
+                const x0 = e.clientX, y0 = e.clientY;
+                grip.setPointerCapture(e.pointerId);
+                panel.style.setProperty('--dock-max', 'none');
+                let box = null;
+                const move = (ev) => {
+                    const dx = ev.clientX - x0, dy = ev.clientY - y0;
+                    let { left, top, right, bottom } = r;
+                    if (edge.includes('w')) left = Math.max(4, Math.min(right - MIN_W, left + dx));
+                    if (edge.includes('e')) right = Math.min(innerWidth - 4, Math.max(left + MIN_W, right + dx));
+                    if (edge.includes('n')) top = Math.max(4, Math.min(bottom - MIN_H, top + dy));
+                    if (edge.includes('s')) bottom = Math.min(innerHeight - 4, Math.max(top + MIN_H, bottom + dy));
+                    box = { x: left, y: top, w: right - left, h: bottom - top };
+                    panel.classList.add('sized');
+                    Object.assign(panel.style, { left: `${left}px`, top: `${top}px`, right: 'auto', bottom: 'auto', width: `${box.w}px`, height: `${box.h}px` });
+                };
+                const up = () => {
+                    grip.removeEventListener('pointermove', move);
+                    grip.removeEventListener('pointerup', up);
+                    if (!box) { place(r.left, r.top); return; }
+                    this.put(this.KEY_SIZE, { w: Math.round(box.w), h: Math.round(box.h) });
+                    this.put(this.KEY_POS, { x: Math.round(box.x), y: Math.round(box.y) });
+                    size();
+                    place(box.x, box.y);
+                };
+                grip.addEventListener('pointermove', move);
+                grip.addEventListener('pointerup', up);
+            });
         });
     },
 
@@ -248,7 +348,9 @@ const Scan = {
         cap.textContent = name.replace(/\.[^.]+$/, '');
         fig.appendChild(cap);
         strip.appendChild(fig);
-        while (strip.children.length > this.STRIP) {
+        // Resized: as many as fill it (the newest at the bottom)
+        const sized = this.el('scan-panel').classList.contains('sized');
+        while (strip.children.length > (sized ? this.STRIP_SIZED : this.STRIP)) {
             const old = strip.firstElementChild;
             const img = old.querySelector('img');
             if (img) URL.revokeObjectURL(img.src);
@@ -264,6 +366,7 @@ const Scan = {
             img.src = URL.createObjectURL(file);
             fig.prepend(img);
         } catch (e) { /* not readable yet: the name shows */ }
+        if (sized) strip.scrollTop = strip.scrollHeight;
     },
 
     clearStrip() {
@@ -280,32 +383,67 @@ const Scan = {
 
     // ---- Scanners ----
 
-    async loadDevices(fresh) {
+    // Only the scanners plugged in and on are listed (a TWAIN driver stays
+    // listed after its scanner is unplugged; the app tells which are found).
+    // The rest, under More…: a scanner on the network isn't found that way,
+    // so one scanned with from there is kept listed (KEY_KEEP). With none
+    // found, all are listed. `quiet`: a device was plugged in or out, so
+    // the list changes only if what's found did
+    async loadDevices(fresh, quiet = false) {
         const select = this.el('scan-device');
         const note = this.el('scan-problems');
         if (!this.devices || fresh) {
-            select.innerHTML = '<option value="">Looking for scanners…</option>';
-            select.disabled = true;
-            this.el('scan-go').disabled = true;
-            note.textContent = '';
+            if (!quiet) {
+                select.innerHTML = '<option value="">Looking for scanners…</option>';
+                select.disabled = true;
+                this.el('scan-go').disabled = true;
+                note.textContent = '';
+            }
+            let devices, problems;
             try {
                 const r = await FolderCache.native().scanners();
-                this.devices = r.devices || [];
-                this.problems = r.problems || [];
+                devices = r.devices || [];
+                problems = r.problems || [];
             } catch (e) {
-                this.devices = [];
-                this.problems = ['Couldn\'t look for scanners: ' + e.message];
+                if (quiet) return;
+                devices = [];
+                problems = ['Couldn\'t look for scanners: ' + e.message];
             }
+            const was = this.devices && this.devices.map(d => d.id + (d.found === false ? '-' : '+')).join('|');
+            this.devices = devices;
+            this.problems = problems;
+            if (quiet && was === devices.map(d => d.id + (d.found === false ? '-' : '+')).join('|')) return;
         }
+        const keep = this.get(this.KEY_KEEP, []) || [];
+        const listed = (d) => d.found !== false || keep.includes(d.id);
+        const shown = this.devices.filter(listed);
+        const others = this.devices.filter(d => !listed(d));
+        const all = this.showAllScanners || !shown.length;
+        const prev = select.value;
         select.innerHTML = '';
-        for (const d of this.devices) {
+        const option = (d, parent) => {
             const o = document.createElement('option');
             o.value = d.id;
             o.textContent = d.driver === 'wia' ? `${d.name} (WIA)` : d.name;
+            parent.appendChild(o);
+        };
+        for (const d of shown) option(d, select);
+        if (others.length && all) {
+            const group = document.createElement('optgroup');
+            group.label = shown.length ? 'Not found: unplugged, off, or on the network' : 'None found plugged in: unplugged, off, or on the network';
+            for (const d of others) option(d, group);
+            select.appendChild(group);
+        } else if (others.length) {
+            const o = document.createElement('option');
+            o.value = this.MORE;
+            o.textContent = `More: ${others.length} not plugged in…`;
             select.appendChild(o);
         }
         const last = this.last();
-        if (last && this.devices.some(d => d.id === last.device)) select.value = last.device;
+        const ids = [...select.options].map(o => o.value).filter(v => v && v !== this.MORE);
+        if (quiet && ids.includes(prev)) select.value = prev;
+        else if (last && ids.includes(last.device)) select.value = last.device;
+        else select.value = ids[0] || '';
         select.disabled = !this.devices.length;
         this.el('scan-go').disabled = !this.devices.length;
         if (!this.devices.length) {
@@ -316,8 +454,29 @@ const Scan = {
         }
         this.syncCompat();
         this.syncMode(true);
-        note.textContent = this.devices.length ? '' : 'Is the scanner plugged in and turned on? ' + this.problems.join('. ');
-        if (this.devices.length && this.problems.length) note.textContent = this.problems.join('. ');
+        note.textContent = !this.devices.length ? 'Is the scanner plugged in and turned on? ' + this.problems.join('. ')
+            : !shown.length ? 'None of these seem to be plugged in. Is the scanner plugged in and turned on? One on the network can still be chosen.'
+            : this.problems.join('. ');
+        if (quiet && select.value !== prev) {
+            this.loadOptsFor(this.device());
+            this.loadCaps();
+        }
+    },
+
+    // The scanners not found, listed too (More… chosen)
+    showMoreScanners() {
+        this.showAllScanners = true;
+        const others = (this.devices || []).filter(d => d.found === false);
+        this.loadDevices(false);
+        if (others.length) this.el('scan-device').value = others[0].id;
+    },
+
+    // A scanner not found that scanned all the same (on the network): kept listed
+    keepListed(id) {
+        const d = (this.devices || []).find(x => x.id === id);
+        if (!d || d.found !== false) return;
+        const keep = this.get(this.KEY_KEEP, []) || [];
+        if (!keep.includes(id)) this.put(this.KEY_KEEP, [...keep, id]);
     },
 
     // Compatibility mode: TWAIN scanners only, remembered for each
@@ -382,7 +541,13 @@ const Scan = {
     // or preview started meanwhile waits for it (capsLoading)
     async loadCaps() {
         const d = this.device();
-        if (!d || this.caps[d.id] || this.running || this.waiting) return;
+        if (!d) return;
+        // Asked already: its resolutions (not the last scanner's)
+        if (this.caps[d.id]) return this.fillDpis(this.caps[d.id]);
+        // Until it answers, or if it never does (a slow or stuck driver):
+        // the usual ones, so there's always a resolution to choose
+        this.fillDpis({ dpis: [], dpisSure: false, asking: true });
+        if (this.running || this.waiting) return;
         let asked;
         this.capsLoading = asked = FolderCache.native().scanCaps({ device: d.id, driver: d.driver, compat: d.driver === 'twain' && !!this.compat()[d.id] })
             .catch(() => null);
@@ -394,7 +559,7 @@ const Scan = {
         if (this.capsLoading === asked) this.capsLoading = null;
         if (this.device() === d) {
             this.syncMode(true);
-            if (this.caps[d.id]) this.fillDpis(this.caps[d.id]);
+            this.fillDpis(this.caps[d.id] || { dpis: [], dpisSure: false });
         }
     },
 
@@ -419,6 +584,10 @@ const Scan = {
             this.el('scan-swap').checked = d.id in swaps ? !!swaps[d.id] : this.isFastFoto(d);
             const sizes = this.get(this.KEY_AUTOSIZE, {}) || {};
             this.el('scan-autosize').checked = d.id in sizes ? !!sizes[d.id] : true;
+            // As FastFoto has them unless changed: both on
+            const fixes = (this.get(this.KEY_EPSON, {}) || {})[d.id] || {};
+            this.el('scan-even').checked = fixes.even !== false;
+            this.el('scan-streaks').checked = fixes.streaks !== false;
         }
         // A choice the scanner doesn't have: the other one
         const pick = document.querySelector('input[name="scan-mode"]:checked');
@@ -430,11 +599,25 @@ const Scan = {
         const panel = this.el('scan-panel');
         panel.dataset.mode = mode;
         for (const m of ['glass', 'feeder', 'driver']) this.el(`scan-help-${m}`).classList.toggle('hidden', m !== mode);
-        this.el('scan-mode-row').classList.toggle('hidden', mode === 'driver');
+        // Only one way (a feeder alone, or the scanner's window): no choice shown
+        this.el('scan-mode-row').classList.toggle('hidden', mode === 'driver' || !(hasGlass && hasFeeder));
         this.el('scan-swap-row').classList.toggle('hidden', mode !== 'feeder');
-        this.el('scan-autosize-row').classList.toggle('hidden', mode !== 'feeder' || !d || d.driver !== 'twain');
+        // Its own crop: a TWAIN feeder's, unless it said it can't
+        const autosize = mode === 'feeder' && !!d && d.driver === 'twain' && !(caps && caps.autoSize === false);
+        this.el('scan-autosize-row').classList.toggle('hidden', !autosize);
+        // Epson's own fixes: sent with its own crop (Twain32's Epson photo scan)
+        const epson = autosize && this.isFastFoto(d) && this.el('scan-autosize').checked;
+        this.el('scan-even-row').classList.toggle('hidden', !epson);
+        this.el('scan-streaks-row').classList.toggle('hidden', !epson);
         this.syncOwn(mode === 'feeder' && d && d.driver === 'twain' ? d : null);
-        this.el('scan-sides-row').classList.toggle('hidden', mode !== 'feeder');
+        // Backs only from a feeder that scans both sides
+        const oneSided = !unsure && caps.duplex === false;
+        for (const v of ['back', 'both']) {
+            const o = this.el('scan-sides').querySelector(`option[value="${v}"]`);
+            o.hidden = o.disabled = oneSided;
+        }
+        if (oneSided) this.el('scan-sides').value = 'front';
+        this.el('scan-sides-row').classList.toggle('hidden', mode !== 'feeder' || oneSided);
         if (panel.dataset.state === 'setup') this.el('scan-go').textContent = mode === 'glass' ? 'Preview' : 'Scan';
         this.preview();
     },
@@ -469,6 +652,14 @@ const Scan = {
             btn.disabled = false;
             this.syncOwn(d);
         }
+    },
+
+    saveEpson() {
+        const d = this.device();
+        if (!d) return;
+        const all = this.get(this.KEY_EPSON, {}) || {};
+        all[d.id] = { even: this.el('scan-even').checked, streaks: this.el('scan-streaks').checked };
+        this.put(this.KEY_EPSON, all);
     },
 
     saveSwap() {
@@ -526,18 +717,7 @@ const Scan = {
     // suits it (a photo feeder: 300 dpi, plenty for prints and quick)
     loadOptsFor(d) {
         if (!d) return;
-        this.el('scan-tone-note').classList.toggle('hidden', !this.isFastFoto(d));
         const mine = (this.get(this.KEY_DEV_OPTS, {}) || {})[d.id];
-        // A FastFoto starts with the app's tone; once, so they can change it
-        const toned = this.get(this.KEY_TONED, []) || [];
-        if (this.isFastFoto(d) && !toned.includes(d.id)) {
-            this.put(this.KEY_TONED, [...toned, d.id]);
-            const base = mine || { ...(this.get(this.KEY_OPTS, {}) || {}), dpi: this.defaultDpi(d) };
-            const flat = !base.brightness && !base.contrast;
-            this.setOpts(flat ? { ...base, ...this.FASTFOTO_TONE } : base);
-            if (flat) this.saveOpts(this.opts());
-            return;
-        }
         if (mine) return this.setOpts(mine);
         this.setOpts({ ...(this.get(this.KEY_OPTS, {}) || {}), dpi: this.defaultDpi(d) });
     },
@@ -635,25 +815,41 @@ const Scan = {
         this.fillSetups('');
     },
 
-    // Resolutions the scanner has (100 dpi and up); the last one used, else 600
+    // Resolutions the scanner has (100 dpi and up; those above its optical
+    // one under their own heading, interpolated); the last one used, else
+    // the nearest below it. Grayscale only if it has it. Unsure (the driver didn't
+    // say): the usual ones, and the dock says so
     fillDpis(caps) {
         const select = this.el('scan-dpi');
         const dpis = (caps.dpis || []).filter(d => d >= 100);
-        const list = dpis.length ? dpis : [300, 600, 1200];
+        const usual = [150, 200, 300, 400, 600, 1200];
+        const list = dpis.length ? dpis : caps.optical >= 100 ? usual.filter(d => d <= caps.optical) : usual;
         const d = this.device();
         const mine = d && (this.get(this.KEY_DEV_OPTS, {}) || {})[d.id];
         const want = (mine && mine.dpi) || (d ? this.defaultDpi(d) : 0) || +select.value || (this.get(this.KEY_OPTS, {}) || {}).dpi;
         select.innerHTML = '';
+        const made = caps.optical >= 100 ? list.filter(d => d > caps.optical) : [];
+        let group = null;
         for (const d of list) {
             const o = document.createElement('option');
             o.value = d;
-            o.textContent = `${d} dpi`;
-            select.appendChild(o);
+            o.textContent = made.includes(d) ? `${d} dpi (interpolated)` : `${d} dpi`;
+            if (made.includes(d) && !group) {
+                group = document.createElement('optgroup');
+                group.label = `Interpolated: more pixels, no more detail than ${caps.optical} dpi`;
+                select.appendChild(group);
+            }
+            (made.includes(d) ? group : select).appendChild(o);
         }
-        const upTo600 = list.filter(d => d <= 600);
-        select.value = list.includes(want) ? want : (upTo600.length ? upTo600[upTo600.length - 1] : list[0]);
+        const below = list.filter(d => d <= want);
+        select.value = list.includes(want) ? want : below.length ? below[below.length - 1] : list[0];
+        select.title = caps.optical >= 100 ? `Up to ${caps.optical} dpi, the scanner's optical resolution` : '';
+        const unsure = this.el('scan-dpi-note');
+        unsure.textContent = caps.asking ? 'Asking the scanner which resolutions it has…'
+            : caps.dpisSure === false ? 'The scanner didn\'t say which resolutions it has: these are the usual ones. If one doesn\'t work, choose a lower one.' : '';
+        unsure.classList.toggle('hidden', caps.dpisSure !== false);
         const gray = this.el('scan-color').querySelector('option[value="gray"]');
-        gray.disabled = caps.gray === false;
+        gray.hidden = gray.disabled = caps.gray === false;
         if (gray.disabled) this.el('scan-color').value = 'color';
     },
 
@@ -716,8 +912,9 @@ const Scan = {
         return { prefix: (word.charAt(0).toUpperCase() + word.slice(1) || 'Scan') + '-', next: 1, digits: 3 };
     },
 
+    // The folder's next names: carrying on from the last scan into it
     fillNames() {
-        const n = this.naming(this.el('scan-folder').value);
+        const n = this.continuing(this.el('scan-folder').value);
         this.el('scan-prefix').value = n.prefix;
         this.el('scan-next').value = n.next;
         this.digits = n.digits;
@@ -763,7 +960,7 @@ const Scan = {
             if (compat) all[device.id] = true; else delete all[device.id];
             localStorage.setItem(this.KEY_COMPAT, JSON.stringify(all));
         } catch (e) { /* private */ }
-        try { localStorage.setItem(this.KEY, JSON.stringify({ device: device.id, autoCrop, show: this.el('scan-show').checked })); } catch (e) { /* private */ }
+        try { localStorage.setItem(this.KEY, JSON.stringify({ device: device.id, autoCropOn: autoCrop, show: this.el('scan-show').checked })); } catch (e) { /* private */ }
         const state = this.el('scan-panel').dataset.state;
         if (state === 'preview') return this.scanBoxes();
         // Scan more: the names carry on from the photos just scanned
@@ -803,6 +1000,7 @@ const Scan = {
             Object.assign(opts, {
                 dpi: o.dpi, gray: o.color === 'gray', sides: o.sides, swap: this.el('scan-swap').checked,
                 autosize: device.driver === 'twain' && this.el('scan-autosize').checked,
+                even: this.el('scan-even').checked, streaks: this.el('scan-streaks').checked,
                 brightness: o.brightness, contrast: o.contrast, bedW: caps.feedW || 8.5, bedH: caps.feedH || 14
             });
         }
@@ -874,24 +1072,30 @@ const Scan = {
     bedFor(device, caps) {
         const pick = (key) => { const b = this.BEDS.find(x => x[0] === key); return b && b[2] ? { w: b[2], h: b[3] } : null; };
         const chosen = pick((this.get(this.KEY_BED, {}) || {})[device.id]);
-        if (chosen) return chosen;
+        // (not one bigger than the glass the scanner says it has)
+        const said = caps && !caps.guessed && caps.bedW > 1 && caps.bedH > 1 ? caps : null;
+        if (chosen && !(said && (chosen.w > said.bedW + 0.15 || chosen.h > said.bedH + 0.15))) return chosen;
         if (caps && !caps.guessed && caps.bedW > 1 && caps.bedH > 1) return { w: caps.bedW, h: caps.bedH };
         const known = this.KNOWN_BEDS.find(([re]) => re.test(device.name || device.id));
         if (known) return pick(known[1]);
         return { w: 8.27, h: 11.69, guessed: true };
     },
 
+    // The glass sizes: none bigger than the glass the scanner says it has
     fillBeds(device) {
         const select = this.el('scan-pv-glass');
-        if (!select.options.length) {
-            for (const [key, label] of this.BEDS) {
-                const o = document.createElement('option');
-                o.value = key;
-                o.textContent = label;
-                select.appendChild(o);
-            }
+        const caps = this.caps[device.id];
+        const said = caps && !caps.guessed && caps.bedW > 1 && caps.bedH > 1 ? caps : null;
+        select.innerHTML = '';
+        for (const [key, label, w, h] of this.BEDS) {
+            if (said && w && (w > said.bedW + 0.15 || h > said.bedH + 0.15)) continue;
+            const o = document.createElement('option');
+            o.value = key;
+            o.textContent = key === 'auto' && said ? `As the scanner says · ${+said.bedW.toFixed(1)} × ${+said.bedH.toFixed(1)} in` : label;
+            select.appendChild(o);
         }
-        select.value = (this.get(this.KEY_BED, {}) || {})[device.id] || 'auto';
+        const chosen = (this.get(this.KEY_BED, {}) || {})[device.id];
+        select.value = [...select.options].some(o => o.value === chosen) ? chosen : 'auto';
     },
 
     // The scanner went away (unplugged, switched off, asleep), jammed, or
@@ -1024,6 +1228,8 @@ const Scan = {
         this.el('scan-title').textContent = `Scanning · ${scannerName}`;
         this.el('scan-summary').textContent = `Into ${Folders.label(folder)} · ${this.name(prefix, next, digits || 3)}, ${this.name(prefix, next + 1, digits || 3)}, …`;
         this.clearStrip();
+        this.newest = null;
+        this.el('scan-show-live').checked = this.el('scan-show').checked;
         this.status(crops ? `Scanning the glass at ${dpi} dpi: ${crops.length} photo${crops.length === 1 ? '' : 's'} to cut from it.`
             : source === 'feeder' ? `Scanning the feeder at ${dpi} dpi: each photo shows up as it comes in.` : `Waiting for ${scannerName}. Its window may be behind jEditor.`);
         const done = (text, error) => {
@@ -1050,12 +1256,14 @@ const Scan = {
                 this.addThumb(folder, name);
                 show();
                 // The newest one, large (a back stays behind its photo)
-                if (this.el('scan-show').checked && !/-b\.[^.]+$/.test(name) && /\.(jpe?g|png|webp)$/i.test(name)) {
-                    app.showWhenIn(folder ? `${folder}/${name}` : name);
+                if (!/-b\.[^.]+$/.test(name) && /\.(jpe?g|png|webp)$/i.test(name)) {
+                    this.newest = folder ? `${folder}/${name}` : name;
+                    if (this.el('scan-show').checked) app.showWhenIn(this.newest);
                 }
             });
             (result.names || []).forEach(add); // the full list, in case a message was missed
             this.adoptCompat(device, result);
+            if (names.length) this.keepListed(device);
         } catch (e) {
             (e.names || []).forEach(add);
             show();

@@ -77,8 +77,9 @@ sealed class MainForm : Form
         Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
         FormClosed += (_, _) => Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         Load += async (_, _) => await StartAsync();
-        FormClosing += (_, _) =>
+        FormClosing += (_, e) =>
         {
+            if (HoldClose(e.CloseReason)) { e.Cancel = true; return; }
             SavePlacement();
             scanning?.Cancel();
             tether?.Stop();
@@ -86,6 +87,25 @@ sealed class MainForm : Form
         FormClosed += (_, _) => scanner?.Dispose();
         Log.Line += LogLine;
         FormClosed += (_, _) => Log.Line -= LogLine;
+    }
+
+    // Closing while the page holds it (in Adjust or Paint: app/modes.js):
+    // the page asks "Keep your changes?" and answers { type: 'closeWindow', ok }.
+    // A page that doesn't hear it (closeHeard) in a few seconds doesn't hold
+    // the window: closing again closes.
+    bool holdClose, closeOk, closeHeard;
+    DateTime closeAsked;
+
+    bool HoldClose(CloseReason why)
+    {
+        if (!holdClose || closeOk || why != CloseReason.UserClosing || smoke is not null || web.CoreWebView2 is null) return false;
+        if (closeAsked != default && !closeHeard && DateTime.UtcNow - closeAsked > TimeSpan.FromSeconds(5)) return false;
+        if (closeAsked == default)
+        {
+            closeAsked = DateTime.UtcNow;
+            Post(new { type = "closing" });
+        }
+        return true;
     }
 
     // The scan dock's Details: new log lines, sent on in small batches while
@@ -160,8 +180,10 @@ sealed class MainForm : Form
     // ---- Drives plugged in or taken out (USB orders) ----
     // Windows tells every window; the page is told once things settle
 
-    const int WM_DEVICECHANGE = 0x0219, DBT_DEVICEARRIVAL = 0x8000, DBT_DEVICEREMOVECOMPLETE = 0x8004;
-    System.Windows.Forms.Timer? drivesTimer;
+    // Any device (a scanner) plugged in or taken out: DBT_DEVNODES_CHANGED,
+    // told to the page as devicesChanged (the scan dock's list)
+    const int WM_DEVICECHANGE = 0x0219, DBT_DEVICEARRIVAL = 0x8000, DBT_DEVICEREMOVECOMPLETE = 0x8004, DBT_DEVNODES_CHANGED = 0x0007;
+    System.Windows.Forms.Timer? drivesTimer, devicesTimer;
 
     protected override void WndProc(ref Message m)
     {
@@ -179,6 +201,20 @@ sealed class MainForm : Form
             drivesTimer.Stop();
             drivesTimer.Start();
         }
+        if (m.Msg == WM_DEVICECHANGE && m.WParam == DBT_DEVNODES_CHANGED)
+        {
+            if (devicesTimer is null)
+            {
+                devicesTimer = new System.Windows.Forms.Timer { Interval = 1500 };
+                devicesTimer.Tick += (_, _) =>
+                {
+                    devicesTimer.Stop();
+                    if (web.CoreWebView2 is not null) Post(new { type = "devicesChanged" });
+                };
+            }
+            devicesTimer.Stop();
+            devicesTimer.Start();
+        }
         base.WndProc(ref m);
     }
 
@@ -193,6 +229,7 @@ sealed class MainForm : Form
 
     public void CloseNow()
     {
+        closeOk = true;
         if (IsHandleCreated) BeginInvoke(Close); else Close();
     }
 
@@ -359,6 +396,8 @@ sealed class MainForm : Form
                 });
                 break;
             case "ready":
+                holdClose = closeHeard = false;
+                closeAsked = default;
                 Log.Write($"jEditor {Str(msg, "version")} ready");
                 if (options.UpdateFailedLog is string setupLog)
                 {
@@ -390,6 +429,8 @@ sealed class MainForm : Form
                 smoke?.Report(msg);
                 break;
             case "dataDir":
+            case "folderHandle":
+            case "burners":
             case "pathsOf":
             case "recycle":
             case "restore":
@@ -423,12 +464,28 @@ sealed class MainForm : Form
             case "windows":
             case "transfer":
             case "undoTransfer":
+            case "burn":
             case "copyFolder":
                 var files = FilesOf(e);
                 BeginInvoke(async () => await HandleRequestAsync(msg, files));
                 break;
             case "state":
                 PageState = msg;
+                break;
+            case "holdClose":
+                holdClose = msg["on"]?.GetValue<bool>() ?? false;
+                break;
+            case "closeHeard":
+                closeHeard = true;
+                break;
+            case "closeWindow":
+                closeAsked = default;
+                closeHeard = false;
+                if (msg["ok"]?.GetValue<bool>() ?? false)
+                {
+                    closeOk = true;
+                    BeginInvoke(Close);
+                }
                 break;
             case "cancelScan":
                 scanning?.Cancel();
@@ -499,6 +556,15 @@ sealed class MainForm : Form
                     Directory.CreateDirectory(Shell.OrdersDir);
                     var handle = FolderHandle(Shell.OrdersDir);
                     Reply(id, handle is null ? new { error = "no storage" } : new { path = Shell.OrdersDir }, handle);
+                    break;
+                }
+                case "folderHandle":
+                {
+                    // A folder by its path, to write into (a project copied
+                    // onto a drive gets its data; a card's photos are read)
+                    var path = Str(msg, "path") ?? "";
+                    var handle = Path.IsPathFullyQualified(path) && Directory.Exists(path) ? FolderHandle(path) : null;
+                    Reply(id, handle is null ? new { error = "That folder isn't there" } : new { path }, handle);
                     break;
                 }
                 case "pathsOf":
@@ -701,6 +767,36 @@ sealed class MainForm : Form
                     AppWindows.PostAll(new { type = "filesChanged" });
                     break;
                 }
+                case "burners":
+                {
+                    // The disc burners and what's in them (Burn.cs)
+                    var burners = await Burn.RunAsync(Burn.Burners);
+                    Reply(id, new { burners });
+                    break;
+                }
+                case "burn":
+                {
+                    // A folder onto a blank CD or DVD, with how far it's got
+                    // as it goes ('burnProgress')
+                    var folder = Str(msg, "path") ?? "";
+                    var burner = Str(msg, "burner") ?? "";
+                    var label = Str(msg, "label") ?? "";
+                    var eject = msg["eject"]?.GetValue<bool>() ?? true;
+                    if (!Path.IsPathFullyQualified(folder) || burner.Length == 0) { Reply(id, new { error = "Not a folder" }); break; }
+                    try
+                    {
+                        var written = await Burn.RunAsync(() => Burn.Write(burner, folder, label, eject, (done, total) =>
+                            BeginInvoke(() => Post(new { type = "burnProgress", burn = id, done, total }))));
+                        Log.Write($"Burnt {folder} ({written} bytes)");
+                        Reply(id, new { ok = true, bytes = written });
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Write($"Couldn't burn {folder}: {ex.Message}");
+                        Reply(id, new { error = ex.Message });
+                    }
+                    break;
+                }
                 case "copyFolder":
                 {
                     // A whole folder into another (onto a USB drive), with
@@ -770,7 +866,7 @@ sealed class MainForm : Form
                 case "scanners":
                 {
                     var (devices, problems) = await Scanners.ListAsync();
-                    Reply(id, new { devices = devices.Select(d => new { id = d.Id, name = d.Name, driver = d.Driver }), problems });
+                    Reply(id, new { devices = devices.Select(d => new { id = d.Id, name = d.Name, driver = d.Driver, found = d.Found }), problems });
                     break;
                 }
                 case "scan":
@@ -866,6 +962,8 @@ sealed class MainForm : Form
             Sides = Str(msg, "sides") is "back" or "both" ? Str(msg, "sides")! : "front",
             Swap = msg["swap"]?.GetValue<bool>() ?? false,
             AutoSize = msg["autosize"]?.GetValue<bool>() ?? false,
+            Even = msg["even"]?.GetValue<bool>() ?? true,
+            Streaks = msg["streaks"]?.GetValue<bool>() ?? true,
             Brightness = Math.Clamp(msg["brightness"]?.GetValue<int>() ?? 0, -100, 100),
             Contrast = Math.Clamp(msg["contrast"]?.GetValue<int>() ?? 0, -100, 100),
             Format = Str(msg, "format") is "tiff" or "png" ? Str(msg, "format")! : "jpeg",
@@ -926,7 +1024,7 @@ sealed class MainForm : Form
         try
         {
             var caps = await Stoppable(cancel => Scanners.CapsAsync(Str(msg, "device") ?? "", Str(msg, "driver") ?? "twain", msg["compat"]?.GetValue<bool>() ?? false, cancel));
-            Reply(id, new { bedW = caps.BedW, bedH = caps.BedH, dpis = caps.Dpis, gray = caps.Gray, guessed = caps.Guessed, flatbed = caps.Flatbed, feeder = caps.Feeder, duplex = caps.Duplex, feedW = caps.FeedW, feedH = caps.FeedH, compat = caps.Compat });
+            Reply(id, new { bedW = caps.BedW, bedH = caps.BedH, dpis = caps.Dpis, gray = caps.Gray, guessed = caps.Guessed, flatbed = caps.Flatbed, feeder = caps.Feeder, duplex = caps.Duplex, feedW = caps.FeedW, feedH = caps.FeedH, compat = caps.Compat, dpisSure = caps.DpisSure, optical = caps.Optical, autoSize = caps.AutoSize });
         }
         catch (OperationCanceledException) { Reply(id, new { cancelled = true }); }
         catch (Exception e)

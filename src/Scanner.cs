@@ -27,7 +27,8 @@ namespace JEditor;
 // hardware, so everything but the driver can be checked anywhere.
 sealed class Scanner : IDisposable
 {
-    public sealed record Device(string Id, string Name, string Driver);
+    // Found: plugged in and on (ScannerPresence); null when its name can't say
+    public sealed record Device(string Id, string Name, string Driver, bool? Found = null);
 
     // Where and how to save: Folder is a folder in the order; names are
     // Prefix + Next (Digits wide, counting up, skipping names taken) + .jpg
@@ -52,6 +53,10 @@ sealed class Scanner : IDisposable
         // Feeder, TWAIN: the scanner crops each photo itself (its own
         // auto-size, through the 32-bit helper; see Twain32)
         public bool AutoSize { get; init; }
+        // With an Epson feeder's own crop: FastFoto's Curled photo correction
+        // (unevenness correction) and Reduce lines and streaks
+        public bool Even { get; init; } = true;
+        public bool Streaks { get; init; } = true;
         // -100…100, applied by jEditor so every scanner does the same
         public int Brightness { get; init; }
         public int Contrast { get; init; }
@@ -68,9 +73,13 @@ sealed class Scanner : IDisposable
 
     // What a scanner can do: its glass (inches; guessed: the driver didn't
     // say, so A4), resolutions, and its feeder (the longest page) and sides.
-    // Compat: it only answered in compatibility mode (see Request)
+    // Compat: it only answered in compatibility mode (see Request).
+    // DpisSure: the resolutions are the driver's own (else the usual ones),
+    // any above Optical, its optical resolution (0: not said), interpolated. AutoSize:
+    // it can crop each photo itself (null: not said)
     public sealed record Caps(double BedW, double BedH, List<int> Dpis, bool Gray, bool Guessed,
-        bool Flatbed = true, bool Feeder = false, bool Duplex = false, double FeedW = 0, double FeedH = 0, bool Compat = false);
+        bool Flatbed = true, bool Feeder = false, bool Duplex = false, double FeedW = 0, double FeedH = 0, bool Compat = false,
+        bool DpisSure = false, int Optical = 0, bool? AutoSize = null);
 
     // The whole bed, small: a JPEG, its size in pixels and the bed's in inches
     public sealed record Preview(byte[] Jpeg, int Width, int Height, double BedW, double BedH);
@@ -171,13 +180,17 @@ sealed class Scanner : IDisposable
     {
         var list = new List<Device>();
         var problems = new List<string>();
-        if (fake) list.Add(new Device(FakeId, "jEditor test scanner", "test"));
+        if (fake) list.Add(new Device(FakeId, "jEditor test scanner", "test", true));
+        List<string>? present = null;
+        try { present = ScannerPresence.Devices(); }
+        catch (Exception e) { Log.Write($"Couldn't tell which scanners are plugged in: {e.Message}"); }
+        bool? Found(string name) => present is null ? null : ScannerPresence.Found(name, present);
         if (worker || HasTwain())
         {
             try
             {
                 foreach (var d in await controller.GetDeviceList(Options(Driver.Twain)))
-                    list.Add(new Device(d.ID, d.Name, "twain"));
+                    list.Add(new Device(d.ID, d.Name, "twain", Found(d.Name)));
             }
             catch (Exception e)
             {
@@ -192,14 +205,14 @@ sealed class Scanner : IDisposable
         try
         {
             foreach (var d in await controller.GetDeviceList(Options(Driver.Wia)))
-                list.Add(new Device(d.ID, d.Name, "wia"));
+                list.Add(new Device(d.ID, d.Name, "wia", Found(d.Name)));
         }
         catch (Exception e)
         {
             Log.Write($"WIA scanners: {e}");
             problems.Add("Couldn't list WIA scanners: " + e.Message);
         }
-        Log.Write($"Scanners: {string.Join(", ", list.Select(d => $"{d.Name} ({d.Driver})"))}{(problems.Count > 0 ? "; " + string.Join("; ", problems) : "")}");
+        Log.Write($"Scanners: {string.Join(", ", list.Select(d => $"{d.Name} ({d.Driver}{(d.Found == false ? ", not plugged in" : "")})"))}{(problems.Count > 0 ? "; " + string.Join("; ", problems) : "")}");
         return (list, problems);
     }
 
@@ -382,7 +395,7 @@ sealed class Scanner : IDisposable
         {
             Exception? failed = null;
             bool any = false;
-            await using (var e = Twain32.ScanAsync(r.DeviceId, r.Dpi, r.Gray, duplex, r.AutoSize, cancel).GetAsyncEnumerator(cancel))
+            await using (var e = Twain32.ScanAsync(r.DeviceId, r.Dpi, r.Gray, duplex, r.AutoSize, r.Even, r.Streaks, cancel).GetAsyncEnumerator(cancel))
             {
                 while (true)
                 {
@@ -510,10 +523,51 @@ sealed class Scanner : IDisposable
 
     static readonly int[] CommonDpis = [75, 100, 150, 200, 300, 400, 600, 800, 1200, 1600, 2400];
 
+    // NAPS2's answer, then (TWAIN) the helper's: its optical resolution, so
+    // the ones a driver makes up above it (interpolated) can be labelled
     public async Task<Caps> CapsAsync(string deviceId, string driver, bool compat, CancellationToken cancel)
     {
+        var caps = await NapsCapsAsync(deviceId, driver, compat, cancel);
+        if (driver != "twain" || (deviceId == FakeId && fake)) return caps;
+        Twain32.Said? said = null;
+        try { said = await Twain32.CapsAsync(deviceId, caps.Compat || compat, cancel); }
+        catch (Exception e) when (e is not OperationCanceledException) { Log.Write($"Its optical resolution: couldn't ask ({e.Message})"); }
+        return Truly(caps, said);
+    }
+
+    static Caps Truly(Caps caps, Twain32.Said? said)
+    {
+        if (said is null) return caps;
+        var dpis = caps.Dpis;
+        var sure = caps.DpisSure;
+        if (!sure && said.Dpis.Count > 0)
+        {
+            dpis = Offered(said.Dpis);
+            sure = true;
+        }
+        if (said.Optical >= 100)
+        {
+            // Those above it are kept: the driver makes them by interpolating
+            // (more pixels, no more detail), and the dock labels them so
+            if (!dpis.Any(d => d <= said.Optical)) dpis = [said.Optical, .. dpis];
+            Log.Write($"Resolutions offered: {string.Join(", ", dpis)} (optical {said.Optical} dpi; any above it interpolated)");
+        }
+        return caps with { Dpis = dpis, DpisSure = sure, Optical = Math.Max(0, said.Optical), AutoSize = said.AutoSize };
+    }
+
+    // The resolutions to offer from what a driver says: a range (or a long
+    // list) as the usual steps inside it; never none
+    static List<int> Offered(IReadOnlyCollection<int> values)
+    {
+        var dpis = values.Count > 12 ? CommonDpis.Where(d => d >= values.Min() && d <= values.Max()).ToList()
+            : values.Where(d => d > 0).Distinct().OrderBy(d => d).ToList();
+        return dpis.Count > 0 ? dpis : CommonDpis.Where(d => d <= 1200).ToList();
+    }
+
+    async Task<Caps> NapsCapsAsync(string deviceId, string driver, bool compat, CancellationToken cancel)
+    {
         // The test scanner has both: a glass with three prints, and a feeder
-        if (deviceId == FakeId && fake) return new Caps(FakeBed.W, FakeBed.H, [75, 150, 300, 600, 1200], true, false, true, true, true, 8.5, 14);
+        if (deviceId == FakeId && fake) return new Caps(FakeBed.W, FakeBed.H, [75, 150, 300, 600, 1200], true, false, true, true, true, 8.5, 14, DpisSure: true, Optical: 1200);
         FellBackToCompat = false;
         try
         {
@@ -548,14 +602,13 @@ sealed class Scanner : IDisposable
             var flatbed = caps.FlatbedCaps ?? caps.FeederCaps;
             var area = caps.FlatbedCaps?.PageSizeCaps?.ScanArea;
             var values = flatbed?.DpiCaps?.Values ?? [];
-            var dpis = values.Count > 12 ? CommonDpis.Where(d => d >= values.Min() && d <= values.Max()).ToList()
-                : values.Count > 0 ? values.Distinct().OrderBy(d => d).ToList()
-                : CommonDpis.Where(d => d <= 1200).ToList();
+            var sure = values.Count > 0;
+            var dpis = sure ? Offered(values) : CommonDpis.Where(d => d <= 1200).ToList();
             var gray = flatbed?.BitDepthCaps?.SupportsGrayscale ?? true;
             Log.Write($"Scanner caps: bed {(area is null ? "not said" : $"{area.WidthInInches:0.##} × {area.HeightInInches:0.##} in")}; resolutions {string.Join(", ", values)}; {caps.MetadataCaps?.Manufacturer} {caps.MetadataCaps?.Model}");
             if (area is not null && area.WidthInInches > 1 && area.HeightInInches > 1)
-                return new Caps((double)area.WidthInInches, (double)area.HeightInInches, dpis, gray, false, hasFlatbed, hasFeeder, hasDuplex, feedW, feedH, compat);
-            return new Caps((double)PageSize.A4.WidthInInches, (double)PageSize.A4.HeightInInches, dpis, gray, hasFlatbed, hasFlatbed, hasFeeder, hasDuplex, feedW, feedH, compat);
+                return new Caps((double)area.WidthInInches, (double)area.HeightInInches, dpis, gray, false, hasFlatbed, hasFeeder, hasDuplex, feedW, feedH, compat, sure);
+            return new Caps((double)PageSize.A4.WidthInInches, (double)PageSize.A4.HeightInInches, dpis, gray, hasFlatbed, hasFlatbed, hasFeeder, hasDuplex, feedW, feedH, compat, sure);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {

@@ -1,9 +1,57 @@
 // What's new, newest first. Shown in the app (What's New) and used as the
 // GitHub release notes. Every version bump needs an entry here: the tests
 // check that the first entry is the current APP_VERSION.
-// Text between `backticks` is shown as a key.
+// Text between `backticks` is shown as a key. beta: only ever a beta, never
+// released; the release after it says what it had too (its notes).
 
 const CHANGELOG = [
+    {
+        version: '1.45.0', date: '2026-10-22',
+        items: [
+            'Adjust and Paint are part of jEditor now, no longer experiments: no need to turn them on in Settings → Experimental. Switch modes at the top of the sidebar, or press `E` for Adjust and `B` for Paint.',
+            'Export is one window, from the Export button on a project\'s card: copy the project to a USB drive or card (with the room left on it, and Eject when it\'s done), burn it to a CD or DVD, or make copies of the selected photos, all of them or the starred, full size or smaller, into the project, onto a drive or into a folder you choose.',
+            'Move to… and Copy to… go to any folder, outside the project too: Other folders on this PC… browses the drives, projects and the usual folders (type a name to make a new folder there), Choose a folder… opens the system\'s own folder window, and the last folders used are listed straight away. `Ctrl+Z` puts them back.',
+            'Crop: while you drag a corner or side, a close-up of that spot shows in a corner at the photo\'s own pixels, with the crop\'s edge where it will be saved (the Loupe button, or `M`). The wheel or a pinch zooms the crop view about the pointer, + and - too; Space+drag or the middle button moves it, and `Z` fits it again.',
+            'The scanner list has only the scanners plugged in and on (the rest under More), and it updates itself when one is plugged in or taken out. Each scanner offers only what it can do: its own resolutions, grey, both sides and glass sizes only where it has them.',
+            'Resolutions in the scan window are never empty: the usual ones show at once while jEditor asks the scanner, and stay if it never answers. Resolutions above the scanner\'s optical one (an Epson\'s 1200 dpi from its 600) are offered under their own heading, Interpolated: more pixels, no more detail.',
+            'The scan window can be resized by its edges and corners, and keeps its size; the photos coming in fill it. Show each one as it comes in is a switch in it while it scans.',
+            'Auto crop each photo in the scan window is off to start with, so scans that are already right aren\'t cropped again. Turned on, it stays on.',
+            'Scanning on an Epson FastFoto is set up exactly as FastFoto\'s own software sets it up, in the same order, with the photos sent as TIFF files, so its crops and colours match FastFoto\'s.',
+            'Paint\'s brushes keep up with the pointer on a big photo, without lagging behind.'
+        ]
+    },
+    {
+        version: '1.44.1', date: '2026-10-18', beta: true,
+        items: [
+            'Closing the window in Adjust or Paint with something not kept yet asks Keep your changes? first (Keep, Don\'t keep or Cancel), instead of losing it.',
+            'Scanning on an Epson sheet feeder (the FastFoto): each photo is cropped and straightened by Epson\'s own photo crop, the one FastFoto\'s software uses, so less of the scanner\'s backing is left around it.',
+            'Scanning on an Epson sheet feeder starts from the scanner\'s own defaults with FastFoto\'s photo tone, so colours come out as they do in FastFoto\'s software, not stronger. Settings chosen in Epson\'s window (Scanner\'s own settings…) are still used when you\'ve chosen them.',
+            'The scan window\'s choices are on/off switches, in two groups: Each photo (Auto crop, Show each one as it comes in) and The scanner (it crops each photo itself, and on an Epson feeder FastFoto\'s Curled photo correction and Reduce lines and streaks, both on to start with).',
+            'The scan window always opens on screen: a spot it was dragged to in a bigger window is pulled back in, and it fits below that spot, scrolling inside.',
+            'Paint starts with the photo as the bottom layer, locked, and a new layer on it ready to paint on.',
+            'The debug console (`Ctrl+Shift+D`) is a switch in Settings → Toolbar & keys, off to start with, so the shortcut does nothing until it\'s turned on.'
+        ]
+    },
+    {
+        version: '1.44.0', date: '2026-10-18', beta: true,
+        items: [
+            'Spot removal in Adjust: click a speck of dust, a scratch or a blemish and it\'s healed from nearby, sized to the speck. Drag from it to choose where it\'s copied from; Heal blends it in, Clone copies exactly. Find dust puts a spot on every speck it finds on a scan, and Clear found takes them off again.',
+            'Masks find the Sky and the Subject in the photo for you, then paint or erase to touch them up.',
+            'RAW files (DNG, CR2, CR3, NEF, ARW, RAF and more) are shown with your photos, from the JPEG inside each one. Crop, adjust and paint them like any photo: the RAW file is never changed, and Export writes a JPEG.',
+            'New, as an experiment (Settings → Experimental): Paint (`B`, or the brush button). Paint over a photo in layers with a brush, pencil, spray and eraser; fill, gradients, lines (with arrows), rectangles, ellipses and text; select by rectangle, ellipse, lasso or colour, then move, scale and turn what\'s selected. Layers have opacity and blend modes. Painting is kept with the photo, to change again any time, and stays put when the photo is cropped later.',
+            'Copy a project to a USB drive or card in one step (the USB button on the project\'s card in the sidebar): the room is checked first, its flags and edits go with it, and Copy and eject ejects the drive when it\'s done.',
+            'A camera\'s card plugged in is offered to import (or `Ctrl+I`): into this project or a new one, in folders by day if you like, only the photos not imported before, and the card ejected after.',
+            'In the Windows app, burn a project to a CD or DVD (the disc button on the project\'s card).',
+            'Photos, Adjust and Paint are modes now, like Lightroom\'s: switch at the top of the sidebar, or with the chip top left when it\'s closed (in single view, and over Adjust and Paint too). Adjust and Paint have no Done bar any more: what you do is kept as you go, as in Lightroom (Esc goes back to Photos, where Ctrl+Z takes it off again), and a film strip runs along the bottom: choose another photo and it opens in the same mode. The Adjust and Paint buttons moved to the toolbar\'s ⋯ menu.',
+            'The start page has Start in: Photos, Adjust or Paint, remembered, so a project opens straight into the mode you want. Paint there asks what to paint on: a new canvas (print sizes in inches at 300 dpi, screens and social posts, or any size in pixels, inches or centimetres) or an image or folder to open.',
+            'Paint can bring in images: Bring in an image… under the layers (`Ctrl+Shift+O`), drop an image on it, or paste one copied in another app. Each comes in on a layer of its own, fitted and ready to move, size and turn.',
+            'Right-click a folder (or the grid) → New blank image…: any size, from screens and social posts to prints at 300 dpi, on white, black, a colour or nothing, saved as a PNG (with its resolution, so it prints at size) and opened in Paint.',
+            'The scanner window is cleaner: its settings in sections, every box the same height and solid behind (nothing showing through or flickering), and after a scan the names carry on from it instead of showing numbers that are already taken.',
+            'Crop: dragging a side out on a straightened photo no longer stops when one of its corners meets the photo\'s slanted edge. The crop slides out of the way (or, when it can\'t, gets a little shorter), so the side keeps following you to the photo\'s edge; the opposite side stays put.',
+            'A project\'s .jeditor folder opened in the Windows or Mac app now keeps its edits, not only its flags.',
+            'Smooth scrolling on the Mac: a mouse\'s wheel glides instead of jumping a notch at a time, everywhere that scrolls. On a trackpad, two fingers move a zoomed photo about (in Paint too) and a pinch zooms it, following your fingers at once; pinching the grid resizes the thumbnails as far as you pinch, and the film strip scrolls with a sideways swipe.'
+        ]
+    },
     {
         version: '1.43.1', date: '2026-10-18',
         items: [
