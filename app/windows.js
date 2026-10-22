@@ -148,8 +148,8 @@ const Windows = {
         }
         const done = items.filter(i => i.to);
         const failed = items.filter(i => !i.to);
-        if (done.length) app.pushUndo({ type: 'transfer', items: done.map(i => ({ from: i.from, to: i.to })), copy });
         const where = folder ? `${projectName} / ${folder.split('/').join(' / ')}` : projectName;
+        if (done.length) app.pushUndo({ type: 'transfer', items: done.map(i => ({ from: i.from, to: i.to })), copy, where });
         if (done.length) {
             app.showToast(`${copy ? 'Copied' : 'Moved'} ${done.length} photo${done.length === 1 ? '' : 's'} into ${where} — Ctrl+Z undoes it`, 4000, null, null, { type: 'success', kind: 'move' });
         }

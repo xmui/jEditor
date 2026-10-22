@@ -2713,6 +2713,54 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    console.log('folders: any folder, in a browser');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const opfs = await navigator.storage.getDirectory();
+            for (const n of ['outweb', 'elsewhere']) try { await opfs.removeEntry(n, { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('outweb', { create: true });
+            const away = await opfs.getDirectoryHandle('elsewhere', { create: true });
+            const put = async (d, name, color) => {
+                const w = await (await d.getFileHandle(name, { create: true })).createWritable();
+                await w.write(new Blob([await makeRealJpeg(300, 200, { color })], { type: 'image/jpeg' }));
+                await w.close();
+            };
+            await put(dir, 'a.jpg', '#c33');
+            await put(dir, 'b.jpg', '#3c3');
+            await put(away, 'a.jpg', '#333'); // taken there: the copy is a (2)
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            const names = async (d) => { const n = []; for await (const k of d.keys()) n.push(k); return n.sort().join(','); };
+            const rows = () => [...document.querySelectorAll('#fp-list .fp-row')].map(r => (r.classList.contains('head') ? '#' : '') + r.textContent.trim());
+            const f = (n) => app.files.find(x => x.name === n);
+            window.showDirectoryPicker = async () => away;
+            // Copy: into the folder chosen, under a free name
+            Folders.openPicker([f('a.jpg')], 'copy');
+            out.rows = rows().join(' | ');
+            [...document.querySelectorAll('#fp-list .fp-row')].find(r => /Choose a folder/.test(r.textContent)).click();
+            await new Promise(res => { const t = setInterval(async () => { if (/a \(2\)/.test(await names(away))) { clearInterval(t); res(); } }, 50); });
+            out.copied = await names(away);
+            await app.undo();
+            out.uncopied = await names(away);
+            // Move: out of the project; Ctrl+Z brings it back
+            Folders.openPicker([f('b.jpg')], 'move');
+            [...document.querySelectorAll('#fp-list .fp-row')].find(r => /Choose a folder/.test(r.textContent)).click();
+            await new Promise(res => { const t = setInterval(() => { if (!f('b.jpg')) { clearInterval(t); res(); } }, 50); });
+            out.moved = [await names(away), await names(dir)];
+            await app.undo();
+            await new Promise(res => { const t = setInterval(() => { if (f('b.jpg')) { clearInterval(t); res(); } }, 50); });
+            out.back = [await names(away), (await names(dir)).replace(/,?\.jeditor/, '')];
+            return out;
+        });
+        check('any folder (browser): Move to… offers its own folder picker, under Elsewhere', /#Elsewhere \| .*Choose a folder…/.test(r.rows) && !/Other folders/.test(r.rows), r.rows);
+        check('... a copy goes there under a free name; Ctrl+Z removes it', r.copied === 'a (2).jpg,a.jpg' && r.uncopied === 'a.jpg', JSON.stringify([r.copied, r.uncopied]));
+        check('... a move takes it out of the project; Ctrl+Z puts it back', r.moved[0] === 'a.jpg,b.jpg' && !/b\.jpg/.test(r.moved[1]) && r.back[0] === 'a.jpg' && /b\.jpg/.test(r.back[1]), JSON.stringify([r.moved, r.back]));
+        check('any folder (browser): no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7n. Recent orders on the start screen ----
     console.log('recent orders');
     {

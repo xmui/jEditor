@@ -1266,6 +1266,86 @@ async function newPage(context, baseUrl, host = null) {
         await context.close();
     }
 
+    console.log('native: move or copy to any folder, outside the project too');
+    {
+        const context = await browser.newContext();
+        const { page, errors } = await newPage(context, baseUrl);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const $ = (id) => document.getElementById(id);
+            const BS = String.fromCharCode(92);
+            const rows = () => [...document.querySelectorAll('#fp-list .fp-row')].map(r => (r.classList.contains('head') ? '#' : '') + (r.querySelector('.fp-name') ? r.querySelector('.fp-name').textContent : r.textContent));
+            const row = (re) => [...document.querySelectorAll('#fp-list .fp-row')].find(r => re.test(r.textContent));
+            const key = (k) => $('folder-picker').dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+            // D: has the projects folder, D:\Orders; the archive is a project there
+            window.__drives = window.__drives.concat([{ path: 'D:' + BS, name: 'Data (D:)', kind: 'disk', total: 2e12, free: 1e12 }]);
+            const archive = await makeOrder('Archive', 0);
+            Object.assign(window.__tree, {
+                ['D:' + BS]: { path: 'D:' + BS, name: 'D:' + BS, parent: null, folders: [{ name: 'Orders', path: 'D:' + BS + 'Orders' }] },
+                ['D:' + BS + 'Orders']: { path: 'D:' + BS + 'Orders', name: 'Orders', parent: 'D:' + BS, folders: [{ name: 'Archive', path: 'D:' + BS + 'Orders' + BS + 'Archive' }, { name: 'Out Order', path: 'D:' + BS + 'Orders' + BS + 'Out Order' }] },
+                ['D:' + BS + 'Orders' + BS + 'Archive']: { path: 'D:' + BS + 'Orders' + BS + 'Archive', name: 'Archive', parent: 'D:' + BS + 'Orders', folders: [{ name: 'Ceremony', path: 'D:' + BS + 'Orders' + BS + 'Archive' + BS + 'Ceremony' }] }
+            });
+            const dir = await makeOrder('Out Order', 4);
+            await openOrder(dir);
+            const file = (n) => app.files.find(f => f.name === n);
+            Folders.openPicker([file('photo1.jpg')], 'move');
+            out.list = rows().join(', ');
+            // Other folders on this PC: drives, then folders
+            row(/Other folders on this PC/).click();
+            await wait(() => rows().some(t => /Data \(D:\)/.test(t)));
+            out.start = rows().join(', ');
+            row(/Data \(D:\)/).click();
+            await wait(() => rows().includes('Orders'));
+            row(/^Orders/).click();
+            await wait(() => rows().includes('Archive'));
+            row(/^Archive/).click();
+            await wait(() => rows().includes('Ceremony'));
+            out.where = [...$('fp-where').querySelectorAll('.fp-crumb')].map(b => b.textContent).join(' › ');
+            out.inside = rows().join(', ');
+            // Backspace: up a folder
+            key('Backspace');
+            await wait(() => rows().includes('Out Order'));
+            out.up = [...$('fp-where').querySelectorAll('.fp-crumb')].map(b => b.textContent).join(' › ');
+            // A new folder typed there: made, and the photo moved into it
+            $('fp-filter').value = 'Picks';
+            $('fp-filter').dispatchEvent(new Event('input'));
+            out.newRow = rows().join(', ');
+            out.hiNew = document.querySelector('#fp-list .fp-row.hi').textContent;
+            key('Enter');
+            await wait(() => window.__transfer);
+            out.moved = window.__transfer;
+            await wait(() => !file('photo1.jpg'));
+            out.gone = !file('photo1.jpg');
+            out.toast = toasts();
+            out.history = History.describe(app._undoStack[app._undoStack.length - 1]);
+            // Next time: the folder is offered straight away, under Elsewhere
+            window.__transfer = null;
+            Folders.openPicker([file('photo2.jpg')], 'copy');
+            out.recent = rows().join(', ');
+            row(/^Picks/).click();
+            await wait(() => window.__transfer);
+            out.copied = window.__transfer;
+            // Choose a folder… (Explorer's window); one inside the project is a move within it
+            window.__transfer = null;
+            window.__pick = 'D:' + BS + 'Orders' + BS + 'Out Order' + BS + 'Ceremony';
+            Folders.openPicker([file('photo3.jpg')], 'move');
+            row(/Choose a folder/).click();
+            await wait(() => file('photo3.jpg') && file('photo3.jpg').relPath === 'Ceremony/photo3.jpg');
+            out.within = !window.__transfer;
+            return out;
+        });
+        check('Move to… offers folders elsewhere: other folders on this PC, and Explorer\'s window', /#Elsewhere, Other folders on this PC…, Choose a folder…$/.test(r.list), r.list);
+        check('... browsing starts at the drives and the usual folders', r.start === '#Drives, Local disk (C:), Data (D:), USB drive (E:), #Folders, Desktop', r.start);
+        check('... into a folder: Move here first, then its folders; the path above, each part a link', r.inside === 'Move here: Archive, Ceremony' && r.where === 'This PC › D: › Orders › Archive', JSON.stringify([r.inside, r.where]));
+        check('... Backspace goes up a folder', /› Orders$/.test(r.up), r.up);
+        check('... a name typed there: a new folder, and they go into it', r.newRow === 'Move here: Orders, New folder “Picks”' && /New folder/.test(r.hiNew) && r.moved.dest === 'D:\\Orders\\Picks' && r.moved.copy === false && r.gone, JSON.stringify([r.newRow, r.hiNew, r.moved]));
+        check('... said, with Ctrl+Z (and in History)', /Moved 1 photo into Picks — Ctrl\+Z undoes it/.test(r.toast) && r.history.what === 'Move' && r.history.detail === '1 photo to Picks', JSON.stringify([r.toast, r.history]));
+        check('a folder used is offered next time, under Elsewhere (and copies there)', /#Elsewhere, Picks, Other folders/.test(r.recent) && r.copied.copy === true && r.copied.dest === 'D:\\Orders\\Picks', JSON.stringify([r.recent, r.copied]));
+        check('Choose a folder… inside the project moves it within the project', r.within);
+        check('any folder: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
     console.log('native: tethered shooting');
     {
         const context = await browser.newContext();
