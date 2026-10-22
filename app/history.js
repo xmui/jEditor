@@ -107,7 +107,8 @@ const History = {
             case 'saved-edits': return { what: 'Save edits', detail: one(e.edits) };
             case 'trash': return { what: 'Delete', detail: one(e.items, it => it.file ? it.file.name : it.name) };
             case 'relocate': return { what: e.copy ? 'Copy' : 'Move', detail: `${photos(e.items.length)} to ${base(e.dest)}` };
-            case 'transfer': return { what: e.copy ? 'Copy to another window' : 'Move to another window', detail: photos(e.items.length) };
+            case 'transfer':
+            case 'folder-out': return { what: e.copy ? 'Copy' : 'Move', detail: e.where ? `${photos(e.items.length)} to ${e.where}` : photos(e.items.length) };
             case 'folder-create': return { what: 'New folder', detail: (e.paths || []).map(base).join(', ') };
             case 'folder-rename': return { what: 'Rename folder', detail: `${e.name} → ${base(e.path)}` };
             case 'folder-delete': return { what: 'Delete folder', detail: base(e.path) };
