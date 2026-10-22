@@ -66,16 +66,20 @@ Windows comes first: it gets everything, and each feature is made best there, th
 | Opens folders with no permission prompts | ✓ | ✓ | ✓ | |
 | Sidebar: projects, pinned folders, drives | ✓ | ✓ | ✓ | |
 | Several windows and Split | ✓ | ✓ | ✓ | |
-| Updates itself | ✓ | ✓ | AppImage | always current |
+| Updates itself | ✓ | ✓ | ✓ | always current |
 | Recycle Bin / Trash | ✓ | | | |
 | Scanning and camera tethering | ✓ | | | |
 | Liquid Glass toolbar (macOS 26) | | ✓ | | |
+| Open photos and save through the share sheet (iPhone, iPad, Android) | | | | ✓ |
+
+Everything that's only on some platforms, why, and what it would take to bring it to the others: [Platforms](docs/platforms.md).
 
 ## Learn more
 
 - [Using jEditor](docs/using-jeditor.md): the keys, the views and every tool
 - [Installing](docs/installing.md): where things go, updating, removing
 - [Developing](docs/developing.md): how it's built, building it yourself, releasing
+- [Platforms](docs/platforms.md): what runs where, and how that's decided
 - [Roadmap](PLAN.md): what's next
 
 <sub>Photos in the screenshots: [Unsplash](https://unsplash.com), via [Lorem Picsum](https://picsum.photos).</sub>
