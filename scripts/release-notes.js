@@ -15,10 +15,18 @@ function loadChangelog() {
     return vm.runInNewContext(src + '\n;CHANGELOG');
 }
 
+// Its items; then those of the betas just below it that were never
+// released (beta: true), so a release says all that's new since the last
 function notesFor(version, changelog = loadChangelog()) {
-    const entry = changelog.find(e => e.version === version);
-    if (!entry) return null;
-    return entry.items.map(item => '- ' + item).join('\n') + '\n';
+    const at = changelog.findIndex(e => e.version === version);
+    if (at < 0) return null;
+    const list = (e) => e.items.map(item => '- ' + item).join('\n') + '\n';
+    let notes = list(changelog[at]);
+    for (const e of changelog.slice(at + 1)) {
+        if (!e.beta) break;
+        notes += `\n**Also new, from the ${e.version} beta:**\n\n` + list(e);
+    }
+    return notes;
 }
 
 if (require.main === module) {

@@ -201,6 +201,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             Array.isArray(e.items) && e.items.length && e.items.every(t => typeof t === 'string' && t.trim())));
         const notes = notesFor(pkgVersion, log);
         check('release notes come from the changelog', !!notes && notes.startsWith('- ' + log[0].items[0]));
+        const made = notesFor('3.0.0', [
+            { version: '3.0.0', items: ['three'] }, { version: '2.1.0', beta: true, items: ['two one'] },
+            { version: '2.0.0', beta: true, items: ['two'] }, { version: '1.0.0', items: ['one'] }]);
+        check('a release\'s notes take in the betas before it, never released, and stop at the last release',
+            /^- three\n[^]*2\.1\.0 beta[^]*- two one[^]*2\.0\.0 beta[^]*- two\n$/.test(made) && !made.includes('- one'), made);
 
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
         const r = await page.evaluate(() => {
