@@ -92,6 +92,9 @@
             dispatchEvent(new Event('jeditor-drives')); // places.js
         } else if (msg.type === 'devicesChanged') {
             dispatchEvent(new Event('jeditor-devices')); // scan.js: a scanner plugged in or out
+        } else if (msg.type === 'windowState') {
+            // Maximised or not, for a theme's own title bar (themes.js)
+            dispatchEvent(new CustomEvent('jeditor-window', { detail: { maximized: !!msg.maximized } }));
         } else if (msg.type === 'backdropState') {
             // Transparency effects turned on or off in Windows
             dispatchEvent(new CustomEvent('jeditor-backdrop', { detail: msg.state }));
@@ -207,7 +210,7 @@
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: 'windows',
-        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn'],
+        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn', 'themes'],
         // jEditor's storage on this PC: a folder handle, one subfolder per
         // order (see app/folder-cache.js)
         async dataDir() {
@@ -450,6 +453,16 @@
         // Transparency effects is turned on or off.
         async backdrop(kind) {
             return (await answer('backdrop', { kind })).msg;
+        },
+        // A theme's own title bar: Windows' caption goes (on) or comes back.
+        // A 'jeditor-window' event on window says when it's maximised or not.
+        titleBar(on) {
+            post({ type: 'titleBar', on: !!on });
+        },
+        // The window's buttons for that title bar: 'minimize', 'maximize'
+        // (or back), 'close', and 'resizeTop' (a drag on its top edge)
+        windowAction(action) {
+            post({ type: 'window', action });
         },
         // Shows jEditor's log in Explorer
         async showLog() {

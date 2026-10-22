@@ -1,0 +1,476 @@
+/* ==========================================================================
+   XP: jEditor as an Office 2003 program, like Office Picture
+   Manager. Blue gradient command bars with grippers, orange hover, a task
+   pane either side (picture shortcuts on the left, the selection's tasks on
+   the right), Office's pale blue selection.
+   ========================================================================== */
+
+:root[data-skin="xp"] {
+    --o-dock: linear-gradient(90deg, #9ebef5, #c4dafa 60%, #d6e6fc);
+    --o-bar: linear-gradient(180deg, #f6faff, #dcebfe 35%, #c0d8fc 60%, #9fc0f2 90%, #8bb0e9);
+    --o-bar-edge: #3b619c;
+    --o-hot: linear-gradient(180deg, #fff7d6, #ffe7a2 50%, #ffd56a);
+    --o-hot-edge: #000080;
+    --o-on: linear-gradient(180deg, #fde6b2, #fbc97b 50%, #f9b44f);
+    --o-sel: #c1d2ee;
+    --o-pane: linear-gradient(180deg, #f4f8fe, #dbe8fa);
+    --o-pane-line: #a4c2ed;
+    --o-link: #0f3591;
+    --dock-bot-h: 26px;
+    --o-line: #6c8fc6;
+    --o-grip: #27416f;
+    --o-head: linear-gradient(180deg, #e3efff, #c4dafa 55%, #a9c7f3);
+    --o-title: #15428b;
+    --o-status: linear-gradient(180deg, #e3efff, #b7d1f5);
+    --dock-bot-bg: var(--o-status);
+    --dock-bot-line: 1px solid var(--o-line);
+    --dock-grid-pad: 10px 12px;
+}
+:root[data-skin="xp"] .interface:not(.hidden) {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+        "title title title"
+        "menu menu menu"
+        "tools tools tools"
+        "addr addr addr"
+        "side main tasks"
+        "side main tasks"
+        "side resize tasks"
+        "side strip tasks"
+        "bot bot bot"
+        "status status status";
+    background: var(--o-dock-solid, #c4dafa);
+}
+
+/* ---- Menu bar and toolbar: bands with grippers on the dock ---- */
+:root[data-skin="xp"] #th-menubar {
+    height: 24px;
+    padding: 0 3px 0 12px;
+    align-items: center;
+    background: var(--o-dock);
+    border: 0;
+    position: relative;
+}
+:root[data-skin="xp"] #th-menubar::before,
+:root[data-skin="xp"] header::before,
+:root[data-skin="xp"] .folder-bar::before {
+    content: "";
+    position: absolute;
+    left: 4px; top: 5px; bottom: 5px;
+    width: 4px;
+    background-image: radial-gradient(circle at 1px 1px, var(--o-grip) 0.9px, transparent 1px), radial-gradient(circle at 2px 2px, #fff 0.9px, transparent 1px);
+    background-size: 4px 4px;
+}
+:root[data-skin="xp"] .th-menu { height: 20px; padding: 2px 7px 0; border: 1px solid transparent; }
+:root[data-skin="xp"] .th-menu:hover { background: var(--o-hot); border-color: var(--o-hot-edge); color: #000; }
+
+:root[data-skin="xp"] header {
+    height: auto;
+    padding: 2px 4px 3px;
+    background: var(--o-dock);
+    border: 0;
+    box-shadow: none;
+    gap: 6px;
+}
+:root[data-skin="xp"] header::before { display: none; }
+:root[data-skin="xp"] header .toolbar,
+:root[data-skin="xp"] header .file-info {
+    position: relative;
+    height: 26px;
+    padding: 0 6px 0 12px;
+    gap: 0;
+    border: 0;
+    border-radius: 3px;
+    background: var(--o-bar);
+    box-shadow: inset 0 -1px 0 var(--o-bar-edge), 1px 1px 0 rgb(255 255 255 / 0.6);
+    font-size: 11px;
+    font-weight: 400;
+}
+:root[data-skin="xp"] header .toolbar::before,
+:root[data-skin="xp"] header .file-info::before {
+    content: "";
+    position: absolute;
+    left: 3px; top: 5px; bottom: 5px;
+    width: 4px;
+    background-image: radial-gradient(circle at 1px 1px, var(--o-grip) 0.9px, transparent 1px), radial-gradient(circle at 2px 2px, #fff 0.9px, transparent 1px);
+    background-size: 4px 4px;
+}
+:root[data-skin="xp"] header .header-controls { order: 1; }
+:root[data-skin="xp"] header .file-info { order: 2; gap: 8px; padding-right: 4px; }
+:root[data-skin="xp"] .tb-btn {
+    height: 22px;
+    min-width: 0;
+    padding: 0 5px 0 24px;
+    border: 1px solid transparent;
+    border-radius: 0;
+    background: transparent no-repeat 4px center;
+    background-image: var(--ico, none);
+    color: #000;
+    font: 11px var(--xp-font);
+    transition: none;
+}
+:root[data-skin="xp"] .tb-btn::before { display: none; }
+:root[data-skin="xp"] .tb-btn > svg { display: none; }
+:root[data-skin="xp"] .tb-btn:hover:not(:disabled) {
+    border-color: var(--o-hot-edge);
+    background-image: var(--ico, none), var(--o-hot);
+    background-position: 4px center, 0 0;
+    background-repeat: no-repeat;
+}
+:root[data-skin="xp"] .tb-btn.active,
+:root[data-skin="xp"] .tb-btn[aria-pressed="true"] {
+    border-color: var(--o-hot-edge);
+    background-image: var(--ico, none), var(--o-on);
+    background-position: 4px center, 0 0;
+    background-repeat: no-repeat;
+}
+:root[data-skin="xp"] #btn-info { --ico: url(../xp/icons/document-properties16.png); }
+:root[data-skin="xp"] #btn-toggle-view { --ico: url(../xp/icons/grid.svg); background-size: 16px; }
+:root[data-skin="xp"] body[data-view="grid"] #btn-toggle-view { --ico: url(../xp/icons/image-x-generic16.png); }
+:root[data-skin="xp"] #btn-refresh { --ico: url(../xp/icons/view-refresh16.png); }
+:root[data-skin="xp"] #btn-crop { --ico: url(../xp/icons/crop.svg); }
+:root[data-skin="xp"] #btn-history { --ico: url(../xp/icons/edit-undo16.png); }
+:root[data-skin="xp"] #btn-crop,
+:root[data-skin="xp"] #btn-toggle-view { background-size: 16px 16px; }
+:root[data-skin="xp"] #btn-crop:hover,
+:root[data-skin="xp"] #btn-toggle-view:hover { background-size: 16px 16px, auto; }
+:root[data-skin="xp"] #btn-info::after { content: "Properties"; }
+:root[data-skin="xp"] #btn-toggle-view::after { content: "Thumbnails"; }
+:root[data-skin="xp"] body[data-view="grid"] #btn-toggle-view::after { content: "Single Picture"; }
+:root[data-skin="xp"] #btn-refresh::after { content: "Refresh"; }
+:root[data-skin="xp"] #btn-crop::after { content: "Crop"; }
+:root[data-skin="xp"] #btn-history::after { content: "Undo History"; }
+:root[data-skin="xp"] #btn-more { padding: 0 5px; }
+:root[data-skin="xp"] #btn-more::after { content: "\25BE"; font-size: 10px; }
+:root[data-skin="xp"] #btn-crop { margin-left: 7px; }
+:root[data-skin="xp"] header .tb-sep { width: 1px; height: 16px; margin: 0 3px; background: #6a8ccb; box-shadow: 1px 0 0 #fff; }
+
+:root[data-skin="xp"] .file-name { height: 22px; padding: 0 4px; border: 0; background: none; font: 700 11px var(--xp-font); }
+:root[data-skin="xp"] .file-name > svg { display: none; }
+:root[data-skin="xp"] #file-count { color: #333; }
+:root[data-skin="xp"] .sort-control { border: 0 !important; padding: 0; margin: 0; gap: 0; }
+:root[data-skin="xp"] .sort-control > svg { display: none; }
+:root[data-skin="xp"] .sort-control::before { content: "Arrange by:"; margin-right: 5px; }
+:root[data-skin="xp"] .sort-control select { height: 20px; }
+
+/* ---- The bar over the pictures: views, where, search ---- */
+:root[data-skin="xp"] .folder-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 8px;
+    border: 0;
+    border-top: 1px solid #fff;
+    border-bottom: 1px solid var(--o-line);
+    border-radius: 0;
+    background: var(--o-head);
+    box-shadow: none;
+}
+:root[data-skin="xp"] .folder-bar::before { display: none; }
+:root[data-skin="xp"] #fb-rail { display: none; }
+:root[data-skin="xp"] .fb-modes { display: flex; gap: 0; padding: 0; background: none; border-radius: 0; }
+:root[data-skin="xp"] .fb-modes button {
+    height: 22px;
+    padding: 0 8px;
+    border: 1px solid transparent;
+    border-radius: 0;
+    background: none;
+    color: #000;
+    font: 11px var(--xp-font);
+    box-shadow: none;
+}
+:root[data-skin="xp"] .fb-modes button.active { border-color: var(--o-hot-edge); background: var(--o-on); }
+:root[data-skin="xp"] .fb-modes .fb-short { display: none; }
+:root[data-skin="xp"] .fb-modes .fb-long { display: inline; }
+:root[data-skin="xp"] .fb-crumbs { display: flex; align-items: center; flex: 1; color: var(--o-title); font: 700 13px var(--xp-font); padding-left: 10px; }
+:root[data-skin="xp"] .fb-crumbs:empty::after { content: attr(data-folder); }
+:root[data-skin="xp"] .fb-search {
+    display: flex;
+    align-items: center;
+    width: 190px;
+    height: 20px;
+    padding: 0 4px 0 22px;
+    border: 1px solid #7f9db9;
+    border-radius: 0;
+    background: #fff url(../xp/icons/edit-find16.png) no-repeat 3px center;
+    box-shadow: none;
+}
+:root[data-skin="xp"] .fb-search > svg,
+:root[data-skin="xp"] .fb-search-clear { display: none; }
+:root[data-skin="xp"] .fb-search input { width: 100%; border: 0; padding: 0; background: none; font: 11px var(--xp-font); color: #000; outline: none; }
+
+/* ---- Task panes ---- */
+:root[data-skin="xp"] .folder-rail,
+:root[data-skin="xp"] body[data-view="grid"] #main-interface .selection-bar:not(.hidden) {
+    width: 210px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: var(--o-pane);
+    box-shadow: none;
+    color: #000;
+    font: 11px var(--xp-font);
+}
+:root[data-skin="xp"] .folder-rail { border-right: 1px solid var(--o-line); }
+:root[data-skin="xp"] .mode-seg { display: none; }
+/* the pane's title, like "Getting Started" with its arrows and close */
+:root[data-skin="xp"] .folder-rail::before,
+:root[data-skin="xp"] .sel-count {
+    display: flex;
+    align-items: center;
+    flex: none;
+    height: 26px;
+    padding: 0 8px;
+    border: 0;
+    border-bottom: 1px solid var(--o-pane-line);
+    border-radius: 0;
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='8'%3E%3Cpath d='M0 1.5h5L2.5 5z' fill='%23000'/%3E%3Cpath d='M19 1l6 6M25 1l-6 6' stroke='%23000' stroke-width='1.3'/%3E%3C/svg%3E") no-repeat right 8px center,
+        transparent;
+    color: #000;
+    font: 700 13px var(--xp-font);
+}
+:root[data-skin="xp"] .folder-rail::before { content: "Picture Shortcuts"; order: -2; }
+:root[data-skin="xp"] .sb-scroll {
+    flex: 1;
+    margin: 0 8px 8px;
+    padding: 0;
+    overflow: auto;
+    border: 1px solid #7f9db9;
+    background: #fff;
+}
+:root[data-skin="xp"] .fr-foot {
+    order: -1;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    margin: 0;
+    padding: 8px 10px 8px;
+    border: 0;
+    background: none;
+}
+:root[data-skin="xp"] .fr-new {
+    justify-content: flex-start;
+    height: 20px;
+    padding: 0 0 0 22px;
+    border: 0;
+    background: url(../xp/icons/folder-new16.png) no-repeat 0 center;
+    color: var(--o-link);
+    font-size: 0;
+    box-shadow: none;
+}
+:root[data-skin="xp"] .fr-new > svg { display: none; }
+:root[data-skin="xp"] .fr-new::before { content: "Add Picture Shortcut\2026"; font: 11px var(--xp-font); }
+:root[data-skin="xp"] .fr-new:hover { text-decoration: underline; background-color: transparent; }
+:root[data-skin="xp"] .fr-total { order: 2; justify-content: flex-start; height: auto; padding: 2px 0 0 22px; border: 0; background: none; color: #444; font: 11px var(--xp-font); }
+:root[data-skin="xp"] .folder-tree { padding: 3px 2px; }
+:root[data-skin="xp"] .fr-row {
+    min-height: 0;
+    height: 18px;
+    gap: 3px;
+    padding: 0 4px 0 calc(var(--depth, 0) * 18px + 2px);
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: #000;
+    font: 11px var(--xp-font);
+}
+:root[data-skin="xp"] .fr-row > svg { display: none; }
+:root[data-skin="xp"] .fr-row::before { content: ""; order: 1; flex: none; width: 16px; height: 16px; background: url(../xp/icons/folder16.png) no-repeat; }
+:root[data-skin="xp"] .fr-row.fr-all::before { background-image: url(../xp/icons/image16.png); }
+:root[data-skin="xp"] .fr-caret { order: 0; }
+:root[data-skin="xp"] .fr-name { order: 2; padding: 1px 2px; }
+:root[data-skin="xp"] .fr-count { order: 3; margin-left: auto; color: #6d6d6d; font-size: 11px; }
+:root[data-skin="xp"] .fr-row:hover { background: none; }
+:root[data-skin="xp"] .fr-row.active { background: none; color: #000; }
+:root[data-skin="xp"] .fr-row.active .fr-name { background: var(--xp-hilite); color: #fff; }
+
+/* The right pane: what to do with the selection */
+:root[data-skin="xp"] body[data-view="grid"] #main-interface .selection-bar:not(.hidden) {
+    grid-area: tasks;
+    align-self: stretch;
+    justify-self: stretch;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    height: auto;
+    gap: 0;
+    border-left: 1px solid var(--o-line);
+}
+:root[data-skin="xp"] .sel-count > svg { display: none; }
+:root[data-skin="xp"] .sel-count::before { content: "Edit Pictures"; }
+:root[data-skin="xp"] .sel-count #selection-count {
+    position: absolute;
+    top: 38px; left: 10px;
+    font: 11px var(--xp-font);
+    color: #444;
+}
+:root[data-skin="xp"] .sel-count { position: relative; margin-bottom: 30px; }
+:root[data-skin="xp"] .selection-bar .tb-sep {
+    display: block;
+    width: auto; height: auto;
+    margin: 10px 10px 4px;
+    padding-bottom: 2px;
+    border: 0;
+    border-bottom: 1px solid var(--o-pane-line);
+    background: none;
+    font: 700 11px var(--xp-font);
+    color: #000;
+}
+:root[data-skin="xp"] .selection-bar .tb-sep:nth-of-type(1)::before { content: "Turn and crop"; }
+:root[data-skin="xp"] .selection-bar .tb-sep:nth-of-type(2)::before { content: "Organise"; }
+:root[data-skin="xp"] .selection-bar .tb-sep:nth-of-type(3)::before { content: "Remove"; }
+:root[data-skin="xp"] .selection-bar .tb-btn {
+    justify-content: flex-start;
+    width: auto;
+    height: 20px;
+    margin: 0 10px;
+    padding: 0 0 0 22px;
+    border: 0;
+    background-color: transparent;
+    background-position: 0 center;
+    color: var(--o-link);
+}
+:root[data-skin="xp"] .selection-bar .tb-btn:hover:not(:disabled) {
+    border: 0;
+    background-image: var(--ico);
+    background-position: 0 center;
+    text-decoration: underline;
+}
+:root[data-skin="xp"] #main-interface .selection-bar .tb-btn > span { display: inline; }
+:root[data-skin="xp"] #btn-rotate-left-bulk::after { content: "Rotate left"; }
+:root[data-skin="xp"] #btn-rotate-right-bulk::after { content: "Rotate right"; }
+:root[data-skin="xp"] #btn-export::after { content: "More\2026"; }
+:root[data-skin="xp"] #btn-rotate-left-bulk { --ico: url(../xp/icons/rotate-left16.png); }
+:root[data-skin="xp"] #btn-rotate-right-bulk { --ico: url(../xp/icons/rotate-right16.png); }
+:root[data-skin="xp"] #btn-auto-crop { --ico: url(../xp/icons/autocrop16.svg); }
+:root[data-skin="xp"] #btn-move-to { --ico: url(../xp/icons/go-jump16.png); }
+:root[data-skin="xp"] #btn-batch-rename { --ico: url(../xp/icons/accessories-text-editor16.png); }
+:root[data-skin="xp"] #btn-export { --ico: url(../xp/icons/more16.svg); }
+:root[data-skin="xp"] #btn-trash { --ico: url(../xp/icons/user-trash16.png); }
+:root[data-skin="xp"] .selection-bar .tb-btn.danger { color: var(--o-link); }
+
+/* ---- Thumbnails, Office's pale blue selection ---- */
+:root[data-skin="xp"] .grid-view {
+    background: #fff;
+    gap: 4px;
+    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+}
+:root[data-skin="xp"] .grid-item {
+    aspect-ratio: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px 6px 4px;
+    border: 1px solid transparent;
+    border-radius: 0;
+    background: none;
+    overflow: visible;
+    box-shadow: none !important;
+    filter: none !important;
+    outline: 0 !important;
+}
+:root[data-skin="xp"] .grid-item:hover { border-color: #c1d2ee; }
+:root[data-skin="xp"] .grid-item img {
+    width: 100%;
+    aspect-ratio: 1;
+    height: auto;
+    padding: 0;
+    object-fit: contain;
+    background: none !important;
+    filter: drop-shadow(1px 1px 0 #a0a0a0);
+}
+:root[data-skin="xp"] .grid-item::after {
+    content: attr(data-name);
+    max-width: 100%;
+    margin-top: 4px;
+    color: #000;
+    font: 11px/13px var(--xp-font);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+:root[data-skin="xp"] .grid-item.selected { background: var(--o-sel); border-color: var(--xp-hilite); }
+:root[data-skin="xp"] .grid-item.selected::before { display: none; }
+:root[data-skin="xp"] .grid-item.active { border-style: dotted; border-color: #000; }
+:root[data-skin="xp"] .grid-item.active.selected { border-style: solid; border-color: var(--xp-hilite); }
+:root[data-skin="xp"] .tile-folder { display: none; }
+
+/* ---- Foot: the zoom slider in the status bar ---- */
+:root[data-skin="xp"] .grid-controls {
+    height: 24px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #000;
+}
+:root[data-skin="xp"] .grid-controls::before { content: "Zoom"; margin-right: 8px; }
+:root[data-skin="xp"] .slider-group > svg { display: none; }
+:root[data-skin="xp"] input[type="range"] { appearance: none; width: 120px; height: 18px; background: transparent; }
+:root[data-skin="xp"] input[type="range"]::-webkit-slider-runnable-track { height: 3px; border: 1px solid var(--o-line); background: #fff; }
+:root[data-skin="xp"] input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    width: 9px; height: 16px;
+    margin-top: -8px;
+    border: 1px solid var(--o-hot-edge);
+    background: var(--o-hot);
+}
+
+/* Single picture: the viewer's buttons under the photo, icons only */
+:root[data-skin="xp"] .controls { gap: 2px; border-top: 1px solid var(--o-line); background: var(--o-bar); }
+:root[data-skin="xp"] .controls .tb-btn { width: 26px; padding: 0; background-position: center !important; }
+:root[data-skin="xp"] #btn-prev { --ico: url(../xp/icons/prev16.svg); }
+:root[data-skin="xp"] #btn-next { --ico: url(../xp/icons/next16.svg); }
+:root[data-skin="xp"] #btn-rotate-left { --ico: url(../xp/icons/rotate-left16.png); }
+:root[data-skin="xp"] #btn-rotate-right { --ico: url(../xp/icons/rotate-right16.png); }
+:root[data-skin="xp"] .thumbnails { background: #fff; border-top: 1px solid var(--o-line); }
+:root[data-skin="xp"] .thumb-item { border-radius: 0; opacity: 1; background: none; }
+:root[data-skin="xp"] .thumb-item img { object-fit: contain !important; background: none !important; }
+:root[data-skin="xp"] .status-bar { height: 22px; padding: 4px 8px 0; background: var(--o-status); border-top: 1px solid var(--o-line); color: #000; }
+
+/* ---- Menus (the menu bar's and right-click): Office 2003's, an icon
+   column down the left in the bars' colour, the hover box ---- */
+:root[data-skin="xp"] #context-menu {
+    min-width: 200px;
+    padding: 2px;
+    border: 1px solid var(--o-bar-edge);
+    border-radius: 0;
+    background: linear-gradient(90deg, transparent 0 2px, var(--o-dock-solid) 2px 26px, #fcfcfc 26px) no-repeat, #fcfcfc;
+    box-shadow: 3px 3px 3px rgb(0 0 0 / 0.25);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    font: 11px var(--xp-font);
+}
+:root[data-skin="xp"] #context-menu button {
+    min-height: 22px;
+    padding: 0 10px 0 32px;
+    border: 1px solid transparent;
+    border-radius: 0;
+    color: #000;
+    font: 11px var(--xp-font);
+    transition: none;
+}
+:root[data-skin="xp"] #context-menu button:hover,
+:root[data-skin="xp"] #context-menu button:focus-visible {
+    border-color: var(--o-hot-edge);
+    background: var(--o-hot);
+}
+:root[data-skin="xp"] #context-menu button.danger { color: #000; }
+:root[data-skin="xp"] #context-menu .ctx-divider { height: 1px; margin: 3px 2px 3px 32px; background: var(--o-line); }
+:root[data-skin="xp"] #context-menu .ctx-key { color: #000; font-size: 11px; }
+:root[data-skin="xp"] #context-menu .ctx-flags { padding-left: 28px; }
+/* The menu bar's menu open: pressed, joined to its menu */
+:root[data-skin="xp"] .th-menu.open {
+    border: 1px solid var(--o-bar-edge);
+    border-bottom-color: transparent;
+    background: var(--o-dock-solid);
+    color: #000;
+    text-shadow: none;
+}
+:root[data-skin="xp"] .th-menu:focus-visible { outline: 1px dotted #000; outline-offset: -3px; }
+:root[data-skin="xp"] .th-menu:focus:not(:focus-visible) { outline: none; }

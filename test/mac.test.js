@@ -325,7 +325,12 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             const b = await JEditorNative.copyFolder(p.jones, p.backup, () => { });
             return { a, b, seen };
         }, { jones, backup });
-        check('a folder is copied onto a drive, saying how far it\'s got', copied.a.to === path.join(backup, 'Jones') && fs.existsSync(path.join(backup, 'Jones', 'Ceremony', 'c1.jpg')) && copied.seen.length >= 2, JSON.stringify(copied));
+        // (How far it's got: progress can come after the answer, and a small
+        // copy may be over before any but the end is heard, so the end is
+        // what must be said, and it never goes backwards)
+        const ends = copied.seen.length > 0 && copied.seen[copied.seen.length - 1][0] === copied.seen[0][1] && copied.seen[0][1] > 0
+            && copied.seen.every((x, i) => i === 0 || x[0] >= copied.seen[i - 1][0]);
+        check('a folder is copied onto a drive, saying how far it\'s got', copied.a.to === path.join(backup, 'Jones') && fs.existsSync(path.join(backup, 'Jones', 'Ceremony', 'c1.jpg')) && ends, JSON.stringify(copied));
         check('... copied again, it gets a free name', copied.b.to === path.join(backup, 'Jones (2)'));
         const stopped = await page.evaluate(async (p) => {
             let job = null, asked = false;
@@ -375,11 +380,19 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         const stayed = await page.evaluate(() => window.__asked) === 1 && await count() === 1;
         check('closing while held asks the page; its no keeps the window open', stayed);
         check('holdClose: no JS errors', errors.length === 0, errors.join('; '));
-        // Yes: closed (and on Linux, with the last window, jEditor quits)
+        // Yes: closed. On Linux, with the last window, jEditor quits; a Mac
+        // keeps running with no window, as Mac apps do
         const exited = new Promise(res => app.process().once('exit', () => res(true)));
         await page.evaluate(() => { window.__answer = true; });
         await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
-        const closed = await Promise.race([exited, new Promise(res => setTimeout(() => res(false), 8000))]);
+        const gone = async () => {
+            for (let i = 0; i < 80; i++) {
+                try { if (await count() === 0) return true; } catch (e) { return true; } // quit
+                await new Promise(res => setTimeout(res, 100));
+            }
+            return false;
+        };
+        const closed = await Promise.race([exited, gone()]);
         check('... its yes closes it', closed);
         await app.close().catch(() => { });
     }

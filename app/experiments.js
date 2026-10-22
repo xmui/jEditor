@@ -4,21 +4,17 @@
 // 'jeditor-experiments' event on window says so). Betas (Settings →
 // Updates → Beta builds) get new ones first.
 //
-// An experiment: { id, title, text, beta }. beta: on to start with in a
-// beta build (still off in a release until turned on). When one is done
+// An experiment: { id, title, text, beta, needs }. beta: on to start with
+// in a beta build (still off in a release until turned on). needs: a
+// feature the app must have (host.js), or it isn't offered. When one is done
 // it leaves this list and is simply part of jEditor.
 
 const Experiments = {
     LIST: [
         {
-            id: 'adjust', beta: true,
-            title: 'Adjust: Lightroom-style editing',
-            text: 'Light, color, levels and curves, film looks of real stocks, color grading, masks, spot and dust removal, sharpening and noise reduction (E, or the sliders button). Never changes the photo until you export or save. Adjustments already made stay on the photos when this is off'
-        },
-        {
-            id: 'paint', beta: true,
-            title: 'Paint: brushes, shapes, text and layers',
-            text: 'Paint over a photo in layers (B, or the brush button): brush, pencil, spray, eraser, fill, gradients, lines and shapes, text, and selections to move, scale and turn. Kept with the photo until you export or save. Painting already done stays on the photos when this is off'
+            id: 'themes', beta: true, needs: 'themes',
+            title: 'Themes',
+            text: 'jEditor as an app of another time, in Settings → Appearance: Windows XP (Royale, Royale Noir and Royale Red), Snow Leopard (Finder and Aperture) and the 1984 Macintosh, each with its own title bar and menus'
         }
     ],
 
@@ -29,10 +25,15 @@ const Experiments = {
 
     on(id) {
         const prefs = (this.app && this.app.uiPrefs && this.app.uiPrefs.experiments) || {};
-        const x = this.LIST.find(e => e.id === id);
+        const x = this.shown().find(e => e.id === id);
         if (!x) return false;
         if (typeof prefs[id] === 'boolean') return prefs[id];
         return !!(x.beta && this.betaBuild());
+    },
+
+    // The ones this app can have
+    shown() {
+        return this.LIST.filter(x => !x.needs || (typeof Host !== 'undefined' && Host.has(x.needs)));
     },
 
     // This is a beta (v1.42.0-beta.3)
@@ -51,14 +52,14 @@ const Experiments = {
         const list = document.getElementById('exp-list');
         if (!list) return;
         list.textContent = '';
-        if (!this.LIST.length) {
+        if (!this.shown().length) {
             const p = document.createElement('p');
             p.className = 'exp-empty';
             p.textContent = 'Nothing to try right now. New features show up here first, before they\'re finished.';
             list.appendChild(p);
             return;
         }
-        for (const x of this.LIST) {
+        for (const x of this.shown()) {
             const row = document.createElement('div');
             row.className = 'set-row';
             const label = document.createElement('label');

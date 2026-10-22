@@ -2884,6 +2884,153 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     pointer-events: none;
 }
 
+/* Themes (themes.js): a gallery of cards, each a picture of jEditor in
+   it, with its variants as dots */
+.theme-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+    gap: var(--sp-3);
+    padding: var(--sp-2) 0 var(--sp-3);
+}
+
+.theme-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-2);
+    border-radius: var(--r-md);
+    cursor: pointer;
+    outline: none;
+    transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.theme-card:hover,
+.theme-card:focus-visible {
+    background: var(--tb-hover);
+}
+
+.theme-shot {
+    aspect-ratio: 16 / 10;
+    border-radius: var(--r-sm);
+    background: var(--bg-surface) center / cover no-repeat;
+    box-shadow: 0 0 0 1px var(--border);
+}
+
+.theme-card.active .theme-shot {
+    box-shadow: 0 0 0 2px var(--bg-surface), 0 0 0 4px var(--accent);
+}
+
+.theme-name {
+    font-weight: var(--fw-medium);
+}
+
+.theme-name small {
+    display: block;
+    color: var(--text-3);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-regular);
+}
+
+.theme-dots {
+    position: absolute;
+    right: var(--sp-2);
+    bottom: var(--sp-3);
+    display: flex;
+    gap: 6px;
+}
+
+.theme-dot {
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--sw);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.25);
+    cursor: pointer;
+}
+
+.theme-dot.active {
+    box-shadow: 0 0 0 2px var(--bg-surface), 0 0 0 3.5px var(--text-2);
+}
+
+/* While a theme's stylesheets come in: nothing, rather than jEditor's own look first */
+:root.theme-loading :is(.interface, #th-top) {
+    visibility: hidden;
+}
+
+/* A theme's title bar and menu bar: along the top of the window, over
+   everything (the start page, Adjust, Paint, dialogs), under the menus */
+#th-top {
+    position: fixed;
+    inset: 0 0 auto;
+    z-index: calc(var(--z-modal) + 5);
+    display: flex;
+    flex-direction: column;
+}
+
+:root.th-top body {
+    box-sizing: border-box;
+    padding-top: var(--th-top, 0px);
+}
+
+:root.th-top :is(.mode-screen, .drop-zone) {
+    top: var(--th-top, 0px);
+}
+
+:root.th-top .mode-float.over-mode {
+    top: calc(var(--th-top, 0px) + 8px);
+}
+
+/* The title bar moves the window (the Windows app); its buttons, menus
+   and the top edge (resizing) don't */
+#th-titlebar {
+    position: relative;
+    -webkit-app-region: drag;
+    app-region: drag;
+    user-select: none;
+}
+
+#th-titlebar .th-caps,
+#th-titlebar button,
+#th-titlebar .th-grip,
+#th-menubar {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+}
+
+#th-titlebar .th-grip {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 4px;
+    cursor: n-resize;
+    z-index: 1;
+}
+
+#th-titlebar.maximized .th-grip {
+    display: none;
+}
+
+:where(#th-menubar) .th-menu {
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: default;
+}
+
+/* A menu bar's menu: each command's key at the right */
+#context-menu.th-dropdown button {
+    gap: var(--sp-5);
+}
+
+#context-menu .ctx-key {
+    margin-left: auto;
+    color: var(--text-3);
+    font-size: var(--fs-small);
+}
+
 /* Accent colour: swatches and a custom pick */
 .accent-swatches {
     display: flex;

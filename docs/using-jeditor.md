@@ -16,12 +16,22 @@ Changes are saved to the original files as you go.
 
 **Settings** (the gear in the toolbar's **More** section, the link on the start screen, or `Ctrl+,`) has a page for each kind of setting, chosen on the left; it opens on the last one you used.
 
-- **Appearance**: the theme (dark, light or match the system), the accent color and the color behind photos (black, gray or light, for judging color); on Windows 11 (22H2 or later), **Window background** puts Mica or Acrylic behind jEditor, like the Start menu, and **Transparency** sets how much of the desktop shows through (photos, Crop and Duplicates stay solid; it needs Windows' Transparency effects on, in Settings → Personalization → Colors); then glass (Rich, or Subtle, which is faster on older computers), density and toolbar size.
+- **Appearance**: in the Windows app, a **theme** (an experiment for now, on in betas: see [Themes](#themes)); the theme (dark, light or match the system), the accent color and the color behind photos (black, gray or light, for judging color); on Windows 11 (22H2 or later), **Window background** puts Mica or Acrylic behind jEditor, like the Start menu, and **Transparency** sets how much of the desktop shows through (photos, Crop and Duplicates stay solid; it needs Windows' Transparency effects on, in Settings → Personalization → Colors); then glass (Rich, or Subtle, which is faster on older computers), density and toolbar size.
 - **Toolbar & keys**: keyboard shortcuts and their profiles, a vertical toolbar, the buttons above the film strip, and which buttons are in the toolbar.
 - **Messages**: which messages pop up after you do something.
 - **Auto crop**: keeping test scans to improve Auto crop, how many are kept, and exporting, recovering or clearing them.
 - **Projects**: watching the folder for changes, the thumbnail cache, stored projects and cleaning up the open one.
 - **Updates**: checking for updates, and the log.
+
+## Themes
+
+In the Windows app, **Settings → Appearance → Theme** makes jEditor look like an app of another time: the same jEditor, laid out the way that era's apps were, with its own title bar and a menu bar. It's an experiment for now (Settings → Experimental; betas have it on).
+
+- **Windows XP**, in **Royale**, **Royale Noir** and **Royale Red** (the dots on its card): an Office 2003 program, with command bars, a task pane each side and a menu bar.
+- **Snow Leopard**, as **Finder** (light) or **Aperture** (dark): one toolbar with the labels under its buttons, a source list and a foot bar.
+- **1984**: the first Macintosh, in one bit. Its **Thumbnails** setting shows the grid dithered to one bit (as MacPaint did), in black and white, or in colour; the photo you open is always in colour.
+
+The menu bar's menus have jEditor's commands, with their keys. The title bar moves the window, a double-click maximises it, and its buttons minimise, maximise and close it. Adjust and Paint are in the toolbar's ⋯ (or More), the Picture menu, and `E` and `B`. Light or dark is the theme's. **jEditor** at the start of the gallery goes back to jEditor's own look.
 
 ## Watching the folder
 
@@ -95,7 +105,7 @@ It works like Lightroom or Apple Photos: the crop frame stays in the middle of t
 
 ## Adjust: light, color and curves
 
-Like Lightroom's Develop, for one photo at a time: press `E` (or the sliders button, or right-click → **Adjust…**). It's an experiment for now: turn it on in **Settings → Experimental** (betas have it on). Adjustments already made stay on the photos when it's off. The photo changes as you drag, on the graphics card, so even a big scan keeps up.
+Like Lightroom's Develop, for one photo at a time: press `E` (or the sliders button, or right-click → **Adjust…**). The photo changes as you drag, on the graphics card, so even a big scan keeps up.
 
 - **Histogram and levels.** Red, green and blue, with marks at the ends when something clips. The handles under it set the black, mid-grey and white points; the lower two set the output range. Pick **R**, **G** or **B** to set one channel. **Auto** sets the levels from the photo; **Auto color** sets each channel on its own too, which takes the colour cast off a faded print.
 - **Light:** Exposure (in stops), Contrast, Highlights, Shadows, Whites and Blacks.
@@ -130,13 +140,13 @@ RAW files from cameras (DNG, CR2, CR3, NEF, ARW, RAF, ORF, RW2, PEF, SRW and the
 
 jEditor has three modes, like Lightroom's modules: **Photos** (sorting, rotating, cropping), **Adjust** and **Paint**. With the sidebar open, switch along its top; with it closed, the chip at the top left names the mode you're in and its menu switches (it's there in single view, and over Adjust and Paint too). `E` and `B` still open Adjust and Paint, and `Esc` goes back to Photos.
 
-Adjust and Paint have no Done bar: what you do is kept as you go, as in Lightroom (`Ctrl+Z` in Photos takes it off again). In the Windows, Mac and Linux apps, closing the window in Adjust or Paint with something not kept yet asks **Keep your changes?** first: **Keep**, **Don't keep** or **Cancel** (in a browser, it asks the browser's way). Their few buttons (Before, Reset, Copy, Paste; Undo, Redo, Fit, 100%) are at the top right. A film strip runs along the bottom: click another photo and it opens in the same mode. Adjust and Paint only show while they're turned on in **Settings → Experimental**; their toolbar buttons are in the ⋯ menu.
+Adjust and Paint have no Done bar: what you do is kept as you go, as in Lightroom (`Ctrl+Z` in Photos takes it off again). In the Windows, Mac and Linux apps, closing the window in Adjust or Paint with something not kept yet asks **Keep your changes?** first: **Keep**, **Don't keep** or **Cancel** (in a browser, it asks the browser's way). Their few buttons (Before, Reset, Copy, Paste; Undo, Redo, Fit, 100%) are at the top right. A film strip runs along the bottom: click another photo and it opens in the same mode. Their toolbar buttons are in the ⋯ menu.
 
 The start page's **Start in** (Photos, Adjust or Paint) is remembered: a project you open from there lands in that mode, on its first photo. **Paint** there (or **New blank canvas…**) asks what to paint on: a **New canvas** (below), or **Open a file**: **An image…** opens a single picture on its own (the painting goes into it when you leave Paint), **A folder…** opens a folder of photos as a project in Paint.
 
 ## Paint
 
-Paint over a photo in layers, as a tool like Crop: press `B` (or the brush button, or right-click → **Paint…**). It's an experiment for now: turn it on in **Settings → Experimental** (betas have it on).
+Paint over a photo in layers, as a tool like Crop: press `B` (or the brush button, or right-click → **Paint…**).
 
 - **Tools** down the left: **Move** (drag the layer, or what's selected; its corners scale it, the knob above turns it, `Enter` puts it down), **Rectangle** and **Ellipse select**, **Lasso**, **Magic wand** (by colour, with **Tolerance**), **Brush** (Size, Hardness, Opacity, Flow), **Pencil** (hard edges), **Spray**, **Eraser**, **Fill** (by colour, looking at the photo and all the layers or just this one), **Gradient** (from the foreground colour to the background colour, or to nothing), **Line** (with an arrow if you like), **Rectangle**, **Ellipse** (stroked, filled or both), **Text** (click, type, `Ctrl+Enter`), the **Colour picker** and the **Hand**. Each tool's options are along the top.
 - **Selections** keep painting inside them. `Shift` adds to a selection, `Alt` takes away; `Ctrl+A` selects everything, `Ctrl+D` nothing; `Delete` clears what's selected; `Ctrl+C` / `Ctrl+V` copy and paste it.
@@ -262,6 +272,7 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `paint.js`, `paint-editor.js`: Paint (the layers kept with the photo, and the screen)
 - `import.js`: importing from a camera's card
 - `blank.js`: Paint's start: a new canvas (right-click a folder, or the start page's Paint), or an image or folder to open
+- `themes.js`, `themes/`: the themes (Settings → Appearance): the list, their stylesheets, the title bar and menu bar they draw, 1984's dithered thumbnails
 - `modes.js`: Photos, Adjust and Paint as modes: the switch (sidebar, chip), the strip in Adjust and Paint, Start in
 - `disc.js`: burning a CD or DVD (the Windows app's `src/Burn.cs`)
 - `export.js`: the Export window (a USB drive, a disc, or copies)
