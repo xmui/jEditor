@@ -74,6 +74,63 @@ static class Twain32
         }
     }
 
+    // What NAPS2 can't ask: the scanner's optical resolution (0: it didn't
+    // say), the resolutions its driver offers, and whether it crops each
+    // photo itself (null: it didn't say). Old: Windows' old TWAIN manager
+    public sealed record Said(int Optical, List<int> Dpis, bool? AutoSize);
+
+    public static async Task<Said?> CapsAsync(string device, bool old, CancellationToken cancel)
+    {
+        var exe = Exe;
+        if (exe is null) return null;
+        var info = new ProcessStartInfo(exe)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8,
+        };
+        info.ArgumentList.Add("--device"); info.ArgumentList.Add(device);
+        info.ArgumentList.Add("--caps");
+        if (old) info.ArgumentList.Add("--old-dsm");
+        using var proc = Process.Start(info) ?? throw new Failed("the 32-bit helper didn't start");
+        // A driver that hangs doesn't hold the scan dock up for long
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        limit.CancelAfter(TimeSpan.FromSeconds(30));
+        Said? said = null;
+        try
+        {
+            while (true)
+            {
+                var line = await proc.StandardOutput.ReadLineAsync(limit.Token);
+                if (line is null || line.StartsWith("DONE")) break;
+                if (line.StartsWith("LOG ")) Log.Write("Scanner: " + line[4..]);
+                else if (line.StartsWith("ERROR ")) { Log.Write($"Its optical resolution: couldn't ask ({line[6..]})"); break; }
+                else if (line.StartsWith("CAPS"))
+                {
+                    var kv = line[4..].Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(p => p.Split('=', 2)).Where(p => p.Length == 2).ToDictionary(p => p[0], p => p[1]);
+                    int.TryParse(kv.GetValueOrDefault("optical"), out var optical);
+                    var dpis = (kv.GetValueOrDefault("dpis") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(v => int.TryParse(v, out var n) ? n : 0).Where(n => n > 0).ToList();
+                    var auto = kv.GetValueOrDefault("autosize");
+                    said = new Said(optical, dpis, auto is null ? null : auto == "yes");
+                    Log.Write($"Scanner caps (TWAIN): optical {(optical > 0 ? optical + " dpi" : "not said")}; its driver offers {(dpis.Count > 0 ? $"{dpis.Min()}–{dpis.Max()} dpi" : "not said")}; crops photos itself: {auto ?? "not said"}");
+                }
+            }
+        }
+        catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
+        {
+            Log.Write("Its optical resolution: the scanner didn't answer in time");
+        }
+        finally
+        {
+            try { if (!proc.HasExited && !proc.WaitForExit(3000)) proc.Kill(); } catch (Exception) { }
+        }
+        return said;
+    }
+
     public static void ForgetSettings(string device)
     {
         try { File.Delete(SettingsFile(device)); } catch (Exception) { }

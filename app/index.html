@@ -1317,6 +1317,7 @@
                         </select>
                     </label>
                 </div>
+                <small id="scan-dpi-note" class="scan-hint hidden"></small>
                 <label class="scan-slider" for="scan-quality" id="scan-quality-row"><span>JPEG quality</span>
                     <input id="scan-quality" type="range" min="60" max="100" step="1" value="95">
                     <output id="scan-quality-out">95</output>
@@ -1332,6 +1333,11 @@
             </div>
             <div id="scan-live" class="scan-live">
                 <div id="scan-summary" class="scan-summary"></div>
+                <label class="scan-live-show" for="scan-show-live" title="Opens each new scan large as it comes in (the same as Show each one in the settings)">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <span>Show each one as it comes in</span>
+                    <input id="scan-show-live" type="checkbox" class="switch">
+                </label>
                 <div id="scan-strip" class="scan-strip" aria-label="The last photos scanned"></div>
                 <div id="scan-status" class="scan-status" role="status"></div>
             </div>
@@ -1380,6 +1386,15 @@
                 <button id="scan-go" type="submit" class="btn primary">Scan</button>
             </div>
         </form>
+        <!-- Drag an edge or corner to resize it (scan.js); double-click one for its usual size -->
+        <div class="scan-grip" data-edge="n" aria-hidden="true"></div>
+        <div class="scan-grip" data-edge="s" aria-hidden="true"></div>
+        <div class="scan-grip" data-edge="e" aria-hidden="true"></div>
+        <div class="scan-grip" data-edge="w" aria-hidden="true"></div>
+        <div class="scan-grip" data-edge="nw" aria-hidden="true"></div>
+        <div class="scan-grip" data-edge="ne" aria-hidden="true"></div>
+        <div class="scan-grip" data-edge="sw" aria-hidden="true"></div>
+        <div class="scan-grip" data-edge="se" aria-hidden="true"></div>
     </div>
 
     <div id="cam-panel" class="scan-dock cam-dock hidden" data-needs="camera" role="dialog" aria-labelledby="cam-title" data-state="setup">

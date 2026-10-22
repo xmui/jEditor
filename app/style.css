@@ -6039,6 +6039,99 @@ html:not(.native) .native-only {
     display: none;
 }
 
+/* Resized (scan.js): its edges and corners are grips; the body fills it */
+.scan-grip {
+    position: absolute;
+    z-index: 2;
+}
+
+.scan-grip[data-edge="n"],
+.scan-grip[data-edge="s"] {
+    left: 12px;
+    right: 12px;
+    height: 8px;
+    cursor: ns-resize;
+}
+
+.scan-grip[data-edge="e"],
+.scan-grip[data-edge="w"] {
+    top: 12px;
+    bottom: 12px;
+    width: 8px;
+    cursor: ew-resize;
+}
+
+.scan-grip[data-edge="n"] { top: -4px; }
+.scan-grip[data-edge="s"] { bottom: -4px; }
+.scan-grip[data-edge="e"] { right: -4px; }
+.scan-grip[data-edge="w"] { left: -4px; }
+
+.scan-grip[data-edge="nw"],
+.scan-grip[data-edge="ne"],
+.scan-grip[data-edge="sw"],
+.scan-grip[data-edge="se"] {
+    width: 16px;
+    height: 16px;
+}
+
+.scan-grip[data-edge="nw"] { top: -4px; left: -4px; cursor: nwse-resize; }
+.scan-grip[data-edge="ne"] { top: -4px; right: -4px; cursor: nesw-resize; }
+.scan-grip[data-edge="sw"] { bottom: -4px; left: -4px; cursor: nesw-resize; }
+.scan-grip[data-edge="se"] { bottom: -4px; right: -4px; cursor: nwse-resize; }
+
+.scan-dock.small .scan-grip,
+.scan-dock[data-state="preview"] .scan-grip {
+    display: none;
+}
+
+.scan-dock.sized {
+    max-width: calc(100vw - 8px);
+    max-height: calc(100vh - 8px);
+}
+
+.scan-dock.sized.small {
+    height: auto !important;
+}
+
+.scan-dock.sized .scan-dock-body {
+    flex: 1;
+}
+
+.scan-dock.sized .scan-live {
+    flex: 1;
+    min-height: 0;
+}
+
+.scan-dock.sized .scan-strip {
+    flex: 1;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    overflow-y: auto;
+}
+
+.scan-dock.sized .scan-strip figure {
+    width: 112px;
+    height: 84px;
+}
+
+/* Show each one, while it scans */
+.scan-live-show {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    cursor: pointer;
+}
+
+.scan-live-show span {
+    flex: 1;
+}
+
+.scan-dock:not([data-state="scanning"]) .scan-live-show {
+    display: none;
+}
+
 .scan-dock .scan-body {
     padding: var(--sp-3);
 }
@@ -6430,7 +6523,9 @@ html:not(.native) .native-only {
     right: 3vw !important;
     top: 3vh !important;
     bottom: 3vh !important;
-    width: auto;
+    width: auto !important;
+    height: auto !important;
+    max-width: none;
     max-height: none;
 }
 
