@@ -1266,6 +1266,129 @@ async function newPage(context, baseUrl, host = null) {
         await context.close();
     }
 
+    console.log('native: only the scanners plugged in, and only what each can do');
+    {
+        const context = await browser.newContext({ viewport: { width: 1280, height: 860 } });
+        const { page, errors } = await newPage(context, baseUrl);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const $ = (id) => document.getElementById(id);
+            const names = () => [...$('scan-device').options].map(o => (o.parentElement.tagName === 'OPTGROUP' ? '~' : '') + o.textContent).join(', ');
+            // The FastFoto is plugged in, the OpticBook's driver is there but
+            // the scanner isn't, and the app can't tell for the third
+            window.__scanners = { devices: [
+                { id: 'EPSON FF-680W', name: 'EPSON FF-680W', driver: 'twain', found: true },
+                { id: 'Plustek OpticBook A300', name: 'Plustek OpticBook A300', driver: 'twain', found: false },
+                { id: 'Mystery', name: 'Mystery', driver: 'twain', found: null }], problems: [] };
+            window.__capsFor = (o) => /EPSON/.test(o.device)
+                ? { bedW: 8.5, bedH: 11.7, dpis: [100, 200, 300, 600], gray: false, guessed: false, flatbed: false, feeder: true, duplex: false, dpisSure: true, optical: 600, autoSize: false }
+                : /OpticBook/.test(o.device)
+                    ? { bedW: 8.5, bedH: 11.7, dpis: [150, 300, 600], gray: true, guessed: false, flatbed: true, feeder: false, duplex: false, dpisSure: true, optical: 600 }
+                    : { bedW: 8.27, bedH: 11.69, dpis: [75, 150, 300, 600, 1200], gray: true, guessed: true, flatbed: true, feeder: true, dpisSure: false };
+            const dir = await makeOrder('Plugged Order', 2);
+            await openOrder(dir);
+            $('btn-scan').click();
+            await wait(() => !$('scan-device').disabled && Scan.caps['EPSON FF-680W']);
+            out.listed = names();
+            // Resolutions: the scanner's own, none above its optical one
+            out.dpis = [...$('scan-dpi').options].map(o => o.value).join() + ' | ' + $('scan-dpi').title;
+            out.sureNote = $('scan-dpi-note').classList.contains('hidden');
+            // No grayscale, no backs, no crop of its own: not offered
+            out.gray = $('scan-color').querySelector('option[value="gray"]').hidden;
+            out.sides = $('scan-sides-row').classList.contains('hidden') && $('scan-sides').value === 'front';
+            out.autosize = $('scan-autosize-row').classList.contains('hidden');
+            // More…: the ones not found, under their own heading
+            $('scan-device').value = Scan.MORE;
+            $('scan-device').dispatchEvent(new Event('change'));
+            out.more = names() + ' | ' + $('scan-device').value;
+            await wait(() => Scan.caps['Plustek OpticBook A300']);
+            // Glass sizes: none bigger than its glass
+            await Scan.fillBeds(Scan.device());
+            out.beds = [...$('scan-pv-glass').options].map(o => o.value).join();
+            // Unsure: the usual ones, and it says so
+            $('scan-device').value = 'Mystery';
+            $('scan-device').dispatchEvent(new Event('change'));
+            await wait(() => Scan.caps['Mystery']);
+            out.unsure = !$('scan-dpi-note').classList.contains('hidden') && /didn't say/.test($('scan-dpi-note').textContent);
+            // Plugged in while the dock is open: the list follows, the choice kept
+            Scan.showAllScanners = false;
+            $('scan-device').value = 'EPSON FF-680W';
+            $('scan-device').dispatchEvent(new Event('change'));
+            window.__scanners = JSON.parse(JSON.stringify(window.__scanners));
+            window.__scanners.devices[1].found = true;
+            dispatchEvent(new Event('jeditor-devices'));
+            await wait(() => !/~/.test(names()));
+            out.plugged = names() + ' | ' + $('scan-device').value;
+            // Back to a scanner asked already: its own resolutions again
+            out.backTo = [...$('scan-dpi').options].map(o => o.value).join() + ' ' + $('scan-dpi-note').classList.contains('hidden');
+            // None plugged in: all listed, and it says so
+            window.__scanners = { devices: [{ id: 'EPSON FF-680W', name: 'EPSON FF-680W', driver: 'twain', found: false }], problems: [] };
+            await Scan.loadDevices(true);
+            out.none = names() + ' | ' + $('scan-problems').textContent;
+            // ... and one that scans all the same (on the network) stays listed
+            window.__scanners = { devices: [{ id: 'EPSON FF-680W', name: 'EPSON FF-680W', driver: 'twain', found: false }, { id: 'Mystery', name: 'Mystery', driver: 'twain', found: null }], problems: [] };
+            await Scan.loadDevices(true);
+            out.beforeScan = names();
+            await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '', source: 'feeder', dpi: 300 });
+            await Scan.loadDevices(true);
+            out.kept = names();
+
+            // Show each one: a switch while it scans, the same as the setting
+            $('scan-show').checked = true;
+            window.__scanHang = true;
+            const hung = Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '', source: 'feeder', dpi: 300 });
+            await wait(() => $('scan-panel').dataset.state === 'scanning');
+            const live = $('scan-show-live');
+            out.liveShown = live.offsetParent !== null && live.checked;
+            live.click();
+            out.liveOff = !$('scan-show').checked && JSON.parse(localStorage.getItem('jeditor.scan')).show === false;
+            $('scan-stop').click();
+            await hung;
+            window.__scanHang = false;
+            out.liveHidden = live.offsetParent === null;
+            Scan.setState('setup');
+            return out;
+        });
+        // Resized by a corner: kept, and fitted to the window
+        const before = await page.evaluate(() => document.getElementById('scan-panel').getBoundingClientRect().toJSON());
+        const grip = await page.evaluate(() => document.querySelector('#scan-panel .scan-grip[data-edge="nw"]').getBoundingClientRect().toJSON());
+        await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(grip.x - 200, grip.y - 150, { steps: 4 });
+        await page.mouse.up();
+        const sized = await page.evaluate(() => {
+            const p = document.getElementById('scan-panel');
+            return { rect: p.getBoundingClientRect().toJSON(), kept: JSON.parse(localStorage.getItem('jeditor.scanDockSize')), sized: p.classList.contains('sized') };
+        });
+        await page.setViewportSize({ width: 700, height: 500 });
+        const small = await page.evaluate(async () => {
+            await new Promise(r => setTimeout(r, 100));
+            return document.getElementById('scan-panel').getBoundingClientRect().toJSON();
+        });
+        await page.setViewportSize({ width: 1280, height: 860 });
+        const reset = await page.evaluate(async () => {
+            document.querySelector('#scan-panel .scan-grip[data-edge="se"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+            const p = document.getElementById('scan-panel');
+            return { sized: p.classList.contains('sized'), kept: localStorage.getItem('jeditor.scanDockSize'), w: p.getBoundingClientRect().width };
+        });
+        check('only the scanners plugged in are listed (and one that can\'t be told); the rest under More…', r.listed === 'EPSON FF-680W, Mystery, More: 1 not plugged in…', r.listed);
+        check('... More… lists them, under their own heading, and picks one', r.more === 'EPSON FF-680W, Mystery, ~Plustek OpticBook A300 | Plustek OpticBook A300', r.more);
+        check('... one plugged in while the dock is open is listed, the choice kept', r.plugged === 'EPSON FF-680W, Plustek OpticBook A300, Mystery | EPSON FF-680W', r.plugged);
+        check('... none plugged in: all listed, and it says so', r.none === '~EPSON FF-680W | None of these seem to be plugged in. Is the scanner plugged in and turned on? One on the network can still be chosen.', r.none);
+        check('... one that scans all the same (on the network) stays listed', r.beforeScan === 'Mystery, More: 1 not plugged in…' && r.kept === 'EPSON FF-680W, Mystery', JSON.stringify([r.beforeScan, r.kept]));
+        check('resolutions: the scanner\'s own, up to its optical one', r.dpis === '100,200,300,600 | Up to 600 dpi, the scanner\'s optical resolution' && r.sureNote, r.dpis);
+        check('... a scanner that didn\'t say: the usual ones, and the dock says so', r.unsure);
+        check('... back to a scanner asked already: its own resolutions, not the last one\'s', r.backTo === '100,200,300,600 true', r.backTo);
+        check('grayscale, backs and its own crop aren\'t offered when the scanner can\'t', r.gray && r.sides && r.autosize, JSON.stringify([r.gray, r.sides, r.autosize]));
+        check('glass sizes: none bigger than the scanner\'s glass', r.beds === 'auto,a4,letter,epson', r.beds);
+        check('show each one: a switch while it scans, the same setting, remembered', r.liveShown && r.liveOff && r.liveHidden, JSON.stringify([r.liveShown, r.liveOff, r.liveHidden]));
+        check('the dock resizes by its corners, and the size is kept', sized.sized && sized.rect.width > before.width + 150 && sized.rect.height >= before.height && sized.kept && Math.abs(sized.kept.w - sized.rect.width) < 2, JSON.stringify([before, sized]));
+        check('... no bigger than a smaller window', small.width <= 692 && small.height <= 492 && small.x >= 0 && small.y >= 0, JSON.stringify(small));
+        check('... double-click an edge: its usual size', !reset.sized && reset.kept === null && Math.round(reset.w) === 400, JSON.stringify(reset));
+        check('plugged suite: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
     console.log('native: tethered shooting');
     {
         const context = await browser.newContext();

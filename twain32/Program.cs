@@ -6,15 +6,22 @@
 //   jEditor.Twain32.exe --device <name> --dpi 300 [--gray] [--duplex]
 //                       [--autosize] [--deskew] [--settings <file>] --out <folder>
 //   jEditor.Twain32.exe --device <name> --setup --settings-out <file>
+//   jEditor.Twain32.exe --device <name> --caps [--old-dsm]
 //
 // --setup shows the scanner's own window only to choose its settings (Epson
 // Scan 2's color restoration, enhancements and the like, which TWAIN has no
 // names for); the driver's whole settings are saved to the file, and
 // --settings gives them back to it before a scan.
 //
+// --caps only asks what the scanner can do, which NAPS2 doesn't: its
+// optical resolution (a driver offers more, made up by stretching) and
+// whether it crops each photo itself. --old-dsm: Windows' old TWAIN
+// manager, for a driver that only opens with it (Older TWAIN mode).
+//
 // It writes one line per event to stdout:
 //   LOG <text>      what the scanner said yes or no to (for Details)
 //   PAGE <path>     a scanned side, as a BMP file in --out
+//   CAPS <k>=<v> …  --caps: optical=<dpi> dpis=<a,b,…> autosize=yes|no
 //   DONE <count>    the scanner has finished
 //   ERROR <text>    it couldn't scan (nothing more follows)
 // "stop" on stdin ends the scan after the photo in progress.
@@ -58,7 +65,7 @@ sealed class Options
 {
     public string Device = "";
     public int Dpi = 300;
-    public bool Gray, Duplex, AutoSize, Deskew, Setup;
+    public bool Gray, Duplex, AutoSize, Deskew, Setup, Caps, OldDsm;
     // Epson photo scans: FastFoto's Curled photo correction (unevenness
     // correction) and Reduce lines and streaks (vertical noise reduction)
     public bool Even = true, Streaks = true;
@@ -83,13 +90,16 @@ sealed class Options
                 case "--no-streaks": o.Streaks = false; break;
                 case "--out": o.Out = Next(); break;
                 case "--setup": o.Setup = true; break;
+                case "--caps": o.Caps = true; break;
+                case "--old-dsm": o.OldDsm = true; break;
                 case "--settings": o.SettingsIn = Next(); break;
                 case "--settings-out": o.SettingsOut = Next(); break;
                 default: throw new ArgumentException("Unknown option " + args[i]);
             }
         }
         if (o.Device.Length == 0) throw new ArgumentException("No --device");
-        if (o.Setup) { if (o.SettingsOut is null) throw new ArgumentException("No --settings-out"); }
+        if (o.Caps) { }
+        else if (o.Setup) { if (o.SettingsOut is null) throw new ArgumentException("No --settings-out"); }
         else if (!Directory.Exists(o.Out)) throw new ArgumentException("No folder to write to");
         return o;
     }
@@ -150,7 +160,7 @@ sealed class Run : ApplicationContext
     {
         try
         {
-            PlatformInfo.Current.PreferNewDSM = true;
+            PlatformInfo.Current.PreferNewDSM = !o.OldDsm;
             Out.Log($"TWAIN manager: {PlatformInfo.Current.ExpectedDsmPath}");
             var appId = TWIdentity.CreateFromAssembly(DataGroups.Image, Assembly.GetExecutingAssembly());
             session = new TwainSession(appId);
@@ -166,6 +176,12 @@ sealed class Run : ApplicationContext
             Out.Log($"Scanner: {source.Name} ({source.Manufacturer}, {source.ProductFamily}, driver {source.Version.Info})");
             rc = source.Open();
             if (rc != ReturnCode.Success) { Fail("The scanner's driver wouldn't open: " + Status(session.GetStatus())); return; }
+            if (o.Caps)
+            {
+                ReportCaps(source.Capabilities);
+                Finish(null);
+                return;
+            }
             if (o.Setup)
             {
                 // Its window, just for its settings (saved when it closes)
@@ -208,6 +224,37 @@ sealed class Run : ApplicationContext
     }
 
     static string Status(TWStatus s) => s.ConditionCode.ToString();
+
+    // --caps: its optical resolution, the resolutions it offers, and
+    // whether it can crop each photo itself (each asked on its own: a
+    // driver that doesn't answer one still answers the rest)
+    static void ReportCaps(ICapabilities caps)
+    {
+        var said = new List<string>();
+        try
+        {
+            if (caps.ICapXNativeResolution.IsSupported)
+            {
+                var optical = (int)Math.Round((float)caps.ICapXNativeResolution.GetCurrent());
+                if (optical > 0) said.Add("optical=" + optical);
+            }
+        }
+        catch (Exception e) { Out.Log("Optical resolution: couldn't ask (" + e.Message + ")"); }
+        try
+        {
+            var values = caps.ICapXResolution.GetValues().Select(v => (int)Math.Round((float)v)).Where(v => v > 0).Distinct().OrderBy(v => v).ToList();
+            if (values.Count > 0) said.Add("dpis=" + string.Join(",", values));
+        }
+        catch (Exception e) { Out.Log("Resolutions: couldn't ask (" + e.Message + ")"); }
+        try
+        {
+            var supported = caps.CapSupportedCaps.GetValues().ToList();
+            bool crops = supported.Contains(CapabilityId.ICapAutoSize) || supported.Contains(CapabilityId.ICapAutomaticBorderDetection) || supported.Contains(EpsonAutoSizeType);
+            said.Add("autosize=" + (crops ? "yes" : "no"));
+        }
+        catch (Exception e) { Out.Log("Auto size: couldn't ask (" + e.Message + ")"); }
+        Out.Line("CAPS " + string.Join(" ", said));
+    }
 
     // Each setting on its own: one the driver refuses is logged and skipped
     void Configure(DataSource ds)
