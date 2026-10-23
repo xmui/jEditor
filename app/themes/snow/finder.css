@@ -95,7 +95,8 @@
 }
 
 :root[data-skin="snow"] header {
-    height: 52px;
+    height: auto;
+    min-height: 52px;
     align-items: flex-start;
     padding: 2px 10px 0;
     background: linear-gradient(180deg, #dedede, #c9c9c9 55%, #b6b6b6);

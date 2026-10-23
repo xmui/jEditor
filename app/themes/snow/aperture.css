@@ -207,3 +207,16 @@
 :root[data-skin="snow"] .adj-panel,
 :root[data-skin="snow"] .paint-panel { border-left-color: #0d0d0d; }
 :root[data-skin="snow"] .mode-strip { background: #262626; border-top-color: #0d0d0d; }
+
+/* the rest of the toolbar's buttons, in light grey */
+:root[data-skin="snow"] #btn-scan { --g: url(../snow/glyphs/scan-dark.svg); }
+:root[data-skin="snow"] #btn-camera { --g: url(../snow/glyphs/camera-dark.svg); }
+:root[data-skin="snow"] #btn-adjust { --g: url(../snow/glyphs/adjust-dark.svg); }
+:root[data-skin="snow"] #btn-paint { --g: url(../snow/glyphs/paint-dark.svg); }
+:root[data-skin="snow"] #btn-dupes { --g: url(../snow/glyphs/dupes-dark.svg); }
+:root[data-skin="snow"] #btn-fullscreen { --g: url(../snow/glyphs/fullscreen-dark.svg); }
+:root[data-skin="snow"] #btn-shortcuts { --g: url(../snow/glyphs/keys-dark.svg); }
+:root[data-skin="snow"] #btn-whatsnew { --g: url(../snow/glyphs/whatsnew-dark.svg); }
+:root[data-skin="snow"] #btn-customize { --g: url(../snow/glyphs/settings-dark.svg); }
+:root[data-skin="snow"] #btn-toggle-fit { --g: url(../snow/glyphs/fit-dark.svg); }
+:root[data-skin="snow"] #btn-toggle-strip { --g: url(../snow/glyphs/strip-dark.svg); }

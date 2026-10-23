@@ -479,3 +479,16 @@
 
 /* A dialog taller than the window: its list scrolls; the head and the foot keep their size */
 :root[data-skin="snow"] :is(.dialog-head, .dialog-foot, .shortcuts-profiles, .settings-nav) { flex: none; }
+
+/* ---- The rest of the toolbar's buttons: any of them can be put on it ---- */
+:root[data-skin="snow"] #btn-scan { --g: url(glyphs/scan.svg); --l: "Scan"; }
+:root[data-skin="snow"] #btn-camera { --g: url(glyphs/camera.svg); --l: "Camera"; }
+:root[data-skin="snow"] #btn-adjust { --g: url(glyphs/adjust.svg); --l: "Adjust"; }
+:root[data-skin="snow"] #btn-paint { --g: url(glyphs/paint.svg); --l: "Paint"; }
+:root[data-skin="snow"] #btn-dupes { --g: url(glyphs/dupes.svg); --l: "Duplicates"; }
+:root[data-skin="snow"] #btn-fullscreen { --g: url(glyphs/fullscreen.svg); --l: "Full Screen"; }
+:root[data-skin="snow"] #btn-shortcuts { --g: url(glyphs/keys.svg); --l: "Shortcuts"; }
+:root[data-skin="snow"] #btn-whatsnew { --g: url(glyphs/whatsnew.svg); --l: "What\'s New"; }
+:root[data-skin="snow"] #btn-customize { --g: url(glyphs/settings.svg); --l: "Settings"; }
+:root[data-skin="snow"] #btn-toggle-fit { --g: url(glyphs/fit.svg); --l: "Fit"; }
+:root[data-skin="snow"] #btn-toggle-strip { --g: url(glyphs/strip.svg); --l: "Film Strip"; }

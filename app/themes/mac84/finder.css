@@ -98,7 +98,8 @@
 
 /* ---- Tools along the top, as a palette's cells ---- */
 :root[data-skin="mac84"] header {
-    height: 34px;
+    height: auto;
+    min-height: 34px;
     align-items: center;
     padding: 0 8px;
     background: #fff;

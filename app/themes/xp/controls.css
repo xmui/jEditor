@@ -582,3 +582,27 @@
 
 /* A dialog taller than the window: its list scrolls; the head and the foot keep their size */
 :root[data-skin="xp"] :is(.dialog-head, .dialog-foot, .shortcuts-profiles, .settings-nav) { flex: none; }
+
+/* ---- The rest of the toolbar's buttons: any of them can be put on it ---- */
+:root[data-skin="xp"] #btn-scan { --ico: url(../xp/icons/scan16.png); }
+:root[data-skin="xp"] #btn-scan::after { content: "Scan"; }
+:root[data-skin="xp"] #btn-camera { --ico: url(../xp/icons/camera16.png); }
+:root[data-skin="xp"] #btn-camera::after { content: "Camera"; }
+:root[data-skin="xp"] #btn-adjust { --ico: url(../xp/icons/adjust16.png); }
+:root[data-skin="xp"] #btn-adjust::after { content: "Adjust"; }
+:root[data-skin="xp"] #btn-paint { --ico: url(../xp/icons/paint16.png); }
+:root[data-skin="xp"] #btn-paint::after { content: "Paint"; }
+:root[data-skin="xp"] #btn-dupes { --ico: url(../xp/icons/dupes16.png); }
+:root[data-skin="xp"] #btn-dupes::after { content: "Find Duplicates"; }
+:root[data-skin="xp"] #btn-fullscreen { --ico: url(../xp/icons/fullscreen16.png); }
+:root[data-skin="xp"] #btn-fullscreen::after { content: "Full Screen"; }
+:root[data-skin="xp"] #btn-shortcuts { --ico: url(../xp/icons/keys16.png); }
+:root[data-skin="xp"] #btn-shortcuts::after { content: "Shortcuts"; }
+:root[data-skin="xp"] #btn-whatsnew { --ico: url(../xp/icons/whatsnew16.png); }
+:root[data-skin="xp"] #btn-whatsnew::after { content: "What\'s New"; }
+:root[data-skin="xp"] #btn-customize { --ico: url(../xp/icons/settings16.png); }
+:root[data-skin="xp"] #btn-customize::after { content: "Settings"; }
+:root[data-skin="xp"] #btn-toggle-fit { --ico: url(../xp/icons/fit16.png); }
+:root[data-skin="xp"] #btn-toggle-fit::after { content: "Fit"; }
+:root[data-skin="xp"] #btn-toggle-strip { --ico: url(../xp/icons/strip16.png); }
+:root[data-skin="xp"] #btn-toggle-strip::after { content: "Film Strip"; }

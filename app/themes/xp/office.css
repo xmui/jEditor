@@ -76,7 +76,8 @@
 :root[data-skin="xp"] header .toolbar,
 :root[data-skin="xp"] header .file-info {
     position: relative;
-    height: 26px;
+    height: auto;
+    min-height: 26px;
     padding: 0 6px 0 12px;
     gap: 0;
     border: 0;
