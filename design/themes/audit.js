@@ -333,7 +333,9 @@ const srv = http.createServer((req, res) => {
             const page = await ctx.newPage();
             page.on('response', r => { if (r.status() >= 400 && !r.url().includes('/photos/')) missing[key].add(r.url().replace(base + '/', '')); });
             page.on('pageerror', e => console.log('page error', key, e.message));
+            // Scanning is Windows only: on the others the window never opens
             for (const s of screens) {
+                if (s === 'scan' && !(FEATURES[platform] || []).includes('scan')) continue;
                 const [folder, setup] = SCREENS[s];
                 await page.goto(base + '/index.html');
                 await page.waitForTimeout(300);
