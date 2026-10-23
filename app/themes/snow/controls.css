@@ -183,15 +183,15 @@
 :root[data-skin="snow"] :is(input[type="checkbox"], input.switch, input[type="radio"]):disabled { opacity: 0.5; }
 
 /* A row of choices: a segmented control */
-:root[data-skin="snow"] .seg {
+:root[data-skin="snow"] :is(.seg, .cv-seg) {
     gap: 0;
     padding: 0;
     border-radius: 5px;
     background: var(--sl-btn);
     box-shadow: var(--sl-btn-edge);
 }
-:root[data-skin="snow"] .seg > button,
-:root[data-skin="snow"] .seg > label > span {
+:root[data-skin="snow"] :is(.seg, .cv-seg) > button,
+:root[data-skin="snow"] :is(.seg, .cv-seg) > label > span {
     height: 21px;
     padding: 0 11px;
     border-radius: 0;
@@ -201,20 +201,20 @@
     font-weight: 400;
     box-shadow: inset -1px 0 0 rgb(0 0 0 / 0.25);
 }
-:root[data-skin="snow"] .seg > :last-child,
-:root[data-skin="snow"] .seg > label:last-child > span { box-shadow: none; }
-:root[data-skin="snow"] .seg > :first-child,
-:root[data-skin="snow"] .seg > label:first-child > span { border-radius: 5px 0 0 5px; }
-:root[data-skin="snow"] .seg > :last-child,
-:root[data-skin="snow"] .seg > label:last-child > span { border-radius: 0 5px 5px 0; }
-:root[data-skin="snow"] .seg > :is(button.active, button[aria-selected="true"], button[aria-checked="true"], button.on),
-:root[data-skin="snow"] .seg > label > input:checked + span {
+:root[data-skin="snow"] :is(.seg, .cv-seg) > :last-child,
+:root[data-skin="snow"] :is(.seg, .cv-seg) > label:last-child > span { box-shadow: none; }
+:root[data-skin="snow"] :is(.seg, .cv-seg) > :first-child,
+:root[data-skin="snow"] :is(.seg, .cv-seg) > label:first-child > span { border-radius: 5px 0 0 5px; }
+:root[data-skin="snow"] :is(.seg, .cv-seg) > :last-child,
+:root[data-skin="snow"] :is(.seg, .cv-seg) > label:last-child > span { border-radius: 0 5px 5px 0; }
+:root[data-skin="snow"] :is(.seg, .cv-seg) > :is(button.active, button[aria-selected="true"], button[aria-checked="true"], button.on),
+:root[data-skin="snow"] :is(.seg, .cv-seg) > label > input:checked + span {
     background: var(--sl-blue);
     color: #000;
     box-shadow: inset 0 0 0 1px #3d6bb1;
 }
-:root[data-skin="snow"] .seg > button > svg { width: 14px; height: 14px; }
-:root[data-skin="snow"] .seg > label > input:focus-visible + span { outline: none; box-shadow: var(--sl-focus); }
+:root[data-skin="snow"] :is(.seg, .cv-seg) > button > svg { width: 14px; height: 14px; }
+:root[data-skin="snow"] :is(.seg, .cv-seg) > label > input:focus-visible + span { outline: none; box-shadow: var(--sl-focus); }
 
 /* ---- Sliders: a thin groove, a round knob ---- */
 :root[data-skin="snow"] input[type="range"] { -webkit-appearance: none; appearance: none; height: 16px; background: none; }
@@ -364,7 +364,7 @@
 :root[data-skin="snow"] .set-label { font-weight: 400; }
 :root[data-skin="snow"] .set-label small,
 :root[data-skin="snow"] .set-help { color: var(--sl-ink-2); font: 11px/14px var(--sl-font); }
-:root[data-skin="snow"] .set-row.unavailable .seg { opacity: 0.45; }
+:root[data-skin="snow"] .set-row.unavailable :is(.seg, .cv-seg) { opacity: 0.45; }
 :root[data-skin="snow"] .settings-card .dialog-foot { padding-top: 6px; border-top: 0; }
 /* The gallery: an icon view */
 :root[data-skin="snow"] .theme-gallery { gap: 6px; padding: 8px; border-radius: 0; background: var(--sl-list); box-shadow: inset 0 0 0 1px #9b9b9b; }
@@ -500,3 +500,21 @@
 /* A button with a second, smaller line (Export: USB drive · disc · copies) grows to hold it */
 :root[data-skin="snow"] .btn:has(> small) { height: auto; min-height: 21px; padding-top: 2px; padding-bottom: 2px; border-radius: 6px; flex-wrap: wrap; white-space: normal; }
 :root[data-skin="snow"] .btn > small { font-size: 10px; color: var(--sl-ink-2); }
+
+/* ---- Convert (convert.js) ----
+   Format and The originals are segmented controls (the .seg rules above),
+   two lines each; the quality's groove is sunken; storage is Aqua's glossy
+   progress bar, a pill */
+:root[data-skin="snow"] .cv-seg > button { height: auto; padding: 3px 12px; line-height: 15px; text-align: left; }
+:root[data-skin="snow"] .cv-seg > button small { font-size: 10px; opacity: 0.75; }
+:root[data-skin="snow"] .cv-slider input[type="range"] { width: 100%; }
+:root[data-skin="snow"] .cv-slider input[type="range"]::-webkit-slider-runnable-track { border: 0; background: transparent; box-shadow: none; }
+:root[data-skin="snow"] .cv-track { top: 11px; height: 5px; border-radius: 3px; box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.45); opacity: 1; }
+:root[data-skin="snow"] :is(.cv-bar, .cv-mini) { border-radius: 10px; background: linear-gradient(#cfcfcf, #ececec); box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.4); }
+:root[data-skin="snow"] .cv-bar { height: 18px; }
+:root[data-skin="snow"] .cv-now { background: linear-gradient(#ececec, #c4c4c4 50%, #aeaeae 51%, #d2d2d2); box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25); }
+:root[data-skin="snow"] .cv-after-bar { background: linear-gradient(#bcdcfb, #5aa0ee 50%, #3584e4 51%, #79b8f4); box-shadow: inset 0 0 0 1px rgb(0 40 120 / 0.35); }
+:root[data-skin="snow"] .cv-saved { border-radius: 0 10px 10px 0 !important; }
+:root[data-skin="snow"] .cv-folders { border-color: #a5a5a5; border-radius: 4px; background: var(--sl-list); }
+:root[data-skin="snow"] .cv-tile { border-color: #a5a5a5; border-radius: 4px; }
+:root[data-skin="snow"] .cv-seg > button[aria-checked="true"] small { color: rgb(255 255 255 / 0.85); opacity: 1; }

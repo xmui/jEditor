@@ -196,7 +196,11 @@ const Convert = {
         this.el('cv-qnum').textContent = String(this.quality());
         const s = this.suggested[this.prefs.format], mark = this.el('cv-sugg');
         mark.classList.toggle('hidden', !s);
-        if (s) mark.style.left = `${(s - 20) / (98 - 20) * 100}%`;
+        if (s) {
+            const at = (s - 20) / (98 - 20);
+            mark.style.left = `${at * 100}%`;
+            mark.style.setProperty('--at', at); // its words slide over, so they stay on the slider
+        }
         // Grain only the highest qualities keep: the nearest it gets
         this.el('cv-sugg-label').textContent = this.reached[this.prefs.format] === false ? 'Closest to the original' : 'Looks the same';
     },

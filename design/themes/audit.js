@@ -67,6 +67,9 @@ const SCREENS = {
     export: [true, `Export.open({ files: [app.files[1], app.files[2]] })`],
     moveto: [true, `app.selection = new Set([app.files[1]]); ${H('edit.moveTo')}`],
     blank: [true, `Blank.open()`],
+    convert: [true, `Convert.open({})`, 3000],
+    // Running: keeping both (nothing replaced), paused part way so it holds still
+    convert2: [true, `Convert.open({}).then(() => setTimeout(() => { Convert.setKeep(true); Convert.go(); setTimeout(() => Convert.togglePause(), 2500); }, 1500))`, 5000],
     shortcuts: [true, H('app.shortcuts')],
     whatsnew: [true, `app.toggleWhatsNew()`],
     dupes: [true, H('app.dupes')],
@@ -110,6 +113,8 @@ const PARTS = [
     ['Dialogs', 'A name to type', 'prompt', '#ui-dialog .dialog'],
     ['Dialogs', 'Rename', 'rename', '.rename-card'],
     ['Dialogs', 'Export', 'export', '.export-card'],
+    ['Dialogs', 'Convert: format, quality, close-up, storage', 'convert', '.cv-card'],
+    ['Dialogs', 'Convert, running', 'convert2', '.cv-card'],
     ['Dialogs', 'Move to…', 'moveto', '.folder-card'],
     ['Dialogs', 'New blank image', 'blank', '.blank-card'],
     ['Dialogs', 'Keyboard shortcuts', 'shortcuts', '.shortcuts-card'],
@@ -337,7 +342,7 @@ const srv = http.createServer((req, res) => {
             // Scanning is Windows only: on the others the window never opens
             for (const s of screens) {
                 if (s === 'scan' && !(FEATURES[platform] || []).includes('scan')) continue;
-                const [folder, setup] = SCREENS[s];
+                const [folder, setup, wait] = SCREENS[s];
                 await page.goto(base + '/index.html');
                 await page.waitForTimeout(300);
                 await page.evaluate(({ theme, density }) => {
@@ -365,7 +370,7 @@ const srv = http.createServer((req, res) => {
                 await page.evaluate(() => document.querySelectorAll('.toast').forEach(t => t.remove()));
                 if (setup) await page.evaluate(`setTimeout(() => { ${setup} }, 0)`);
                 await page.mouse.move(w / 2, h - 2);
-                await page.waitForTimeout(1500);
+                await page.waitForTimeout(wait || 1500);
                 if (process.env.SHOTS) {
                     fs.mkdirSync(process.env.SHOTS, { recursive: true });
                     await page.screenshot({ path: path.join(process.env.SHOTS, `${key.replace('/', '-')}-${s}-${w}.png`) });

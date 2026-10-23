@@ -138,11 +138,11 @@
 :root[data-skin="mac84"] :is(input[type="checkbox"], input.switch, input[type="radio"]):focus-visible { outline: 1px dotted #000; outline-offset: 2px; }
 
 /* A row of choices: radio buttons with their names */
-:root[data-skin="mac84"] .seg { gap: 4px 14px; padding: 0; border-radius: 0; background: none; flex-wrap: wrap; }
-:root[data-skin="mac84"] .seg > label { align-items: center; gap: 5px; }
-:root[data-skin="mac84"] .seg > label > input { position: static; width: 12px; height: 12px; opacity: 1; pointer-events: auto; }
-:root[data-skin="mac84"] .seg > label > span,
-:root[data-skin="mac84"] .seg > button {
+:root[data-skin="mac84"] :is(.seg, .cv-seg) { gap: 4px 14px; padding: 0; border-radius: 0; background: none; flex-wrap: wrap; }
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > label { align-items: center; gap: 5px; }
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > label > input { position: static; width: 12px; height: 12px; opacity: 1; pointer-events: auto; }
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > label > span,
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > button {
     display: inline-flex;
     align-items: center;
     gap: 5px;
@@ -155,10 +155,10 @@
     font: 12px var(--m-font);
     box-shadow: none;
 }
-:root[data-skin="mac84"] .seg > :is(button.active, button[aria-selected="true"], button[aria-checked="true"], button.on),
-:root[data-skin="mac84"] .seg > label > input:checked + span { background: none; color: #000; box-shadow: none; }
-:root[data-skin="mac84"] .seg > button > svg { display: none; }
-:root[data-skin="mac84"] .seg > button::before {
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > :is(button.active, button[aria-selected="true"], button[aria-checked="true"], button.on),
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > label > input:checked + span { background: none; color: #000; box-shadow: none; }
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > button > svg { display: none; }
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > button::before {
     content: "";
     flex: none;
     width: 12px; height: 12px;
@@ -167,8 +167,8 @@
     border-radius: 50%;
     background: #fff;
 }
-:root[data-skin="mac84"] .seg > :is(button.active, button[aria-selected="true"], button[aria-checked="true"], button.on)::before { background: radial-gradient(circle, #000 0 3px, #fff 3.5px); }
-:root[data-skin="mac84"] .seg > label > input:focus-visible + span { outline: 1px dotted #000; }
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > :is(button.active, button[aria-selected="true"], button[aria-checked="true"], button.on)::before { background: radial-gradient(circle, #000 0 3px, #fff 3.5px); }
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > label > input:focus-visible + span { outline: 1px dotted #000; }
 
 /* ---- Sliders: a bar of grey dots, a white box to drag ---- */
 :root[data-skin="mac84"] input[type="range"] { -webkit-appearance: none; appearance: none; height: 16px; background: none; }
@@ -279,8 +279,8 @@
 :root[data-skin="mac84"] .set-label { font-weight: 400; }
 :root[data-skin="mac84"] .set-label small,
 :root[data-skin="mac84"] .set-help { color: #000; font: 12px/15px var(--m-font); }
-:root[data-skin="mac84"] .set-row.unavailable .seg { opacity: 1; }
-:root[data-skin="mac84"] .set-row.unavailable .seg > label > span { color: transparent; background: var(--m-grey); -webkit-background-clip: text; background-clip: text; }
+:root[data-skin="mac84"] .set-row.unavailable :is(.seg, .cv-seg) { opacity: 1; }
+:root[data-skin="mac84"] .set-row.unavailable :is(.seg, .cv-seg) > label > span { color: transparent; background: var(--m-grey); -webkit-background-clip: text; background-clip: text; }
 :root[data-skin="mac84"] .set-range output { color: #000; }
 :root[data-skin="mac84"] .theme-gallery { gap: 6px; padding: 6px; border: 1px solid #000; }
 :root[data-skin="mac84"] .theme-card { padding: 4px; border: 0; border-radius: 0; background: none; }
@@ -411,3 +411,37 @@
 
 /* A button with a second, smaller line (Export: USB drive · disc · copies) grows to hold it */
 :root[data-skin="mac84"] .btn:has(> small) { height: auto; min-height: 22px; padding-top: 2px; padding-bottom: 2px; flex-wrap: wrap; white-space: normal; }
+
+/* ---- Convert (convert.js) ----
+   One bit: Format and The originals are radio buttons (the .seg rules
+   above); the quality slides over the grey of dots; storage is black for
+   what's left and hatched for what's freed (a barber pole while it's
+   worked out); the photos converting are cells, black when done. The
+   close-ups stay in colour, as the photo does */
+:root[data-skin="mac84"] .cv-card { --success: #000; --danger: #000; --accent: #000; --warning-text: #000; }
+:root[data-skin="mac84"] .cv-seg > button small { color: #000; font-size: 12px; }
+:root[data-skin="mac84"] .cv-slider input[type="range"] { width: 100%; }
+:root[data-skin="mac84"] .cv-slider input[type="range"]::-webkit-slider-runnable-track { border: 0; background: transparent; box-shadow: none; }
+:root[data-skin="mac84"] .cv-track { top: 10px; height: 8px; border: 1px solid #000; border-radius: 0; background: var(--m-grey); opacity: 1; }
+:root[data-skin="mac84"] .cv-sugg { width: 1px; background: #000; }
+:root[data-skin="mac84"] .cv-sugg span { color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] :is(.cv-bar, .cv-mini) { border: 1px solid #000; border-radius: 0; background: #fff; }
+:root[data-skin="mac84"] :is(.cv-bar, .cv-mini) > i { border-radius: 0; }
+:root[data-skin="mac84"] .cv-now { background: var(--m-grey); }
+:root[data-skin="mac84"] .cv-after-bar { background: #000; }
+:root[data-skin="mac84"] .cv-saved { border: 0; border-left: 1px solid #000; border-radius: 0 !important; background: repeating-linear-gradient(135deg, #000 0 1px, #fff 1px 4px); }
+:root[data-skin="mac84"] .cv-savedtag { padding: 0 4px; margin-left: 6px; background: #fff; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .cv-working { background: repeating-linear-gradient(135deg, #000 0 4px, #fff 4px 8px) 0 0 / 22.6px 22.6px; animation: m84-pole 0.8s steps(4) infinite; }
+@keyframes m84-pole { to { background-position: 22.6px 0; } }
+:root[data-skin="mac84"] .cv-folders { border: 1px solid #000; border-radius: 0; }
+:root[data-skin="mac84"] .cv-folder + .cv-folder { border-top-color: #000; }
+:root[data-skin="mac84"] :is(.cv-folder small, .cv-folder .s, .cv-ends, .cv-lead, .cv-h, .cv-big .lab, .cv-total-line, .cv-run-row) { color: #000; }
+:root[data-skin="mac84"] .cv-tile { border: 1px solid #000; border-radius: 0; }
+:root[data-skin="mac84"] .cv-tile .cap { border: 1px solid #000; border-radius: 0; background: #fff; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .cv-dots { gap: 3px; }
+:root[data-skin="mac84"] .cv-dots i { border-radius: 0; opacity: 1; background: #fff !important; box-shadow: inset 0 0 0 1px #000; }
+:root[data-skin="mac84"] .cv-dots i.p { background: var(--m-grey) !important; }
+:root[data-skin="mac84"] .cv-dots i.d { background: #000 !important; }
+:root[data-skin="mac84"] .cv-dots i.f { background: repeating-linear-gradient(135deg, #000 0 1px, #fff 1px 3px) !important; }
+:root[data-skin="mac84"] .cv-dots i.now { box-shadow: inset 0 0 0 3px #000; }
+:root[data-skin="mac84"] .cv-run-row b { color: #000; font: 24px var(--m-font); }

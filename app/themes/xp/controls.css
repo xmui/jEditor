@@ -176,22 +176,22 @@
 
 /* A row of choices (Dark · Light · Match system; Move · Copy): option
    buttons, each with its words beside it */
-:root[data-skin="xp"] .seg {
+:root[data-skin="xp"] :is(.seg, .cv-seg) {
     gap: 4px 14px;
     padding: 0;
     border-radius: 0;
     background: none;
     flex-wrap: wrap;
 }
-:root[data-skin="xp"] .seg > label { align-items: center; gap: 5px; }
-:root[data-skin="xp"] .seg > label > input {
+:root[data-skin="xp"] :is(.seg, .cv-seg) > label { align-items: center; gap: 5px; }
+:root[data-skin="xp"] :is(.seg, .cv-seg) > label > input {
     position: static;
     width: 13px; height: 13px;
     opacity: 1;
     pointer-events: auto;
 }
-:root[data-skin="xp"] .seg > label > span,
-:root[data-skin="xp"] .seg > button {
+:root[data-skin="xp"] :is(.seg, .cv-seg) > label > span,
+:root[data-skin="xp"] :is(.seg, .cv-seg) > button {
     height: auto;
     padding: 0;
     border-radius: 0;
@@ -200,20 +200,20 @@
     font: 11px var(--xp-font);
     box-shadow: none;
 }
-:root[data-skin="xp"] .seg > label > input:checked + span,
-:root[data-skin="xp"] .seg > button.active,
-:root[data-skin="xp"] .seg > button[aria-selected="true"],
-:root[data-skin="xp"] .seg > button[aria-checked="true"],
-:root[data-skin="xp"] .seg > button.on { background: none; color: #000; box-shadow: none; }
-:root[data-skin="xp"] .seg > label > input:focus-visible + span { outline: 1px dotted #000; outline-offset: 1px; }
+:root[data-skin="xp"] :is(.seg, .cv-seg) > label > input:checked + span,
+:root[data-skin="xp"] :is(.seg, .cv-seg) > button.active,
+:root[data-skin="xp"] :is(.seg, .cv-seg) > button[aria-selected="true"],
+:root[data-skin="xp"] :is(.seg, .cv-seg) > button[aria-checked="true"],
+:root[data-skin="xp"] :is(.seg, .cv-seg) > button.on { background: none; color: #000; box-shadow: none; }
+:root[data-skin="xp"] :is(.seg, .cv-seg) > label > input:focus-visible + span { outline: 1px dotted #000; outline-offset: 1px; }
 /* the buttons of such a row get the option button drawn in front */
-:root[data-skin="xp"] .seg > button {
+:root[data-skin="xp"] :is(.seg, .cv-seg) > button {
     display: inline-flex;
     align-items: center;
     gap: 5px;
 }
-:root[data-skin="xp"] .seg > button > svg { display: none; }
-:root[data-skin="xp"] .seg > button::before {
+:root[data-skin="xp"] :is(.seg, .cv-seg) > button > svg { display: none; }
+:root[data-skin="xp"] :is(.seg, .cv-seg) > button::before {
     content: "";
     flex: none;
     width: 13px; height: 13px;
@@ -222,13 +222,13 @@
     border-radius: 50%;
     background: linear-gradient(135deg, #dcdcd7, #fff);
 }
-:root[data-skin="xp"] .seg > button:hover::before { box-shadow: inset 0 0 0 2px #fac85a; }
-:root[data-skin="xp"] .seg > :is(button.active, button[aria-selected="true"], button[aria-checked="true"], button.on)::before {
+:root[data-skin="xp"] :is(.seg, .cv-seg) > button:hover::before { box-shadow: inset 0 0 0 2px #fac85a; }
+:root[data-skin="xp"] :is(.seg, .cv-seg) > :is(button.active, button[aria-selected="true"], button[aria-checked="true"], button.on)::before {
     background:
         radial-gradient(circle at 45% 40%, #ccf9c7 0, #5ad44f 1.6px, #21a121 3px, transparent 3.6px),
         linear-gradient(135deg, #dcdcd7, #fff);
 }
-:root[data-skin="xp"] .seg > button:disabled { color: var(--xp-disabled); }
+:root[data-skin="xp"] :is(.seg, .cv-seg) > button:disabled { color: var(--xp-disabled); }
 
 /* ---- Trackbars ---- */
 :root[data-skin="xp"] input[type="range"] { -webkit-appearance: none; appearance: none; height: 22px; background: transparent; }
@@ -419,8 +419,8 @@
 :root[data-skin="xp"] .set-range output { color: #000; }
 :root[data-skin="xp"] .settings-card .dialog-foot { padding-top: 10px; }
 /* A theme decides these */
-:root[data-skin="xp"] .set-row.unavailable .seg { opacity: 1; }
-:root[data-skin="xp"] .set-row.unavailable .seg > label > span { color: var(--xp-disabled); }
+:root[data-skin="xp"] .set-row.unavailable :is(.seg, .cv-seg) { opacity: 1; }
+:root[data-skin="xp"] .set-row.unavailable :is(.seg, .cv-seg) > label > span { color: var(--xp-disabled); }
 /* The gallery: a list of large icons */
 :root[data-skin="xp"] .theme-gallery { gap: 4px; padding: 4px; border: 1px solid var(--xp-edit); background: #fff; }
 :root[data-skin="xp"] .theme-card { padding: 4px; border: 1px solid transparent; border-radius: 0; background: none; }
@@ -606,3 +606,34 @@
 :root[data-skin="xp"] #btn-toggle-fit::after { content: "Fit"; }
 :root[data-skin="xp"] #btn-toggle-strip { --ico: url(../xp/icons/strip16.png); }
 :root[data-skin="xp"] #btn-toggle-strip::after { content: "Film Strip"; }
+
+/* ---- Convert (convert.js) ----
+   Format and The originals are option buttons (the .seg rules above). The
+   quality is a trackbar over a sunken groove in its colours; storage is
+   XP's progress bar, blocks in a sunken box; the close-ups' captions are
+   tooltips; the photos converting are blocks, as the progress bar's are */
+:root[data-skin="xp"] .cv-seg > button { text-align: left; }
+:root[data-skin="xp"] .cv-seg > button small { color: #555; font-size: 11px; }
+:root[data-skin="xp"] .cv-slider input[type="range"] { width: 100%; }
+:root[data-skin="xp"] .cv-slider input[type="range"]::-webkit-slider-runnable-track { border: 0; background: transparent; box-shadow: none; }
+:root[data-skin="xp"] .cv-track { top: 12px; height: 4px; border: 1px solid; border-color: #9d9d9d #fff #fff #9d9d9d; border-radius: 0; opacity: 1; }
+:root[data-skin="xp"] .cv-sugg { width: 1px; background: #000; }
+:root[data-skin="xp"] .cv-sugg span { color: #000; font-weight: 400; }
+:root[data-skin="xp"] :is(.cv-bar, .cv-mini) { height: 17px; border: 1px solid #686868; border-radius: 3px; background: #fff; }
+:root[data-skin="xp"] .cv-mini { height: 11px; }
+:root[data-skin="xp"] :is(.cv-bar, .cv-mini) > i { top: 2px; bottom: 2px; border-radius: 0; }
+:root[data-skin="xp"] .cv-now { background: repeating-linear-gradient(90deg, transparent 0 7px, #fff 7px 9px), linear-gradient(#e6e6e6, #a8a8a8 45%, #8f8f8f); }
+:root[data-skin="xp"] .cv-after-bar { background: repeating-linear-gradient(90deg, transparent 0 7px, #fff 7px 9px), linear-gradient(#b8f0b0, #37c837 45%, #1f9f1f); }
+:root[data-skin="xp"] .cv-saved { border-color: #2a9a2a; border-radius: 0 !important; }
+:root[data-skin="xp"] .cv-savedtag { color: #1f7f1f; font: 700 11px var(--xp-font); }
+:root[data-skin="xp"] .cv-folders { border: 1px solid #7f9db9; border-radius: 0; background: #fff; }
+:root[data-skin="xp"] .cv-folder + .cv-folder { border-top-color: #ece9d8; }
+:root[data-skin="xp"] .cv-folder .s b { color: #1f7f1f; }
+:root[data-skin="xp"] .cv-tile { border: 1px solid #7f9db9; border-radius: 0; }
+:root[data-skin="xp"] .cv-tile.cv-after { outline-color: #2a9a2a; }
+:root[data-skin="xp"] .cv-tile .cap { border: 1px solid #000; border-radius: 0; background: #ffffe1; color: #000; font: 11px var(--xp-font); }
+:root[data-skin="xp"] .cv-dots { gap: 3px; }
+:root[data-skin="xp"] .cv-dots i { border-radius: 2px; }
+:root[data-skin="xp"] .cv-dots i.f { box-shadow: inset 0 0 0 2px #2fb32f; }
+:root[data-skin="xp"] .cv-dots i.now { box-shadow: 0 0 0 1px #000; }
+:root[data-skin="xp"] .cv-run-row b { color: #1f7f1f; font: 700 22px var(--xp-font); }

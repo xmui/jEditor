@@ -3929,8 +3929,9 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 .cv-sugg span {
     position: absolute;
     bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 0;
+    /* centred on the mark mid-way, flush with the slider's ends at its ends */
+    transform: translateX(calc(var(--at, 0.5) * -100%));
     color: var(--success);
     font-size: var(--fs-caption);
     font-weight: var(--fw-semibold);
