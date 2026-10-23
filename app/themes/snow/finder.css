@@ -693,3 +693,5 @@
 :root[data-skin="snow"] #context-menu button:hover .ctx-key { color: #fff; }
 :root[data-skin="snow"] #context-menu .ctx-divider { height: 1px; margin: 5px 0 6px; background: #e3e3e3; }
 :root[data-skin="snow"] #context-menu .ctx-key { color: #000; font-size: 14px; }
+/* The source list runs edge to edge; its one button keeps in from the sides */
+:root[data-skin="snow"] .sb-choose { width: calc(100% - 16px); margin: 4px 8px; }
