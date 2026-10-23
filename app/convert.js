@@ -362,8 +362,10 @@ const Convert = {
             row.now += f.size; row.after += s; row.n++;
             byDir.set(d, row);
         }
-        this.est = { format, quality, total, list: ok, after, byDir, working: false };
+        // (the close-up first: the estimate is done once it's all shown)
         if (preview) await this.showAfter(preview.png, cur, preview.ratio);
+        if (!live()) return;
+        this.est = { format, quality, total, list: ok, after, byDir, working: false };
         this.paint();
     },
 
