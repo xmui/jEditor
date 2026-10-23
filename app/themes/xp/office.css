@@ -411,15 +411,7 @@
 }
 :root[data-skin="xp"] .grid-controls::before { content: "Zoom"; margin-right: 8px; }
 :root[data-skin="xp"] .slider-group > svg { display: none; }
-:root[data-skin="xp"] input[type="range"] { appearance: none; width: 120px; height: 18px; background: transparent; }
-:root[data-skin="xp"] input[type="range"]::-webkit-slider-runnable-track { height: 3px; border: 1px solid var(--o-line); background: #fff; }
-:root[data-skin="xp"] input[type="range"]::-webkit-slider-thumb {
-    appearance: none;
-    width: 9px; height: 16px;
-    margin-top: -8px;
-    border: 1px solid var(--o-hot-edge);
-    background: var(--o-hot);
-}
+:root[data-skin="xp"] .grid-controls input[type="range"] { appearance: none; width: 120px; background: transparent; }
 
 /* Single picture: the viewer's buttons under the photo, icons only */
 :root[data-skin="xp"] .controls { gap: 2px; border-top: 1px solid var(--o-line); background: var(--o-bar); }

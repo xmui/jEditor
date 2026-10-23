@@ -2956,6 +2956,12 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 }
 
 /* While a theme's stylesheets come in: nothing, rather than jEditor's own look first */
+/* What a theme decides for itself (its colours, glass, sizes, layout):
+   not offered while one is on */
+:root[data-skin] .set-own-look {
+    display: none;
+}
+
 :root.theme-loading :is(.interface, #th-top) {
     visibility: hidden;
 }
@@ -2975,8 +2981,12 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     padding-top: var(--th-top, 0px);
 }
 
-:root.th-top :is(.mode-screen, .drop-zone) {
+:root.th-top :is(.mode-screen, .drop-zone, .dialog-overlay) {
     top: var(--th-top, 0px);
+}
+
+:root.th-top .scan-dock {
+    max-height: var(--dock-max, calc(100vh - var(--th-top, 0px) - 2 * var(--gutter) - 64px));
 }
 
 :root.th-top .mode-float.over-mode {

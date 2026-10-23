@@ -41,12 +41,22 @@
     --r-thumb-edge: #7f9acb;
     --r-track: linear-gradient(90deg, #f1f1f4, #fbfbfc 40%, #ffffff 60%, #f1f1f4);
     --r-glyph: #2c4d8c;
+    /* push buttons, trackbars, the frame of a dialog */
+    --r-frame-solid: #1347c4;
+    --xp-btn: linear-gradient(180deg, #ffffff 0%, #f6f8fc 44%, #e7ecf5 50%, #dce3f0 100%);
+    --xp-btn-down: linear-gradient(180deg, #d2dcef 0%, #dfe7f4 50%, #ecf1f9 100%);
+    --xp-btn-border: #3b5a94;
+    --xp-btn-hot: inset 0 0 0 1px #fff, inset 0 0 3px 2px #8cb8f5;
+    --xp-btn-default: inset 0 0 0 1px #fff, inset 0 0 0 2px #84aef2;
+    --xp-thumb: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='21'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23ffffff'/%3E%3Cstop offset='1' stop-color='%23d6e3f7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M1.5.5h8a1 1 0 0 1 1 1v13.3l-5 5.4-5-5.4V1.5a1 1 0 0 1 1-1z' fill='url(%23g)' stroke='%2345659f'/%3E%3Cpath d='M1.5 2v12.5M9.5 2v12.5' stroke='%23fff' stroke-opacity='.8'/%3E%3Cpath d='M1.6 15.4l3.9 4.2 3.9-4.2' fill='none' stroke='%237eaaf0'/%3E%3C/svg%3E");
+    --xp-thumb-hot: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='21'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23ffffff'/%3E%3Cstop offset='1' stop-color='%23c9ddfb'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M1.5.5h8a1 1 0 0 1 1 1v13.3l-5 5.4-5-5.4V1.5a1 1 0 0 1 1-1z' fill='url(%23g)' stroke='%232f6bd6'/%3E%3Cpath d='M1.5 2v12.5M9.5 2v12.5' stroke='%23fff' stroke-opacity='.8'/%3E%3Cpath d='M1.6 15.4l3.9 4.2 3.9-4.2' fill='none' stroke='%234f95f7'/%3E%3C/svg%3E");
+    --o-glyph: #1d3f7a;
     --xp-face: var(--r-face);
     --bg-window: var(--r-face);
 }
 
 /* ---- The window: glossy title, a thin frame ---- */
-:root[data-skin="xp"] .interface {
+:root[data-skin="xp"] :is(.interface, .mode-screen, .drop-zone) {
     border-width: 0 3px 3px;
     border-image: var(--r-frame) 1;
     background: var(--r-face);
@@ -106,7 +116,6 @@
         var(--r-thumb) no-repeat right 1px center / 15px 16px,
         #fff;
 }
-:root[data-skin="xp"] input[type="range"]::-webkit-slider-thumb { border-radius: 3px; border-color: var(--o-hot-edge); background: var(--o-hot); }
 
 /* ---- Glossy scroll bars ---- */
 :root[data-skin="xp"] ::-webkit-scrollbar { background: #fbfbfc; }

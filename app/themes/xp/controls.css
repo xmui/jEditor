@@ -1,0 +1,581 @@
+/* ==========================================================================
+   XP: jEditor's windows and controls the way an XP program drew them.
+   Dialogs are windows of their own over the main one (the theme's glass
+   caption, the face colour, OK and Cancel at the bottom right, nothing
+   dimmed behind), Settings is a property sheet with tabs, choices are
+   option buttons and check boxes, sliders are trackbars, and the little
+   panels (Info, Undo history) are tool windows. Every colour comes from
+   the finish (royale.css, noir.css, red.css).
+   ========================================================================== */
+
+:root[data-skin="xp"] {
+    --xp-edit: #7f9db9;
+    --xp-groupbox: #0046d5;
+    --xp-tab-line: #919b9c;
+    --xp-tab-hot: linear-gradient(180deg, #e68b2c, #ffc73c);
+    --xp-check-hot: inset 0 0 0 1px #f8b330, inset 0 0 0 2px #fde3a5;
+    --xp-disabled: #aca899;
+    --xp-workspace: #808080;
+    /* jEditor's own parts read these */
+    --bg-raised: #fff;
+    --bg-sunken: #fff;
+    --bg-hover: var(--o-sel);
+    --bg-pressed: var(--o-sel);
+    --bg-selected: var(--o-sel);
+    --border-input: var(--xp-edit);
+    --border-subtle: #d0d0bf;
+    --seg-bg: transparent;
+    --seg-active: transparent;
+    --text-3: #6d6d6d;
+    --accent-text: var(--xp-hilite);
+    --accent-soft: var(--o-sel);
+    --on-accent: #fff;
+    --danger-text: #c00;
+    --scrim: transparent;
+    --shadow-1: none;
+    --shadow-2: none;
+    --shadow-3: none;
+    --shadow-4: none;
+    --r-xs: 0; --r-sm: 0; --r-md: 0; --r-lg: 0; --r-xl: 0;
+}
+:root[data-skin="xp"] :is(.dialog, .popover, .mode-screen, .drop-zone, .scan-dock) {
+    font: 11px/14px var(--xp-font);
+    color: #000;
+    -webkit-font-smoothing: auto;
+}
+
+/* ---- Push buttons: the glass of the finish, a ring on the default ---- */
+:root[data-skin="xp"] .btn,
+:root[data-skin="xp"] .btn.secondary,
+:root[data-skin="xp"] .btn.primary,
+:root[data-skin="xp"] .btn.danger,
+:root[data-skin="xp"] .btn.chip,
+:root[data-skin="xp"] .dialog .btn.ghost:not(.icon),
+:root[data-skin="xp"] .drop-zone .btn {
+    min-width: 0;
+    height: 23px;
+    padding: 0 10px;
+    border: 1px solid var(--xp-btn-border);
+    border-radius: 3px;
+    background: var(--xp-btn, linear-gradient(180deg, #fff, #ecebe6 86%, #d6d0c5));
+    color: #000;
+    font: 11px var(--xp-font);
+    font-weight: 400;
+    box-shadow: inset 0 -1px 0 rgb(0 0 0 / 0.06);
+    transition: none;
+}
+:root[data-skin="xp"] .btn:active:not(:disabled) { transform: none; }
+:root[data-skin="xp"] :is(.btn.secondary, .btn.primary, .btn.danger, .btn.chip, .dialog .btn.ghost:not(.icon), .drop-zone .btn):hover:not(:disabled) {
+    background: var(--xp-btn, linear-gradient(180deg, #fff, #ecebe6 86%, #d6d0c5));
+    box-shadow: var(--xp-btn-hot);
+}
+:root[data-skin="xp"] :is(.btn.secondary, .btn.primary, .btn.danger, .btn.chip, .dialog .btn.ghost:not(.icon), .drop-zone .btn):active:not(:disabled),
+:root[data-skin="xp"] .btn.chip[aria-pressed="true"] {
+    background: var(--xp-btn-down);
+    box-shadow: none;
+}
+/* The default button: the ring round it */
+:root[data-skin="xp"] .btn.primary,
+:root[data-skin="xp"] .btn.primary:hover:not(:disabled) {
+    box-shadow: var(--xp-btn-default);
+    font-weight: 400;
+}
+:root[data-skin="xp"] .btn:disabled,
+:root[data-skin="xp"] .btn[aria-disabled="true"] {
+    opacity: 1;
+    border-color: #c9c7ba;
+    background: #f5f4ea;
+    color: var(--xp-disabled);
+    box-shadow: none;
+}
+:root[data-skin="xp"] .btn.danger-text { color: #000; }
+:root[data-skin="xp"] .btn > small { opacity: 1; color: #444; }
+:root[data-skin="xp"] .btn:focus-visible { outline: 1px dotted #000; outline-offset: -4px; }
+/* Buttons that are only a picture keep it, drawn in the bar's ink */
+:root[data-skin="xp"] .btn.icon > svg { display: block; width: 16px; height: 16px; color: var(--o-glyph, #1d3f7a); stroke-width: 2.2; }
+:root[data-skin="xp"] .btn.icon::before { inset: 0; }
+
+/* Links: the blue of a task pane */
+:root[data-skin="xp"] .link-btn {
+    padding: 0;
+    color: var(--o-link);
+    font: 11px var(--xp-font);
+    text-decoration: none;
+}
+:root[data-skin="xp"] .link-btn:hover { color: var(--xp-link-hover); text-decoration: underline; }
+
+/* ---- Edit boxes and combo boxes ---- */
+:root[data-skin="xp"] .field,
+:root[data-skin="xp"] .dialog input:is([type="text"], [type="number"], [type="search"], :not([type])),
+:root[data-skin="xp"] .fpr-body input {
+    height: 21px;
+    padding: 0 3px;
+    border: 1px solid var(--xp-edit);
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    font: 11px var(--xp-font);
+    box-shadow: none;
+    outline: none;
+}
+:root[data-skin="xp"] .field:hover { border-color: var(--xp-edit); }
+:root[data-skin="xp"] .field:focus,
+:root[data-skin="xp"] .field:focus-visible { border-color: var(--xp-edit); box-shadow: none; }
+:root[data-skin="xp"] .field:disabled { opacity: 1; background: #ebebe4; color: var(--xp-disabled); border-color: #c9c7ba; }
+:root[data-skin="xp"] .field::placeholder { color: #8c8c8c; }
+:root[data-skin="xp"] select.field {
+    padding-right: 22px;
+    border-radius: 3px;
+    border-color: var(--o-line);
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 0h7L3.5 4z' fill='%23333'/%3E%3C/svg%3E") no-repeat right 5px center,
+        var(--r-thumb) no-repeat right 1px center / 15px calc(100% - 2px),
+        #fff;
+}
+:root[data-skin="xp"] textarea.field { height: auto; padding: 2px 3px; }
+:root[data-skin="xp"] input[type="number"]::-webkit-inner-spin-button { opacity: 1; }
+
+/* ---- Check boxes and option buttons ---- */
+:root[data-skin="xp"] input[type="checkbox"],
+:root[data-skin="xp"] input.switch,
+:root[data-skin="xp"] input[type="radio"] {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    flex: none;
+    width: 13px;
+    height: 13px;
+    margin: 0;
+    border: 1px solid #1c5180;
+    border-radius: 0;
+    background: linear-gradient(135deg, #dcdcd7, #fff);
+    box-shadow: none;
+    transition: none;
+    cursor: default;
+}
+:root[data-skin="xp"] input[type="radio"] { border-radius: 50%; }
+:root[data-skin="xp"] input.switch::before { display: none; }
+:root[data-skin="xp"] :is(input[type="checkbox"], input.switch, input[type="radio"]):hover:not(:disabled) { box-shadow: var(--xp-check-hot); }
+:root[data-skin="xp"] input[type="radio"]:hover:not(:disabled) { box-shadow: inset 0 0 0 2px #fac85a; }
+:root[data-skin="xp"] :is(input[type="checkbox"], input.switch):checked {
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='7'%3E%3Cpath d='M0 2.5l2.5 2.5L7 0.5v2L2.5 7 0 4.5z' fill='%2321a121'/%3E%3C/svg%3E") no-repeat center,
+        linear-gradient(135deg, #dcdcd7, #fff);
+}
+:root[data-skin="xp"] input[type="radio"]:checked {
+    background:
+        radial-gradient(circle at 45% 40%, #ccf9c7 0, #5ad44f 1.6px, #21a121 3px, transparent 3.6px),
+        linear-gradient(135deg, #dcdcd7, #fff);
+}
+:root[data-skin="xp"] :is(input[type="checkbox"], input.switch, input[type="radio"]):disabled {
+    border-color: #cac8bb;
+    background: #fff;
+    opacity: 1;
+}
+:root[data-skin="xp"] :is(input[type="checkbox"], input.switch, input[type="radio"]):focus-visible { outline: 1px dotted #000; outline-offset: 2px; }
+
+/* A row of choices (Dark · Light · Match system; Move · Copy): option
+   buttons, each with its words beside it */
+:root[data-skin="xp"] .seg {
+    gap: 4px 14px;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    flex-wrap: wrap;
+}
+:root[data-skin="xp"] .seg > label { align-items: center; gap: 5px; }
+:root[data-skin="xp"] .seg > label > input {
+    position: static;
+    width: 13px; height: 13px;
+    opacity: 1;
+    pointer-events: auto;
+}
+:root[data-skin="xp"] .seg > label > span,
+:root[data-skin="xp"] .seg > button {
+    height: auto;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    color: #000;
+    font: 11px var(--xp-font);
+    box-shadow: none;
+}
+:root[data-skin="xp"] .seg > label > input:checked + span,
+:root[data-skin="xp"] .seg > button.active,
+:root[data-skin="xp"] .seg > button[aria-selected="true"],
+:root[data-skin="xp"] .seg > button[aria-checked="true"],
+:root[data-skin="xp"] .seg > button.on { background: none; color: #000; box-shadow: none; }
+:root[data-skin="xp"] .seg > label > input:focus-visible + span { outline: 1px dotted #000; outline-offset: 1px; }
+/* the buttons of such a row get the option button drawn in front */
+:root[data-skin="xp"] .seg > button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+:root[data-skin="xp"] .seg > button > svg { display: none; }
+:root[data-skin="xp"] .seg > button::before {
+    content: "";
+    flex: none;
+    width: 13px; height: 13px;
+    box-sizing: border-box;
+    border: 1px solid #1c5180;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #dcdcd7, #fff);
+}
+:root[data-skin="xp"] .seg > button:hover::before { box-shadow: inset 0 0 0 2px #fac85a; }
+:root[data-skin="xp"] .seg > :is(button.active, button[aria-selected="true"], button[aria-checked="true"], button.on)::before {
+    background:
+        radial-gradient(circle at 45% 40%, #ccf9c7 0, #5ad44f 1.6px, #21a121 3px, transparent 3.6px),
+        linear-gradient(135deg, #dcdcd7, #fff);
+}
+:root[data-skin="xp"] .seg > button:disabled { color: var(--xp-disabled); }
+
+/* ---- Trackbars ---- */
+:root[data-skin="xp"] input[type="range"] { -webkit-appearance: none; appearance: none; height: 22px; background: transparent; }
+:root[data-skin="xp"] input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    border: 1px solid;
+    border-color: #9d9c99 #fff #fff #9d9c99;
+    border-radius: 2px;
+    background: #ecebe6;
+    box-shadow: none;
+}
+:root[data-skin="xp"] input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 11px;
+    height: 21px;
+    margin-top: -9px;
+    border: 0;
+    border-radius: 0;
+    background: var(--xp-thumb) no-repeat;
+    box-shadow: none;
+}
+:root[data-skin="xp"] input[type="range"]:hover::-webkit-slider-thumb { background-image: var(--xp-thumb-hot); }
+:root[data-skin="xp"] input[type="range"]:focus-visible { outline: 1px dotted #000; outline-offset: 0; }
+
+/* Keys */
+:root[data-skin="xp"] kbd,
+:root[data-skin="xp"] .sc-key {
+    min-width: 18px;
+    padding: 0 4px;
+    border: 1px solid #aca899;
+    border-bottom-width: 2px;
+    border-radius: 2px;
+    background: #fff;
+    color: #000;
+    font: 11px/16px var(--xp-font);
+}
+
+/* ---- Dialogs: windows over jEditor's ---- */
+:root[data-skin="xp"] .dialog-overlay { background: none; animation: none; }
+:root[data-skin="xp"] .dialog {
+    border: 3px solid var(--r-frame-solid);
+    border-top: 0;
+    border-radius: 8px 8px 0 0;
+    background: var(--r-face);
+    box-shadow: 2px 2px 6px rgb(0 0 0 / 0.3);
+    animation: none;
+}
+/* The caption: the title, the close button; anything else the dialog
+   keeps up there goes under it, on the face */
+:root[data-skin="xp"] .dialog-head {
+    flex-wrap: wrap;
+    gap: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: var(--r-face);
+}
+:root[data-skin="xp"] .dialog-head > .dialog-title {
+    order: 0;
+    flex: 1 1 0;
+    height: 30px;
+    margin: 0 -3px 0 -3px;
+    padding: 0 6px 0 9px;
+    border-radius: 7px 0 0 0;
+    background: var(--r-title) no-repeat;
+    box-shadow: inset 0 1px 0 var(--r-title-hi);
+    color: #fff;
+    font: 700 13px/30px "Trebuchet MS", var(--xp-font);
+    text-shadow: var(--r-title-shadow);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+:root[data-skin="xp"] .dialog-head > .btn[aria-label="Close"] {
+    order: 1;
+    position: relative;
+    flex: none;
+    width: 30px;
+    height: 30px;
+    margin-right: -3px;
+    padding: 0;
+    border: 0;
+    border-radius: 0 7px 0 0;
+    background: var(--r-title);
+    box-shadow: inset 0 1px 0 var(--r-title-hi);
+}
+:root[data-skin="xp"] .dialog-head > .btn[aria-label="Close"] > svg { display: none; }
+/* the close button itself: the finish's red glass with a white cross */
+:root[data-skin="xp"] .dialog-head > .btn[aria-label="Close"]::before {
+    content: "";
+    position: absolute;
+    inset: 4px 5px 4px 3px;
+    border: 1px solid var(--r-cap-edge);
+    border-radius: 4px;
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3Cpath d='M1 1l8 8M9 1L1 9' stroke='%23fff' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat center,
+        var(--r-close);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25), inset 0 0 1px rgb(255 255 255 / 0.6);
+}
+:root[data-skin="xp"] .dialog-head > .btn[aria-label="Close"]:hover::before { filter: brightness(1.12); }
+:root[data-skin="xp"] .dialog-head > .btn[aria-label="Close"]:active::before { filter: brightness(0.9); }
+:root[data-skin="xp"] .dialog-head > .btn[aria-label="Close"]:focus-visible { outline: none; }
+/* a caption with no close button runs to the edge */
+:root[data-skin="xp"] .dialog-head > .dialog-title:last-child,
+:root[data-skin="xp"] .dialog-head:not(:has(> .btn[aria-label="Close"])) > .dialog-title { border-radius: 7px 7px 0 0; margin-right: -3px; }
+:root[data-skin="xp"] .dialog-head::after { content: ""; order: 2; flex-basis: 100%; }
+:root[data-skin="xp"] .dialog-head > :not(.dialog-title, .btn[aria-label="Close"]) { order: 3; margin: 10px 0 0 12px; }
+:root[data-skin="xp"] .dialog-head > input { flex: 1; margin-right: 12px; }
+
+:root[data-skin="xp"] .dialog-body { padding: 12px 12px 6px; }
+:root[data-skin="xp"] .dialog-foot {
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 8px 12px 12px;
+    border: 0;
+}
+:root[data-skin="xp"] .dialog-foot > :first-child:not(.btn, .dialog-actions) { margin-right: auto; }
+:root[data-skin="xp"] .dialog-foot .btn,
+:root[data-skin="xp"] .dialog-actions .btn { min-width: 75px; height: 23px; padding: 0 10px; }
+:root[data-skin="xp"] .dialog-note { color: #444; font-size: 11px; line-height: 14px; }
+:root[data-skin="xp"] .dialog :is(h3, h4):not(.dialog-title) { font: 700 11px var(--xp-font); color: #000; letter-spacing: 0; text-transform: none; }
+
+/* ---- Settings: a property sheet, one tab a page ---- */
+:root[data-skin="xp"] .dialog.settings-card { width: min(600px, 100%); height: min(560px, 100%); }
+:root[data-skin="xp"] .settings-main { flex-direction: column; padding: 10px 10px 0; }
+:root[data-skin="xp"] .settings-nav {
+    flex-direction: row;
+    width: auto;
+    gap: 0;
+    padding: 0 0 0 2px;
+    border: 0;
+    overflow: visible;
+    position: relative;
+    z-index: 1;
+}
+:root[data-skin="xp"] .settings-nav button {
+    position: relative;
+    height: 20px;
+    margin: 2px -1px 0 0;
+    padding: 0 7px;
+    gap: 0;
+    border: 1px solid var(--xp-tab-line);
+    border-bottom: 0;
+    border-radius: 3px 3px 0 0;
+    background: linear-gradient(180deg, #fff, #fcfcfb 30%, #ecebe6);
+    color: #000;
+    font: 11px var(--xp-font);
+}
+:root[data-skin="xp"] .settings-nav button .i { display: none; }
+:root[data-skin="xp"] .settings-nav button:hover { background: linear-gradient(180deg, #fff, #fcfcfb 30%, #ecebe6); color: #000; box-shadow: inset 0 2px 0 #ffc73c, inset 0 1px 0 #e68b2c; }
+:root[data-skin="xp"] .settings-nav button[aria-selected="true"] {
+    z-index: 1;
+    height: 23px;
+    margin: 0 -1px -1px 0;
+    padding: 0 9px;
+    background: #fcfcfe;
+    color: #000;
+    box-shadow: inset 0 3px 0 #ffc73c, inset 0 1px 0 #e68b2c;
+}
+:root[data-skin="xp"] .settings-body {
+    padding: 12px 14px;
+    border: 1px solid var(--xp-tab-line);
+    background: #fcfcfe;
+    box-shadow: 1px 1px 0 #d0d0bf;
+}
+:root[data-skin="xp"] .settings-page-title { display: none; }
+/* Group headings: the words, then an etched line to the edge */
+:root[data-skin="xp"] .set-group,
+:root[data-skin="xp"] .settings-page-title + .set-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 12px 0 2px;
+    padding: 0;
+    border: 0;
+    color: var(--xp-groupbox);
+    font: 11px var(--xp-font);
+    letter-spacing: 0;
+    text-transform: none;
+}
+:root[data-skin="xp"] .settings-page-title + .set-group { margin-top: 0; }
+:root[data-skin="xp"] .set-group::after { content: ""; flex: 1; height: 1px; background: #d0d0bf; box-shadow: 0 1px 0 #fff; }
+:root[data-skin="xp"] .set-row { min-height: 0; padding: 5px 0 5px 8px; gap: 16px; }
+:root[data-skin="xp"] .set-label { font-weight: 400; }
+:root[data-skin="xp"] .set-label small,
+:root[data-skin="xp"] .set-help { color: #6d6d6d; font-size: 11px; line-height: 14px; }
+:root[data-skin="xp"] .set-range output { color: #000; }
+:root[data-skin="xp"] .settings-card .dialog-foot { padding-top: 10px; }
+/* A theme decides these */
+:root[data-skin="xp"] .set-row.unavailable .seg { opacity: 1; }
+:root[data-skin="xp"] .set-row.unavailable .seg > label > span { color: var(--xp-disabled); }
+/* The gallery: a list of large icons */
+:root[data-skin="xp"] .theme-gallery { gap: 4px; padding: 4px; border: 1px solid var(--xp-edit); background: #fff; }
+:root[data-skin="xp"] .theme-card { padding: 4px; border: 1px solid transparent; border-radius: 0; background: none; }
+:root[data-skin="xp"] .theme-card:hover { border-color: #c1d2ee; }
+:root[data-skin="xp"] .theme-card.active { border-color: var(--xp-hilite); background: var(--o-sel); }
+:root[data-skin="xp"] .theme-shot { border-radius: 0; box-shadow: 1px 1px 0 #a0a0a0; }
+:root[data-skin="xp"] .theme-card.active .theme-shot { outline: 0; box-shadow: 1px 1px 0 #a0a0a0; }
+:root[data-skin="xp"] .theme-name { font: 11px var(--xp-font); }
+:root[data-skin="xp"] .theme-name small { color: #6d6d6d; font-size: 11px; }
+:root[data-skin="xp"] .theme-card:focus-visible { outline: 1px dotted #000; outline-offset: -2px; }
+:root[data-skin="xp"] .customize-list { border: 1px solid var(--xp-edit); border-radius: 0; background: #fff; }
+:root[data-skin="xp"] .customize-list li { border-radius: 0; }
+
+/* ---- Keyboard shortcuts, What's new, the other dialogs' parts ---- */
+:root[data-skin="xp"] .shortcuts-list h4,
+:root[data-skin="xp"] .whatsnew-list h4 { color: var(--xp-groupbox); }
+:root[data-skin="xp"] .shortcuts-list,
+:root[data-skin="xp"] .whatsnew-list,
+:root[data-skin="xp"] .rename-preview,
+:root[data-skin="xp"] .ex-list,
+:root[data-skin="xp"] .blank-presets,
+:root[data-skin="xp"] .blank-preview,
+:root[data-skin="xp"] .perm-list { border-radius: 0; }
+:root[data-skin="xp"] .whatsnew-list { padding: 8px 10px; border: 1px solid var(--xp-edit); background: #fff; }
+:root[data-skin="xp"] .wn-tag { border-radius: 0; font-size: 11px; }
+:root[data-skin="xp"] .rename-preview { border: 1px solid var(--xp-edit); background: #fff; font-family: var(--xp-font); }
+:root[data-skin="xp"] .rename-token { border: 1px solid var(--xp-btn-border); border-radius: 3px; background: var(--xp-btn); font: 11px var(--xp-font); }
+:root[data-skin="xp"] .rename-token:hover { box-shadow: var(--xp-btn-hot); background: var(--xp-btn); }
+:root[data-skin="xp"] .ex-item,
+:root[data-skin="xp"] .blank-preset,
+:root[data-skin="xp"] .perm-row { border-radius: 0; }
+:root[data-skin="xp"] :is(.ex-item, .blank-preset):hover { background: var(--o-sel); }
+:root[data-skin="xp"] :is(.ex-item:has(input:checked), .blank-preset.on) { background: var(--xp-hilite); color: #fff; }
+:root[data-skin="xp"] :is(.ex-item:has(input:checked), .blank-preset.on) :is(small, span) { color: #fff; }
+:root[data-skin="xp"] .blank-presets { border: 1px solid var(--xp-edit); background: #fff; }
+:root[data-skin="xp"] .blank-group { color: var(--xp-groupbox); letter-spacing: 0; text-transform: none; font-size: 11px; }
+
+/* ---- Tool windows: Info and Undo history ---- */
+:root[data-skin="xp"] .popover {
+    padding: 0 0 8px;
+    border: 3px solid var(--r-frame-solid);
+    border-top: 0;
+    border-radius: 6px 6px 0 0;
+    background: var(--r-face);
+    box-shadow: 2px 2px 4px rgb(0 0 0 / 0.3);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+:root[data-skin="xp"] .popover .section-label {
+    margin: 0 -3px 8px;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 5px 5px 0 0;
+    background: var(--r-title);
+    box-shadow: inset 0 1px 0 var(--r-title-hi);
+    color: #fff;
+    font: 700 11px/22px "Trebuchet MS", var(--xp-font);
+    letter-spacing: 0;
+    text-transform: none;
+    text-shadow: var(--r-title-shadow);
+}
+:root[data-skin="xp"] .popover > :not(.section-label) { margin-left: 8px; margin-right: 8px; }
+:root[data-skin="xp"] .popover dl { font: 11px/16px var(--xp-font); }
+:root[data-skin="xp"] .popover :is(dt, .history-foot, .history-hint) { color: #444; }
+:root[data-skin="xp"] .history-list button,
+:root[data-skin="xp"] .history-list > * { border-radius: 0; }
+
+/* ---- The start page: the empty window ---- */
+:root[data-skin="xp"] .drop-zone { background: var(--o-pane); }
+:root[data-skin="xp"] .drop-content { color: #000; }
+:root[data-skin="xp"] .start-title { font: 700 22px "Trebuchet MS", var(--xp-font); color: var(--o-title-ink, #0f3c9c); letter-spacing: 0; }
+:root[data-skin="xp"] .start-tagline,
+:root[data-skin="xp"] .drop-hint { color: #444; font: 11px var(--xp-font); }
+:root[data-skin="xp"] .start-open { min-width: 120px; height: 23px; }
+:root[data-skin="xp"] .start-open > svg { display: none; }
+:root[data-skin="xp"] .start-in { gap: 10px; }
+:root[data-skin="xp"] .start-in-label { color: #000; font: 11px var(--xp-font); }
+:root[data-skin="xp"] .start-foot .link-btn kbd { display: none; }
+:root[data-skin="xp"] .recents-title { color: var(--xp-groupbox); font: 11px var(--xp-font); letter-spacing: 0; text-transform: none; }
+:root[data-skin="xp"] .recent-list button,
+:root[data-skin="xp"] .recent-list a { border-radius: 0; color: var(--o-link); }
+:root[data-skin="xp"] .app-version,
+:root[data-skin="xp"] .start-title + * small { border-radius: 0; }
+
+/* The task pill (what jEditor's busy with): a status window */
+:root[data-skin="xp"] .task-pill {
+    border: 1px solid #000;
+    border-radius: 0;
+    background: #ffffe1;
+    box-shadow: 2px 2px 3px rgb(0 0 0 / 0.35);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    color: #000;
+    font: 11px var(--xp-font);
+}
+:root[data-skin="xp"] .task-pill h2 { font: 11px var(--xp-font); }
+:root[data-skin="xp"] .toast-action {
+    height: auto;
+    margin-left: 8px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: var(--xp-link);
+    font: 11px var(--xp-font);
+    text-decoration: underline;
+}
+:root[data-skin="xp"] .toast-action:hover { background: none; color: var(--xp-link-hover); }
+:root[data-skin="xp"] .toast-icon { display: none; }
+
+/* Move to…: a tree in a list box */
+:root[data-skin="xp"] .fp-filter-wrap { padding: 10px 12px 6px; }
+:root[data-skin="xp"] .fp-filter { height: 21px; }
+:root[data-skin="xp"] .fp-list { min-height: 160px; margin: 0 12px; padding: 2px; border: 1px solid var(--xp-edit); background: #fff; }
+:root[data-skin="xp"] .fp-row { min-height: 18px; gap: 4px; border-radius: 0; }
+:root[data-skin="xp"] .fp-row:hover { background: none; }
+:root[data-skin="xp"] .fp-row.hi { background: var(--xp-hilite); color: #fff; box-shadow: none; }
+:root[data-skin="xp"] .fp-row.hi .fp-meta { color: #fff; }
+:root[data-skin="xp"] .fp-icon { display: none; }
+:root[data-skin="xp"] .fp-row:has(> .fp-icon)::before { content: ""; flex: none; width: 16px; height: 16px; background: url(../xp/icons/folder16.png) no-repeat; }
+:root[data-skin="xp"] .fp-meta { color: #6d6d6d; font-size: 11px; }
+
+/* ---- The scan window: a tool window, its small caption ---- */
+:root[data-skin="xp"] .scan-dock {
+    border: 3px solid var(--r-frame-solid);
+    border-top: 0;
+    border-radius: 6px 6px 0 0;
+    background: var(--r-face);
+    box-shadow: 2px 2px 6px rgb(0 0 0 / 0.3);
+}
+:root[data-skin="xp"] .scan-dock-head {
+    gap: 2px;
+    height: 24px;
+    margin: 0 -3px;
+    padding: 0 4px 0 8px;
+    border-radius: 5px 5px 0 0;
+    background: var(--r-title);
+    box-shadow: inset 0 1px 0 var(--r-title-hi);
+}
+:root[data-skin="xp"] .scan-dock-title { color: #fff; font: 700 11px "Trebuchet MS", var(--xp-font); text-shadow: var(--r-title-shadow); }
+:root[data-skin="xp"] .scan-dock-head .btn.icon {
+    width: 17px;
+    height: 17px;
+    border: 1px solid var(--r-cap-edge);
+    border-radius: 3px;
+    background: var(--r-cap);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.2);
+}
+:root[data-skin="xp"] .scan-dock-head .btn.icon > svg { width: 11px; height: 11px; color: #fff; stroke-width: 3; }
+:root[data-skin="xp"] .scan-dock-head .btn.icon[aria-pressed="true"] { filter: brightness(0.85); }
+:root[data-skin="xp"] .scan-dock-head #scan-x { background: var(--r-close); }
+:root[data-skin="xp"] .scan-sec { gap: 6px; padding: 8px 10px; }
+:root[data-skin="xp"] .scan-sec + :is(.scan-sec, .scan-adv) { border-top: 0; }
+:root[data-skin="xp"] .scan-sec-head { display: flex; align-items: center; gap: 6px; color: var(--xp-groupbox); font: 11px var(--xp-font); letter-spacing: 0; text-transform: none; }
+:root[data-skin="xp"] .scan-sec-head::after { content: ""; flex: 1; height: 1px; background: #d0d0bf; box-shadow: 0 1px 0 #fff; }
+:root[data-skin="xp"] .scan-hint { color: #444; font: 11px var(--xp-font); }
+:root[data-skin="xp"] .scan-dock-foot { justify-content: flex-end; gap: 6px; padding: 8px 10px 10px; border: 0; border-radius: 0; background: var(--r-face); }
+:root[data-skin="xp"] .scan-dock-foot .btn { min-width: 75px; }

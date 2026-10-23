@@ -1,0 +1,320 @@
+/* ==========================================================================
+   Snow Leopard: Crop, Adjust and Paint as the same Cocoa app. Their heads
+   are the unified toolbar, carried on under the title, with textured
+   buttons; the mode switch is a textured pop-up button; Adjust and Paint
+   keep their controls in an inspector down the right with disclosure
+   triangles; Paint's tools are a palette of glyphs down the left; Crop's
+   commands sit in a bottom bar, as iPhoto's editing did.
+   ========================================================================== */
+
+:root[data-skin="snow"] {
+    --sl-toolbar: linear-gradient(180deg, #dedede, #c9c9c9 55%, #b6b6b6);
+    --sl-toolbar-line: #515151;
+    --sl-inspector: #e3e3e3;
+    --sl-tool-glyph: #333;
+    --sl-glyph-emboss: drop-shadow(0 1px 0 rgb(255 255 255 / 0.65));
+    --sl-sheet-top: 53px;
+}
+:root[data-skin="snow"] .mode-screen { background: var(--sl-face); }
+
+/* The head: the toolbar under the title */
+:root[data-skin="snow"] .mode-head {
+    flex-wrap: nowrap;
+    min-height: 0;
+    height: 38px;
+    gap: 10px;
+    padding: 0 12px;
+    background: var(--sl-toolbar);
+    border-bottom: 1px solid var(--sl-toolbar-line);
+}
+:root[data-skin="snow"] :is(.adj-head, .paint-head) { justify-content: flex-start; padding-left: 130px; }
+:root[data-skin="snow"] .crop-head { justify-content: center; }
+:root[data-skin="snow"] .mode-title { color: var(--sl-ink); font: 700 12px var(--sl-font); text-shadow: var(--sl-emboss); }
+:root[data-skin="snow"] :is(.crop-dims, .crop-tip, .crop-hint) { color: var(--sl-ink-2); font: 11px var(--sl-font); text-shadow: var(--sl-emboss); }
+:root[data-skin="snow"] .adj-tag { border-radius: 8px; background: rgb(0 0 0 / 0.45); color: #fff; font: 11px var(--sl-font); box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.4); }
+
+/* Textured buttons: the head's commands, the mode switch, Crop's bar */
+:root[data-skin="snow"] .mode-head-acts { right: 12px; gap: 0; }
+:root[data-skin="snow"] .mode-head-acts .btn.ghost,
+:root[data-skin="snow"] .mode-chip,
+:root[data-skin="snow"] .crop-row .btn.ghost,
+:root[data-skin="snow"] .crop-zoom-btn,
+:root[data-skin="snow"] .dupes-head .btn.ghost,
+:root[data-skin="snow"] .dupes-foot .btn.ghost {
+    height: 22px;
+    min-width: 0;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 0;
+    background: var(--cap);
+    box-shadow: var(--cap-edge);
+    color: var(--sl-ink);
+    font: 11px var(--sl-font);
+    font-weight: 400;
+    text-shadow: var(--sl-emboss);
+    filter: none;
+    transition: none;
+}
+:root[data-skin="snow"] :is(.mode-head-acts .btn.ghost, .mode-chip, .crop-row .btn.ghost, .crop-zoom-btn, .dupes-head .btn.ghost, .dupes-foot .btn.ghost):hover:not(:disabled) { background: var(--cap); filter: none; }
+:root[data-skin="snow"] :is(.mode-head-acts .btn.ghost, .mode-chip, .crop-row .btn.ghost, .crop-zoom-btn, .dupes-head .btn.ghost, .dupes-foot .btn.ghost):active:not(:disabled),
+:root[data-skin="snow"] :is(.mode-head-acts, .crop-row) .btn.ghost:is([aria-pressed="true"], .active),
+:root[data-skin="snow"] .mode-chip[aria-expanded="true"] { background: var(--cap-in); box-shadow: var(--cap-in-edge); color: var(--sl-ink); }
+:root[data-skin="snow"] :is(.mode-head-acts, .crop-row) .btn.ghost:disabled { opacity: 1; color: rgb(0 0 0 / 0.35); }
+/* they join up into segments: round ends on the first and the last */
+:root[data-skin="snow"] .mode-head-acts > .btn:first-child,
+:root[data-skin="snow"] .mode-head-sep + .btn,
+:root[data-skin="snow"] .crop-group > .btn.ghost:first-child,
+:root[data-skin="snow"] .crop-row > .btn.ghost,
+:root[data-skin="snow"] .crop-zoom-btn:first-child { border-radius: 4px 0 0 4px; }
+:root[data-skin="snow"] .mode-head-acts > .btn:last-child,
+:root[data-skin="snow"] .mode-head-acts > .btn:has(+ .mode-head-sep),
+:root[data-skin="snow"] .crop-group > .btn.ghost:last-child,
+:root[data-skin="snow"] .crop-row > .btn.ghost,
+:root[data-skin="snow"] .crop-zoom-btn:last-child { border-radius: 0 4px 4px 0; }
+:root[data-skin="snow"] .crop-row > .btn.ghost,
+:root[data-skin="snow"] .crop-group > .btn.ghost:only-child,
+:root[data-skin="snow"] .dupes-head .btn.ghost,
+:root[data-skin="snow"] .dupes-foot .btn.ghost,
+:root[data-skin="snow"] .mode-chip { border-radius: 4px; }
+:root[data-skin="snow"] :is(.mode-head-acts, .crop-group) > .btn + .btn { margin-left: -1px; }
+:root[data-skin="snow"] .mode-head-sep { width: 0; margin: 0 5px; background: none; }
+:root[data-skin="snow"] .crop-sep { width: 0; margin: 0 4px; background: none; }
+
+/* The mode switch: a textured pop-up button in the toolbar */
+:root[data-skin="snow"] .mode-float.over-mode {
+    top: calc(var(--th-top, 0px) + 8px);
+    left: 12px;
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+:root[data-skin="snow"] .mode-chip { gap: 5px; margin: 0; padding: 0 8px 0 7px; }
+:root[data-skin="snow"] .mode-chip .i { width: 14px; height: 14px; color: var(--sl-tool-glyph); stroke-width: 2.2; filter: var(--sl-glyph-emboss); }
+:root[data-skin="snow"] .mode-chip .mode-chev { width: 7px; height: 11px; margin-left: 3px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='11'%3E%3Cpath d='M0 4l3.5-4L7 4zM0 7l3.5 4L7 7z' fill='%23222'/%3E%3C/svg%3E") no-repeat center; opacity: 1; }
+:root[data-skin="snow"] .mode-chip .mode-chev path { display: none; }
+:root[data-skin="snow"] .mode-menu {
+    padding: 4px 0;
+    border: 0;
+    border-radius: 5px;
+    background: rgb(255 255 255 / 0.96);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.2), 0 6px 16px rgb(0 0 0 / 0.35);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+:root[data-skin="snow"] .mode-mi { height: 20px; gap: 8px; padding: 0 18px 0 20px; border-radius: 0; color: #000; font: 14px var(--sl-font); }
+:root[data-skin="snow"] .mode-mi .i { display: none; }
+:root[data-skin="snow"] .mode-mi:hover,
+:root[data-skin="snow"] .mode-mi:focus-visible { background: linear-gradient(180deg, #6383f6, #2858ee); color: #fff; outline: 0; }
+:root[data-skin="snow"] .mode-mi.on { background: none; position: relative; color: #000; }
+:root[data-skin="snow"] .mode-mi.on span { color: inherit; }
+:root[data-skin="snow"] .mode-mi.on:is(:hover, :focus-visible) { background: linear-gradient(180deg, #6383f6, #2858ee); color: #fff; }
+:root[data-skin="snow"] .mode-mi.on::before { content: "\2713"; position: absolute; left: 6px; font-size: 12px; }
+:root[data-skin="snow"] .mode-mi kbd { border: 0; background: none; box-shadow: none; padding: 0; color: inherit; font: 14px var(--sl-font); }
+
+/* ---- Crop: the picture on grey, the commands in a bottom bar ---- */
+:root[data-skin="snow"] .crop-toolbar {
+    align-self: stretch;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    max-width: none;
+    margin: 0;
+    padding: 6px 12px;
+    border: 0;
+    border-top: 1px solid var(--sl-toolbar-line);
+    border-radius: 0;
+    background: var(--sl-bar);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.4);
+    zoom: 1;
+}
+:root[data-skin="snow"] .crop-row { flex-wrap: nowrap; gap: 6px; }
+:root[data-skin="snow"] .crop-row:not(.crop-row-straighten) { flex: 1; justify-content: flex-start; }
+:root[data-skin="snow"] .crop-group { gap: 0; }
+:root[data-skin="snow"] .crop-spacer { flex: 1; }
+:root[data-skin="snow"] .crop-row .crop-group > .btn:not(.chip),
+:root[data-skin="snow"] .crop-row > .btn { height: 22px; }
+:root[data-skin="snow"] .crop-row .btn.ghost > svg { width: 14px; height: 14px; color: var(--sl-tool-glyph); stroke-width: 2.2; filter: var(--sl-glyph-emboss); }
+:root[data-skin="snow"] .crop-row .btn.icon { width: 30px; padding: 0; }
+:root[data-skin="snow"] .crop-straighten { gap: 8px; color: var(--sl-ink); font: 11px var(--sl-font); text-shadow: var(--sl-emboss); }
+:root[data-skin="snow"] .crop-straighten input[type="range"]::-webkit-slider-runnable-track { height: 5px; border-radius: 3px; background: linear-gradient(180deg, #7a7a7a, #a9a9a9); }
+:root[data-skin="snow"] .crop-straighten input[type="range"]::-webkit-slider-thumb { width: 15px; height: 15px; margin-top: -5px; border: 0; background: var(--sl-knob); box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.45), 0 1px 1px rgb(0 0 0 / 0.3); }
+:root[data-skin="snow"] #crop-angle-num { width: 50px; height: 19px; font-size: 11px; }
+:root[data-skin="snow"] #crop-aspect { height: 20px; font-size: 11px; }
+:root[data-skin="snow"] .crop-commit { gap: 10px; }
+:root[data-skin="snow"] .crop-commit .btn,
+:root[data-skin="snow"] #crop-cancel { height: 21px; min-width: 76px; }
+:root[data-skin="snow"] .crop-zoom { padding: 0; gap: 0; border: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+:root[data-skin="snow"] .crop-zoom-btn > svg { width: 12px; height: 12px; color: var(--sl-tool-glyph); }
+:root[data-skin="snow"] .crop-zoom-btn + .crop-zoom-btn { margin-left: -1px; }
+
+/* ---- Adjust and Paint: the inspector down the right ---- */
+:root[data-skin="snow"] .adj-panel,
+:root[data-skin="snow"] .paint-panel {
+    padding: 4px 12px 14px;
+    border-left: 1px solid #8f8f8f;
+    background: var(--sl-inspector);
+    font: 11px var(--sl-font);
+    zoom: 1;
+}
+:root[data-skin="snow"] .adj-sec,
+:root[data-skin="snow"] .paint-sec { padding: 0 0 8px; border-bottom: 1px solid var(--sl-line); box-shadow: 0 1px 0 rgb(255 255 255 / 0.55); }
+:root[data-skin="snow"] .adj-sec > summary,
+:root[data-skin="snow"] .paint-sec-head {
+    min-height: 0;
+    height: 24px;
+    color: var(--sl-ink);
+    font: 700 11px var(--sl-font);
+    text-shadow: var(--sl-emboss);
+}
+/* the disclosure triangle */
+:root[data-skin="snow"] .adj-sec > summary > span:first-child::before { margin: 0 6px 1px 1px; border-left: 7px solid #6b6b6b; border-top-width: 4.5px; border-bottom-width: 4.5px; }
+:root[data-skin="snow"] .adj-sub { color: var(--sl-head); font: 700 11px var(--sl-font); }
+:root[data-skin="snow"] .adj-hist-box { padding-top: 8px; }
+/* small round buttons in the inspector */
+:root[data-skin="snow"] :is(.adj-panel, .paint-panel) .btn:not(.icon) {
+    height: 17px;
+    min-width: 0;
+    padding: 0 9px;
+    border: 0;
+    border-radius: 9px;
+    background: var(--sl-btn);
+    box-shadow: var(--sl-btn-edge);
+    color: var(--sl-ink);
+    font: 11px var(--sl-font);
+    font-weight: 400;
+}
+:root[data-skin="snow"] :is(.adj-panel, .paint-panel) .btn:not(.icon):active:not(:disabled) { background: var(--sl-btn-down); }
+:root[data-skin="snow"] :is(.adj-panel, .paint-panel) .btn:not(.icon) > svg { display: none; }
+:root[data-skin="snow"] .adj-sec-acts { gap: 4px; }
+:root[data-skin="snow"] .adj-mask-add { gap: 6px; }
+:root[data-skin="snow"] .adj-mask-add .btn { height: 19px !important; }
+/* tabs: a small segmented control */
+:root[data-skin="snow"] .adj-tabs {
+    gap: 0;
+    padding: 0;
+    border-radius: 4px;
+    background: var(--cap);
+    box-shadow: var(--cap-edge);
+}
+:root[data-skin="snow"] .adj-tab {
+    min-width: 26px;
+    height: 18px;
+    padding: 0 7px;
+    border-radius: 0;
+    background: none;
+    color: var(--sl-ink);
+    font: 11px var(--sl-font);
+    text-shadow: var(--sl-emboss);
+    box-shadow: inset -1px 0 0 rgb(0 0 0 / 0.3);
+}
+:root[data-skin="snow"] .adj-tab:last-child { box-shadow: none; }
+:root[data-skin="snow"] .adj-tab:first-child { border-radius: 4px 0 0 4px; }
+:root[data-skin="snow"] .adj-tab:last-child { border-radius: 0 4px 4px 0; }
+:root[data-skin="snow"] .adj-tab:is([aria-selected="true"], [aria-pressed="true"]) { background: var(--cap-in); box-shadow: var(--cap-in-edge); color: var(--sl-ink); }
+:root[data-skin="snow"] .adj-look-tabs .adj-tab { padding: 0 2px; }
+:root[data-skin="snow"] .adj-hist,
+:root[data-skin="snow"] .adj-curve,
+:root[data-skin="snow"] .adj-loupe { border-radius: 0; box-shadow: 0 0 0 1px #6e6e6e, 0 1px 0 1px rgb(255 255 255 / 0.5); }
+:root[data-skin="snow"] :is(.adj-read, .adj-hint, .adj-wheel-name) { color: var(--sl-ink-2); font: 11px var(--sl-font); }
+/* looks: an icon view, the chosen one in a grey box with its name in blue */
+:root[data-skin="snow"] .adj-looks { gap: 4px; }
+:root[data-skin="snow"] .adj-look { padding: 4px 3px 3px; border: 0; border-radius: 4px; color: var(--sl-ink); font: 11px var(--sl-font); }
+:root[data-skin="snow"] .adj-look canvas { border-radius: 0; box-shadow: 0 1px 2px rgb(0 0 0 / 0.45); }
+:root[data-skin="snow"] .adj-look:hover { background: none; }
+:root[data-skin="snow"] .adj-look[aria-pressed="true"] { border: 0; background: rgb(0 0 0 / 0.12); color: var(--sl-ink); }
+:root[data-skin="snow"] .adj-look[aria-pressed="true"] span { align-self: center; padding: 0 6px; border-radius: 7px; background: var(--sl-list-sel); color: #fff; }
+/* sliders, small */
+:root[data-skin="snow"] .adj-rows { gap: 2px; }
+:root[data-skin="snow"] .adj-label { color: var(--sl-ink); }
+:root[data-skin="snow"] .adj-row.changed .adj-label { color: var(--sl-ink); }
+:root[data-skin="snow"] .adj-num { width: 44px; height: 17px; padding: 0 3px; font: 11px var(--sl-font); }
+:root[data-skin="snow"] .adj-range { height: 16px; }
+:root[data-skin="snow"] .adj-range::-webkit-slider-runnable-track,
+:root[data-skin="snow"] .adj-row[style*="--track"] .adj-range::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 2px;
+    box-shadow: inset 0 1px 1px rgb(0 0 0 / 0.45), 0 1px 0 rgb(255 255 255 / 0.5);
+}
+:root[data-skin="snow"] .adj-range::-webkit-slider-runnable-track { background: linear-gradient(180deg, #7a7a7a, #a9a9a9); }
+:root[data-skin="snow"] .adj-range::-webkit-slider-thumb { width: 13px; height: 13px; margin-top: -5px; border: 0; border-radius: 50%; background: var(--sl-knob); box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.45), 0 1px 1px rgb(0 0 0 / 0.3); }
+:root[data-skin="snow"] .adj-range:focus-visible { outline: none; }
+:root[data-skin="snow"] .adj-mask-list { gap: 0; background: var(--sl-list); box-shadow: inset 0 0 0 1px #9b9b9b; }
+:root[data-skin="snow"] .adj-mask-list:empty { display: none; }
+:root[data-skin="snow"] .adj-mask-item { height: 20px; border: 0; border-radius: 0; background: none; color: var(--sl-ink); font: 11px var(--sl-font); }
+:root[data-skin="snow"] .adj-mask-item[aria-pressed="true"] { background: var(--sl-list-sel); color: #fff; }
+:root[data-skin="snow"] .adj-check { gap: 5px; color: var(--sl-ink); font: 11px var(--sl-font); }
+
+/* ---- Paint: a palette of tools down the left ---- */
+:root[data-skin="snow"] .paint-options {
+    min-height: 0;
+    height: 28px;
+    gap: 16px;
+    padding: 0 12px;
+    border-top: 0;
+    border-bottom: 1px solid #8a8a8a;
+    background: linear-gradient(180deg, #e6e6e6, #d1d1d1);
+    box-shadow: inset 0 1px 0 #f2f2f2;
+    color: var(--sl-ink);
+    font: 11px var(--sl-font);
+    text-shadow: var(--sl-emboss);
+    zoom: 1;
+}
+:root[data-skin="snow"] .paint-opt { gap: 6px; color: var(--sl-ink); }
+:root[data-skin="snow"] .paint-opt .paint-num { width: 2.6em; color: var(--sl-ink); }
+:root[data-skin="snow"] .paint-opt input[type="range"] { width: 100px; }
+:root[data-skin="snow"] .paint-opt :is(select, input[type="text"]) { height: 18px; font-size: 11px; }
+:root[data-skin="snow"] .paint-tools {
+    gap: 2px;
+    padding: 8px 5px;
+    background: linear-gradient(90deg, #d8d8d8, #cbcbcb);
+    border-right: 1px solid #8f8f8f;
+    box-shadow: inset -1px 0 0 rgb(255 255 255 / 0.45);
+    zoom: 1;
+}
+:root[data-skin="snow"] .paint-tool {
+    width: 30px;
+    height: 26px;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: var(--sl-tool-glyph);
+}
+:root[data-skin="snow"] .paint-tool > svg { width: 17px; height: 17px; stroke-width: 2; filter: var(--sl-glyph-emboss); }
+:root[data-skin="snow"] .paint-tool:hover { background: none; color: #000; }
+:root[data-skin="snow"] .paint-tool[aria-pressed="true"] { border: 0; background: var(--cap-in); box-shadow: var(--cap-in-edge); color: #000; }
+:root[data-skin="snow"] .paint-tool-sep { height: 1px; margin: 3px 3px; background: rgb(0 0 0 / 0.2); box-shadow: 0 1px 0 rgb(255 255 255 / 0.55); }
+:root[data-skin="snow"] .paint-colors { gap: 8px; }
+:root[data-skin="snow"] .paint-swatch { width: 30px; height: 30px; border: 0; border-radius: 3px; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.5), inset 0 0 0 2px #fff; }
+:root[data-skin="snow"] .paint-bg { width: 24px; height: 24px; margin: 16px 0 0 -16px; }
+:root[data-skin="snow"] .paint-fg { z-index: 1; }
+:root[data-skin="snow"] .paint-palette { gap: 3px; }
+:root[data-skin="snow"] .paint-palette button { border: 0; border-radius: 2px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.35); }
+:root[data-skin="snow"] .paint-layer-acts .btn.icon { width: 20px; height: 18px; border-radius: 3px; color: var(--sl-tool-glyph); }
+:root[data-skin="snow"] .paint-layer-acts .btn.icon > svg { width: 13px; height: 13px; }
+:root[data-skin="snow"] .paint-layer-acts .btn.icon:hover:not(:disabled) { background: rgb(0 0 0 / 0.08); }
+:root[data-skin="snow"] .paint-layer-list { gap: 0; background: var(--sl-list); box-shadow: inset 0 0 0 1px #9b9b9b; }
+:root[data-skin="snow"] .paint-layer { min-height: 0; padding: 3px 4px; border: 0; border-radius: 0; background: none; }
+:root[data-skin="snow"] .paint-layer:nth-child(even) { background: rgb(237 243 254 / 0.9); }
+:root[data-skin="snow"] .paint-layer[aria-selected="true"] { background: var(--sl-list-sel); color: #fff; }
+:root[data-skin="snow"] .paint-layer canvas { border-radius: 0; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.3); }
+:root[data-skin="snow"] .paint-eye { color: var(--sl-ink-2); }
+:root[data-skin="snow"] .paint-layer[aria-selected="true"] .paint-eye { color: #fff; }
+:root[data-skin="snow"] .paint-prop { color: var(--sl-ink); }
+:root[data-skin="snow"] .paint-import { height: 19px !important; }
+
+/* ---- Duplicates ---- */
+:root[data-skin="snow"] .dupes-sens { color: var(--sl-ink); font: 11px var(--sl-font); text-shadow: var(--sl-emboss); }
+:root[data-skin="snow"] .wip-tag { border-radius: 8px; background: rgb(0 0 0 / 0.4); color: #fff; font: 10px var(--sl-font); box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.4); }
+:root[data-skin="snow"] .dupes-foot { border-top: 1px solid var(--sl-toolbar-line); background: var(--sl-bar); color: var(--sl-ink); font: 11px var(--sl-font); }
+:root[data-skin="snow"] .dupes-foot .btn > svg { display: none; }
+:root[data-skin="snow"] .dupe-card { border-radius: 4px; }
+:root[data-skin="snow"] .dupes-message { color: var(--sl-ink-2); font: 13px var(--sl-font); }
+
+/* ---- The strip of photos in Adjust and Paint ---- */
+:root[data-skin="snow"] .mode-strip { background: var(--strip-bg); border-top: 1px solid var(--sl-toolbar-line); }
+:root[data-skin="snow"] .mode-thumb { border-radius: 0; background: none; opacity: 1; box-shadow: 0 1px 3px rgb(0 0 0 / 0.45); }
+:root[data-skin="snow"] .mode-thumb.active { outline: 3px solid #fff; outline-offset: 0; box-shadow: 0 0 0 4px #3875d7, 0 1px 3px rgb(0 0 0 / 0.45); }

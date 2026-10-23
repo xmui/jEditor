@@ -132,3 +132,78 @@
 :root[data-skin="snow"] ::-webkit-scrollbar-button:vertical:decrement { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='5'%3E%3Cpath d='M0 5l3.5-5L7 5z' fill='%23ccc'/%3E%3C/svg%3E") no-repeat center, linear-gradient(90deg, #2a2a2a, #3a3a3a 50%, #2e2e2e); }
 :root[data-skin="snow"] ::-webkit-scrollbar-button:vertical:increment { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='5'%3E%3Cpath d='M0 0l3.5 5L7 0z' fill='%23ccc'/%3E%3C/svg%3E") no-repeat center, linear-gradient(90deg, #2a2a2a, #3a3a3a 50%, #2e2e2e); }
 :root[data-skin="snow"] ::-webkit-scrollbar-track { background: linear-gradient(90deg, #1a1a1a, #2a2a2a); box-shadow: inset 1px 0 0 #111; }
+
+/* ---- Windows, sheets and controls, in graphite (controls.css, modes.css
+   read these) ---- */
+:root[data-skin="snow"] {
+    --sl-face: #353535;
+    --sl-ink: #e6e6e6;
+    --sl-ink-2: #a8a8a8;
+    --sl-emboss: 0 -1px 0 rgb(0 0 0 / 0.7);
+    --sl-btn: linear-gradient(180deg, #6a6a6a 0%, #555 48%, #484848 52%, #4e4e4e 100%);
+    --sl-btn-down: linear-gradient(180deg, #2c2c2c, #3a3a3a);
+    --sl-btn-edge: inset 0 0 0 1px #121212, inset 0 1px 0 rgb(255 255 255 / 0.18), 0 1px 0 rgb(255 255 255 / 0.06);
+    --sl-blue: linear-gradient(180deg, #7fa6dd 0%, #4f7fc6 48%, #3a6bb5 52%, #4f86d1 100%);
+    --sl-blue-edge: inset 0 0 0 1px #0f1d33, inset 0 1px 0 rgb(255 255 255 / 0.25);
+    --sl-field: #1d1d1d;
+    --sl-field-edge: inset 0 0 0 1px #0b0b0b, inset 0 1px 2px rgb(0 0 0 / 0.6), 0 1px 0 rgb(255 255 255 / 0.08);
+    --sl-sheet: #3a3a3a;
+    --sl-line: #222;
+    --sl-tab-on: rgb(0 0 0 / 0.35);
+    --sl-head: #9a9a9a;
+    --sl-knob: radial-gradient(circle at 50% 30%, #f2f2f2 0, #cfcfcf 45%, #8f8f8f 100%);
+    --sl-list: #262626;
+    --sl-titlebar: linear-gradient(180deg, #5a5a5a, #4b4b4b);
+    --sl-toolbar: linear-gradient(180deg, #4b4b4b, #3a3a3a 55%, #2f2f2f);
+    --sl-toolbar-line: #0d0d0d;
+    --sl-inspector: #343434;
+    --sl-tool-glyph: #d6d6d6;
+    --sl-glyph-emboss: drop-shadow(0 -1px 0 rgb(0 0 0 / 0.7));
+    --sl-bar: linear-gradient(180deg, #3e3e3e, #2b2b2b);
+    --bg-raised: #1d1d1d;
+    --bg-sunken: #1d1d1d;
+    --bg-hover: rgb(255 255 255 / 0.06);
+    --bg-selected: #3c5788;
+    --accent-soft: #3c5788;
+    --accent-text: #8fb3ef;
+    --border-input: #0b0b0b;
+    --text-2: #b4b4b4;
+    --text-3: #8c8c8c;
+    --text-disabled: #6a6a6a;
+}
+:root[data-skin="snow"] :is(.btn.primary) { color: #fff; }
+:root[data-skin="snow"] :is(input[type="checkbox"], input.switch):checked {
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='9'%3E%3Cpath d='M1 4.6l2.6 2.8L9 1' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E") no-repeat 3px 2px,
+        var(--sl-blue);
+}
+:root[data-skin="snow"] input[type="radio"]:checked { background: radial-gradient(circle, #fff 0 2.4px, transparent 3px), var(--sl-blue); }
+:root[data-skin="snow"] .seg > :is(button.active, button[aria-selected="true"], button[aria-checked="true"], button.on),
+:root[data-skin="snow"] .seg > label > input:checked + span { color: #fff; }
+:root[data-skin="snow"] select.field,
+:root[data-skin="snow"] .dialog select { color: #eee; }
+:root[data-skin="snow"] input[type="range"]::-webkit-slider-runnable-track,
+:root[data-skin="snow"] .adj-range::-webkit-slider-runnable-track,
+:root[data-skin="snow"] .crop-straighten input[type="range"]::-webkit-slider-runnable-track { background: linear-gradient(180deg, #151515, #2c2c2c); box-shadow: inset 0 1px 1px rgb(0 0 0 / 0.6), 0 1px 0 rgb(255 255 255 / 0.1); }
+:root[data-skin="snow"] .link-btn { color: #8fb3ef; }
+:root[data-skin="snow"] .settings-nav { border-bottom-color: #0d0d0d; }
+:root[data-skin="snow"] .settings-nav button .i { filter: drop-shadow(0 -1px 0 rgb(0 0 0 / 0.7)); }
+:root[data-skin="snow"] .dialog:is(.settings-card, .whatsnew-card, .shortcuts-card) > .dialog-head { box-shadow: inset 0 1px 0 #6e6e6e, inset 0 -1px 0 #0d0d0d; }
+:root[data-skin="snow"] .customize-list li:nth-child(even),
+:root[data-skin="snow"] .paint-layer:nth-child(even) { background: rgb(255 255 255 / 0.04); }
+:root[data-skin="snow"] .drop-zone { background: linear-gradient(180deg, #3a3a3a, #262626); }
+:root[data-skin="snow"] .start-title { color: #eee; }
+:root[data-skin="snow"] .mode-chip .mode-chev { filter: invert(1); }
+:root[data-skin="snow"] .adj-sec > summary > span:first-child::before { border-left-color: #b5b5b5; }
+:root[data-skin="snow"] .adj-sec,
+:root[data-skin="snow"] .paint-sec { box-shadow: 0 1px 0 rgb(255 255 255 / 0.06); }
+:root[data-skin="snow"] .adj-look[aria-pressed="true"] { background: rgb(255 255 255 / 0.1); }
+:root[data-skin="snow"] .paint-options { background: linear-gradient(180deg, #353535, #2a2a2a); border-bottom-color: #0d0d0d; box-shadow: inset 0 1px 0 #444; }
+:root[data-skin="snow"] .paint-tools { background: linear-gradient(90deg, #2f2f2f, #282828); border-right-color: #0d0d0d; box-shadow: inset -1px 0 0 rgb(255 255 255 / 0.05); }
+:root[data-skin="snow"] .paint-tool-sep { background: #111; box-shadow: 0 1px 0 rgb(255 255 255 / 0.07); }
+:root[data-skin="snow"] .paint-tool:hover,
+:root[data-skin="snow"] .paint-tool[aria-pressed="true"] { color: #fff; }
+:root[data-skin="snow"] :is(.mode-head-acts, .crop-row) .btn.ghost:disabled { color: rgb(255 255 255 / 0.4); text-shadow: none; }
+:root[data-skin="snow"] .adj-panel,
+:root[data-skin="snow"] .paint-panel { border-left-color: #0d0d0d; }
+:root[data-skin="snow"] .mode-strip { background: #262626; border-top-color: #0d0d0d; }

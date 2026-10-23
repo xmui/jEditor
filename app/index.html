@@ -693,7 +693,7 @@
                                 <label><input type="radio" name="set-theme" value="system"><span>Match system</span></label>
                             </div>
                         </div>
-                        <div class="set-row">
+                        <div class="set-row set-own-look">
                             <span class="set-label" id="set-accent-label">Accent color</span>
                             <div id="cust-accent" class="accent-swatches" role="radiogroup" aria-labelledby="set-accent-label">
                                 <button data-accent="#2563eb" title="Blue" aria-label="Blue" role="radio" style="--sw:#2563eb"></button>
@@ -718,8 +718,8 @@
                                 <label><input type="radio" name="set-surround" value="light"><span>Light</span></label>
                             </div>
                         </div>
-                        <h4 class="set-group" data-needs="backdrop">Window</h4>
-                        <div id="set-backdrop-row" class="set-row" data-needs="backdrop">
+                        <h4 class="set-group set-own-look" data-needs="backdrop">Window</h4>
+                        <div id="set-backdrop-row" class="set-row set-own-look" data-needs="backdrop">
                             <span class="set-label" id="set-backdrop-label">Window background
                                 <small id="set-backdrop-help">Your desktop shows softly through jEditor, like the Start menu. Photos stay solid.</small></span>
                             <div class="seg" role="radiogroup" aria-labelledby="set-backdrop-label">
@@ -728,7 +728,7 @@
                                 <label><input type="radio" name="set-backdrop" value="acrylic"><span>Acrylic</span></label>
                             </div>
                         </div>
-                        <div id="set-transparency-row" class="set-row" data-needs="backdrop">
+                        <div id="set-transparency-row" class="set-row set-own-look" data-needs="backdrop">
                             <label class="set-label" for="cust-transparency">Transparency
                                 <small>How much of the window background shows through</small></label>
                             <span class="set-range">
@@ -736,8 +736,8 @@
                                 <output id="cust-transparency-out" for="cust-transparency">50%</output>
                             </span>
                         </div>
-                        <h4 class="set-group">Look</h4>
-                        <div class="set-row">
+                        <h4 class="set-group set-own-look">Look</h4>
+                        <div class="set-row set-own-look">
                             <span class="set-label" id="set-glass-label">Glass
                                 <small>Subtle is faster on older computers. Off: solid, nothing shows through</small></span>
                             <div class="seg" role="radiogroup" aria-labelledby="set-glass-label">
@@ -746,14 +746,14 @@
                                 <label><input type="radio" name="set-glass" value="off"><span>Off</span></label>
                             </div>
                         </div>
-                        <div class="set-row">
+                        <div class="set-row set-own-look">
                             <span class="set-label" id="set-density-label">Density</span>
                             <div class="seg" role="radiogroup" aria-labelledby="set-density-label">
                                 <label><input type="radio" name="set-density" value="compact"><span>Compact</span></label>
                                 <label><input type="radio" name="set-density" value="comfortable"><span>Comfortable</span></label>
                             </div>
                         </div>
-                        <div class="set-row">
+                        <div class="set-row set-own-look">
                             <label class="set-label" for="cust-scale">Toolbar size</label>
                             <span class="set-range">
                                 <input type="range" id="cust-scale" min="0.8" max="1.6" step="0.1" value="1">
@@ -776,7 +776,7 @@
                             <input type="checkbox" id="cust-debug" class="switch">
                         </div>
                         <h4 class="set-group">Layout</h4>
-                        <div class="set-row">
+                        <div class="set-row set-own-look">
                             <label class="set-label" for="cust-vertical">Vertical toolbar</label>
                             <input type="checkbox" id="cust-vertical" class="switch">
                         </div>
