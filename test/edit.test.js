@@ -1428,6 +1428,11 @@ const PROJECT = `
                 document.querySelector('#set-theme-settings input[value="colour"]').click();
                 await until(() => !img().src.startsWith('data:'));
                 out.colour = root.dataset.tsThumbs === 'colour' && app.uiPrefs.skinSettings.mac84.thumbs === 'colour' && img().src === app.files[0].thumbnailUrl;
+                // Kept for next time: the theme and its setting read back as at a start
+                const prefs = app.uiPrefs;
+                app.loadUiPrefs();
+                out.kept = app.uiPrefs.skin === 'mac84/finder' && app.uiPrefs.skinSettings.mac84.thumbs === 'colour';
+                app.uiPrefs = prefs;
                 // Back to jEditor's own look: all of it gone, Windows' title bar back
                 step = 'off';
                 Themes.choose('');
@@ -1450,6 +1455,7 @@ const PROJECT = `
         check('themes: no fitting in docked bars; the folder\'s name and counts are the real ones', r.noFit && r.facts, JSON.stringify(r));
         check('themes: the menu bar\'s menus run jEditor\'s commands and show their keys', r.menu && r.ran, JSON.stringify(r));
         check('themes: a variant is one stylesheet more', r.variant, JSON.stringify(r));
+        check('themes: the theme chosen and its settings are there at the next start', r.kept, JSON.stringify(r));
         check('themes: 1984\'s Thumbnails setting: dithered to one bit, or in colour again', r.setting && r.dithered && r.colour, JSON.stringify(r));
         check('themes: back to jEditor\'s look (or the experiment off) takes all of it off', r.off && r.expOff, JSON.stringify(r));
         check('themes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
