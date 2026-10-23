@@ -2,7 +2,7 @@
 # all four ways, reading them as upright.js does (all four turns put together),
 # and what each "sure" threshold would do.
 import numpy as np, torch, torch.nn.functional as F
-from train import Net, batch, test_idx, turn, dev, age, MEAN, STD, S, photos
+from train import DATA, os, Net, batch, test_idx, turn, dev, age, MEAN, STD, S, photos
 
 net = Net().to(dev)
 import sys
@@ -27,8 +27,8 @@ with torch.no_grad():
             P.append(p.cpu()); K.append(torch.full((len(ids),), k))
 P, K = torch.cat(P), torch.cat(K)
 # the same, only for the photos with people in them (closer to family prints)
-ids_all = open('ids.txt').read().split('\n')
-people = set(open('people.txt').read().split('\n'))
+ids_all = open(os.path.join(DATA, 'ids.txt')).read().split('\n')
+people = set(open(os.path.join(DATA, 'people.txt')).read().split('\n'))
 mask = torch.tensor([ids_all[i] in people for i in test_idx])
 mask = torch.cat([mask[s:s + 200].repeat(4) for s in range(0, len(test_idx), 200)])
 def report(P, K, name):

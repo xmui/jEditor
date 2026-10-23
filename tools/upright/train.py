@@ -9,6 +9,7 @@ np.random.seed(1)
 dev = 'mps' if torch.backends.mps.is_available() else 'cpu'
 S = 96  # the network's input
 import os
+DATA = os.environ.get('DATA', '.')  # where the photos are (the T7: /Volumes/T7 2/autorotate)
 CH = [int(v) for v in os.environ.get('CH', '32,64,96,128').split(',')]
 DEPTH = int(os.environ.get('DEPTH', '2'))  # convolutions per size
 HID = 128
@@ -16,22 +17,28 @@ SQ = 32
 
 # The validation set's photos (A); with MORE=1, the test set's too (B), for
 # training only. The 2,000 + 2,000 kept back always come from A.
-A = np.load('photos128.npy', mmap_mode='r')
-ok = np.load('ok.npy')
+A = np.load(os.path.join(DATA, 'photos128.npy'), mmap_mode='r')
+ok = np.load(os.path.join(DATA, 'ok.npy'))
 idx = np.flatnonzero(ok)
 rng = np.random.default_rng(7)
 rng.shuffle(idx)
 test_idx, val_idx, train_idx = idx[:2000], idx[2000:4000], idx[4000:]
 NA = len(A)
-B = None
+B = C = None
+NB = 0
 if os.environ.get('MORE'):
-    B = np.load('photos128b.npy', mmap_mode='r')
-    train_idx = np.concatenate([train_idx, NA + np.flatnonzero(np.load('okb.npy'))])
+    B = np.load(os.path.join(DATA, 'photos128b.npy'), mmap_mode='r')
+    NB = len(B)
+    train_idx = np.concatenate([train_idx, NA + np.flatnonzero(np.load(os.path.join(DATA, 'okb.npy')))])
+# MORE=2: Open Images' train set too (C, 300,000 photos)
+if os.environ.get('MORE') == '2':
+    C = np.load(os.path.join(DATA, 'photos128c.npy'), mmap_mode='r')
+    train_idx = np.concatenate([train_idx, NA + NB + np.flatnonzero(np.load(os.path.join(DATA, 'okc.npy')))])
 
 
 class Photos:
     def __getitem__(self, i):
-        return A[i] if i < NA else B[i - NA]
+        return A[i] if i < NA else B[i - NA] if i < NA + NB else C[i - NA - NB]
 
 
 photos = Photos()
