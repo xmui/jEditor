@@ -847,7 +847,9 @@ body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
 .header-controls.expanded:not(.vertical) {
     flex-wrap: wrap;
     justify-content: flex-end;
-    width: var(--hc-w, auto);
+    /* at least four across: with most of them under More, the pill was only
+       as wide as More itself and they ran down off the window in a column */
+    width: max(var(--hc-w, 0px), min(calc(4 * var(--ctl-lg) + 8px), calc(100vw - 2 * var(--gutter))));
     height: auto;
     min-height: var(--ctl-lg);
     padding: 3px var(--sp-1);
@@ -4238,6 +4240,7 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 .adj-sec-head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: var(--sp-2);
@@ -4692,6 +4695,15 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 .paint-opt input[type="range"] {
     width: 110px;
+}
+
+/* A tool's hint gives way first, shortened with … (all of it on hover) */
+.paint-hint {
+    display: block;
+    flex: 1 1 0;
+    min-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .paint-opt .paint-num {

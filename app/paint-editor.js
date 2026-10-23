@@ -434,7 +434,7 @@ const PaintEditor = {
             if (k === 'font') choose('Font', 'font', this.FONTS);
         }
         const hint = document.createElement('span');
-        hint.className = 'paint-opt';
+        hint.className = 'paint-opt paint-hint';
         hint.textContent = {
             move: this.sel ? 'Drag what\'s selected; its corners scale it, the knob above turns it. Enter puts it down' : 'Drag the layer; select first to move part of it',
             'rect-select': 'Drag a rectangle. Shift adds, Alt takes away; Ctrl+D selects nothing',
@@ -448,6 +448,7 @@ const PaintEditor = {
             gradient: 'Drag from where it starts to where it ends'
         }[this.tool] || '';
         if (hint.textContent) {
+            hint.title = hint.textContent;
             hint.style.color = 'var(--text-3, var(--text-2))';
             add(hint);
         }

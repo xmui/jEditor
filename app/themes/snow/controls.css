@@ -492,3 +492,7 @@
 :root[data-skin="snow"] #btn-customize { --g: url(glyphs/settings.svg); --l: "Settings"; }
 :root[data-skin="snow"] #btn-toggle-fit { --g: url(glyphs/fit.svg); --l: "Fit"; }
 :root[data-skin="snow"] #btn-toggle-strip { --g: url(glyphs/strip.svg); --l: "Film Strip"; }
+
+/* A button with a second, smaller line (Export: USB drive · disc · copies) grows to hold it */
+:root[data-skin="snow"] .btn:has(> small) { height: auto; min-height: 21px; padding-top: 2px; padding-bottom: 2px; border-radius: 6px; flex-wrap: wrap; white-space: normal; }
+:root[data-skin="snow"] .btn > small { font-size: 10px; color: var(--sl-ink-2); }

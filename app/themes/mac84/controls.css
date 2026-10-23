@@ -408,3 +408,6 @@
 :root[data-skin="mac84"] #btn-customize { background-image: url(px/settings.png); }
 :root[data-skin="mac84"] #btn-toggle-fit { background-image: url(px/fit.png); }
 :root[data-skin="mac84"] #btn-toggle-strip { background-image: url(px/strip.png); }
+
+/* A button with a second, smaller line (Export: USB drive · disc · copies) grows to hold it */
+:root[data-skin="mac84"] .btn:has(> small) { height: auto; min-height: 22px; padding-top: 2px; padding-bottom: 2px; flex-wrap: wrap; white-space: normal; }

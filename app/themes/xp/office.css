@@ -304,6 +304,7 @@
 :root[data-skin="xp"] .sel-count > svg { display: none; }
 :root[data-skin="xp"] .sel-count::before { content: "Edit Pictures"; }
 :root[data-skin="xp"] .sel-count #selection-count {
+    pointer-events: none;
     position: absolute;
     top: 38px; left: 10px;
     font: 11px var(--xp-font);

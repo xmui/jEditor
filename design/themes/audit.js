@@ -200,11 +200,20 @@ const pageAudit = ({ sel, font }) => {
                 const ar = a.getBoundingClientRect();
                 const out = r.left < ar.left - 1 || r.right > ar.right + 1 || r.top < ar.top - 1 || r.bottom > ar.bottom + 1;
                 if (!out) continue;
-                if (/auto|scroll/.test(ox + oy) && (a.scrollWidth > a.clientWidth + 1 || a.scrollHeight > a.clientHeight + 1)) { scrolls = true; break; }
+                if (/auto|scroll/.test(ox + oy) && (a.scrollWidth > a.clientWidth + 1 || a.scrollHeight > a.clientHeight + 1)) {
+                    // Only reached by scrolling a panel sideways: a fault, unless the box
+                    // is a strip made to scroll that way (the film strip, the photos' strip)
+                    const sideways = r.left < ar.left - 1 || r.right > ar.right + 1;
+                    if (sideways && oy !== 'hidden' && a.scrollWidth > a.clientWidth + 1) out.push(['off screen', `${what} only fits by scrolling ${name(a).split(' ')[0]} sideways`]);
+                    scrolls = true;
+                    break;
+                }
                 clipped = a;
                 break;
             }
-            if (!scrolls) {
+            // Scrolled out of its box: not on screen, nothing more to check
+            if (scrolls) continue;
+            {
                 if (clipped && (r.width > 4 && r.height > 4)) {
                     const ar = clipped.getBoundingClientRect();
                     const vis = Math.max(0, Math.min(r.right, ar.right) - Math.max(r.left, ar.left)) * Math.max(0, Math.min(r.bottom, ar.bottom) - Math.max(r.top, ar.top));

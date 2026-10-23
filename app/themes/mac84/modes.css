@@ -84,7 +84,7 @@
     box-shadow: none;
     zoom: 1;
 }
-:root[data-skin="mac84"] .crop-row { flex-wrap: nowrap; gap: 8px; }
+:root[data-skin="mac84"] .crop-row { flex-wrap: wrap; gap: 8px; }
 :root[data-skin="mac84"] .crop-row:not(.crop-row-straighten) { flex: 1; justify-content: flex-start; }
 :root[data-skin="mac84"] .crop-group { gap: 6px; }
 :root[data-skin="mac84"] .crop-spacer { flex: 1; }
