@@ -56,7 +56,7 @@ const ASSETS = [
     './themes.js',
     './disc.js',
     './export.js',
-    './space-saver.js',
+    './convert.js',
     './icon.png',
     './icon-192.png',
     './icon-maskable-512.png',

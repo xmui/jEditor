@@ -56,7 +56,7 @@
     <script src="themes.js"></script>
     <script src="disc.js"></script>
     <script src="export.js"></script>
-    <script src="space-saver.js"></script>
+    <script src="convert.js"></script>
     <script src="windows.js"></script>
     <script src="start.js"></script>
     <script src="picked.js"></script>
@@ -985,21 +985,21 @@
         </div>
     </div>
 
-    <!-- Save space (space-saver.js) -->
-    <div id="ss-panel" class="dialog-overlay hidden">
-        <div class="dialog ss-card" role="dialog" aria-modal="true" aria-labelledby="ss-title">
+    <!-- Convert (convert.js) -->
+    <div id="cv-panel" class="dialog-overlay hidden">
+        <div class="dialog cv-card" role="dialog" aria-modal="true" aria-labelledby="cv-title">
             <div class="dialog-head">
-                <h2 id="ss-title" class="dialog-title">Save space</h2>
-                <button id="ss-close" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
+                <h2 id="cv-title" class="dialog-title">Convert</h2>
+                <button id="cv-close" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                 </button>
             </div>
-            <div id="ss-body" class="dialog-body ss-body"></div>
+            <div id="cv-body" class="dialog-body cv-body"></div>
             <div class="dialog-foot">
-                <span id="ss-note" class="dialog-note" aria-live="polite"></span>
+                <span id="cv-note" class="dialog-note" aria-live="polite"></span>
                 <span class="dialog-actions">
-                    <button id="ss-cancel" class="btn secondary">Cancel</button>
-                    <button id="ss-go" class="btn primary">Convert</button>
+                    <button id="cv-cancel" class="btn secondary">Cancel</button>
+                    <button id="cv-go" class="btn primary">Convert</button>
                 </span>
             </div>
         </div>

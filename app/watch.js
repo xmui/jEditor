@@ -275,8 +275,8 @@ const Watch = {
     // ---- Listing ----
 
     skipDir(name) {
-        // (Export's copies and Save space's are copies, not the project's photos)
-        return name === FolderCache.DIR || name === FolderCache.LEGACY_TRASH || name === 'jEditor Export' || name === 'Smaller copies';
+        // (Export's copies and Convert's are copies, not the project's photos)
+        return name === FolderCache.DIR || name === FolderCache.LEGACY_TRASH || name === 'jEditor Export' || name === 'jEditor Converted';
     },
 
     // own: jEditor's folders found here (.jeditor, the old .jeditor-trash)

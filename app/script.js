@@ -250,7 +250,7 @@ const app = {
         Import.init(this);
         Disc.init(this);
         Export.init(this);
-        SpaceSaver.init(this);
+        Convert.init(this);
         Blank.init(this);
         Modes.init(this);
         Themes.init(this);
@@ -5450,8 +5450,8 @@ const app = {
                 await Folders.undo(entry);
             } else if (entry.type === 'transfer') {
                 await Windows.undo(entry);
-            } else if (entry.type === 'space-saver') {
-                await SpaceSaver.undo(entry);
+            } else if (entry.type === 'convert') {
+                await Convert.undo(entry);
             } else if (entry.type === 'trash') {
                 const n = await this.restoreManyFromTrash(entry.items);
                 this.sortFiles();
@@ -5901,7 +5901,7 @@ const app = {
         this.nameChanged(file, newName);
     },
 
-    // A photo's name changed on disk (renamed, or converted by Save space):
+    // A photo's name changed on disk (renamed, or converted: convert.js):
     // the screen and the flags and edits follow it
     nameChanged(file, newName) {
         file.name = newName;
@@ -6376,7 +6376,7 @@ const app = {
                     [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy')],
                     [`Rename ${n}…`, () => this.openRename(sel)],
                     [`Export ${n}…`, () => Export.open({ files: sel })],
-                    [`Save space on ${n}…`, () => SpaceSaver.open({ files: sel })],
+                    [`Convert ${n}…`, () => Convert.open({ files: sel })],
                     ['—'],
                     [`Delete ${n}`, () => this.moveToTrash(sel), true]
                 ];
@@ -6467,7 +6467,7 @@ const app = {
             [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
             [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy')],
             [`Export ${n}…`, () => Export.open({ files: sel })],
-            [`Save space on ${n}…`, () => SpaceSaver.open({ files: sel })],
+            [`Convert ${n}…`, () => Convert.open({ files: sel })],
             ['—'],
             ['Select all', () => { this.selection = new Set(this.viewFiles()); this.updateSelectionUI(); }]
         ];

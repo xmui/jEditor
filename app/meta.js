@@ -337,7 +337,7 @@ const ImageMeta = {
 
     // ---- EXIF in WebP, AVIF and JPEG XL (and reading it from any) ----
     //
-    // Space saver (space-saver.js) turns photos into these. Their pixels
+    // Convert (convert.js) turns photos into these. Their pixels
     // come out upright and in sRGB, so the EXIF goes with them made true for
     // that (orientation 1, the new size, no old thumbnail), and the colour
     // profile doesn't.

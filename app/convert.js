@@ -1,54 +1,55 @@
-// Save space: a project's photos (or a folder's, or the selected ones)
-// turned into a modern format that takes less room: AVIF, JPEG XL or WebP
-// (codec.js). The right-click menus of the project, a folder and the
-// selection, and the selection bar's ⋯.
+// Convert: a project's photos (or a folder's, or the selected ones) into
+// another format, AVIF, JPEG XL or WebP (codec.js), choosing the quality
+// and seeing what it does to their storage. The right-click menus of the
+// project, a folder and the selection, and the selection bar's ⋯.
 //
-//   Before    what it would save, worked out from a sample of the photos
-//             (a square from the middle of each, at the quality chosen):
-//             Now and After bars, the room saved by folder; the format; a
-//             quality slider, with the smallest quality that looks the same
-//             as the original marked on it; a close-up of one of the
-//             photos, at its own pixels, original beside after, with sizes
+//   Format    AVIF (smallest), JPEG XL (newest), WebP (opens anywhere)
+//   Quality   a slider, with the lowest quality that looks the same as the
+//             original marked on it; a close-up of one of the photos, at
+//             its own pixels, original beside after, with sizes
+//   Storage   what they take now and after, worked out from a sample of
+//             the photos (a square from the middle of each, at the quality
+//             chosen): Now and After bars, and by folder
 //   While     100 dots, each a hundredth of the photos in their own colour
 //             faint until they're done; a done dot turns hollow, green, for
-//             the room got back, as many as the share saved so far. Goes on
+//             the storage freed, as many as the share freed so far. Goes on
 //             with the window closed (the task in the corner says how far)
-//   After     the room got back, and the project's size before and after
+//   After     the storage freed, and the size before and after
 //
 // Replace (the converted photo takes the original's place, the original
 // goes to the bin or jEditor's trash; one Ctrl+Z puts them all back) or
-// Keep both (smaller copies in "Smaller copies" in the project). Photos
-// that wouldn't get smaller are left as they are; RAW files and GIFs too,
-// and photos already in the format. Flags and edits go with each photo;
-// its EXIF too (meta.js), its pixels upright and in sRGB.
+// Keep both (the converted copies in "jEditor Converted" in the project).
+// Photos that wouldn't get smaller are left as they are; RAW files and
+// GIFs too, and photos already in the format. Flags and edits go with each
+// photo; its EXIF too (meta.js), its pixels upright and in sRGB.
 
-const SpaceSaver = {
-    KEY: 'jeditor.space-saver', // { format, keep, quality: { avif, jxl, webp } }
+const Convert = {
+    KEY: 'jeditor.convert', // { format, keep, quality: { avif, jxl, webp } }
     SAMPLES: 12,
     SAMPLE_SIZE: 512,
     LOOKS_SAME: 0.985,          // SSIM of the close-up, original to after
-    COPIES: 'Smaller copies',
+    COPIES: 'jEditor Converted',
 
     el(id) { return document.getElementById(id); },
 
     init(app) {
         this.app = app;
-        const panel = this.el('ss-panel');
+        const panel = this.el('cv-panel');
         if (!panel) return;
         try { this.prefs = JSON.parse(localStorage.getItem(this.KEY) || 'null'); } catch (e) { /* private mode */ }
         if (!this.prefs || typeof this.prefs !== 'object') this.prefs = {};
         if (!Codec.FORMATS[this.prefs.format]) this.prefs.format = 'avif';
         if (!this.prefs.quality || typeof this.prefs.quality !== 'object') this.prefs.quality = {};
         this.prefs.keep = !!this.prefs.keep;
-        this.el('ss-close').addEventListener('click', () => this.close());
-        this.el('ss-cancel').addEventListener('click', () => this.cancelOrStop());
-        this.el('ss-go').addEventListener('click', () => this.go());
+        this.el('cv-close').addEventListener('click', () => this.close());
+        this.el('cv-cancel').addEventListener('click', () => this.cancelOrStop());
+        this.el('cv-go').addEventListener('click', () => this.go());
         panel.addEventListener('mousedown', (e) => { if (e.target === panel) this.close(); });
         panel.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && !UI.isOpen()) { e.preventDefault(); this.close(); }
             e.stopPropagation();
         });
-        this.el('ss-body').addEventListener('click', (e) => {
+        this.el('cv-body').addEventListener('click', (e) => {
             const b = e.target.closest('[data-format],[data-keep]');
             if (!b || this.run) return;
             if (b.dataset.format) this.setFormat(b.dataset.format);
@@ -61,7 +62,7 @@ const SpaceSaver = {
     },
 
     isOpen() {
-        const p = this.el('ss-panel');
+        const p = this.el('cv-panel');
         return !!p && !p.classList.contains('hidden');
     },
 
@@ -71,11 +72,11 @@ const SpaceSaver = {
         const app = this.app;
         if (this.run) { this.show(); return; } // running: show how far it's got
         if (!app.dirHandle || app.readOnlyMode) {
-            app.showToast('Save space needs a folder opened with Open folder');
+            app.showToast('Converting needs a folder opened with Open folder');
             return;
         }
         if (!(await Codec.ready())) {
-            app.showToast('Save space can\'t run here: open jEditor from its app or its web page');
+            app.showToast('Converting can\'t run here: open jEditor from its app or its web page');
             return;
         }
         const all = files ? files.filter(Boolean)
@@ -95,12 +96,12 @@ const SpaceSaver = {
     },
 
     show() {
-        this.el('ss-panel').classList.remove('hidden');
-        setTimeout(() => this.el('ss-go').focus(), 0);
+        this.el('cv-panel').classList.remove('hidden');
+        setTimeout(() => this.el('cv-go').focus(), 0);
     },
 
     close() {
-        this.el('ss-panel').classList.add('hidden');
+        this.el('cv-panel').classList.add('hidden');
         this._gen = (this._gen || 0) + 1; // estimates still coming are dropped
         if (!this.run) this.dropCloseUp();
     },
@@ -129,29 +130,29 @@ const SpaceSaver = {
 
     build() {
         const f = Codec.FORMATS;
-        this.el('ss-title').textContent = 'Save space';
-        this.el('ss-body').innerHTML = `
-            <p class="ss-lead" id="ss-lead"></p>
-            <div class="ss-big" id="ss-big"></div>
-            <div id="ss-folders-wrap"><div class="ss-h">By folder</div><div class="ss-folders" id="ss-folders"></div></div>
-            <div class="ss-row">
-                <div><div class="ss-h">Format</div><div class="ss-seg" role="radiogroup" aria-label="Format">
+        this.el('cv-title').textContent = 'Convert';
+        this.el('cv-body').innerHTML = `
+            <p class="cv-lead" id="cv-lead"></p>
+            <div class="cv-row">
+                <div><div class="cv-h">Format</div><div class="cv-seg" role="radiogroup" aria-label="Format">
                     ${['avif', 'jxl', 'webp'].map(k => `<button type="button" role="radio" data-format="${k}">${f[k].label}<small>${{ avif: 'smallest', jxl: 'newest', webp: 'opens anywhere' }[k]}</small></button>`).join('')}
                 </div></div>
-                <div class="ss-q"><div class="ss-h">Quality <span class="ss-qnum" id="ss-qnum"></span></div>
-                    <div class="ss-slider"><div class="ss-track"></div><div class="ss-sugg hidden" id="ss-sugg"><span id="ss-sugg-label">Looks the same</span></div>
-                    <input type="range" id="ss-quality" min="20" max="98" step="1" aria-label="Quality"></div>
-                    <div class="ss-ends"><span>Smaller</span><span>Better</span></div></div>
+                <div class="cv-q"><div class="cv-h">Quality <span class="cv-qnum" id="cv-qnum"></span></div>
+                    <div class="cv-slider"><div class="cv-track"></div><div class="cv-sugg hidden" id="cv-sugg"><span id="cv-sugg-label">Looks the same</span></div>
+                    <input type="range" id="cv-quality" min="20" max="98" step="1" aria-label="Quality"></div>
+                    <div class="cv-ends"><span>Smaller</span><span>Better</span></div></div>
             </div>
-            <div class="ss-compare">
-                <div class="ss-tile"><canvas id="ss-orig" width="340" height="170"></canvas><span class="cap" id="ss-orig-cap">Original</span></div>
-                <div class="ss-tile ss-after"><canvas id="ss-after" width="340" height="170"></canvas><span class="cap" id="ss-after-cap">After</span></div>
+            <div class="cv-compare">
+                <div class="cv-tile"><canvas id="cv-orig" width="340" height="170"></canvas><span class="cap" id="cv-orig-cap">Original</span></div>
+                <div class="cv-tile cv-after"><canvas id="cv-after" width="340" height="170"></canvas><span class="cap" id="cv-after-cap">After</span></div>
             </div>
-            <div class="ss-keep"><span class="ss-h">The originals</span><div class="ss-seg" role="radiogroup" aria-label="The originals">
+            <div><div class="cv-h">Storage</div><div class="cv-big" id="cv-big"></div></div>
+            <div id="cv-folders-wrap"><div class="cv-h">By folder</div><div class="cv-folders" id="cv-folders"></div></div>
+            <div class="cv-keep"><span class="cv-h">The originals</span><div class="cv-seg" role="radiogroup" aria-label="The originals">
                 <button type="button" role="radio" data-keep="replace">Replace them<small>to the bin, Ctrl+Z brings them back</small></button>
-                <button type="button" role="radio" data-keep="keep">Keep both<small>smaller copies in a folder</small></button>
+                <button type="button" role="radio" data-keep="keep">Keep both<small>converted copies in a folder</small></button>
             </div></div>`;
-        const q = this.el('ss-quality');
+        const q = this.el('cv-quality');
         q.addEventListener('input', () => {
             this.prefs.quality[this.prefs.format] = +q.value;
             this.prefs.touched = { ...(this.prefs.touched || {}), [this.prefs.format]: true };
@@ -183,21 +184,21 @@ const SpaceSaver = {
     },
 
     syncChoices() {
-        for (const b of this.el('ss-body').querySelectorAll('[data-format]')) b.setAttribute('aria-checked', String(b.dataset.format === this.prefs.format));
-        for (const b of this.el('ss-body').querySelectorAll('[data-keep]')) b.setAttribute('aria-checked', String((b.dataset.keep === 'keep') === this.prefs.keep));
+        for (const b of this.el('cv-body').querySelectorAll('[data-format]')) b.setAttribute('aria-checked', String(b.dataset.format === this.prefs.format));
+        for (const b of this.el('cv-body').querySelectorAll('[data-keep]')) b.setAttribute('aria-checked', String((b.dataset.keep === 'keep') === this.prefs.keep));
         this.syncQuality();
     },
 
     syncQuality() {
-        const q = this.el('ss-quality');
+        const q = this.el('cv-quality');
         if (!q) return;
         q.value = this.quality();
-        this.el('ss-qnum').textContent = String(this.quality());
-        const s = this.suggested[this.prefs.format], mark = this.el('ss-sugg');
+        this.el('cv-qnum').textContent = String(this.quality());
+        const s = this.suggested[this.prefs.format], mark = this.el('cv-sugg');
         mark.classList.toggle('hidden', !s);
         if (s) mark.style.left = `${(s - 20) / (98 - 20) * 100}%`;
         // Grain only the highest qualities keep: the nearest it gets
-        this.el('ss-sugg-label').textContent = this.reached[this.prefs.format] === false ? 'Closest to the original' : 'Looks the same';
+        this.el('cv-sugg-label').textContent = this.reached[this.prefs.format] === false ? 'Closest to the original' : 'Looks the same';
     },
 
     estimateSoon() {
@@ -268,7 +269,7 @@ const SpaceSaver = {
                 all.push(ratio);
                 if (f === cur) preview = { png: r.preview, ratio };
             } catch (e) {
-                console.warn('Save space: no sample from', f.name, e.message);
+                console.warn('Convert: no sample from', f.name, e.message);
             }
         }));
         if (!live() || !all.length) return;
@@ -304,10 +305,10 @@ const SpaceSaver = {
             bmp.close();
             this._closeUp = c;
             this._closeUpFor = f;
-            this.drawTile('ss-orig', c);
-            this.el('ss-orig-cap').innerHTML = `Original<small>${this.fmt(await this.size(f))}</small>`;
+            this.drawTile('cv-orig', c);
+            this.el('cv-orig-cap').innerHTML = `Original<small>${this.fmt(await this.size(f))}</small>`;
         } catch (e) {
-            console.warn('Save space: no close-up of', f.name, e.message);
+            console.warn('Convert: no close-up of', f.name, e.message);
         }
     },
 
@@ -329,9 +330,9 @@ const SpaceSaver = {
     async showAfter(png, f, ratio) {
         try {
             const bmp = await createImageBitmap(png);
-            this.drawTile('ss-after', bmp);
+            this.drawTile('cv-after', bmp);
             bmp.close();
-            this.el('ss-after-cap').innerHTML = `After<small>${this.fmt(await this.size(f) * ratio)}</small>`;
+            this.el('cv-after-cap').innerHTML = `After<small>${this.fmt(await this.size(f) * ratio)}</small>`;
         } catch (e) { /* stays as it was */ }
     },
 
@@ -368,7 +369,7 @@ const SpaceSaver = {
                 this.suggested[format] = hi;
             }
         } catch (e) {
-            console.warn('Save space: no suggestion', e.message);
+            console.warn('Convert: no suggestion', e.message);
             return;
         }
         if (!(this.prefs.touched || {})[format]) this.prefs.quality[format] = this.suggested[format];
@@ -410,37 +411,37 @@ const SpaceSaver = {
         if (this.run || this.done) return this.paintRun();
         const e = this.est, F = Codec.FORMATS[this.prefs.format];
         const { ok, left } = this.candidates();
-        const lead = this.el('ss-lead');
+        const lead = this.el('cv-lead');
         if (!lead) return;
         const n = `${ok.length.toLocaleString()} photo${ok.length === 1 ? '' : 's'}`;
         const what = this.scope.name ? `<b>${this.esc(this.scope.name)}</b>'s ${n}` : ok.length === 1 ? `<b>${this.esc(ok[0].name)}</b>` : `the <b>${n}</b> selected`;
-        lead.innerHTML = `Turns ${what} into ${F.label}, which takes less room. They look the same; their dates, camera details, flags and edits go with them.` +
+        lead.innerHTML = `Converts ${what} to ${F.label}. Choose how good they look and see what it does to their storage; their dates, camera details, flags and edits go with them.` +
             (left.length ? ` ${left.length.toLocaleString()} ${left.length === 1 ? 'is' : 'are'} left as ${left.length === 1 ? 'it is' : 'they are'} (RAW, GIF or ${F.label} already).` : '');
-        const big = this.el('ss-big');
+        const big = this.el('cv-big');
         const now = e ? e.total : 0;
         if (!ok.length) {
-            big.innerHTML = '<span class="ss-empty">Nothing here to convert.</span>';
+            big.innerHTML = '<span class="cv-empty">Nothing here to convert.</span>';
         } else {
             const after = e && e.after !== null && !e.working ? e.after : null;
             const p = after !== null && now ? Math.max(0, Math.min(100, after / now * 100)) : 100;
             big.innerHTML = `
-                <span class="lab">Now</span><div class="ss-bar"><i class="ss-now" style="width:100%"></i></div><span class="num">${this.fmt(now)}</span>
-                <span class="lab">As ${F.label}</span><div class="ss-bar${after === null ? ' ss-working' : ''}">${after === null ? '' : `<i class="ss-after-bar" style="width:${p}%"></i><i class="ss-saved" style="left:${p}%;width:${100 - p}%"></i>${100 - p > 12 ? `<span class="ss-savedtag" style="left:${p}%">${this.fmt(now - after)} saved</span>` : ''}`}</div><span class="num">${after === null ? 'Working it out…' : '≈ ' + this.fmt(after)}</span>`;
+                <span class="lab">Now</span><div class="cv-bar"><i class="cv-now" style="width:100%"></i></div><span class="num">${this.fmt(now)}</span>
+                <span class="lab">As ${F.label}</span><div class="cv-bar${after === null ? ' cv-working' : ''}">${after === null ? '' : `<i class="cv-after-bar" style="width:${p}%"></i><i class="cv-saved" style="left:${p}%;width:${100 - p}%"></i>${100 - p > 12 ? `<span class="cv-savedtag" style="left:${p}%">${this.fmt(now - after)} less</span>` : ''}`}</div><span class="num">${after === null ? 'Working it out…' : '≈ ' + this.fmt(after)}</span>`;
         }
         const rows = e && e.byDir ? [...e.byDir.entries()].sort((a, b) => b[1].now - a[1].now) : [];
-        this.el('ss-folders-wrap').classList.toggle('hidden', rows.length < 2);
-        this.el('ss-folders').innerHTML = rows.slice(0, 5).map(([d, r]) => {
+        this.el('cv-folders-wrap').classList.toggle('hidden', rows.length < 2);
+        this.el('cv-folders').innerHTML = rows.slice(0, 5).map(([d, r]) => {
             const pct = Math.round((1 - r.after / r.now) * 100);
-            return `<div class="ss-folder"><span class="n">${this.esc(Folders.nameOf(d))}<small>${r.n.toLocaleString()} photo${r.n === 1 ? '' : 's'}</small></span><div class="ss-mini"><i style="width:100%" class="ss-now"></i><i class="ss-after-bar" style="width:${100 - pct}%"></i></div><span class="s">${this.fmt(r.now)} → <b>−${pct}%</b></span></div>`;
+            return `<div class="cv-folder"><span class="n">${this.esc(Folders.nameOf(d))}<small>${r.n.toLocaleString()} photo${r.n === 1 ? '' : 's'}</small></span><div class="cv-mini"><i style="width:100%" class="cv-now"></i><i class="cv-after-bar" style="width:${100 - pct}%"></i></div><span class="s">${this.fmt(r.now)} → <b>−${pct}%</b></span></div>`;
         }).join('');
-        this.el('ss-note').textContent = this.prefs.keep
-            ? `Smaller copies go in “${this.COPIES}” in the project; nothing's deleted`
+        this.el('cv-note').textContent = this.prefs.keep
+            ? `The converted copies go in “${this.COPIES}” in the project; nothing's deleted`
             : Host.say(`The originals go to ${Host.has('recycle') ? Host.words().bin : 'jEditor\'s trash'} until you're happy · Ctrl+Z puts them back`);
-        const go = this.el('ss-go');
+        const go = this.el('cv-go');
         go.textContent = ok.length ? `Convert ${ok.length.toLocaleString()} photo${ok.length === 1 ? '' : 's'}` : 'Convert';
         go.disabled = !ok.length;
         go.classList.remove('hidden');
-        this.el('ss-cancel').textContent = 'Cancel';
+        this.el('cv-cancel').textContent = 'Cancel';
     },
 
     // ---- While: converting ----
@@ -459,11 +460,11 @@ const SpaceSaver = {
             colours: new Array(ok.length).fill(null), paused: false, stopped: false,
             items: [], copies: [], started: performance.now(), busyMs: 0
         };
-        this.el('ss-title').textContent = 'Saving space';
-        this.el('ss-body').innerHTML = `<div class="ss-dots" id="ss-dots">${'<i></i>'.repeat(this.dotCount())}</div>
-            <div class="ss-run-row"><span><b id="ss-saved">0 B</b> saved</span><span id="ss-count"></span></div>`;
+        this.el('cv-title').textContent = `Converting to ${Codec.FORMATS[format].label}`;
+        this.el('cv-body').innerHTML = `<div class="cv-dots" id="cv-dots">${'<i></i>'.repeat(this.dotCount())}</div>
+            <div class="cv-run-row"><span><b id="cv-saved">0 B</b> less storage</span><span id="cv-count"></span></div>`;
         this.paintRun();
-        this.app.beginTask('space-saver', `Saving space 0/${ok.length}`);
+        this.app.beginTask('convert', `Converting 0/${ok.length}`);
         const tasks = Array.from({ length: Codec.size() }, () => this.worker(run));
         await Promise.all(tasks);
         this.finish(run);
@@ -500,12 +501,12 @@ const SpaceSaver = {
             try {
                 await this.convertOne(run, f, i);
             } catch (e) {
-                console.error('Save space failed for', f.name, e);
+                console.error('Converting failed for', f.name, e);
                 run.failed++;
             }
             run.busyMs += performance.now() - t0;
             run.done++;
-            this.app.updateTask('space-saver', `Saving space ${run.done}/${run.list.length}`);
+            this.app.updateTask('convert', `Converting ${run.done}/${run.list.length}`);
             this.paintRunSoon();
         }
     },
@@ -581,7 +582,7 @@ const SpaceSaver = {
         return failed ? null : undoItems[0] || null;
     },
 
-    // "Smaller copies" in the project, with the photo's folders under it
+    // "jEditor Converted" in the project, with the photo's folders under it
     async copiesDir(rel) {
         let d = await this.app.dirHandle.getDirectoryHandle(this.COPIES, { create: true });
         for (const part of rel.split('/').filter(Boolean)) d = await d.getDirectoryHandle(part, { create: true });
@@ -597,7 +598,7 @@ const SpaceSaver = {
     // ones turn hollow, as many as the share saved so far
     paintRun() {
         const run = this.run || this.done;
-        const dots = this.el('ss-dots');
+        const dots = this.el('cv-dots');
         if (!run || !dots) return;
         const n = dots.children.length, per = run.list.length / n;
         const share = run.before ? run.saved / run.before : 0;
@@ -625,53 +626,53 @@ const SpaceSaver = {
             dot.style.background = h ? '' : d.rgb;
             if (!d.done && k === Math.floor(run.done / per) && this.run) dot.classList.add('now');
         });
-        this.el('ss-saved').textContent = this.fmt(run.saved);
+        this.el('cv-saved').textContent = this.fmt(run.saved);
         const left = run.list.length - run.done;
         const rate = run.done ? run.busyMs / run.done / Codec.size() : 0;
         const mins = rate && left ? Math.max(1, Math.round(left * rate / 60000)) : 0;
         if (this.run) {
-            this.el('ss-count').textContent = `${run.done.toLocaleString()} of ${run.list.length.toLocaleString()}` +
+            this.el('cv-count').textContent = `${run.done.toLocaleString()} of ${run.list.length.toLocaleString()}` +
                 (run.paused ? ' · paused' : run.stopped ? ' · stopping…' : mins ? ` · ${mins} min left` : '');
-            this.el('ss-note').textContent = run.paused ? 'Paused: it\'ll wait for you' : 'Keep using jEditor meanwhile: it carries on with this closed';
-            const go = this.el('ss-go');
+            this.el('cv-note').textContent = run.paused ? 'Paused: it\'ll wait for you' : 'Keep using jEditor meanwhile: it carries on with this closed';
+            const go = this.el('cv-go');
             go.textContent = run.paused ? 'Go on' : 'Pause';
             go.disabled = run.stopped;
-            this.el('ss-cancel').textContent = 'Stop';
+            this.el('cv-cancel').textContent = 'Stop';
         } else {
             const notes = [];
             if (run.same) notes.push(`${run.same.toLocaleString()} wouldn't get smaller, so ${run.same === 1 ? 'it was' : 'they were'} left`);
             if (run.taken) notes.push(`${run.taken.toLocaleString()} left: a file with the new name was there`);
             if (run.failed) notes.push(`${run.failed.toLocaleString()} failed`);
-            this.el('ss-count').textContent = `${(run.done - run.same - run.taken - run.failed).toLocaleString()} photo${run.done - run.same - run.taken - run.failed === 1 ? '' : 's'}` +
+            this.el('cv-count').textContent = `${(run.done - run.same - run.taken - run.failed).toLocaleString()} photo${run.done - run.same - run.taken - run.failed === 1 ? '' : 's'}` +
                 (run.stopped ? ` (stopped at ${run.done.toLocaleString()} of ${run.list.length.toLocaleString()})` : '');
-            this.el('ss-total-line').textContent = `${run.scopeName} ${this.fmt(run.total)} → ${this.fmt(Math.max(0, run.total - run.saved))}`;
-            this.el('ss-note').textContent = (notes.length ? notes.join(' · ') + ' · ' : '') + (run.keep
+            this.el('cv-total-line').textContent = `${run.scopeName} ${this.fmt(run.total)} → ${this.fmt(Math.max(0, run.total - run.saved))}`;
+            this.el('cv-note').textContent = (notes.length ? notes.join(' · ') + ' · ' : '') + (run.keep
                 ? `The copies are in “${this.COPIES}”`
                 : Host.say(`The originals are in ${Host.has('recycle') ? Host.words().bin : 'jEditor\'s trash'} until it's emptied · Ctrl+Z puts them back`));
-            const go = this.el('ss-go');
+            const go = this.el('cv-go');
             go.textContent = 'Done';
             go.disabled = false;
-            this.el('ss-cancel').classList.add('hidden');
+            this.el('cv-cancel').classList.add('hidden');
         }
     },
 
     finish(run) {
-        this.app.endTask('space-saver');
+        this.app.endTask('convert');
         this.run = null;
         this.done = run;
         Flags.saveSoon();
         Edits.saveSoon();
         if (run.items.length) this.app.sortFiles();
         if (run.items.length || run.copies.length) {
-            this.app.pushUndo({ type: 'space-saver', label: 'save space', format: run.format, items: run.items, copies: run.copies });
+            this.app.pushUndo({ type: 'convert', label: 'convert', format: run.format, items: run.items, copies: run.copies });
         }
-        this.el('ss-title').textContent = 'Space saved';
-        const row = this.el('ss-body').querySelector('.ss-run-row');
-        if (row) row.innerHTML = `<span><b id="ss-saved"></b> back</span><span id="ss-count"></span>`;
-        if (!this.el('ss-total-line')) this.el('ss-body').insertAdjacentHTML('beforeend', '<div class="ss-total-line" id="ss-total-line"></div>');
+        this.el('cv-title').textContent = `Converted to ${Codec.FORMATS[run.format].label}`;
+        const row = this.el('cv-body').querySelector('.cv-run-row');
+        if (row) row.innerHTML = `<span><b id="cv-saved"></b> less storage</span><span id="cv-count"></span>`;
+        if (!this.el('cv-total-line')) this.el('cv-body').insertAdjacentHTML('beforeend', '<div class="cv-total-line" id="cv-total-line"></div>');
         this.paintRun();
         if (!this.isOpen()) {
-            this.app.showToast(`Saved ${this.fmt(run.saved)}: ${(run.done - run.same - run.taken - run.failed).toLocaleString()} photos are ${Codec.FORMATS[run.format].label} now`, 6000, null,
+            this.app.showToast(`Converted ${(run.done - run.same - run.taken - run.failed).toLocaleString()} photos to ${Codec.FORMATS[run.format].label}: ${this.fmt(run.saved)} less storage`, 6000, null,
                 { label: 'Show', run: () => this.show() }, { type: 'success' });
         }
     },
@@ -680,7 +681,7 @@ const SpaceSaver = {
     async undo(entry) {
         const app = this.app;
         const many = entry.items.length + entry.copies.length > 1;
-        if (many) app.beginTask('undo-space', 'Putting the originals back…');
+        if (many) app.beginTask('undo-convert', 'Putting the originals back…');
         let failed = 0;
         try {
             for (const c of entry.copies) {
@@ -709,13 +710,13 @@ const SpaceSaver = {
             };
             await Promise.all(Array.from({ length: Math.min(app.TRASH_CONCURRENCY, entry.items.length) }, work));
         } finally {
-            if (many) app.endTask('undo-space');
+            if (many) app.endTask('undo-convert');
         }
         Flags.saveSoon();
         Edits.saveSoon();
         app.sortFiles();
         if (failed) throw new Error(`${failed} couldn't be put back`);
         const n = entry.items.length || entry.copies.length;
-        app.showToast(entry.items.length ? `Put back ${n} original${n === 1 ? '' : 's'}` : `Removed ${n} smaller cop${n === 1 ? 'y' : 'ies'}`, 3000, null, null, { kind: 'undo' });
+        app.showToast(entry.items.length ? `Put back ${n} original${n === 1 ? '' : 's'}` : `Removed ${n} converted cop${n === 1 ? 'y' : 'ies'}`, 3000, null, null, { kind: 'undo' });
     }
 };

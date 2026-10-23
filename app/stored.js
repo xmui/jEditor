@@ -203,7 +203,7 @@ const Stored = {
             Flags.clearAll();
             Edits.clearAll();
             this.app._undoStack = (this.app._undoStack || []).filter(e =>
-                !(e.type === 'trash' && e.items.some(it => !it.recycled)) && !['flags', 'auto-crop', 'edits', 'saved-edits', 'space-saver'].includes(e.type));
+                !(e.type === 'trash' && e.items.some(it => !it.recycled)) && !['flags', 'auto-crop', 'edits', 'saved-edits', 'convert'].includes(e.type));
             this.app._usage = null;
         }
     },

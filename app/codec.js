@@ -1,4 +1,5 @@
-// Writing AVIF, JPEG XL and WebP, and reading JPEG XL where the engine
+// Writing AVIF, JPEG XL and WebP (Convert, Export, Save edits), and
+// reading JPEG XL where the engine
 // can't: a few codec-worker.js workers, each doing one picture at a time.
 //
 //   Codec.ready()               whether the codecs load here (not in the

@@ -1460,9 +1460,9 @@ const PROJECT = `
         await page.close();
     }
 
-    // ---- Save space: AVIF, JPEG XL and WebP (codec.js, space-saver.js) ----
-    if (wanted('space')) {
-        console.log('save space: modern formats, their EXIF, the estimate, converting and Ctrl+Z (codec.js, space-saver.js)');
+    // ---- Convert: AVIF, JPEG XL and WebP, their quality and storage (codec.js, convert.js) ----
+    if (wanted('convert')) {
+        console.log('convert: AVIF, JPEG XL and WebP, their EXIF, quality and storage, converting and Ctrl+Z (codec.js, convert.js)');
         const { page, issues } = await open();
         const r = await page.evaluate(async () => {
             let step = 'codecs';
@@ -1525,20 +1525,20 @@ const PROJECT = `
                 const P0 = app.files.find(f => f.name === 'p0.jpg');
                 P0._flags = { star: true };
                 Edits.set([{ file: P0, edit: { q: 1, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 }, size: P0.size } }], 'rotation');
-                SpaceSaver.prefs.format = 'avif';
-                SpaceSaver.prefs.keep = false;
-                await SpaceSaver.open({ folder: '' });
-                await until(() => SpaceSaver.est && !SpaceSaver.est.working, 600);
-                const est = SpaceSaver.est;
-                out.estimate = [est.total > 0, est.after > 0 && est.after < est.total, est.byDir && est.byDir.size, !!SpaceSaver.suggested.avif, SpaceSaver.el('ss-folders').children.length];
-                out.closeUp = SpaceSaver.el('ss-after-cap').textContent.startsWith('After');
+                Convert.prefs.format = 'avif';
+                Convert.prefs.keep = false;
+                await Convert.open({ folder: '' });
+                await until(() => Convert.est && !Convert.est.working, 600);
+                const est = Convert.est;
+                out.estimate = [est.total > 0, est.after > 0 && est.after < est.total, est.byDir && est.byDir.size, !!Convert.suggested.avif, Convert.el('cv-folders').children.length];
+                out.closeUp = Convert.el('cv-after-cap').textContent.startsWith('After');
 
                 // Converting: each photo AVIF in its place, flags and edit with it
                 step = 'convert';
-                SpaceSaver.go();
-                await until(() => SpaceSaver.done, 800);
-                const done = SpaceSaver.done;
-                out.done = { saved: done.saved > 0, same: done.same, failed: done.failed, dots: SpaceSaver.el('ss-dots').children.length, hollow: SpaceSaver.el('ss-dots').querySelectorAll('.f').length };
+                Convert.go();
+                await until(() => Convert.done, 800);
+                const done = Convert.done;
+                out.done = { saved: done.saved > 0, same: done.same, failed: done.failed, dots: Convert.el('cv-dots').children.length, hollow: Convert.el('cv-dots').querySelectorAll('.f').length };
                 out.names = app.files.map(f => f.relPath || f.name).sort().join();
                 out.kept = [P0.name, !!(P0._flags && P0._flags.star), !!P0._edit && P0._edit.size === P0.size];
                 const info = await app.getExifInfo(P0);
@@ -1550,8 +1550,8 @@ const PROJECT = `
                     return names.sort().join();
                 };
                 out.disk = await onDisk();
-                SpaceSaver.go(); // Done
-                out.closed = !SpaceSaver.isOpen();
+                Convert.go(); // Done
+                out.closed = !Convert.isOpen();
 
                 // Ctrl+Z: the originals back, by their names, flags and edit too
                 step = 'undo';
@@ -1562,17 +1562,17 @@ const PROJECT = `
 
                 // Keep both: smaller copies in their own folder, not in the project
                 step = 'keep';
-                SpaceSaver.prefs.format = 'webp';
-                SpaceSaver.prefs.keep = true;
-                await SpaceSaver.open({ folder: 'Party' });
-                await until(() => SpaceSaver.est && !SpaceSaver.est.working, 600);
-                SpaceSaver.go();
-                await until(() => SpaceSaver.done, 800);
-                SpaceSaver.go();
+                Convert.prefs.format = 'webp';
+                Convert.prefs.keep = true;
+                await Convert.open({ folder: 'Party' });
+                await until(() => Convert.est && !Convert.est.working, 600);
+                Convert.go();
+                await until(() => Convert.done, 800);
+                Convert.go();
                 const copies = [];
-                for await (const e of (await (await dir.getDirectoryHandle('Smaller copies')).getDirectoryHandle('Party')).values()) copies.push(e.name);
+                for await (const e of (await (await dir.getDirectoryHandle('jEditor Converted')).getDirectoryHandle('Party')).values()) copies.push(e.name);
                 out.copies = copies.sort().join();
-                out.notListed = !app.files.some(f => /Smaller copies/.test(f.relPath || '')) && Watch.skipDir('Smaller copies');
+                out.notListed = !app.files.some(f => /jEditor Converted/.test(f.relPath || '')) && Watch.skipDir('jEditor Converted');
 
                 // Export as AVIF: a copy that's an AVIF, its EXIF with it
                 step = 'export';
@@ -1588,18 +1588,18 @@ const PROJECT = `
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
         const fmts = r.formats || {};
-        check('save space: the codecs load; AVIF, JPEG XL and WebP are written with their EXIF (date, camera; upright), smaller, and shown',
+        check('convert: the codecs load; AVIF, JPEG XL and WebP are written with their EXIF (date, camera; upright), smaller, and shown',
             r.ready && ['avif', 'jxl', 'webp'].every(f => JSON.stringify(fmts[f]) === '["jEd",2019,1,200,320,true]'), JSON.stringify(r));
-        check('save space: JPEG XL is shown by the bundled decoder where the engine can\'t', r.engineJxl === false && fmts.jxl && fmts.jxl[3] === 200, JSON.stringify(r.engineJxl));
-        check('save space: an estimate from a sample, by folder, with the quality that looks the same and a close-up', r.estimate && String(r.estimate) === 'true,true,3,true,3' && r.closeUp, JSON.stringify(r.estimate));
-        check('save space: the photos are AVIF in their places; one that wouldn\'t get smaller is left; the dots fill', r.names === 'Ceremony/p0.avif,Ceremony/p1.avif,Party/p2.avif,Party/p3.avif,tiny.png' &&
+        check('convert: JPEG XL is shown by the bundled decoder where the engine can\'t', r.engineJxl === false && fmts.jxl && fmts.jxl[3] === 200, JSON.stringify(r.engineJxl));
+        check('convert: the quality that looks the same, a close-up, and the storage now and after from a sample, by folder', r.estimate && String(r.estimate) === 'true,true,3,true,3' && r.closeUp, JSON.stringify(r.estimate));
+        check('convert: the photos are AVIF in their places; one that wouldn\'t get smaller is left; the dots fill', r.names === 'Ceremony/p0.avif,Ceremony/p1.avif,Party/p2.avif,Party/p3.avif,tiny.png' &&
             r.disk === 'Ceremony/p0.avif,Ceremony/p1.avif,Party/p2.avif,Party/p3.avif,tiny.png' && r.done && r.done.saved && r.done.same === 1 && !r.done.failed && r.done.dots === 100 && r.done.hollow > 0, JSON.stringify([r.names, r.disk, r.done]));
-        check('save space: flags, the edit and the date taken go with a photo', r.kept && r.kept[0] === 'p0.avif' && r.kept[1] && r.kept[2] && r.date === 2019, JSON.stringify([r.kept, r.date]));
-        check('save space: Ctrl+Z puts the originals back, by name, with their flags and edits', r.undone === 'Ceremony/p0.jpg,Ceremony/p1.jpg,Party/p2.jpg,Party/p3.jpg,tiny.png' &&
+        check('convert: flags, the edit and the date taken go with a photo', r.kept && r.kept[0] === 'p0.avif' && r.kept[1] && r.kept[2] && r.date === 2019, JSON.stringify([r.kept, r.date]));
+        check('convert: Ctrl+Z puts the originals back, by name, with their flags and edits', r.undone === 'Ceremony/p0.jpg,Ceremony/p1.jpg,Party/p2.jpg,Party/p3.jpg,tiny.png' &&
             r.undoneDisk === r.undone && r.undoneKept && r.undoneKept[0] === 'p0.jpg' && r.undoneKept[1] && r.undoneKept[2], JSON.stringify([r.undone, r.undoneDisk, r.undoneKept]));
-        check('save space: Keep both puts smaller copies in "Smaller copies", not in the project', r.copies === 'p2.webp,p3.webp' && r.notListed, JSON.stringify([r.copies, r.notListed]));
+        check('convert: Keep both puts the converted copies in "jEditor Converted", not in the project', r.copies === 'p2.webp,p3.webp' && r.notListed, JSON.stringify([r.copies, r.notListed]));
         check('export: as AVIF, with the edit and the EXIF', r.exported && String(r.exported) === '900,600,jEd', JSON.stringify(r.exported));
-        check('save space: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        check('convert: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
