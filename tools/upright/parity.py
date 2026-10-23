@@ -1,6 +1,6 @@
-import json, subprocess, sys, numpy as np, torch
+import json, os, subprocess, sys, numpy as np, torch
 from train import Net, S
-net = Net(); net.load_state_dict(torch.load('upright.pt', map_location='cpu')); net.eval()
+net = Net(); net.load_state_dict(torch.load(os.environ.get('PT', 'upright.pt'), map_location='cpu')); net.eval()
 x = torch.randn(1, 3, S, S)
 json.dump(x.ravel().tolist(), open('parity-in.json', 'w'))
 with torch.no_grad(): ref = net(x)[0].numpy()

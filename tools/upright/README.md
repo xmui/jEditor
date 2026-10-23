@@ -4,9 +4,10 @@
 jEditor's own, whose numbers are in `app/upright-model.js`. This folder makes
 that file. Nothing here ships with the app.
 
-**What it learns from.** About 143,500 photos from [Open Images](https://storage.googleapis.com/openimages/web/index.html)
-(its validation and test sets, every photo licensed CC BY 2.0 by its author on
-Flickr) that Open Images marks as upright. No photos of anyone's orders, and nothing of
+**What it learns from.** About 443,500 photos from [Open Images](https://storage.googleapis.com/openimages/web/index.html)
+(all of its validation and test sets and 300,000 from its train set, every
+photo licensed CC BY 2.0 by its author on Flickr) that Open Images marks as
+upright. No photos of anyone's orders, and nothing of
 FastFoto's: FastFoto's own networks were studied for the idea only (a small
 network on a squeezed copy of the photo), as the clean-room rule says.
 
@@ -27,9 +28,9 @@ the photo in all four turns and puts the answers together, and only turns a
 photo when it's at least `Upright.SURE` sure.
 
 **How good it is** (`evaluate.py`, on 2,000 photos it never saw, each aged and
-shown all four ways): right 79% of the time, 85% on photos with people in
-them. At `Upright.SURE` = 0.8 it turns about 1 photo in 160 the wrong way, and
-leaves the rest it isn't sure of as they are.
+shown all four ways): right 82% of the time, 89% on photos with people in
+them. At `Upright.SURE` = 0.8 it turns about 1 photo in 130 the wrong way (1 in
+350 with people), and leaves the rest it isn't sure of as they are.
 
 **Making it again.**
 
@@ -39,6 +40,13 @@ curl -LO https://storage.googleapis.com/openimages/2018_04/validation/validation
 mv validation-images-with-rotation.csv val-rot.csv
 ./venv/bin/python fetch.py          # photos128.npy (about 1.7 GB), ok.npy
 ./venv/bin/python fetchb.py         # the test set too (fetch.py with test-rot.csv): photos128b.npy
-MORE=1 OUT=upright.pt ./venv/bin/python train.py 30
+curl -L -o train-rot.csv https://storage.googleapis.com/openimages/2018_04/train/train-images-boxable-with-rotation.csv
+./venv/bin/python fetchc.py         # 300,000 of the train set: photos128c.npy (about 15 GB)
+MORE=2 OUT=upright.pt ./venv/bin/python train.py 20     # about 4½ hours on an M-series Mac
+./venv/bin/python evaluate.py upright.pt
 ./venv/bin/python export.py upright.pt ../../app/upright-model.js
+PT=upright.pt ./venv/bin/python parity.py ../../app/upright-model.js ../../app/upright.js
 ```
+
+The photos can live on another drive: set `DATA` to their folder for every
+step (the venv can't, if that drive is exFAT).
