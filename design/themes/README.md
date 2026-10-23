@@ -20,3 +20,14 @@ and menu bar.
 
 - `studio`: Studio grey, neither take chosen yet (PLAN.md, item 8).
 - `px.py`: draws 1984's one-bit icons into `app/themes/mac84/px/`.
+
+## Check a theme
+
+    node design/themes/audit.js                   every theme, every screen
+    node design/themes/audit.js xp/royale paint   one theme, one screen
+
+Opens every screen of the real app in every theme, at 1280×800 and
+1024×640, and writes `docs/themes-checklist.md`: each part, and what's off
+screen, under the title bar, without an icon, cut off or in the wrong font.
+`SHOTS=dir` keeps a screenshot of each. The icons: `px.py` (1984, one bit),
+`px_xp.py` (XP, colour), `glyphs.py` (Snow Leopard).

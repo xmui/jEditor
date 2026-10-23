@@ -46,7 +46,7 @@
     background: var(--xp-face);
 }
 /* The window frame: Luna's blue edges round the client area */
-:root[data-skin="xp"] .interface {
+:root[data-skin="xp"] :is(.interface, .mode-screen, .drop-zone) {
     border: 4px solid #0831d9;
     border-top: 0;
     border-image: linear-gradient(180deg, #0058ee, #0831d9 30%, #0831d9) 1;

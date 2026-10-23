@@ -1,0 +1,502 @@
+/* ==========================================================================
+   Snow Leopard: jEditor's windows and controls as Cocoa drew them. Aqua
+   push buttons (the default one blue), pop-up buttons with their blue end,
+   check boxes and radio buttons that turn blue, round slider knobs, the
+   focus ring's soft blue glow. A dialog is a sheet that drops from under
+   the toolbar; Settings, What's new and the shortcuts are windows of their
+   own, the red light closing them. Info and Undo history are HUD panels.
+   aperture.css turns the same parts dark through the tokens below.
+   ========================================================================== */
+
+:root[data-skin="snow"] {
+    --sl-face: #ececec;
+    --sl-ink: #000;
+    --sl-ink-2: #4c4c4c;
+    --sl-emboss: 0 1px 0 rgb(255 255 255 / 0.6);
+    --sl-btn: linear-gradient(180deg, #ffffff 0%, #f6f6f6 45%, #e6e6e6 52%, #f1f1f1 100%);
+    --sl-btn-down: linear-gradient(180deg, #c9c9c9 0%, #d9d9d9 50%, #e6e6e6 100%);
+    --sl-btn-edge: inset 0 0 0 1px rgb(0 0 0 / 0.38), 0 1px 0 rgb(255 255 255 / 0.45);
+    --sl-blue: linear-gradient(180deg, #cfe3fb 0%, #9ec6f5 45%, #6ea9ee 52%, #9bd0fb 100%);
+    --sl-blue-edge: inset 0 0 0 1px #3d6bb1, 0 1px 0 rgb(255 255 255 / 0.45);
+    --sl-field: #fff;
+    --sl-field-edge: inset 0 0 0 1px #9b9b9b, inset 0 1px 0 #6e6e6e, inset 0 2px 1px rgb(0 0 0 / 0.08);
+    --sl-focus: 0 0 0 1px #5c8fd8, 0 0 0 3px rgb(125 168 232 / 0.7);
+    --sl-sheet: #ececec;
+    --sl-line: #c4c4c4;
+    --sl-tab-on: rgb(0 0 0 / 0.13);
+    --sl-head: #6e6e6e;
+    --sl-knob: radial-gradient(circle at 50% 30%, #fff 0, #f0f0f0 40%, #c9c9c9 100%);
+    --sl-list: #fff;
+    --sl-list-sel: linear-gradient(180deg, #5d93dc, #2e68cc);
+    /* jEditor's own parts read these */
+    --bg-raised: #fff;
+    --bg-sunken: #fff;
+    --bg-hover: rgb(0 0 0 / 0.05);
+    --bg-pressed: rgb(0 0 0 / 0.1);
+    --bg-selected: #d5e1f2;
+    --border-input: #9b9b9b;
+    --border-subtle: var(--sl-line);
+    --accent-soft: #d5e1f2;
+    --accent-text: #2a62c9;
+    --on-accent: #fff;
+    --danger-text: #c62d22;
+    --scrim: transparent;
+    --seg-bg: transparent;
+    --seg-active: transparent;
+    --shadow-1: none;
+    --shadow-2: none;
+    --shadow-3: none;
+    --r-xs: 2px; --r-sm: 3px; --r-md: 4px; --r-lg: 5px; --r-xl: 5px;
+}
+:root[data-skin="snow"] :is(.dialog, .popover, .mode-screen, .drop-zone, .scan-dock) {
+    font: 13px/17px var(--sl-font);
+    color: var(--sl-ink);
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Push buttons: Aqua capsules, the default one blue ---- */
+:root[data-skin="snow"] .btn.secondary,
+:root[data-skin="snow"] .btn.primary,
+:root[data-skin="snow"] .btn.danger,
+:root[data-skin="snow"] .dialog .btn.ghost:not(.icon),
+:root[data-skin="snow"] .drop-zone .btn,
+:root[data-skin="snow"] .dialog .btn:not(.ghost, .icon) {
+    height: 21px;
+    min-width: 0;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 11px;
+    background: var(--sl-btn);
+    box-shadow: var(--sl-btn-edge);
+    color: var(--sl-ink);
+    font: 13px var(--sl-font);
+    font-weight: 400;
+    text-shadow: none;
+    transition: none;
+}
+:root[data-skin="snow"] .btn:active:not(:disabled) { transform: none; }
+:root[data-skin="snow"] :is(.btn.secondary, .btn.primary, .btn.danger, .dialog .btn.ghost:not(.icon), .drop-zone .btn, .dialog .btn:not(.ghost, .icon)):hover:not(:disabled) { background: var(--sl-btn); }
+:root[data-skin="snow"] :is(.btn.secondary, .btn.danger, .dialog .btn.ghost:not(.icon), .drop-zone .btn:not(.primary), .dialog .btn:not(.ghost, .icon, .primary)):active:not(:disabled) { background: var(--sl-btn-down); }
+:root[data-skin="snow"] .btn.primary,
+:root[data-skin="snow"] .btn.primary:hover:not(:disabled) { background: var(--sl-blue); box-shadow: var(--sl-blue-edge); color: #000; }
+:root[data-skin="snow"] .btn.primary:active:not(:disabled) { filter: brightness(0.9); }
+:root[data-skin="snow"] .btn:disabled,
+:root[data-skin="snow"] .btn[aria-disabled="true"] { opacity: 0.5; }
+:root[data-skin="snow"] .btn.primary:disabled { background: var(--sl-btn); box-shadow: var(--sl-btn-edge); }
+:root[data-skin="snow"] .btn:focus-visible { outline: none; box-shadow: var(--sl-btn-edge), var(--sl-focus); }
+:root[data-skin="snow"] .btn > svg { width: 14px; height: 14px; }
+:root[data-skin="snow"] .dialog .btn:not(.icon) > svg,
+:root[data-skin="snow"] .drop-zone .btn > svg { display: none; }
+:root[data-skin="snow"] .btn.danger-text { color: var(--sl-ink); }
+/* Small ones (Cocoa's "small" size) */
+:root[data-skin="snow"] .btn.sm:is(.secondary, .primary) { height: 18px; padding: 0 10px; border-radius: 9px; font-size: 11px; }
+/* The project card's row: Scan, Explorer, then the two small glyph buttons, on one line */
+:root[data-skin="snow"] .sb-card-btns { align-items: center; gap: 4px; }
+:root[data-skin="snow"] .sb-card-btns .btn.sm:is(.secondary, .primary) { flex: none; gap: 4px; padding: 0 8px; }
+:root[data-skin="snow"] .sb-card-btns .btn.sm > svg { width: 12px; height: 12px; }
+/* A toggle chip: a round textured button that stays in */
+:root[data-skin="snow"] .btn.chip {
+    height: 20px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--cap);
+    box-shadow: var(--cap-edge);
+    color: var(--sl-ink);
+    font: 11px var(--sl-font);
+}
+:root[data-skin="snow"] .btn.chip:is([aria-pressed="true"], .active) { background: var(--cap-in); box-shadow: var(--cap-in-edge); color: var(--sl-ink); }
+
+/* Links */
+:root[data-skin="snow"] .link-btn { color: #2a62c9; font: 11px var(--sl-font); text-decoration: none; }
+:root[data-skin="snow"] .link-btn:hover { color: #2a62c9; text-decoration: underline; }
+
+/* ---- Text fields and pop-up buttons ---- */
+:root[data-skin="snow"] .field,
+:root[data-skin="snow"] .dialog input:is([type="text"], [type="number"], [type="search"], :not([type])),
+:root[data-skin="snow"] .fpr-body input {
+    height: 22px;
+    padding: 0 4px;
+    border: 0;
+    border-radius: 0;
+    background: var(--sl-field);
+    box-shadow: var(--sl-field-edge);
+    color: var(--sl-ink);
+    font: 13px var(--sl-font);
+    outline: none;
+}
+:root[data-skin="snow"] input[type="search"].field { border-radius: 11px; padding: 0 10px; }
+:root[data-skin="snow"] .field:hover { box-shadow: var(--sl-field-edge); }
+:root[data-skin="snow"] :is(.field, .dialog input, .fpr-body input):focus,
+:root[data-skin="snow"] .field:focus-visible { box-shadow: var(--sl-field-edge), var(--sl-focus); outline: none; }
+:root[data-skin="snow"] .field::placeholder { color: #a0a0a0; }
+:root[data-skin="snow"] .field:disabled { opacity: 0.5; }
+:root[data-skin="snow"] textarea.field { height: auto; padding: 3px 4px; }
+:root[data-skin="snow"] select.field,
+:root[data-skin="snow"] .dialog select {
+    height: 21px;
+    min-width: 0;
+    padding: 0 26px 0 9px;
+    border: 0;
+    border-radius: 5px;
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='11'%3E%3Cpath d='M0 4l3.5-4L7 4zM0 7l3.5 4L7 7z' fill='%23fff'/%3E%3C/svg%3E") no-repeat right 6px center,
+        var(--sl-blue) no-repeat right 0 top 0 / 19px 100%,
+        var(--sl-btn);
+    box-shadow: var(--sl-btn-edge), inset -19px 0 0 -18px rgb(0 0 0 / 0.35);
+    color: var(--sl-ink);
+    font: 13px var(--sl-font);
+}
+:root[data-skin="snow"] select.field:focus { box-shadow: var(--sl-btn-edge), var(--sl-focus); }
+:root[data-skin="snow"] select.field.sm { height: 18px; font-size: 11px; }
+
+/* ---- Check boxes and radio buttons: white gumdrops that turn blue ---- */
+:root[data-skin="snow"] input[type="checkbox"],
+:root[data-skin="snow"] input.switch,
+:root[data-skin="snow"] input[type="radio"] {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    flex: none;
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    border: 0;
+    border-radius: 3px;
+    background: var(--sl-btn);
+    box-shadow: var(--sl-btn-edge);
+    transition: none;
+}
+:root[data-skin="snow"] input[type="radio"] { border-radius: 50%; }
+:root[data-skin="snow"] input.switch::before { display: none; }
+:root[data-skin="snow"] :is(input[type="checkbox"], input.switch):checked {
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='9'%3E%3Cpath d='M1 4.6l2.6 2.8L9 1' fill='none' stroke='%23111' stroke-width='2'/%3E%3C/svg%3E") no-repeat 3px 2px,
+        var(--sl-blue);
+    box-shadow: var(--sl-blue-edge);
+}
+:root[data-skin="snow"] input[type="radio"]:checked {
+    background: radial-gradient(circle, #1a1a1a 0 2.4px, transparent 3px), var(--sl-blue);
+    box-shadow: var(--sl-blue-edge);
+}
+:root[data-skin="snow"] :is(input[type="checkbox"], input.switch, input[type="radio"]):focus-visible { outline: none; box-shadow: var(--sl-btn-edge), var(--sl-focus); }
+:root[data-skin="snow"] :is(input[type="checkbox"], input.switch, input[type="radio"]):disabled { opacity: 0.5; }
+
+/* A row of choices: a segmented control */
+:root[data-skin="snow"] .seg {
+    gap: 0;
+    padding: 0;
+    border-radius: 5px;
+    background: var(--sl-btn);
+    box-shadow: var(--sl-btn-edge);
+}
+:root[data-skin="snow"] .seg > button,
+:root[data-skin="snow"] .seg > label > span {
+    height: 21px;
+    padding: 0 11px;
+    border-radius: 0;
+    background: none;
+    color: var(--sl-ink);
+    font: 13px var(--sl-font);
+    font-weight: 400;
+    box-shadow: inset -1px 0 0 rgb(0 0 0 / 0.25);
+}
+:root[data-skin="snow"] .seg > :last-child,
+:root[data-skin="snow"] .seg > label:last-child > span { box-shadow: none; }
+:root[data-skin="snow"] .seg > :first-child,
+:root[data-skin="snow"] .seg > label:first-child > span { border-radius: 5px 0 0 5px; }
+:root[data-skin="snow"] .seg > :last-child,
+:root[data-skin="snow"] .seg > label:last-child > span { border-radius: 0 5px 5px 0; }
+:root[data-skin="snow"] .seg > :is(button.active, button[aria-selected="true"], button[aria-checked="true"], button.on),
+:root[data-skin="snow"] .seg > label > input:checked + span {
+    background: var(--sl-blue);
+    color: #000;
+    box-shadow: inset 0 0 0 1px #3d6bb1;
+}
+:root[data-skin="snow"] .seg > button > svg { width: 14px; height: 14px; }
+:root[data-skin="snow"] .seg > label > input:focus-visible + span { outline: none; box-shadow: var(--sl-focus); }
+
+/* ---- Sliders: a thin groove, a round knob ---- */
+:root[data-skin="snow"] input[type="range"] { -webkit-appearance: none; appearance: none; height: 16px; background: none; }
+:root[data-skin="snow"] input[type="range"]::-webkit-slider-runnable-track {
+    height: 5px;
+    border: 0;
+    border-radius: 3px;
+    background: linear-gradient(180deg, #7a7a7a, #a9a9a9);
+    box-shadow: inset 0 1px 1px rgb(0 0 0 / 0.4), 0 1px 0 rgb(255 255 255 / 0.5);
+}
+:root[data-skin="snow"] input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 15px; height: 15px;
+    margin-top: -5px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--sl-knob);
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.45), 0 1px 1px rgb(0 0 0 / 0.3);
+}
+:root[data-skin="snow"] input[type="range"]:focus-visible { outline: none; }
+:root[data-skin="snow"] input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.45), var(--sl-focus); }
+
+:root[data-skin="snow"] kbd,
+:root[data-skin="snow"] .sc-key {
+    border: 0;
+    border-radius: 3px;
+    background: var(--sl-btn);
+    box-shadow: var(--sl-btn-edge);
+    color: var(--sl-ink);
+    font: 11px/18px var(--sl-font);
+}
+
+/* ---- Dialogs: sheets, dropping from under the toolbar ---- */
+:root[data-skin="snow"] .dialog-overlay { align-items: flex-start; padding-top: 0; background: none; animation: none; }
+:root[data-skin="snow"] .dialog {
+    margin-top: var(--sl-sheet-top, 52px);
+    border: 0;
+    border-radius: 0 0 5px 5px;
+    background: var(--sl-sheet);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.45), inset 0 6px 6px -6px rgb(0 0 0 / 0.35);
+    animation: sl-sheet 0.2s ease-out;
+    max-height: calc(100% - var(--sl-sheet-top, 52px) - 12px);
+}
+@keyframes sl-sheet { from { transform: translateY(-24px); clip-path: inset(24px 0 0 0); } }
+:root[data-skin="snow"] .dialog-head {
+    flex: none;
+    min-height: 0;
+    gap: 10px;
+    padding: 18px 20px 4px;
+    border: 0;
+}
+:root[data-skin="snow"] .dialog-title { font: 700 13px/17px var(--sl-font); color: var(--sl-ink); }
+/* a sheet is dismissed by its own buttons */
+:root[data-skin="snow"] .dialog:not(.settings-card, .whatsnew-card, .shortcuts-card):has(.dialog-foot .btn) .dialog-head > .btn[aria-label="Close"] { display: none; }
+:root[data-skin="snow"] .dialog-head > .btn[aria-label="Close"] { width: 20px; height: 20px; border-radius: 50%; color: var(--sl-ink-2); }
+:root[data-skin="snow"] .dialog-body { padding: 8px 20px 10px; }
+:root[data-skin="snow"] .dialog-foot { gap: 12px; padding: 10px 20px 18px; border: 0; justify-content: flex-end; }
+:root[data-skin="snow"] .dialog-foot > :first-child:not(.btn, .dialog-actions) { margin-right: auto; }
+:root[data-skin="snow"] .dialog-actions { gap: 12px; }
+:root[data-skin="snow"] .dialog-foot .btn,
+:root[data-skin="snow"] .dialog-actions .btn { min-width: 82px; height: 21px; padding: 0 14px; }
+:root[data-skin="snow"] .dialog-note { color: var(--sl-ink-2); font: 11px/14px var(--sl-font); }
+:root[data-skin="snow"] .dialog :is(h3, h4):not(.dialog-title) { color: var(--sl-ink); font: 700 11px var(--sl-font); letter-spacing: 0; text-transform: none; }
+
+/* Settings, What's new, the shortcuts: windows, with a title bar and the
+   red light closing them */
+:root[data-skin="snow"] .dialog:is(.settings-card, .whatsnew-card, .shortcuts-card) {
+    margin-top: 40px;
+    border-radius: 5px;
+    background: var(--sl-face);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35), 0 14px 36px rgb(0 0 0 / 0.5);
+    animation: none;
+}
+:root[data-skin="snow"] .dialog:is(.settings-card, .whatsnew-card, .shortcuts-card) > .dialog-head {
+    position: relative;
+    justify-content: center;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 5px 5px 0 0;
+    background: var(--sl-titlebar, linear-gradient(180deg, #e9e9e9, #d3d3d3));
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.7), inset 0 -1px 0 #9a9a9a;
+}
+:root[data-skin="snow"] .dialog:is(.settings-card, .whatsnew-card, .shortcuts-card) .dialog-title { flex: none; font: 13px/22px var(--sl-font); text-shadow: var(--sl-emboss); }
+:root[data-skin="snow"] .dialog:is(.settings-card, .whatsnew-card, .shortcuts-card) .dialog-head > .btn[aria-label="Close"] {
+    display: block;
+    position: absolute;
+    left: 8px; top: 4px;
+    width: 14px; height: 15px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: url(../snow/lights/close.svg) no-repeat center / 14px 15px;
+    box-shadow: none;
+}
+:root[data-skin="snow"] .dialog:is(.settings-card, .whatsnew-card, .shortcuts-card) .dialog-head > .btn[aria-label="Close"]::before { inset: -4px; }
+:root[data-skin="snow"] .dialog:is(.settings-card, .whatsnew-card, .shortcuts-card) .dialog-head > .btn[aria-label="Close"] > svg { display: none; }
+:root[data-skin="snow"] .shortcuts-card > .dialog-head > input { position: absolute; right: 8px; top: 2px; width: 150px; height: 18px; font-size: 11px; }
+
+/* Settings: the pages as a toolbar of icons, like any Preferences window */
+:root[data-skin="snow"] .dialog.settings-card { width: min(620px, 100%); height: min(560px, calc(100% - 52px)); }
+:root[data-skin="snow"] .settings-main { flex-direction: column; }
+:root[data-skin="snow"] .settings-nav {
+    flex-direction: row;
+    justify-content: center;
+    gap: 2px;
+    width: auto;
+    padding: 2px 8px 4px;
+    border: 0;
+    border-bottom: 1px solid #8d8d8d;
+    background: var(--sl-toolbar, linear-gradient(180deg, #d3d3d3, #c2c2c2 55%, #b3b3b3));
+    overflow: visible;
+}
+:root[data-skin="snow"] .settings-nav button {
+    flex-direction: column;
+    gap: 3px;
+    height: auto;
+    min-width: 64px;
+    padding: 5px 6px 3px;
+    border-radius: 4px;
+    background: none;
+    color: var(--sl-ink);
+    font: 11px var(--sl-font);
+    text-shadow: var(--sl-emboss);
+}
+:root[data-skin="snow"] .settings-nav button .i { width: 26px; height: 26px; color: var(--sl-tool-glyph, #3d3d3d); stroke-width: 1.7; filter: drop-shadow(0 1px 0 rgb(255 255 255 / 0.6)); }
+:root[data-skin="snow"] .settings-nav button:hover { background: none; color: var(--sl-ink); }
+:root[data-skin="snow"] .settings-nav button[aria-selected="true"] {
+    background: var(--sl-tab-on);
+    box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.25), 0 1px 0 rgb(255 255 255 / 0.35);
+    color: var(--sl-ink);
+}
+:root[data-skin="snow"] .settings-body { padding: 14px 22px 18px; }
+:root[data-skin="snow"] .settings-page-title { display: none; }
+:root[data-skin="snow"] .set-group,
+:root[data-skin="snow"] .settings-page-title + .set-group {
+    margin: 14px 0 4px;
+    padding: 0;
+    border: 0;
+    color: var(--sl-ink);
+    font: 700 13px var(--sl-font);
+    letter-spacing: 0;
+    text-transform: none;
+}
+:root[data-skin="snow"] .settings-page-title + .set-group { margin-top: 0; }
+:root[data-skin="snow"] .set-row { min-height: 0; padding: 5px 0 5px 14px; }
+:root[data-skin="snow"] .set-label { font-weight: 400; }
+:root[data-skin="snow"] .set-label small,
+:root[data-skin="snow"] .set-help { color: var(--sl-ink-2); font: 11px/14px var(--sl-font); }
+:root[data-skin="snow"] .set-row.unavailable .seg { opacity: 0.45; }
+:root[data-skin="snow"] .settings-card .dialog-foot { padding-top: 6px; border-top: 0; }
+/* The gallery: an icon view */
+:root[data-skin="snow"] .theme-gallery { gap: 6px; padding: 8px; border-radius: 0; background: var(--sl-list); box-shadow: inset 0 0 0 1px #9b9b9b; }
+:root[data-skin="snow"] .theme-card { padding: 4px; border: 0; border-radius: 4px; background: none; }
+:root[data-skin="snow"] .theme-shot { border-radius: 0; box-shadow: 0 1px 3px rgb(0 0 0 / 0.4); }
+:root[data-skin="snow"] .theme-card.active .theme-shot { outline: 0; box-shadow: 0 0 0 3px #a9c2e6, 0 1px 3px rgb(0 0 0 / 0.4); }
+:root[data-skin="snow"] .theme-name { font: 11px var(--sl-font); }
+:root[data-skin="snow"] .theme-card.active { background: rgb(0 0 0 / 0.1); }
+:root[data-skin="snow"] .theme-name small { color: var(--sl-ink-2); font-size: 10px; }
+:root[data-skin="snow"] .customize-list { border-radius: 0; background: var(--sl-list); box-shadow: inset 0 0 0 1px #9b9b9b; border: 0; }
+:root[data-skin="snow"] .customize-list li { border-radius: 0; }
+:root[data-skin="snow"] .customize-list li:nth-child(even) { background: rgb(237 243 254 / 0.9); }
+
+/* ---- Lists inside the dialogs ---- */
+:root[data-skin="snow"] .whatsnew-list,
+:root[data-skin="snow"] .rename-preview,
+:root[data-skin="snow"] .blank-presets,
+:root[data-skin="snow"] .fp-list { border: 0; border-radius: 0; background: var(--sl-list); box-shadow: inset 0 0 0 1px #9b9b9b; }
+:root[data-skin="snow"] .whatsnew-list { padding: 10px 14px; }
+:root[data-skin="snow"] .whatsnew-list h4,
+:root[data-skin="snow"] .shortcuts-list h4,
+:root[data-skin="snow"] .blank-group,
+:root[data-skin="snow"] .recents-title { color: var(--sl-head); font: 700 11px var(--sl-font); letter-spacing: 0; text-transform: uppercase; }
+:root[data-skin="snow"] .wn-tag { border-radius: 8px; font-size: 10px; }
+:root[data-skin="snow"] .rename-token { border: 0; border-radius: 9px; background: var(--sl-btn); box-shadow: var(--sl-btn-edge); font: 11px var(--sl-font); }
+:root[data-skin="snow"] :is(.ex-item, .blank-preset, .perm-row, .fp-row) { border-radius: 0; }
+:root[data-skin="snow"] :is(.ex-item:has(input:checked), .blank-preset.on, .fp-row.hi) { background: var(--sl-list-sel); color: #fff; box-shadow: none; }
+:root[data-skin="snow"] :is(.ex-item:has(input:checked), .blank-preset.on, .fp-row.hi) :is(small, span, .fp-meta) { color: #fff; }
+:root[data-skin="snow"] .fp-list { margin: 0 20px; }
+:root[data-skin="snow"] .fp-filter-wrap { padding: 14px 20px 8px; }
+:root[data-skin="snow"] .fp-row { min-height: 20px; font-size: 12px; }
+:root[data-skin="snow"] .fp-row:hover { background: none; }
+
+/* ---- HUD panels: Info, Undo history ---- */
+:root[data-skin="snow"] .popover {
+    padding: 0 0 10px;
+    border: 0;
+    border-radius: 5px;
+    background: rgb(26 26 26 / 0.86);
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.18), 0 8px 24px rgb(0 0 0 / 0.5);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    color: #fff;
+    font: 11px/15px var(--sl-font);
+}
+:root[data-skin="snow"] .popover .section-label {
+    height: 18px;
+    margin: 0 0 8px;
+    border-radius: 5px 5px 0 0;
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.18), rgb(255 255 255 / 0.06));
+    color: #fff;
+    font: 11px/18px var(--sl-font);
+    letter-spacing: 0;
+    text-align: center;
+    text-transform: none;
+}
+:root[data-skin="snow"] .popover > :not(.section-label) { margin-left: 12px; margin-right: 12px; }
+:root[data-skin="snow"] .popover :is(dt, .history-foot, .history-hint) { color: #b5b5b5; }
+:root[data-skin="snow"] .popover dd { color: #fff; }
+
+/* ---- The start page ---- */
+:root[data-skin="snow"] .drop-zone { background: linear-gradient(180deg, #f0f0f0, #dcdcdc); }
+:root[data-skin="snow"] .start-title { font: 700 24px var(--sl-font); color: #222; letter-spacing: 0; text-shadow: var(--sl-emboss); }
+:root[data-skin="snow"] .start-tagline,
+:root[data-skin="snow"] .drop-hint,
+:root[data-skin="snow"] .start-in-label { color: var(--sl-ink-2); font: 12px var(--sl-font); text-shadow: var(--sl-emboss); }
+:root[data-skin="snow"] .start-open { height: 21px; min-width: 110px; }
+:root[data-skin="snow"] .start-in-seg > button { font-size: 11px; height: 20px; }
+:root[data-skin="snow"] .start-in-seg > button > svg { display: none; }
+:root[data-skin="snow"] .recent-list button { border-radius: 0; }
+
+/* The task pill: a small HUD */
+:root[data-skin="snow"] .task-pill { border: 0; border-radius: 6px; background: rgb(26 26 26 / 0.86); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.18), 0 6px 18px rgb(0 0 0 / 0.45); color: #fff; backdrop-filter: none; -webkit-backdrop-filter: none; font: 11px var(--sl-font); }
+:root[data-skin="snow"] .task-pill h2 { font: 11px var(--sl-font); }
+:root[data-skin="snow"] .toast-action { height: 18px; padding: 0 10px; border-radius: 9px; background: rgb(255 255 255 / 0.2); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.35); color: #fff; font: 11px var(--sl-font); }
+:root[data-skin="snow"] .toast-action:hover { background: rgb(255 255 255 / 0.3); }
+
+/* ---- The scan window: a utility panel, a small title bar ---- */
+:root[data-skin="snow"] .scan-dock {
+    border: 0;
+    border-radius: 5px;
+    background: var(--sl-face);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35), 0 10px 28px rgb(0 0 0 / 0.45);
+}
+:root[data-skin="snow"] .scan-dock-head {
+    position: relative;
+    justify-content: center;
+    height: 18px;
+    padding: 0 6px 0 46px;
+    border-radius: 5px 5px 0 0;
+    background: var(--sl-titlebar, linear-gradient(180deg, #e9e9e9, #d3d3d3));
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.6), inset 0 -1px 0 #9a9a9a;
+}
+:root[data-skin="snow"] .scan-dock-title { flex: 1; text-align: center; color: var(--sl-ink); font: 11px/18px var(--sl-font); text-shadow: var(--sl-emboss); }
+:root[data-skin="snow"] .scan-dock-head #scan-x,
+:root[data-skin="snow"] .scan-dock-head #scan-min {
+    position: absolute;
+    top: 3px;
+    width: 12px; height: 12px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: url(../snow/lights/close.svg) no-repeat center / 12px 13px;
+    box-shadow: none;
+}
+:root[data-skin="snow"] .scan-dock-head #scan-x { left: 7px; }
+:root[data-skin="snow"] .scan-dock-head #scan-min { left: 25px; background-image: url(../snow/lights/min.svg); }
+:root[data-skin="snow"] .scan-dock-head :is(#scan-x, #scan-min) > svg { display: none; }
+:root[data-skin="snow"] .scan-dock-head #scan-details { width: 18px; height: 14px; border-radius: 3px; color: var(--sl-ink-2); }
+:root[data-skin="snow"] .scan-dock-head #scan-details > svg { width: 11px; height: 11px; }
+:root[data-skin="snow"] .scan-sec { gap: 6px; padding: 10px 14px; }
+:root[data-skin="snow"] .scan-sec + :is(.scan-sec, .scan-adv) { border-top: 1px solid var(--sl-line); }
+:root[data-skin="snow"] .scan-sec-head { color: var(--sl-ink); font: 700 11px var(--sl-font); letter-spacing: 0; text-transform: none; }
+:root[data-skin="snow"] .scan-hint { color: var(--sl-ink-2); font: 11px/14px var(--sl-font); }
+:root[data-skin="snow"] .scan-dock-foot { justify-content: flex-end; gap: 10px; padding: 10px 14px 12px; border-top: 1px solid var(--sl-line); border-radius: 0 0 5px 5px; background: var(--sl-face); }
+
+/* A dialog taller than the window: its list scrolls; the head and the foot keep their size */
+:root[data-skin="snow"] :is(.dialog-head, .dialog-foot, .shortcuts-profiles, .settings-nav) { flex: none; }
+
+/* ---- The rest of the toolbar's buttons: any of them can be put on it ---- */
+:root[data-skin="snow"] #btn-scan { --g: url(glyphs/scan.svg); --l: "Scan"; }
+:root[data-skin="snow"] #btn-camera { --g: url(glyphs/camera.svg); --l: "Camera"; }
+:root[data-skin="snow"] #btn-adjust { --g: url(glyphs/adjust.svg); --l: "Adjust"; }
+:root[data-skin="snow"] #btn-paint { --g: url(glyphs/paint.svg); --l: "Paint"; }
+:root[data-skin="snow"] #btn-dupes { --g: url(glyphs/dupes.svg); --l: "Duplicates"; }
+:root[data-skin="snow"] #btn-fullscreen { --g: url(glyphs/fullscreen.svg); --l: "Full Screen"; }
+:root[data-skin="snow"] #btn-shortcuts { --g: url(glyphs/keys.svg); --l: "Shortcuts"; }
+:root[data-skin="snow"] #btn-whatsnew { --g: url(glyphs/whatsnew.svg); --l: "What\'s New"; }
+:root[data-skin="snow"] #btn-customize { --g: url(glyphs/settings.svg); --l: "Settings"; }
+:root[data-skin="snow"] #btn-toggle-fit { --g: url(glyphs/fit.svg); --l: "Fit"; }
+:root[data-skin="snow"] #btn-toggle-strip { --g: url(glyphs/strip.svg); --l: "Film Strip"; }
+
+/* A button with a second, smaller line (Export: USB drive · disc · copies) grows to hold it */
+:root[data-skin="snow"] .btn:has(> small) { height: auto; min-height: 21px; padding-top: 2px; padding-bottom: 2px; border-radius: 6px; flex-wrap: wrap; white-space: normal; }
+:root[data-skin="snow"] .btn > small { font-size: 10px; color: var(--sl-ink-2); }

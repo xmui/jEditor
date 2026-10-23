@@ -1,0 +1,284 @@
+/* ==========================================================================
+   1984: Crop, Adjust and Paint. Their heads are a line of round-rect
+   buttons under the title, like the Finder's info line; the mode switch is
+   a pop-up box with its shadow; Paint is MacPaint's way: the tools in a
+   palette of boxed cells, two across, the chosen one inverted, and the
+   picture on the grey desk. The photo stays in colour; the controls round
+   it are one bit (the histogram and the curve too).
+   ========================================================================== */
+
+:root[data-skin="mac84"] .mode-screen { background: #fff; }
+:root[data-skin="mac84"] .mode-head {
+    flex-wrap: nowrap;
+    min-height: 0;
+    height: 34px;
+    gap: 12px;
+    padding: 0 10px;
+    background: #fff;
+    border-bottom: 1px solid #000;
+    box-shadow: 0 2px 0 #fff, 0 3px 0 #000;
+    margin-bottom: 3px;
+}
+:root[data-skin="mac84"] :is(.adj-head, .paint-head) { justify-content: flex-start; padding-left: 120px; }
+:root[data-skin="mac84"] .crop-head { justify-content: flex-start; }
+:root[data-skin="mac84"] .mode-title,
+:root[data-skin="mac84"] :is(.crop-dims, .crop-tip, .crop-hint) { color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .adj-tag { border: 0; border-radius: 0; background: #000; color: #fff; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .mode-head-acts { right: 10px; gap: 8px; }
+:root[data-skin="mac84"] .mode-head-acts .btn.ghost { height: 20px; padding: 0 10px; border-radius: 7px; }
+:root[data-skin="mac84"] .mode-head-sep { width: 1px; height: 20px; margin: 0 2px; background: none; border-left: 1px dotted #000; }
+
+/* The mode switch: a pop-up box */
+:root[data-skin="mac84"] .mode-float.over-mode {
+    top: calc(var(--th-top, 0px) + 6px);
+    left: 10px;
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+:root[data-skin="mac84"] .mode-chip {
+    height: 22px;
+    gap: 6px;
+    margin: 0;
+    padding: 0 8px 0 6px;
+    border: 1px solid #000;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: 1px 1px 0 #000;
+    color: #000;
+    font: 12px var(--m-font);
+    filter: none;
+}
+:root[data-skin="mac84"] .mode-chip:hover { filter: none; }
+:root[data-skin="mac84"] .mode-chip[aria-expanded="true"] { background: #000; color: #fff; }
+:root[data-skin="mac84"] .mode-chip .i { width: 16px; height: 16px; }
+:root[data-skin="mac84"] .mode-chip .mode-chev { width: 9px; height: 5px; margin-left: 4px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='5' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h9L4.5 5z'/%3E%3C/svg%3E") no-repeat center; opacity: 1; }
+:root[data-skin="mac84"] .mode-chip[aria-expanded="true"] .mode-chev { filter: invert(1); }
+:root[data-skin="mac84"] .mode-chip .mode-chev path { display: none; }
+:root[data-skin="mac84"] .mode-menu { padding: 0; border: 1px solid #000; border-radius: 0; background: #fff; box-shadow: 1px 1px 0 #000; backdrop-filter: none; -webkit-backdrop-filter: none; }
+:root[data-skin="mac84"] .mode-mi { height: 18px; gap: 8px; padding: 0 12px 0 6px; border-radius: 0; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .mode-mi .i { width: 14px; height: 14px; color: inherit; }
+:root[data-skin="mac84"] .mode-mi:is(:hover, :focus-visible) { background: #000; color: #fff; outline: 0; }
+:root[data-skin="mac84"] .mode-mi.on { background: none; color: #000; }
+:root[data-skin="mac84"] .mode-mi.on .i { color: inherit; }
+:root[data-skin="mac84"] .mode-mi.on:is(:hover, :focus-visible) { background: #000; color: #fff; }
+:root[data-skin="mac84"] .mode-mi kbd { border: 0; background: none; padding: 0; color: inherit; font: 12px var(--m-font); }
+
+/* ---- Crop: the picture on the desk, the buttons along the foot ---- */
+:root[data-skin="mac84"] .crop-toolbar {
+    align-self: stretch;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    max-width: none;
+    margin: 0;
+    padding: 6px 10px;
+    border: 0;
+    border-top: 1px solid #000;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: none;
+    zoom: 1;
+}
+:root[data-skin="mac84"] .crop-row { flex-wrap: wrap; gap: 8px; }
+:root[data-skin="mac84"] .crop-row:not(.crop-row-straighten) { flex: 1; justify-content: flex-start; }
+:root[data-skin="mac84"] .crop-group { gap: 6px; }
+:root[data-skin="mac84"] .crop-spacer { flex: 1; }
+:root[data-skin="mac84"] .crop-sep { width: 0; height: 20px; border-left: 1px dotted #000; background: none; }
+:root[data-skin="mac84"] .crop-row .crop-group > .btn:not(.chip),
+:root[data-skin="mac84"] .crop-row > .btn { height: 22px; }
+:root[data-skin="mac84"] .crop-row .field { height: 22px; }
+:root[data-skin="mac84"] .crop-row .btn.icon { width: 30px; border-radius: 7px; }
+:root[data-skin="mac84"] .crop-btn > svg { display: none; }
+:root[data-skin="mac84"] .crop-btn.icon > svg { display: block; }
+:root[data-skin="mac84"] #crop-rot-left > svg,
+:root[data-skin="mac84"] #crop-rot-right > svg { display: none; }
+:root[data-skin="mac84"] #crop-rot-left { background: url(px/rotl.png) no-repeat center, #fff; }
+:root[data-skin="mac84"] #crop-rot-right { background: url(px/rotr.png) no-repeat center, #fff; }
+:root[data-skin="mac84"] :is(#crop-rot-left, #crop-rot-right):active { filter: invert(1); }
+:root[data-skin="mac84"] .crop-straighten { gap: 8px; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .crop-straighten input[type="range"]::-webkit-slider-runnable-track { height: 8px; border: 1px solid #000; border-radius: 0; background: var(--m-grey); }
+:root[data-skin="mac84"] .crop-straighten input[type="range"]::-webkit-slider-thumb { width: 10px; height: 14px; margin-top: -4px; border: 1px solid #000; border-radius: 0; background: #fff; box-shadow: none; }
+:root[data-skin="mac84"] #crop-angle-num { width: 50px; }
+:root[data-skin="mac84"] .crop-commit { gap: 12px; align-items: center; }
+:root[data-skin="mac84"] .crop-commit .btn,
+:root[data-skin="mac84"] #crop-cancel { min-width: 70px; }
+:root[data-skin="mac84"] .crop-zoom { gap: 0; padding: 0; border: 1px solid #000; border-radius: 0; background: #fff; box-shadow: 1px 1px 0 #000; backdrop-filter: none; -webkit-backdrop-filter: none; }
+:root[data-skin="mac84"] .crop-zoom-btn { height: 20px; min-width: 22px; border: 0; border-radius: 0; background: #fff; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .crop-zoom-btn + .crop-zoom-btn { border-left: 1px solid #000; }
+:root[data-skin="mac84"] .crop-zoom-btn:hover { background: #fff; }
+:root[data-skin="mac84"] .crop-zoom-btn:active { background: #000; color: #fff; }
+
+/* ---- Adjust and Paint: a panel down the right ---- */
+:root[data-skin="mac84"] .adj-panel,
+:root[data-skin="mac84"] .paint-panel {
+    padding: 4px 10px 12px;
+    border-left: 1px solid #000;
+    background: #fff;
+    font: 12px var(--m-font);
+    zoom: 1;
+}
+:root[data-skin="mac84"] .adj-sec,
+:root[data-skin="mac84"] .paint-sec { padding: 0 0 8px; border-bottom: 1px solid #000; }
+:root[data-skin="mac84"] .adj-sec > summary,
+:root[data-skin="mac84"] .paint-sec-head { min-height: 0; height: 24px; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .adj-sec > summary > span:first-child::before { margin: 0 6px 1px 1px; border-left: 6px solid #000; border-top-width: 5px; border-bottom-width: 5px; transition: none; }
+:root[data-skin="mac84"] .adj-sub { color: #000; font: 12px var(--m-font); text-decoration: underline; }
+:root[data-skin="mac84"] .adj-hist-box { padding-top: 6px; }
+:root[data-skin="mac84"] :is(.adj-panel, .paint-panel) .btn:not(.icon) { height: 18px; padding: 0 8px; border-radius: 6px; }
+:root[data-skin="mac84"] .adj-sec-acts { gap: 6px; }
+:root[data-skin="mac84"] .adj-mask-add { gap: 6px; }
+/* tabs: boxed cells side by side, the chosen one inverted */
+:root[data-skin="mac84"] .adj-tabs { gap: 0; padding: 0; border: 1px solid #000; border-radius: 0; background: #fff; }
+:root[data-skin="mac84"] .adj-tab {
+    min-width: 24px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    font: 12px var(--m-font);
+    box-shadow: none;
+}
+:root[data-skin="mac84"] .adj-tab + .adj-tab { border-left: 1px solid #000; }
+:root[data-skin="mac84"] .adj-tab:is([aria-selected="true"], [aria-pressed="true"]) { background: #000; color: #fff; box-shadow: none; }
+:root[data-skin="mac84"] .adj-look-tabs .adj-tab { padding: 0 1px; font-size: 11px; }
+/* the histogram and the curve, one bit */
+:root[data-skin="mac84"] .adj-hist { border: 1px solid #000; border-radius: 0; filter: grayscale(1) invert(1) contrast(1.6); }
+:root[data-skin="mac84"] .adj-levels,
+:root[data-skin="mac84"] .adj-curve { filter: grayscale(1) contrast(1.6); }
+:root[data-skin="mac84"] .adj-curve,
+:root[data-skin="mac84"] .adj-loupe { border: 1px solid #000; border-radius: 0; }
+:root[data-skin="mac84"] :is(.adj-read, .adj-hint, .adj-wheel-name) { color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .adj-looks { gap: 4px; }
+:root[data-skin="mac84"] .adj-look { padding: 3px; border: 0; border-radius: 0; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .adj-look canvas { border-radius: 0; box-shadow: 0 0 0 1px #000; }
+:root[data-skin="mac84"] .adj-look:hover { background: none; }
+:root[data-skin="mac84"] .adj-look[aria-pressed="true"] { border: 0; background: none; color: #000; }
+:root[data-skin="mac84"] .adj-look[aria-pressed="true"] span { align-self: center; padding: 0 3px; background: #000; color: #fff; }
+:root[data-skin="mac84"] .adj-rows { gap: 2px; }
+:root[data-skin="mac84"] .adj-label,
+:root[data-skin="mac84"] .adj-row.changed .adj-label { color: #000; }
+:root[data-skin="mac84"] .adj-row.changed .adj-label { text-decoration: underline; }
+:root[data-skin="mac84"] .adj-mix-row .adj-label::before { border-radius: 0; box-shadow: 0 0 0 1px #000; }
+:root[data-skin="mac84"] .adj-num { width: 46px; height: 18px; padding: 0 3px; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .adj-range { height: 16px; }
+:root[data-skin="mac84"] .adj-range::-webkit-slider-runnable-track,
+:root[data-skin="mac84"] .adj-row[style*="--track"] .adj-range::-webkit-slider-runnable-track { height: 8px; border: 1px solid #000; border-radius: 0; background: var(--m-grey); box-shadow: none; }
+:root[data-skin="mac84"] .adj-range::-webkit-slider-thumb { width: 10px; height: 14px; margin-top: -4px; border: 1px solid #000; border-radius: 0; background: #fff; box-shadow: none; }
+:root[data-skin="mac84"] .adj-range:active::-webkit-slider-thumb { background: #000; }
+:root[data-skin="mac84"] .adj-range:focus-visible { outline: 1px dotted #000; outline-offset: 1px; border-radius: 0; }
+:root[data-skin="mac84"] .adj-mask-list { gap: 0; border: 1px solid #000; }
+:root[data-skin="mac84"] .adj-mask-list:empty { display: none; }
+:root[data-skin="mac84"] .adj-mask-item { height: 18px; border: 0; border-radius: 0; background: #fff; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .adj-mask-item[aria-pressed="true"] { background: #000; color: #fff; }
+:root[data-skin="mac84"] .adj-check { gap: 6px; color: #000; }
+
+/* ---- Paint: MacPaint's palette, the desk round the picture ---- */
+:root[data-skin="mac84"] .paint-stage { background: var(--m-grey); }
+:root[data-skin="mac84"] .paint-options {
+    min-height: 0;
+    height: 28px;
+    gap: 16px;
+    padding: 0 10px;
+    border-top: 0;
+    border-bottom: 1px solid #000;
+    background: #fff;
+    color: #000;
+    font: 12px var(--m-font);
+    zoom: 1;
+}
+:root[data-skin="mac84"] .paint-opt { gap: 6px; color: #000; }
+:root[data-skin="mac84"] .paint-opt .paint-num { width: 2.8em; color: #000; }
+:root[data-skin="mac84"] .paint-opt input[type="range"] { width: 100px; }
+:root[data-skin="mac84"] .paint-opt :is(select, input[type="text"]) { height: 20px; min-width: 0; }
+:root[data-skin="mac84"] .paint-tools {
+    display: grid;
+    grid-template-columns: repeat(2, 26px);
+    grid-auto-rows: 22px;
+    align-content: start;
+    gap: 0;
+    margin: 8px;
+    padding: 0;
+    border: 1px solid #000;
+    border-right-width: 0;
+    border-bottom-width: 0;
+    background: #fff;
+    box-shadow: 1px 1px 0 #000;
+    align-self: flex-start;
+    zoom: 1;
+}
+:root[data-skin="mac84"] .paint-tool-sep { display: none; }
+:root[data-skin="mac84"] .paint-tool {
+    width: 26px;
+    height: 22px;
+    border: 0;
+    border-right: 1px solid #000;
+    border-bottom: 1px solid #000;
+    border-radius: 0;
+    background: #fff var(--ico, none) no-repeat center;
+}
+:root[data-skin="mac84"] .paint-tool > svg { display: none; }
+:root[data-skin="mac84"] .paint-tool:hover { background-color: #fff; }
+:root[data-skin="mac84"] .paint-tool[aria-pressed="true"] { border-color: #000; background-color: #fff; filter: invert(1); }
+:root[data-skin="mac84"] .paint-body { background: #fff; }
+:root[data-skin="mac84"] .paint-tool[data-tool="move"] { --ico: url(tools/move.png); }
+:root[data-skin="mac84"] .paint-tool[data-tool="rect-select"] { --ico: url(tools/rect-select.png); }
+:root[data-skin="mac84"] .paint-tool[data-tool="ellipse-select"] { --ico: url(tools/ellipse-select.png); }
+:root[data-skin="mac84"] .paint-tool[data-tool="lasso"] { --ico: url(tools/lasso.png); }
+:root[data-skin="mac84"] .paint-tool[data-tool="wand"] { --ico: url(tools/wand.png); }
+:root[data-skin="mac84"] .paint-tool[data-tool="brush"] { --ico: url(tools/brush.png); }
+:root[data-skin="mac84"] .paint-tool[data-tool="pencil"] { --ico: url(tools/pencil.png); }
+:root[data-skin="mac84"] .paint-tool[data-tool="spray"] { --ico: url(tools/spray.png); }
+:root[data-skin="mac84"] .paint-tool[data-tool="eraser"] { --ico: url(tools/eraser.png); }
+:root[data-skin="mac84"] .paint-tool[data-tool="fill"] { --ico: url(tools/fill.png); }
+:root[data-skin="mac84"] .paint-tool[data-tool="gradient"] { --ico: url(tools/gradient.png); }
+:root[data-skin="mac84"] .paint-tool[data-tool="line"] { --ico: url(tools/line.png); }
+:root[data-skin="mac84"] .paint-tool[data-tool="rect"] { --ico: url(tools/rect.png); }
+:root[data-skin="mac84"] .paint-tool[data-tool="ellipse"] { --ico: url(tools/ellipse.png); }
+:root[data-skin="mac84"] .paint-tool[data-tool="text"] { --ico: url(tools/text.png); }
+:root[data-skin="mac84"] .paint-tool[data-tool="picker"] { --ico: url(tools/picker.png); }
+:root[data-skin="mac84"] .paint-tool[data-tool="hand"] { --ico: url(tools/hand.png); }
+/* colours: square chips, black lines */
+:root[data-skin="mac84"] .paint-colors { gap: 8px; }
+:root[data-skin="mac84"] .paint-swatch { width: 28px; height: 28px; border: 1px solid #000; border-radius: 0; box-shadow: inset 0 0 0 1px #fff; }
+:root[data-skin="mac84"] .paint-bg { width: 24px; height: 24px; margin: 14px 0 0 -16px; }
+:root[data-skin="mac84"] .paint-fg { z-index: 1; box-shadow: inset 0 0 0 1px #fff, 1px 1px 0 #000; }
+:root[data-skin="mac84"] .paint-palette { gap: 0; border-top: 1px solid #000; border-left: 1px solid #000; }
+:root[data-skin="mac84"] .paint-palette button { border: 0; border-right: 1px solid #000; border-bottom: 1px solid #000; border-radius: 0; box-shadow: inset 0 0 0 1px #fff; }
+:root[data-skin="mac84"] .paint-palette button:active { box-shadow: inset 0 0 0 2px #000; }
+:root[data-skin="mac84"] .paint-layer-acts { gap: 2px; }
+:root[data-skin="mac84"] .paint-layer-acts .btn.icon { width: 20px; height: 18px; border: 0; border-radius: 0; }
+:root[data-skin="mac84"] .paint-layer-acts .btn.icon > svg { width: 13px; height: 13px; }
+:root[data-skin="mac84"] .paint-layer-acts .btn.icon:disabled { color: #000; opacity: 0.35; background: none; -webkit-background-clip: border-box; background-clip: border-box; }
+:root[data-skin="mac84"] .paint-layer-list { gap: 0; border: 1px solid #000; }
+:root[data-skin="mac84"] .paint-layer { min-height: 0; padding: 3px 4px; border: 0; border-radius: 0; background: #fff; color: #000; }
+:root[data-skin="mac84"] .paint-layer + .paint-layer { border-top: 1px dotted #000; }
+:root[data-skin="mac84"] .paint-layer[aria-selected="true"] { background: #000; color: #fff; }
+:root[data-skin="mac84"] .paint-layer canvas { border-radius: 0; box-shadow: 0 0 0 1px #000; }
+:root[data-skin="mac84"] .paint-layer[aria-selected="true"] canvas { box-shadow: 0 0 0 1px #fff; }
+:root[data-skin="mac84"] .paint-eye { color: inherit; }
+:root[data-skin="mac84"] .paint-photo-layer .paint-layer-name,
+:root[data-skin="mac84"] .paint-prop { color: #000; }
+
+/* ---- Duplicates ---- */
+:root[data-skin="mac84"] .dupes-sens { color: #000; font: 12px var(--m-font); gap: 8px; }
+:root[data-skin="mac84"] .wip-tag { border: 1px solid #000; border-radius: 0; background: #fff; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .dupes-foot { border-top: 1px solid #000; background: #fff; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .dupes-stage { background: #fff; }
+:root[data-skin="mac84"] .dupe-card { border-radius: 0; }
+:root[data-skin="mac84"] .dupe-card.marked { outline: 2px solid #000; }
+:root[data-skin="mac84"] .dupe-badge { border-radius: 0; border: 1px solid #000; background: #fff; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .dupes-message { color: #000; font: 12px var(--m-font); }
+
+/* ---- The strip of photos in Adjust and Paint: dithered like the rest ---- */
+:root[data-skin="mac84"] .mode-strip { gap: 8px; background: #fff; border-top: 1px solid #000; }
+:root[data-skin="mac84"] .mode-thumb { border-radius: 0; background: #fff; opacity: 1; box-shadow: 0 0 0 1px #000; }
+:root[data-skin="mac84"] .mode-thumb img { object-fit: contain; }
+:root[data-skin="mac84"] .mode-thumb.active { outline: 2px solid #000; outline-offset: 2px; }
+/* Under each colour wheel the slider fills its third, not the fixed width */
+:root[data-skin="mac84"] .adj-wheel-lum .adj-range { width: 100%; }

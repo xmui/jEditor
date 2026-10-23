@@ -30,12 +30,28 @@ Things a stylesheet can write in, kept up to date by `Themes.facts()`:
 `#btn-clear-selection[data-total]`, `#selection-count[data-n]`, and each
 grid tile's `data-name`.
 
+## Every part of the app
+
+A theme dresses all of jEditor, not only the photos: the dialogs and
+Settings, Crop, Adjust and Paint, the scan window, the menus and notes.
+Each theme keeps three kinds of file: its look for the main window
+(`luna.css` + `office.css`, `finder.css`), `controls.css` (buttons, fields,
+check boxes, sliders, dialogs, Settings, the small panels, the start page,
+the scan window) and `modes.css` (Crop, Adjust, Paint, Duplicates).
+
+`docs/themes-checklist.md` lists every part in every theme, what's done
+and what's wrong. `node design/themes/audit.js` writes it: run it after
+changing a theme, and tick what it can't check by hand.
+
 ## Bundled, and their licences
 
 - Tahoma (`xp/fonts`): Wine's, LGPL 2.1.
 - ChicagoFLF (`mac84/fonts`): public domain (Robin Casady).
 - Icons in `xp/icons`: from the Tango icon library, public domain (folders
   recoloured); `crop.svg`, `grid.svg`, `autocrop16.svg`, `more16.svg`,
-  `prev16.svg` and `next16.svg` drawn for jEditor.
-- `snow/glyphs`, `snow/icons`, `mac84/px`, `mac84/icons`: drawn for jEditor
-  (`design/themes/px.py` draws the one-bit ones).
+  `prev16.svg`, `next16.svg` and the PNGs for the other toolbar buttons
+  (`design/themes/px_xp.py`) drawn for jEditor. `xp/tools`: Paint's tools,
+  drawn for jEditor (`px_xp.py`).
+- `snow/glyphs`, `snow/icons`, `mac84/px`, `mac84/icons`, `mac84/tools`:
+  drawn for jEditor (`design/themes/px.py` draws the one-bit ones,
+  `glyphs.py` the newer Snow Leopard glyphs).

@@ -23,23 +23,23 @@ const Themes = {
             id: 'xp', name: 'Windows XP', year: 2005, skin: 'xp', layout: 'docked', title: 'windows',
             menus: ['File', 'Edit', 'View', 'Picture', 'Tools', 'Help'],
             variants: [
-                { id: 'royale', name: 'Royale', mode: 'light', swatch: '#2a68dc', css: ['xp/luna.css', 'xp/office.css', 'xp/royale.css'] },
-                { id: 'noir', name: 'Royale Noir', mode: 'light', swatch: '#3a3a3a', css: ['xp/luna.css', 'xp/office.css', 'xp/royale.css', 'xp/noir.css'] },
-                { id: 'red', name: 'Royale Red', mode: 'light', swatch: '#c64242', css: ['xp/luna.css', 'xp/office.css', 'xp/royale.css', 'xp/red.css'] }
+                { id: 'royale', name: 'Royale', mode: 'light', swatch: '#2a68dc', css: ['xp/luna.css', 'xp/office.css', 'xp/controls.css', 'xp/modes.css', 'xp/royale.css'] },
+                { id: 'noir', name: 'Royale Noir', mode: 'light', swatch: '#3a3a3a', css: ['xp/luna.css', 'xp/office.css', 'xp/controls.css', 'xp/modes.css', 'xp/royale.css', 'xp/noir.css'] },
+                { id: 'red', name: 'Royale Red', mode: 'light', swatch: '#c64242', css: ['xp/luna.css', 'xp/office.css', 'xp/controls.css', 'xp/modes.css', 'xp/royale.css', 'xp/red.css'] }
             ]
         },
         {
             id: 'snow', name: 'Snow Leopard', year: 2009, skin: 'snow', layout: 'docked', title: 'mac',
             variants: [
-                { id: 'finder', name: 'Finder', mode: 'light', swatch: '#c9ced6', css: ['snow/finder.css'] },
-                { id: 'aperture', name: 'Aperture', mode: 'dark', swatch: '#3a3a3a', css: ['snow/finder.css', 'snow/aperture.css'] }
+                { id: 'finder', name: 'Finder', mode: 'light', swatch: '#c9ced6', css: ['snow/finder.css', 'snow/controls.css', 'snow/modes.css'] },
+                { id: 'aperture', name: 'Aperture', mode: 'dark', swatch: '#3a3a3a', css: ['snow/finder.css', 'snow/controls.css', 'snow/modes.css', 'snow/aperture.css'] }
             ]
         },
         {
             id: 'mac84', name: '1984', year: 1984, skin: 'mac84', layout: 'docked', title: 'mac',
             menus: ['File', 'Edit', 'View', 'Photo', 'Special'],
             variants: [
-                { id: 'finder', name: 'Finder', mode: 'light', swatch: '#000000', css: ['mac84/finder.css'] }
+                { id: 'finder', name: 'Finder', mode: 'light', swatch: '#000000', css: ['mac84/finder.css', 'mac84/controls.css', 'mac84/modes.css'] }
             ],
             settings: [
                 {
@@ -532,7 +532,7 @@ const Dither = {
 
     run(sizes) {
         if (document.documentElement.dataset.tsThumbs !== 'dither') { this.undo(); return; }
-        for (const im of document.querySelectorAll('#grid-view .grid-item img, #thumbnail-strip .thumb-item img')) {
+        for (const im of document.querySelectorAll('#grid-view .grid-item img, #thumbnail-strip .thumb-item img, #mode-strip .mode-thumb img')) {
             const done = im.dataset.undithered && im.src.startsWith('data:');
             if (done) {
                 // Shown at a new size: again, from its own thumbnail

@@ -98,7 +98,8 @@
 
 /* ---- Tools along the top, as a palette's cells ---- */
 :root[data-skin="mac84"] header {
-    height: 34px;
+    height: auto;
+    min-height: 34px;
     align-items: center;
     padding: 0 8px;
     background: #fff;
@@ -493,7 +494,7 @@
 /* the outline would box the letterbox too: frame the picture instead */
 :root[data-skin="mac84"]:not([data-ts-thumbs="dither"]) .grid-item img { outline: 0; filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000); }
 :root[data-skin="mac84"][data-ts-thumbs="grey"] .grid-item img { filter: grayscale(1) contrast(1.08) drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000); }
-:root[data-skin="mac84"][data-ts-thumbs="grey"] .thumb-item img { filter: grayscale(1) contrast(1.08); }
+:root[data-skin="mac84"][data-ts-thumbs="grey"] :is(.thumb-item, .mode-thumb) img { filter: grayscale(1) contrast(1.08); }
 /* Chosen: inverted in black and white, as the Finder did; in colour a heavy frame instead */
 :root[data-skin="mac84"][data-ts-thumbs="grey"] .grid-item.selected img { filter: grayscale(1) contrast(1.08) invert(1) drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000); }
 :root[data-skin="mac84"][data-ts-thumbs="colour"] .grid-item.selected img { filter: drop-shadow(2px 0 0 #000) drop-shadow(-2px 0 0 #000) drop-shadow(0 2px 0 #000) drop-shadow(0 -2px 0 #000) drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000); }

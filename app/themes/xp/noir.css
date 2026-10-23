@@ -33,6 +33,16 @@
     --xp-hilite: #1e8a7c;
     --r-thumb: linear-gradient(90deg, #e9eeee 0%, #ccd6d5 46%, #aebcbb 50%, #c6d1d0 100%);
     --r-thumb-edge: #7d8b8a;
+    --r-frame-solid: #141a1a;
+    --xp-btn-border: #3e4747;
+    --xp-btn: linear-gradient(180deg, #ffffff 0%, #f6f7f7 44%, #e8ebeb 50%, #dde1e1 100%);
+    --xp-btn-down: linear-gradient(180deg, #d4dada 0%, #e1e5e5 50%, #eef0f0 100%);
+    --xp-btn-hot: inset 0 0 0 1px #fff, inset 0 0 3px 2px #7fd6c8;
+    --xp-btn-default: inset 0 0 0 1px #fff, inset 0 0 0 2px #6cc5b7;
+    --xp-thumb: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='21'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23ffffff'/%3E%3Cstop offset='1' stop-color='%23dde3e3'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M1.5.5h8a1 1 0 0 1 1 1v13.3l-5 5.4-5-5.4V1.5a1 1 0 0 1 1-1z' fill='url(%23g)' stroke='%234a5655'/%3E%3Cpath d='M1.5 2v12.5M9.5 2v12.5' stroke='%23fff' stroke-opacity='.8'/%3E%3Cpath d='M1.6 15.4l3.9 4.2 3.9-4.2' fill='none' stroke='%235fc2b2'/%3E%3C/svg%3E");
+    --xp-thumb-hot: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='21'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23ffffff'/%3E%3Cstop offset='1' stop-color='%23cdeee8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M1.5.5h8a1 1 0 0 1 1 1v13.3l-5 5.4-5-5.4V1.5a1 1 0 0 1 1-1z' fill='url(%23g)' stroke='%231b8f80'/%3E%3Cpath d='M1.5 2v12.5M9.5 2v12.5' stroke='%23fff' stroke-opacity='.8'/%3E%3Cpath d='M1.6 15.4l3.9 4.2 3.9-4.2' fill='none' stroke='%233fbfa9'/%3E%3C/svg%3E");
+    --o-glyph: #263030;
+    --xp-groupbox: #13695f;
 }
 /* light text on the dark bars: the label in the status bar, the folder name */
 :root[data-skin="xp"] .grid-controls,

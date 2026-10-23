@@ -32,12 +32,14 @@
     --o-text: #fff;
     --o-text-shadow: 0 1px 1px rgb(90 10 10 / 0.75);
     --xp-hilite: #c63232;
+    --r-frame-solid: #b03838;
+    --xp-groupbox: #a82c2c;
     /* Royale's controls, untouched */
     --r-thumb: linear-gradient(90deg, #f2f7ff 0%, #e2efff 45%, #cfe0f7 55%, #c1d5ed 100%);
     --r-thumb-edge: #8ea2ba;
 }
 /* The window edge: three lines, a pale one between two reds */
-:root[data-skin="xp"] .interface {
+:root[data-skin="xp"] :is(.interface, .mode-screen, .drop-zone) {
     border: 3px double #e64f4f;
     border-top: 0;
     border-image: none;

@@ -252,8 +252,10 @@ const Scan = {
         const place = (x, y) => {
             panel.style.removeProperty('--dock-max');
             const r = panel.getBoundingClientRect();
+            // Below a theme's title bar and menu bar (themes.js)
+            const top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--th-top')) || 0;
             x = Math.max(4, Math.min(innerWidth - r.width - 4, x));
-            y = Math.max(4, Math.min(innerHeight - r.height - 4, y));
+            y = Math.max(top + 4, Math.min(innerHeight - r.height - 4, y));
             Object.assign(panel.style, { left: `${x}px`, top: `${y}px`, right: 'auto', bottom: 'auto' });
             panel.style.setProperty('--dock-max', `${innerHeight - y - 4}px`);
             return { x, y };

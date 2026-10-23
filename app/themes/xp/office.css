@@ -76,7 +76,8 @@
 :root[data-skin="xp"] header .toolbar,
 :root[data-skin="xp"] header .file-info {
     position: relative;
-    height: 26px;
+    height: auto;
+    min-height: 26px;
     padding: 0 6px 0 12px;
     gap: 0;
     border: 0;
@@ -301,14 +302,29 @@
     border-left: 1px solid var(--o-line);
 }
 :root[data-skin="xp"] .sel-count > svg { display: none; }
-:root[data-skin="xp"] .sel-count::before { content: "Edit Pictures"; }
+/* the title, then how many are selected under it, both inside the button */
+:root[data-skin="xp"] .sel-count {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 0;
+    border-bottom: 0;
+    background-position: right 8px top 9px;
+}
+:root[data-skin="xp"] .sel-count::before {
+    content: "Edit Pictures";
+    display: flex;
+    align-items: center;
+    flex: 1 0 100%;
+    height: 26px;
+    padding: 0 8px;
+    box-sizing: border-box;
+    border-bottom: 1px solid var(--o-pane-line);
+}
 :root[data-skin="xp"] .sel-count #selection-count {
-    position: absolute;
-    top: 38px; left: 10px;
+    padding: 11px 10px 8px;
     font: 11px var(--xp-font);
     color: #444;
 }
-:root[data-skin="xp"] .sel-count { position: relative; margin-bottom: 30px; }
 :root[data-skin="xp"] .selection-bar .tb-sep {
     display: block;
     width: auto; height: auto;
@@ -411,15 +427,7 @@
 }
 :root[data-skin="xp"] .grid-controls::before { content: "Zoom"; margin-right: 8px; }
 :root[data-skin="xp"] .slider-group > svg { display: none; }
-:root[data-skin="xp"] input[type="range"] { appearance: none; width: 120px; height: 18px; background: transparent; }
-:root[data-skin="xp"] input[type="range"]::-webkit-slider-runnable-track { height: 3px; border: 1px solid var(--o-line); background: #fff; }
-:root[data-skin="xp"] input[type="range"]::-webkit-slider-thumb {
-    appearance: none;
-    width: 9px; height: 16px;
-    margin-top: -8px;
-    border: 1px solid var(--o-hot-edge);
-    background: var(--o-hot);
-}
+:root[data-skin="xp"] .grid-controls input[type="range"] { appearance: none; width: 120px; background: transparent; }
 
 /* Single picture: the viewer's buttons under the photo, icons only */
 :root[data-skin="xp"] .controls { gap: 2px; border-top: 1px solid var(--o-line); background: var(--o-bar); }

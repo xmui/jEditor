@@ -847,7 +847,9 @@ body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
 .header-controls.expanded:not(.vertical) {
     flex-wrap: wrap;
     justify-content: flex-end;
-    width: var(--hc-w, auto);
+    /* at least four across: with most of them under More, the pill was only
+       as wide as More itself and they ran down off the window in a column */
+    width: max(var(--hc-w, 0px), min(calc(4 * var(--ctl-lg) + 8px), calc(100vw - 2 * var(--gutter))));
     height: auto;
     min-height: var(--ctl-lg);
     padding: 3px var(--sp-1);
@@ -2956,6 +2958,12 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 }
 
 /* While a theme's stylesheets come in: nothing, rather than jEditor's own look first */
+/* What a theme decides for itself (its colours, glass, sizes, layout):
+   not offered while one is on */
+:root[data-skin] .set-own-look {
+    display: none;
+}
+
 :root.theme-loading :is(.interface, #th-top) {
     visibility: hidden;
 }
@@ -2975,8 +2983,12 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     padding-top: var(--th-top, 0px);
 }
 
-:root.th-top :is(.mode-screen, .drop-zone) {
+:root.th-top :is(.mode-screen, .drop-zone, .dialog-overlay) {
     top: var(--th-top, 0px);
+}
+
+:root.th-top .scan-dock {
+    max-height: var(--dock-max, calc(100vh - var(--th-top, 0px) - 2 * var(--gutter) - 64px));
 }
 
 :root.th-top .mode-float.over-mode {
@@ -4228,6 +4240,7 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 .adj-sec-head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: var(--sp-2);
@@ -4684,6 +4697,15 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     width: 110px;
 }
 
+/* A tool's hint gives way first, shortened with … (all of it on hover) */
+.paint-hint {
+    display: block;
+    flex: 1 1 0;
+    min-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .paint-opt .paint-num {
     width: 3.5em;
     color: var(--text-1);
@@ -4801,7 +4823,15 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 .paint-layer-acts {
     display: inline-flex;
-    gap: 2px;
+    flex: none;
+}
+
+/* Six buttons beside the word: with a wider font (Linux) the word gives way */
+.paint-sec-head > span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .paint-import {
@@ -5327,6 +5357,35 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     background: var(--seg-active);
     color: var(--text-1);
     box-shadow: var(--shadow-1);
+}
+
+/* The words never spill out of their button: when the sidebar is narrow
+   (a small window, comfortable density, larger system text) the switch
+   first draws closer, then leaves out its icons, and only then shortens
+   a word (a query on the switch itself: one on the sidebar would make it
+   the box everything fixed inside it is placed in) */
+.mode-seg {
+    container: modes / inline-size;
+}
+
+.mode-seg > button span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@container modes (width < 254px) {
+    .mode-seg > button {
+        gap: 4px;
+        padding: 0 var(--sp-1);
+    }
+}
+
+@container modes (width < 220px) {
+    .mode-seg > button .i {
+        display: none;
+    }
 }
 
 .mode-chip {
@@ -7391,7 +7450,11 @@ button.sb-card-name:focus-visible .sb-card-edit {
 }
 
 .sb-card-export > span {
+    min-width: 0;
     margin-left: auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--text-2);
     font-weight: normal;
 }

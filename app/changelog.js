@@ -6,6 +6,17 @@
 
 const CHANGELOG = [
     {
+        version: '1.46.1', date: '2026-10-23', beta: true,
+        items: [
+            'Themes reach every part of jEditor, not just the main window: dialogs, Settings, Crop, Adjust, Paint, Duplicates, the scan window, Info and Undo history, each built the way that era\'s apps built theirs. In Windows XP Royale, dialogs are XP windows, Settings is a property sheet with tabs, and Adjust and Paint have Office 2003 command bars and task panes. In Snow Leopard, dialogs are sheets, Settings is a Preferences window, Info and Undo history are HUD panels, and Adjust and Paint have an inspector. In 1984, Paint is MacPaint\'s palette of one-bit tools.',
+            'Every toolbar button has its own icon in each theme, including Scan, Camera, Adjust, Paint, Duplicates, Full screen, Settings and What\'s new.',
+            'Photos · Adjust · Paint at the top of the sidebar no longer gets cut off in a narrow window or with a wider font: it tightens, then leaves out its icons, so the words fit.',
+            'A full toolbar wraps instead of running off the edge, and More opens at least four buttons across.',
+            'In Paint, the layer buttons stay inside the panel, and a long hint shortens with … instead of pushing the options off screen.',
+            'In Adjust, a section\'s buttons (such as Auto color) move under its name when there isn\'t room beside it.'
+        ]
+    },
+    {
         version: '1.46.0', date: '2026-10-22', beta: true,
         items: [
             'Turn upright (`Shift+U`, or the right-click menu) turns photos the right way up: jEditor\'s own small network looks at each one and turns it only when it\'s sure, and one `Ctrl+Z` undoes them all. The scan window does it to each photo as it comes in (Turn upright, on to start with), turning each back with its front.',
