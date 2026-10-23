@@ -18,13 +18,13 @@ Checked 2026-10-23.
 | A menu, open | — | — | — | — | — | ✓ | ✓ | ✓ | — | — | ✓ |
 | Toolbar | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Toolbar, with every button on it | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Toolbar, with every button under More | ⚠ 3 | ⚠ 2 | — | ⚠ 1 | ⚠ 1 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Toolbar, with every button under More | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Folder bar and search | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Folder list | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠ 1 | ⚠ 1 | ⚠ 1 |
+| Folder list | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Photos · Adjust · Paint, sidebar open | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | — | — | — |
 | Photos · Adjust · Paint chip, sidebar closed | ✓ | ✓ | — | ✓ | ✓ | — | — | — | — | — | — |
 | Thumbnails | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| What's selected (pane or foot bar) | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠ 1 | ⚠ 1 | ⚠ 1 | ✓ | ✓ | ✓ |
+| What's selected (pane or foot bar) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Thumbnail size | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Photo | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Previous, rotate, next | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -56,7 +56,7 @@ Checked 2026-10-23.
 | New blank image | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Keyboard shortcuts | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | What's new | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Scan window | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Scan window | ✓ | — | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ## Duplicates
 
@@ -71,7 +71,7 @@ Checked 2026-10-23.
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | Head | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Zoom | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Tools along the foot | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠ 1 | ⚠ 1 | ⚠ 2 |
+| Tools along the foot | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ## Adjust
 
@@ -82,7 +82,7 @@ Checked 2026-10-23.
 | Mode switch menu | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Histogram, levels, looks | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Sliders, curve, mixer, grading, masks, spots, detail | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Strip of photos | ⚠ 3 | ⚠ 3 | ⚠ 3 | ⚠ 3 | ⚠ 3 | ⚠ 3 | ⚠ 3 | ⚠ 3 | ⚠ 3 | ⚠ 3 | ⚠ 3 |
+| Strip of photos | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ## Paint
 
@@ -90,7 +90,7 @@ Checked 2026-10-23.
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | Head and its buttons | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Tool options (brush) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Tool options (text) | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠ 1 | ⚠ 1 | ⚠ 1 | ✓ | ✓ | ✓ |
+| Tool options (text) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Tools | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Colours and layers | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
@@ -133,86 +133,44 @@ What the script can't see. Tick each on the real app.
 
 ### Windows
 
-- **Main window · Toolbar, with every button under More** (1024×640) off screen: button#btn-customize "Settings" is cut off by body
-- **Main window · Toolbar, with every button under More** (800×600, comfortable) off screen: button#btn-shortcuts "Keyboard shortcuts" is cut off by body
-- **Main window · Toolbar, with every button under More** (800×600, comfortable) off screen: button#btn-whatsnew "What's new" is cut off by body
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Snow line.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Station.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Valley.jpg" shows nothing
+None.
 
 ### Mac
 
-- **Main window · Toolbar, with every button under More** (800×600, comfortable) off screen: button#btn-whatsnew "What's new" is cut off by body
-- **Main window · Toolbar, with every button under More** (800×600, comfortable) off screen: button#btn-customize "Settings" is cut off by body
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Snow line.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Station.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Valley.jpg" shows nothing
+None.
 
 ### Mac, macOS 26
 
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Snow line.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Station.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Valley.jpg" shows nothing
+None.
 
 ### Linux
 
-- **Main window · Toolbar, with every button under More** (800×600, comfortable) off screen: button#btn-customize "Settings" is cut off by body
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Snow line.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Station.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Valley.jpg" shows nothing
+None.
 
 ### Web
 
-- **Main window · Toolbar, with every button under More** (800×600, comfortable) off screen: button#btn-customize "Settings" is cut off by body
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Snow line.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Station.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Valley.jpg" shows nothing
+None.
 
 ### Royale
 
-- **Main window · What's selected (pane or foot bar)** (1280×800) spills: span#selection-count "1 selected" spills 25px out of button#btn-clear-selection "Clear the selection"
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Snow line.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Station.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Valley.jpg" shows nothing
-- **Paint · Tool options (text)** (800×600, comfortable) off screen: span.paint-opt "Click where the text goes; Ctrl+Enter pu" is cut off by body
+None.
 
 ### Noir
 
-- **Main window · What's selected (pane or foot bar)** (1280×800) spills: span#selection-count "1 selected" spills 25px out of button#btn-clear-selection "Clear the selection"
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Snow line.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Station.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Valley.jpg" shows nothing
-- **Paint · Tool options (text)** (800×600, comfortable) off screen: span.paint-opt "Click where the text goes; Ctrl+Enter pu" is cut off by body
+None.
 
 ### Red
 
-- **Main window · What's selected (pane or foot bar)** (1280×800) spills: span#selection-count "1 selected" spills 25px out of button#btn-clear-selection "Clear the selection"
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Snow line.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Station.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Valley.jpg" shows nothing
-- **Paint · Tool options (text)** (800×600, comfortable) off screen: span.paint-opt "Click where the text goes; Ctrl+Enter pu" is cut off by body
+None.
 
 ### Finder
 
-- **Main window · Folder list** (1280×800) spills: span "USB drive · disc · copies" spills 15px out of button.btn.secondary "Copy it to a USB drive or card, burn it "
-- **Crop · Tools along the foot** (800×600, comfortable) off screen: button#crop-save "Save (Enter)" is cut off by body
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Snow line.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Station.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Valley.jpg" shows nothing
+None.
 
 ### Aperture
 
-- **Main window · Folder list** (1280×800) spills: span "USB drive · disc · copies" spills 15px out of button.btn.secondary "Copy it to a USB drive or card, burn it "
-- **Crop · Tools along the foot** (800×600, comfortable) off screen: button#crop-save "Save (Enter)" is cut off by body
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Snow line.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Station.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Valley.jpg" shows nothing
+None.
 
 ### 1984
 
-- **Main window · Folder list** (1280×800) spills: span "USB drive · disc · copies" spills 35px out of button.btn.secondary "Copy it to a USB drive or card, burn it "
-- **Crop · Tools along the foot** (800×600, comfortable) off screen: button#crop-save-next "Save, then crop the next photo (Shift+En" is cut off by body
-- **Crop · Tools along the foot** (800×600, comfortable) off screen: button#crop-save "Save (Enter)" is cut off by body
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Snow line.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Station.jpg" shows nothing
-- **Adjust · Strip of photos** (800×600, comfortable) no icon: button.mode-thumb "Valley.jpg" shows nothing
+None.
