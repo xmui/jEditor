@@ -198,8 +198,8 @@ const pageAudit = ({ sel, font }) => {
                 const ox = cs.overflowX, oy = cs.overflowY;
                 if (ox === 'visible' && oy === 'visible') continue;
                 const ar = a.getBoundingClientRect();
-                const out = r.left < ar.left - 1 || r.right > ar.right + 1 || r.top < ar.top - 1 || r.bottom > ar.bottom + 1;
-                if (!out) continue;
+                const outside = r.left < ar.left - 1 || r.right > ar.right + 1 || r.top < ar.top - 1 || r.bottom > ar.bottom + 1;
+                if (!outside) continue;
                 if (/auto|scroll/.test(ox + oy) && (a.scrollWidth > a.clientWidth + 1 || a.scrollHeight > a.clientHeight + 1)) {
                     // Only reached by scrolling a panel sideways: a fault, unless the box
                     // is a strip made to scroll that way (the film strip, the photos' strip)

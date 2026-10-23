@@ -5354,9 +5354,10 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 /* The words never spill out of their button: when the sidebar is narrow
    (a small window, comfortable density, larger system text) the switch
    first draws closer, then leaves out its icons, and only then shortens
-   a word */
-.folder-rail {
-    container: rail / inline-size;
+   a word (a query on the switch itself: one on the sidebar would make it
+   the box everything fixed inside it is placed in) */
+.mode-seg {
+    container: modes / inline-size;
 }
 
 .mode-seg > button span {
@@ -5366,14 +5367,14 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     white-space: nowrap;
 }
 
-@container rail (width < 270px) {
+@container modes (width < 254px) {
     .mode-seg > button {
         gap: 4px;
         padding: 0 var(--sp-1);
     }
 }
 
-@container rail (width < 236px) {
+@container modes (width < 220px) {
     .mode-seg > button .i {
         display: none;
     }
