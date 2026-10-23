@@ -4823,7 +4823,15 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 .paint-layer-acts {
     display: inline-flex;
-    gap: 2px;
+    flex: none;
+}
+
+/* Six buttons beside the word: with a wider font (Linux) the word gives way */
+.paint-sec-head > span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .paint-import {
@@ -7442,7 +7450,11 @@ button.sb-card-name:focus-visible .sb-card-edit {
 }
 
 .sb-card-export > span {
+    min-width: 0;
     margin-left: auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--text-2);
     font-weight: normal;
 }

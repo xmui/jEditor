@@ -90,6 +90,10 @@
 :root[data-skin="snow"] .btn.danger-text { color: var(--sl-ink); }
 /* Small ones (Cocoa's "small" size) */
 :root[data-skin="snow"] .btn.sm:is(.secondary, .primary) { height: 18px; padding: 0 10px; border-radius: 9px; font-size: 11px; }
+/* The project card's row: Scan, Explorer, then the two small glyph buttons, on one line */
+:root[data-skin="snow"] .sb-card-btns { align-items: center; gap: 4px; }
+:root[data-skin="snow"] .sb-card-btns .btn.sm:is(.secondary, .primary) { flex: none; gap: 4px; padding: 0 8px; }
+:root[data-skin="snow"] .sb-card-btns .btn.sm > svg { width: 12px; height: 12px; }
 /* A toggle chip: a round textured button that stays in */
 :root[data-skin="snow"] .btn.chip {
     height: 20px;

@@ -280,3 +280,5 @@
 :root[data-skin="mac84"] .mode-thumb { border-radius: 0; background: #fff; opacity: 1; box-shadow: 0 0 0 1px #000; }
 :root[data-skin="mac84"] .mode-thumb img { object-fit: contain; }
 :root[data-skin="mac84"] .mode-thumb.active { outline: 2px solid #000; outline-offset: 2px; }
+/* Under each colour wheel the slider fills its third, not the fixed width */
+:root[data-skin="mac84"] .adj-wheel-lum .adj-range { width: 100%; }

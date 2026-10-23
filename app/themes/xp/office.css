@@ -302,15 +302,29 @@
     border-left: 1px solid var(--o-line);
 }
 :root[data-skin="xp"] .sel-count > svg { display: none; }
-:root[data-skin="xp"] .sel-count::before { content: "Edit Pictures"; }
+/* the title, then how many are selected under it, both inside the button */
+:root[data-skin="xp"] .sel-count {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 0;
+    border-bottom: 0;
+    background-position: right 8px top 9px;
+}
+:root[data-skin="xp"] .sel-count::before {
+    content: "Edit Pictures";
+    display: flex;
+    align-items: center;
+    flex: 1 0 100%;
+    height: 26px;
+    padding: 0 8px;
+    box-sizing: border-box;
+    border-bottom: 1px solid var(--o-pane-line);
+}
 :root[data-skin="xp"] .sel-count #selection-count {
-    pointer-events: none;
-    position: absolute;
-    top: 38px; left: 10px;
+    padding: 11px 10px 8px;
     font: 11px var(--xp-font);
     color: #444;
 }
-:root[data-skin="xp"] .sel-count { position: relative; margin-bottom: 30px; }
 :root[data-skin="xp"] .selection-bar .tb-sep {
     display: block;
     width: auto; height: auto;

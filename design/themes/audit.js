@@ -204,7 +204,8 @@ const pageAudit = ({ sel, font }) => {
                     // Only reached by scrolling a panel sideways: a fault, unless the box
                     // is a strip made to scroll that way (the film strip, the photos' strip)
                     const sideways = r.left < ar.left - 1 || r.right > ar.right + 1;
-                    if (sideways && oy !== 'hidden' && a.scrollWidth > a.clientWidth + 1) out.push(['off screen', `${what} only fits by scrolling ${name(a).split(' ')[0]} sideways`]);
+                    const strip = oy === 'hidden' || ar.width > 3 * ar.height; // a row made to scroll
+                    if (sideways && !strip && a.scrollWidth > a.clientWidth + 1) out.push(['off screen', `${what} only fits by scrolling ${name(a).split(' ')[0]} sideways`]);
                     scrolls = true;
                     break;
                 }
