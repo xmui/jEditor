@@ -14,7 +14,9 @@ Checked 2026-10-23.
 | Title bar | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Menu bar | — | ✓ | ✓ | ✓ | — | — | ✓ |
 | A menu, open | — | ✓ | ✓ | ✓ | — | — | ✓ |
-| Toolbar | ✓ | ⚠ 1 | ⚠ 1 | ⚠ 1 | ✓ | ✓ | ⚠ 1 |
+| Toolbar | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Toolbar, with every button on it | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Toolbar, with every button under More | ✓ | ⚠ 15 | ⚠ 15 | ⚠ 15 | ⚠ 5 | ⚠ 5 | ✓ |
 | Folder bar and search | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Folder list | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Thumbnails | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -24,7 +26,7 @@ Checked 2026-10-23.
 | Previous, rotate, next | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Film strip | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Status bar | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Right-click menu | ⚠ 5 | ⚠ 5 | ⚠ 5 | ⚠ 5 | ⚠ 5 | ⚠ 5 | ⚠ 5 |
+| Right-click menu | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Note (toast) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Info | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Undo history | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -34,7 +36,7 @@ Checked 2026-10-23.
 
 | Part | jEditor | Royale | Noir | Red | Finder | Aperture | 1984 |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| Window and pages | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠ 1 |
+| Window and pages | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Theme gallery | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Rows, switches, lists | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
@@ -44,13 +46,13 @@ Checked 2026-10-23.
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | Are you sure? | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | A name to type | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Rename | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠ 1 |
-| Export | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠ 1 |
-| Move to… | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠ 1 |
-| New blank image | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠ 1 |
-| Keyboard shortcuts | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠ 1 |
-| What's new | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠ 1 |
-| Scan window | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠ 1 |
+| Rename | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Export | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Move to… | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| New blank image | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Keyboard shortcuts | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| What's new | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Scan window | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ## Duplicates
 
@@ -74,8 +76,8 @@ Checked 2026-10-23.
 | Head and its buttons | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Mode switch | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Mode switch menu | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Histogram, levels, looks | ⚠ 13 | ⚠ 4 | ⚠ 4 | ⚠ 4 | ⚠ 3 | ⚠ 3 | ⚠ 11 |
-| Sliders, curve, mixer, grading, masks, spots, detail | ⚠ 5 | ⚠ 3 | ⚠ 3 | ⚠ 3 | ⚠ 1 | ⚠ 1 | ⚠ 3 |
+| Histogram, levels, looks | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Sliders, curve, mixer, grading, masks, spots, detail | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Strip of photos | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ## Paint
@@ -112,129 +114,78 @@ What the script can't see. Tick each in every theme on the real app.
 
 ### jEditor
 
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-red "Red label (1)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-yellow "Yellow label (2)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-green "Green label (3)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-blue "Blue label (4)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-purple "Purple label (5)" shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.adj-tab shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.adj-tab shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.adj-tab shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.btn.secondary "A gradient across the photo: full where " shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.btn.secondary "An oval, feathered at its edge: drag out" shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.btn.secondary "Paint the mask on" shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.btn.secondary "Find the sky in the photo (touch it up w" shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.btn.secondary "Find the photo's subject (touch it up wi" shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button#adj-spot-heal "Heal: texture from nearby, blended into " shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button#adj-spot-clone "Clone: copied from nearby exactly" shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button#adj-spot-delete shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button#adj-dust-find "Put a heal spot on every speck of dust f" shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button#adj-dust-clear "Take off the spots Find dust put on" shows nothing
-- **Adjust · Sliders, curve, mixer, grading, masks, spots, detail** (1280×800) no icon: button#adj-spot-heal "Heal: texture from nearby, blended into " shows nothing
-- **Adjust · Sliders, curve, mixer, grading, masks, spots, detail** (1280×800) no icon: button#adj-spot-clone "Clone: copied from nearby exactly" shows nothing
-- **Adjust · Sliders, curve, mixer, grading, masks, spots, detail** (1280×800) no icon: button#adj-spot-delete shows nothing
-- **Adjust · Sliders, curve, mixer, grading, masks, spots, detail** (1280×800) no icon: button#adj-dust-find "Put a heal spot on every speck of dust f" shows nothing
-- **Adjust · Sliders, curve, mixer, grading, masks, spots, detail** (1280×800) no icon: button#adj-dust-clear "Take off the spots Find dust put on" shows nothing
+None.
 
 ### Royale
 
-- **Main window · Toolbar** (1280×800) no icon: button#btn-scan "Scan into this project" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-red "Red label (1)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-yellow "Yellow label (2)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-green "Green label (3)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-blue "Blue label (4)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-purple "Purple label (5)" shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.adj-tab shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button#adj-spot-heal "Heal: texture from nearby, blended into " shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button#adj-spot-delete shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button#adj-dust-clear "Take off the spots Find dust put on" shows nothing
-- **Adjust · Sliders, curve, mixer, grading, masks, spots, detail** (1280×800) no icon: button#adj-spot-heal "Heal: texture from nearby, blended into " shows nothing
-- **Adjust · Sliders, curve, mixer, grading, masks, spots, detail** (1280×800) no icon: button#adj-spot-delete shows nothing
-- **Adjust · Sliders, curve, mixer, grading, masks, spots, detail** (1280×800) no icon: button#adj-dust-clear "Take off the spots Find dust put on" shows nothing
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-scan "Scan into this project" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-info "File info" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-toggle-view "Switch between grid and single view" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-refresh "Rescan folder" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-crop "Crop and straighten" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-adjust "Adjust" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-paint "Paint" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-history "Undo history" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-toggle-fit "Thumbnails: fit or fill" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-toggle-strip "Show or hide the film strip" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-fullscreen "Full screen" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-dupes "Find duplicates" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-shortcuts "Keyboard shortcuts" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-whatsnew "What's new" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-customize "Settings" is cut off by body
 
 ### Noir
 
-- **Main window · Toolbar** (1280×800) no icon: button#btn-scan "Scan into this project" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-red "Red label (1)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-yellow "Yellow label (2)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-green "Green label (3)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-blue "Blue label (4)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-purple "Purple label (5)" shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.adj-tab shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button#adj-spot-heal "Heal: texture from nearby, blended into " shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button#adj-spot-delete shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button#adj-dust-clear "Take off the spots Find dust put on" shows nothing
-- **Adjust · Sliders, curve, mixer, grading, masks, spots, detail** (1280×800) no icon: button#adj-spot-heal "Heal: texture from nearby, blended into " shows nothing
-- **Adjust · Sliders, curve, mixer, grading, masks, spots, detail** (1280×800) no icon: button#adj-spot-delete shows nothing
-- **Adjust · Sliders, curve, mixer, grading, masks, spots, detail** (1280×800) no icon: button#adj-dust-clear "Take off the spots Find dust put on" shows nothing
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-scan "Scan into this project" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-info "File info" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-toggle-view "Switch between grid and single view" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-refresh "Rescan folder" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-crop "Crop and straighten" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-adjust "Adjust" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-paint "Paint" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-history "Undo history" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-toggle-fit "Thumbnails: fit or fill" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-toggle-strip "Show or hide the film strip" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-fullscreen "Full screen" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-dupes "Find duplicates" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-shortcuts "Keyboard shortcuts" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-whatsnew "What's new" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-customize "Settings" is cut off by body
 
 ### Red
 
-- **Main window · Toolbar** (1280×800) no icon: button#btn-scan "Scan into this project" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-red "Red label (1)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-yellow "Yellow label (2)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-green "Green label (3)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-blue "Blue label (4)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-purple "Purple label (5)" shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.adj-tab shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button#adj-spot-heal "Heal: texture from nearby, blended into " shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button#adj-spot-delete shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button#adj-dust-clear "Take off the spots Find dust put on" shows nothing
-- **Adjust · Sliders, curve, mixer, grading, masks, spots, detail** (1280×800) no icon: button#adj-spot-heal "Heal: texture from nearby, blended into " shows nothing
-- **Adjust · Sliders, curve, mixer, grading, masks, spots, detail** (1280×800) no icon: button#adj-spot-delete shows nothing
-- **Adjust · Sliders, curve, mixer, grading, masks, spots, detail** (1280×800) no icon: button#adj-dust-clear "Take off the spots Find dust put on" shows nothing
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-scan "Scan into this project" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-info "File info" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-toggle-view "Switch between grid and single view" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-refresh "Rescan folder" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-crop "Crop and straighten" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-adjust "Adjust" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-paint "Paint" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-history "Undo history" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-toggle-fit "Thumbnails: fit or fill" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-toggle-strip "Show or hide the film strip" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-fullscreen "Full screen" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-dupes "Find duplicates" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-shortcuts "Keyboard shortcuts" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-whatsnew "What's new" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-customize "Settings" is cut off by body
 
 ### Finder
 
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-red "Red label (1)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-yellow "Yellow label (2)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-green "Green label (3)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-blue "Blue label (4)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-purple "Purple label (5)" shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.adj-tab shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.adj-tab shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button#adj-spot-clone "Clone: copied from nearby exactly" shows nothing
-- **Adjust · Sliders, curve, mixer, grading, masks, spots, detail** (1280×800) no icon: button#adj-spot-clone "Clone: copied from nearby exactly" shows nothing
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-fullscreen "Full screen" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-dupes "Find duplicates" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-whatsnew "What's new" is cut off by body
+- **Main window · Toolbar, with every button under More** (1024×640) off screen: button#btn-shortcuts "Keyboard shortcuts" is cut off by body
+- **Main window · Toolbar, with every button under More** (1024×640) off screen: button#btn-customize "Settings" is cut off by body
 
 ### Aperture
 
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-red "Red label (1)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-yellow "Yellow label (2)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-green "Green label (3)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-blue "Blue label (4)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-purple "Purple label (5)" shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.adj-tab shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.adj-tab shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button#adj-spot-clone "Clone: copied from nearby exactly" shows nothing
-- **Adjust · Sliders, curve, mixer, grading, masks, spots, detail** (1280×800) no icon: button#adj-spot-clone "Clone: copied from nearby exactly" shows nothing
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-fullscreen "Full screen" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-dupes "Find duplicates" is cut off by body
+- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-whatsnew "What's new" is cut off by body
+- **Main window · Toolbar, with every button under More** (1024×640) off screen: button#btn-shortcuts "Keyboard shortcuts" is cut off by body
+- **Main window · Toolbar, with every button under More** (1024×640) off screen: button#btn-customize "Settings" is cut off by body
 
 ### 1984
 
-- **Main window · Toolbar** (1280×800) no icon: button#btn-scan "Scan into this project" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-red "Red label (1)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-yellow "Yellow label (2)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-green "Green label (3)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-blue "Blue label (4)" shows nothing
-- **Main window · Right-click menu** (1280×800) no icon: button.ctx-flag.fl-purple "Purple label (5)" shows nothing
-- **Settings · Window and pages** (1280×800) no icon: button#settings-close "Close" shows nothing
-- **Dialogs · Rename** (1280×800) no icon: button#rename-close "Close" shows nothing
-- **Dialogs · Export** (1280×800) no icon: button#ex-close "Close" shows nothing
-- **Dialogs · Move to…** (1280×800) no icon: button#fp-close "Close" shows nothing
-- **Dialogs · New blank image** (1280×800) no icon: button#blank-close "Close" shows nothing
-- **Dialogs · Keyboard shortcuts** (1280×800) no icon: button#shortcuts-close "Close" shows nothing
-- **Dialogs · What's new** (1280×800) no icon: button#whatsnew-close "Close" shows nothing
-- **Dialogs · Scan window** (1280×800) no icon: button#scan-x "Close" shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.adj-tab shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.adj-tab shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.adj-tab shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.btn.secondary "A gradient across the photo: full where " shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.btn.secondary "An oval, feathered at its edge: drag out" shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.btn.secondary "Paint the mask on" shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.btn.secondary "Find the sky in the photo (touch it up w" shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button.btn.secondary "Find the photo's subject (touch it up wi" shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button#adj-spot-heal "Heal: texture from nearby, blended into " shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button#adj-spot-clone "Clone: copied from nearby exactly" shows nothing
-- **Adjust · Histogram, levels, looks** (1280×800) no icon: button#adj-dust-find "Put a heal spot on every speck of dust f" shows nothing
-- **Adjust · Sliders, curve, mixer, grading, masks, spots, detail** (1280×800) no icon: button#adj-spot-heal "Heal: texture from nearby, blended into " shows nothing
-- **Adjust · Sliders, curve, mixer, grading, masks, spots, detail** (1280×800) no icon: button#adj-spot-clone "Clone: copied from nearby exactly" shows nothing
-- **Adjust · Sliders, curve, mixer, grading, masks, spots, detail** (1280×800) no icon: button#adj-dust-find "Put a heal spot on every speck of dust f" shows nothing
+None.
