@@ -93,7 +93,7 @@ jEditor is one product, in this repo, shipped three ways from one UI (`app/`):
    - **Paint, layers:** layer masks and clipping masks; adjustment layers (levels, curves, hue/saturation, black and white); groups and locks; layer effects (stroke, shadow, glow); text layers that stay editable; merge and flatten.
    - **Paint, selections:** feather, grow and shrink, smooth, invert; select by colour range; quick mask (paint a selection); save and load a selection; transform a selection.
    - **Paint, transform:** free transform with perspective, skew and warp; flip; rotate the canvas; image and canvas size; crop inside Paint.
-   - **Paint, brushes:** pen pressure (size, opacity); brush presets and custom tips; spacing, scatter and jitter; smoothing (a stabiliser); symmetry.
+   - **Paint, brushes:** pen pressure (size done in 1.46.0 beta: and the wheel sizes a brush, shown as it changes; sizes follow the photo's size; Shift-click lines; opacity to come); brush presets and custom tips; spacing, scatter and jitter; smoothing (a stabiliser); symmetry.
    - **Paint, filters:** Gaussian, motion and lens blur; unsharp mask; high pass; add and reduce noise; median; liquify.
    - **Paint, shapes and text:** a pen tool and vector paths; polygon, arrow, rounded rectangle; fonts, alignment and outlines for text.
    - **Paint, workflow:** a history panel with snapshots; rulers, guides and snapping to a grid; actions recorded once and played on many photos; a layered TIFF/PSD export.

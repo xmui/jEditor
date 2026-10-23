@@ -6,15 +6,23 @@
 //     and turn it; Enter puts it down
 //   Select: rectangle (M), ellipse, lasso (L), magic wand (W, by colour);
 //     Shift adds to the selection, Alt takes away; Ctrl+A all, Ctrl+D none
-//   Brush (B), pencil (N), spray, eraser (E): size, hardness, opacity, flow
+//   Brush (B), pencil (N), spray, eraser (E): size, hardness, opacity, flow.
+//     The wheel sizes them, [ and ] too (Ctrl+wheel zooms), showing the
+//     brush as it'll paint and its size; Shift-click paints straight on
+//     from where the last stroke ended; a pen's pressure sizes them
 //   Fill (G), gradient: fill a colour, or a gradient to the background
 //     colour (or to nothing)
 //   Line (U), rectangle (R), ellipse (O): stroked, filled or both; Shift
 //     keeps lines to 45° and shapes square
 //   Text (T): click, type, Ctrl+Enter (or a click elsewhere) puts it down
 //   Picker (I): the colour under it (Alt-click with any brush does too)
-//   Hand (H, or hold Space): move about; the wheel zooms (on a Mac's
-//     trackpad, two fingers move about and a pinch zooms)
+//   Hand (H, or hold Space): move about; the wheel zooms (with a brush,
+//     Ctrl+wheel; on a Mac's trackpad, two fingers move about and a pinch
+//     zooms)
+//
+// Sizes (the brush, lines, text) are the photo's own pixels, kept the
+// same part of the photo from one photo to the next: a brush a tenth of
+// the way across a big photo is a tenth of the way across a small one.
 //
 // Everything is drawn on the photo as it is shown (cropped and turned as
 // its edit says), and kept on the photo as it is on disk, so a crop later
@@ -35,8 +43,10 @@ const PaintEditor = {
         lineWidth: 8, shapeFill: 'none', arrow: false,
         gradient: 'linear', gradTo: 'bg',
         density: 40,
-        font: 'system-ui, sans-serif', fontSize: 72, bold: false, italic: false
+        font: 'system-ui, sans-serif', fontSize: 72, bold: false, italic: false,
+        sizeFor: 1500   // the long side of the layers the sizes were for
     },
+    BRUSHES: ['brush', 'pencil', 'spray', 'eraser'],
     PALETTE: ['#000000', '#ffffff', '#e5484d', '#f76b15', '#ffc53d', '#46a758', '#12a594', '#0090ff', '#8e4ec6', '#d6409f', '#8d6e63', '#9e9e9e', '#ffd6a5', '#caffbf', '#a0c4ff', '#ffadad'],
     FONTS: [['system-ui, sans-serif', 'Sans'], ['Georgia, serif', 'Serif'], ['"Courier New", monospace', 'Mono'], ['"Comic Sans MS", "Comic Neue", cursive', 'Comic'], ['Impact, "Arial Black", sans-serif', 'Impact']],
 
@@ -97,6 +107,8 @@ const PaintEditor = {
                 if (/^#[0-9a-f]{6}$/i.test(kept.fg)) this.fg = kept.fg;
                 if (/^#[0-9a-f]{6}$/i.test(kept.bg)) this.bg = kept.bg;
                 if (this.OPTIONS[kept.tool]) this.tool = kept.tool;
+                // Kept before sizes followed the photo: as they were, on the next one
+                if (typeof kept.sizeFor !== 'number') this.opts.sizeFor = 0;
             }
         } catch (e) { /* private mode */ }
 
@@ -179,8 +191,16 @@ const PaintEditor = {
             if (!this.ready) return;
             e.preventDefault();
             const r = this.canvas.getBoundingClientRect();
+            const trackpad = Host.mac() && Wheel.kind(e) === 'trackpad';
+            // With a brush, the wheel sizes it (on a Mac's trackpad, Alt and
+            // two fingers); Ctrl+wheel, or a pinch, zooms
+            if (this.isBrush() && !e.ctrlKey && !e.metaKey && (!trackpad || e.altKey) && !this.drag) {
+                const px = Wheel.pixels(e);
+                this.nudgeSize(Math.exp(-(px.y || px.x) * 0.0015));
+                return;
+            }
             // On a Mac (wheel.js): two fingers move about, a pinch zooms
-            if (Host.mac() && Wheel.kind(e) === 'trackpad') {
+            if (trackpad) {
                 this.view.x -= e.deltaX;
                 this.view.y -= e.deltaY;
                 this.positionText();
@@ -200,6 +220,12 @@ const PaintEditor = {
         window.addEventListener('keyup', (e) => {
             if (e.code === 'Space' && this.space) { this.space = false; this.cursor(); }
         }, true);
+        // Shift held over the photo with a brush: the straight line it'd paint
+        for (const type of ['keydown', 'keyup']) window.addEventListener(type, (e) => {
+            if (e.key !== 'Shift' || !this.isOpen || !this.hover) return;
+            this.hover.shift = type === 'keydown';
+            if (this.isBrush()) this.renderSoon();
+        }, true);
         // The text being typed
         const ta = this.el('paint-text');
         ta.addEventListener('keydown', (e) => {
@@ -218,23 +244,33 @@ const PaintEditor = {
 
     // A slider with its number, for the options bar and the layer panel.
     // set(value, start): start is true for the first change of a drag;
-    // end(): the drag's over
-    slider(label, min, max, step, get, set, end = null) {
+    // end(): the drag's over. log: for sizes, as far from 1 to 2 as from
+    // 100 to 200, so the small ones a small photo needs aren't squeezed
+    // into the slider's first few pixels
+    slider(label, min, max, step, get, set, end = null, log = false) {
         const row = document.createElement('label');
         row.className = 'paint-opt';
         row.innerHTML = '<span></span><input type="range"><span class="paint-num"></span>';
         row.querySelector('span').textContent = label;
         const input = row.querySelector('input'), num = row.querySelector('.paint-num');
-        Object.assign(input, { min, max, step });
+        const span = Math.log(max / min);
+        const toPos = (v) => log ? Math.round(1000 * Math.log(Math.max(min, v) / min) / span) : v;
+        const toValue = (pos) => {
+            if (!log) return pos;
+            const v = min * Math.exp(pos / 1000 * span);
+            return v < 10 ? Math.round(v * 2) / 2 : Math.round(v);
+        };
+        Object.assign(input, log ? { min: 0, max: 1000, step: 1 } : { min, max, step });
         input.setAttribute('aria-label', label);
         let sliding = false;
         input.addEventListener('input', () => {
-            set(parseFloat(input.value), !sliding);
+            const v = toValue(parseFloat(input.value));
+            set(v, !sliding);
             sliding = true;
-            num.textContent = input.value;
+            num.textContent = this.sizeLabel(v);
         });
         input.addEventListener('change', () => { sliding = false; input.blur(); if (end) end(); });
-        row._sync = () => { const v = get(); input.value = v; num.textContent = String(v); };
+        row._sync = () => { const v = get(); input.value = toPos(v); num.textContent = this.sizeLabel(v); };
         row._sync();
         return row;
     },
@@ -265,6 +301,8 @@ const PaintEditor = {
         const size = kept && kept.paint ? { w: kept.paint.w, h: kept.paint.h } : Paint.sizeFor(fullW, fullH);
         this.W = size.w;
         this.H = size.h;
+        this.fitSizes();
+        this.lastDab = null;
         this.paintId = kept && kept.paint ? kept.paint.id : Paint.newId();
         // The photo at the layers' size, its spots done (for the fill and
         // the wand), and as shown: cropped and adjusted (behind the layers)
@@ -324,6 +362,7 @@ const PaintEditor = {
         if (this._raf) cancelAnimationFrame(this._raf);
         this._raf = 0;
         clearTimeout(this._fine);
+        clearTimeout(this._sizeTimer);
         this.dropCanvases();
         this.history = this.future = [];
         if (this.root) this.root.classList.add('hidden');
@@ -354,6 +393,63 @@ const PaintEditor = {
         return (this.layers && this.layers[this.cur]) || null;
     },
 
+    isBrush(t = this.tool) {
+        return this.BRUSHES.includes(t);
+    },
+
+    // ---- Sizes ----
+
+    // The biggest brush: half the photo's long side (a small photo's
+    // brushes are small), from 100 to 1000 px
+    sizeMax() {
+        return Math.max(100, Math.min(1000, Math.round(Math.max(this.W || 0, this.H || 0) / 2)));
+    },
+
+    // A size as shown: whole pixels, halves below 10
+    sizeLabel(v) {
+        return String(v >= 10 ? Math.round(v) : Math.round(v * 2) / 2);
+    },
+
+    // The sizes kept the same part of this photo as of the last one
+    fitSizes() {
+        const o = this.opts, L = Math.max(this.W, this.H);
+        if (o.sizeFor > 0 && o.sizeFor !== L) {
+            const k = L / o.sizeFor;
+            o.size = Math.min(this.sizeMax(), Math.max(1, o.size * k));
+            o.lineWidth = Math.min(200, o.lineWidth * k);
+            o.fontSize = Math.min(600, Math.max(6, o.fontSize * k));
+        }
+        o.sizeFor = L;
+    },
+
+    // The size the tool has: the brush's, a line's or the text's
+    sizeKey() {
+        return ['line', 'rect', 'ellipse'].includes(this.tool) ? 'lineWidth' : this.tool === 'text' ? 'fontSize' : 'size';
+    },
+
+    // Bigger or smaller by k (the wheel, [ and ]); whole: by a pixel at least
+    nudgeSize(k, whole = false) {
+        const key = this.sizeKey(), o = this.opts, was = o[key];
+        const [min, max] = { size: [1, this.sizeMax()], lineWidth: [0, 200], fontSize: [6, 600] }[key];
+        let v = was * k;
+        if (whole) v = Math.round(k > 1 ? Math.max(v, Math.floor(was) + 1) : Math.min(v, Math.ceil(was) - 1));
+        o[key] = Math.min(max, Math.max(min, v));
+        this.remember();
+        const row = this.optRows && this.optRows[key];
+        if (row) row._sync();
+        this.flashSize();
+    },
+
+    // The brush shown as it'll paint, with its size, for a moment as it
+    // changes: under the pointer, or in the middle when it's changed along
+    // the top
+    flashSize() {
+        this._sizeUntil = performance.now() + 900;
+        clearTimeout(this._sizeTimer);
+        this._sizeTimer = setTimeout(() => this.renderSoon(), 950);
+        this.renderSoon();
+    },
+
     // Anything painted (not saved yet)
     changedSinceOpen() {
         return this.history.length > 0 || !!this.float;
@@ -377,7 +473,7 @@ const PaintEditor = {
         const t = this.space || this.tool === 'hand' ? (this.drag && this.drag.kind === 'pan' ? 'grabbing' : 'grab')
             : this.tool === 'move' ? 'move'
             : this.tool === 'text' ? 'text'
-            : ['brush', 'pencil', 'spray', 'eraser'].includes(this.tool) ? 'none' : 'crosshair';
+            : this.isBrush() ? 'none' : 'crosshair';
         this.stage.style.cursor = t;
     },
 
@@ -413,16 +509,31 @@ const PaintEditor = {
             sel.addEventListener('change', () => { o[key] = typeof o[key] === 'number' ? +sel.value : sel.value; save(); sel.blur(); });
             return add(l);
         };
-        const num = (label, key, min, max, step = 1) => add(this.slider(label, min, max, step, () => o[key], (v) => { o[key] = v; save(); this.renderSoon(); }));
+        // (Sizes, and how the brush paints, shown on the photo as they change)
+        const shown = ['size', 'hardness', 'flow', 'density', 'lineWidth', 'fontSize'];
+        this.optRows = {};
+        const num = (label, key, min, max, step = 1, log = false) => {
+            o[key] = Math.min(max, Math.max(min, o[key]));
+            return this.optRows[key] = add(this.slider(label, min, max, step, () => o[key], (v) => {
+                o[key] = v;
+                save();
+                if (shown.includes(key)) this.flashSize(); else this.renderSoon();
+            }, null, log));
+        };
         for (const k of this.OPTIONS[this.tool]) {
-            if (k === 'size') num('Size', 'size', 1, 400);
+            if (k === 'size') {
+                // (Said on hover, not along the top: the bar stays one line)
+                num('Size', 'size', 1, this.sizeMax(), 1, true).title = Host.keys(this.tool === 'spray'
+                    ? 'The wheel over the photo sizes it, [ and ] too (Ctrl+wheel zooms)'
+                    : 'The wheel over the photo sizes it, [ and ] too (Ctrl+wheel zooms). Shift-click paints a straight line on from the last stroke');
+            }
             if (k === 'hardness') num('Hardness', 'hardness', 0, 100);
             if (k === 'opacity') num('Opacity', 'opacity', 1, 100);
             if (k === 'flow') num('Flow', 'flow', 1, 100);
             if (k === 'density') num('Density', 'density', 1, 100);
             if (k === 'tolerance') num('Tolerance', 'tolerance', 0, 255);
             if (k === 'lineWidth') num('Line', 'lineWidth', 0, 200);
-            if (k === 'fontSize') num('Size', 'fontSize', 6, 600);
+            if (k === 'fontSize') num('Size', 'fontSize', 6, 600, 1, true);
             if (k === 'contiguous') check('Joined only', 'contiguous');
             if (k === 'sampleAll') check('All layers', 'sampleAll');
             if (k === 'arrow') check('Arrow', 'arrow');
@@ -518,7 +629,9 @@ const PaintEditor = {
         const sx = e.clientX - r.left, sy = e.clientY - r.top;
         const o = this.V().inverse().transformPoint({ x: sx, y: sy });
         const l = this.Ci.transformPoint(o);
-        return { sx, sy, ox: o.x, oy: o.y, x: l.x, y: l.y };
+        // A pen's pressure (a mouse or a finger paints at full size)
+        const pr = e.pointerType === 'pen' && e.pressure > 0 ? e.pressure : 1;
+        return { sx, sy, ox: o.x, oy: o.y, x: l.x, y: l.y, pr, shift: e.shiftKey };
     },
 
     // The next frame, quickly (a stroke, the brush following the pointer);
@@ -650,7 +763,7 @@ const PaintEditor = {
             this.app.showToast('That layer is hidden: show it to paint on it', 2000);
             return;
         }
-        if (['brush', 'pencil', 'spray', 'eraser'].includes(t)) return this.startStroke(p);
+        if (this.isBrush(t)) return this.startStroke(p, e.shiftKey ? this.lastDab : null);
         if (['line', 'rect', 'ellipse', 'gradient', 'rect-select', 'ellipse-select'].includes(t)) {
             this.drag = { kind: 'shape', start: p, end: p, mode: e.altKey ? 'sub' : e.shiftKey && t.endsWith('select') ? 'add' : 'new' };
             return;
@@ -676,7 +789,11 @@ const PaintEditor = {
             this.view.y = d.vy + (p.sy - d.sy);
             this.positionText();
         } else if (d.kind === 'paint') {
-            this.strokeTo(p);
+            // Every point the pointer went through since the last event (a
+            // fast stroke, a pen), not only the last
+            const all = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+            if (all.length > 1) for (const c of all) this.strokeTo(this.point(c));
+            else this.strokeTo(p);
         } else if (d.kind === 'shape') {
             d.end = p;
             d.shift = e.shiftKey;
@@ -813,15 +930,18 @@ const PaintEditor = {
 
     // ---- Brushes ----
 
-    startStroke(p) {
+    // from: where the last stroke ended (Shift-click), to paint straight on
+    // from there
+    startStroke(p, from = null) {
         const l = this.layer();
         this.beginPixels(l);
         const g = this.stroke.getContext('2d');
         g.setTransform(1, 0, 0, 1, 0, 0);
         g.globalCompositeOperation = 'source-over';
         g.clearRect(0, 0, this.W, this.H);
-        this.drag = { kind: 'paint', stroke: true, last: p, dirty: null, tool: this.tool, carry: 0 };
-        this.dab(p);
+        this.drag = { kind: 'paint', stroke: true, last: from || p, dirty: null, tool: this.tool, carry: 0 };
+        if (from) this.strokeTo(p);
+        else this.dab(p);
         if (this.tool === 'spray') this.sprayLoop();
         this.renderSoon();
     },
@@ -846,10 +966,10 @@ const PaintEditor = {
 
     dab(p) {
         const g = this.stroke.getContext('2d');
-        const r = this.radius(), t = this.drag.tool;
+        const pr = p.pr || 1, r = Math.max(0.5, this.radius() * pr), t = this.drag.tool;
         const colour = t === 'eraser' ? '#000000' : this.fg;
         if (t === 'pencil') {
-            const s = Math.max(1, Math.round(this.opts.size));
+            const s = Math.max(1, Math.round(this.opts.size * pr));
             g.fillStyle = colour;
             g.fillRect(Math.round(p.x - s / 2), Math.round(p.y - s / 2), s, s);
             this.grow({ x: p.x - s, y: p.y - s, w: 2 * s, h: 2 * s });
@@ -889,11 +1009,12 @@ const PaintEditor = {
         const d = this.drag, a = d.last;
         if (d.tool === 'spray') { d.last = p; return; }
         const len = Math.hypot(p.x - a.x, p.y - a.y);
-        const step = d.tool === 'pencil' ? 1 : Math.max(0.5, this.radius() * 0.18);
+        const pa = a.pr || 1, pb = p.pr || 1;
+        const step = d.tool === 'pencil' ? 1 : Math.max(0.5, this.radius() * Math.min(pa, pb) * 0.18);
         let t = step - d.carry;
         while (t <= len) {
             const k = t / len;
-            this.dab({ x: a.x + (p.x - a.x) * k, y: a.y + (p.y - a.y) * k });
+            this.dab({ x: a.x + (p.x - a.x) * k, y: a.y + (p.y - a.y) * k, pr: pa + (pb - pa) * k });
             t += step;
         }
         d.carry = len - (t - step);
@@ -930,6 +1051,7 @@ const PaintEditor = {
 
     endStroke() {
         const d = this.drag, l = this.layer();
+        this.lastDab = { x: d.last.x, y: d.last.y, pr: d.last.pr };
         if (!d.dirty) return;
         this.putStroke(l.canvas.getContext('2d'));
         const r = { x: d.dirty.x0, y: d.dirty.y0, w: d.dirty.x1 - d.dirty.x0, h: d.dirty.y1 - d.dirty.y0 };
@@ -1725,13 +1847,87 @@ const PaintEditor = {
                 ctx.stroke();
             }
         }
-        // The brush
-        if (this.hover && !this.space && ['brush', 'pencil', 'spray', 'eraser'].includes(this.tool) && !(d && d.kind === 'pan')) {
-            const r = this.radius();
+        // The brush under the pointer; as its size changes, how it'll paint
+        // and the size (in the middle when it's changed along the top)
+        const sizing = performance.now() < (this._sizeUntil || 0);
+        const brush = this.isBrush() && !this.space && !(d && d.kind === 'pan');
+        const at = this.hover || (sizing ? this.V().inverse().transformPoint({ x: this.cssW / 2, y: this.cssH / 2 }) : null);
+        const ox = at && (at.ox !== undefined ? at.ox : at.x), oy = at && (at.oy !== undefined ? at.oy : at.y);
+        const r = this.radius();
+        if (brush && at) {
+            // Shift held: the straight line a click paints from the last stroke
+            if (!d && this.hover && this.hover.shift && this.lastDab && this.tool !== 'spray') {
+                const from = this.C.transformPoint(this.lastDab), line = new Path2D();
+                line.moveTo(from.x, from.y);
+                line.lineTo(ox, oy);
+                outline(line);
+            }
+            if (sizing) this.drawGhost(ctx, ox, oy, r);
             const p = new Path2D();
-            p.arc(this.hover.ox, this.hover.oy, Math.max(r, 1 / z), 0, Math.PI * 2);
+            if (this.tool === 'pencil') {
+                const s = Math.max(1, Math.round(this.opts.size));
+                p.rect(Math.round(ox - s / 2), Math.round(oy - s / 2), s, s);
+            } else p.arc(ox, oy, Math.max(r, 1 / z), 0, Math.PI * 2);
+            // Too small to see: a cross round it, to show where it'll paint
+            if (r * z < 4) {
+                const g = Math.max(r, 1 / z) + 3 / z, s = 6 / z;
+                for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+                    p.moveTo(ox + dx * g, oy + dy * g);
+                    p.lineTo(ox + dx * (g + s), oy + dy * (g + s));
+                }
+            }
             outline(p, []);
         }
+        if (sizing && at) {
+            const v = this.opts[this.sizeKey()];
+            this.drawLabel(ctx, `${this.sizeLabel(v)} px`, this.V().transformPoint({ x: ox, y: oy }), brush ? r * z : 0);
+        }
+        ctx.restore();
+    },
+
+    // How the brush paints, faintly, at (x, y) in the picture as shown
+    drawGhost(ctx, x, y, r) {
+        const o = this.opts, t = this.tool;
+        const rgb = this.rgb(t === 'eraser' ? '#ffffff' : this.fg);
+        const a = 0.7 * o.opacity / 100 * (t === 'brush' ? o.flow / 100 : 1) * (t === 'spray' ? 0.4 : 1);
+        const hard = t === 'brush' || t === 'eraser' ? o.hardness / 100 : 1;
+        ctx.save();
+        if (hard >= 0.99) ctx.fillStyle = `rgba(${rgb.join(',')},${a})`;
+        else {
+            const g = ctx.createRadialGradient(x, y, r * hard, x, y, r);
+            g.addColorStop(0, `rgba(${rgb.join(',')},${a})`);
+            g.addColorStop(1, `rgba(${rgb.join(',')},0)`);
+            ctx.fillStyle = g;
+        }
+        ctx.beginPath();
+        if (t === 'pencil') {
+            const s = Math.max(1, Math.round(o.size));
+            ctx.rect(Math.round(x - s / 2), Math.round(y - s / 2), s, s);
+        } else ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    },
+
+    // A label under a point on screen (css px), below a brush of radius rs
+    // there, kept inside the view
+    drawLabel(ctx, text, s, rs) {
+        const dpr = this.dpr || 1;
+        ctx.save();
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.font = '600 12px system-ui, sans-serif';
+        const w = Math.ceil(ctx.measureText(text).width) + 16, h = 22;
+        let x = s.x - w / 2, y = s.y + rs + 10;
+        if (y + h > this.cssH - 6) y = s.y - rs - 10 - h;
+        x = Math.min(this.cssW - w - 6, Math.max(6, x));
+        y = Math.min(this.cssH - h - 6, Math.max(6, y));
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(x, y, w, h, h / 2); else ctx.rect(x, y, w, h);
+        ctx.fillStyle = 'rgba(0,0,0,0.75)';
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, x + w / 2, y + h / 2 + 0.5);
         ctx.restore();
     },
 
