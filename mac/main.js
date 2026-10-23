@@ -595,6 +595,27 @@ async function handle(rec, type, data) {
         case 'toolbarSearch':
             if (NATIVE_TOOLBAR) toolbar.focusSearch(rec.win.getNativeWindowHandle());
             return { ok: NATIVE_TOOLBAR };
+        case 'titleBar': {
+            // A theme draws the title bar: its own buttons work the window,
+            // so the traffic lights hide, and macOS 26's toolbar comes off
+            // (back on, and filled again by the page, when it goes)
+            const on = !!data.on;
+            if (process.platform !== 'darwin' || on === !!rec.themed) return { ok: true };
+            rec.themed = on;
+            rec.win.setWindowButtonVisibility(!on);
+            if (NATIVE_TOOLBAR) {
+                if (on) toolbar.detach(rec.win.getNativeWindowHandle());
+                else attachToolbar(rec.win);
+            }
+            return { ok: true };
+        }
+        case 'windowAction':
+            // The theme's title bar buttons
+            if (data.action === 'minimize') rec.win.minimize();
+            else if (data.action === 'maximize') {
+                if (rec.win.isMaximized()) rec.win.unmaximize(); else rec.win.maximize();
+            } else if (data.action === 'close') rec.win.close();
+            return { ok: true };
         case 'lights':
             // The traffic lights, centred on the page's top row of pills
             if (process.platform === 'darwin' && !NATIVE_TOOLBAR && Number.isFinite(data.x) && Number.isFinite(data.y)) {
@@ -875,6 +896,13 @@ function menu() {
     ]));
 }
 
+// macOS 26's toolbar on a window: its items click the page's own controls
+function attachToolbar(win) {
+    toolbar.attach(win.getNativeWindowHandle(), (id, value) => {
+        if (!win.isDestroyed()) win.webContents.send('jeditor', { type: 'toolbar', id, value });
+    });
+}
+
 function createWindow() {
     const base = settings.bounds || { width: 1280, height: 860 };
     // A new window beside the others: a step down and right of the last
@@ -916,9 +944,7 @@ function createWindow() {
         }
     });
     if (NATIVE_TOOLBAR) {
-        toolbar.attach(win.getNativeWindowHandle(), (id, value) => {
-            if (!win.isDestroyed()) win.webContents.send('jeditor', { type: 'toolbar', id, value });
-        });
+        attachToolbar(win);
         // The title is the toolbar's (the photo), not the page's
         win.on('page-title-updated', (e) => e.preventDefault());
     }
@@ -937,6 +963,10 @@ function createWindow() {
     });
     win.webContents.on('did-start-loading', () => { rec.ready = false; });
     win.on('focus', () => { rec.focusedAt = Date.now(); });
+    // Zoomed or not, for a theme's maximise button
+    const zoomed = (maximized) => () => { if (rec.ready) win.webContents.send('jeditor', { type: 'windowState', maximized }); };
+    win.on('maximize', zoomed(true));
+    win.on('unmaximize', zoomed(false));
     // In full screen the traffic lights are gone, and so is their room
     const fullscreen = (on) => () => { if (rec.ready) win.webContents.send('jeditor', { type: 'fullscreen', on }); };
     win.on('enter-full-screen', fullscreen(true));

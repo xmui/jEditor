@@ -236,7 +236,7 @@
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: mac.platform,
-        features: ['reveal', 'windows', 'places'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : []),
+        features: ['reveal', 'windows', 'places'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions', 'themes'] : []),
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage
         async dataDir() {
@@ -341,6 +341,26 @@
         setState(state) {
             return mac.request('state', state || {});
         },
+        // A theme's own title bar (on): the traffic lights hide, as its own
+        // buttons work the window, and macOS 26's toolbar comes off. A
+        // 'jeditor-window' event on window says when it's zoomed or not.
+        titleBar(on) {
+            themed = !!on;
+            if (mac.nativeToolbar) {
+                document.documentElement.classList.toggle('native-toolbar', !themed);
+                lastToolbar = '';
+            }
+            mac.request('titleBar', { on: themed }).then(() => {
+                if (themed) return;
+                if (mac.nativeToolbar) sendToolbar(); else { lastLights = ''; reportLights(); }
+            });
+        },
+        // The window's buttons for that title bar: 'minimize', 'maximize'
+        // (zoom, or back) and 'close'. Its top edge resizes as any Mac
+        // window's does, so 'resizeTop' needs nothing.
+        windowAction(action) {
+            if (action !== 'resizeTop') mac.request('windowAction', { action });
+        },
         // The other windows' projects → [{ id, name, path, folders }]
         async windows() {
             return (await answer('windows')).windows;
@@ -428,6 +448,7 @@
     // the gutter plus half a pill, which the UI scale zooms), and at the
     // gutter's distance from the left edge. A light is 14px.
     let lastLights = '';
+    let themed = false; // a theme draws the title bar (titleBar above)
     const reportLights = () => {
         const css = getComputedStyle(document.documentElement);
         const px = (name) => parseFloat(css.getPropertyValue(name)) || 0;
@@ -503,7 +524,7 @@
     const sendToolbar = () => {
         clearTimeout(toolbarTimer);
         toolbarTimer = setTimeout(() => {
-            if (!jeditor()) return;
+            if (!jeditor() || themed) return;
             const model = toolbarModel();
             const json = JSON.stringify(model);
             if (json === lastToolbar) return;
@@ -575,6 +596,9 @@
             onToolbar(msg.id, msg.value);
         } else if (msg.type === 'fullscreen') {
             document.documentElement.classList.toggle('fullscreen', !!msg.on);
+        } else if (msg.type === 'windowState') {
+            // Zoomed or not, for a theme's own title bar (themes.js)
+            dispatchEvent(new CustomEvent('jeditor-window', { detail: { maximized: !!msg.maximized } }));
         } else if (msg.type === 'drivesChanged') {
             dispatchEvent(new Event('jeditor-drives')); // places.js
         } else if (msg.type === 'copyProgress') {

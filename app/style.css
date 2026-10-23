@@ -7811,7 +7811,7 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    and the colour behind photos stay solid.
    ========================================================================== */
 
-:root[data-platform="mac"] {
+:root[data-platform="mac"]:not([data-skin]) {
     --lights-w: 72px;
     /* More title bar to take hold of: the top row sits this much lower,
        and what's above it moves the window too */
@@ -7819,25 +7819,25 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     --top-row: calc(var(--gutter) + var(--mac-drag) + var(--ctl-lg));
 }
 
-:root[data-platform="mac"].fullscreen {
+:root[data-platform="mac"]:not([data-skin]).fullscreen {
     --lights-w: 0px;
     --mac-drag: 0px;
 }
 
-:root[data-platform="mac"] header {
+:root[data-platform="mac"]:not([data-skin]) header {
     top: var(--mac-drag);
 }
 
-:root[data-platform="mac"] .folder-bar {
+:root[data-platform="mac"]:not([data-skin]) .folder-bar {
     top: calc(var(--gutter) + var(--mac-drag));
 }
 
-:root[data-platform="mac"] .folder-bar {
+:root[data-platform="mac"]:not([data-skin]) .folder-bar {
     left: calc(var(--gutter) + var(--lights-w));
 }
 
 /* The top row drags the window... */
-:root[data-platform="mac"] body::before {
+:root[data-platform="mac"]:not([data-skin]) body::before {
     content: "";
     position: fixed;
     inset: 0 0 auto 0;
@@ -7847,32 +7847,32 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 }
 
 /* ...but never what's clicked or typed in */
-:root[data-platform="mac"] :is(button, input, select, textarea, a, label, [role="button"], [tabindex],
+:root[data-platform="mac"]:not([data-skin]) :is(button, input, select, textarea, a, label, [role="button"], [tabindex],
     .toolbar, .file-info, .folder-bar, .folder-rail, .dialog, .toast, .task-pill, #context-menu) {
     -webkit-app-region: no-drag;
 }
 
-:root[data-platform="mac"],
-:root[data-platform="mac"] body {
+:root[data-platform="mac"]:not([data-skin]),
+:root[data-platform="mac"]:not([data-skin]) body {
     background: transparent;
 }
 
-:root[data-platform="mac"] .interface {
+:root[data-platform="mac"]:not([data-skin]) .interface {
     background: var(--bg-canvas);
 }
 
-:root[data-platform="mac"] .drop-zone {
+:root[data-platform="mac"]:not([data-skin]) .drop-zone {
     background:
         radial-gradient(ellipse 60% 50% at 50% 35%, color-mix(in srgb, var(--bg-surface) 55%, transparent), transparent),
         color-mix(in srgb, var(--bg-canvas) 72%, transparent);
 }
 
-:root[data-platform="mac"][data-glass="off"] .drop-zone {
+:root[data-platform="mac"]:not([data-skin])[data-glass="off"] .drop-zone {
     background: var(--bg-canvas);
 }
 
 @media (prefers-reduced-transparency: reduce) {
-    :root[data-platform="mac"] .drop-zone {
+    :root[data-platform="mac"]:not([data-skin]) .drop-zone {
         background: var(--bg-canvas);
     }
 }

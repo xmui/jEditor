@@ -7,6 +7,7 @@
 //   node design/themes/audit.js                  everything
 //   node design/themes/audit.js xp/royale paint  one look, one screen
 //   node design/themes/audit.js mac grid         jEditor on the Mac, one screen
+//   node design/themes/audit.js snow/finder@mac  a theme in the Mac app
 //
 // The fonts each platform shows jEditor in aren't here: Inter stands in for
 // Segoe UI and SF (it's a little wider, so a fit here fits there), DejaVu
@@ -40,7 +41,7 @@ const LOOKS = [
     ['xp/royale', 'Royale', 'xp/royale', 'windows'], ['xp/noir', 'Noir', 'xp/noir', 'windows'], ['xp/red', 'Red', 'xp/red', 'windows'],
     ['snow/finder', 'Finder', 'snow/finder', 'windows'], ['snow/aperture', 'Aperture', 'snow/aperture', 'windows'], ['mac84/finder', '1984', 'mac84/finder', 'windows']
 ];
-const FEATURES = { windows: WIN, mac: ['reveal', 'windows', 'places', 'updates', 'permissions'], linux: ['reveal', 'windows', 'places', 'updates'] };
+const FEATURES = { windows: WIN, mac: ['reveal', 'windows', 'places', 'updates', 'permissions', 'themes'], linux: ['reveal', 'windows', 'places', 'updates'] };
 const FONT = { xp: /Tahoma/, snow: /Lucida|DejaVu/, mac84: /Chicago/ };
 const SIZES = [[1280, 800, 'compact'], [1024, 640, 'compact'], [800, 600, 'comfortable']];
 
@@ -295,7 +296,10 @@ const srv = http.createServer((req, res) => {
     await new Promise(r => srv.listen(0, r));
     const base = `http://localhost:${srv.address().port}`;
     const browser = await chromium.launch(launchOptions());
-    const looks = LOOKS.filter(([k]) => !onlyTheme || k === onlyTheme);
+    // A theme on another platform's app: xp/royale@mac
+    const [lookKey, onPlatform] = String(onlyTheme || '').split('@');
+    const looks = LOOKS.filter(([k]) => !onlyTheme || k === lookKey)
+        .map(l => onPlatform ? [l[0], l[1], l[2], onPlatform, l[4], l[5]] : l);
     const screens = Object.keys(SCREENS).filter(s => !onlyScreen || s === onlyScreen);
     const results = {}; // results[look][part index] = { shown, issues: [[size, kind, text]] }
     const missing = {}; // look → files not found
