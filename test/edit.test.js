@@ -754,6 +754,24 @@ const PROJECT = `
                 P.setTool('fill');
                 pe('pointerdown', 300, 100); pe('pointerup', 300, 100);
                 out.fill = [px(1, 260, 60), px(1, 240, 100)[3]];
+                // Fill: the whole layer, whatever colour is clicked (inside a
+                // selection, only there); its colour options go
+                step = 'fill whole';
+                P.opts.fillWhat = 'layer';
+                P.buildOptions();
+                out.wholeOpts = !document.querySelector('#paint-options input[type=checkbox]');
+                P.fg = '#ff00ff';
+                P.setTool('rect-select');
+                pe('pointerdown', 10, 250); pe('pointermove', 60, 290); pe('pointerup', 60, 290);
+                P.setTool('fill');
+                pe('pointerdown', 30, 270); pe('pointerup', 30, 270);
+                out.wholeSel = [px(1, 30, 270), px(1, 100, 270)[3]];
+                P.deselect();
+                pe('pointerdown', 380, 280); pe('pointerup', 380, 280);
+                out.whole = [px(1, 5, 5), px(1, 395, 150)];
+                pressKey('z', { ctrlKey: true }); pressKey('z', { ctrlKey: true });
+                out.wholeUndone = px(1, 5, 5)[3] === 0 && px(1, 260, 60)[0] === 255;
+                P.opts.fillWhat = 'match';
                 // Text
                 step = 'text';
                 P.fg = '#000000'; P.opts.fontSize = 40;
@@ -848,6 +866,7 @@ const PROJECT = `
         check('paint: a pen\'s pressure sizes the brush', r.pressure && r.pressure[0] > 200 && r.pressure[1] === 0, String(r.pressure));
         check('paint: a new layer; a filled rectangle on it', r.layers && r.rect && r.rect[0][1] === 255 && r.rect[1] === 0, JSON.stringify(r));
         check('paint: the fill takes the photo\'s blue square, not beyond it; text is drawn', r.fill && r.fill[0][0] === 255 && r.fill[0][1] === 255 && r.fill[1] === 0 && r.text > 50, JSON.stringify(r));
+        check('paint: the fill can fill the whole layer (only what\'s selected, with a selection), without the colour options; Ctrl+Z undoes it', r.wholeOpts && r.wholeSel && String(r.wholeSel[0]) === '255,0,255,255' && r.wholeSel[1] === 0 && String(r.whole) === '255,0,255,255,255,0,255,255' && r.wholeUndone, JSON.stringify([r.wholeOpts, r.wholeSel, r.whole, r.wholeUndone]));
         check('paint: a selection; Delete clears only inside it', r.selected && r.cleared[0] === 0 && r.cleared[1] === 255, JSON.stringify(r));
         check('paint: the wand selects by colour; Move drags it, Enter puts it down', r.wand && r.moved[0] === 0 && r.moved[1][3] === 255 && r.notDone, JSON.stringify(r));
         check('paint: Done keeps it with the photo (layers in the project\'s folder), the file untouched', r.kept && r.files === 2 && r.fileSame, JSON.stringify(r));

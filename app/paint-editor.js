@@ -10,8 +10,9 @@
 //     The wheel sizes them, [ and ] too (Ctrl+wheel zooms), showing the
 //     brush as it'll paint and its size; Shift-click paints straight on
 //     from where the last stroke ended; a pen's pressure sizes them
-//   Fill (G), gradient: fill a colour, or a gradient to the background
-//     colour (or to nothing)
+//   Fill (G), gradient: fill a colour (where it matches the colour
+//     clicked, or the whole layer), or a gradient to the background colour
+//     (or to nothing)
 //   Line (U), rectangle (R), ellipse (O): stroked, filled or both; Shift
 //     keeps lines to 45° and shapes square
 //   Text (T): click, type, Ctrl+Enter (or a click elsewhere) puts it down
@@ -39,7 +40,7 @@ const PaintEditor = {
     bg: '#ffffff',
     opts: {
         size: 24, hardness: 80, opacity: 100, flow: 100,
-        tolerance: 32, contiguous: true, sampleAll: true,
+        tolerance: 32, contiguous: true, sampleAll: true, fillWhat: 'match',
         lineWidth: 8, shapeFill: 'none', arrow: false,
         gradient: 'linear', gradTo: 'bg',
         density: 40,
@@ -80,7 +81,7 @@ const PaintEditor = {
         pencil: ['size', 'opacity'],
         spray: ['size', 'density', 'opacity'],
         eraser: ['size', 'hardness', 'opacity'],
-        fill: ['tolerance', 'contiguous', 'sampleAll', 'opacity'],
+        fill: ['fillWhat', 'tolerance', 'contiguous', 'sampleAll', 'opacity'],
         gradient: ['gradient', 'gradTo', 'opacity'],
         line: ['lineWidth', 'arrow', 'opacity'],
         rect: ['lineWidth', 'shapeFill', 'opacity'],
@@ -520,7 +521,11 @@ const PaintEditor = {
                 if (shown.includes(key)) this.flashSize(); else this.renderSoon();
             }, null, log));
         };
+        // Filling the whole layer: no colour to match, so none of its options
+        const wholeFill = this.tool === 'fill' && o.fillWhat === 'layer';
         for (const k of this.OPTIONS[this.tool]) {
+            if (wholeFill && ['tolerance', 'contiguous', 'sampleAll'].includes(k)) continue;
+            if (k === 'fillWhat') choose('Fill', 'fillWhat', [['match', 'Matching colour'], ['layer', 'Whole layer']]).querySelector('select').addEventListener('change', () => this.buildOptions());
             if (k === 'size') {
                 // (Said on hover, not along the top: the bar stays one line)
                 num('Size', 'size', 1, this.sizeMax(), 1, true).title = Host.keys(this.tool === 'spray'
@@ -555,7 +560,7 @@ const PaintEditor = {
             picker: 'Click for the foreground colour, Alt-click for the background',
             hand: 'Drag to move about; the wheel zooms; double-click fits',
             text: 'Click where the text goes; Ctrl+Enter puts it down',
-            fill: 'Click to fill with the foreground colour',
+            fill: wholeFill ? 'Click to fill the whole layer (or what\'s selected) with the foreground colour' : 'Click to fill with the foreground colour',
             gradient: 'Drag from where it starts to where it ends'
         }[this.tool] || '';
         if (hint.textContent) {
@@ -1358,22 +1363,30 @@ const PaintEditor = {
         this.combineSelection(this.regionCanvas(reg, '#000000'), mode);
     },
 
+    // Where the colour clicked matches, or the whole layer (inside the
+    // selection either way)
     fillAt(p) {
         const l = this.layer();
-        const reg = this.region(this.sample(), p.x, p.y);
-        if (!reg) return;
+        const whole = this.opts.fillWhat === 'layer';
+        const reg = whole ? null : this.region(this.sample(), p.x, p.y);
+        if (!whole && !reg) return;
         this.beginPixels(l);
-        const c = this.regionCanvas(reg, this.fg);
         const g = this.stroke.getContext('2d');
         g.setTransform(1, 0, 0, 1, 0, 0);
         g.clearRect(0, 0, this.W, this.H);
-        g.drawImage(c, 0, 0);
-        c.width = c.height = 0;
+        if (whole) {
+            g.fillStyle = this.fg;
+            g.fillRect(0, 0, this.W, this.H);
+        } else {
+            const c = this.regionCanvas(reg, this.fg);
+            g.drawImage(c, 0, 0);
+            c.width = c.height = 0;
+        }
         this.drag = { tool: 'fill' };
         this.putStroke(l.canvas.getContext('2d'));
         this.drag = null;
         g.clearRect(0, 0, this.W, this.H);
-        const b = reg.box;
+        const b = whole ? (this.sel ? this.sel.box : { x: 0, y: 0, w: this.W, h: this.H }) : reg.box;
         this.endPixels(l, { x: b.x - 1, y: b.y - 1, w: b.w + 2, h: b.h + 2 });
         this.renderSoon();
     },
