@@ -5339,6 +5339,34 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     box-shadow: var(--shadow-1);
 }
 
+/* The words never spill out of their button: when the sidebar is narrow
+   (a small window, comfortable density, larger system text) the switch
+   first draws closer, then leaves out its icons, and only then shortens
+   a word */
+.folder-rail {
+    container: rail / inline-size;
+}
+
+.mode-seg > button span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@container rail (width < 270px) {
+    .mode-seg > button {
+        gap: 4px;
+        padding: 0 var(--sp-1);
+    }
+}
+
+@container rail (width < 236px) {
+    .mode-seg > button .i {
+        display: none;
+    }
+}
+
 .mode-chip {
     flex: none;
     display: inline-flex;

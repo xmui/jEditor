@@ -1,8 +1,16 @@
-// The themes checklist: opens every screen of jEditor in every theme, at two
-// window sizes, and checks each part of it. Writes docs/themes-checklist.md.
+// The look checklist: opens every screen of jEditor, in its own look on each
+// platform (the Windows app, the Mac app, Linux, a browser) and in every
+// theme, at three window sizes (the smallest with comfortable density, the
+// worst case for room), and checks each part of it. Writes
+// docs/themes-checklist.md.
 //
-//   node design/themes/audit.js                  every theme, every screen
-//   node design/themes/audit.js xp/royale paint  one theme, one screen
+//   node design/themes/audit.js                  everything
+//   node design/themes/audit.js xp/royale paint  one look, one screen
+//   node design/themes/audit.js mac grid         jEditor on the Mac, one screen
+//
+// The fonts each platform shows jEditor in aren't here: Inter stands in for
+// Segoe UI and SF (it's a little wider, so a fit here fits there), DejaVu
+// Sans for Linux and a browser.
 //   SHOTS=dir node design/themes/audit.js        keep a screenshot of each
 //
 // What a part is checked for (inside its own element):
@@ -10,6 +18,8 @@
 //                cut off by its box, with no scrolling to reach it
 //   covered      under the theme's title bar or menu bar
 //   no icon      a button with neither words nor a picture
+//   spills       its words or icon reach outside its own button
+//   overlaps     two buttons over each other
 //   text cut     words cut off without "…"
 //   own font     words still in jEditor's own font, not the theme's
 //   missing file a picture or font of the theme that isn't there (404)
@@ -19,19 +29,28 @@ const { chromium } = require(REPO + '/node_modules/playwright-core');
 const { launchOptions } = require(REPO + '/test/page-helpers.js');
 const PH = path.join(__dirname, 'photos');
 
-const THEMES = [
-    ['', 'jEditor'], ['xp/royale', 'Royale'], ['xp/noir', 'Noir'], ['xp/red', 'Red'],
-    ['snow/finder', 'Finder'], ['snow/aperture', 'Aperture'], ['mac84/finder', '1984']
+// [name for the command line, column, theme, platform, the font standing in]
+const WIN = ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn', 'themes'];
+const LOOKS = [
+    ['windows', 'Windows', '', 'windows', 'Inter'],
+    ['mac', 'Mac', '', 'mac', 'Inter'],
+    ['mac26', 'Mac, macOS 26', '', 'mac', 'Inter', 'native-toolbar'],
+    ['linux', 'Linux', '', 'linux', 'DejaVu Sans'],
+    ['web', 'Web', '', 'web', 'DejaVu Sans'],
+    ['xp/royale', 'Royale', 'xp/royale', 'windows'], ['xp/noir', 'Noir', 'xp/noir', 'windows'], ['xp/red', 'Red', 'xp/red', 'windows'],
+    ['snow/finder', 'Finder', 'snow/finder', 'windows'], ['snow/aperture', 'Aperture', 'snow/aperture', 'windows'], ['mac84/finder', '1984', 'mac84/finder', 'windows']
 ];
+const FEATURES = { windows: WIN, mac: ['reveal', 'windows', 'places', 'updates', 'permissions'], linux: ['reveal', 'windows', 'places', 'updates'] };
 const FONT = { xp: /Tahoma/, snow: /Lucida|DejaVu/, mac84: /Chicago/ };
-const SIZES = [[1280, 800], [1024, 640]];
+const SIZES = [[1280, 800, 'compact'], [1024, 640, 'compact'], [800, 600, 'comfortable']];
 
 const H = (id) => `app.keyHandlers()[${JSON.stringify(id)}]()`;
 const single = (then = '') => `app.openSingle(app.files[3]); setTimeout(() => { ${then} }, 400)`;
 // Screens: [folder open?, what to do]
 const SCREENS = {
     start: [false, ''],
-    grid: [true, `if (document.body.dataset.view === 'single') document.getElementById('btn-toggle-view').click()`],
+    grid: [true, `if (document.body.dataset.view === 'single') document.getElementById('btn-toggle-view').click(); setTimeout(() => { if (document.getElementById('mode-seg')?.getClientRects().length && !document.documentElement.dataset.skin) ${H('folders.rail')}; }, 300)`],
+    rail: [true, `if (document.body.dataset.view === 'single') document.getElementById('btn-toggle-view').click(); setTimeout(() => { if (!document.getElementById('folder-rail')?.getClientRects().length || (!document.documentElement.dataset.skin && !document.getElementById('mode-seg')?.getClientRects().length)) ${H('folders.rail')}; }, 300)`],
     photo: [true, single()],
     toolbar: [true, `for (const k of app.uiPrefs.order) app.uiPrefs.placement[k] = 'main'; app.applyUiPrefs(); if (document.body.dataset.view === 'single') document.getElementById('btn-toggle-view').click()`],
     more: [true, `for (const k of app.uiPrefs.order) app.uiPrefs.placement[k] = 'more'; app.applyUiPrefs(); if (document.body.dataset.view === 'single') document.getElementById('btn-toggle-view').click(); setTimeout(() => document.getElementById('btn-more').click(), 300)`],
@@ -69,7 +88,9 @@ const PARTS = [
     ['Main window', 'Toolbar, with every button on it', 'toolbar', 'header'],
     ['Main window', 'Toolbar, with every button under More', 'more', 'header'],
     ['Main window', 'Folder bar and search', 'grid', '.folder-bar'],
-    ['Main window', 'Folder list', 'grid', '.folder-rail'],
+    ['Main window', 'Folder list', 'rail', '.folder-rail'],
+    ['Main window', 'Photos · Adjust · Paint, sidebar open', 'rail', '#mode-seg'],
+    ['Main window', 'Photos · Adjust · Paint chip, sidebar closed', 'grid', '#mode-chip-bar'],
     ['Main window', 'Thumbnails', 'grid', '#grid-view'],
     ['Main window', "What's selected (pane or foot bar)", 'grid', '.selection-bar'],
     ['Main window', 'Thumbnail size', 'grid', '.grid-controls'],
@@ -128,6 +149,18 @@ const BY_HAND = [
     'Photos picked one by one (the Save… bar)'
 ];
 
+// jEditor's own look, by hand: [what, the looks it applies to]
+const BY_HAND_OWN = [
+    ['In the real fonts: Segoe UI, SF, the desktop\'s', ['windows', 'mac', 'mac26', 'linux', 'web']],
+    ['With larger system text (Windows: Text size; Mac and Linux: larger text)', ['windows', 'mac', 'mac26', 'linux', 'web']],
+    ['The window: dragged, maximised, resized, snapped', ['windows', 'mac', 'mac26', 'linux']],
+    ['The traffic lights cover nothing, and the window drags by its top', ['mac']],
+    ['macOS 26\'s own toolbar (Liquid Glass) holds the top row, nothing under it', ['mac26']],
+    ['Mica and Acrylic behind the window', ['windows']],
+    ['Installed as an app (the browser\'s Install)', ['web']],
+    ['Touch and a pen', ['windows', 'web']]
+];
+
 const pageAudit = ({ sel, font }) => {
     const vw = innerWidth, vh = innerHeight;
     const out = [];
@@ -178,6 +211,22 @@ const pageAudit = ({ sel, font }) => {
                     if (vis < r.width * r.height * 0.9) out.push(['off screen', `${what} is cut off by ${name(clipped).split(' ')[0]}`]);
                 } else if (r.right > vw + 1 || r.bottom > vh + 1 || r.left < -1 || r.top < -1) {
                     out.push(['off screen', `${what} goes past the window's ${r.right > vw + 1 ? 'right' : r.bottom > vh + 1 ? 'bottom' : r.left < -1 ? 'left' : 'top'} edge`]);
+                }
+            }
+            // Its words or icon reach outside its own button
+            const btn = el.parentElement && el.parentElement.closest('button');
+            if (btn && !el.matches('button') && shown(btn)) {
+                const br = btn.getBoundingClientRect();
+                const by = Math.max(br.left - r.left, r.right - br.right, br.top - r.top, r.bottom - br.bottom);
+                if (by > 1) out.push(['spills', `${what} spills ${Math.round(by)}px out of ${name(btn)}`]);
+            }
+            // Two buttons over each other
+            if (el.matches('button')) {
+                for (let sib = el.nextElementSibling; sib; sib = sib.nextElementSibling) {
+                    if (!sib.matches('button') || !shown(sib)) continue;
+                    const sr = sib.getBoundingClientRect();
+                    const w = Math.min(r.right, sr.right) - Math.max(r.left, sr.left), h = Math.min(r.bottom, sr.bottom) - Math.max(r.top, sr.top);
+                    if (w > 2 && h > 2) out.push(['overlaps', `${what} and ${name(sib)} are over each other`]);
                 }
             }
             // Under the theme's title bar or menu bar
@@ -236,27 +285,53 @@ const srv = http.createServer((req, res) => {
     await new Promise(r => srv.listen(0, r));
     const base = `http://localhost:${srv.address().port}`;
     const browser = await chromium.launch(launchOptions());
-    const themes = THEMES.filter(([k]) => !onlyTheme || k === onlyTheme || (onlyTheme === 'jeditor' && !k));
+    const looks = LOOKS.filter(([k]) => !onlyTheme || k === onlyTheme);
     const screens = Object.keys(SCREENS).filter(s => !onlyScreen || s === onlyScreen);
-    const results = {}; // results[theme][part index] = { shown, issues: [[size, kind, text]] }
-    const missing = {}; // theme → files not found
-    for (const [theme] of themes) {
-        results[theme] = PARTS.map(() => ({ shown: false, issues: [] }));
-        missing[theme] = new Set();
-        for (const [w, h] of SIZES) {
+    const results = {}; // results[look][part index] = { shown, issues: [[size, kind, text]] }
+    const missing = {}; // look → files not found
+    for (const [key, , theme, platform, standIn, htmlClass] of looks) {
+        results[key] = PARTS.map(() => ({ shown: false, issues: [] }));
+        missing[key] = new Set();
+        for (const [w, h, density] of SIZES) {
             const ctx = await browser.newContext({ viewport: { width: w, height: h } });
-            await ctx.addInitScript(() => {
-                window.JEditorNative = { platform: 'windows', features: ['themes', 'scan'], titleBar() {}, windowAction() {} };
-                try { localStorage.setItem('jeditor.whatsNewSeen', '9.9.9'); } catch (e) { /* none */ }
-            });
+            await ctx.addInitScript(({ platform, features, standIn, htmlClass, density }) => {
+                // What the app would answer: nothing (no drives, scanners, places)
+                const mac = platform !== 'windows';
+                const answers = {
+                    platform, features, titleBar() {}, windowAction() {}, setState() {}, watchLog() {}, permissionsSeen() {},
+                    async places() { return { drives: [{ name: mac ? 'Macintosh HD' : 'Local Disk (C:)', path: mac ? '/' : 'C:\\', kind: 'fixed', free: 2e11, size: 5e11 }], home: [{ name: 'Pictures', path: mac ? '/Users/me/Pictures' : 'C:\\Users\\me\\Pictures' }] }; },
+                    async permissions() { return { firstRun: false, rows: [] }; },
+                    async countPhotos(paths) { return { counts: paths.map(() => 0), limit: 1000 }; },
+                    async windows() { return []; }
+                };
+                if (platform !== 'web') window.JEditorNative = new Proxy(answers, {
+                    get: (t, k) => k in t ? t[k] : (typeof k === 'string' && !k.startsWith('on') ? async () => [] : undefined)
+                });
+                try {
+                    localStorage.setItem('jeditor.whatsNewSeen', '9.9.9');
+                    const prefs = JSON.parse(localStorage.getItem('jeditor.ui') || '{}');
+                    localStorage.setItem('jeditor.ui', JSON.stringify({ ...prefs, density }));
+                } catch (e) { /* none */ }
+                document.addEventListener('DOMContentLoaded', () => {
+                    if (htmlClass) document.documentElement.classList.add(htmlClass);
+                    if (standIn) {
+                        const st = document.createElement('style');
+                        st.textContent = `:root:not([data-skin]) { --font-ui: "${standIn}"; } :root:not([data-skin]) body { font-family: "${standIn}"; }`;
+                        document.head.appendChild(st);
+                    }
+                });
+            }, { platform, features: FEATURES[platform] || [], standIn, htmlClass, density });
             const page = await ctx.newPage();
-            page.on('response', r => { if (r.status() >= 400 && r.url().includes('/themes/')) missing[theme].add(r.url().replace(base + '/', '')); });
-            page.on('pageerror', e => console.log('page error', theme, e.message));
+            page.on('response', r => { if (r.status() >= 400 && !r.url().includes('/photos/')) missing[key].add(r.url().replace(base + '/', '')); });
+            page.on('pageerror', e => console.log('page error', key, e.message));
             for (const s of screens) {
                 const [folder, setup] = SCREENS[s];
                 await page.goto(base + '/index.html');
                 await page.waitForTimeout(300);
-                await page.evaluate((theme) => { Experiments.set('themes', true); Themes.choose(theme); }, theme);
+                await page.evaluate(({ theme, density }) => {
+                    if (theme) { Experiments.set('themes', true); Themes.choose(theme); }
+                    document.documentElement.dataset.density = density;
+                }, { theme, density });
                 if (folder) await page.evaluate(async ({ files, names }) => {
                     const root = await navigator.storage.getDirectory();
                     let dir;
@@ -281,48 +356,54 @@ const srv = http.createServer((req, res) => {
                 await page.waitForTimeout(1500);
                 if (process.env.SHOTS) {
                     fs.mkdirSync(process.env.SHOTS, { recursive: true });
-                    await page.screenshot({ path: path.join(process.env.SHOTS, `${(theme || 'jeditor').replace('/', '-')}-${s}-${w}.png`) });
+                    await page.screenshot({ path: path.join(process.env.SHOTS, `${key.replace('/', '-')}-${s}-${w}.png`) });
                 }
                 const font = theme ? FONT[theme.split('/')[0]].source : '';
                 for (let i = 0; i < PARTS.length; i++) {
                     if (PARTS[i][2] !== s) continue;
                     const r = await page.evaluate(pageAudit, { sel: PARTS[i][3], font });
-                    const into = results[theme][i];
+                    const into = results[key][i];
                     into.shown = into.shown || r.shown;
                     const have = new Set(into.issues.map(x => x[1] + x[2]));
-                    for (const [kind, text] of r.issues) if (!have.has(kind + text)) into.issues.push([`${w}×${h}`, kind, text]);
+                    for (const [kind, text] of r.issues) if (!have.has(kind + text)) into.issues.push([`${w}×${h}${density === 'comfortable' ? ', comfortable' : ''}`, kind, text]);
                 }
             }
             await ctx.close();
-            process.stdout.write(`${theme || 'jeditor'} ${w}×${h} done\n`);
+            process.stdout.write(`${key} ${w}×${h} done\n`);
         }
     }
     await browser.close();
     srv.close();
     if (onlyTheme || onlyScreen) {
-        for (const [theme] of themes) for (let i = 0; i < PARTS.length; i++) for (const x of results[theme][i].issues) console.log(theme || 'jeditor', PARTS[i][1], ...x);
+        for (const [key] of looks) for (let i = 0; i < PARTS.length; i++) for (const x of results[key][i].issues) console.log(key, PARTS[i][1], ...x);
         return;
     }
     // The checklist
     const cell = (r) => !r.shown ? '—' : r.issues.length ? `⚠ ${r.issues.length}` : '✓';
-    let md = '# Themes checklist\n\n';
-    md += 'Every part of jEditor, in every theme: written by `node design/themes/audit.js`, which opens each screen at 1280×800 and 1024×640 and checks each part for words or buttons off screen or cut off, things under the title bar, buttons with neither words nor an icon, words cut off without "…", words still in jEditor\'s own font, and theme files that aren\'t there. Run it again after a change to a theme.\n\n';
-    md += '✓ nothing found · ⚠ n problems (listed below) · — not on screen in that theme\n\n';
+    const OWN = LOOKS.filter(l => !l[2]), THEMED = LOOKS.filter(l => l[2]);
+    let md = '# Look checklist\n\n';
+    md += 'Every part of jEditor: in its own look on each platform (the Windows app, the Mac app with and without macOS 26\'s own toolbar, Linux, a browser) and in every theme (the Windows app). Written by `node design/themes/audit.js`, which opens each screen at 1280×800, 1024×640 and 800×600 with comfortable density, and checks each part for: words or buttons off screen or cut off; anything under a theme\'s title bar; buttons with neither words nor an icon; words or icons spilling out of their button; buttons over each other; words cut off without "…"; words in the wrong font; files that aren\'t there. Run it again after changing how anything looks.\n\n';
+    md += 'The platforms\' own fonts aren\'t on the machine it runs on: Inter stands in for Segoe UI and SF (a little wider, so what fits here fits there), DejaVu Sans for Linux and a browser.\n\n';
+    md += '✓ nothing found · ⚠ n problems (listed below) · — not on screen there\n\n';
     md += `Checked ${new Date().toISOString().slice(0, 10)}.\n\n`;
     let area = '';
     for (let i = 0; i < PARTS.length; i++) {
         const [a, name] = PARTS[i];
         if (a !== area) {
             area = a;
-            md += `\n## ${a}\n\n| Part | ${THEMES.map(t => t[1]).join(' | ')} |\n|---|${THEMES.map(() => ':-:').join('|')}|\n`;
+            md += `\n## ${a}\n\n| Part | ${LOOKS.map(t => t[1]).join(' | ')} |\n|---|${LOOKS.map(() => ':-:').join('|')}|\n`;
         }
-        md += `| ${name} | ${THEMES.map(([k]) => cell(results[k][i])).join(' | ')} |\n`;
+        md += `| ${name} | ${LOOKS.map(([k]) => results[k] ? cell(results[k][i]) : ' ').join(' | ')} |\n`;
     }
-    md += '\n## Checked by hand\n\nWhat the script can\'t see. Tick each in every theme on the real app.\n\n';
-    md += `| | ${THEMES.slice(1).map(t => t[1]).join(' | ')} |\n|---|${THEMES.slice(1).map(() => ':-:').join('|')}|\n`;
-    for (const b of BY_HAND) md += `| ${b} | ${THEMES.slice(1).map(() => '☐').join(' | ')} |\n`;
+    md += '\n## Checked by hand\n\nWhat the script can\'t see. Tick each on the real app.\n\n### jEditor\'s own look\n\n';
+    md += `| | ${OWN.map(t => t[1]).join(' | ')} |\n|---|${OWN.map(() => ':-:').join('|')}|\n`;
+    for (const [b, on] of BY_HAND_OWN) md += `| ${b} | ${OWN.map(t => on.includes(t[0]) ? '☐' : '—').join(' | ')} |\n`;
+    md += '\n### Themes\n\n';
+    md += `| | ${THEMED.map(t => t[1]).join(' | ')} |\n|---|${THEMED.map(() => ':-:').join('|')}|\n`;
+    for (const b of BY_HAND) md += `| ${b} | ${THEMED.map(() => '☐').join(' | ')} |\n`;
     md += '\n## Problems found\n';
-    for (const [k, label] of THEMES) {
+    for (const [k, label] of LOOKS) {
+        if (!results[k]) continue;
         const rows = [];
         PARTS.forEach((p, i) => results[k][i].issues.forEach(([size, kind, text]) => rows.push(`- **${p[0]} · ${p[1]}** (${size}) ${kind}: ${text}`)));
         for (const f of missing[k]) rows.push(`- missing file: \`${f}\``);
