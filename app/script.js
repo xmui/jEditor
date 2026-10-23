@@ -288,6 +288,7 @@ const app = {
             if (e.target === e.currentTarget) this.toggleWhatsNew(false);
         });
         document.getElementById('btn-dupes').addEventListener('click', () => this.openDupes());
+        document.getElementById('btn-convert').addEventListener('click', () => this.keyHandlers()['app.convert']());
         this.initSettings();
 
         this.initStripResize();
@@ -427,6 +428,7 @@ const app = {
         strip: 'Film strip',
         fullscreen: 'Full screen',
         dupes: 'Find duplicates (WIP)',
+        convert: 'Convert (format, quality, storage)',
         keys: 'Keyboard shortcuts',
         whatsnew: 'What\'s new',
         customize: 'Settings'
@@ -443,10 +445,10 @@ const app = {
 
     defaultUiPrefs() {
         return {
-            order: ['scan', 'camera', 'info', 'view', 'refresh', 'crop', 'adjust', 'paint', 'history', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'whatsnew', 'customize'],
+            order: ['scan', 'camera', 'info', 'view', 'refresh', 'crop', 'adjust', 'paint', 'history', 'fit', 'strip', 'fullscreen', 'dupes', 'convert', 'keys', 'whatsnew', 'customize'],
             placement: { // 'main' | 'more' | 'hidden'
                 scan: 'main', camera: 'main', info: 'main', view: 'main', refresh: 'main', crop: 'main', adjust: 'more', paint: 'more', history: 'main',
-                fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', keys: 'more', whatsnew: 'more', customize: 'more'
+                fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', convert: 'more', keys: 'more', whatsnew: 'more', customize: 'more'
             },
             vertical: false,
             scale: 1,
@@ -3997,6 +3999,7 @@ const app = {
         ['view.fullscreen', 'global', 'View', 'Full screen', ['F']],
         ['view.slideshow', 'global', 'View', 'Slideshow', []],
         ['app.dupes', 'global', 'App', 'Find duplicates (WIP)', ['D']],
+        ['app.convert', 'global', 'App', 'Convert: format, quality and storage…', []],
         ['app.import', 'global', 'App', 'Import from a camera or card…', ['Ctrl+I']],
         ['app.refresh', 'global', 'App', 'Rescan folder', ['R']],
         ['app.search', 'global', 'App', 'Search photos', ['Ctrl+F', '/']],
@@ -4190,6 +4193,8 @@ const app = {
             'view.fullscreen': () => this.toggleFullscreen(),
             'view.slideshow': () => this.startSlideshow(),
             'app.dupes': () => this.openDupes(),
+            // The selection in the grid, else the whole project
+            'app.convert': () => Convert.open(this.viewMode === 'grid' && this.selection.size > 1 ? { files: [...this.selection] } : {}),
             'app.import': () => Import.open(),
             'app.refresh': () => this.refreshFolder(),
             'app.search': () => Flags.focusSearch(),

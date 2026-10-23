@@ -174,7 +174,9 @@ In the Windows, Mac and Linux apps:
 
 ## Converting photos: format, quality and storage
 
-**Convert…** (right-click the project in the sidebar, or a folder, or the selected photos; or ⋯ on the selection bar) turns photos into another format: **AVIF** (smallest), **JPEG XL** (newest) or **WebP** (opens almost anywhere).
+**Convert…** turns photos into another format: **AVIF** (smallest), **JPEG XL** (newest) or **WebP** (opens almost anywhere). Open it from the toolbar's **Convert** button (under ⋯ to start with; Settings can put it on the toolbar), **Convert photos…** on the start page, right-clicking the project in the sidebar, a folder or the selected photos, or ⋯ on the selection bar.
+
+- **Photos:** what's being converted: the project, a folder in it or the selected photos. **Choose a folder…** picks any folder on your computer instead, with the photos in its folders too, without opening it as the project (from the start page, it asks straight away). A folder chosen keeps its originals in the Recycle Bin, or in a `.jeditor/trash` of its own, and **Put the originals back** at the end takes the conversion back.
 
 - **Quality** goes from smaller to better, with a mark at the lowest quality that still looks the same as the original (worked out on one of your photos; *Closest to the original* where only the highest keeps its grain). Under it, a close-up of that photo at its own pixels, the original beside the result, with their sizes.
 - **Storage:** what the photos take **Now** and **After** (the difference striped green) and by folder, worked out from a sample of them before anything happens, and again as you change the format or quality.

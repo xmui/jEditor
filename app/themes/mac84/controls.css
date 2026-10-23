@@ -402,6 +402,7 @@
 :root[data-skin="mac84"] #btn-adjust { background-image: url(px/adjust.png); }
 :root[data-skin="mac84"] #btn-paint { background-image: url(px/paint.png); }
 :root[data-skin="mac84"] #btn-dupes { background-image: url(px/dupes.png); }
+:root[data-skin="mac84"] #btn-convert { background-image: url(px/convert.png); }
 :root[data-skin="mac84"] #btn-fullscreen { background-image: url(px/fullscreen.png); }
 :root[data-skin="mac84"] #btn-shortcuts { background-image: url(px/keys.png); }
 :root[data-skin="mac84"] #btn-whatsnew { background-image: url(px/whatsnew.png); }

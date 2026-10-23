@@ -594,6 +594,8 @@
 :root[data-skin="xp"] #btn-paint::after { content: "Paint"; }
 :root[data-skin="xp"] #btn-dupes { --ico: url(../xp/icons/dupes16.png); }
 :root[data-skin="xp"] #btn-dupes::after { content: "Find Duplicates"; }
+:root[data-skin="xp"] #btn-convert { --ico: url(../xp/icons/convert16.svg); }
+:root[data-skin="xp"] #btn-convert::after { content: "Convert"; }
 :root[data-skin="xp"] #btn-fullscreen { --ico: url(../xp/icons/fullscreen16.png); }
 :root[data-skin="xp"] #btn-fullscreen::after { content: "Full Screen"; }
 :root[data-skin="xp"] #btn-shortcuts { --ico: url(../xp/icons/keys16.png); }

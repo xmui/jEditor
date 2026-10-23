@@ -1601,6 +1601,58 @@ const PROJECT = `
         check('export: as AVIF, with the edit and the EXIF', r.exported && String(r.exported) === '900,600,jEd', JSON.stringify(r.exported));
         check('convert: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
+
+        // Any folder, from the start page: converted where it is, not opened
+        const p2 = await open();
+        const o = await p2.page.evaluate(async () => {
+            let step = 'folder';
+            try {
+                const out = {};
+                const opfs = await navigator.storage.getDirectory();
+                try { await opfs.removeEntry('Holiday', { recursive: true }); } catch (e) { /* fresh */ }
+                const dir = await opfs.getDirectoryHandle('Holiday', { create: true });
+                const day = await dir.getDirectoryHandle('Day 1', { create: true });
+                for (let i = 0; i < 3; i++) {
+                    const c = document.createElement('canvas'); c.width = 600; c.height = 400;
+                    const g = c.getContext('2d'); g.fillStyle = ['#2050c0', '#c03020', '#20a050'][i]; g.fillRect(0, 0, 600, 400);
+                    g.fillStyle = '#fff'; g.beginPath(); g.arc(200 + i * 80, 200, 90, 0, Math.PI * 2); g.fill();
+                    const h = await (i ? day : dir).getFileHandle(`IMG_${i}.jpg`, { create: true });
+                    const w = await h.createWritable(); await w.write(await canvasBlob(c, 'image/jpeg', 0.95)); await w.close();
+                }
+                const names = async () => {
+                    const n = [];
+                    for await (const e of dir.values()) if (e.kind === 'file') n.push(e.name);
+                    for await (const e of day.values()) n.push('Day 1/' + e.name);
+                    return n.sort().join();
+                };
+                window.showDirectoryPicker = async () => dir;
+                Convert.prefs.format = 'avif';
+                Convert.prefs.keep = false;
+                document.getElementById('start-convert').click();
+                await until(() => Convert.est && !Convert.est.working, 600);
+                out.chosen = [document.getElementById('cv-src-name').textContent, [...document.querySelectorAll('.cv-folder .n')].map(e => e.firstChild.textContent).sort().join()];
+                step = 'convert';
+                Convert.go();
+                await until(() => Convert.done, 800);
+                out.converted = await names();
+                const trash = [];
+                for await (const e of (await (await dir.getDirectoryHandle('.jeditor')).getDirectoryHandle('trash')).values()) trash.push(e.name);
+                out.trash = trash.sort().join();
+                out.notOpened = !app.dirHandle && !app.files.length && !document.getElementById('drop-zone').classList.contains('hidden');
+                step = 'put back';
+                document.getElementById('cv-cancel').click();
+                await until(async () => (await names()).includes('IMG_0.jpg'), 100);
+                await sleep(200);
+                out.back = await names();
+                out.stillStart = !app.files.length && !document.getElementById('drop-zone').classList.contains('hidden');
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('convert: from the start page, any folder: its photos and its folders\', without opening it', o.chosen && o.chosen[0] === 'Holiday · 3 photos' && o.chosen[1] === 'Day 1,Holiday', JSON.stringify(o));
+        check('convert: a folder chosen is converted where it is, its originals in its own .jeditor/trash, not opened as the project', o.converted === 'Day 1/IMG_1.avif,Day 1/IMG_2.avif,IMG_0.avif' && o.trash === 'IMG_0.jpg,IMG_1.jpg,IMG_2.jpg' && o.notOpened, JSON.stringify(o));
+        check('convert: Put the originals back puts them back by name, still on the start page', o.back === 'Day 1/IMG_1.jpg,Day 1/IMG_2.jpg,IMG_0.jpg' && o.stillStart, JSON.stringify(o));
+        check('convert (a folder chosen): no JS errors', p2.issues.errors.length === 0, p2.issues.errors.join('; '));
+        await p2.page.close();
     }
 
     await browser.close();

@@ -490,6 +490,7 @@
 :root[data-skin="snow"] #btn-adjust { --g: url(glyphs/adjust.svg); --l: "Adjust"; }
 :root[data-skin="snow"] #btn-paint { --g: url(glyphs/paint.svg); --l: "Paint"; }
 :root[data-skin="snow"] #btn-dupes { --g: url(glyphs/dupes.svg); --l: "Duplicates"; }
+:root[data-skin="snow"] #btn-convert { --g: url(glyphs/convert.svg); --l: "Convert"; }
 :root[data-skin="snow"] #btn-fullscreen { --g: url(glyphs/fullscreen.svg); --l: "Full Screen"; }
 :root[data-skin="snow"] #btn-shortcuts { --g: url(glyphs/keys.svg); --l: "Shortcuts"; }
 :root[data-skin="snow"] #btn-whatsnew { --g: url(glyphs/whatsnew.svg); --l: "What\'s New"; }

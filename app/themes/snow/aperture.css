@@ -214,6 +214,7 @@
 :root[data-skin="snow"] #btn-adjust { --g: url(../snow/glyphs/adjust-dark.svg); }
 :root[data-skin="snow"] #btn-paint { --g: url(../snow/glyphs/paint-dark.svg); }
 :root[data-skin="snow"] #btn-dupes { --g: url(../snow/glyphs/dupes-dark.svg); }
+:root[data-skin="snow"] #btn-convert { --g: url(../snow/glyphs/convert-dark.svg); }
 :root[data-skin="snow"] #btn-fullscreen { --g: url(../snow/glyphs/fullscreen-dark.svg); }
 :root[data-skin="snow"] #btn-shortcuts { --g: url(../snow/glyphs/keys-dark.svg); }
 :root[data-skin="snow"] #btn-whatsnew { --g: url(../snow/glyphs/whatsnew-dark.svg); }
