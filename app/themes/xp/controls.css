@@ -579,3 +579,6 @@
 :root[data-skin="xp"] .scan-hint { color: #444; font: 11px var(--xp-font); }
 :root[data-skin="xp"] .scan-dock-foot { justify-content: flex-end; gap: 6px; padding: 8px 10px 10px; border: 0; border-radius: 0; background: var(--r-face); }
 :root[data-skin="xp"] .scan-dock-foot .btn { min-width: 75px; }
+
+/* A dialog taller than the window: its list scrolls; the head and the foot keep their size */
+:root[data-skin="xp"] :is(.dialog-head, .dialog-foot, .shortcuts-profiles, .settings-nav) { flex: none; }

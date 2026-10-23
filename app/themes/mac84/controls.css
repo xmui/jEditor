@@ -392,3 +392,6 @@
 :root[data-skin="mac84"] .scan-sec-head { color: #000; font: 12px var(--m-font); letter-spacing: 0; text-transform: none; text-decoration: underline; }
 :root[data-skin="mac84"] .scan-hint { color: #000; font: 12px/15px var(--m-font); }
 :root[data-skin="mac84"] .scan-dock-foot { justify-content: flex-end; gap: 12px; padding: 8px 10px; border-top: 1px solid #000; border-radius: 0; background: #fff; }
+
+/* A dialog taller than the window: its list scrolls; the head and the foot keep their size */
+:root[data-skin="mac84"] :is(.dialog-head, .dialog-foot, .shortcuts-profiles, .settings-nav) { flex: none; }

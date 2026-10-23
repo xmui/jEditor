@@ -476,3 +476,6 @@
 :root[data-skin="snow"] .scan-sec-head { color: var(--sl-ink); font: 700 11px var(--sl-font); letter-spacing: 0; text-transform: none; }
 :root[data-skin="snow"] .scan-hint { color: var(--sl-ink-2); font: 11px/14px var(--sl-font); }
 :root[data-skin="snow"] .scan-dock-foot { justify-content: flex-end; gap: 10px; padding: 10px 14px 12px; border-top: 1px solid var(--sl-line); border-radius: 0 0 5px 5px; background: var(--sl-face); }
+
+/* A dialog taller than the window: its list scrolls; the head and the foot keep their size */
+:root[data-skin="snow"] :is(.dialog-head, .dialog-foot, .shortcuts-profiles, .settings-nav) { flex: none; }
