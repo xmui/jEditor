@@ -16,7 +16,7 @@ Checked 2026-10-23.
 | A menu, open | — | ✓ | ✓ | ✓ | — | — | ✓ |
 | Toolbar | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Toolbar, with every button on it | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Toolbar, with every button under More | ✓ | ⚠ 15 | ⚠ 15 | ⚠ 15 | ⚠ 5 | ⚠ 5 | ✓ |
+| Toolbar, with every button under More | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Folder bar and search | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Folder list | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Thumbnails | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -118,73 +118,23 @@ None.
 
 ### Royale
 
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-scan "Scan into this project" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-info "File info" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-toggle-view "Switch between grid and single view" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-refresh "Rescan folder" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-crop "Crop and straighten" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-adjust "Adjust" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-paint "Paint" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-history "Undo history" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-toggle-fit "Thumbnails: fit or fill" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-toggle-strip "Show or hide the film strip" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-fullscreen "Full screen" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-dupes "Find duplicates" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-shortcuts "Keyboard shortcuts" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-whatsnew "What's new" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-customize "Settings" is cut off by body
+None.
 
 ### Noir
 
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-scan "Scan into this project" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-info "File info" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-toggle-view "Switch between grid and single view" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-refresh "Rescan folder" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-crop "Crop and straighten" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-adjust "Adjust" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-paint "Paint" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-history "Undo history" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-toggle-fit "Thumbnails: fit or fill" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-toggle-strip "Show or hide the film strip" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-fullscreen "Full screen" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-dupes "Find duplicates" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-shortcuts "Keyboard shortcuts" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-whatsnew "What's new" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-customize "Settings" is cut off by body
+None.
 
 ### Red
 
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-scan "Scan into this project" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-info "File info" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-toggle-view "Switch between grid and single view" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-refresh "Rescan folder" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-crop "Crop and straighten" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-adjust "Adjust" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-paint "Paint" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-history "Undo history" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-toggle-fit "Thumbnails: fit or fill" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-toggle-strip "Show or hide the film strip" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-fullscreen "Full screen" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-dupes "Find duplicates" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-shortcuts "Keyboard shortcuts" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-whatsnew "What's new" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-customize "Settings" is cut off by body
+None.
 
 ### Finder
 
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-fullscreen "Full screen" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-dupes "Find duplicates" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-whatsnew "What's new" is cut off by body
-- **Main window · Toolbar, with every button under More** (1024×640) off screen: button#btn-shortcuts "Keyboard shortcuts" is cut off by body
-- **Main window · Toolbar, with every button under More** (1024×640) off screen: button#btn-customize "Settings" is cut off by body
+None.
 
 ### Aperture
 
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-fullscreen "Full screen" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-dupes "Find duplicates" is cut off by body
-- **Main window · Toolbar, with every button under More** (1280×800) off screen: button#btn-whatsnew "What's new" is cut off by body
-- **Main window · Toolbar, with every button under More** (1024×640) off screen: button#btn-shortcuts "Keyboard shortcuts" is cut off by body
-- **Main window · Toolbar, with every button under More** (1024×640) off screen: button#btn-customize "Settings" is cut off by body
+None.
 
 ### 1984
 
