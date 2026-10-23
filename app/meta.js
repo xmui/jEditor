@@ -335,6 +335,309 @@ const ImageMeta = {
         return out;
     },
 
+    // ---- EXIF in WebP, AVIF and JPEG XL (and reading it from any) ----
+    //
+    // Space saver (space-saver.js) turns photos into these. Their pixels
+    // come out upright and in sRGB, so the EXIF goes with them made true for
+    // that (orientation 1, the new size, no old thumbnail), and the colour
+    // profile doesn't.
+
+    // The EXIF's TIFF block in a JPEG, PNG, WebP, AVIF or JPEG XL, or null
+    exifOf(bytes) {
+        try {
+            const segs = this.jpegSegments(bytes, { partial: true });
+            if (segs) {
+                const s = segs.find(x => this.isExifSeg(bytes, x));
+                return s ? bytes.slice(s.start + 10, s.end) : null;
+            }
+            const chunks = this.pngChunks(bytes, { partial: true });
+            if (chunks) {
+                const c = chunks.find(x => x.type === 'eXIf');
+                return c ? this.unprefixed(bytes.slice(c.data, c.end - 4)) : null;
+            }
+            const riff = this.webpChunks(bytes);
+            if (riff) {
+                const c = riff.find(x => x.type === 'EXIF');
+                return c ? this.unprefixed(bytes.slice(c.data, c.data + c.size)) : null;
+            }
+            const boxes = this.boxes(bytes);
+            if (boxes && boxes.length) {
+                const exif = boxes.find(b => b.type === 'Exif');
+                if (exif) return this.exifPayload(bytes.subarray(exif.data, exif.end));
+                const meta = boxes.find(b => b.type === 'meta');
+                if (meta) {
+                    const m = this.heifItems(bytes, meta);
+                    const item = m && m.items.find(i => i.type === 'Exif');
+                    const loc = item && m.locs.get(item.id);
+                    if (loc && loc.method === 0 && loc.extents.length === 1) {
+                        const x = loc.extents[0], at = loc.base + x.offset;
+                        return this.exifPayload(bytes.subarray(at, at + x.length));
+                    }
+                }
+            }
+        } catch (e) { /* none */ }
+        return null;
+    },
+
+    // An Exif box or item: how far in the TIFF header is, then the TIFF
+    exifPayload(p) {
+        if (p.length < 12) return null;
+        const skip = new DataView(p.buffer, p.byteOffset, p.byteLength).getUint32(0);
+        return 4 + skip < p.length ? this.unprefixed(p.slice(4 + skip)) : null;
+    },
+
+    // Some writers keep JPEG's "Exif\0\0" in front of the TIFF block
+    unprefixed(t) {
+        return t.length > 6 && t[0] === 0x45 && t[1] === 0x78 && t[2] === 0x69 && t[3] === 0x66 && t[4] === 0 && t[5] === 0 ? t.slice(6) : t;
+    },
+
+    // A TIFF block made true for upright pixels of w × h
+    tiffForUpright(tiff, w, h) {
+        if (!tiff || tiff.length < 8 || tiff.length > 0xFFF0) return tiff && tiff.length >= 8 ? tiff : null;
+        const seg = new Uint8Array(10 + tiff.length);
+        seg.set([0xFF, 0xE1, (tiff.length + 8) >> 8, (tiff.length + 8) & 255, 0x45, 0x78, 0x69, 0x66, 0, 0]);
+        seg.set(tiff, 10);
+        this.patchExifForBakedPixels(seg, { marker: 0xE1, start: 0, end: seg.length }, w, h);
+        return seg.slice(10);
+    },
+
+    // ---- WebP ----
+
+    // RIFF chunks: [{ type, start, data, size }] or null
+    webpChunks(bytes) {
+        if (bytes.length < 20 || String.fromCharCode(...bytes.subarray(0, 4)) !== 'RIFF' || String.fromCharCode(...bytes.subarray(8, 12)) !== 'WEBP') return null;
+        const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const out = [];
+        let p = 12;
+        while (p + 8 <= bytes.length) {
+            const size = v.getUint32(p + 4, true);
+            if (p + 8 + size > bytes.length) break;
+            out.push({ type: String.fromCharCode(...bytes.subarray(p, p + 4)), start: p, data: p + 8, size });
+            p += 8 + size + (size & 1);
+        }
+        return out;
+    },
+
+    // The WebP with this EXIF (the extended format, VP8X, says it's there)
+    withExifWebp(webp, tiff, w, h) {
+        const chunks = this.webpChunks(webp);
+        if (!chunks || !chunks.length || !tiff) return webp;
+        const chunk = (type, payload) => {
+            const c = new Uint8Array(8 + payload.length + (payload.length & 1));
+            c.set([...type].map(ch => ch.charCodeAt(0)));
+            new DataView(c.buffer).setUint32(4, payload.length, true);
+            c.set(payload, 8);
+            return c;
+        };
+        const parts = [];
+        let vp8x = chunks.find(c => c.type === 'VP8X');
+        if (vp8x) {
+            const head = webp.slice(vp8x.start, vp8x.data + vp8x.size + (vp8x.size & 1));
+            head[8] |= 0x08;
+            parts.push(head);
+        } else {
+            const x = new Uint8Array(10);
+            const img = chunks[0];
+            // A lossless picture says in its header whether it has alpha
+            if (img.type === 'VP8L' && img.size >= 5 && (webp[img.data + 4] & 0x10)) x[0] |= 0x10;
+            x[0] |= 0x08;
+            x[4] = (w - 1) & 255; x[5] = ((w - 1) >> 8) & 255; x[6] = ((w - 1) >> 16) & 255;
+            x[7] = (h - 1) & 255; x[8] = ((h - 1) >> 8) & 255; x[9] = ((h - 1) >> 16) & 255;
+            parts.push(chunk('VP8X', x));
+        }
+        for (const c of chunks) {
+            if (c.type === 'VP8X' || c.type === 'EXIF') continue;
+            parts.push(webp.subarray(c.start, c.data + c.size + (c.size & 1)));
+        }
+        parts.push(chunk('EXIF', tiff)); // after the picture, as the format asks
+        const total = 12 + parts.reduce((n, p) => n + p.length, 0);
+        const out = new Uint8Array(total);
+        out.set(webp.subarray(0, 12));
+        new DataView(out.buffer).setUint32(4, total - 8, true);
+        let o = 12;
+        for (const p of parts) { out.set(p, o); o += p.length; }
+        return out;
+    },
+
+    // ---- ISO boxes (AVIF, and JPEG XL's container) ----
+
+    // [{ type, start, data, end }] between start and end, or null
+    boxes(bytes, start = 0, end = bytes.length) {
+        const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const out = [];
+        let p = start;
+        while (p + 8 <= end) {
+            let size = v.getUint32(p), head = 8;
+            const type = String.fromCharCode(...bytes.subarray(p + 4, p + 8));
+            if (size === 1) {
+                if (p + 16 > end) return null;
+                size = Number(v.getBigUint64(p + 8));
+                head = 16;
+            } else if (size === 0) size = end - p;
+            if (size < head || p + size > end) return out.length ? out : null;
+            out.push({ type, start: p, data: p + head, end: p + size });
+            p += size;
+        }
+        return out;
+    },
+
+    // An AVIF's meta box: its items ([{ id, type }]), where each is
+    // (Map id → { method, base, extents: [{ offset, length }] }), and the
+    // iloc's layout, for writing it again
+    heifItems(bytes, meta) {
+        const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const kids = this.boxes(bytes, meta.data + 4, meta.end);
+        if (!kids) return null;
+        const items = [];
+        const iinf = kids.find(b => b.type === 'iinf');
+        if (iinf) {
+            const ver = bytes[iinf.data];
+            const infes = this.boxes(bytes, iinf.data + 4 + (ver === 0 ? 2 : 4), iinf.end) || [];
+            for (const b of infes) {
+                if (b.type !== 'infe') continue;
+                const iv = bytes[b.data];
+                if (iv < 2) continue;
+                const id = iv === 2 ? v.getUint16(b.data + 4) : v.getUint32(b.data + 4);
+                const tAt = b.data + 4 + (iv === 2 ? 2 : 4) + 2;
+                items.push({ id, type: String.fromCharCode(...bytes.subarray(tAt, tAt + 4)) });
+            }
+        }
+        const locs = new Map();
+        const iloc = kids.find(b => b.type === 'iloc');
+        let layout = null;
+        if (iloc) {
+            const ver = bytes[iloc.data];
+            let p = iloc.data + 4;
+            const offSize = bytes[p] >> 4, lenSize = bytes[p] & 15, baseSize = bytes[p + 1] >> 4, idxSize = ver >= 1 ? bytes[p + 1] & 15 : 0;
+            p += 2;
+            const read = (n) => { const val = n === 0 ? 0 : n === 2 ? v.getUint16(p) : n === 4 ? v.getUint32(p) : Number(v.getBigUint64(p)); p += n; return val; };
+            const count = ver < 2 ? read(2) : read(4);
+            layout = { ver, offSize, lenSize, baseSize, idxSize, entries: [] };
+            for (let i = 0; i < count; i++) {
+                const id = ver < 2 ? read(2) : read(4);
+                const method = ver >= 1 ? read(2) & 15 : 0;
+                const ref = read(2);
+                const base = read(baseSize);
+                const n = read(2);
+                const extents = [];
+                for (let k = 0; k < n; k++) {
+                    const index = idxSize ? read(idxSize) : 0;
+                    extents.push({ index, offset: read(offSize), length: read(lenSize) });
+                }
+                const e = { id, method, ref, base, extents };
+                layout.entries.push(e);
+                locs.set(id, e);
+            }
+        }
+        const pitm = kids.find(b => b.type === 'pitm');
+        const primary = pitm ? (bytes[pitm.data] === 0 ? v.getUint16(pitm.data + 4) : v.getUint32(pitm.data + 4)) : 1;
+        return { kids, items, locs, layout, primary };
+    },
+
+    // The AVIF with this EXIF: an Exif item described by the meta box (and
+    // linked to the picture), its bytes in a box of their own at the end.
+    // The meta box grows, so what comes after it moves along, and the
+    // places the meta box gives for it are moved with it.
+    withExifAvif(avif, tiff) {
+        try {
+            const top = this.boxes(avif);
+            const meta = top && top.find(b => b.type === 'meta');
+            const m = meta && this.heifItems(avif, meta);
+            if (!m || !m.layout || m.layout.ver > 1 || m.items.some(i => i.type === 'Exif')) return avif;
+            const L = m.layout;
+            if (L.offSize !== 4 && L.offSize !== 8) return avif;
+            const id = Math.max(0, ...m.items.map(i => i.id), ...L.entries.map(e => e.id)) + 1;
+            if (id > 0xFFFF) return avif;
+            const be = (n, size) => { const a = new Uint8Array(size); for (let i = size - 1; i >= 0; i--) { a[i] = n & 255; n = Math.floor(n / 256); } return a; };
+            const cat = (...ps) => { const out = new Uint8Array(ps.reduce((n, p) => n + p.length, 0)); let o = 0; for (const p of ps) { out.set(p, o); o += p.length; } return out; };
+            const box = (type, ...payload) => { const body = cat(...payload); return cat(be(8 + body.length, 4), new TextEncoder().encode(type), body); };
+            const kid = (type) => m.kids.find(b => b.type === type);
+            // iinf with one more infe (version 2: Exif, no name)
+            const iinf = kid('iinf');
+            if (!iinf) return avif;
+            const iinfVer = avif[iinf.data];
+            const oldCount = iinfVer === 0 ? (avif[iinf.data + 4] << 8) | avif[iinf.data + 5] : new DataView(avif.buffer, avif.byteOffset).getUint32(iinf.data + 4);
+            const infesAt = iinf.data + 4 + (iinfVer === 0 ? 2 : 4);
+            const infe = box('infe', new Uint8Array([2, 0, 0, 0]), be(id, 2), be(0, 2), new TextEncoder().encode('Exif'), new Uint8Array([0]));
+            const newIinf = box('iinf', avif.subarray(iinf.data, iinf.data + 4), be(oldCount + 1, iinfVer === 0 ? 2 : 4), avif.subarray(infesAt, iinf.end), infe);
+            // iref: the Exif item describes (cdsc) the picture
+            const cdsc = box('cdsc', be(id, 2), be(1, 2), be(m.primary, 2));
+            const iref = kid('iref');
+            if (iref && avif[iref.data] !== 0) return avif; // 32-bit ids: not written by AVIF encoders
+            const newIref = iref ? box('iref', avif.subarray(iref.data, iref.end), cdsc) : box('iref', new Uint8Array(4), cdsc);
+            // iloc, written with a placeholder for now: its size doesn't
+            // depend on the numbers in it
+            const payload = cat(be(0, 4), tiff);
+            const writeIloc = (shift, exifAt) => {
+                const parts = [new Uint8Array([L.ver, 0, 0, 0]), new Uint8Array([(L.offSize << 4) | L.lenSize, (L.baseSize << 4) | L.idxSize]), be(L.entries.length + 1, 2)];
+                const entry = (e, moved) => {
+                    parts.push(be(e.id, 2));
+                    if (L.ver === 1) parts.push(be(e.method, 2));
+                    parts.push(be(e.ref, 2));
+                    const base = e.base + (moved && L.baseSize && e.base ? shift : 0);
+                    if (L.baseSize) parts.push(be(base, L.baseSize));
+                    parts.push(be(e.extents.length, 2));
+                    for (const x of e.extents) {
+                        if (L.idxSize) parts.push(be(x.index, L.idxSize));
+                        parts.push(be(x.offset + (moved && !(L.baseSize && e.base) ? shift : 0), L.offSize));
+                        parts.push(be(x.length, L.lenSize));
+                    }
+                };
+                for (const e of L.entries) entry(e, e.method === 0 && e.base + (e.extents[0] ? e.extents[0].offset : 0) >= meta.end);
+                entry({ id, method: 0, ref: 0, base: 0, extents: [{ index: 0, offset: exifAt, length: payload.length }] }, false);
+                return box('iloc', ...parts);
+            };
+            const metaWith = (iloc) => {
+                const kids = [];
+                for (const b of m.kids) {
+                    if (b.type === 'iinf') { kids.push(newIinf); if (!iref) kids.push(newIref); }
+                    else if (b.type === 'iref') kids.push(newIref);
+                    else if (b.type === 'iloc') kids.push(iloc);
+                    else kids.push(avif.subarray(b.start, b.end));
+                }
+                return box('meta', avif.subarray(meta.data, meta.data + 4), ...kids);
+            };
+            const shift = metaWith(writeIloc(0, 0)).length - (meta.end - meta.start);
+            const exifAt = avif.length + shift + 8;
+            if (L.offSize === 4 && exifAt + payload.length > 0xFFFFFFFF) return avif;
+            const newMeta = metaWith(writeIloc(shift, exifAt));
+            return cat(avif.subarray(0, meta.start), newMeta, avif.subarray(meta.end), box('mdat', payload));
+        } catch (e) {
+            return avif;
+        }
+    },
+
+    // A JPEG with this EXIF, just after its start (when it has none)
+    withExifJpeg(jpeg, tiff) {
+        const segs = this.jpegSegments(jpeg);
+        if (!segs || !tiff || tiff.length + 8 > 0xFFFF || segs.some(s => this.isExifSeg(jpeg, s))) return jpeg;
+        const app1 = new Uint8Array(10 + tiff.length);
+        app1.set([0xFF, 0xE1, (tiff.length + 8) >> 8, (tiff.length + 8) & 255, 0x45, 0x78, 0x69, 0x66, 0, 0]);
+        app1.set(tiff, 10);
+        const out = new Uint8Array(jpeg.length + app1.length);
+        out.set(jpeg.subarray(0, 2));
+        out.set(app1, 2);
+        out.set(jpeg.subarray(2), 2 + app1.length);
+        return out;
+    },
+
+    // A JPEG XL codestream in the container, with this EXIF
+    withExifJxl(jxl, tiff) {
+        if (jxl.length < 2 || jxl[0] !== 0xFF || jxl[1] !== 0x0A || !tiff) return jxl;
+        const be32 = (n) => new Uint8Array([n >>> 24, (n >> 16) & 255, (n >> 8) & 255, n & 255]);
+        const ascii = (s) => new TextEncoder().encode(s);
+        const parts = [
+            new Uint8Array([0, 0, 0, 12, 0x4A, 0x58, 0x4C, 0x20, 0x0D, 0x0A, 0x87, 0x0A]),
+            be32(20), ascii('ftyp'), ascii('jxl '), be32(0), ascii('jxl '),
+            be32(12 + tiff.length), ascii('Exif'), be32(0), tiff,
+            be32(8 + jxl.length), ascii('jxlc'), jxl
+        ];
+        const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+        let o = 0;
+        for (const p of parts) { out.set(p, o); o += p.length; }
+        return out;
+    },
+
     // ---- Pixel size without decoding ----
 
     // { w, h } as displayed (EXIF orientation 5–8 swaps them), from a JPEG

@@ -29,7 +29,11 @@ const PROJECT = `
         try { await opfs.removeEntry(name, { recursive: true }); } catch (e) { /* fresh */ }
         const dir = await opfs.getDirectoryHandle(name, { create: true });
         for (const [n, blob] of Object.entries(photos)) {
-            const fh = await dir.getFileHandle(n, { create: true });
+            // "Folder/photo.jpg": in a folder
+            let d = dir;
+            const parts = n.split('/');
+            for (const p of parts.slice(0, -1)) d = await d.getDirectoryHandle(p, { create: true });
+            const fh = await d.getFileHandle(parts[parts.length - 1], { create: true });
             const w = await fh.createWritable(); await w.write(blob); await w.close();
         }
         window.showDirectoryPicker = async () => dir;
@@ -1453,6 +1457,149 @@ const PROJECT = `
         check('themes: 1984\'s Thumbnails setting: dithered to one bit, or in colour again', r.setting && r.dithered && r.colour, JSON.stringify(r));
         check('themes: back to jEditor\'s look (or the experiment off) takes all of it off', r.off && r.expOff, JSON.stringify(r));
         check('themes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- Save space: AVIF, JPEG XL and WebP (codec.js, space-saver.js) ----
+    if (wanted('space')) {
+        console.log('save space: modern formats, their EXIF, the estimate, converting and Ctrl+Z (codec.js, space-saver.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'codecs';
+            try {
+                const out = {};
+                // EXIF by hand: Make "jEd", taken 2019-07-04 12:34:56, turned (orientation 6)
+                const exif = (() => {
+                    const b = new Uint8Array(100), v = new DataView(b.buffer), enc = new TextEncoder();
+                    b.set([0x4D, 0x4D, 0, 42]); v.setUint32(4, 8);
+                    v.setUint16(8, 3);
+                    v.setUint16(10, 0x010F); v.setUint16(12, 2); v.setUint32(14, 4); b.set(enc.encode('jEd\0'), 18);
+                    v.setUint16(22, 0x0112); v.setUint16(24, 3); v.setUint32(26, 1); v.setUint16(30, 6);
+                    v.setUint16(34, 0x8769); v.setUint16(36, 4); v.setUint32(38, 1); v.setUint32(42, 50);
+                    v.setUint32(46, 0);
+                    v.setUint16(50, 1); v.setUint16(52, 0x9003); v.setUint16(54, 2); v.setUint32(56, 20); v.setUint32(60, 68); v.setUint32(64, 0);
+                    b.set(enc.encode('2019:07:04 12:34:56\0'), 68);
+                    return b.slice(0, 88);
+                })();
+                const jpegWithExif = async (c) => new Blob([ImageMeta.withExifJpeg(new Uint8Array(await (await canvasBlob(c, 'image/jpeg', 0.95)).arrayBuffer()), exif)], { type: 'image/jpeg' });
+                // A clean picture (no grain: grain has to be kept to look the
+                // same, which takes the quality up), as photos of things are
+                const clean = (w, h, i) => {
+                    const c = document.createElement('canvas'); c.width = w; c.height = h;
+                    const g = c.getContext('2d');
+                    const grad = g.createLinearGradient(0, 0, w, h);
+                    grad.addColorStop(0, '#203860'); grad.addColorStop(0.5, '#d0a070'); grad.addColorStop(1, '#f0e8d0');
+                    g.fillStyle = grad; g.fillRect(0, 0, w, h);
+                    for (let k = 0; k < 6; k++) {
+                        g.fillStyle = ['#2050c0', '#c03020', '#20a050', '#a020c0', '#f0c030', '#303030'][(k + i) % 6];
+                        g.beginPath(); g.arc(w * (0.15 + k * 0.14), h * (0.3 + 0.4 * ((k + i) % 2)), h * 0.12, 0, Math.PI * 2); g.fill();
+                    }
+                    g.fillStyle = '#fff'; g.font = `${h / 8}px sans-serif`; g.fillText('jEditor ' + i, w * 0.1, h * 0.9);
+                    return c;
+                };
+                out.ready = await Codec.ready();
+                const pic = clean(320, 200, 0);
+                const src = await jpegWithExif(pic);
+                out.formats = {};
+                for (const f of ['avif', 'jxl', 'webp']) {
+                    const blob = await Codec.file(src, f, 70, ImageMeta.exifOf(new Uint8Array(await src.arrayBuffer())));
+                    const bytes = new Uint8Array(await blob.arrayBuffer());
+                    const t = ImageMeta.exifOf(bytes);
+                    const info = t && app.readTiffInfo(new DataView(t.buffer, t.byteOffset, t.byteLength), 0);
+                    // Orientation 1 now: the pixels are upright (the JPEG was shown turned)
+                    const ifd = t && ImageMeta.readIfd({ view: new DataView(t.buffer, t.byteOffset, t.byteLength), tiff: 0, le: false, end: t.length }, 8);
+                    const orient = ifd && ifd.entries.find(e => e.tag === 0x0112);
+                    const shown = await createImageBitmap(f === 'jxl' ? await Codec.showable(new File([blob], 'p.jxl')) : blob);
+                    out.formats[f] = [info && info.make, info && info.dateTaken && info.dateTaken.getFullYear(), orient && new DataView(t.buffer, t.byteOffset).getUint16(orient.pos + 8), shown.width, shown.height, bytes.length < src.size];
+                    shown.close();
+                }
+                out.engineJxl = await Codec.engineJxl();
+
+                // A project: two folders of photos, and a tiny one that won't get smaller
+                step = 'estimate';
+                const files = {};
+                for (let i = 0; i < 4; i++) files[(i < 2 ? 'Ceremony/' : 'Party/') + `p${i}.jpg`] = await jpegWithExif(clean(900, 600, i));
+                const tiny = document.createElement('canvas'); tiny.width = tiny.height = 4;
+                files['tiny.png'] = await canvasBlob(tiny, 'image/png');
+                const dir = await openProject('space', files);
+                const P0 = app.files.find(f => f.name === 'p0.jpg');
+                P0._flags = { star: true };
+                Edits.set([{ file: P0, edit: { q: 1, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 }, size: P0.size } }], 'rotation');
+                SpaceSaver.prefs.format = 'avif';
+                SpaceSaver.prefs.keep = false;
+                await SpaceSaver.open({ folder: '' });
+                await until(() => SpaceSaver.est && !SpaceSaver.est.working, 600);
+                const est = SpaceSaver.est;
+                out.estimate = [est.total > 0, est.after > 0 && est.after < est.total, est.byDir && est.byDir.size, !!SpaceSaver.suggested.avif, SpaceSaver.el('ss-folders').children.length];
+                out.closeUp = SpaceSaver.el('ss-after-cap').textContent.startsWith('After');
+
+                // Converting: each photo AVIF in its place, flags and edit with it
+                step = 'convert';
+                SpaceSaver.go();
+                await until(() => SpaceSaver.done, 800);
+                const done = SpaceSaver.done;
+                out.done = { saved: done.saved > 0, same: done.same, failed: done.failed, dots: SpaceSaver.el('ss-dots').children.length, hollow: SpaceSaver.el('ss-dots').querySelectorAll('.f').length };
+                out.names = app.files.map(f => f.relPath || f.name).sort().join();
+                out.kept = [P0.name, !!(P0._flags && P0._flags.star), !!P0._edit && P0._edit.size === P0.size];
+                const info = await app.getExifInfo(P0);
+                out.date = info && info.dateTaken && info.dateTaken.getFullYear();
+                const onDisk = async () => {
+                    const names = [];
+                    for (const d of ['Ceremony', 'Party']) for await (const e of (await dir.getDirectoryHandle(d)).values()) names.push(`${d}/${e.name}`);
+                    for await (const e of dir.values()) if (e.kind === 'file') names.push(e.name);
+                    return names.sort().join();
+                };
+                out.disk = await onDisk();
+                SpaceSaver.go(); // Done
+                out.closed = !SpaceSaver.isOpen();
+
+                // Ctrl+Z: the originals back, by their names, flags and edit too
+                step = 'undo';
+                await app.undo();
+                out.undone = app.files.map(f => f.relPath || f.name).sort().join();
+                out.undoneDisk = await onDisk();
+                out.undoneKept = [P0.name, !!(P0._flags && P0._flags.star), !!P0._edit && P0._edit.size === P0.size];
+
+                // Keep both: smaller copies in their own folder, not in the project
+                step = 'keep';
+                SpaceSaver.prefs.format = 'webp';
+                SpaceSaver.prefs.keep = true;
+                await SpaceSaver.open({ folder: 'Party' });
+                await until(() => SpaceSaver.est && !SpaceSaver.est.working, 600);
+                SpaceSaver.go();
+                await until(() => SpaceSaver.done, 800);
+                SpaceSaver.go();
+                const copies = [];
+                for await (const e of (await (await dir.getDirectoryHandle('Smaller copies')).getDirectoryHandle('Party')).values()) copies.push(e.name);
+                out.copies = copies.sort().join();
+                out.notListed = !app.files.some(f => /Smaller copies/.test(f.relPath || '')) && Watch.skipDir('Smaller copies');
+
+                // Export as AVIF: a copy that's an AVIF, its EXIF with it
+                step = 'export';
+                await app.exportCopies([P0], { maxEdge: 0, format: 'avif' });
+                const ex = await (await (await dir.getDirectoryHandle('jEditor Export')).getFileHandle('p0.avif')).getFile();
+                const exBytes = new Uint8Array(await ex.arrayBuffer());
+                const exBmp = await createImageBitmap(ex);
+                const exT = ImageMeta.exifOf(exBytes);
+                const exInfo = exT && app.readTiffInfo(new DataView(exT.buffer, exT.byteOffset, exT.byteLength), 0);
+                // Upright (600 × 900), then turned a quarter by its edit
+                out.exported = [exBmp.width, exBmp.height, exInfo && exInfo.make];
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        const fmts = r.formats || {};
+        check('save space: the codecs load; AVIF, JPEG XL and WebP are written with their EXIF (date, camera; upright), smaller, and shown',
+            r.ready && ['avif', 'jxl', 'webp'].every(f => JSON.stringify(fmts[f]) === '["jEd",2019,1,200,320,true]'), JSON.stringify(r));
+        check('save space: JPEG XL is shown by the bundled decoder where the engine can\'t', r.engineJxl === false && fmts.jxl && fmts.jxl[3] === 200, JSON.stringify(r.engineJxl));
+        check('save space: an estimate from a sample, by folder, with the quality that looks the same and a close-up', r.estimate && String(r.estimate) === 'true,true,3,true,3' && r.closeUp, JSON.stringify(r.estimate));
+        check('save space: the photos are AVIF in their places; one that wouldn\'t get smaller is left; the dots fill', r.names === 'Ceremony/p0.avif,Ceremony/p1.avif,Party/p2.avif,Party/p3.avif,tiny.png' &&
+            r.disk === 'Ceremony/p0.avif,Ceremony/p1.avif,Party/p2.avif,Party/p3.avif,tiny.png' && r.done && r.done.saved && r.done.same === 1 && !r.done.failed && r.done.dots === 100 && r.done.hollow > 0, JSON.stringify([r.names, r.disk, r.done]));
+        check('save space: flags, the edit and the date taken go with a photo', r.kept && r.kept[0] === 'p0.avif' && r.kept[1] && r.kept[2] && r.date === 2019, JSON.stringify([r.kept, r.date]));
+        check('save space: Ctrl+Z puts the originals back, by name, with their flags and edits', r.undone === 'Ceremony/p0.jpg,Ceremony/p1.jpg,Party/p2.jpg,Party/p3.jpg,tiny.png' &&
+            r.undoneDisk === r.undone && r.undoneKept && r.undoneKept[0] === 'p0.jpg' && r.undoneKept[1] && r.undoneKept[2], JSON.stringify([r.undone, r.undoneDisk, r.undoneKept]));
+        check('save space: Keep both puts smaller copies in "Smaller copies", not in the project', r.copies === 'p2.webp,p3.webp' && r.notListed, JSON.stringify([r.copies, r.notListed]));
+        check('export: as AVIF, with the edit and the EXIF', r.exported && String(r.exported) === '900,600,jEd', JSON.stringify(r.exported));
+        check('save space: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

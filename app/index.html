@@ -15,6 +15,7 @@
     <script src="version.js"></script>
     <script src="changelog.js"></script>
     <script src="meta.js"></script>
+    <script src="codec.js"></script>
     <script src="host.js"></script>
     <script src="wheel.js"></script>
     <script src="folder-cache.js"></script>
@@ -55,6 +56,7 @@
     <script src="themes.js"></script>
     <script src="disc.js"></script>
     <script src="export.js"></script>
+    <script src="space-saver.js"></script>
     <script src="windows.js"></script>
     <script src="start.js"></script>
     <script src="picked.js"></script>
@@ -978,6 +980,26 @@
                 <span class="dialog-actions">
                     <button id="ex-cancel" class="btn secondary">Cancel</button>
                     <button id="ex-go" class="btn primary">Export</button>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save space (space-saver.js) -->
+    <div id="ss-panel" class="dialog-overlay hidden">
+        <div class="dialog ss-card" role="dialog" aria-modal="true" aria-labelledby="ss-title">
+            <div class="dialog-head">
+                <h2 id="ss-title" class="dialog-title">Save space</h2>
+                <button id="ss-close" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+            <div id="ss-body" class="dialog-body ss-body"></div>
+            <div class="dialog-foot">
+                <span id="ss-note" class="dialog-note" aria-live="polite"></span>
+                <span class="dialog-actions">
+                    <button id="ss-cancel" class="btn secondary">Cancel</button>
+                    <button id="ss-go" class="btn primary">Convert</button>
                 </span>
             </div>
         </div>

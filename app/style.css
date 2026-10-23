@@ -3696,6 +3696,409 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     flex-direction: column;
 }
 
+/* Save space (space-saver.js): what it would save, the format and
+   quality with a close-up, then dots for the photos as they're converted */
+.ss-card {
+    width: min(760px, 100%);
+}
+
+.ss-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+}
+
+.ss-lead {
+    margin: 0;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+}
+
+.ss-lead b {
+    color: var(--text-1);
+    font-weight: var(--fw-semibold);
+}
+
+.ss-h {
+    margin: 0 0 var(--sp-2);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-semibold);
+}
+
+.ss-big {
+    display: grid;
+    grid-template-columns: 72px 1fr 112px;
+    gap: var(--sp-2) var(--sp-3);
+    align-items: center;
+}
+
+.ss-big .lab {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.ss-big .num {
+    text-align: right;
+    font-weight: var(--fw-semibold);
+    font-variant-numeric: tabular-nums;
+}
+
+.ss-empty {
+    grid-column: 1 / -1;
+    color: var(--text-2);
+}
+
+.ss-bar {
+    position: relative;
+    height: 24px;
+    border-radius: var(--r-sm);
+    background: var(--bg-sunken);
+    overflow: hidden;
+}
+
+.ss-bar > i,
+.ss-mini > i {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    border-radius: inherit;
+}
+
+.ss-now {
+    background: color-mix(in srgb, var(--text-2) 70%, transparent);
+}
+
+.ss-after-bar {
+    background: var(--accent);
+}
+
+.ss-saved {
+    border: 1.5px dashed var(--success);
+    border-left: 0;
+    border-radius: 0 var(--r-sm) var(--r-sm) 0 !important;
+    background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--success) 45%, transparent) 0 6px, color-mix(in srgb, var(--success) 18%, transparent) 6px 12px);
+}
+
+.ss-savedtag {
+    position: absolute;
+    top: 50%;
+    padding-left: var(--sp-2);
+    transform: translateY(-50%);
+    color: var(--success);
+    font-size: var(--fs-caption);
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.ss-working {
+    background: linear-gradient(90deg, var(--bg-sunken) 30%, var(--bg-hover) 50%, var(--bg-sunken) 70%) 0 0 / 300% 100%;
+    animation: ss-working 1.4s linear infinite;
+}
+
+@keyframes ss-working {
+    from { background-position: 100% 0; }
+    to { background-position: 0 0; }
+}
+
+.ss-folders {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+}
+
+.ss-folder {
+    display: grid;
+    grid-template-columns: 1fr 180px 130px;
+    gap: var(--sp-3);
+    align-items: center;
+    padding: var(--sp-2) var(--sp-3);
+    font-size: var(--fs-small);
+}
+
+.ss-folder + .ss-folder {
+    border-top: 1px solid var(--border);
+}
+
+.ss-folder small {
+    margin-left: var(--sp-2);
+    color: var(--text-3, var(--text-2));
+}
+
+.ss-folder .s {
+    text-align: right;
+    color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+}
+
+.ss-folder .s b {
+    color: var(--success);
+}
+
+.ss-mini {
+    position: relative;
+    height: 8px;
+    border-radius: 4px;
+    background: var(--bg-sunken);
+    overflow: hidden;
+}
+
+.ss-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-4);
+    align-items: flex-start;
+}
+
+.ss-seg {
+    display: inline-flex;
+    gap: 3px;
+    padding: 3px;
+    border-radius: var(--r-md);
+    background: var(--seg-bg);
+}
+
+.ss-seg button {
+    padding: 5px 12px;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--fs-small);
+    text-align: left;
+    cursor: pointer;
+}
+
+.ss-seg button small {
+    display: block;
+    color: var(--text-3, var(--text-2));
+    font-size: var(--fs-caption);
+}
+
+.ss-seg button[aria-checked="true"] {
+    background: var(--seg-active);
+    box-shadow: var(--shadow-1);
+    color: var(--text-1);
+}
+
+.ss-q {
+    flex: 1;
+    min-width: 220px;
+}
+
+.ss-qnum {
+    margin-left: var(--sp-1);
+    color: var(--text-1);
+    font-variant-numeric: tabular-nums;
+}
+
+.ss-slider {
+    position: relative;
+    height: 28px;
+}
+
+.ss-track {
+    position: absolute;
+    left: 9px;
+    right: 9px;
+    top: 11px;
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--danger) 0%, var(--warning-text, #d97706) 35%, var(--success) 62%, var(--success) 100%);
+    opacity: 0.85;
+}
+
+.ss-sugg {
+    position: absolute;
+    top: 0;
+    width: 2px;
+    height: 28px;
+    margin-left: 8px;
+    background: var(--text-1);
+    pointer-events: none;
+}
+
+.ss-sugg.hidden {
+    display: none;
+}
+
+.ss-sugg span {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    color: var(--success);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+    white-space: nowrap;
+}
+
+.ss-slider input[type="range"] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    margin: 0;
+    background: transparent;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.ss-slider input[type="range"]::-webkit-slider-runnable-track {
+    background: transparent;
+}
+
+.ss-slider input[type="range"]::-webkit-slider-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.ss-ends {
+    display: flex;
+    justify-content: space-between;
+    color: var(--text-3, var(--text-2));
+    font-size: var(--fs-caption);
+}
+
+.ss-compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--sp-3);
+}
+
+.ss-tile {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--bg-sunken);
+}
+
+.ss-tile.ss-after {
+    outline: 2px solid var(--success);
+    outline-offset: -2px;
+}
+
+.ss-tile canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    image-rendering: pixelated;
+}
+
+.ss-tile .cap {
+    position: absolute;
+    left: var(--sp-2);
+    bottom: var(--sp-2);
+    padding: 2px 9px;
+    border-radius: var(--r-pill);
+    background: rgba(0, 0, 0, 0.72);
+    color: #fff;
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+}
+
+.ss-tile .cap small {
+    margin-left: var(--sp-1);
+    font-weight: var(--fw-regular);
+    opacity: 0.85;
+}
+
+.ss-keep {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-3);
+    align-items: center;
+}
+
+.ss-keep .ss-h {
+    margin: 0;
+}
+
+.ss-dots {
+    display: grid;
+    grid-template-columns: repeat(25, 1fr);
+    gap: 6px;
+}
+
+.ss-dots i {
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: var(--text-3, var(--text-2));
+    opacity: 0.22;
+    transition: opacity var(--dur-base);
+}
+
+.ss-dots i.p {
+    opacity: 0.55;
+}
+
+.ss-dots i.d {
+    opacity: 1;
+}
+
+.ss-dots i.f {
+    opacity: 1;
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--success);
+}
+
+.ss-dots i.now {
+    opacity: 1;
+    box-shadow: 0 0 0 2px var(--text-1);
+}
+
+.ss-run-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--sp-3);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.ss-run-row b {
+    margin-right: var(--sp-1);
+    color: var(--success);
+    font-size: 26px;
+    font-variant-numeric: tabular-nums;
+}
+
+.ss-total-line {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+@media (max-width: 640px) {
+    .ss-big {
+        grid-template-columns: 56px 1fr 90px;
+    }
+
+    .ss-folder {
+        grid-template-columns: 1fr 90px;
+    }
+
+    .ss-folder .ss-mini {
+        display: none;
+    }
+
+    .ss-compare {
+        grid-template-columns: 1fr;
+    }
+
+    .ss-dots {
+        gap: 4px;
+    }
+}
+
 /* Move / copy picker */
 .dialog.folder-card {
     width: min(520px, 100%);

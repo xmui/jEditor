@@ -58,7 +58,11 @@ if (!SITE) {
     fs.rmSync(SITE, { recursive: true, force: true });
     fs.mkdirSync(SITE, { recursive: true });
     fs.writeFileSync(path.join(SITE, 'index.html'), html);
-    const assets = ['version.js', 'manifest.json', 'icon.png', 'icon-192.png', 'icon-maskable-512.png'];
+    // The codec worker and the codecs it loads (codec.js) stay files: a
+    // worker and WebAssembly can't be inlined into the page
+    const codecs = fs.readdirSync(path.join(APP, 'codecs')).filter(f => /\.(js|wasm)$/.test(f)).map(f => 'codecs/' + f);
+    const assets = ['version.js', 'manifest.json', 'icon.png', 'icon-192.png', 'icon-maskable-512.png', 'codec-worker.js', ...codecs];
+    fs.mkdirSync(path.join(SITE, 'codecs'), { recursive: true });
     for (const f of assets) fs.copyFileSync(path.join(APP, f), path.join(SITE, f));
     // Service worker: same code, precaching what this build contains
     const precache = ['./', './index.html', ...assets.map(f => './' + f)];

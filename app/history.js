@@ -106,6 +106,7 @@ const History = {
             case 'edits': return { what: e.label === 'edits' ? 'Discard edits' : `${label(e.label)} (kept)`, detail: one(e.items) };
             case 'saved-edits': return { what: 'Save edits', detail: one(e.edits) };
             case 'trash': return { what: 'Delete', detail: one(e.items, it => it.file ? it.file.name : it.name) };
+            case 'space-saver': return { what: 'Save space', detail: `${photos(e.items.length || e.copies.length)} as ${Codec.FORMATS[e.format].label}` };
             case 'relocate': return { what: e.copy ? 'Copy' : 'Move', detail: `${photos(e.items.length)} to ${base(e.dest)}` };
             case 'transfer':
             case 'folder-out': return { what: e.copy ? 'Copy' : 'Move', detail: e.where ? `${photos(e.items.length)} to ${e.where}` : photos(e.items.length) };

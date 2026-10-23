@@ -61,6 +61,7 @@ const Themes = {
             ['New folder', 'folders.new', true],
             '—',
             ['Export…', () => Export.open({ files: app.selection.size ? [...app.selection] : null }), true],
+            ['Save space…', () => SpaceSaver.open(app.selection.size > 1 ? { files: [...app.selection] } : {}), true],
             ['Rename…', 'edit.rename', true],
             ['Move to…', 'edit.moveTo', true],
             ['Copy to…', 'edit.copyTo', true],

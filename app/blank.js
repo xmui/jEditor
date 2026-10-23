@@ -466,7 +466,7 @@ const Blank = {
             try {
                 [handle] = await window.showOpenFilePicker({
                     id: 'jeditor-paint',
-                    types: [{ description: 'Images', accept: { 'image/*': ['.jpg', '.jpeg', '.png', '.webp'] } }]
+                    types: [{ description: 'Images', accept: { 'image/*': ['.jpg', '.jpeg', '.png', '.webp', '.avif', '.jxl'] } }]
                 });
             } catch (e) {
                 return null; // cancelled

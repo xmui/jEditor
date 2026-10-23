@@ -461,6 +461,7 @@ const Folders = {
         if (/[. ]$/.test(name)) return 'A folder name can\'t end with a dot or a space';
         if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(name)) return `“${name}” is a name Windows reserves`;
         if (name.toLowerCase() === 'jeditor export') return '“jEditor Export” is where Export puts copies';
+        if (name.toLowerCase() === 'smaller copies') return '“Smaller copies” is where Save space puts copies';
         if (name.length > 200) return 'That name is too long';
         return null;
     },
@@ -1106,6 +1107,7 @@ const Folders = {
         }
         items.push(['—'], ['New folder inside…', () => this.newFolder(path)]);
         if (Blank.can()) items.push(['New blank image…', () => Blank.open(path)]);
+        if (app.files.some(f => this.within(this.dirOf(f), path))) items.push(['Save space…', () => SpaceSaver.open({ folder: path })]);
         if (path) {
             items.push(['Rename folder…', () => this.renameFolder(path)]);
             const empty = !app.files.some(f => this.within(this.dirOf(f), path)) && !this.children(path).length;
