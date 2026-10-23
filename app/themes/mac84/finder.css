@@ -528,4 +528,9 @@
 :root[data-skin="mac84"] .th-menu.open { background: #000; color: #fff; }
 :root[data-skin="mac84"] .th-menu:focus { outline: none; }
 /* The source list runs edge to edge; its one button keeps in from the sides */
-:root[data-skin="mac84"] .sb-choose { width: calc(100% - 16px); margin: 4px 8px; }
+:root[data-skin="mac84"] .btn.secondary.sb-choose { width: calc(100% - 16px); height: auto; margin: 4px 8px; padding: 3px 8px; white-space: normal; line-height: 16px; }
+/* A project's or a drive's row has its own icon (inverted with the row), so
+   not the folder list's as well; no date, as the Finder's lists had none here */
+:root[data-skin="mac84"] .sb-row::before { content: none; }
+:root[data-skin="mac84"] .sb-row .sb-icon { color: inherit; }
+:root[data-skin="mac84"] .sb-meta { display: none; }

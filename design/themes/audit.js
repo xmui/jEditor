@@ -13,6 +13,7 @@
 // Segoe UI and SF (it's a little wider, so a fit here fits there), DejaVu
 // Sans for Linux and a browser.
 //   SHOTS=dir node design/themes/audit.js        keep a screenshot of each
+//   PROBE='expr' node design/themes/audit.js …   print what expr gives on each
 //
 // What a part is checked for (inside its own element):
 //   off screen   something you'd click or read is past the window's edge, or
@@ -370,6 +371,8 @@ const srv = http.createServer((req, res) => {
                 if (setup) await page.evaluate(`setTimeout(() => { ${setup} }, 0)`);
                 await page.mouse.move(w / 2, h - 2);
                 await page.waitForTimeout(1500);
+                // PROBE='js expression': what it gives, on each screen (for looking into a finding)
+                if (process.env.PROBE) console.log(key, s, w, JSON.stringify(await page.evaluate(process.env.PROBE).catch(e => String(e))));
                 if (process.env.SHOTS) {
                     fs.mkdirSync(process.env.SHOTS, { recursive: true });
                     await page.screenshot({ path: path.join(process.env.SHOTS, `${key.replace('/', '-')}-${s}-${w}.png`) });
