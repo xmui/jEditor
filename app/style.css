@@ -3708,6 +3708,26 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     gap: var(--sp-4);
 }
 
+.cv-src {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    min-width: 0;
+}
+
+.cv-src .cv-h {
+    margin: 0;
+}
+
+.cv-src-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: var(--fw-semibold);
+}
+
 .cv-lead {
     margin: 0;
     color: var(--text-2);

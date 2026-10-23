@@ -1,8 +1,14 @@
-// Convert: a project's photos (or a folder's, or the selected ones) into
-// another format, AVIF, JPEG XL or WebP (codec.js), choosing the quality
-// and seeing what it does to their storage. The right-click menus of the
-// project, a folder and the selection, and the selection bar's ⋯.
+// Convert: a project's photos (or a folder's, or the selected ones, or
+// any folder on this computer: Choose a folder…) into another format,
+// AVIF, JPEG XL or WebP (codec.js), choosing the quality and seeing what
+// it does to their storage. The toolbar's Convert button (in ⋯), the start
+// page's Convert photos…, the right-click menus of the project, a folder
+// and the selection, and the selection bar's ⋯.
 //
+//   Photos    what's converted, and Choose a folder… for any other: its
+//             photos, and those in its folders, without opening it as the
+//             project (its originals go to the bin, or its own
+//             .jeditor/trash where there's no bin)
 //   Format    AVIF (smallest), JPEG XL (newest), WebP (opens anywhere)
 //   Quality   a slider, with the lowest quality that looks the same as the
 //             original marked on it; a close-up of one of the photos, at
@@ -41,6 +47,9 @@ const Convert = {
         if (!Codec.FORMATS[this.prefs.format]) this.prefs.format = 'avif';
         if (!this.prefs.quality || typeof this.prefs.quality !== 'object') this.prefs.quality = {};
         this.prefs.keep = !!this.prefs.keep;
+        if (location.protocol === 'file:') {
+            for (const id of ['start-convert-wrap', 'btn-convert']) { const el = this.el(id); if (el) el.classList.add('hidden'); }
+        }
         this.el('cv-close').addEventListener('click', () => this.close());
         this.el('cv-cancel').addEventListener('click', () => this.cancelOrStop());
         this.el('cv-go').addEventListener('click', () => this.go());
@@ -67,25 +76,27 @@ const Convert = {
     },
 
     // { files } (the selection), { folder } (a folder in the project, '' for
-    // all of it) or nothing (the whole project)
-    async open({ files = null, folder = null } = {}) {
+    // all of it), nothing (the whole project), or { choose } (a folder
+    // anywhere, asked for first; so too with no project open)
+    async open({ files = null, folder = null, choose = false } = {}) {
         const app = this.app;
         if (this.run) { this.show(); return; } // running: show how far it's got
-        if (!app.dirHandle || app.readOnlyMode) {
-            app.showToast('Converting needs a folder opened with Open folder');
-            return;
-        }
         if (!(await Codec.ready())) {
             app.showToast('Converting can\'t run here: open jEditor from its app or its web page');
+            return;
+        }
+        if (choose || !app.dirHandle || app.readOnlyMode || !app.files.length) {
+            await this.chooseFolder();
             return;
         }
         const all = files ? files.filter(Boolean)
             : folder ? app.files.filter(f => Folders.within(Folders.dirOf(f), folder)) : app.files.slice();
         // What it's for, as the first line says it
-        this.scope = {
-            all,
-            name: files ? null : folder ? Folders.nameOf(folder) : Folders.rootName()
-        };
+        this.begin({ all, name: files ? null : folder ? Folders.nameOf(folder) : Folders.rootName() });
+    },
+
+    begin(scope) {
+        this.scope = scope;
         this.done = null;
         this.est = null;
         this.suggested = {};
@@ -93,6 +104,53 @@ const Convert = {
         this.build();
         this.show();
         this.estimate();
+    },
+
+    // Any folder on this computer: its photos and those in its folders, as
+    // they're found, without opening it as the project
+    async chooseFolder() {
+        const app = this.app;
+        let handle, path = null;
+        try {
+            if (Host.has('places')) {
+                path = await FolderCache.native().pickPath('Convert the photos in', null);
+                if (!path) return;
+                handle = await FolderCache.native().folderHandle(path);
+            } else {
+                handle = await window.showDirectoryPicker({ id: 'jeditor-convert', mode: 'readwrite' });
+            }
+        } catch (e) {
+            if (e && e.name !== 'AbortError') app.showToast(`Couldn't use that folder: ${e.message}`, 4000);
+            return;
+        }
+        // The open project: as itself, its flags and edits with it
+        if (app.dirHandle && app.files.length && await app.dirHandle.isSameEntry(handle).catch(() => false)) {
+            this.open();
+            return;
+        }
+        app.beginTask('convert-list', `Looking for photos in ${handle.name}…`);
+        let listings;
+        try {
+            listings = await Watch.walk([{ path: '', handle }], true);
+        } finally {
+            app.endTask('convert-list');
+        }
+        const all = [];
+        for (const [p, l] of listings) {
+            if (!l || l.failed) continue;
+            for (const [name, h] of l.files) all.push({ name, handle: h, parentDir: l.handle, relPath: Folders.join(p, name), outside: true });
+        }
+        all.sort((a, b) => a.relPath.localeCompare(b.relPath, undefined, { numeric: true }));
+        if (!all.length) {
+            app.showToast(`No photos in ${handle.name}`, 3000);
+            return;
+        }
+        this.begin({ all, name: handle.name, outside: { handle, path } });
+    },
+
+    // A folder's name in the lists: the project's, or the folder chosen's
+    dirName(d) {
+        return d ? Folders.baseName(d) : this.scope.name || Folders.rootName();
     },
 
     show() {
@@ -108,7 +166,19 @@ const Convert = {
 
     cancelOrStop() {
         if (this.run) this.stop();
+        else if (this.done && this.lastEntry) this.putBack();
         else this.close();
+    },
+
+    // The run just done, taken back (Ctrl+Z does it too, with a project open)
+    async putBack() {
+        const entry = this.lastEntry, stack = this.app._undoStack || [];
+        this.lastEntry = null;
+        const i = stack.lastIndexOf(entry);
+        if (i !== -1) { stack.splice(i, 1); History.changed(); }
+        this.done = null;
+        this.close();
+        try { await this.undo(entry); } catch (e) { this.app.showToast('Couldn\'t put them all back: ' + e.message, 5000); }
     },
 
     // The photos it would convert, and the ones it leaves (RAW, GIF, already
@@ -132,6 +202,7 @@ const Convert = {
         const f = Codec.FORMATS;
         this.el('cv-title').textContent = 'Convert';
         this.el('cv-body').innerHTML = `
+            <div class="cv-src"><span class="cv-h">Photos</span><span class="cv-src-name" id="cv-src-name"></span><button type="button" class="btn secondary sm" id="cv-choose">Choose a folder…</button></div>
             <p class="cv-lead" id="cv-lead"></p>
             <div class="cv-row">
                 <div><div class="cv-h">Format</div><div class="cv-seg" role="radiogroup" aria-label="Format">
@@ -149,9 +220,10 @@ const Convert = {
             <div><div class="cv-h">Storage</div><div class="cv-big" id="cv-big"></div></div>
             <div id="cv-folders-wrap"><div class="cv-h">By folder</div><div class="cv-folders" id="cv-folders"></div></div>
             <div class="cv-keep"><span class="cv-h">The originals</span><div class="cv-seg" role="radiogroup" aria-label="The originals">
-                <button type="button" role="radio" data-keep="replace">Replace them<small>to the bin, Ctrl+Z brings them back</small></button>
+                <button type="button" role="radio" data-keep="replace">Replace them<small id="cv-replace-sub"></small></button>
                 <button type="button" role="radio" data-keep="keep">Keep both<small>converted copies in a folder</small></button>
             </div></div>`;
+        this.el('cv-choose').addEventListener('click', (e) => { e.currentTarget.blur(); this.chooseFolder(); });
         const q = this.el('cv-quality');
         q.addEventListener('input', () => {
             this.prefs.quality[this.prefs.format] = +q.value;
@@ -413,9 +485,11 @@ const Convert = {
         const { ok, left } = this.candidates();
         const lead = this.el('cv-lead');
         if (!lead) return;
-        const n = `${ok.length.toLocaleString()} photo${ok.length === 1 ? '' : 's'}`;
-        const what = this.scope.name ? `<b>${this.esc(this.scope.name)}</b>'s ${n}` : ok.length === 1 ? `<b>${this.esc(ok[0].name)}</b>` : `the <b>${n}</b> selected`;
-        lead.innerHTML = `Converts ${what} to ${F.label}. Choose how good they look and see what it does to their storage; their dates, camera details, flags and edits go with them.` +
+        const src = this.scope.outside ? (this.scope.outside.path || this.scope.name) : this.scope.name ? `${this.scope.name}, in this project` : 'The photos selected';
+        this.el('cv-src-name').textContent = `${src} · ${this.scope.all.length.toLocaleString()} photo${this.scope.all.length === 1 ? '' : 's'}`;
+        this.el('cv-src-name').title = src;
+        this.el('cv-replace-sub').textContent = Host.say(`to ${this.binName(this.scope.outside)}, ${this.scope.outside ? 'and back if you like' : 'Ctrl+Z brings them back'}`);
+        lead.innerHTML = `Choose how good they look in ${F.label} and see what it does to their storage. Their dates, camera details, flags and edits go with them.` +
             (left.length ? ` ${left.length.toLocaleString()} ${left.length === 1 ? 'is' : 'are'} left as ${left.length === 1 ? 'it is' : 'they are'} (RAW, GIF or ${F.label} already).` : '');
         const big = this.el('cv-big');
         const now = e ? e.total : 0;
@@ -432,16 +506,17 @@ const Convert = {
         this.el('cv-folders-wrap').classList.toggle('hidden', rows.length < 2);
         this.el('cv-folders').innerHTML = rows.slice(0, 5).map(([d, r]) => {
             const pct = Math.round((1 - r.after / r.now) * 100);
-            return `<div class="cv-folder"><span class="n">${this.esc(Folders.nameOf(d))}<small>${r.n.toLocaleString()} photo${r.n === 1 ? '' : 's'}</small></span><div class="cv-mini"><i style="width:100%" class="cv-now"></i><i class="cv-after-bar" style="width:${100 - pct}%"></i></div><span class="s">${this.fmt(r.now)} → <b>−${pct}%</b></span></div>`;
+            return `<div class="cv-folder"><span class="n">${this.esc(this.dirName(d))}<small>${r.n.toLocaleString()} photo${r.n === 1 ? '' : 's'}</small></span><div class="cv-mini"><i style="width:100%" class="cv-now"></i><i class="cv-after-bar" style="width:${100 - pct}%"></i></div><span class="s">${this.fmt(r.now)} → <b>−${pct}%</b></span></div>`;
         }).join('');
         this.el('cv-note').textContent = this.prefs.keep
             ? `The converted copies go in “${this.COPIES}” in the project; nothing's deleted`
-            : Host.say(`The originals go to ${Host.has('recycle') ? Host.words().bin : 'jEditor\'s trash'} until you're happy · Ctrl+Z puts them back`);
+            : Host.say(`The originals go to ${this.binName(this.scope.outside)} until you're happy · ${this.scope.outside ? 'you can put them back after' : 'Ctrl+Z puts them back'}`);
         const go = this.el('cv-go');
         go.textContent = ok.length ? `Convert ${ok.length.toLocaleString()} photo${ok.length === 1 ? '' : 's'}` : 'Convert';
         go.disabled = !ok.length;
         go.classList.remove('hidden');
         this.el('cv-cancel').textContent = 'Cancel';
+        this.el('cv-cancel').classList.remove('hidden');
     },
 
     // ---- While: converting ----
@@ -455,7 +530,7 @@ const Convert = {
         this._gen = (this._gen || 0) + 1; // no more estimates
         const total = ok.reduce((n, f) => n + (f.size || 0), 0);
         const run = this.run = {
-            format, quality, keep: this.prefs.keep, list: ok, total, scopeName: this.scope.name || `${ok.length.toLocaleString()} photo${ok.length === 1 ? '' : 's'}`,
+            format, quality, keep: this.prefs.keep, list: ok, total, outside: this.scope.outside || null, scopeName: this.scope.name || `${ok.length.toLocaleString()} photo${ok.length === 1 ? '' : 's'}`,
             at: 0, done: 0, before: 0, after: 0, saved: 0, same: 0, failed: 0, taken: 0,
             colours: new Array(ok.length).fill(null), paused: false, stopped: false,
             items: [], copies: [], started: performance.now(), busyMs: 0
@@ -530,7 +605,7 @@ const Convert = {
         const newName = f.name.replace(/\.[^.]+$/, '') + '.' + Codec.FORMATS[run.format].ext;
         const dir = f.parentDir || app.dirHandle;
         if (run.keep) {
-            const out = await this.copiesDir(Folders.dirOf(f));
+            const out = await this.copiesDir(Folders.dirOf(f), run.outside);
             const h = await out.getFileHandle(newName, { create: true });
             const w = await h.createWritable();
             await w.write(bytes);
@@ -552,15 +627,20 @@ const Convert = {
         await w.write(bytes);
         await w.close();
         // The original to the bin (or jEditor's trash): Ctrl+Z brings it back
-        const trashed = await this.trash(f);
+        const trashed = f.outside ? await this.trashOutside(f, run.outside) : await this.trash(f);
         if (!trashed) {
             await dir.removeEntry(newName).catch(() => { });
             throw new Error('the original couldn\'t be moved to the bin');
         }
         const oldName = f.name;
         f.handle = nh;
-        app.nameChanged(f, newName);
-        await app.afterFileChanged(f);
+        if (f.outside) {
+            this.renamed(f, newName);
+            f.size = bytes.length;
+        } else {
+            app.nameChanged(f, newName);
+            await app.afterFileChanged(f);
+        }
         // An edit is kept for the file it was made on (its size): this one now
         const editSize = f._edit ? f._edit.size : undefined;
         if (f._edit && f._edit.size) f._edit = { ...f._edit, size: f.size };
@@ -582,9 +662,72 @@ const Convert = {
         return failed ? null : undoItems[0] || null;
     },
 
-    // "jEditor Converted" in the project, with the photo's folders under it
-    async copiesDir(rel) {
-        let d = await this.app.dirHandle.getDirectoryHandle(this.COPIES, { create: true });
+    // A photo of a folder chosen (not the project's) to the bin, where the
+    // app has one and knows the folder's path, else into that folder's own
+    // .jeditor/trash → its undo item, as for a project's
+    async trashOutside(f, outside) {
+        const app = this.app, native = FolderCache.native();
+        if (Host.has('recycle') && native && outside.path) {
+            const sep = outside.path.includes('\\') ? '\\' : '/';
+            const abs = outside.path.replace(/[\\/]$/, '') + sep + f.relPath.split('/').join(sep);
+            try {
+                const [r] = await native.recycle([abs]);
+                if (r && r.token) return { file: f, recycled: r.token };
+            } catch (e) { /* the folder's trash instead */ }
+        }
+        try {
+            const root = await outside.handle.getDirectoryHandle(FolderCache.DIR, { create: true });
+            const trashDir = await root.getDirectoryHandle('trash', { create: true });
+            let trashName = f.name;
+            try { await trashDir.getFileHandle(trashName); trashName = `${Date.now()}_${f.name}`; } catch (e) { /* free */ }
+            await app.trashOne(f, trashDir, trashName);
+            return { file: f, trashDir, trashName };
+        } catch (e) {
+            console.error('Converting: the original couldn\'t go to the trash', f.name, e);
+            return null;
+        }
+    },
+
+    // Where replaced originals go
+    binName(outside) {
+        if (Host.has('recycle') && (!outside || outside.path)) return Host.words().bin;
+        return outside ? `.jeditor/trash in ${outside.handle.name}` : 'jEditor\'s trash';
+    },
+
+    // A chosen folder's photo out of the bin, or its folder's trash, under
+    // its old name (as the app's restore does, without adding it to the
+    // project's photos)
+    async restoreOutside(item) {
+        const f = item.file, dest = f.parentDir;
+        if (item.recycled) {
+            const [r] = await FolderCache.native().restore([item.recycled]);
+            if (!r || r.error) throw new Error((r && r.error) || 'not restored');
+            f.handle = await dest.getFileHandle(f.name);
+            return;
+        }
+        const th = await item.trashDir.getFileHandle(item.trashName);
+        if (typeof th.move === 'function') {
+            try { await th.move(dest, f.name); f.handle = th; return; } catch (e) { /* copy instead */ }
+        }
+        const nh = await dest.getFileHandle(f.name, { create: true });
+        const w = await nh.createWritable();
+        await w.write(await th.getFile());
+        await w.close();
+        await item.trashDir.removeEntry(item.trashName);
+        f.handle = nh;
+    },
+
+    // A chosen folder's photo has a new name (not the project's: nothing on
+    // the screen to change)
+    renamed(f, name) {
+        f.name = name;
+        f.relPath = f.relPath.replace(/[^/]+$/, name);
+    },
+
+    // "jEditor Converted" in the project (or the folder chosen), with the
+    // photo's folders under it
+    async copiesDir(rel, outside = null) {
+        let d = await (outside ? outside.handle : this.app.dirHandle).getDirectoryHandle(this.COPIES, { create: true });
         for (const part of rel.split('/').filter(Boolean)) d = await d.getDirectoryHandle(part, { create: true });
         return d;
     },
@@ -648,11 +791,13 @@ const Convert = {
             this.el('cv-total-line').textContent = `${run.scopeName} ${this.fmt(run.total)} → ${this.fmt(Math.max(0, run.total - run.saved))}`;
             this.el('cv-note').textContent = (notes.length ? notes.join(' · ') + ' · ' : '') + (run.keep
                 ? `The copies are in “${this.COPIES}”`
-                : Host.say(`The originals are in ${Host.has('recycle') ? Host.words().bin : 'jEditor\'s trash'} until it's emptied · Ctrl+Z puts them back`));
+                : Host.say(`The originals are in ${this.binName(run.outside)} until it's emptied`));
             const go = this.el('cv-go');
             go.textContent = 'Done';
             go.disabled = false;
-            this.el('cv-cancel').classList.add('hidden');
+            const back = this.el('cv-cancel');
+            back.textContent = run.keep ? 'Remove the copies' : 'Put the originals back';
+            back.classList.toggle('hidden', !this.lastEntry);
         }
     },
 
@@ -662,9 +807,11 @@ const Convert = {
         this.done = run;
         Flags.saveSoon();
         Edits.saveSoon();
-        if (run.items.length) this.app.sortFiles();
+        if (run.items.length && !run.outside) this.app.sortFiles();
+        this.lastEntry = null;
         if (run.items.length || run.copies.length) {
-            this.app.pushUndo({ type: 'convert', label: 'convert', format: run.format, items: run.items, copies: run.copies });
+            this.lastEntry = { type: 'convert', label: 'convert', format: run.format, items: run.items, copies: run.copies };
+            this.app.pushUndo(this.lastEntry);
         }
         this.el('cv-title').textContent = `Converted to ${Codec.FORMATS[run.format].label}`;
         const row = this.el('cv-body').querySelector('.cv-run-row');
@@ -698,6 +845,11 @@ const Convert = {
                         const idx = app.files.indexOf(f);
                         if (idx !== -1) app.files.splice(idx, 1);
                         await it.dir.removeEntry(it.newName).catch(() => { });
+                        if (f.outside) {
+                            this.renamed(f, it.oldName);
+                            await this.restoreOutside(it.trash);
+                            continue;
+                        }
                         app.nameChanged(f, it.oldName);
                         await app.restoreFromTrash(it.trash);
                         await app.afterFileChanged(f);
@@ -714,7 +866,7 @@ const Convert = {
         }
         Flags.saveSoon();
         Edits.saveSoon();
-        app.sortFiles();
+        if (app.files.length) app.sortFiles();
         if (failed) throw new Error(`${failed} couldn't be put back`);
         const n = entry.items.length || entry.copies.length;
         app.showToast(entry.items.length ? `Put back ${n} original${n === 1 ? '' : 's'}` : `Removed ${n} converted cop${n === 1 ? 'y' : 'ies'}`, 3000, null, null, { kind: 'undo' });

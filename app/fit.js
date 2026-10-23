@@ -19,7 +19,7 @@ const Fit = {
     TOP: ['sort-short', 'sort-icon', 'count-off'],
     BOTTOM: ['edits-short', 'sel-aside', 'sel-icons', 'edits-stacked', 'size-short', 'sel-tight', 'size-off'],
     // Into More first: the least used
-    SQUEEZE: ['whatsnew', 'keys', 'dupes', 'fullscreen', 'strip', 'fit', 'customize', 'refresh', 'history', 'camera', 'info', 'scan', 'crop', 'view'],
+    SQUEEZE: ['whatsnew', 'keys', 'convert', 'dupes', 'fullscreen', 'strip', 'fit', 'customize', 'refresh', 'history', 'camera', 'info', 'scan', 'crop', 'view'],
     GAP: 12,       // between pills, screen pixels
     NAME_MIN: 96,  // a name shorter than this is cut with an ellipsis
 

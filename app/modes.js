@@ -81,6 +81,9 @@ const Modes = {
         }
         const blank = this.el('start-blank');
         if (blank) blank.addEventListener('click', () => this.paintStart());
+        // Convert photos…: any folder, without opening it (convert.js)
+        const convert = this.el('start-convert');
+        if (convert) convert.addEventListener('click', () => Convert.open({ choose: true }));
         // A project opened from the landing page lands in Start in's mode
         const drop = app.elements.dropZone;
         if (drop) {
