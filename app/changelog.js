@@ -6,6 +6,17 @@
 
 const CHANGELOG = [
     {
+        version: '1.46.1', date: '2026-10-23', beta: true,
+        items: [
+            'Themes reach every part of jEditor, not just the main window: dialogs, Settings, Crop, Adjust, Paint, Duplicates, the scan window, Info and Undo history, each built the way that era\'s apps built theirs. In Windows XP Royale, dialogs are XP windows, Settings is a property sheet with tabs, and Adjust and Paint have Office 2003 command bars and task panes. In Snow Leopard, dialogs are sheets, Settings is a Preferences window, Info and Undo history are HUD panels, and Adjust and Paint have an inspector. In 1984, Paint is MacPaint\'s palette of one-bit tools.',
+            'Every toolbar button has its own icon in each theme, including Scan, Camera, Adjust, Paint, Duplicates, Full screen, Settings and What\'s new.',
+            'Photos · Adjust · Paint at the top of the sidebar no longer gets cut off in a narrow window or with a wider font: it tightens, then leaves out its icons, so the words fit.',
+            'A full toolbar wraps instead of running off the edge, and More opens at least four buttons across.',
+            'In Paint, the layer buttons stay inside the panel, and a long hint shortens with … instead of pushing the options off screen.',
+            'In Adjust, a section\'s buttons (such as Auto color) move under its name when there isn\'t room beside it.'
+        ]
+    },
+    {
         version: '1.46.0', date: '2026-10-22', beta: true,
         items: [
             'New, as an experiment in the Windows app (on in betas): themes, in Settings → Appearance. jEditor as an app of another time, the same jEditor laid out the way that era\'s apps were, with its own title bar and a menu bar: Windows XP in Royale, Royale Noir and Royale Red; Snow Leopard as Finder or Aperture (dark); and 1984, the first Macintosh in one bit, whose Thumbnails setting shows the grid dithered (as MacPaint did), in black and white, or in colour. The menus have jEditor\'s commands with their keys; the title bar moves, maximises and closes the window. jEditor, first in the gallery, is the look you know.'
