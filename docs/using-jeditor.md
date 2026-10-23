@@ -31,7 +31,7 @@ In the Windows app, **Settings → Appearance → Theme** makes jEditor look lik
 - **Snow Leopard**, as **Finder** (light) or **Aperture** (dark): one toolbar with the labels under its buttons, a source list and a foot bar.
 - **1984**: the first Macintosh, in one bit. Its **Thumbnails** setting shows the grid dithered to one bit (as MacPaint did), in black and white, or in colour; the photo you open is always in colour.
 
-The menu bar's menus have jEditor's commands, with their keys. The title bar moves the window, a double-click maximises it, and its buttons minimise, maximise and close it. Adjust and Paint are in the toolbar's ⋯ (or More), the Picture menu, and `E` and `B`. Light or dark is the theme's. **jEditor** at the start of the gallery goes back to jEditor's own look.
+The menu bar's menus have jEditor's commands, with their keys. The title bar moves the window, a double-click maximises it, and its buttons minimise, maximise and close it. Adjust and Paint are in the toolbar's ⋯ (or More), the Picture menu, and `E` and `B`. Light or dark is the theme's, and so are the accent colour, glass, density and toolbar size: Settings leaves them out while a theme is on. The whole app wears it: the dialogs and Settings, Crop, Adjust and Paint (with their own tool icons), the scan window and every toolbar button. A toolbar with more buttons than fit wraps onto a second row. **jEditor** at the start of the gallery goes back to jEditor's own look.
 
 ## Watching the folder
 

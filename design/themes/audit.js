@@ -152,6 +152,9 @@ const pageAudit = ({ sel, font }) => {
         const els = [...root.querySelectorAll('*')].filter(el => el.matches(LEAVES) || ownText(el));
         for (const el of els) {
             if (seen.has(el) || !shown(el) || el.closest('[aria-hidden="true"]') || el.matches('input[type="color"]')) continue;
+            // In a section folded shut: not on screen
+            const fold = el.closest('details:not([open])');
+            if (fold && !el.closest('summary')) continue;
             seen.add(el);
             const r = el.getBoundingClientRect();
             const what = name(el);
@@ -190,8 +193,16 @@ const pageAudit = ({ sel, font }) => {
             // A button with neither words nor a picture
             if (el.matches('button, [role="button"], [role="tab"], .tb-btn, .paint-tool') && !el.closest('.paint-palette, .accent-swatches, .th-caps, .theme-dots')) {
                 const words = (el.innerText || '').trim() && getComputedStyle(el).fontSize !== '0px';
-                const pic = [...el.querySelectorAll('svg, img, canvas')].some(shown);
-                const bg = (e, p) => { const cs = getComputedStyle(e, p); return cs.backgroundImage !== 'none' || (p && cs.content && cs.content !== 'none' && cs.content !== 'normal' && cs.content !== '""'); };
+                const pic = [...el.querySelectorAll('svg, img, canvas')].some(shown)
+                    || [...el.querySelectorAll('*')].some(c => shown(c) && !/rgba\(0, 0, 0, 0\)/.test(getComputedStyle(c).backgroundColor));
+                // a picture, a colour dot, or a box drawn small (1984's close box)
+                const bg = (e, p) => {
+                    const cs = getComputedStyle(e, p);
+                    if (cs.backgroundImage !== 'none') return true;
+                    if (!p) return r.width <= 18 && r.height <= 18 && parseFloat(cs.borderTopWidth) > 0;
+                    const drawn = cs.content && cs.content !== 'none' && cs.content !== 'normal';
+                    return drawn && (cs.content !== '""' || !/rgba\(0, 0, 0, 0\)|transparent/.test(cs.backgroundColor) || parseFloat(cs.borderTopWidth) > 0);
+                };
                 const inline = el.style.background || el.style.backgroundColor;
                 if (!words && !pic && !bg(el) && !bg(el, '::before') && !bg(el, '::after') && !inline) out.push(['no icon', `${what} shows nothing`]);
             }
