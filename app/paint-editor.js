@@ -1928,7 +1928,9 @@ const PaintEditor = {
         const dpr = this.dpr || 1;
         ctx.save();
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.font = '600 12px system-ui, sans-serif';
+        // The theme's typeface: a canvas doesn't inherit one
+        const font = getComputedStyle(ctx.canvas).getPropertyValue('--font-ui').trim() || 'system-ui, sans-serif';
+        ctx.font = `600 12px ${font}`;
         const w = Math.ceil(ctx.measureText(text).width) + 16, h = 22;
         let x = s.x - w / 2, y = s.y + rs + 10;
         if (y + h > this.cssH - 6) y = s.y - rs - 10 - h;
