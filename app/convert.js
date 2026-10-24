@@ -797,6 +797,7 @@ const Convert = {
         });
         // (PNG and TIFF can take more than before)
         this.el('cv-saved').textContent = this.fmt(Math.abs(run.saved));
+        this.el('cv-saved').classList.toggle('cv-more', run.saved < 0);
         const word = this.el('cv-saved-word');
         if (word) word.textContent = run.saved < 0 ? 'more storage' : 'less storage';
         const left = run.list.length - run.done;
