@@ -49,10 +49,16 @@ another platform, give its row a ✓ there.
 ## Working with several agents
 
 The owner runs one chat per job. Each job is a file in `.claude/agents/`:
-`photos`, `adjust`, `paint`, `theming` (the look, themes and UI/UX),
-`bugs` and `wrangler` (who's doing what; builds nothing). When the owner
-says "be the Photos agent" (or names any of them), read that file and
-work as it says. With no role given, work as usual.
+`photos`, `adjust`, `paint` and `bugs`, plus `wrangler` (who's doing
+what; builds nothing). When the owner says "be the Photos agent" (or
+names any of them), read that file and work as it says. With no role
+given, work as usual.
+
+**Theming is secondary.** The themes and look agent (`theming`) helps
+the others when asked about the look; it doesn't own a mode and doesn't
+hold up anyone's PR. Themes are a `beta` experiment: they, and the
+theming agent's file, reach `main` only in the release that finishes the
+feature, when the owner says so.
 
 - Each agent stays in its own files (listed in its file). Files every
   mode shares (`app/index.html`, `app/style.css`, `app/host.js`,
@@ -63,6 +69,3 @@ work as it says. With no role given, work as usual.
   changes the files you need, say so to the owner rather than racing it.
 - When a feature touches another mode, ask the owner
   first, and say in the PR which mode it touches.
-- A change to what's on screen (a new panel, toolbar, button or layout)
-  gets the theming agent's check (`.claude/agents/theming.md`) before
-  its PR is done. Small fixes don't.
