@@ -17,7 +17,7 @@
 const Export = {
     KEY: 'jeditor.export', // the last choices: { tab, size, where }
     // As they are, or another format (AVIF and JPEG XL where the codecs load: codec.js)
-    FORMATS: [['same', 'As they are'], ['jpeg', 'JPEG'], ['webp', 'WebP'], ['avif', 'AVIF (smallest)'], ['jxl', 'JPEG XL']],
+    FORMATS: [['same', 'As they are'], ['jpeg', 'JPEG'], ['png', 'PNG'], ['tiff', 'TIFF'], ['webp', 'WebP'], ['avif', 'AVIF (smallest)'], ['jxl', 'JPEG XL']],
     SIZES: [[0, 'Full size'], [4000, '4000 px'], [3000, '3000 px'], [2048, '2048 px (for the web)'], [1600, '1600 px'], [1080, '1080 px (social media)']],
     TABS: [['usb', 'USB drive or card'], ['disc', 'CD or DVD'], ['copies', 'Copies']],
 

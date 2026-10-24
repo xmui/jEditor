@@ -61,7 +61,7 @@ const Themes = {
             ['New folder', 'folders.new', true],
             '—',
             ['Export…', () => Export.open({ files: app.selection.size ? [...app.selection] : null }), true],
-            ['Convert…', () => Convert.open(app.selection.size > 1 ? { files: [...app.selection] } : {}), true],
+            ['Convert…', () => Convert.open(app.selection.size ? { files: [...app.selection] } : document.body.dataset.view === 'single' && app.currentFile ? { files: [app.currentFile] } : {}), true],
             ['Rename…', 'edit.rename', true],
             ['Move to…', 'edit.moveTo', true],
             ['Copy to…', 'edit.copyTo', true],

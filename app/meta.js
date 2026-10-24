@@ -342,9 +342,10 @@ const ImageMeta = {
     // that (orientation 1, the new size, no old thumbnail), and the colour
     // profile doesn't.
 
-    // The EXIF's TIFF block in a JPEG, PNG, WebP, AVIF or JPEG XL, or null
+    // The EXIF's TIFF block in a JPEG, PNG, WebP, AVIF, JPEG XL or TIFF, or null
     exifOf(bytes) {
         try {
+            if (this.isTiffFile(bytes)) return this.compactTiff(bytes);
             const segs = this.jpegSegments(bytes, { partial: true });
             if (segs) {
                 const s = segs.find(x => this.isExifSeg(bytes, x));
@@ -619,6 +620,176 @@ const ImageMeta = {
         out.set(app1, 2);
         out.set(jpeg.subarray(2), 2 + app1.length);
         return out;
+    },
+
+    // A PNG with this EXIF, in an eXIf chunk just after the header (when it has none)
+    withExifPng(png, tiff) {
+        const chunks = this.pngChunks(png);
+        if (!chunks || !tiff || chunks[0].type !== 'IHDR' || chunks.some(c => c.type === 'eXIf')) return png;
+        const chunk = new Uint8Array(12 + tiff.length);
+        const v = new DataView(chunk.buffer);
+        v.setUint32(0, tiff.length);
+        chunk.set([0x65, 0x58, 0x49, 0x66], 4); // eXIf
+        chunk.set(tiff, 8);
+        v.setUint32(8 + tiff.length, this.crc32(chunk.subarray(4, 8 + tiff.length)));
+        const at = chunks[0].end;
+        const out = new Uint8Array(png.length + chunk.length);
+        out.set(png.subarray(0, at));
+        out.set(chunk, at);
+        out.set(png.subarray(at), at + chunk.length);
+        return out;
+    },
+
+    crc32(bytes) {
+        const table = this._crc || (this._crc = Array.from({ length: 256 }, (_, n) => {
+            let c = n;
+            for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+            return c >>> 0;
+        }));
+        let c = 0xFFFFFFFF;
+        for (let i = 0; i < bytes.length; i++) c = table[(c ^ bytes[i]) & 255] ^ (c >>> 8);
+        return (c ^ 0xFFFFFFFF) >>> 0;
+    },
+
+    // ---- TIFF files ----
+    //
+    // A TIFF file is its own EXIF: its first IFD has the picture's tags and
+    // the camera's (Make, DateTime…), with the Exif and GPS IFDs hanging off
+    // it. Read, the camera's part is copied into a small TIFF block of its
+    // own (compactTiff), as other formats' EXIF is; written (a TIFF made by
+    // tiff-codec.js), that block goes first and the picture's IFD joins its
+    // tags to the camera's (withExifTiff).
+
+    isTiffFile(bytes) {
+        return bytes.length >= 8 && ((bytes[0] === 0x49 && bytes[1] === 0x49 && bytes[2] === 42 && bytes[3] === 0)
+            || (bytes[0] === 0x4D && bytes[1] === 0x4D && bytes[2] === 0 && bytes[3] === 42));
+    },
+
+    TIFF_TYPE_SIZE: { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8, 13: 4, 16: 8 },
+    // The picture's own tags (how its pixels are stored), never the camera's
+    TIFF_PICTURE_TAGS: new Set([254, 255, 256, 257, 258, 259, 262, 263, 266, 273, 277, 278, 279, 280, 281, 284, 317, 320,
+        322, 323, 324, 325, 330, 338, 339, 340, 341, 347, 513, 514, 529, 530, 531, 532, 34675]),
+    TIFF_POINTERS: new Set([0x8769, 0x8825, 0xA005]), // Exif, GPS, Interoperability
+
+    // The camera's tags of a TIFF file (bytes: the file, or as much of its
+    // start as holds them) as a TIFF block in the same byte order → bytes, or null
+    compactTiff(bytes) {
+        try {
+            const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+            const le = bytes[0] === 0x49;
+            let out = new Uint8Array(4096), o = 8;
+            const room = (n) => { if (o + n > out.length) { const b = new Uint8Array(Math.max(out.length * 2, o + n)); b.set(out); out = b; } };
+            const ov = () => new DataView(out.buffer);
+            out.set(bytes.subarray(0, 4));
+            const copyIfd = (off, depth, top) => {
+                const n = v.getUint16(off, le);
+                const entries = [];
+                for (let i = 0; i < n; i++) {
+                    const e = off + 2 + i * 12, tag = v.getUint16(e, le);
+                    if (top && this.TIFF_PICTURE_TAGS.has(tag)) continue;
+                    entries.push(e);
+                }
+                const at = o + (o & 1);
+                o = at;
+                room(2 + entries.length * 12 + 4);
+                ov().setUint16(at, entries.length, le);
+                o = at + 2 + entries.length * 12 + 4;
+                ov().setUint32(o - 4, 0, le);
+                entries.forEach((e, i) => {
+                    const to = at + 2 + i * 12;
+                    out.set(bytes.subarray(e, e + 8), to);
+                    const tag = v.getUint16(e, le), type = v.getUint16(e + 2, le), count = v.getUint32(e + 4, le);
+                    const size = (this.TIFF_TYPE_SIZE[type] || 1) * count;
+                    if (this.TIFF_POINTERS.has(tag) && depth < 3) {
+                        ov().setUint32(to + 8, copyIfd(v.getUint32(e + 8, le), depth + 1, false), le);
+                    } else if (size <= 4) {
+                        out.set(bytes.subarray(e + 8, e + 12), to + 8);
+                    } else {
+                        const from = v.getUint32(e + 8, le);
+                        if (from + size > bytes.length || size > 1 << 20) { ov().setUint32(to + 4, 0, le); return; }
+                        const dataAt = o + (o & 1);
+                        o = dataAt;
+                        room(size);
+                        out.set(bytes.subarray(from, from + size), dataAt);
+                        o += size;
+                        ov().setUint32(to + 8, dataAt, le);
+                    }
+                });
+                return at;
+            };
+            const first = copyIfd(v.getUint32(4, le), 0, true);
+            ov().setUint32(4, first, le);
+            return out.slice(0, o);
+        } catch (e) {
+            return null; // not all of it was there
+        }
+    },
+
+    // A TIFF from tiff-codec.js (little-endian, 8-bit strips) with this EXIF
+    // block: the block first, the strips after it, then an IFD with the
+    // picture's tags and the camera's, which the header points to
+    withExifTiff(file, tiff) {
+        if (!tiff || !this.isTiffFile(tiff) || !this.isTiffFile(file)) return file;
+        try {
+            const fv = new DataView(file.buffer, file.byteOffset, file.byteLength);
+            const ev = new DataView(tiff.buffer, tiff.byteOffset, tiff.byteLength);
+            const le = tiff[0] === 0x49;
+            const read = (v, l, e) => {
+                const type = v.getUint16(e + 2, l), count = v.getUint32(e + 4, l), size = (this.TIFF_TYPE_SIZE[type] || 1) * count;
+                const at = size <= 4 ? e + 8 : v.getUint32(e + 8, l);
+                return Array.from({ length: count }, (_, i) => type === 3 ? v.getUint16(at + i * 2, l) : type === 5 ? [v.getUint32(at + i * 8, l), v.getUint32(at + i * 8 + 4, l)] : v.getUint32(at + i * 4, l));
+            };
+            // The picture's tags, as written by tiff-codec.js
+            const fi = fv.getUint32(4, true), picture = [];
+            for (let i = 0, n = fv.getUint16(fi, true); i < n; i++) {
+                const e = fi + 2 + i * 12;
+                picture.push({ tag: fv.getUint16(e, true), type: fv.getUint16(e + 2, true), vals: read(fv, true, e) });
+            }
+            const offsets = picture.find(p => p.tag === 273), counts = picture.find(p => p.tag === 279);
+            if (!offsets || !counts) return file;
+            // The camera's, from the block
+            const ei = ev.getUint32(4, le), camera = [];
+            for (let i = 0, n = ev.getUint16(ei, le); i < n; i++) {
+                const e = ei + 2 + i * 12, tag = ev.getUint16(e, le);
+                if (!this.TIFF_PICTURE_TAGS.has(tag) && tag !== 274) camera.push({ tag, raw: tiff.subarray(e, e + 12) });
+            }
+            const have = new Set(camera.map(c => c.tag));
+            const tags = [...picture.filter(p => !have.has(p.tag)), { tag: 274, type: 3, vals: [1] }, ...camera].sort((a, b) => a.tag - b.tag);
+            // Where things go
+            const base = tiff.length + (tiff.length & 1);
+            let o = base;
+            const from = offsets.vals;
+            offsets.vals = from.map((x, i) => { const at = o; o += counts.vals[i] + (counts.vals[i] & 1); return at; });
+            const extraAt = new Map();
+            for (const p of tags) {
+                if (!p.vals) continue;
+                const size = (this.TIFF_TYPE_SIZE[p.type] || 1) * p.vals.length;
+                if (size > 4) { extraAt.set(p, o); o += size + (size & 1); }
+            }
+            const ifdAt = o;
+            o += 2 + tags.length * 12 + 4;
+            const out = new Uint8Array(o), v = new DataView(out.buffer);
+            out.set(tiff);
+            offsets.vals.forEach((at, i) => out.set(file.subarray(from[i], from[i] + counts.vals[i]), at));
+            const put = (at, type, vals) => vals.forEach((x, i) => {
+                if (type === 3) v.setUint16(at + i * 2, x, le);
+                else if (type === 5) { v.setUint32(at + i * 8, x[0], le); v.setUint32(at + i * 8 + 4, x[1], le); }
+                else v.setUint32(at + i * 4, x, le);
+            });
+            v.setUint16(ifdAt, tags.length, le);
+            tags.forEach((p, i) => {
+                const e = ifdAt + 2 + i * 12;
+                if (p.raw) { out.set(p.raw, e); return; }
+                v.setUint16(e, p.tag, le); v.setUint16(e + 2, p.type, le); v.setUint32(e + 4, p.vals.length, le);
+                if (extraAt.has(p)) { v.setUint32(e + 8, extraAt.get(p), le); put(extraAt.get(p), p.type, p.vals); }
+                else put(e + 8, p.type, p.vals);
+            });
+            v.setUint32(ifdAt + 2 + tags.length * 12, 0, le);
+            v.setUint32(4, ifdAt, le);
+            return out;
+        } catch (e) {
+            return file;
+        }
     },
 
     // A JPEG XL codestream in the container, with this EXIF

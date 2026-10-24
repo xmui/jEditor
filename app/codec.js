@@ -1,19 +1,27 @@
-// Writing AVIF, JPEG XL and WebP (Convert, Export, Save edits), and
-// reading JPEG XL where the engine
-// can't: a few codec-worker.js workers, each doing one picture at a time.
+// Writing AVIF, JPEG XL, WebP, JPEG, PNG and TIFF (Convert, Export, Save
+// edits), and reading JPEG XL where the engine can't and TIFF (which no
+// engine reads): a few codec-worker.js workers, each doing one picture at
+// a time.
 //
 //   Codec.ready()               whether the codecs load here (not in the
 //                               single-file standalone.html, opened from disk)
 //   Codec.encode(blob, format, quality, { crop, preview })
 //                               → { bytes, w, h, rgb, preview }
-//   Codec.showable(blob)        a JPEG XL as something the engine shows
-//                               (itself when it can, else decoded to a PNG)
+//   Codec.showable(blob)        a JPEG XL or TIFF as something the engine
+//                               shows (itself when it can, else decoded to
+//                               a PNG)
+//
+// A format's `saves`: it's for taking less room (Convert leaves a photo
+// that wouldn't get smaller as it is); `lossless`: no quality to choose.
 
 const Codec = {
     FORMATS: {
-        avif: { label: 'AVIF', ext: 'avif', type: 'image/avif', quality: 60 },
-        jxl: { label: 'JPEG XL', ext: 'jxl', type: 'image/jxl', quality: 85 },
-        webp: { label: 'WebP', ext: 'webp', type: 'image/webp', quality: 80 }
+        avif: { label: 'AVIF', ext: 'avif', type: 'image/avif', quality: 60, saves: true },
+        jxl: { label: 'JPEG XL', ext: 'jxl', type: 'image/jxl', quality: 85, saves: true },
+        webp: { label: 'WebP', ext: 'webp', type: 'image/webp', quality: 80, saves: true },
+        jpeg: { label: 'JPEG', ext: 'jpg', match: /\.jpe?g$/i, type: 'image/jpeg', quality: 90 },
+        png: { label: 'PNG', ext: 'png', type: 'image/png', lossless: true },
+        tiff: { label: 'TIFF', ext: 'tif', match: /\.tiff?$/i, type: 'image/tiff', lossless: true }
     },
     workers: [],
     queue: [],
@@ -111,7 +119,7 @@ const Codec = {
     // last few are kept, so going back and forth doesn't decode again
     _shown: [],
     async showable(file) {
-        if (await this.engineJxl()) return file;
+        if (!this.isTiff(file.name) && await this.engineJxl()) return file;
         const key = `${file.name}|${file.size}|${file.lastModified}`;
         const hit = this._shown.find(x => x.key === key);
         if (hit) return hit.png;
@@ -125,10 +133,25 @@ const Codec = {
         return /\.jxl$/i.test(name);
     },
 
-    // 'avif' or 'jxl' for a file only the codecs write, else null
+    isTiff(name) {
+        return /\.tiff?$/i.test(name);
+    },
+
+    // Shown through the codecs: a JPEG XL (where the engine can't) or a TIFF
+    decoded(name) {
+        return this.isJxl(name) || this.isTiff(name);
+    },
+
+    // A format's file name test
+    matches(format, name) {
+        const f = this.FORMATS[format];
+        return (f.match || new RegExp(`\\.${f.ext}$`, 'i')).test(name || '');
+    },
+
+    // 'avif', 'jxl' or 'tiff' for a file only the codecs write, else null
     of(name) {
-        const m = /\.(avif|jxl)$/i.exec(name || '');
-        return m ? m[1].toLowerCase() : null;
+        const m = /\.(avif|jxl|tiff?)$/i.exec(name || '');
+        return !m ? null : /^tiff?$/i.test(m[1]) ? 'tiff' : m[1].toLowerCase();
     },
 
     // A picture as a file of this format, with this EXIF (meta.js: made
@@ -144,6 +167,9 @@ const Codec = {
         if (format === 'webp') return ImageMeta.withExifWebp(bytes, t, w, h);
         if (format === 'avif') return ImageMeta.withExifAvif(bytes, t);
         if (format === 'jxl') return ImageMeta.withExifJxl(bytes, t);
+        if (format === 'jpeg') return ImageMeta.withExifJpeg(bytes, t);
+        if (format === 'png') return ImageMeta.withExifPng(bytes, t);
+        if (format === 'tiff') return ImageMeta.withExifTiff(bytes, t);
         return bytes;
     }
 };

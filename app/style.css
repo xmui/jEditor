@@ -3782,6 +3782,20 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--success) 45%, transparent) 0 6px, color-mix(in srgb, var(--success) 18%, transparent) 6px 12px);
 }
 
+/* What converting adds, when the new format takes more room (PNG, TIFF) */
+.cv-grown {
+    border: 1.5px dashed var(--warning-text, #d97706);
+    border-left: 0;
+    border-radius: 0 var(--r-sm) var(--r-sm) 0 !important;
+    background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--warning-text, #d97706) 45%, transparent) 0 6px, color-mix(in srgb, var(--warning-text, #d97706) 18%, transparent) 6px 12px);
+}
+
+.cv-savedtag.cv-moretag,
+.cv-folder .s b.more,
+.cv-run-row b.more {
+    color: var(--warning-text, #d97706);
+}
+
 .cv-savedtag {
     position: absolute;
     top: 50%;

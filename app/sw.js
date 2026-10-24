@@ -14,6 +14,7 @@ const ASSETS = [
     './meta.js',
     './codec.js',
     './codec-worker.js',
+    './tiff-codec.js',
     './codecs/avif_enc.js',
     './codecs/avif_enc.wasm',
     './codecs/jxl_enc.js',

@@ -637,3 +637,5 @@
 :root[data-skin="xp"] .cv-dots i.f { box-shadow: inset 0 0 0 2px #2fb32f; }
 :root[data-skin="xp"] .cv-dots i.now { box-shadow: 0 0 0 1px #000; }
 :root[data-skin="xp"] .cv-run-row b { color: #1f7f1f; font: 700 22px var(--xp-font); }
+:root[data-skin="xp"] .cv-grown { border-color: #c06000; border-radius: 0 !important; }
+:root[data-skin="xp"] :is(.cv-savedtag.cv-moretag, .cv-folder .s b.more, .cv-run-row b.more) { color: #b35a00; }

@@ -1,7 +1,8 @@
 // The codecs the browser engine hasn't got, off the page (codec.js runs a
 // few of these): AVIF and JPEG XL written, JPEG XL read, from the
-// WebAssembly builds in codecs/ (jSquash: libavif and libjxl). WebP is
-// written here too, by the engine, so every format goes the same way.
+// WebAssembly builds in codecs/ (jSquash: libavif and libjxl); TIFF read
+// and written by tiff-codec.js. WebP, JPEG and PNG are written here too,
+// by the engine, so every format goes the same way.
 // A module worker: codec.js starts it with { type: 'module' }.
 //
 //   { op: 'encode', file, format, quality, crop, preview }
@@ -12,6 +13,8 @@
 //       rgb: the picture's average colour; preview: the result, decoded
 //       again, as a PNG (for the close-up)
 //   { op: 'decode', file } → { png, w, h }   (a JPEG XL, for showing it)
+
+import { decodeTiff, encodeTiff } from './tiff-codec.js';
 
 const modules = {};
 
@@ -31,9 +34,11 @@ function codec(name) {
 }
 
 const isJxl = (blob) => blob.type === 'image/jxl' || (blob.name && /\.jxl$/i.test(blob.name));
+const isTiff = (blob) => blob.type === 'image/tiff' || (blob.name && /\.tiff?$/i.test(blob.name));
 
 // The picture, upright, as RGBA
 async function pixels(blob) {
+    if (isTiff(blob)) return decodeTiff(await blob.arrayBuffer());
     if (isJxl(blob)) {
         const m = await codec('jxl_dec');
         const img = m.decode(await blob.arrayBuffer());
@@ -74,6 +79,20 @@ function average(img) {
 // Speeds chosen for a whole library: a little bigger than the slowest
 // setting gives, many times quicker
 async function encode(img, format, quality) {
+    if (format === 'tiff') return encodeTiff(img);
+    if (format === 'jpeg' || format === 'png') {
+        const c = new OffscreenCanvas(img.width, img.height);
+        const g = c.getContext('2d');
+        g.putImageData(img, 0, 0);
+        if (format === 'jpeg') {
+            // JPEG has no see-through: on white, as printing would
+            g.globalCompositeOperation = 'destination-over';
+            g.fillStyle = '#fff';
+            g.fillRect(0, 0, c.width, c.height);
+        }
+        const blob = await c.convertToBlob(format === 'jpeg' ? { type: 'image/jpeg', quality: quality / 100 } : { type: 'image/png' });
+        return new Uint8Array(await blob.arrayBuffer());
+    }
     if (format === 'webp') {
         const c = new OffscreenCanvas(img.width, img.height);
         c.getContext('2d').putImageData(img, 0, 0);
@@ -120,7 +139,7 @@ self.onmessage = async (e) => {
             const bytes = await encode(img, format, quality);
             let back = null;
             if (preview) {
-                const type = { webp: 'image/webp', avif: 'image/avif', jxl: 'image/jxl' }[format];
+                const type = { webp: 'image/webp', avif: 'image/avif', jxl: 'image/jxl', jpeg: 'image/jpeg', png: 'image/png', tiff: 'image/tiff' }[format];
                 back = await png(await pixels(new Blob([bytes], { type })));
             }
             self.postMessage({ id, bytes, w: full.w, h: full.h, rgb, preview: back }, [bytes.buffer]);

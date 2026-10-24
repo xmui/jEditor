@@ -1742,7 +1742,7 @@ const app = {
     },
 
     isImage(name) {
-        return /\.(jpg|jpeg|png|webp|gif|avif|jxl)$/i.test(name) || Raw.is(name);
+        return /\.(jpg|jpeg|png|webp|gif|avif|jxl|tiff?)$/i.test(name) || Raw.is(name);
     },
 
     // The photo's bytes to decode: the file, a RAW's own JPEG (raw.js), or
@@ -1750,7 +1750,7 @@ const app = {
     // writing: a RAW is never written
     async readImage(file) {
         const data = await file.handle.getFile();
-        if (Codec.isJxl(file.name)) return Codec.showable(data);
+        if (Codec.decoded(file.name)) return Codec.showable(data);
         if (!Raw.is(file.name)) return data;
         const jpeg = await Raw.preview(data);
         if (!jpeg) throw new Error('no preview found in this RAW file');
@@ -1914,7 +1914,7 @@ const app = {
                     const head = await fileData.slice(0, 256 * 1024).arrayBuffer();
                     info = this.readJpegExifInfo(head);
                 } catch (e) { /* none */ }
-            } else if (/\.(webp|avif|jxl|png)$/i.test(file.name)) {
+            } else if (/\.(webp|avif|jxl|png|tiff?)$/i.test(file.name)) {
                 // Their EXIF can be anywhere (a WebP's comes after the picture)
                 try {
                     const tiff = ImageMeta.exifOf(new Uint8Array(await (await file.handle.getFile()).arrayBuffer()));
@@ -6216,9 +6216,9 @@ const app = {
                     // Smaller, or another format: drawn again and written as that
                     let bmp = null, scale = 1;
                     if (maxEdge > 0 || to !== from) {
-                        // (a JPEG XL, as written or edited, decoded by the codecs)
-                        const jxl = (f._edit ? Codec.of(f.name) : from) === 'jxl';
-                        bmp = await createImageBitmap(jxl ? await Codec.showable(out instanceof File ? out : new File([out], f.name)) : out);
+                        // (a JPEG XL or TIFF, as written or edited, decoded by the codecs)
+                        const coded = f._edit ? Codec.of(f.name) : from;
+                        bmp = await createImageBitmap(coded === 'jxl' || coded === 'tiff' ? await Codec.showable(out instanceof File ? out : new File([out], f.name)) : out);
                         if (maxEdge > 0) scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
                     }
                     if (bmp && (scale < 1 || to !== from)) {
@@ -6232,7 +6232,7 @@ const app = {
                     if (bmp) bmp.close();
                     if (!out) throw new Error('encode failed');
                     const name = raw && to === 'jpeg' ? Raw.jpegName(f.name)
-                        : to === from ? f.name : f.name.replace(/\.[^.]+$/, '') + '.' + (to === 'jpeg' ? 'jpg' : to === 'gif' ? 'jpg' : to);
+                        : to === from ? f.name : f.name.replace(/\.[^.]+$/, '') + '.' + (to === 'jpeg' ? 'jpg' : to === 'gif' ? 'jpg' : to === 'tiff' ? 'tif' : to);
                     const h = await dir.getFileHandle(name, { create: true });
                     const w = await h.createWritable();
                     await w.write(out);
@@ -6256,19 +6256,19 @@ const app = {
     },
 
     // What a photo's file is, by its name: 'jpeg', 'png', 'webp', 'gif',
-    // 'avif' or 'jxl'
+    // 'avif', 'jxl' or 'tiff'
     formatOf(name) {
-        const m = /\.(jpe?g|png|webp|gif|avif|jxl)$/i.exec(name || '');
-        return !m ? 'jpeg' : /^jpe?g$/i.test(m[1]) ? 'jpeg' : m[1].toLowerCase();
+        const m = /\.(jpe?g|png|webp|gif|avif|jxl|tiff?)$/i.exec(name || '');
+        return !m ? 'jpeg' : /^jpe?g$/i.test(m[1]) ? 'jpeg' : /^tiff?$/i.test(m[1]) ? 'tiff' : m[1].toLowerCase();
     },
 
     // A canvas written as a format, with the metadata of `original` (its
-    // file's bytes) that's still true → Blob. AVIF and JPEG XL by the codecs
+    // file's bytes) that's still true → Blob. AVIF, JPEG XL and TIFF by the codecs
     async encodeAs(canvas, to, original) {
         const w = canvas.width, h = canvas.height;
         const blobOf = (type, q) => new Promise(r => canvas.toBlob(r, type, q));
         const tiff = ImageMeta.exifOf(original);
-        if (to === 'avif' || to === 'jxl') return Codec.file(await blobOf('image/png'), to, Codec.FORMATS[to].quality, tiff);
+        if (to === 'avif' || to === 'jxl' || to === 'tiff') return Codec.file(await blobOf('image/png'), to, Codec.FORMATS[to].quality, tiff);
         const type = { png: 'image/png', webp: 'image/webp' }[to] || 'image/jpeg';
         const blob = await blobOf(type, type === 'image/png' ? undefined : 0.95);
         if (!blob) return null;
@@ -6276,8 +6276,9 @@ const app = {
         // From the same kind of file: its metadata as Save edits copies it
         const kind = ImageMeta.jpegSegments(original, { partial: true }) ? 'jpeg' : ImageMeta.pngChunks(original, { partial: true }) ? 'png' : null;
         if (kind === (type === 'image/png' ? 'png' : 'jpeg')) return ImageMeta.transplant(original, blob, type, w, h);
-        // A JPEG from another format: its EXIF goes in
+        // A JPEG or PNG from another format: its EXIF goes in
         if (type === 'image/jpeg' && tiff) return new Blob([ImageMeta.withExifJpeg(new Uint8Array(await blob.arrayBuffer()), ImageMeta.tiffForUpright(tiff, w, h))], { type });
+        if (type === 'image/png' && tiff) return new Blob([ImageMeta.withExifPng(new Uint8Array(await blob.arrayBuffer()), ImageMeta.tiffForUpright(tiff, w, h))], { type });
         return blob;
     },
 
@@ -6302,7 +6303,7 @@ const app = {
         const blob = await new Promise(r => canvas.toBlob(r, type, quality));
         canvas.width = canvas.height = 0;
         if (!blob) throw new Error('encoding failed');
-        // AVIF and JPEG XL: written by the codecs, in their own format, with their EXIF
+        // AVIF, JPEG XL and TIFF: written by the codecs, in their own format, with their EXIF
         if (coded) return Codec.file(blob, coded, Codec.FORMATS[coded].quality, ImageMeta.exifOf(new Uint8Array(await (await f.handle.getFile()).arrayBuffer())));
         return ImageMeta.transplant(original, blob, type, w, h);
     },
@@ -6402,6 +6403,7 @@ const app = {
                 ['Rename…', () => this.promptRename(file)],
                 ['File info', () => { this.toggleInfoPanel(true, { file }); }],
                 ['Export…', () => Export.open({ files: [file] })],
+                ['Convert…', () => Convert.open({ files: [file] })],
                 ['—'],
                 ['Delete', () => this.moveToTrash([file]), true]
             ];
@@ -6427,6 +6429,7 @@ const app = {
                 ['Rename…', () => this.promptRename(file)],
                 ['File info', () => this.toggleInfoPanel(true)],
                 ['Export…', () => Export.open({ files: [file] })],
+                ['Convert…', () => Convert.open({ files: [file] })],
                 ['—'],
                 ['Full screen', () => this.toggleFullscreen()],
                 ['Start slideshow', () => this.startSlideshow()],
