@@ -80,6 +80,9 @@ something new.
      bit, `design/themes/px.py`)
 6. **A new command** goes in the theme menu bar (`Themes.MENUS` in
    `app/themes.js`) where a Windows XP or classic Mac app would have put it.
+   In the Mac app those menus are in the Mac's menu bar too (Snow Leopard's,
+   which has none in the window, by its `systemMenus`), so the command shows
+   there with its key.
 7. **A new screen or part** goes in the audit: `SCREENS` and `PARTS` in
    `design/themes/audit.js`. Run it, commit the updated
    `docs/themes-checklist.md`, and add what it can't check to the "Checked
