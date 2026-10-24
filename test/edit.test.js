@@ -1659,6 +1659,9 @@ const PROJECT = `
         check('convert: one photo, from its right-click menu', r.oneMenu && r.oneScope && r.oneScope[0] === 1 && r.oneScope[1] === 'p1.jpg' && r.one === 'Ceremony/p0.jpg,Ceremony/p1.png,Party/p2.jpg,Party/p3.jpg,tiny.png', JSON.stringify([r.oneMenu, r.oneScope, r.one]));
         check('export: as AVIF, with the edit and the EXIF', r.exported && String(r.exported) === '900,600,jEd', JSON.stringify(r.exported));
         check('convert: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        // Saves still going (flags, edits) finished first: Chromium 141 aborts
+        // when a page closes with a file being written
+        await page.evaluate(async () => { Codec.stop(); await Edits.flush(); if (Flags._saveTimer) { clearTimeout(Flags._saveTimer); await Flags.save(); } await sleep(300); });
         await page.close();
 
         // Any folder, from the start page: converted where it is, not opened
@@ -1723,6 +1726,7 @@ const PROJECT = `
         check('convert: Put the originals back puts them back by name, still on the start page', o.back === 'Day 1/IMG_1.jpg,Day 1/IMG_2.jpg,IMG_0.jpg' && o.stillStart, JSON.stringify(o));
         check('convert: to TIFF (lossless): converted though bigger, the storage says how much more', String(o.tiffEstimate) === 'true,true' && o.tiff && o.tiff[0] === 'Day 1/IMG_1.tif,Day 1/IMG_2.tif,IMG_0.tif' && o.tiff[1] === 'more storage' && o.tiff[2] === 0, JSON.stringify([o.tiffEstimate, o.tiff]));
         check('convert (a folder chosen): no JS errors', p2.issues.errors.length === 0, p2.issues.errors.join('; '));
+        await p2.page.evaluate(async () => { Codec.stop(); await sleep(300); });
         await p2.page.close();
     }
 

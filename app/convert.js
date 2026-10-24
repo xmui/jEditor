@@ -633,9 +633,7 @@ const Convert = {
         if (run.keep) {
             const out = await this.copiesDir(Folders.dirOf(f), run.outside);
             const h = await out.getFileHandle(newName, { create: true });
-            const w = await h.createWritable();
-            await w.write(bytes);
-            await w.close();
+            await this.write(h, bytes);
             run.copies.push({ dir: out, name: newName });
             run.after += bytes.length;
             run.saved += before - bytes.length;
@@ -649,9 +647,7 @@ const Convert = {
             return;
         } catch (e) { /* free */ }
         const nh = await dir.getFileHandle(newName, { create: true });
-        const w = await nh.createWritable();
-        await w.write(bytes);
-        await w.close();
+        await this.write(nh, bytes);
         // The original to the bin (or jEditor's trash): Ctrl+Z brings it back
         const trashed = f.outside ? await this.trashOutside(f, run.outside) : await this.trash(f);
         if (!trashed) {
@@ -673,6 +669,19 @@ const Convert = {
         run.items.push({ file: f, oldName, newName, dir, trash: trashed, editSize });
         run.after += bytes.length;
         run.saved += before - bytes.length;
+    },
+
+    // A file's bytes, written whole or not at all (a write that fails is
+    // given up, not left open)
+    async write(handle, bytes) {
+        const w = await handle.createWritable();
+        try {
+            await w.write(bytes);
+            await w.close();
+        } catch (e) {
+            await w.abort().catch(() => { });
+            throw e;
+        }
     },
 
     // One photo to the bin or jEditor's trash, as Delete does → its undo item

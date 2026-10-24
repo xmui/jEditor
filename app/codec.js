@@ -66,6 +66,23 @@ const Codec = {
             else job.resolve(data);
         }
         this.pump();
+        this.idleSoon();
+    },
+
+    // A minute with nothing to do: the workers go, and their codecs' memory
+    // with them (they start again when wanted)
+    idleSoon() {
+        clearTimeout(this._idle);
+        this._idle = setTimeout(() => { if (!this.queue.length && !this.workers.some(w => w.busy)) this.stop(); }, 60000);
+    },
+
+    stop() {
+        clearTimeout(this._idle);
+        for (const w of this.workers) {
+            if (w.busy) w.busy.reject(new Error('stopped'));
+            w.terminate();
+        }
+        this.workers = [];
     },
 
     pump() {
