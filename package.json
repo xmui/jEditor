@@ -5,7 +5,7 @@
   "description": "jEditor: a photo viewer for working through scan orders, for Windows, Mac and the web",
   "scripts": {
     "start": "node scripts/serve.js",
-    "test": "node test/parity.test.js && node test/bridge.test.js && node test/native.test.js && node test/ui.test.js && node test/edit.test.js",
+    "test": "node test/parity.test.js && node test/themes.test.js && node test/bridge.test.js && node test/native.test.js && node test/ui.test.js && node test/edit.test.js",
     "build:standalone": "node scripts/build-standalone.js",
     "bump": "node scripts/bump-version.js",
     "mac": "cd mac && npx electron .",
