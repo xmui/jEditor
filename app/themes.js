@@ -61,7 +61,7 @@ const Themes = {
             ['New folder', 'folders.new', true],
             '—',
             ['Export…', () => Export.open({ files: app.selection.size ? [...app.selection] : null }), true],
-            ['Convert…', 'app.convert'],
+            ['Convert…', 'app.convert', true],
             ['Rename…', 'edit.rename', true],
             ['Move to…', 'edit.moveTo', true],
             ['Copy to…', 'edit.copyTo', true],

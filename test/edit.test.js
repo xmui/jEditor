@@ -1536,7 +1536,8 @@ const PROJECT = `
                     const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
                     const g = c.getContext('2d'); g.drawImage(bmp, 0, 0);
                     const at = (x, y) => [...g.getImageData(x, y, 1, 1).data.slice(0, 3)].map(v => Math.round(v / 10) * 10);
-                    out.tiffs[k] = k === 'turned' ? [bmp.width, bmp.height, ImageMeta.exifStrings(ImageMeta.exifOf(bytes)).make] : [bmp.width, bmp.height, String(at(5, 3)), String(at(0, 0))];
+                    const ex = k === 'turned' && ImageMeta.exifOf(bytes);
+                    out.tiffs[k] = k === 'turned' ? [bmp.width, bmp.height, (app.readTiffInfo(new DataView(ex.buffer, ex.byteOffset, ex.byteLength), 0) || {}).make] : [bmp.width, bmp.height, String(at(5, 3)), String(at(0, 0))];
                 }
                 // JPEG, PNG and TIFF written with the EXIF too
                 for (const f of ['jpeg', 'png', 'tiff']) {
@@ -1616,6 +1617,25 @@ const PROJECT = `
                 const exBmp = await createImageBitmap(ex);
                 const exT = ImageMeta.exifOf(exBytes);
                 const exInfo = exT && app.readTiffInfo(new DataView(exT.buffer, exT.byteOffset, exT.byteLength), 0);
+                // One photo, from its right-click menu: Convert… for it alone
+                step = 'one';
+                const tile = app.files.find(f => f.name === 'p1.jpg')._gridEl;
+                const items = tile ? app.buildContextItems(tile, false) : app.buildContextItems(null, true);
+                const conv = items.find(it => it[0] === 'Convert…');
+                out.oneMenu = !!conv;
+                Convert.prefs.format = 'jpeg'; Convert.prefs.keep = false; Convert.est = null;
+                if (conv) conv[1]();
+                await until(() => Convert.est && !Convert.est.working, 600);
+                out.oneScope = [Convert.scope.all.length, document.getElementById('cv-src-name').textContent];
+                Convert.prefs.format = 'png'; Convert.est = null;
+                Convert.setFormat('png');
+                await until(() => Convert.est && !Convert.est.working, 600);
+                Convert.go();
+                await until(() => Convert.done, 800);
+                out.one = app.files.map(f => f.relPath || f.name).sort().join();
+                Convert.go();
+                await app.undo();
+
                 // Upright (600 × 900), then turned a quarter by its edit
                 out.exported = [exBmp.width, exBmp.height, exInfo && exInfo.make];
                 return out;
@@ -1636,6 +1656,7 @@ const PROJECT = `
         check('convert: Ctrl+Z puts the originals back, by name, with their flags and edits', r.undone === 'Ceremony/p0.jpg,Ceremony/p1.jpg,Party/p2.jpg,Party/p3.jpg,tiny.png' &&
             r.undoneDisk === r.undone && r.undoneKept && r.undoneKept[0] === 'p0.jpg' && r.undoneKept[1] && r.undoneKept[2], JSON.stringify([r.undone, r.undoneDisk, r.undoneKept]));
         check('convert: Keep both puts the converted copies in "jEditor Converted", not in the project', r.copies === 'p2.webp,p3.webp' && r.notListed, JSON.stringify([r.copies, r.notListed]));
+        check('convert: one photo, from its right-click menu', r.oneMenu && r.oneScope && r.oneScope[0] === 1 && r.oneScope[1] === 'p1.jpg' && r.one === 'Ceremony/p0.jpg,Ceremony/p1.png,Party/p2.jpg,Party/p3.jpg,tiny.png', JSON.stringify([r.oneMenu, r.oneScope, r.one]));
         check('export: as AVIF, with the edit and the EXIF', r.exported && String(r.exported) === '900,600,jEd', JSON.stringify(r.exported));
         check('convert: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();

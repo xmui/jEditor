@@ -502,8 +502,9 @@ const Convert = {
         const { ok, left } = this.candidates();
         const lead = this.el('cv-lead');
         if (!lead) return;
-        const src = this.scope.outside ? (this.scope.outside.path || this.scope.name) : this.scope.name ? `${this.scope.name}, in this project` : 'The photos selected';
-        this.el('cv-src-name').textContent = `${src} · ${this.scope.all.length.toLocaleString()} photo${this.scope.all.length === 1 ? '' : 's'}`;
+        const one = !this.scope.outside && !this.scope.name && this.scope.all.length === 1;
+        const src = this.scope.outside ? (this.scope.outside.path || this.scope.name) : this.scope.name ? `${this.scope.name}, in this project` : one ? this.scope.all[0].name : 'The photos selected';
+        this.el('cv-src-name').textContent = one ? src : `${src} · ${this.scope.all.length.toLocaleString()} photo${this.scope.all.length === 1 ? '' : 's'}`;
         this.el('cv-src-name').title = src;
         this.el('cv-replace-sub').textContent = Host.say(`to ${this.binName(this.scope.outside)}, ${this.scope.outside ? 'and back if you like' : 'Ctrl+Z brings them back'}`);
         lead.innerHTML = (F.lossless ? `${F.label} keeps every pixel; see what it does to their storage.` : `Choose how good they look in ${F.label} and see what it does to their storage.`) + ' Their dates, camera details, flags and edits go with them.' +
@@ -617,7 +618,7 @@ const Convert = {
         const before = data.size;
         const head = new Uint8Array(await (/\.jpe?g$/i.test(f.name) ? data.slice(0, 256 * 1024) : data).arrayBuffer());
         const exif = ImageMeta.exifOf(head);
-        const r = await Codec.encode(await app.readImage(f), run.format, run.quality, { meta: run.format === 'tiff' ? ImageMeta.exifStrings(exif) : null });
+        const r = await Codec.encode(await app.readImage(f), run.format, run.quality);
         run.colours[i] = r.rgb;
         const bytes = Codec.withExif(r.bytes, run.format, exif, r.w, r.h);
         run.before += before;

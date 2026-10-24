@@ -1,21 +1,20 @@
 // The codecs the browser engine hasn't got, off the page (codec.js runs a
 // few of these): AVIF and JPEG XL written, JPEG XL read, from the
 // WebAssembly builds in codecs/ (jSquash: libavif and libjxl); TIFF read
-// and written by tiff.js. WebP, JPEG and PNG are written here too, by the
+// and written by tiff-codec.js. WebP, JPEG and PNG are written here too, by the
 // engine, so every format goes the same way.
 // A module worker: codec.js starts it with { type: 'module' }.
 //
-//   { op: 'encode', file, format, quality, crop, preview, meta }
+//   { op: 'encode', file, format, quality, crop, preview }
 //       → { bytes, w, h, rgb, preview }
 //       file: a Blob of any picture the engine reads (or a JPEG XL or TIFF);
-//       meta: { make, model, date } for a TIFF's tags;
 //       crop: { x, y, w, h } of the upright picture, or { size } for a
 //       square that size from its middle: a sample;
 //       rgb: the picture's average colour; preview: the result, decoded
 //       again, as a PNG (for the close-up)
 //   { op: 'decode', file } → { png, w, h }   (a JPEG XL or TIFF, for showing it)
 
-import { readTiff, writeTiff } from './tiff.js';
+import { decodeTiff, encodeTiff } from './tiff-codec.js';
 
 const modules = {};
 
@@ -39,7 +38,7 @@ const isTiff = (blob) => blob.type === 'image/tiff' || (blob.name && /\.tiff?$/i
 
 // The picture, upright, as RGBA
 async function pixels(blob) {
-    if (isTiff(blob)) return readTiff(new Uint8Array(await blob.arrayBuffer()));
+    if (isTiff(blob)) return decodeTiff(await blob.arrayBuffer());
     if (isJxl(blob)) {
         const m = await codec('jxl_dec');
         const img = m.decode(await blob.arrayBuffer());
@@ -79,8 +78,8 @@ function average(img) {
 
 // Speeds chosen for a whole library: a little bigger than the slowest
 // setting gives, many times quicker
-async function encode(img, format, quality, meta) {
-    if (format === 'tiff') return writeTiff(img, meta || {});
+async function encode(img, format, quality) {
+    if (format === 'tiff') return encodeTiff(img); // its EXIF goes in after (meta.js)
     if (format === 'webp' || format === 'png' || format === 'jpeg') {
         const type = 'image/' + format;
         let c = new OffscreenCanvas(img.width, img.height);
@@ -128,12 +127,12 @@ self.onmessage = async (e) => {
     const { id, op } = e.data;
     try {
         if (op === 'encode') {
-            const { file, format, quality, crop, preview, meta } = e.data;
+            const { file, format, quality, crop, preview } = e.data;
             let img = await pixels(file);
             const full = { w: img.width, h: img.height };
             const rgb = average(img);
             if (crop) img = cropOf(img, crop.size ? centred(img, crop.size) : crop);
-            const bytes = await encode(img, format, quality, meta);
+            const bytes = await encode(img, format, quality);
             let back = null;
             if (preview) {
                 const type = { webp: 'image/webp', avif: 'image/avif', jxl: 'image/jxl', jpeg: 'image/jpeg', png: 'image/png', tiff: 'image/tiff' }[format];

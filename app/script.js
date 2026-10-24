@@ -4196,8 +4196,9 @@ const app = {
             'view.fullscreen': () => this.toggleFullscreen(),
             'view.slideshow': () => this.startSlideshow(),
             'app.dupes': () => this.openDupes(),
-            // The selection in the grid, else the whole project
-            'app.convert': () => Convert.open(this.viewMode === 'grid' && this.selection.size > 1 ? { files: [...this.selection] } : {}),
+            // The photo open, the selection in the grid, else the whole project
+            'app.convert': () => Convert.open(this.viewMode === 'single' && this.currentFile ? { files: [this.currentFile] }
+                : this.viewMode === 'grid' && this.selection.size > 1 ? { files: [...this.selection] } : {}),
             'app.import': () => Import.open(),
             'app.refresh': () => this.refreshFolder(),
             'app.search': () => Flags.focusSearch(),
@@ -6409,6 +6410,7 @@ const app = {
                 ['Rename…', () => this.promptRename(file)],
                 ['File info', () => { this.toggleInfoPanel(true, { file }); }],
                 ['Export…', () => Export.open({ files: [file] })],
+                ['Convert…', () => Convert.open({ files: [file] })],
                 ['—'],
                 ['Delete', () => this.moveToTrash([file]), true]
             ];
@@ -6434,6 +6436,7 @@ const app = {
                 ['Rename…', () => this.promptRename(file)],
                 ['File info', () => this.toggleInfoPanel(true)],
                 ['Export…', () => Export.open({ files: [file] })],
+                ['Convert…', () => Convert.open({ files: [file] })],
                 ['—'],
                 ['Full screen', () => this.toggleFullscreen()],
                 ['Start slideshow', () => this.startSlideshow()],

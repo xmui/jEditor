@@ -4,7 +4,7 @@
 //
 //   Codec.ready()               whether the codecs load here (not in the
 //                               single-file standalone.html, opened from disk)
-//   Codec.encode(blob, format, quality, { crop, preview, meta })
+//   Codec.encode(blob, format, quality, { crop, preview })
 //                               → { bytes, w, h, rgb, preview }
 //   Codec.showable(blob)        a JPEG XL or TIFF as something the engine
 //                               shows (itself when it can, else a PNG)
@@ -108,8 +108,8 @@ const Codec = {
         return this._ready;
     },
 
-    async encode(blob, format, quality, { crop = null, preview = false, meta = null } = {}) {
-        return this.run({ op: 'encode', file: blob, format, quality, crop, preview, meta });
+    async encode(blob, format, quality, { crop = null, preview = false } = {}) {
+        return this.run({ op: 'encode', file: blob, format, quality, crop, preview });
     },
 
     // Can the engine show JPEG XL itself? (Chromium can't yet: 141 can't,
@@ -155,11 +155,10 @@ const Codec = {
     // A picture as a file of this format, with this EXIF (meta.js: made
     // true for its upright pixels) → Blob
     async file(blob, format, quality, tiff = null) {
-        const r = await this.encode(blob, format, quality, { meta: format === 'tiff' ? ImageMeta.exifStrings(tiff) : null });
+        const r = await this.encode(blob, format, quality);
         return new Blob([this.withExif(r.bytes, format, tiff, r.w, r.h)], { type: this.FORMATS[format].type });
     },
 
-    // (A TIFF's are written with it: encode's meta)
     withExif(bytes, format, tiff, w, h) {
         const t = tiff && ImageMeta.tiffForUpright(tiff, w, h);
         if (!t) return bytes;
@@ -168,6 +167,7 @@ const Codec = {
         if (format === 'jxl') return ImageMeta.withExifJxl(bytes, t);
         if (format === 'jpeg') return ImageMeta.withExifJpeg(bytes, t);
         if (format === 'png') return ImageMeta.withExifPng(bytes, t);
+        if (format === 'tiff') return ImageMeta.withExifTiff(bytes, t);
         return bytes;
     }
 };
