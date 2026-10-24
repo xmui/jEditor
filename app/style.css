@@ -3802,6 +3802,30 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--success) 45%, transparent) 0 6px, color-mix(in srgb, var(--success) 18%, transparent) 6px 12px);
 }
 
+/* PNG and TIFF can take more than now: amber, not green */
+.cv-saved.cv-more {
+    border-color: var(--warning-text, #d97706);
+    background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--warning-text, #d97706) 45%, transparent) 0 6px, color-mix(in srgb, var(--warning-text, #d97706) 18%, transparent) 6px 12px);
+}
+
+.cv-savedtag.cv-more,
+.cv-folder .s b.cv-more {
+    color: var(--warning-text, #d97706);
+}
+
+.cv-lossless {
+    margin: var(--sp-1) 0 0;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+}
+
+.cv-slider.hidden,
+.cv-ends.hidden,
+.cv-qnum.hidden {
+    display: none;
+}
+
 .cv-savedtag {
     position: absolute;
     top: 50%;

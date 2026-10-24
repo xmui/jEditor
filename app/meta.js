@@ -342,9 +342,11 @@ const ImageMeta = {
     // that (orientation 1, the new size, no old thumbnail), and the colour
     // profile doesn't.
 
-    // The EXIF's TIFF block in a JPEG, PNG, WebP, AVIF or JPEG XL, or null
+    // The EXIF's TIFF block in a JPEG, PNG, WebP, AVIF or JPEG XL, or null.
+    // A TIFF's own tags are its EXIF: its camera and dates, made small
     exifOf(bytes) {
         try {
+            if (this.isTiff(bytes)) return this.miniExif(this.exifStrings(bytes));
             const segs = this.jpegSegments(bytes, { partial: true });
             if (segs) {
                 const s = segs.find(x => this.isExifSeg(bytes, x));
@@ -605,6 +607,102 @@ const ImageMeta = {
         } catch (e) {
             return avif;
         }
+    },
+
+    // ---- TIFF and PNG ----
+
+    isTiff(bytes) {
+        return bytes.length > 8 && ((bytes[0] === 0x49 && bytes[1] === 0x49 && bytes[2] === 42 && bytes[3] === 0) || (bytes[0] === 0x4D && bytes[1] === 0x4D && bytes[2] === 0 && bytes[3] === 42));
+    },
+
+    // The camera and dates of a TIFF block (EXIF's, or a TIFF file's own)
+    // as EXIF writes them: { make, model, date } ("YYYY:MM:DD HH:MM:SS")
+    exifStrings(t) {
+        const out = {};
+        try {
+            if (!t || !this.isTiff(t)) return out;
+            const v = new DataView(t.buffer, t.byteOffset, t.byteLength), le = t[0] === 0x49;
+            const ifd = (at, want) => {
+                const n = v.getUint16(at, le), found = {};
+                for (let i = 0; i < n; i++) {
+                    const e = at + 2 + i * 12, tag = v.getUint16(e, le);
+                    if (want.includes(tag)) found[tag] = e;
+                }
+                return found;
+            };
+            const str = (e) => {
+                const count = v.getUint32(e + 4, le);
+                if (!count || count > 256) return null;
+                const at = count <= 4 ? e + 8 : v.getUint32(e + 8, le);
+                let s = '';
+                for (let i = 0; i < count && t[at + i]; i++) s += String.fromCharCode(t[at + i]);
+                return s.trim() || null;
+            };
+            const i0 = ifd(v.getUint32(4, le), [0x010F, 0x0110, 0x0132, 0x8769]);
+            if (i0[0x010F]) out.make = str(i0[0x010F]);
+            if (i0[0x0110]) out.model = str(i0[0x0110]);
+            if (i0[0x0132]) out.date = str(i0[0x0132]);
+            if (i0[0x8769]) {
+                const ex = ifd(v.getUint32(i0[0x8769] + 8, le), [0x9003]);
+                if (ex[0x9003]) out.date = str(ex[0x9003]) || out.date;
+            }
+        } catch (e) { /* as far as it got */ }
+        return out;
+    },
+
+    // A small EXIF (TIFF block) with just these: camera and date taken
+    miniExif({ make, model, date } = {}) {
+        if (!make && !model && !date) return null;
+        const enc = new TextEncoder(), z = (s) => { const b = enc.encode(s); const o = new Uint8Array(b.length + 1); o.set(b); return o; };
+        const ifd0 = [];
+        if (make) ifd0.push([0x010F, z(make)]);
+        if (model) ifd0.push([0x0110, z(model)]);
+        const exif = date ? [[0x9003, z(date)]] : [];
+        const n0 = ifd0.length + (exif.length ? 1 : 0);
+        const ifd0Size = 2 + n0 * 12 + 4, exifSize = exif.length ? 2 + exif.length * 12 + 4 : 0;
+        const vals = [...ifd0, ...exif].reduce((n, [, b]) => n + (b.length > 4 ? b.length + (b.length & 1) : 0), 0);
+        const out = new Uint8Array(8 + ifd0Size + exifSize + vals);
+        const v = new DataView(out.buffer);
+        out.set([0x4D, 0x4D, 0, 42]);
+        v.setUint32(4, 8);
+        let valAt = 8 + ifd0Size + exifSize;
+        const entry = (at, tag, b) => {
+            v.setUint16(at, tag); v.setUint16(at + 2, 2); v.setUint32(at + 4, b.length);
+            if (b.length <= 4) out.set(b, at + 8);
+            else { v.setUint32(at + 8, valAt); out.set(b, valAt); valAt += b.length + (b.length & 1); }
+        };
+        v.setUint16(8, n0);
+        ifd0.forEach(([tag, b], i) => entry(10 + i * 12, tag, b));
+        if (exif.length) {
+            const e = 10 + ifd0.length * 12, exAt = 8 + ifd0Size;
+            v.setUint16(e, 0x8769); v.setUint16(e + 2, 4); v.setUint32(e + 4, 1); v.setUint32(e + 8, exAt);
+            v.setUint16(exAt, exif.length);
+            exif.forEach(([tag, b], i) => entry(exAt + 2 + i * 12, tag, b));
+        }
+        return out;
+    },
+
+    // A PNG with this EXIF (an eXIf chunk, before its pixels)
+    withExifPng(png, tiff) {
+        const chunks = this.pngChunks(png);
+        if (!chunks || !tiff || chunks[0].type !== 'IHDR' || chunks.some(c => c.type === 'eXIf')) return png;
+        if (!this._crc) {
+            this._crc = new Uint32Array(256);
+            for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; this._crc[n] = c >>> 0; }
+        }
+        const chunk = new Uint8Array(12 + tiff.length), v = new DataView(chunk.buffer);
+        v.setUint32(0, tiff.length);
+        chunk.set([0x65, 0x58, 0x49, 0x66], 4);
+        chunk.set(tiff, 8);
+        let c = 0xFFFFFFFF;
+        for (let i = 4; i < 8 + tiff.length; i++) c = this._crc[(c ^ chunk[i]) & 255] ^ (c >>> 8);
+        v.setUint32(8 + tiff.length, (c ^ 0xFFFFFFFF) >>> 0);
+        const at = chunks[0].end;
+        const out = new Uint8Array(png.length + chunk.length);
+        out.set(png.subarray(0, at));
+        out.set(chunk, at);
+        out.set(png.subarray(at), at + chunk.length);
+        return out;
     },
 
     // A JPEG with this EXIF, just after its start (when it has none)

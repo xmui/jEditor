@@ -9,10 +9,12 @@
 //             photos, and those in its folders, without opening it as the
 //             project (its originals go to the bin, or its own
 //             .jeditor/trash where there's no bin)
-//   Format    AVIF (smallest), JPEG XL (newest), WebP (opens anywhere)
+//   Format    AVIF (smallest), JPEG XL (newest), WebP (for the web), JPEG
+//             (opens anywhere), PNG and TIFF (lossless; TIFF for print)
 //   Quality   a slider, with the lowest quality that looks the same as the
-//             original marked on it; a close-up of one of the photos, at
-//             its own pixels, original beside after, with sizes
+//             original marked on it (none for PNG and TIFF: every pixel's
+//             kept); a close-up of one of the photos, at its own pixels,
+//             original beside after, with sizes
 //   Storage   what they take now and after, worked out from a sample of
 //             the photos (a square from the middle of each, at the quality
 //             chosen): Now and After bars, and by folder
@@ -25,8 +27,10 @@
 // Replace (the converted photo takes the original's place, the original
 // goes to the bin or jEditor's trash; one Ctrl+Z puts them all back) or
 // Keep both (the converted copies in "jEditor Converted" in the project).
-// Photos that wouldn't get smaller are left as they are; RAW files and
-// GIFs too, and photos already in the format. Flags and edits go with each
+// Photos that wouldn't get smaller are left as they are (in a lossy format:
+// to PNG or TIFF, they're converted whatever their size, and the storage
+// says how much more they'll take); RAW files and GIFs too, and photos
+// already in the format. Flags and edits go with each
 // photo; its EXIF too (meta.js), its pixels upright and in sRGB.
 
 const Convert = {
@@ -184,10 +188,9 @@ const Convert = {
     // The photos it would convert, and the ones it leaves (RAW, GIF, already
     // in the format)
     candidates(format = this.prefs.format) {
-        const ext = Codec.FORMATS[format].ext;
         const ok = [], left = [];
         for (const f of this.scope.all) {
-            if (Raw.is(f.name) || /\.gif$/i.test(f.name) || new RegExp(`\\.${ext}$`, 'i').test(f.name)) left.push(f);
+            if (Raw.is(f.name) || /\.gif$/i.test(f.name) || Codec.formatOf(f.name) === format) left.push(f);
             else ok.push(f);
         }
         return { ok, left };
@@ -206,9 +209,10 @@ const Convert = {
             <p class="cv-lead" id="cv-lead"></p>
             <div class="cv-row">
                 <div><div class="cv-h">Format</div><div class="cv-seg" role="radiogroup" aria-label="Format">
-                    ${['avif', 'jxl', 'webp'].map(k => `<button type="button" role="radio" data-format="${k}">${f[k].label}<small>${{ avif: 'smallest', jxl: 'newest', webp: 'opens anywhere' }[k]}</small></button>`).join('')}
+                    ${['avif', 'jxl', 'webp', 'jpeg', 'png', 'tiff'].map(k => `<button type="button" role="radio" data-format="${k}">${f[k].label}<small>${{ avif: 'smallest', jxl: 'newest', webp: 'for the web', jpeg: 'opens anywhere', png: 'lossless', tiff: 'lossless, print' }[k]}</small></button>`).join('')}
                 </div></div>
                 <div class="cv-q"><div class="cv-h">Quality <span class="cv-qnum" id="cv-qnum"></span></div>
+                    <p class="cv-lossless hidden" id="cv-lossless">Lossless: every pixel is kept, so there's no quality to choose. It can take more storage than now.</p>
                     <div class="cv-slider"><div class="cv-track"></div><div class="cv-sugg hidden" id="cv-sugg"><span id="cv-sugg-label">Looks the same</span></div>
                     <input type="range" id="cv-quality" min="20" max="98" step="1" aria-label="Quality"></div>
                     <div class="cv-ends"><span>Smaller</span><span>Better</span></div></div>
@@ -264,6 +268,10 @@ const Convert = {
     syncQuality() {
         const q = this.el('cv-quality');
         if (!q) return;
+        // PNG and TIFF: no quality to choose
+        const lossless = !!Codec.FORMATS[this.prefs.format].lossless;
+        this.el('cv-lossless').classList.toggle('hidden', !lossless);
+        for (const el of [q.parentNode, this.el('cv-body').querySelector('.cv-ends'), this.el('cv-qnum')]) el.classList.toggle('hidden', lossless);
         q.value = this.quality();
         this.el('cv-qnum').textContent = String(this.quality());
         const s = this.suggested[this.prefs.format], mark = this.el('cv-sugg');
@@ -326,7 +334,8 @@ const Convert = {
         if (!picks.includes(cur)) picks.unshift(cur);
         if (this._closeUpFor !== cur) await this.loadCloseUp(cur);
         if (!live()) return;
-        if (!this.suggested[format]) await this.suggest(format, cur, live);
+        const lossless = !!Codec.FORMATS[format].lossless;
+        if (!lossless && !this.suggested[format]) await this.suggest(format, cur, live);
         if (!live()) return;
         const quality = this.quality(format);
         const ratios = new Map(); // folder → [ratio]
@@ -338,7 +347,9 @@ const Convert = {
                 const r = await Codec.encode(src, format, quality, { crop: { size: this.SAMPLE_SIZE }, preview: f === cur });
                 const side = Math.min(this.SAMPLE_SIZE, r.w, r.h);
                 // Bytes a pixel after, against the photo's bytes a pixel now
-                const ratio = Math.min(1, (r.bytes.length / (side * side)) / ((await this.size(f)) / (r.w * r.h)));
+                // (a lossy format leaves what wouldn't get smaller: at most as now)
+                const per = (r.bytes.length / (side * side)) / ((await this.size(f)) / (r.w * r.h));
+                const ratio = lossless ? per : Math.min(1, per);
                 const d = Folders.dirOf(f);
                 if (!ratios.has(d)) ratios.set(d, []);
                 ratios.get(d).push(ratio);
@@ -495,7 +506,7 @@ const Convert = {
         this.el('cv-src-name').textContent = `${src} · ${this.scope.all.length.toLocaleString()} photo${this.scope.all.length === 1 ? '' : 's'}`;
         this.el('cv-src-name').title = src;
         this.el('cv-replace-sub').textContent = Host.say(`to ${this.binName(this.scope.outside)}, ${this.scope.outside ? 'and back if you like' : 'Ctrl+Z brings them back'}`);
-        lead.innerHTML = `Choose how good they look in ${F.label} and see what it does to their storage. Their dates, camera details, flags and edits go with them.` +
+        lead.innerHTML = (F.lossless ? `${F.label} keeps every pixel; see what it does to their storage.` : `Choose how good they look in ${F.label} and see what it does to their storage.`) + ' Their dates, camera details, flags and edits go with them.' +
             (left.length ? ` ${left.length.toLocaleString()} ${left.length === 1 ? 'is' : 'are'} left as ${left.length === 1 ? 'it is' : 'they are'} (RAW, GIF or ${F.label} already).` : '');
         const big = this.el('cv-big');
         const now = e ? e.total : 0;
@@ -503,16 +514,23 @@ const Convert = {
             big.innerHTML = '<span class="cv-empty">Nothing here to convert.</span>';
         } else {
             const after = e && e.after !== null && !e.working ? e.after : null;
-            const p = after !== null && now ? Math.max(0, Math.min(100, after / now * 100)) : 100;
+            // Both bars to the bigger: what's freed striped green, or what
+            // more it takes (PNG, TIFF) striped amber
+            const top = Math.max(now, after || 0) || 1;
+            const pn = now / top * 100, pa = after !== null ? after / top * 100 : 100;
+            const less = after !== null && after <= now;
+            const diff = after === null ? '' : less
+                ? `<i class="cv-after-bar" style="width:${pa}%"></i><i class="cv-saved" style="left:${pa}%;width:${pn - pa}%"></i>${pn - pa > 12 ? `<span class="cv-savedtag" style="left:${pa}%">${this.fmt(now - after)} less</span>` : ''}`
+                : `<i class="cv-after-bar" style="width:${pn}%"></i><i class="cv-saved cv-more" style="left:${pn}%;width:${pa - pn}%"></i>${pa - pn > 12 ? `<span class="cv-savedtag cv-more" style="left:${pn}%">${this.fmt(after - now)} more</span>` : ''}`;
             big.innerHTML = `
-                <span class="lab">Now</span><div class="cv-bar"><i class="cv-now" style="width:100%"></i></div><span class="num">${this.fmt(now)}</span>
-                <span class="lab">As ${F.label}</span><div class="cv-bar${after === null ? ' cv-working' : ''}">${after === null ? '' : `<i class="cv-after-bar" style="width:${p}%"></i><i class="cv-saved" style="left:${p}%;width:${100 - p}%"></i>${100 - p > 12 ? `<span class="cv-savedtag" style="left:${p}%">${this.fmt(now - after)} less</span>` : ''}`}</div><span class="num">${after === null ? 'Working it out…' : '≈ ' + this.fmt(after)}</span>`;
+                <span class="lab">Now</span><div class="cv-bar"><i class="cv-now" style="width:${pn}%"></i></div><span class="num">${this.fmt(now)}</span>
+                <span class="lab">As ${F.label}</span><div class="cv-bar${after === null ? ' cv-working' : ''}">${diff}</div><span class="num">${after === null ? 'Working it out…' : '≈ ' + this.fmt(after)}</span>`;
         }
         const rows = e && e.byDir ? [...e.byDir.entries()].sort((a, b) => b[1].now - a[1].now) : [];
         this.el('cv-folders-wrap').classList.toggle('hidden', rows.length < 2);
         this.el('cv-folders').innerHTML = rows.slice(0, 5).map(([d, r]) => {
-            const pct = Math.round((1 - r.after / r.now) * 100);
-            return `<div class="cv-folder"><span class="n">${this.esc(this.dirName(d))}<small>${r.n.toLocaleString()} photo${r.n === 1 ? '' : 's'}</small></span><div class="cv-mini"><i style="width:100%" class="cv-now"></i><i class="cv-after-bar" style="width:${100 - pct}%"></i></div><span class="s">${this.fmt(r.now)} → <b>−${pct}%</b></span></div>`;
+            const pct = Math.round((r.after / r.now - 1) * 100), top = Math.max(r.now, r.after);
+            return `<div class="cv-folder"><span class="n">${this.esc(this.dirName(d))}<small>${r.n.toLocaleString()} photo${r.n === 1 ? '' : 's'}</small></span><div class="cv-mini"><i style="width:${r.now / top * 100}%" class="cv-now"></i><i class="cv-after-bar" style="width:${r.after / top * 100}%"></i></div><span class="s">${this.fmt(r.now)} → <b class="${pct > 0 ? 'cv-more' : ''}">${pct > 0 ? '+' : '−'}${Math.abs(pct)}%</b></span></div>`;
         }).join('');
         this.el('cv-note').textContent = this.prefs.keep
             ? `The converted copies go in “${this.COPIES}” in the project; nothing's deleted`
@@ -543,7 +561,7 @@ const Convert = {
         };
         this.el('cv-title').textContent = `Converting to ${Codec.FORMATS[format].label}`;
         this.el('cv-body').innerHTML = `<div class="cv-dots" id="cv-dots">${'<i></i>'.repeat(this.dotCount())}</div>
-            <div class="cv-run-row"><span><b id="cv-saved">0 B</b> less storage</span><span id="cv-count"></span></div>`;
+            <div class="cv-run-row"><span><b id="cv-saved">0 B</b> <span id="cv-saved-word">less storage</span></span><span id="cv-count"></span></div>`;
         this.paintRun();
         this.app.beginTask('convert', `Converting 0/${ok.length}`);
         const tasks = Array.from({ length: Codec.size() }, () => this.worker(run));
@@ -598,17 +616,18 @@ const Convert = {
         const data = await f.handle.getFile();
         const before = data.size;
         const head = new Uint8Array(await (/\.jpe?g$/i.test(f.name) ? data.slice(0, 256 * 1024) : data).arrayBuffer());
-        const r = await Codec.encode(await app.readImage(f), run.format, run.quality);
+        const exif = ImageMeta.exifOf(head);
+        const r = await Codec.encode(await app.readImage(f), run.format, run.quality, { meta: run.format === 'tiff' ? ImageMeta.exifStrings(exif) : null });
         run.colours[i] = r.rgb;
-        const bytes = Codec.withExif(r.bytes, run.format, ImageMeta.exifOf(head), r.w, r.h);
+        const bytes = Codec.withExif(r.bytes, run.format, exif, r.w, r.h);
         run.before += before;
         // Not worth it: left as it is
-        if (bytes.length >= before * 0.97) {
+        if (!Codec.FORMATS[run.format].lossless && bytes.length >= before * 0.97) {
             run.after += before;
             run.same++;
             return;
         }
-        const newName = f.name.replace(/\.[^.]+$/, '') + '.' + Codec.FORMATS[run.format].ext;
+        const newName = f.name.replace(/\.[^.]+$/, '') + '.' + Codec.ext(run.format);
         const dir = f.parentDir || app.dirHandle;
         if (run.keep) {
             const out = await this.copiesDir(Folders.dirOf(f), run.outside);
@@ -765,7 +784,8 @@ const Convert = {
         // Hollow ones: as many done dots as the share saved, spread through
         // them, and a dot once hollow stays so (they don't jump about)
         const hollow = run.hollow || (run.hollow = new Set());
-        const want = Math.floor(dotsDone.length * share);
+        // (none when they take more than before: PNG, TIFF)
+        const want = Math.max(0, Math.floor(dotsDone.length * share));
         while (hollow.size > want) hollow.delete([...hollow].pop());
         const next = dotsDone.filter(k => !hollow.has(k)).sort((a, b) => (a * 0.618) % 1 - (b * 0.618) % 1);
         for (const k of next) { if (hollow.size >= want) break; hollow.add(k); }
@@ -775,7 +795,10 @@ const Convert = {
             dot.style.background = h ? '' : d.rgb;
             if (!d.done && k === Math.floor(run.done / per) && this.run) dot.classList.add('now');
         });
-        this.el('cv-saved').textContent = this.fmt(run.saved);
+        // (PNG and TIFF can take more than before)
+        this.el('cv-saved').textContent = this.fmt(Math.abs(run.saved));
+        const word = this.el('cv-saved-word');
+        if (word) word.textContent = run.saved < 0 ? 'more storage' : 'less storage';
         const left = run.list.length - run.done;
         const rate = run.done ? run.busyMs / run.done / Codec.size() : 0;
         const mins = rate && left ? Math.max(1, Math.round(left * rate / 60000)) : 0;
@@ -821,11 +844,11 @@ const Convert = {
         }
         this.el('cv-title').textContent = `Converted to ${Codec.FORMATS[run.format].label}`;
         const row = this.el('cv-body').querySelector('.cv-run-row');
-        if (row) row.innerHTML = `<span><b id="cv-saved"></b> less storage</span><span id="cv-count"></span>`;
+        if (row) row.innerHTML = `<span><b id="cv-saved"></b> <span id="cv-saved-word">less storage</span></span><span id="cv-count"></span>`;
         if (!this.el('cv-total-line')) this.el('cv-body').insertAdjacentHTML('beforeend', '<div class="cv-total-line" id="cv-total-line"></div>');
         this.paintRun();
         if (!this.isOpen()) {
-            this.app.showToast(`Converted ${(run.done - run.same - run.taken - run.failed).toLocaleString()} photos to ${Codec.FORMATS[run.format].label}: ${this.fmt(run.saved)} less storage`, 6000, null,
+            this.app.showToast(`Converted ${(run.done - run.same - run.taken - run.failed).toLocaleString()} photos to ${Codec.FORMATS[run.format].label}: ${this.fmt(Math.abs(run.saved))} ${run.saved < 0 ? 'more' : 'less'} storage`, 6000, null,
                 { label: 'Show', run: () => this.show() }, { type: 'success' });
         }
     },

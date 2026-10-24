@@ -1460,10 +1460,22 @@ const PROJECT = `
         await page.close();
     }
 
+    // TIFFs as other programs write them (made with Pillow, 12 × 8: dark blue
+    // with a red block at 4–8, 2–4): LZW with the predictor, PackBits,
+    // Deflate, a palette, and one turned (Orientation 6) with a camera and date
+    const TIFFS = {
+        "lzw": "SUkqAEYAAACAAoIFoAQWDQeEQmFQiBQSFw+IQyBw9fA5iREAEJ5DyEw2KRaMRqORKHQqKxeIyKOxOMS2FR6XTGDTCZTGAgsAAAEDAAEAAAAMAAAAAQEDAAEAAAAIAAAAAgEDAAMAAADQAAAAAwEDAAEAAAAFAAAABgEDAAEAAAACAAAAEQEEAAEAAAAIAAAAFQEDAAEAAAADAAAAFgEDAAEAAAAIAAAAFwEEAAEAAAA+AAAAHAEDAAEAAAABAAAAPQEDAAEAAAACAAAAAAAAAAgACAAIAA==",
+        "packbits": "SUkqADABAAAjChBaChBaChBaChBaChBaChBaChBaChBaChBaChBaChBaChBaIwoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWiMKEFoKEFoKEFoKEFrIHh7IHh7IHh7IHh7IHh4KEFoKEFoKEFojChBaChBaChBaChBayB4eyB4eyB4eyB4eyB4eChBaChBaChBaIwoQWgoQWgoQWgoQWsgeHsgeHsgeHsgeHsgeHgoQWgoQWgoQWiMKEFoKEFoKEFoKEFoKEFoKEFoKEFoKEFoKEFoKEFoKEFoKEFojChBaChBaChBaChBaChBaChBaChBaChBaChBaChBaChBaChBaIwoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoAAAEDAAEAAAAMAAAAAQEDAAEAAAAIAAAAAgEDAAMAAACuAQAAAwEDAAEAAAAFgAAABgEDAAEAAAACAAAAEQEEAAEAAAAIAAAAFQEDAAEAAAADAAAAFgEDAAEAAAAIAAAAFwEEAAEAAAAoAQAAHAEDAAEAAAABAAAAAAAAAAgACAAIAA==",
+        "deflate": "SUkqACAAAAB4nOMSiOKiNjohJ4eMaKqG1ggAz6kz8QAKAAABAwABAAAADAAAAAEBAwABAAAACAAAAAIBAwADAAAAngAAAAMBAwABAAAACAAAAAYBAwABAAAAAgAAABEBBAABAAAACAAAABUBAwABAAAAAwAAABYBAwABAAAACAAAABcBBAABAAAAFwAAABwBAwABAAAAAQAAAAAAAAAIAAgACAA=",
+        "palette": "SUkqAAgAAAAKAAABBAABAAAADAAAAAEBBAABAAAACAAAAAIBAwABAAAACAAAAAMBAwABAAAAAQAAAAYBAwABAAAAAwAAABEBBAABAAAAhgYAABYBBAABAAAACAAAABcBBAABAAAAYAAAABwBAwABAAAAAQAAAEABAwAAAwAAhgAAAAAAAAAAyAAKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4AWgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAAAAAABAQEBAQEBAAAAAAABAQEBAQEBAAAAAAABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+        "turned": "SUkqAAgAAAANAAABBAABAAAADAAAAAEBBAABAAAACAAAAAIBAwADAAAAqgAAAAMBAwABAAAAAQAAAAYBAwABAAAAAgAAAA8BAgAGAAAAsAAAABEBBAABAAAAygAAABIBAwABAAAABgAAABUBAwABAAAAAwAAABYBBAABAAAACAAAABcBBAABAAAAIAEAABwBAwABAAAAAQAAADIBAgAUAAAAtgAAAAAAAAAIAAgACABFcHNvbgAyMDAxOjAyOjAzIDA0OjA1OjA2AAoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWsgeHsgeHsgeHsgeHsgeHgoQWgoQWgoQWgoQWgoQWgoQWgoQWsgeHsgeHsgeHsgeHsgeHgoQWgoQWgoQWgoQWgoQWgoQWgoQWsgeHsgeHsgeHsgeHsgeHgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWg=="
+    };
+
     // ---- Convert: AVIF, JPEG XL and WebP, their quality and storage (codec.js, convert.js) ----
     if (wanted('convert')) {
-        console.log('convert: AVIF, JPEG XL and WebP, their EXIF, quality and storage, converting and Ctrl+Z (codec.js, convert.js)');
+        console.log('convert: AVIF, JPEG XL, WebP, JPEG, PNG and TIFF, their EXIF, quality and storage, converting and Ctrl+Z (codec.js, convert.js, tiff.js)');
         const { page, issues } = await open();
+        await page.evaluate((t) => { window.TIFFS = t; }, TIFFS);
         const r = await page.evaluate(async () => {
             let step = 'codecs';
             try {
@@ -1514,6 +1526,28 @@ const PROJECT = `
                     shown.close();
                 }
                 out.engineJxl = await Codec.engineJxl();
+
+                // TIFFs read (tiff.js), as other programs write them
+                step = 'tiff';
+                out.tiffs = {};
+                for (const [k, b64] of Object.entries(window.TIFFS)) {
+                    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+                    const bmp = await createImageBitmap(await Codec.showable(new File([bytes], k + '.tif')));
+                    const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+                    const g = c.getContext('2d'); g.drawImage(bmp, 0, 0);
+                    const at = (x, y) => [...g.getImageData(x, y, 1, 1).data.slice(0, 3)].map(v => Math.round(v / 10) * 10);
+                    out.tiffs[k] = k === 'turned' ? [bmp.width, bmp.height, ImageMeta.exifStrings(ImageMeta.exifOf(bytes)).make] : [bmp.width, bmp.height, String(at(5, 3)), String(at(0, 0))];
+                }
+                // JPEG, PNG and TIFF written with the EXIF too
+                for (const f of ['jpeg', 'png', 'tiff']) {
+                    const blob = await Codec.file(src, f, 85, ImageMeta.exifOf(new Uint8Array(await src.arrayBuffer())));
+                    const bytes = new Uint8Array(await blob.arrayBuffer());
+                    const t = ImageMeta.exifOf(bytes);
+                    const info = t && app.readTiffInfo(new DataView(t.buffer, t.byteOffset, t.byteLength), 0);
+                    const shown = await createImageBitmap(f === 'tiff' ? await Codec.showable(new File([blob], 'p.tif')) : blob);
+                    out.formats[f] = [info && info.make, info && info.dateTaken && info.dateTaken.getFullYear(), shown.width, shown.height];
+                    shown.close();
+                }
 
                 // A project: two folders of photos, and a tiny one that won't get smaller
                 step = 'estimate';
@@ -1590,6 +1624,10 @@ const PROJECT = `
         const fmts = r.formats || {};
         check('convert: the codecs load; AVIF, JPEG XL and WebP are written with their EXIF (date, camera; upright), smaller, and shown',
             r.ready && ['avif', 'jxl', 'webp'].every(f => JSON.stringify(fmts[f]) === '["jEd",2019,1,200,320,true]'), JSON.stringify(r));
+        const tf = r.tiffs || {};
+        check('convert: TIFFs as other programs write them are read: LZW, PackBits, Deflate, a palette; one turned, with its camera',
+            ['lzw', 'packbits', 'deflate', 'palette'].every(k => tf[k] && tf[k][0] === 12 && tf[k][1] === 8 && tf[k][2] === '200,30,30' && tf[k][3] === '10,20,90') && String(tf.turned) === '8,12,Epson', JSON.stringify(tf));
+        check('convert: JPEG, PNG and TIFF are written with the EXIF (camera, date), and shown', ['jpeg', 'png', 'tiff'].every(f => JSON.stringify(fmts[f]) === '["jEd",2019,200,320]'), JSON.stringify([fmts.jpeg, fmts.png, fmts.tiff]));
         check('convert: JPEG XL is shown by the bundled decoder where the engine can\'t', r.engineJxl === false && fmts.jxl && fmts.jxl[3] === 200, JSON.stringify(r.engineJxl));
         check('convert: the quality that looks the same, a close-up, and the storage now and after from a sample, by folder', r.estimate && String(r.estimate) === 'true,true,3,true,3' && r.closeUp, JSON.stringify(r.estimate));
         check('convert: the photos are AVIF in their places; one that wouldn\'t get smaller is left; the dots fill', r.names === 'Ceremony/p0.avif,Ceremony/p1.avif,Party/p2.avif,Party/p3.avif,tiny.png' &&
@@ -1645,12 +1683,24 @@ const PROJECT = `
                 await sleep(200);
                 out.back = await names();
                 out.stillStart = !app.files.length && !document.getElementById('drop-zone').classList.contains('hidden');
+                // To TIFF: lossless, so bigger than the JPEGs, converted anyway
+                step = 'tiff';
+                Convert.prefs.format = 'tiff';
+                Convert.est = null;
+                document.getElementById('start-convert').click();
+                await until(() => Convert.est && !Convert.est.working, 600);
+                out.tiffEstimate = [Convert.est.after > Convert.est.total, !document.getElementById('cv-lossless').classList.contains('hidden')];
+                Convert.go();
+                await until(() => Convert.done, 800);
+                out.tiff = [await names(), document.getElementById('cv-saved-word').textContent, Convert.done.same];
+                Convert.go();
                 return out;
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
         check('convert: from the start page, any folder: its photos and its folders\', without opening it', o.chosen && o.chosen[0] === 'Holiday · 3 photos' && o.chosen[1] === 'Day 1,Holiday', JSON.stringify(o));
         check('convert: a folder chosen is converted where it is, its originals in its own .jeditor/trash, not opened as the project', o.converted === 'Day 1/IMG_1.avif,Day 1/IMG_2.avif,IMG_0.avif' && o.trash === 'IMG_0.jpg,IMG_1.jpg,IMG_2.jpg' && o.notOpened, JSON.stringify(o));
         check('convert: Put the originals back puts them back by name, still on the start page', o.back === 'Day 1/IMG_1.jpg,Day 1/IMG_2.jpg,IMG_0.jpg' && o.stillStart, JSON.stringify(o));
+        check('convert: to TIFF (lossless): converted though bigger, the storage says how much more', String(o.tiffEstimate) === 'true,true' && o.tiff && o.tiff[0] === 'Day 1/IMG_1.tif,Day 1/IMG_2.tif,IMG_0.tif' && o.tiff[1] === 'more storage' && o.tiff[2] === 0, JSON.stringify([o.tiffEstimate, o.tiff]));
         check('convert (a folder chosen): no JS errors', p2.issues.errors.length === 0, p2.issues.errors.join('; '));
         await p2.page.close();
     }

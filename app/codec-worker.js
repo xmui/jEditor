@@ -1,17 +1,21 @@
 // The codecs the browser engine hasn't got, off the page (codec.js runs a
 // few of these): AVIF and JPEG XL written, JPEG XL read, from the
-// WebAssembly builds in codecs/ (jSquash: libavif and libjxl). WebP is
-// written here too, by the engine, so every format goes the same way.
+// WebAssembly builds in codecs/ (jSquash: libavif and libjxl); TIFF read
+// and written by tiff.js. WebP, JPEG and PNG are written here too, by the
+// engine, so every format goes the same way.
 // A module worker: codec.js starts it with { type: 'module' }.
 //
-//   { op: 'encode', file, format, quality, crop, preview }
+//   { op: 'encode', file, format, quality, crop, preview, meta }
 //       → { bytes, w, h, rgb, preview }
-//       file: a Blob of any picture the engine reads (or a JPEG XL);
+//       file: a Blob of any picture the engine reads (or a JPEG XL or TIFF);
+//       meta: { make, model, date } for a TIFF's tags;
 //       crop: { x, y, w, h } of the upright picture, or { size } for a
 //       square that size from its middle: a sample;
 //       rgb: the picture's average colour; preview: the result, decoded
 //       again, as a PNG (for the close-up)
-//   { op: 'decode', file } → { png, w, h }   (a JPEG XL, for showing it)
+//   { op: 'decode', file } → { png, w, h }   (a JPEG XL or TIFF, for showing it)
+
+import { readTiff, writeTiff } from './tiff.js';
 
 const modules = {};
 
@@ -31,9 +35,11 @@ function codec(name) {
 }
 
 const isJxl = (blob) => blob.type === 'image/jxl' || (blob.name && /\.jxl$/i.test(blob.name));
+const isTiff = (blob) => blob.type === 'image/tiff' || (blob.name && /\.tiff?$/i.test(blob.name));
 
 // The picture, upright, as RGBA
 async function pixels(blob) {
+    if (isTiff(blob)) return readTiff(new Uint8Array(await blob.arrayBuffer()));
     if (isJxl(blob)) {
         const m = await codec('jxl_dec');
         const img = m.decode(await blob.arrayBuffer());
@@ -73,12 +79,22 @@ function average(img) {
 
 // Speeds chosen for a whole library: a little bigger than the slowest
 // setting gives, many times quicker
-async function encode(img, format, quality) {
-    if (format === 'webp') {
-        const c = new OffscreenCanvas(img.width, img.height);
+async function encode(img, format, quality, meta) {
+    if (format === 'tiff') return writeTiff(img, meta || {});
+    if (format === 'webp' || format === 'png' || format === 'jpeg') {
+        const type = 'image/' + format;
+        let c = new OffscreenCanvas(img.width, img.height);
         c.getContext('2d').putImageData(img, 0, 0);
-        const blob = await c.convertToBlob({ type: 'image/webp', quality: quality / 100 });
-        if (blob.type !== 'image/webp') throw new Error('WebP can\'t be written here');
+        if (format === 'jpeg') {
+            // A JPEG has no see-through: what is goes onto white
+            const flat = new OffscreenCanvas(img.width, img.height), g = flat.getContext('2d');
+            g.fillStyle = '#fff';
+            g.fillRect(0, 0, flat.width, flat.height);
+            g.drawImage(c, 0, 0);
+            c = flat;
+        }
+        const blob = await c.convertToBlob(format === 'png' ? { type } : { type, quality: quality / 100 });
+        if (blob.type !== type) throw new Error(`${format.toUpperCase()} can't be written here`);
         return new Uint8Array(await blob.arrayBuffer());
     }
     if (format === 'avif') {
@@ -112,15 +128,15 @@ self.onmessage = async (e) => {
     const { id, op } = e.data;
     try {
         if (op === 'encode') {
-            const { file, format, quality, crop, preview } = e.data;
+            const { file, format, quality, crop, preview, meta } = e.data;
             let img = await pixels(file);
             const full = { w: img.width, h: img.height };
             const rgb = average(img);
             if (crop) img = cropOf(img, crop.size ? centred(img, crop.size) : crop);
-            const bytes = await encode(img, format, quality);
+            const bytes = await encode(img, format, quality, meta);
             let back = null;
             if (preview) {
-                const type = { webp: 'image/webp', avif: 'image/avif', jxl: 'image/jxl' }[format];
+                const type = { webp: 'image/webp', avif: 'image/avif', jxl: 'image/jxl', jpeg: 'image/jpeg', png: 'image/png', tiff: 'image/tiff' }[format];
                 back = await png(await pixels(new Blob([bytes], { type })));
             }
             self.postMessage({ id, bytes, w: full.w, h: full.h, rgb, preview: back }, [bytes.buffer]);

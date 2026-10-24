@@ -166,7 +166,7 @@ Painting goes on last, over the photo as it's cropped and adjusted, so it looks 
 
 - **USB drive or card** (Windows, Mac and Linux): the whole project, copied in one step, with how far it's got. Each drive is listed with the room left on it. The project's flags and edits go with it, so when it's opened in jEditor on another computer they're all there. **Eject it when it's done** ejects the drive after.
 - **CD or DVD** (Windows): the burner, whether there's a blank disc in it and whether the project fits, the disc's name, and (with edits not saved yet) whether to save them into the photos first, since the disc gets the photos as they are on disk. The disc comes out when it's done.
-- **Copies** (everywhere): copies of the selected photos, all of them or the starred ones, full size or smaller (the longest side: 4000, 3000, 2048, 1600, 1080 px or any other), as they are or as JPEG, WebP, AVIF or JPEG XL (**Format**), with edits not saved yet in them, and RAWs as JPEGs. They go into `jEditor Export` in the project, into `jEditor Export` on a USB drive, or into a folder you choose.
+- **Copies** (everywhere): copies of the selected photos, all of them or the starred ones, full size or smaller (the longest side: 4000, 3000, 2048, 1600, 1080 px or any other), as they are or as JPEG, PNG, TIFF, WebP, AVIF or JPEG XL (**Format**), with edits not saved yet in them, and RAWs as JPEGs. They go into `jEditor Export` in the project, into `jEditor Export` on a USB drive, or into a folder you choose.
 
 In the Windows, Mac and Linux apps:
 
@@ -174,19 +174,19 @@ In the Windows, Mac and Linux apps:
 
 ## Converting photos: format, quality and storage
 
-**Convert…** turns photos into another format: **AVIF** (smallest), **JPEG XL** (newest) or **WebP** (opens almost anywhere). Open it from the toolbar's **Convert** button (under ⋯ to start with; Settings can put it on the toolbar), **Convert photos…** on the start page, right-clicking the project in the sidebar, a folder or the selected photos, or ⋯ on the selection bar.
+**Convert…** turns photos into another format: **AVIF** (smallest), **JPEG XL** (newest), **WebP** (for the web), **JPEG** (opens anywhere), **PNG** (lossless) or **TIFF** (lossless, for print). Open it from the toolbar's **Convert** button (under ⋯ to start with; Settings can put it on the toolbar), **Convert photos…** on the start page, right-clicking the project in the sidebar, a folder or the selected photos, or ⋯ on the selection bar.
 
 - **Photos:** what's being converted: the project, a folder in it or the selected photos. **Choose a folder…** picks any folder on your computer instead, with the photos in its folders too, without opening it as the project (from the start page, it asks straight away). A folder chosen keeps its originals in the Recycle Bin, or in a `.jeditor/trash` of its own, and **Put the originals back** at the end takes the conversion back.
 
-- **Quality** goes from smaller to better, with a mark at the lowest quality that still looks the same as the original (worked out on one of your photos; *Closest to the original* where only the highest keeps its grain). Under it, a close-up of that photo at its own pixels, the original beside the result, with their sizes.
-- **Storage:** what the photos take **Now** and **After** (the difference striped green) and by folder, worked out from a sample of them before anything happens, and again as you change the format or quality.
+- **Quality** goes from smaller to better, with a mark at the lowest quality that still looks the same as the original (worked out on one of your photos; *Closest to the original* where only the highest keeps its grain). PNG and TIFF keep every pixel, so they have no quality to choose. Under it, a close-up of that photo at its own pixels, the original beside the result, with their sizes.
+- **Storage:** what the photos take **Now** and **After** and by folder, worked out from a sample of them before anything happens, and again as you change the format or quality: what's freed striped green, or (PNG and TIFF, which often take more than a JPEG) how much more striped amber.
 - **The originals:** **Replace them** (the converted photo takes the original's place and the original goes to the Recycle Bin, or jEditor's trash; one `Ctrl+Z` puts them all back) or **Keep both** (the converted copies go into `jEditor Converted` in the project, which jEditor doesn't list as the project's photos).
 
-Flags and edits go with each photo, and so do its date taken, camera and the rest of its EXIF. RAW files, GIFs, photos already in that format and photos that wouldn't get smaller are left as they are.
+Flags and edits go with each photo, and so do its date taken, camera and the rest of its EXIF (into a TIFF: its camera and dates). RAW files, GIFs and photos already in that format are left as they are, and so, in the lossy formats, are photos that wouldn't get smaller.
 
 While it works, 100 dots stand for the photos, each in their own colours once they're done; done dots turn hollow and green for the storage freed, as many as the share freed so far. Pause or Stop, or close the window and carry on: the corner says how far it's got. At the end: the storage freed, and the size before and after.
 
-AVIF and JPEG XL are written by codecs that come with jEditor (WebAssembly builds of libavif and libjxl); jEditor shows JPEG XL photos with its own decoder where the browser engine can't. Edits on an AVIF or JPEG XL photo are always kept as edits (as on a RAW); **Save edits** writes them in the same format. Not in `standalone.html` opened from disk, which can't load the codecs.
+AVIF and JPEG XL are written by codecs that come with jEditor (WebAssembly builds of libavif and libjxl), and TIFF by jEditor itself (8 bits, Deflate, lossless, 300 dpi). jEditor shows JPEG XL and TIFF photos with its own decoders, where the browser engine can't: TIFFs uncompressed or LZW, Deflate or PackBits, 8 or 16 bits, colour, grey or a palette (not JPEG-compressed ones yet). Edits on an AVIF, JPEG XL or TIFF photo are always kept as edits (as on a RAW); **Save edits** writes them in the same format. Not in `standalone.html` opened from disk, which can't load the codecs.
 
 ## Folders (collating)
 
@@ -296,7 +296,7 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `disc.js`: burning a CD or DVD (the Windows app's `src/Burn.cs`)
 - `export.js`: the Export window (a USB drive, a disc, or copies)
 - `convert.js`: Convert (photos to AVIF, JPEG XL or WebP: the quality and close-up, the storage now and after, the dots)
-- `codec.js`, `codec-worker.js`, `codecs/`: writing AVIF, JPEG XL and WebP, and reading JPEG XL, in workers (libavif and libjxl as WebAssembly)
+- `codec.js`, `codec-worker.js`, `codecs/`, `tiff.js`: writing AVIF, JPEG XL, WebP, JPEG, PNG and TIFF, and reading JPEG XL and TIFF, in workers (libavif and libjxl as WebAssembly; TIFF jEditor's own)
 - `crop-auto.js`: finding the print on a scan (Auto)
 - `changelog.js`: the list of changes shown in What's new, and the release notes
 - `meta.js`: reading and copying JPEG/PNG metadata, and EXIF in WebP, AVIF and JPEG XL
