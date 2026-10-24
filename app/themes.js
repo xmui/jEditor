@@ -4,7 +4,7 @@
 // (themes/docked.css: the floating bars along the window's edges, as
 // desktop apps were laid out), its own title bar and a menu bar.
 //
-// Desktop only, by choice (feature 'themes': for now the Windows and Mac
+// Desktop only, by choice (feature 'themes': the Windows, Mac and Linux
 // apps, whose title bar the theme draws), and an experiment for now (Settings →
 // Experimental, on in betas). In a browser nothing here shows.
 //

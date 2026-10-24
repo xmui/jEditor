@@ -530,6 +530,14 @@ const app = {
                     for (const k of ['adjust', 'paint']) if (this.uiPrefs.placement[k] === 'main') this.uiPrefs.placement[k] = 'more';
                 }
                 if (saved.transparency >= 10 && saved.transparency <= 100) this.uiPrefs.transparency = saved.transparency;
+                // The theme (themes.js checks it's one it knows) and each theme's own settings
+                if (typeof saved.skin === 'string' && /^[a-z0-9]+\/[a-z0-9]+$/.test(saved.skin)) this.uiPrefs.skin = saved.skin;
+                if (saved.skinSettings && typeof saved.skinSettings === 'object') {
+                    for (const [theme, kept] of Object.entries(saved.skinSettings)) {
+                        if (!kept || typeof kept !== 'object') continue;
+                        this.uiPrefs.skinSettings[theme] = Object.fromEntries(Object.entries(kept).filter(([, v]) => typeof v === 'string'));
+                    }
+                }
                 for (const [k, allowed] of Object.entries(this.APPEARANCE)) {
                     if (allowed.includes(saved[k])) this.uiPrefs[k] = saved[k];
                 }

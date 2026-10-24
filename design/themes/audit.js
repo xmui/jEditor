@@ -42,7 +42,7 @@ const LOOKS = [
     ['xp/royale', 'Royale', 'xp/royale', 'windows'], ['xp/noir', 'Noir', 'xp/noir', 'windows'], ['xp/red', 'Red', 'xp/red', 'windows'],
     ['snow/finder', 'Finder', 'snow/finder', 'windows'], ['snow/aperture', 'Aperture', 'snow/aperture', 'windows'], ['mac84/finder', '1984', 'mac84/finder', 'windows']
 ];
-const FEATURES = { windows: WIN, mac: ['reveal', 'windows', 'places', 'updates', 'permissions', 'themes'], linux: ['reveal', 'windows', 'places', 'updates'] };
+const FEATURES = { windows: WIN, mac: ['reveal', 'windows', 'places', 'updates', 'permissions', 'themes'], linux: ['reveal', 'windows', 'places', 'updates', 'themes'] };
 const FONT = { xp: /Tahoma/, snow: /Lucida|DejaVu/, mac84: /Chicago/ };
 const SIZES = [[1280, 800, 'compact'], [1024, 640, 'compact'], [800, 600, 'comfortable']];
 

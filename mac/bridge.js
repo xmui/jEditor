@@ -236,7 +236,7 @@
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: mac.platform,
-        features: ['reveal', 'windows', 'places'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions', 'themes'] : []),
+        features: ['reveal', 'windows', 'places'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : [], ['themes']),
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage
         async dataDir() {
@@ -342,18 +342,23 @@
             return mac.request('state', state || {});
         },
         // A theme's own title bar (on): the traffic lights hide, as its own
-        // buttons work the window, and macOS 26's toolbar comes off. A
-        // 'jeditor-window' event on window says when it's zoomed or not.
+        // buttons work the window, and macOS 26's toolbar comes off; on
+        // Linux the window opens again without its frame (main.js: reframe).
+        // A 'jeditor-window' event on window says when it's zoomed or not.
         titleBar(on) {
             themed = !!on;
             if (mac.nativeToolbar) {
                 document.documentElement.classList.toggle('native-toolbar', !themed);
                 lastToolbar = '';
             }
-            mac.request('titleBar', { on: themed }).then(() => {
-                if (themed) return;
-                if (mac.nativeToolbar) sendToolbar(); else { lastLights = ''; reportLights(); }
-            });
+            // (with the project, for a Linux window opening again on it)
+            const want = themed, a = jeditor();
+            Promise.resolve(a && a.dirHandle ? folderPath(a.dirHandle) : null).catch(() => null)
+                .then(path => mac.request('titleBar', { on: want, path }))
+                .then(() => {
+                    if (want) return;
+                    if (mac.nativeToolbar) sendToolbar(); else { lastLights = ''; reportLights(); }
+                });
         },
         // The window's buttons for that title bar: 'minimize', 'maximize'
         // (zoom, or back) and 'close'. Its top edge resizes as any Mac
