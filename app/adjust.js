@@ -56,6 +56,20 @@ const Adjust = {
         bind('adj-paste', () => this.paste());
         bind('adj-auto', () => this.auto());
         bind('adj-auto-color', () => this.auto({ color: true }));
+        this.el('adj-wb-pick').addEventListener('click', (e) => {
+            e.preventDefault(); // in the section's head: not to fold it
+            e.stopPropagation();
+            e.currentTarget.blur();
+            if (!this.busy) this.pickWhite();
+        });
+        // Picking white balance: a click on the photo is the grey, before
+        // masks, spots or the 1:1 view see it
+        this.el('adj-stage').addEventListener('pointerdown', (e) => {
+            if (!this.picking || e.button !== 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+            this.pickAt(e);
+        }, true);
         this.el('adj-presets').addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -391,6 +405,7 @@ const Adjust = {
     },
 
     close() {
+        if (this.picking) this.pickWhite(false);
         this.isOpen = false;
         this.ready = false;
         if (this._raf) cancelAnimationFrame(this._raf);
@@ -486,6 +501,43 @@ const Adjust = {
         if (!this.ready) return;
         this.setAll(Develop.auto(this.sample, this.result(), { colour: color }));
         this.app.showToast(color ? 'Auto color: levels set for each channel' : 'Auto: levels set from the photo', 1600, null, null, { kind: 'adjust' });
+    },
+
+    // White balance from the photo (W): click something that should be
+    // white or grey, and Temperature and Tint make it so
+    pickWhite(on = !this.picking) {
+        if (on && !this.ready) return;
+        this.picking = on;
+        this.root.classList.toggle('adj-picking', on);
+        this.el('adj-wb-pick').setAttribute('aria-pressed', String(on));
+        if (on) this.app.showToast('Click something that should be white or grey (Esc to stop)', 2400, null, null, { kind: 'adjust' });
+    },
+
+    pickAt(e) {
+        const r = this.canvas.getBoundingClientRect();
+        const a = (e.clientX - r.left) / r.width, b = (e.clientY - r.top) / r.height;
+        if (a < 0 || a > 1 || b < 0 || b > 1) return;
+        // On the photo before its crop, with its spots done, unadjusted
+        const m = this.map.m;
+        const pic = this.retouchedBase(this.a.spots || []);
+        const W = pic.width, H = pic.height;
+        const x = Math.round((m[0] * a + m[1] * b + m[2]) * W), y = Math.round((m[3] * a + m[4] * b + m[5]) * H);
+        const k = Math.max(2, Math.round(Math.max(W, H) / 400));
+        const x0 = Math.max(0, x - k), y0 = Math.max(0, y - k);
+        const x1 = Math.min(W, x + k + 1), y1 = Math.min(H, y + k + 1);
+        if (x1 <= x0 || y1 <= y0) return;
+        const px = pic.getContext('2d', { willReadFrequently: true }).getImageData(x0, y0, x1 - x0, y1 - y0).data;
+        const wb = Develop.neutralWB(px);
+        if (!wb) {
+            this.app.showToast('That\'s too bright or too dark to tell: click a light grey', 2400, null, null, { kind: 'adjust' });
+            return;
+        }
+        this.pickWhite(false);
+        this.pushHistory();
+        this.a.temp = wb.temp;
+        this.a.tint = wb.tint;
+        this.changed();
+        this.app.showToast(`White balance: Temperature ${wb.temp}, Tint ${wb.tint}`, 1600, null, null, { kind: 'adjust' });
     },
 
     // Settings to put on another photo: its spots are its own

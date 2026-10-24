@@ -4441,6 +4441,14 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const mean = (px, k) => { let s = 0; for (let i = k; i < px.length; i += 4) s += px[i]; return s / (px.length / 4); };
             const spread = (px) => Math.max(mean(px, 0), mean(px, 1), mean(px, 2)) - Math.min(mean(px, 0), mean(px, 1), mean(px, 2));
             out.cast = [Math.round(spread(cast)), Math.round(spread(fixed))];
+            // White balance picked from a warm grey makes it grey; a clipped
+            // or black patch can't tell
+            const warm = new Uint8ClampedArray(9 * 4);
+            for (let i = 0; i < warm.length; i += 4) { warm[i] = 140; warm[i + 1] = 128; warm[i + 2] = 112; warm[i + 3] = 255; }
+            const wb = Develop.neutralWB(warm);
+            const wbOut = Develop.applyCPU(warm, Develop.tables(wb), new Uint8ClampedArray(warm.length));
+            const clipped = warm.slice(); clipped[0] = 255;
+            out.wbPick = [wb.temp, wb.tint, Math.round(spread(wbOut)), Develop.neutralWB(clipped), Develop.neutralWB(new Uint8ClampedArray(36).fill(5))];
             // Grading, looks, vignette and grain: the GPU and the CPU agree too
             out.fxWorst = 0;
             for (const fx of [{ grade: { s: [200, 60, -10], h: [40, 40, 10] }, gradeBalance: 30 }, { look: 'instant', lookAmount: 150 }, { vignette: -60, vigRound: 40 }, { vignette: 50, vigRound: -60 }, { grain: 70, grainSize: 60 }, { grain: 60, grainColor: 80 }, { halation: 80 }, { look: 'cinestill800t' }, { look: 'trix' }]) {
@@ -4553,6 +4561,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('adjust: no settings change nothing; +1 EV doubles the light; curves never turn back', m.identity && m.exposure && m.monotone, JSON.stringify(m));
         check('adjust: the GPU and the CPU agree (within a level), in tiles too', m.hasGpu && m.gpuCpu <= 1 && m.tiles, JSON.stringify(m));
         check('adjust: Auto color takes the cast off a faded print', m.cast[0] > 40 && m.cast[1] < 8, JSON.stringify(m.cast));
+        check('adjust: white balance picked from a warm grey makes it grey; a clipped or black patch is left alone', m.wbPick[0] < 0 && m.wbPick[2] <= 2 && m.wbPick[3] === null && m.wbPick[4] === null, JSON.stringify(m.wbPick));
         check('adjust: grading, looks, vignette and grain agree on the GPU and the CPU, in tiles', m.fxWorst <= 1, JSON.stringify(m.fxWorst));
         check('adjust: settings at their defaults, an unknown look and an empty wheel aren\'t kept', m.defaults === '{"grade":{"h":[10,20,0]}}', m.defaults);
         check('adjust: a vignette darkens the corners and leaves the middle', m.vignette[0] === 128 && m.vignette[1] < 60, JSON.stringify(m.vignette));
@@ -4709,6 +4718,28 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.loupe = Adjust.fullCanvas.width === 640 && Adjust._loupeRect.x < lr0.x && !document.getElementById('adj-loupe-box').classList.contains('hidden');
             document.getElementById('adj-detail-sec').open = false;
             document.getElementById('adj-detail-sec').dispatchEvent(new Event('toggle'));
+            // White balance picked from the photo: W (or Pick grey), a click on
+            // something grey; Esc stops picking without leaving Adjust
+            step = 'white balance';
+            const pick = document.getElementById('adj-wb-pick');
+            const colorSec = pick.closest('details');
+            pick.click();
+            out.pickOn = Adjust.picking && pick.getAttribute('aria-pressed') === 'true' && colorSec.open;
+            key('Escape');
+            out.pickEsc = !Adjust.picking && Adjust.isOpen;
+            key('w');
+            const temp0 = Adjust.a.temp;
+            const wr2 = Adjust.canvas.getBoundingClientRect();
+            document.getElementById('adj-stage').dispatchEvent(new PointerEvent('pointerdown', { clientX: wr2.left + wr2.width / 2, clientY: wr2.top + wr2.height / 2, button: 0, bubbles: true }));
+            await sleep(60);
+            const mid = Adjust.base.getContext('2d').getImageData(Adjust.base.width / 2 - 2, Adjust.base.height / 2 - 2, 5, 5).data;
+            const midOut = Develop.applyCPU(mid, Develop.tables({ temp: Adjust.a.temp, tint: Adjust.a.tint }), new Uint8ClampedArray(mid.length));
+            const avg = (px, k) => { let t = 0; for (let i = k; i < px.length; i += 4) t += px[i]; return t / (px.length / 4); };
+            const midSpread = Math.max(avg(midOut, 0), avg(midOut, 1), avg(midOut, 2)) - Math.min(avg(midOut, 0), avg(midOut, 1), avg(midOut, 2));
+            out.picked = !Adjust.picking && Adjust.a.temp < 0 && midSpread <= 3 && pick.getAttribute('aria-pressed') === 'false';
+            out.wb = [Adjust.a.temp, Adjust.a.tint, Math.round(midSpread)];
+            key('z', { ctrlKey: true });
+            out.pickUndone = Adjust.a.temp === temp0 && Adjust.a.exposure === 1;
             // Before and after (\\)
             key('\\');
             await sleep(50);
@@ -4789,6 +4820,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('adjust: films shown on the photo by process, a click puts one on (with Amount) or takes it off', r.lookThumbGrey && r.lookOn && r.lookOff, JSON.stringify(r));
         check('adjust: a grading wheel takes a hue and strength; presets save and put settings back', r.wheel && r.preset, JSON.stringify(r));
         check('adjust: Detail shows the full photo at 1:1, where you click', r.loupe, JSON.stringify(r));
+        check('adjust: Pick grey (W) sets the white balance from a click on the photo, one Ctrl+Z; Esc stops picking', r.pickOn && r.pickEsc && r.picked && r.pickUndone, JSON.stringify(r));
         check('adjust: masks drawn and painted on the photo, with their own sliders', r.linearDrawn && r.brushPainted && r.maskList && r.masksReset, JSON.stringify(r));
         check('adjust: Done keeps it with the photo (edits.json), the file untouched, no Save bar', r.kept && r.noBar, JSON.stringify(r));
         check('adjust: the viewer and the thumbnail show it adjusted, with the pencil', r.shownBrighter && r.thumbBrighter && r.pencil, JSON.stringify(r));
