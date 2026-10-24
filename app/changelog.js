@@ -8,6 +8,7 @@ const CHANGELOG = [
     {
         version: '1.46.1', date: '2026-10-23', beta: true,
         items: [
+            'Adjust\'s Pick grey (`W`, at the top of Color) sets the white balance from the photo: click something that should be white or grey, and Temperature and Tint take the cast off it. One `Ctrl+Z` puts it back.',
             'Themes reach every part of jEditor, not just the main window: dialogs, Settings, Crop, Adjust, Paint, Duplicates, the scan window, Info and Undo history, each built the way that era\'s apps built theirs. In Windows XP Royale, dialogs are XP windows, Settings is a property sheet with tabs, and Adjust and Paint have Office 2003 command bars and task panes. In Snow Leopard, dialogs are sheets, Settings is a Preferences window, Info and Undo history are HUD panels, and Adjust and Paint have an inspector. In 1984, Paint is MacPaint\'s palette of one-bit tools.',
             'Every toolbar button has its own icon in each theme, including Scan, Camera, Adjust, Paint, Duplicates, Full screen, Settings and What\'s new.',
             'Photos · Adjust · Paint at the top of the sidebar no longer gets cut off in a narrow window or with a wider font: it tightens, then leaves out its icons, so the words fit.',
