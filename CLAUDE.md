@@ -63,3 +63,6 @@ says. With no role given, work as usual.
   changes the files you need, say so to the owner rather than racing it.
 - When a feature touches another mode, ask the owner
   first, and say in the PR which mode it touches.
+- A change to what's on screen (a new panel, toolbar, button or layout)
+  gets the Look & feel agent's check (`.claude/agents/look.md`) before
+  its PR is done. Small fixes don't.
