@@ -70,6 +70,8 @@ const SCREENS = {
     convert: [true, `Convert.open({})`, 3000],
     // Running: keeping both (nothing replaced), paused part way so it holds still
     convert2: [true, `Convert.open({}).then(() => setTimeout(() => { Convert.setKeep(true); Convert.go(); setTimeout(() => Convert.togglePause(), 2500); }, 1500))`, 5000],
+    // One photo, from its right-click menu
+    convert5: [true, single(`Convert.open({ files: [app.currentFile] })`), 4000],
     // Lossless, so no quality, and more storage than now
     convert3: [true, `Convert.open({}).then(() => Convert.setFormat('tiff'))`, 4000],
     convert4: [true, `Convert.open({}).then(() => setTimeout(() => { Convert.setFormat('png'); Convert.setKeep(true); setTimeout(() => { Convert.go(); setTimeout(() => Convert.togglePause(), 2500); }, 800); }, 1200))`, 6000],
@@ -118,6 +120,7 @@ const PARTS = [
     ['Dialogs', 'Export', 'export', '.export-card'],
     ['Dialogs', 'Convert: format, quality, close-up, storage', 'convert', '.cv-card'],
     ['Dialogs', 'Convert, running', 'convert2', '.cv-card'],
+    ['Dialogs', 'Convert one photo', 'convert5', '.cv-card'],
     ['Dialogs', 'Convert to TIFF: lossless, more storage', 'convert3', '.cv-card'],
     ['Dialogs', 'Convert to PNG, running: more storage', 'convert4', '.cv-card'],
     ['Dialogs', 'Move to…', 'moveto', '.folder-card'],
