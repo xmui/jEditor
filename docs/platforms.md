@@ -28,6 +28,7 @@ Checked by `test/parity.test.js`: each ✓ must match the app's `features` list,
 | `camera` | Tethered shooting | ✓ | | | | not yet on Mac and Linux; browser |
 | `log` | The app's log, in Settings | ✓ | | | | not yet on Mac and Linux; browser |
 | `burn` | Burning a project onto a CD or DVD | ✓ | | | | not yet on Mac and Linux; browser |
+| `themes` | Themes in Settings → Appearance (an experiment in betas), with their own title bar | ✓ | | | | not yet on Mac and Linux; browser (by choice: the web keeps today's look) |
 | `quickAccess` | Explorer's Quick Access in the sidebar's Pinned | ✓ | | | | system |
 | `backdrop` | Mica or Acrylic behind the window | ✓ | | | | system |
 | `permissions` | The Mac's privacy settings jEditor needs, in one window | | ✓ | | | system |
@@ -62,5 +63,6 @@ Each of these is exclusive only because nobody has built it for the other system
 | `burn` | `drutil` / `hdiutil burn` | `xorriso` / `growisofs` | medium |
 | `scan` | ImageCaptureCore, for scanners with a Mac (ICA) driver | SANE | large |
 | `camera` | gphoto2, or the camera maker's SDK | gphoto2 | large |
+| `themes` | The traffic lights moved into the theme's title bar (`setWindowButtonPosition`), and the macOS 26 native toolbar off while a theme is on. | A window without the system's frame, the theme's buttons working it. | small |
 
 When one of these is closed, its row above gets a ✓ in that column, and the test checks it.

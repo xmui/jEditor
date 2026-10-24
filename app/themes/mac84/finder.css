@@ -1,0 +1,529 @@
+/* ==========================================================================
+   jEditor for the 1984 Macintosh. One bit: black on white, greys made of
+   dots. Chicago, a menu bar, a striped title bar with a close box, round
+   rect buttons, radio buttons, scroll bars on the grey pattern. Thumbnails
+   are dithered to one bit (Atkinson, like MacPaint); a selected photo is
+   shown inverted, as the Finder did. The opened photo stays in colour.
+   ========================================================================== */
+
+@font-face { font-family: "jE Chicago"; src: url(fonts/ChicagoFLF.ttf) format("truetype"); }
+
+:root[data-skin="mac84"] {
+    color-scheme: light;
+    --m-font: "jE Chicago", monospace;
+    --m-grey: repeating-conic-gradient(#000 0 25%, #fff 0 50%) 0 0 / 2px 2px;
+    --font-ui: var(--m-font);
+    --fs-body: 12px; --lh-body: 16px;
+    --fs-small: 12px; --fs-caption: 12px;
+    --text-1: #000; --text-2: #000; --text-3: #000;
+    --bg-window: #fff;
+    --bg-canvas: #fff;
+    --bg-surface: #fff;
+    --accent: #000;
+    --accent-color: #000;
+    --surround: #fff;
+    --strip-bg: #fff;
+    --strip-text: #000;
+    --tile-bg: transparent;
+    --border: #000;
+    --dock-bot-h: 34px;
+    --dock-bot-bg: #fff;
+    --dock-bot-line: 1px solid #000;
+    --dock-controls-h: 40px;
+    --dock-grid-pad: 14px 16px;
+    --strip-height: 84px;
+}
+:root[data-skin="mac84"] body {
+    font: 12px/16px var(--m-font);
+    -webkit-font-smoothing: none;
+    color: #000;
+    background: #fff;
+}
+:root[data-skin="mac84"] .interface:not(.hidden) {
+    grid-template-areas:
+        "menu menu"
+        "title title"
+        "tools tools"
+        "addr addr"
+        "tasks main"
+        "side main"
+        "side resize"
+        "side strip"
+        "bot bot"
+        "status status";
+}
+:root[data-skin="mac84"] .i { shape-rendering: crispEdges; stroke-width: 1.6; stroke-linecap: square; stroke-linejoin: miter; }
+
+/* ---- The menu bar, above the title bar ---- */
+:root[data-skin="mac84"] #th-menubar {
+    order: -1;
+    display: flex;
+    height: 20px;
+    padding: 0 8px;
+    background: #fff;
+    border-bottom: 1px solid #000;
+}
+:root[data-skin="mac84"] #th-menubar::before {
+    content: "";
+    width: 16px;
+    margin: 2px 10px 0 2px;
+    background: url(icons/image.png) no-repeat center top;
+}
+:root[data-skin="mac84"] .th-menu { padding: 2px 10px 0; }
+:root[data-skin="mac84"] .th-menu:hover { background: #000; color: #fff; }
+
+/* ---- The title bar: stripes, a close box, the name in a white gap ---- */
+:root[data-skin="mac84"] #th-titlebar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 20px;
+    background: repeating-linear-gradient(180deg, #000 0 1px, #fff 1px 2px) 2px 4px / calc(100% - 4px) 11px no-repeat, #fff;
+    border-bottom: 1px solid #000;
+}
+:root[data-skin="mac84"] .th-appicon { display: none; }
+:root[data-skin="mac84"] .th-title { padding: 0 9px; background: #fff; line-height: 19px; }
+:root[data-skin="mac84"] .th-caps { position: absolute; left: 8px; top: 3px; display: flex; }
+:root[data-skin="mac84"] .th-caps button { display: none; }
+:root[data-skin="mac84"] .th-caps .th-close {
+    display: block;
+    width: 13px; height: 13px;
+    padding: 0;
+    border: 1px solid #000;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: 0 0 0 2px #fff;
+}
+
+/* ---- Tools along the top, as a palette's cells ---- */
+:root[data-skin="mac84"] header {
+    height: auto;
+    min-height: 34px;
+    align-items: center;
+    padding: 0 8px;
+    background: #fff;
+    border-bottom: 1px solid #000;
+}
+:root[data-skin="mac84"] header .toolbar,
+:root[data-skin="mac84"] header .file-info,
+:root[data-skin="mac84"] .folder-bar {
+    height: auto;
+    padding: 0;
+    gap: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    font: 12px/16px var(--m-font);
+}
+:root[data-skin="mac84"] header .header-controls { order: 1; }
+:root[data-skin="mac84"] header .file-info { order: 2; margin-left: auto; gap: 14px; }
+:root[data-skin="mac84"] .tb-btn {
+    height: 26px;
+    min-width: 30px;
+    padding: 0 6px;
+    gap: 6px;
+    border: 1px solid #000;
+    border-radius: 0;
+    margin-left: -1px;
+    background: #fff;
+    color: #000;
+    font: 12px/16px var(--m-font);
+    transition: none;
+}
+:root[data-skin="mac84"] .tb-btn::before { display: none; }
+:root[data-skin="mac84"] .tb-btn > svg { width: 16px; height: 16px; }
+:root[data-skin="mac84"] .tb-btn:hover:not(:disabled) { background: #fff; }
+:root[data-skin="mac84"] .tb-btn:active:not(:disabled),
+:root[data-skin="mac84"] .tb-btn.active,
+:root[data-skin="mac84"] .tb-btn[aria-pressed="true"] { background: #000; color: #fff; }
+:root[data-skin="mac84"] header .tb-btn { width: 32px; padding: 0; }
+:root[data-skin="mac84"] #btn-crop { margin-left: 8px; }
+
+/* Name, count and the order, as text and a pop-up */
+:root[data-skin="mac84"] .file-name { height: 20px; padding: 0; border: 0; background: none; font: inherit; }
+:root[data-skin="mac84"] .file-name > svg { display: none; }
+:root[data-skin="mac84"] #file-count { font: inherit; }
+:root[data-skin="mac84"] .sort-control { border: 0 !important; padding: 0; margin: 0; }
+:root[data-skin="mac84"] .sort-control > svg { display: none; }
+:root[data-skin="mac84"] select,
+:root[data-skin="mac84"] .sort-control select {
+    appearance: none;
+    height: 20px;
+    min-width: 130px;
+    padding: 0 22px 0 7px;
+    border: 1px solid #000;
+    border-radius: 0;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='5' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h9L4.5 5z'/%3E%3C/svg%3E") no-repeat right 6px center, #fff;
+    box-shadow: 1px 1px 0 #000;
+    color: #000;
+    font: 12px var(--m-font);
+}
+
+/* ---- The info line: radio buttons, where, and a search box ---- */
+:root[data-skin="mac84"] .folder-bar {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    height: 28px;
+    padding: 0 10px;
+    border-bottom: 3px double #000;
+}
+:root[data-skin="mac84"] #fb-rail { display: none; }
+:root[data-skin="mac84"] .fb-modes { display: flex; gap: 16px; padding: 0; background: none; border-radius: 0; }
+:root[data-skin="mac84"] .fb-modes button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: #000;
+    font: 12px var(--m-font);
+    box-shadow: none;
+}
+:root[data-skin="mac84"] .fb-modes button::before {
+    content: "";
+    width: 12px; height: 12px;
+    border: 1px solid #000;
+    border-radius: 50%;
+    background: #fff;
+}
+:root[data-skin="mac84"] .fb-modes button.active::before { background: radial-gradient(circle, #000 0 3px, #fff 3.5px); }
+:root[data-skin="mac84"] .fb-modes .fb-short { display: none; }
+:root[data-skin="mac84"] .fb-modes .fb-long { display: inline; }
+:root[data-skin="mac84"] .fb-crumbs { flex: 1; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .fb-crumbs:empty::before { content: attr(data-items); }
+:root[data-skin="mac84"] .fb-search {
+    display: flex;
+    align-items: center;
+    width: 170px;
+    height: 20px;
+    padding: 0 5px;
+    border: 1px solid #000;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: none;
+}
+:root[data-skin="mac84"] .fb-search > svg,
+:root[data-skin="mac84"] .fb-search-clear { display: none; }
+:root[data-skin="mac84"] .fb-search input { width: 100%; border: 0; padding: 0; background: none; font: 12px var(--m-font); color: #000; outline: none; }
+:root[data-skin="mac84"] .fb-search input::placeholder { color: #000; opacity: 1; }
+
+/* ---- The folder list ---- */
+:root[data-skin="mac84"] .folder-rail {
+    width: 200px;
+    padding: 6px 0 0;
+    border: 0;
+    border-right: 1px solid #000;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: none;
+    color: #000;
+    font: 12px var(--m-font);
+}
+:root[data-skin="mac84"] .mode-seg { display: none; }
+:root[data-skin="mac84"] .sb-scroll { flex: 1; overflow: auto; }
+:root[data-skin="mac84"] .fr-row {
+    min-height: 0;
+    height: 20px;
+    gap: 6px;
+    margin: 0 6px;
+    padding: 0 6px 0 calc(4px + var(--depth, 0) * 16px);
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: #000;
+    font: 12px var(--m-font);
+}
+:root[data-skin="mac84"] .fr-root .fr-name { font-weight: 400; }
+:root[data-skin="mac84"] .fr-row > svg { display: none; }
+:root[data-skin="mac84"] .fr-row::before { content: ""; order: 1; flex: none; width: 16px; height: 16px; background: url(icons/folder.png) no-repeat; }
+:root[data-skin="mac84"] .fr-row.fr-all::before { background-image: url(icons/image.png); }
+:root[data-skin="mac84"] .fr-caret { order: 0; }
+:root[data-skin="mac84"] .fr-name { order: 2; }
+:root[data-skin="mac84"] .fr-count { order: 3; margin-left: auto; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .fr-row:hover { background: none; }
+:root[data-skin="mac84"] .fr-row.active { background: #000; color: #fff; }
+:root[data-skin="mac84"] .fr-row.active .fr-count { color: #fff; }
+:root[data-skin="mac84"] .fr-row.active::before { filter: invert(1); }
+:root[data-skin="mac84"] .fr-foot {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    margin: 0;
+    padding: 10px 12px 12px;
+    border: 0;
+    border-top: 3px double #000;
+}
+:root[data-skin="mac84"] .fr-total { order: 0; height: auto; padding: 0; border: 0; background: none; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .fr-new {
+    order: 1;
+    height: 24px;
+    padding: 0 12px;
+    border: 1px solid #000;
+    border-radius: 7px;
+    background: #fff;
+    color: #000;
+    font: 12px var(--m-font);
+    box-shadow: none;
+}
+:root[data-skin="mac84"] .fr-new > svg { display: none; }
+
+/* ---- Photos, dithered ---- */
+:root[data-skin="mac84"] .grid-view {
+    background: #fff;
+    gap: 8px 12px;
+    grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+}
+:root[data-skin="mac84"] .grid-item {
+    aspect-ratio: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    overflow: visible;
+    outline: 0 !important;
+    box-shadow: none !important;
+    filter: none !important;
+}
+:root[data-skin="mac84"] .grid-item img {
+    width: 100%;
+    aspect-ratio: 1;
+    height: auto;
+    padding: 6px;
+    object-fit: none;
+    image-rendering: pixelated;
+    background: none !important;
+}
+:root[data-skin="mac84"] .grid-item::after {
+    content: attr(data-name);
+    max-width: 100%;
+    margin-top: 0;
+    padding: 0 4px;
+    color: #000;
+    font: 12px/16px var(--m-font);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+:root[data-skin="mac84"] .grid-item.selected::before { display: none; }
+:root[data-skin="mac84"] .grid-item.selected img { filter: invert(1); }
+:root[data-skin="mac84"] .grid-item.selected::after { background: #000; color: #fff; }
+:root[data-skin="mac84"] .tile-folder { display: none; }
+
+/* ---- The foot: round-rect buttons for what's selected ---- */
+:root[data-skin="mac84"] .selection-bar,
+:root[data-skin="mac84"] .grid-controls {
+    height: 34px;
+    padding: 0 12px;
+    gap: 8px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #000;
+}
+:root[data-skin="mac84"] .selection-bar .tb-sep { display: none; }
+:root[data-skin="mac84"] .sel-count {
+    height: 20px;
+    padding: 0 6px;
+    border: 0;
+    border-radius: 0;
+    background: #000;
+    color: #fff;
+    font: 12px/20px var(--m-font);
+}
+:root[data-skin="mac84"] .sel-count > svg { display: none; }
+:root[data-skin="mac84"] .selection-bar .tb-btn {
+    width: auto;
+    height: 22px;
+    margin: 0;
+    padding: 0 11px;
+    border-radius: 7px;
+}
+:root[data-skin="mac84"] .selection-bar .tb-btn > svg { display: none; }
+:root[data-skin="mac84"] #main-interface .selection-bar .tb-btn > span { display: inline; }
+:root[data-skin="mac84"] #btn-rotate-left-bulk::after { content: "Rotate Left"; }
+:root[data-skin="mac84"] #btn-rotate-right-bulk::after { content: "Rotate Right"; }
+:root[data-skin="mac84"] #btn-export::after { content: "More\2026"; }
+:root[data-skin="mac84"] .selection-bar .tb-btn.danger { color: #000; }
+:root[data-skin="mac84"] #btn-trash { padding-left: 28px; background: url(icons/trash.png) no-repeat 7px center, #fff; }
+
+:root[data-skin="mac84"] .grid-controls::before { content: "Size"; margin-right: 4px; }
+:root[data-skin="mac84"] .slider-group { display: flex; align-items: center; gap: 0; }
+:root[data-skin="mac84"] .slider-group > svg { display: none; }
+:root[data-skin="mac84"] input[type="range"] { appearance: none; width: 140px; height: 16px; background: none; }
+:root[data-skin="mac84"] input[type="range"]::-webkit-slider-runnable-track { height: 16px; border: 1px solid #000; background: var(--m-grey); }
+:root[data-skin="mac84"] input[type="range"]::-webkit-slider-thumb { appearance: none; width: 16px; height: 14px; border: 0; border-left: 1px solid #000; border-right: 1px solid #000; background: #fff; }
+
+/* ---- One photo, on the grey desk ---- */
+:root[data-skin="mac84"] #image-container { background: var(--m-grey); }
+:root[data-skin="mac84"] #current-image { outline: 1px solid #000; box-shadow: 2px 2px 0 #000; }
+:root[data-skin="mac84"] .controls {
+    gap: 10px;
+    padding: 0;
+    border: 0;
+    border-top: 1px solid #000;
+    background: #fff;
+    box-shadow: none;
+}
+:root[data-skin="mac84"] .controls .tb-sep { display: none; }
+:root[data-skin="mac84"] .controls .tb-btn { width: auto; height: 24px; padding: 0 12px 0 9px; border-radius: 7px; margin: 0; }
+:root[data-skin="mac84"] #btn-prev::after { content: "Previous"; }
+:root[data-skin="mac84"] #btn-next { flex-direction: row-reverse; padding: 0 9px 0 12px; }
+:root[data-skin="mac84"] #btn-next::after { content: "Next"; }
+:root[data-skin="mac84"] #btn-rotate-left::after { content: "Left"; }
+:root[data-skin="mac84"] #btn-rotate-right::after { content: "Right"; }
+/* The default button: Next, with the heavy ring */
+:root[data-skin="mac84"] #btn-next { box-shadow: 0 0 0 2px #fff, 0 0 0 5px #000; border-radius: 8px; margin-left: 6px; }
+:root[data-skin="mac84"] .thumbnails {
+    gap: 10px;
+    padding: 0 12px;
+    background: #fff;
+    border-top: 1px solid #000;
+}
+:root[data-skin="mac84"] .thumb-item { border: 1px solid #000; border-radius: 0; background: #fff; opacity: 1; padding: 2px; }
+:root[data-skin="mac84"] .thumb-item img { object-fit: none !important; image-rendering: pixelated; background: none !important; }
+:root[data-skin="mac84"] .thumb-item.active { outline: 0; border-width: 3px; padding: 0; }
+:root[data-skin="mac84"] .strip-resize { height: 0; }
+:root[data-skin="mac84"] .status-bar { height: 22px; padding: 3px 12px 0; background: #fff; border-top: 1px solid #000; color: #000; font: 12px var(--m-font); }
+
+/* ---- An alert box for notes ---- */
+:root[data-skin="mac84"] .toast {
+    min-height: 0;
+    padding: 12px 16px;
+    border: 1px solid #000;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 4px #000, 2px 2px 0 #000;
+    backdrop-filter: none;
+    color: #000;
+    font: 12px var(--m-font);
+}
+:root[data-skin="mac84"] .toast-icon { display: none; }
+
+/* ---- Scroll bars ---- */
+:root[data-skin="mac84"] ::-webkit-scrollbar { width: 16px; height: 16px; background: #fff; }
+:root[data-skin="mac84"] ::-webkit-scrollbar-track { background: var(--m-grey); border-left: 1px solid #000; }
+:root[data-skin="mac84"] ::-webkit-scrollbar-thumb { border: 1px solid #000; border-radius: 0; background: #fff; }
+:root[data-skin="mac84"] ::-webkit-scrollbar-button:single-button { display: block; width: 16px; height: 16px; border-left: 1px solid #000; background-color: #fff; }
+:root[data-skin="mac84"] ::-webkit-scrollbar-button:vertical:decrement { border-bottom: 1px solid #000; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' shape-rendering='crispEdges'%3E%3Cpath d='M5.5.5l5 5h-3v4h-4v-4h-3z' fill='%23fff' stroke='%23000'/%3E%3C/svg%3E") no-repeat center, #fff; }
+:root[data-skin="mac84"] ::-webkit-scrollbar-button:vertical:increment { border-top: 1px solid #000; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' shape-rendering='crispEdges'%3E%3Cpath d='M5.5 10.5l5-5h-3v-4h-4v4h-3z' fill='%23fff' stroke='%23000'/%3E%3C/svg%3E") no-repeat center, #fff; }
+
+/* ==========================================================================
+   Detail pass: one-bit icons drawn on the pixel grid instead of line icons
+   with the smoothing turned off, an 11-pixel close box with its white
+   margin cut out of the stripes, the Finder's info line, and the grow box.
+   ========================================================================== */
+:root[data-skin="mac84"] .tb-btn > svg,
+:root[data-skin="mac84"] .controls .tb-btn > svg { display: none; }
+:root[data-skin="mac84"] .tb-btn { background-repeat: no-repeat; background-position: center; image-rendering: pixelated; }
+:root[data-skin="mac84"] .tb-btn:active:not(:disabled),
+:root[data-skin="mac84"] .tb-btn.active,
+:root[data-skin="mac84"] .tb-btn[aria-pressed="true"] { background-color: #fff; filter: invert(1); }
+:root[data-skin="mac84"] #btn-info { background-image: url(px/info.png); }
+:root[data-skin="mac84"] #btn-toggle-view { background-image: url(px/grid.png); }
+:root[data-skin="mac84"] body[data-view="grid"] #btn-toggle-view { background-image: url(px/image.png); }
+:root[data-skin="mac84"] #btn-refresh { background-image: url(px/refresh.png); }
+:root[data-skin="mac84"] #btn-crop { background-image: url(px/crop.png); }
+:root[data-skin="mac84"] #btn-history { background-image: url(px/history.png); }
+:root[data-skin="mac84"] #btn-more,
+:root[data-skin="mac84"] #btn-export { background-image: url(px/more.png); }
+:root[data-skin="mac84"] #btn-prev { background-image: url(px/prev.png); }
+:root[data-skin="mac84"] #btn-next { background-image: url(px/next.png); }
+:root[data-skin="mac84"] #btn-rotate-left { background-image: url(px/rotl.png); }
+:root[data-skin="mac84"] #btn-rotate-right { background-image: url(px/rotr.png); }
+/* the controls under a photo: the icon at the left of each round-rect button */
+:root[data-skin="mac84"] .controls .tb-btn { padding-left: 28px; background-position: 7px center; }
+:root[data-skin="mac84"] #btn-next { flex-direction: row; padding: 0 28px 0 12px; background-position: right 7px center; }
+
+/* Title bar: six one-pixel stripes, cut away round the close box and name */
+:root[data-skin="mac84"] #th-titlebar {
+    height: 19px;
+    background: repeating-linear-gradient(180deg, #000 0 1px, #fff 1px 2px) 1px 4px / calc(100% - 2px) 11px no-repeat, #fff;
+}
+:root[data-skin="mac84"] .th-caps { left: 7px; top: 3px; }
+:root[data-skin="mac84"] .th-caps .th-close { width: 13px; height: 13px; box-shadow: 0 0 0 2px #fff; }
+:root[data-skin="mac84"] .th-title { padding: 0 7px; line-height: 18px; }
+
+/* The info line, as the Finder wrote it */
+:root[data-skin="mac84"] .folder-bar::after { content: attr(data-info); order: 9; margin-left: auto; white-space: pre; }
+
+/* The grow box, bottom right, as on every window */
+:root[data-skin="mac84"] .grid-controls { margin-right: 16px; }
+:root[data-skin="mac84"] .grid-controls::after {
+    content: "";
+    position: absolute;
+    right: -16px; bottom: 0;
+    width: 15px; height: 15px;
+    border-left: 1px solid #000;
+    border-top: 1px solid #000;
+    background:
+        linear-gradient(#000, #000) 3px 3px / 7px 1px no-repeat,
+        linear-gradient(#000, #000) 3px 3px / 1px 7px no-repeat,
+        linear-gradient(#000, #000) 3px 9px / 4px 1px no-repeat,
+        linear-gradient(#000, #000) 9px 3px / 1px 4px no-repeat,
+        linear-gradient(#000, #000) 6px 6px / 7px 1px no-repeat,
+        linear-gradient(#000, #000) 6px 6px / 1px 7px no-repeat,
+        linear-gradient(#000, #000) 6px 12px / 7px 1px no-repeat,
+        linear-gradient(#000, #000) 12px 6px / 1px 7px no-repeat,
+        #fff;
+}
+/* Selection buttons keep their words; the trash gets its can */
+:root[data-skin="mac84"] #btn-trash { background-image: url(px/trash.png); background-position: 7px center; }
+
+/* ==========================================================================
+   The theme's setting: Thumbnails. "dither" (the default) is drawn by
+   setup.js; "grey" and "colour" show the thumbnail itself, at its size.
+   ========================================================================== */
+:root[data-skin="mac84"]:not([data-ts-thumbs="dither"]) .grid-item img,
+:root[data-skin="mac84"]:not([data-ts-thumbs="dither"]) .thumb-item img {
+    object-fit: contain !important;
+    image-rendering: auto;
+    outline: 1px solid #000;
+    outline-offset: -1px;
+}
+/* the outline would box the letterbox too: frame the picture instead */
+:root[data-skin="mac84"]:not([data-ts-thumbs="dither"]) .grid-item img { outline: 0; filter: drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000); }
+:root[data-skin="mac84"][data-ts-thumbs="grey"] .grid-item img { filter: grayscale(1) contrast(1.08) drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000); }
+:root[data-skin="mac84"][data-ts-thumbs="grey"] :is(.thumb-item, .mode-thumb) img { filter: grayscale(1) contrast(1.08); }
+/* Chosen: inverted in black and white, as the Finder did; in colour a heavy frame instead */
+:root[data-skin="mac84"][data-ts-thumbs="grey"] .grid-item.selected img { filter: grayscale(1) contrast(1.08) invert(1) drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000); }
+:root[data-skin="mac84"][data-ts-thumbs="colour"] .grid-item.selected img { filter: drop-shadow(2px 0 0 #000) drop-shadow(-2px 0 0 #000) drop-shadow(0 2px 0 #000) drop-shadow(0 -2px 0 #000) drop-shadow(1px 0 0 #000) drop-shadow(-1px 0 0 #000) drop-shadow(0 1px 0 #000) drop-shadow(0 -1px 0 #000); }
+
+/* ---- Menus: a white box with a black line and a shadow, the command
+   under the pointer inverted ---- */
+:root[data-skin="mac84"] #context-menu {
+    min-width: 180px;
+    padding: 0;
+    border: 1px solid #000;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: 1px 1px 0 #000;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+:root[data-skin="mac84"] #context-menu button {
+    min-height: 16px;
+    padding: 0 14px 0 14px;
+    border-radius: 0;
+    color: #000;
+    font: 12px/16px var(--m-font);
+    transition: none;
+}
+:root[data-skin="mac84"] #context-menu button:hover,
+:root[data-skin="mac84"] #context-menu button:focus-visible { background: #000; color: #fff; }
+:root[data-skin="mac84"] #context-menu button.danger { color: #000; }
+:root[data-skin="mac84"] #context-menu button.danger:hover { color: #fff; }
+:root[data-skin="mac84"] #context-menu .ctx-divider { height: 0; margin: 0; border-top: 1px dotted #000; background: none; margin: 1px 0 2px; }
+:root[data-skin="mac84"] #context-menu .ctx-key { color: inherit; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .th-menu.open { background: #000; color: #fff; }
+:root[data-skin="mac84"] .th-menu:focus { outline: none; }

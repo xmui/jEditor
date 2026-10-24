@@ -16,6 +16,8 @@
 
 const Export = {
     KEY: 'jeditor.export', // the last choices: { tab, size, where }
+    // As they are, or another format (AVIF and JPEG XL where the codecs load: codec.js)
+    FORMATS: [['same', 'As they are'], ['jpeg', 'JPEG'], ['png', 'PNG'], ['tiff', 'TIFF'], ['webp', 'WebP'], ['avif', 'AVIF (smallest)'], ['jxl', 'JPEG XL']],
     SIZES: [[0, 'Full size'], [4000, '4000 px'], [3000, '3000 px'], [2048, '2048 px (for the web)'], [1600, '1600 px'], [1080, '1080 px (social media)']],
     TABS: [['usb', 'USB drive or card'], ['disc', 'CD or DVD'], ['copies', 'Copies']],
 
@@ -86,6 +88,8 @@ const Export = {
         const saved = this.saved();
         this.which = this.files ? 'selected' : 'all';
         this.size = saved.size || 0;
+        this.format = this.FORMATS.some(([v]) => v === saved.format) ? saved.format : 'same';
+        Codec.ready().then(ok => { this.codecs = ok; if (this.isOpen() && this.tab === 'copies') this.render(); });
         this.where = saved.where === 'project' || !saved.where ? 'project' : saved.where;
         this.chosen = null;
         this.drive = drive;
@@ -273,6 +277,10 @@ const Export = {
             this.SIZES.map(([v, label]) => `<option value="${v}"${v === this.size && !custom ? ' selected' : ''}>${label}${v ? ' on the longest side' : ''}</option>`).join('') +
             `<option value="custom"${custom ? ' selected' : ''}>Other…</option></select>` +
             (custom ? `<input id="ex-size-px" class="field ex-px" type="number" min="100" step="1" value="${this.size || 2000}" aria-label="Longest side in pixels"> px` : '') + '</span></label>';
+        const formats = this.FORMATS.filter(([v]) => this.codecs !== false || !Codec.of('x.' + v));
+        if (!formats.some(([v]) => v === this.format)) this.format = 'same';
+        html += `<label class="ex-field">Format <span class="ex-row"><select id="ex-format" class="field">` +
+            formats.map(([v, label]) => `<option value="${v}"${v === this.format ? ' selected' : ''}>${label}</option>`).join('') + '</select></span></label>';
         // Where: the project's own export folder, a USB drive, or one chosen
         html += '<div class="ex-field">Where<div class="ex-opts" role="radiogroup">';
         html += radio('ex-where', 'project', '"jEditor Export", in this project', this.where === 'project');
@@ -288,7 +296,7 @@ const Export = {
         const raws = list.filter(f => Raw.is(f.name)).length;
         const notes = [];
         if (edited) notes.push(`${edited.toLocaleString()} with edits not saved yet: exported with them`);
-        if (raws) notes.push(`${raws.toLocaleString()} RAW as JPEG`);
+        if (raws && (this.format === 'same' || this.format === 'jpeg')) notes.push(`${raws.toLocaleString()} RAW as JPEG`);
         return {
             html, ready: n > 0,
             go: `Export ${n.toLocaleString()} cop${n === 1 ? 'y' : 'ies'}`,
@@ -305,6 +313,7 @@ const Export = {
         else if (t.id === 'ex-save-first') { this.saveFirst = t.checked; return; }
         else if (t.id === 'ex-label') { this.label = t.value; return; }
         else if (t.name === 'ex-which') this.which = t.value;
+        else if (t.id === 'ex-format') { this.format = t.value; this.remember({ format: t.value }); }
         else if (t.id === 'ex-size') {
             this.size = t.value === 'custom' ? (this.size || 2000) : +t.value;
             if (t.value === 'custom' && this.SIZES.some(([v]) => v === this.size)) this.size = 2000;
@@ -375,7 +384,7 @@ const Export = {
                 return;
             }
             this.close();
-            await app.exportCopies(list, { maxEdge, dir, where });
+            await app.exportCopies(list, { maxEdge, dir, where, format: this.format });
         }
     }
 };

@@ -1,0 +1,695 @@
+/* ==========================================================================
+   jEditor for Mac OS X 10.6 Snow Leopard. As if it were a 2009 Cocoa app:
+   one unified title bar and toolbar with labels under the buttons, a scope
+   bar, the blue-grey source list, Finder's icon view and a textured bar
+   along the foot. Lucida Grande on a Mac, Lucida Sans Unicode on Windows.
+   ========================================================================== */
+
+:root[data-skin="snow"] {
+    color-scheme: light;
+    --sl-font: "Lucida Grande", "Lucida Sans Unicode", "DejaVu Sans", sans-serif;
+    --font-ui: var(--sl-font);
+    --fs-body: 12px; --lh-body: 16px;
+    --fs-small: 11px; --fs-caption: 11px;
+    --text-1: #000; --text-2: #4c4c4c; --text-3: #7f7f7f;
+    --bg-window: #e8e8e8;
+    --bg-canvas: #fff;
+    --bg-surface: #e8e8e8;
+    --accent: #3875d7;
+    --accent-color: #3875d7;
+    --surround: #8e8e8e;
+    --strip-bg: #e3e3e3;
+    --strip-text: #000;
+    --border: #a5a5a5;
+    --sl-bar: linear-gradient(180deg, #d2d2d2, #bcbcbc 50%, #a8a8a8);
+    --dock-bot-h: 31px;
+    --dock-bot-bg: var(--sl-bar);
+    --dock-bot-line: 1px solid #515151;
+    --dock-controls-h: 40px;
+    --dock-grid-pad: 18px 22px;
+    --tile-bg: transparent;
+    --strip-height: 88px;
+}
+:root[data-skin="snow"] body {
+    font-family: var(--sl-font);
+    font-size: 12px;
+    line-height: 16px;
+    -webkit-font-smoothing: antialiased;
+    color: #000;
+    background: #e8e8e8;
+}
+/* The source list runs down into the foot bar, like iTunes */
+:root[data-skin="snow"] .interface:not(.hidden) {
+    grid-template-areas:
+        "title title"
+        "menu menu"
+        "tools tools"
+        "addr addr"
+        "tasks main"
+        "side main"
+        "side resize"
+        "side strip"
+        "side bot"
+        "status status";
+}
+
+/* ---- One unified title bar and toolbar ---- */
+:root[data-skin="snow"] #th-titlebar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 22px;
+    background: linear-gradient(180deg, #e9e9e9, #dedede);
+    box-shadow: inset 0 1px 0 #f6f6f6;
+    color: #000;
+}
+:root[data-skin="snow"] .th-appicon { display: none; }
+:root[data-skin="snow"] .th-title {
+    font: 13px/1 var(--sl-font);
+    text-shadow: 0 1px 0 rgb(255 255 255 / 0.6);
+}
+:root[data-skin="snow"] .th-caps {
+    position: absolute;
+    left: 8px; top: 4px;
+    display: flex;
+    gap: 7px;
+}
+:root[data-skin="snow"] .th-caps button {
+    width: 14px; height: 14px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.38), 0 1px 0 rgb(255 255 255 / 0.5);
+}
+:root[data-skin="snow"] .th-close { order: 0; background: radial-gradient(circle at 50% 78%, #ffc2bb 0, #f26b5f 35%, #c4241a 75%, #9e1810 100%); }
+:root[data-skin="snow"] .th-min { order: 1; background: radial-gradient(circle at 50% 78%, #ffecb0 0, #f8c53d 35%, #c58900 75%, #a27000 100%); }
+:root[data-skin="snow"] .th-max { order: 2; background: radial-gradient(circle at 50% 78%, #d6f7b6 0, #85d15a 35%, #3e9518 75%, #2f7510 100%); }
+:root[data-skin="snow"] .th-caps button::after {
+    content: "";
+    display: block;
+    width: 8px; height: 5px;
+    margin: 1px auto 0;
+    border-radius: 50%;
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.95), rgb(255 255 255 / 0.1));
+}
+
+:root[data-skin="snow"] header {
+    height: auto;
+    min-height: 52px;
+    align-items: flex-start;
+    padding: 2px 10px 0;
+    background: linear-gradient(180deg, #dedede, #c9c9c9 55%, #b6b6b6);
+    border-bottom: 1px solid #515151;
+}
+:root[data-skin="snow"] header .toolbar,
+:root[data-skin="snow"] header .file-info,
+:root[data-skin="snow"] .folder-bar {
+    height: auto;
+    padding: 0;
+    gap: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    font-weight: 400;
+    font-size: 11px;
+}
+:root[data-skin="snow"] header .header-controls { order: 1; gap: 6px; }
+:root[data-skin="snow"] header .file-info { order: 2; margin-left: auto; gap: 14px; align-items: flex-start; }
+
+/* A toolbar item: a textured capsule with its glyph, the label under it */
+:root[data-skin="snow"] .tb-btn {
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 3px;
+    height: auto;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none !important;
+    color: #000;
+    font: 11px/13px var(--sl-font);
+    text-shadow: 0 1px 0 rgb(255 255 255 / 0.55);
+    transition: none;
+}
+:root[data-skin="snow"] .tb-btn::before { display: none; }
+:root[data-skin="snow"] .tb-btn > svg {
+    box-sizing: content-box;
+    width: 16px; height: 16px;
+    padding: 3px 11px;
+    border-radius: 4px;
+    background: linear-gradient(180deg, #fdfdfd, #f0f0f0 45%, #e2e2e2 50%, #d9d9d9);
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.32), 0 1px 0 rgb(255 255 255 / 0.45);
+    color: #2b2b2b;
+    stroke-width: 2.1;
+    filter: drop-shadow(0 1px 0 rgb(255 255 255 / 0.0));
+}
+:root[data-skin="snow"] .tb-btn:active > svg,
+:root[data-skin="snow"] .tb-btn[aria-pressed="true"] > svg,
+:root[data-skin="snow"] .tb-btn.active > svg {
+    background: linear-gradient(180deg, #8e8e8e, #a7a7a7 50%, #b2b2b2);
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.45), inset 0 1px 3px rgb(0 0 0 / 0.35), 0 1px 0 rgb(255 255 255 / 0.45);
+    color: #111;
+}
+:root[data-skin="snow"] #btn-info { --l: "Info"; }
+:root[data-skin="snow"] header .tb-btn::after { content: var(--l, ""); white-space: nowrap; }
+:root[data-skin="snow"] #btn-toggle-view { --l: "Grid"; }
+:root[data-skin="snow"] body[data-view="grid"] #btn-toggle-view { --l: "Photo"; }
+:root[data-skin="snow"] #btn-refresh { --l: "Rescan"; }
+:root[data-skin="snow"] #btn-crop { --l: "Crop"; }
+:root[data-skin="snow"] #btn-history { --l: "History"; }
+:root[data-skin="snow"] #btn-more { --l: "More"; }
+/* Info stands apart; Rescan and the view go together */
+:root[data-skin="snow"] #btn-info { margin-right: 8px; }
+:root[data-skin="snow"] #btn-crop { margin-left: 8px; }
+
+/* The file: its count and a pop-up for the order, labelled like the rest */
+:root[data-skin="snow"] .file-name,
+:root[data-skin="snow"] #file-count { display: none; }
+:root[data-skin="snow"] .sort-control { border: 0 !important; padding: 0; margin: 0; }
+:root[data-skin="snow"] .sort-control {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+}
+:root[data-skin="snow"] .sort-control > svg { display: none; }
+:root[data-skin="snow"] .sort-control::after { content: "Sort By"; font-size: 11px; text-shadow: 0 1px 0 rgb(255 255 255 / 0.55); }
+:root[data-skin="snow"] select,
+:root[data-skin="snow"] .sort-control select {
+    appearance: none;
+    height: 22px;
+    min-width: 132px;
+    padding: 0 24px 0 9px;
+    border: 0;
+    border-radius: 4px;
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='11'%3E%3Cpath d='M0 4l3.5-4L7 4zM0 7l3.5 4L7 7z' fill='%23222'/%3E%3C/svg%3E") no-repeat right 8px center,
+        linear-gradient(180deg, #fdfdfd, #f0f0f0 45%, #e2e2e2 50%, #d9d9d9);
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.32), 0 1px 0 rgb(255 255 255 / 0.45);
+    color: #000;
+    font: 11px var(--sl-font);
+}
+
+/* ---- The scope bar: All photos / Folders, where, and search ---- */
+:root[data-skin="snow"] .folder-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 8px;
+    background: linear-gradient(180deg, #e6e6e6, #d1d1d1);
+    border-bottom: 1px solid #8a8a8a;
+    box-shadow: inset 0 1px 0 #f2f2f2;
+}
+:root[data-skin="snow"] #fb-rail { display: none; }
+:root[data-skin="snow"] .fb-modes { display: flex; gap: 2px; padding: 0; background: none; border-radius: 0; }
+:root[data-skin="snow"] .fb-modes::before { content: "Show:"; margin: 0 6px 0 2px; color: #333; font: 700 11px/18px var(--sl-font); text-shadow: 0 1px 0 rgb(255 255 255 / 0.6); }
+/* recessed buttons */
+:root[data-skin="snow"] .fb-modes button {
+    height: 18px;
+    padding: 0 9px;
+    border: 0;
+    border-radius: 9px;
+    background: none;
+    color: #222;
+    font: 700 11px/18px var(--sl-font);
+    text-shadow: 0 1px 0 rgb(255 255 255 / 0.6);
+    box-shadow: none;
+}
+:root[data-skin="snow"] .fb-modes button.active {
+    background: rgb(0 0 0 / 0.42);
+    color: #fff;
+    text-shadow: 0 -1px 0 rgb(0 0 0 / 0.35);
+    box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.45), 0 1px 0 rgb(255 255 255 / 0.55);
+}
+:root[data-skin="snow"] .fb-modes .fb-short { display: none; }
+:root[data-skin="snow"] .fb-modes .fb-long { display: inline; }
+:root[data-skin="snow"] .fb-crumbs { flex: 1; color: #333; font-size: 11px; text-shadow: 0 1px 0 rgb(255 255 255 / 0.6); }
+:root[data-skin="snow"] .fb-search {
+    display: flex;
+    align-items: center;
+    width: 180px;
+    height: 19px;
+    padding: 0 8px 0 22px;
+    border: 0;
+    border-radius: 10px;
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Ccircle cx='5' cy='5' r='3.6' fill='none' stroke='%23555' stroke-width='1.5'/%3E%3Cpath d='M7.6 7.6 11 11' stroke='%23555' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat 7px center,
+        #fff;
+    box-shadow: inset 0 0 0 1px #8f8f8f, inset 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 0 rgb(255 255 255 / 0.5);
+}
+:root[data-skin="snow"] .fb-search > svg,
+:root[data-skin="snow"] .fb-search-clear { display: none; }
+:root[data-skin="snow"] .fb-search input { width: 100%; border: 0; padding: 0; background: none; font: 11px var(--sl-font); color: #000; outline: none; }
+:root[data-skin="snow"] .fb-search input::placeholder { color: #999; }
+
+/* ---- The source list ---- */
+:root[data-skin="snow"] .folder-rail {
+    width: 200px;
+    padding: 0;
+    border: 0;
+    border-right: 1px solid #8f8f8f;
+    border-radius: 0;
+    overflow: hidden;
+    background: #dee4ea;
+    box-shadow: none;
+    color: #000;
+    font-size: 12px;
+}
+:root[data-skin="snow"] .mode-seg { display: none; }
+:root[data-skin="snow"] .sb-scroll { flex: 1; padding: 6px 0 0; overflow: auto; }
+:root[data-skin="snow"] .folder-tree::before {
+    content: "PHOTOS";
+    display: block;
+    padding: 4px 10px 3px;
+    color: #69778a;
+    font: 700 11px var(--sl-font);
+    text-shadow: 0 1px 0 rgb(255 255 255 / 0.75);
+}
+:root[data-skin="snow"] .fr-row {
+    min-height: 0;
+    height: 22px;
+    gap: 5px;
+    padding: 0 8px 0 calc(16px + var(--depth, 0) * 14px);
+    border: 0;
+    border-top: 1px solid transparent;
+    border-radius: 0;
+    color: #000;
+    font-size: 12px;
+    background: none;
+}
+:root[data-skin="snow"] .fr-row > svg { display: none; }
+:root[data-skin="snow"] .fr-row::before {
+    content: "";
+    order: 1;
+    flex: none;
+    width: 16px; height: 16px;
+    background: url(icons/folder16.png) no-repeat;
+}
+:root[data-skin="snow"] .fr-row.fr-all::before { background-image: url(icons/image16.png); }
+:root[data-skin="snow"] .fr-caret { order: 0; }
+:root[data-skin="snow"] .fr-name { order: 2; }
+:root[data-skin="snow"] .fr-count {
+    order: 3;
+    margin-left: auto;
+    min-width: 20px;
+    padding: 0 6px;
+    border-radius: 8px;
+    background: #8c9aad;
+    color: #fff;
+    font: 700 11px/15px var(--sl-font);
+    text-align: center;
+}
+:root[data-skin="snow"] .fr-row:hover { background: none; }
+:root[data-skin="snow"] .fr-row.active {
+    background: linear-gradient(180deg, #62a0e6, #2f72d4);
+    border-top-color: #4b8ad8;
+    color: #fff;
+    font-weight: 700;
+    text-shadow: 0 1px 1px rgb(0 0 0 / 0.35);
+}
+:root[data-skin="snow"] .fr-row.active .fr-count { background: #fff; color: #3a74cf; text-shadow: none; }
+/* The foot of the source list: + and the totals, on the foot bar */
+:root[data-skin="snow"] .fr-foot {
+    flex: none;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    box-sizing: border-box;
+    align-items: center;
+    gap: 8px;
+    height: 31px;
+    margin: 0;
+    padding: 0 8px 0 0;
+    border: 0;
+    border-top: 1px solid #515151;
+    background: var(--sl-bar);
+}
+:root[data-skin="snow"] .fr-new {
+    width: 31px; height: 30px;
+    padding: 0;
+    border: 0;
+    border-right: 1px solid #8a8a8a;
+    border-radius: 0;
+    background: none;
+    font-size: 0;
+    color: #2b2b2b;
+    box-shadow: 1px 0 0 rgb(255 255 255 / 0.35);
+}
+:root[data-skin="snow"] .fr-new::after { content: "+"; font: 400 20px/30px var(--sl-font); text-shadow: 0 1px 0 rgb(255 255 255 / 0.5); }
+:root[data-skin="snow"] .fr-new > svg { display: none; }
+:root[data-skin="snow"] .fr-total { order: 1; align-self: center; height: auto; padding: 0; border: 0; background: none; color: #222; font: 11px var(--sl-font); text-shadow: 0 1px 0 rgb(255 255 255 / 0.5); white-space: nowrap; }
+
+/* ---- Icon view ---- */
+:root[data-skin="snow"] .grid-view {
+    background: #fff;
+    gap: 10px 14px;
+    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+}
+:root[data-skin="snow"] .grid-item {
+    aspect-ratio: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    overflow: visible;
+    outline: 0 !important;
+    box-shadow: none !important;
+    filter: none !important;
+}
+:root[data-skin="snow"] .grid-item img {
+    width: 100%;
+    aspect-ratio: 1;
+    height: auto;
+    padding: 10px;
+    border-radius: 7px;
+    object-fit: contain;
+    background: none !important;
+    filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.45));
+}
+:root[data-skin="snow"] .grid-item::after {
+    content: attr(data-name);
+    max-width: 100%;
+    margin-top: 1px;
+    padding: 1px 7px;
+    border-radius: 9px;
+    color: #000;
+    font: 12px/15px var(--sl-font);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+:root[data-skin="snow"] .grid-item.selected::before { display: none; }
+:root[data-skin="snow"] .grid-item.selected img { background: rgb(0 0 0 / 0.13) !important; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.06); }
+:root[data-skin="snow"] .grid-item.selected::after { background: linear-gradient(180deg, #5d93dc, #2e68cc); color: #fff; }
+:root[data-skin="snow"] .tile-folder { display: none; }
+
+/* ---- The foot bar: what's selected, and the size slider ---- */
+:root[data-skin="snow"] .selection-bar,
+:root[data-skin="snow"] .grid-controls {
+    height: 31px;
+    padding: 0 10px;
+    gap: 6px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+}
+:root[data-skin="snow"] .selection-bar .tb-sep { display: none; }
+:root[data-skin="snow"] .sel-count {
+    height: 20px;
+    padding: 0 6px 0 0;
+    border: 0;
+    background: none;
+    color: #222;
+    font: 11px var(--sl-font);
+    text-shadow: 0 1px 0 rgb(255 255 255 / 0.5);
+}
+:root[data-skin="snow"] .sel-count > svg { display: none; }
+/* small textured buttons with the glyph and the name inside */
+:root[data-skin="snow"] .selection-bar .tb-btn {
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    height: 20px;
+    padding: 0 9px 0 7px;
+    border-radius: 4px;
+    background: linear-gradient(180deg, #fbfbfb, #ececec 45%, #dedede 50%, #d4d4d4) !important;
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.35), 0 1px 0 rgb(255 255 255 / 0.4);
+    color: #111;
+    font: 11px/20px var(--sl-font);
+}
+:root[data-skin="snow"] .selection-bar .tb-btn > svg {
+    width: 13px; height: 13px;
+    padding: 0;
+    background: none;
+    box-shadow: none;
+    stroke-width: 2.2;
+}
+:root[data-skin="snow"] #main-interface .selection-bar .tb-btn > span { display: inline; }
+:root[data-skin="snow"] #btn-rotate-left-bulk,
+:root[data-skin="snow"] #btn-rotate-right-bulk { padding: 0 7px; }
+:root[data-skin="snow"] #btn-rotate-left-bulk { border-radius: 4px 0 0 4px; margin-right: -6px; }
+:root[data-skin="snow"] #btn-rotate-right-bulk { border-radius: 0 4px 4px 0; }
+:root[data-skin="snow"] .selection-bar .tb-btn.danger { color: #111; }
+
+:root[data-skin="snow"] .grid-controls { color: #333; }
+:root[data-skin="snow"] .slider-group { display: flex; align-items: center; gap: 6px; }
+:root[data-skin="snow"] .slider-group > svg { width: 12px; height: 12px; color: #444; stroke-width: 2; }
+:root[data-skin="snow"] .slider-group > svg:last-child { width: 16px; height: 16px; }
+:root[data-skin="snow"] input[type="range"] { appearance: none; width: 110px; height: 16px; background: none; }
+:root[data-skin="snow"] input[type="range"]::-webkit-slider-runnable-track {
+    height: 5px;
+    border-radius: 3px;
+    background: linear-gradient(180deg, #7a7a7a, #a9a9a9);
+    box-shadow: inset 0 1px 1px rgb(0 0 0 / 0.4), 0 1px 0 rgb(255 255 255 / 0.5);
+}
+:root[data-skin="snow"] input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    width: 13px; height: 13px;
+    margin-top: -4px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 30%, #fff 0, #f0f0f0 40%, #c9c9c9 100%);
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.45), 0 1px 1px rgb(0 0 0 / 0.3);
+}
+
+/* ---- One photo ---- */
+:root[data-skin="snow"] .controls {
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    border-top: 1px solid #515151;
+    background: var(--sl-bar);
+    box-shadow: none;
+}
+:root[data-skin="snow"] .controls .tb-sep { display: none; }
+:root[data-skin="snow"] .controls .tb-btn > svg { padding: 3px 12px; }
+:root[data-skin="snow"] #btn-prev > svg { border-radius: 4px 0 0 4px; }
+:root[data-skin="snow"] #btn-next > svg { border-radius: 0 4px 4px 0; }
+:root[data-skin="snow"] #btn-prev { order: 0; margin-right: -9px; }
+:root[data-skin="snow"] #btn-next { order: 1; margin-right: 18px; }
+:root[data-skin="snow"] #btn-rotate-left { order: 2; margin-right: -9px; }
+:root[data-skin="snow"] #btn-rotate-left > svg { border-radius: 4px 0 0 4px; }
+:root[data-skin="snow"] #btn-rotate-right { order: 3; }
+:root[data-skin="snow"] #btn-rotate-right > svg { border-radius: 0 4px 4px 0; }
+:root[data-skin="snow"] .thumbnails {
+    gap: 10px;
+    padding: 0 14px;
+    background: linear-gradient(180deg, #d9d9d9, #e9e9e9);
+    border-top: 1px solid #9a9a9a;
+}
+:root[data-skin="snow"] .thumb-item {
+    border-radius: 0;
+    background: none;
+    opacity: 1;
+    overflow: visible;
+}
+:root[data-skin="snow"] .thumb-item img { object-fit: contain !important; background: none !important; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.5)); }
+:root[data-skin="snow"] .thumb-item.active { outline: 0; }
+:root[data-skin="snow"] .thumb-item.active img { outline: 3px solid #f6cf3a; outline-offset: -1px; }
+:root[data-skin="snow"] .strip-resize { height: 0; }
+/* The path bar */
+:root[data-skin="snow"] .status-bar {
+    height: 22px;
+    padding: 3px 12px 0;
+    background: linear-gradient(180deg, #d6d6d6, #bdbdbd);
+    border-top: 1px solid #515151;
+    color: #222;
+    font-size: 11px;
+    text-shadow: 0 1px 0 rgb(255 255 255 / 0.5);
+}
+
+/* ---- Toasts: a Growl-ish note ---- */
+:root[data-skin="snow"] .toast {
+    border: 0;
+    border-radius: 8px;
+    background: rgb(0 0 0 / 0.75);
+    box-shadow: 0 3px 10px rgb(0 0 0 / 0.4);
+    color: #fff;
+    font: 12px var(--sl-font);
+    backdrop-filter: none;
+}
+
+/* ---- Aqua scroll bars ---- */
+:root[data-skin="snow"] ::-webkit-scrollbar { width: 15px; height: 15px; background: #fff; }
+:root[data-skin="snow"] ::-webkit-scrollbar-track {
+    background: linear-gradient(90deg, #c4c4c4, #e9e9e9 30%, #f5f5f5 60%, #e3e3e3);
+    border: 0;
+    box-shadow: inset 1px 0 0 #b0b0b0;
+}
+:root[data-skin="snow"] ::-webkit-scrollbar-thumb {
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background:
+        linear-gradient(90deg, rgb(255 255 255 / 0) 0, rgb(255 255 255 / 0.75) 30%, rgb(255 255 255 / 0.2) 60%, rgb(255 255 255 / 0)) 3px 0 / 5px 100% no-repeat,
+        linear-gradient(90deg, #2d6ccf, #74a8f0 45%, #9fc5f8 60%, #3b7ad8);
+    background-clip: padding-box;
+    box-shadow: inset 0 0 0 1px rgb(0 40 120 / 0.55);
+}
+
+/* ==========================================================================
+   Detail pass: solid glyphs pressed into the buttons, proper textured
+   capsules, the Action gear, the proxy icon in the title, disclosure
+   triangles, icon buttons in the foot bar, scroll arrows.
+   ========================================================================== */
+:root[data-skin="snow"] {
+    --cap: linear-gradient(180deg, #fdfdfd, #f1f1f1 48%, #e3e3e3 52%, #d7d7d7);
+    --cap-edge: inset 0 0 0 1px rgb(0 0 0 / 0.42), 0 1px 0 rgb(255 255 255 / 0.4);
+    --cap-in: linear-gradient(180deg, #8b8b8b, #a3a3a3 50%, #b4b4b4);
+    --cap-in-edge: inset 0 0 0 1px rgb(0 0 0 / 0.5), inset 0 1px 3px rgb(0 0 0 / 0.35), 0 1px 0 rgb(255 255 255 / 0.4);
+    --sl-bar: linear-gradient(180deg, #d4d4d4, #bdbdbd 50%, #aaaaaa);
+    --dock-bot-bg: var(--sl-bar);
+    --dock-bot-line: 1px solid #7b7b7b;
+}
+/* Glyphs instead of the line icons */
+:root[data-skin="snow"] .tb-btn > svg > * { display: none; }
+:root[data-skin="snow"] .tb-btn > svg,
+:root[data-skin="snow"] .selection-bar .tb-btn > svg {
+    box-sizing: content-box;
+    width: 16px; height: 17px;
+    padding: 3px 11px 2px;
+    border-radius: 4px;
+    background: var(--g, none) no-repeat center / 16px 17px, var(--cap);
+    box-shadow: var(--cap-edge);
+    filter: none;
+}
+:root[data-skin="snow"] .tb-btn:active > svg,
+:root[data-skin="snow"] .tb-btn[aria-pressed="true"] > svg,
+:root[data-skin="snow"] .tb-btn.active > svg { background: var(--g, none) no-repeat center / 16px 17px, var(--cap-in); box-shadow: var(--cap-in-edge); }
+:root[data-skin="snow"] #btn-info { --g: url(glyphs/info.svg); }
+:root[data-skin="snow"] #btn-toggle-view { --g: url(glyphs/grid.svg); }
+:root[data-skin="snow"] body[data-view="grid"] #btn-toggle-view { --g: url(glyphs/photo.svg); }
+:root[data-skin="snow"] #btn-refresh { --g: url(glyphs/refresh.svg); }
+:root[data-skin="snow"] #btn-crop { --g: url(glyphs/crop.svg); }
+:root[data-skin="snow"] #btn-history { --g: url(glyphs/history.svg); }
+:root[data-skin="snow"] #btn-more,
+:root[data-skin="snow"] #btn-export { --g: url(glyphs/action.svg); }
+:root[data-skin="snow"] #btn-more { --l: "Action"; }
+:root[data-skin="snow"] #btn-rotate-left-bulk,
+:root[data-skin="snow"] #btn-rotate-left { --g: url(glyphs/rotl.svg); }
+:root[data-skin="snow"] #btn-rotate-right-bulk,
+:root[data-skin="snow"] #btn-rotate-right { --g: url(glyphs/rotr.svg); }
+:root[data-skin="snow"] #btn-auto-crop { --g: url(glyphs/autocrop.svg); }
+:root[data-skin="snow"] #btn-move-to { --g: url(glyphs/move.svg); }
+:root[data-skin="snow"] #btn-batch-rename { --g: url(glyphs/rename.svg); }
+:root[data-skin="snow"] #btn-trash { --g: url(glyphs/trash.svg); }
+:root[data-skin="snow"] #btn-prev { --g: url(glyphs/prev.svg); }
+:root[data-skin="snow"] #btn-next { --g: url(glyphs/next.svg); }
+/* Rescan sits with the view, as one segmented control */
+:root[data-skin="snow"] #btn-toggle-view > svg { border-radius: 4px 0 0 4px; }
+:root[data-skin="snow"] #btn-refresh > svg { border-radius: 0 4px 4px 0; box-shadow: inset -1px 0 0 rgb(0 0 0 / 0.42), inset 0 1px 0 rgb(0 0 0 / 0.42), inset 0 -1px 0 rgb(0 0 0 / 0.42), 0 1px 0 rgb(255 255 255 / 0.4); }
+:root[data-skin="snow"] header .header-controls { gap: 8px; }
+:root[data-skin="snow"] #btn-refresh { margin-left: -8px; }
+:root[data-skin="snow"] #btn-info { margin-right: 4px; }
+:root[data-skin="snow"] #btn-crop { margin-left: 4px; }
+
+/* The title, with the folder's proxy icon */
+:root[data-skin="snow"] .th-title { display: flex; align-items: center; gap: 4px; }
+:root[data-skin="snow"] .th-title::before { content: ""; width: 16px; height: 16px; background: url(icons/folder16.png) no-repeat; }
+:root[data-skin="snow"] .th-caps button { width: 13px; height: 13px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.45), 0 1px 0 rgb(255 255 255 / 0.55); }
+:root[data-skin="snow"] .th-caps { top: 4px; left: 8px; gap: 8px; }
+
+/* Source list: plain names, a disclosure triangle on the project */
+:root[data-skin="snow"] .fr-root .fr-name { font-weight: 400; }
+:root[data-skin="snow"] .fr-row.active .fr-name { font-weight: 700; }
+:root[data-skin="snow"] .fr-root { position: relative; }
+:root[data-skin="snow"] .fr-root::after {
+    content: "";
+    position: absolute;
+    left: 6px; top: 7px;
+    border: 4px solid transparent;
+    border-top: 6px solid #7d8794;
+    border-bottom: 0;
+}
+:root[data-skin="snow"] .fr-row.fr-root.active::after { border-top-color: #fff; }
+:root[data-skin="snow"] .folder-tree::before { color: #6c7a8c; padding-top: 6px; }
+:root[data-skin="snow"] .fr-count { background: #8e9bae; font-size: 10px; line-height: 14px; min-width: 22px; }
+
+/* The foot bar: Finder's status in the middle, small icon buttons */
+:root[data-skin="snow"] .fr-foot { border-top: 1px solid #7b7b7b; }
+:root[data-skin="snow"] .fr-new { border-right-color: #8f8f8f; }
+:root[data-skin="snow"] .selection-bar { gap: 8px; }
+:root[data-skin="snow"] #main-interface .selection-bar .tb-btn > span { display: none; }
+:root[data-skin="snow"] .selection-bar .tb-btn,
+:root[data-skin="snow"] .selection-bar .tb-btn:hover {
+    gap: 0;
+    height: auto;
+    padding: 0;
+    background: none !important;
+    box-shadow: none;
+}
+:root[data-skin="snow"] .selection-bar .tb-btn > svg { padding: 2px 8px 1px; }
+:root[data-skin="snow"] #btn-rotate-left-bulk { margin-right: -8px; }
+:root[data-skin="snow"] #btn-rotate-left-bulk > svg { border-radius: 4px 0 0 4px; }
+:root[data-skin="snow"] #btn-rotate-right-bulk > svg { border-radius: 0 4px 4px 0; box-shadow: inset -1px 0 0 rgb(0 0 0 / 0.42), inset 0 1px 0 rgb(0 0 0 / 0.42), inset 0 -1px 0 rgb(0 0 0 / 0.42), 0 1px 0 rgb(255 255 255 / 0.4); }
+:root[data-skin="snow"] #btn-rotate-left-bulk,
+:root[data-skin="snow"] #btn-rotate-right-bulk { border-radius: 0; }
+:root[data-skin="snow"] #btn-rotate-left-bulk::after,
+:root[data-skin="snow"] #btn-rotate-right-bulk::after,
+:root[data-skin="snow"] #btn-export::after { content: none; }
+:root[data-skin="snow"] .sel-count { padding: 0 10px 0 2px; font-size: 11px; }
+:root[data-skin="snow"] .sel-count::after { content: "\00a0of " attr(data-total) " selected"; white-space: pre; }
+:root[data-skin="snow"] #selection-count { font-size: 0; }
+:root[data-skin="snow"] #selection-count::before { content: attr(data-n); font-size: 11px; }
+:root[data-skin="snow"] .slider-group > svg { display: none; }
+:root[data-skin="snow"] .slider-group::before,
+:root[data-skin="snow"] .slider-group::after { content: ""; width: 16px; height: 17px; background: url(glyphs/small.svg) no-repeat center; }
+:root[data-skin="snow"] .slider-group::after { background-image: url(glyphs/large.svg); }
+
+/* Aqua scroll bars, with their arrows */
+:root[data-skin="snow"] ::-webkit-scrollbar-track { background: linear-gradient(90deg, #c8c8c8, #e6e6e6 18%, #f7f7f7 50%, #ececec); box-shadow: inset 1px 0 0 #a9a9a9; }
+:root[data-skin="snow"] ::-webkit-scrollbar-button:single-button { display: block; height: 15px; width: 15px; box-shadow: inset 1px 0 0 #a9a9a9, inset 0 1px 0 #c7c7c7; }
+:root[data-skin="snow"] ::-webkit-scrollbar-button:vertical:decrement { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='5'%3E%3Cpath d='M0 5l3.5-5L7 5z' fill='%23444'/%3E%3C/svg%3E") no-repeat center, linear-gradient(90deg, #d6d6d6, #f6f6f6 50%, #e2e2e2); }
+:root[data-skin="snow"] ::-webkit-scrollbar-button:vertical:increment { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='5'%3E%3Cpath d='M0 0l3.5 5L7 0z' fill='%23444'/%3E%3C/svg%3E") no-repeat center, linear-gradient(90deg, #d6d6d6, #f6f6f6 50%, #e2e2e2); }
+:root[data-skin="snow"] #btn-toggle-view > svg,
+:root[data-skin="snow"] #btn-refresh > svg { padding-left: 15px; padding-right: 15px; }
+:root[data-skin="snow"] #btn-rotate-left-bulk,
+:root[data-skin="snow"] #btn-rotate-right-bulk { padding: 0; }
+:root[data-skin="snow"] .sel-count::after { content: "\00a0of " attr(data-total) " selected"; }
+:root[data-skin="snow"] .sel-count { gap: 0; }
+
+/* The traffic lights: Aqua gumdrops, deep colour, a dark rim, a crisp gloss */
+:root[data-skin="snow"] .th-caps { top: 4px; left: 8px; gap: 7px; }
+:root[data-skin="snow"] .th-caps button { width: 14px; height: 15px; border-radius: 0; box-shadow: none; background: no-repeat center / 14px 15px; }
+:root[data-skin="snow"] .th-caps button::after { content: none; }
+:root[data-skin="snow"] .th-caps .th-close { background-image: url(lights/close.svg); }
+:root[data-skin="snow"] .th-caps .th-min { background-image: url(lights/min.svg); }
+:root[data-skin="snow"] .th-caps .th-max { background-image: url(lights/zoom.svg); }
+
+/* ---- Menus: Snow Leopard's, white and nearly opaque, the blue gradient
+   under the pointer, the key at the right ---- */
+:root[data-skin="snow"] #context-menu {
+    min-width: 190px;
+    padding: 4px 0;
+    border: 0;
+    border-radius: 0 0 5px 5px;
+    background: rgb(255 255 255 / 0.96);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.2), 0 6px 16px rgb(0 0 0 / 0.35);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    font: 14px var(--sl-font);
+}
+:root[data-skin="snow"] #context-menu:not(.th-dropdown) { border-radius: 5px; }
+:root[data-skin="snow"] #context-menu button {
+    min-height: 19px;
+    padding: 0 18px 0 20px;
+    border-radius: 0;
+    color: #000;
+    font: 14px/19px var(--sl-font);
+    transition: none;
+}
+:root[data-skin="snow"] #context-menu button:hover,
+:root[data-skin="snow"] #context-menu button:focus-visible {
+    background: linear-gradient(180deg, #6383f6, #2858ee);
+    color: #fff;
+}
+:root[data-skin="snow"] #context-menu button.danger { color: #000; }
+:root[data-skin="snow"] #context-menu button.danger:hover { color: #fff; }
+:root[data-skin="snow"] #context-menu button:hover .ctx-key { color: #fff; }
+:root[data-skin="snow"] #context-menu .ctx-divider { height: 1px; margin: 5px 0 6px; background: #e3e3e3; }
+:root[data-skin="snow"] #context-menu .ctx-key { color: #000; font-size: 14px; }

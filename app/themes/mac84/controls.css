@@ -1,0 +1,448 @@
+/* ==========================================================================
+   1984: jEditor's windows and controls as the first Macintosh drew them,
+   in one bit and Chicago. Round-rect buttons (the default one ringed in
+   black), check boxes that take an X, radio buttons, text boxes, controls
+   on the grey of dots. A dialog with a close button is a window (stripes,
+   the close box, its name in a white gap); one without is a modal box with
+   the double frame. What's chosen is shown inverted.
+   ========================================================================== */
+
+:root[data-skin="mac84"] {
+    --bg-raised: #fff;
+    --bg-sunken: #fff;
+    --bg-hover: #fff;
+    --bg-pressed: #000;
+    --bg-selected: #000;
+    --border-input: #000;
+    --border-subtle: #000;
+    --accent-soft: #000;
+    --accent-text: #000;
+    --on-accent: #fff;
+    --danger-text: #000;
+    --text-disabled: #000;
+    --scrim: transparent;
+    --seg-bg: transparent;
+    --seg-active: transparent;
+    --shadow-1: none;
+    --shadow-2: none;
+    --shadow-3: none;
+    --shadow-4: none;
+    --r-xs: 0; --r-sm: 0; --r-md: 0; --r-lg: 0; --r-xl: 0;
+    --m-stripes: repeating-linear-gradient(180deg, #000 0 1px, #fff 1px 2px);
+    --m-frame: inset 0 0 0 2px #fff, inset 0 0 0 5px #000;
+}
+:root[data-skin="mac84"] :is(.dialog, .popover, .mode-screen, .drop-zone, .scan-dock) {
+    font: 12px/16px var(--m-font);
+    color: #000;
+    -webkit-font-smoothing: none;
+}
+:root[data-skin="mac84"] :is(.dialog, .popover, .mode-screen, .drop-zone) :is(h2, h3, h4, small, p, li, dt, dd, label, span) { font-family: var(--m-font); letter-spacing: 0; text-transform: none; }
+:root[data-skin="mac84"] :is(.dialog, .mode-screen, .drop-zone) .i { shape-rendering: crispEdges; stroke-width: 1.6; }
+
+/* ---- Round-rect buttons ---- */
+:root[data-skin="mac84"] .btn,
+:root[data-skin="mac84"] .btn.secondary,
+:root[data-skin="mac84"] .btn.primary,
+:root[data-skin="mac84"] .btn.danger,
+:root[data-skin="mac84"] .btn.ghost,
+:root[data-skin="mac84"] .btn.chip {
+    height: 22px;
+    min-width: 0;
+    padding: 0 12px;
+    border: 1px solid #000;
+    border-radius: 8px;
+    background: #fff;
+    color: #000;
+    font: 12px var(--m-font);
+    font-weight: 400;
+    box-shadow: none;
+    text-shadow: none;
+    transition: none;
+}
+:root[data-skin="mac84"] .btn:hover:not(:disabled) { background: #fff; color: #000; }
+:root[data-skin="mac84"] .btn:active:not(:disabled),
+:root[data-skin="mac84"] .btn:is([aria-pressed="true"], .active) { transform: none; background: #000; color: #fff; }
+/* the default button: a thick ring round it */
+:root[data-skin="mac84"] .btn.primary { margin: 4px; box-shadow: 0 0 0 1px #fff, 0 0 0 4px #000; border-radius: 8px; }
+/* dimmed: the words in grey dots */
+:root[data-skin="mac84"] .btn:disabled,
+:root[data-skin="mac84"] .btn[aria-disabled="true"] {
+    opacity: 1;
+    color: transparent;
+    background: var(--m-grey);
+    -webkit-background-clip: text;
+    background-clip: text;
+}
+:root[data-skin="mac84"] .btn > svg { width: 16px; height: 16px; }
+:root[data-skin="mac84"] .btn:not(.icon) > svg { display: none; }
+:root[data-skin="mac84"] .btn.icon { width: 24px; padding: 0; border-radius: 0; }
+:root[data-skin="mac84"] .btn:focus-visible { outline: 1px dotted #000; outline-offset: 2px; }
+:root[data-skin="mac84"] .btn.sm { height: 18px; padding: 0 8px; border-radius: 6px; }
+:root[data-skin="mac84"] .btn > small { opacity: 1; }
+
+:root[data-skin="mac84"] .link-btn { color: #000; font: 12px var(--m-font); text-decoration: underline; text-decoration-color: #000; }
+:root[data-skin="mac84"] .link-btn:hover { background: #000; color: #fff; text-decoration: none; }
+
+/* ---- Text boxes and pop-ups ---- */
+:root[data-skin="mac84"] .field,
+:root[data-skin="mac84"] .dialog input:is([type="text"], [type="number"], [type="search"], :not([type])),
+:root[data-skin="mac84"] .fpr-body input {
+    height: 22px;
+    padding: 0 4px;
+    border: 1px solid #000;
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    font: 12px var(--m-font);
+    box-shadow: none;
+    outline: none;
+}
+:root[data-skin="mac84"] .field:hover,
+:root[data-skin="mac84"] .field:focus,
+:root[data-skin="mac84"] .field:focus-visible { border-color: #000; box-shadow: none; }
+:root[data-skin="mac84"] .field::placeholder { color: #000; opacity: 0.5; }
+:root[data-skin="mac84"] .field:disabled { opacity: 1; border-style: dotted; }
+:root[data-skin="mac84"] ::selection { background: #000; color: #fff; }
+:root[data-skin="mac84"] textarea.field { height: auto; }
+:root[data-skin="mac84"] select.field {
+    padding-right: 22px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='5' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h9L4.5 5z'/%3E%3C/svg%3E") no-repeat right 6px center, #fff;
+    box-shadow: 1px 1px 0 #000;
+}
+:root[data-skin="mac84"] input[type="number"]::-webkit-inner-spin-button { display: none; }
+
+/* ---- Check boxes take an X; radio buttons a dot ---- */
+:root[data-skin="mac84"] input[type="checkbox"],
+:root[data-skin="mac84"] input.switch,
+:root[data-skin="mac84"] input[type="radio"] {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    flex: none;
+    width: 12px;
+    height: 12px;
+    margin: 0;
+    border: 1px solid #000;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: none;
+    transition: none;
+}
+:root[data-skin="mac84"] input[type="radio"] { border-radius: 50%; }
+:root[data-skin="mac84"] input.switch::before { display: none; }
+:root[data-skin="mac84"] :is(input[type="checkbox"], input.switch):checked {
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' shape-rendering='crispEdges'%3E%3Cpath d='M0 0l10 10M10 0L0 10' stroke='%23000'/%3E%3C/svg%3E") no-repeat center, #fff;
+}
+:root[data-skin="mac84"] input[type="radio"]:checked { background: radial-gradient(circle, #000 0 3px, #fff 3.5px); }
+:root[data-skin="mac84"] :is(input[type="checkbox"], input.switch, input[type="radio"]):active { box-shadow: inset 0 0 0 1px #000; }
+:root[data-skin="mac84"] :is(input[type="checkbox"], input.switch, input[type="radio"]):focus-visible { outline: 1px dotted #000; outline-offset: 2px; }
+
+/* A row of choices: radio buttons with their names */
+:root[data-skin="mac84"] :is(.seg, .cv-seg) { gap: 4px 14px; padding: 0; border-radius: 0; background: none; flex-wrap: wrap; }
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > label { align-items: center; gap: 5px; }
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > label > input { position: static; width: 12px; height: 12px; opacity: 1; pointer-events: auto; }
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > label > span,
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: auto;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: #000;
+    font: 12px var(--m-font);
+    box-shadow: none;
+}
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > :is(button.active, button[aria-selected="true"], button[aria-checked="true"], button.on),
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > label > input:checked + span { background: none; color: #000; box-shadow: none; }
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > button > svg { display: none; }
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > button::before {
+    content: "";
+    flex: none;
+    width: 12px; height: 12px;
+    box-sizing: border-box;
+    border: 1px solid #000;
+    border-radius: 50%;
+    background: #fff;
+}
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > :is(button.active, button[aria-selected="true"], button[aria-checked="true"], button.on)::before { background: radial-gradient(circle, #000 0 3px, #fff 3.5px); }
+:root[data-skin="mac84"] :is(.seg, .cv-seg) > label > input:focus-visible + span { outline: 1px dotted #000; }
+
+/* ---- Sliders: a bar of grey dots, a white box to drag ---- */
+:root[data-skin="mac84"] input[type="range"] { -webkit-appearance: none; appearance: none; height: 16px; background: none; }
+:root[data-skin="mac84"] input[type="range"]::-webkit-slider-runnable-track { height: 8px; border: 1px solid #000; border-radius: 0; background: var(--m-grey); box-shadow: none; }
+:root[data-skin="mac84"] input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 10px;
+    height: 14px;
+    margin-top: -4px;
+    border: 1px solid #000;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: none;
+}
+:root[data-skin="mac84"] input[type="range"]:active::-webkit-slider-thumb { background: #000; }
+:root[data-skin="mac84"] input[type="range"]:focus-visible { outline: 1px dotted #000; }
+
+:root[data-skin="mac84"] kbd,
+:root[data-skin="mac84"] .sc-key { border: 1px solid #000; border-bottom-width: 2px; border-radius: 3px; background: #fff; color: #000; font: 12px/16px var(--m-font); }
+
+/* ---- Dialogs ---- */
+:root[data-skin="mac84"] .dialog-overlay { background: none; animation: none; }
+/* a modal box: the double frame, no title bar */
+:root[data-skin="mac84"] .dialog {
+    border: 1px solid #000;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: var(--m-frame), 2px 2px 0 #000;
+    padding: 6px;
+    animation: none;
+}
+:root[data-skin="mac84"] .dialog-head { min-height: 0; padding: 10px 12px 4px; border: 0; gap: 10px; }
+:root[data-skin="mac84"] .dialog-title { font: 12px/16px var(--m-font); }
+:root[data-skin="mac84"] .dialog-body { padding: 6px 12px; }
+:root[data-skin="mac84"] .dialog-foot { gap: 12px; padding: 8px 12px 10px; border: 0; justify-content: flex-end; }
+:root[data-skin="mac84"] .dialog-foot > :first-child:not(.btn, .dialog-actions) { margin-right: auto; }
+:root[data-skin="mac84"] .dialog-actions { gap: 12px; align-items: center; }
+:root[data-skin="mac84"] .dialog-foot .btn,
+:root[data-skin="mac84"] .dialog-actions .btn { min-width: 70px; height: 22px; padding: 0 12px; }
+:root[data-skin="mac84"] .dialog-note { color: #000; font: 12px/16px var(--m-font); }
+/* one that can be closed is a window: stripes, the close box, its name */
+:root[data-skin="mac84"] .dialog:has(> .dialog-head > .btn[aria-label="Close"]) { padding: 0; box-shadow: 1px 1px 0 #000; }
+:root[data-skin="mac84"] .dialog:has(> .dialog-head > .btn[aria-label="Close"]) > .dialog-head {
+    position: relative;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+    background: var(--m-stripes) 2px 4px / calc(100% - 4px) 11px no-repeat, #fff;
+    background-size: calc(100% - 4px) 11px;
+}
+:root[data-skin="mac84"] .dialog:has(> .dialog-head > .btn[aria-label="Close"]) > .dialog-head > .dialog-title {
+    flex: none;
+    margin: 0 auto;
+    order: 0;
+    height: 19px;
+    padding: 0 9px;
+    background: #fff;
+    line-height: 19px;
+}
+:root[data-skin="mac84"] .dialog:has(> .dialog-head > .btn[aria-label="Close"]) > .dialog-head::after { content: ""; order: 1; flex-basis: 100%; height: 0; border-bottom: 1px solid #000; }
+:root[data-skin="mac84"] .dialog-head > .btn[aria-label="Close"] {
+    position: absolute;
+    left: 8px; top: 3px;
+    width: 13px; height: 13px;
+    padding: 0;
+    border: 1px solid #000;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: 0 0 0 2px #fff;
+}
+:root[data-skin="mac84"] .dialog-head > .btn[aria-label="Close"] > svg { display: none; }
+:root[data-skin="mac84"] .dialog-head > .btn[aria-label="Close"]::before { inset: -6px; }
+:root[data-skin="mac84"] .dialog-head > .btn[aria-label="Close"]:active { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' shape-rendering='crispEdges'%3E%3Cpath d='M5.5 0v3M5.5 8v3M0 5.5h3M8 5.5h3M1.5 1.5l2 2M9.5 1.5l-2 2M1.5 9.5l2-2M9.5 9.5l-2-2' stroke='%23000'/%3E%3C/svg%3E") no-repeat center, #fff; }
+:root[data-skin="mac84"] .dialog-head > :not(.dialog-title, .btn[aria-label="Close"]) { order: 2; margin: 10px 12px 0; }
+:root[data-skin="mac84"] .dialog-head > input { flex: 1; }
+
+/* ---- Settings: a window, the pages listed down the left ---- */
+:root[data-skin="mac84"] .dialog.settings-card { width: min(640px, 100%); height: min(540px, 100%); }
+:root[data-skin="mac84"] .settings-nav { width: 150px; gap: 0; padding: 10px; border-right: 1px solid #000; }
+:root[data-skin="mac84"] .settings-nav button {
+    height: 20px;
+    gap: 6px;
+    padding: 0 6px;
+    border-radius: 0;
+    color: #000;
+    font: 12px var(--m-font);
+}
+:root[data-skin="mac84"] .settings-nav button .i { width: 14px; height: 14px; }
+:root[data-skin="mac84"] .settings-nav button:hover { background: none; color: #000; }
+:root[data-skin="mac84"] .settings-nav button[aria-selected="true"] { background: #000; color: #fff; }
+:root[data-skin="mac84"] .settings-body { padding: 10px 16px; }
+:root[data-skin="mac84"] .settings-page-title { margin: 0 0 6px; font: 12px var(--m-font); text-decoration: underline; }
+:root[data-skin="mac84"] .set-group,
+:root[data-skin="mac84"] .settings-page-title + .set-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 0 2px;
+    padding: 0;
+    border: 0;
+    color: #000;
+    font: 12px var(--m-font);
+}
+:root[data-skin="mac84"] .set-group::after { content: ""; flex: 1; height: 1px; background: #000; }
+:root[data-skin="mac84"] .set-row { min-height: 0; padding: 4px 0 4px 6px; gap: 14px; }
+:root[data-skin="mac84"] .set-label { font-weight: 400; }
+:root[data-skin="mac84"] .set-label small,
+:root[data-skin="mac84"] .set-help { color: #000; font: 12px/15px var(--m-font); }
+:root[data-skin="mac84"] .set-row.unavailable :is(.seg, .cv-seg) { opacity: 1; }
+:root[data-skin="mac84"] .set-row.unavailable :is(.seg, .cv-seg) > label > span { color: transparent; background: var(--m-grey); -webkit-background-clip: text; background-clip: text; }
+:root[data-skin="mac84"] .set-range output { color: #000; }
+:root[data-skin="mac84"] .theme-gallery { gap: 6px; padding: 6px; border: 1px solid #000; }
+:root[data-skin="mac84"] .theme-card { padding: 4px; border: 0; border-radius: 0; background: none; }
+:root[data-skin="mac84"] .theme-shot { border-radius: 0; box-shadow: 0 0 0 1px #000; filter: grayscale(1) contrast(1.2); }
+:root[data-skin="mac84"] .theme-card.active .theme-shot { outline: 0; box-shadow: 0 0 0 1px #000, 0 0 0 3px #fff, 0 0 0 4px #000; }
+:root[data-skin="mac84"] .theme-name { font: 12px var(--m-font); }
+:root[data-skin="mac84"] .theme-card.active .theme-name { align-self: flex-start; padding: 0 3px; background: #000; color: #fff; }
+:root[data-skin="mac84"] .theme-card.active .theme-name small { color: #fff; }
+:root[data-skin="mac84"] .theme-name small { color: #000; font-size: 12px; }
+:root[data-skin="mac84"] .theme-dot { border-radius: 50%; box-shadow: 0 0 0 1px #000; }
+:root[data-skin="mac84"] .customize-list { border: 1px solid #000; border-radius: 0; }
+:root[data-skin="mac84"] .customize-list li { border-radius: 0; }
+
+/* ---- Lists inside the dialogs: a box, the chosen line inverted ---- */
+:root[data-skin="mac84"] .whatsnew-list,
+:root[data-skin="mac84"] .rename-preview,
+:root[data-skin="mac84"] .blank-presets,
+:root[data-skin="mac84"] .fp-list,
+:root[data-skin="mac84"] .blank-preview { border: 1px solid #000; border-radius: 0; background: #fff; }
+:root[data-skin="mac84"] .whatsnew-list { padding: 8px 12px; }
+:root[data-skin="mac84"] .whatsnew-list section { border-color: #000; }
+:root[data-skin="mac84"] :is(.whatsnew-list, .shortcuts-list) h4,
+:root[data-skin="mac84"] .blank-group,
+:root[data-skin="mac84"] .recents-title { color: #000; font: 12px var(--m-font); text-decoration: underline; }
+:root[data-skin="mac84"] .wn-tag { border: 1px solid #000; border-radius: 0; background: #fff; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .wn-tag.current { background: #000; color: #fff; }
+:root[data-skin="mac84"] .wn-date { color: #000; }
+:root[data-skin="mac84"] .rename-token { border: 1px solid #000; border-radius: 6px; background: #fff; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .rename-token:active { background: #000; color: #fff; }
+:root[data-skin="mac84"] :is(.ex-item, .blank-preset, .perm-row, .fp-row) { border-radius: 0; color: #000; }
+:root[data-skin="mac84"] :is(.ex-item, .blank-preset, .fp-row):hover { background: none; }
+:root[data-skin="mac84"] :is(.ex-item:has(input:checked), .blank-preset.on, .fp-row.hi) { background: #000; color: #fff; box-shadow: none; }
+:root[data-skin="mac84"] :is(.ex-item:has(input:checked), .blank-preset.on, .fp-row.hi) :is(small, span, i, b, .fp-meta) { color: #fff; }
+:root[data-skin="mac84"] .fp-row.disabled { color: #000; opacity: 0.5; }
+:root[data-skin="mac84"] .fp-list { margin: 0 12px; }
+:root[data-skin="mac84"] .fp-filter-wrap { padding: 10px 12px 6px; }
+:root[data-skin="mac84"] .fp-row { min-height: 18px; }
+:root[data-skin="mac84"] .fp-meta,
+:root[data-skin="mac84"] .ex-lead,
+:root[data-skin="mac84"] .rename-summary,
+:root[data-skin="mac84"] .rename-note { color: #000; }
+
+/* ---- Info and Undo history: small windows ---- */
+:root[data-skin="mac84"] .popover {
+    padding: 0 0 8px;
+    border: 1px solid #000;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: 1px 1px 0 #000;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    color: #000;
+}
+:root[data-skin="mac84"] .popover .section-label {
+    display: flex;
+    justify-content: center;
+    height: 19px;
+    margin: 0 0 8px;
+    border-bottom: 1px solid #000;
+    background: var(--m-stripes) 2px 4px / calc(100% - 4px) 11px no-repeat, #fff;
+    color: #000;
+    font: 12px/19px var(--m-font);
+    letter-spacing: 0;
+    text-transform: none;
+}
+:root[data-skin="mac84"] .popover .section-label::first-line { background: #fff; }
+:root[data-skin="mac84"] .popover > :not(.section-label) { margin-left: 10px; margin-right: 10px; }
+:root[data-skin="mac84"] .popover :is(dt, dd, .history-foot, .history-hint) { color: #000; font: 12px/16px var(--m-font); }
+
+/* ---- The start page ---- */
+:root[data-skin="mac84"] .drop-zone { background: #fff; }
+:root[data-skin="mac84"] .start-icon { image-rendering: pixelated; filter: grayscale(1) contrast(3); }
+:root[data-skin="mac84"] .start-title { font: 24px var(--m-font); letter-spacing: 0; }
+:root[data-skin="mac84"] :is(.start-tagline, .drop-hint, .start-in-label) { color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .start-open { height: 22px; }
+:root[data-skin="mac84"] .start-foot .link-btn kbd { display: none; }
+:root[data-skin="mac84"] .start-dot { background: #000; }
+:root[data-skin="mac84"] .recent-list button { border-radius: 0; color: #000; }
+:root[data-skin="mac84"] .recent-list button:hover { background: #000; color: #fff; }
+:root[data-skin="mac84"] .recent-list :is(svg, .i) { color: inherit; }
+
+/* The task pill and the note's button */
+:root[data-skin="mac84"] .task-pill { border: 1px solid #000; border-radius: 0; background: #fff; box-shadow: 1px 1px 0 #000; color: #000; backdrop-filter: none; -webkit-backdrop-filter: none; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .task-pill h2 { font: 12px var(--m-font); }
+:root[data-skin="mac84"] .loader-spinner,
+:root[data-skin="mac84"] .task-spinner,
+:root[data-skin="mac84"] .toast-spinner { border-color: #000; border-top-color: #fff; }
+:root[data-skin="mac84"] .toast-action { height: 20px; margin-left: 10px; padding: 0 10px; border: 1px solid #000; border-radius: 7px; background: #fff; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .toast-action:hover { background: #fff; }
+:root[data-skin="mac84"] .toast-action:active { background: #000; color: #fff; transform: none; }
+
+/* ---- The scan window: a window of its own, stripes and a close box ---- */
+:root[data-skin="mac84"] .scan-dock { border: 1px solid #000; border-radius: 0; background: #fff; box-shadow: 1px 1px 0 #000; }
+:root[data-skin="mac84"] .scan-dock-head {
+    position: relative;
+    justify-content: center;
+    height: 20px;
+    padding: 0 6px 0 28px;
+    border-bottom: 1px solid #000;
+    background: var(--m-stripes) 2px 4px / calc(100% - 4px) 11px no-repeat, #fff;
+}
+:root[data-skin="mac84"] .scan-dock-title { flex: none; margin: 0 auto; padding: 0 9px; background: #fff; font: 12px/19px var(--m-font); }
+:root[data-skin="mac84"] .scan-dock-head #scan-x { position: absolute; left: 8px; top: 3px; width: 13px; height: 13px; padding: 0; border: 1px solid #000; border-radius: 0; background: #fff; box-shadow: 0 0 0 2px #fff; }
+:root[data-skin="mac84"] .scan-dock-head #scan-x > svg { display: none; }
+:root[data-skin="mac84"] .scan-dock-head :is(#scan-min, #scan-details) { width: 18px; height: 14px; border: 1px solid #000; border-radius: 0; background: #fff; box-shadow: 0 0 0 2px #fff; }
+:root[data-skin="mac84"] .scan-dock-head :is(#scan-min, #scan-details) > svg { width: 11px; height: 11px; }
+:root[data-skin="mac84"] .scan-sec { gap: 6px; padding: 8px 10px; }
+:root[data-skin="mac84"] .scan-sec + :is(.scan-sec, .scan-adv) { border-top: 1px solid #000; }
+:root[data-skin="mac84"] .scan-sec-head { color: #000; font: 12px var(--m-font); letter-spacing: 0; text-transform: none; text-decoration: underline; }
+:root[data-skin="mac84"] .scan-hint { color: #000; font: 12px/15px var(--m-font); }
+:root[data-skin="mac84"] .scan-dock-foot { justify-content: flex-end; gap: 12px; padding: 8px 10px; border-top: 1px solid #000; border-radius: 0; background: #fff; }
+
+/* A dialog taller than the window: its list scrolls; the head and the foot keep their size */
+:root[data-skin="mac84"] :is(.dialog-head, .dialog-foot, .shortcuts-profiles, .settings-nav) { flex: none; }
+
+/* ---- The rest of the toolbar's buttons: any of them can be put on it ---- */
+:root[data-skin="mac84"] #btn-scan { background-image: url(px/scan.png); }
+:root[data-skin="mac84"] #btn-camera { background-image: url(px/camera.png); }
+:root[data-skin="mac84"] #btn-adjust { background-image: url(px/adjust.png); }
+:root[data-skin="mac84"] #btn-paint { background-image: url(px/paint.png); }
+:root[data-skin="mac84"] #btn-dupes { background-image: url(px/dupes.png); }
+:root[data-skin="mac84"] #btn-fullscreen { background-image: url(px/fullscreen.png); }
+:root[data-skin="mac84"] #btn-shortcuts { background-image: url(px/keys.png); }
+:root[data-skin="mac84"] #btn-whatsnew { background-image: url(px/whatsnew.png); }
+:root[data-skin="mac84"] #btn-customize { background-image: url(px/settings.png); }
+:root[data-skin="mac84"] #btn-toggle-fit { background-image: url(px/fit.png); }
+:root[data-skin="mac84"] #btn-toggle-strip { background-image: url(px/strip.png); }
+
+/* A button with a second, smaller line (Export: USB drive · disc · copies) grows to hold it */
+:root[data-skin="mac84"] .btn:has(> small) { height: auto; min-height: 22px; padding-top: 2px; padding-bottom: 2px; flex-wrap: wrap; white-space: normal; }
+
+/* ---- Convert (convert.js) ----
+   One bit: Format and The originals are radio buttons (the .seg rules
+   above); the quality slides over the grey of dots; storage is black for
+   what's left and hatched for what's freed (a barber pole while it's
+   worked out); the photos converting are cells, black when done. The
+   close-ups stay in colour, as the photo does */
+:root[data-skin="mac84"] .cv-card { --success: #000; --danger: #000; --accent: #000; --warning-text: #000; }
+:root[data-skin="mac84"] .cv-seg > button small { color: #000; font-size: 12px; }
+:root[data-skin="mac84"] .cv-slider input[type="range"] { width: 100%; }
+:root[data-skin="mac84"] .cv-slider input[type="range"]::-webkit-slider-runnable-track { border: 0; background: transparent; box-shadow: none; }
+:root[data-skin="mac84"] .cv-track { top: 10px; height: 8px; border: 1px solid #000; border-radius: 0; background: var(--m-grey); opacity: 1; }
+:root[data-skin="mac84"] .cv-sugg { width: 1px; background: #000; }
+:root[data-skin="mac84"] .cv-sugg span { color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] :is(.cv-bar, .cv-mini) { border: 1px solid #000; border-radius: 0; background: #fff; }
+:root[data-skin="mac84"] :is(.cv-bar, .cv-mini) > i { border-radius: 0; }
+:root[data-skin="mac84"] .cv-now { background: var(--m-grey); }
+:root[data-skin="mac84"] .cv-after-bar { background: #000; }
+:root[data-skin="mac84"] .cv-saved { border: 0; border-left: 1px solid #000; border-radius: 0 !important; background: repeating-linear-gradient(135deg, #000 0 1px, #fff 1px 4px); }
+:root[data-skin="mac84"] .cv-savedtag { padding: 0 4px; margin-left: 6px; background: #fff; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .cv-working { background: repeating-linear-gradient(135deg, #000 0 4px, #fff 4px 8px) 0 0 / 22.6px 22.6px; animation: m84-pole 0.8s steps(4) infinite; }
+@keyframes m84-pole { to { background-position: 22.6px 0; } }
+:root[data-skin="mac84"] .cv-folders { border: 1px solid #000; border-radius: 0; }
+:root[data-skin="mac84"] .cv-folder + .cv-folder { border-top-color: #000; }
+:root[data-skin="mac84"] :is(.cv-folder small, .cv-folder .s, .cv-ends, .cv-lead, .cv-h, .cv-big .lab, .cv-total-line, .cv-run-row) { color: #000; }
+:root[data-skin="mac84"] .cv-tile { border: 1px solid #000; border-radius: 0; }
+:root[data-skin="mac84"] .cv-tile .cap { border: 1px solid #000; border-radius: 0; background: #fff; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .cv-dots { gap: 3px; }
+:root[data-skin="mac84"] .cv-dots i { border-radius: 0; opacity: 1; background: #fff !important; box-shadow: inset 0 0 0 1px #000; }
+:root[data-skin="mac84"] .cv-dots i.p { background: var(--m-grey) !important; }
+:root[data-skin="mac84"] .cv-dots i.d { background: #000 !important; }
+:root[data-skin="mac84"] .cv-dots i.f { background: repeating-linear-gradient(135deg, #000 0 1px, #fff 1px 3px) !important; }
+:root[data-skin="mac84"] .cv-dots i.now { box-shadow: inset 0 0 0 3px #000; }
+:root[data-skin="mac84"] .cv-run-row b { color: #000; font: 24px var(--m-font); }
+:root[data-skin="mac84"] .cv-grown { border: 0; border-left: 1px solid #000; border-radius: 0 !important; background: repeating-linear-gradient(45deg, #000 0 1px, #fff 1px 4px); }

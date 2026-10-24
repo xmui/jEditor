@@ -15,6 +15,7 @@
     <script src="version.js"></script>
     <script src="changelog.js"></script>
     <script src="meta.js"></script>
+    <script src="codec.js"></script>
     <script src="host.js"></script>
     <script src="wheel.js"></script>
     <script src="folder-cache.js"></script>
@@ -43,6 +44,8 @@
     <script src="updates.js"></script>
     <script src="experiments.js"></script>
     <script src="logview.js"></script>
+    <script src="upright-model.js"></script>
+    <script src="upright.js"></script>
     <script src="scan-preview.js"></script>
     <script src="scan.js"></script>
     <script src="camera.js"></script>
@@ -50,8 +53,10 @@
     <script src="import.js"></script>
     <script src="blank.js"></script>
     <script src="modes.js"></script>
+    <script src="themes.js"></script>
     <script src="disc.js"></script>
     <script src="export.js"></script>
+    <script src="convert.js"></script>
     <script src="windows.js"></script>
     <script src="start.js"></script>
     <script src="picked.js"></script>
@@ -678,16 +683,21 @@
                 <div class="dialog-body settings-body">
                     <section id="set-page-appearance" class="settings-section" data-page="appearance" role="tabpanel" aria-labelledby="set-h-appearance">
                         <h3 id="set-h-appearance" class="settings-page-title">Appearance</h3>
+                        <!-- Themes (themes.js): in the apps, an experiment for now -->
+                        <h4 class="set-group set-themes-part hidden">Theme</h4>
+                        <div id="set-themes" class="theme-gallery set-themes-part hidden" role="radiogroup" aria-label="Theme"></div>
+                        <div id="set-theme-settings" class="set-themes-part hidden"></div>
                         <h4 class="set-group">Color</h4>
-                        <div class="set-row">
-                            <span class="set-label" id="set-theme-label">Theme</span>
+                        <div class="set-row" id="set-theme-row">
+                            <span class="set-label" id="set-theme-label"><span id="set-theme-name">Theme</span>
+                                <small id="set-theme-decided" class="hidden">The theme chosen above decides this</small></span>
                             <div class="seg" role="radiogroup" aria-labelledby="set-theme-label">
                                 <label><input type="radio" name="set-theme" value="dark"><span>Dark</span></label>
                                 <label><input type="radio" name="set-theme" value="light"><span>Light</span></label>
                                 <label><input type="radio" name="set-theme" value="system"><span>Match system</span></label>
                             </div>
                         </div>
-                        <div class="set-row">
+                        <div class="set-row set-own-look">
                             <span class="set-label" id="set-accent-label">Accent color</span>
                             <div id="cust-accent" class="accent-swatches" role="radiogroup" aria-labelledby="set-accent-label">
                                 <button data-accent="#2563eb" title="Blue" aria-label="Blue" role="radio" style="--sw:#2563eb"></button>
@@ -712,8 +722,8 @@
                                 <label><input type="radio" name="set-surround" value="light"><span>Light</span></label>
                             </div>
                         </div>
-                        <h4 class="set-group" data-needs="backdrop">Window</h4>
-                        <div id="set-backdrop-row" class="set-row" data-needs="backdrop">
+                        <h4 class="set-group set-own-look" data-needs="backdrop">Window</h4>
+                        <div id="set-backdrop-row" class="set-row set-own-look" data-needs="backdrop">
                             <span class="set-label" id="set-backdrop-label">Window background
                                 <small id="set-backdrop-help">Your desktop shows softly through jEditor, like the Start menu. Photos stay solid.</small></span>
                             <div class="seg" role="radiogroup" aria-labelledby="set-backdrop-label">
@@ -722,7 +732,7 @@
                                 <label><input type="radio" name="set-backdrop" value="acrylic"><span>Acrylic</span></label>
                             </div>
                         </div>
-                        <div id="set-transparency-row" class="set-row" data-needs="backdrop">
+                        <div id="set-transparency-row" class="set-row set-own-look" data-needs="backdrop">
                             <label class="set-label" for="cust-transparency">Transparency
                                 <small>How much of the window background shows through</small></label>
                             <span class="set-range">
@@ -730,8 +740,8 @@
                                 <output id="cust-transparency-out" for="cust-transparency">50%</output>
                             </span>
                         </div>
-                        <h4 class="set-group">Look</h4>
-                        <div class="set-row">
+                        <h4 class="set-group set-own-look">Look</h4>
+                        <div class="set-row set-own-look">
                             <span class="set-label" id="set-glass-label">Glass
                                 <small>Subtle is faster on older computers. Off: solid, nothing shows through</small></span>
                             <div class="seg" role="radiogroup" aria-labelledby="set-glass-label">
@@ -740,14 +750,14 @@
                                 <label><input type="radio" name="set-glass" value="off"><span>Off</span></label>
                             </div>
                         </div>
-                        <div class="set-row">
+                        <div class="set-row set-own-look">
                             <span class="set-label" id="set-density-label">Density</span>
                             <div class="seg" role="radiogroup" aria-labelledby="set-density-label">
                                 <label><input type="radio" name="set-density" value="compact"><span>Compact</span></label>
                                 <label><input type="radio" name="set-density" value="comfortable"><span>Comfortable</span></label>
                             </div>
                         </div>
-                        <div class="set-row">
+                        <div class="set-row set-own-look">
                             <label class="set-label" for="cust-scale">Toolbar size</label>
                             <span class="set-range">
                                 <input type="range" id="cust-scale" min="0.8" max="1.6" step="0.1" value="1">
@@ -770,7 +780,7 @@
                             <input type="checkbox" id="cust-debug" class="switch">
                         </div>
                         <h4 class="set-group">Layout</h4>
-                        <div class="set-row">
+                        <div class="set-row set-own-look">
                             <label class="set-label" for="cust-vertical">Vertical toolbar</label>
                             <input type="checkbox" id="cust-vertical" class="switch">
                         </div>
@@ -970,6 +980,26 @@
                 <span class="dialog-actions">
                     <button id="ex-cancel" class="btn secondary">Cancel</button>
                     <button id="ex-go" class="btn primary">Export</button>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Convert (convert.js) -->
+    <div id="cv-panel" class="dialog-overlay hidden">
+        <div class="dialog cv-card" role="dialog" aria-modal="true" aria-labelledby="cv-title">
+            <div class="dialog-head">
+                <h2 id="cv-title" class="dialog-title">Convert</h2>
+                <button id="cv-close" class="btn ghost icon" title="Close (Esc)" aria-label="Close">
+                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+            <div id="cv-body" class="dialog-body cv-body"></div>
+            <div class="dialog-foot">
+                <span id="cv-note" class="dialog-note" aria-live="polite"></span>
+                <span class="dialog-actions">
+                    <button id="cv-cancel" class="btn secondary">Cancel</button>
+                    <button id="cv-go" class="btn primary">Convert</button>
                 </span>
             </div>
         </div>
@@ -1254,6 +1284,11 @@
                             <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
                             <span>Auto crop<small>jEditor finds each print and crops to it.</small></span>
                             <input id="scan-autocrop" type="checkbox" class="switch">
+                        </label>
+                        <label class="scan-switch" for="scan-upright">
+                            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+                            <span>Turn upright<small>Turns each photo the right way up, when it's sure.</small></span>
+                            <input id="scan-upright" type="checkbox" class="switch">
                         </label>
                         <label class="scan-switch" for="scan-show">
                             <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>

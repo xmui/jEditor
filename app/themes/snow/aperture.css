@@ -1,0 +1,222 @@
+/* ==========================================================================
+   Snow Leopard, Aperture: jEditor as a pro app of 2010, the Aperture 3 kind.
+   Same Cocoa parts as Finder, all in dark graphite: a dark unified toolbar
+   with smoky capsules, an inspector with its tab, a near-black browser where
+   the chosen photos get a white frame. Builds on finder.css.
+   ========================================================================== */
+
+:root[data-skin="snow"] {
+    color-scheme: dark;
+    --text-1: #e6e6e6;
+    --ap-bar: linear-gradient(180deg, #4a4a4a, #383838 50%, #2e2e2e);
+    --dock-bot-bg: linear-gradient(180deg, #3e3e3e, #2b2b2b);
+    --dock-bot-line: 1px solid #0d0d0d;
+}
+:root[data-skin="snow"] body { background: #262626; color: #e6e6e6; }
+
+/* ---- Dark title bar and toolbar ---- */
+:root[data-skin="snow"] #th-titlebar { background: linear-gradient(180deg, #5a5a5a, #4b4b4b); box-shadow: inset 0 1px 0 #6e6e6e; color: #e8e8e8; }
+:root[data-skin="snow"] .th-title { text-shadow: 0 -1px 0 rgb(0 0 0 / 0.6); }
+:root[data-skin="snow"] header { background: linear-gradient(180deg, #4b4b4b, #3a3a3a 55%, #2f2f2f); border-bottom: 1px solid #0d0d0d; }
+:root[data-skin="snow"] .tb-btn { color: #d6d6d6; text-shadow: 0 -1px 0 rgb(0 0 0 / 0.7); }
+:root[data-skin="snow"] .sort-control::after { color: #d6d6d6; text-shadow: 0 -1px 0 #000; }
+:root[data-skin="snow"] .sort-control select {
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='11'%3E%3Cpath d='M0 4l3.5-4L7 4zM0 7l3.5 4L7 7z' fill='%23eee'/%3E%3C/svg%3E") no-repeat right 8px center,
+        linear-gradient(180deg, #6a6a6a, #4e4e4e 50%, #444 52%, #3a3a3a);
+    box-shadow: inset 0 0 0 1px #1a1a1a, inset 0 1px 0 rgb(255 255 255 / 0.18);
+    color: #eee;
+}
+
+/* ---- The filter bar ---- */
+:root[data-skin="snow"] .folder-bar { background: linear-gradient(180deg, #353535, #2a2a2a); border-bottom: 1px solid #0d0d0d; box-shadow: inset 0 1px 0 #444; }
+:root[data-skin="snow"] .fb-modes::before { color: #bbb; text-shadow: 0 -1px 0 #000; }
+:root[data-skin="snow"] .fb-modes button { color: #cfcfcf; text-shadow: 0 -1px 0 #000; }
+:root[data-skin="snow"] .fb-modes button.active { background: rgb(255 255 255 / 0.16); box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.7), 0 1px 0 rgb(255 255 255 / 0.1); }
+:root[data-skin="snow"] .fb-search { background-color: #1e1e1e; box-shadow: inset 0 0 0 1px #0d0d0d, inset 0 1px 2px rgb(0 0 0 / 0.6), 0 1px 0 rgb(255 255 255 / 0.1); }
+:root[data-skin="snow"] .fb-search input { color: #eee; }
+
+/* ---- The inspector, with its tabs ---- */
+:root[data-skin="snow"] .folder-rail { background: #343434; border-right: 1px solid #0d0d0d; color: #e0e0e0; }
+:root[data-skin="snow"] .folder-rail::before {
+    content: "Library";
+    flex: none;
+    display: flex;
+    align-items: center;
+    height: 26px;
+    padding: 0 10px;
+    background:
+        linear-gradient(180deg, #5c5c5c, #444) 6px 4px / 56px 18px no-repeat,
+        linear-gradient(180deg, #2f2f2f, #262626);
+    border-bottom: 1px solid #0d0d0d;
+    color: #e6e6e6;
+    font: 11px var(--sl-font);
+    text-shadow: 0 -1px 0 #000;
+    white-space: pre;
+}
+:root[data-skin="snow"] .sb-scroll { padding-top: 4px; }
+:root[data-skin="snow"] .folder-tree::before { content: "PROJECTS"; color: #8f8f8f; text-shadow: 0 -1px 0 #000; }
+:root[data-skin="snow"] .fr-row { color: #dcdcdc; }
+:root[data-skin="snow"] .fr-row.active { background: linear-gradient(180deg, #5a76a6, #3c5788); border-top-color: #6683b3; }
+:root[data-skin="snow"] .fr-count { background: #565656; color: #ddd; }
+:root[data-skin="snow"] .fr-row.active .fr-count { background: #e8e8e8; color: #3c5788; }
+:root[data-skin="snow"] .fr-foot { border-top: 1px solid #0d0d0d; background: var(--dock-bot-bg); }
+:root[data-skin="snow"] .fr-new { border-right-color: #1a1a1a; box-shadow: 1px 0 0 rgb(255 255 255 / 0.08); color: #ddd; }
+:root[data-skin="snow"] .fr-new::after,
+:root[data-skin="snow"] .fr-total { color: #ccc; text-shadow: 0 -1px 0 #000; }
+
+/* ---- The browser: near black, white frames for the chosen ---- */
+:root[data-skin="snow"] .grid-view { background: #222; gap: 12px 18px; }
+:root[data-skin="snow"] .grid-item img { padding: 9px; border-radius: 3px; filter: none; }
+:root[data-skin="snow"] .grid-item::after { color: #a8a8a8; font-size: 11px; }
+:root[data-skin="snow"] .grid-item.selected img { background: none !important; box-shadow: none; filter: drop-shadow(2px 0 0 #fff) drop-shadow(-2px 0 0 #fff) drop-shadow(0 2px 0 #fff) drop-shadow(0 -2px 0 #fff); }
+:root[data-skin="snow"] .grid-item.active img { filter: drop-shadow(3px 0 0 #fff) drop-shadow(-3px 0 0 #fff) drop-shadow(0 3px 0 #fff) drop-shadow(0 -3px 0 #fff); }
+:root[data-skin="snow"] .grid-item.selected::after { background: none; color: #fff; }
+
+/* ---- The foot bar, dark ---- */
+:root[data-skin="snow"] .sel-count { color: #ddd; text-shadow: 0 -1px 0 #000; }
+:root[data-skin="snow"] .selection-bar .tb-btn.danger { color: #eee; }
+:root[data-skin="snow"] .slider-group > svg { color: #ccc; }
+:root[data-skin="snow"] input[type="range"]::-webkit-slider-runnable-track { background: linear-gradient(180deg, #151515, #2c2c2c); box-shadow: inset 0 1px 1px rgb(0 0 0 / 0.6), 0 1px 0 rgb(255 255 255 / 0.1); }
+
+/* Toast and scroll bars, in the dark */
+:root[data-skin="snow"] .toast { background: rgb(20 20 20 / 0.85); border: 1px solid #555; }
+:root[data-skin="snow"] ::-webkit-scrollbar { background: #222; }
+:root[data-skin="snow"] ::-webkit-scrollbar-track { background: linear-gradient(90deg, #1a1a1a, #2a2a2a); box-shadow: inset 1px 0 0 #111; }
+:root[data-skin="snow"] ::-webkit-scrollbar-thumb {
+    background: linear-gradient(90deg, #7a7a7a, #9a9a9a 45%, #858585 60%, #6a6a6a);
+    background-clip: padding-box;
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.6);
+}
+
+/* Detail pass: the glyphs in light grey, the capsules smoky */
+:root[data-skin="snow"] {
+    --cap: linear-gradient(180deg, #686868, #4f4f4f 48%, #444 52%, #3a3a3a);
+    --cap-edge: inset 0 0 0 1px #151515, inset 0 1px 0 rgb(255 255 255 / 0.16), 0 1px 0 rgb(255 255 255 / 0.07);
+    --cap-in: linear-gradient(180deg, #1f1f1f, #2c2c2c);
+    --cap-in-edge: inset 0 0 0 1px #0d0d0d, inset 0 1px 3px rgb(0 0 0 / 0.6);
+}
+:root[data-skin="snow"] #btn-info { --g: url(../snow/glyphs/info-dark.svg); }
+:root[data-skin="snow"] #btn-toggle-view { --g: url(../snow/glyphs/grid-dark.svg); }
+:root[data-skin="snow"] body[data-view="grid"] #btn-toggle-view { --g: url(../snow/glyphs/photo-dark.svg); }
+:root[data-skin="snow"] #btn-refresh { --g: url(../snow/glyphs/refresh-dark.svg); }
+:root[data-skin="snow"] #btn-crop { --g: url(../snow/glyphs/crop-dark.svg); }
+:root[data-skin="snow"] #btn-history { --g: url(../snow/glyphs/history-dark.svg); }
+:root[data-skin="snow"] #btn-more,
+:root[data-skin="snow"] #btn-export { --g: url(../snow/glyphs/action-dark.svg); }
+:root[data-skin="snow"] #btn-rotate-left-bulk,
+:root[data-skin="snow"] #btn-rotate-left { --g: url(../snow/glyphs/rotl-dark.svg); }
+:root[data-skin="snow"] #btn-rotate-right-bulk,
+:root[data-skin="snow"] #btn-rotate-right { --g: url(../snow/glyphs/rotr-dark.svg); }
+:root[data-skin="snow"] #btn-auto-crop { --g: url(../snow/glyphs/autocrop-dark.svg); }
+:root[data-skin="snow"] #btn-move-to { --g: url(../snow/glyphs/move-dark.svg); }
+:root[data-skin="snow"] #btn-batch-rename { --g: url(../snow/glyphs/rename-dark.svg); }
+:root[data-skin="snow"] #btn-trash { --g: url(../snow/glyphs/trash-dark.svg); }
+:root[data-skin="snow"] #btn-prev { --g: url(../snow/glyphs/prev-dark.svg); }
+:root[data-skin="snow"] #btn-next { --g: url(../snow/glyphs/next-dark.svg); }
+:root[data-skin="snow"] #btn-refresh > svg,
+:root[data-skin="snow"] #btn-rotate-right-bulk > svg { box-shadow: inset -1px 0 0 #151515, inset 0 1px 0 #151515, inset 0 -1px 0 #151515, inset 0 2px 0 rgb(255 255 255 / 0.16); }
+:root[data-skin="snow"] #btn-toggle-view > svg,
+:root[data-skin="snow"] #btn-rotate-left-bulk > svg { box-shadow: var(--cap-edge), inset -1px 0 0 #151515; }
+:root[data-skin="snow"] .selection-bar .tb-btn,
+:root[data-skin="snow"] .selection-bar .tb-btn:hover { background: none !important; box-shadow: none; }
+:root[data-skin="snow"] .sel-count,
+:root[data-skin="snow"] .sel-count::after,
+:root[data-skin="snow"] #selection-count::before { color: #d6d6d6; }
+:root[data-skin="snow"] .slider-group::before { background-image: url(../snow/glyphs/small-dark.svg); }
+:root[data-skin="snow"] .slider-group::after { background-image: url(../snow/glyphs/large-dark.svg); }
+:root[data-skin="snow"] .th-title::before { filter: brightness(1.1); }
+:root[data-skin="snow"] .fr-root::after { border-top-color: #9a9a9a; }
+:root[data-skin="snow"] .fr-count { background: #5a5a5a; }
+:root[data-skin="snow"] ::-webkit-scrollbar-button:single-button { box-shadow: inset 1px 0 0 #111; }
+:root[data-skin="snow"] ::-webkit-scrollbar-button:vertical:decrement { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='5'%3E%3Cpath d='M0 5l3.5-5L7 5z' fill='%23ccc'/%3E%3C/svg%3E") no-repeat center, linear-gradient(90deg, #2a2a2a, #3a3a3a 50%, #2e2e2e); }
+:root[data-skin="snow"] ::-webkit-scrollbar-button:vertical:increment { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='5'%3E%3Cpath d='M0 0l3.5 5L7 0z' fill='%23ccc'/%3E%3C/svg%3E") no-repeat center, linear-gradient(90deg, #2a2a2a, #3a3a3a 50%, #2e2e2e); }
+:root[data-skin="snow"] ::-webkit-scrollbar-track { background: linear-gradient(90deg, #1a1a1a, #2a2a2a); box-shadow: inset 1px 0 0 #111; }
+
+/* ---- Windows, sheets and controls, in graphite (controls.css, modes.css
+   read these) ---- */
+:root[data-skin="snow"] {
+    --sl-face: #353535;
+    --sl-ink: #e6e6e6;
+    --sl-ink-2: #a8a8a8;
+    --sl-emboss: 0 -1px 0 rgb(0 0 0 / 0.7);
+    --sl-btn: linear-gradient(180deg, #6a6a6a 0%, #555 48%, #484848 52%, #4e4e4e 100%);
+    --sl-btn-down: linear-gradient(180deg, #2c2c2c, #3a3a3a);
+    --sl-btn-edge: inset 0 0 0 1px #121212, inset 0 1px 0 rgb(255 255 255 / 0.18), 0 1px 0 rgb(255 255 255 / 0.06);
+    --sl-blue: linear-gradient(180deg, #7fa6dd 0%, #4f7fc6 48%, #3a6bb5 52%, #4f86d1 100%);
+    --sl-blue-edge: inset 0 0 0 1px #0f1d33, inset 0 1px 0 rgb(255 255 255 / 0.25);
+    --sl-field: #1d1d1d;
+    --sl-field-edge: inset 0 0 0 1px #0b0b0b, inset 0 1px 2px rgb(0 0 0 / 0.6), 0 1px 0 rgb(255 255 255 / 0.08);
+    --sl-sheet: #3a3a3a;
+    --sl-line: #222;
+    --sl-tab-on: rgb(0 0 0 / 0.35);
+    --sl-head: #9a9a9a;
+    --sl-knob: radial-gradient(circle at 50% 30%, #f2f2f2 0, #cfcfcf 45%, #8f8f8f 100%);
+    --sl-list: #262626;
+    --sl-titlebar: linear-gradient(180deg, #5a5a5a, #4b4b4b);
+    --sl-toolbar: linear-gradient(180deg, #4b4b4b, #3a3a3a 55%, #2f2f2f);
+    --sl-toolbar-line: #0d0d0d;
+    --sl-inspector: #343434;
+    --sl-tool-glyph: #d6d6d6;
+    --sl-glyph-emboss: drop-shadow(0 -1px 0 rgb(0 0 0 / 0.7));
+    --sl-bar: linear-gradient(180deg, #3e3e3e, #2b2b2b);
+    --bg-raised: #1d1d1d;
+    --bg-sunken: #1d1d1d;
+    --bg-hover: rgb(255 255 255 / 0.06);
+    --bg-selected: #3c5788;
+    --accent-soft: #3c5788;
+    --accent-text: #8fb3ef;
+    --border-input: #0b0b0b;
+    --text-2: #b4b4b4;
+    --text-3: #8c8c8c;
+    --text-disabled: #6a6a6a;
+}
+:root[data-skin="snow"] :is(.btn.primary) { color: #fff; }
+:root[data-skin="snow"] :is(input[type="checkbox"], input.switch):checked {
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='9'%3E%3Cpath d='M1 4.6l2.6 2.8L9 1' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E") no-repeat 3px 2px,
+        var(--sl-blue);
+}
+:root[data-skin="snow"] input[type="radio"]:checked { background: radial-gradient(circle, #fff 0 2.4px, transparent 3px), var(--sl-blue); }
+:root[data-skin="snow"] .seg > :is(button.active, button[aria-selected="true"], button[aria-checked="true"], button.on),
+:root[data-skin="snow"] .seg > label > input:checked + span { color: #fff; }
+:root[data-skin="snow"] select.field,
+:root[data-skin="snow"] .dialog select { color: #eee; }
+:root[data-skin="snow"] input[type="range"]::-webkit-slider-runnable-track,
+:root[data-skin="snow"] .adj-range::-webkit-slider-runnable-track,
+:root[data-skin="snow"] .crop-straighten input[type="range"]::-webkit-slider-runnable-track { background: linear-gradient(180deg, #151515, #2c2c2c); box-shadow: inset 0 1px 1px rgb(0 0 0 / 0.6), 0 1px 0 rgb(255 255 255 / 0.1); }
+:root[data-skin="snow"] .link-btn { color: #8fb3ef; }
+:root[data-skin="snow"] .settings-nav { border-bottom-color: #0d0d0d; }
+:root[data-skin="snow"] .settings-nav button .i { filter: drop-shadow(0 -1px 0 rgb(0 0 0 / 0.7)); }
+:root[data-skin="snow"] .dialog:is(.settings-card, .whatsnew-card, .shortcuts-card) > .dialog-head { box-shadow: inset 0 1px 0 #6e6e6e, inset 0 -1px 0 #0d0d0d; }
+:root[data-skin="snow"] .customize-list li:nth-child(even),
+:root[data-skin="snow"] .paint-layer:nth-child(even) { background: rgb(255 255 255 / 0.04); }
+:root[data-skin="snow"] .drop-zone { background: linear-gradient(180deg, #3a3a3a, #262626); }
+:root[data-skin="snow"] .start-title { color: #eee; }
+:root[data-skin="snow"] .mode-chip .mode-chev { filter: invert(1); }
+:root[data-skin="snow"] .adj-sec > summary > span:first-child::before { border-left-color: #b5b5b5; }
+:root[data-skin="snow"] .adj-sec,
+:root[data-skin="snow"] .paint-sec { box-shadow: 0 1px 0 rgb(255 255 255 / 0.06); }
+:root[data-skin="snow"] .adj-look[aria-pressed="true"] { background: rgb(255 255 255 / 0.1); }
+:root[data-skin="snow"] .paint-options { background: linear-gradient(180deg, #353535, #2a2a2a); border-bottom-color: #0d0d0d; box-shadow: inset 0 1px 0 #444; }
+:root[data-skin="snow"] .paint-tools { background: linear-gradient(90deg, #2f2f2f, #282828); border-right-color: #0d0d0d; box-shadow: inset -1px 0 0 rgb(255 255 255 / 0.05); }
+:root[data-skin="snow"] .paint-tool-sep { background: #111; box-shadow: 0 1px 0 rgb(255 255 255 / 0.07); }
+:root[data-skin="snow"] .paint-tool:hover,
+:root[data-skin="snow"] .paint-tool[aria-pressed="true"] { color: #fff; }
+:root[data-skin="snow"] :is(.mode-head-acts, .crop-row) .btn.ghost:disabled { color: rgb(255 255 255 / 0.4); text-shadow: none; }
+:root[data-skin="snow"] .adj-panel,
+:root[data-skin="snow"] .paint-panel { border-left-color: #0d0d0d; }
+:root[data-skin="snow"] .mode-strip { background: #262626; border-top-color: #0d0d0d; }
+
+/* the rest of the toolbar's buttons, in light grey */
+:root[data-skin="snow"] #btn-scan { --g: url(../snow/glyphs/scan-dark.svg); }
+:root[data-skin="snow"] #btn-camera { --g: url(../snow/glyphs/camera-dark.svg); }
+:root[data-skin="snow"] #btn-adjust { --g: url(../snow/glyphs/adjust-dark.svg); }
+:root[data-skin="snow"] #btn-paint { --g: url(../snow/glyphs/paint-dark.svg); }
+:root[data-skin="snow"] #btn-dupes { --g: url(../snow/glyphs/dupes-dark.svg); }
+:root[data-skin="snow"] #btn-fullscreen { --g: url(../snow/glyphs/fullscreen-dark.svg); }
+:root[data-skin="snow"] #btn-shortcuts { --g: url(../snow/glyphs/keys-dark.svg); }
+:root[data-skin="snow"] #btn-whatsnew { --g: url(../snow/glyphs/whatsnew-dark.svg); }
+:root[data-skin="snow"] #btn-customize { --g: url(../snow/glyphs/settings-dark.svg); }
+:root[data-skin="snow"] #btn-toggle-fit { --g: url(../snow/glyphs/fit-dark.svg); }
+:root[data-skin="snow"] #btn-toggle-strip { --g: url(../snow/glyphs/strip-dark.svg); }

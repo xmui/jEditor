@@ -16,12 +16,22 @@ Changes are saved to the original files as you go.
 
 **Settings** (the gear in the toolbar's **More** section, the link on the start screen, or `Ctrl+,`) has a page for each kind of setting, chosen on the left; it opens on the last one you used.
 
-- **Appearance**: the theme (dark, light or match the system), the accent color and the color behind photos (black, gray or light, for judging color); on Windows 11 (22H2 or later), **Window background** puts Mica or Acrylic behind jEditor, like the Start menu, and **Transparency** sets how much of the desktop shows through (photos, Crop and Duplicates stay solid; it needs Windows' Transparency effects on, in Settings → Personalization → Colors); then glass (Rich, or Subtle, which is faster on older computers), density and toolbar size.
+- **Appearance**: in the Windows app, a **theme** (an experiment for now, on in betas: see [Themes](#themes)); the theme (dark, light or match the system), the accent color and the color behind photos (black, gray or light, for judging color); on Windows 11 (22H2 or later), **Window background** puts Mica or Acrylic behind jEditor, like the Start menu, and **Transparency** sets how much of the desktop shows through (photos, Crop and Duplicates stay solid; it needs Windows' Transparency effects on, in Settings → Personalization → Colors); then glass (Rich, or Subtle, which is faster on older computers), density and toolbar size.
 - **Toolbar & keys**: keyboard shortcuts and their profiles, a vertical toolbar, the buttons above the film strip, and which buttons are in the toolbar.
 - **Messages**: which messages pop up after you do something.
 - **Auto crop**: keeping test scans to improve Auto crop, how many are kept, and exporting, recovering or clearing them.
 - **Projects**: watching the folder for changes, the thumbnail cache, stored projects and cleaning up the open one.
 - **Updates**: checking for updates, and the log.
+
+## Themes
+
+In the Windows app, **Settings → Appearance → Theme** makes jEditor look like an app of another time: the same jEditor, laid out the way that era's apps were, with its own title bar and a menu bar. It's an experiment for now (Settings → Experimental; betas have it on).
+
+- **Windows XP**, in **Royale**, **Royale Noir** and **Royale Red** (the dots on its card): an Office 2003 program, with command bars, a task pane each side and a menu bar.
+- **Snow Leopard**, as **Finder** (light) or **Aperture** (dark): one toolbar with the labels under its buttons, a source list and a foot bar.
+- **1984**: the first Macintosh, in one bit. Its **Thumbnails** setting shows the grid dithered to one bit (as MacPaint did), in black and white, or in colour; the photo you open is always in colour.
+
+The menu bar's menus have jEditor's commands, with their keys. The title bar moves the window, a double-click maximises it, and its buttons minimise, maximise and close it. Adjust and Paint are in the toolbar's ⋯ (or More), the Picture menu, and `E` and `B`. Light or dark is the theme's, and so are the accent colour, glass, density and toolbar size: Settings leaves them out while a theme is on. The whole app wears it: the dialogs and Settings, Crop, Adjust and Paint (with their own tool icons), the scan window and every toolbar button. A toolbar with more buttons than fit wraps onto a second row. **jEditor** at the start of the gallery goes back to jEditor's own look.
 
 ## Watching the folder
 
@@ -51,7 +61,8 @@ Flags are kept with the order, in `.jeditor/flags.json`, so they follow renames 
 - **Rename.** Files are renamed in place. If the new names overlap the old ones (shifting a numbered sequence, say), they go through temporary names first. If a rename fails part-way, every file gets its original name back.
 - **Delete.** Photos are moved to `.jeditor/trash` inside the opened folder, not deleted. `Ctrl+Z` restores them.
 - **Move to a folder.** Photos are moved on disk, which is a rename and instant even for big scans; where a file can't be moved it's copied and the original removed. A copy is a byte-for-byte duplicate. Cached thumbnails and previews follow the photo, so moving doesn't make them again.
-- **Export.** Copies go to a `jEditor Export` folder (or onto a USB drive, or a folder you choose), optionally resized, with any adjustments and edits not saved yet.
+- **Export.** Copies go to a `jEditor Export` folder (or onto a USB drive, or a folder you choose), optionally resized or in another format, with any adjustments and edits not saved yet.
+- **Convert.** Each photo is written again as AVIF, JPEG XL or WebP, upright and in sRGB, with its EXIF (orientation reset, the old thumbnail dropped; the colour profile isn't kept, as the pixels are sRGB now). Replacing puts the original in the Recycle Bin or `.jeditor/trash`; `Ctrl+Z` puts it back under its old name.
 - **Adjust.** Never written into the photo in a project: the settings are kept in `.jeditor/edits.json`, and Export (or **Save edits…**) writes the result, re-encoded like a crop, with the metadata carried over. Without a project (photos picked on a phone, or dropped in), they're written into the photo when you leave Adjust.
 
 ## The .jeditor folder
@@ -87,6 +98,7 @@ It works like Lightroom or Apple Photos: the crop frame stays in the middle of t
 - **Loupe** (`M`): while you drag a corner or edge, or draw a level line, a close-up of that spot shows in a top corner of the window, at the photo's own pixels, with the crop's edge exactly where it will be saved. It moves to the other corner if your pointer comes near it. It's on to start with; turn it off with the button or `M`.
 - **Zoom** for a closer look: scroll on the photo (or pinch on a trackpad) to zoom in and out where the pointer is, or use `+` and `-` and the buttons in the bottom corner. Hold `Space` and drag, or drag with the middle button, to look around. Zoomed in, the view stays put while you drag and straighten; **Fit** (`Z`) goes back to the whole crop, as do a new aspect, a quarter turn, **Auto**, **Previous** and **Reset**. Close-ups use the full-size photo, not the screen-sized copy, once it's loaded.
 - **Auto** (`Shift+A`) finds the print on a scan, straightens it and crops to its edges. It needs a plain scanner lid or background around the photo (or, when the scan cut the print off at two opposite sides, down the other two), and it leaves a few pixels' margin so none of the bed shows. Turn on **Every photo** to run Auto on each photo as it opens. With `Shift+Enter` (save and next), a scan order then becomes: check the crop, press `Shift+Enter`, repeat.
+- **Turn upright** (`Shift+U`, or Turn upright in the right-click menu) turns the photo, or every photo selected in the grid, the right way up. jEditor's own small network looks at each one (in `upright.js`; how it was trained is in `tools/upright`) and only turns a photo when it's sure, so some are left for you. Each is turned the way the rotate buttons turn them, and one `Ctrl+Z` undoes them all. **Turn upright** in the scan window does it to each photo as it's scanned (on to start with), and turns a photo's back with its front.
 - **Batch Auto crop.** In the grid, select photos and press `Shift+A` (or **Auto crop** on the selection bar, or the right-click menu). Auto runs on each of them in the background, with the aspect ratio last chosen in the editor, and saves them. Photos with no print edge, or already cropped to it, are left alone. The originals are kept in `.jeditor/originals`, so one `Ctrl+Z` puts the whole batch back; flip through the results and fix the odd one in the editor.
 - `Ctrl+Z` inside the editor undoes the last adjustment; `Ctrl+Shift+Z` redoes it.
 - Aspect presets: 4×6, 5×7, 8×10, 11×14, square, 3:4, 16:9, original and free. `X` swaps portrait and landscape. A preset fits inside the current crop, so choosing one after Auto never takes in the bed.
@@ -154,11 +166,25 @@ Painting goes on last, over the photo as it's cropped and adjusted, so it looks 
 
 - **USB drive or card** (Windows, Mac and Linux): the whole project, copied in one step, with how far it's got. Each drive is listed with the room left on it. The project's flags and edits go with it, so when it's opened in jEditor on another computer they're all there. **Eject it when it's done** ejects the drive after.
 - **CD or DVD** (Windows): the burner, whether there's a blank disc in it and whether the project fits, the disc's name, and (with edits not saved yet) whether to save them into the photos first, since the disc gets the photos as they are on disk. The disc comes out when it's done.
-- **Copies** (everywhere): copies of the selected photos, all of them or the starred ones, full size or smaller (the longest side: 4000, 3000, 2048, 1600, 1080 px or any other), with edits not saved yet in them, and RAWs as JPEGs. They go into `jEditor Export` in the project, into `jEditor Export` on a USB drive, or into a folder you choose.
+- **Copies** (everywhere): copies of the selected photos, all of them or the starred ones, full size or smaller (the longest side: 4000, 3000, 2048, 1600, 1080 px or any other), as they are or as JPEG, WebP, AVIF or JPEG XL (**Format**), with edits not saved yet in them, and RAWs as JPEGs. They go into `jEditor Export` in the project, into `jEditor Export` on a USB drive, or into a folder you choose.
 
 In the Windows, Mac and Linux apps:
 
 - **Importing from a camera's card:** when a card with a DCIM folder is plugged in, jEditor offers to import it; or press `Ctrl+I` (in a browser, choose the card's folder). The photos go into the open project, a new project in your projects folder (named for the day and the card), or a folder you choose; into a folder per day if you like; only the ones not imported before; and the card is ejected after if you like. RAW files come too; videos stay on the card.
+
+## Converting photos: format, quality and storage
+
+**Convert…** (right-click the project in the sidebar, or a folder, or the selected photos; or ⋯ on the selection bar) turns photos into another format: **AVIF** (smallest), **JPEG XL** (newest) or **WebP** (opens almost anywhere).
+
+- **Quality** goes from smaller to better, with a mark at the lowest quality that still looks the same as the original (worked out on one of your photos; *Closest to the original* where only the highest keeps its grain). Under it, a close-up of that photo at its own pixels, the original beside the result, with their sizes.
+- **Storage:** what the photos take **Now** and **After** (the difference striped green) and by folder, worked out from a sample of them before anything happens, and again as you change the format or quality.
+- **The originals:** **Replace them** (the converted photo takes the original's place and the original goes to the Recycle Bin, or jEditor's trash; one `Ctrl+Z` puts them all back) or **Keep both** (the converted copies go into `jEditor Converted` in the project, which jEditor doesn't list as the project's photos).
+
+Flags and edits go with each photo, and so do its date taken, camera and the rest of its EXIF. RAW files, GIFs, photos already in that format and photos that wouldn't get smaller are left as they are.
+
+While it works, 100 dots stand for the photos, each in their own colours once they're done; done dots turn hollow and green for the storage freed, as many as the share freed so far. Pause or Stop, or close the window and carry on: the corner says how far it's got. At the end: the storage freed, and the size before and after.
+
+AVIF and JPEG XL are written by codecs that come with jEditor (WebAssembly builds of libavif and libjxl); jEditor shows JPEG XL photos with its own decoder where the browser engine can't. Edits on an AVIF or JPEG XL photo are always kept as edits (as on a RAW); **Save edits** writes them in the same format. Not in `standalone.html` opened from disk, which can't load the codecs.
 
 ## Folders (collating)
 
@@ -227,6 +253,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `1`–`5` | Red, yellow, green, blue, purple label |
 | `U` | Clear flags |
 | `Shift+A` | Auto crop (the selection in grid view) |
+| `Shift+U` | Turn upright (the selection, or the photo) |
 | `Ctrl+F`, `/` | Search |
 | `Shift+N` | New folder |
 | `A` | Switch between All photos and folders (grid view) |
@@ -262,12 +289,15 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `paint.js`, `paint-editor.js`: Paint (the layers kept with the photo, and the screen)
 - `import.js`: importing from a camera's card
 - `blank.js`: Paint's start: a new canvas (right-click a folder, or the start page's Paint), or an image or folder to open
+- `themes.js`, `themes/`: the themes (Settings → Appearance): the list, their stylesheets, the title bar and menu bar they draw, 1984's dithered thumbnails
 - `modes.js`: Photos, Adjust and Paint as modes: the switch (sidebar, chip), the strip in Adjust and Paint, Start in
 - `disc.js`: burning a CD or DVD (the Windows app's `src/Burn.cs`)
 - `export.js`: the Export window (a USB drive, a disc, or copies)
+- `convert.js`: Convert (photos to AVIF, JPEG XL or WebP: the quality and close-up, the storage now and after, the dots)
+- `codec.js`, `codec-worker.js`, `codecs/`: writing AVIF, JPEG XL and WebP, and reading JPEG XL, in workers (libavif and libjxl as WebAssembly)
 - `crop-auto.js`: finding the print on a scan (Auto)
 - `changelog.js`: the list of changes shown in What's new, and the release notes
-- `meta.js`: reading and copying JPEG/PNG metadata
+- `meta.js`: reading and copying JPEG/PNG metadata, and EXIF in WebP, AVIF and JPEG XL
 - `dupes.js`: duplicate finder
 - `rename.js`: batch rename
 - `folders.js`: folders: the folder list, moving and copying photos, making, renaming and deleting folders

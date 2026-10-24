@@ -1,6 +1,6 @@
 {
   "name": "jeditor",
-  "version": "1.45.0",
+  "version": "1.46.1",
   "private": true,
   "description": "jEditor: a photo viewer for working through scan orders, for Windows, Mac and the web",
   "scripts": {

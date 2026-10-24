@@ -389,6 +389,45 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 4a. Turn upright: each photo its own turn, one undo step ----
+    console.log('turn upright');
+    {
+        const { page } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const files = ['c.jpg', 'd.jpg', 'e.jpg'].map(n => makeFakeFile(n, makeJpegBytes(), 'image/jpeg'));
+            app.files = files;
+            app.viewMode = 'grid';
+            app.dirHandle = null;
+            // What the network would say: c a quarter turn right, d left, e unsure
+            const said = { 'c.jpg': { turns: 1, sure: 0.97 }, 'd.jpg': { turns: 3, sure: 0.95 }, 'e.jpg': { turns: 2, sure: 0.4 } };
+            const real = Upright.guess;
+            let n = 0;
+            Upright.guess = async () => said[files[n++].name];
+            out.loaded = !!Upright.load();
+            const steps = (app._undoStack || []).length;
+            out.turned = await app.turnUpright(files);
+            Upright.guess = real;
+            out.orient = files.slice(0, 2).map(f => readOrientation(f.handle.bytes)).join();
+            out.eWrites = files[2].handle.writes;
+            out.oneStep = (app._undoStack || []).length === steps + 1;
+            // The real network, on a photo: an answer for one of the four turns
+            const c = document.createElement('canvas');
+            c.width = 120; c.height = 80;
+            const g = c.getContext('2d');
+            g.fillStyle = '#7ab'; g.fillRect(0, 0, 120, 40);
+            g.fillStyle = '#585'; g.fillRect(0, 40, 120, 40);
+            const ans = await Upright.guess(await new Promise(res => c.toBlob(res)));
+            out.real = ans && [0, 1, 2, 3].includes(ans.turns) && ans.sure > 0.25 && ans.sure <= 1;
+            return out;
+        });
+        check('turn upright: the network is there', r.loaded);
+        check('turn upright: each photo turned its own way; an unsure one left as it is', r.turned === 2 && r.orient === '6,8' && r.eWrites === 0, JSON.stringify(r));
+        check('turn upright: one undo step for them all', r.oneStep);
+        check('turn upright: the network answers for a photo', r.real, JSON.stringify(r));
+        await page.close();
+    }
+
     // ---- 4b. Snappy previews: instant stacking, background saves, no re-decode ----
     console.log('instant previews & stacking');
     {

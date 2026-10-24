@@ -1,0 +1,183 @@
+/* ==========================================================================
+   Windows XP, the shared part of every XP take: Luna's tokens, the window
+   frame, title bar and menu bar, combo boxes, buttons, the notification
+   balloon and the scroll bars. office.css adds the layout on top.
+   ==========================================================================*/
+
+@font-face { font-family: "jE Tahoma"; src: url(../xp/fonts/tahoma.ttf) format("truetype"); font-weight: 400; }
+@font-face { font-family: "jE Tahoma"; src: url(../xp/fonts/tahomabd.ttf) format("truetype"); font-weight: 700; }
+
+:root[data-skin="xp"] {
+    color-scheme: light;
+    --xp-font: "jE Tahoma", Tahoma, sans-serif;
+    --xp-face: #ece9d8;
+    --xp-shadow: #aca899;
+    --xp-dark: #716f64;
+    --xp-hilite: #316ac5;
+    --xp-link: #215dc6;
+    --xp-link-hover: #428eff;
+    --xp-btn-border: #003c74;
+    --font-ui: var(--xp-font);
+    --fs-body: 11px; --lh-body: 14px;
+    --fs-small: 11px; --fs-caption: 11px;
+    --text-1: #000; --text-2: #444; --text-3: #716f64;
+    --bg-window: var(--xp-face);
+    --bg-canvas: #fff;
+    --bg-surface: var(--xp-face);
+    --accent: var(--xp-hilite);
+    --accent-color: var(--xp-hilite);
+    --surround: #fff;
+    --strip-bg: #fff;
+    --strip-text: #000;
+    --border: var(--xp-shadow);
+    --dock-bot-h: 24px;
+    --dock-bot-bg: var(--xp-face);
+    --dock-bot-line: 1px solid #fff;
+    --dock-controls-h: 46px;
+    --dock-grid-pad: 12px 14px;
+    --strip-height: 92px;
+}
+:root[data-skin="xp"] body {
+    font-family: var(--xp-font);
+    font-size: 11px;
+    line-height: 14px;
+    -webkit-font-smoothing: auto;
+    color: #000;
+    background: var(--xp-face);
+}
+/* The window frame: Luna's blue edges round the client area */
+:root[data-skin="xp"] :is(.interface, .mode-screen, .drop-zone) {
+    border: 4px solid #0831d9;
+    border-top: 0;
+    border-image: linear-gradient(180deg, #0058ee, #0831d9 30%, #0831d9) 1;
+    background: var(--xp-face);
+}
+
+/* ---- Title bar ---- */
+:root[data-skin="xp"] #th-titlebar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 30px;
+    padding: 0 5px 0 7px;
+    background: linear-gradient(180deg, #0997ff, #0053ee 8%, #0050ee 40%, #0066ff 88%, #0066ff 93%, #005bff 95%, #003dd7 96%, #003dd7);
+    box-shadow: inset 1px 1px 0 #3d95ff, inset -1px 0 0 #0040e0;
+    color: #fff;
+}
+:root[data-skin="xp"] .th-appicon {
+    flex: none;
+    width: 16px; height: 16px;
+    margin-right: 5px;
+    background: url(../xp/icons/image16.png) no-repeat center;
+}
+:root[data-skin="xp"] .th-title {
+    flex: 1;
+    font: 700 13px/1 "Trebuchet MS", "jE Tahoma", Tahoma, sans-serif;
+    letter-spacing: 0;
+    text-shadow: 1px 1px #0f1089;
+    white-space: nowrap;
+    overflow: hidden;
+}
+:root[data-skin="xp"] .th-caps { display: flex; gap: 2px; }
+:root[data-skin="xp"] .th-caps button {
+    position: relative;
+    width: 21px; height: 21px;
+    padding: 0;
+    border: 1px solid #fff;
+    border-radius: 3px;
+    background: radial-gradient(circle at 90% 90%, #0054e9 0%, #2263d5 55%, #4479e4 70%, #a3bbec 90%, #fff 100%);
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08);
+}
+:root[data-skin="xp"] .th-caps .th-close {
+    background: radial-gradient(circle at 90% 90%, #cc4600 0%, #dc6527 55%, #cd7546 70%, #ffccb2 90%, #fff 100%);
+}
+:root[data-skin="xp"] .th-caps button::before,
+:root[data-skin="xp"] .th-caps button::after { content: ""; position: absolute; background: #fff; }
+:root[data-skin="xp"] .th-min::before { left: 4px; bottom: 4px; width: 7px; height: 3px; }
+:root[data-skin="xp"] .th-max::before { left: 4px; top: 4px; width: 11px; height: 11px; background: none; border: 1px solid #fff; border-top-width: 3px; }
+:root[data-skin="xp"] .th-close::before,
+:root[data-skin="xp"] .th-close::after { left: 9px; top: 3px; width: 2px; height: 14px; transform: rotate(45deg); border-radius: 1px; }
+:root[data-skin="xp"] .th-close::after { transform: rotate(-45deg); }
+
+/* ---- Menu bar ---- */
+:root[data-skin="xp"] #th-menubar {
+    display: flex;
+    height: 20px;
+    padding: 0 2px;
+    background: var(--xp-face);
+    border-bottom: 1px solid #fff;
+    box-shadow: 0 1px 0 var(--xp-shadow) inset;
+    box-shadow: none;
+}
+:root[data-skin="xp"] .th-menu { padding: 3px 7px 0; height: 20px; }
+:root[data-skin="xp"] .th-menu:hover { background: var(--xp-hilite); color: #fff; }
+
+
+/* ---- Combo boxes, text boxes and buttons ---- */
+:root[data-skin="xp"] select,
+:root[data-skin="xp"] .sort-control select {
+    appearance: none;
+    height: 21px;
+    min-width: 130px;
+    padding: 0 22px 0 4px;
+    border: 1px solid #7f9db9;
+    border-radius: 0;
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 0h7L3.5 4z' fill='%234d6185'/%3E%3C/svg%3E") no-repeat right 5px center,
+        linear-gradient(180deg, #c1d3fb, #b4c8f6 40%, #a8bff4) no-repeat right 1px center / 15px 17px,
+        #fff;
+    color: #000;
+    font: 11px var(--xp-font);
+    box-shadow: inset -1px 0 0 #fff;
+}
+:root[data-skin="xp"] .btn {
+    height: 23px;
+    padding: 0 10px;
+    border: 1px solid var(--xp-btn-border);
+    border-radius: 3px;
+    background: linear-gradient(180deg, #fff, #ecebe6 86%, #d6d0c5);
+    color: #000;
+    font: 11px var(--xp-font);
+    box-shadow: inset 0 -1px 0 rgb(0 0 0 / 0.05);
+}
+:root[data-skin="xp"] .btn > svg { display: none; }
+
+/* ---- Luna scroll bars ---- */
+:root[data-skin="xp"] ::-webkit-scrollbar { width: 17px; height: 17px; background: #f7f6f2; }
+:root[data-skin="xp"] ::-webkit-scrollbar-track { background: linear-gradient(90deg, #eeede5, #f7f6f2 30%, #f7f6f2 70%, #eeede5); border: 0; }
+:root[data-skin="xp"] ::-webkit-scrollbar-thumb {
+    border: 1px solid #fff;
+    border-radius: 3px;
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cg fill='%23eef4fe'%3E%3Crect y='0' width='7' height='1'/%3E%3Crect y='2' width='7' height='1'/%3E%3Crect y='4' width='7' height='1'/%3E%3Crect y='6' width='7' height='1'/%3E%3C/g%3E%3Cg fill='%238cb0f8'%3E%3Crect x='1' y='1' width='7' height='1'/%3E%3Crect x='1' y='3' width='7' height='1'/%3E%3Crect x='1' y='5' width='7' height='1'/%3E%3Crect x='1' y='7' width='7' height='1'/%3E%3C/g%3E%3C/svg%3E") no-repeat center,
+        linear-gradient(90deg, #c9d8fc, #bacffd 40%, #b3c9fb 60%, #a8c0f6);
+    box-shadow: inset 0 0 0 1px #94b0e8;
+}
+:root[data-skin="xp"] ::-webkit-scrollbar-button:single-button {
+    display: block;
+    width: 17px; height: 17px;
+    border: 1px solid #fff;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #c9d8fc, #b3c9fb 60%, #a8c0f6);
+    box-shadow: inset 0 0 0 1px #94b0e8;
+}
+:root[data-skin="xp"] ::-webkit-scrollbar-button:vertical:decrement {
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6'%3E%3Cpath d='M1 5l3.5-3.5L8 5' fill='none' stroke='%234d6185' stroke-width='2'/%3E%3C/svg%3E") no-repeat center, linear-gradient(90deg, #c9d8fc, #b3c9fb 60%, #a8c0f6);
+}
+:root[data-skin="xp"] ::-webkit-scrollbar-button:vertical:increment {
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' fill='none' stroke='%234d6185' stroke-width='2'/%3E%3C/svg%3E") no-repeat center, linear-gradient(90deg, #c9d8fc, #b3c9fb 60%, #a8c0f6);
+}
+
+/* Toasts: the notification balloon */
+:root[data-skin="xp"] .toast {
+    min-height: 0;
+    padding: 8px 12px 9px 10px;
+    border: 1px solid #000;
+    border-radius: 7px;
+    background: #ffffe1;
+    box-shadow: 2px 2px 3px rgb(0 0 0 / 0.35);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    color: #000;
+    font: 11px/14px var(--xp-font);
+}

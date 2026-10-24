@@ -6,6 +6,26 @@
 
 const CHANGELOG = [
     {
+        version: '1.46.1', date: '2026-10-23', beta: true,
+        items: [
+            'Convert (right-click the project, a folder or the selected photos): turns photos into AVIF, JPEG XL or WebP. Choose the quality on a slider marked where the photos still look the same, with a close-up of one of yours, original beside after, and see what it does to their storage before it starts, now and after, by folder. While it works, dots in your photos\' colours turn hollow for the storage freed. The originals go to the bin (one `Ctrl+Z` puts them all back), or keep both; flags, edits, dates and camera details go with each photo.',
+            'jEditor shows AVIF and JPEG XL photos, and Export can write copies as JPEG, WebP, AVIF or JPEG XL.',
+            'Themes reach every part of jEditor, not just the main window: dialogs, Settings, Crop, Adjust, Paint, Duplicates, the scan window, Info and Undo history, each built the way that era\'s apps built theirs. In Windows XP Royale, dialogs are XP windows, Settings is a property sheet with tabs, and Adjust and Paint have Office 2003 command bars and task panes. In Snow Leopard, dialogs are sheets, Settings is a Preferences window, Info and Undo history are HUD panels, and Adjust and Paint have an inspector. In 1984, Paint is MacPaint\'s palette of one-bit tools.',
+            'Every toolbar button has its own icon in each theme, including Scan, Camera, Adjust, Paint, Duplicates, Full screen, Settings and What\'s new.',
+            'Photos · Adjust · Paint at the top of the sidebar no longer gets cut off in a narrow window or with a wider font: it tightens, then leaves out its icons, so the words fit.',
+            'A full toolbar wraps instead of running off the edge, and More opens at least four buttons across.',
+            'In Paint, the layer buttons stay inside the panel, and a long hint shortens with … instead of pushing the options off screen.',
+            'In Adjust, a section\'s buttons (such as Auto color) move under its name when there isn\'t room beside it.'
+        ]
+    },
+    {
+        version: '1.46.0', date: '2026-10-22', beta: true,
+        items: [
+            'Turn upright (`Shift+U`, or the right-click menu) turns photos the right way up: jEditor\'s own small network looks at each one and turns it only when it\'s sure, and one `Ctrl+Z` undoes them all. The scan window does it to each photo as it comes in (Turn upright, on to start with), turning each back with its front.',
+            'New, as an experiment in the Windows app (on in betas): themes, in Settings → Appearance. jEditor as an app of another time, the same jEditor laid out the way that era\'s apps were, with its own title bar and a menu bar: Windows XP in Royale, Royale Noir and Royale Red; Snow Leopard as Finder or Aperture (dark); and 1984, the first Macintosh in one bit, whose Thumbnails setting shows the grid dithered (as MacPaint did), in black and white, or in colour. The menus have jEditor\'s commands with their keys; the title bar moves, maximises and closes the window. jEditor, first in the gallery, is the look you know.'
+        ]
+    },
+    {
         version: '1.45.0', date: '2026-10-22',
         items: [
             'Adjust and Paint are part of jEditor now, no longer experiments: no need to turn them on in Settings → Experimental. Switch modes at the top of the sidebar, or press `E` for Adjust and `B` for Paint.',
