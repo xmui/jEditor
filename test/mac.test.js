@@ -929,11 +929,12 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         const after = await bounds();
         check('a theme on Linux: the window opens again without its frame, on the same project, where it was', r.has && r.skin === 'xp' && r.bar && r.name === 'Smith Order' && kept.themed === true && after.length === 1 && JSON.stringify(after[0]) === JSON.stringify(before[0]), JSON.stringify({ r, kept: kept.themed, before, after }));
         // (xvfb has no window manager to maximise with: what's asked is checked)
-        await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; global.asked = []; for (const k of ['maximize', 'minimize']) w[k] = () => global.asked.push(k); });
+        // (a window that fills the screen counts as maximised on a Mac: the button unmaximises it)
+        await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; global.asked = []; for (const k of ['maximize', 'unmaximize', 'minimize']) w[k] = () => global.asked.push(k); });
         await themed.evaluate(() => { Themes.window('maximize'); Themes.window('minimize'); });
         await themed.waitForTimeout(300);
         const asked = await app.evaluate(() => global.asked.join());
-        check('... and its title bar\'s buttons work the window', asked === 'maximize,minimize', asked);
+        check('... and its title bar\'s buttons work the window', /^(maximize|unmaximize),minimize$/.test(asked), asked);
         const plain = await swap(themed, '');
         const back = await plain.evaluate(() => ({ skin: document.documentElement.dataset.skin || '', name: app.dirHandle.name }));
         const kept2 = JSON.parse(fs.readFileSync(path.join(profileT, 'mac.json'), 'utf8'));
