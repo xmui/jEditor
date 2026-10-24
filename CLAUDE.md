@@ -45,3 +45,29 @@ and say so in the pull request. If it's only for some:
 `test/parity.test.js` (part of `npm test`) fails when the table and the
 code disagree, and prints what runs where. When a feature reaches
 another platform, give its row a ✓ there.
+
+## Working with several agents
+
+The owner runs one chat per job. Each job is a file in `.claude/agents/`:
+`photos`, `adjust`, `paint` and `bugs`, plus `wrangler` (manages: who's
+doing what; builds nothing), `franky` (tells off an agent that screwed
+up, when the owner names it) and `t-max` (checks where usage is going,
+when asked). When the owner says "be the Photos agent" (or names any of
+them), read that file and work as it says. With no role given, work as
+usual.
+
+**Theming is secondary.** The themes and look agent (`theming`) helps
+the others when asked about the look; it doesn't own a mode and doesn't
+hold up anyone's PR. Themes are a `beta` experiment: they, and the
+theming agent's file, reach `main` only in the release that finishes the
+feature, when the owner says so.
+
+- Each agent stays in its own files (listed in its file). Files every
+  mode shares (`app/index.html`, `app/style.css`, `app/host.js`,
+  `app/edits.js`, `app/history.js`, `src/`, `mac/`) are fine to change,
+  but check the open PRs first and keep the change small.
+- Work on your own `claude/...` branch, started from `beta`, with a PR
+  into `beta`. Before starting, look at the open PRs. If one already
+  changes the files you need, say so to the owner rather than racing it.
+- When a feature touches another mode, ask the owner
+  first, and say in the PR which mode it touches.
