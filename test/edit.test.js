@@ -1407,6 +1407,10 @@ const PROJECT = `
                 [...menu.querySelectorAll('button')].find(b => /^Select all/.test(b.textContent)).click();
                 await until(() => !edit.classList.contains('open'));
                 out.ran = app.selection.size === 3 && !$('context-menu');
+                // Full screen (the Mac app's, here): no title bar, the menu bar stays
+                root.classList.add('fullscreen');
+                out.fullscreen = getComputedStyle($('th-titlebar')).display === 'none' && getComputedStyle($('th-menubar')).display !== 'none';
+                root.classList.remove('fullscreen');
                 // A variant: Royale Red, another stylesheet on top
                 step = 'variant';
                 Themes.choose('xp/red');
@@ -1450,6 +1454,7 @@ const PROJECT = `
         check('themes: no fitting in docked bars; the folder\'s name and counts are the real ones', r.noFit && r.facts, JSON.stringify(r));
         check('themes: the menu bar\'s menus run jEditor\'s commands and show their keys', r.menu && r.ran, JSON.stringify(r));
         check('themes: a variant is one stylesheet more', r.variant, JSON.stringify(r));
+        check('themes: full screen has no title bar, the menu bar stays', r.fullscreen, JSON.stringify(r));
         check('themes: 1984\'s Thumbnails setting: dithered to one bit, or in colour again', r.setting && r.dithered && r.colour, JSON.stringify(r));
         check('themes: back to jEditor\'s look (or the experiment off) takes all of it off', r.off && r.expOff, JSON.stringify(r));
         check('themes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));

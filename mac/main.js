@@ -609,6 +609,11 @@ async function handle(rec, type, data) {
             }
             return { ok: true };
         }
+        case 'menus':
+            // A theme's menus for the menu bar (null: the app's own)
+            rec.menus = Array.isArray(data.menus) ? data.menus : null;
+            if (rec === lastFocused()) menu();
+            return { ok: true };
         case 'windowAction':
             // The theme's title bar buttons
             if (data.action === 'minimize') rec.win.minimize();
@@ -843,36 +848,90 @@ async function undoTransfer(items, copy) {
     return out;
 }
 
+// A key as the page binds it ('Ctrl+Shift+Z', 'Delete', '[', 'Ctrl++') as
+// a menu shows it
+function accelerator(key) {
+    if (!key) return undefined;
+    const parts = String(key).split('+');
+    let k = parts.pop();
+    if (k === '') { k = '+'; parts.pop(); }
+    const NAMES = { ArrowLeft: 'Left', ArrowRight: 'Right', ArrowUp: 'Up', ArrowDown: 'Down', Escape: 'Esc', ' ': 'Space', Space: 'Space', '+': 'Plus', Enter: 'Return' };
+    const MODS = { Ctrl: 'CmdOrCtrl', Meta: 'Cmd', Cmd: 'Cmd', Alt: 'Alt', Shift: 'Shift' };
+    if (parts.some(m => !MODS[m])) return undefined;
+    return [...parts.map(m => MODS[m]), NAMES[k] || (k.length === 1 ? k.toUpperCase() : k)].join('+');
+}
+
 // ---- The window ----
+// The menu bar: the app's own, or while a theme is on, the theme's menus
+// with jEditor's commands (themes.js: systemMenus), from the window in
+// front. Their keys are shown, not taken: the page answers them as ever,
+// so a letter still types in a text field.
 function menu() {
     const send = (action) => () => {
         const rec = lastFocused();
         if (rec) rec.win.webContents.send('jeditor', { type: 'menu', action });
         else if (action === 'open') createWindow();
     };
-    Menu.setApplicationMenu(Menu.buildFromTemplate([
-        LINUX ? {
-            label: 'jEditor',
+    const front = lastFocused();
+    const themed = !LINUX && front && front.menus;
+    const build = (keys) => Menu.buildFromTemplate([
+        appMenu(),
+        ...(themed ? themed.map(m => ({
+            label: m.label,
             submenu: [
-                { label: 'Settings…', accelerator: 'Ctrl+,', click: send('settings') },
-                { type: 'separator' },
-                { role: 'quit' }
+                ...(m.label === 'File' ? [{ label: 'New Window', accelerator: 'CmdOrCtrl+Shift+N', click: () => show(createWindow()) }, { type: 'separator' }] : []),
+                ...m.items.map(it => it === '—' ? { type: 'separator' } : {
+                    label: it.label, enabled: it.enabled !== false, click: send('theme:' + it.id),
+                    ...(keys && accelerator(it.key) ? { accelerator: accelerator(it.key), registerAccelerator: false } : {})
+                }),
+                // Cut, copy and paste in text fields go by these on a Mac
+                ...(m.label === 'Edit' ? [{ type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }] : [])
             ]
-        } : {
-            role: 'appMenu',
-            submenu: [
-                { role: 'about' },
-                { type: 'separator' },
-                { label: 'Settings…', accelerator: 'Cmd+,', click: send('settings') },
-                { label: 'Permissions…', click: send('permissions') },
-                { type: 'separator' },
-                { role: 'services' },
-                { type: 'separator' },
-                { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
-                { type: 'separator' },
-                { role: 'quit' }
-            ]
-        },
+        })) : ownMenus(send)),
+        { role: 'windowMenu' }
+    ].sort((a, b) => (a.label === 'Help') - (b.label === 'Help')));
+    let built;
+    try { built = build(true); } catch (e) {
+        log('warn', 'Menu keys left out: ' + e.message);
+        built = build(false);
+    }
+    Menu.setApplicationMenu(built);
+    menuFor = themed ? JSON.stringify(themed) : '';
+}
+let menuFor = '';
+
+function appMenu() {
+    const send = (action) => () => {
+        const rec = lastFocused();
+        if (rec) rec.win.webContents.send('jeditor', { type: 'menu', action });
+    };
+    return LINUX ? {
+        label: 'jEditor',
+        submenu: [
+            { label: 'Settings…', accelerator: 'Ctrl+,', click: send('settings') },
+            { type: 'separator' },
+            { role: 'quit' }
+        ]
+    } : {
+        role: 'appMenu',
+        submenu: [
+            { role: 'about' },
+            { type: 'separator' },
+            { label: 'Settings…', accelerator: 'Cmd+,', click: send('settings') },
+            { label: 'Permissions…', click: send('permissions') },
+            { type: 'separator' },
+            { role: 'services' },
+            { type: 'separator' },
+            { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
+            { type: 'separator' },
+            { role: 'quit' }
+        ]
+    };
+}
+
+// jEditor's own look: the app's usual menus
+function ownMenus(send) {
+    return [
         {
             label: 'File',
             submenu: [
@@ -891,9 +950,8 @@ function menu() {
                 ...(DEV ? [{ role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }] : []),
                 { role: 'togglefullscreen' }
             ]
-        },
-        { role: 'windowMenu' }
-    ]));
+        }
+    ];
 }
 
 // macOS 26's toolbar on a window: its items click the page's own controls
@@ -962,7 +1020,11 @@ function createWindow() {
         return { action: 'deny' };
     });
     win.webContents.on('did-start-loading', () => { rec.ready = false; });
-    win.on('focus', () => { rec.focusedAt = Date.now(); });
+    win.on('focus', () => {
+        rec.focusedAt = Date.now();
+        // The menu bar is the window in front's
+        if ((rec.menus ? JSON.stringify(rec.menus) : '') !== menuFor) menu();
+    });
     // Zoomed or not, for a theme's maximise button
     const zoomed = (maximized) => () => { if (rec.ready) win.webContents.send('jeditor', { type: 'windowState', maximized }); };
     win.on('maximize', zoomed(true));
@@ -983,7 +1045,10 @@ function createWindow() {
     win.once('ready-to-show', () => {
         if (!opts.smoke) win.show();
     });
-    win.on('closed', () => windows.delete(id));
+    win.on('closed', () => {
+        windows.delete(id);
+        if (rec.menus) setImmediate(menu); // the menu bar for the window in front now
+    });
 
     win.loadURL(`${ORIGIN}/index.html`);
     return rec;
