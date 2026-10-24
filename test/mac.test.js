@@ -907,6 +907,41 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await app.close();
     }
 
+    console.log('linux: a theme, in a window without the system\'s frame');
+    {
+        const profileT = path.join(tmp, 'profile-linux-theme');
+        const { app, page, errors } = await launch(profileT, [smith], { JEDITOR_PLATFORM: 'linux' });
+        await loaded(page, 4);
+        const bounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map(w => w.getBounds()));
+        const before = await bounds();
+        // Linux can't take a frame off an open window: a new one takes its place
+        const swap = async (win, theme) => {
+            const next = app.waitForEvent('window');
+            await win.evaluate((t) => { Experiments.set('themes', true); Themes.choose(t); }, theme);
+            const w = await next;
+            await w.waitForFunction(() => typeof app !== 'undefined' && app.elements && !app.isLoading && app.files.length === 4, null, { timeout: 20000 });
+            await w.waitForTimeout(500);
+            return w;
+        };
+        const themed = await swap(page, 'xp/royale');
+        const kept = JSON.parse(fs.readFileSync(path.join(profileT, 'mac.json'), 'utf8'));
+        const r = await themed.evaluate(() => ({ skin: document.documentElement.dataset.skin, name: app.dirHandle.name, bar: !!document.getElementById('th-titlebar'), has: Host.has('themes') }));
+        const after = await bounds();
+        check('a theme on Linux: the window opens again without its frame, on the same project, where it was', r.has && r.skin === 'xp' && r.bar && r.name === 'Smith Order' && kept.themed === true && after.length === 1 && JSON.stringify(after[0]) === JSON.stringify(before[0]), JSON.stringify({ r, kept: kept.themed, before, after }));
+        // (xvfb has no window manager to maximise with: what's asked is checked)
+        await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; global.asked = []; for (const k of ['maximize', 'minimize']) w[k] = () => global.asked.push(k); });
+        await themed.evaluate(() => { Themes.window('maximize'); Themes.window('minimize'); });
+        await themed.waitForTimeout(300);
+        const asked = await app.evaluate(() => global.asked.join());
+        check('... and its title bar\'s buttons work the window', asked === 'maximize,minimize', asked);
+        const plain = await swap(themed, '');
+        const back = await plain.evaluate(() => ({ skin: document.documentElement.dataset.skin || '', name: app.dirHandle.name }));
+        const kept2 = JSON.parse(fs.readFileSync(path.join(profileT, 'mac.json'), 'utf8'));
+        check('... and jEditor\'s look again: the system\'s frame back, the project still open', back.skin === '' && back.name === 'Smith Order' && kept2.themed === false && (await bounds()).length === 1, JSON.stringify({ back, kept: kept2.themed }));
+        check('no JS errors', errors.length === 0, errors.join('; '));
+        await app.close();
+    }
+
     console.log('linux: installed from the .deb, updated with the system\'s installer');
     {
         const port = releaseServer.address().port;

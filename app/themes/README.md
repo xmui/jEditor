@@ -17,8 +17,9 @@ An entry in `Themes.LIST` (`app/themes.js`):
   `'mac'` (the name). The title bar (`#th-titlebar`: `.th-appicon`,
   `.th-title`, `.th-caps` with `.th-min`, `.th-max`, `.th-close`) and the
   menu bar (`#th-menubar`, `.th-menu` buttons) go in `#th-top`, along the
-  top over everything. In the Windows and Mac apps the title bar is the
-  window's (on a Mac the traffic lights hide and macOS 26's toolbar comes off).
+  top over everything. In the Windows, Mac and Linux apps the title bar is
+  the window's (on a Mac the traffic lights hide and macOS 26's toolbar comes
+  off; on Linux the window opens again without its frame).
 - `menus`: the menu bar's menus by name (`Themes.MENUS`). In the Mac app
   they're in the Mac's menu bar too; `systemMenus` names a theme's menus
   for there when it has none in the window (Snow Leopard).

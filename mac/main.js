@@ -582,6 +582,8 @@ async function handle(rec, type, data) {
             rec.closeHeard = false;
             if (!data.ok) {
                 quitting = false;
+                // Kept open after all: no window takes its place (reframe)
+                if (rec.replacement) { rec.replacement.win.destroy(); rec.replacement = null; }
                 return { ok: true };
             }
             rec.closeOk = true;
@@ -600,6 +602,14 @@ async function handle(rec, type, data) {
             // so the traffic lights hide, and macOS 26's toolbar comes off
             // (back on, and filled again by the page, when it goes)
             const on = !!data.on;
+            if (LINUX) {
+                // Linux can't take a window's frame off once it's open: new
+                // windows open to match, and this one is swapped for one
+                settings.themed = on;
+                saveSettings();
+                if (on !== rec.frameless) reframe(rec, data.path || (rec.state && rec.state.path));
+                return { ok: true };
+            }
             if (process.platform !== 'darwin' || on === !!rec.themed) return { ok: true };
             rec.themed = on;
             rec.win.setWindowButtonVisibility(!on);
@@ -961,14 +971,29 @@ function attachToolbar(win) {
     });
 }
 
-function createWindow() {
+// Linux: a window with the system's frame swapped for one without (a theme
+// put on), or back. The new one opens where it was, on the same project,
+// and the old one closes as any window does (Keep your changes? first; if
+// it stays open after all, the new one goes)
+function reframe(rec, project) {
+    const next = createWindow({ bounds: rec.win.getBounds(), maximized: rec.win.isMaximized() });
+    if (project) next.queue.push({ path: project });
+    rec.replacement = next;
+    rec.win.close();
+}
+
+// `at`: where it opens ({ bounds, maximized }), for a window taking another's place
+function createWindow(at = null) {
     const base = settings.bounds || { width: 1280, height: 860 };
     // A new window beside the others: a step down and right of the last
     const last = lastFocused();
-    const bounds = last ? { ...last.win.getBounds(), x: last.win.getBounds().x + 28, y: last.win.getBounds().y + 28 } : base;
+    const bounds = at ? at.bounds : last ? { ...last.win.getBounds(), x: last.win.getBounds().x + 28, y: last.win.getBounds().y + 28 } : base;
     const mac = process.platform === 'darwin';
+    // Linux: no frame while a theme is on (it draws the title bar)
+    const frameless = LINUX && !!settings.themed;
     const win = new BrowserWindow({
         ...bounds,
+        ...(frameless ? { frame: false } : {}),
         minWidth: 640,
         minHeight: 480,
         show: false,
@@ -1006,8 +1031,8 @@ function createWindow() {
         // The title is the toolbar's (the photo), not the page's
         win.on('page-title-updated', (e) => e.preventDefault());
     }
-    if (!last && settings.maximized) win.maximize();
-    const rec = { win, ready: false, queue: [], state: null, focusedAt: Date.now() };
+    if (at ? at.maximized : !last && settings.maximized) win.maximize();
+    const rec = { win, ready: false, queue: [], state: null, focusedAt: Date.now(), frameless };
     const id = win.webContents.id;
     windows.set(id, rec);
 

@@ -530,6 +530,14 @@ const app = {
                     for (const k of ['adjust', 'paint']) if (this.uiPrefs.placement[k] === 'main') this.uiPrefs.placement[k] = 'more';
                 }
                 if (saved.transparency >= 10 && saved.transparency <= 100) this.uiPrefs.transparency = saved.transparency;
+                // The theme (themes.js checks it's one it knows) and each theme's own settings
+                if (typeof saved.skin === 'string' && /^[a-z0-9]+\/[a-z0-9]+$/.test(saved.skin)) this.uiPrefs.skin = saved.skin;
+                if (saved.skinSettings && typeof saved.skinSettings === 'object') {
+                    for (const [theme, kept] of Object.entries(saved.skinSettings)) {
+                        if (!kept || typeof kept !== 'object') continue;
+                        this.uiPrefs.skinSettings[theme] = Object.fromEntries(Object.entries(kept).filter(([, v]) => typeof v === 'string'));
+                    }
+                }
                 for (const [k, allowed] of Object.entries(this.APPEARANCE)) {
                     if (allowed.includes(saved[k])) this.uiPrefs[k] = saved[k];
                 }
@@ -4039,8 +4047,8 @@ const app = {
         ['paint.text', 'paint', 'Paint', 'Text', ['T']],
         ['paint.picker', 'paint', 'Paint', 'Colour picker', ['I']],
         ['paint.hand', 'paint', 'Paint', 'Hand', ['H']],
-        ['paint.smaller', 'paint', 'Paint', 'Brush smaller', ['[']],
-        ['paint.bigger', 'paint', 'Paint', 'Brush bigger', [']']],
+        ['paint.smaller', 'paint', 'Paint', 'Brush (or line, or text) smaller', ['[']],
+        ['paint.bigger', 'paint', 'Paint', 'Brush (or line, or text) bigger', [']']],
         ['paint.swap', 'paint', 'Paint', 'Swap the colours', ['X']],
         ['paint.colours', 'paint', 'Paint', 'Black and white', ['D']],
         ['paint.selectAll', 'paint', 'Paint', 'Select all', ['Ctrl+A']],
@@ -4237,8 +4245,8 @@ const app = {
             'paint.text': () => PaintEditor.setTool('text'),
             'paint.picker': () => PaintEditor.setTool('picker'),
             'paint.hand': () => PaintEditor.setTool('hand'),
-            'paint.smaller': () => { PaintEditor.opts.size = Math.max(1, Math.round(PaintEditor.opts.size / 1.25)); PaintEditor.buildOptions(); PaintEditor.renderSoon(); },
-            'paint.bigger': () => { PaintEditor.opts.size = Math.min(400, Math.round(PaintEditor.opts.size * 1.25) + 1); PaintEditor.buildOptions(); PaintEditor.renderSoon(); },
+            'paint.smaller': () => PaintEditor.nudgeSize(1 / 1.2, true),
+            'paint.bigger': () => PaintEditor.nudgeSize(1.2, true),
             'paint.swap': () => PaintEditor.swapColours(),
             'paint.colours': () => PaintEditor.defaultColours(),
             'paint.selectAll': () => PaintEditor.selectAll(),
