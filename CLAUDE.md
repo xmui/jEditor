@@ -51,9 +51,9 @@ another platform, give its row a ✓ there.
 The owner runs one chat per job. Each job is a file in `.claude/agents/`:
 `photos`, `adjust`, `paint` and `bugs`, plus `wrangler` (manages: who's
 doing what; builds nothing) and `franky` (tells off an agent that
-screwed up, when the owner names it). When the owner says "be the Photos agent" (or
-names any of them), read that file and work as it says. With no role
-given, work as usual.
+screwed up, when the owner names it). When the owner says "be the
+Photos agent" (or names any of them), read that file and work as it
+says. With no role given, work as usual.
 
 **Theming is secondary.** The themes and look agent (`theming`) helps
 the others when asked about the look; it doesn't own a mode and doesn't
