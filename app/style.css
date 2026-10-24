@@ -3809,7 +3809,8 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 }
 
 .cv-savedtag.cv-more,
-.cv-folder .s b.cv-more {
+.cv-folder .s b.cv-more,
+.cv-run-row b.cv-more {
     color: var(--warning-text, #d97706);
 }
 
