@@ -12,8 +12,8 @@
 
 **The look and the themes:** `.claude/agents/theming.md` (the `theming`
 agent) has how the owner wants jEditor to look and feel, and what every
-change on screen needs, in jEditor's own look and in each theme. Follow it
-for anything that adds or changes UI. `test/themes.test.js` checks what it
+change on screen needs, in jEditor's own look and in each theme. It's a
+helper to ask about the look, not a gate (see Working with several agents). `test/themes.test.js` checks what it
 can from the source.
 
 More: `PLAN.md` (the plan and roadmap), `docs/using-jeditor.md` (the user guide and code map). Feature work goes to the `beta` branch; `npm test` runs the suites (`test/mac.test.js` needs a display: `xvfb-run -a`).
