@@ -699,6 +699,51 @@ const PROJECT = `
                 P.setTool('brush');
                 P.opts.hardness = 100;
                 P.opts.opacity = 100;
+                // Sizes are the photo's own pixels, kept the same part of
+                // each photo (a brush on a small photo is small); the slider
+                // spreads the small sizes out
+                step = 'sizes';
+                P.opts.size = 20; P.opts.sizeFor = 800;
+                P.fitSizes();
+                out.sizes = [P.opts.size, P.opts.sizeFor, P.sizeMax()];
+                P.opts.size = 20;
+                P.buildOptions();
+                const sizeIn = P.optRows.size.querySelector('input'), sizeNum = P.optRows.size.querySelector('.paint-num');
+                sizeIn.value = '300';
+                sizeIn.dispatchEvent(new Event('input'));
+                sizeIn.dispatchEvent(new Event('change'));
+                out.slider = [P.opts.size, sizeNum.textContent];
+                // The wheel sizes the brush, shown on the photo as it changes;
+                // Ctrl+wheel zooms; ] is bigger
+                step = 'wheel';
+                P.opts.size = 20;
+                P.optRows.size._sync();
+                pe('pointermove', 200, 150);
+                const wheel = (o = {}) => st.dispatchEvent(new WheelEvent('wheel', { ...at(200, 150), deltaY: -100, bubbles: true, cancelable: true, ...o }));
+                const z0 = P.view.z;
+                wheel();
+                out.wheel = [P.opts.size > 22 && P.opts.size < 26, sizeNum.textContent === P.sizeLabel(P.opts.size), performance.now() < P._sizeUntil, P.view.z === z0];
+                const s1 = P.opts.size;
+                wheel({ ctrlKey: true });
+                out.ctrlWheel = [P.opts.size === s1, P.view.z > z0];
+                P.fit();
+                pressKey(']');
+                out.bracket = P.opts.size >= Math.floor(s1) + 1;
+                // Shift-click paints straight on from where the last stroke ended
+                step = 'shift-click';
+                P.opts.size = 10;
+                pe('pointerdown', 50, 270); pe('pointermove', 60, 270); pe('pointerup', 60, 270);
+                const between = px(0, 100, 270)[3];
+                pe('pointerdown', 150, 270, { shiftKey: true }); pe('pointerup', 150, 270, { shiftKey: true });
+                out.shiftLine = [between, px(0, 100, 270)[3], px(0, 100, 285)[3]];
+                pressKey('z', { ctrlKey: true }); pressKey('z', { ctrlKey: true });
+                // A pen's pressure sizes the brush
+                step = 'pressure';
+                const pen = { pointerType: 'pen', pressure: 0.2 };
+                pe('pointerdown', 50, 270, pen); pe('pointermove', 100, 270, pen); pe('pointermove', 150, 270, pen); pe('pointerup', 150, 270, pen);
+                out.pressure = [px(0, 100, 270)[3], px(0, 100, 273)[3]];
+                pressKey('z', { ctrlKey: true });
+                P.opts.size = 20;
                 // A rectangle, filled, on a new layer
                 step = 'rect';
                 pressKey('N', { ctrlKey: true, shiftKey: true });
@@ -713,6 +758,24 @@ const PROJECT = `
                 P.setTool('fill');
                 pe('pointerdown', 300, 100); pe('pointerup', 300, 100);
                 out.fill = [px(1, 260, 60), px(1, 240, 100)[3]];
+                // Fill: the whole layer, whatever colour is clicked (inside a
+                // selection, only there); its colour options go
+                step = 'fill whole';
+                P.opts.fillWhat = 'layer';
+                P.buildOptions();
+                out.wholeOpts = !document.querySelector('#paint-options input[type=checkbox]');
+                P.fg = '#ff00ff';
+                P.setTool('rect-select');
+                pe('pointerdown', 10, 250); pe('pointermove', 60, 290); pe('pointerup', 60, 290);
+                P.setTool('fill');
+                pe('pointerdown', 30, 270); pe('pointerup', 30, 270);
+                out.wholeSel = [px(1, 30, 270), px(1, 100, 270)[3]];
+                P.deselect();
+                pe('pointerdown', 380, 280); pe('pointerup', 380, 280);
+                out.whole = [px(1, 5, 5), px(1, 395, 150)];
+                pressKey('z', { ctrlKey: true }); pressKey('z', { ctrlKey: true });
+                out.wholeUndone = px(1, 5, 5)[3] === 0 && px(1, 260, 60)[0] === 255;
+                P.opts.fillWhat = 'match';
                 // Text
                 step = 'text';
                 P.fg = '#000000'; P.opts.fontSize = 40;
@@ -801,8 +864,13 @@ const PROJECT = `
         check('paint: a brush stroke paints the layer (hard-edged), Ctrl+Z / Ctrl+Shift+Z inside', r.brush && r.brush[0] === 255 && r.brush[3] === 255 && r.brushEdge === 0 && r.undo === 0 && r.redo === 255, JSON.stringify(r));
         check('paint: a stroke at 50% opacity covers half, however it overlaps itself', r.half >= 120 && r.half <= 135, JSON.stringify(r));
         check('paint: a stroke shows as it\'s drawn exactly as it goes on (redone only where it reached), and the eraser too', String(r.previewOff) === '0,0', String(r.previewOff));
+        check('paint: sizes are the photo\'s own pixels, the same part of each photo (small on a small photo); the size slider spreads small sizes out', JSON.stringify(r.sizes) === '[10,400,200]' && JSON.stringify(r.slider) === '[5,"5"]', JSON.stringify([r.sizes, r.slider]));
+        check('paint: the wheel sizes the brush (shown on the photo as it changes), Ctrl+wheel zooms, ] is bigger', String(r.wheel) === 'true,true,true,true' && String(r.ctrlWheel) === 'true,true' && r.bracket, JSON.stringify([r.wheel, r.ctrlWheel, r.bracket]));
+        check('paint: Shift-click paints straight on from where the last stroke ended', String(r.shiftLine) === '0,255,0', String(r.shiftLine));
+        check('paint: a pen\'s pressure sizes the brush', r.pressure && r.pressure[0] > 200 && r.pressure[1] === 0, String(r.pressure));
         check('paint: a new layer; a filled rectangle on it', r.layers && r.rect && r.rect[0][1] === 255 && r.rect[1] === 0, JSON.stringify(r));
         check('paint: the fill takes the photo\'s blue square, not beyond it; text is drawn', r.fill && r.fill[0][0] === 255 && r.fill[0][1] === 255 && r.fill[1] === 0 && r.text > 50, JSON.stringify(r));
+        check('paint: the fill can fill the whole layer (only what\'s selected, with a selection), without the colour options; Ctrl+Z undoes it', r.wholeOpts && r.wholeSel && String(r.wholeSel[0]) === '255,0,255,255' && r.wholeSel[1] === 0 && String(r.whole) === '255,0,255,255,255,0,255,255' && r.wholeUndone, JSON.stringify([r.wholeOpts, r.wholeSel, r.whole, r.wholeUndone]));
         check('paint: a selection; Delete clears only inside it', r.selected && r.cleared[0] === 0 && r.cleared[1] === 255, JSON.stringify(r));
         check('paint: the wand selects by colour; Move drags it, Enter puts it down', r.wand && r.moved[0] === 0 && r.moved[1][3] === 255 && r.notDone, JSON.stringify(r));
         check('paint: Done keeps it with the photo (layers in the project\'s folder), the file untouched', r.kept && r.files === 2 && r.fileSame, JSON.stringify(r));
@@ -1432,6 +1500,11 @@ const PROJECT = `
                 document.querySelector('#set-theme-settings input[value="colour"]').click();
                 await until(() => !img().src.startsWith('data:'));
                 out.colour = root.dataset.tsThumbs === 'colour' && app.uiPrefs.skinSettings.mac84.thumbs === 'colour' && img().src === app.files[0].thumbnailUrl;
+                // Kept for next time: the theme and its setting read back as at a start
+                const prefs = app.uiPrefs;
+                app.loadUiPrefs();
+                out.kept = app.uiPrefs.skin === 'mac84/finder' && app.uiPrefs.skinSettings.mac84.thumbs === 'colour';
+                app.uiPrefs = prefs;
                 // Back to jEditor's own look: all of it gone, Windows' title bar back
                 step = 'off';
                 Themes.choose('');
@@ -1454,6 +1527,7 @@ const PROJECT = `
         check('themes: no fitting in docked bars; the folder\'s name and counts are the real ones', r.noFit && r.facts, JSON.stringify(r));
         check('themes: the menu bar\'s menus run jEditor\'s commands and show their keys', r.menu && r.ran, JSON.stringify(r));
         check('themes: a variant is one stylesheet more', r.variant, JSON.stringify(r));
+        check('themes: the theme chosen and its settings are there at the next start', r.kept, JSON.stringify(r));
         check('themes: 1984\'s Thumbnails setting: dithered to one bit, or in colour again', r.setting && r.dithered && r.colour, JSON.stringify(r));
         check('themes: back to jEditor\'s look (or the experiment off) takes all of it off', r.off && r.expOff, JSON.stringify(r));
         check('themes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
