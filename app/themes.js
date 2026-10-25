@@ -30,6 +30,9 @@ const Themes = {
         },
         {
             id: 'snow', name: 'Snow Leopard', year: 2009, skin: 'snow', layout: 'docked', title: 'mac',
+            // No menu bar in the window, as a Mac app has none: in the Mac's
+            // own menu bar (systemMenus below), iPhoto's and Aperture's way
+            systemMenus: ['File', 'Edit', 'View', 'Photos', 'Help'],
             variants: [
                 { id: 'finder', name: 'Finder', mode: 'light', swatch: '#c9ced6', css: ['snow/finder.css', 'snow/controls.css', 'snow/modes.css'] },
                 { id: 'aperture', name: 'Aperture', mode: 'dark', swatch: '#3a3a3a', css: ['snow/finder.css', 'snow/controls.css', 'snow/modes.css', 'snow/aperture.css'] }
@@ -186,6 +189,7 @@ const Themes = {
             this.off();
             this.applied = key;
             if (c) this.on(c);
+            this.systemMenus(c && c.theme);
             this.app.applyAppearance();
             if (typeof Fit !== 'undefined') Fit.run();
         }
@@ -264,6 +268,7 @@ const Themes = {
         const sync = () => {
             bar.querySelector('.th-title').textContent = this.title(theme);
             this.facts();
+            this.systemMenus(theme); // (what needs a project, once there is one)
         };
         sync();
         // What's shown changes the name and the counts: the view, the
@@ -341,20 +346,59 @@ const Themes = {
         top.appendChild(bar);
     },
 
-    menuItems(name) {
+    // [label, run, , key as shown, key as bound, can run now]. all: the ones
+    // needing a project too, there but not to be run (the Mac's menu bar)
+    menuItems(name, { all = false } = {}) {
         const app = this.app;
-        const list = this.MENUS[name === 'Photo' ? 'Picture' : name === 'Special' ? 'Tools' : name] || [];
+        const list = name === 'Photos' ? [...this.MENUS.Picture, '—', ...this.MENUS.Tools.slice(0, 2)]
+            : this.MENUS[name === 'Photo' ? 'Picture' : name === 'Special' ? 'Tools' : name] || [];
         const handlers = app.keyHandlers();
         const out = [];
         for (const item of list) {
             if (item === '—') { out.push(['—']); continue; }
             const [label, act, needsProject] = item;
-            if (needsProject && !app.dirHandle) continue;
+            if (needsProject && !app.dirHandle && !all) continue;
             const run = typeof act === 'function' ? act : () => handlers[act] && handlers[act]();
             const keys = typeof act === 'string' && app.keyBindings && app.keyBindings[act];
-            out.push([label, run, false, keys && keys.length ? Host.keys(keys[0]) : '']);
+            out.push([label, run, false, keys && keys.length ? Host.keys(keys[0]) : '', keys && keys.length ? keys[0] : '', !needsProject || !!app.dirHandle]);
         }
         return out;
+    },
+
+    // ---- The Mac's own menu bar ----
+    // While a theme is on, the menu bar along the top of the Mac's screen
+    // has jEditor's commands by the theme's menus (Snow Leopard's, which has
+    // none in the window, by its systemMenus), each with its key; jEditor's
+    // own look keeps the app's usual menus (mac/main.js)
+    systemMenus(theme) {
+        const native = Host.get();
+        if (!native || !native.setMenus) return;
+        const names = theme && (theme.systemMenus || theme.menus);
+        if (!names) {
+            if (this._menuKey) { this._menuKey = ''; native.setMenus(null); }
+            return;
+        }
+        const runs = new Map();
+        const model = names.map(name => ({
+            label: name,
+            items: this.menuItems(name, { all: true }).map((it, i) => {
+                if (it[0] === '—') return '—';
+                const id = `${name}:${i}`;
+                runs.set(id, it[1]);
+                return { id, label: it[0], key: it[4], enabled: it[5] };
+            })
+        }));
+        this._menuRuns = runs;
+        const key = JSON.stringify(model);
+        if (key === this._menuKey) return;
+        this._menuKey = key;
+        native.setMenus(model);
+    },
+
+    // A command chosen in the Mac's menu bar
+    runMenu(id) {
+        const run = this._menuRuns && this._menuRuns.get(id);
+        if (run) run();
     },
 
     openMenu(button, name) {

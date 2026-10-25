@@ -20,7 +20,9 @@ An entry in `Themes.LIST` (`app/themes.js`):
   top over everything. In the Windows, Mac and Linux apps the title bar is
   the window's (on a Mac the traffic lights hide and macOS 26's toolbar comes
   off; on Linux the window opens again without its frame).
-- `menus`: the menu bar's menus by name (`Themes.MENUS`).
+- `menus`: the menu bar's menus by name (`Themes.MENUS`). In the Mac app
+  they're in the Mac's menu bar too; `systemMenus` names a theme's menus
+  for there when it has none in the window (Snow Leopard).
 - `variants`: each `{ id, name, mode: 'light' | 'dark', swatch, css }`; the
   stylesheets load in order, so a variant is the base plus one more.
 - `settings`: its own options, `{ id, label, help, options, default }`,

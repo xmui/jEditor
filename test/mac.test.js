@@ -204,6 +204,40 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await app.close();
     }
 
+    console.log('mac: a theme\'s menus in the Mac\'s menu bar');
+    {
+        const { app, page, errors } = await launch(profile, [smith]);
+        await loaded(page, 4);
+        const bar = () => app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.map(m => ({
+            label: m.label, role: m.role,
+            items: m.submenu ? m.submenu.items.filter(i => i.type !== 'separator').map(i => ({ label: i.label, role: i.role, key: i.accelerator || '', reg: i.registerAccelerator, on: i.enabled })) : []
+        })));
+        const own = await bar();
+        const choose = async (t) => { await page.evaluate((t) => { Experiments.set('themes', true); Themes.choose(t); }, t); await page.waitForTimeout(500); };
+        await choose('snow/finder');
+        const snow = await bar();
+        const names = (b) => b.slice(1).map(m => m.label).join();
+        const find = (b, menu, label) => (b.find(m => m.label === menu) || { items: [] }).items.find(i => i.label === label);
+        const undo = find(snow, 'Edit', 'Undo');
+        check('Snow Leopard: the menu bar has jEditor\'s commands, by iPhoto\'s menus', names(snow) === 'File,Edit,View,Photos,Window,Help' && !!find(snow, 'Photos', 'Rotate left') && !!find(snow, 'File', 'New Window'), names(snow));
+        check('... each with its key, shown and left to the page (so letters still type)', !!undo && undo.key === 'CmdOrCtrl+Z' && undo.reg === false, JSON.stringify(undo));
+        check('... and Cut, Copy and Paste for text fields', ['cut', 'copy', 'paste'].every(r => (snow.find(m => m.label === 'Edit') || { items: [] }).items.some(i => i.role === r)));
+        // A command from the menu bar runs in the page: View → the other view
+        const before = await page.evaluate(() => document.body.dataset.view);
+        await app.evaluate(({ Menu }, other) => { const v = Menu.getApplicationMenu().items.find(m => m.label === 'View'); v.submenu.items.find(i => i.label === other).click(); }, before === 'single' ? 'Photos' : 'One photo');
+        await page.waitForTimeout(500);
+        const after = await page.evaluate(() => document.body.dataset.view);
+        check('... and a command chosen there runs (View → Photos or One photo)', !!before && after !== before, `${before} → ${after}`);
+        await choose('xp/royale');
+        const xp = await bar();
+        check('XP: its own menus in the Mac\'s menu bar too', names(xp) === 'File,Edit,View,Picture,Tools,Window,Help', names(xp));
+        await choose('');
+        const back = await bar();
+        check('jEditor\'s own look: the app\'s usual menus again', names(back) === names(own) && names(own) === 'File,Edit,View,Window', names(back));
+        check('no JS errors', errors.length === 0, errors.join('; '));
+        await app.close();
+    }
+
     console.log('mac: several windows');
     {
         const { app, page, errors } = await launch(profile, [smith]);
@@ -895,11 +929,12 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         const after = await bounds();
         check('a theme on Linux: the window opens again without its frame, on the same project, where it was', r.has && r.skin === 'xp' && r.bar && r.name === 'Smith Order' && kept.themed === true && after.length === 1 && JSON.stringify(after[0]) === JSON.stringify(before[0]), JSON.stringify({ r, kept: kept.themed, before, after }));
         // (xvfb has no window manager to maximise with: what's asked is checked)
-        await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; global.asked = []; for (const k of ['maximize', 'minimize']) w[k] = () => global.asked.push(k); });
+        // (a window that fills the screen counts as maximised on a Mac: the button unmaximises it)
+        await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; global.asked = []; for (const k of ['maximize', 'unmaximize', 'minimize']) w[k] = () => global.asked.push(k); });
         await themed.evaluate(() => { Themes.window('maximize'); Themes.window('minimize'); });
         await themed.waitForTimeout(300);
         const asked = await app.evaluate(() => global.asked.join());
-        check('... and its title bar\'s buttons work the window', asked === 'maximize,minimize', asked);
+        check('... and its title bar\'s buttons work the window', /^(maximize|unmaximize),minimize$/.test(asked), asked);
         const plain = await swap(themed, '');
         const back = await plain.evaluate(() => ({ skin: document.documentElement.dataset.skin || '', name: app.dirHandle.name }));
         const kept2 = JSON.parse(fs.readFileSync(path.join(profileT, 'mac.json'), 'utf8'));

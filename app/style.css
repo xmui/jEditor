@@ -2995,6 +2995,12 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     top: calc(var(--th-top, 0px) + 8px);
 }
 
+/* Full screen has no title bar, in any era (the menu bar stays) */
+:root.th-top:fullscreen #th-titlebar,
+:root.th-top.fullscreen #th-titlebar {
+    display: none;
+}
+
 /* The title bar moves the window (the Windows app); its buttons, menus
    and the top edge (resizing) don't */
 #th-titlebar {
