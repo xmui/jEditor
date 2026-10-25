@@ -110,7 +110,7 @@ Like Lightroom's Develop, for one photo at a time: press `E` (or the sliders but
 
 - **Histogram and levels.** Red, green and blue, with marks at the ends when something clips. The handles under it set the black, mid-grey and white points; the lower two set the output range. Pick **R**, **G** or **B** to set one channel. **Auto** sets the levels from the photo; **Auto color** sets each channel on its own too, which takes the colour cast off a faded print.
 - **Light:** Exposure (in stops), Contrast, Highlights, Shadows, Whites and Blacks.
-- **Color:** Temperature, Tint, Vibrance (gentle on colours that are already strong) and Saturation.
+- **Color:** Temperature, Tint, Vibrance (gentle on colours that are already strong) and Saturation. **Pick grey** (`W`, at the top of Color) sets the white balance from the photo: click something that should be white or grey (a wall, a shirt, the paper's border) and Temperature and Tint take the cast off it. Something very bright or very dark can't tell, so pick a light grey. `Esc` stops picking.
 - **Curve:** click to add a point and drag it; drag a point off the side, or double-click it, to take it away. The curve never turns back on itself. **RGB** or one channel.
 - **Color mixer:** the hue, saturation and luminance of reds, oranges, yellows, greens, aquas, blues, purples and magentas, each on its own.
 - **Looks:** film simulations of real stocks, each shown on your photo, by process:
@@ -256,7 +256,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 
 In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `\` rotate 180°, `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `M` loupe, `+` `-` zoom, `Z` fit, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
-In Adjust: `Enter` done, `Shift+Enter` done and next, `Esc` cancel, `\` before and after, `Shift+A` auto, `Shift+C` auto color, `R` reset, `Ctrl+Shift+C` / `Ctrl+Shift+V` copy / paste, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
+In Adjust: `Enter` done, `Shift+Enter` done and next, `Esc` cancel, `\` before and after, `Shift+A` auto, `Shift+C` auto color, `W` pick grey (white balance), `R` reset, `Ctrl+Shift+C` / `Ctrl+Shift+V` copy / paste, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
 In Paint: `Enter` done (or put down what's being moved), `Esc` cancel, `V` move, `M` rectangle / ellipse select, `L` lasso, `W` magic wand, `B` brush, `N` pencil, `E` eraser, `G` fill / gradient, `U` line, `R` rectangle, `O` ellipse, `T` text, `I` colour picker, `H` hand, `[` `]` brush size (or a line's, or the text's), `Shift`-click a straight line from the last stroke, `X` swap colours, `D` black and white, `Ctrl+A` / `Ctrl+D` select all / nothing, `Delete` clear the selection, `Ctrl+C` / `Ctrl+V` copy / paste (an image copied in another app comes in as a layer), `Ctrl+Shift+O` bring in an image, `Ctrl+Shift+N` new layer, `Ctrl+J` duplicate the layer, `Ctrl+E` merge down, `0` fit, `1` 100%, `+` `-` zoom, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
