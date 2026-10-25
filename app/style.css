@@ -4421,6 +4421,12 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     cursor: crosshair;
 }
 
+/* Picking white balance: the click is on the photo, whatever's over it */
+.adj-picking #adj-stage,
+.adj-picking #adj-stage * {
+    cursor: crosshair;
+}
+
 /* Detail: the 1:1 view, and where it is on the photo */
 .adj-loupe {
     display: block;
@@ -4646,7 +4652,8 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     border-radius: var(--r-xs);
 }
 
-.mode-head-acts .btn[aria-pressed="true"] {
+.mode-head-acts .btn[aria-pressed="true"],
+.adj-sec-acts .btn[aria-pressed="true"] {
     background: var(--accent-soft);
     color: var(--accent-text);
 }

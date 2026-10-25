@@ -6,8 +6,8 @@
 # The Release workflow sets the version (and the release's tag) and the
 # .dmg's SHA-256 here each time it publishes.
 cask "jeditor" do
-  version "1.43.1,v1.43.1"
-  sha256 "11b451d661443b8f73701486c41c58778422c65b8f92cc4f5fd2cc4f06dc9efb"
+  version "1.45.0,v1.45.0"
+  sha256 "ec03f1d302a22956b22e107cebff0d5f41ecb2963df44c78c127c3132180cacd"
 
   url "https://github.com/xmui/jEditor/releases/download/#{version.csv.second}/jEditor-#{version.csv.first}-mac.dmg"
   name "jEditor"

@@ -511,6 +511,29 @@ const Develop = {
         return k.map(x => x / y);
     },
 
+    // The temperature and tint that make a patch of the photo (RGBA,
+    // 0–255) grey: white balance's gains undone on its mean in linear
+    // light. null when it can't tell: a channel clipped, or too dark
+    neutralWB(px) {
+        const sum = [0, 0, 0];
+        let n = 0, top = 0;
+        for (let i = 0; i < px.length; i += 4) {
+            for (let c = 0; c < 3; c++) {
+                if (px[i + c] >= 250) return null;
+                sum[c] += this.toLinear(px[i + c] / 255);
+                top = Math.max(top, px[i + c]);
+            }
+            n++;
+        }
+        if (!n || top < 12) return null;
+        const [R, G, B] = sum.map(s => Math.max(1e-6, s / n));
+        const clamp = (x) => Math.round(Math.min(100, Math.max(-100, x)));
+        return {
+            temp: clamp(100 * Math.log(B / R) / 0.7),
+            tint: clamp(-100 * Math.log(Math.sqrt(R * B) / G) / 0.3)
+        };
+    },
+
     // The Light sliders as one curve (gamma-encoded values): whites and
     // blacks move the ends, contrast bends it round the middle, highlights
     // and shadows lift or lower the bright and dark quarters

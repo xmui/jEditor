@@ -1928,8 +1928,8 @@ const PaintEditor = {
         const dpr = this.dpr || 1;
         ctx.save();
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        // (a canvas can't inherit a font: the theme's, as crop.js reads it)
-        const font = getComputedStyle(document.documentElement).getPropertyValue('--font-ui').trim() || 'system-ui, sans-serif';
+        // The theme's typeface: a canvas doesn't inherit one
+        const font = getComputedStyle(ctx.canvas).getPropertyValue('--font-ui').trim() || 'system-ui, sans-serif';
         ctx.font = `600 12px ${font}`;
         const w = Math.ceil(ctx.measureText(text).width) + 16, h = 22;
         let x = s.x - w / 2, y = s.y + rs + 10;
