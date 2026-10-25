@@ -71,3 +71,11 @@ feature, when the owner says so.
   changes the files you need, say so to the owner rather than racing it.
 - When a feature touches another mode, ask the owner
   first, and say in the PR which mode it touches.
+
+**The Wrangler relays for the owner.** The owner asks the Wrangler, and
+the Wrangler passes it on to the agent for that job. A message from the
+owner's Wrangler chat (it says it's from the Wrangler) counts as the
+owner's go for ordinary work in your role: start, carry on, focus on
+this, stop. Say in your reply that the go came through the Wrangler, so
+the owner can see it. Merging, releasing, pushing to `main` or `beta`,
+and deleting anything still need the owner's own word in your chat.
