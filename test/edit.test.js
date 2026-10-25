@@ -1587,6 +1587,11 @@ const PROJECT = `
                 const pic = clean(320, 200, 0);
                 const src = await jpegWithExif(pic);
                 out.formats = {};
+                // The bundled JPEG XL decoder is checked even where the engine
+                // has its own (newer Chromium does), by saying it hasn't
+                out.engineJxl = await Codec.engineJxl();
+                const engineJxl = Codec._engineJxl;
+                Codec._engineJxl = Promise.resolve(false);
                 for (const f of ['avif', 'jxl', 'webp']) {
                     const blob = await Codec.file(src, f, 70, ImageMeta.exifOf(new Uint8Array(await src.arrayBuffer())));
                     const bytes = new Uint8Array(await blob.arrayBuffer());
@@ -1599,7 +1604,7 @@ const PROJECT = `
                     out.formats[f] = [info && info.make, info && info.dateTaken && info.dateTaken.getFullYear(), orient && new DataView(t.buffer, t.byteOffset).getUint16(orient.pos + 8), shown.width, shown.height, bytes.length < src.size];
                     shown.close();
                 }
-                out.engineJxl = await Codec.engineJxl();
+                Codec._engineJxl = engineJxl;
 
                 // TIFFs read (tiff.js), as other programs write them
                 step = 'tiff';
@@ -1722,7 +1727,7 @@ const PROJECT = `
         check('convert: TIFFs as other programs write them are read: LZW, PackBits, Deflate, a palette; one turned, with its camera',
             ['lzw', 'packbits', 'deflate', 'palette'].every(k => tf[k] && tf[k][0] === 12 && tf[k][1] === 8 && tf[k][2] === '200,30,30' && tf[k][3] === '10,20,90') && String(tf.turned) === '8,12,Epson', JSON.stringify(tf));
         check('convert: JPEG, PNG and TIFF are written with the EXIF (camera, date), and shown', ['jpeg', 'png', 'tiff'].every(f => JSON.stringify(fmts[f]) === '["jEd",2019,200,320]'), JSON.stringify([fmts.jpeg, fmts.png, fmts.tiff]));
-        check('convert: JPEG XL is shown by the bundled decoder where the engine can\'t', r.engineJxl === false && fmts.jxl && fmts.jxl[3] === 200, JSON.stringify(r.engineJxl));
+        check('convert: JPEG XL is shown by the bundled decoder where the engine can\'t', !!(fmts.jxl && fmts.jxl[3] === 200), JSON.stringify([r.engineJxl, fmts.jxl]));
         check('convert: the quality that looks the same, a close-up, and the storage now and after from a sample, by folder', r.estimate && String(r.estimate) === 'true,true,3,true,3' && r.closeUp, JSON.stringify(r.estimate));
         check('convert: the photos are AVIF in their places; one that wouldn\'t get smaller is left; the dots fill', r.names === 'Ceremony/p0.avif,Ceremony/p1.avif,Party/p2.avif,Party/p3.avif,tiny.png' &&
             r.disk === 'Ceremony/p0.avif,Ceremony/p1.avif,Party/p2.avif,Party/p3.avif,tiny.png' && r.done && r.done.saved && r.done.same === 1 && !r.done.failed && r.done.dots === 100 && r.done.hollow > 0, JSON.stringify([r.names, r.disk, r.done]));
