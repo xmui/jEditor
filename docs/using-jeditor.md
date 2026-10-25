@@ -61,7 +61,8 @@ Flags are kept with the order, in `.jeditor/flags.json`, so they follow renames 
 - **Rename.** Files are renamed in place. If the new names overlap the old ones (shifting a numbered sequence, say), they go through temporary names first. If a rename fails part-way, every file gets its original name back.
 - **Delete.** Photos are moved to `.jeditor/trash` inside the opened folder, not deleted. `Ctrl+Z` restores them.
 - **Move to a folder.** Photos are moved on disk, which is a rename and instant even for big scans; where a file can't be moved it's copied and the original removed. A copy is a byte-for-byte duplicate. Cached thumbnails and previews follow the photo, so moving doesn't make them again.
-- **Export.** Copies go to a `jEditor Export` folder (or onto a USB drive, or a folder you choose), optionally resized, with any adjustments and edits not saved yet.
+- **Export.** Copies go to a `jEditor Export` folder (or onto a USB drive, or a folder you choose), optionally resized or in another format, with any adjustments and edits not saved yet.
+- **Convert.** Each photo is written again as AVIF, JPEG XL or WebP, upright and in sRGB, with its EXIF (orientation reset, the old thumbnail dropped; the colour profile isn't kept, as the pixels are sRGB now). Replacing puts the original in the Recycle Bin or `.jeditor/trash`; `Ctrl+Z` puts it back under its old name.
 - **Adjust.** Never written into the photo in a project: the settings are kept in `.jeditor/edits.json`, and Export (or **Save edits…**) writes the result, re-encoded like a crop, with the metadata carried over. Without a project (photos picked on a phone, or dropped in), they're written into the photo when you leave Adjust.
 
 ## The .jeditor folder
@@ -166,11 +167,27 @@ Painting goes on last, over the photo as it's cropped and adjusted, so it looks 
 
 - **USB drive or card** (Windows, Mac and Linux): the whole project, copied in one step, with how far it's got. Each drive is listed with the room left on it. The project's flags and edits go with it, so when it's opened in jEditor on another computer they're all there. **Eject it when it's done** ejects the drive after.
 - **CD or DVD** (Windows): the burner, whether there's a blank disc in it and whether the project fits, the disc's name, and (with edits not saved yet) whether to save them into the photos first, since the disc gets the photos as they are on disk. The disc comes out when it's done.
-- **Copies** (everywhere): copies of the selected photos, all of them or the starred ones, full size or smaller (the longest side: 4000, 3000, 2048, 1600, 1080 px or any other), with edits not saved yet in them, and RAWs as JPEGs. They go into `jEditor Export` in the project, into `jEditor Export` on a USB drive, or into a folder you choose.
+- **Copies** (everywhere): copies of the selected photos, all of them or the starred ones, full size or smaller (the longest side: 4000, 3000, 2048, 1600, 1080 px or any other), as they are or as JPEG, PNG, TIFF, WebP, AVIF or JPEG XL (**Format**), with edits not saved yet in them, and RAWs as JPEGs. They go into `jEditor Export` in the project, into `jEditor Export` on a USB drive, or into a folder you choose.
 
 In the Windows, Mac and Linux apps:
 
 - **Importing from a camera's card:** when a card with a DCIM folder is plugged in, jEditor offers to import it; or press `Ctrl+I` (in a browser, choose the card's folder). The photos go into the open project, a new project in your projects folder (named for the day and the card), or a folder you choose; into a folder per day if you like; only the ones not imported before; and the card is ejected after if you like. RAW files come too; videos stay on the card.
+
+## Converting photos: format, quality and storage
+
+**Convert…** turns photos, one or many, into another format: **AVIF** (smallest), **JPEG XL** (newest), **WebP** (for the web), **JPEG** (opens anywhere), **PNG** (lossless) or **TIFF** (lossless, for print). Open it from the toolbar's **Convert** button (under ⋯ to start with; Settings can put it on the toolbar; in single view it converts the photo open), **Convert photos…** on the start page, right-clicking a photo, the selected photos, a folder or the project in the sidebar, or ⋯ on the selection bar.
+
+- **Photos:** what's being converted: the project, a folder in it or the selected photos. **Choose a folder…** picks any folder on your computer instead, with the photos in its folders too, without opening it as the project (from the start page, it asks straight away). A folder chosen keeps its originals in the Recycle Bin, or in a `.jeditor/trash` of its own, and **Put the originals back** at the end takes the conversion back.
+
+- **Quality** goes from smaller to better, with a mark at the lowest quality that still looks the same as the original (worked out on one of your photos; *Closest to the original* where only the highest keeps its grain). PNG and TIFF keep every pixel, so they have no quality to choose. Under it, a close-up of that photo at its own pixels, the original beside the result, with their sizes.
+- **Storage:** what the photos take **Now** and **After** and by folder, worked out from a sample of them before anything happens, and again as you change the format or quality: what's freed striped green, or (PNG and TIFF, which often take more than a JPEG) how much more striped amber.
+- **The originals:** **Replace them** (the converted photo takes the original's place and the original goes to the Recycle Bin, or jEditor's trash; one `Ctrl+Z` puts them all back) or **Keep both** (the converted copies go into `jEditor Converted` in the project, which jEditor doesn't list as the project's photos).
+
+Flags and edits go with each photo, and so do its date taken, camera and the rest of its EXIF (into a TIFF: its camera and dates). RAW files, GIFs and photos already in that format are left as they are, and so, in the lossy formats, are photos that wouldn't get smaller.
+
+While it works, 100 dots stand for the photos, each in their own colours once they're done; done dots turn hollow and green for the storage freed, as many as the share freed so far. Pause or Stop, or close the window and carry on: the corner says how far it's got. At the end: the storage freed, and the size before and after.
+
+AVIF and JPEG XL are written by codecs that come with jEditor (WebAssembly builds of libavif and libjxl), and TIFF by jEditor itself (8 bits, LZW, lossless, which every program that opens TIFF reads; all the photo's EXIF goes in, GPS too). jEditor shows JPEG XL and TIFF photos with its own decoders, where the browser engine can't: TIFFs uncompressed or LZW, Deflate or PackBits, 1 to 16 bits, colour, grey, CMYK or a palette (not JPEG-compressed ones yet). Edits on an AVIF, JPEG XL or TIFF photo are always kept as edits (as on a RAW); **Save edits** writes them in the same format. Not in `standalone.html` opened from disk, which can't load the codecs.
 
 ## Folders (collating)
 
@@ -279,9 +296,11 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `modes.js`: Photos, Adjust and Paint as modes: the switch (sidebar, chip), the strip in Adjust and Paint, Start in
 - `disc.js`: burning a CD or DVD (the Windows app's `src/Burn.cs`)
 - `export.js`: the Export window (a USB drive, a disc, or copies)
+- `convert.js`: Convert (photos to AVIF, JPEG XL or WebP: the quality and close-up, the storage now and after, the dots)
+- `codec.js`, `codec-worker.js`, `codecs/`, `tiff-codec.js`: writing AVIF, JPEG XL, WebP, JPEG, PNG and TIFF, and reading JPEG XL and TIFF, in workers (libavif and libjxl as WebAssembly; TIFF jEditor's own)
 - `crop-auto.js`: finding the print on a scan (Auto)
 - `changelog.js`: the list of changes shown in What's new, and the release notes
-- `meta.js`: reading and copying JPEG/PNG metadata
+- `meta.js`: reading and copying JPEG/PNG metadata, and EXIF in WebP, AVIF and JPEG XL
 - `dupes.js`: duplicate finder
 - `rename.js`: batch rename
 - `folders.js`: folders: the folder list, moving and copying photos, making, renaming and deleting folders

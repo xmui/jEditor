@@ -511,6 +511,8 @@ const Places = {
             items.push(['Import photos from here…', () => Import.open({ path: usb.path, name: usb.name })]);
         }
         if (!drive) items.push(['—'], ['Export: USB drive' + (Host.has('burn') ? ', disc' : '') + ', copies…', () => Export.open({ path })]);
+        // The open project's photos in another format
+        if (!drive && this.app.files.length && this.key(path) === this.key(this.current())) items.push(['Convert…', () => Convert.open({ folder: '' })]);
         return items;
     },
 

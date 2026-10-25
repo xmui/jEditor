@@ -69,6 +69,14 @@ const SCREENS = {
     export: [true, `Export.open({ files: [app.files[1], app.files[2]] })`],
     moveto: [true, `app.selection = new Set([app.files[1]]); ${H('edit.moveTo')}`],
     blank: [true, `Blank.open()`],
+    convert: [true, `Convert.open({})`, 3000],
+    // Running: keeping both (nothing replaced), paused part way so it holds still
+    convert2: [true, `Convert.open({}).then(() => setTimeout(() => { Convert.setKeep(true); Convert.go(); setTimeout(() => Convert.togglePause(), 2500); }, 1500))`, 5000],
+    // One photo, from its right-click menu
+    convert5: [true, single(`Convert.open({ files: [app.currentFile] })`), 4000],
+    // Lossless, so no quality, and more storage than now
+    convert3: [true, `Convert.open({}).then(() => Convert.setFormat('tiff'))`, 4000],
+    convert4: [true, `Convert.open({}).then(() => setTimeout(() => { Convert.setFormat('png'); Convert.setKeep(true); setTimeout(() => { Convert.go(); setTimeout(() => Convert.togglePause(), 2500); }, 800); }, 1200))`, 6000],
     shortcuts: [true, H('app.shortcuts')],
     whatsnew: [true, `app.toggleWhatsNew()`],
     dupes: [true, H('app.dupes')],
@@ -112,6 +120,11 @@ const PARTS = [
     ['Dialogs', 'A name to type', 'prompt', '#ui-dialog .dialog'],
     ['Dialogs', 'Rename', 'rename', '.rename-card'],
     ['Dialogs', 'Export', 'export', '.export-card'],
+    ['Dialogs', 'Convert: format, quality, close-up, storage', 'convert', '.cv-card'],
+    ['Dialogs', 'Convert, running', 'convert2', '.cv-card'],
+    ['Dialogs', 'Convert one photo', 'convert5', '.cv-card'],
+    ['Dialogs', 'Convert to TIFF: lossless, more storage', 'convert3', '.cv-card'],
+    ['Dialogs', 'Convert to PNG, running: more storage', 'convert4', '.cv-card'],
     ['Dialogs', 'Move to…', 'moveto', '.folder-card'],
     ['Dialogs', 'New blank image', 'blank', '.blank-card'],
     ['Dialogs', 'Keyboard shortcuts', 'shortcuts', '.shortcuts-card'],
@@ -342,7 +355,7 @@ const srv = http.createServer((req, res) => {
             // Scanning is Windows only: on the others the window never opens
             for (const s of screens) {
                 if (s === 'scan' && !(FEATURES[platform] || []).includes('scan')) continue;
-                const [folder, setup] = SCREENS[s];
+                const [folder, setup, wait] = SCREENS[s];
                 await page.goto(base + '/index.html');
                 await page.waitForTimeout(300);
                 await page.evaluate(({ theme, density }) => {
@@ -370,7 +383,7 @@ const srv = http.createServer((req, res) => {
                 await page.evaluate(() => document.querySelectorAll('.toast').forEach(t => t.remove()));
                 if (setup) await page.evaluate(`setTimeout(() => { ${setup} }, 0)`);
                 await page.mouse.move(w / 2, h - 2);
-                await page.waitForTimeout(1500);
+                await page.waitForTimeout(wait || 1500);
                 // PROBE='js expression': what it gives, on each screen (for looking into a finding)
                 if (process.env.PROBE) console.log(key, s, w, JSON.stringify(await page.evaluate(process.env.PROBE).catch(e => String(e))));
                 if (process.env.SHOTS) {

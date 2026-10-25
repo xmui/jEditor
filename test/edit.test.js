@@ -29,7 +29,11 @@ const PROJECT = `
         try { await opfs.removeEntry(name, { recursive: true }); } catch (e) { /* fresh */ }
         const dir = await opfs.getDirectoryHandle(name, { create: true });
         for (const [n, blob] of Object.entries(photos)) {
-            const fh = await dir.getFileHandle(n, { create: true });
+            // "Folder/photo.jpg": in a folder
+            let d = dir;
+            const parts = n.split('/');
+            for (const p of parts.slice(0, -1)) d = await d.getDirectoryHandle(p, { create: true });
+            const fh = await d.getFileHandle(parts[parts.length - 1], { create: true });
             const w = await fh.createWritable(); await w.write(blob); await w.close();
         }
         window.showDirectoryPicker = async () => dir;
@@ -1533,6 +1537,281 @@ const PROJECT = `
         check('themes: back to jEditor\'s look (or the experiment off) takes all of it off', r.off && r.expOff, JSON.stringify(r));
         check('themes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
+    }
+
+    // TIFFs as other programs write them (made with Pillow, 12 × 8: dark blue
+    // with a red block at 4–8, 2–4): LZW with the predictor, PackBits,
+    // Deflate, a palette, and one turned (Orientation 6) with a camera and date
+    const TIFFS = {
+        "lzw": "SUkqAEYAAACAAoIFoAQWDQeEQmFQiBQSFw+IQyBw9fA5iREAEJ5DyEw2KRaMRqORKHQqKxeIyKOxOMS2FR6XTGDTCZTGAgsAAAEDAAEAAAAMAAAAAQEDAAEAAAAIAAAAAgEDAAMAAADQAAAAAwEDAAEAAAAFAAAABgEDAAEAAAACAAAAEQEEAAEAAAAIAAAAFQEDAAEAAAADAAAAFgEDAAEAAAAIAAAAFwEEAAEAAAA+AAAAHAEDAAEAAAABAAAAPQEDAAEAAAACAAAAAAAAAAgACAAIAA==",
+        "packbits": "SUkqADABAAAjChBaChBaChBaChBaChBaChBaChBaChBaChBaChBaChBaChBaIwoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWiMKEFoKEFoKEFoKEFrIHh7IHh7IHh7IHh7IHh4KEFoKEFoKEFojChBaChBaChBaChBayB4eyB4eyB4eyB4eyB4eChBaChBaChBaIwoQWgoQWgoQWgoQWsgeHsgeHsgeHsgeHsgeHgoQWgoQWgoQWiMKEFoKEFoKEFoKEFoKEFoKEFoKEFoKEFoKEFoKEFoKEFoKEFojChBaChBaChBaChBaChBaChBaChBaChBaChBaChBaChBaChBaIwoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoAAAEDAAEAAAAMAAAAAQEDAAEAAAAIAAAAAgEDAAMAAACuAQAAAwEDAAEAAAAFgAAABgEDAAEAAAACAAAAEQEEAAEAAAAIAAAAFQEDAAEAAAADAAAAFgEDAAEAAAAIAAAAFwEEAAEAAAAoAQAAHAEDAAEAAAABAAAAAAAAAAgACAAIAA==",
+        "deflate": "SUkqACAAAAB4nOMSiOKiNjohJ4eMaKqG1ggAz6kz8QAKAAABAwABAAAADAAAAAEBAwABAAAACAAAAAIBAwADAAAAngAAAAMBAwABAAAACAAAAAYBAwABAAAAAgAAABEBBAABAAAACAAAABUBAwABAAAAAwAAABYBAwABAAAACAAAABcBBAABAAAAFwAAABwBAwABAAAAAQAAAAAAAAAIAAgACAA=",
+        "palette": "SUkqAAgAAAAKAAABBAABAAAADAAAAAEBBAABAAAACAAAAAIBAwABAAAACAAAAAMBAwABAAAAAQAAAAYBAwABAAAAAwAAABEBBAABAAAAhgYAABYBBAABAAAACAAAABcBBAABAAAAYAAAABwBAwABAAAAAQAAAEABAwAAAwAAhgAAAAAAAAAAyAAKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4AWgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAAAAAABAQEBAQEBAAAAAAABAQEBAQEBAAAAAAABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+        "turned": "SUkqAAgAAAANAAABBAABAAAADAAAAAEBBAABAAAACAAAAAIBAwADAAAAqgAAAAMBAwABAAAAAQAAAAYBAwABAAAAAgAAAA8BAgAGAAAAsAAAABEBBAABAAAAygAAABIBAwABAAAABgAAABUBAwABAAAAAwAAABYBBAABAAAACAAAABcBBAABAAAAIAEAABwBAwABAAAAAQAAADIBAgAUAAAAtgAAAAAAAAAIAAgACABFcHNvbgAyMDAxOjAyOjAzIDA0OjA1OjA2AAoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWsgeHsgeHsgeHsgeHsgeHgoQWgoQWgoQWgoQWgoQWgoQWgoQWsgeHsgeHsgeHsgeHsgeHgoQWgoQWgoQWgoQWgoQWgoQWgoQWsgeHsgeHsgeHsgeHsgeHgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWg=="
+    };
+
+    // ---- Convert: AVIF, JPEG XL and WebP, their quality and storage (codec.js, convert.js) ----
+    if (wanted('convert')) {
+        console.log('convert: AVIF, JPEG XL, WebP, JPEG, PNG and TIFF, their EXIF, quality and storage, converting and Ctrl+Z (codec.js, convert.js, tiff.js)');
+        const { page, issues } = await open();
+        await page.evaluate((t) => { window.TIFFS = t; }, TIFFS);
+        const r = await page.evaluate(async () => {
+            let step = 'codecs';
+            try {
+                const out = {};
+                // EXIF by hand: Make "jEd", taken 2019-07-04 12:34:56, turned (orientation 6)
+                const exif = (() => {
+                    const b = new Uint8Array(100), v = new DataView(b.buffer), enc = new TextEncoder();
+                    b.set([0x4D, 0x4D, 0, 42]); v.setUint32(4, 8);
+                    v.setUint16(8, 3);
+                    v.setUint16(10, 0x010F); v.setUint16(12, 2); v.setUint32(14, 4); b.set(enc.encode('jEd\0'), 18);
+                    v.setUint16(22, 0x0112); v.setUint16(24, 3); v.setUint32(26, 1); v.setUint16(30, 6);
+                    v.setUint16(34, 0x8769); v.setUint16(36, 4); v.setUint32(38, 1); v.setUint32(42, 50);
+                    v.setUint32(46, 0);
+                    v.setUint16(50, 1); v.setUint16(52, 0x9003); v.setUint16(54, 2); v.setUint32(56, 20); v.setUint32(60, 68); v.setUint32(64, 0);
+                    b.set(enc.encode('2019:07:04 12:34:56\0'), 68);
+                    return b.slice(0, 88);
+                })();
+                const jpegWithExif = async (c) => new Blob([ImageMeta.withExifJpeg(new Uint8Array(await (await canvasBlob(c, 'image/jpeg', 0.95)).arrayBuffer()), exif)], { type: 'image/jpeg' });
+                // A clean picture (no grain: grain has to be kept to look the
+                // same, which takes the quality up), as photos of things are
+                const clean = (w, h, i) => {
+                    const c = document.createElement('canvas'); c.width = w; c.height = h;
+                    const g = c.getContext('2d');
+                    const grad = g.createLinearGradient(0, 0, w, h);
+                    grad.addColorStop(0, '#203860'); grad.addColorStop(0.5, '#d0a070'); grad.addColorStop(1, '#f0e8d0');
+                    g.fillStyle = grad; g.fillRect(0, 0, w, h);
+                    for (let k = 0; k < 6; k++) {
+                        g.fillStyle = ['#2050c0', '#c03020', '#20a050', '#a020c0', '#f0c030', '#303030'][(k + i) % 6];
+                        g.beginPath(); g.arc(w * (0.15 + k * 0.14), h * (0.3 + 0.4 * ((k + i) % 2)), h * 0.12, 0, Math.PI * 2); g.fill();
+                    }
+                    g.fillStyle = '#fff'; g.font = `${h / 8}px sans-serif`; g.fillText('jEditor ' + i, w * 0.1, h * 0.9);
+                    return c;
+                };
+                out.ready = await Codec.ready();
+                const pic = clean(320, 200, 0);
+                const src = await jpegWithExif(pic);
+                out.formats = {};
+                // The bundled JPEG XL decoder is checked even where the engine
+                // has its own (newer Chromium does), by saying it hasn't
+                out.engineJxl = await Codec.engineJxl();
+                const engineJxl = Codec._engineJxl;
+                Codec._engineJxl = Promise.resolve(false);
+                for (const f of ['avif', 'jxl', 'webp']) {
+                    const blob = await Codec.file(src, f, 70, ImageMeta.exifOf(new Uint8Array(await src.arrayBuffer())));
+                    const bytes = new Uint8Array(await blob.arrayBuffer());
+                    const t = ImageMeta.exifOf(bytes);
+                    const info = t && app.readTiffInfo(new DataView(t.buffer, t.byteOffset, t.byteLength), 0);
+                    // Orientation 1 now: the pixels are upright (the JPEG was shown turned)
+                    const ifd = t && ImageMeta.readIfd({ view: new DataView(t.buffer, t.byteOffset, t.byteLength), tiff: 0, le: false, end: t.length }, 8);
+                    const orient = ifd && ifd.entries.find(e => e.tag === 0x0112);
+                    const shown = await createImageBitmap(f === 'jxl' ? await Codec.showable(new File([blob], 'p.jxl')) : blob);
+                    out.formats[f] = [info && info.make, info && info.dateTaken && info.dateTaken.getFullYear(), orient && new DataView(t.buffer, t.byteOffset).getUint16(orient.pos + 8), shown.width, shown.height, bytes.length < src.size];
+                    shown.close();
+                }
+                Codec._engineJxl = engineJxl;
+
+                // TIFFs read (tiff.js), as other programs write them
+                step = 'tiff';
+                out.tiffs = {};
+                for (const [k, b64] of Object.entries(window.TIFFS)) {
+                    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+                    const bmp = await createImageBitmap(await Codec.showable(new File([bytes], k + '.tif')));
+                    const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+                    const g = c.getContext('2d'); g.drawImage(bmp, 0, 0);
+                    const at = (x, y) => [...g.getImageData(x, y, 1, 1).data.slice(0, 3)].map(v => Math.round(v / 10) * 10);
+                    const ex = k === 'turned' && ImageMeta.exifOf(bytes);
+                    out.tiffs[k] = k === 'turned' ? [bmp.width, bmp.height, (app.readTiffInfo(new DataView(ex.buffer, ex.byteOffset, ex.byteLength), 0) || {}).make] : [bmp.width, bmp.height, String(at(5, 3)), String(at(0, 0))];
+                }
+                // JPEG, PNG and TIFF written with the EXIF too
+                for (const f of ['jpeg', 'png', 'tiff']) {
+                    const blob = await Codec.file(src, f, 85, ImageMeta.exifOf(new Uint8Array(await src.arrayBuffer())));
+                    const bytes = new Uint8Array(await blob.arrayBuffer());
+                    const t = ImageMeta.exifOf(bytes);
+                    const info = t && app.readTiffInfo(new DataView(t.buffer, t.byteOffset, t.byteLength), 0);
+                    const shown = await createImageBitmap(f === 'tiff' ? await Codec.showable(new File([blob], 'p.tif')) : blob);
+                    out.formats[f] = [info && info.make, info && info.dateTaken && info.dateTaken.getFullYear(), shown.width, shown.height];
+                    shown.close();
+                }
+
+                // A project: two folders of photos, and a tiny one that won't get smaller
+                step = 'estimate';
+                const files = {};
+                for (let i = 0; i < 4; i++) files[(i < 2 ? 'Ceremony/' : 'Party/') + `p${i}.jpg`] = await jpegWithExif(clean(900, 600, i));
+                const tiny = document.createElement('canvas'); tiny.width = tiny.height = 4;
+                files['tiny.png'] = await canvasBlob(tiny, 'image/png');
+                const dir = await openProject('space', files);
+                const P0 = app.files.find(f => f.name === 'p0.jpg');
+                P0._flags = { star: true };
+                Edits.set([{ file: P0, edit: { q: 1, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 }, size: P0.size } }], 'rotation');
+                Convert.prefs.format = 'avif';
+                Convert.prefs.keep = false;
+                await Convert.open({ folder: '' });
+                await until(() => Convert.est && !Convert.est.working, 600);
+                const est = Convert.est;
+                out.estimate = [est.total > 0, est.after > 0 && est.after < est.total, est.byDir && est.byDir.size, !!Convert.suggested.avif, Convert.el('cv-folders').children.length];
+                out.closeUp = Convert.el('cv-after-cap').textContent.startsWith('After');
+
+                // Converting: each photo AVIF in its place, flags and edit with it
+                step = 'convert';
+                Convert.go();
+                await until(() => Convert.done, 800);
+                const done = Convert.done;
+                out.done = { saved: done.saved > 0, same: done.same, failed: done.failed, dots: Convert.el('cv-dots').children.length, hollow: Convert.el('cv-dots').querySelectorAll('.f').length };
+                out.names = app.files.map(f => f.relPath || f.name).sort().join();
+                out.kept = [P0.name, !!(P0._flags && P0._flags.star), !!P0._edit && P0._edit.size === P0.size];
+                const info = await app.getExifInfo(P0);
+                out.date = info && info.dateTaken && info.dateTaken.getFullYear();
+                const onDisk = async () => {
+                    const names = [];
+                    for (const d of ['Ceremony', 'Party']) for await (const e of (await dir.getDirectoryHandle(d)).values()) names.push(`${d}/${e.name}`);
+                    for await (const e of dir.values()) if (e.kind === 'file') names.push(e.name);
+                    return names.sort().join();
+                };
+                out.disk = await onDisk();
+                Convert.go(); // Done
+                out.closed = !Convert.isOpen();
+
+                // Ctrl+Z: the originals back, by their names, flags and edit too
+                step = 'undo';
+                await app.undo();
+                out.undone = app.files.map(f => f.relPath || f.name).sort().join();
+                out.undoneDisk = await onDisk();
+                out.undoneKept = [P0.name, !!(P0._flags && P0._flags.star), !!P0._edit && P0._edit.size === P0.size];
+
+                // Keep both: smaller copies in their own folder, not in the project
+                step = 'keep';
+                Convert.prefs.format = 'webp';
+                Convert.prefs.keep = true;
+                await Convert.open({ folder: 'Party' });
+                await until(() => Convert.est && !Convert.est.working, 600);
+                Convert.go();
+                await until(() => Convert.done, 800);
+                Convert.go();
+                const copies = [];
+                for await (const e of (await (await dir.getDirectoryHandle('jEditor Converted')).getDirectoryHandle('Party')).values()) copies.push(e.name);
+                out.copies = copies.sort().join();
+                out.notListed = !app.files.some(f => /jEditor Converted/.test(f.relPath || '')) && Watch.skipDir('jEditor Converted');
+
+                // Export as AVIF: a copy that's an AVIF, its EXIF with it
+                step = 'export';
+                await app.exportCopies([P0], { maxEdge: 0, format: 'avif' });
+                const ex = await (await (await dir.getDirectoryHandle('jEditor Export')).getFileHandle('p0.avif')).getFile();
+                const exBytes = new Uint8Array(await ex.arrayBuffer());
+                const exBmp = await createImageBitmap(ex);
+                const exT = ImageMeta.exifOf(exBytes);
+                const exInfo = exT && app.readTiffInfo(new DataView(exT.buffer, exT.byteOffset, exT.byteLength), 0);
+                // One photo, from its right-click menu: Convert… for it alone
+                step = 'one';
+                const tile = app.files.find(f => f.name === 'p1.jpg')._gridEl;
+                const items = tile ? app.buildContextItems(tile, false) : app.buildContextItems(null, true);
+                const conv = items.find(it => it[0] === 'Convert…');
+                out.oneMenu = !!conv;
+                Convert.prefs.format = 'jpeg'; Convert.prefs.keep = false; Convert.est = null;
+                if (conv) conv[1]();
+                await until(() => Convert.est && !Convert.est.working, 600);
+                out.oneScope = [Convert.scope.all.length, document.getElementById('cv-src-name').textContent];
+                Convert.prefs.format = 'png'; Convert.est = null;
+                Convert.setFormat('png');
+                await until(() => Convert.est && !Convert.est.working, 600);
+                Convert.go();
+                await until(() => Convert.done, 800);
+                out.one = app.files.map(f => f.relPath || f.name).sort().join();
+                Convert.go();
+                await app.undo();
+
+                // Upright (600 × 900), then turned a quarter by its edit
+                out.exported = [exBmp.width, exBmp.height, exInfo && exInfo.make];
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        const fmts = r.formats || {};
+        check('convert: the codecs load; AVIF, JPEG XL and WebP are written with their EXIF (date, camera; upright), smaller, and shown',
+            r.ready && ['avif', 'jxl', 'webp'].every(f => JSON.stringify(fmts[f]) === '["jEd",2019,1,200,320,true]'), JSON.stringify(r));
+        const tf = r.tiffs || {};
+        check('convert: TIFFs as other programs write them are read: LZW, PackBits, Deflate, a palette; one turned, with its camera',
+            ['lzw', 'packbits', 'deflate', 'palette'].every(k => tf[k] && tf[k][0] === 12 && tf[k][1] === 8 && tf[k][2] === '200,30,30' && tf[k][3] === '10,20,90') && String(tf.turned) === '8,12,Epson', JSON.stringify(tf));
+        check('convert: JPEG, PNG and TIFF are written with the EXIF (camera, date), and shown', ['jpeg', 'png', 'tiff'].every(f => JSON.stringify(fmts[f]) === '["jEd",2019,200,320]'), JSON.stringify([fmts.jpeg, fmts.png, fmts.tiff]));
+        check('convert: JPEG XL is shown by the bundled decoder where the engine can\'t', !!(fmts.jxl && fmts.jxl[3] === 200), JSON.stringify([r.engineJxl, fmts.jxl]));
+        check('convert: the quality that looks the same, a close-up, and the storage now and after from a sample, by folder', r.estimate && String(r.estimate) === 'true,true,3,true,3' && r.closeUp, JSON.stringify(r.estimate));
+        check('convert: the photos are AVIF in their places; one that wouldn\'t get smaller is left; the dots fill', r.names === 'Ceremony/p0.avif,Ceremony/p1.avif,Party/p2.avif,Party/p3.avif,tiny.png' &&
+            r.disk === 'Ceremony/p0.avif,Ceremony/p1.avif,Party/p2.avif,Party/p3.avif,tiny.png' && r.done && r.done.saved && r.done.same === 1 && !r.done.failed && r.done.dots === 100 && r.done.hollow > 0, JSON.stringify([r.names, r.disk, r.done]));
+        check('convert: flags, the edit and the date taken go with a photo', r.kept && r.kept[0] === 'p0.avif' && r.kept[1] && r.kept[2] && r.date === 2019, JSON.stringify([r.kept, r.date]));
+        check('convert: Ctrl+Z puts the originals back, by name, with their flags and edits', r.undone === 'Ceremony/p0.jpg,Ceremony/p1.jpg,Party/p2.jpg,Party/p3.jpg,tiny.png' &&
+            r.undoneDisk === r.undone && r.undoneKept && r.undoneKept[0] === 'p0.jpg' && r.undoneKept[1] && r.undoneKept[2], JSON.stringify([r.undone, r.undoneDisk, r.undoneKept]));
+        check('convert: Keep both puts the converted copies in "jEditor Converted", not in the project', r.copies === 'p2.webp,p3.webp' && r.notListed, JSON.stringify([r.copies, r.notListed]));
+        check('convert: one photo, from its right-click menu', r.oneMenu && r.oneScope && r.oneScope[0] === 1 && r.oneScope[1] === 'p1.jpg' && r.one === 'Ceremony/p0.jpg,Ceremony/p1.png,Party/p2.jpg,Party/p3.jpg,tiny.png', JSON.stringify([r.oneMenu, r.oneScope, r.one]));
+        check('export: as AVIF, with the edit and the EXIF', r.exported && String(r.exported) === '900,600,jEd', JSON.stringify(r.exported));
+        check('convert: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        // Saves still going (flags, edits) finished first: Chromium 141 aborts
+        // when a page closes with a file being written
+        await page.evaluate(async () => { Codec.stop(); await Edits.flush(); if (Flags._saveTimer) { clearTimeout(Flags._saveTimer); await Flags.save(); } await sleep(300); });
+        await page.close();
+
+        // Any folder, from the start page: converted where it is, not opened
+        const p2 = await open();
+        const o = await p2.page.evaluate(async () => {
+            let step = 'folder';
+            try {
+                const out = {};
+                const opfs = await navigator.storage.getDirectory();
+                try { await opfs.removeEntry('Holiday', { recursive: true }); } catch (e) { /* fresh */ }
+                const dir = await opfs.getDirectoryHandle('Holiday', { create: true });
+                const day = await dir.getDirectoryHandle('Day 1', { create: true });
+                for (let i = 0; i < 3; i++) {
+                    const c = document.createElement('canvas'); c.width = 600; c.height = 400;
+                    const g = c.getContext('2d'); g.fillStyle = ['#2050c0', '#c03020', '#20a050'][i]; g.fillRect(0, 0, 600, 400);
+                    g.fillStyle = '#fff'; g.beginPath(); g.arc(200 + i * 80, 200, 90, 0, Math.PI * 2); g.fill();
+                    const h = await (i ? day : dir).getFileHandle(`IMG_${i}.jpg`, { create: true });
+                    const w = await h.createWritable(); await w.write(await canvasBlob(c, 'image/jpeg', 0.95)); await w.close();
+                }
+                const names = async () => {
+                    const n = [];
+                    for await (const e of dir.values()) if (e.kind === 'file') n.push(e.name);
+                    for await (const e of day.values()) n.push('Day 1/' + e.name);
+                    return n.sort().join();
+                };
+                window.showDirectoryPicker = async () => dir;
+                Convert.prefs.format = 'avif';
+                Convert.prefs.keep = false;
+                document.getElementById('start-convert').click();
+                await until(() => Convert.est && !Convert.est.working, 600);
+                out.chosen = [document.getElementById('cv-src-name').textContent, [...document.querySelectorAll('.cv-folder .n')].map(e => e.firstChild.textContent).sort().join()];
+                step = 'convert';
+                Convert.go();
+                await until(() => Convert.done, 800);
+                out.converted = await names();
+                const trash = [];
+                for await (const e of (await (await dir.getDirectoryHandle('.jeditor')).getDirectoryHandle('trash')).values()) trash.push(e.name);
+                out.trash = trash.sort().join();
+                out.notOpened = !app.dirHandle && !app.files.length && !document.getElementById('drop-zone').classList.contains('hidden');
+                step = 'put back';
+                document.getElementById('cv-cancel').click();
+                await until(async () => (await names()).includes('IMG_0.jpg'), 100);
+                await sleep(200);
+                out.back = await names();
+                out.stillStart = !app.files.length && !document.getElementById('drop-zone').classList.contains('hidden');
+                // To TIFF: lossless, so bigger than the JPEGs, converted anyway
+                step = 'tiff';
+                Convert.prefs.format = 'tiff';
+                Convert.est = null;
+                document.getElementById('start-convert').click();
+                await until(() => Convert.est && !Convert.est.working, 600);
+                out.tiffEstimate = [Convert.est.after > Convert.est.total, !document.getElementById('cv-lossless').classList.contains('hidden')];
+                Convert.go();
+                await until(() => Convert.done, 800);
+                out.tiff = [await names(), document.getElementById('cv-saved-word').textContent, Convert.done.same];
+                Convert.go();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('convert: from the start page, any folder: its photos and its folders\', without opening it', o.chosen && o.chosen[0] === 'Holiday · 3 photos' && o.chosen[1] === 'Day 1,Holiday', JSON.stringify(o));
+        check('convert: a folder chosen is converted where it is, its originals in its own .jeditor/trash, not opened as the project', o.converted === 'Day 1/IMG_1.avif,Day 1/IMG_2.avif,IMG_0.avif' && o.trash === 'IMG_0.jpg,IMG_1.jpg,IMG_2.jpg' && o.notOpened, JSON.stringify(o));
+        check('convert: Put the originals back puts them back by name, still on the start page', o.back === 'Day 1/IMG_1.jpg,Day 1/IMG_2.jpg,IMG_0.jpg' && o.stillStart, JSON.stringify(o));
+        check('convert: to TIFF (lossless): converted though bigger, the storage says how much more', String(o.tiffEstimate) === 'true,true' && o.tiff && o.tiff[0] === 'Day 1/IMG_1.tif,Day 1/IMG_2.tif,IMG_0.tif' && o.tiff[1] === 'more storage' && o.tiff[2] === 0, JSON.stringify([o.tiffEstimate, o.tiff]));
+        check('convert (a folder chosen): no JS errors', p2.issues.errors.length === 0, p2.issues.errors.join('; '));
+        await p2.page.evaluate(async () => { Codec.stop(); await sleep(300); });
+        await p2.page.close();
     }
 
     await browser.close();

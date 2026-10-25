@@ -250,6 +250,7 @@ const app = {
         Import.init(this);
         Disc.init(this);
         Export.init(this);
+        Convert.init(this);
         Blank.init(this);
         Modes.init(this);
         Themes.init(this);
@@ -287,6 +288,7 @@ const app = {
             if (e.target === e.currentTarget) this.toggleWhatsNew(false);
         });
         document.getElementById('btn-dupes').addEventListener('click', () => this.openDupes());
+        document.getElementById('btn-convert').addEventListener('click', () => this.keyHandlers()['app.convert']());
         this.initSettings();
 
         this.initStripResize();
@@ -426,6 +428,7 @@ const app = {
         strip: 'Film strip',
         fullscreen: 'Full screen',
         dupes: 'Find duplicates (WIP)',
+        convert: 'Convert (format, quality, storage)',
         keys: 'Keyboard shortcuts',
         whatsnew: 'What\'s new',
         customize: 'Settings'
@@ -442,10 +445,10 @@ const app = {
 
     defaultUiPrefs() {
         return {
-            order: ['scan', 'camera', 'info', 'view', 'refresh', 'crop', 'adjust', 'paint', 'history', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'whatsnew', 'customize'],
+            order: ['scan', 'camera', 'info', 'view', 'refresh', 'crop', 'adjust', 'paint', 'history', 'fit', 'strip', 'fullscreen', 'dupes', 'convert', 'keys', 'whatsnew', 'customize'],
             placement: { // 'main' | 'more' | 'hidden'
                 scan: 'main', camera: 'main', info: 'main', view: 'main', refresh: 'main', crop: 'main', adjust: 'more', paint: 'more', history: 'main',
-                fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', keys: 'more', whatsnew: 'more', customize: 'more'
+                fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', convert: 'more', keys: 'more', whatsnew: 'more', customize: 'more'
             },
             vertical: false,
             scale: 1,
@@ -1749,13 +1752,15 @@ const app = {
     },
 
     isImage(name) {
-        return /\.(jpg|jpeg|png|webp|gif)$/i.test(name) || Raw.is(name);
+        return /\.(jpg|jpeg|png|webp|gif|avif|jxl|tiff?)$/i.test(name) || Raw.is(name);
     },
 
-    // The photo's bytes to decode: the file, or a RAW's own JPEG (raw.js).
-    // Never for writing: a RAW is never written
+    // The photo's bytes to decode: the file, a RAW's own JPEG (raw.js), or
+    // a JPEG XL or TIFF decoded where the engine can't (codec.js). Never for
+    // writing: a RAW is never written
     async readImage(file) {
         const data = await file.handle.getFile();
+        if (Codec.decoded(file.name)) return Codec.showable(data);
         if (!Raw.is(file.name)) return data;
         const jpeg = await Raw.preview(data);
         if (!jpeg) throw new Error('no preview found in this RAW file');
@@ -1842,7 +1847,15 @@ const app = {
                 offset += 2 + size;
             }
             if (tiff === -1) return null;
+            return this.readTiffInfo(view, tiff);
+        } catch (e) {
+            return null;
+        }
+    },
 
+    // The same from a TIFF block at `tiff` in `view` (any format's EXIF)
+    readTiffInfo(view, tiff) {
+        try {
             const bo = view.getUint16(tiff);
             const le = bo === 0x4949;
             if (!le && bo !== 0x4D4D) return null;
@@ -1910,6 +1923,15 @@ const app = {
                     const fileData = await file.handle.getFile();
                     const head = await fileData.slice(0, 256 * 1024).arrayBuffer();
                     info = this.readJpegExifInfo(head);
+                } catch (e) { /* none */ }
+            } else if (/\.(webp|avif|jxl|png|tiff?)$/i.test(file.name)) {
+                // Their EXIF can be anywhere (a WebP's comes after the picture,
+                // a TIFF's tags often after its pixels). A very big TIFF: its
+                // start only
+                try {
+                    const data = await file.handle.getFile();
+                    const tiff = ImageMeta.exifOf(new Uint8Array(await (data.size > 64 * 1024 * 1024 ? data.slice(0, 1024 * 1024) : data).arrayBuffer()));
+                    if (tiff) info = this.readTiffInfo(new DataView(tiff.buffer, tiff.byteOffset, tiff.byteLength), 0);
                 } catch (e) { /* none */ }
             }
             file._exif = info;
@@ -3988,6 +4010,7 @@ const app = {
         ['view.fullscreen', 'global', 'View', 'Full screen', ['F']],
         ['view.slideshow', 'global', 'View', 'Slideshow', []],
         ['app.dupes', 'global', 'App', 'Find duplicates (WIP)', ['D']],
+        ['app.convert', 'global', 'App', 'Convert: format, quality and storage…', []],
         ['app.import', 'global', 'App', 'Import from a camera or card…', ['Ctrl+I']],
         ['app.refresh', 'global', 'App', 'Rescan folder', ['R']],
         ['app.search', 'global', 'App', 'Search photos', ['Ctrl+F', '/']],
@@ -4182,6 +4205,9 @@ const app = {
             'view.fullscreen': () => this.toggleFullscreen(),
             'view.slideshow': () => this.startSlideshow(),
             'app.dupes': () => this.openDupes(),
+            // The photo open, the selection in the grid, else the whole project
+            'app.convert': () => Convert.open(this.viewMode === 'single' && this.currentFile ? { files: [this.currentFile] }
+                : this.viewMode === 'grid' && this.selection.size > 1 ? { files: [...this.selection] } : {}),
             'app.import': () => Import.open(),
             'app.refresh': () => this.refreshFolder(),
             'app.search': () => Flags.focusSearch(),
@@ -5443,6 +5469,8 @@ const app = {
                 await Folders.undo(entry);
             } else if (entry.type === 'transfer') {
                 await Windows.undo(entry);
+            } else if (entry.type === 'convert') {
+                await Convert.undo(entry);
             } else if (entry.type === 'trash') {
                 const n = await this.restoreManyFromTrash(entry.items);
                 this.sortFiles();
@@ -5889,6 +5917,12 @@ const app = {
         } else {
             throw new Error('No folder access');
         }
+        this.nameChanged(file, newName);
+    },
+
+    // A photo's name changed on disk (renamed, or converted: convert.js):
+    // the screen and the flags and edits follow it
+    nameChanged(file, newName) {
         file.name = newName;
         if (file.relPath) file.relPath = file.relPath.replace(/[^/]+$/, newName);
         // Flags or edits left by a photo that once had this name aren't this one's
@@ -6165,7 +6199,7 @@ const app = {
     // window (export.js): `maxEdge` (0: full size) and `dir`, the folder
     // they go into, called `where`; else asked here, into "jEditor Export"
     // in the project
-    async exportCopies(files, { maxEdge = null, dir = null, where = '"jEditor Export"' } = {}) {
+    async exportCopies(files, { maxEdge = null, dir = null, where = '"jEditor Export"', format = 'same' } = {}) {
         const list = files.filter(Boolean);
         if (!list.length) return;
         if (!this.dirHandle) {
@@ -6191,24 +6225,34 @@ const app = {
             let done = 0, failed = 0;
             for (const f of list) {
                 try {
-                    // A RAW: from its own JPEG, written as a JPEG
-                    const data = await this.readImage(f);
-                    let out = f._edit ? await this.renderEdited(f, data) : data;
-                    if (maxEdge > 0) {
-                        const bmp = await createImageBitmap(out);
-                        const scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
-                        if (scale < 1) {
-                            const canvas = document.createElement('canvas');
-                            canvas.width = Math.round(bmp.width * scale);
-                            canvas.height = Math.round(bmp.height * scale);
-                            canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
-                            const { type, quality } = this.getSaveFormat(f.name);
-                            out = await new Promise(r => canvas.toBlob(r, type, quality));
-                        }
-                        bmp.close();
+                    // A RAW: from its own JPEG, written as a JPEG (or the
+                    // format chosen)
+                    const raw = Raw.is(f.name);
+                    const file = raw ? await this.readImage(f) : await f.handle.getFile();
+                    const from = raw ? 'jpeg' : this.formatOf(f.name);
+                    const to = format === 'same' ? from : format;
+                    let out = f._edit ? await this.renderEdited(f, file) : file;
+                    // Smaller, or another format: drawn again and written as that
+                    let bmp = null, scale = 1;
+                    if (maxEdge > 0 || to !== from) {
+                        // (a JPEG XL or TIFF, as written or edited, decoded by the codecs)
+                        const coded = Codec.decoded('x.' + (f._edit ? Codec.of(f.name) || from : from));
+                        bmp = await createImageBitmap(coded ? await Codec.showable(out instanceof File ? out : new File([out], f.name)) : out);
+                        if (maxEdge > 0) scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
                     }
+                    if (bmp && (scale < 1 || to !== from)) {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = Math.round(bmp.width * scale);
+                        canvas.height = Math.round(bmp.height * scale);
+                        canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+                        out = await this.encodeAs(canvas, to === 'gif' ? 'jpeg' : to, new Uint8Array(await file.arrayBuffer()));
+                        canvas.width = canvas.height = 0;
+                    }
+                    if (bmp) bmp.close();
                     if (!out) throw new Error('encode failed');
-                    const h = await dir.getFileHandle(Raw.is(f.name) ? Raw.jpegName(f.name) : f.name, { create: true });
+                    const name = raw && to === 'jpeg' ? Raw.jpegName(f.name)
+                        : to === from ? f.name : f.name.replace(/\.[^.]+$/, '') + '.' + (to === 'gif' ? 'jpg' : Codec.ext(to));
+                    const h = await dir.getFileHandle(name, { create: true });
                     const w = await h.createWritable();
                     await w.write(out);
                     await w.close();
@@ -6230,6 +6274,31 @@ const app = {
         }
     },
 
+    // What a photo's file is, by its name: 'jpeg', 'png', 'webp', 'gif',
+    // 'avif', 'jxl' or 'tiff'
+    formatOf(name) {
+        return /\.gif$/i.test(name || '') ? 'gif' : Codec.formatOf(name) || 'jpeg';
+    },
+
+    // A canvas written as a format, with the metadata of `original` (its
+    // file's bytes) that's still true → Blob. AVIF and JPEG XL by the codecs
+    async encodeAs(canvas, to, original) {
+        const w = canvas.width, h = canvas.height;
+        const blobOf = (type, q) => new Promise(r => canvas.toBlob(r, type, q));
+        const tiff = ImageMeta.exifOf(original);
+        if (to === 'avif' || to === 'jxl' || to === 'tiff') return Codec.file(await blobOf('image/png'), to, Codec.FORMATS[to].quality, tiff);
+        const type = { png: 'image/png', webp: 'image/webp' }[to] || 'image/jpeg';
+        const blob = await blobOf(type, type === 'image/png' ? undefined : 0.95);
+        if (!blob) return null;
+        if (to === 'webp') return new Blob([Codec.withExif(new Uint8Array(await blob.arrayBuffer()), 'webp', tiff, w, h)], { type });
+        // From the same kind of file: its metadata as Save edits copies it
+        const kind = ImageMeta.jpegSegments(original, { partial: true }) ? 'jpeg' : ImageMeta.pngChunks(original, { partial: true }) ? 'png' : null;
+        if (kind === (type === 'image/png' ? 'png' : 'jpeg')) return ImageMeta.transplant(original, blob, type, w, h);
+        // A JPEG or PNG from another format: its EXIF goes in
+        if (tiff) return new Blob([Codec.withExif(new Uint8Array(await blob.arrayBuffer()), to === 'png' ? 'png' : 'jpeg', tiff, w, h)], { type });
+        return blob;
+    },
+
     // A photo with its edit not saved yet (edits.js), at full size, as
     // saving it would write it
     async renderEdited(f, data) {
@@ -6243,13 +6312,16 @@ const app = {
                 if (b) return b;
             } catch (e) { /* re-encode */ }
         }
-        const { type, quality } = this.getSaveFormat(f.name);
-        const canvas = await CropEditor.renderSnapshot(data, edit, type, original);
+        const coded = Codec.of(f.name);
+        const { type, quality } = coded ? { type: 'image/png' } : this.getSaveFormat(f.name);
+        const canvas = await CropEditor.renderSnapshot(coded ? await this.readImage(f) : data, edit, type, original);
         if (!canvas) return data;
         const w = canvas.width, h = canvas.height;
         const blob = await new Promise(r => canvas.toBlob(r, type, quality));
         canvas.width = canvas.height = 0;
         if (!blob) throw new Error('encoding failed');
+        // AVIF and JPEG XL: written by the codecs, in their own format, with their EXIF
+        if (coded) return Codec.file(blob, coded, Codec.FORMATS[coded].quality, ImageMeta.exifOf(new Uint8Array(await (await f.handle.getFile()).arrayBuffer())));
         return ImageMeta.transplant(original, blob, type, w, h);
     },
 
@@ -6322,6 +6394,7 @@ const app = {
                     [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy')],
                     [`Rename ${n}…`, () => this.openRename(sel)],
                     [`Export ${n}…`, () => Export.open({ files: sel })],
+                    [`Convert ${n}…`, () => Convert.open({ files: sel })],
                     ['—'],
                     [`Delete ${n}`, () => this.moveToTrash(sel), true]
                 ];
@@ -6347,6 +6420,7 @@ const app = {
                 ['Rename…', () => this.promptRename(file)],
                 ['File info', () => { this.toggleInfoPanel(true, { file }); }],
                 ['Export…', () => Export.open({ files: [file] })],
+                ['Convert…', () => Convert.open({ files: [file] })],
                 ['—'],
                 ['Delete', () => this.moveToTrash([file]), true]
             ];
@@ -6372,6 +6446,7 @@ const app = {
                 ['Rename…', () => this.promptRename(file)],
                 ['File info', () => this.toggleInfoPanel(true)],
                 ['Export…', () => Export.open({ files: [file] })],
+                ['Convert…', () => Convert.open({ files: [file] })],
                 ['—'],
                 ['Full screen', () => this.toggleFullscreen()],
                 ['Start slideshow', () => this.startSlideshow()],
@@ -6412,6 +6487,7 @@ const app = {
             [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
             [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy')],
             [`Export ${n}…`, () => Export.open({ files: sel })],
+            [`Convert ${n}…`, () => Convert.open({ files: sel })],
             ['—'],
             ['Select all', () => { this.selection = new Set(this.viewFiles()); this.updateSelectionUI(); }]
         ];
@@ -7288,7 +7364,7 @@ const app = {
         const fileData = await file.handle.getFile();
         if (edit.size && fileData.size !== edit.size) return 'changed';
         const n = edit.n, eq = (a, b) => Math.abs(a - b) < 1e-6;
-        if (!edit.adj && !edit.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5) && !/\.gif$/i.test(file.name)) {
+        if (!edit.adj && !edit.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5) && !/\.gif$/i.test(file.name) && !Codec.of(file.name)) {
             const q = edit.q % 4;
             delete file._edit;
             file.pendingRotation = q === 3 ? -90 : q * 90;
