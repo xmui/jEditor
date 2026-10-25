@@ -366,6 +366,14 @@
         windowAction(action) {
             if (action !== 'resizeTop') mac.request('windowAction', { action });
         },
+        // A theme's menus for the Mac's menu bar: [{ label, items: [{ id,
+        // label, key, enabled } or '—'] }], or null for the app's own. A
+        // command chosen comes back as a 'menu' message, 'theme:' + its id
+        ...(mac.platform === 'mac' ? {
+            setMenus(menus) {
+                mac.request('menus', { menus: menus || null });
+            }
+        } : {}),
         // The other windows' projects → [{ id, name, path, folders }]
         async windows() {
             return (await answer('windows')).windows;
@@ -623,6 +631,7 @@
             if (msg.action === 'open') a.browseFolder();
             else if (msg.action === 'settings') a.toggleCustomizePanel(true);
             else if (msg.action === 'permissions') Permissions.open();
+            else if (String(msg.action).startsWith('theme:')) Themes.runMenu(msg.action.slice(6));
         }
     });
 
