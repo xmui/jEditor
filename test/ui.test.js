@@ -3973,6 +3973,60 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         }
     }
 
+    // ---- 7s2b. Pictures on the system clipboard ----
+    console.log('copy and paste pictures');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseUrl });
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const until = async (fn, n = 200) => { for (let i = 0; i < n && !(await fn()); i++) await sleep(50); };
+            const size = async (blob) => { const b = await createImageBitmap(blob); const s = [b.width, b.height]; b.close(); return s; };
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('clipimg', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('clipimg', { create: true });
+            const fh = await dir.getFileHandle('scan.jpg', { create: true });
+            const w = await fh.createWritable(); await w.write(new Blob([await makeRealJpeg(600, 400)], { type: 'image/jpeg' })); await w.close();
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            await until(() => app.files.length === 1 && !app.isLoading);
+            const f = app.files[0];
+            // Turned a quarter, not saved yet: copied as it looks
+            Edits.set([{ file: f, edit: { q: 1, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } } }], 'test');
+            app.openSingle(f);
+            await sleep(300);
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true }));
+            let copied = null;
+            await until(async () => {
+                try {
+                    for (const item of await navigator.clipboard.read()) if (item.types.includes('image/png')) copied = await item.getType('image/png');
+                } catch (e) { /* not yet */ }
+                return copied;
+            });
+            out.copied = copied ? await size(copied) : null;
+            out.photoUntouched = (await size(await fh.getFile())).join() === '600,400';
+            // A picture from another app: Pasted.png in the project, open in Paint
+            const c = document.createElement('canvas');
+            c.width = 120; c.height = 80;
+            c.getContext('2d').fillStyle = '#c33';
+            c.getContext('2d').fillRect(0, 0, 120, 80);
+            const png = await new Promise(res => c.toBlob(res, 'image/png'));
+            const dt = new DataTransfer();
+            dt.items.add(new File([png], 'image.png', { type: 'image/png' }));
+            document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+            await until(() => Modes.current() === 'paint' && PaintEditor.file && PaintEditor.file.name === 'Pasted.png');
+            out.inPaint = Modes.current() === 'paint' && !!PaintEditor.file && PaintEditor.file.name;
+            out.pasted = await size(await (await dir.getFileHandle('Pasted.png')).getFile()).catch(() => null);
+            await Modes.go('photos');
+            return out;
+        });
+        check('Ctrl+C copies the photo as it looks (turned, not saved yet), leaving the file as it is', r.copied && r.copied.join() === '400,600' && r.photoUntouched, JSON.stringify(r));
+        check('a picture pasted from another app is saved as Pasted.png in the project and opened in Paint', r.inPaint === 'Pasted.png' && r.pasted && r.pasted.join() === '120,80', JSON.stringify(r));
+        check('copy and paste pictures: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7s3. Undo history ----
     console.log('undo history');
     {

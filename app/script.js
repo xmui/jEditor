@@ -258,6 +258,7 @@ const app = {
         History.init(this);
         Watch.init(this);
         this.initContextMenu();
+        this.initPasteImage();
         this.initRubberBand();
         this.initShortcutsPanel();
 
@@ -3977,6 +3978,8 @@ const app = {
         ['edit.paint', 'global', 'Edit', 'Paint: brushes, shapes, text and layers', ['B']],
         ['edit.copyAdjust', 'global', 'Edit', 'Copy the photo\'s adjustments', ['Ctrl+Shift+C']],
         ['edit.pasteAdjust', 'global', 'Edit', 'Paste adjustments (onto the selection in grid)', ['Ctrl+Shift+V']],
+        ['edit.copyImage', 'global', 'Edit', 'Copy the photo as it looks, to paste into another app', ['Ctrl+C']],
+        ['edit.pasteImage', 'global', 'Edit', 'Paste an image from another app: a new picture, in Paint', ['Ctrl+V']],
         ['edit.rename', 'global', 'Edit', 'Rename (the selection in grid view)', ['F2']],
         ['edit.trash', 'global', 'Edit', 'Move to trash', ['Delete']],
         ['edit.undo', 'global', 'Edit', 'Undo', ['Ctrl+Z']],
@@ -4051,6 +4054,8 @@ const app = {
         ['adjust.reset', 'adjust', 'Adjust', 'Reset everything', ['R']],
         ['adjust.copy', 'adjust', 'Adjust', 'Copy the adjustments', ['Ctrl+Shift+C']],
         ['adjust.paste', 'adjust', 'Adjust', 'Paste adjustments', ['Ctrl+Shift+V']],
+        ['adjust.copyImage', 'adjust', 'Adjust', 'Copy the photo as it looks, to paste into another app', ['Ctrl+C']],
+        ['adjust.pasteImage', 'adjust', 'Adjust', 'Paste an image from another app: a new picture, in Paint', ['Ctrl+V']],
         ['adjust.undo', 'adjust', 'Adjust', 'Undo', ['Ctrl+Z']],
         ['adjust.redo', 'adjust', 'Adjust', 'Redo', ['Ctrl+Shift+Z', 'Ctrl+Y']],
         ['paint.done', 'paint', 'Paint', 'Put down what\'s being moved, or back to Photos (what you did is kept)', ['Enter']],
@@ -4158,6 +4163,10 @@ const app = {
             'edit.paint': () => this.enterPaint(),
             'edit.copyAdjust': () => this.copyAdjust(),
             'edit.pasteAdjust': () => this.pasteAdjust(grid() && this.selection.size ? [...this.selection] : [this.currentFile]),
+            // Text picked out (in Info, say) is copied as text, as usual
+            'edit.copyImage': () => (String(getSelection()) ? false : this.copyImage()),
+            // The paste event brings the image (paste below)
+            'edit.pasteImage': () => false,
             'edit.rename': () => this.openRename(grid() && this.selection.size ? [...this.selection] : [this.currentFile]),
             'edit.trash': () => this.moveToTrash(grid() && this.selection.size
                 ? [...this.selection] : [this.currentFile]),
@@ -4249,6 +4258,8 @@ const app = {
             'adjust.reset': () => Adjust.reset(),
             'adjust.copy': () => Adjust.copy(),
             'adjust.paste': () => Adjust.paste(),
+            'adjust.copyImage': () => (String(getSelection()) ? false : this.copyImage(Adjust.file, Adjust.result())),
+            'adjust.pasteImage': () => false,
             'adjust.undo': () => { if (!Adjust.undo()) this.showToast('Nothing to undo', 1200); },
             'adjust.redo': () => { if (!Adjust.redo()) this.showToast('Nothing to redo', 1200); },
             'paint.done': () => { if (PaintEditor.float) PaintEditor.commitFloat(); else Modes.go('photos'); },
@@ -4568,7 +4579,7 @@ const app = {
         if (!id) return;
         // Only the shortcut list and debug console work from the start screen
         const onStart = this.elements.mainInterface.classList.contains('hidden');
-        if (onStart && context === 'global' && !['app.shortcuts', 'app.debug', 'app.settings', 'app.import'].includes(id)) return;
+        if (onStart && context === 'global' && !['app.shortcuts', 'app.debug', 'app.settings', 'app.import', 'edit.pasteImage'].includes(id)) return;
         if (context === 'crop' && CropEditor.busy) {
             e.preventDefault(); // saving: the crop being written stays as it is
             return;
@@ -6417,6 +6428,7 @@ const app = {
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
                 ['Copy to…', () => Folders.openPicker([file], 'copy')],
+                ['Copy image', () => this.copyImage(file)],
                 ['Rename…', () => this.promptRename(file)],
                 ['File info', () => { this.toggleInfoPanel(true, { file }); }],
                 ['Export…', () => Export.open({ files: [file] })],
@@ -6443,6 +6455,7 @@ const app = {
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
                 ['Copy to…', () => Folders.openPicker([file], 'copy')],
+                ['Copy image', () => this.copyImage(file)],
                 ['Rename…', () => this.promptRename(file)],
                 ['File info', () => this.toggleInfoPanel(true)],
                 ['Export…', () => Export.open({ files: [file] })],
@@ -6460,6 +6473,7 @@ const app = {
             ['—'],
             ...(this.dirHandle ? [['New folder…', () => Folders.newFolder()]] : []),
             ...(Blank.can() ? [['New blank image…', () => Blank.open()]] : []),
+            ...(Blank.can() && navigator.clipboard && navigator.clipboard.read ? [['Paste image', () => this.pasteFromMenu()]] : []),
             ['Rename all…', () => this.openRename([])],
             ['Search…', () => Flags.focusSearch()],
             [Folders.scope === null ? 'Project info' : 'Folder info', () => this.toggleInfoPanel(true, { folder: Folders.scope })],
@@ -6793,6 +6807,107 @@ const app = {
             ed.busy = false;
             this.endTask('paint-save');
         }
+    },
+
+    // ---- Images on the system clipboard ----
+
+    // Ctrl+C: the photo shown, or the one picked out in the grid
+    imageTarget() {
+        if (document.body.dataset.view !== 'grid' || !this.selection.size) return this.currentFile;
+        return this.selection.has(this.currentFile) ? this.currentFile : [...this.selection][0];
+    },
+
+    // The photo as it looks (its crop, adjustments and paint; in Adjust,
+    // adj: what's on screen now) onto the clipboard as a PNG, for other apps
+    copyImage(file = this.imageTarget(), adj = undefined) {
+        if (!file) return;
+        if (!navigator.clipboard || !navigator.clipboard.write || typeof ClipboardItem !== 'function') {
+            this.showToast('This browser can\'t copy pictures: use Export instead', 3000);
+            return;
+        }
+        // Asked for now, while the key press still counts; the picture follows
+        navigator.clipboard.write([new ClipboardItem({ 'image/png': this.imagePng(file, adj) })])
+            .then(() => this.showToast(`Copied ${file.name}`, 1500, null, null, { type: 'success' }))
+            .catch(e => this.showToast(`Couldn't copy ${file.name}: ${e.message}`, 3500));
+    },
+
+    async imagePng(file, adj) {
+        const data = await this.readImage(file);
+        const edit = adj === undefined ? file._edit || null : Edits.withAdj(file._edit || null, adj, file._edit);
+        let canvas = edit ? await CropEditor.renderSnapshot(data, edit, 'image/png') : null;
+        if (!canvas) {
+            const bmp = await createImageBitmap(data);
+            canvas = document.createElement('canvas');
+            canvas.width = bmp.width;
+            canvas.height = bmp.height;
+            canvas.getContext('2d').drawImage(bmp, 0, 0);
+            bmp.close();
+        }
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+        canvas.width = canvas.height = 0;
+        if (!blob) throw new Error('the picture couldn\'t be made');
+        return blob;
+    },
+
+    // Ctrl+V in Photos or Adjust (Paint pastes into the painting itself)
+    initPasteImage() {
+        document.addEventListener('paste', (e) => {
+            if (!e.clipboardData || this.isTypingTarget(e.target) || Modes.current() === 'paint') return;
+            if (UI.isOpen() || this.cropState.active && this.cropState.tool !== 'adjust') return;
+            const item = [...e.clipboardData.items].find(i => i.kind === 'file' && /^image\//.test(i.type));
+            const blob = item && item.getAsFile();
+            if (!blob) return;
+            e.preventDefault();
+            this.pasteImage(blob);
+        });
+    },
+
+    // Paste image, from the menu: read from the clipboard (it may ask first)
+    async pasteFromMenu() {
+        try {
+            for (const item of await navigator.clipboard.read()) {
+                const type = item.types.find(t => /^image\//.test(t));
+                if (type) return this.pasteImage(await item.getType(type));
+            }
+            this.showToast('No picture copied: copy one in another app first', 2500);
+        } catch (e) {
+            this.showToast(Host.keys('Press Ctrl+V to paste the picture'), 2500);
+        }
+    },
+
+    // A picture from another app: saved as a new image (in the folder shown,
+    // or where you choose with no project open), then opened in Paint
+    async pasteImage(blob) {
+        const ext = { 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' }[blob.type] || 'png';
+        if (Blank.can()) {
+            const folder = Folders.newFolderParent();
+            let name = `Pasted.${ext}`;
+            const taken = Blank.taken(folder);
+            for (let i = 2; taken.has(name.toLowerCase()); i++) name = `Pasted-${i}.${ext}`;
+            return Blank.place(() => blob, name, folder);
+        }
+        if (Modes.current() !== 'photos' && !(await Modes.leave(true))) return null;
+        if (typeof window.showSaveFilePicker === 'function') {
+            let handle;
+            try {
+                handle = await window.showSaveFilePicker({ id: 'jeditor-paint', suggestedName: `Pasted.${ext}`, types: [{ description: 'Image', accept: { [blob.type || 'image/png']: [`.${ext}`] } }] });
+            } catch (e) {
+                return null; // cancelled
+            }
+            const out = await handle.createWritable();
+            await out.write(blob);
+            await out.close();
+            Modes.next = 'paint';
+            await this.openFileHandles([handle]);
+            return this.files[0] || null;
+        }
+        if (typeof Picked !== 'undefined' && Picked.available()) {
+            Modes.next = 'paint';
+            await Picked.open([new File([blob], `Pasted.${ext}`, { type: blob.type || 'image/png' })]);
+            return this.files[0] || null;
+        }
+        this.showToast('Open a folder first: the picture is saved into it', 3000);
+        return null;
     },
 
     copyAdjust(file = this.currentFile) {

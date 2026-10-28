@@ -8,6 +8,7 @@ const CHANGELOG = [
     {
         version: '1.46.1', date: '2026-10-23', beta: true,
         items: [
+            '`Ctrl+C` copies the photo as it looks, crop, adjustments and paint included, to paste into another app (in Photos and in Adjust; or Copy image in the right-click menu). `Ctrl+V` with a picture copied in another app makes it a new image in the folder you\'re in and opens it in Paint (or Paste image, right-clicking the grid).',
             'Adjust\'s Pick grey (`W`, at the top of Color) sets the white balance from the photo: click something that should be white or grey, and Temperature and Tint take the cast off it. One `Ctrl+Z` puts it back.',
             'Convert (right-click a photo, the selected photos, a folder or the project; the toolbar\'s Convert; or Convert photos… on the start page): turns photos into AVIF, JPEG XL, WebP, JPEG, PNG or TIFF, in the project or in any folder on your computer (Choose a folder…), without opening it. Choose the quality on a slider marked where the photos still look the same, with a close-up of one of yours, original beside after, and see what it does to their storage before it starts, now and after, by folder. While it works, dots in your photos\' colours turn hollow for the storage freed. The originals go to the bin (one `Ctrl+Z` puts them all back), or keep both; flags, edits, dates and camera details go with each photo.',
             'jEditor shows AVIF, JPEG XL and TIFF photos (TIFF scans are listed with the rest now), and Export can write copies as JPEG, PNG, TIFF, WebP, AVIF or JPEG XL.',
