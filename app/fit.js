@@ -37,7 +37,7 @@ const Fit = {
                 if (this.el(id)) ro.observe(this.el(id));
         }
         // Shown and hidden, the view, the folder list, More opened
-        const mo = new MutationObserver(soon);
+        const mo = this._mo = new MutationObserver(soon);
         mo.observe(iface, { attributes: true, attributeFilter: ['class'] });
         mo.observe(document.body, { attributes: true, attributeFilter: ['data-view'] });
         for (const id of ['folder-bar', 'header-controls', 'selection-bar', 'edits-bar', 'grid-controls'])
@@ -66,7 +66,18 @@ const Fit = {
         return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1;
     },
 
+    // What a run changes itself (the folder pill's tight, tried and taken
+    // back) isn't news: left in the observer, it woke the next run, every
+    // frame, laying out the whole grid over and over
     run() {
+        try {
+            this.fit();
+        } finally {
+            if (this._mo) this._mo.takeRecords();
+        }
+    },
+
+    fit() {
         const iface = this.el('main-interface');
         if (!iface || iface.classList.contains('hidden') || !iface.offsetWidth) return;
         // A theme's docked bars (themes.js) have room for everything
