@@ -654,7 +654,7 @@ const Adjust = {
 
     detailOpen() {
         const sec = this.el('adj-detail-sec');
-        return !!(sec && sec.open);
+        return !!(sec && sec.open && this.pane === 'edit');
     },
 
     initLoupe() {
@@ -857,6 +857,7 @@ const Adjust = {
         this.el('adj-spots-sec').open = id === 'retouch';
         this.el('adj-masks-sec').open = id === 'masks';
         this.drawPanels();
+        this.drawWheels();
     },
 
     // One process's films (None is always there)
@@ -995,6 +996,7 @@ const Adjust = {
         if (!this.wheels || !this.isOpen) return;
         for (const { z, cv } of this.wheels) {
             const { ctx, w, h } = this.fit(cv);
+            if (Math.min(w, h) < 8) continue; // folded away, or on a tab not shown
             const R = Math.min(w, h) / 2 - 2, cx = w / 2, cy = h / 2;
             // Hues round the ring (red to the right, going anticlockwise), grey in the middle
             const g = ctx.createConicGradient(0, cx, cy);
