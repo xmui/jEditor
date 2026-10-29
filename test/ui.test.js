@@ -3807,6 +3807,141 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 7s1b. A huge folder: only the tiles near the view are built ----
+    console.log('huge folder');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1200, height: 800 });
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try { return await (async () => {
+            const out = {};
+            const frame = () => new Promise(res => requestAnimationFrame(() => setTimeout(res, 0)));
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('huge', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('huge', { create: true });
+            const c = document.createElement('canvas');
+            c.width = c.height = 24;
+            c.getContext('2d').fillRect(0, 0, 24, 24);
+            const jpeg = await new Promise(res => c.toBlob(res, 'image/jpeg'));
+            const put = async (d, name) => {
+                const w = await (await d.getFileHandle(name, { create: true })).createWritable();
+                await w.write(jpeg);
+                await w.close();
+            };
+            const N = 1500;
+            await Promise.all(Array.from({ length: N }, (_, i) => put(dir, `P${String(i).padStart(4, '0')}.jpg`)));
+            const sub = await dir.getDirectoryHandle('Sub', { create: true });
+            for (let i = 0; i < 3; i++) await put(sub, `S${i}.jpg`);
+            step = 'open';
+            app.viewMode = 'grid';
+            await app.openDirectory(dir);
+            const grid = app.elements.gridView, strip = app.elements.thumbnailStrip;
+            const files = () => app.viewFiles();
+            await frame();
+
+            // Where each sample photo's tile is, every tile built, then windowed
+            const samples = [0, 1, 7, 333, 750, 1001, N - 1];
+            const layout = async () => {
+                const pos = [];
+                for (const i of samples) {
+                    const el = app.revealInGrid(files()[i]);
+                    pos.push(el ? Math.round(app.gridY(el)) : null);
+                }
+                return { pos, height: grid.scrollHeight };
+            };
+            // Each scope: everything, and the top folder (its subfolder tile first)
+            for (const scope of [null, '']) {
+                step = 'layout ' + scope;
+                Folders.setScope(scope);
+                app.GRID_WINDOW_MIN = Infinity;
+                app.renderGrid({ sync: true });
+                await frame();
+                const full = await layout();
+                app.GRID_WINDOW_MIN = 1000;
+                app.renderGrid({ sync: true });
+                await frame();
+                const win = await layout();
+                out['layout' + scope] = { full, win, same: JSON.stringify(full) === JSON.stringify(win), folders: grid.querySelectorAll('.folder-tile').length };
+            }
+            Folders.setScope(null);
+            await frame();
+            out.tiles = grid.querySelectorAll('.grid-item').length;
+
+            // Scrolled to the middle: the tiles there are built, in order
+            step = 'scroll';
+            grid.scrollTop = grid.scrollHeight / 2;
+            await frame();
+            await frame();
+            const shown = [...grid.querySelectorAll('.grid-item')].filter(t => {
+                const b = t.getBoundingClientRect(), g = grid.getBoundingClientRect();
+                return b.bottom > g.top && b.top < g.bottom;
+            });
+            const idx = shown.map(t => files().indexOf(t._file));
+            out.middle = shown.length > 0 && idx.every((v, k) => k === 0 || v === idx[k - 1] + 1) && idx[0] > 500;
+
+            // Select all: tiles built later come selected
+            step = 'select';
+            app.selection = new Set(files());
+            app.updateSelectionUI();
+            grid.scrollTop = 0;
+            await frame();
+            await frame();
+            out.selected = app.selection.size === N + 3 && [...grid.querySelectorAll('.grid-item')].every(t => t.classList.contains('selected'));
+
+            // The arrow keys to a photo far below: its tile is built and on screen
+            step = 'goTo';
+            app.goTo(files()[1400]);
+            await frame();
+            const t = files()[1400]._gridEl;
+            out.goTo = !!t && t.isConnected && t.classList.contains('active');
+
+            // The viewer: the film strip holds a window too, with the photo in it
+            step = 'viewer';
+            app.openSingle(files()[1200]);
+            await frame();
+            await frame();
+            const s = files()[1200]._stripEl;
+            out.strip = strip.querySelectorAll('.thumb-item').length < 200 && !!s && s.isConnected && s.classList.contains('active');
+            const pitch = app._stripWin.pitch;
+            out.stripPlace = !!s && Math.abs(s.offsetLeft - app._stripWin.base - 1200 * pitch) < 1;
+            app.loadIndex(app.getCurrentIndex() + 1);
+            await frame();
+            out.stripNext = !!files()[1201]._stripEl && files()[1201]._stripEl.classList.contains('active') && !s.classList.contains('active');
+            app.setView('grid');
+            await frame();
+            await frame();
+            const back = files()[1201]._gridEl;
+            const g = grid.getBoundingClientRect(), b = back && back.getBoundingClientRect();
+            out.back = !!b && b.top >= g.top && b.bottom <= g.bottom;
+
+            // A photo deleted, and new ones arriving: the window is built again
+            step = 'remove';
+            const gone = files()[1201];
+            app.removeFilesFromApp([gone]);
+            await frame();
+            out.removed = !(gone._gridEl && gone._gridEl.isConnected) && !!files()[1201]._gridEl && files()[1201]._gridEl.isConnected;
+            step = 'arrive';
+            await put(dir, 'P1200a.jpg');
+            await Watch.rescan();
+            await frame();
+            const arrived = app.files.find(f => f.name === 'P1200a.jpg');
+            out.arrived = !!arrived && files().indexOf(arrived) === 1201 && grid.querySelectorAll('.grid-item').length < 400;
+            return out;
+            })(); } catch (e) { return { error: step + ': ' + e.message }; }
+        });
+        check('huge folder: windowed grid lays every photo out where the full grid does (all photos, and under a subfolder tile)', r.layoutnull && r.layoutnull.same && r.layout && r.layout.same && r.layout.folders === 1, JSON.stringify(r));
+        check('... only the tiles near the view are built', r.tiles > 0 && r.tiles < 400, String(r.tiles));
+        check('... scrolled to the middle, the tiles there are built, in order', r.middle);
+        check('... Select all: tiles built later come selected', r.selected);
+        check('... the arrow keys to a photo far below build its tile', r.goTo);
+        check('... the film strip holds a window too, the photo in it and in its place; Next moves the highlight', r.strip && r.stripPlace && r.stripNext);
+        check('... back to the grid, the photo is on screen', r.back);
+        check('... a deleted photo, and a new one arriving, rebuild the window', r.removed && r.arrived, JSON.stringify(r));
+        check('huge folder: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7s2. Save edits when done ----
     console.log('save edits when done');
     {

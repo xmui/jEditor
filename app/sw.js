@@ -21,6 +21,7 @@ const ASSETS = [
     './codecs/jxl_enc.wasm',
     './codecs/jxl_dec.js',
     './codecs/jxl_dec.wasm',
+    './codecs/heif_dec.js',
     './host.js',
     './wheel.js',
     './experiments.js',

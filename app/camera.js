@@ -406,13 +406,14 @@ const Camera = {
             if (img) URL.revokeObjectURL(img.src);
             old.remove();
         }
-        const raw = Raw.is(name);
-        if (!raw && !/\.(jpe?g|png|webp)$/i.test(name)) return; // anything else: the name shows
+        const raw = Raw.is(name), heif = Codec.isHeif(name);
+        if (!raw && !heif && !/\.(jpe?g|png|webp)$/i.test(name)) return; // anything else: the name shows
         try {
             const dir = await Folders.handleFor(folder);
             let file = await (await dir.getFileHandle(name)).getFile();
-            // A RAW: its own JPEG (raw.js)
+            // A RAW: its own JPEG (raw.js); a HEIC, decoded (codec.js)
             if (raw) file = await Raw.preview(file);
+            else if (heif) file = await Codec.showable(file);
             if (!file) return;
             if (!fig.isConnected) return;
             const img = document.createElement('img');

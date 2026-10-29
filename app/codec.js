@@ -1,13 +1,13 @@
 // Writing AVIF, JPEG XL, WebP, JPEG, PNG and TIFF (Convert, Export, Save
-// edits), and reading JPEG XL and TIFF where the engine can't: a few
+// edits), and reading JPEG XL, HEIC and TIFF where the engine can't: a few
 // codec-worker.js workers, each doing one picture at a time.
 //
 //   Codec.ready()               whether the codecs load here (not in the
 //                               single-file standalone.html, opened from disk)
 //   Codec.encode(blob, format, quality, { crop, preview })
 //                               → { bytes, w, h, rgb, preview }
-//   Codec.showable(blob)        a JPEG XL or TIFF as something the engine
-//                               shows (itself when it can, else a PNG)
+//   Codec.showable(blob)        a JPEG XL, HEIC or TIFF as something the
+//                               engine shows (itself when it can, else a PNG)
 
 const Codec = {
     // exts: what files of it are called (the first, when one's written);
@@ -140,7 +140,7 @@ const Codec = {
         return this._engineJxl;
     },
 
-    // A JPEG XL or TIFF file as something createImageBitmap and <img> take.
+    // A JPEG XL, HEIC or TIFF file as something createImageBitmap and <img> take.
     // The last few are kept, so going back and forth doesn't decode again
     _shown: [],
     async showable(file) {
@@ -158,9 +158,16 @@ const Codec = {
         return /\.jxl$/i.test(name);
     },
 
-    // A file the engine can't show (JPEG XL, TIFF): decoded by the codecs
+    // A file the engine can't show (JPEG XL, HEIC, TIFF): decoded by the codecs
     decoded(name) {
-        return /\.(jxl|tiff?)$/i.test(name || '');
+        return /\.(jxl|tiff?|heic|heif|hif)$/i.test(name || '');
+    },
+
+    // A HEIC or HEIF (iPhones; Sony's .hif). Never written: nothing here
+    // writes HEIC, so like a RAW its turns, crops and adjustments are kept
+    // as an edit, and Save edits and Export write JPEG copies
+    isHeif(name) {
+        return /\.(heic|heif|hif)$/i.test(name || '');
     },
 
     // 'avif', 'jxl' or 'tiff' for a file only the codecs write, else null

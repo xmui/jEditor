@@ -1002,6 +1002,13 @@ header:has(.header-controls.expanded) {
     background: var(--strip-bg);
 }
 
+/* A huge folder's photos not built yet (updateStripWindow), at their width */
+.strip-spacer {
+    flex-shrink: 0;
+    height: 1px;
+    pointer-events: none;
+}
+
 .thumb-item {
     position: relative;
     flex-shrink: 0;
@@ -1096,6 +1103,12 @@ header:has(.header-controls.expanded) {
     content-visibility: auto;
     /* Tiles out of sight stand in at the real tile size (syncGridTile) */
     contain-intrinsic-size: var(--grid-tile, var(--grid-item-size, 150px)) var(--grid-tile, var(--grid-item-size, 150px));
+}
+
+/* A huge folder's rows not built yet (updateGridWindow), at their height */
+.grid-spacer {
+    grid-column: 1 / -1;
+    pointer-events: none;
 }
 
 .grid-item:hover {

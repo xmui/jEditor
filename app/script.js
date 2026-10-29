@@ -184,7 +184,14 @@ const app = {
         // Grid Size Slider
         this.elements.gridSizeSlider.addEventListener('input', (e) => this.setGridSize(parseInt(e.target.value, 10)));
         // Off-screen tiles stand in at the real tile size (see syncGridTile)
-        if (typeof ResizeObserver === 'function') new ResizeObserver(() => this.syncGridTile()).observe(this.elements.gridView);
+        // (and a huge folder's grid builds the tiles the new size needs)
+        if (typeof ResizeObserver === 'function') new ResizeObserver(() => {
+            this.syncGridTile();
+            this.updateGridWindow({ force: true });
+        }).observe(this.elements.gridView);
+        this.elements.gridView.addEventListener('scroll', () => this.updateGridWindow(), { passive: true });
+        this.elements.thumbnailStrip.addEventListener('scroll', () => this.updateStripWindow(), { passive: true });
+        if (typeof ResizeObserver === 'function') new ResizeObserver(() => this.updateStripWindow({ force: true })).observe(this.elements.thumbnailStrip);
 
         // Sort Control (persisted; capture-date sort loads EXIF dates first)
         this.elements.sortModeSelect.addEventListener('change', async (e) => {
@@ -1602,7 +1609,7 @@ const app = {
             this.beginTask('scan', 'Opening…');
             this.elements.dropZone.classList.add('hidden');
             for (const h of handles) {
-                if (!h || !this.isImage(h.name) || Raw.is(h.name)) continue;
+                if (!h || !this.isImage(h.name) || Raw.is(h.name) || Codec.isHeif(h.name)) continue;
                 const f = await h.getFile();
                 this.files.push({ name: h.name, handle: h, size: f.size, lastModified: f.lastModified });
             }
@@ -1781,7 +1788,7 @@ const app = {
             }
         }
         // Size and date, read several at a time
-        const BATCH = 32;
+        const BATCH = 128;
         for (let i = 0; i < pending.length; i += BATCH) {
             const batch = pending.slice(i, i + BATCH);
             const datas = await Promise.all(batch.map(p => p.entry.getFile().catch(() => null)));
@@ -1823,12 +1830,12 @@ const app = {
     },
 
     isImage(name) {
-        return /\.(jpg|jpeg|png|webp|gif|avif|jxl|tiff?)$/i.test(name) || Raw.is(name);
+        return /\.(jpg|jpeg|png|webp|gif|avif|jxl|tiff?|heic|heif|hif)$/i.test(name) || Raw.is(name);
     },
 
     // The photo's bytes to decode: the file, a RAW's own JPEG (raw.js), or
-    // a JPEG XL or TIFF decoded where the engine can't (codec.js). Never for
-    // writing: a RAW is never written
+    // a JPEG XL, HEIC or TIFF decoded where the engine can't (codec.js).
+    // Never for writing: a RAW or a HEIC is never written
     async readImage(file) {
         const data = await file.handle.getFile();
         if (Codec.decoded(file.name)) return Codec.showable(data);
@@ -2502,6 +2509,7 @@ const app = {
         this.dirHandle = null;
         this.elements.gridView.innerHTML = '';
         this.elements.thumbnailStrip.innerHTML = '';
+        this._gridWin = this._stripWin = null;
         this.elements.mainInterface.classList.add('hidden');
         this.elements.dropZone.classList.remove('hidden');
         Places.apply();
@@ -2552,7 +2560,10 @@ const app = {
     // The film strip (single view). Items load their thumbnail as they
     // scroll into sight.
     renderThumbnails() {
+        // Read before the items go: a windowed strip keeps its place
+        const scrollWas = this._stripWin ? this.elements.thumbnailStrip.scrollLeft : null;
         this.elements.thumbnailStrip.innerHTML = '';
+        this._stripWin = null;
         const frag = document.createDocumentFragment();
         if (this._stripObserver) this._stripObserver.disconnect();
         this._stripObserver = new IntersectionObserver((entries) => {
@@ -2564,10 +2575,117 @@ const app = {
             });
         }, { root: this.elements.thumbnailStrip, rootMargin: '0px 400px' });
 
-        this.viewFiles().forEach((file) => frag.appendChild(this.makeStripItem(file)));
-        this.elements.thumbnailStrip.appendChild(frag);
         this._activeStripEl = null;
+        const files = this.viewFiles();
+        if (files.length >= this.GRID_WINDOW_MIN) {
+            // A huge folder: only the items near the view, as in the grid
+            const spacer = () => {
+                const s = document.createElement('div');
+                s.className = 'strip-spacer';
+                s.setAttribute('aria-hidden', 'true');
+                return s;
+            };
+            this._stripWin = { files, before: spacer(), after: spacer(), start: 0, end: 0, tiles: new Map(), pitch: 0 };
+            this.elements.thumbnailStrip.append(this._stripWin.before, this._stripWin.after);
+            this.updateStripWindow({ force: true, left: scrollWas });
+        } else {
+            files.forEach((file) => frag.appendChild(this.makeStripItem(file)));
+            this.elements.thumbnailStrip.appendChild(frag);
+        }
         this.updateActiveThumbnail();
+    },
+
+    // The film strip's window (see GRID_WINDOW_MIN): the items in and near
+    // the view, and spacers as wide as the rest
+    updateStripWindow({ force = false, left = null } = {}) {
+        const win = this._stripWin;
+        if (!win) return;
+        const strip = this.elements.thumbnailStrip;
+        if (!strip.clientWidth) { win.stale = true; return; }
+        if (win.stale) { win.stale = false; force = true; }
+        if (force && left === null) left = strip.scrollLeft;
+        const files = win.files, n = files.length;
+        const make = (i) => {
+            const el = this.makeStripItem(files[i]);
+            win.tiles.set(files[i], el);
+            return el;
+        };
+        const drop = (f) => {
+            const el = win.tiles.get(f);
+            if (!el) return;
+            win.tiles.delete(f);
+            if (this._stripObserver) this._stripObserver.unobserve(el);
+            el.remove();
+            if (f._stripEl === el) f._stripEl = null;
+            if (this._activeStripEl === el) this._activeStripEl = null;
+        };
+        if (force) {
+            for (const f of [...win.tiles.keys()]) drop(f);
+            win.start = win.end = 0;
+            win.gap = parseFloat(getComputedStyle(strip).columnGap) || 0;
+            win.before.style.display = '';
+            win.before.style.width = '0px';
+            win.after.style.display = 'none';
+            win.base = win.before.offsetLeft;
+            if (!win.pitch) win.pitch = Math.max(8, strip.clientHeight - 16) + win.gap;
+        }
+        const place = (pitch) => {
+            const x = (left !== null ? left : strip.scrollLeft) - win.base;
+            const screen = Math.max(1, Math.ceil(strip.clientWidth / pitch));
+            const first = Math.floor(x / pitch), last = Math.floor((x + strip.clientWidth) / pitch);
+            if (!force && win.end > win.start && win.start <= Math.max(0, first - (screen >> 1)) && win.end - 1 >= Math.min(n - 1, last + (screen >> 1))) return false;
+            const from = Math.max(0, Math.min(n - 1, first - screen));
+            return { start: from, end: Math.min(n, Math.max(from, last + screen) + 1) };
+        };
+        const apply = ({ start, end }) => {
+            const o0 = win.start, o1 = win.end;
+            for (let i = o0; i < o1; i++) if (i < start || i >= end) drop(files[i]);
+            const lo = Math.max(start, o0), hi = Math.min(end, o1);
+            const front = document.createDocumentFragment(), back = document.createDocumentFragment();
+            if (lo >= hi) {
+                for (let i = start; i < end; i++) back.appendChild(make(i));
+            } else {
+                for (let i = start; i < lo; i++) front.appendChild(make(i));
+                for (let i = hi; i < end; i++) back.appendChild(make(i));
+            }
+            win.before.after(front);
+            win.after.before(back);
+            win.start = start;
+            win.end = end;
+            const size = (s, k) => {
+                s.style.display = k > 0 ? '' : 'none';
+                s.style.width = k > 0 ? `${k * win.pitch - win.gap}px` : '0px';
+            };
+            size(win.before, start);
+            size(win.after, n - end);
+        };
+        const want = place(win.pitch);
+        if (want) {
+            apply(want);
+            const a = win.tiles.get(files[win.start]), b = win.tiles.get(files[win.start + 1]);
+            const pitch = a && b ? b.offsetLeft - a.offsetLeft : a ? a.offsetWidth + win.gap : 0;
+            if (pitch > 0 && Math.abs(pitch - win.pitch) > 0.5) {
+                win.pitch = pitch;
+                force = true;
+                apply(place(pitch));
+            }
+        }
+        if (left !== null) strip.scrollLeft = left;
+    },
+
+    // A photo's film strip item, built (and scrolled to) if the window
+    // hasn't got it
+    revealInStrip(file) {
+        const win = this._stripWin;
+        if (!win || !file) return file ? file._stripEl : null;
+        if (win.stale) this.updateStripWindow();
+        if (file._stripEl && file._stripEl.isConnected) return file._stripEl;
+        const strip = this.elements.thumbnailStrip;
+        const i = win.files.indexOf(file);
+        if (i < 0 || !strip.clientWidth) return null;
+        strip.scrollLeft = Math.max(0, win.base + i * win.pitch - (strip.clientWidth - win.pitch) / 2);
+        this.updateStripWindow();
+        return file._stripEl && file._stripEl.isConnected ? file._stripEl : null;
     },
 
     makeStripItem(file) {
@@ -2575,6 +2693,11 @@ const app = {
         div.className = 'thumb-item';
         div._file = file;
         file._stripEl = div;
+        // Built as the window moves: it starts highlighted if it's the one
+        if (file === this.currentFile) {
+            div.classList.add('active');
+            this._activeStripEl = div;
+        }
         Flags.decorate(div, file);
         Edits.decorate(div, file);
         div.onclick = () => this.openSingle(file);
@@ -2606,6 +2729,7 @@ const app = {
     // 2000-photo folder.
     updateActiveThumbnail() {
         const strip = this.elements.thumbnailStrip;
+        if (this._stripWin && !strip.classList.contains('hidden')) this.revealInStrip(this.currentFile);
         const el = this.currentFile && this.currentFile._stripEl;
         if (this._activeStripEl && this._activeStripEl !== el) this._activeStripEl.classList.remove('active');
         this._activeStripEl = el && el.isConnected ? el : null;
@@ -2619,21 +2743,28 @@ const app = {
     // Grid View with Lazy Loading. sync: every tile now, so a re-render
     // after a move keeps the scroll position.
     renderGrid({ sync = false } = {}) {
+        // Read before the tiles go: a windowed grid keeps its place
+        const scrollWas = this._gridWin ? this.elements.gridView.scrollTop : null;
         this.elements.gridView.innerHTML = '';
         this._shownSelected = new Set();
         this._activeGridEl = null;
 
         // Tiles load once and keep their thumbnail; leaving the viewport no
         // longer blanks them (re-decoding on re-entry was a scroll-jank source)
+        // Each urgent request goes to the front of the queue, so the ones
+        // nearest the middle of the screen are asked for last, to be made
+        // first (in DOM order, the rows below the view came first, and a
+        // jump in a big folder waited seconds for the photos on screen)
         const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (!entry.isIntersecting) return;
-                const img = entry.target;
-                const file = img._file;
-                if (!file) return;
-                observer.unobserve(img);
-                this.loadImageThumbnail(file, img); // urgent: jumps the precache queue
-            });
+            const mid = window.innerHeight / 2;
+            const far = (e) => Math.abs(e.boundingClientRect.top + e.boundingClientRect.height / 2 - mid);
+            entries.filter(e => e.isIntersecting && e.target._file)
+                .sort((a, b) => far(b) - far(a))
+                .forEach(entry => {
+                    const img = entry.target;
+                    observer.unobserve(img);
+                    this.loadImageThumbnail(img._file, img); // urgent: jumps the precache queue
+                });
         }, { root: null, rootMargin: '1000px' });
         this.elements.gridView._observer = observer; // Stash for refreshThumbnailUI
 
@@ -2649,6 +2780,27 @@ const app = {
         const empty = this.emptyState(files, folderTiles);
         if (empty) this.elements.gridView.append(empty);
         Folders.render();
+
+        // A huge folder: only the tiles near the view are built (gridWindow)
+        this._gridWin = null;
+        if (files.length >= this.GRID_WINDOW_MIN) {
+            this._gridRenderToken = (this._gridRenderToken || 0) + 1;
+            this.gridRendering = false;
+            const spacer = () => {
+                const s = document.createElement('div');
+                s.className = 'grid-spacer';
+                s.setAttribute('aria-hidden', 'true');
+                return s;
+            };
+            const win = this._gridWin = {
+                files, folders: folderTiles.length, observer,
+                before: spacer(), after: spacer(),
+                start: 0, end: 0, tiles: new Map(), pitch: 0
+            };
+            this.elements.gridView.append(win.before, win.after);
+            this.updateGridWindow({ force: true, top: scrollWas });
+            return;
+        }
 
         // Chunked render: big folders paint the first screenfuls immediately
         // and append the rest during idle time. (gridRendering: tiles are
@@ -2671,6 +2823,135 @@ const app = {
             }
         };
         renderChunk(0);
+    },
+
+    // A folder this big (shown at once) gets a windowed grid: only the tiles
+    // in and near the view are built. Laying out 10,000 tiles cost ~200 ms
+    // a frame while scrolling, and Select all, search and coming back from
+    // a photo each touched every tile. Spacers stand in for the rows above
+    // and below at their real height, so the scroll bar and every position
+    // are as if all were there. Smaller folders build every tile, as before.
+    GRID_WINDOW_MIN: 1000,
+
+    // Content position (px from the grid's top edge, scrolled or not)
+    gridY(el) {
+        const grid = this.elements.gridView;
+        return el.getBoundingClientRect().top - grid.getBoundingClientRect().top + grid.scrollTop;
+    },
+
+    // Builds the tiles the view needs, and drops the rest. force: start
+    // over (a new grid, other columns, another tile size). top: the scroll
+    // position to keep (the grid was just rebuilt, and is short until now).
+    updateGridWindow({ force = false, top = null } = {}) {
+        const win = this._gridWin;
+        if (!win) return;
+        const grid = this.elements.gridView;
+        // Hidden (the viewer): done when it shows (resize observer, revealInGrid)
+        if (!grid.clientWidth) { win.stale = true; return; }
+        if (win.stale) { win.stale = false; force = true; }
+        const files = win.files, n = files.length;
+        const cols = this.getGridColumnCount();
+        if (cols !== win.cols) force = true;
+        // Read now: once the tiles go, the grid is too short to keep it
+        if (force && top === null) top = grid.scrollTop;
+        const make = (i) => {
+            const el = this.makeGridTile(files[i], win.observer);
+            win.tiles.set(files[i], el);
+            return el;
+        };
+        const drop = (f) => {
+            const el = win.tiles.get(f);
+            if (!el) return;
+            win.tiles.delete(f);
+            const img = el.querySelector(':scope > img');
+            if (img) win.observer.unobserve(img);
+            el.remove();
+            if (f._gridEl === el) f._gridEl = null;
+            if (this._activeGridEl === el) this._activeGridEl = null;
+        };
+        if (force) {
+            for (const f of [...win.tiles.keys()]) drop(f);
+            win.start = win.end = 0;
+            win.cols = cols;
+            // Photos sharing a row with the subfolder tiles are always there
+            win.head = Math.min(n, win.folders ? Math.ceil(win.folders / cols) * cols - win.folders : 0);
+            const frag = document.createDocumentFragment();
+            for (let i = 0; i < win.head; i++) frag.appendChild(make(i));
+            win.before.before(frag);
+            win.gap = parseFloat(getComputedStyle(grid).rowGap) || 0;
+            // The first windowed row starts where the top spacer does
+            win.before.style.display = '';
+            win.before.style.height = '0px';
+            win.after.style.display = 'none';
+            win.base = this.gridY(win.before);
+            if (!win.pitch) win.pitch = (parseFloat(getComputedStyle(grid).gridTemplateColumns) || 150) + win.gap;
+        }
+        const head = win.head, rows = Math.ceil((n - head) / cols);
+        const place = (pitch) => {
+            const y = (top !== null ? top : grid.scrollTop) - win.base;
+            const screen = Math.max(1, Math.ceil(grid.clientHeight / pitch));
+            const first = Math.floor(y / pitch), last = Math.floor((y + grid.clientHeight) / pitch);
+            // Still a half screen built either side: nothing to do
+            const r0 = (win.start - head) / cols, r1 = (win.end - head) / cols - 1;
+            if (!force && win.end > win.start && r0 <= Math.max(0, first - (screen >> 1)) && r1 >= Math.min(rows - 1, last + (screen >> 1))) return false;
+            const from = Math.max(0, Math.min(rows - 1, first - screen));
+            const to = Math.max(from, Math.min(rows - 1, last + screen));
+            return { start: head + from * cols, end: Math.min(n, head + (to + 1) * cols) };
+        };
+        const apply = ({ start, end }) => {
+            const o0 = win.start, o1 = win.end;
+            for (let i = o0; i < o1; i++) if (i < start || i >= end) drop(files[i]);
+            const lo = Math.max(start, o0), hi = Math.min(end, o1);
+            const front = document.createDocumentFragment(), back = document.createDocumentFragment();
+            if (lo >= hi) {
+                for (let i = start; i < end; i++) back.appendChild(make(i));
+            } else {
+                for (let i = start; i < lo; i++) front.appendChild(make(i));
+                for (let i = hi; i < end; i++) back.appendChild(make(i));
+            }
+            win.before.after(front);
+            win.after.before(back);
+            win.start = start;
+            win.end = end;
+            const above = (start - head) / cols, below = rows - Math.ceil((end - head) / cols);
+            const size = (s, k) => {
+                s.style.display = k > 0 ? '' : 'none';
+                s.style.height = k > 0 ? `${k * win.pitch - win.gap}px` : '0px';
+            };
+            size(win.before, above);
+            size(win.after, below);
+        };
+        const want = place(win.pitch);
+        if (want) {
+            apply(want);
+            // The real row height, now there are tiles to measure (a theme
+            // can give tiles a caption)
+            const a = files[win.start] && win.tiles.get(files[win.start]);
+            const b = files[win.start + cols] && win.tiles.get(files[win.start + cols]);
+            const pitch = a && b ? this.gridY(b) - this.gridY(a) : a ? a.offsetHeight + win.gap : 0;
+            if (pitch > 0 && Math.abs(pitch - win.pitch) > 0.5) {
+                win.pitch = pitch;
+                force = true; // spacers redone at the right height
+                apply(place(pitch));
+            }
+        }
+        if (top !== null) grid.scrollTop = top;
+    },
+
+    // A photo's grid tile, built (and scrolled to) if the window hasn't got
+    // it: for whatever needs the tile itself, to scroll it into view say
+    revealInGrid(file) {
+        const win = this._gridWin;
+        if (!win || !file) return file ? file._gridEl : null;
+        if (win.stale) this.updateGridWindow();
+        if (file._gridEl && file._gridEl.isConnected) return file._gridEl;
+        const i = win.files.indexOf(file);
+        const grid = this.elements.gridView;
+        if (i < 0 || !grid.clientWidth) return null;
+        const row = Math.floor((i - win.head) / win.cols);
+        grid.scrollTop = Math.max(0, win.base + row * win.pitch - (grid.clientHeight - win.pitch) / 2);
+        this.updateGridWindow();
+        return file._gridEl && file._gridEl.isConnected ? file._gridEl : null;
     },
 
     // Transparent stand-in while a tile's thumbnail is on its way
@@ -3316,12 +3597,12 @@ const app = {
             }
             this.updateSelectionUI();
 
-            // Scroll to current
-            const currentEl = this.currentFile && this.currentFile._gridEl;
-            if (currentEl) {
-                // setTimeout to allow layout
+            // Scroll to current (after a moment, to allow layout)
+            const current = this.currentFile;
+            if (current && (current._gridEl || this._gridWin)) {
                 setTimeout(() => {
-                    currentEl.scrollIntoView({ block: 'center' });
+                    const el = this.revealInGrid(current);
+                    if (el) el.scrollIntoView({ block: 'center' });
                 }, 10);
             }
 
@@ -3858,7 +4139,7 @@ const app = {
         this.selection.clear();
         this.selection.add(file);
         this.updateSelectionUI();
-        const item = file._gridEl;
+        const item = this.revealInGrid(file);
         if (item) {
             const rect = item.getBoundingClientRect();
             const containerRect = this.elements.gridView.getBoundingClientRect();
@@ -4991,7 +5272,9 @@ const app = {
         const anchor = this.gridAnchor();
         document.documentElement.style.setProperty('--grid-item-size', `${px}px`);
         this.syncGridTile();
-        if (anchor) grid.scrollTop += anchor.el.getBoundingClientRect().top - anchor.top;
+        if (this._gridWin) this.updateGridWindow({ force: true });
+        const el = anchor && (anchor.el._file ? this.revealInGrid(anchor.el._file) : anchor.el);
+        if (el && el.isConnected) grid.scrollTop += el.getBoundingClientRect().top - anchor.top;
     },
 
     // Run fn (which rebuilds the grid) and scroll so the photo that anchored
@@ -5001,7 +5284,7 @@ const app = {
         const result = fn();
         if (a) {
             const grid = this.elements.gridView;
-            const el = a.el._file ? a.el._file._gridEl
+            const el = a.el._file ? this.revealInGrid(a.el._file)
                 : grid.querySelector(`.folder-tile[data-folder-path="${CSS.escape(a.el.dataset.folderPath || '')}"]`);
             if (el && el.isConnected) grid.scrollTop += el.getBoundingClientRect().top - a.top;
         }
@@ -5024,6 +5307,7 @@ const app = {
             const midY = (view.top + view.bottom) / 2;
             let best = Infinity;
             for (const t of grid.children) {
+                if (t.classList.contains('grid-spacer')) continue;
                 const r = t.getBoundingClientRect();
                 if (r.bottom < view.top || r.top > view.bottom) continue;
                 const d = Math.abs((r.top + r.bottom) / 2 - midY);
@@ -5828,6 +6112,10 @@ const app = {
             if (f._gridEl) f._gridEl.remove();
             if (f._stripEl) f._stripEl.remove();
         }
+        // A huge folder's grid and strip (only the tiles near the view) are
+        // built again
+        if (this._stripWin && this.files.length) this.renderThumbnails();
+        if (this._gridWin && this.files.length) this.keepGridPlace(() => this.renderGrid());
 
         if (this.files.length === 0 && this.dirHandle && !this.readOnlyMode) {
             // The last photo went: the project stays open, empty
@@ -6276,7 +6564,7 @@ const app = {
 
     // ---- Export copies ----
 
-    // Copies of `files` (edits in them, RAWs as JPEGs). From the Export
+    // Copies of `files` (edits in them, RAWs and HEICs as JPEGs). From the Export
     // window (export.js): `maxEdge` (0: full size) and `dir`, the folder
     // they go into, called `where`; else asked here, into "jEditor Export"
     // in the project
@@ -6307,12 +6595,15 @@ const app = {
             for (const f of list) {
                 try {
                     // A RAW: from its own JPEG, written as a JPEG (or the
-                    // format chosen)
-                    const raw = Raw.is(f.name);
+                    // format chosen). A HEIC: decoded (a PNG, or a JPEG when
+                    // edited), written as a JPEG (or the format chosen), with
+                    // the HEIC's EXIF
+                    const heif = Codec.isHeif(f.name);
+                    const raw = Raw.is(f.name) || heif;
                     const file = raw ? await this.readImage(f) : await f.handle.getFile();
-                    const from = raw ? 'jpeg' : this.formatOf(f.name);
-                    const to = format === 'same' ? from : format;
                     let out = f._edit ? await this.renderEdited(f, file) : file;
+                    const from = heif ? (out.type === 'image/jpeg' ? 'jpeg' : 'png') : raw ? 'jpeg' : this.formatOf(f.name);
+                    const to = format === 'same' ? (heif ? 'jpeg' : from) : format;
                     // Smaller, or another format: drawn again and written as that
                     let bmp = null, scale = 1;
                     if (maxEdge > 0 || to !== from) {
@@ -6326,7 +6617,7 @@ const app = {
                         canvas.width = Math.round(bmp.width * scale);
                         canvas.height = Math.round(bmp.height * scale);
                         canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
-                        out = await this.encodeAs(canvas, to === 'gif' ? 'jpeg' : to, new Uint8Array(await file.arrayBuffer()));
+                        out = await this.encodeAs(canvas, to === 'gif' ? 'jpeg' : to, new Uint8Array(await (heif ? await f.handle.getFile() : file).arrayBuffer()));
                         canvas.width = canvas.height = 0;
                     }
                     if (bmp) bmp.close();
@@ -6403,6 +6694,11 @@ const app = {
         if (!blob) throw new Error('encoding failed');
         // AVIF and JPEG XL: written by the codecs, in their own format, with their EXIF
         if (coded) return Codec.file(blob, coded, Codec.FORMATS[coded].quality, ImageMeta.exifOf(new Uint8Array(await (await f.handle.getFile()).arrayBuffer())));
+        // A HEIC (decoded already: never written): a JPEG, with the HEIC's EXIF
+        if (Codec.isHeif(f.name)) {
+            const exif = ImageMeta.exifOf(new Uint8Array(await (await f.handle.getFile()).arrayBuffer()));
+            return new Blob([Codec.withExif(new Uint8Array(await blob.arrayBuffer()), 'jpeg', exif, w, h)], { type });
+        }
         return ImageMeta.transplant(original, blob, type, w, h);
     },
 
@@ -7470,10 +7766,11 @@ const app = {
             this.showToast('Saving edits needs a folder opened with Open folder');
             return false;
         }
-        // RAW files are never written (raw.js): JPEG copies of them instead
-        const raws = list.filter(f => Raw.is(f.name));
+        // RAW and HEIC files are never written (raw.js, codec.js): JPEG copies of them instead
+        const never = (f) => Raw.is(f.name) || Codec.isHeif(f.name);
+        const raws = list.filter(never);
         if (raws.length) {
-            list = list.filter(f => !Raw.is(f.name));
+            list = list.filter(f => !never(f));
             await this.exportCopies(raws);
             if (!list.length) return true;
         }

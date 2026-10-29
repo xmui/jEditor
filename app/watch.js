@@ -548,7 +548,15 @@ const Watch = {
         const view = app.viewFiles();
         const grid = app.elements.gridView;
         const strip = app.elements.thumbnailStrip;
+        // A huge folder's grid only has the tiles near the view: it's
+        // built again (that's quick), rather than slotted into
+        const windowed = !!app._gridWin;
         app.keepGridPlace(() => {
+            if (windowed) {
+                app.renderGrid();
+                app.renderThumbnails();
+                return;
+            }
             let nextTile = null, nextStrip = null;
             for (let i = view.length - 1; i >= 0; i--) {
                 const f = view[i];

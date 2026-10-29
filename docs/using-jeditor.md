@@ -140,6 +140,10 @@ Adjustments are non-destructive: the photo on disk isn't changed. They're kept w
 
 RAW files from cameras (DNG, CR2, CR3, NEF, ARW, RAF, ORF, RW2, PEF, SRW and the rest) are listed with the other photos and shown from the full-size JPEG the camera puts inside each one, turned as the camera was held. They can be flagged, renamed, moved, cropped, adjusted and painted on like any photo, but a RAW file is never written: its turns, crops and adjustments are always kept as edits, and **Export** (or **Save edits**) writes a JPEG copy (`IMG_0042.cr3` → `IMG_0042.jpg`). Editing the raw sensor data itself (rather than its JPEG) comes later.
 
+## HEIC photos
+
+HEIC and HEIF photos (an iPhone's `.heic`, and Sony's `.hif`) are listed and shown like any other, upright, decoded by libheif, a codec that comes with jEditor (a WebAssembly build, so it's the same on Windows, Mac, Linux and the web; not in `standalone.html` opened from disk). Nothing writes HEIC, so a HEIC is treated like a RAW: it can be flagged, renamed, moved, cropped, adjusted and painted on, its turns, crops and adjustments are kept as edits, and **Export** (or **Save edits**) writes a JPEG copy with its EXIF (`IMG_0042.heic` → `IMG_0042.jpg`). **Convert** turns HEIC photos into any of its formats, whatever their size. The photo's colour profile isn't used yet: an iPhone's Display P3 colours are shown as sRGB, a little duller.
+
 ## Photos, Adjust and Paint
 
 jEditor has three modes, like Lightroom's modules: **Photos** (sorting, rotating, cropping), **Adjust** and **Paint**. With the sidebar open, switch along its top; with it closed, the chip at the top left names the mode you're in and its menu switches (it's there in single view, and over Adjust and Paint too). `E` and `B` still open Adjust and Paint, and `Esc` goes back to Photos.
@@ -187,7 +191,7 @@ In the Windows, Mac and Linux apps:
 - **Storage:** what the photos take **Now** and **After** and by folder, worked out from a sample of them before anything happens, and again as you change the format or quality: what's freed striped green, or (PNG and TIFF, which often take more than a JPEG) how much more striped amber.
 - **The originals:** **Replace them** (the converted photo takes the original's place and the original goes to the Recycle Bin, or jEditor's trash; one `Ctrl+Z` puts them all back) or **Keep both** (the converted copies go into `jEditor Converted` in the project, which jEditor doesn't list as the project's photos).
 
-Flags and edits go with each photo, and so do its date taken, camera and the rest of its EXIF (into a TIFF: its camera and dates). RAW files, GIFs and photos already in that format are left as they are, and so, in the lossy formats, are photos that wouldn't get smaller.
+Flags and edits go with each photo, and so do its date taken, camera and the rest of its EXIF (into a TIFF: its camera and dates). RAW files, GIFs and photos already in that format are left as they are, and so, in the lossy formats, are photos that wouldn't get smaller (but not HEIC photos, which are converted so other apps can open them).
 
 While it works, 100 dots stand for the photos, each in their own colours once they're done; done dots turn hollow and green for the storage freed, as many as the share freed so far. Pause or Stop, or close the window and carry on: the corner says how far it's got. At the end: the storage freed, and the size before and after.
 
@@ -302,7 +306,7 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `disc.js`: burning a CD or DVD (the Windows app's `src/Burn.cs`)
 - `export.js`: the Export window (a USB drive, a disc, or copies)
 - `convert.js`: Convert (photos to AVIF, JPEG XL or WebP: the quality and close-up, the storage now and after, the dots)
-- `codec.js`, `codec-worker.js`, `codecs/`, `tiff-codec.js`: writing AVIF, JPEG XL, WebP, JPEG, PNG and TIFF, and reading JPEG XL and TIFF, in workers (libavif and libjxl as WebAssembly; TIFF jEditor's own)
+- `codec.js`, `codec-worker.js`, `codecs/`, `tiff-codec.js`: writing AVIF, JPEG XL, WebP, JPEG, PNG and TIFF, and reading JPEG XL, HEIC and TIFF, in workers (libavif, libjxl and libheif as WebAssembly; TIFF jEditor's own)
 - `crop-auto.js`: finding the print on a scan (Auto)
 - `crop-boxes.js`: Auto's map-to-boxes finder and full-detail edge fit (being scored; `CropAuto.find(..., { boxes: true })`)
 - `changelog.js`: the list of changes shown in What's new, and the release notes

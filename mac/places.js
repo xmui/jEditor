@@ -14,7 +14,7 @@ const fs = require('fs');
 const path = require('path');
 
 // RAW files too (app/raw.js shows them from their own JPEG)
-const PHOTO = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.tif', '.tiff', '.bmp', '.heic',
+const PHOTO = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.tif', '.tiff', '.bmp', '.heic', '.heif', '.hif',
     '.dng', '.cr2', '.cr3', '.nef', '.nrw', '.arw', '.sr2', '.srf', '.orf', '.rw2', '.rwl', '.pef', '.srw', '.3fr', '.iiq', '.erf', '.kdc', '.dcr', '.mos', '.mef', '.raf']);
 const isPhoto = (name) => !name.startsWith('.') && PHOTO.has(path.extname(name).toLowerCase());
 // Folders that aren't shown: hidden ones, and jEditor's own
