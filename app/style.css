@@ -4896,6 +4896,43 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     font-weight: 600;
 }
 
+.adj-sub-acts {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Edit · Retouch · Masks, under the histogram */
+.adj-pane-tabs {
+    display: flex;
+    margin: var(--sp-2) 0 var(--sp-1);
+}
+
+.adj-pane-tabs .adj-tab {
+    flex: 1;
+    height: var(--ctl-md);
+    font-size: var(--fs-body);
+}
+
+/* Retouch and Masks hold one section each, always open: its head is a title */
+.adj-pane:not([data-pane="edit"]) > .adj-sec > summary {
+    cursor: default;
+}
+
+.adj-pane:not([data-pane="edit"]) > .adj-sec > summary > span:first-child::before {
+    display: none;
+}
+
+/* The looks in Basic: one row of cards, scrolled sideways */
+#adj-basic-sec .adj-looks {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: 76px;
+    overflow-x: auto;
+    padding-bottom: var(--sp-1);
+    scrollbar-width: thin;
+}
+
 #adj-spot-overlay {
     cursor: crosshair;
 }
