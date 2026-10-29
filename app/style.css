@@ -8643,14 +8643,15 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     color: var(--danger-text);
 }
 
+/* It fades where it is: moved, its box would be off the row the edits
+   bar lines up with (fit.js) */
 :root:not([data-skin]) .interface:has(#selection-bar:not(.hidden)) .grid-controls {
     opacity: 0;
-    translate: 0 var(--sp-2);
     pointer-events: none;
 }
 
 :root:not([data-skin]) .grid-controls {
-    transition: opacity var(--dur-base) var(--ease-out), translate var(--dur-base) var(--ease-out);
+    transition: opacity var(--dur-base) var(--ease-out);
 }
 
 /* Lens, Clear and Crystal glass are too light to keep words readable on
@@ -8753,11 +8754,13 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    ease out as they go under the top, done by the browser as it scrolls
    (nothing runs for it), and only at the edges: in the middle they're
    still and whole. Not in a huge folder's grid, which builds its tiles as
-   it scrolls (grid-windowed, motion.js): there it would cost a frame */
+   it scrolls (grid-windowed, motion.js): there it would cost a frame. No
+   fill: the tiles out of sight keep their real size, where the grid
+   measures them (gridY, revealInGrid) */
 @supports (animation-timeline: view()) {
     @media (prefers-reduced-motion: no-preference) {
         :root:not([data-skin]):not([data-motion="off"]) .grid-view:not(.grid-windowed) .grid-item:not(.is-new) {
-            animation: tile-woosh linear both;
+            animation: tile-woosh linear;
             animation-timeline: view();
             animation-range: cover 0% cover 100%;
         }

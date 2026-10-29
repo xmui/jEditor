@@ -99,12 +99,32 @@ const Motion = {
         }
         for (const { el, r } of before.values()) {
             if (el.isConnected) continue;
-            const ghost = el.cloneNode(true);
+            const ghost = this.copy(el);
             ghost.classList.remove('selected', 'active');
             Object.assign(ghost.style, { position: 'fixed', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', margin: 0, pointerEvents: 'none', zIndex: 1, animation: 'none' });
             document.body.appendChild(ghost);
             ghost.animate([{ opacity: 1, scale: 1 }, { opacity: 0, scale: 0.7 }], { duration: 200, easing: EASE }).finished.then(() => ghost.remove(), () => ghost.remove());
         }
+    },
+
+    // A tile, its photos drawn from its own: a gone photo's thumbnail
+    // address is let go of, and a copied <img> would fetch it again
+    copy(n) {
+        if (n.nodeName !== 'IMG') {
+            const c = n.cloneNode(false);
+            for (const k of n.childNodes) c.appendChild(this.copy(k));
+            return c;
+        }
+        const c = document.createElement('canvas');
+        c.className = n.className;
+        c.style.cssText = n.style.cssText;
+        Object.assign(c.style, { width: '100%', height: '100%', display: 'block', objectFit: document.getElementById('grid-view').classList.contains('thumb-contain') ? 'contain' : 'cover' });
+        if (n.complete && n.naturalWidth) {
+            c.width = n.naturalWidth;
+            c.height = n.naturalHeight;
+            try { c.getContext('2d').drawImage(n, 0, 0); } catch (e) { /* not drawable: an empty tile */ }
+        }
+        return c;
     },
 
     // A folder's photos come in one after another, quickly, from the top
