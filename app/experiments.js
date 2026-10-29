@@ -10,13 +10,7 @@
 // it leaves this list and is simply part of jEditor.
 
 const Experiments = {
-    LIST: [
-        {
-            id: 'themes', beta: true, needs: 'themes',
-            title: 'Themes',
-            text: 'jEditor as an app of another time, in Settings → Appearance: Windows XP (Royale, Royale Noir and Royale Red), Snow Leopard (Finder and Aperture) and the 1984 Macintosh, each with its own title bar and menus'
-        }
-    ],
+    LIST: [],
 
     init(app) {
         this.app = app;

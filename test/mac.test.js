@@ -213,7 +213,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             items: m.submenu ? m.submenu.items.filter(i => i.type !== 'separator').map(i => ({ label: i.label, role: i.role, key: i.accelerator || '', reg: i.registerAccelerator, on: i.enabled })) : []
         })));
         const own = await bar();
-        const choose = async (t) => { await page.evaluate((t) => { Experiments.set('themes', true); Themes.choose(t); }, t); await page.waitForTimeout(500); };
+        const choose = async (t) => { await page.evaluate((t) => { Themes.choose(t); }, t); await page.waitForTimeout(500); };
         await choose('snow/finder');
         const snow = await bar();
         const names = (b) => b.slice(1).map(m => m.label).join();
@@ -904,7 +904,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         // Linux can't take a frame off an open window: a new one takes its place
         const swap = async (win, theme) => {
             const next = app.waitForEvent('window');
-            await win.evaluate((t) => { Experiments.set('themes', true); Themes.choose(t); }, theme);
+            await win.evaluate((t) => { Themes.choose(t); }, theme);
             const w = await next;
             await w.waitForFunction(() => typeof app !== 'undefined' && app.elements && !app.isLoading && app.files.length === 4, null, { timeout: 20000 });
             await w.waitForTimeout(500);
