@@ -8,11 +8,14 @@
 //
 // Every .dialog-overlay also gets, without its own code having to ask:
 // focus moved into it when it opens, Tab kept inside it while open, and
-// focus handed back to where it was when it closes.
+// focus handed back to where it was when it closes (when it was opened
+// from the keyboard: after a click, that button's keyboard ring showed,
+// and stayed).
 
 const UI = {
     _stack: [],      // open overlays, newest last
     _pending: null,  // the alert/confirm/prompt being answered
+    _pointer: false, // the last thing done was a click or tap, not a key
 
     el(id) { return document.getElementById(id); },
 
@@ -28,6 +31,8 @@ const UI = {
             if (!o.classList.contains('hidden')) this.sync(o);
         });
         document.addEventListener('keydown', (e) => this.trapTab(e), true);
+        document.addEventListener('pointerdown', () => { this._pointer = true; }, true);
+        document.addEventListener('keydown', () => { this._pointer = false; }, true);
 
         // alert / confirm / prompt
         const box = this.el('ui-dialog');
@@ -56,7 +61,7 @@ const UI = {
         const open = !overlay.classList.contains('hidden');
         const i = this._stack.findIndex(s => s.overlay === overlay);
         if (open && i === -1) {
-            this._stack.push({ overlay, returnTo: document.activeElement });
+            this._stack.push({ overlay, returnTo: document.activeElement, byKeys: !this._pointer });
             // After the dialog's own code has had a chance to focus a field
             requestAnimationFrame(() => {
                 if (overlay.classList.contains('hidden') || overlay.contains(document.activeElement)) return;
@@ -67,11 +72,12 @@ const UI = {
                 if (target) target.focus({ preventScroll: true });
             });
         } else if (!open && i !== -1) {
-            const [{ returnTo }] = this._stack.splice(i, 1);
+            const [{ returnTo, byKeys }] = this._stack.splice(i, 1);
             const lost = !document.activeElement || document.activeElement === document.body || overlay.contains(document.activeElement);
-            if (lost && returnTo && returnTo.isConnected && typeof returnTo.focus === 'function') {
-                returnTo.focus({ preventScroll: true });
-            }
+            // Into the dialog under it always: its keys need it there
+            const back = returnTo && returnTo.isConnected && typeof returnTo.focus === 'function' && (byKeys || returnTo.closest('.dialog-overlay'));
+            if (lost && back) returnTo.focus({ preventScroll: true });
+            else if (lost && overlay.contains(document.activeElement)) document.activeElement.blur();
         }
     },
 

@@ -37,6 +37,8 @@ Linux updates cover the AppImage, the `.deb` and the Arch package. The Mac app a
 
 ## The same everywhere
 
+Settings → Glass → Liquid bends what's under the glass where the page's web engine can draw an SVG filter behind an element: Chromium, so the Windows app (WebView2), the Mac and Linux apps (Electron), Chrome and Edge. Safari and Firefox get the same glass unbent. It isn't an app feature, so it has no row: `app/liquid.js` asks the browser.
+
 These don't depend on the app, so every platform has them: viewing, rotating, cropping and Auto crop, flags, rename, move, duplicates, import from a card, Save edits when done, and export. Adjust and Paint, and the experiments in **Settings → Experimental**, are the same everywhere too.
 
 Some things work everywhere but are kept in a different place:
