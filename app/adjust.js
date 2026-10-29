@@ -841,11 +841,13 @@ const Adjust = {
                 else if (this.pane === pane) this.showPane('edit');
             });
         }
-        // Edit's sections: opening one folds the one open before
+        // Edit's sections: opening one shows the tab and folds the one open before
         const edit = [...this.root.querySelectorAll('.adj-pane[data-pane="edit"] > details.adj-sec')];
         for (const sec of edit) {
             sec.addEventListener('toggle', () => {
-                if (sec.open) for (const o of edit) if (o !== sec && o.open) o.open = false;
+                if (!sec.open) return;
+                for (const o of edit) if (o !== sec && o.open) o.open = false;
+                this.showPane('edit');
             });
         }
         this.pane = 'edit';
@@ -860,6 +862,8 @@ const Adjust = {
         this.el('adj-masks-sec').open = id === 'masks';
         this.drawPanels();
         this.drawWheels();
+        this.placeLoupeBox();
+        if (this.detailOpen()) this.renderLoupe();
     },
 
     // One process's films (None is always there)
