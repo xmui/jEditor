@@ -152,6 +152,7 @@ const app = {
 
         // Keyboard
         this.bindKeyboard();
+        this.releaseClickedButtons();
 
         // Zoom
         this.elements.imageContainer.addEventListener('wheel', (e) => this.handleZoom(e));
@@ -4867,6 +4868,20 @@ const app = {
         window.addEventListener('keydown', (e) => this.recordKey(e), true);
     },
 
+    // A button clicked (mouse, pen or touch) doesn't keep the keyboard:
+    // kept, the next key (Esc, an arrow to the next photo) showed its
+    // keyboard ring, stuck there until something else was clicked, and
+    // Space or Enter pressed it again. In a dialog or a menu it keeps it
+    // (Tab moves on from there). After the click's own handlers, which may
+    // move it somewhere on purpose.
+    releaseClickedButtons() {
+        document.addEventListener('click', (e) => {
+            const b = e.detail > 0 && e.target.closest && e.target.closest('button, [role="button"]');
+            if (!b || b.closest('.dialog-overlay, [role="dialog"], [role="menu"], #context-menu')) return;
+            setTimeout(() => { if (document.activeElement === b) b.blur(); }, 0);
+        }, true);
+    },
+
     isTypingTarget(t) {
         if (!t || !t.tagName) return false;
         if (t.isContentEditable || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') return true;
@@ -6924,7 +6939,9 @@ const app = {
                 : (i + (e.key === 'ArrowDown' ? 1 : -1) + all.length) % all.length;
             all[next].focus();
         });
-        this._menuReturn = document.activeElement;
+        // Given back on Esc when opened from the keyboard (after a click,
+        // that button's keyboard ring would show, and stay: UI.sync)
+        this._menuReturn = UI._pointer ? null : document.activeElement;
         document.body.appendChild(menu);
         const r = menu.getBoundingClientRect();
         const top = opts.above ? y - r.height : y;

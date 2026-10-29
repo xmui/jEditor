@@ -2105,6 +2105,53 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 7g2. A button clicked doesn't stay highlighted ----
+    // Clicked, a button kept the keyboard: the next key (Esc, an arrow to
+    // the next photo) showed its keyboard ring, and it stayed. Dialogs and
+    // menus opened from the keyboard still give it back.
+    console.log('a button clicked doesn\'t stay highlighted');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.evaluate(async () => {
+            const dir = makeDir('Sticky');
+            for (let i = 1; i <= 3; i++) dir._files.set(`s${i}.jpg`, makeHandle(`s${i}.jpg`, await makeRealJpeg(300, 200, { color: `hsl(${i * 80},60%,50%)` }), 'image/jpeg'));
+            dir.values = async function* () { yield* dir._files.values(); };
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            app.setView('grid');
+            await new Promise(r => setTimeout(r, 400));
+        });
+        const ring = () => page.evaluate(() => [...document.querySelectorAll(':focus-visible')].map(e => e.id || e.className).join());
+        const stuck = [];
+        for (const [id, key] of [['btn-info', 'Escape'], ['btn-toggle-view', 'ArrowRight'], ['btn-export', 'Escape'], ['fb-all', 'Escape']]) {
+            const b = await page.$('#' + id);
+            if (!b || !(await b.isVisible())) { stuck.push(id + ': not shown'); continue; }
+            await b.click();
+            await page.waitForTimeout(300);
+            await page.keyboard.press(key);
+            await page.waitForTimeout(300);
+            const r = await ring();
+            if (r) stuck.push(`${id}, then ${key}: ${r}`);
+            await page.evaluate(() => { app.setView('grid'); app.toggleInfoPanel(false); });
+            await page.waitForTimeout(200);
+        }
+        check('a button clicked, then a key: no keyboard ring left on it', stuck.length === 0, stuck.join('; '));
+        // From the keyboard (Tab to it, then pressed: a key last, a click
+        // with no pointer): Export's menu, closed with Esc, gives the button
+        // its focus back
+        await page.focus('#btn-export');
+        await page.keyboard.press('Shift');
+        await page.evaluate(() => document.getElementById('btn-export').click());
+        await page.waitForTimeout(300);
+        const opened = await page.evaluate(() => !!document.getElementById('context-menu'));
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(300);
+        const back = await page.evaluate(() => document.activeElement && document.activeElement.id);
+        check('... opened from the keyboard, a menu gives the focus back on Esc', opened && back === 'btn-export', JSON.stringify([opened, back]));
+        check('sticky highlight: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7h. Rotating a photo shown from its original file (real disk files) ----
     console.log('rotate while showing the original file');
     {
