@@ -8648,11 +8648,11 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 
 @media (prefers-reduced-motion: no-preference) {
     /* The mode switch: one highlight, gliding to the mode chosen */
-    :root:not([data-skin]) .mode-seg {
+    :root:not([data-skin]):not([data-motion="off"]) .mode-seg {
         position: relative;
     }
 
-    :root:not([data-skin]) .seg-glide {
+    :root:not([data-skin]):not([data-motion="off"]) .seg-glide {
         display: block;
         position: absolute;
         border-radius: var(--r-pill);
@@ -8661,39 +8661,39 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
         pointer-events: none;
     }
 
-    :root:not([data-skin]) .mode-seg.glides .seg-glide {
+    :root:not([data-skin]):not([data-motion="off"]) .mode-seg.glides .seg-glide {
         transition: left var(--dur-slow) var(--ease-out), width var(--dur-slow) var(--ease-out), top var(--dur-slow) var(--ease-out);
     }
 
-    :root:not([data-skin]) .mode-seg > button {
+    :root:not([data-skin]):not([data-motion="off"]) .mode-seg > button {
         position: relative;
     }
 
-    :root:not([data-skin]) .mode-seg > button.on {
+    :root:not([data-skin]):not([data-motion="off"]) .mode-seg > button.on {
         background: transparent;
         box-shadow: none;
     }
 
     /* A pill's button gives a little when pressed */
-    :root:not([data-skin]) :is(.tb-btn, .sel-count, .mode-seg > button, .seg > button) {
+    :root:not([data-skin]):not([data-motion="off"]) :is(.tb-btn, .sel-count, .mode-seg > button, .seg > button) {
         transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), scale var(--dur-fast) var(--ease-out);
     }
 
-    :root:not([data-skin]) :is(.tb-btn, .sel-count, .mode-seg > button, .seg > button):active {
+    :root:not([data-skin]):not([data-motion="off"]) :is(.tb-btn, .sel-count, .mode-seg > button, .seg > button):active {
         scale: 0.94;
     }
 
     /* Rotate: the arrow turns the way the photo did */
-    :root:not([data-skin]) .turn-left svg {
+    :root:not([data-skin]):not([data-motion="off"]) .turn-left svg {
         animation: turn-left var(--dur-slow) var(--ease-out);
     }
 
-    :root:not([data-skin]) .turn-right svg {
+    :root:not([data-skin]):not([data-motion="off"]) .turn-right svg {
         animation: turn-right var(--dur-slow) var(--ease-out);
     }
 
     /* The count: the new number comes up from below */
-    :root:not([data-skin]) #selection-count.tick {
+    :root:not([data-skin]):not([data-motion="off"]) #selection-count.tick {
         display: inline-block;
         animation: count-tick var(--dur-base) var(--ease-out);
     }
@@ -8705,7 +8705,7 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    still and whole */
 @supports (animation-timeline: view()) {
     @media (prefers-reduced-motion: no-preference) {
-        :root:not([data-skin]) .grid-view .grid-item:not(.is-new) {
+        :root:not([data-skin]):not([data-motion="off"]) .grid-view .grid-item:not(.is-new) {
             animation: tile-woosh linear both;
             animation-timeline: view();
             animation-range: cover 0% cover 100%;

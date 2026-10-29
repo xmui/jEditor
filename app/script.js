@@ -441,6 +441,7 @@ const app = {
         theme: ['dark', 'light', 'system'],
         density: ['compact', 'comfortable'],
         glass: ['rich', 'subtle', 'off'],
+        motion: ['on', 'off'], // Settings → Animations (motion.js); the system's Reduce motion turns them off too
         surround: ['auto', 'black', 'grey', 'light'],
         backdrop: ['none', 'mica', 'acrylic'] // the Windows app only (applyBackdrop)
     },
@@ -469,6 +470,7 @@ const app = {
             skinSettings: {}, // each theme's own settings, by theme
             density: 'compact',
             glass: 'rich',
+            motion: 'on',
             surround: 'auto',
             backdrop: 'none', // Settings → Window background: none (solid), mica or acrylic
             transparency: 50, // how much of the window background shows through (10-100%)
@@ -641,6 +643,7 @@ const app = {
         root.dataset.theme = theme;
         root.dataset.density = p.density;
         root.dataset.glass = p.glass;
+        root.dataset.motion = p.motion;
         root.dataset.surround = p.surround;
         root.style.setProperty('--window-tint', `${100 - p.transparency}%`);
         const meta = document.querySelector('meta[name="theme-color"]');

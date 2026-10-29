@@ -3,9 +3,10 @@
 // icon the way they turn the photo, the selection count ticks when it
 // changes, and in the grid a folder's photos ripple in, deleted ones
 // shrink away while the rest slide into their places, and a new flag
-// pops. They follow what happened and never hold anything up (the change
+// pops. A tile clicked gives a little bounce, and photos that turn up in
+// the folder while it's open fly into their places. They follow what happened and never hold anything up (the change
 // is made first, then shown moving); the themes and Reduce motion have
-// none. The tiles easing in and out as the grid scrolls are CSS only.
+// none, nor with Settings → Animations off. The tiles easing in and out as the grid scrolls are CSS only.
 const Motion = {
     init() {
         // The mode switch is made after this (modes.js), into the sidebar
@@ -22,6 +23,27 @@ const Motion = {
             if (b) this.replay(b, b.id.includes('left') ? 'turn-left' : 'turn-right');
         }, true);
         this.grid();
+        // A tile clicked (chosen, or opened) bounces
+        document.addEventListener('click', (e) => {
+            const tile = e.target.closest('#grid-view .grid-item');
+            if (tile && this.on()) tile.animate([{ transform: 'scale(1)' }, { transform: 'scale(0.94)', offset: 0.3 }, { transform: 'scale(1.03)', offset: 0.7 }, { transform: 'scale(1)' }], { duration: 260, easing: 'ease-out' });
+        }, true);
+        // Photos that arrive in the folder (watch.js marks them is-new) fly in
+        const g = document.getElementById('grid-view');
+        if (g) new MutationObserver((list) => {
+            if (!this.on()) return;
+            let n = 0;
+            for (const m of list) for (const el of m.addedNodes) {
+                if (!el.classList || !el.classList.contains('is-new')) continue;
+                const r = el.getBoundingClientRect();
+                if (r.bottom < 0 || r.top > innerHeight) continue;
+                el.animate([
+                    { transform: 'translateY(48px) scale(0.5)', opacity: 0 },
+                    { transform: 'translateY(-4px) scale(1.04)', opacity: 1, offset: 0.7 },
+                    { transform: 'none', opacity: 1 }
+                ], { duration: 460, delay: Math.min(n++ * 60, 600), easing: 'cubic-bezier(0.2, 0, 0, 1)', fill: 'backwards' });
+            }
+        }).observe(g, { childList: true });
         const count = document.getElementById('selection-count');
         if (count) {
             let last = count.textContent;
@@ -33,7 +55,8 @@ const Motion = {
     },
 
     on() {
-        return !document.documentElement.dataset.skin && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const root = document.documentElement;
+        return !root.dataset.skin && root.dataset.motion !== 'off' && !matchMedia('(prefers-reduced-motion: reduce)').matches;
     },
 
     // The grid's tiles in sight, in order (a binary search: a folder can
