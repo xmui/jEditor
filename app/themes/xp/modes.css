@@ -188,7 +188,7 @@
     font: 11px var(--xp-font);
     zoom: 1;
 }
-:root[data-skin="xp"] .adj-panel { width: 300px; }
+:root[data-skin="xp"] .adj-panel { width: min(var(--side-adjust, 300px), 45vw); }
 /* the pane's title */
 :root[data-skin="xp"] :is(.adj-panel, .paint-panel)::before {
     position: sticky;

@@ -144,6 +144,8 @@ jEditor has three modes, like Lightroom's modules: **Photos** (sorting, rotating
 
 Adjust and Paint have no Done bar: what you do is kept as you go, as in Lightroom (`Ctrl+Z` in Photos takes it off again). In the Windows, Mac and Linux apps, closing the window in Adjust or Paint with something not kept yet asks **Keep your changes?** first: **Keep**, **Don't keep** or **Cancel** (in a browser, it asks the browser's way). Their few buttons (Before, Reset, Copy, Paste; Undo, Redo, Fit, 100%) are at the top right. A film strip runs along the bottom: click another photo and it opens in the same mode. Their toolbar buttons are in the ⋯ menu.
 
+Drag the inner edge of the sidebar, or of Adjust's or Paint's panel, to make it wider or narrower; jEditor remembers each width, in every theme. Double-click the edge to put it back.
+
 The start page's **Start in** (Photos, Adjust or Paint) is remembered: a project you open from there lands in that mode, on its first photo. **Paint** there (or **New blank canvas…**) asks what to paint on: a **New canvas** (below), or **Open a file**: **An image…** opens a single picture on its own (the painting goes into it when you leave Paint), **A folder…** opens a folder of photos as a project in Paint.
 
 ## Paint

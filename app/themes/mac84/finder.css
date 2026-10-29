@@ -215,7 +215,7 @@
 
 /* ---- The folder list ---- */
 :root[data-skin="mac84"] .folder-rail {
-    width: 200px;
+    width: min(var(--side-rail, 220px), 50vw); /* names in Chicago, which is wide */
     padding: 6px 0 0;
     border: 0;
     border-right: 1px solid #000;
