@@ -223,22 +223,27 @@
     --glass-rim: inset 1px 1px 0 -0.5px rgb(255 255 255 / 0.95), inset -1px -1px 0 -0.5px rgb(255 255 255 / 0.5);
 }
 
-/* ---- Glass: lens. Thick glass: a bevel lit along the top, a fainter
-   one along the bottom, and frost. Darker under it than it looks, so the
-   words keep 4.5:1 over a white photo ---- */
+/* ---- Glass: lens. A bubble of thick grey glass: lit from the top,
+   a bevel catching light along the top edge and fainter along the
+   bottom, and a soft halo behind the words, which keep it readable over
+   a bright photo (the glass itself is too light to) ---- */
 :root[data-glass="lens"] {
-    --glass-bg: linear-gradient(180deg, rgb(255 255 255 / 0.08), rgb(255 255 255 / 0.02)) padding-box, rgb(16 16 18 / 0.56) padding-box,
+    --glass-bg: linear-gradient(180deg, rgb(255 255 255 / 0.18), rgb(255 255 255 / 0.06)) padding-box,
         linear-gradient(180deg, rgb(255 255 255 / 0.5), rgb(255 255 255 / 0.08) 50%, rgb(255 255 255 / 0.18)) border-box;
     --glass-border: transparent;
-    --glass-filter: blur(26px) saturate(170%) brightness(0.3);
+    --glass-filter: blur(26px) saturate(170%) brightness(0.5);
     --glass-rim: inset 0 1px 1px rgb(255 255 255 / 0.25), inset 0 -1px 1px rgb(0 0 0 / 0.15);
+    --glass-halo: 0 0 6px rgb(0 0 0 / 0.55), 0 1px 2px rgb(0 0 0 / 0.5);
+    --shadow-2: 0 8px 24px rgb(0 0 0 / 0.35), 0 0 0 0.5px rgb(0 0 0 / 0.3);
 }
 
 :root[data-glass="lens"][data-theme="light"] {
-    --glass-bg: linear-gradient(180deg, rgb(255 255 255 / 0.7), rgb(255 255 255 / 0.35)) padding-box, rgb(246 246 248 / 0.62) padding-box,
-        linear-gradient(180deg, #fff, rgb(255 255 255 / 0.3) 50%, rgb(0 0 0 / 0.12)) border-box;
+    --glass-bg: linear-gradient(180deg, rgb(255 255 255 / 0.75), rgb(255 255 255 / 0.4)) padding-box,
+        linear-gradient(180deg, #fff, rgb(255 255 255 / 0.3) 50%, rgb(0 0 0 / 0.14)) border-box;
     --glass-filter: blur(26px) saturate(110%) contrast(0.5) brightness(1.6);
     --glass-rim: inset 0 1px 1px #fff, inset 0 -1px 1px rgb(0 0 0 / 0.06);
+    --glass-halo: 0 0 6px rgb(255 255 255 / 0.7);
+    --shadow-2: 0 8px 24px rgb(0 0 0 / 0.14), 0 0 0 0.5px rgb(0 0 0 / 0.12);
 }
 
 /* ---- Glass: subtle (performance, or the OS asks for less transparency) ---- */
@@ -257,6 +262,7 @@
 @media (prefers-reduced-transparency: reduce) {
     :root,
     :root[data-glass="lens"] {
+        --glass-halo: none;
         --glass-bg: rgb(24 24 24 / 0.94);
         --glass-filter: none;
         --glass-border: rgb(255 255 255 / 0.10);

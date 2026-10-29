@@ -8640,6 +8640,24 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     transition: opacity var(--dur-base) var(--ease-out), translate var(--dur-base) var(--ease-out);
 }
 
+/* Lens glass is too light to keep words readable on its own over a bright
+   photo: a soft halo behind them does (--glass-halo, tokens.css) */
+:root:not([data-skin])[data-glass="lens"] :is(.toolbar, .file-info, .folder-rail, #context-menu) {
+    text-shadow: var(--glass-halo);
+}
+
+/* On the tall sidebar, the light from the top fades in a pill's height,
+   not the whole length (a grey slab) */
+:root:not([data-skin])[data-glass="lens"] .folder-rail {
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.16), rgb(255 255 255 / 0.06) var(--ctl-lg) calc(100% - var(--ctl-lg)), rgb(255 255 255 / 0.09)) padding-box,
+        linear-gradient(180deg, rgb(255 255 255 / 0.5), rgb(255 255 255 / 0.08) var(--ctl-lg) calc(100% - var(--ctl-lg)), rgb(255 255 255 / 0.18)) border-box;
+}
+
+:root:not([data-skin])[data-glass="lens"][data-theme="light"] .folder-rail {
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.75), rgb(255 255 255 / 0.45) var(--ctl-lg)) padding-box,
+        linear-gradient(180deg, #fff, rgb(255 255 255 / 0.3) var(--ctl-lg) calc(100% - var(--ctl-lg)), rgb(0 0 0 / 0.14)) border-box;
+}
+
 /* ---- Motion (motion.js): short, after the fact, never in the way ---- */
 
 .seg-glide {
