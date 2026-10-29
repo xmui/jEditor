@@ -249,6 +249,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `E` | Adjust: light, color, curves |
 | `B` | Paint: brushes, shapes, text and layers |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy the photo's adjustments / paste them (onto the selection in grid view) |
+| `Ctrl+C` / `Ctrl+V` | Copy the photo as it looks (crop, adjustments and paint), to paste into another app / paste a picture from another app: saved as `Pasted.png` in the folder you're in and opened in Paint (with no project open, you choose where it's saved) |
 | `+` `-` `0` | Zoom in, zoom out, fit. The mouse wheel zooms on the pointer, up to 3200% (past 100% the pixels show as sharp squares, with no smoothing). Double-click the photo: in to 100% on that spot, again to fit. On a Mac's trackpad, pinch to zoom and move a zoomed photo with two fingers. |
 | `I` | Info: the photo in single view; in the grid, the folder you're in (photos, total size, types, dates, flags, room taken by `.jeditor`), or the selection |
 | `F` | Full screen |
@@ -275,7 +276,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 
 In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `\` rotate 180°, `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `M` loupe, `+` `-` zoom, `Z` fit, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
-In Adjust: `Enter` done, `Shift+Enter` done and next, `Esc` cancel, `\` before and after, `Shift+A` auto, `Shift+C` auto color, `W` pick grey (white balance), `R` reset, `Ctrl+Shift+C` / `Ctrl+Shift+V` copy / paste, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
+In Adjust: `Enter` done, `Shift+Enter` done and next, `Esc` cancel, `\` before and after, `Shift+A` auto, `Shift+C` auto color, `W` pick grey (white balance), `R` reset, `Ctrl+Shift+C` / `Ctrl+Shift+V` copy / paste the adjustments, `Ctrl+C` / `Ctrl+V` copy the photo as it looks / paste a picture from another app, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
 In Paint: `Enter` done (or put down what's being moved), `Esc` cancel, `V` move, `M` rectangle / ellipse select, `L` lasso, `W` magic wand, `B` brush, `N` pencil, `E` eraser, `G` fill / gradient, `U` line, `R` rectangle, `O` ellipse, `T` text, `I` colour picker, `H` hand, `[` `]` brush size (or a line's, or the text's), `Shift`-click a straight line from the last stroke, `X` swap colours, `D` black and white, `Ctrl+A` / `Ctrl+D` select all / nothing, `Delete` clear the selection, `Ctrl+C` / `Ctrl+V` copy / paste (an image copied in another app comes in as a layer), `Ctrl+Shift+O` bring in an image, `Ctrl+Shift+N` new layer, `Ctrl+J` duplicate the layer, `Ctrl+E` merge down, `0` fit, `1` 100%, `+` `-` zoom, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
@@ -301,6 +302,7 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `convert.js`: Convert (photos to AVIF, JPEG XL or WebP: the quality and close-up, the storage now and after, the dots)
 - `codec.js`, `codec-worker.js`, `codecs/`, `tiff-codec.js`: writing AVIF, JPEG XL, WebP, JPEG, PNG and TIFF, and reading JPEG XL and TIFF, in workers (libavif and libjxl as WebAssembly; TIFF jEditor's own)
 - `crop-auto.js`: finding the print on a scan (Auto)
+- `crop-boxes.js`: Auto's map-to-boxes finder and full-detail edge fit (being scored; `CropAuto.find(..., { boxes: true })`)
 - `changelog.js`: the list of changes shown in What's new, and the release notes
 - `meta.js`: reading and copying JPEG/PNG metadata, and EXIF in WebP, AVIF and JPEG XL
 - `dupes.js`: duplicate finder

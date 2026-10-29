@@ -3,7 +3,7 @@
 // Auto on every scan of a test set and scores it against the crop saved
 // there, then writes a contact sheet with both crops drawn on every scan.
 //
-//   node scripts/auto-crop-test.js "<test set folder>" [--as editor|scan|feeder] [--out <folder>] [--edge <px>]
+//   node scripts/auto-crop-test.js "<test set folder>" [--as editor|scan|feeder] [--boxes] [--out <folder>] [--edge <px>]
 //
 // The test set is a folder from Settings → Auto crop → Export… (format:
 // docs/auto-crop-test-set.md). --as: which Auto, as the crop editor runs
@@ -11,7 +11,8 @@
 // feeder (feeder) scan. Writes <out>/results.json and
 // <out>/index.html; out is the test set's report/ folder unless given.
 // --edge: the preview's long side Auto works on (the app's is the screen's,
-// at least 1600). The scans are customers' photos: keep them, and the
+// at least 1600). --boxes: the map-to-boxes finder with the full-detail
+// refine (crop-boxes.js) in place of PhotoFind's. The scans are customers' photos: keep them, and the
 // report, out of this repo.
 //
 // Scored against the saved crop, in mm at the scan's dpi:
@@ -34,12 +35,14 @@ const MODES = { editor: {}, scan: { scan: true }, feeder: { feeder: true, scan: 
 function args() {
     const a = process.argv.slice(2);
     const opt = (name) => { const i = a.indexOf(name); return i >= 0 ? a.splice(i, 2)[1] : null; };
+    const bi = a.indexOf('--boxes'), boxes = bi >= 0;
+    if (boxes) a.splice(bi, 1);
     const out = opt('--out'), edge = opt('--edge'), as = opt('--as') || 'editor';
     if (a.length !== 1 || !MODES[as]) {
-        console.error('Usage: node scripts/auto-crop-test.js "<test set folder>" [--as editor|scan|feeder] [--out <folder>] [--edge <px>]');
+        console.error('Usage: node scripts/auto-crop-test.js "<test set folder>" [--as editor|scan|feeder] [--boxes] [--out <folder>] [--edge <px>]');
         process.exit(1);
     }
-    return { set: path.resolve(a[0]), out: out ? path.resolve(out) : path.resolve(a[0], 'report'), edge: edge ? Number(edge) : 0, as };
+    return { set: path.resolve(a[0]), out: out ? path.resolve(out) : path.resolve(a[0], 'report'), edge: edge ? Number(edge) : 0, as, boxes };
 }
 
 function launchOptions() {
@@ -242,7 +245,7 @@ function sheet(results, summary) {
                 } finally {
                     bmp.close();
                 }
-            }, [b64, MODES[opt.as]]);
+            }, [b64, { ...MODES[opt.as], boxes: opt.boxes }]);
             if (seen.W !== label.W || seen.H !== label.H) {
                 console.warn(`  ${label.scan}: the scan is ${seen.W}×${seen.H}, its label says ${label.W}×${label.H}; skipped`);
                 continue;
@@ -264,7 +267,7 @@ function sheet(results, summary) {
     const count = (v) => results.filter(r => r.verdict === v).length;
     const offs = results.map(r => r.off).sort((a, b) => a - b);
     const summary = {
-        at: new Date().toISOString(), version, edge, as: opt.as, n: results.length,
+        at: new Date().toISOString(), version, edge, as: opt.as + (opt.boxes ? ' (boxes)' : ''), n: results.length,
         right: count('right'), close: count('close'), wrong: count('wrong'), none: results.filter(r => !r.auto).length,
         medianOff: offs.length ? offs[Math.floor(offs.length / 2)] : null
     };

@@ -44,9 +44,38 @@ static class RecycleBin
         return done.Task;
     }
 
+    // A photo something has open can't go for a moment: jEditor reading it
+    // (its thumbnail, or the photo just opened), or antivirus and the search
+    // indexer after it was saved. Those are tried again, a little later each
+    // time, rather than left for the page to say they couldn't be deleted.
+    static readonly int[] RetryDelaysMs = [250, 500, 1000, 2000];
+
     static List<Result> Recycle(IReadOnlyList<string> paths, IntPtr owner)
     {
         var results = new Dictionary<string, Result>(StringComparer.OrdinalIgnoreCase);
+        var pending = new List<string>();
+        foreach (var path in paths)
+        {
+            if (!HasBin(path)) results[path] = new Result(path, null, null, true);
+            else if (!File.Exists(path)) results[path] = new Result(path, null, "not found", false);
+            else pending.Add(path);
+        }
+        for (int attempt = 0; pending.Count > 0; attempt++)
+        {
+            var failed = RecycleOnce(pending, owner, results);
+            if (failed.Count == 0 || attempt >= RetryDelaysMs.Length) break;
+            Log.Write($"Recycling: {failed.Count} in use, trying again");
+            Thread.Sleep(RetryDelaysMs[attempt]);
+            pending = failed;
+        }
+        return paths.Select(p => results[p]).ToList();
+    }
+
+    // One go at the shell. Fills in each photo's result; → the ones that
+    // failed but are still there
+    static List<string> RecycleOnce(List<string> paths, IntPtr owner, Dictionary<string, Result> results)
+    {
+        var failed = new List<string>();
         var queued = new List<string>();
         var op = (IFileOperation)Activator.CreateInstance(Type.GetTypeFromCLSID(CLSID_FileOperation)!)!;
         var sink = new Sink();
@@ -56,8 +85,6 @@ static class RecycleBin
             if (owner != IntPtr.Zero) op.SetOwnerWindow(owner);
             foreach (var path in paths)
             {
-                if (!HasBin(path)) { results[path] = new Result(path, null, null, true); continue; }
-                if (!File.Exists(path)) { results[path] = new Result(path, null, "not found", false); continue; }
                 try
                 {
                     var item = ItemFor(path);
@@ -67,6 +94,7 @@ static class RecycleBin
                 catch (Exception e)
                 {
                     results[path] = new Result(path, null, e.Message, false);
+                    if (File.Exists(path)) failed.Add(path);
                 }
             }
             if (queued.Count > 0)
@@ -90,9 +118,12 @@ static class RecycleBin
                 // after its own warning was accepted)
                 results[path] = new Result(path, null, "deleted permanently (it didn't fit in the Recycle Bin)", false);
             else
+            {
                 results[path] = new Result(path, null, sink.Errors.TryGetValue(path, out var err) ? err : "not deleted", false);
+                failed.Add(path);
+            }
         }
-        return paths.Select(p => results[p]).ToList();
+        return failed;
     }
 
     // A photo back from the bin to where it was. → null, or why it couldn't

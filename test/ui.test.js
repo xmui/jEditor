@@ -3489,6 +3489,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const sky = S.draw(900, 600, '#888', [{ x: 450, y: 300, w: 900, h: 600, angle: 0, kind: 'sky' }], {});
             const plain = S.draw(900, 600, '#888', [{ x: 450, y: 300, w: 900, h: 600, angle: 0 }], {});
             out.notScans = !PhotoFind.single(sky, 900, 600, { strict: true }) && !PhotoFind.single(plain, 900, 600, { strict: true });
+            // The map-to-boxes finder, fitted at full detail (crop-boxes.js)
+            const bp = { x: 1350, y: 1560, w: 1500, h: 1080, angle: 2.3 };
+            const bf = CropAuto.find(S.draw(2700, 3300, lid, [bp], { noise: 6, dust: true }), 2700, 3300, { scan: true, boxes: true });
+            out.boxes = bf ? S.err(bf.corners, bp) : 999;
+            out.boxesNotScans = !CropBoxes.single(sky, 900, 600, { strict: true }) && !CropBoxes.single(plain, 900, 600, { strict: true });
             return out;
         });
         const ok = (k, n, e) => r[k] && r[k].n === n && r[k].err <= e;
@@ -3498,6 +3503,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('finder: six prints at once', ok('six', 6, 4), JSON.stringify(r.six));
         check('finder: a feeder page (two backgrounds), tilted', r.feeder <= 4, String(r.feeder));
         check('finder: ordinary photos (one with a plain sky) aren\'t taken for scans', r.notScans);
+        check('finder: map to boxes, fitted at full detail: a tilted print to within 2 px; not a photo', r.boxes <= 2 && r.boxesNotScans, JSON.stringify([r.boxes, r.boxesNotScans]));
         check('finder suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -3779,6 +3785,20 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         }
         check('narrow windows: no pill over another or off screen, top or bottom, with or without the folder list', fit.every(f => f.bad.length === 0), JSON.stringify(fit.filter(f => f.bad.length)));
         check('... wide, nothing given up; at 480 header buttons go into More, which shows; the file pill stays in single view', !fit[1].fit && fit[6].squeezed > 0 && fit[6].more && fit.every(f => f.name), JSON.stringify(fit.map(f => [f.w, f.rail, f.fit, f.squeezed, f.more])));
+        // The grid left alone: fitting the pills once, not every frame (its
+        // own try at the folder pill's short labels used to wake it again)
+        await page.setViewportSize({ width: 1300, height: 700 });
+        const idleFits = await page.evaluate(async () => {
+            app.setView('grid');
+            await new Promise(res => setTimeout(res, 500));
+            const run = Fit.run;
+            let n = 0;
+            Fit.run = function () { n++; return run.apply(this, arguments); };
+            await new Promise(res => setTimeout(res, 1000));
+            Fit.run = run;
+            return n;
+        });
+        check('the grid left alone: the pills aren\'t fitted again and again', idleFits <= 1, `${idleFits} runs in a second`);
         check('kept rotation: the grid tile turns its own picture, then the redrawn one replaces it straight', r.tileTurning && r.tileDone, JSON.stringify(r));
         check('kept rotation: the big photo turns (not dimmed), then the redrawn one has no turn left over', r.viewTurning && r.viewDone && r.kept, JSON.stringify(r));
         check('kept rotation suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
@@ -3971,6 +3991,60 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('kept edits suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
         }
+    }
+
+    // ---- 7s2b. Pictures on the system clipboard ----
+    console.log('copy and paste pictures');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseUrl });
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const until = async (fn, n = 200) => { for (let i = 0; i < n && !(await fn()); i++) await sleep(50); };
+            const size = async (blob) => { const b = await createImageBitmap(blob); const s = [b.width, b.height]; b.close(); return s; };
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('clipimg', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('clipimg', { create: true });
+            const fh = await dir.getFileHandle('scan.jpg', { create: true });
+            const w = await fh.createWritable(); await w.write(new Blob([await makeRealJpeg(600, 400)], { type: 'image/jpeg' })); await w.close();
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            await until(() => app.files.length === 1 && !app.isLoading);
+            const f = app.files[0];
+            // Turned a quarter, not saved yet: copied as it looks
+            Edits.set([{ file: f, edit: { q: 1, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } } }], 'test');
+            app.openSingle(f);
+            await sleep(300);
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true }));
+            let copied = null;
+            await until(async () => {
+                try {
+                    for (const item of await navigator.clipboard.read()) if (item.types.includes('image/png')) copied = await item.getType('image/png');
+                } catch (e) { /* not yet */ }
+                return copied;
+            });
+            out.copied = copied ? await size(copied) : null;
+            out.photoUntouched = (await size(await fh.getFile())).join() === '600,400';
+            // A picture from another app: Pasted.png in the project, open in Paint
+            const c = document.createElement('canvas');
+            c.width = 120; c.height = 80;
+            c.getContext('2d').fillStyle = '#c33';
+            c.getContext('2d').fillRect(0, 0, 120, 80);
+            const png = await new Promise(res => c.toBlob(res, 'image/png'));
+            const dt = new DataTransfer();
+            dt.items.add(new File([png], 'image.png', { type: 'image/png' }));
+            document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+            await until(() => Modes.current() === 'paint' && PaintEditor.file && PaintEditor.file.name === 'Pasted.png');
+            out.inPaint = Modes.current() === 'paint' && !!PaintEditor.file && PaintEditor.file.name;
+            out.pasted = await size(await (await dir.getFileHandle('Pasted.png')).getFile()).catch(() => null);
+            await Modes.go('photos');
+            return out;
+        });
+        check('Ctrl+C copies the photo as it looks (turned, not saved yet), leaving the file as it is', r.copied && r.copied.join() === '400,600' && r.photoUntouched, JSON.stringify(r));
+        check('a picture pasted from another app is saved as Pasted.png in the project and opened in Paint', r.inPaint === 'Pasted.png' && r.pasted && r.pasted.join() === '120,80', JSON.stringify(r));
+        check('copy and paste pictures: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
     }
 
     // ---- 7s3. Undo history ----

@@ -32,6 +32,7 @@ const ASSETS = [
     './upright-model.js',
     './upright.js',
     './crop-auto.js',
+    './crop-boxes.js',
     './crop.js',
     './crop-log.js',
     './raw.js',

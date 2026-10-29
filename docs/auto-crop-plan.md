@@ -104,6 +104,50 @@ Not yet confirmed on the scanner: which `ICAP_EP_AUTOSIZETYPE` value is the norm
 
 For scanners without Epson's crop (the Plustek OpticBook, the Kodak), Auto crop is to be replaced by VueScan's approach, a model trained on cropped photos ([VueScan 9.8.06](https://hamrick.com/blog/vuescan-9-8-06-autocrop-photos.html)), written as jEditor's own code and trained on jEditor's test sets.
 
+How VueScan does it, from VueScan 9.8.59 for Windows (Hamrick's public trial): its manual, its own log on the lab PC, and a look at the compiled program. This describes the method only. None of VueScan's code, settings or trained models goes into jEditor; its licence doesn't allow that, so jEditor builds and trains its own.
+
+### What happens, in order
+
+1. **What's on the glass.** A small classifier looks at the preview and labels it (photo, document and so on). The label picks which crop model runs: one for prints, one for "small items" (receipts, cards). The Crop size setting can override it: Auto Document always uses the small-items model. That's why the lab PC's OpticBook log shows the small-items model on a photo.
+2. **The input.** The preview is shrunk to a fixed low resolution, set in dots per inch rather than in pixels, so a print is always the same size to the model whatever the scan dpi. The model gets the raw colour pixels: no levels, no sharpening, no edge filter.
+3. **What the model gives back is a map, not boxes.** For each small square of the bed it says how likely that square is to be part of a photo. It doesn't say where the photos are.
+4. **Turning the map into prints** is ordinary image processing, not machine learning:
+   - the map is cut into yes/no at the halfway mark;
+   - each blob that covers enough of the bed has its holes filled, so a dark sky or a black frame inside a print doesn't split it;
+   - the outline of each blob is traced;
+   - blobs much smaller than the biggest one are dropped as dust, labels or shadows;
+   - each remaining outline gets the smallest rotated rectangle that holds it (centre, width, height, angle).
+5. **Each box is checked against the real scan.** This step is ordinary code too, and it's where the accuracy comes from. The map is coarse, so its angle and edges are only roughly right. For each box, VueScan:
+   - tries a few angles a little either side of the model's angle, in small steps;
+   - at each angle, reads the full-detail scan along the box's sides and scores how sharp the bed-to-print edge is;
+   - keeps a new angle only if it clearly beats the model's own, otherwise leaves the model's angle;
+   - places the sides on the edges it found;
+   - treats a side touching the edge of the bed as cut off, not as an edge.
+6. **Tidy-up.** Angles are folded into ±45°, swapping width and height, so quarter turns are left to Auto rotation. Tiny angles are treated as straight. Boxes are sorted into reading order.
+7. **What the settings do with the boxes:**
+   - **Auto skew on:** the photo is straightened by the box's angle.
+   - **Auto skew off:** the crop becomes the upright rectangle around the tilted box, so no photo is lost but a little bed shows.
+   - **Aspect ratio:** if a box is already close to the chosen ratio, it's reshaped to that ratio with the same area.
+   - **Border (%):** grows or trims what's saved.
+   - **Buffer (%):** only keeps an inner margin out of the colour statistics.
+   - **Multi crop:** every box becomes a frame.
+
+What's still unknown: how its "how sharp is this edge" score is worked out, and how far inside the edge it puts the cut. Neither was traced line by line.
+
+### What jEditor's own version needs
+
+It fits the five stages above: the model replaces stage 1 ("coarse: where each print is"), and VueScan's per-box check against the real scan is our stage 3.
+
+- **Our own small segmentation model**, a "photo or bed" map rather than a box finder.
+  - It's trained only on our own previews: the OpticBook, the Kodak, and the Epson flatbed.
+  - Labels come from the crops saved with "Keep scans to improve Auto crop", plus the test sets.
+  - It runs in the app (onnxruntime-web, in the Web Worker), on a copy shrunk to a fixed dpi rather than a fixed pixel size.
+  - Training and the scans stay on the Mac or the T7. The trained model ships in the app; the scans never leave.
+- **The map-to-boxes step:** threshold, fill holes, trace outlines, drop small blobs, fit a rotated rectangle. OpenCV.js or a few hundred lines of our own; nothing to train.
+- **Refining edges at full resolution.** This is the part VueScan relies on and we planned anyway: a narrow angle search, then an edge fit on each side, an open side where the bed cuts a print off, and our mm margin (Tight / Safe / Generous). VueScan only checks the angle and the edges. Our plan to fit each side as its own line and use the physical-size check goes further.
+- **Confidence:** the map gives it for free (how sure the model was over the box, and how well the edges matched). Batch Auto crop uses it to flag photos for review.
+- **A first step with no model:** the map-to-boxes and refine steps can run on today's classical mask (bed colour against print), so steps 3–5 can be built and scored on the test set before any training. The model then only has to beat that mask on the hard scans (white borders, dark photos, prints touching).
+
 ## Open questions
 
 - Default margin: Safe (lose about 0.5 mm of photo, never bed) or Tight?
