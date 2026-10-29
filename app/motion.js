@@ -3,7 +3,7 @@
 // icon the way they turn the photo, the selection count ticks when it
 // changes, and in the grid a folder's photos ripple in, deleted ones
 // shrink away while the rest slide into their places, and a new flag
-// pops. A tile clicked gives a little bounce, and photos that turn up in
+// pops. A tile clicked or selected gives a little bounce, and photos that turn up in
 // the folder while it's open fly into their places. They follow what happened and never hold anything up (the change
 // is made first, then shown moving); the themes and Reduce motion have
 // none, nor with Settings → Animations off. The tiles easing in and out as the grid scrolls are CSS only.
@@ -26,7 +26,7 @@ const Motion = {
         // A tile clicked (chosen, or opened) bounces
         document.addEventListener('click', (e) => {
             const tile = e.target.closest('#grid-view .grid-item');
-            if (tile && this.on()) tile.animate([{ transform: 'scale(1)' }, { transform: 'scale(0.94)', offset: 0.3 }, { transform: 'scale(1.03)', offset: 0.7 }, { transform: 'scale(1)' }], { duration: 260, easing: 'ease-out' });
+            if (tile && this.on()) this.bounce(tile);
         }, true);
         // Photos that arrive in the folder (watch.js marks them is-new) fly in
         const g = document.getElementById('grid-view');
@@ -140,9 +140,7 @@ const Motion = {
         const self = this;
         const render = app.renderGrid;
         app.renderGrid = function (...args) {
-            // A huge folder's grid builds its tiles as it scrolls (gridWindow):
-            // there the tiles don't ease in and out (style.css), it would cost
-            // a frame on each page scrolled
+            // A huge folder's grid builds its tiles as it scrolls (gridWindow)
             const mark = () => this.elements.gridView.classList.toggle('grid-windowed', !!this._gridWin);
             if (!self.on()) { const out = render.apply(this, args); mark(); return out; }
             // The same folder drawn again (sorted, filtered, refreshed):
@@ -156,6 +154,35 @@ const Motion = {
             // Measured now, not a frame later: only what the drawing moved
             // slides, not a tile size changed after it (the size slider)
             if (before) self.flip(before); else requestAnimationFrame(() => self.ripple());
+            return out;
+        };
+        // In a huge folder's grid a jump (the scroll bar dragged, Page Down,
+        // End) builds a screenful of new tiles at once, and easing each in
+        // as it scrolls (style.css) would cost a frame there: the easing
+        // waits until the grid has settled. Scrolling along keeps it
+        const update = app.updateGridWindow;
+        app.updateGridWindow = function (...args) {
+            const grid = this.elements.gridView;
+            const y = grid.scrollTop;
+            if (this._gridWin && self._gridY !== undefined && Math.abs(y - self._gridY) > grid.clientHeight) {
+                grid.classList.add('grid-jump');
+                clearTimeout(self._jumpTimer);
+                self._jumpTimer = setTimeout(() => grid.classList.remove('grid-jump'), 250);
+            }
+            self._gridY = y;
+            return update.apply(this, args);
+        };
+        // A photo that becomes selected bounces too, however it was (the
+        // arrow keys, Ctrl- or Shift-click, the selection moving), but not a
+        // crowd: Select all and a long Shift range stay calm
+        const selected = app.updateSelectionUI;
+        app.updateSelectionUI = function (...args) {
+            const was = self.on() && new Set(this._shownSelected || []);
+            const out = selected.apply(this, args);
+            if (was) {
+                const fresh = [...this.selection].filter(f => !was.has(f) && f._gridEl && f._gridEl.isConnected);
+                if (fresh.length <= self.FEW) fresh.forEach(f => self.bounce(f._gridEl));
+            }
             return out;
         };
         const remove = app.removeFilesFromApp;
@@ -179,6 +206,16 @@ const Motion = {
                 return out;
             };
         }
+    },
+
+    FEW: 4, // at most this many photos selected at once bounce
+
+    // A tile's little bounce, once (a click that selects it asks twice)
+    bounce(tile) {
+        const now = performance.now();
+        if (now - (tile._bounced || 0) < 300) return;
+        tile._bounced = now;
+        tile.animate([{ transform: 'scale(1)' }, { transform: 'scale(0.94)', offset: 0.3 }, { transform: 'scale(1.03)', offset: 0.7 }, { transform: 'scale(1)' }], { duration: 260, easing: 'ease-out' });
     },
 
     // Start a class's animation again, and take the class off when it ends

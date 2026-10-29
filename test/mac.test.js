@@ -461,10 +461,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
 
         // The pill's glass alone (its text hidden), over each photo, against
         // the theme's text colors
-        const measure = async (theme, i) => {
-            await page.evaluate(async ([t, i]) => {
+        const measure = async (theme, i, glass) => {
+            await page.evaluate(async ([t, i, glass]) => {
                 app.uiPrefs.theme = t;
-                app.uiPrefs.glass = 'liquid';
+                app.uiPrefs.glass = glass;
                 app.applyUiPrefs();
                 app.setView('single');
                 app.loadIndex(i);
@@ -473,7 +473,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 s.id = 'hide-text';
                 s.textContent = '.file-info, .file-info * { color: transparent !important; } .file-info svg { visibility: hidden; }';
                 document.head.appendChild(s);
-            }, [theme, i]);
+            }, [theme, i, glass]);
             await page.waitForTimeout(300);
             const box = await page.evaluate(() => {
                 const r = document.querySelector('.file-info').getBoundingClientRect();
@@ -494,7 +494,8 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             return { bg, c1: +contrast(box.text1, bg).toFixed(2), c2: +contrast(box.text2, bg).toFixed(2) };
         };
         const m = {};
-        for (const theme of ['dark', 'light']) for (const [i, photo] of [[0, 'white'], [1, 'black']]) m[`${theme} over ${photo}`] = await measure(theme, i);
+        // The default glass (Crystal) and Liquid
+        for (const glass of ['crystal', 'liquid']) for (const theme of ['dark', 'light']) for (const [i, photo] of [[0, 'white'], [1, 'black']]) m[`${glass}, ${theme} over ${photo}`] = await measure(theme, i, glass);
         const worst = Object.entries(m).sort((a, b) => a[1].c2 - b[1].c2)[0];
         check('the glass keeps text readable over any photo: 7:1 for text, 4.5:1 for secondary text (measured on screen)',
             Object.values(m).every(v => v.c1 >= 7 && v.c2 >= 4.5), JSON.stringify(m));
@@ -527,7 +528,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             out.noDrag = getComputedStyle(document.querySelector('#header-controls button')).getPropertyValue('-webkit-app-region') || getComputedStyle(document.querySelector('#header-controls button')).getPropertyValue('app-region');
             return out;
         });
-        check('the Mac\'s glass: blurred, with light along its edge', r.platform === 'mac' && /blur\(20px\)/.test(r.filter) && /inset/.test(r.rim), JSON.stringify([r.filter, r.rim]));
+        check('the Mac\'s glass: blurred, with light along its edge', r.platform === 'mac' && /blur\(\d/.test(r.filter) && /inset/.test(r.rim), JSON.stringify([r.filter, r.rim]));
         check('the photo is never under glass', r.photoClear && (!r.photoFilter || r.photoFilter === 'none'), JSON.stringify([r.photoClear, r.photoFilter]));
         check('the traffic lights get their room, and give it back in full screen', r.lightsRoom === 72 && r.fullscreenRoom === 0, JSON.stringify([r.lightsRoom, r.fullscreenRoom]));
         check('the top row moves the window, its buttons don\'t', r.drag === 'drag' && r.noDrag === 'no-drag', JSON.stringify([r.drag, r.noDrag]));

@@ -1042,6 +1042,46 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    console.log('motion: a photo selected bounces (motion.js)');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const files = Array.from({ length: 12 }, (_, i) => makeFakeFile(`m${i}.jpg`, makeJpegBytes(), 'image/jpeg'));
+            app.files = files;
+            app.dirHandle = null;
+            app.setView('grid');
+            app.renderGrid({ sync: true });
+            await new Promise(r => setTimeout(r, 100));
+            let n = 0;
+            const real = Motion.bounce;
+            Motion.bounce = function (el) { n++; return real.call(this, el); };
+            const select = (list) => { app.selection = new Set(list); app.updateSelectionUI(); const got = n; n = 0; return got; };
+            out.on = Motion.on();
+            out.one = select([files[0]]);
+            out.added = select([files[0], files[1]]); // Ctrl-click: only the new one
+            out.moved = select([files[2]]); // the arrow keys
+            out.all = select(files); // Select all: calm
+            select([]);
+            out.range = select(files.slice(0, 8)); // a long Shift range: calm
+            select([]);
+            document.documentElement.dataset.motion = 'off';
+            out.off = select([files[3]]);
+            document.documentElement.dataset.motion = 'on';
+            const tile = files[4]._gridEl;
+            select([]);
+            tile.click();
+            out.clickOnce = tile.getAnimations().length; // a click that selects it bounces it once, not twice
+            Motion.bounce = real;
+            return out;
+        });
+        check('a photo selected bounces, by click, keys or Ctrl-click: only the ones just selected', r.on && r.one === 1 && r.added === 1 && r.moved === 1 && r.clickOnce === 1, JSON.stringify(r));
+        check('Select all and a long Shift range stay calm; none with Animations off', r.all === 0 && r.range === 0 && r.off === 0, JSON.stringify(r));
+        check('motion: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7a. Lossless rotation for scanner JPEGs (EXIF without Orientation) ----
     console.log('lossless rotation: EXIF without orientation');
     {

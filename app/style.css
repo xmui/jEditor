@@ -796,6 +796,12 @@ body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
     white-space: nowrap;
 }
 
+/* In jEditor's own look the photo number is as bright as the name: grey
+   was too faint on the clear glasses (the themes keep their own) */
+:root:not([data-skin]) #file-count {
+    color: var(--text-1);
+}
+
 .sort-control {
     display: flex;
     align-items: center;
@@ -8753,13 +8759,13 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 /* Scrolling the grid: photos ease in as they come up from the bottom and
    ease out as they go under the top, done by the browser as it scrolls
    (nothing runs for it), and only at the edges: in the middle they're
-   still and whole. Not in a huge folder's grid, which builds its tiles as
-   it scrolls (grid-windowed, motion.js): there it would cost a frame. No
-   fill: the tiles out of sight keep their real size, where the grid
-   measures them (gridY, revealInGrid) */
+   still and whole. In a huge folder's grid, which builds its tiles as it
+   scrolls, not while it jumps (grid-jump, motion.js): it would cost a
+   frame there. No fill: the tiles out of sight keep their real size,
+   where the grid measures them (gridY, revealInGrid) */
 @supports (animation-timeline: view()) {
     @media (prefers-reduced-motion: no-preference) {
-        :root:not([data-skin]):not([data-motion="off"]) .grid-view:not(.grid-windowed) .grid-item:not(.is-new) {
+        :root:not([data-skin]):not([data-motion="off"]) .grid-view:not(.grid-jump) .grid-item:not(.is-new) {
             animation: tile-woosh linear;
             animation-timeline: view();
             animation-range: cover 0% cover 100%;
@@ -8768,10 +8774,10 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 }
 
 @keyframes tile-woosh {
-    0% { opacity: 0.25; scale: 0.88; }
-    18% { opacity: 1; scale: 1; }
-    86% { opacity: 1; scale: 1; }
-    100% { opacity: 0.4; scale: 0.94; }
+    0% { opacity: 0.1; scale: 0.8; }
+    20% { opacity: 1; scale: 1; }
+    84% { opacity: 1; scale: 1; }
+    100% { opacity: 0.2; scale: 0.88; }
 }
 
 @keyframes turn-left {
