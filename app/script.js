@@ -440,7 +440,7 @@ const app = {
     APPEARANCE: {
         theme: ['dark', 'light', 'system'],
         density: ['compact', 'comfortable'],
-        glass: ['rich', 'subtle', 'off'],
+        glass: ['rich', 'lens', 'subtle', 'off'], // rich is Liquid (tokens.css)
         motion: ['on', 'off'], // Settings → Animations (motion.js); the system's Reduce motion turns them off too
         surround: ['auto', 'black', 'grey', 'light'],
         backdrop: ['none', 'mica', 'acrylic'] // the Windows app only (applyBackdrop)

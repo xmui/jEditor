@@ -7,7 +7,7 @@
    Switches live on <html> (set by applyUiPrefs in script.js):
      data-theme     dark | light            (Settings → Theme; "system" resolves to one)
      data-density   compact | comfortable   (Settings → Density)
-     data-glass     rich | subtle | off     (Settings → Glass)
+     data-glass     rich | lens | subtle | off   (Settings → Glass: Liquid, Lens…)
      data-platform  windows | mac | web     (host.js: the app jEditor runs in)
      data-surround  auto | black | dark | grey | light   (background behind photos)
    class "backdrop": Windows 11's Mica or Acrylic shows behind the window
@@ -147,12 +147,17 @@
     --highlight: inset 0 1px 0 rgb(255 255 255 / 0.06);
 
     /* ---- Glass (floating toolbars over photos) ----
-       Rich: translucent with a darkened backdrop, so secondary text keeps
-       5:1 even over a pure-white photo. Subtle: near-solid, no blur. */
-    --glass-bg: rgb(24 24 24 / 0.70);
-    --glass-border: rgb(255 255 255 / 0.10);
-    --glass-filter: blur(24px) saturate(160%) brightness(0.4);
-    --glass-rim: var(--highlight); /* the light along a glass pill's edge */
+       Liquid (Settings → Glass; the value is still "rich"): Apple's Liquid
+       Glass, kept to the controls. Clear and deeply blurred, a faint sheen
+       from the top, and light caught on the curved edge, more along the
+       top left than the bottom right. The backdrop is darkened under it,
+       so text keeps 7:1 and secondary text 4.5:1 over a pure-white photo.
+       Never on the photos, and nothing under it is bent. Lens: thicker
+       glass, lit top and bottom. Subtle: near-solid, no blur. */
+    --glass-bg: linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0) 45%), rgb(28 28 30 / 0.56);
+    --glass-border: transparent;
+    --glass-filter: blur(24px) saturate(200%) brightness(0.34);
+    --glass-rim: inset 1px 1px 0 -0.5px rgb(255 255 255 / 0.30), inset -1px -1px 0 -0.5px rgb(255 255 255 / 0.10); /* the light along a glass pill's edge */
 
     /* ---- Surround (behind the photo) ---- */
     --surround: var(--bg-canvas);
@@ -212,55 +217,57 @@
     --shadow-4: 0 24px 64px rgb(0 0 0 / 0.22), 0 4px 12px rgb(0 0 0 / 0.1);
     --highlight: inset 0 1px 0 rgb(255 255 255 / 0.7);
 
-    --glass-bg: rgb(250 250 250 / 0.78);
-    --glass-border: rgb(0 0 0 / 0.10);
-    --glass-filter: blur(24px) saturate(160%) contrast(0.6) brightness(1.4);
+    --glass-bg: linear-gradient(180deg, rgb(255 255 255 / 0.45), rgb(255 255 255 / 0) 45%), rgb(250 250 252 / 0.66);
+    --glass-border: rgb(0 0 0 / 0.08); /* an edge even over a white photo */
+    --glass-filter: blur(24px) saturate(180%) contrast(0.5) brightness(1.6);
+    --glass-rim: inset 1px 1px 0 -0.5px rgb(255 255 255 / 0.95), inset -1px -1px 0 -0.5px rgb(255 255 255 / 0.5);
 }
 
-/* ---- Glass on the Mac: Liquid Glass, kept to the controls ----
-   macOS 26's look for the floating pills, panels and menus: clearer than
-   Rich elsewhere, a soft sheen from the top, and light along the top edge
-   (the rim) with a hairline all round. The backdrop is still darkened (or
-   lightened) under the glass, so text keeps 4.5:1 over any photo, white or
-   black. Never on the photos: they, and the colour behind them, stay
-   solid. No refraction: bending the photo under a toolbar would mislead
-   the eye that's judging it. */
-:root[data-platform="mac"]:not([data-skin])[data-glass="rich"] {
-    --glass-bg: linear-gradient(180deg, rgb(255 255 255 / 0.07), rgb(255 255 255 / 0) 55%), rgb(28 28 30 / 0.60);
-    --glass-filter: blur(20px) saturate(180%) brightness(0.34);
-    --glass-border: rgb(255 255 255 / 0.12);
-    --glass-rim: inset 0 1px 0 rgb(255 255 255 / 0.20), inset 0 0 0 0.5px rgb(255 255 255 / 0.06), inset 0 -1px 0 rgb(0 0 0 / 0.20);
+/* ---- Glass: lens. Thick glass: a bevel lit along the top, a fainter
+   one along the bottom, and frost. Darker under it than it looks, so the
+   words keep 4.5:1 over a white photo ---- */
+:root[data-glass="lens"] {
+    --glass-bg: linear-gradient(180deg, rgb(255 255 255 / 0.08), rgb(255 255 255 / 0.02)) padding-box, rgb(16 16 18 / 0.56) padding-box,
+        linear-gradient(180deg, rgb(255 255 255 / 0.5), rgb(255 255 255 / 0.08) 50%, rgb(255 255 255 / 0.18)) border-box;
+    --glass-border: transparent;
+    --glass-filter: blur(26px) saturate(170%) brightness(0.3);
+    --glass-rim: inset 0 1px 1px rgb(255 255 255 / 0.25), inset 0 -1px 1px rgb(0 0 0 / 0.15);
 }
 
-:root[data-platform="mac"]:not([data-skin])[data-glass="rich"][data-theme="light"] {
-    --glass-bg: linear-gradient(180deg, rgb(255 255 255 / 0.50), rgb(255 255 255 / 0) 55%), rgb(250 250 252 / 0.70);
-    --glass-filter: blur(20px) saturate(180%) contrast(0.5) brightness(1.6);
-    --glass-border: rgb(0 0 0 / 0.11); /* an edge even over a white photo */
-    --glass-rim: inset 0 1px 0 rgb(255 255 255 / 0.95), inset 0 0 0 0.5px rgb(255 255 255 / 0.45);
+:root[data-glass="lens"][data-theme="light"] {
+    --glass-bg: linear-gradient(180deg, rgb(255 255 255 / 0.7), rgb(255 255 255 / 0.35)) padding-box, rgb(246 246 248 / 0.62) padding-box,
+        linear-gradient(180deg, #fff, rgb(255 255 255 / 0.3) 50%, rgb(0 0 0 / 0.12)) border-box;
+    --glass-filter: blur(26px) saturate(110%) contrast(0.5) brightness(1.6);
+    --glass-rim: inset 0 1px 1px #fff, inset 0 -1px 1px rgb(0 0 0 / 0.06);
 }
 
 /* ---- Glass: subtle (performance, or the OS asks for less transparency) ---- */
 :root[data-glass="subtle"] {
     --glass-bg: rgb(24 24 24 / 0.94);
     --glass-filter: none;
+    --glass-border: rgb(255 255 255 / 0.10);
+    --glass-rim: var(--highlight);
 }
 
 :root[data-theme="light"][data-glass="subtle"] {
     --glass-bg: rgb(250 250 250 / 0.95);
+    --glass-border: rgb(0 0 0 / 0.10);
 }
 
 @media (prefers-reduced-transparency: reduce) {
     :root,
-    :root[data-platform="mac"]:not([data-skin])[data-glass="rich"] {
+    :root[data-glass="lens"] {
         --glass-bg: rgb(24 24 24 / 0.94);
         --glass-filter: none;
+        --glass-border: rgb(255 255 255 / 0.10);
         --glass-rim: var(--highlight);
         --backdrop-tint: 100%;
     }
     :root[data-theme="light"],
-    :root[data-platform="mac"]:not([data-skin])[data-glass="rich"][data-theme="light"] {
+    :root[data-glass="lens"][data-theme="light"] {
         --glass-bg: rgb(250 250 250 / 0.95);
         --glass-filter: none;
+        --glass-border: rgb(0 0 0 / 0.10);
         --glass-rim: var(--highlight);
     }
 }
