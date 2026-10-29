@@ -8699,6 +8699,27 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     }
 }
 
+/* Scrolling the grid: photos ease in as they come up from the bottom and
+   ease out as they go under the top, done by the browser as it scrolls
+   (nothing runs for it), and only at the edges: in the middle they're
+   still and whole */
+@supports (animation-timeline: view()) {
+    @media (prefers-reduced-motion: no-preference) {
+        :root:not([data-skin]) .grid-view .grid-item:not(.is-new) {
+            animation: tile-woosh linear both;
+            animation-timeline: view();
+            animation-range: cover 0% cover 100%;
+        }
+    }
+}
+
+@keyframes tile-woosh {
+    0% { opacity: 0.25; scale: 0.88; }
+    18% { opacity: 1; scale: 1; }
+    86% { opacity: 1; scale: 1; }
+    100% { opacity: 0.4; scale: 0.94; }
+}
+
 @keyframes turn-left {
     from { rotate: 90deg; }
 }

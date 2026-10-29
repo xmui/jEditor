@@ -1,8 +1,11 @@
 // Small motions in jEditor's own look (style.css, "Motion"): the mode
 // switch's highlight glides to the mode chosen, rotate buttons turn their
 // icon the way they turn the photo, the selection count ticks when it
-// changes. They follow what happened and never hold anything up; the
-// themes and Reduce motion have none (the CSS leaves them out).
+// changes, and in the grid a folder's photos ripple in, deleted ones
+// shrink away while the rest slide into their places, and a new flag
+// pops. They follow what happened and never hold anything up (the change
+// is made first, then shown moving); the themes and Reduce motion have
+// none. The tiles easing in and out as the grid scrolls are CSS only.
 const Motion = {
     init() {
         // The mode switch is made after this (modes.js), into the sidebar
@@ -18,6 +21,7 @@ const Motion = {
             const b = e.target.closest('button[id*="rotate-left"], button[id*="rotate-right"]');
             if (b) this.replay(b, b.id.includes('left') ? 'turn-left' : 'turn-right');
         }, true);
+        this.grid();
         const count = document.getElementById('selection-count');
         if (count) {
             let last = count.textContent;
@@ -25,6 +29,105 @@ const Motion = {
                 if (count.textContent !== last) this.replay(count, 'tick');
                 last = count.textContent;
             }).observe(count, { childList: true, characterData: true, subtree: true });
+        }
+    },
+
+    on() {
+        return !document.documentElement.dataset.skin && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    },
+
+    // The grid's tiles in sight, in order (a binary search: a folder can
+    // have thousands)
+    inSight() {
+        const g = document.getElementById('grid-view');
+        if (!g || g.classList.contains('hidden') || !g.offsetParent) return [];
+        const kids = g.children, H = innerHeight;
+        let lo = 0, hi = kids.length;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (kids[mid].getBoundingClientRect().bottom < 0) lo = mid + 1; else hi = mid;
+        }
+        const out = [];
+        for (let i = lo; i < kids.length && out.length < 200; i++) {
+            const r = kids[i].getBoundingClientRect();
+            if (r.top > H) break;
+            if (kids[i].classList.contains('grid-item')) out.push([kids[i], r]);
+        }
+        return out;
+    },
+
+    // Where each tile in sight is, by its photo (or folder name)
+    snap() {
+        const m = new Map();
+        for (const [el, r] of this.inSight()) m.set(el._file || el.dataset.name || el, { el, r });
+        return m;
+    },
+
+    // Tiles that moved slide from where they were; tiles gone shrink away
+    flip(before) {
+        const EASE = 'cubic-bezier(0.2, 0, 0, 1)';
+        for (const [el, r] of this.inSight()) {
+            const was = before.get(el._file || el.dataset.name || el);
+            if (!was) continue;
+            before.delete(el._file || el.dataset.name || el);
+            const dx = was.r.left - r.left, dy = was.r.top - r.top;
+            if (Math.abs(dx) + Math.abs(dy) < 1) continue;
+            el.animate([{ translate: `${dx}px ${dy}px` }, { translate: '0 0' }], { duration: 240, easing: EASE });
+        }
+        for (const { el, r } of before.values()) {
+            if (el.isConnected) continue;
+            const ghost = el.cloneNode(true);
+            ghost.classList.remove('selected', 'active');
+            Object.assign(ghost.style, { position: 'fixed', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', margin: 0, pointerEvents: 'none', zIndex: 1, animation: 'none' });
+            document.body.appendChild(ghost);
+            ghost.animate([{ opacity: 1, scale: 1 }, { opacity: 0, scale: 0.7 }], { duration: 200, easing: EASE }).finished.then(() => ghost.remove(), () => ghost.remove());
+        }
+    },
+
+    // A folder's photos come in one after another, quickly, from the top
+    ripple() {
+        this.inSight().forEach(([el], i) => el.animate(
+            [{ opacity: 0, translate: '0 10px' }, { opacity: 1, translate: '0 0' }],
+            { duration: 220, delay: Math.min(i * 12, 240), easing: 'cubic-bezier(0.2, 0, 0, 1)', fill: 'backwards' }));
+    },
+
+    // The grid's own calls, with the motion around them
+    grid() {
+        if (typeof app === 'undefined') return;
+        const self = this;
+        const render = app.renderGrid;
+        app.renderGrid = function (...args) {
+            if (!self.on()) return render.apply(this, args);
+            // The same folder drawn again (sorted, filtered, refreshed):
+            // tiles slide to their new places. Another folder: a ripple
+            const key = [this.dirHandle && this.dirHandle.name, typeof Folders !== 'undefined' ? Folders.scope : ''].join('|');
+            const same = key === self._gridKey;
+            self._gridKey = key;
+            const before = same ? self.snap() : null;
+            const out = render.apply(this, args);
+            requestAnimationFrame(() => { if (before) self.flip(before); else self.ripple(); });
+            return out;
+        };
+        const remove = app.removeFilesFromApp;
+        app.removeFilesFromApp = function (...args) {
+            if (!self.on()) return remove.apply(this, args);
+            const before = self.snap();
+            const out = remove.apply(this, args);
+            self.flip(before);
+            return out;
+        };
+        // A flag set on a tile in sight pops in (not each time tiles are drawn)
+        if (typeof Flags !== 'undefined') {
+            const decorate = Flags.decorate;
+            Flags.decorate = function (el, f) {
+                const live = el.isConnected && self.on();
+                const had = live ? new Set([...el.querySelectorAll('.tile-flags > i')].map(i => i.className)) : null;
+                const out = decorate.call(this, el, f);
+                if (had) el.querySelectorAll('.tile-flags > i').forEach(i => {
+                    if (!had.has(i.className)) i.animate([{ scale: 0.3, opacity: 0 }, { scale: 1.25, offset: 0.6 }, { scale: 1, opacity: 1 }], { duration: 280, easing: 'ease-out' });
+                });
+                return out;
+            };
         }
     },
 
