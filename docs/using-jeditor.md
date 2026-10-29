@@ -109,10 +109,12 @@ It works like Lightroom or Apple Photos: the crop frame stays in the middle of t
 
 Like Lightroom's Develop, for one photo at a time: press `E` (or the sliders button, or right-click → **Adjust…**). The photo changes as you drag, on the graphics card, so even a big scan keeps up.
 
+Under the histogram, three tabs. **Edit** has the sliders, in Lightroom's order: **Basic** (the look, white balance, light, then vibrance and saturation), then Tone curve, Color mixer, Color grading, Detail and Effects, one open at a time. **Retouch** has spot removal and dust; **Masks** has the masks. Clicks on the photo go to spots or masks only while their tab is shown.
+
 - **Histogram and levels.** Red, green and blue, with marks at the ends when something clips. The handles under it set the black, mid-grey and white points; the lower two set the output range. Pick **R**, **G** or **B** to set one channel. **Auto** sets the levels from the photo; **Auto color** sets each channel on its own too, which takes the colour cast off a faded print.
 - **Light:** Exposure (in stops), Contrast, Highlights, Shadows, Whites and Blacks.
-- **Color:** Temperature, Tint, Vibrance (gentle on colours that are already strong) and Saturation. **Pick grey** (`W`, at the top of Color) sets the white balance from the photo: click something that should be white or grey (a wall, a shirt, the paper's border) and Temperature and Tint take the cast off it. Something very bright or very dark can't tell, so pick a light grey. `Esc` stops picking.
-- **Curve:** click to add a point and drag it; drag a point off the side, or double-click it, to take it away. The curve never turns back on itself. **RGB** or one channel.
+- **Color:** Temperature, Tint, Vibrance (gentle on colours that are already strong) and Saturation. **Pick grey** (`W`, beside White balance in Basic) sets the white balance from the photo: click something that should be white or grey (a wall, a shirt, the paper's border) and Temperature and Tint take the cast off it. Something very bright or very dark can't tell, so pick a light grey. `Esc` stops picking.
+- **Tone curve:** click to add a point and drag it; drag a point off the side, or double-click it, to take it away. The curve never turns back on itself. **RGB** or one channel.
 - **Color mixer:** the hue, saturation and luminance of reds, oranges, yellows, greens, aquas, blues, purples and magentas, each on its own.
 - **Looks:** film simulations of real stocks, each shown on your photo, by process:
   - **Negative (C-41):** Kodak Portra 160, 400, 800, Ektar 100, Gold 200, UltraMax 400; Fujifilm Superia 400, Pro 400H, C200. Soft contrast and highlights, lifted blacks, colour grain.

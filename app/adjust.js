@@ -79,9 +79,10 @@ const Adjust = {
         });
 
         this.sliders = {};
-        const light = this.el('adj-light'), color = this.el('adj-color');
+        const light = this.el('adj-light'), wb = this.el('adj-wb'), color = this.el('adj-color');
         for (const [k, label] of this.LIGHT) light.appendChild(this.slider(k, label));
-        for (const [k, label] of this.COLOR) color.appendChild(this.slider(k, label));
+        // White balance above Light, Vibrance and Saturation below it, as in Lightroom
+        for (const [k, label] of this.COLOR) (k === 'temp' || k === 'tint' ? wb : color).appendChild(this.slider(k, label));
         const detail = this.el('adj-detail');
         for (const [k, label] of this.DETAIL) detail.appendChild(this.slider(k, label));
         this.initLoupe();
@@ -95,6 +96,7 @@ const Adjust = {
         this.initWheels();
         AdjustMasks.init(this);
         AdjustSpots.init(this);
+        this.initPanes();
         this.mixerSliders = Develop.HUES.map((h, i) => {
             const row = this.slider(`mix-${h.id}`, h.name, {
                 range: { min: -100, max: 100, step: 1 },
@@ -486,7 +488,8 @@ const Adjust = {
         if (which === 'detail') for (const [k] of this.DETAIL) delete a[k];
         if (which === 'masks') delete a.masks;
         if (which === 'spots') delete a.spots;
-        if (which === 'look') { delete a.look; delete a.lookAmount; }
+        if (which === 'look' || which === 'basic') { delete a.look; delete a.lookAmount; }
+        if (which === 'basic') for (const [k] of [...this.LIGHT, ...this.COLOR]) delete a[k];
         this.setAll(a);
     },
 
@@ -819,6 +822,41 @@ const Adjust = {
         tile(null);
         for (const l of Develop.LOOKS) tile(l);
         this.showLookTab(this.lookTab);
+    },
+
+    // Edit, Retouch and Masks. Retouch and Masks each hold one section
+    // (spots, masks) that's open while its tab is shown, so the tools there
+    // work only then; opening one of those sections shows its tab
+    initPanes() {
+        const tool = { retouch: this.el('adj-spots-sec'), masks: this.el('adj-masks-sec') };
+        for (const b of this.root.querySelectorAll('.adj-pane-tabs .adj-tab')) {
+            b.addEventListener('click', () => { b.blur(); this.showPane(b.dataset.pane); });
+        }
+        for (const [pane, sec] of Object.entries(tool)) {
+            sec.querySelector('summary').addEventListener('click', (e) => e.preventDefault());
+            sec.addEventListener('toggle', () => {
+                if (sec.open) this.showPane(pane);
+                else if (this.pane === pane) this.showPane('edit');
+            });
+        }
+        // Edit's sections: opening one folds the one open before
+        const edit = [...this.root.querySelectorAll('.adj-pane[data-pane="edit"] > details.adj-sec')];
+        for (const sec of edit) {
+            sec.addEventListener('toggle', () => {
+                if (sec.open) for (const o of edit) if (o !== sec && o.open) o.open = false;
+            });
+        }
+        this.pane = 'edit';
+    },
+
+    showPane(id) {
+        if (this.pane === id) return;
+        this.pane = id;
+        for (const b of this.root.querySelectorAll('.adj-pane-tabs .adj-tab')) b.setAttribute('aria-selected', String(b.dataset.pane === id));
+        for (const p of this.root.querySelectorAll('.adj-pane')) p.classList.toggle('hidden', p.dataset.pane !== id);
+        this.el('adj-spots-sec').open = id === 'retouch';
+        this.el('adj-masks-sec').open = id === 'masks';
+        this.drawPanels();
     },
 
     // One process's films (None is always there)

@@ -471,105 +471,114 @@
                     <canvas id="adj-levels" class="adj-levels" title="Levels: drag the black, grey and white handles; the lower two set the output (double-click to reset)"></canvas>
                     <div class="adj-levels-foot"><span id="adj-levels-read" class="adj-read"></span><button class="btn ghost sm adj-sec-reset" data-reset="levels">Reset</button></div>
                 </section>
-                <details class="adj-sec" open>
-                    <summary><span>Looks</span><span class="adj-sec-acts">
-                        <button id="adj-presets" class="btn ghost sm" title="Your presets: settings saved under a name">Presets</button>
-                        <button class="btn ghost sm adj-sec-reset" data-reset="look">Reset</button></span></summary>
-                    <div class="adj-sec-head"><span id="adj-look-tabs" class="adj-tabs adj-look-tabs" role="tablist" aria-label="Process"></span></div>
-                    <div id="adj-looks" class="adj-looks" role="group" aria-label="Film looks"></div>
-                    <div id="adj-look-amount" class="adj-rows hidden"></div>
-                </details>
-                <details class="adj-sec" open>
-                    <summary><span>Light</span><button class="btn ghost sm adj-sec-reset" data-reset="light">Reset</button></summary>
-                    <div id="adj-light" class="adj-rows"></div>
-                </details>
-                <details class="adj-sec" open>
-                    <summary><span>Color</span><span class="adj-sec-acts">
-                        <button id="adj-wb-pick" class="btn ghost sm" aria-pressed="false" title="White balance: click something in the photo that should be white or grey (W)">Pick grey</button>
-                        <button class="btn ghost sm adj-sec-reset" data-reset="color">Reset</button></span></summary>
-                    <div id="adj-color" class="adj-rows"></div>
-                </details>
-                <details class="adj-sec" open>
-                    <summary><span>Curve</span><button class="btn ghost sm adj-sec-reset" data-reset="curve">Reset</button></summary>
-                    <div class="adj-sec-head"><span class="adj-chan adj-tabs" role="tablist" aria-label="Channel"></span></div>
-                    <canvas id="adj-curve" class="adj-curve" title="Click to add a point and drag it; drag a point off the side, or double-click it, to take it away"></canvas>
-                </details>
-                <details class="adj-sec">
-                    <summary><span>Color mixer</span><button class="btn ghost sm adj-sec-reset" data-reset="mixer">Reset</button></summary>
-                    <div class="adj-sec-head">
-                        <span class="adj-mix-tabs adj-tabs" role="tablist" aria-label="Change">
-                            <button class="adj-tab" role="tab" data-mix="hue">Hue</button>
-                            <button class="adj-tab" role="tab" data-mix="sat">Saturation</button>
-                            <button class="adj-tab" role="tab" data-mix="lum">Luminance</button>
-                        </span>
-                    </div>
-                    <div id="adj-mixer" class="adj-rows"></div>
-                </details>
-                <details class="adj-sec">
-                    <summary><span>Color grading</span><button class="btn ghost sm adj-sec-reset" data-reset="grading">Reset</button></summary>
-                    <div id="adj-wheels" class="adj-wheels"></div>
-                    <div id="adj-grade-more" class="adj-rows"></div>
-                </details>
-                <details id="adj-masks-sec" class="adj-sec">
-                    <summary><span>Masks</span><button class="btn ghost sm adj-sec-reset" data-reset="masks">Reset</button></summary>
-                    <div class="adj-mask-add">
-                        <button class="btn secondary sm" data-add-mask="linear" title="A gradient across the photo: full where you start dragging, none where you stop">Linear</button>
-                        <button class="btn secondary sm" data-add-mask="radial" title="An oval, feathered at its edge: drag out from its middle">Radial</button>
-                        <button class="btn secondary sm" data-add-mask="brush" title="Paint the mask on">Brush</button>
-                    </div>
-                    <div class="adj-mask-add">
-                        <button class="btn secondary sm" data-add-mask="sky" title="Find the sky in the photo (touch it up with the brush)">Sky</button>
-                        <button class="btn secondary sm" data-add-mask="subject" title="Find the photo's subject (touch it up with the brush)">Subject</button>
-                    </div>
-                    <p id="adj-mask-hint" class="adj-hint"></p>
-                    <div id="adj-mask-list" class="adj-mask-list"></div>
-                    <div id="adj-mask-edit" class="hidden">
+                <!-- Edit: the sliders, in Lightroom's order; Retouch and Masks: tools used on the photo -->
+                <div id="adj-panes" class="adj-tabs adj-pane-tabs" role="tablist" aria-label="Adjust">
+                    <button class="adj-tab" role="tab" data-pane="edit" aria-selected="true">Edit</button>
+                    <button class="adj-tab" role="tab" data-pane="retouch" aria-selected="false" title="Heal and clone spots, and dust on scans">Retouch</button>
+                    <button class="adj-tab" role="tab" data-pane="masks" aria-selected="false" title="Adjust part of the photo">Masks</button>
+                </div>
+                <div class="adj-pane" data-pane="edit">
+                    <details id="adj-basic-sec" class="adj-sec" open>
+                        <summary><span>Basic</span><span class="adj-sec-acts">
+                            <button id="adj-presets" class="btn ghost sm" title="Your presets: settings saved under a name">Presets</button>
+                            <button class="btn ghost sm adj-sec-reset" data-reset="basic">Reset</button></span></summary>
+                        <div class="adj-sec-head"><span id="adj-look-tabs" class="adj-tabs adj-look-tabs" role="tablist" aria-label="Process"></span></div>
+                        <div id="adj-looks" class="adj-looks" role="group" aria-label="Film looks"></div>
+                        <div id="adj-look-amount" class="adj-rows hidden"></div>
+                        <div class="adj-sub adj-sub-acts"><span>White balance</span>
+                            <button id="adj-wb-pick" class="btn ghost sm" aria-pressed="false" title="White balance: click something in the photo that should be white or grey (W)">Pick grey</button></div>
+                        <div id="adj-wb" class="adj-rows"></div>
+                        <div class="adj-sub">Light</div>
+                        <div id="adj-light" class="adj-rows"></div>
+                        <div class="adj-sub">Presence</div>
+                        <div id="adj-color" class="adj-rows"></div>
+                    </details>
+                    <details class="adj-sec">
+                        <summary><span>Tone curve</span><button class="btn ghost sm adj-sec-reset" data-reset="curve">Reset</button></summary>
+                        <div class="adj-sec-head"><span class="adj-chan adj-tabs" role="tablist" aria-label="Channel"></span></div>
+                        <canvas id="adj-curve" class="adj-curve" title="Click to add a point and drag it; drag a point off the side, or double-click it, to take it away"></canvas>
+                    </details>
+                    <details class="adj-sec">
+                        <summary><span>Color mixer</span><button class="btn ghost sm adj-sec-reset" data-reset="mixer">Reset</button></summary>
+                        <div class="adj-sec-head">
+                            <span class="adj-mix-tabs adj-tabs" role="tablist" aria-label="Change">
+                                <button class="adj-tab" role="tab" data-mix="hue">Hue</button>
+                                <button class="adj-tab" role="tab" data-mix="sat">Saturation</button>
+                                <button class="adj-tab" role="tab" data-mix="lum">Luminance</button>
+                            </span>
+                        </div>
+                        <div id="adj-mixer" class="adj-rows"></div>
+                    </details>
+                    <details class="adj-sec">
+                        <summary><span>Color grading</span><button class="btn ghost sm adj-sec-reset" data-reset="grading">Reset</button></summary>
+                        <div id="adj-wheels" class="adj-wheels"></div>
+                        <div id="adj-grade-more" class="adj-rows"></div>
+                    </details>
+                    <details id="adj-detail-sec" class="adj-sec">
+                        <summary><span>Detail</span><button class="btn ghost sm adj-sec-reset" data-reset="detail">Reset</button></summary>
+                        <canvas id="adj-loupe" class="adj-loupe" title="1:1, from the full photo: click the photo to look somewhere else"></canvas>
+                        <p class="adj-hint">1:1 — click the photo to look elsewhere</p>
+                        <div id="adj-detail" class="adj-rows"></div>
+                    </details>
+                    <details class="adj-sec">
+                        <summary><span>Effects</span><button class="btn ghost sm adj-sec-reset" data-reset="effects">Reset</button></summary>
+                        <div id="adj-effects" class="adj-rows"></div>
+                    </details>
+                </div>
+                <div class="adj-pane hidden" data-pane="retouch">
+                    <details id="adj-spots-sec" class="adj-sec">
+                        <summary><span>Spot removal</span><button class="btn ghost sm adj-sec-reset" data-reset="spots">Reset</button></summary>
+                        <div class="adj-tabs adj-brush-mode" role="group" aria-label="Spot tool">
+                            <button id="adj-spot-heal" class="adj-tab" aria-pressed="true" title="Heal: texture from nearby, blended into the colour and brightness round the spot">Heal</button>
+                            <button id="adj-spot-clone" class="adj-tab" aria-pressed="false" title="Clone: copied from nearby exactly">Clone</button>
+                        </div>
+                        <p id="adj-spot-hint" class="adj-hint"></p>
+                        <div id="adj-spot-tools" class="adj-rows"></div>
                         <div class="adj-mask-opts">
-                            <label class="adj-check"><input type="checkbox" id="adj-mask-show"> Show mask</label>
-                            <label class="adj-check"><input type="checkbox" id="adj-mask-invert"> Invert</label>
-                            <button id="adj-mask-delete" class="btn ghost sm danger-text">Delete</button>
+                            <label class="adj-check"><input type="checkbox" id="adj-spot-show" checked> Show spots</label>
+                            <button id="adj-spot-delete" class="btn ghost sm danger-text" disabled>Delete</button>
                         </div>
-                        <div id="adj-brush-tools-box" class="hidden">
-                            <div class="adj-tabs adj-brush-mode" role="group" aria-label="Brush">
-                                <button id="adj-brush-paint" class="adj-tab" aria-pressed="true">Paint</button>
-                                <button id="adj-brush-erase" class="adj-tab" aria-pressed="false">Erase</button>
+                        <div class="adj-sub">Dust on scans</div>
+                        <div id="adj-dust-tools" class="adj-rows"></div>
+                        <div class="adj-mask-add">
+                            <button id="adj-dust-find" class="btn secondary sm" title="Put a heal spot on every speck of dust found">Find dust</button>
+                            <button id="adj-dust-clear" class="btn ghost sm" title="Take off the spots Find dust put on" disabled>Clear found</button>
+                        </div>
+                        <p id="adj-spot-count" class="adj-hint"></p>
+                    </details>
+                </div>
+                <div class="adj-pane hidden" data-pane="masks">
+                    <details id="adj-masks-sec" class="adj-sec">
+                        <summary><span>Masks</span><button class="btn ghost sm adj-sec-reset" data-reset="masks">Reset</button></summary>
+                        <div class="adj-mask-add">
+                            <button class="btn secondary sm" data-add-mask="linear" title="A gradient across the photo: full where you start dragging, none where you stop">Linear</button>
+                            <button class="btn secondary sm" data-add-mask="radial" title="An oval, feathered at its edge: drag out from its middle">Radial</button>
+                            <button class="btn secondary sm" data-add-mask="brush" title="Paint the mask on">Brush</button>
+                        </div>
+                        <div class="adj-mask-add">
+                            <button class="btn secondary sm" data-add-mask="sky" title="Find the sky in the photo (touch it up with the brush)">Sky</button>
+                            <button class="btn secondary sm" data-add-mask="subject" title="Find the photo's subject (touch it up with the brush)">Subject</button>
+                        </div>
+                        <p id="adj-mask-hint" class="adj-hint"></p>
+                        <div id="adj-mask-list" class="adj-mask-list"></div>
+                        <div id="adj-mask-edit" class="hidden">
+                            <div class="adj-mask-opts">
+                                <label class="adj-check"><input type="checkbox" id="adj-mask-show"> Show mask</label>
+                                <label class="adj-check"><input type="checkbox" id="adj-mask-invert"> Invert</label>
+                                <button id="adj-mask-delete" class="btn ghost sm danger-text">Delete</button>
                             </div>
-                            <div id="adj-brush-tools" class="adj-rows"></div>
+                            <div id="adj-brush-tools-box" class="hidden">
+                                <div class="adj-tabs adj-brush-mode" role="group" aria-label="Brush">
+                                    <button id="adj-brush-paint" class="adj-tab" aria-pressed="true">Paint</button>
+                                    <button id="adj-brush-erase" class="adj-tab" aria-pressed="false">Erase</button>
+                                </div>
+                                <div id="adj-brush-tools" class="adj-rows"></div>
+                            </div>
+                            <div id="adj-radial-tools" class="adj-rows hidden"></div>
+                            <div id="adj-mask-sliders" class="adj-rows"></div>
                         </div>
-                        <div id="adj-radial-tools" class="adj-rows hidden"></div>
-                        <div id="adj-mask-sliders" class="adj-rows"></div>
-                    </div>
-                </details>
-                <details id="adj-spots-sec" class="adj-sec">
-                    <summary><span>Spot removal</span><button class="btn ghost sm adj-sec-reset" data-reset="spots">Reset</button></summary>
-                    <div class="adj-tabs adj-brush-mode" role="group" aria-label="Spot tool">
-                        <button id="adj-spot-heal" class="adj-tab" aria-pressed="true" title="Heal: texture from nearby, blended into the colour and brightness round the spot">Heal</button>
-                        <button id="adj-spot-clone" class="adj-tab" aria-pressed="false" title="Clone: copied from nearby exactly">Clone</button>
-                    </div>
-                    <p id="adj-spot-hint" class="adj-hint"></p>
-                    <div id="adj-spot-tools" class="adj-rows"></div>
-                    <div class="adj-mask-opts">
-                        <label class="adj-check"><input type="checkbox" id="adj-spot-show" checked> Show spots</label>
-                        <button id="adj-spot-delete" class="btn ghost sm danger-text" disabled>Delete</button>
-                    </div>
-                    <div class="adj-sub">Dust on scans</div>
-                    <div id="adj-dust-tools" class="adj-rows"></div>
-                    <div class="adj-mask-add">
-                        <button id="adj-dust-find" class="btn secondary sm" title="Put a heal spot on every speck of dust found">Find dust</button>
-                        <button id="adj-dust-clear" class="btn ghost sm" title="Take off the spots Find dust put on" disabled>Clear found</button>
-                    </div>
-                    <p id="adj-spot-count" class="adj-hint"></p>
-                </details>
-                <details id="adj-detail-sec" class="adj-sec">
-                    <summary><span>Detail</span><button class="btn ghost sm adj-sec-reset" data-reset="detail">Reset</button></summary>
-                    <canvas id="adj-loupe" class="adj-loupe" title="1:1, from the full photo: click the photo to look somewhere else"></canvas>
-                    <p class="adj-hint">1:1 — click the photo to look elsewhere</p>
-                    <div id="adj-detail" class="adj-rows"></div>
-                </details>
-                <details class="adj-sec">
-                    <summary><span>Effects</span><button class="btn ghost sm adj-sec-reset" data-reset="effects">Reset</button></summary>
-                    <div id="adj-effects" class="adj-rows"></div>
-                </details>
+                    </details>
+                </div>
             </aside>
         </div>
     </div>
