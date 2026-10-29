@@ -447,7 +447,9 @@ const app = {
     APPEARANCE: {
         theme: ['dark', 'light', 'system'],
         density: ['compact', 'comfortable'],
-        glass: ['rich', 'subtle', 'off'],
+        glass: ['rich', 'clear', 'crystal', 'lens', 'subtle', 'off'], // rich is Liquid (tokens.css)
+        tint: ['none', 'accent', 'warm', 'cool', 'rose'], // Settings → Glass tint, over any glass
+        motion: ['on', 'off'], // Settings → Animations (motion.js); the system's Reduce motion turns them off too
         surround: ['auto', 'black', 'grey', 'light'],
         backdrop: ['none', 'mica', 'acrylic'] // the Windows app only (applyBackdrop)
     },
@@ -476,6 +478,8 @@ const app = {
             skinSettings: {}, // each theme's own settings, by theme
             density: 'compact',
             glass: 'rich',
+            tint: 'none',
+            motion: 'on',
             surround: 'auto',
             backdrop: 'none', // Settings → Window background: none (solid), mica or acrylic
             transparency: 50, // how much of the window background shows through (10-100%)
@@ -648,6 +652,8 @@ const app = {
         root.dataset.theme = theme;
         root.dataset.density = p.density;
         root.dataset.glass = p.glass;
+        root.dataset.tint = p.tint;
+        root.dataset.motion = p.motion;
         root.dataset.surround = p.surround;
         root.style.setProperty('--window-tint', `${100 - p.transparency}%`);
         const meta = document.querySelector('meta[name="theme-color"]');
@@ -6858,6 +6864,9 @@ const app = {
         return [
             ['flags', sel],
             ['—'],
+            // On the bar in the themes; in jEditor's own look only here (and [ ])
+            [`Rotate ${n} left`, () => this.rotateBulk(-90)],
+            [`Rotate ${n} right`, () => this.rotateBulk(90)],
             [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
             [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy')],
             [`Export ${n}…`, () => Export.open({ files: sel })],

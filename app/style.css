@@ -8515,3 +8515,273 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
         -webkit-backdrop-filter: none;
     }
 }
+
+/* ==========================================================================
+   The sidebar and the selection bar, unified (jEditor's own look; each
+   theme dresses these parts its own way)
+   ========================================================================== */
+
+/* One set of corners: the sidebar's, and inside it (8px in) each part's
+   is the sidebar's less that. The mode switch is a pill, as the top bar */
+:root:not([data-skin]) .folder-rail {
+    border-radius: var(--r-xl);
+}
+
+:root:not([data-skin]) .mode-seg {
+    border-radius: var(--r-pill);
+}
+
+:root:not([data-skin]) .mode-seg > button {
+    border-radius: var(--r-pill);
+}
+
+/* The project: a heading, its name. What its buttons did is in
+   the … by it, and its right-click menu (places.js, cardItems) */
+:root:not([data-skin]) .sb-card {
+    position: relative;
+    padding: var(--sp-1) var(--sp-2) var(--sp-2);
+    background: none;
+}
+
+:root:not([data-skin]) .sb-card-btns,
+:root:not([data-skin]) .sb-card-export,
+:root:not([data-skin]) .sb-card-defer {
+    display: none;
+}
+
+:root:not([data-skin]) .sb-card-name {
+    font-size: var(--fs-title);
+    line-height: var(--lh-title);
+    padding-right: var(--ctl-sm);
+}
+
+:root:not([data-skin]) button.sb-card-name {
+    width: calc(100% + 2 * var(--sp-2) - var(--ctl-sm));
+    height: var(--ctl-sm);
+}
+
+
+.sb-card-more {
+    display: none;
+}
+
+:root:not([data-skin]) .sb-card-more {
+    display: inline-flex;
+    position: absolute;
+    top: 0;
+    right: 0;
+    border-radius: var(--r-pill);
+    color: var(--text-2);
+}
+
+/* The size is at the foot, for what's shown (and opens its details):
+   not again under the name */
+:root:not([data-skin]) .sb-card-meta {
+    display: none;
+}
+
+/* One kind of heading, in sentence case */
+:root:not([data-skin]) .sb-sec-btn,
+:root:not([data-skin]) .sb-sec-title {
+    color: var(--text-3);
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+:root:not([data-skin]) .sb-sec-btn:hover {
+    color: var(--text-1);
+}
+
+/* Choosing the projects folder is a row like the rest, not a button */
+:root:not([data-skin]) .sb-choose {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 6px;
+    height: var(--ctl-md);
+    padding: 0 var(--sp-2);
+    border: 1px solid transparent;
+    border-radius: var(--r-md);
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-2);
+    font-weight: var(--fw-regular);
+}
+
+:root:not([data-skin]) .sb-choose::before {
+    content: "+";
+    width: var(--icon-sm);
+    font-size: var(--fs-title);
+    text-align: center;
+}
+
+:root:not([data-skin]) .sb-choose:hover {
+    background: var(--tb-hover);
+    color: var(--text-1);
+}
+
+/* The selection bar: the count is quiet, the photos are what's chosen.
+   Rotate and Auto crop are in its … (and on [ ] Shift+A); the size slider
+   steps aside while it's up, so there's one pill */
+:root:not([data-skin]) .sel-count {
+    background: var(--seg-active);
+    color: var(--text-1);
+}
+
+:root:not([data-skin]) .sel-count:hover {
+    background: var(--tb-pressed);
+}
+
+:root:not([data-skin]) #selection-bar :is(#btn-rotate-left-bulk, #btn-rotate-right-bulk, #btn-auto-crop, .tb-sep) {
+    display: none;
+}
+
+:root:not([data-skin]) #selection-bar {
+    gap: var(--sp-1);
+}
+
+:root:not([data-skin]) #btn-trash {
+    color: var(--danger-text);
+}
+
+/* It fades where it is: moved, its box would be off the row the edits
+   bar lines up with (fit.js) */
+:root:not([data-skin]) .interface:has(#selection-bar:not(.hidden)) .grid-controls {
+    opacity: 0;
+    pointer-events: none;
+}
+
+:root:not([data-skin]) .grid-controls {
+    transition: opacity var(--dur-base) var(--ease-out);
+}
+
+/* Lens, Clear and Crystal glass are too light to keep words readable on
+   their own over a bright photo: a soft halo behind them does
+   (--glass-halo, tokens.css; none on the other glass) */
+:root:not([data-skin]) :is(.toolbar, .file-info, .folder-rail, #context-menu) {
+    text-shadow: var(--glass-halo);
+}
+
+/* Lens: the sidebar is no panel, its folders on the window with a faint
+   glow from the left and a hairline down its edge; the chosen row is a
+   bubble of the glass, round like the pills */
+:root:not([data-skin])[data-glass="lens"] .folder-rail {
+    background: linear-gradient(90deg, rgb(255 255 255 / 0.05), rgb(255 255 255 / 0));
+    border-color: transparent;
+    box-shadow: inset -1px 0 0 rgb(255 255 255 / 0.08);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+:root:not([data-skin])[data-glass="lens"][data-theme="light"] .folder-rail {
+    background: linear-gradient(90deg, rgb(255 255 255 / 0.5), rgb(255 255 255 / 0));
+    box-shadow: inset -1px 0 0 rgb(0 0 0 / 0.08);
+}
+
+:root:not([data-skin])[data-glass="lens"] .fr-row {
+    border-radius: var(--r-pill);
+}
+
+:root:not([data-skin])[data-glass="lens"] .fr-row.active {
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.18), rgb(255 255 255 / 0.07));
+    box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.22), inset 0 -1px 1px rgb(0 0 0 / 0.15);
+}
+
+:root:not([data-skin])[data-glass="lens"][data-theme="light"] .fr-row.active {
+    background: linear-gradient(180deg, #fff, rgb(255 255 255 / 0.6));
+    box-shadow: inset 0 -1px 1px rgb(0 0 0 / 0.08), 0 1px 2px rgb(0 0 0 / 0.08);
+}
+
+/* ---- Motion (motion.js): short, after the fact, never in the way ---- */
+
+.seg-glide {
+    display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    /* The mode switch: one highlight, gliding to the mode chosen */
+    :root:not([data-skin]):not([data-motion="off"]) .mode-seg {
+        position: relative;
+    }
+
+    :root:not([data-skin]):not([data-motion="off"]) .seg-glide {
+        display: block;
+        position: absolute;
+        border-radius: var(--r-pill);
+        background: var(--seg-active);
+        box-shadow: var(--shadow-1);
+        pointer-events: none;
+    }
+
+    :root:not([data-skin]):not([data-motion="off"]) .mode-seg.glides .seg-glide {
+        transition: left var(--dur-slow) var(--ease-out), width var(--dur-slow) var(--ease-out), top var(--dur-slow) var(--ease-out);
+    }
+
+    :root:not([data-skin]):not([data-motion="off"]) .mode-seg > button {
+        position: relative;
+    }
+
+    :root:not([data-skin]):not([data-motion="off"]) .mode-seg > button.on {
+        background: transparent;
+        box-shadow: none;
+    }
+
+    /* A pill's button gives a little when pressed */
+    :root:not([data-skin]):not([data-motion="off"]) :is(.tb-btn, .sel-count, .mode-seg > button, .seg > button) {
+        transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), scale var(--dur-fast) var(--ease-out);
+    }
+
+    :root:not([data-skin]):not([data-motion="off"]) :is(.tb-btn, .sel-count, .mode-seg > button, .seg > button):active {
+        scale: 0.94;
+    }
+
+    /* Rotate: the arrow turns the way the photo did */
+    :root:not([data-skin]):not([data-motion="off"]) .turn-left svg {
+        animation: turn-left var(--dur-slow) var(--ease-out);
+    }
+
+    :root:not([data-skin]):not([data-motion="off"]) .turn-right svg {
+        animation: turn-right var(--dur-slow) var(--ease-out);
+    }
+
+    /* The count: the new number comes up from below */
+    :root:not([data-skin]):not([data-motion="off"]) #selection-count.tick {
+        display: inline-block;
+        animation: count-tick var(--dur-base) var(--ease-out);
+    }
+}
+
+/* Scrolling the grid: photos ease in as they come up from the bottom and
+   ease out as they go under the top, done by the browser as it scrolls
+   (nothing runs for it), and only at the edges: in the middle they're
+   still and whole. Not in a huge folder's grid, which builds its tiles as
+   it scrolls (grid-windowed, motion.js): there it would cost a frame. No
+   fill: the tiles out of sight keep their real size, where the grid
+   measures them (gridY, revealInGrid) */
+@supports (animation-timeline: view()) {
+    @media (prefers-reduced-motion: no-preference) {
+        :root:not([data-skin]):not([data-motion="off"]) .grid-view:not(.grid-windowed) .grid-item:not(.is-new) {
+            animation: tile-woosh linear;
+            animation-timeline: view();
+            animation-range: cover 0% cover 100%;
+        }
+    }
+}
+
+@keyframes tile-woosh {
+    0% { opacity: 0.25; scale: 0.88; }
+    18% { opacity: 1; scale: 1; }
+    86% { opacity: 1; scale: 1; }
+    100% { opacity: 0.4; scale: 0.94; }
+}
+
+@keyframes turn-left {
+    from { rotate: 90deg; }
+}
+
+@keyframes turn-right {
+    from { rotate: -90deg; }
+}
+
+@keyframes count-tick {
+    from { opacity: 0.2; translate: 0 40%; }
+}

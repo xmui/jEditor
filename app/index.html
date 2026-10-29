@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark" data-density="compact" data-glass="rich" data-surround="auto">
+<html lang="en" data-theme="dark" data-density="compact" data-glass="rich" data-tint="none" data-motion="on" data-surround="auto">
 
 <head>
     <meta charset="UTF-8">
@@ -62,6 +62,7 @@
     <script src="start.js"></script>
     <script src="picked.js"></script>
     <script src="permissions.js"></script>
+    <script src="motion.js"></script>
     <script src="fit.js"></script>
     <script src="ui.js"></script>
     <link rel="stylesheet" href="tokens.css">
@@ -761,11 +762,33 @@
                         <h4 class="set-group set-own-look">Look</h4>
                         <div class="set-row set-own-look">
                             <span class="set-label" id="set-glass-label">Glass
-                                <small>Subtle is faster on older computers. Off: solid, nothing shows through</small></span>
+                                <small>Clear and Crystal show more of the photo through. Subtle is faster on older computers</small></span>
                             <div class="seg" role="radiogroup" aria-labelledby="set-glass-label">
-                                <label><input type="radio" name="set-glass" value="rich"><span>Rich</span></label>
+                                <label><input type="radio" name="set-glass" value="rich"><span>Liquid</span></label>
+                                <label><input type="radio" name="set-glass" value="clear"><span>Clear</span></label>
+                                <label><input type="radio" name="set-glass" value="crystal"><span>Crystal</span></label>
+                                <label><input type="radio" name="set-glass" value="lens"><span>Lens</span></label>
                                 <label><input type="radio" name="set-glass" value="subtle"><span>Subtle</span></label>
                                 <label><input type="radio" name="set-glass" value="off"><span>Off</span></label>
+                            </div>
+                        </div>
+                        <div class="set-row set-own-look">
+                            <span class="set-label" id="set-tint-label">Glass tint
+                                <small>A wash of colour over the glass. None keeps it neutral, best for judging colour</small></span>
+                            <div class="seg" role="radiogroup" aria-labelledby="set-tint-label">
+                                <label><input type="radio" name="set-tint" value="none"><span>None</span></label>
+                                <label><input type="radio" name="set-tint" value="accent"><span>Accent</span></label>
+                                <label><input type="radio" name="set-tint" value="warm"><span>Warm</span></label>
+                                <label><input type="radio" name="set-tint" value="cool"><span>Cool</span></label>
+                                <label><input type="radio" name="set-tint" value="rose"><span>Rose</span></label>
+                            </div>
+                        </div>
+                        <div class="set-row set-own-look">
+                            <span class="set-label" id="set-motion-label">Animations
+                                <small>Photos sliding, popping and easing into place. Off: things just change</small></span>
+                            <div class="seg" role="radiogroup" aria-labelledby="set-motion-label">
+                                <label><input type="radio" name="set-motion" value="on"><span>On</span></label>
+                                <label><input type="radio" name="set-motion" value="off"><span>Off</span></label>
                             </div>
                         </div>
                         <div class="set-row set-own-look">
