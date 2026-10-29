@@ -3785,6 +3785,20 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         }
         check('narrow windows: no pill over another or off screen, top or bottom, with or without the folder list', fit.every(f => f.bad.length === 0), JSON.stringify(fit.filter(f => f.bad.length)));
         check('... wide, nothing given up; at 480 header buttons go into More, which shows; the file pill stays in single view', !fit[1].fit && fit[6].squeezed > 0 && fit[6].more && fit.every(f => f.name), JSON.stringify(fit.map(f => [f.w, f.rail, f.fit, f.squeezed, f.more])));
+        // The grid left alone: fitting the pills once, not every frame (its
+        // own try at the folder pill's short labels used to wake it again)
+        await page.setViewportSize({ width: 1300, height: 700 });
+        const idleFits = await page.evaluate(async () => {
+            app.setView('grid');
+            await new Promise(res => setTimeout(res, 500));
+            const run = Fit.run;
+            let n = 0;
+            Fit.run = function () { n++; return run.apply(this, arguments); };
+            await new Promise(res => setTimeout(res, 1000));
+            Fit.run = run;
+            return n;
+        });
+        check('the grid left alone: the pills aren\'t fitted again and again', idleFits <= 1, `${idleFits} runs in a second`);
         check('kept rotation: the grid tile turns its own picture, then the redrawn one replaces it straight', r.tileTurning && r.tileDone, JSON.stringify(r));
         check('kept rotation: the big photo turns (not dimmed), then the redrawn one has no turn left over', r.viewTurning && r.viewDone && r.kept, JSON.stringify(r));
         check('kept rotation suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
