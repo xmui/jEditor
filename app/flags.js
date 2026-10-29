@@ -428,7 +428,7 @@ const Flags = {
         if (view.length) {
             app.setCurrent(app.currentFile);
             if (app.viewMode === 'grid') app.selection.add(app.currentFile);
-            const el = app.currentFile._gridEl;
+            const el = toTop ? null : app.revealInGrid(app.currentFile);
             if (el && !toTop) el.scrollIntoView({ block: 'nearest' });
         } else {
             Folders.showEmptyHeader();
