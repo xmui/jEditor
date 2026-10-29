@@ -76,12 +76,13 @@ In 1.43.0 and earlier, a scan with a dpi was never `accepted`: its dpi was kept 
 ## The runner
 
 ```
-node scripts/auto-crop-test.js "<test set folder>" [--as editor|scan|feeder] [--out <folder>] [--edge <px>]
+node scripts/auto-crop-test.js "<test set folder>" [--as editor|scan|feeder] [--boxes] [--out <folder>] [--edge <px>]
 ```
 
 It runs today's Auto on every scan in a headless Chromium, the way the app does: on the screen-sized preview (`--edge`, 1600 by default), then cropped with the crop editor's own geometry, with the aspect ratio set to free.
 
 - `--as` picks which Auto: `editor` (the default) is the crop editor's, `scan` is Auto crop after a flatbed scan, and `feeder` is Auto crop after a sheet-feeder scan.
+- `--boxes` uses the map-to-boxes finder with the full-detail edge fit (`app/crop-boxes.js`) in place of `PhotoFind.single`, to score it against today's Auto.
 - Each photo is one test: when a photo was saved twice, its last crop is the answer.
 - If Auto finds no print, the whole photo is the crop it's scored on.
 
