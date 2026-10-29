@@ -55,7 +55,9 @@
     --icon-sm: 16px;
     --icon-md: 20px;
     --gutter: 20px;      /* distance of floating chrome from the window edge */
-    --top-row: calc(var(--gutter) + var(--ctl-lg)); /* where the top row of pills ends */
+    /* where the top row of pills ends: the gutter, then a pill, which
+       grows with Settings → Toolbar size (.toolbar's zoom) */
+    --top-row: calc(var(--gutter) + var(--ctl-lg) * var(--ui-scale, 1));
 
     /* ---- Radii ---- */
     --r-xs: 4px;
