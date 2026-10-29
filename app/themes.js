@@ -77,6 +77,9 @@ const Themes = {
             ['Undo history', 'edit.history', true],
             '—',
             ['Select all', 'edit.selectAll', true],
+            ['Copy image', 'edit.copyImage', true],
+            // A paste needs the clipboard read: Ctrl+V's comes with the key
+            ['Paste image', () => app.pasteFromMenu()],
             ['Copy adjustments', 'edit.copyAdjust', true],
             ['Paste adjustments', 'edit.pasteAdjust', true],
             '—',
