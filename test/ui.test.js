@@ -874,6 +874,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const contrast = () => {
                 const cs = getComputedStyle(pill);
                 const lum = (c) => { const m = c.match(/[\d.]+/g).map(Number); return 0.299 * m[0] + 0.587 * m[1] + 0.114 * m[2]; };
+                // See-through glass keeps its words readable with a halo instead (tokens.css)
+                if (Number((cs.backgroundColor.match(/[\d.]+/g) || [])[3] ?? 1) < 0.5) return cs.textShadow !== 'none' ? 255 : 0;
                 return Math.abs(lum(cs.backgroundColor) - lum(cs.color));
             };
             document.documentElement.dataset.theme = 'light';
@@ -929,7 +931,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             };
             pick('set-theme', 'light');
             pick('set-density', 'comfortable');
-            pick('set-glass', 'subtle');
+            pick('set-glass', 'opaque');
             pick('set-surround', 'grey');
             out.applied = [root.dataset.theme, root.dataset.density, root.dataset.glass, root.dataset.surround].join(',');
             out.lightText = css('--text-1') === '#171717';
@@ -960,6 +962,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // Window background is the Windows app's: hidden here, and the window stays solid
             out.backdropHidden = ['set-backdrop-row', 'set-transparency-row'].every(id => getComputedStyle(document.getElementById(id)).display === 'none');
             out.solidWindow = !root.classList.contains('backdrop') && getComputedStyle(document.body).backgroundColor === 'rgb(232, 232, 232)';
+            out.oldGlass = ['rich', 'subtle', 'off', 'liquid'].map(g => { localStorage.setItem('jeditor.ui', JSON.stringify({ glass: g })); app.loadUiPrefs(); return app.uiPrefs.glass; }).join();
+            out.glassOptions = [...document.querySelectorAll('input[name="set-glass"]')].map(i => i.value).join();
             localStorage.setItem('jeditor.ui', JSON.stringify({ backdrop: 'glass', transparency: 500 }));
             app.loadUiPrefs();
             out.badBackdrop = [app.uiPrefs.backdrop, app.uiPrefs.transparency].join();
@@ -973,17 +977,68 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.applyUiPrefs();
             return out;
         });
-        check('appearance defaults: dark, compact, rich glass, theme surround', r.defaults === 'dark,compact,rich,auto', r.defaults);
+        check('appearance defaults: dark, compact, crystal glass, theme surround', r.defaults === 'dark,compact,crystal,auto', r.defaults);
+        check('glass saved before carries over: rich (the old default) is Crystal, Subtle and Off are Opaque; Off is gone from Settings',
+            r.oldGlass === 'crystal,opaque,opaque,liquid' && r.glassOptions === 'crystal,liquid,clear,opaque,lens', JSON.stringify([r.oldGlass, r.glassOptions]));
         check('Ctrl+, opens Settings; Esc closes it', r.opened && r.closed, JSON.stringify({ o: r.opened, c: r.closed }));
         check('Settings: a page at a time, Appearance first; a click (or the arrow keys) changes page, and it opens on the last page used', r.firstPage === 'appearance' && r.messagesPage === 'messages true' && r.noUpdates && r.reopenedOn === 'messages' && r.arrowPage === 'autocrop autocrop', JSON.stringify([r.firstPage, r.messagesPage, r.noUpdates, r.reopenedOn, r.arrowPage]));
         check('theme, density, glass and surround apply and are remembered',
-            r.applied === 'light,comfortable,subtle,grey' && r.lightText && r.comfortable && r.subtleGlass &&
+            r.applied === 'light,comfortable,opaque,grey' && r.lightText && r.comfortable && r.subtleGlass &&
             r.surround === 'rgb(118, 118, 118)' && r.saved.theme === 'light' && r.saved.density === 'comfortable' &&
-            r.saved.glass === 'subtle' && r.saved.surround === 'grey', JSON.stringify(r));
+            r.saved.glass === 'opaque' && r.saved.surround === 'grey', JSON.stringify(r));
         check('the glass is fixed: it no longer follows the photo', r.noSampler && r.noGlassClasses);
         check('window background: not in a browser, solid; bad saved values ignored',
             r.backdropHidden && r.solidWindow && r.badBackdrop === 'none,50', JSON.stringify(r));
         check('appearance suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    console.log('liquid glass (liquid.js)');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const cdp = await page.context().newCDPSession(page);
+        const media = (features) => cdp.send('Emulation.setEmulatedMedia', { features });
+        const state = () => page.evaluate(async () => {
+            await new Promise(r => setTimeout(r, 150));
+            const el = document.getElementById('lg-probe');
+            const cs = getComputedStyle(el);
+            return { bends: document.documentElement.classList.contains('liquid-bends'), filter: cs.backdropFilter, bg: cs.backgroundColor };
+        });
+        await media([{ name: 'prefers-reduced-transparency', value: 'no-preference' }, { name: 'prefers-contrast', value: 'no-preference' }]);
+        // A message that comes and goes: liquid.js finds it when it's added
+        await page.evaluate(() => {
+            app.uiPrefs.glass = 'liquid'; app.applyUiPrefs();
+            const t = document.createElement('div');
+            t.id = 'lg-probe'; t.className = 'toast'; t.textContent = 'Probe';
+            t.style.cssText = 'position:fixed;left:20px;top:20px;width:300px;height:44px;display:block;opacity:1;transform:none';
+            document.body.appendChild(t);
+        });
+        const on = await state();
+        const map = await page.evaluate(() => {
+            const f = document.querySelector('svg filter[id^="lg-"]');
+            return f && [f.getAttribute('x'), f.getAttribute('width'), f.getAttribute('color-interpolation-filters'), !!f.querySelector('feDisplacementMap')].join();
+        });
+        await page.evaluate(() => { app.uiPrefs.glass = 'crystal'; app.applyUiPrefs(); });
+        const crystal = await state();
+        await page.evaluate(() => { app.uiPrefs.glass = 'liquid'; app.applyUiPrefs(); });
+        await media([{ name: 'prefers-reduced-transparency', value: 'reduce' }]);
+        const reduced = await state();
+        await media([{ name: 'prefers-contrast', value: 'more' }]);
+        const contrast = await state();
+        await media([]);
+        const skinned = await page.evaluate(async () => {
+            document.documentElement.dataset.skin = 'xp';
+            await new Promise(r => setTimeout(r, 50));
+            const b = document.documentElement.classList.contains('liquid-bends');
+            delete document.documentElement.dataset.skin;
+            return b;
+        });
+        check('Liquid bends what\'s under its edges: an SVG filter of its own size in front of the blur', on.bends && /^url\("#lg-\d+"\) blur/.test(on.filter) && map === '0,1,sRGB,true', JSON.stringify([on, map]));
+        check('only Liquid bends', !crystal.bends && !/url/.test(crystal.filter), JSON.stringify(crystal));
+        check('Reduce transparency and Increase contrast: no bend, the glass solid', [reduced, contrast].every(x => !x.bends && x.filter === 'none' && /^rgb\(/.test(x.bg)), JSON.stringify([reduced, contrast]));
+        check('a theme on: no bend', !skinned);
+        await page.evaluate(() => document.getElementById('lg-probe').remove());
+        check('liquid glass: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 

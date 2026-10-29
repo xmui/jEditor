@@ -464,7 +464,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         const measure = async (theme, i) => {
             await page.evaluate(async ([t, i]) => {
                 app.uiPrefs.theme = t;
-                app.uiPrefs.glass = 'rich';
+                app.uiPrefs.glass = 'liquid';
                 app.applyUiPrefs();
                 app.setView('single');
                 app.loadIndex(i);
@@ -525,30 +525,12 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             // The top row moves the window; buttons in it don't
             out.drag = getComputedStyle(document.body, '::before').getPropertyValue('-webkit-app-region') || getComputedStyle(document.body, '::before').getPropertyValue('app-region');
             out.noDrag = getComputedStyle(document.querySelector('#header-controls button')).getPropertyValue('-webkit-app-region') || getComputedStyle(document.querySelector('#header-controls button')).getPropertyValue('app-region');
-            // Glass: Off is solid
-            app.uiPrefs.glass = 'off';
-            app.applyUiPrefs();
-            out.offFilter = css('.file-info', 'backdrop-filter');
-            out.offBg = css('.file-info', 'background-color');
-            app.uiPrefs.glass = 'rich';
-            app.applyUiPrefs();
             return out;
         });
         check('the Mac\'s glass: blurred, with light along its edge', r.platform === 'mac' && /blur\(20px\)/.test(r.filter) && /inset/.test(r.rim), JSON.stringify([r.filter, r.rim]));
         check('the photo is never under glass', r.photoClear && (!r.photoFilter || r.photoFilter === 'none'), JSON.stringify([r.photoClear, r.photoFilter]));
         check('the traffic lights get their room, and give it back in full screen', r.lightsRoom === 72 && r.fullscreenRoom === 0, JSON.stringify([r.lightsRoom, r.fullscreenRoom]));
         check('the top row moves the window, its buttons don\'t', r.drag === 'drag' && r.noDrag === 'no-drag', JSON.stringify([r.drag, r.noDrag]));
-        check('Glass: Off is solid', r.offFilter === 'none' && /^rgb\(/.test(r.offBg), JSON.stringify([r.offFilter, r.offBg]));
-        await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }] });
-        const offReduced = await page.evaluate(() => {
-            app.uiPrefs.glass = 'off';
-            app.applyUiPrefs();
-            const bg = getComputedStyle(document.querySelector('.file-info')).backgroundColor;
-            app.uiPrefs.glass = 'rich';
-            app.applyUiPrefs();
-            return bg;
-        });
-        check('... even with reduced transparency', /^rgb\(/.test(offReduced), offReduced);
 
         // Reduce transparency (System Settings → Accessibility): solid
         await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }] });

@@ -19,11 +19,16 @@ something new.
   clutter. When in doubt, show less.
 - **The photo comes first.** The photo and the colour behind it stay solid.
   Glass is for the controls, never the photos, and doesn't bend what's
-  under it: nothing may throw off someone judging colour. Labels drawn on a
+  under it, in every option but Liquid: nothing may throw off someone
+  judging colour. Liquid is optional and is Apple's Liquid Glass, so it
+  bends what's under its edges, even over photos (`app/liquid.js`; the
+  owner, 2026-10-29: the old "never bend" was only about speed). Labels drawn on a
   photo are dark in every theme (`--on-photo-*`).
 - **Always readable.** Text over glass keeps 7:1, secondary text 4.5:1, over
-  a pure white and a pure black photo. Reduce transparency, Increase
-  contrast and Glass: off make it solid.
+  a pure white and a pure black photo. Reduce transparency and Increase
+  contrast make it solid (there's no Glass: off any more). On the clear
+  glasses a halo behind the words does it (`--halo-dark`, `--halo-light`);
+  measure it round the letters, not only behind the pill.
 - **Calm.** Short, quiet transitions (`--dur-*`, `--ease-*`), nothing that
   bounces for show. Reduced motion means a plain fade or nothing.
 - **It fits any window.** 800×600 with Comfortable density is the worst
@@ -34,6 +39,9 @@ something new.
   a Mac, Finder or Explorer or Files) and its own feel (Liquid Glass on
   macOS 26, Mica on Windows 11). Wording and feel come from
   `Host.platform()`; whether a feature exists comes from `Host.has()`.
+- **Glass options,** in this order: Crystal (the default), Liquid, Clear,
+  Opaque, Lens (2026-10-29). Saved Subtle and Off are Opaque; the old
+  default ("rich") is Crystal.
 - **Plain words.** Short and in sentence case, saying what it does: "Turn
   upright", "Find dust", "Move to…" (with "…" when it opens a window).
   Tooltips are "Name (key)". Match the words around it: Adjust's panels say
@@ -58,7 +66,7 @@ something new.
    the same in every theme (a handle drawn on the photo, the transparency
    checkerboard, a hue wheel), with a comment saying so.
 2. **jEditor's own look.** Check it dark and light, Comfortable density,
-   Glass subtle and off, another accent colour, Reduce transparency,
+   Glass Crystal, Liquid and Opaque, another accent colour, Reduce transparency,
    Windows' window background (`.backdrop`) and each platform
    (`data-platform`).
 3. **Drawn on a canvas.** A canvas doesn't inherit CSS: read the tokens it
