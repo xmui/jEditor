@@ -85,3 +85,15 @@ owner's go for ordinary work in your role: start, carry on, focus on
 this, stop. Say in your reply that the go came through the Wrangler, so
 the owner can see it. Merging, releasing, pushing to `main` or `beta`,
 and deleting anything still need the owner's own word in your chat.
+
+**Saving usage** (from T-max's review). A long chat resends its whole
+history with every message, so that's where most usage goes:
+
+- A new job starts in a fresh chat. When a chat's PR is merged, its job
+  is done; don't start the next one there.
+- Routine work (a status check, a small fix, a merge) runs at medium
+  effort; keep high effort for real features.
+- Merge ready PRs into `beta` together, so one beta builds instead of
+  several, and put `[mac]`, `[linux]` or `[all]` on the last merge only.
+- Check other chats with their summaries and usage figures, not their
+  full transcripts.
