@@ -2783,7 +2783,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             Folders.openPicker([f('a.jpg')], 'copy');
             out.rows = rows().join(' | ');
             [...document.querySelectorAll('#fp-list .fp-row')].find(r => /Choose a folder/.test(r.textContent)).click();
-            await new Promise(res => { const t = setInterval(async () => { if (/a \(2\)/.test(await names(away))) { clearInterval(t); res(); } }, 50); });
+            // Done copying (Ctrl+Z can undo it), not just started: the name
+            // is there as soon as the copy begins
+            await new Promise(res => { const t = setInterval(() => { if ((app._undoStack || []).some(e => e.type === 'folder-out')) { clearInterval(t); res(); } }, 50); });
             out.copied = await names(away);
             await app.undo();
             out.uncopied = await names(away);
