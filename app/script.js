@@ -440,7 +440,8 @@ const app = {
     APPEARANCE: {
         theme: ['dark', 'light', 'system'],
         density: ['compact', 'comfortable'],
-        glass: ['rich', 'lens', 'subtle', 'off'], // rich is Liquid (tokens.css)
+        glass: ['rich', 'clear', 'crystal', 'lens', 'subtle', 'off'], // rich is Liquid (tokens.css)
+        tint: ['none', 'accent', 'warm', 'cool', 'rose'], // Settings → Glass tint, over any glass
         motion: ['on', 'off'], // Settings → Animations (motion.js); the system's Reduce motion turns them off too
         surround: ['auto', 'black', 'grey', 'light'],
         backdrop: ['none', 'mica', 'acrylic'] // the Windows app only (applyBackdrop)
@@ -470,6 +471,7 @@ const app = {
             skinSettings: {}, // each theme's own settings, by theme
             density: 'compact',
             glass: 'rich',
+            tint: 'none',
             motion: 'on',
             surround: 'auto',
             backdrop: 'none', // Settings → Window background: none (solid), mica or acrylic
@@ -643,6 +645,7 @@ const app = {
         root.dataset.theme = theme;
         root.dataset.density = p.density;
         root.dataset.glass = p.glass;
+        root.dataset.tint = p.tint;
         root.dataset.motion = p.motion;
         root.dataset.surround = p.surround;
         root.style.setProperty('--window-tint', `${100 - p.transparency}%`);
