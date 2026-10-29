@@ -153,7 +153,9 @@ const Motion = {
             const before = same ? self.snap() : null;
             const out = render.apply(this, args);
             mark();
-            requestAnimationFrame(() => { if (before) self.flip(before); else self.ripple(); });
+            // Measured now, not a frame later: only what the drawing moved
+            // slides, not a tile size changed after it (the size slider)
+            if (before) self.flip(before); else requestAnimationFrame(() => self.ripple());
             return out;
         };
         const remove = app.removeFilesFromApp;
