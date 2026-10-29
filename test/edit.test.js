@@ -608,6 +608,72 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- HEIC: decoded by libheif (codec.js), never written, like a RAW ----
+    if (wanted('heic')) {
+        console.log('heic (codec.js, codec-worker.js, codecs/heif_dec.js)');
+        const { page, issues } = await open();
+        // 64 × 64, from libheif's own test files (fuzzing/data/corpus/colors-no-alpha.heic)
+        const HEIC = 'AAAAGGZ0eXBoZWljAAAAAG1pZjFoZWljAAABLm1ldGEAAAAAAAAAIWhkbHIAAAAAAAAAAHBpY3QAAAAAAAAAAAAAAAAAAAAADnBpdG0AAAAAAAEAAAAiaWxvYwAAAABEQAABAAEAAAAAAU4AAQAAAAAAAAClAAAAI2lpbmYAAAAAAAEAAAAVaW5mZQIAAAAAAQAAaHZjMQAAAACuaXBycAAAAJFpcGNvAAAAdWh2Y0MBA3AAAAAAAAAAAAAe8AD8/fj4AAAPAyAAAQAYQAEMAf//A3AAAAMAkAAAAwAAAwAeugJAIQABAChCAQEDcAAAAwCQAAADAAADAB6gIIEFlupJKa5sCAAAAwAIAAADAAhAIgABAAdEAcFysCJAAAAAFGlzcGUAAAAAAAAAQAAAAEAAAAAVaXBtYQAAAAAAAAABAAECgQIAAACtbWRhdAAAAKEmAa8TgIGSEXXAGM2sfMMD8HKXsBNBYjkEW6//QKl1HfLCc/SN/bWOG2ARaa8rk4JsxRuKJFz/vIlnrSBv0Pk7pYMv503LniUfVt0RGOMyTBZVcbnDhlXs0nsTVObq7679Fh7MfXPARYndCrwpKWSNTQcCjNVYWPVOenDxU81lLBnE070xnN107IoLiTNywdiNWzedf/q6zzV3iwZflrO94A==';
+        await page.evaluate((b) => { window.HEIC = new Blob([Uint8Array.from(atob(b), c => c.charCodeAt(0))], { type: 'image/heic' }); }, HEIC);
+        const r = await page.evaluate(async () => {
+            let step = 'names';
+            try {
+                const out = {};
+                out.names = [app.isImage('IMG_1.HEIC'), app.isImage('a.heif'), app.isImage('DSC1.HIF'), Codec.isHeif('a.jpg'), Codec.decoded('a.heic')].join();
+                step = 'decode';
+                const img = await pixels(await Codec.showable(new File([HEIC], 'IMG_1.heic')));
+                const d = img.data, seen = new Set();
+                for (let i = 0; i < d.length; i += 4 * 97) seen.add(d[i] >> 5 << 10 | d[i + 1] >> 5 << 5 | d[i + 2] >> 5);
+                out.decoded = [img.width, img.height, d[3] === 255, seen.size > 1];
+                step = 'project';
+                const dir = await openProject('heics', { 'IMG_1.heic': HEIC, 'b.jpg': await canvasBlob(scene(80, 60), 'image/jpeg', 0.9) });
+                const f = (n) => app.files.find(x => x.name === n);
+                const same = async () => { const a = new Uint8Array(await (await (await dir.getFileHandle('IMG_1.heic')).getFile()).arrayBuffer()), b = new Uint8Array(await HEIC.arrayBuffer()); return a.length === b.length && a.every((v, i) => v === b[i]); };
+                await until(() => f('IMG_1.heic').thumbnailUrl);
+                out.thumb = !!f('IMG_1.heic').thumbnailUrl;
+                step = 'viewer';
+                app.openSingle(f('IMG_1.heic'));
+                const src = await app.getDisplaySource(f('IMG_1.heic'));
+                const shown = await pixels(src.blob || await (await fetch(src.url)).blob());
+                out.viewer = [shown.width, shown.height];
+                // A turn: kept as an edit, the HEIC untouched
+                step = 'turn';
+                await app.rotateImage(f('IMG_1.heic'), 90);
+                await sleep(100);
+                out.turnKept = !!(f('IMG_1.heic')._edit && f('IMG_1.heic')._edit.q === 1) && await same();
+                // Export: a JPEG copy, named .jpg
+                step = 'export';
+                const prompt0 = UI.prompt;
+                UI.prompt = async () => '';
+                await app.exportCopies([f('IMG_1.heic')]);
+                const ex = await (await (await dir.getDirectoryHandle('jEditor Export')).getFileHandle('IMG_1.jpg')).getFile();
+                out.exported = [ex.type || 'image/jpeg', (await pixels(ex)).width, new Uint8Array(await ex.slice(0, 2).arrayBuffer()).join()];
+                // Save edits: exported, never written
+                step = 'save';
+                const choose = UI.choose;
+                UI.choose = async () => 'ok';
+                await Edits.saveAll({ list: [f('IMG_1.heic')] });
+                UI.choose = choose;
+                UI.prompt = prompt0;
+                out.saveNotWritten = await same() && !!f('IMG_1.heic')._edit;
+                // Convert: to WebP, whatever its size
+                step = 'convert';
+                const conv = await Codec.encode(await app.readImage(f('IMG_1.heic')), 'webp', 80);
+                out.converted = [conv.w, conv.h, conv.bytes.length > 0];
+                await Edits.flush();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('heic: .heic, .heif and .hif are photos, decoded by the codecs', r.names === 'true,true,true,false,true', JSON.stringify(r));
+        check('heic: decoded by the bundled libheif, 64 × 64, opaque, in colour', String(r.decoded) === '64,64,true,true', JSON.stringify(r));
+        check('heic: listed with a thumbnail, and shown', r.thumb && String(r.viewer) === '64,64', JSON.stringify(r));
+        check('heic: a turn is kept as an edit, the HEIC never written; Save edits exports instead', r.turnKept && r.saveNotWritten, JSON.stringify(r));
+        check('heic: Export writes a JPEG copy, IMG_1.jpg', r.exported && r.exported[1] === 64 && r.exported[2] === '255,216', JSON.stringify(r));
+        check('heic: Convert encodes it (to WebP)', String(r.converted) === '64,64,true', JSON.stringify(r));
+        check('heic: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Paint ----
     if (wanted('paint')) {
         console.log('paint (paint.js, paint-editor.js)');

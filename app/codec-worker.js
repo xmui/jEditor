@@ -1,18 +1,18 @@
 // The codecs the browser engine hasn't got, off the page (codec.js runs a
-// few of these): AVIF and JPEG XL written, JPEG XL read, from the
-// WebAssembly builds in codecs/ (jSquash: libavif and libjxl); TIFF read
+// few of these): AVIF and JPEG XL written, JPEG XL and HEIC read, from the
+// WebAssembly builds in codecs/ (jSquash: libavif and libjxl; libheif); TIFF read
 // and written by tiff-codec.js. WebP, JPEG and PNG are written here too, by the
 // engine, so every format goes the same way.
 // A module worker: codec.js starts it with { type: 'module' }.
 //
 //   { op: 'encode', file, format, quality, crop, preview }
 //       → { bytes, w, h, rgb, preview }
-//       file: a Blob of any picture the engine reads (or a JPEG XL or TIFF);
+//       file: a Blob of any picture the engine reads (or a JPEG XL, HEIC or TIFF);
 //       crop: { x, y, w, h } of the upright picture, or { size } for a
 //       square that size from its middle: a sample;
 //       rgb: the picture's average colour; preview: the result, decoded
 //       again, as a PNG (for the close-up)
-//   { op: 'decode', file } → { png, w, h }   (a JPEG XL or TIFF, for showing it)
+//   { op: 'decode', file } → { png, w, h }   (a JPEG XL, HEIC or TIFF, for showing it)
 
 import { decodeTiff, encodeTiff } from './tiff-codec.js';
 
@@ -20,10 +20,18 @@ const modules = {};
 
 // A codec, loaded the first time it's wanted. The wasm is fetched here and
 // handed over, so how a host labels .wasm files doesn't matter
+// (libheif's is inside its .js)
 function codec(name) {
     if (!modules[name]) {
         modules[name] = (async () => {
             const { default: factory } = await import(`./codecs/${name}.js`);
+            if (name === 'heif_dec') {
+                let up;
+                const ready = new Promise(r => { up = r; });
+                const m = await factory({ onRuntimeInitialized: () => up() });
+                if (!m.calledRun) await ready;
+                return m;
+            }
             const res = await fetch(new URL(`./codecs/${name}.wasm`, import.meta.url));
             if (!res.ok) throw new Error(`${name}.wasm: ${res.status}`);
             return factory({ noInitialRun: true, wasmBinary: await res.arrayBuffer() });
@@ -35,10 +43,31 @@ function codec(name) {
 
 const isJxl = (blob) => blob.type === 'image/jxl' || (blob.name && /\.jxl$/i.test(blob.name));
 const isTiff = (blob) => blob.type === 'image/tiff' || (blob.name && /\.tiff?$/i.test(blob.name));
+const isHeif = (blob) => /^image\/hei[cf]/.test(blob.type) || (blob.name && /\.(heic|heif|hif)$/i.test(blob.name));
+
+// A HEIC or HEIF: its main picture (an iPhone's, or a burst's first),
+// upright (libheif turns and mirrors it as the file says)
+async function heif(blob) {
+    const m = await codec('heif_dec');
+    const dec = new m.HeifDecoder();
+    try {
+        const all = dec.decode(new Uint8Array(await blob.arrayBuffer()));
+        const im = all.find(i => i.is_primary()) || all[0];
+        if (!im) throw new Error('not a HEIC picture');
+        const img = new ImageData(im.get_width(), im.get_height());
+        const ok = await new Promise(r => im.display(img, r));
+        all.forEach(i => i.free());
+        if (!ok) throw new Error('the HEIC picture couldn\'t be decoded');
+        return img;
+    } finally {
+        if (dec.decoder) m.heif_context_free(dec.decoder);
+    }
+}
 
 // The picture, upright, as RGBA
 async function pixels(blob) {
     if (isTiff(blob)) return decodeTiff(await blob.arrayBuffer());
+    if (isHeif(blob)) return heif(blob);
     if (isJxl(blob)) {
         const m = await codec('jxl_dec');
         const img = m.decode(await blob.arrayBuffer());
