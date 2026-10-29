@@ -596,7 +596,8 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 if (r.off > 2) offRow.push(`${where} at ${scale * 100}%: ${r.off}px off ${r.by}`);
             }
         }
-        await page.evaluate(async () => { await Modes.go('photos'); app.uiPrefs.scale = 1; app.applyUiPrefs(); });
+        // Back to 100%, kept: the next windows open with this profile
+        await page.evaluate(async () => { await Modes.go('photos'); app.uiPrefs.scale = 1; app.applyUiPrefs(); app.saveUiPrefs(); });
         check('the traffic lights, the top row and Photos · Adjust · Paint clear of each other, at every Toolbar size', overlaps.length === 0, overlaps.join('; '));
         check('... the lights in line with the pill beside them (in Adjust and Paint, the mode chip)', offRow.length === 0, offRow.join('; '));
         // macOS 26's toolbar holds the top row (its own part, below, needs a

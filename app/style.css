@@ -8460,7 +8460,9 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    the traffic lights, and what was below the pills starts below it. Over
    Adjust and Paint it steps aside (bridge.js) and their head is the top
    row, with the mode chip in it, as before macOS 26. */
-:root.native-toolbar {
+/* (As particular as the Mac's own --top-row, above, to win over it: AppKit's
+   toolbar doesn't grow with Toolbar size) */
+:root[data-platform="mac"].native-toolbar {
     /* The toolbar, and a strip under it that moves the window too */
     --top-row: calc(52px + var(--mac-drag));
 }
