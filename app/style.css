@@ -8350,6 +8350,17 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     left: calc(var(--gutter) + var(--lights-w));
 }
 
+/* The mode chip on its own (single view; over Adjust and Paint) makes room
+   for them too */
+:root[data-platform="mac"]:not([data-skin]) .mode-float {
+    top: calc(var(--gutter) + var(--mac-drag));
+    left: calc(var(--gutter) + var(--lights-w));
+}
+
+:root[data-platform="mac"]:not([data-skin]) .mode-float.over-mode {
+    top: 8px;
+}
+
 /* The top row drags the window... */
 :root[data-platform="mac"]:not([data-skin]) body::before {
     content: "";
