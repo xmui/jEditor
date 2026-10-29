@@ -1735,10 +1735,11 @@ body[data-view="single"] .edits-bar {
     left: var(--gutter);
     bottom: var(--gutter);
     z-index: var(--z-chrome);
-    width: var(--rail-w, 240px);
+    width: var(--rail-now, 240px);
     display: flex;
     flex-direction: column;
     padding: var(--sp-2);
+    container: rail / inline-size;
     border-radius: var(--r-lg);
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
@@ -1751,7 +1752,36 @@ body[data-view="single"] .edits-bar {
 
 :root {
     --rail-w: 240px;
-    --rail-room: calc(var(--gutter) + var(--rail-w) + var(--sp-4));
+    /* The width dragged to (--side-rail, script.js: initSidebarResize),
+       never more than half the window */
+    --rail-now: min(var(--side-rail, var(--rail-w)), 50vw);
+    --rail-room: calc(var(--gutter) + var(--rail-now) + var(--sp-4));
+}
+
+/* A sidebar's inner edge: drag it to resize the sidebar, double-click for
+   its own width again (script.js: initSidebarResize) */
+.side-grip {
+    flex: none;
+    position: relative;
+    z-index: 2;
+    width: 6px;
+    margin: 0 -3px;
+    cursor: ew-resize;
+    background: transparent;
+    transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.side-grip:hover,
+.side-grip.dragging {
+    background: var(--accent-soft);
+}
+
+.folder-rail > .side-grip {
+    position: absolute;
+    top: var(--r-lg);
+    bottom: var(--r-lg);
+    right: -3px;
+    margin: 0;
 }
 
 .folder-tree {
@@ -4648,7 +4678,7 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 }
 
 .adj-panel {
-    width: 300px;
+    width: min(var(--side-adjust, 300px), 45vw);
     flex: none;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -5120,6 +5150,9 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
         border-left: 0;
         border-top: 1px solid var(--border);
     }
+    .adj-body > .side-grip {
+        display: none;
+    }
     .mode-head-acts .mode-head-sep,
     #adj-copy,
     #adj-paste {
@@ -5258,7 +5291,7 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 }
 
 .paint-panel {
-    width: 260px;
+    width: min(var(--side-paint, 260px), 45vw);
     flex: none;
     display: flex;
     flex-direction: column;
@@ -5468,6 +5501,9 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
         padding-top: 0;
         border-left: 0;
         border-top: 1px solid var(--border);
+    }
+    .paint-body > .side-grip {
+        display: none;
     }
     .paint-palette {
         grid-template-columns: repeat(16, 1fr);
@@ -8149,6 +8185,22 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     flex-shrink: 0;
     color: var(--text-2);
     font-size: var(--fs-small);
+}
+
+/* No count yet: no room kept for one */
+.sb-row .fr-count:empty {
+    display: none;
+}
+
+/* A narrow sidebar: the name keeps its room. The date goes (it's in the
+   project's card), and Pin and Open take room only while the pointer is on
+   the row (both are in its right-click menu too); the name is in full on
+   hover */
+@container rail (max-width: 279px) {
+    .sb-meta,
+    .sb-row:not(:hover, :focus-within) :is(.sb-pin:not(.on), .sb-open) {
+        display: none;
+    }
 }
 
 .sb-row .fr-count {

@@ -213,7 +213,7 @@
     color: #000;
     font: 11px var(--xp-font);
 }
-:root[data-skin="xp"] .folder-rail { border-right: 1px solid var(--o-line); }
+:root[data-skin="xp"] .folder-rail { width: min(var(--side-rail, 210px), 50vw); border-right: 1px solid var(--o-line); }
 :root[data-skin="xp"] .mode-seg { display: none; }
 /* the pane's title, like "Getting Started" with its arrows and close */
 :root[data-skin="xp"] .folder-rail::before,
@@ -281,6 +281,8 @@
 }
 :root[data-skin="xp"] .fr-row > svg { display: none; }
 :root[data-skin="xp"] .fr-row::before { content: ""; order: 1; flex: none; width: 16px; height: 16px; background: url(../xp/icons/folder16.png) no-repeat; }
+/* A project's or a drive's row has its own icon, so not the folder list's as well */
+:root[data-skin="xp"] .sb-row::before { content: none; }
 :root[data-skin="xp"] .fr-row.fr-all::before { background-image: url(../xp/icons/image16.png); }
 :root[data-skin="xp"] .fr-caret { order: 0; }
 :root[data-skin="xp"] .fr-name { order: 2; padding: 1px 2px; }

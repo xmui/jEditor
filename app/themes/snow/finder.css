@@ -248,7 +248,7 @@
 
 /* ---- The source list ---- */
 :root[data-skin="snow"] .folder-rail {
-    width: 200px;
+    width: min(var(--side-rail, 200px), 50vw);
     padding: 0;
     border: 0;
     border-right: 1px solid #8f8f8f;
@@ -290,6 +290,8 @@
     background: url(icons/folder16.png) no-repeat;
 }
 :root[data-skin="snow"] .fr-row.fr-all::before { background-image: url(icons/image16.png); }
+/* A project's or a drive's row has its own icon, so not the folder list's as well */
+:root[data-skin="snow"] .sb-row::before { content: none; }
 :root[data-skin="snow"] .fr-caret { order: 0; }
 :root[data-skin="snow"] .fr-name { order: 2; }
 :root[data-skin="snow"] .fr-count {

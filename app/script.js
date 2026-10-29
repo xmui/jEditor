@@ -292,6 +292,7 @@ const app = {
         this.initSettings();
 
         this.initStripResize();
+        this.initSidebarResize();
         this.initControlsAutoHide();
 
         // Apply saved layout (order, hidden buttons, orientation, scale,
@@ -453,6 +454,7 @@ const app = {
             vertical: false,
             scale: 1,
             stripHeight: 80,
+            sides: {}, // each sidebar's width as dragged (SIDEBARS); none: its own
             thumbContain: true, // fit whole image in tiles by default
             folderCache: true, // keep thumbnails / duplicate data with the order's data (folder-cache.js)
             autoUpdate: true, // the Windows app looks for a new version once a day
@@ -513,6 +515,11 @@ const app = {
                 if (typeof saved.vertical === 'boolean') this.uiPrefs.vertical = saved.vertical;
                 if (saved.scale >= 0.8 && saved.scale <= 1.6) this.uiPrefs.scale = saved.scale;
                 if (saved.stripHeight >= 50 && saved.stripHeight <= 240) this.uiPrefs.stripHeight = saved.stripHeight;
+                if (saved.sides && typeof saved.sides === 'object') {
+                    for (const [k, [lo, hi]] of Object.entries(this.SIDEBARS)) {
+                        if (saved.sides[k] >= lo && saved.sides[k] <= hi) this.uiPrefs.sides[k] = saved.sides[k];
+                    }
+                }
                 if (typeof saved.thumbContain === 'boolean') this.uiPrefs.thumbContain = saved.thumbContain;
                 if (typeof saved.folderCache === 'boolean') this.uiPrefs.folderCache = saved.folderCache;
                 if (typeof saved.autoCheck === 'boolean') this.uiPrefs.autoCheck = saved.autoCheck;
@@ -599,6 +606,7 @@ const app = {
         container.classList.toggle('vertical', !!p.vertical);
         document.documentElement.style.setProperty('--ui-scale', p.scale);
         document.documentElement.style.setProperty('--strip-height', `${p.stripHeight}px`);
+        for (const k of Object.keys(this.SIDEBARS)) this.setSideWidth(k, p.sides[k]);
 
         this.elements.gridView.classList.toggle('thumb-contain', !!p.thumbContain);
         this.elements.thumbnailStrip.classList.toggle('thumb-contain', !!p.thumbContain);
@@ -1018,6 +1026,62 @@ const app = {
     setStripHeight(px) {
         this.uiPrefs.stripHeight = Math.max(50, Math.min(240, Math.round(px)));
         document.documentElement.style.setProperty('--strip-height', `${this.uiPrefs.stripHeight}px`);
+    },
+
+    // ---- Sidebars resize (drag the inner edge) ----
+    // The folder list (Photos), Adjust's panel and Paint's: [narrowest,
+    // widest] in px. A width dragged to is --side-<name> on <html>, which
+    // style.css and the themes take before their own; double-click goes
+    // back to the sidebar's own width.
+
+    SIDEBARS: { rail: [180, 520], adjust: [260, 560], paint: [220, 560] },
+
+    initSidebarResize() {
+        for (const grip of document.querySelectorAll('.side-grip')) {
+            const side = grip.dataset.side;
+            const panel = side === 'rail' ? grip.parentElement : grip.nextElementSibling;
+            const dir = grip.dataset.edge === 'left' ? -1 : 1;
+            let startX = 0, startW = 0, zoom = 1;
+            grip.addEventListener('pointerdown', (e) => {
+                if (e.button !== 0) return;
+                zoom = parseFloat(getComputedStyle(panel).zoom) || 1;
+                startX = e.clientX;
+                startW = panel.getBoundingClientRect().width / zoom;
+                grip.setPointerCapture(e.pointerId);
+                grip.classList.add('dragging');
+                document.body.style.cursor = 'ew-resize';
+                e.preventDefault();
+            });
+            grip.addEventListener('pointermove', (e) => {
+                if (!grip.classList.contains('dragging')) return;
+                this.setSideWidth(side, startW + dir * (e.clientX - startX) / zoom);
+            });
+            const end = () => {
+                if (!grip.classList.contains('dragging')) return;
+                grip.classList.remove('dragging');
+                document.body.style.cursor = '';
+                this.saveUiPrefs();
+            };
+            grip.addEventListener('pointerup', end);
+            grip.addEventListener('pointercancel', end);
+            grip.addEventListener('dblclick', () => {
+                this.setSideWidth(side, null);
+                this.saveUiPrefs();
+            });
+        }
+    },
+
+    // px, or null for the sidebar's own width
+    setSideWidth(side, px) {
+        const [lo, hi] = this.SIDEBARS[side];
+        const root = document.documentElement.style;
+        if (px === null || px === undefined) {
+            delete this.uiPrefs.sides[side];
+            root.removeProperty(`--side-${side}`);
+            return;
+        }
+        this.uiPrefs.sides[side] = Math.max(lo, Math.min(hi, Math.round(px)));
+        root.setProperty(`--side-${side}`, `${this.uiPrefs.sides[side]}px`);
     },
 
     toggleThumbnailFit() {

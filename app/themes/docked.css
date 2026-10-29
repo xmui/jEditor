@@ -80,6 +80,11 @@
     -webkit-backdrop-filter: none;
 }
 :root[data-layout~="docked"] .interface.rail-open .grid-view { padding-left: 0; }
+/* The edge between the sidebar and the photos is a plain splitter, as a
+   desktop app's was: the pointer changes, nothing lights up */
+:root[data-layout~="docked"] .side-grip:is(:hover, .dragging) { background: none; }
+/* Inside the sidebar's edge: a theme's sidebar may clip what's outside it */
+:root[data-layout~="docked"] .folder-rail > .side-grip { top: 0; bottom: 0; right: 0; width: 5px; }
 :root[data-layout~="docked"] #main-view,
 :root[data-layout~="docked"] .grid-view { grid-area: main; min-height: 0; }
 :root[data-layout~="docked"] .grid-view { padding: var(--dock-grid-pad, 16px); }
