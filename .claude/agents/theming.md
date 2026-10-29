@@ -28,7 +28,10 @@ something new.
   a pure white and a pure black photo. Reduce transparency and Increase
   contrast make it solid (there's no Glass: off any more). On the clear
   glasses a halo behind the words does it (`--halo-dark`, `--halo-light`);
-  measure it round the letters, not only behind the pill.
+  measure it round the letters, not only behind the pill. The exception,
+  the owner's call (2026-10-29): Crystal and Liquid keep their look over a
+  plain white or black photo, where secondary text drops to about 3:1;
+  the glass alone must still give text 3:1 there (`test/mac.test.js`).
 - **Calm.** Short, quiet transitions (`--dur-*`, `--ease-*`), nothing that
   bounces for show. Reduced motion means a plain fade or nothing.
 - **It fits any window.** 800×600 with Comfortable density is the worst
