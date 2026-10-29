@@ -119,7 +119,8 @@ function split(sel) {
 for (const f of files) {
     const folder = f.includes('/') ? f.split('/')[0] : null;
     const skin = folder && (themes.find(t => t.id === folder) || {}).skin;
-    const scope = skin ? new RegExp(`^:root\\[data-skin="${skin}"\\]`) : /^:root\[data-layout~?="/;
+    // (or :where(…) round it, to scope a rule without adding specificity)
+    const scope = skin ? new RegExp(`^(:where\\()?:root\\[data-skin="${skin}"\\]`) : /^:root\[data-layout~?="/;
     const leaks = selectors(css(f)).flatMap(split).filter(s => !scope.test(s) && !/^(from|to|[\d.]+%)$/.test(s));
     check(`${f}: every rule is scoped to ${skin ? `data-skin="${skin}"` : 'the docked layout'}`, !leaks.length, leaks.slice(0, 5).join(' | '));
 }

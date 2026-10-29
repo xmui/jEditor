@@ -270,6 +270,8 @@
 }
 :root[data-skin="xp"] .adj-sec-head { margin-bottom: 6px; }
 :root[data-skin="xp"] .adj-look-tabs .adj-tab { padding: 0 2px; }
+/* Edit · Retouch · Masks: a property sheet's tabs, as wide as their words */
+:root[data-skin="xp"] .adj-pane-tabs .adj-tab { flex: none; }
 /* the histogram and the curve: in a sunken box */
 :root[data-skin="xp"] .adj-hist,
 :root[data-skin="xp"] .adj-curve,
