@@ -511,6 +511,8 @@ const Adjust = {
     pickWhite(on = !this.picking) {
         if (on && !this.ready) return;
         this.picking = on;
+        // W shows the button it presses: Edit, with Basic open
+        if (on) { this.showPane('edit'); this.el('adj-basic-sec').open = true; }
         this.root.classList.toggle('adj-picking', on);
         this.el('adj-wb-pick').setAttribute('aria-pressed', String(on));
         if (on) this.app.showToast('Click something that should be white or grey (Esc to stop)', 2400, null, null, { kind: 'adjust' });
