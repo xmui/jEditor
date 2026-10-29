@@ -286,8 +286,8 @@ const Blank = {
     },
 
     // Untitled, Untitled-2, Untitled-3… whichever isn't there
-    freeName(base) {
-        const taken = this.taken(this.can() ? (this.folder !== null && this.folder !== undefined ? this.folder : Folders.newFolderParent()) : null);
+    freeName(base, folder = this.can() ? (this.folder !== null && this.folder !== undefined ? this.folder : Folders.newFolderParent()) : null) {
+        const taken = this.taken(folder);
         for (let i = 1; i < 10000; i++) {
             const n = i === 1 ? base : `${base}-${i}`;
             if (!taken.has(`${n}.png`.toLowerCase())) return n;
@@ -418,10 +418,17 @@ const Blank = {
             if (!app.dirHandle || app.dirHandle === before || app.readOnlyMode) return null;
             folder = '';
         }
+        return this.place(() => this.render(w, h, fill, dpi), name, folder);
+    },
+
+    // A picture saved into the project as `name`, in `folder`, then shown
+    // and opened in Paint (a new canvas, or an image pasted). → the file
+    async place(made, name, folder) {
+        const app = this.app;
         const rel = folder ? `${folder}/${name}` : name;
         app.beginTask('blank', `Making ${name}…`);
         try {
-            const blob = await this.render(w, h, fill, dpi);
+            const blob = await made();
             const dir = await Folders.handleFor(folder);
             let exists = false;
             try { await dir.getFileHandle(name); exists = true; } catch (e) { /* free */ }
