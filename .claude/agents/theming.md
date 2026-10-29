@@ -30,8 +30,9 @@ something new.
   glasses a halo behind the words does it (`--halo-dark`, `--halo-light`);
   measure it round the letters, not only behind the pill. The exception,
   the owner's call (2026-10-29): Crystal and Liquid keep their look over a
-  plain white or black photo, where secondary text drops to about 3:1;
-  the glass alone must still give text 3:1 there (`test/mac.test.js`).
+  plain white or black photo. Round the letters, text there is about
+  4.2-4.5:1 and secondary text about 2:1; `test/mac.test.js` only keeps
+  the glass from getting any clearer.
 - **Calm.** Short, quiet transitions (`--dur-*`, `--ease-*`), nothing that
   bounces for show. Reduced motion means a plain fade or nothing.
 - **It fits any window.** 800×600 with Comfortable density is the worst
