@@ -7,7 +7,7 @@
    Switches live on <html> (set by applyUiPrefs in script.js):
      data-theme     dark | light            (Settings → Theme; "system" resolves to one)
      data-density   compact | comfortable   (Settings → Density)
-     data-glass     rich | clear | crystal | lens | subtle | off   (Settings → Glass: Liquid, Clear…)
+     data-glass     crystal | liquid | clear | opaque | lens   (Settings → Glass)
      data-tint      none | accent | warm | cool | rose   (Settings → Glass tint)
      data-platform  windows | mac | web     (host.js: the app jEditor runs in)
      data-surround  auto | black | dark | grey | light   (background behind photos)
@@ -148,15 +148,22 @@
     --highlight: inset 0 1px 0 rgb(255 255 255 / 0.06);
 
     /* ---- Glass (floating toolbars over photos) ----
-       Liquid (Settings → Glass; the value is still "rich"): Apple's Liquid
-       Glass, kept to the controls. Clear and deeply blurred, a faint sheen
-       from the top, and light caught on the curved edge, more along the
-       top left than the bottom right. The backdrop is darkened under it,
-       so text keeps 7:1 and secondary text 4.5:1 over a pure-white photo.
-       Never on the photos, and nothing under it is bent. Lens: thicker
-       glass, lit top and bottom. Subtle: near-solid, no blur. */
+       The frosted glass the others start from: deeply blurred, a faint
+       sheen from the top, and light caught on the curved edge, more along
+       the top left than the bottom right. The backdrop is darkened under
+       it, so text keeps 7:1 and secondary text 4.5:1 over a pure-white
+       photo. Never on the photos. Crystal (the default) and Clear: less
+       frost. Liquid: Apple's Liquid Glass, the only one that bends what's
+       under it (liquid.js). Lens: thicker glass, lit top and bottom.
+       Opaque: near-solid, no blur. */
     --glass-tint: transparent; /* Settings → Glass tint, over every glass */
     --glass-halo: none; /* behind the words, on glass too clear to keep them readable alone */
+    /* The halo itself: tight round each letter, where it counts, fading out.
+       It keeps text at 7:1 and secondary text at 4.5:1 against what's
+       right round them, over a white photo or a black one, and shows only
+       where the photo would make the words hard to read */
+    --halo-dark: 0 0 1px rgb(0 0 0 / 0.95), 0 0 2px rgb(0 0 0 / 0.9), 0 0 5px rgb(0 0 0 / 0.7);
+    --halo-light: 0 0 1px rgb(255 255 255 / 0.95), 0 0 2px rgb(255 255 255 / 0.9), 0 0 5px rgb(255 255 255 / 0.75);
     --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0) 45%), rgb(28 28 30 / 0.56);
     --glass-border: transparent;
     --glass-filter: blur(24px) saturate(200%) brightness(0.34);
@@ -226,6 +233,38 @@
     --glass-rim: inset 1px 1px 0 -0.5px rgb(255 255 255 / 0.95), inset -1px -1px 0 -0.5px rgb(255 255 255 / 0.5);
 }
 
+/* ---- Glass: liquid. Apple's Liquid Glass: thin, nearly clear glass
+   whose edge bends what's under it (liquid.js adds the bend, where the
+   browser can draw it; elsewhere it's the same glass, unbent). A bright
+   specular rim on the top left, a fainter one where the light leaves at
+   the bottom right, a sheen from the top and depth at the bottom. As
+   clear as Crystal, nearly unblurred, so the photo shows through and
+   bends; a halo behind the words keeps them readable, as on Crystal ---- */
+:root[data-glass="liquid"] {
+    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box,
+        radial-gradient(130% 160% at 0% 0%, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0) 45%),
+        linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0) 40%), rgb(255 255 255 / 0.03);
+    --glass-filter: blur(1.5px) saturate(180%) brightness(0.72);
+    --glass-rim: inset 1.5px 1.5px 0 -1px rgb(255 255 255 / 0.70), inset -1.5px -1.5px 0 -1px rgb(255 255 255 / 0.40),
+        inset 0 0 0 0.5px rgb(255 255 255 / 0.12), inset 0 8px 14px -10px rgb(255 255 255 / 0.35), inset 0 -8px 14px -10px rgb(0 0 0 / 0.30);
+    --glass-halo: var(--halo-dark);
+    --shadow-2: 0 10px 30px rgb(0 0 0 / 0.28), 0 2px 6px rgb(0 0 0 / 0.20);
+    --lg-bezel: 24px; /* how far in from the edge the glass bends (liquid.js; at most half the part) */
+    --lg-depth: 26px; /* how far it bends at the very edge */
+}
+
+:root[data-glass="liquid"][data-theme="light"] {
+    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box,
+        radial-gradient(130% 160% at 0% 0%, rgb(255 255 255 / 0.55), rgb(255 255 255 / 0) 45%),
+        linear-gradient(180deg, rgb(255 255 255 / 0.30), rgb(255 255 255 / 0) 40%), rgb(255 255 255 / 0.18);
+    --glass-border: rgb(0 0 0 / 0.06);
+    --glass-filter: blur(1.5px) saturate(150%) contrast(0.7) brightness(1.4);
+    --glass-rim: inset 1.5px 1.5px 0 -1px #fff, inset -1.5px -1.5px 0 -1px rgb(255 255 255 / 0.8),
+        inset 0 8px 14px -10px rgb(255 255 255 / 0.9), inset 0 -8px 14px -10px rgb(0 0 0 / 0.10);
+    --glass-halo: var(--halo-light);
+    --shadow-2: 0 10px 30px rgb(0 0 0 / 0.14), 0 2px 6px rgb(0 0 0 / 0.08);
+}
+
 /* ---- Glass: lens. A bubble of thick grey glass: lit from the top,
    a bevel catching light along the top edge and fainter along the
    bottom, and a soft halo behind the words, which keep it readable over
@@ -236,7 +275,7 @@
     --glass-border: transparent;
     --glass-filter: blur(26px) saturate(170%) brightness(0.5);
     --glass-rim: inset 0 1px 1px rgb(255 255 255 / 0.25), inset 0 -1px 1px rgb(0 0 0 / 0.15);
-    --glass-halo: 0 0 6px rgb(0 0 0 / 0.55), 0 1px 2px rgb(0 0 0 / 0.5);
+    --glass-halo: var(--halo-dark);
     --shadow-2: 0 8px 24px rgb(0 0 0 / 0.35), 0 0 0 0.5px rgb(0 0 0 / 0.3);
 }
 
@@ -245,7 +284,7 @@
         linear-gradient(180deg, #fff, rgb(255 255 255 / 0.3) 50%, rgb(0 0 0 / 0.14)) border-box;
     --glass-filter: blur(26px) saturate(110%) contrast(0.5) brightness(1.6);
     --glass-rim: inset 0 1px 1px #fff, inset 0 -1px 1px rgb(0 0 0 / 0.06);
-    --glass-halo: 0 0 6px rgb(255 255 255 / 0.7);
+    --glass-halo: var(--halo-light);
     --shadow-2: 0 8px 24px rgb(0 0 0 / 0.14), 0 0 0 0.5px rgb(0 0 0 / 0.12);
 }
 
@@ -255,14 +294,14 @@
 :root[data-glass="clear"] {
     --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(20 20 22 / 0.30);
     --glass-filter: blur(14px) saturate(190%) brightness(0.62);
-    --glass-halo: 0 0 6px rgb(0 0 0 / 0.6), 0 1px 2px rgb(0 0 0 / 0.55);
+    --glass-halo: var(--halo-dark);
     --shadow-2: 0 12px 40px rgb(0 0 0 / 0.35), 0 2px 6px rgb(0 0 0 / 0.18);
 }
 
 :root[data-glass="crystal"] {
     --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(255 255 255 / 0.06);
     --glass-filter: blur(8px) saturate(220%) brightness(0.68);
-    --glass-halo: 0 0 6px rgb(0 0 0 / 0.65), 0 1px 2px rgb(0 0 0 / 0.6);
+    --glass-halo: var(--halo-dark);
     --shadow-2: 0 12px 40px rgb(0 0 0 / 0.3);
 }
 
@@ -270,7 +309,7 @@
 :root[data-glass="crystal"][data-theme="light"] {
     --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(255 255 255 / 0.40);
     --glass-filter: blur(14px) saturate(140%) contrast(0.6) brightness(1.5);
-    --glass-halo: 0 0 6px rgb(255 255 255 / 0.75);
+    --glass-halo: var(--halo-light);
     --shadow-2: 0 12px 40px rgb(0 0 0 / 0.12);
 }
 
@@ -285,51 +324,30 @@
 :root[data-tint="cool"]   { --glass-tint: rgb(90 170 255 / 0.12); }
 :root[data-tint="rose"]   { --glass-tint: rgb(255 110 170 / 0.12); }
 
-/* ---- Glass: subtle (performance, or the OS asks for less transparency) ---- */
-:root[data-glass="subtle"] {
+/* ---- Glass: opaque (performance, or a plainer look) ---- */
+:root[data-glass="opaque"] {
     --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(24 24 24 / 0.94);
     --glass-filter: none;
     --glass-border: rgb(255 255 255 / 0.10);
     --glass-rim: var(--highlight);
 }
 
-:root[data-theme="light"][data-glass="subtle"] {
+:root[data-theme="light"][data-glass="opaque"] {
     --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(250 250 250 / 0.95);
     --glass-border: rgb(0 0 0 / 0.10);
 }
 
-@media (prefers-reduced-transparency: reduce) {
-    :root,
-    :root[data-glass="lens"],
-    :root[data-glass="clear"],
-    :root[data-glass="crystal"] {
+/* ---- Reduce transparency or Increase contrast (the system's): fully
+   solid, whichever glass is chosen (html: above every glass's own rules) ---- */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+    html:root[data-glass][data-theme] {
         --glass-halo: none;
-        --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(24 24 24 / 0.94);
+        --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, var(--bg-raised);
         --glass-filter: none;
-        --glass-border: rgb(255 255 255 / 0.10);
+        --glass-border: var(--border);
         --glass-rim: var(--highlight);
         --backdrop-tint: 100%;
     }
-    :root[data-theme="light"],
-    :root[data-glass="lens"][data-theme="light"],
-    :root[data-glass="clear"][data-theme="light"],
-    :root[data-glass="crystal"][data-theme="light"] {
-        --glass-halo: none;
-        --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, rgb(250 250 250 / 0.95);
-        --glass-filter: none;
-        --glass-border: rgb(0 0 0 / 0.10);
-        --glass-rim: var(--highlight);
-    }
-}
-
-/* ---- Glass: off (solid, everywhere; after the media query above, so
-   reduced transparency can't make it any less solid) ---- */
-:root[data-glass="off"] {
-    --glass-halo: none;
-    --glass-bg: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box, var(--bg-raised);
-    --glass-filter: none;
-    --glass-border: var(--border);
-    --glass-rim: var(--highlight);
 }
 
 /* ---- Density: comfortable ---- */

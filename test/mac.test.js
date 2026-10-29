@@ -461,10 +461,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
 
         // The pill's glass alone (its text hidden), over each photo, against
         // the theme's text colors
-        const measure = async (theme, i) => {
-            await page.evaluate(async ([t, i]) => {
+        const measure = async (theme, i, glass) => {
+            await page.evaluate(async ([t, i, glass]) => {
                 app.uiPrefs.theme = t;
-                app.uiPrefs.glass = 'rich';
+                app.uiPrefs.glass = glass;
                 app.applyUiPrefs();
                 app.setView('single');
                 app.loadIndex(i);
@@ -473,7 +473,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 s.id = 'hide-text';
                 s.textContent = '.file-info, .file-info * { color: transparent !important; } .file-info svg { visibility: hidden; }';
                 document.head.appendChild(s);
-            }, [theme, i]);
+            }, [theme, i, glass]);
             await page.waitForTimeout(300);
             const box = await page.evaluate(() => {
                 const r = document.querySelector('.file-info').getBoundingClientRect();
@@ -494,11 +494,16 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             return { bg, c1: +contrast(box.text1, bg).toFixed(2), c2: +contrast(box.text2, bg).toFixed(2) };
         };
         const m = {};
-        for (const theme of ['dark', 'light']) for (const [i, photo] of [[0, 'white'], [1, 'black']]) m[`${theme} over ${photo}`] = await measure(theme, i);
-        const worst = Object.entries(m).sort((a, b) => a[1].c2 - b[1].c2)[0];
-        check('the glass keeps text readable over any photo: 7:1 for text, 4.5:1 for secondary text (measured on screen)',
-            Object.values(m).every(v => v.c1 >= 7 && v.c2 >= 4.5), JSON.stringify(m));
-        console.log(`        (lowest: secondary text ${worst[1].c2}:1, ${worst[0]})`);
+        // The default glass (Crystal) and Liquid
+        for (const glass of ['crystal', 'liquid']) for (const theme of ['dark', 'light']) for (const [i, photo] of [[0, 'white'], [1, 'black']]) m[`${glass}, ${theme} over ${photo}`] = await measure(theme, i, glass);
+        const worst = Object.entries(m).sort((a, b) => a[1].c1 - b[1].c1)[0];
+        // Crystal and Liquid keep their look over plain white or black, the
+        // owner's call (2026-10-29): there the halo round the letters does the
+        // rest (ui.test.js). This only keeps the glass from getting clearer
+        // than it is (both give about 2.9-3.1:1 here)
+        check('the glass alone keeps text 2.5:1 over a plain white or black photo (measured on screen)',
+            Object.values(m).every(v => v.c1 >= 2.5), JSON.stringify(m));
+        console.log(`        (lowest: text ${worst[1].c1}:1, ${worst[0]})`);
 
         const r = await page.evaluate(async () => {
             const out = {};
@@ -525,30 +530,12 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             // The top row moves the window; buttons in it don't
             out.drag = getComputedStyle(document.body, '::before').getPropertyValue('-webkit-app-region') || getComputedStyle(document.body, '::before').getPropertyValue('app-region');
             out.noDrag = getComputedStyle(document.querySelector('#header-controls button')).getPropertyValue('-webkit-app-region') || getComputedStyle(document.querySelector('#header-controls button')).getPropertyValue('app-region');
-            // Glass: Off is solid
-            app.uiPrefs.glass = 'off';
-            app.applyUiPrefs();
-            out.offFilter = css('.file-info', 'backdrop-filter');
-            out.offBg = css('.file-info', 'background-color');
-            app.uiPrefs.glass = 'rich';
-            app.applyUiPrefs();
             return out;
         });
-        check('the Mac\'s glass: blurred, with light along its edge', r.platform === 'mac' && /blur\(20px\)/.test(r.filter) && /inset/.test(r.rim), JSON.stringify([r.filter, r.rim]));
+        check('the Mac\'s glass: blurred, with light along its edge', r.platform === 'mac' && /blur\(\d/.test(r.filter) && /inset/.test(r.rim), JSON.stringify([r.filter, r.rim]));
         check('the photo is never under glass', r.photoClear && (!r.photoFilter || r.photoFilter === 'none'), JSON.stringify([r.photoClear, r.photoFilter]));
         check('the traffic lights get their room, and give it back in full screen', r.lightsRoom === 72 && r.fullscreenRoom === 0, JSON.stringify([r.lightsRoom, r.fullscreenRoom]));
         check('the top row moves the window, its buttons don\'t', r.drag === 'drag' && r.noDrag === 'no-drag', JSON.stringify([r.drag, r.noDrag]));
-        check('Glass: Off is solid', r.offFilter === 'none' && /^rgb\(/.test(r.offBg), JSON.stringify([r.offFilter, r.offBg]));
-        await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }] });
-        const offReduced = await page.evaluate(() => {
-            app.uiPrefs.glass = 'off';
-            app.applyUiPrefs();
-            const bg = getComputedStyle(document.querySelector('.file-info')).backgroundColor;
-            app.uiPrefs.glass = 'rich';
-            app.applyUiPrefs();
-            return bg;
-        });
-        check('... even with reduced transparency', /^rgb\(/.test(offReduced), offReduced);
 
         // Reduce transparency (System Settings → Accessibility): solid
         await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }] });

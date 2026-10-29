@@ -447,7 +447,7 @@ const app = {
     APPEARANCE: {
         theme: ['dark', 'light', 'system'],
         density: ['compact', 'comfortable'],
-        glass: ['rich', 'clear', 'crystal', 'lens', 'subtle', 'off'], // rich is Liquid (tokens.css)
+        glass: ['crystal', 'liquid', 'clear', 'opaque', 'lens'], // Settings → Glass (tokens.css; liquid.js bends Liquid's edges)
         tint: ['none', 'accent', 'warm', 'cool', 'rose'], // Settings → Glass tint, over any glass
         motion: ['on', 'off'], // Settings → Animations (motion.js); the system's Reduce motion turns them off too
         surround: ['auto', 'black', 'grey', 'light'],
@@ -477,7 +477,7 @@ const app = {
             skin: '', // a theme (themes.js): 'xp/royale'; '' is jEditor's own look
             skinSettings: {}, // each theme's own settings, by theme
             density: 'compact',
-            glass: 'rich',
+            glass: 'crystal',
             tint: 'none',
             motion: 'on',
             surround: 'auto',
@@ -560,6 +560,10 @@ const app = {
                         this.uiPrefs.skinSettings[theme] = Object.fromEntries(Object.entries(kept).filter(([, v]) => typeof v === 'string'));
                     }
                 }
+                // Glass as saved before: Subtle and Off are Opaque now, and
+                // "rich", the old default (then Liquid), is the new default, Crystal
+                const oldGlass = { rich: 'crystal', subtle: 'opaque', off: 'opaque' }[saved.glass];
+                if (oldGlass) saved.glass = oldGlass;
                 for (const [k, allowed] of Object.entries(this.APPEARANCE)) {
                     if (allowed.includes(saved[k])) this.uiPrefs[k] = saved[k];
                 }

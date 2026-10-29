@@ -796,6 +796,12 @@ body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
     white-space: nowrap;
 }
 
+/* In jEditor's own look the photo number is as bright as the name: grey
+   was too faint on the clear glasses (the themes keep their own) */
+:root:not([data-skin]) #file-count {
+    color: var(--text-1);
+}
+
 .sort-control {
     display: flex;
     align-items: center;
@@ -1407,9 +1413,9 @@ header:has(.header-controls.expanded) {
     color: var(--flag-rescan);
 }
 
-/* Subtle glass: no blur anywhere, including the small chips on every tile */
-:root[data-glass="subtle"] .tile-folder,
-:root[data-glass="subtle"] .tile-flags {
+/* Opaque glass: no blur anywhere, including the small chips on every tile */
+:root[data-glass="opaque"] .tile-folder,
+:root[data-glass="opaque"] .tile-flags {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
 }
@@ -1448,7 +1454,7 @@ header:has(.header-controls.expanded) {
     height: 10px;
 }
 
-:root[data-glass="subtle"] .tile-edit {
+:root[data-glass="opaque"] .tile-edit {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
 }
@@ -8442,11 +8448,7 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
         color-mix(in srgb, var(--bg-canvas) 72%, transparent);
 }
 
-:root[data-platform="mac"]:not([data-skin])[data-glass="off"] .drop-zone {
-    background: var(--bg-canvas);
-}
-
-@media (prefers-reduced-transparency: reduce) {
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
     :root[data-platform="mac"]:not([data-skin]) .drop-zone {
         background: var(--bg-canvas);
     }
@@ -8502,13 +8504,7 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     margin-top: var(--top-row);
 }
 
-:root.native-toolbar[data-glass="off"] .interface::before {
-    background: var(--bg-canvas);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-}
-
-@media (prefers-reduced-transparency: reduce) {
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
     :root.native-toolbar .interface::before {
         background: var(--bg-canvas);
         backdrop-filter: none;
@@ -8654,11 +8650,21 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     transition: opacity var(--dur-base) var(--ease-out);
 }
 
-/* Lens, Clear and Crystal glass are too light to keep words readable on
-   their own over a bright photo: a soft halo behind them does
-   (--glass-halo, tokens.css; none on the other glass) */
-:root:not([data-skin]) :is(.toolbar, .file-info, .folder-rail, #context-menu) {
+/* Lens, Clear, Crystal and Liquid glass are too light to keep words
+   readable on their own over a bright photo: a halo behind them does
+   (--glass-halo, tokens.css; none on Opaque). Buttons and fields too,
+   which the browser gives no shadow of their own */
+:root:not([data-skin]) :is(.toolbar, .file-info, .folder-rail, #context-menu, .task-pill, .toast, .picked-bar),
+:root:not([data-skin]) :is(.toolbar, .file-info, .folder-rail, #context-menu, .task-pill, .toast, .picked-bar) :is(button, input, select) {
     text-shadow: var(--glass-halo);
+}
+
+/* Liquid: the glass bends what's under its edges. liquid.js draws the bend
+   for each part's size and shape (--lg-bend: an SVG filter); until it has,
+   or where the browser can't draw it, the glass is the same, unbent */
+:root.liquid-bends :is(.toolbar, .file-info, .folder-rail, #context-menu, .task-pill, .toast, .picked-bar) {
+    backdrop-filter: var(--lg-bend, ) var(--glass-filter);
+    -webkit-backdrop-filter: var(--lg-bend, ) var(--glass-filter);
 }
 
 /* Lens: the sidebar is no panel, its folders on the window with a faint
@@ -8753,13 +8759,13 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 /* Scrolling the grid: photos ease in as they come up from the bottom and
    ease out as they go under the top, done by the browser as it scrolls
    (nothing runs for it), and only at the edges: in the middle they're
-   still and whole. Not in a huge folder's grid, which builds its tiles as
-   it scrolls (grid-windowed, motion.js): there it would cost a frame. No
-   fill: the tiles out of sight keep their real size, where the grid
-   measures them (gridY, revealInGrid) */
+   still and whole. In a huge folder's grid, which builds its tiles as it
+   scrolls, not while it jumps (grid-jump, motion.js): it would cost a
+   frame there. No fill: the tiles out of sight keep their real size,
+   where the grid measures them (gridY, revealInGrid) */
 @supports (animation-timeline: view()) {
     @media (prefers-reduced-motion: no-preference) {
-        :root:not([data-skin]):not([data-motion="off"]) .grid-view:not(.grid-windowed) .grid-item:not(.is-new) {
+        :root:not([data-skin]):not([data-motion="off"]) .grid-view:not(.grid-jump) .grid-item:not(.is-new) {
             animation: tile-woosh linear;
             animation-timeline: view();
             animation-range: cover 0% cover 100%;
@@ -8768,10 +8774,10 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 }
 
 @keyframes tile-woosh {
-    0% { opacity: 0.25; scale: 0.88; }
-    18% { opacity: 1; scale: 1; }
-    86% { opacity: 1; scale: 1; }
-    100% { opacity: 0.4; scale: 0.94; }
+    0% { opacity: 0.1; scale: 0.8; }
+    20% { opacity: 1; scale: 1; }
+    84% { opacity: 1; scale: 1; }
+    100% { opacity: 0.2; scale: 0.88; }
 }
 
 @keyframes turn-left {
