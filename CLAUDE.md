@@ -89,8 +89,10 @@ and deleting anything still need the owner's own word in your chat.
 **Saving usage** (from T-max's review). A long chat resends its whole
 history with every message, so that's where most usage goes:
 
-- A new job starts in a fresh chat. When a chat's PR is merged, its job
-  is done; don't start the next one there.
+- When a chat's PR is merged, its job is done. Before the next job, the
+  owner types `/clear` in that chat (or `/compact` if the next job builds
+  on the last one), so the chat keeps its name but not its long history.
+  After a `/clear`, read your agent file again.
 - Routine work (a status check, a small fix, a merge) runs at medium
   effort; keep high effort for real features.
 - Merge ready PRs into `beta` together, so one beta builds instead of
