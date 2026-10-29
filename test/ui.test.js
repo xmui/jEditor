@@ -3489,6 +3489,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const sky = S.draw(900, 600, '#888', [{ x: 450, y: 300, w: 900, h: 600, angle: 0, kind: 'sky' }], {});
             const plain = S.draw(900, 600, '#888', [{ x: 450, y: 300, w: 900, h: 600, angle: 0 }], {});
             out.notScans = !PhotoFind.single(sky, 900, 600, { strict: true }) && !PhotoFind.single(plain, 900, 600, { strict: true });
+            // The map-to-boxes finder, fitted at full detail (crop-boxes.js)
+            const bp = { x: 1350, y: 1560, w: 1500, h: 1080, angle: 2.3 };
+            const bf = CropAuto.find(S.draw(2700, 3300, lid, [bp], { noise: 6, dust: true }), 2700, 3300, { scan: true, boxes: true });
+            out.boxes = bf ? S.err(bf.corners, bp) : 999;
+            out.boxesNotScans = !CropBoxes.single(sky, 900, 600, { strict: true }) && !CropBoxes.single(plain, 900, 600, { strict: true });
             return out;
         });
         const ok = (k, n, e) => r[k] && r[k].n === n && r[k].err <= e;
@@ -3498,6 +3503,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('finder: six prints at once', ok('six', 6, 4), JSON.stringify(r.six));
         check('finder: a feeder page (two backgrounds), tilted', r.feeder <= 4, String(r.feeder));
         check('finder: ordinary photos (one with a plain sky) aren\'t taken for scans', r.notScans);
+        check('finder: map to boxes, fitted at full detail: a tilted print to within 2 px; not a photo', r.boxes <= 2 && r.boxesNotScans, JSON.stringify([r.boxes, r.boxesNotScans]));
         check('finder suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

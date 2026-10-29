@@ -299,6 +299,7 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `convert.js`: Convert (photos to AVIF, JPEG XL or WebP: the quality and close-up, the storage now and after, the dots)
 - `codec.js`, `codec-worker.js`, `codecs/`, `tiff-codec.js`: writing AVIF, JPEG XL, WebP, JPEG, PNG and TIFF, and reading JPEG XL and TIFF, in workers (libavif and libjxl as WebAssembly; TIFF jEditor's own)
 - `crop-auto.js`: finding the print on a scan (Auto)
+- `crop-boxes.js`: Auto's map-to-boxes finder and full-detail edge fit (being scored; `CropAuto.find(..., { boxes: true })`)
 - `changelog.js`: the list of changes shown in What's new, and the release notes
 - `meta.js`: reading and copying JPEG/PNG metadata, and EXIF in WebP, AVIF and JPEG XL
 - `dupes.js`: duplicate finder

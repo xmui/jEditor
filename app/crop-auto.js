@@ -148,10 +148,12 @@ const CropAuto = {
     // feeder: it's a sheet-feeder page; scan: it's a scan (just scanned,
     // or a box of Preview and crop). Neither: could be any photo, so only a
     // scan that plainly is one is cropped. PhotoFind does the finding; the
-    // feeder finder below is the feeder's second chance.
-    find(src, W, H, { feeder = false, scan = false } = {}) {
+    // feeder finder below is the feeder's second chance. boxes: the map-to-
+    // boxes finder, fitted at full detail (crop-boxes.js), instead of
+    // PhotoFind's; being scored on the test sets before it's the default.
+    find(src, W, H, { feeder = false, scan = false, boxes = false } = {}) {
         const strict = !feeder && !scan;
-        return PhotoFind.single(src, W, H, { feeder, strict })
+        return (boxes ? CropBoxes : PhotoFind).single(src, W, H, { feeder, strict })
             || (feeder && this.detectFeeder(src, W, H))
             || this.detectStrips(src, W, H, { strict });
     },
