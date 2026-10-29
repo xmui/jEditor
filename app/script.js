@@ -6562,7 +6562,11 @@ const app = {
         return [
             ['flags', sel],
             ['—'],
+            // On the bar in the themes; in jEditor's own look only here (and [ ] Shift+A)
+            [`Rotate ${n} left`, () => this.rotateBulk(-90)],
+            [`Rotate ${n} right`, () => this.rotateBulk(90)],
             [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
+            [`Auto crop ${n}`, () => this.batchAutoCrop(sel)],
             [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy')],
             [`Export ${n}…`, () => Export.open({ files: sel })],
             [`Convert ${n}…`, () => Convert.open({ files: sel })],

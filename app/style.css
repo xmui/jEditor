@@ -8502,3 +8502,211 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
         -webkit-backdrop-filter: none;
     }
 }
+
+/* ==========================================================================
+   The sidebar and the selection bar, unified (jEditor's own look; each
+   theme dresses these parts its own way)
+   ========================================================================== */
+
+/* One set of corners: the sidebar's, and inside it (8px in) each part's
+   is the sidebar's less that. The mode switch is a pill, as the top bar */
+:root:not([data-skin]) .folder-rail {
+    border-radius: var(--r-xl);
+}
+
+:root:not([data-skin]) .mode-seg {
+    border-radius: var(--r-pill);
+}
+
+:root:not([data-skin]) .mode-seg > button {
+    border-radius: var(--r-pill);
+}
+
+/* The project: a heading, its name. What its buttons did is in
+   the … by it, and its right-click menu (places.js, cardItems) */
+:root:not([data-skin]) .sb-card {
+    position: relative;
+    padding: var(--sp-1) var(--sp-2) var(--sp-2);
+    background: none;
+}
+
+:root:not([data-skin]) .sb-card-btns,
+:root:not([data-skin]) .sb-card-export,
+:root:not([data-skin]) .sb-card-defer {
+    display: none;
+}
+
+:root:not([data-skin]) .sb-card-name {
+    font-size: var(--fs-title);
+    line-height: var(--lh-title);
+    padding-right: var(--ctl-sm);
+}
+
+:root:not([data-skin]) button.sb-card-name {
+    width: calc(100% + 2 * var(--sp-2) - var(--ctl-sm));
+    height: var(--ctl-sm);
+}
+
+
+.sb-card-more {
+    display: none;
+}
+
+:root:not([data-skin]) .sb-card-more {
+    display: inline-flex;
+    position: absolute;
+    top: 0;
+    right: 0;
+    border-radius: var(--r-pill);
+    color: var(--text-2);
+}
+
+/* The size is at the foot, for what's shown (and opens its details):
+   not again under the name */
+:root:not([data-skin]) .sb-card-meta {
+    display: none;
+}
+
+/* One kind of heading, in sentence case */
+:root:not([data-skin]) .sb-sec-btn,
+:root:not([data-skin]) .sb-sec-title {
+    color: var(--text-3);
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+:root:not([data-skin]) .sb-sec-btn:hover {
+    color: var(--text-1);
+}
+
+/* Choosing the projects folder is a row like the rest, not a button */
+:root:not([data-skin]) .sb-choose {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 6px;
+    height: var(--ctl-md);
+    padding: 0 var(--sp-2);
+    border: 1px solid transparent;
+    border-radius: var(--r-md);
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-2);
+    font-weight: var(--fw-regular);
+}
+
+:root:not([data-skin]) .sb-choose::before {
+    content: "+";
+    width: var(--icon-sm);
+    font-size: var(--fs-title);
+    text-align: center;
+}
+
+:root:not([data-skin]) .sb-choose:hover {
+    background: var(--tb-hover);
+    color: var(--text-1);
+}
+
+/* The selection bar: the count is quiet, the photos are what's chosen.
+   Rotate and Auto crop are in its … (and on [ ] Shift+A); the size slider
+   steps aside while it's up, so there's one pill */
+:root:not([data-skin]) .sel-count {
+    background: var(--seg-active);
+    color: var(--text-1);
+}
+
+:root:not([data-skin]) .sel-count:hover {
+    background: var(--tb-pressed);
+}
+
+:root:not([data-skin]) #selection-bar :is(#btn-rotate-left-bulk, #btn-rotate-right-bulk, #btn-auto-crop, .tb-sep) {
+    display: none;
+}
+
+:root:not([data-skin]) #selection-bar {
+    gap: var(--sp-1);
+}
+
+:root:not([data-skin]) #btn-trash {
+    color: var(--danger-text);
+}
+
+:root:not([data-skin]) .interface:has(#selection-bar:not(.hidden)) .grid-controls {
+    opacity: 0;
+    translate: 0 var(--sp-2);
+    pointer-events: none;
+}
+
+:root:not([data-skin]) .grid-controls {
+    transition: opacity var(--dur-base) var(--ease-out), translate var(--dur-base) var(--ease-out);
+}
+
+/* ---- Motion (motion.js): short, after the fact, never in the way ---- */
+
+.seg-glide {
+    display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    /* The mode switch: one highlight, gliding to the mode chosen */
+    :root:not([data-skin]) .mode-seg {
+        position: relative;
+    }
+
+    :root:not([data-skin]) .seg-glide {
+        display: block;
+        position: absolute;
+        border-radius: var(--r-pill);
+        background: var(--seg-active);
+        box-shadow: var(--shadow-1);
+        pointer-events: none;
+    }
+
+    :root:not([data-skin]) .mode-seg.glides .seg-glide {
+        transition: left var(--dur-slow) var(--ease-out), width var(--dur-slow) var(--ease-out), top var(--dur-slow) var(--ease-out);
+    }
+
+    :root:not([data-skin]) .mode-seg > button {
+        position: relative;
+    }
+
+    :root:not([data-skin]) .mode-seg > button.on {
+        background: transparent;
+        box-shadow: none;
+    }
+
+    /* A pill's button gives a little when pressed */
+    :root:not([data-skin]) :is(.tb-btn, .sel-count, .mode-seg > button, .seg > button) {
+        transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), scale var(--dur-fast) var(--ease-out);
+    }
+
+    :root:not([data-skin]) :is(.tb-btn, .sel-count, .mode-seg > button, .seg > button):active {
+        scale: 0.94;
+    }
+
+    /* Rotate: the arrow turns the way the photo did */
+    :root:not([data-skin]) .turn-left svg {
+        animation: turn-left var(--dur-slow) var(--ease-out);
+    }
+
+    :root:not([data-skin]) .turn-right svg {
+        animation: turn-right var(--dur-slow) var(--ease-out);
+    }
+
+    /* The count: the new number comes up from below */
+    :root:not([data-skin]) #selection-count.tick {
+        display: inline-block;
+        animation: count-tick var(--dur-base) var(--ease-out);
+    }
+}
+
+@keyframes turn-left {
+    from { rotate: 90deg; }
+}
+
+@keyframes turn-right {
+    from { rotate: -90deg; }
+}
+
+@keyframes count-tick {
+    from { opacity: 0.2; translate: 0 40%; }
+}

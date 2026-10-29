@@ -47,7 +47,8 @@ const Places = {
         reveal: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7"/><path d="M10 14 21 3"/><path d="M21 14v7H3V3h7"/></svg>',
         split: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>',
         plus: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
-        rename: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg>'
+        rename: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg>',
+        more: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="19" cy="12" r="1.25" fill="currentColor"/></svg>'
     },
 
     el(id) { return document.getElementById(id); },
@@ -97,7 +98,19 @@ const Places = {
         }
         this.el('sb-card').addEventListener('click', (e) => {
             const b = e.target.closest('button[data-act]');
-            if (b) this.cardAction(b.dataset.act);
+            if (!b) return;
+            if (b.dataset.act === 'more') {
+                e.stopPropagation();
+                const r = b.getBoundingClientRect();
+                this.app.openContextMenu(this.cardItems(), r.left, r.bottom + 4);
+            } else this.cardAction(b.dataset.act);
+        });
+        // Right-click the project: everything its buttons do
+        this.el('sb-card').addEventListener('contextmenu', (e) => {
+            if (!this.app.dirHandle) return;
+            e.preventDefault();
+            e.stopPropagation();
+            this.app.openContextMenu(this.cardItems(), e.clientX, e.clientY);
         });
         // Save edits when done (edits.js), for this project
         this.el('sb-card').addEventListener('change', async (e) => {
@@ -402,6 +415,9 @@ const Places = {
             (path
                 ? `<button class="sb-card-name" data-act="rename" title="${this.esc(app.dirHandle.name)} — click to rename">${this.icons.project}<span>${this.esc(app.dirHandle.name)}</span><span class="sb-card-edit" aria-hidden="true">${this.icons.rename}</span></button>`
                 : `<div class="sb-card-name" title="${this.esc(app.dirHandle.name)}">${this.icons.project}<span>${this.esc(app.dirHandle.name)}</span></div>`) +
+            // jEditor's own look keeps the card to its name: its buttons are
+            // in this menu (cardItems). The themes show the buttons instead
+            `<button class="btn ghost icon sm sb-card-more" data-act="more" title="More: ${Host.has('scan') ? 'scan, ' : ''}${path && Host.has('reveal') ? Host.words().files + ', ' : ''}export" aria-label="More" aria-haspopup="menu">${this.icons.more}</button>` +
             (path ? `<div class="sb-card-path" title="${this.esc(path)}">${this.esc(path)}</div>` : '') +
             `<div class="sb-card-meta">${n.toLocaleString()} photo${n === 1 ? '' : 's'} · ${app.formatBytes(bytes)}</div>` +
             `<div class="sb-card-btns">` +
@@ -417,6 +433,20 @@ const Places = {
         for (const box of this.boxes) {
             box.querySelectorAll('.sb-row').forEach(r => r.classList.toggle('active', this.key(r.dataset.path) === this.key(path)));
         }
+    },
+
+    // The card's buttons as a menu: the "…" by its name, or a right-click
+    cardItems() {
+        const path = this._currentPath, items = [];
+        if (Host.has('scan')) items.push(['Scan…', () => this.cardAction('scan')]);
+        if (path && Host.has('reveal')) items.push([Host.say('Show in {files}'), () => this.cardAction('reveal')]);
+        if (Host.has('windows')) items.push(['Split with another window', () => this.cardAction('split')]);
+        if (path) items.push([this.isPinned(path) ? 'Unpin' : 'Pin to the sidebar', () => this.cardAction('pin')]);
+        if (path) items.push(['Rename…', () => this.cardAction('rename')]);
+        items.push(['—']);
+        if (path) items.push(['Export…', () => this.cardAction('export')]);
+        if (!this.app.readOnlyMode) items.push([(Edits.defer ? '✓ ' : '') + 'Save edits when done', async () => { await Edits.setDefer(!Edits.defer); this.drawCard(); }]);
+        return items;
     },
 
     cardAction(act) {
