@@ -1596,7 +1596,7 @@ const app = {
             this.beginTask('scan', 'Opening…');
             this.elements.dropZone.classList.add('hidden');
             for (const h of handles) {
-                if (!h || !this.isImage(h.name) || Raw.is(h.name)) continue;
+                if (!h || !this.isImage(h.name) || Raw.is(h.name) || Codec.isHeif(h.name)) continue;
                 const f = await h.getFile();
                 this.files.push({ name: h.name, handle: h, size: f.size, lastModified: f.lastModified });
             }
@@ -1817,12 +1817,12 @@ const app = {
     },
 
     isImage(name) {
-        return /\.(jpg|jpeg|png|webp|gif|avif|jxl|tiff?)$/i.test(name) || Raw.is(name);
+        return /\.(jpg|jpeg|png|webp|gif|avif|jxl|tiff?|heic|heif|hif)$/i.test(name) || Raw.is(name);
     },
 
     // The photo's bytes to decode: the file, a RAW's own JPEG (raw.js), or
-    // a JPEG XL or TIFF decoded where the engine can't (codec.js). Never for
-    // writing: a RAW is never written
+    // a JPEG XL, HEIC or TIFF decoded where the engine can't (codec.js).
+    // Never for writing: a RAW or a HEIC is never written
     async readImage(file) {
         const data = await file.handle.getFile();
         if (Codec.decoded(file.name)) return Codec.showable(data);
@@ -6270,7 +6270,7 @@ const app = {
 
     // ---- Export copies ----
 
-    // Copies of `files` (edits in them, RAWs as JPEGs). From the Export
+    // Copies of `files` (edits in them, RAWs and HEICs as JPEGs). From the Export
     // window (export.js): `maxEdge` (0: full size) and `dir`, the folder
     // they go into, called `where`; else asked here, into "jEditor Export"
     // in the project
@@ -6301,12 +6301,15 @@ const app = {
             for (const f of list) {
                 try {
                     // A RAW: from its own JPEG, written as a JPEG (or the
-                    // format chosen)
-                    const raw = Raw.is(f.name);
+                    // format chosen). A HEIC: decoded (a PNG, or a JPEG when
+                    // edited), written as a JPEG (or the format chosen), with
+                    // the HEIC's EXIF
+                    const heif = Codec.isHeif(f.name);
+                    const raw = Raw.is(f.name) || heif;
                     const file = raw ? await this.readImage(f) : await f.handle.getFile();
-                    const from = raw ? 'jpeg' : this.formatOf(f.name);
-                    const to = format === 'same' ? from : format;
                     let out = f._edit ? await this.renderEdited(f, file) : file;
+                    const from = heif ? (out.type === 'image/jpeg' ? 'jpeg' : 'png') : raw ? 'jpeg' : this.formatOf(f.name);
+                    const to = format === 'same' ? (heif ? 'jpeg' : from) : format;
                     // Smaller, or another format: drawn again and written as that
                     let bmp = null, scale = 1;
                     if (maxEdge > 0 || to !== from) {
@@ -6320,7 +6323,7 @@ const app = {
                         canvas.width = Math.round(bmp.width * scale);
                         canvas.height = Math.round(bmp.height * scale);
                         canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
-                        out = await this.encodeAs(canvas, to === 'gif' ? 'jpeg' : to, new Uint8Array(await file.arrayBuffer()));
+                        out = await this.encodeAs(canvas, to === 'gif' ? 'jpeg' : to, new Uint8Array(await (heif ? await f.handle.getFile() : file).arrayBuffer()));
                         canvas.width = canvas.height = 0;
                     }
                     if (bmp) bmp.close();
@@ -6397,6 +6400,11 @@ const app = {
         if (!blob) throw new Error('encoding failed');
         // AVIF and JPEG XL: written by the codecs, in their own format, with their EXIF
         if (coded) return Codec.file(blob, coded, Codec.FORMATS[coded].quality, ImageMeta.exifOf(new Uint8Array(await (await f.handle.getFile()).arrayBuffer())));
+        // A HEIC (decoded already: never written): a JPEG, with the HEIC's EXIF
+        if (Codec.isHeif(f.name)) {
+            const exif = ImageMeta.exifOf(new Uint8Array(await (await f.handle.getFile()).arrayBuffer()));
+            return new Blob([Codec.withExif(new Uint8Array(await blob.arrayBuffer()), 'jpeg', exif, w, h)], { type });
+        }
         return ImageMeta.transplant(original, blob, type, w, h);
     },
 
@@ -7461,10 +7469,11 @@ const app = {
             this.showToast('Saving edits needs a folder opened with Open folder');
             return false;
         }
-        // RAW files are never written (raw.js): JPEG copies of them instead
-        const raws = list.filter(f => Raw.is(f.name));
+        // RAW and HEIC files are never written (raw.js, codec.js): JPEG copies of them instead
+        const never = (f) => Raw.is(f.name) || Codec.isHeif(f.name);
+        const raws = list.filter(never);
         if (raws.length) {
-            list = list.filter(f => !Raw.is(f.name));
+            list = list.filter(f => !never(f));
             await this.exportCopies(raws);
             if (!list.length) return true;
         }

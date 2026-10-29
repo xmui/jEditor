@@ -30,7 +30,8 @@
 // Photos that wouldn't get smaller are left as they are (in a lossy format:
 // to PNG or TIFF, they're converted whatever their size, and the storage
 // says how much more they'll take); RAW files and GIFs too, and photos
-// already in the format. Flags and edits go with each
+// already in the format. A HEIC is converted whatever its size, in any
+// format: it's converted so other apps can open it, and it's small already. Flags and edits go with each
 // photo; its EXIF too (meta.js), its pixels upright and in sRGB.
 
 const Convert = {
@@ -347,9 +348,10 @@ const Convert = {
                 const r = await Codec.encode(src, format, quality, { crop: { size: this.SAMPLE_SIZE }, preview: f === cur });
                 const side = Math.min(this.SAMPLE_SIZE, r.w, r.h);
                 // Bytes a pixel after, against the photo's bytes a pixel now
-                // (a lossy format leaves what wouldn't get smaller: at most as now)
+                // (a lossy format leaves what wouldn't get smaller: at most
+                // as now; a HEIC is converted whatever its size)
                 const per = (r.bytes.length / (side * side)) / ((await this.size(f)) / (r.w * r.h));
-                const ratio = lossless ? per : Math.min(1, per);
+                const ratio = lossless || Codec.isHeif(f.name) ? per : Math.min(1, per);
                 const d = Folders.dirOf(f);
                 if (!ratios.has(d)) ratios.set(d, []);
                 ratios.get(d).push(ratio);
@@ -622,8 +624,8 @@ const Convert = {
         run.colours[i] = r.rgb;
         const bytes = Codec.withExif(r.bytes, run.format, exif, r.w, r.h);
         run.before += before;
-        // Not worth it: left as it is
-        if (!Codec.FORMATS[run.format].lossless && bytes.length >= before * 0.97) {
+        // Not worth it: left as it is (a HEIC never is: it's converted to be opened elsewhere)
+        if (!Codec.FORMATS[run.format].lossless && !Codec.isHeif(f.name) && bytes.length >= before * 0.97) {
             run.after += before;
             run.same++;
             return;

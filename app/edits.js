@@ -83,10 +83,10 @@ const Edits = {
 
     // This photo's crops and turns are kept as an edit, not written: the
     // setting is on, or it has adjustments or paint (which always are), or
-    // it's a RAW (raw.js: never written), an AVIF or a JPEG XL (written
-    // only by Save edits, through the codecs: codec.js)
+    // it's a RAW or a HEIC (raw.js, codec.js: never written), an AVIF or a
+    // JPEG XL (written only by Save edits, through the codecs: codec.js)
     keeps(f) {
-        return this.on() || !!(this.canKeep() && f && ((f._edit && (f._edit.adj || f._edit.paint)) || Raw.is(f.name) || Codec.of(f.name)));
+        return this.on() || !!(this.canKeep() && f && ((f._edit && (f._edit.adj || f._edit.paint)) || Raw.is(f.name) || Codec.isHeif(f.name) || Codec.of(f.name)));
     },
 
     // An edit with these adjustments (null: none), its crop kept; from: the
