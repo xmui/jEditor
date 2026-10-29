@@ -411,12 +411,20 @@
 :root[data-skin="mac84"] .toast-icon { display: none; }
 
 /* ---- Scroll bars ---- */
+/* The theme's own scroll bars. style.css sets scrollbar-width and -color
+   on everything, and either one turns ::-webkit-scrollbar off: back to
+   auto here, at no specificity, so what hides its scroll bar still does */
+:where(:root[data-skin="mac84"]) * { scrollbar-width: auto; scrollbar-color: auto; }
 :root[data-skin="mac84"] ::-webkit-scrollbar { width: 16px; height: 16px; background: #fff; }
 :root[data-skin="mac84"] ::-webkit-scrollbar-track { background: var(--m-grey); border-left: 1px solid #000; }
 :root[data-skin="mac84"] ::-webkit-scrollbar-thumb { border: 1px solid #000; border-radius: 0; background: #fff; }
 :root[data-skin="mac84"] ::-webkit-scrollbar-button:single-button { display: block; width: 16px; height: 16px; border-left: 1px solid #000; background-color: #fff; }
 :root[data-skin="mac84"] ::-webkit-scrollbar-button:vertical:decrement { border-bottom: 1px solid #000; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' shape-rendering='crispEdges'%3E%3Cpath d='M5.5.5l5 5h-3v4h-4v-4h-3z' fill='%23fff' stroke='%23000'/%3E%3C/svg%3E") no-repeat center, #fff; }
 :root[data-skin="mac84"] ::-webkit-scrollbar-button:vertical:increment { border-top: 1px solid #000; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' shape-rendering='crispEdges'%3E%3Cpath d='M5.5 10.5l5-5h-3v-4h-4v4h-3z' fill='%23fff' stroke='%23000'/%3E%3C/svg%3E") no-repeat center, #fff; }
+:root[data-skin="mac84"] ::-webkit-scrollbar-track:horizontal { border-left: 0; border-top: 1px solid #000; }
+:root[data-skin="mac84"] ::-webkit-scrollbar-button:horizontal { border-left: 0; border-top: 1px solid #000; }
+:root[data-skin="mac84"] ::-webkit-scrollbar-button:horizontal:decrement { border-right: 1px solid #000; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' shape-rendering='crispEdges'%3E%3Cpath d='M.5 5.5l5-5v3h4v4h-4v3z' fill='%23fff' stroke='%23000'/%3E%3C/svg%3E") no-repeat center, #fff; }
+:root[data-skin="mac84"] ::-webkit-scrollbar-button:horizontal:increment { border-left: 1px solid #000; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' shape-rendering='crispEdges'%3E%3Cpath d='M10.5 5.5l-5-5v3h-4v4h4v3z' fill='%23fff' stroke='%23000'/%3E%3C/svg%3E") no-repeat center, #fff; }
 
 /* ==========================================================================
    Detail pass: one-bit icons drawn on the pixel grid instead of line icons

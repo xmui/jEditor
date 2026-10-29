@@ -143,6 +143,10 @@
 :root[data-skin="xp"] .btn > svg { display: none; }
 
 /* ---- Luna scroll bars ---- */
+/* The theme's own scroll bars. style.css sets scrollbar-width and -color
+   on everything, and either one turns ::-webkit-scrollbar off: back to
+   auto here, at no specificity, so what hides its scroll bar still does */
+:where(:root[data-skin="xp"]) * { scrollbar-width: auto; scrollbar-color: auto; }
 :root[data-skin="xp"] ::-webkit-scrollbar { width: 17px; height: 17px; background: #f7f6f2; }
 :root[data-skin="xp"] ::-webkit-scrollbar-track { background: linear-gradient(90deg, #eeede5, #f7f6f2 30%, #f7f6f2 70%, #eeede5); border: 0; }
 :root[data-skin="xp"] ::-webkit-scrollbar-thumb {
@@ -166,6 +170,19 @@
 }
 :root[data-skin="xp"] ::-webkit-scrollbar-button:vertical:increment {
     background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6'%3E%3Cpath d='M1 1l3.5 3.5L8 1' fill='none' stroke='%234d6185' stroke-width='2'/%3E%3C/svg%3E") no-repeat center, linear-gradient(90deg, #c9d8fc, #b3c9fb 60%, #a8c0f6);
+}
+/* Sideways: the same bar, turned */
+:root[data-skin="xp"] ::-webkit-scrollbar-track:horizontal { background: linear-gradient(180deg, #eeede5, #f7f6f2 30%, #f7f6f2 70%, #eeede5); }
+:root[data-skin="xp"] ::-webkit-scrollbar-thumb:horizontal {
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cg fill='%23eef4fe'%3E%3Crect x='0' width='1' height='7'/%3E%3Crect x='2' width='1' height='7'/%3E%3Crect x='4' width='1' height='7'/%3E%3Crect x='6' width='1' height='7'/%3E%3C/g%3E%3Cg fill='%238cb0f8'%3E%3Crect x='1' y='1' width='1' height='7'/%3E%3Crect x='3' y='1' width='1' height='7'/%3E%3Crect x='5' y='1' width='1' height='7'/%3E%3Crect x='7' y='1' width='1' height='7'/%3E%3C/g%3E%3C/svg%3E") no-repeat center,
+        linear-gradient(180deg, #c9d8fc, #bacffd 40%, #b3c9fb 60%, #a8c0f6);
+}
+:root[data-skin="xp"] ::-webkit-scrollbar-button:horizontal:decrement {
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='9'%3E%3Cpath d='M5 1L1.5 4.5 5 8' fill='none' stroke='%234d6185' stroke-width='2'/%3E%3C/svg%3E") no-repeat center, linear-gradient(180deg, #c9d8fc, #b3c9fb 60%, #a8c0f6);
+}
+:root[data-skin="xp"] ::-webkit-scrollbar-button:horizontal:increment {
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='9'%3E%3Cpath d='M1 1l3.5 3.5L1 8' fill='none' stroke='%234d6185' stroke-width='2'/%3E%3C/svg%3E") no-repeat center, linear-gradient(180deg, #c9d8fc, #b3c9fb 60%, #a8c0f6);
 }
 
 /* Toasts: the notification balloon */

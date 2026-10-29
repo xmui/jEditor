@@ -131,6 +131,11 @@
 :root[data-skin="snow"] ::-webkit-scrollbar-button:single-button { box-shadow: inset 1px 0 0 #111; }
 :root[data-skin="snow"] ::-webkit-scrollbar-button:vertical:decrement { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='5'%3E%3Cpath d='M0 5l3.5-5L7 5z' fill='%23ccc'/%3E%3C/svg%3E") no-repeat center, linear-gradient(90deg, #2a2a2a, #3a3a3a 50%, #2e2e2e); }
 :root[data-skin="snow"] ::-webkit-scrollbar-button:vertical:increment { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='5'%3E%3Cpath d='M0 0l3.5 5L7 0z' fill='%23ccc'/%3E%3C/svg%3E") no-repeat center, linear-gradient(90deg, #2a2a2a, #3a3a3a 50%, #2e2e2e); }
+:root[data-skin="snow"] ::-webkit-scrollbar-track:horizontal { background: linear-gradient(180deg, #1a1a1a, #2a2a2a); box-shadow: inset 0 1px 0 #111; }
+:root[data-skin="snow"] ::-webkit-scrollbar-thumb:horizontal { background: linear-gradient(180deg, #7a7a7a, #9a9a9a 45%, #858585 60%, #6a6a6a); background-clip: padding-box; }
+:root[data-skin="snow"] ::-webkit-scrollbar-button:horizontal { box-shadow: inset 0 1px 0 #111; }
+:root[data-skin="snow"] ::-webkit-scrollbar-button:horizontal:decrement { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='7'%3E%3Cpath d='M5 0L0 3.5 5 7z' fill='%23ccc'/%3E%3C/svg%3E") no-repeat center, linear-gradient(180deg, #2a2a2a, #3a3a3a 50%, #2e2e2e); }
+:root[data-skin="snow"] ::-webkit-scrollbar-button:horizontal:increment { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='7'%3E%3Cpath d='M0 0l5 3.5L0 7z' fill='%23ccc'/%3E%3C/svg%3E") no-repeat center, linear-gradient(180deg, #2a2a2a, #3a3a3a 50%, #2e2e2e); }
 :root[data-skin="snow"] ::-webkit-scrollbar-track { background: linear-gradient(90deg, #1a1a1a, #2a2a2a); box-shadow: inset 1px 0 0 #111; }
 
 /* ---- Windows, sheets and controls, in graphite (controls.css, modes.css
