@@ -8752,10 +8752,11 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 /* Scrolling the grid: photos ease in as they come up from the bottom and
    ease out as they go under the top, done by the browser as it scrolls
    (nothing runs for it), and only at the edges: in the middle they're
-   still and whole */
+   still and whole. Not in a huge folder's grid, which builds its tiles as
+   it scrolls (grid-windowed, motion.js): there it would cost a frame */
 @supports (animation-timeline: view()) {
     @media (prefers-reduced-motion: no-preference) {
-        :root:not([data-skin]):not([data-motion="off"]) .grid-view .grid-item:not(.is-new) {
+        :root:not([data-skin]):not([data-motion="off"]) .grid-view:not(.grid-windowed) .grid-item:not(.is-new) {
             animation: tile-woosh linear both;
             animation-timeline: view();
             animation-range: cover 0% cover 100%;

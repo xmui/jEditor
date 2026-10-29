@@ -120,7 +120,11 @@ const Motion = {
         const self = this;
         const render = app.renderGrid;
         app.renderGrid = function (...args) {
-            if (!self.on()) return render.apply(this, args);
+            // A huge folder's grid builds its tiles as it scrolls (gridWindow):
+            // there the tiles don't ease in and out (style.css), it would cost
+            // a frame on each page scrolled
+            const mark = () => this.elements.gridView.classList.toggle('grid-windowed', !!this._gridWin);
+            if (!self.on()) { const out = render.apply(this, args); mark(); return out; }
             // The same folder drawn again (sorted, filtered, refreshed):
             // tiles slide to their new places. Another folder: a ripple
             const key = [this.dirHandle && this.dirHandle.name, typeof Folders !== 'undefined' ? Folders.scope : ''].join('|');
@@ -128,6 +132,7 @@ const Motion = {
             self._gridKey = key;
             const before = same ? self.snap() : null;
             const out = render.apply(this, args);
+            mark();
             requestAnimationFrame(() => { if (before) self.flip(before); else self.ripple(); });
             return out;
         };
