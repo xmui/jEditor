@@ -4910,6 +4910,8 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 .adj-pane-tabs .adj-tab {
     flex: 1;
+    height: var(--ctl-md);
+    font-size: var(--fs-body);
 }
 
 /* Retouch and Masks hold one section each, always open: its head is a title */

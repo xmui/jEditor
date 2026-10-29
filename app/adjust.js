@@ -803,6 +803,12 @@ const Adjust = {
             tabs.appendChild(b);
         }
         const box = this.el('adj-looks');
+        // One row in Basic: a mouse wheel moves along it, not down the panel
+        box.addEventListener('wheel', (e) => {
+            if (e.deltaX || e.ctrlKey || box.scrollWidth <= box.clientWidth) return;
+            e.preventDefault();
+            box.scrollLeft += e.deltaY;
+        }, { passive: false });
         const tile = (look) => {
             const b = document.createElement('button');
             b.className = 'adj-look';
