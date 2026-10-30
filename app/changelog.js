@@ -9,6 +9,7 @@ const CHANGELOG = [
         version: '1.50.1', date: '2026-10-30', beta: true,
         items: [
             'Crop many photos the same way: select photos, crop one and Save, then Crop the other N the same way. Or select photos and press `Shift+P` (or Crop N like the last crop, right-clicking them) to use the last crop. Each gets the same aspect ratio, frame and straighten, fitted to its size, so a 4 × 6 stays 4 × 6; a portrait photo gets the frame turned to suit it. Each keeps its own quarter turn, and one `Ctrl+Z` puts them all back.',
+            'Auto crop is an experiment for now, off to start with, while it\'s being fixed: turn it on in Settings → Experimental. While it\'s off, Auto and Every photo in the crop editor, Auto crop on the selection (`Shift+A`), Auto crop in the scan window and its settings page don\'t show, and no test scans are kept. Finding the prints on the glass in the scan window stays.',
             'Sync, as in Lightroom (`Ctrl+Shift+S`, Edit → Sync adjustments…, or right-click a selection): select photos, click the one to sync from last, and tick what goes onto the rest: its crop (fitted to each, as Crop like the last crop does), look, white balance, light, levels, curve, color mixer, grading, detail and effects. Masks and spot removal start unticked, since they belong to one photo. Each photo keeps what isn\'t ticked, and one `Ctrl+Z` undoes it on all of them.',
         ]
     },
