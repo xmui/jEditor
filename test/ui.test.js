@@ -1268,6 +1268,14 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 out.bulkCropped = nBulk === 2 && Math.abs(w1 / h1 - 1.25) < 0.02 && Math.abs(w2 / h2 - 0.8) < 0.02 && app._undoStack.length === 1;
                 await app.undo();
                 out.bulkUndone = b1.handle.bytes.length === b1Before.length && (await dimsOf(b2)).join() === '300,400';
+                // Adjust's Sync: the source's kept crop as edits, nothing set
+                b1._edit = { q: 0, angle: 2, aspectKey: '4:5', landscape: true, n: like.n, adj: { exposure: 0.5 } };
+                const undos = app._undoStack.length;
+                const items = await app.cropEditsLike(b1, [b1, b2]);
+                const e2 = items && items[0] && items[0].edit;
+                out.syncCrop = items.length === 1 && items[0].file === b2 && !b2._edit && app._undoStack.length === undos &&
+                    e2.angle === 2 && Math.abs((e2.n.x1 - e2.n.x0) * 300 / ((e2.n.y1 - e2.n.y0) * 400) - 0.8) < 0.02;
+                delete b1._edit;
                 app.dirHandle = savedDir;
             }
 
@@ -1556,6 +1564,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('Bulk crop turns the frame for a photo the other way round', r.likeTall);
         check('Bulk crop crops each selected photo the same way', r.bulkCropped);
         check('One Ctrl+Z puts a bulk crop back', r.bulkUndone);
+        check('Sync gets the crop as edits for the others, nothing set', r.syncCrop);
         check('Save & Next moves on and reopens the editor', r.next);
         check('PNG crop stays PNG and keeps DPI', r.pngType === 'image/png' && r.pngDpi === 300, `${r.pngType} ${r.pngDpi}`);
         check('Auto straightens a tilted print (−3°)', r.autoFound && Math.abs(r.autoAngle + 3) < 0.15, String(r.autoAngle));

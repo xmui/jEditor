@@ -7784,12 +7784,46 @@ const app = {
     },
 
     // The crop part of a kept edit for this photo (null: the whole photo,
-    // unturned). For Adjust's Sync, which puts it with the adjustments in
-    // one Edits.set: Edits.withAdj(await app.cropSnapFor(f, snap), adj, f._edit)
+    // unturned)
     async cropSnapFor(file, snap = this.getLastCrop()) {
         const { W, H } = await this.cropDims(file);
         const ed = CropEditor.likeOn(W, H, snap, (file._edit && file._edit.q) || 0);
         return ed.isIdentity() && !ed.q ? null : ed.snapshot();
+    },
+
+    // The kept edits [{ file, edit }] that crop these photos with snap,
+    // each keeping its adjustments and paint. Nothing is set: the caller
+    // does Edits.set, so it can be one undo step with other changes.
+    // each(): after every photo, for progress. A photo that fails is left out.
+    async cropEdits(files, snap, each = () => { }) {
+        const items = [];
+        let next = 0;
+        const worker = async () => {
+            while (next < files.length) {
+                const f = files[next++];
+                try {
+                    const crop = await this.cropSnapFor(f, snap);
+                    items.push({ file: f, edit: Edits.withAdj(crop, f._edit && f._edit.adj, f._edit) });
+                    each(f, !!crop);
+                } catch (e) {
+                    console.error('Crop failed for', f.name, e);
+                    each(f, false, e);
+                }
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(this.AUTO_CROP_CONCURRENCY, files.length) }, worker));
+        return items;
+    },
+
+    // For Adjust's Sync: the crop of source (its kept edit) on the other
+    // photos, as cropEdits. Sync puts its adjustments on these and does
+    // one Edits.set. null: source has no kept crop to sync.
+    async cropEditsLike(source, files) {
+        const e = source && source._edit;
+        if (!e || Edits.wholePhoto(e)) return null;
+        const { W, H } = await this.cropDims(source);
+        const wide = (e.q % 2 ? H >= W : W >= H);
+        return this.cropEdits(files.filter(f => f && f !== source && !/\.gif$/i.test(f.name)), { ...e, wide });
     },
 
     async cropLike(files, snap = this.getLastCrop()) {
@@ -7839,11 +7873,12 @@ const app = {
             await Promise.all(Array.from({ length: Math.min(this.AUTO_CROP_CONCURRENCY, items.length) }, worker));
         };
         try {
-            await run(kept, async (f) => {
-                const crop = await this.cropSnapFor(f, snap);
-                edits.push({ file: f, edit: Edits.withAdj(crop, f._edit && f._edit.adj, f._edit) });
-                return !!crop;
-            });
+            edits.push(...await this.cropEdits(kept, snap, (f, ok, err) => {
+                if (ok) cropped++;
+                if (err) failed++;
+                done++;
+                this.updateTask(key, label());
+            }));
             if (written.length) {
                 await this.verifyPermission(this.dirHandle, true);
                 const backups = await (await FolderCache.root(this, true)).getDirectoryHandle('originals', { create: true });
