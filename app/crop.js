@@ -716,7 +716,9 @@ const CropEditor = {
 
     // ---- auto: straighten and crop to the print on a scan ----
 
+    // (Auto is an experiment: Settings → Experimental, app.autoCropOn)
     autoEach() {
+        if (!this.app.autoCropOn()) return false;
         try { return localStorage.getItem('jeditor.cropAutoEach') === '1'; } catch (e) { return false; }
     },
 
@@ -727,7 +729,7 @@ const CropEditor = {
     },
 
     autoDetect({ quiet = false, animate = true } = {}) {
-        if (!this.ready) return false;
+        if (!this.ready || !this.app.autoCropOn()) return false;
         const det = CropAuto.find(this.preview, this.W, this.H);
         if (!det) {
             CropLog.noteAuto(this, null);

@@ -951,7 +951,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.closed = !app.isSettingsOpen();
             app.toggleCustomizePanel(true);
             out.reopenedOn = shownPage();
-            // Arrow keys move between pages
+            // Arrow keys move between pages (Auto crop's is hidden: an experiment, off)
             const tab = document.querySelector('.settings-nav [data-page="messages"]');
             tab.focus();
             tab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
@@ -981,7 +981,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('glass saved before carries over: rich (the old default) is Crystal, Subtle and Off are Opaque; Off is gone from Settings',
             r.oldGlass === 'crystal,opaque,opaque,liquid' && r.glassOptions === 'crystal,liquid,clear,opaque,lens', JSON.stringify([r.oldGlass, r.glassOptions]));
         check('Ctrl+, opens Settings; Esc closes it', r.opened && r.closed, JSON.stringify({ o: r.opened, c: r.closed }));
-        check('Settings: a page at a time, Appearance first; a click (or the arrow keys) changes page, and it opens on the last page used', r.firstPage === 'appearance' && r.messagesPage === 'messages true' && r.noUpdates && r.reopenedOn === 'messages' && r.arrowPage === 'autocrop autocrop', JSON.stringify([r.firstPage, r.messagesPage, r.noUpdates, r.reopenedOn, r.arrowPage]));
+        check('Settings: a page at a time, Appearance first; a click (or the arrow keys) changes page, and it opens on the last page used', r.firstPage === 'appearance' && r.messagesPage === 'messages true' && r.noUpdates && r.reopenedOn === 'messages' && r.arrowPage === 'projects projects', JSON.stringify([r.firstPage, r.messagesPage, r.noUpdates, r.reopenedOn, r.arrowPage]));
         check('theme, density, glass and surround apply and are remembered',
             r.applied === 'light,comfortable,opaque,grey' && r.lightText && r.comfortable && r.subtleGlass &&
             r.surround === 'rgb(118, 118, 118)' && r.saved.theme === 'light' && r.saved.density === 'comfortable' &&
@@ -1146,6 +1146,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
     console.log('crop & straighten');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.evaluate(() => Experiments.set('auto-crop', true)); // an experiment, off to start with
         const r = await page.evaluate(async () => {
             const out = {};
             const ed = CropEditor;
@@ -3491,6 +3492,30 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.setView('grid');
             app.selection = new Set(app.files);
             app.updateSelectionUI();
+            // Auto crop is an experiment, off to start with: nowhere to be
+            // seen, and Shift+A does nothing
+            const hidden = (id) => document.getElementById(id).closest('.exp-off') !== null;
+            const shows = () => ({
+                bar: !hidden('btn-auto-crop'),
+                editor: !hidden('crop-auto') && !hidden('crop-auto-each'),
+                settings: !document.querySelector('[data-page="autocrop"][role="tab"]').classList.contains('exp-off'),
+                scan: !hidden('scan-autocrop'),
+                find: !hidden('scan-pv-find'),
+                menu: app.buildContextItems({ _file: app.files[0] }, false).some(it => /^Auto crop/.test(it[0] || '')),
+                themeMenu: Themes.menuItems('Picture', { all: true }).some(it => it[0] === 'Auto crop'),
+                shortcut: app.actionOn('edit.autoCrop') && app.actionOn('crop.auto'),
+                listed: (app.renderShortcutsPanel(), /Auto crop the selection/.test(document.getElementById('shortcuts-list').textContent))
+            });
+            out.expDefault = Experiments.on('auto-crop');
+            out.offShows = shows();
+            const offBytes = (await (await dir.getFileHandle('scan1.jpg')).getFile()).size;
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'A', shiftKey: true, bubbles: true }));
+            await new Promise(res => setTimeout(res, 300));
+            out.offNothing = !app._autoCropping && !(app._undoStack || []).some(e => e.type === 'auto-crop') &&
+                (await (await dir.getFileHandle('scan1.jpg')).getFile()).size === offBytes && CropEditor.autoEach() === false;
+            Experiments.set('auto-crop', true);
+            app.selection = new Set(app.files);
+            out.onShows = shows();
             window.dispatchEvent(new KeyboardEvent('keydown', { key: 'A', shiftKey: true, bubbles: true }));
             for (let i = 0; i < 200 && (app._autoCropping || !app._undoStack || !app._undoStack.some(e => e.type === 'auto-crop')); i++) await new Promise(res => setTimeout(res, 50));
             const dims = async (n) => {
@@ -3582,6 +3607,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         const inside = (d) => d[0] < 900 && d[1] < 700 && d[0] > 450 && d[1] > 300;
         check('auto crop: each scan is cropped to its print', inside(r.scan1) && inside(r.scan2), `${r.scan1} / ${r.scan2}`);
         check('auto crop: a photo with no print edge is left alone', r.plain.join('x') === '400x300', r.plain.join('x'));
+        check('auto crop experiment: off to start with', r.expDefault === false);
+        check('auto crop experiment off: hidden everywhere (bar, editor, settings, scan, menus, shortcuts)', Object.values(r.offShows).every(v => v === false), JSON.stringify(r.offShows));
+        check('auto crop experiment off: Shift+A does nothing', r.offNothing);
+        check('auto crop experiment on: all back', Object.values(r.onShows).every(v => v === true), JSON.stringify(r.onShows));
         check('auto crop: says what it did, with Undo', /Auto-cropped 2 photos — no print found on 1/.test(r.toast), r.toast);
         check('auto crop: originals kept in .jeditor/originals; one Ctrl+Z restores every byte', r.backups === 2 && r.restored && r.backupsAfter === 0, JSON.stringify(r));
         {
@@ -3656,6 +3685,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
     console.log('feeder auto crop');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.evaluate(() => Experiments.set('auto-crop', true)); // an experiment, off to start with
         const r = await page.evaluate(async () => {
             const out = {};
             let seed = 11;
@@ -4088,6 +4118,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
     console.log('save edits when done');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.evaluate(() => Experiments.set('auto-crop', true)); // an experiment, off to start with
         const r = await page.evaluate(async () => {
             let step = 'start';
             try { return await (async () => {

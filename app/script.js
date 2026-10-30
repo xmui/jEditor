@@ -4970,11 +4970,25 @@ const app = {
         // A focused button's own Enter/Space press isn't a shortcut there
         if (context === 'adjust' && e.target && e.target.tagName === 'BUTTON' && (combo === 'Enter' || combo === 'Space')) return;
 
-        const handler = this.keyHandlers()[id];
+        const handler = this.actionOn(id) && this.keyHandlers()[id];
         if (!handler) return;
         if (handler(e) === false) return;
         e.preventDefault();
         e.stopImmediatePropagation();
+    },
+
+    // Auto crop is an experiment (Settings → Experimental), off to start
+    // with: while it's off it shows nowhere and nothing runs it
+    autoCropOn() {
+        return typeof Experiments !== 'undefined' && Experiments.on('auto-crop');
+    },
+
+    // Shortcuts and menu commands that belong to an experiment
+    ACTION_EXPERIMENTS: { 'edit.autoCrop': 'auto-crop', 'crop.auto': 'auto-crop' },
+
+    actionOn(id) {
+        const x = this.ACTION_EXPERIMENTS[id];
+        return !x || (typeof Experiments !== 'undefined' && Experiments.on(x));
     },
 
     openDupes() {
@@ -5160,6 +5174,7 @@ const app = {
         const groups = new Map();
         this.KEY_ACTIONS.forEach(a => {
             const [id, , group, label] = a;
+            if (!this.actionOn(id)) return;
             const keys = this.keyBindings[id];
             const text = (label + ' ' + keys.map(k => this.formatCombo(k)).join(' ')).toLowerCase();
             if (filter && !text.includes(filter)) return;
@@ -6781,7 +6796,7 @@ const app = {
                     [`Rotate ${n} left`, () => this.rotateBulk(-90)],
                     [`Rotate ${n} right`, () => this.rotateBulk(90)],
                     [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
-                    [`Auto crop ${n}`, () => this.batchAutoCrop(sel)],
+                    ...(this.autoCropOn() ? [[`Auto crop ${n}`, () => this.batchAutoCrop(sel)]] : []),
                     [`Turn ${n} upright`, () => this.turnUpright(sel)],
                     ...(Adjust.clipboard() ? [[`Paste adjustments onto ${n}`, () => this.pasteAdjust(sel)]] : []),
                     ...(sel.some(f => f._edit) ? [[`Discard edits on ${sel.filter(f => f._edit).length.toLocaleString()}`, () => Edits.discard(sel)]] : []),
@@ -7504,6 +7519,7 @@ const app = {
     },
 
     async batchAutoCrop(files, { ask = true, feeder = false, scan = false } = {}) {
+        if (!this.autoCropOn()) return;
         if (!this.ensureWritable()) return;
         if (!this.dirHandle) {
             this.showToast('Auto crop needs a folder opened with Open folder');
