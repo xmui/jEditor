@@ -1503,8 +1503,7 @@ const PROJECT = `
                 step = 'app';
                 const calls = [];
                 window.JEditorNative = { platform: 'windows', features: ['themes'], titleBar: (on) => calls.push('titleBar:' + on), windowAction: (a) => calls.push(a) };
-                out.offInRelease = Experiments.shown().some(x => x.id === 'themes') && !Experiments.on('themes');
-                Experiments.set('themes', true);
+                out.inApp = Themes.can() && !Experiments.shown().some(x => x.id === 'themes');
                 app.renderCustomizePanel();
                 const cards = [...$('set-themes').querySelectorAll('.theme-card')];
                 out.gallery = cards.map(c => c.dataset.skin).join() === ',xp/royale,snow/finder,mac84/finder' && cards[0].classList.contains('active');
@@ -1580,16 +1579,12 @@ const PROJECT = `
                 Themes.choose('');
                 out.off = !root.dataset.skin && !root.dataset.layout && !$('th-top') && !document.querySelector('link[data-theme]')
                     && calls[calls.length - 1] === 'titleBar:false' && root.dataset.theme === app.uiPrefs.theme;
-                // The experiment turned off takes a chosen theme off too
-                Themes.choose('xp/royale');
-                Experiments.set('themes', false);
-                out.expOff = !root.dataset.skin && !$('th-top');
                 app.toggleCustomizePanel(false);
                 delete window.JEditorNative;
                 return out;
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
-        check('themes: none in a browser; in the apps an experiment, off in a release', r.browserNone && r.offInRelease, JSON.stringify(r));
+        check('themes: none in a browser; in the apps, not an experiment', r.browserNone && r.inApp, JSON.stringify(r));
         check('themes: Settings → Appearance shows them as a gallery, jEditor\'s own look first', r.gallery, JSON.stringify(r));
         check('themes: one chosen puts its stylesheets on, docked, in its own light or dark', r.on && r.styled && r.dark, JSON.stringify(r));
         check('themes: its own title bar and menu bar along the top; Windows\' title bar goes', r.ownBar, JSON.stringify(r));
@@ -1600,7 +1595,7 @@ const PROJECT = `
         check('themes: full screen has no title bar, the menu bar stays', r.fullscreen, JSON.stringify(r));
         check('themes: the theme chosen and its settings are there at the next start', r.kept, JSON.stringify(r));
         check('themes: 1984\'s Thumbnails setting: dithered to one bit, or in colour again', r.setting && r.dithered && r.colour, JSON.stringify(r));
-        check('themes: back to jEditor\'s look (or the experiment off) takes all of it off', r.off && r.expOff, JSON.stringify(r));
+        check('themes: back to jEditor\'s look takes all of it off', r.off, JSON.stringify(r));
         check('themes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
