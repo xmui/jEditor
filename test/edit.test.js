@@ -326,7 +326,7 @@ const PROJECT = `
                 // Masks ticked: the radial goes; a group the source hasn't
                 // changed, ticked, takes the other's off
                 step = 'masks';
-                AdjustSync.apply(f('a.jpg'), [f('b.jpg')], ['masks', 'presence']);
+                await AdjustSync.apply(f('a.jpg'), [f('b.jpg')], ['masks', 'presence']);
                 const b2 = f('b.jpg')._edit.adj;
                 out.masks = b2.masks.length === 1 && b2.masks[0].type === 'radial' && !b2.saturation && b2.temp === -30;
                 // Sky and subject masks stay with their own photo
