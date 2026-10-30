@@ -239,11 +239,13 @@ const AdjustSync = {
         this.app.showToast('Auto Sync off: no other photo selected', 2000, null, null, { kind: 'adjust' });
     },
 
-    // Leaving Adjust: the last change goes too, then it's off
+    // Leaving Adjust: the last change goes too, then it's off. The strip's
+    // selection goes with it: one photo shown has none
     leave() {
         this.flush();
         this.auto = false;
         this._last = null;
+        if (this.app) this.app.selection.clear();
         this.chip();
     },
 

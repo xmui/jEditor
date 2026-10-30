@@ -419,7 +419,7 @@ const PROJECT = `
                 AdjustSync.toggleAuto(true);
                 thumb('b.jpg').dispatchEvent(new MouseEvent('click', { bubbles: true }));
                 await until(() => Adjust.file === f('b.jpg') && Adjust.ready);
-                out.leave = !AdjustSync.auto && app.selection.size === 1 && document.getElementById('adj-sync-chip').classList.contains('hidden');
+                out.leave = !AdjustSync.auto && !AdjustSync.targets().length && document.getElementById('adj-sync-chip').classList.contains('hidden');
                 return out;
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
