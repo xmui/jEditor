@@ -8,19 +8,28 @@
 // in a beta build (still off in a release until turned on). needs: a
 // feature the app must have (host.js), or it isn't offered. When one is done
 // it leaves this list and is simply part of jEditor.
+//
+// What only shows with one on is marked data-experiment="id" in the page:
+// apply() hides it (.exp-off) while that one is off.
 
 const Experiments = {
     LIST: [
         {
-            id: 'themes', beta: true, needs: 'themes',
-            title: 'Themes',
-            text: 'jEditor as an app of another time, in Settings → Appearance: Windows XP (Royale, Royale Noir and Royale Red), Snow Leopard (Finder and Aperture) and the 1984 Macintosh, each with its own title bar and menus'
+            id: 'auto-crop',
+            title: 'Auto crop',
+            text: 'Finds the print on a scan, straightens it and crops to it: Auto in the crop editor, Auto crop on the selection (Shift+A), Auto crop in the scan window, and keeping test scans to improve it. Off while it\'s being fixed'
         }
     ],
 
     init(app) {
         this.app = app;
         this.render();
+        this.apply();
+    },
+
+    // Shows or hides what's marked data-experiment, by whether it's on
+    apply(root = document) {
+        root.querySelectorAll('[data-experiment]').forEach(el => el.classList.toggle('exp-off', !this.on(el.dataset.experiment)));
     },
 
     on(id) {
@@ -45,6 +54,7 @@ const Experiments = {
         const app = this.app;
         app.uiPrefs.experiments = { ...(app.uiPrefs.experiments || {}), [id]: !!value };
         app.saveUiPrefs();
+        this.apply();
         dispatchEvent(new CustomEvent('jeditor-experiments', { detail: { id, on: !!value } }));
     },
 

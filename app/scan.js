@@ -176,7 +176,8 @@ const Scan = {
         const last = this.last();
         // Off unless turned on. Kept as autoCropOn: autoCrop is the old
         // choice, made when it was on to start with, so it isn't read
-        this.el('scan-autocrop').checked = !!last && last.autoCropOn === true;
+        // (and only with the Auto crop experiment on: app.autoCropOn)
+        this.el('scan-autocrop').checked = !!last && last.autoCropOn === true && this.app.autoCropOn();
         this.el('scan-show').checked = this.el('scan-show-live').checked = !last || last.show !== false;
         // On unless turned off (as in FastFoto)
         this.el('scan-upright').checked = !last || last.upright !== false;
@@ -957,14 +958,18 @@ const Scan = {
         const folder = this.el('scan-folder').value;
         const prefix = this.el('scan-prefix').value;
         const next = Math.max(0, parseInt(this.el('scan-next').value, 10) || 0);
-        const autoCrop = this.el('scan-autocrop').checked;
+        const expOn = this.app.autoCropOn();
+        const autoCrop = expOn && this.el('scan-autocrop').checked;
+        // With the experiment off the choice is kept for when it's back on
+        const lastChoice = this.last();
+        const autoCropOn = expOn ? autoCrop : !!lastChoice && lastChoice.autoCropOn === true;
         const compat = device.driver === 'twain' && this.el('scan-compat').checked;
         try {
             const all = this.compat();
             if (compat) all[device.id] = true; else delete all[device.id];
             localStorage.setItem(this.KEY_COMPAT, JSON.stringify(all));
         } catch (e) { /* private */ }
-        try { localStorage.setItem(this.KEY, JSON.stringify({ device: device.id, autoCropOn: autoCrop, show: this.el('scan-show').checked, upright: this.el('scan-upright').checked })); } catch (e) { /* private */ }
+        try { localStorage.setItem(this.KEY, JSON.stringify({ device: device.id, autoCropOn, show: this.el('scan-show').checked, upright: this.el('scan-upright').checked })); } catch (e) { /* private */ }
         const state = this.el('scan-panel').dataset.state;
         if (state === 'preview') return this.scanBoxes();
         // Scan more: the names carry on from the photos just scanned
@@ -1056,6 +1061,8 @@ const Scan = {
             this.adoptCompat(pv.device.id, p);
             pv.bed = { w: p.bedW, h: p.bedH };
             await ScanPreview.show(p);
+            // (Finding the prints on the glass stays with the Auto crop
+            // experiment off: the owner's exception)
             ScanPreview.set(ScanPreview.find(this.el('scan-pv-img')));
             if (bed.guessed) this.app.showToast('The scanner didn\'t say how big its glass is, so jEditor took it to be A4: choose its size under Glass if that\'s wrong', 6000);
         } catch (e) {

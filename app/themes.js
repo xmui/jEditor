@@ -5,8 +5,7 @@
 // desktop apps were laid out), its own title bar and a menu bar.
 //
 // Desktop only, by choice (feature 'themes': the Windows, Mac and Linux
-// apps, whose title bar the theme draws), and an experiment for now (Settings →
-// Experimental, on in betas). In a browser nothing here shows.
+// apps, whose title bar the theme draws). In a browser nothing here shows.
 //
 // A theme: { id, name, year, skin (data-skin on <html>, what its stylesheets
 // are scoped to), layout, menus (the menu bar's, by name: MENUS), title
@@ -130,17 +129,15 @@ const Themes = {
 
     init(app) {
         this.app = app;
-        addEventListener('jeditor-experiments', () => { this.apply(); this.render(); });
         addEventListener('jeditor-window', (e) => {
             const bar = document.getElementById('th-titlebar');
             if (bar) bar.classList.toggle('maximized', !!(e.detail && e.detail.maximized));
         });
     },
 
-    // Themes are offered: an app that has them, the experiment on
+    // Themes are offered: an app that has them
     can() {
-        return typeof Host !== 'undefined' && Host.has('themes')
-            && typeof Experiments !== 'undefined' && Experiments.on('themes');
+        return typeof Host !== 'undefined' && Host.has('themes');
     },
 
     // The chosen { theme, variant }, or null for jEditor's own look
@@ -361,6 +358,7 @@ const Themes = {
             if (item === '—') { out.push(['—']); continue; }
             const [label, act, needsProject] = item;
             if (needsProject && !app.dirHandle && !all) continue;
+            if (typeof act === 'string' && !app.actionOn(act)) continue; // an experiment that's off
             const run = typeof act === 'function' ? act : () => handlers[act] && handlers[act]();
             const keys = typeof act === 'string' && app.keyBindings && app.keyBindings[act];
             out.push([label, run, false, keys && keys.length ? Host.keys(keys[0]) : '', keys && keys.length ? keys[0] : '', !needsProject || !!app.dirHandle]);

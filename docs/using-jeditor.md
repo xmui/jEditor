@@ -16,16 +16,16 @@ Changes are saved to the original files as you go.
 
 **Settings** (the gear in the toolbar's **More** section, the link on the start screen, or `Ctrl+,`) has a page for each kind of setting, chosen on the left; it opens on the last one you used.
 
-- **Appearance**: in the Windows, Mac and Linux apps, a **theme** (an experiment for now, on in betas: see [Themes](#themes)); the theme (dark, light or match the system), the accent color and the color behind photos (black, gray or light, for judging color); on Windows 11 (22H2 or later), **Window background** puts Mica or Acrylic behind jEditor, like the Start menu, and **Transparency** sets how much of the desktop shows through (photos, Crop and Duplicates stay solid; it needs Windows' Transparency effects on, in Settings → Personalization → Colors); then glass (Crystal, the clearest, to start with; Liquid, like Apple's Liquid Glass, which bends what's under its edges; Clear; Opaque, which is faster on older computers; or Lens, a bubble of thick glass; the system's Reduce transparency or Increase contrast makes any of them solid) and its tint (none, your accent colour, warm, cool or rose: none is best for judging colour), animations (on, or off: things just change), density and toolbar size.
+- **Appearance**: in the Windows, Mac and Linux apps, a **theme** (see [Themes](#themes)); the theme (dark, light or match the system), the accent color and the color behind photos (black, gray or light, for judging color); on Windows 11 (22H2 or later), **Window background** puts Mica or Acrylic behind jEditor, like the Start menu, and **Transparency** sets how much of the desktop shows through (photos, Crop and Duplicates stay solid; it needs Windows' Transparency effects on, in Settings → Personalization → Colors); then glass (Crystal, the clearest, to start with; Liquid, like Apple's Liquid Glass, which bends what's under its edges; Clear; Opaque, which is faster on older computers; or Lens, a bubble of thick glass; the system's Reduce transparency or Increase contrast makes any of them solid) and its tint (none, your accent colour, warm, cool or rose: none is best for judging colour), animations (on, or off: things just change), density and toolbar size.
 - **Toolbar & keys**: keyboard shortcuts and their profiles, a vertical toolbar, the buttons above the film strip, and which buttons are in the toolbar.
 - **Messages**: which messages pop up after you do something.
-- **Auto crop**: keeping test scans to improve Auto crop, how many are kept, and exporting, recovering or clearing them.
+- **Auto crop** (with the Auto crop experiment on): keeping test scans to improve Auto crop, how many are kept, and exporting, recovering or clearing them.
 - **Projects**: watching the folder for changes, the thumbnail cache, stored projects and cleaning up the open one.
 - **Updates**: checking for updates, and the log.
 
 ## Themes
 
-In the Windows, Mac and Linux apps, **Settings → Appearance → Theme** makes jEditor look like an app of another time: the same jEditor, laid out the way that era's apps were, with its own title bar and a menu bar. It's an experiment for now (Settings → Experimental; betas have it on).
+In the Windows, Mac and Linux apps, **Settings → Appearance → Theme** makes jEditor look like an app of another time: the same jEditor, laid out the way that era's apps were, with its own title bar and a menu bar.
 
 - **Windows XP**, in **Royale**, **Royale Noir** and **Royale Red** (the dots on its card): an Office 2003 program, with command bars, a task pane each side and a menu bar.
 - **Snow Leopard**, as **Finder** (light) or **Aperture** (dark): one toolbar with the labels under its buttons, a source list and a foot bar.
@@ -97,12 +97,14 @@ It works like Lightroom or Apple Photos: the crop frame stays in the middle of t
 - To level something, hold `Ctrl` (`⌘` on a Mac) and draw a line along a horizon or the edge of a print. The level tool (`L`) does the same without the key.
 - **Loupe** (`M`): while you drag a corner or edge, or draw a level line, a close-up of that spot shows in a top corner of the window, at the photo's own pixels, with the crop's edge exactly where it will be saved. It moves to the other corner if your pointer comes near it. It's on to start with; turn it off with the button or `M`.
 - **Zoom** for a closer look: scroll on the photo (or pinch on a trackpad) to zoom in and out where the pointer is, or use `+` and `-` and the buttons in the bottom corner. Hold `Space` and drag, or drag with the middle button, to look around. Zoomed in, the view stays put while you drag and straighten; **Fit** (`Z`) goes back to the whole crop, as do a new aspect, a quarter turn, **Auto**, **Previous** and **Reset**. Close-ups use the full-size photo, not the screen-sized copy, once it's loaded.
+- **Auto crop is an experiment for now**: turn it on in **Settings → Experimental → Auto crop**. While it's off (as it starts), Auto, Every photo, batch Auto crop (`Shift+A`), the scan window's Auto crop and the Auto crop settings page don't show, and no test scans are kept. Finding the prints on the glass in the scan window stays either way. Turned on, they're all back.
 - **Auto** (`Shift+A`) finds the print on a scan, straightens it and crops to its edges. It needs a plain scanner lid or background around the photo (or, when the scan cut the print off at two opposite sides, down the other two), and it leaves a few pixels' margin so none of the bed shows. Turn on **Every photo** to run Auto on each photo as it opens. With `Shift+Enter` (save and next), a scan order then becomes: check the crop, press `Shift+Enter`, repeat.
 - **Turn upright** (`Shift+U`, or Turn upright in the right-click menu) turns the photo, or every photo selected in the grid, the right way up. jEditor's own small network looks at each one (in `upright.js`; how it was trained is in `tools/upright`) and only turns a photo when it's sure, so some are left for you. Each is turned the way the rotate buttons turn them, and one `Ctrl+Z` undoes them all. **Turn upright** in the scan window does it to each photo as it's scanned (on to start with), and turns a photo's back with its front.
 - **Batch Auto crop.** In the grid, select photos and press `Shift+A` (or **Auto crop** under ⋯ on the selection bar, or the right-click menu). Auto runs on each of them in the background, with the aspect ratio last chosen in the editor, and saves them. Photos with no print edge, or already cropped to it, are left alone. The originals are kept in `.jeditor/originals`, so one `Ctrl+Z` puts the whole batch back; flip through the results and fix the odd one in the editor.
 - `Ctrl+Z` inside the editor undoes the last adjustment; `Ctrl+Shift+Z` redoes it.
 - Aspect presets: 4×6, 5×7, 8×10, 11×14, square, 3:4, 16:9, original and free. `X` swaps portrait and landscape. A preset fits inside the current crop, so choosing one after Auto never takes in the bed.
 - **Previous** (`P`) applies the last crop again. This is useful when a batch of scans has the same borders.
+- **Crop many the same way.** Select photos in the grid, open one in the editor (`C`), crop it and press **Save**: the message that follows offers **Crop the other N the same way**. Or select photos and press `Shift+P` (or **Crop N like the last crop** in the right-click menu) to use the last crop you saved. Each photo gets the same aspect ratio, frame and straighten, relative to its own size: a 4 × 6 stays exactly 4 × 6 on a bigger or smaller scan, and a portrait photo gets the frame turned to fit it, so a landscape crop works on both. Each keeps its own quarter turn. The originals are kept in `.jeditor/originals` (or the crops are kept as edits, with Save edits when done), and one `Ctrl+Z` puts them all back.
 - The header shows the output size in pixels, and in inches when the file has a DPI.
 
 ## Adjust: light, color and curves
@@ -265,6 +267,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `1`–`5` | Red, yellow, green, blue, purple label |
 | `U` | Clear flags |
 | `Shift+A` | Auto crop (the selection in grid view) |
+| `Shift+P` | Crop the selection like the last crop (grid view) |
 | `Shift+U` | Turn upright (the selection, or the photo) |
 | `Ctrl+F`, `/` | Search |
 | `Shift+N` | New folder |
