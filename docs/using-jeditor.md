@@ -16,7 +16,7 @@ Changes are saved to the original files as you go.
 
 **Settings** (the gear in the toolbar's **More** section, the link on the start screen, or `Ctrl+,`) has a page for each kind of setting, chosen on the left; it opens on the last one you used.
 
-- **Appearance**: in the Windows, Mac and Linux apps, a **theme** (an experiment for now, on in betas: see [Themes](#themes)); the theme (dark, light or match the system), the accent color and the color behind photos (black, gray or light, for judging color); on Windows 11 (22H2 or later), **Window background** puts Mica or Acrylic behind jEditor, like the Start menu, and **Transparency** sets how much of the desktop shows through (photos, Crop and Duplicates stay solid; it needs Windows' Transparency effects on, in Settings → Personalization → Colors); then glass (Crystal, the clearest, to start with; Liquid, like Apple's Liquid Glass, which bends what's under its edges; Clear; Opaque, which is faster on older computers; or Lens, a bubble of thick glass; the system's Reduce transparency or Increase contrast makes any of them solid) and its tint (none, your accent colour, warm, cool or rose: none is best for judging colour), animations (on, or off: things just change), density and toolbar size.
+- **Appearance**: in the Windows, Mac and Linux apps, a **theme** (see [Themes](#themes)); the theme (dark, light or match the system), the accent color and the color behind photos (black, gray or light, for judging color); on Windows 11 (22H2 or later), **Window background** puts Mica or Acrylic behind jEditor, like the Start menu, and **Transparency** sets how much of the desktop shows through (photos, Crop and Duplicates stay solid; it needs Windows' Transparency effects on, in Settings → Personalization → Colors); then glass (Crystal, the clearest, to start with; Liquid, like Apple's Liquid Glass, which bends what's under its edges; Clear; Opaque, which is faster on older computers; or Lens, a bubble of thick glass; the system's Reduce transparency or Increase contrast makes any of them solid) and its tint (none, your accent colour, warm, cool or rose: none is best for judging colour), animations (on, or off: things just change), density and toolbar size.
 - **Toolbar & keys**: keyboard shortcuts and their profiles, a vertical toolbar, the buttons above the film strip, and which buttons are in the toolbar.
 - **Messages**: which messages pop up after you do something.
 - **Auto crop**: keeping test scans to improve Auto crop, how many are kept, and exporting, recovering or clearing them.
@@ -25,7 +25,7 @@ Changes are saved to the original files as you go.
 
 ## Themes
 
-In the Windows, Mac and Linux apps, **Settings → Appearance → Theme** makes jEditor look like an app of another time: the same jEditor, laid out the way that era's apps were, with its own title bar and a menu bar. It's an experiment for now (Settings → Experimental; betas have it on).
+In the Windows, Mac and Linux apps, **Settings → Appearance → Theme** makes jEditor look like an app of another time: the same jEditor, laid out the way that era's apps were, with its own title bar and a menu bar.
 
 - **Windows XP**, in **Royale**, **Royale Noir** and **Royale Red** (the dots on its card): an Office 2003 program, with command bars, a task pane each side and a menu bar.
 - **Snow Leopard**, as **Finder** (light) or **Aperture** (dark): one toolbar with the labels under its buttons, a source list and a foot bar.
