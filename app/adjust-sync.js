@@ -5,6 +5,16 @@
 // on the source's own sky and specks. What's ticked is remembered. All
 // the photos change in one step, so one Ctrl+Z undoes it.
 //
+// In Adjust, the photo being adjusted is the source and the others
+// selected in the strip (Ctrl+click, Shift+click) get its settings: Sync
+// (Ctrl+Shift+S, or the strip's right-click menu) with the dialog, or Auto
+// Sync (Ctrl+Alt+Shift+S), as in Lightroom: each setting changed goes onto
+// them too, a moment after it's changed, and only that setting, so each
+// keeps the rest of its own. Masks and spots stay where they're drawn. A
+// chip in Adjust's head says it's on; it goes off on leaving Adjust or
+// with no other photo selected. Ctrl+Z in Adjust takes the step off the
+// photo, and so off the others too.
+//
 // Crop: when Photos' bulk crop is in (app.cropEditsLike), Sync offers it
 // too, ticked to start with, and has it fit the source's crop to each
 // photo as "Crop like the last crop" does (a portrait frame turned to fit
@@ -19,6 +29,8 @@ const AdjustSync = {
 
     init(app) {
         this.app = app;
+        const off = this.el('adj-sync-off');
+        if (off) off.addEventListener('click', () => this.toggleAuto(false));
         const panel = this.el('sync-panel');
         if (!panel) return;
         this.el('sync-ok').addEventListener('click', () => this.done(true));
@@ -70,7 +82,8 @@ const AdjustSync = {
     },
 
     // Sync source's settings onto files, after the dialog
-    async open(source, files) {
+    // adj: the source's settings, if not as kept (Adjust's, being made)
+    async open(source, files, { adj } = {}) {
         const app = this.app;
         files = files.filter(f => f && f !== source && !/\.gif$/i.test(f.name));
         if (!source || !files.length) {
@@ -82,7 +95,7 @@ const AdjustSync = {
             return;
         }
         if (app.editsSaving()) return;
-        const adj = (source._edit && source._edit.adj) || null;
+        if (adj === undefined) adj = (source._edit && source._edit.adj) || null;
         const has = new Set(Develop.syncGroups(adj));
         // A crop box or a tilt: a quarter turn alone is each photo's own
         const cropped = !!(source._edit && !Edits.wholePhoto({ ...source._edit, q: 0 }));
@@ -118,7 +131,7 @@ const AdjustSync = {
         if (!yes) return;
         const groups = [...box.querySelectorAll('input:checked')].map(i => i.value);
         this.remember(!cropped && keepCrop && !groups.includes('crop') ? [...groups, 'crop'] : groups);
-        await this.apply(source, files, groups);
+        await this.apply(source, files, groups, adj);
     },
 
     update() {
@@ -141,9 +154,8 @@ const AdjustSync = {
     },
 
     // The settings themselves: one undo step for all of them
-    async apply(source, files, groups) {
+    async apply(source, files, groups, adj = (source._edit && source._edit.adj) || null) {
         const app = this.app;
-        const adj = (source._edit && source._edit.adj) || null;
         const crops = groups.includes('crop') && this.cropper() ? await app.cropEditsLike(source, files) : null;
         const cropped = new Map((crops || []).map(it => [it.file, it.edit]));
         const items = files.map(f => {
@@ -154,5 +166,110 @@ const AdjustSync = {
         Edits.set(items, 'sync');
         const n = files.length;
         app.showToast(`Synced ${n === 1 ? files[0].name : n.toLocaleString() + ' photos'} with ${source.name}`, 2200, null, null, { kind: 'adjust' });
+    },
+
+    // ---- In Adjust ----
+
+    // The others selected: what Sync and Auto Sync change there
+    targets() {
+        const app = this.app;
+        return [...app.selection].filter(f => f !== Adjust.file && app.files.includes(f) && !/\.gif$/i.test(f.name));
+    },
+
+    none() {
+        this.app.showToast('Ctrl+click photos in the strip to put this one\'s settings onto them too', 3000);
+    },
+
+    fromAdjust() {
+        if (!Adjust.ready) return;
+        const files = this.targets();
+        if (!files.length) return this.none();
+        this.open(Adjust.file, files, { adj: Adjust.result() });
+    },
+
+    toggleAuto(on = !this.auto) {
+        const app = this.app;
+        if (on && !Adjust.ready) {
+            app.showToast('Auto Sync is in Adjust: select photos in the strip, then change the one open');
+            return;
+        }
+        if (on && !this.targets().length) return this.none();
+        if (on && !Edits.canKeep()) {
+            app.showToast('Auto Sync needs a folder opened with Open folder');
+            return;
+        }
+        if (!on) this.flush();
+        this.auto = on;
+        this._last = on ? Adjust.result() : null;
+        this.chip();
+        const n = this.targets().length;
+        app.showToast(on ? `Auto Sync: what you change here goes onto the ${n === 1 ? 'other photo' : n.toLocaleString() + ' others'} too` : 'Auto Sync off', 2400, null, null, { kind: 'adjust' });
+    },
+
+    // Adjust's settings changed: onto the others, once they settle
+    changed() {
+        if (!this.auto) return;
+        clearTimeout(this._timer);
+        this._timer = setTimeout(() => this.push(), 350);
+    },
+
+    flush() {
+        if (!this._timer) return;
+        clearTimeout(this._timer);
+        this.push();
+    },
+
+    push() {
+        this._timer = 0;
+        if (!this.auto || !Adjust.ready) return;
+        const now = Adjust.result();
+        const keys = Develop.changedKeys(this._last, now).filter(k => k !== 'masks' && k !== 'spots');
+        this._last = now;
+        if (!keys.length) return;
+        const files = this.targets();
+        if (!files.length) return this.stop();
+        Edits.set(files.map(f => ({ file: f, edit: Edits.withAdj(f._edit || null, Develop.syncedKeys(f._edit && f._edit.adj, now, keys), f._edit || null) })), 'auto sync');
+    },
+
+    stop() {
+        if (!this.auto) return;
+        this.auto = false;
+        this._last = null;
+        this.chip();
+        this.app.showToast('Auto Sync off: no other photo selected', 2000, null, null, { kind: 'adjust' });
+    },
+
+    // Leaving Adjust: the last change goes too, then it's off. The strip's
+    // selection goes with it: one photo shown has none
+    leave() {
+        this.flush();
+        this.auto = false;
+        this._last = null;
+        if (this.app) this.app.selection.clear();
+        this.chip();
+    },
+
+    // The selection in the strip changed
+    selected() {
+        if (this.auto && !this.targets().length) this.stop();
+        this.chip();
+    },
+
+    chip() {
+        const chip = this.el('adj-sync-chip');
+        if (!chip) return;
+        const n = this.auto ? this.targets().length : 0;
+        chip.classList.toggle('hidden', !n);
+        this.el('adj-sync-n').textContent = `${n.toLocaleString()} photo${n === 1 ? '' : 's'}`;
+    },
+
+    // The strip's right-click menu in Adjust
+    stripItems() {
+        const n = this.targets().length;
+        return [
+            [n ? `Sync settings onto ${n.toLocaleString()}…` : 'Sync settings…', () => this.fromAdjust()],
+            [this.auto ? '✓ Auto Sync' : 'Auto Sync', () => this.toggleAuto()],
+            ...(Adjust.clipboard() && n ? [['—'], [`Paste adjustments onto ${n.toLocaleString()}`, () => this.app.pasteAdjust(this.targets())]] : [])
+        ];
     }
 };

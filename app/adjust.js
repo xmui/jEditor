@@ -407,6 +407,7 @@ const Adjust = {
     },
 
     close() {
+        AdjustSync.leave();
         if (this.picking) this.pickWhite(false);
         this.isOpen = false;
         this.ready = false;
@@ -438,6 +439,7 @@ const Adjust = {
     changed() {
         this.sync();
         this.schedule();
+        AdjustSync.changed();
     },
 
     pushHistory() {
