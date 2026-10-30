@@ -285,7 +285,8 @@ const PROJECT = `
             let step = 'open';
             try {
                 const jpg = () => canvasBlob(scene(200, 150), 'image/jpeg', 0.9);
-                await openProject('sync', { 'a.jpg': await jpg(), 'b.jpg': await jpg(), 'c.jpg': await jpg() });
+                // p and d for Crop: one portrait, one turned a quarter
+                await openProject('sync', { 'a.jpg': await jpg(), 'b.jpg': await jpg(), 'c.jpg': await jpg(), 'p.jpg': await canvasBlob(scene(150, 200), 'image/jpeg', 0.9), 'd.jpg': await jpg() });
                 const f = (n) => app.files.find(x => x.name === n);
                 // The source: light, a look, a radial mask, a spot
                 step = 'source';
@@ -316,7 +317,7 @@ const PROJECT = `
                 out.keptOwn = b.temp === -30 && b.saturation === 40 && b.masks.length === 1 && b.masks[0].type === 'linear' && b.spots.length === 1;
                 out.cropKept = c && c.n.x1 === 0 && c.adj && c.adj.exposure === 1 && !c.adj.temp;
                 out.sourceSame = f('a.jpg')._edit.adj.temp === 15;
-                out.remembered = JSON.stringify(JSON.parse(localStorage.getItem(AdjustSync.KEY))) === JSON.stringify(['look', 'light']);
+                out.remembered = JSON.stringify(JSON.parse(localStorage.getItem(AdjustSync.KEY)).on) === JSON.stringify(['look', 'light']);
                 out.oneStep = app._undoStack.length === undoBefore + 1;
                 // One Ctrl+Z undoes it on both
                 step = 'undo';
@@ -332,6 +333,30 @@ const PROJECT = `
                 // Sky and subject masks stay with their own photo
                 const own = Develop.synced({ masks: [{ type: 'radial', adj: {}, radial: [0.5, 0.5, 0.2, 0.2, 0, 0.5] }] }, { masks: [] }, ['masks']);
                 out.cleared = !own;
+                // Crop (with Photos' bulk crop): the same as "Crop like the
+                // last crop" on the same photos: a portrait one gets the frame
+                // turned to fit, a turned one keeps its own quarter turn
+                if (typeof app.cropSnapFor === 'function') {
+                    step = 'crop';
+                    Edits.set([
+                        { file: f('a.jpg'), edit: { q: 0, angle: 3, n: { x0: -0.4, y0: -0.3, x1: 0.2, y1: 0.4 } } },
+                        { file: f('c.jpg'), edit: null },
+                        { file: f('d.jpg'), edit: { q: 1, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } } }
+                    ], 'setup');
+                    out.cropRow = AdjustSync.groups()[0].id === 'crop' && !AdjustSync.groups()[0].off;
+                    const others = [f('c.jpg'), f('p.jpg'), f('d.jpg')];
+                    const crops = () => others.map(x => { const e = x._edit || {}; return { q: e.q, angle: e.angle, n: e.n, landscape: e.landscape }; });
+                    await AdjustSync.apply(f('a.jpg'), others, ['crop']);
+                    const synced = crops();
+                    pressKey('z', { ctrlKey: true });
+                    await until(() => !f('c.jpg')._edit);
+                    await app.cropLike(others, await AdjustSync.cropOf(f('a.jpg')));
+                    await until(() => f('c.jpg')._edit);
+                    const liked = crops();
+                    out.cropSame = JSON.stringify(synced) === JSON.stringify(liked);
+                    out.cropFits = synced[0].angle === 3 && synced[2].q === 1 && JSON.stringify(synced[0].n) !== JSON.stringify(synced[1].n);
+                    out.crop = { synced, liked };
+                } else out.cropSame = out.cropFits = out.cropRow = 'no bulk crop';
                 return out;
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
@@ -340,6 +365,7 @@ const PROJECT = `
         check('sync: what\'s ticked is remembered', r.remembered, JSON.stringify(r));
         check('sync: one Ctrl+Z undoes it on every photo', r.oneStep && r.undone, JSON.stringify(r));
         check('sync: masks, when ticked, go too; a group the source hasn\'t changed is taken off the others', r.masks && r.cleared, JSON.stringify(r));
+        if (r.cropSame !== 'no bulk crop') check('sync: Crop, ticked to start with, gives what "Crop like the last crop" does (a portrait frame turned to fit, each photo\'s own quarter turn kept)', r.cropRow && r.cropSame && r.cropFits, JSON.stringify(r.crop || r));
         check('sync: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

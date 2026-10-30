@@ -6,8 +6,11 @@
 // the photos change in one step, so one Ctrl+Z undoes it.
 //
 // Crop: when Photos' bulk crop is in (app.cropSnapFor), Sync offers it
-// too, off to start with, and has it fit the source's crop to each photo,
-// rather than having a second crop of its own.
+// too, ticked to start with, and has it fit the source's crop to each
+// photo as "Crop like the last crop" does (a portrait frame turned to fit
+// a landscape photo, each photo's own quarter turn kept), rather than
+// having a second crop of its own. A source with no crop of its own starts
+// it unticked, so syncing its colours doesn't take the others' crops off.
 
 const AdjustSync = {
     KEY: 'jeditor.syncGroups',
@@ -44,17 +47,26 @@ const AdjustSync = {
 
     groups() {
         const list = Develop.SYNC.map(g => ({ ...g }));
-        if (this.cropper()) list.push({ id: 'crop', name: 'Crop', off: true });
+        if (this.cropper()) list.unshift({ id: 'crop', name: 'Crop' });
         return list;
     },
 
-    // What was ticked last time (or what's on to start with)
+    // What was ticked last time; a group not offered then (Crop, before
+    // bulk crop was in) starts as it would the first time
     ticked() {
         let saved = null;
         try { saved = JSON.parse(localStorage.getItem(this.KEY) || 'null'); } catch (e) { /* none */ }
-        const ids = this.groups().map(g => g.id);
-        if (Array.isArray(saved)) return new Set(saved.filter(id => ids.includes(id)));
-        return new Set(this.groups().filter(g => !g.off).map(g => g.id));
+        if (Array.isArray(saved)) saved = { on: saved, seen: Develop.SYNC.map(g => g.id) };
+        const on = new Set();
+        for (const g of this.groups()) {
+            const seen = saved && Array.isArray(saved.seen) && saved.seen.includes(g.id);
+            if (seen ? saved.on.includes(g.id) : !g.off) on.add(g.id);
+        }
+        return on;
+    },
+
+    remember(groups) {
+        try { localStorage.setItem(this.KEY, JSON.stringify({ on: groups, seen: this.groups().map(g => g.id) })); } catch (e) { /* private mode */ }
     },
 
     // Sync source's settings onto files, after the dialog
@@ -72,13 +84,18 @@ const AdjustSync = {
         if (app.editsSaving()) return;
         const adj = (source._edit && source._edit.adj) || null;
         const has = new Set(Develop.syncGroups(adj));
-        if (source._edit && !Edits.wholePhoto(source._edit)) has.add('crop');
+        // A crop box or a tilt: a quarter turn alone is each photo's own
+        const cropped = !!(source._edit && !Edits.wholePhoto({ ...source._edit, q: 0 }));
+        if (cropped) has.add('crop');
         const n = files.length;
         this.el('sync-text').textContent = `From ${source.name} onto ${n === 1 ? files[0].name : n.toLocaleString() + ' other photos'}. ` +
             'Each photo keeps what isn\'t ticked.';
         const box = this.el('sync-groups');
         box.textContent = '';
         const on = this.ticked();
+        // Nothing to crop like: this time only, not remembered
+        const keepCrop = on.has('crop');
+        if (!cropped) on.delete('crop');
         for (const g of this.groups()) {
             const label = document.createElement('label');
             label.className = 'adj-check sync-check';
@@ -100,7 +117,7 @@ const AdjustSync = {
         const yes = await new Promise((resolve) => { this._resolve = resolve; });
         if (!yes) return;
         const groups = [...box.querySelectorAll('input:checked')].map(i => i.value);
-        try { localStorage.setItem(this.KEY, JSON.stringify(groups)); } catch (e) { /* private mode */ }
+        this.remember(!cropped && keepCrop && !groups.includes('crop') ? [...groups, 'crop'] : groups);
         await this.apply(source, files, groups);
     },
 
@@ -123,13 +140,19 @@ const AdjustSync = {
         if (r) r(yes);
     },
 
+    // The source's crop as Crop saves it for "Crop like the last crop"
+    // (with which way round it is, to turn it to fit), from Crop's own code
+    async cropOf(source) {
+        const { W, H } = await this.app.cropDims(source);
+        const whole = { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } };
+        return CropEditor.fromSnapshot(W, H, source._edit || whole).snapshot();
+    },
+
     // The settings themselves: one undo step for all of them
     async apply(source, files, groups) {
         const app = this.app;
         const adj = (source._edit && source._edit.adj) || null;
-        // The source's crop (none: the whole photo), fitted to each
-        const snap = groups.includes('crop') && this.cropper()
-            ? (source._edit || { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } }) : null;
+        const snap = groups.includes('crop') && this.cropper() ? await this.cropOf(source) : null;
         const items = [];
         for (const f of files) {
             const base = snap ? await app.cropSnapFor(f, snap) : (f._edit || null);
