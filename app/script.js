@@ -4412,6 +4412,8 @@ const app = {
         ['adjust.reset', 'adjust', 'Adjust', 'Reset everything', ['R']],
         ['adjust.copy', 'adjust', 'Adjust', 'Copy the adjustments', ['Ctrl+Shift+C']],
         ['adjust.paste', 'adjust', 'Adjust', 'Paste adjustments', ['Ctrl+Shift+V']],
+        ['adjust.sync', 'adjust', 'Adjust', 'Sync: these settings onto the others selected in the strip', ['Ctrl+Shift+S']],
+        ['adjust.autoSync', 'adjust', 'Adjust', 'Auto Sync: what you change goes onto the others selected in the strip too', ['Ctrl+Alt+Shift+S']],
         ['adjust.copyImage', 'adjust', 'Adjust', 'Copy the photo as it looks, to paste into another app', ['Ctrl+C']],
         ['adjust.pasteImage', 'adjust', 'Adjust', 'Paste an image from another app: a new picture, in Paint', ['Ctrl+V']],
         ['adjust.undo', 'adjust', 'Adjust', 'Undo', ['Ctrl+Z']],
@@ -4617,6 +4619,8 @@ const app = {
             'adjust.reset': () => Adjust.reset(),
             'adjust.copy': () => Adjust.copy(),
             'adjust.paste': () => Adjust.paste(),
+            'adjust.sync': () => AdjustSync.fromAdjust(),
+            'adjust.autoSync': () => AdjustSync.toggleAuto(),
             'adjust.copyImage': () => (String(getSelection()) ? false : this.copyImage(Adjust.file, Adjust.result())),
             'adjust.pasteImage': () => false,
             'adjust.undo': () => { if (!Adjust.undo()) this.showToast('Nothing to undo', 1200); },
@@ -7313,8 +7317,9 @@ const app = {
     // Sync (adjust-sync.js): the outlined photo's adjustments onto the rest
     // of the selection
     syncAdjust(source = this.currentFile, files = [...this.selection]) {
+        if (Modes.current() === 'adjust') return AdjustSync.fromAdjust();
         if (Modes.current() !== 'photos') {
-            this.showToast('Sync is in Photos: select the photos, then the one to sync from last');
+            this.showToast('Sync is in Photos and Adjust: select the photos, then the one to sync from last');
             return;
         }
         AdjustSync.open(source, files);

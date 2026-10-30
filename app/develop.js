@@ -328,6 +328,25 @@ const Develop = {
         return this.clean(out);
     },
 
+    // Auto Sync's: target's settings with source's for these settings
+    // (top-level keys, as in clean) only, masks and spots never
+    syncedKeys(target, source, keys) {
+        const out = this.clean(target) || {};
+        const src = this.clean(source) || {};
+        for (const k of keys) {
+            if (k === 'masks' || k === 'spots') continue;
+            if (k in src) out[k] = JSON.parse(JSON.stringify(src[k]));
+            else delete out[k];
+        }
+        return this.clean(out);
+    },
+
+    // The settings that differ between two (top-level keys, as in clean)
+    changedKeys(a, b) {
+        const x = this.clean(a) || {}, y = this.clean(b) || {};
+        return [...new Set([...Object.keys(x), ...Object.keys(y)])].filter(k => JSON.stringify(x[k]) !== JSON.stringify(y[k]));
+    },
+
     // The groups these settings change (ids from SYNC)
     syncGroups(adj) {
         const c = this.clean(adj) || {};

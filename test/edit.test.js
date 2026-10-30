@@ -365,6 +365,68 @@ const PROJECT = `
         check('sync: what\'s ticked is remembered', r.remembered, JSON.stringify(r));
         check('sync: one Ctrl+Z undoes it on every photo', r.oneStep && r.undone, JSON.stringify(r));
         check('sync: masks, when ticked, go too; a group the source hasn\'t changed is taken off the others', r.masks && r.cleared, JSON.stringify(r));
+        // In Adjust: the strip's selection, Sync from what's being made,
+        // and Auto Sync
+        const r2 = await page.evaluate(async () => {
+            const out = {};
+            let step = 'adjust';
+            try {
+                const f = (n) => app.files.find(x => x.name === n);
+                Edits.set(['a.jpg', 'b.jpg', 'c.jpg'].map(n => ({ file: f(n), edit: null })), 'clear');
+                Edits.set([{ file: f('b.jpg'), edit: Edits.withAdj(null, { temp: -30 }) }], 'setup');
+                app.selection = new Set([f('a.jpg')]);
+                await app.enterAdjust(f('a.jpg'));
+                await until(() => Adjust.ready);
+                // Ctrl+click and Shift+click in the strip
+                step = 'strip';
+                const thumb = (n) => [...document.querySelectorAll('#mode-strip .mode-thumb')].find(d => d._file === f(n));
+                thumb('c.jpg').dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+                thumb('b.jpg').dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+                out.strip = Adjust.file === f('a.jpg') && thumb('b.jpg').classList.contains('sel') && thumb('c.jpg').classList.contains('sel') && !thumb('a.jpg').classList.contains('sel');
+                // Auto Sync: only the setting changed goes, a moment after
+                step = 'auto';
+                pressKey('S', { ctrlKey: true, altKey: true, shiftKey: true });
+                out.chip = AdjustSync.auto && !document.getElementById('adj-sync-chip').classList.contains('hidden') && /2 photos/.test(document.getElementById('adj-sync-chip').textContent);
+                Adjust.pushHistory();
+                Adjust.a.exposure = 0.8;
+                Adjust.changed();
+                await until(() => f('b.jpg')._edit && f('b.jpg')._edit.adj.exposure === 0.8);
+                out.auto = f('b.jpg')._edit.adj.exposure === 0.8 && f('b.jpg')._edit.adj.temp === -30 && f('c.jpg')._edit && f('c.jpg')._edit.adj.exposure === 0.8;
+                // c taken out: no longer changed; Ctrl+Z in Adjust takes the
+                // step off the others too
+                step = 'undo';
+                thumb('c.jpg').dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+                Adjust.undo();
+                await until(() => !f('b.jpg')._edit.adj.exposure);
+                out.undo = !f('b.jpg')._edit.adj.exposure && f('b.jpg')._edit.adj.temp === -30 && f('c.jpg')._edit.adj.exposure === 0.8;
+                // Sync with the dialog: Adjust's settings as they are now
+                step = 'sync';
+                Adjust.pushHistory();
+                Adjust.a.contrast = 30;
+                Adjust.changed();
+                AdjustSync.toggleAuto(false);
+                out.offFlushed = !AdjustSync.auto && f('b.jpg')._edit.adj.contrast === 30;
+                Adjust.a.contrast = 40;
+                Adjust.changed();
+                pressKey('S', { ctrlKey: true, shiftKey: true });
+                await until(() => AdjustSync.isOpen());
+                document.getElementById('sync-ok').click();
+                await until(() => f('b.jpg')._edit.adj.contrast === 40);
+                out.sync = f('b.jpg')._edit.adj.contrast === 40;
+                // A plain click opens that one alone; leaving turns it off
+                step = 'leave';
+                AdjustSync.toggleAuto(true);
+                thumb('b.jpg').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                await until(() => Adjust.file === f('b.jpg') && Adjust.ready);
+                out.leave = !AdjustSync.auto && app.selection.size === 1 && document.getElementById('adj-sync-chip').classList.contains('hidden');
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('sync in Adjust: Ctrl+click in the strip selects others, the open photo apart', r2.strip, JSON.stringify(r2));
+        check('sync in Adjust: Auto Sync puts a changed setting onto the others selected, only that one, with a chip while on', r2.chip && r2.auto, JSON.stringify(r2));
+        check('sync in Adjust: Ctrl+Z takes the step off the others too; one taken out of the selection isn\'t changed', r2.undo, JSON.stringify(r2));
+        check('sync in Adjust: turning it off sends the last change; Ctrl+Shift+S syncs Adjust\'s settings as they are', r2.offFlushed && r2.sync, JSON.stringify(r2));
+        check('sync in Adjust: a plain click opens that photo alone, and Auto Sync goes off', r2.leave, JSON.stringify(r2));
         if (r.cropSame !== 'no bulk crop') check('sync: Crop, ticked to start with, gives what "Crop like the last crop" does (a portrait frame turned to fit, each photo\'s own quarter turn kept)', r.cropRow && r.cropSame && r.cropFits, JSON.stringify(r.crop || r));
         check('sync: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();

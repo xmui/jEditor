@@ -2745,6 +2745,41 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     font-size: var(--fs-small);
 }
 
+/* Auto Sync on, in Adjust's head: only while it's changing other photos */
+.adj-sync-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    padding: 0 2px 0 var(--sp-2);
+    border-radius: 999px;
+    border: 1px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    color: var(--text-1);
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+    white-space: nowrap;
+}
+
+.adj-sync-chip.hidden {
+    display: none;
+}
+
+.adj-sync-x {
+    border: 0;
+    background: transparent;
+    color: var(--text-2);
+    padding: 0 var(--sp-1);
+    border-radius: 999px;
+    cursor: pointer;
+    font: inherit;
+}
+
+.adj-sync-x:hover,
+.adj-sync-x:focus-visible {
+    color: var(--text-1);
+    background: color-mix(in srgb, var(--text-1) 12%, transparent);
+}
+
 /* Prompt-style dialogs (folder name, alert/confirm/prompt) */
 .dialog.prompt-card {
     width: min(440px, 100%);
@@ -6124,6 +6159,22 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     opacity: 1;
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+}
+
+/* Selected too, in Adjust (Ctrl+click): what Sync puts the open photo's
+   settings onto. A ring inside, so the open one (outside) stays apart */
+.mode-thumb.sel {
+    position: relative;
+    opacity: 1;
+}
+
+.mode-thumb.sel::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 2px var(--accent);
+    pointer-events: none;
 }
 
 /* Duplicates */
