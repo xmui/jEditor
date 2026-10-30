@@ -29,7 +29,10 @@ unless the user says they're testing on Mac or Linux:
 - **Betas** (a push to `beta`) have the Windows app and the web page only,
   unless the last commit's message says `[mac]`, `[linux]` or `[all]`.
 - **Releases** (a version bump merged to `main`) always build every app,
-  because Homebrew and the Mac and Linux updaters need them.
+  because Homebrew and the Mac and Linux updaters need them. The one
+  exception, only when the owner says so: a merge commit saying
+  `[no-mac]` leaves the Mac app (and Homebrew) for later, from Release
+  run by hand on `main` (`v1.x.y-2`, every app).
 
 Don't bump the version or push to `main` or `beta` for a release without
 asking first, since both publish (`.github/workflows/release.yml`).

@@ -17,7 +17,9 @@ name: Release
 # mostly tried on Windows, so a beta has the Windows app and the web page
 # only, unless the last commit pushed says [mac], [linux] or [all], or it's
 # run by hand on beta with Mac or Linux ticked. (The Mac and Linux apps look
-# for the newest beta with them in it.) Releases always have every app.
+# for the newest beta with them in it.) Releases always have every app,
+# unless the commit that lands on main says [no-mac]: then the Mac app (and
+# Homebrew) come later, from Release run by hand on main (v<version>-2).
 on:
   push:
     branches: [main, beta]
@@ -89,6 +91,10 @@ jobs:
           fi
           # Which apps: every one in a release; in a beta, those asked for
           mac=true; linux=true
+          if [ "$beta" = false ] && [ "$EVENT" = push ] && printf '%s' "$MESSAGE" | grep -qiF '[no-mac]'; then
+            mac=false
+            echo "::notice::[no-mac]: $tag without the Mac app; run Release by hand on main for it"
+          fi
           if [ "$beta" = true ]; then
             mac=false; linux=false
             asked() { [ "$1" = true ] || printf '%s' "$MESSAGE" | grep -qiE "\[($2|all)\]"; }
@@ -231,7 +237,7 @@ jobs:
   # as GitHub has it for the release, committed to main
   cask:
     needs: [tag, release]
-    if: needs.tag.outputs.beta == 'false'
+    if: needs.tag.outputs.beta == 'false' && needs.tag.outputs.mac == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

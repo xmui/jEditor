@@ -19,7 +19,6 @@ const CHANGELOG = [
             'Glass, in Settings → Appearance: Crystal (the clearest, to start with), Liquid (like Apple\'s Liquid Glass, bending what\'s under its edges), Clear, Opaque (faster on older computers) or Lens, with a tint if you like. The words on the glass are easier to read. The system\'s Reduce transparency or Increase contrast makes it solid.',
             'Adjust\'s panel has three tabs under the histogram: Edit, with the sliders in Lightroom\'s order (Basic first: the looks, white balance, light, vibrance and saturation), Retouch for spots and dust, and Masks.',
             'A button you clicked no longer stays highlighted after you press a key or close a menu with `Esc`.',
-            'On the Mac, Photos · Adjust · Paint stays clear of the traffic lights and the toolbar, at any toolbar size and on macOS 26.',
             'Delete on Windows: a photo another program has open for a moment is tried again, instead of Couldn\'t delete.'
         ]
     },
