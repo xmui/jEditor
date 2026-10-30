@@ -336,7 +336,7 @@ const PROJECT = `
                 // Crop (with Photos' bulk crop): the same as "Crop like the
                 // last crop" on the same photos: a portrait one gets the frame
                 // turned to fit, a turned one keeps its own quarter turn
-                if (typeof app.cropSnapFor === 'function') {
+                if (typeof app.cropEditsLike === 'function') {
                     step = 'crop';
                     Edits.set([
                         { file: f('a.jpg'), edit: { q: 0, angle: 3, n: { x0: -0.4, y0: -0.3, x1: 0.2, y1: 0.4 } } },
@@ -350,7 +350,7 @@ const PROJECT = `
                     const synced = crops();
                     pressKey('z', { ctrlKey: true });
                     await until(() => !f('c.jpg')._edit);
-                    await app.cropLike(others, await AdjustSync.cropOf(f('a.jpg')));
+                    await app.cropLike(others, { ...f('a.jpg')._edit, wide: true });
                     await until(() => f('c.jpg')._edit);
                     const liked = crops();
                     out.cropSame = JSON.stringify(synced) === JSON.stringify(liked);
