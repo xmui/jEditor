@@ -103,6 +103,7 @@ It works like Lightroom or Apple Photos: the crop frame stays in the middle of t
 - `Ctrl+Z` inside the editor undoes the last adjustment; `Ctrl+Shift+Z` redoes it.
 - Aspect presets: 4×6, 5×7, 8×10, 11×14, square, 3:4, 16:9, original and free. `X` swaps portrait and landscape. A preset fits inside the current crop, so choosing one after Auto never takes in the bed.
 - **Previous** (`P`) applies the last crop again. This is useful when a batch of scans has the same borders.
+- **Crop many the same way.** Select photos in the grid, open one in the editor (`C`), crop it and press **Save**: the message that follows offers **Crop the other N the same way**. Or select photos and press `Shift+P` (or **Crop N like the last crop** in the right-click menu) to use the last crop you saved. Each photo gets the same aspect ratio, frame and straighten, relative to its own size: a 4 × 6 stays exactly 4 × 6 on a bigger or smaller scan, and a portrait photo gets the frame turned to fit it, so a landscape crop works on both. Each keeps its own quarter turn. The originals are kept in `.jeditor/originals` (or the crops are kept as edits, with Save edits when done), and one `Ctrl+Z` puts them all back.
 - The header shows the output size in pixels, and in inches when the file has a DPI.
 
 ## Adjust: light, color and curves
@@ -265,6 +266,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `1`–`5` | Red, yellow, green, blue, purple label |
 | `U` | Clear flags |
 | `Shift+A` | Auto crop (the selection in grid view) |
+| `Shift+P` | Crop the selection like the last crop (grid view) |
 | `Shift+U` | Turn upright (the selection, or the photo) |
 | `Ctrl+F`, `/` | Search |
 | `Shift+N` | New folder |
