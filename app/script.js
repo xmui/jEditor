@@ -186,11 +186,24 @@ const app = {
         this.elements.gridSizeSlider.addEventListener('input', (e) => this.setGridSize(parseInt(e.target.value, 10)));
         // Off-screen tiles stand in at the real tile size (see syncGridTile)
         // (and a huge folder's grid builds the tiles the new size needs)
-        if (typeof ResizeObserver === 'function') new ResizeObserver(() => {
+        // Narrower or wider (the window, the folder list): other columns,
+        // and the photo the view was on stays where it was on screen
+        // (the content box: the folder list makes room with padding)
+        if (typeof ResizeObserver === 'function') new ResizeObserver((entries) => {
+            const w = entries[entries.length - 1].contentRect.width;
+            const place = w && this._gridW && w !== this._gridW ? this._gridPlace : null;
+            this._gridW = w;
             this.syncGridTile();
             this.updateGridWindow({ force: true });
+            if (place) this.restoreGridPlace(place);
+            this.rememberGridPlace();
         }).observe(this.elements.gridView);
-        this.elements.gridView.addEventListener('scroll', () => this.updateGridWindow(), { passive: true });
+        this.elements.gridView.addEventListener('scroll', () => {
+            this.updateGridWindow();
+            clearTimeout(this._gridPlaceTimer);
+            this._gridPlaceTimer = setTimeout(() => this.rememberGridPlace(), 120);
+        }, { passive: true });
+        this.elements.gridView.addEventListener('click', () => this.rememberGridPlace());
         this.elements.thumbnailStrip.addEventListener('scroll', () => this.updateStripWindow(), { passive: true });
         if (typeof ResizeObserver === 'function') new ResizeObserver(() => this.updateStripWindow({ force: true })).observe(this.elements.thumbnailStrip);
 
@@ -5301,13 +5314,21 @@ const app = {
     keepGridPlace(fn) {
         const a = this.gridAnchor();
         const result = fn();
-        if (a) {
-            const grid = this.elements.gridView;
-            const el = a.el._file ? this.revealInGrid(a.el._file)
-                : grid.querySelector(`.folder-tile[data-folder-path="${CSS.escape(a.el.dataset.folderPath || '')}"]`);
-            if (el && el.isConnected) grid.scrollTop += el.getBoundingClientRect().top - a.top;
-        }
+        if (a) this.restoreGridPlace(a);
         return result;
+    },
+
+    restoreGridPlace(a) {
+        const grid = this.elements.gridView;
+        const el = a.el._file ? this.revealInGrid(a.el._file)
+            : grid.querySelector(`.folder-tile[data-folder-path="${CSS.escape(a.el.dataset.folderPath || '')}"]`);
+        if (el && el.isConnected) grid.scrollTop += el.getBoundingClientRect().top - a.top;
+    },
+
+    // Where the view is, for when the grid changes width (its resize
+    // observer runs after the change, too late to look)
+    rememberGridPlace() {
+        this._gridPlace = this.elements.gridView.clientWidth ? this.gridAnchor() : null;
     },
 
     gridAnchor() {

@@ -3093,6 +3093,21 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('grid zoom: really changed the columns', r.cols[1] > r.cols[0] && r.cols[2] < r.cols[0], r.cols.join(','));
         check('grid zoom: otherwise the middle of the view stays put', r.fallback && Math.abs(r.fallbackMoved) <= 1, String(r.fallbackMoved));
         check('rescan: the highlighted photo stays put when new photos come in', r.rescanFiles === 260 && Math.abs(r.rescan - 300) <= 1 && r.stillCurrent, `${r.rescan} (${r.rescanFiles})`);
+        // The grid narrower or wider (the folder list shown or hidden, the
+        // window made smaller): other columns, the same photo in sight
+        const frames = () => page.evaluate(() => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res))));
+        const placeTop = () => page.evaluate(() => Math.round(app.currentFile._gridEl.getBoundingClientRect().top));
+        await page.waitForTimeout(300);
+        const w = { cols: [await page.evaluate(() => app.getGridColumnCount())], tops: [await placeTop()] };
+        await page.evaluate(() => Folders.toggleRail());
+        await frames(); await page.waitForTimeout(100);
+        w.cols.push(await page.evaluate(() => app.getGridColumnCount())); w.tops.push(await placeTop());
+        await page.evaluate(() => Folders.toggleRail());
+        await frames(); await page.waitForTimeout(100);
+        await page.setViewportSize({ width: 820, height: 820 });
+        await frames(); await page.waitForTimeout(100);
+        w.cols.push(await page.evaluate(() => app.getGridColumnCount())); w.tops.push(await placeTop());
+        check('grid narrower or wider: the highlighted photo stays put', new Set(w.cols).size === 3 && w.tops.every(t => Math.abs(t - w.tops[0]) <= 1), JSON.stringify(w));
         check('grid zoom suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
