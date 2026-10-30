@@ -6,6 +6,13 @@
 
 const CHANGELOG = [
     {
+        version: '1.50.1', date: '2026-10-30', beta: true,
+        items: [
+            'Crop many photos the same way: select photos, crop one and Save, then Crop the other N the same way. Or select photos and press `Shift+P` (or Crop N like the last crop, right-clicking them) to use the last crop. Each gets the same aspect ratio, frame and straighten, fitted to its size, so a 4 × 6 stays 4 × 6; a portrait photo gets the frame turned to suit it. Each keeps its own quarter turn, and one `Ctrl+Z` puts them all back.',
+            'Auto crop is an experiment for now, off to start with, while it\'s being fixed: turn it on in Settings → Experimental. While it\'s off, Auto and Every photo in the crop editor, Auto crop on the selection (`Shift+A`), Auto crop in the scan window and its settings page don\'t show, and no test scans are kept. Finding the prints on the glass in the scan window stays.'
+        ]
+    },
+    {
         version: '1.50.0', date: '2026-10-29',
         items: [
             'Themes are part of jEditor now, no longer an experiment, in the Windows, Mac and Linux apps: no need to turn them on in Settings → Experimental. Choose one in Settings → Appearance: Windows XP (Royale, Royale Noir and Royale Red), Snow Leopard (Finder and Aperture) or the 1984 Macintosh, each with its own title bar and menus. The theme you chose is there at the next start.',

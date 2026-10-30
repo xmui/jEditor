@@ -786,6 +786,7 @@ const CropEditor = {
         const r = this.rect;
         return {
             q: this.q, angle: this.angle, aspectKey: this.aspectKey, landscape: this.landscape,
+            wide: d.w >= d.h, // the photo's way round, for likeOn
             n: { x0: r.x0 / d.w, y0: r.y0 / d.h, x1: r.x1 / d.w, y1: r.y1 / d.h }
         };
     },
@@ -815,6 +816,28 @@ const CropEditor = {
         const n = snap.n;
         this.setRect({ x0: n.x0 * d.w, y0: n.y0 * d.h, x1: n.x1 * d.w, y1: n.y1 * d.h });
         this.refit();
+    },
+
+    // A crop on another W × H photo, the way Lightroom syncs one: the same
+    // aspect, frame and straighten, relative to its size. A photo the other
+    // way round (portrait for landscape) gets the frame turned with it; it
+    // keeps its own quarter turn (q). Off screen, like headless.
+    likeOn(W, H, snap, q = 0) {
+        const h = this.headless(W, H);
+        h.q = ((q % 4) + 4) % 4;
+        h.angle = Math.max(-this.MAX_ANGLE, Math.min(this.MAX_ANGLE, snap.angle || 0));
+        h.aspectKey = snap.aspectKey || 'free';
+        h.landscape = !!snap.landscape;
+        const d = h.turnedDims();
+        let n = snap.n;
+        if (typeof snap.wide === 'boolean' && snap.wide !== (d.w >= d.h)) {
+            // Turned a quarter clockwise, as Edits.turned does
+            n = { x0: -n.y1, y0: n.x0, x1: -n.y0, y1: n.x1 };
+            h.landscape = !h.landscape;
+        }
+        // The ratio kept exactly (a 4 × 6 stays 4 × 6 on any size)
+        h.applyAspectToRect({ x0: n.x0 * d.w, y0: n.y0 * d.h, x1: n.x1 * d.w, y1: n.y1 * d.h });
+        return h;
     },
 
     // A snapshot on a W × H photo, off screen (edits kept until saved, see
