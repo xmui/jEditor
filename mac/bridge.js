@@ -550,9 +550,12 @@
 
     let lastToolbar = '';
     let toolbarTimer = null;
+    // At most every 30ms, never later: put off at each change, it waited
+    // as long as the page kept changing (Adjust opening, on a slow Mac)
     const sendToolbar = () => {
-        clearTimeout(toolbarTimer);
+        if (toolbarTimer) return;
         toolbarTimer = setTimeout(() => {
+            toolbarTimer = null;
             if (!jeditor() || themed) return;
             const model = toolbarModel();
             const json = JSON.stringify(model);

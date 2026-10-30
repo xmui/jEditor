@@ -665,13 +665,20 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             const modeItem = d.items.find(i => i.id === 'mode');
             const floatShown = await page.evaluate(() => !!document.getElementById('mode-float').getClientRects().length);
             check('the mode is in the toolbar, after the sidebar\'s button, and the page\'s chip isn\'t under it', !!modeItem && modeItem.menu.includes('✓Photos') && d.items.findIndex(i => i.id === 'mode') === d.items.findIndex(i => i.id === 'rail') + 1 && !floatShown, JSON.stringify([d.items.map(i => i.id), modeItem, floatShown]));
+            // What reaches the toolbar from here (said if this goes wrong)
+            await app.evaluate(() => {
+                const t = global.jeditorToolbar;
+                global.sentModels = [];
+                if (!t._update) { t._update = t.update; t.update = (h, m) => { global.sentModels.push(`${Date.now() % 100000} ${m.visible ? 'shown' : 'hidden'} ${(m.items || []).map(i => i.id || '|').join(',')}`); return t._update(h, m); }; }
+            });
             await click('mode', 'adjust');
             // Adjust is open once its screen shows (after the photo's loaded)
             await page.waitForFunction(() => !document.getElementById('adjust-editor').classList.contains('hidden'), null, { timeout: 15000 });
             await settle();
             d = await describe();
             const chip = await page.evaluate(() => { const b = document.getElementById('mode-float').getBoundingClientRect(); return { top: b.top, height: b.height }; });
-            check('... choosing Adjust there opens it; the toolbar steps aside, the chip is in Adjust\'s head', d.visible === false && chip.height > 0 && chip.top < 20, JSON.stringify([d.visible, chip]));
+            const sent = await app.evaluate(() => global.sentModels.slice(-4));
+            check('... choosing Adjust there opens it; the toolbar steps aside, the chip is in Adjust\'s head', d.visible === false && chip.height > 0 && chip.top < 20, JSON.stringify([d.visible, chip, `now ${await app.evaluate(() => Date.now() % 100000)}`, sent]));
             await page.evaluate(() => Modes.go('photos'));
             await page.waitForFunction(() => Modes.current() === 'photos', null, { timeout: 15000 });
             await settle();
