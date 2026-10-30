@@ -81,6 +81,8 @@ const Themes = {
             ['Paste image', () => app.pasteFromMenu()],
             ['Copy adjustments', 'edit.copyAdjust', true],
             ['Paste adjustments', 'edit.pasteAdjust', true],
+            ['Sync adjustments…', 'edit.syncAdjust', true],
+            ['Auto Sync', 'adjust.autoSync', true],
             '—',
             ['Search', 'app.search', true]
         ],
