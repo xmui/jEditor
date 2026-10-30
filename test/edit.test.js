@@ -317,7 +317,8 @@ const PROJECT = `
                 out.keptOwn = b.temp === -30 && b.saturation === 40 && b.masks.length === 1 && b.masks[0].type === 'linear' && b.spots.length === 1;
                 out.cropKept = c && c.n.x1 === 0 && c.adj && c.adj.exposure === 1 && !c.adj.temp;
                 out.sourceSame = f('a.jpg')._edit.adj.temp === 15;
-                out.remembered = JSON.stringify(JSON.parse(localStorage.getItem(AdjustSync.KEY)).on) === JSON.stringify(['look', 'light']);
+                // (Crop, unticked only because a has no crop, stays on for next time)
+                out.remembered = JSON.stringify(JSON.parse(localStorage.getItem(AdjustSync.KEY)).on) === JSON.stringify(AdjustSync.cropper() ? ['look', 'light', 'crop'] : ['look', 'light']);
                 out.oneStep = app._undoStack.length === undoBefore + 1;
                 // One Ctrl+Z undoes it on both
                 step = 'undo';
