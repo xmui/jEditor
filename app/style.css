@@ -835,8 +835,9 @@ body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
 
 .header-controls {
     position: absolute;
-    top: var(--gutter);
-    right: var(--gutter);
+    /* The gutter on screen, as the file pill's, whatever the Toolbar size */
+    top: calc(var(--gutter) / var(--ui-scale, 1));
+    right: calc(var(--gutter) / var(--ui-scale, 1));
 }
 
 /* "More": the overflow buttons appear inline when expanded */
@@ -1549,8 +1550,9 @@ body[data-view="single"] .edits-bar {
    clear of the center pill (Folders.fitBar sets --bar-room). */
 .folder-bar {
     position: absolute;
-    top: var(--gutter);
-    left: var(--gutter);
+    /* The gutter on screen, as the header's, whatever the Toolbar size */
+    top: calc(var(--gutter) / var(--ui-scale, 1));
+    left: calc(var(--gutter) / var(--ui-scale, 1));
     z-index: calc(var(--z-floating) + 1);
     max-width: var(--bar-room, calc(50% - 200px));
     overflow: hidden;
@@ -5977,16 +5979,19 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 .mode-float {
     position: fixed;
-    top: var(--gutter);
-    left: var(--gutter);
+    top: calc(var(--gutter) / var(--ui-scale, 1));
+    left: calc(var(--gutter) / var(--ui-scale, 1));
     z-index: calc(var(--z-floating) + 1);
 }
 
-/* Over Adjust and Paint: in their heads' empty corner */
+/* Over Adjust and Paint: in their heads' empty corner, at the head's size
+   (it doesn't grow with Toolbar size: grown, it hung over Paint's options) */
 .mode-float.over-mode {
     top: 8px;
+    left: var(--gutter);
     height: calc(var(--ctl-lg) - 8px);
     z-index: calc(var(--z-mode) + 1);
+    zoom: 1;
 }
 
 .mode-menu {
@@ -8376,6 +8381,9 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    the top row of pills (mac/main.js places them from what bridge.js
    measures), and that row moves the window. The folder pill makes room
    for them; in full screen they're gone, and so is the room.
+   The pills zoom with Toolbar size (.toolbar) and the lights don't: so
+   the room for them, as the gutter, is divided by the zoom, to stay the
+   same on screen whatever the size.
    The start screen shows the Mac's own window material through it (main.js:
    vibrancy), tinted so its text reads as anywhere else. Photos, the grid
    and the colour behind photos stay solid.
@@ -8386,7 +8394,7 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     /* More title bar to take hold of: the top row sits this much lower,
        and what's above it moves the window too */
     --mac-drag: 14px;
-    --top-row: calc(var(--gutter) + var(--mac-drag) + var(--ctl-lg));
+    --top-row: calc(var(--gutter) + var(--mac-drag) + var(--ctl-lg) * var(--ui-scale, 1));
 }
 
 :root[data-platform="mac"]:not([data-skin]).fullscreen {
@@ -8398,23 +8406,17 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     top: var(--mac-drag);
 }
 
-:root[data-platform="mac"]:not([data-skin]) .folder-bar {
-    top: calc(var(--gutter) + var(--mac-drag));
-}
-
-:root[data-platform="mac"]:not([data-skin]) .folder-bar {
-    left: calc(var(--gutter) + var(--lights-w));
-}
-
-/* The mode chip on its own (single view; over Adjust and Paint) makes room
-   for them too */
+:root[data-platform="mac"]:not([data-skin]) .folder-bar,
 :root[data-platform="mac"]:not([data-skin]) .mode-float {
-    top: calc(var(--gutter) + var(--mac-drag));
-    left: calc(var(--gutter) + var(--lights-w));
+    top: calc((var(--gutter) + var(--mac-drag)) / var(--ui-scale, 1));
+    left: calc((var(--gutter) + var(--lights-w)) / var(--ui-scale, 1));
 }
 
+/* Over Adjust and Paint the mode chip is in their head's row (unzoomed, as
+   the head is), and the lights follow it there (bridge.js: reportLights) */
 :root[data-platform="mac"]:not([data-skin]) .mode-float.over-mode {
     top: 8px;
+    left: calc(var(--gutter) + var(--lights-w));
 }
 
 /* The top row drags the window... */
@@ -8422,7 +8424,7 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     content: "";
     position: fixed;
     inset: 0 0 auto 0;
-    height: calc(var(--gutter) * 2 + var(--ctl-lg) + var(--mac-drag));
+    height: calc(var(--gutter) * 2 + var(--mac-drag) + var(--ctl-lg) * var(--ui-scale, 1));
     -webkit-app-region: drag;
     pointer-events: none;
 }
@@ -8456,15 +8458,20 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 
 /* ---- The Mac app with macOS 26's own toolbar (bridge.js: html.native-toolbar) ----
    The window's toolbar, in Liquid Glass, is the top row: the page's own
-   pills there go (the toolbar mirrors them), it holds the traffic lights,
-   and what was below the pills starts below it. */
-:root.native-toolbar {
+   pills there go (the toolbar mirrors them, the mode chip too), it holds
+   the traffic lights, and what was below the pills starts below it. Over
+   Adjust and Paint it steps aside (bridge.js) and their head is the top
+   row, with the mode chip in it, as before macOS 26. */
+/* (As particular as the Mac's own --top-row, above, to win over it: AppKit's
+   toolbar doesn't grow with Toolbar size) */
+:root[data-platform="mac"].native-toolbar {
     /* The toolbar, and a strip under it that moves the window too */
     --top-row: calc(52px + var(--mac-drag));
 }
 
 :root.native-toolbar header,
-:root.native-toolbar .folder-bar {
+:root.native-toolbar .folder-bar,
+:root.native-toolbar .mode-float:not(.over-mode) {
     display: none !important;
 }
 

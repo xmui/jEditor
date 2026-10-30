@@ -116,6 +116,9 @@ const Fit = {
         const gutter = parseFloat(getComputedStyle(iface).getPropertyValue('--gutter')) || 16;
         const grid = document.body.dataset.view === 'grid';
         const bar = grid && this.shown(fb) ? fb : null;
+        // In the single view the mode chip has the top left (modes.js)
+        const chip = this.el('mode-float');
+        const left = bar || (chip && !chip.classList.contains('over-mode') && chip.getClientRects().length ? chip : null);
         // Start from everything shown, the folder pill as small as it goes
         for (const b of hc.querySelectorAll('[data-squeezed]')) delete b.dataset.squeezed;
         this.syncMore(hc, more);
@@ -127,7 +130,7 @@ const Fit = {
             bar.style.setProperty('--bar-room', 'none');
         }
         set();
-        const leftEdge = () => bar ? bar.getBoundingClientRect().right : box.left + gutter;
+        const leftEdge = () => left ? left.getBoundingClientRect().right : box.left + gutter;
         const rightEdge = () => this.shown(hc) && !hc.classList.contains('vertical') ? hc.getBoundingClientRect().left : box.right - gutter;
         const room = () => rightEdge() - leftEdge() - 2 * this.GAP;
         const need = () => {
