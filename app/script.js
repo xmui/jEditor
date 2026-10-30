@@ -4162,7 +4162,10 @@ const app = {
             const rect = item.getBoundingClientRect();
             const containerRect = this.elements.gridView.getBoundingClientRect();
             if (rect.top < containerRect.top || rect.bottom > containerRect.bottom) {
-                item.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                // A key held: at once, rather than a smooth scroll begun
+                // again on every repeat, never catching up
+                const held = typeof Motion !== 'undefined' && Motion.held;
+                item.scrollIntoView({ block: 'center', behavior: held ? 'auto' : 'smooth' });
             }
         }
     },

@@ -3152,8 +3152,77 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.setViewportSize({ width: 820, height: 820 });
         await frames(); await page.waitForTimeout(100);
         w.cols.push(await page.evaluate(() => app.getGridColumnCount())); w.tops.push(await placeTop());
-        check('grid narrower or wider: the highlighted photo stays put', new Set(w.cols).size === 3 && w.tops.every(t => Math.abs(t - w.tops[0]) <= 1), JSON.stringify(w));
+        // The size slider is there, and can be used, while a photo is
+        // selected (in the grid one nearly always is)
+        const sl = await page.evaluate(() => {
+            const s = app.elements.gridSizeSlider, r = s.getBoundingClientRect();
+            const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            return { selected: app.selection.size, bar: !document.getElementById('selection-bar').classList.contains('hidden'), w: Math.round(r.width), opacity: getComputedStyle(document.getElementById('grid-controls')).opacity, hit: hit === s };
+        });
+        check('grid: the size slider shows beside the selection bar, and takes a click', sl.selected === 1 && sl.bar && sl.w > 40 && sl.opacity === '1' && sl.hit, JSON.stringify(sl));
+        check('grid narrower or wider: the highlighted photo stays put',new Set(w.cols).size === 3 && w.tops.every(t => Math.abs(t - w.tops[0]) <= 1), JSON.stringify(w));
         check('grid zoom suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7o2. An arrow key held in the grid ----
+    console.log('grid: an arrow key held');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1280, height: 800 });
+        await page.evaluate(async () => {
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('heldorder', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('heldorder', { create: true });
+            const bytes = await makeRealJpeg(240, 160);
+            for (let i = 0; i < 300; i++) {
+                const w = await (await dir.getFileHandle(`h${String(i).padStart(3, '0')}.jpg`, { create: true })).createWritable();
+                await w.write(new Blob([bytes], { type: 'image/jpeg' }));
+                await w.close();
+            }
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            app.setView('grid');
+            app.goTo(app.files[0]);
+        });
+        await page.waitForTimeout(800);
+        // Every frame while the key repeats: the tiles in view drawn whole,
+        // the highlighted one in view, the animations not piling up
+        await page.evaluate(() => {
+            const grid = app.elements.gridView;
+            window.__held = { faded: 0, out: 0, anims: 0, frames: 0, jump: 0, woosh: 0 };
+            const look = () => {
+                const h = window.__held, gr = grid.getBoundingClientRect();
+                h.frames++;
+                if (grid.classList.contains('grid-jump')) h.jump++;
+                for (const t of grid.querySelectorAll('.grid-item')) {
+                    const r = t.getBoundingClientRect();
+                    // (at the edges they ease in and out, on purpose)
+                    if (r.top < gr.top + 190 || r.bottom > gr.bottom - 190) continue;
+                    if (+getComputedStyle(t).opacity < 0.95) h.faded++;
+                }
+                const el = app.currentFile._gridEl, r = el && el.getBoundingClientRect();
+                if (!r || r.top < gr.top - 1 || r.bottom > gr.bottom + 1) h.out++;
+                // (a loading tile's spinner isn't motion: one each, not piling up;
+                // the easing as it scrolls is counted on its own)
+                h.anims = Math.max(h.anims, document.getAnimations().filter(a => a.playState === 'running' && a.effect && a.effect.target && a.effect.target.closest && a.effect.target.closest('#grid-view') && !['spin', 'thumb-spinner-in', 'tile-woosh'].includes(a.animationName)).length);
+                // The easing as it scrolls, on while the key is held
+                if (Motion.held && grid.getAnimations({ subtree: true }).some(a => a.animationName === 'tile-woosh')) h.woosh = (h.woosh || 0) + 1;
+                if (window.__looking) requestAnimationFrame(look);
+            };
+            window.__looking = true;
+            requestAnimationFrame(look);
+        });
+        await page.keyboard.down('ArrowDown');
+        for (let i = 0; i < 30; i++) { await page.keyboard.down('ArrowDown'); await page.waitForTimeout(33); }
+        await page.keyboard.up('ArrowDown');
+        const during = await page.evaluate(() => { window.__looking = false; return { ...window.__held, at: app.viewFiles().indexOf(app.currentFile) }; });
+        await page.waitForTimeout(400);
+        const after = await page.evaluate(() => ({ jump: app.elements.gridView.classList.contains('grid-jump'), held: Motion.held }));
+        check('grid, a key held: it moves on, every tile in view drawn whole (no row faded to black)', during.at > 20 && during.faded === 0 && during.frames > 10, JSON.stringify(during));
+        check('grid, a key held: the highlighted photo stays in view, the bounces don\'t pile up', during.out === 0 && during.anims <= 2 && during.woosh === 0, JSON.stringify(during));
+        check('grid, a key let go: the easing comes back', !after.jump && !after.held, JSON.stringify(after));
+        check('key held suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
