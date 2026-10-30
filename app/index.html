@@ -36,6 +36,7 @@
     <script src="adjust.js"></script>
     <script src="adjust-masks.js"></script>
     <script src="adjust-spots.js"></script>
+    <script src="adjust-sync.js"></script>
     <script src="paint.js"></script>
     <script src="paint-editor.js"></script>
     <script src="history.js"></script>
@@ -1111,6 +1112,30 @@
                 <span class="dialog-actions rename-actions">
                     <button id="op-folder" class="btn secondary">Just this folder</button>
                     <button id="op-order" class="btn primary">Open the project</button>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sync: one photo's settings onto the rest of the selection (adjust-sync.js) -->
+    <div id="sync-panel" class="dialog-overlay hidden">
+        <div class="dialog prompt-card sync-card" role="dialog" aria-modal="true" aria-labelledby="sync-title">
+            <div class="dialog-head">
+                <h2 id="sync-title" class="dialog-title">Sync settings</h2>
+            </div>
+            <div class="dialog-body">
+                <p id="sync-text" class="op-text"></p>
+                <div id="sync-groups" class="sync-groups" role="group" aria-label="Settings to sync"></div>
+                <p id="sync-note" class="sync-note"></p>
+            </div>
+            <div class="dialog-foot">
+                <span class="dialog-actions">
+                    <button id="sync-all" class="btn ghost sm">Check all</button>
+                    <button id="sync-none" class="btn ghost sm">Check none</button>
+                </span>
+                <span class="dialog-actions rename-actions">
+                    <button id="sync-cancel" class="btn secondary">Cancel</button>
+                    <button id="sync-ok" class="btn primary">Sync</button>
                 </span>
             </div>
         </div>

@@ -2721,6 +2721,30 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     font-weight: var(--fw-semibold);
 }
 
+/* Sync (adjust-sync.js): which groups of settings go */
+.sync-groups {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-2) var(--sp-4);
+    margin-top: var(--sp-4);
+}
+
+.sync-check {
+    color: var(--text-1);
+}
+
+/* The source hasn't changed it: ticked, it takes the others' off */
+.sync-check.sync-unset {
+    color: var(--text-3);
+}
+
+.sync-note {
+    margin: var(--sp-3) 0 0;
+    min-height: var(--lh-small);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
 /* Prompt-style dialogs (folder name, alert/confirm/prompt) */
 .dialog.prompt-card {
     width: min(440px, 100%);
