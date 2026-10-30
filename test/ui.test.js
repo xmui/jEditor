@@ -951,7 +951,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.closed = !app.isSettingsOpen();
             app.toggleCustomizePanel(true);
             out.reopenedOn = shownPage();
-            // Arrow keys move between pages
+            // Arrow keys move between pages (Auto crop's is hidden: an experiment, off)
             const tab = document.querySelector('.settings-nav [data-page="messages"]');
             tab.focus();
             tab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
@@ -981,7 +981,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('glass saved before carries over: rich (the old default) is Crystal, Subtle and Off are Opaque; Off is gone from Settings',
             r.oldGlass === 'crystal,opaque,opaque,liquid' && r.glassOptions === 'crystal,liquid,clear,opaque,lens', JSON.stringify([r.oldGlass, r.glassOptions]));
         check('Ctrl+, opens Settings; Esc closes it', r.opened && r.closed, JSON.stringify({ o: r.opened, c: r.closed }));
-        check('Settings: a page at a time, Appearance first; a click (or the arrow keys) changes page, and it opens on the last page used', r.firstPage === 'appearance' && r.messagesPage === 'messages true' && r.noUpdates && r.reopenedOn === 'messages' && r.arrowPage === 'autocrop autocrop', JSON.stringify([r.firstPage, r.messagesPage, r.noUpdates, r.reopenedOn, r.arrowPage]));
+        check('Settings: a page at a time, Appearance first; a click (or the arrow keys) changes page, and it opens on the last page used', r.firstPage === 'appearance' && r.messagesPage === 'messages true' && r.noUpdates && r.reopenedOn === 'messages' && r.arrowPage === 'projects projects', JSON.stringify([r.firstPage, r.messagesPage, r.noUpdates, r.reopenedOn, r.arrowPage]));
         check('theme, density, glass and surround apply and are remembered',
             r.applied === 'light,comfortable,opaque,grey' && r.lightText && r.comfortable && r.subtleGlass &&
             r.surround === 'rgb(118, 118, 118)' && r.saved.theme === 'light' && r.saved.density === 'comfortable' &&
@@ -1146,6 +1146,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
     console.log('crop & straighten');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.evaluate(() => Experiments.set('auto-crop', true)); // an experiment, off to start with
         const r = await page.evaluate(async () => {
             const out = {};
             const ed = CropEditor;
@@ -1239,6 +1240,45 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             ed.usePrevious();
             out.previous = Math.abs(ed.rect.x0 + 150) < 1e-6 && Math.abs(ed.rect.x1 - 50) < 1e-6;
             app.cancelCrop();
+
+            {
+                // Bulk crop: one crop on many, relative to each photo's size and
+                // way round, its aspect kept exactly; one Ctrl+Z for them all
+                const likeSrc = CropEditor.headless(400, 300);
+                likeSrc.aspectKey = '4:5';
+                likeSrc.landscape = true;
+                likeSrc.angle = 2;
+                likeSrc.applyAspectToRect({ x0: -180, y0: -120, x1: 180, y1: 120 });
+                const like = likeSrc.snapshot();
+                const ratio = (h) => { const o = h.outputRect(); return o.w / o.h; };
+                const big = CropEditor.likeOn(800, 600, like), tall = CropEditor.likeOn(300, 400, like);
+                out.likeBig = Math.abs(ratio(big) - 1.25) < 0.01 && Math.abs((big.rect.x1 - big.rect.x0) / (likeSrc.rect.x1 - likeSrc.rect.x0) - 2) < 0.01 && big.angle === 2;
+                out.likeTall = Math.abs(ratio(tall) - 0.8) < 0.01 && tall.q === 0;
+                const bulkRoot = makeDir('Bulk');
+                const b1 = makeFakeFile('b1.jpg', await makeRealJpeg(400, 300, {}), 'image/jpeg');
+                const b2 = makeFakeFile('b2.jpg', await makeRealJpeg(300, 400, {}), 'image/jpeg');
+                const b1Before = b1.handle.bytes;
+                for (const f of [b1, b2]) { f.parentDir = bulkRoot; bulkRoot._files.set(f.name, f.handle); }
+                const savedDir = app.dirHandle;
+                app.dirHandle = bulkRoot;
+                app.files = [b1, b2];
+                app._undoStack = [];
+                const nBulk = await app.cropLike([b1, b2], like);
+                const dimsOf = async (f) => { const bm = await createImageBitmap(new Blob([f.handle.bytes])); const d = [bm.width, bm.height]; bm.close(); return d; };
+                const [w1, h1] = await dimsOf(b1), [w2, h2] = await dimsOf(b2);
+                out.bulkCropped = nBulk === 2 && Math.abs(w1 / h1 - 1.25) < 0.02 && Math.abs(w2 / h2 - 0.8) < 0.02 && app._undoStack.length === 1;
+                await app.undo();
+                out.bulkUndone = b1.handle.bytes.length === b1Before.length && (await dimsOf(b2)).join() === '300,400';
+                // Adjust's Sync: the source's kept crop as edits, nothing set
+                b1._edit = { q: 0, angle: 2, aspectKey: '4:5', landscape: true, n: like.n, adj: { exposure: 0.5 } };
+                const undos = app._undoStack.length;
+                const items = await app.cropEditsLike(b1, [b1, b2]);
+                const e2 = items && items[0] && items[0].edit;
+                out.syncCrop = items.length === 1 && items[0].file === b2 && !b2._edit && app._undoStack.length === undos &&
+                    e2.angle === 2 && Math.abs((e2.n.x1 - e2.n.x0) * 300 / ((e2.n.y1 - e2.n.y0) * 400) - 0.8) < 0.02;
+                delete b1._edit;
+                app.dirHandle = savedDir;
+            }
 
             // Save & Next opens the editor on the following photo
             const n1 = makeFakeFile('n1.jpg', await makeRealJpeg(300, 200, {}), 'image/jpeg');
@@ -1521,6 +1561,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('level tool: near-vertical line → plumb (+2.86°)', Math.abs(r.plumb - 2.86) < 0.01, String(r.plumb));
         check('quarter turn without crop saves losslessly', r.quarterLossless);
         check('"Previous" reapplies the last crop', r.previous);
+        check('Bulk crop keeps the aspect, scaled to a bigger photo, with its tilt', r.likeBig);
+        check('Bulk crop turns the frame for a photo the other way round', r.likeTall);
+        check('Bulk crop crops each selected photo the same way', r.bulkCropped);
+        check('One Ctrl+Z puts a bulk crop back', r.bulkUndone);
+        check('Sync gets the crop as edits for the others, nothing set', r.syncCrop);
         check('Save & Next moves on and reopens the editor', r.next);
         check('PNG crop stays PNG and keeps DPI', r.pngType === 'image/png' && r.pngDpi === 300, `${r.pngType} ${r.pngDpi}`);
         check('Auto straightens a tilted print (−3°)', r.autoFound && Math.abs(r.autoAngle + 3) < 0.15, String(r.autoAngle));
@@ -3491,6 +3536,30 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.setView('grid');
             app.selection = new Set(app.files);
             app.updateSelectionUI();
+            // Auto crop is an experiment, off to start with: nowhere to be
+            // seen, and Shift+A does nothing
+            const hidden = (id) => document.getElementById(id).closest('.exp-off') !== null;
+            const shows = () => ({
+                bar: !hidden('btn-auto-crop'),
+                editor: !hidden('crop-auto') && !hidden('crop-auto-each'),
+                settings: !document.querySelector('[data-page="autocrop"][role="tab"]').classList.contains('exp-off'),
+                scan: !hidden('scan-autocrop'),
+                menu: app.buildContextItems({ _file: app.files[0] }, false).some(it => /^Auto crop/.test(it[0] || '')),
+                themeMenu: Themes.menuItems('Picture', { all: true }).some(it => it[0] === 'Auto crop'),
+                shortcut: app.actionOn('edit.autoCrop') && app.actionOn('crop.auto'),
+                listed: (app.renderShortcutsPanel(), /Auto crop the selection/.test(document.getElementById('shortcuts-list').textContent))
+            });
+            out.expDefault = Experiments.on('auto-crop');
+            out.offShows = shows();
+            out.findStays = !hidden('scan-pv-find'); // the owner's exception: Find prints stays
+            const offBytes = (await (await dir.getFileHandle('scan1.jpg')).getFile()).size;
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'A', shiftKey: true, bubbles: true }));
+            await new Promise(res => setTimeout(res, 300));
+            out.offNothing = !app._autoCropping && !(app._undoStack || []).some(e => e.type === 'auto-crop') &&
+                (await (await dir.getFileHandle('scan1.jpg')).getFile()).size === offBytes && CropEditor.autoEach() === false;
+            Experiments.set('auto-crop', true);
+            app.selection = new Set(app.files);
+            out.onShows = shows();
             window.dispatchEvent(new KeyboardEvent('keydown', { key: 'A', shiftKey: true, bubbles: true }));
             for (let i = 0; i < 200 && (app._autoCropping || !app._undoStack || !app._undoStack.some(e => e.type === 'auto-crop')); i++) await new Promise(res => setTimeout(res, 50));
             const dims = async (n) => {
@@ -3582,6 +3651,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         const inside = (d) => d[0] < 900 && d[1] < 700 && d[0] > 450 && d[1] > 300;
         check('auto crop: each scan is cropped to its print', inside(r.scan1) && inside(r.scan2), `${r.scan1} / ${r.scan2}`);
         check('auto crop: a photo with no print edge is left alone', r.plain.join('x') === '400x300', r.plain.join('x'));
+        check('auto crop experiment: off to start with', r.expDefault === false);
+        check('auto crop experiment off: hidden everywhere (bar, editor, settings, scan, menus, shortcuts)', Object.values(r.offShows).every(v => v === false), JSON.stringify(r.offShows));
+        check('auto crop experiment off: Shift+A does nothing', r.offNothing);
+        check('auto crop experiment off: Find prints stays in the scan window', r.findStays);
+        check('auto crop experiment on: all back', Object.values(r.onShows).every(v => v === true), JSON.stringify(r.onShows));
         check('auto crop: says what it did, with Undo', /Auto-cropped 2 photos — no print found on 1/.test(r.toast), r.toast);
         check('auto crop: originals kept in .jeditor/originals; one Ctrl+Z restores every byte', r.backups === 2 && r.restored && r.backupsAfter === 0, JSON.stringify(r));
         {
@@ -3656,6 +3730,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
     console.log('feeder auto crop');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.evaluate(() => Experiments.set('auto-crop', true)); // an experiment, off to start with
         const r = await page.evaluate(async () => {
             const out = {};
             let seed = 11;
@@ -4088,6 +4163,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
     console.log('save edits when done');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.evaluate(() => Experiments.set('auto-crop', true)); // an experiment, off to start with
         const r = await page.evaluate(async () => {
             let step = 'start';
             try { return await (async () => {

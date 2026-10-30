@@ -6,6 +6,31 @@
 
 const CHANGELOG = [
     {
+        version: '1.50.1', date: '2026-10-30', beta: true,
+        items: [
+            'Crop many photos the same way: select photos, crop one and Save, then Crop the other N the same way. Or select photos and press `Shift+P` (or Crop N like the last crop, right-clicking them) to use the last crop. Each gets the same aspect ratio, frame and straighten, fitted to its size, so a 4 × 6 stays 4 × 6; a portrait photo gets the frame turned to suit it. Each keeps its own quarter turn, and one `Ctrl+Z` puts them all back.',
+            'Auto crop is an experiment for now, off to start with, while it\'s being fixed: turn it on in Settings → Experimental. While it\'s off, Auto and Every photo in the crop editor, Auto crop on the selection (`Shift+A`), Auto crop in the scan window and its settings page don\'t show, and no test scans are kept. Finding the prints on the glass in the scan window stays.'
+        ]
+    },
+    {
+        version: '1.50.0', date: '2026-10-29',
+        items: [
+            'Themes are part of jEditor now, no longer an experiment, in the Windows, Mac and Linux apps: no need to turn them on in Settings → Experimental. Choose one in Settings → Appearance: Windows XP (Royale, Royale Noir and Royale Red), Snow Leopard (Finder and Aperture) or the 1984 Macintosh, each with its own title bar and menus. The theme you chose is there at the next start.',
+            'Themes on the Mac and Linux: the theme\'s own title bar works the window, and on a Mac jEditor\'s commands are in the menu bar at the top of the screen while Snow Leopard is on. In full screen there\'s no title bar. The themes\' menus have Copy image and Paste image too, and their own scroll bars again, sideways ones included.',
+            'HEIC and HEIF photos (an iPhone\'s, and Sony\'s .hif) are shown with the rest, upright, everywhere. Crop, adjust and paint them like any photo: like a RAW, the HEIC is never changed, and Export and Save edits write a JPEG copy. Convert takes them too, into any of its formats.',
+            'Much faster in huge folders (10,000 photos and more): the grid opens in about a second, scrolls smoothly, and Select all, a search cleared, opening a photo and going back to the grid are instant. After a jump, the thumbnails in the middle of the screen come first.',
+            'The grid on the Mac no longer keeps itself busy when nothing is happening, so tiles, thumbnails, scrolling and clicks are all quicker there.',
+            'A new look in the sidebar: just a list, with Photos · Adjust · Paint as a pill. The project is its heading (click its name to rename it), and its … has what the card\'s buttons had: Scan, Show in Explorer or Finder, Split, Pin, Rename, Export and Save edits when done.',
+            'The selection bar in the grid is quieter: the count, then Move to…, Rename…, … and Delete. Rotate left and right are under its … (and on `[` and `]`).',
+            'Animations: tiles bounce when selected, a folder\'s photos ripple in, deleted ones shrink away while the rest slide into place, new photos fly in, and the mode switch\'s highlight glides. Settings → Appearance → Animations turns them off; so does the system\'s Reduce motion.',
+            'Glass, in Settings → Appearance: Crystal (the clearest, to start with), Liquid (like Apple\'s Liquid Glass, bending what\'s under its edges), Clear, Opaque (faster on older computers) or Lens, with a tint if you like. The words on the glass are easier to read. The system\'s Reduce transparency or Increase contrast makes it solid.',
+            'Adjust\'s panel has three tabs under the histogram: Edit, with the sliders in Lightroom\'s order (Basic first: the looks, white balance, light, vibrance and saturation), Retouch for spots and dust, and Masks.',
+            'A button you clicked no longer stays highlighted after you press a key or close a menu with `Esc`.',
+            'On the Mac, Photos · Adjust · Paint stays clear of the traffic lights and the toolbar, at any toolbar size and on macOS 26.',
+            'Delete on Windows: a photo another program has open for a moment is tried again, instead of Couldn\'t delete.'
+        ]
+    },
+    {
         version: '1.46.1', date: '2026-10-23', beta: true,
         items: [
             'Drag the edge of the sidebar, or of Adjust\'s or Paint\'s panel, to make it wider or narrower: jEditor remembers each width, in its own look and in every theme. Double-click the edge to put it back. In the themes, project and folder names in the sidebar get the room they need instead of being cut short, and show in full when you point at them.',
