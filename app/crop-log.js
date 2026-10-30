@@ -115,7 +115,7 @@ const CropLog = {
     // The whole photo with no Auto is kept only if batch Auto crop made
     // it (keep): then it's Auto's crop saved as it was.
     entry(app, ed, file) {
-        if (!this.enabled() || !ed.ready) return null;
+        if (!this.enabled() || !ed.ready || !app.autoCropOn()) return null;
         const none = ed.isIdentity() && !ed.q;
         const auto = ed._auto || null;
         const o = ed.outputRect();
