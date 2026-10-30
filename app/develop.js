@@ -283,6 +283,57 @@ const Develop = {
         return Object.keys(c).length ? c : null;
     },
 
+    // ---- Sync: some of one photo's settings onto others ----
+
+    // The groups Sync's dialog lists, in the panel's order. off: not
+    // ticked to start with, as in Lightroom: masks and spots are placed on
+    // one photo's own sky, faces and specks
+    SYNC: [
+        { id: 'look', name: 'Look', keys: ['look', 'lookAmount', 'mono'] },
+        { id: 'wb', name: 'White balance', keys: ['temp', 'tint'] },
+        { id: 'light', name: 'Light', keys: ['exposure', 'contrast', 'highlights', 'shadows', 'whites', 'blacks'] },
+        { id: 'presence', name: 'Presence', keys: ['vibrance', 'saturation'] },
+        { id: 'levels', name: 'Levels', keys: ['levels'] },
+        { id: 'curve', name: 'Tone curve', keys: ['curve'] },
+        { id: 'mixer', name: 'Color mixer', keys: ['hsl'] },
+        { id: 'grading', name: 'Color grading', keys: ['grade', 'gradeBlend', 'gradeBalance'] },
+        { id: 'detail', name: 'Detail', keys: ['sharpen', 'sharpRadius', 'sharpMask', 'noise', 'colorNoise'] },
+        { id: 'effects', name: 'Effects', keys: ['vignette', 'vigMid', 'vigFeather', 'vigRound', 'grain', 'grainSize', 'grainColor', 'halation'] },
+        { id: 'masks', name: 'Masks', keys: ['masks'], off: true, note: 'Sky and subject masks are found in each photo, so each keeps its own' },
+        { id: 'spots', name: 'Spot removal', keys: ['spots'], off: true }
+    ],
+
+    // target's settings with source's for these groups (ids from SYNC): a
+    // group source hasn't changed is put back to its defaults on target
+    synced(target, source, groups) {
+        const out = this.clean(target) || {};
+        const src = this.clean(source) || {};
+        const copy = (x) => JSON.parse(JSON.stringify(x));
+        for (const g of this.SYNC) {
+            if (!groups.includes(g.id)) continue;
+            if (g.id === 'masks') {
+                // Sky and subject: found in the photo they're on
+                const own = (out.masks || []).filter(m => m.map);
+                const moved = (src.masks || []).filter(m => !m.map).map(copy);
+                const list = [...moved, ...own].slice(0, this.MAX_MASKS);
+                if (list.length) out.masks = list;
+                else delete out.masks;
+                continue;
+            }
+            for (const k of g.keys) {
+                if (k in src) out[k] = copy(src[k]);
+                else delete out[k];
+            }
+        }
+        return this.clean(out);
+    },
+
+    // The groups these settings change (ids from SYNC)
+    syncGroups(adj) {
+        const c = this.clean(adj) || {};
+        return this.SYNC.filter(g => g.keys.some(k => k in c)).map(g => g.id);
+    },
+
     // ---- Masks: settings for part of the photo ----
 
     MAX_MASKS: 8,
