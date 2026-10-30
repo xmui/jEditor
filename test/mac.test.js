@@ -666,7 +666,8 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             const floatShown = await page.evaluate(() => !!document.getElementById('mode-float').getClientRects().length);
             check('the mode is in the toolbar, after the sidebar\'s button, and the page\'s chip isn\'t under it', !!modeItem && modeItem.menu.includes('✓Photos') && d.items.findIndex(i => i.id === 'mode') === d.items.findIndex(i => i.id === 'rail') + 1 && !floatShown, JSON.stringify([d.items.map(i => i.id), modeItem, floatShown]));
             await click('mode', 'adjust');
-            await page.waitForFunction(() => Modes.current() === 'adjust', null, { timeout: 15000 });
+            // Adjust is open once its screen shows (after the photo's loaded)
+            await page.waitForFunction(() => !document.getElementById('adjust-editor').classList.contains('hidden'), null, { timeout: 15000 });
             await settle();
             d = await describe();
             const chip = await page.evaluate(() => { const b = document.getElementById('mode-float').getBoundingClientRect(); return { top: b.top, height: b.height }; });

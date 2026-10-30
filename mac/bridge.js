@@ -592,6 +592,9 @@
                 watch.observe(el, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'aria-pressed', 'disabled', 'title', 'aria-label'] });
             }
             watch.observe(jeditor().elements.mainInterface, { attributes: true, attributeFilter: ['class'] });
+            // Adjust and Paint opened or closed: the toolbar steps aside or
+            // comes back then, not when something else on the page changes
+            for (const el of [$('adjust-editor'), $('paint-editor')].filter(Boolean)) watch.observe(el, { attributes: true, attributeFilter: ['class'] });
             $('sort-mode').addEventListener('change', sendToolbar);
             // ⌘F and /: the toolbar's search field, not the hidden one
             $('fb-search').addEventListener('focus', (e) => {
