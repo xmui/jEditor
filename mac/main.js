@@ -99,6 +99,8 @@ function log(level, text) {
 // webContents id → { win, ready, queue (folders to open once it's ready),
 // state (what it shows: { name, path, folders }), focusedAt }
 const windows = new Map();
+// For the tests (test/mac.test.js): where each window's traffic lights were put
+global.jeditorLights = () => [...windows.values()].map(r => r.lights || null);
 let started = false;
 const early = []; // folders from Finder before there's a window
 

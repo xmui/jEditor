@@ -537,6 +537,77 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         check('the traffic lights get their room, and give it back in full screen', r.lightsRoom === 72 && r.fullscreenRoom === 0, JSON.stringify([r.lightsRoom, r.fullscreenRoom]));
         check('the top row moves the window, its buttons don\'t', r.drag === 'drag' && r.noDrag === 'no-drag', JSON.stringify([r.drag, r.noDrag]));
 
+        // The top row, the traffic lights and Photos · Adjust · Paint: at every
+        // Toolbar size, in each mode and view, nothing over anything else.
+        // (The pills zoom with Toolbar size and the lights don't: the room
+        // for them, and where the sidebar starts, once didn't follow.)
+        const lights = async () => (await app.evaluate(() => global.jeditorLights()))[0];
+        const overlaps = [], offRow = [];
+        for (const scale of [0.8, 1, 1.3, 1.6]) {
+            for (const where of ['grid', 'sidebar', 'single', 'adjust', 'paint']) {
+                await page.evaluate(async ([scale, where]) => {
+                    const wait = (ms) => new Promise(r => setTimeout(r, ms));
+                    if (Modes.current() !== 'photos') { await Modes.go('photos'); await wait(400); }
+                    app.uiPrefs.scale = scale;
+                    app.applyUiPrefs();
+                    app.setView(where === 'grid' || where === 'sidebar' ? 'grid' : 'single');
+                    await wait(300);
+                    const rail = !!document.getElementById('mode-seg').getClientRects().length;
+                    if (rail !== (where === 'sidebar')) app.keyHandlers()['folders.rail']();
+                    if (where === 'adjust' || where === 'paint') {
+                        Modes.go(where);
+                        for (let i = 0; i < 60 && !document.querySelector('.mode-float.over-mode:not(.hidden)'); i++) await wait(50);
+                    }
+                    await wait(500);
+                }, [scale, where]);
+                await page.waitForTimeout(250);
+                const l = await lights();
+                const r = await page.evaluate((l) => {
+                    const box = (e) => { const b = e.getBoundingClientRect(); return { name: e.id || e.className.split(' ')[0] || e.tagName, left: b.left, top: b.top, right: b.right, bottom: b.bottom }; };
+                    const seen = (sel) => [...document.querySelectorAll(sel)].filter(e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden').map(box);
+                    const hit = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+                    // Three lights, 14px each, 20px apart
+                    const lights = { name: 'the traffic lights', left: l.x, top: l.y, right: l.x + 54, bottom: l.y + 14 };
+                    // Over Adjust and Paint, only the mode chip: the rest is under them
+                    const editing = !!document.querySelector('.mode-screen:not(.hidden)');
+                    const pills = seen(editing ? '.mode-float' : 'header .toolbar, header .file-info, .folder-bar, .mode-float');
+                    const others = seen('#mode-seg, .folder-rail, .mode-screen:not(.hidden) .mode-head-acts, .paint-options, .paint-tools');
+                    const out = [];
+                    for (const a of [lights, ...pills]) for (const b of [...pills, ...others]) if (a !== b && hit(a, b) && !(a.name === 'mode-float' && b.name === 'folder-bar')) out.push(a.name + ' over ' + b.name);
+                    // The lights in line with the pill beside them
+                    const by = pills.find(p => p.left > lights.left && p.top < lights.bottom + 20);
+                    const off = by ? Math.abs((by.top + by.bottom) / 2 - (lights.top + 7)) : 0;
+                    return { out: [...new Set(out)], off: Math.round(off), by: by && by.name };
+                }, l);
+                for (const o of r.out) overlaps.push(`${where} at ${scale * 100}%: ${o}`);
+                if (r.off > 2) offRow.push(`${where} at ${scale * 100}%: ${r.off}px off ${r.by}`);
+            }
+        }
+        // Back to 100%, kept: the next windows open with this profile
+        await page.evaluate(async () => { await Modes.go('photos'); app.uiPrefs.scale = 1; app.applyUiPrefs(); app.saveUiPrefs(); });
+        check('the traffic lights, the top row and Photos · Adjust · Paint clear of each other, at every Toolbar size', overlaps.length === 0, overlaps.join('; '));
+        check('... the lights in line with the pill beside them (in Adjust and Paint, the mode chip)', offRow.length === 0, offRow.join('; '));
+        // macOS 26's toolbar holds the top row (its own part, below, needs a
+        // Mac on 26): none of the page's pills, the mode chip neither, is left
+        // there to sit under it
+        const under = await page.evaluate(async () => {
+            const wait = (ms) => new Promise(r => setTimeout(r, ms));
+            document.documentElement.classList.add('native-toolbar');
+            const out = [];
+            for (const view of ['grid', 'single']) {
+                app.setView(view);
+                await wait(400);
+                const band = parseFloat(getComputedStyle(document.getElementById('main-interface'), '::before').height);
+                for (const e of document.querySelectorAll('header, .folder-bar, .mode-float, #mode-chip-bar')) {
+                    const b = e.getBoundingClientRect();
+                    if (e.getClientRects().length && b.top < band) out.push(`${view}: ${e.id || e.className}`);
+                }
+            }
+            document.documentElement.classList.remove('native-toolbar');
+            return out;
+        });
+        check('... with macOS 26\'s toolbar, nothing of the page\'s own top row under it', under.length === 0, under.join('; '));
+
         // Reduce transparency (System Settings → Accessibility): solid
         await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }] });
         const reduced = await page.evaluate(() => matchMedia('(prefers-reduced-transparency: reduce)').matches && getComputedStyle(document.querySelector('.file-info')).backdropFilter);
@@ -584,6 +655,35 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             check('searching from the toolbar finds photos', await page.evaluate(() => app.viewFiles().map(f => f.name).join()) === '2-black.jpg');
             await click('search', '');
             await page.waitForTimeout(600);
+
+            // Photos · Adjust · Paint: in the toolbar (as in the folder pill),
+            // never the page's own chip under it; over Adjust and Paint the
+            // toolbar steps aside and their head, with the chip, is the top row
+            await page.evaluate(() => { if (document.getElementById('mode-seg').getClientRects().length) app.keyHandlers()['folders.rail'](); });
+            await settle();
+            d = await describe();
+            const modeItem = d.items.find(i => i.id === 'mode');
+            const floatShown = await page.evaluate(() => !!document.getElementById('mode-float').getClientRects().length);
+            check('the mode is in the toolbar, after the sidebar\'s button, and the page\'s chip isn\'t under it', !!modeItem && modeItem.menu.includes('✓Photos') && d.items.findIndex(i => i.id === 'mode') === d.items.findIndex(i => i.id === 'rail') + 1 && !floatShown, JSON.stringify([d.items.map(i => i.id), modeItem, floatShown]));
+            // What reaches the toolbar from here (said if this goes wrong)
+            await app.evaluate(() => {
+                const t = global.jeditorToolbar;
+                global.sentModels = [];
+                if (!t._update) { t._update = t.update; t.update = (h, m) => { global.sentModels.push(`${Date.now() % 100000} ${m.visible ? 'shown' : 'hidden'} ${(m.items || []).map(i => i.id || '|').join(',')}`); return t._update(h, m); }; }
+            });
+            await click('mode', 'adjust');
+            // Adjust is open once its screen shows (after the photo's loaded)
+            await page.waitForFunction(() => !document.getElementById('adjust-editor').classList.contains('hidden'), null, { timeout: 15000 });
+            await settle();
+            d = await describe();
+            const chip = await page.evaluate(() => { const b = document.getElementById('mode-float').getBoundingClientRect(); return { top: b.top, height: b.height }; });
+            const sent = await app.evaluate(() => global.sentModels.slice(-4));
+            check('... choosing Adjust there opens it; the toolbar steps aside, the chip is in Adjust\'s head', d.visible === false && chip.height > 0 && chip.top < 20, JSON.stringify([d.visible, chip, `now ${await app.evaluate(() => Date.now() % 100000)}`, sent]));
+            await page.evaluate(() => Modes.go('photos'));
+            await page.waitForFunction(() => Modes.current() === 'photos', null, { timeout: 15000 });
+            await settle();
+            d = await describe();
+            check('... and back in Photos, the toolbar is back', d.visible && d.items.some(i => i.id === 'mode'), JSON.stringify(d).slice(0, 200));
 
             // The toolbar's empty space moves the window: pressed there, it's the
             // window's (the drag view), not the page's under it
