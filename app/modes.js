@@ -81,6 +81,9 @@ const Modes = {
         }
         const blank = this.el('start-blank');
         if (blank) blank.addEventListener('click', () => this.paintStart());
+        // Convert photos…: any folder, without opening it (convert.js)
+        const convert = this.el('start-convert');
+        if (convert) convert.addEventListener('click', () => Convert.open({ choose: true }));
         // A project opened from the landing page lands in Start in's mode
         const drop = app.elements.dropZone;
         if (drop) {
@@ -109,7 +112,7 @@ const Modes = {
         b.setAttribute('aria-expanded', 'false');
         b.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (this.menu) this.closeMenu(); else this.openMenu(b);
+            if (this.menu) this.closeMenu(); else this.openMenu(b, e.detail === 0);
         });
         return b;
     },
@@ -354,7 +357,8 @@ const Modes = {
         b.classList.toggle('editing', mode !== 'photos');
     },
 
-    openMenu(chip) {
+    // byKeys: opened with Enter or Space, so Esc gives the chip the keys back
+    openMenu(chip, byKeys = false) {
         this.closeMenu();
         const mode = this.current();
         const menu = document.createElement('div');
@@ -379,6 +383,7 @@ const Modes = {
         chip.setAttribute('aria-expanded', 'true');
         this.menu = menu;
         this.menuChip = chip;
+        this.menuByKeys = byKeys;
         menu.addEventListener('keydown', (e) => {
             const items = [...menu.querySelectorAll('button')];
             const i = items.indexOf(document.activeElement);
@@ -395,7 +400,8 @@ const Modes = {
         this.menu = null;
         if (this.menuChip) {
             this.menuChip.setAttribute('aria-expanded', 'false');
-            if (refocus) this.menuChip.focus();
+            // Not after a click: its keyboard ring would show, and stay
+            if (refocus && this.menuByKeys) this.menuChip.focus();
         }
         this.menuChip = null;
     },

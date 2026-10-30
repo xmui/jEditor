@@ -389,6 +389,45 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 4a. Turn upright: each photo its own turn, one undo step ----
+    console.log('turn upright');
+    {
+        const { page } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const files = ['c.jpg', 'd.jpg', 'e.jpg'].map(n => makeFakeFile(n, makeJpegBytes(), 'image/jpeg'));
+            app.files = files;
+            app.viewMode = 'grid';
+            app.dirHandle = null;
+            // What the network would say: c a quarter turn right, d left, e unsure
+            const said = { 'c.jpg': { turns: 1, sure: 0.97 }, 'd.jpg': { turns: 3, sure: 0.95 }, 'e.jpg': { turns: 2, sure: 0.4 } };
+            const real = Upright.guess;
+            let n = 0;
+            Upright.guess = async () => said[files[n++].name];
+            out.loaded = !!Upright.load();
+            const steps = (app._undoStack || []).length;
+            out.turned = await app.turnUpright(files);
+            Upright.guess = real;
+            out.orient = files.slice(0, 2).map(f => readOrientation(f.handle.bytes)).join();
+            out.eWrites = files[2].handle.writes;
+            out.oneStep = (app._undoStack || []).length === steps + 1;
+            // The real network, on a photo: an answer for one of the four turns
+            const c = document.createElement('canvas');
+            c.width = 120; c.height = 80;
+            const g = c.getContext('2d');
+            g.fillStyle = '#7ab'; g.fillRect(0, 0, 120, 40);
+            g.fillStyle = '#585'; g.fillRect(0, 40, 120, 40);
+            const ans = await Upright.guess(await new Promise(res => c.toBlob(res)));
+            out.real = ans && [0, 1, 2, 3].includes(ans.turns) && ans.sure > 0.25 && ans.sure <= 1;
+            return out;
+        });
+        check('turn upright: the network is there', r.loaded);
+        check('turn upright: each photo turned its own way; an unsure one left as it is', r.turned === 2 && r.orient === '6,8' && r.eWrites === 0, JSON.stringify(r));
+        check('turn upright: one undo step for them all', r.oneStep);
+        check('turn upright: the network answers for a photo', r.real, JSON.stringify(r));
+        await page.close();
+    }
+
     // ---- 4b. Snappy previews: instant stacking, background saves, no re-decode ----
     console.log('instant previews & stacking');
     {
@@ -835,6 +874,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const contrast = () => {
                 const cs = getComputedStyle(pill);
                 const lum = (c) => { const m = c.match(/[\d.]+/g).map(Number); return 0.299 * m[0] + 0.587 * m[1] + 0.114 * m[2]; };
+                // See-through glass keeps its words readable with a halo instead (tokens.css)
+                if (Number((cs.backgroundColor.match(/[\d.]+/g) || [])[3] ?? 1) < 0.5) return cs.textShadow !== 'none' ? 255 : 0;
                 return Math.abs(lum(cs.backgroundColor) - lum(cs.color));
             };
             document.documentElement.dataset.theme = 'light';
@@ -847,7 +888,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         });
         check('default main controls: info, view, refresh, crop, history', r.defaultMain === 'info,view,refresh,crop,history', r.defaultMain);
         // (Adjust and Paint too: the mode switch has them)
-        check('extras live in More (adjust, paint, fit, strip, fullscreen, dupes, keys, whatsnew, customize)', r.defaultExtras === 'adjust,paint,fit,strip,fullscreen,dupes,keys,whatsnew,customize', r.defaultExtras);
+        check('extras live in More (adjust, paint, fit, strip, fullscreen, dupes, convert, keys, whatsnew, customize)', r.defaultExtras === 'adjust,paint,fit,strip,fullscreen,dupes,convert,keys,whatsnew,customize', r.defaultExtras);
         check('More expander shows/hides extras', r.extrasHiddenCollapsed && r.extrasShownExpanded);
         // (Adjust, newer than that saved order, goes after Crop, and Paint after it)
         check('reorder + hide + promote via prefs', r.reordered === 'crop,adjust,paint' && r.refreshHidden && r.fullscreenMain,
@@ -890,7 +931,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             };
             pick('set-theme', 'light');
             pick('set-density', 'comfortable');
-            pick('set-glass', 'subtle');
+            pick('set-glass', 'opaque');
             pick('set-surround', 'grey');
             out.applied = [root.dataset.theme, root.dataset.density, root.dataset.glass, root.dataset.surround].join(',');
             out.lightText = css('--text-1') === '#171717';
@@ -921,6 +962,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // Window background is the Windows app's: hidden here, and the window stays solid
             out.backdropHidden = ['set-backdrop-row', 'set-transparency-row'].every(id => getComputedStyle(document.getElementById(id)).display === 'none');
             out.solidWindow = !root.classList.contains('backdrop') && getComputedStyle(document.body).backgroundColor === 'rgb(232, 232, 232)';
+            out.oldGlass = ['rich', 'subtle', 'off', 'liquid'].map(g => { localStorage.setItem('jeditor.ui', JSON.stringify({ glass: g })); app.loadUiPrefs(); return app.uiPrefs.glass; }).join();
+            out.glassOptions = [...document.querySelectorAll('input[name="set-glass"]')].map(i => i.value).join();
             localStorage.setItem('jeditor.ui', JSON.stringify({ backdrop: 'glass', transparency: 500 }));
             app.loadUiPrefs();
             out.badBackdrop = [app.uiPrefs.backdrop, app.uiPrefs.transparency].join();
@@ -934,17 +977,108 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.applyUiPrefs();
             return out;
         });
-        check('appearance defaults: dark, compact, rich glass, theme surround', r.defaults === 'dark,compact,rich,auto', r.defaults);
+        check('appearance defaults: dark, compact, crystal glass, theme surround', r.defaults === 'dark,compact,crystal,auto', r.defaults);
+        check('glass saved before carries over: rich (the old default) is Crystal, Subtle and Off are Opaque; Off is gone from Settings',
+            r.oldGlass === 'crystal,opaque,opaque,liquid' && r.glassOptions === 'crystal,liquid,clear,opaque,lens', JSON.stringify([r.oldGlass, r.glassOptions]));
         check('Ctrl+, opens Settings; Esc closes it', r.opened && r.closed, JSON.stringify({ o: r.opened, c: r.closed }));
         check('Settings: a page at a time, Appearance first; a click (or the arrow keys) changes page, and it opens on the last page used', r.firstPage === 'appearance' && r.messagesPage === 'messages true' && r.noUpdates && r.reopenedOn === 'messages' && r.arrowPage === 'autocrop autocrop', JSON.stringify([r.firstPage, r.messagesPage, r.noUpdates, r.reopenedOn, r.arrowPage]));
         check('theme, density, glass and surround apply and are remembered',
-            r.applied === 'light,comfortable,subtle,grey' && r.lightText && r.comfortable && r.subtleGlass &&
+            r.applied === 'light,comfortable,opaque,grey' && r.lightText && r.comfortable && r.subtleGlass &&
             r.surround === 'rgb(118, 118, 118)' && r.saved.theme === 'light' && r.saved.density === 'comfortable' &&
-            r.saved.glass === 'subtle' && r.saved.surround === 'grey', JSON.stringify(r));
+            r.saved.glass === 'opaque' && r.saved.surround === 'grey', JSON.stringify(r));
         check('the glass is fixed: it no longer follows the photo', r.noSampler && r.noGlassClasses);
         check('window background: not in a browser, solid; bad saved values ignored',
             r.backdropHidden && r.solidWindow && r.badBackdrop === 'none,50', JSON.stringify(r));
         check('appearance suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    console.log('liquid glass (liquid.js)');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const cdp = await page.context().newCDPSession(page);
+        const media = (features) => cdp.send('Emulation.setEmulatedMedia', { features });
+        const state = () => page.evaluate(async () => {
+            await new Promise(r => setTimeout(r, 150));
+            const el = document.getElementById('lg-probe');
+            const cs = getComputedStyle(el);
+            return { bends: document.documentElement.classList.contains('liquid-bends'), filter: cs.backdropFilter, bg: cs.backgroundColor };
+        });
+        await media([{ name: 'prefers-reduced-transparency', value: 'no-preference' }, { name: 'prefers-contrast', value: 'no-preference' }]);
+        // A message that comes and goes: liquid.js finds it when it's added
+        await page.evaluate(() => {
+            app.uiPrefs.glass = 'liquid'; app.applyUiPrefs();
+            const t = document.createElement('div');
+            t.id = 'lg-probe'; t.className = 'toast'; t.textContent = 'Probe';
+            t.style.cssText = 'position:fixed;left:20px;top:20px;width:300px;height:44px;display:block;opacity:1;transform:none';
+            document.body.appendChild(t);
+        });
+        const on = await state();
+        const map = await page.evaluate(() => {
+            const f = document.querySelector('svg filter[id^="lg-"]');
+            return f && [f.getAttribute('x'), f.getAttribute('width'), f.getAttribute('color-interpolation-filters'), !!f.querySelector('feDisplacementMap')].join();
+        });
+        await page.evaluate(() => { app.uiPrefs.glass = 'crystal'; app.applyUiPrefs(); });
+        const crystal = await state();
+        await page.evaluate(() => { app.uiPrefs.glass = 'liquid'; app.applyUiPrefs(); });
+        await media([{ name: 'prefers-reduced-transparency', value: 'reduce' }]);
+        const reduced = await state();
+        await media([{ name: 'prefers-contrast', value: 'more' }]);
+        const contrast = await state();
+        await media([]);
+        const skinned = await page.evaluate(async () => {
+            document.documentElement.dataset.skin = 'xp';
+            await new Promise(r => setTimeout(r, 50));
+            const b = document.documentElement.classList.contains('liquid-bends');
+            delete document.documentElement.dataset.skin;
+            return b;
+        });
+        check('Liquid bends what\'s under its edges: an SVG filter of its own size in front of the blur', on.bends && /^url\("#lg-\d+"\) blur/.test(on.filter) && map === '0,1,sRGB,true', JSON.stringify([on, map]));
+        check('only Liquid bends', !crystal.bends && !/url/.test(crystal.filter), JSON.stringify(crystal));
+        check('Reduce transparency and Increase contrast: no bend, the glass solid', [reduced, contrast].every(x => !x.bends && x.filter === 'none' && /^rgb\(/.test(x.bg)), JSON.stringify([reduced, contrast]));
+        check('a theme on: no bend', !skinned);
+        await page.evaluate(() => document.getElementById('lg-probe').remove());
+        check('liquid glass: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    console.log('motion: a photo selected bounces (motion.js)');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const files = Array.from({ length: 12 }, (_, i) => makeFakeFile(`m${i}.jpg`, makeJpegBytes(), 'image/jpeg'));
+            app.files = files;
+            app.dirHandle = null;
+            app.setView('grid');
+            app.renderGrid({ sync: true });
+            await new Promise(r => setTimeout(r, 100));
+            let n = 0;
+            const real = Motion.bounce;
+            Motion.bounce = function (el) { n++; return real.call(this, el); };
+            const select = (list) => { app.selection = new Set(list); app.updateSelectionUI(); const got = n; n = 0; return got; };
+            out.on = Motion.on();
+            out.one = select([files[0]]);
+            out.added = select([files[0], files[1]]); // Ctrl-click: only the new one
+            out.moved = select([files[2]]); // the arrow keys
+            out.all = select(files); // Select all: calm
+            select([]);
+            out.range = select(files.slice(0, 8)); // a long Shift range: calm
+            select([]);
+            document.documentElement.dataset.motion = 'off';
+            out.off = select([files[3]]);
+            document.documentElement.dataset.motion = 'on';
+            const tile = files[4]._gridEl;
+            select([]);
+            tile.click();
+            out.clickOnce = tile.getAnimations().length; // a click that selects it bounces it once, not twice
+            Motion.bounce = real;
+            return out;
+        });
+        check('a photo selected bounces, by click, keys or Ctrl-click: only the ones just selected', r.on && r.one === 1 && r.added === 1 && r.moved === 1 && r.clickOnce === 1, JSON.stringify(r));
+        check('Select all and a long Shift range stay calm; none with Animations off', r.all === 0 && r.range === 0 && r.off === 0, JSON.stringify(r));
+        check('motion: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
@@ -1971,6 +2105,53 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 7g2. A button clicked doesn't stay highlighted ----
+    // Clicked, a button kept the keyboard: the next key (Esc, an arrow to
+    // the next photo) showed its keyboard ring, and it stayed. Dialogs and
+    // menus opened from the keyboard still give it back.
+    console.log('a button clicked doesn\'t stay highlighted');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.evaluate(async () => {
+            const dir = makeDir('Sticky');
+            for (let i = 1; i <= 3; i++) dir._files.set(`s${i}.jpg`, makeHandle(`s${i}.jpg`, await makeRealJpeg(300, 200, { color: `hsl(${i * 80},60%,50%)` }), 'image/jpeg'));
+            dir.values = async function* () { yield* dir._files.values(); };
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            app.setView('grid');
+            await new Promise(r => setTimeout(r, 400));
+        });
+        const ring = () => page.evaluate(() => [...document.querySelectorAll(':focus-visible')].map(e => e.id || e.className).join());
+        const stuck = [];
+        for (const [id, key] of [['btn-info', 'Escape'], ['btn-toggle-view', 'ArrowRight'], ['btn-export', 'Escape'], ['fb-all', 'Escape']]) {
+            const b = await page.$('#' + id);
+            if (!b || !(await b.isVisible())) { stuck.push(id + ': not shown'); continue; }
+            await b.click();
+            await page.waitForTimeout(300);
+            await page.keyboard.press(key);
+            await page.waitForTimeout(300);
+            const r = await ring();
+            if (r) stuck.push(`${id}, then ${key}: ${r}`);
+            await page.evaluate(() => { app.setView('grid'); app.toggleInfoPanel(false); });
+            await page.waitForTimeout(200);
+        }
+        check('a button clicked, then a key: no keyboard ring left on it', stuck.length === 0, stuck.join('; '));
+        // From the keyboard (Tab to it, then pressed: a key last, a click
+        // with no pointer): Export's menu, closed with Esc, gives the button
+        // its focus back
+        await page.focus('#btn-export');
+        await page.keyboard.press('Shift');
+        await page.evaluate(() => document.getElementById('btn-export').click());
+        await page.waitForTimeout(300);
+        const opened = await page.evaluate(() => !!document.getElementById('context-menu'));
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(300);
+        const back = await page.evaluate(() => document.activeElement && document.activeElement.id);
+        check('... opened from the keyboard, a menu gives the focus back on Esc', opened && back === 'btn-export', JSON.stringify([opened, back]));
+        check('sticky highlight: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7h. Rotating a photo shown from its original file (real disk files) ----
     console.log('rotate while showing the original file');
     {
@@ -2744,7 +2925,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             Folders.openPicker([f('a.jpg')], 'copy');
             out.rows = rows().join(' | ');
             [...document.querySelectorAll('#fp-list .fp-row')].find(r => /Choose a folder/.test(r.textContent)).click();
-            await new Promise(res => { const t = setInterval(async () => { if (/a \(2\)/.test(await names(away))) { clearInterval(t); res(); } }, 50); });
+            // Done copying (Ctrl+Z can undo it), not just started: the name
+            // is there as soon as the copy begins
+            await new Promise(res => { const t = setInterval(() => { if ((app._undoStack || []).some(e => e.type === 'folder-out')) { clearInterval(t); res(); } }, 50); });
             out.copied = await names(away);
             await app.undo();
             out.uncopied = await names(away);
@@ -3450,6 +3633,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const sky = S.draw(900, 600, '#888', [{ x: 450, y: 300, w: 900, h: 600, angle: 0, kind: 'sky' }], {});
             const plain = S.draw(900, 600, '#888', [{ x: 450, y: 300, w: 900, h: 600, angle: 0 }], {});
             out.notScans = !PhotoFind.single(sky, 900, 600, { strict: true }) && !PhotoFind.single(plain, 900, 600, { strict: true });
+            // The map-to-boxes finder, fitted at full detail (crop-boxes.js)
+            const bp = { x: 1350, y: 1560, w: 1500, h: 1080, angle: 2.3 };
+            const bf = CropAuto.find(S.draw(2700, 3300, lid, [bp], { noise: 6, dust: true }), 2700, 3300, { scan: true, boxes: true });
+            out.boxes = bf ? S.err(bf.corners, bp) : 999;
+            out.boxesNotScans = !CropBoxes.single(sky, 900, 600, { strict: true }) && !CropBoxes.single(plain, 900, 600, { strict: true });
             return out;
         });
         const ok = (k, n, e) => r[k] && r[k].n === n && r[k].err <= e;
@@ -3459,6 +3647,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('finder: six prints at once', ok('six', 6, 4), JSON.stringify(r.six));
         check('finder: a feeder page (two backgrounds), tilted', r.feeder <= 4, String(r.feeder));
         check('finder: ordinary photos (one with a plain sky) aren\'t taken for scans', r.notScans);
+        check('finder: map to boxes, fitted at full detail: a tilted print to within 2 px; not a photo', r.boxes <= 2 && r.boxesNotScans, JSON.stringify([r.boxes, r.boxesNotScans]));
         check('finder suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -3740,9 +3929,158 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         }
         check('narrow windows: no pill over another or off screen, top or bottom, with or without the folder list', fit.every(f => f.bad.length === 0), JSON.stringify(fit.filter(f => f.bad.length)));
         check('... wide, nothing given up; at 480 header buttons go into More, which shows; the file pill stays in single view', !fit[1].fit && fit[6].squeezed > 0 && fit[6].more && fit.every(f => f.name), JSON.stringify(fit.map(f => [f.w, f.rail, f.fit, f.squeezed, f.more])));
+        // The grid left alone: fitting the pills once, not every frame (its
+        // own try at the folder pill's short labels used to wake it again)
+        await page.setViewportSize({ width: 1300, height: 700 });
+        const idleFits = await page.evaluate(async () => {
+            app.setView('grid');
+            await new Promise(res => setTimeout(res, 500));
+            const run = Fit.run;
+            let n = 0;
+            Fit.run = function () { n++; return run.apply(this, arguments); };
+            await new Promise(res => setTimeout(res, 1000));
+            Fit.run = run;
+            return n;
+        });
+        check('the grid left alone: the pills aren\'t fitted again and again', idleFits <= 1, `${idleFits} runs in a second`);
         check('kept rotation: the grid tile turns its own picture, then the redrawn one replaces it straight', r.tileTurning && r.tileDone, JSON.stringify(r));
         check('kept rotation: the big photo turns (not dimmed), then the redrawn one has no turn left over', r.viewTurning && r.viewDone && r.kept, JSON.stringify(r));
         check('kept rotation suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7s1b. A huge folder: only the tiles near the view are built ----
+    console.log('huge folder');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1200, height: 800 });
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try { return await (async () => {
+            const out = {};
+            const frame = () => new Promise(res => requestAnimationFrame(() => setTimeout(res, 0)));
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('huge', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('huge', { create: true });
+            const c = document.createElement('canvas');
+            c.width = c.height = 24;
+            c.getContext('2d').fillRect(0, 0, 24, 24);
+            const jpeg = await new Promise(res => c.toBlob(res, 'image/jpeg'));
+            const put = async (d, name) => {
+                const w = await (await d.getFileHandle(name, { create: true })).createWritable();
+                await w.write(jpeg);
+                await w.close();
+            };
+            const N = 1500;
+            await Promise.all(Array.from({ length: N }, (_, i) => put(dir, `P${String(i).padStart(4, '0')}.jpg`)));
+            const sub = await dir.getDirectoryHandle('Sub', { create: true });
+            for (let i = 0; i < 3; i++) await put(sub, `S${i}.jpg`);
+            step = 'open';
+            app.viewMode = 'grid';
+            await app.openDirectory(dir);
+            const grid = app.elements.gridView, strip = app.elements.thumbnailStrip;
+            const files = () => app.viewFiles();
+            await frame();
+
+            // Where each sample photo's tile is, every tile built, then windowed
+            const samples = [0, 1, 7, 333, 750, 1001, N - 1];
+            const layout = async () => {
+                const pos = [];
+                for (const i of samples) {
+                    const el = app.revealInGrid(files()[i]);
+                    pos.push(el ? Math.round(app.gridY(el)) : null);
+                }
+                return { pos, height: grid.scrollHeight };
+            };
+            // Each scope: everything, and the top folder (its subfolder tile first)
+            for (const scope of [null, '']) {
+                step = 'layout ' + scope;
+                Folders.setScope(scope);
+                app.GRID_WINDOW_MIN = Infinity;
+                app.renderGrid({ sync: true });
+                await frame();
+                const full = await layout();
+                app.GRID_WINDOW_MIN = 1000;
+                app.renderGrid({ sync: true });
+                await frame();
+                const win = await layout();
+                out['layout' + scope] = { full, win, same: JSON.stringify(full) === JSON.stringify(win), folders: grid.querySelectorAll('.folder-tile').length };
+            }
+            Folders.setScope(null);
+            await frame();
+            out.tiles = grid.querySelectorAll('.grid-item').length;
+
+            // Scrolled to the middle: the tiles there are built, in order
+            step = 'scroll';
+            grid.scrollTop = grid.scrollHeight / 2;
+            await frame();
+            await frame();
+            const shown = [...grid.querySelectorAll('.grid-item')].filter(t => {
+                const b = t.getBoundingClientRect(), g = grid.getBoundingClientRect();
+                return b.bottom > g.top && b.top < g.bottom;
+            });
+            const idx = shown.map(t => files().indexOf(t._file));
+            out.middle = shown.length > 0 && idx.every((v, k) => k === 0 || v === idx[k - 1] + 1) && idx[0] > 500;
+
+            // Select all: tiles built later come selected
+            step = 'select';
+            app.selection = new Set(files());
+            app.updateSelectionUI();
+            grid.scrollTop = 0;
+            await frame();
+            await frame();
+            out.selected = app.selection.size === N + 3 && [...grid.querySelectorAll('.grid-item')].every(t => t.classList.contains('selected'));
+
+            // The arrow keys to a photo far below: its tile is built and on screen
+            step = 'goTo';
+            app.goTo(files()[1400]);
+            await frame();
+            const t = files()[1400]._gridEl;
+            out.goTo = !!t && t.isConnected && t.classList.contains('active');
+
+            // The viewer: the film strip holds a window too, with the photo in it
+            step = 'viewer';
+            app.openSingle(files()[1200]);
+            await frame();
+            await frame();
+            const s = files()[1200]._stripEl;
+            out.strip = strip.querySelectorAll('.thumb-item').length < 200 && !!s && s.isConnected && s.classList.contains('active');
+            const pitch = app._stripWin.pitch;
+            out.stripPlace = !!s && Math.abs(s.offsetLeft - app._stripWin.base - 1200 * pitch) < 1;
+            app.loadIndex(app.getCurrentIndex() + 1);
+            await frame();
+            out.stripNext = !!files()[1201]._stripEl && files()[1201]._stripEl.classList.contains('active') && !s.classList.contains('active');
+            app.setView('grid');
+            await frame();
+            await frame();
+            const back = files()[1201]._gridEl;
+            const g = grid.getBoundingClientRect(), b = back && back.getBoundingClientRect();
+            out.back = !!b && b.top >= g.top && b.bottom <= g.bottom;
+
+            // A photo deleted, and new ones arriving: the window is built again
+            step = 'remove';
+            const gone = files()[1201];
+            app.removeFilesFromApp([gone]);
+            await frame();
+            out.removed = !(gone._gridEl && gone._gridEl.isConnected) && !!files()[1201]._gridEl && files()[1201]._gridEl.isConnected;
+            step = 'arrive';
+            await put(dir, 'P1200a.jpg');
+            await Watch.rescan();
+            await frame();
+            const arrived = app.files.find(f => f.name === 'P1200a.jpg');
+            out.arrived = !!arrived && files().indexOf(arrived) === 1201 && grid.querySelectorAll('.grid-item').length < 400;
+            return out;
+            })(); } catch (e) { return { error: step + ': ' + e.message }; }
+        });
+        check('huge folder: windowed grid lays every photo out where the full grid does (all photos, and under a subfolder tile)', r.layoutnull && r.layoutnull.same && r.layout && r.layout.same && r.layout.folders === 1, JSON.stringify(r));
+        check('... only the tiles near the view are built', r.tiles > 0 && r.tiles < 400, String(r.tiles));
+        check('... scrolled to the middle, the tiles there are built, in order', r.middle);
+        check('... Select all: tiles built later come selected', r.selected);
+        check('... the arrow keys to a photo far below build its tile', r.goTo);
+        check('... the film strip holds a window too, the photo in it and in its place; Next moves the highlight', r.strip && r.stripPlace && r.stripNext);
+        check('... back to the grid, the photo is on screen', r.back);
+        check('... a deleted photo, and a new one arriving, rebuild the window', r.removed && r.arrived, JSON.stringify(r));
+        check('huge folder: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
@@ -3932,6 +4270,60 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('kept edits suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
         }
+    }
+
+    // ---- 7s2b. Pictures on the system clipboard ----
+    console.log('copy and paste pictures');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseUrl });
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const until = async (fn, n = 200) => { for (let i = 0; i < n && !(await fn()); i++) await sleep(50); };
+            const size = async (blob) => { const b = await createImageBitmap(blob); const s = [b.width, b.height]; b.close(); return s; };
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('clipimg', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('clipimg', { create: true });
+            const fh = await dir.getFileHandle('scan.jpg', { create: true });
+            const w = await fh.createWritable(); await w.write(new Blob([await makeRealJpeg(600, 400)], { type: 'image/jpeg' })); await w.close();
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            await until(() => app.files.length === 1 && !app.isLoading);
+            const f = app.files[0];
+            // Turned a quarter, not saved yet: copied as it looks
+            Edits.set([{ file: f, edit: { q: 1, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } } }], 'test');
+            app.openSingle(f);
+            await sleep(300);
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true }));
+            let copied = null;
+            await until(async () => {
+                try {
+                    for (const item of await navigator.clipboard.read()) if (item.types.includes('image/png')) copied = await item.getType('image/png');
+                } catch (e) { /* not yet */ }
+                return copied;
+            });
+            out.copied = copied ? await size(copied) : null;
+            out.photoUntouched = (await size(await fh.getFile())).join() === '600,400';
+            // A picture from another app: Pasted.png in the project, open in Paint
+            const c = document.createElement('canvas');
+            c.width = 120; c.height = 80;
+            c.getContext('2d').fillStyle = '#c33';
+            c.getContext('2d').fillRect(0, 0, 120, 80);
+            const png = await new Promise(res => c.toBlob(res, 'image/png'));
+            const dt = new DataTransfer();
+            dt.items.add(new File([png], 'image.png', { type: 'image/png' }));
+            document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+            await until(() => Modes.current() === 'paint' && PaintEditor.file && PaintEditor.file.name === 'Pasted.png');
+            out.inPaint = Modes.current() === 'paint' && !!PaintEditor.file && PaintEditor.file.name;
+            out.pasted = await size(await (await dir.getFileHandle('Pasted.png')).getFile()).catch(() => null);
+            await Modes.go('photos');
+            return out;
+        });
+        check('Ctrl+C copies the photo as it looks (turned, not saved yet), leaving the file as it is', r.copied && r.copied.join() === '400,600' && r.photoUntouched, JSON.stringify(r));
+        check('a picture pasted from another app is saved as Pasted.png in the project and opened in Paint', r.inPaint === 'Pasted.png' && r.pasted && r.pasted.join() === '120,80', JSON.stringify(r));
+        check('copy and paste pictures: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
     }
 
     // ---- 7s3. Undo history ----
@@ -4402,6 +4794,14 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const mean = (px, k) => { let s = 0; for (let i = k; i < px.length; i += 4) s += px[i]; return s / (px.length / 4); };
             const spread = (px) => Math.max(mean(px, 0), mean(px, 1), mean(px, 2)) - Math.min(mean(px, 0), mean(px, 1), mean(px, 2));
             out.cast = [Math.round(spread(cast)), Math.round(spread(fixed))];
+            // White balance picked from a warm grey makes it grey; a clipped
+            // or black patch can't tell
+            const warm = new Uint8ClampedArray(9 * 4);
+            for (let i = 0; i < warm.length; i += 4) { warm[i] = 140; warm[i + 1] = 128; warm[i + 2] = 112; warm[i + 3] = 255; }
+            const wb = Develop.neutralWB(warm);
+            const wbOut = Develop.applyCPU(warm, Develop.tables(wb), new Uint8ClampedArray(warm.length));
+            const clipped = warm.slice(); clipped[0] = 255;
+            out.wbPick = [wb.temp, wb.tint, Math.round(spread(wbOut)), Develop.neutralWB(clipped), Develop.neutralWB(new Uint8ClampedArray(36).fill(5))];
             // Grading, looks, vignette and grain: the GPU and the CPU agree too
             out.fxWorst = 0;
             for (const fx of [{ grade: { s: [200, 60, -10], h: [40, 40, 10] }, gradeBalance: 30 }, { look: 'instant', lookAmount: 150 }, { vignette: -60, vigRound: 40 }, { vignette: 50, vigRound: -60 }, { grain: 70, grainSize: 60 }, { grain: 60, grainColor: 80 }, { halation: 80 }, { look: 'cinestill800t' }, { look: 'trix' }]) {
@@ -4514,6 +4914,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('adjust: no settings change nothing; +1 EV doubles the light; curves never turn back', m.identity && m.exposure && m.monotone, JSON.stringify(m));
         check('adjust: the GPU and the CPU agree (within a level), in tiles too', m.hasGpu && m.gpuCpu <= 1 && m.tiles, JSON.stringify(m));
         check('adjust: Auto color takes the cast off a faded print', m.cast[0] > 40 && m.cast[1] < 8, JSON.stringify(m.cast));
+        check('adjust: white balance picked from a warm grey makes it grey; a clipped or black patch is left alone', m.wbPick[0] < 0 && m.wbPick[2] <= 2 && m.wbPick[3] === null && m.wbPick[4] === null, JSON.stringify(m.wbPick));
         check('adjust: grading, looks, vignette and grain agree on the GPU and the CPU, in tiles', m.fxWorst <= 1, JSON.stringify(m.fxWorst));
         check('adjust: settings at their defaults, an unknown look and an empty wheel aren\'t kept', m.defaults === '{"grade":{"h":[10,20,0]}}', m.defaults);
         check('adjust: a vignette darkens the corners and leaves the middle', m.vignette[0] === 128 && m.vignette[1] < 60, JSON.stringify(m.vignette));
@@ -4670,6 +5071,28 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.loupe = Adjust.fullCanvas.width === 640 && Adjust._loupeRect.x < lr0.x && !document.getElementById('adj-loupe-box').classList.contains('hidden');
             document.getElementById('adj-detail-sec').open = false;
             document.getElementById('adj-detail-sec').dispatchEvent(new Event('toggle'));
+            // White balance picked from the photo: W (or Pick grey), a click on
+            // something grey; Esc stops picking without leaving Adjust
+            step = 'white balance';
+            const pick = document.getElementById('adj-wb-pick');
+            const colorSec = pick.closest('details');
+            pick.click();
+            out.pickOn = Adjust.picking && pick.getAttribute('aria-pressed') === 'true' && colorSec.open;
+            key('Escape');
+            out.pickEsc = !Adjust.picking && Adjust.isOpen;
+            key('w');
+            const temp0 = Adjust.a.temp;
+            const wr2 = Adjust.canvas.getBoundingClientRect();
+            document.getElementById('adj-stage').dispatchEvent(new PointerEvent('pointerdown', { clientX: wr2.left + wr2.width / 2, clientY: wr2.top + wr2.height / 2, button: 0, bubbles: true }));
+            await sleep(60);
+            const mid = Adjust.base.getContext('2d').getImageData(Adjust.base.width / 2 - 2, Adjust.base.height / 2 - 2, 5, 5).data;
+            const midOut = Develop.applyCPU(mid, Develop.tables({ temp: Adjust.a.temp, tint: Adjust.a.tint }), new Uint8ClampedArray(mid.length));
+            const avg = (px, k) => { let t = 0; for (let i = k; i < px.length; i += 4) t += px[i]; return t / (px.length / 4); };
+            const midSpread = Math.max(avg(midOut, 0), avg(midOut, 1), avg(midOut, 2)) - Math.min(avg(midOut, 0), avg(midOut, 1), avg(midOut, 2));
+            out.picked = !Adjust.picking && Adjust.a.temp < 0 && midSpread <= 3 && pick.getAttribute('aria-pressed') === 'false';
+            out.wb = [Adjust.a.temp, Adjust.a.tint, Math.round(midSpread)];
+            key('z', { ctrlKey: true });
+            out.pickUndone = Adjust.a.temp === temp0 && Adjust.a.exposure === 1;
             // Before and after (\\)
             key('\\');
             await sleep(50);
@@ -4750,6 +5173,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('adjust: films shown on the photo by process, a click puts one on (with Amount) or takes it off', r.lookThumbGrey && r.lookOn && r.lookOff, JSON.stringify(r));
         check('adjust: a grading wheel takes a hue and strength; presets save and put settings back', r.wheel && r.preset, JSON.stringify(r));
         check('adjust: Detail shows the full photo at 1:1, where you click', r.loupe, JSON.stringify(r));
+        check('adjust: Pick grey (W) sets the white balance from a click on the photo, one Ctrl+Z; Esc stops picking', r.pickOn && r.pickEsc && r.picked && r.pickUndone, JSON.stringify(r));
         check('adjust: masks drawn and painted on the photo, with their own sliders', r.linearDrawn && r.brushPainted && r.maskList && r.masksReset, JSON.stringify(r));
         check('adjust: Done keeps it with the photo (edits.json), the file untouched, no Save bar', r.kept && r.noBar, JSON.stringify(r));
         check('adjust: the viewer and the thumbnail show it adjusted, with the pencil', r.shownBrighter && r.thumbBrighter && r.pencil, JSON.stringify(r));

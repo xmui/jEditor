@@ -236,7 +236,7 @@
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: mac.platform,
-        features: ['reveal', 'windows', 'places'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : []),
+        features: ['reveal', 'windows', 'places'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : [], ['themes']),
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage
         async dataDir() {
@@ -341,6 +341,39 @@
         setState(state) {
             return mac.request('state', state || {});
         },
+        // A theme's own title bar (on): the traffic lights hide, as its own
+        // buttons work the window, and macOS 26's toolbar comes off; on
+        // Linux the window opens again without its frame (main.js: reframe).
+        // A 'jeditor-window' event on window says when it's zoomed or not.
+        titleBar(on) {
+            themed = !!on;
+            if (mac.nativeToolbar) {
+                document.documentElement.classList.toggle('native-toolbar', !themed);
+                lastToolbar = '';
+            }
+            // (with the project, for a Linux window opening again on it)
+            const want = themed, a = jeditor();
+            Promise.resolve(a && a.dirHandle ? folderPath(a.dirHandle) : null).catch(() => null)
+                .then(path => mac.request('titleBar', { on: want, path }))
+                .then(() => {
+                    if (want) return;
+                    if (mac.nativeToolbar) sendToolbar(); else { lastLights = ''; reportLights(); }
+                });
+        },
+        // The window's buttons for that title bar: 'minimize', 'maximize'
+        // (zoom, or back) and 'close'. Its top edge resizes as any Mac
+        // window's does, so 'resizeTop' needs nothing.
+        windowAction(action) {
+            if (action !== 'resizeTop') mac.request('windowAction', { action });
+        },
+        // A theme's menus for the Mac's menu bar: [{ label, items: [{ id,
+        // label, key, enabled } or '—'] }], or null for the app's own. A
+        // command chosen comes back as a 'menu' message, 'theme:' + its id
+        ...(mac.platform === 'mac' ? {
+            setMenus(menus) {
+                mac.request('menus', { menus: menus || null });
+            }
+        } : {}),
         // The other windows' projects → [{ id, name, path, folders }]
         async windows() {
             return (await answer('windows')).windows;
@@ -426,14 +459,19 @@
 
     // The traffic lights: in line with the top row of pills (their centre:
     // the gutter plus half a pill, which the UI scale zooms), and at the
-    // gutter's distance from the left edge. A light is 14px.
+    // gutter's distance from the left edge; over Adjust and Paint, in line
+    // with the mode chip in their head. A light is 14px.
     let lastLights = '';
+    let themed = false; // a theme draws the title bar (titleBar above)
     const reportLights = () => {
         const css = getComputedStyle(document.documentElement);
         const px = (name) => parseFloat(css.getPropertyValue(name)) || 0;
         const scale = parseFloat(css.getPropertyValue('--ui-scale')) || 1;
         const gutter = px('--gutter');
-        const at = { x: Math.max(12, gutter), y: px('--mac-drag') + gutter + (px('--ctl-lg') * scale) / 2 - 7 };
+        const chip = document.querySelector('.mode-float.over-mode:not(.hidden)');
+        const r = chip && chip.getBoundingClientRect();
+        const middle = r && r.height ? r.top + r.height / 2 : px('--mac-drag') + gutter + (px('--ctl-lg') * scale) / 2;
+        const at = { x: Math.max(12, gutter), y: middle - 7 };
         const key = at.x + ',' + at.y;
         if (key === lastLights) return;
         lastLights = key;
@@ -452,6 +490,7 @@
         dupes: 'square.on.square', keys: 'keyboard', whatsnew: 'sparkles', customize: 'gearshape',
         scan: 'scanner', camera: 'camera'
     };
+    const MODE_SYMBOLS = { photos: 'square.grid.2x2', adjust: 'slider.horizontal.3', paint: 'paintbrush' };
     const PRESSED = { info: 'info.circle.fill', strip: 'film.fill', fit: 'rectangle.inset.filled', fullscreen: 'arrow.down.right.and.arrow.up.left' };
     const $ = (id) => document.getElementById(id);
     const shown = (el) => !!el && !el.classList.contains('hidden') && !el.classList.contains('host-missing') && !el.classList.contains('exp-off');
@@ -461,13 +500,24 @@
         const a = jeditor();
         const open = !!(a && a.dirHandle) && shown(a.elements.mainInterface);
         if (!open) return { visible: false, title: 'jEditor', subtitle: '', items: [] };
+        // Over Adjust and Paint their head is the top row (style.css)
+        if (typeof Modes !== 'undefined' && Modes.current() !== 'photos') return { visible: false, title: $('file-name-text').textContent || a.dirHandle.name, subtitle: '', items: [] };
         const items = [];
         const bar = $('folder-bar');
         const browsing = shown(bar);
-        if (browsing) {
-            items.push({ id: 'rail', kind: 'button', symbol: 'sidebar.left', label: 'Folder list', tooltip: said($('fb-rail').title), navigational: true });
-            items.push({ id: 'scope', kind: 'segment', segments: ['All photos', 'Folders'], selected: $('fb-all').classList.contains('active') ? 0 : 1, navigational: true });
+        if (browsing) items.push({ id: 'rail', kind: 'button', symbol: 'sidebar.left', label: 'Folder list', tooltip: said($('fb-rail').title), navigational: true });
+        // The mode chip, as in the folder pill (or on its own in the single
+        // view): not while the sidebar shows its own switch
+        const modeChip = [$('mode-chip-bar'), $('mode-float')].find(shown);
+        if (modeChip && typeof Modes !== 'undefined') {
+            const mode = Modes.current();
+            const label = (m) => (Modes.LIST.find(x => x[0] === m) || [])[1] || m;
+            items.push({
+                id: 'mode', kind: 'menu', symbol: MODE_SYMBOLS[mode], label: label(mode), tooltip: modeChip.title, navigational: true,
+                menu: Modes.shown().map(([m, l]) => ({ id: m, label: l, symbol: MODE_SYMBOLS[m], checked: m === mode }))
+            });
         }
+        if (browsing) items.push({ id: 'scope', kind: 'segment', segments: ['All photos', 'Folders'], selected: $('fb-all').classList.contains('active') ? 0 : 1, navigational: true });
         items.push({ kind: 'flexible' });
         const chip = $('fb-filter-chip');
         if (browsing && shown(chip)) items.push({ id: 'filter', kind: 'button', symbol: 'line.3.horizontal.decrease.circle.fill', label: chip.textContent.trim(), tooltip: chip.title });
@@ -500,10 +550,13 @@
 
     let lastToolbar = '';
     let toolbarTimer = null;
+    // At most every 30ms, never later: put off at each change, it waited
+    // as long as the page kept changing (Adjust opening, on a slow Mac)
     const sendToolbar = () => {
-        clearTimeout(toolbarTimer);
+        if (toolbarTimer) return;
         toolbarTimer = setTimeout(() => {
-            if (!jeditor()) return;
+            toolbarTimer = null;
+            if (!jeditor() || themed) return;
             const model = toolbarModel();
             const json = JSON.stringify(model);
             if (json === lastToolbar) return;
@@ -515,6 +568,7 @@
     function onToolbar(id, value) {
         const click = (el) => el && el.click();
         if (id === 'rail') click($('fb-rail'));
+        else if (id === 'mode') Modes.go(String(value));
         else if (id === 'scope') click(Number(value) === 0 ? $('fb-all') : $('fb-folders'));
         else if (id === 'filter') click($('fb-filter-chip'));
         else if (id === 'sort') {
@@ -537,10 +591,13 @@
         document.documentElement.classList.add('native-toolbar');
         whenReady().then(() => {
             const watch = new MutationObserver(sendToolbar);
-            for (const el of [document.querySelector('header'), $('folder-bar')]) {
+            for (const el of [document.querySelector('header'), $('folder-bar'), $('mode-float')].filter(Boolean)) {
                 watch.observe(el, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'aria-pressed', 'disabled', 'title', 'aria-label'] });
             }
             watch.observe(jeditor().elements.mainInterface, { attributes: true, attributeFilter: ['class'] });
+            // Adjust and Paint opened or closed: the toolbar steps aside or
+            // comes back then, not when something else on the page changes
+            for (const el of [$('adjust-editor'), $('paint-editor')].filter(Boolean)) watch.observe(el, { attributes: true, attributeFilter: ['class'] });
             $('sort-mode').addEventListener('change', sendToolbar);
             // ⌘F and /: the toolbar's search field, not the hidden one
             $('fb-search').addEventListener('focus', (e) => {
@@ -556,6 +613,8 @@
         if (!mac.nativeToolbar) reportLights();
         new MutationObserver(() => { reportTheme(); if (!mac.nativeToolbar) lightsSoon(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-density', 'style'] });
         if (!mac.nativeToolbar) addEventListener('resize', lightsSoon);
+        // Into Adjust or Paint and out: the lights follow the mode chip
+        if (!mac.nativeToolbar && $('mode-float')) new MutationObserver(reportLights).observe($('mode-float'), { attributes: true, attributeFilter: ['class'] });
         mac.request('ready', { version: typeof APP_VERSION !== 'undefined' ? APP_VERSION : null });
     });
 
@@ -575,6 +634,9 @@
             onToolbar(msg.id, msg.value);
         } else if (msg.type === 'fullscreen') {
             document.documentElement.classList.toggle('fullscreen', !!msg.on);
+        } else if (msg.type === 'windowState') {
+            // Zoomed or not, for a theme's own title bar (themes.js)
+            dispatchEvent(new CustomEvent('jeditor-window', { detail: { maximized: !!msg.maximized } }));
         } else if (msg.type === 'drivesChanged') {
             dispatchEvent(new Event('jeditor-drives')); // places.js
         } else if (msg.type === 'copyProgress') {
@@ -594,6 +656,7 @@
             if (msg.action === 'open') a.browseFolder();
             else if (msg.action === 'settings') a.toggleCustomizePanel(true);
             else if (msg.action === 'permissions') Permissions.open();
+            else if (String(msg.action).startsWith('theme:')) Themes.runMenu(msg.action.slice(6));
         }
     });
 

@@ -152,6 +152,7 @@ const app = {
 
         // Keyboard
         this.bindKeyboard();
+        this.releaseClickedButtons();
 
         // Zoom
         this.elements.imageContainer.addEventListener('wheel', (e) => this.handleZoom(e));
@@ -184,7 +185,14 @@ const app = {
         // Grid Size Slider
         this.elements.gridSizeSlider.addEventListener('input', (e) => this.setGridSize(parseInt(e.target.value, 10)));
         // Off-screen tiles stand in at the real tile size (see syncGridTile)
-        if (typeof ResizeObserver === 'function') new ResizeObserver(() => this.syncGridTile()).observe(this.elements.gridView);
+        // (and a huge folder's grid builds the tiles the new size needs)
+        if (typeof ResizeObserver === 'function') new ResizeObserver(() => {
+            this.syncGridTile();
+            this.updateGridWindow({ force: true });
+        }).observe(this.elements.gridView);
+        this.elements.gridView.addEventListener('scroll', () => this.updateGridWindow(), { passive: true });
+        this.elements.thumbnailStrip.addEventListener('scroll', () => this.updateStripWindow(), { passive: true });
+        if (typeof ResizeObserver === 'function') new ResizeObserver(() => this.updateStripWindow({ force: true })).observe(this.elements.thumbnailStrip);
 
         // Sort Control (persisted; capture-date sort loads EXIF dates first)
         this.elements.sortModeSelect.addEventListener('change', async (e) => {
@@ -250,12 +258,15 @@ const app = {
         Import.init(this);
         Disc.init(this);
         Export.init(this);
+        Convert.init(this);
         Blank.init(this);
         Modes.init(this);
+        Themes.init(this);
         Fit.init();
         History.init(this);
         Watch.init(this);
         this.initContextMenu();
+        this.initPasteImage();
         this.initRubberBand();
         this.initShortcutsPanel();
 
@@ -286,9 +297,11 @@ const app = {
             if (e.target === e.currentTarget) this.toggleWhatsNew(false);
         });
         document.getElementById('btn-dupes').addEventListener('click', () => this.openDupes());
+        document.getElementById('btn-convert').addEventListener('click', () => this.keyHandlers()['app.convert']());
         this.initSettings();
 
         this.initStripResize();
+        this.initSidebarResize();
         this.initControlsAutoHide();
 
         // Apply saved layout (order, hidden buttons, orientation, scale,
@@ -425,6 +438,7 @@ const app = {
         strip: 'Film strip',
         fullscreen: 'Full screen',
         dupes: 'Find duplicates (WIP)',
+        convert: 'Convert (format, quality, storage)',
         keys: 'Keyboard shortcuts',
         whatsnew: 'What\'s new',
         customize: 'Settings'
@@ -434,21 +448,24 @@ const app = {
     APPEARANCE: {
         theme: ['dark', 'light', 'system'],
         density: ['compact', 'comfortable'],
-        glass: ['rich', 'subtle', 'off'],
+        glass: ['crystal', 'liquid', 'clear', 'opaque', 'lens'], // Settings → Glass (tokens.css; liquid.js bends Liquid's edges)
+        tint: ['none', 'accent', 'warm', 'cool', 'rose'], // Settings → Glass tint, over any glass
+        motion: ['on', 'off'], // Settings → Animations (motion.js); the system's Reduce motion turns them off too
         surround: ['auto', 'black', 'grey', 'light'],
         backdrop: ['none', 'mica', 'acrylic'] // the Windows app only (applyBackdrop)
     },
 
     defaultUiPrefs() {
         return {
-            order: ['scan', 'camera', 'info', 'view', 'refresh', 'crop', 'adjust', 'paint', 'history', 'fit', 'strip', 'fullscreen', 'dupes', 'keys', 'whatsnew', 'customize'],
+            order: ['scan', 'camera', 'info', 'view', 'refresh', 'crop', 'adjust', 'paint', 'history', 'fit', 'strip', 'fullscreen', 'dupes', 'convert', 'keys', 'whatsnew', 'customize'],
             placement: { // 'main' | 'more' | 'hidden'
                 scan: 'main', camera: 'main', info: 'main', view: 'main', refresh: 'main', crop: 'main', adjust: 'more', paint: 'more', history: 'main',
-                fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', keys: 'more', whatsnew: 'more', customize: 'more'
+                fit: 'more', strip: 'more', fullscreen: 'more', dupes: 'more', convert: 'more', keys: 'more', whatsnew: 'more', customize: 'more'
             },
             vertical: false,
             scale: 1,
             stripHeight: 80,
+            sides: {}, // each sidebar's width as dragged (SIDEBARS); none: its own
             thumbContain: true, // fit whole image in tiles by default
             folderCache: true, // keep thumbnails / duplicate data with the order's data (folder-cache.js)
             autoUpdate: true, // the Windows app looks for a new version once a day
@@ -458,8 +475,12 @@ const app = {
             startIn: 'photos', // the landing page's Start in (modes.js): photos, adjust or paint
             modes: 1, // 1.43: Adjust and Paint are modes (modes.js), off the toolbar's main row
             theme: 'dark',
+            skin: '', // a theme (themes.js): 'xp/royale'; '' is jEditor's own look
+            skinSettings: {}, // each theme's own settings, by theme
             density: 'compact',
-            glass: 'rich',
+            glass: 'crystal',
+            tint: 'none',
+            motion: 'on',
             surround: 'auto',
             backdrop: 'none', // Settings → Window background: none (solid), mica or acrylic
             transparency: 50, // how much of the window background shows through (10-100%)
@@ -507,6 +528,11 @@ const app = {
                 if (typeof saved.vertical === 'boolean') this.uiPrefs.vertical = saved.vertical;
                 if (saved.scale >= 0.8 && saved.scale <= 1.6) this.uiPrefs.scale = saved.scale;
                 if (saved.stripHeight >= 50 && saved.stripHeight <= 240) this.uiPrefs.stripHeight = saved.stripHeight;
+                if (saved.sides && typeof saved.sides === 'object') {
+                    for (const [k, [lo, hi]] of Object.entries(this.SIDEBARS)) {
+                        if (saved.sides[k] >= lo && saved.sides[k] <= hi) this.uiPrefs.sides[k] = saved.sides[k];
+                    }
+                }
                 if (typeof saved.thumbContain === 'boolean') this.uiPrefs.thumbContain = saved.thumbContain;
                 if (typeof saved.folderCache === 'boolean') this.uiPrefs.folderCache = saved.folderCache;
                 if (typeof saved.autoCheck === 'boolean') this.uiPrefs.autoCheck = saved.autoCheck;
@@ -527,6 +553,18 @@ const app = {
                     for (const k of ['adjust', 'paint']) if (this.uiPrefs.placement[k] === 'main') this.uiPrefs.placement[k] = 'more';
                 }
                 if (saved.transparency >= 10 && saved.transparency <= 100) this.uiPrefs.transparency = saved.transparency;
+                // The theme (themes.js checks it's one it knows) and each theme's own settings
+                if (typeof saved.skin === 'string' && /^[a-z0-9]+\/[a-z0-9]+$/.test(saved.skin)) this.uiPrefs.skin = saved.skin;
+                if (saved.skinSettings && typeof saved.skinSettings === 'object') {
+                    for (const [theme, kept] of Object.entries(saved.skinSettings)) {
+                        if (!kept || typeof kept !== 'object') continue;
+                        this.uiPrefs.skinSettings[theme] = Object.fromEntries(Object.entries(kept).filter(([, v]) => typeof v === 'string'));
+                    }
+                }
+                // Glass as saved before: Subtle and Off are Opaque now, and
+                // "rich", the old default (then Liquid), is the new default, Crystal
+                const oldGlass = { rich: 'crystal', subtle: 'opaque', off: 'opaque' }[saved.glass];
+                if (oldGlass) saved.glass = oldGlass;
                 for (const [k, allowed] of Object.entries(this.APPEARANCE)) {
                     if (allowed.includes(saved[k])) this.uiPrefs[k] = saved[k];
                 }
@@ -585,6 +623,7 @@ const app = {
         container.classList.toggle('vertical', !!p.vertical);
         document.documentElement.style.setProperty('--ui-scale', p.scale);
         document.documentElement.style.setProperty('--strip-height', `${p.stripHeight}px`);
+        for (const k of Object.keys(this.SIDEBARS)) this.setSideWidth(k, p.sides[k]);
 
         this.elements.gridView.classList.toggle('thumb-contain', !!p.thumbContain);
         this.elements.thumbnailStrip.classList.toggle('thumb-contain', !!p.thumbContain);
@@ -594,6 +633,7 @@ const app = {
         if (controls) controls.classList.toggle('off', p.singleControls === false);
         this.applyAppearance();
         this.applyExperiments({ panel: false });
+        Themes.apply();
         // Start in, remembered, on the landing page
         if (typeof Modes !== 'undefined') Modes.renderStart();
         // More shows for buttons squeezed in for room too
@@ -610,12 +650,15 @@ const app = {
             const follow = () => { if (this.uiPrefs.theme === 'system') this.applyAppearance(); };
             if (this._systemTheme.addEventListener) this._systemTheme.addEventListener('change', follow);
         }
-        const theme = p.theme === 'system'
+        // A theme (themes.js) is made for light or dark
+        const theme = (typeof Themes !== 'undefined' && Themes.mode()) || (p.theme === 'system'
             ? (this._systemTheme && this._systemTheme.matches ? 'light' : 'dark')
-            : p.theme;
+            : p.theme);
         root.dataset.theme = theme;
         root.dataset.density = p.density;
         root.dataset.glass = p.glass;
+        root.dataset.tint = p.tint;
+        root.dataset.motion = p.motion;
         root.dataset.surround = p.surround;
         root.style.setProperty('--window-tint', `${100 - p.transparency}%`);
         const meta = document.querySelector('meta[name="theme-color"]');
@@ -892,6 +935,7 @@ const app = {
         $('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
         this.elements.customizePanel.querySelectorAll('input[data-toast]').forEach(i => { i.checked = this.toastOn(i.dataset.toast); });
         $('cust-cleanup').disabled = !this.dirHandle;
+        Themes.render();
         CropLog.refresh();
         $('cust-single-controls').checked = this.uiPrefs.singleControls !== false;
         this.syncAccentPicker();
@@ -1001,6 +1045,62 @@ const app = {
     setStripHeight(px) {
         this.uiPrefs.stripHeight = Math.max(50, Math.min(240, Math.round(px)));
         document.documentElement.style.setProperty('--strip-height', `${this.uiPrefs.stripHeight}px`);
+    },
+
+    // ---- Sidebars resize (drag the inner edge) ----
+    // The folder list (Photos), Adjust's panel and Paint's: [narrowest,
+    // widest] in px. A width dragged to is --side-<name> on <html>, which
+    // style.css and the themes take before their own; double-click goes
+    // back to the sidebar's own width.
+
+    SIDEBARS: { rail: [180, 520], adjust: [260, 560], paint: [220, 560] },
+
+    initSidebarResize() {
+        for (const grip of document.querySelectorAll('.side-grip')) {
+            const side = grip.dataset.side;
+            const panel = side === 'rail' ? grip.parentElement : grip.nextElementSibling;
+            const dir = grip.dataset.edge === 'left' ? -1 : 1;
+            let startX = 0, startW = 0, zoom = 1;
+            grip.addEventListener('pointerdown', (e) => {
+                if (e.button !== 0) return;
+                zoom = parseFloat(getComputedStyle(panel).zoom) || 1;
+                startX = e.clientX;
+                startW = panel.getBoundingClientRect().width / zoom;
+                grip.setPointerCapture(e.pointerId);
+                grip.classList.add('dragging');
+                document.body.style.cursor = 'ew-resize';
+                e.preventDefault();
+            });
+            grip.addEventListener('pointermove', (e) => {
+                if (!grip.classList.contains('dragging')) return;
+                this.setSideWidth(side, startW + dir * (e.clientX - startX) / zoom);
+            });
+            const end = () => {
+                if (!grip.classList.contains('dragging')) return;
+                grip.classList.remove('dragging');
+                document.body.style.cursor = '';
+                this.saveUiPrefs();
+            };
+            grip.addEventListener('pointerup', end);
+            grip.addEventListener('pointercancel', end);
+            grip.addEventListener('dblclick', () => {
+                this.setSideWidth(side, null);
+                this.saveUiPrefs();
+            });
+        }
+    },
+
+    // px, or null for the sidebar's own width
+    setSideWidth(side, px) {
+        const [lo, hi] = this.SIDEBARS[side];
+        const root = document.documentElement.style;
+        if (px === null || px === undefined) {
+            delete this.uiPrefs.sides[side];
+            root.removeProperty(`--side-${side}`);
+            return;
+        }
+        this.uiPrefs.sides[side] = Math.max(lo, Math.min(hi, Math.round(px)));
+        root.setProperty(`--side-${side}`, `${this.uiPrefs.sides[side]}px`);
     },
 
     toggleThumbnailFit() {
@@ -1514,7 +1614,7 @@ const app = {
             this.beginTask('scan', 'Opening…');
             this.elements.dropZone.classList.add('hidden');
             for (const h of handles) {
-                if (!h || !this.isImage(h.name) || Raw.is(h.name)) continue;
+                if (!h || !this.isImage(h.name) || Raw.is(h.name) || Codec.isHeif(h.name)) continue;
                 const f = await h.getFile();
                 this.files.push({ name: h.name, handle: h, size: f.size, lastModified: f.lastModified });
             }
@@ -1693,7 +1793,7 @@ const app = {
             }
         }
         // Size and date, read several at a time
-        const BATCH = 32;
+        const BATCH = 128;
         for (let i = 0; i < pending.length; i += BATCH) {
             const batch = pending.slice(i, i + BATCH);
             const datas = await Promise.all(batch.map(p => p.entry.getFile().catch(() => null)));
@@ -1735,13 +1835,15 @@ const app = {
     },
 
     isImage(name) {
-        return /\.(jpg|jpeg|png|webp|gif)$/i.test(name) || Raw.is(name);
+        return /\.(jpg|jpeg|png|webp|gif|avif|jxl|tiff?|heic|heif|hif)$/i.test(name) || Raw.is(name);
     },
 
-    // The photo's bytes to decode: the file, or a RAW's own JPEG (raw.js).
-    // Never for writing: a RAW is never written
+    // The photo's bytes to decode: the file, a RAW's own JPEG (raw.js), or
+    // a JPEG XL, HEIC or TIFF decoded where the engine can't (codec.js).
+    // Never for writing: a RAW or a HEIC is never written
     async readImage(file) {
         const data = await file.handle.getFile();
+        if (Codec.decoded(file.name)) return Codec.showable(data);
         if (!Raw.is(file.name)) return data;
         const jpeg = await Raw.preview(data);
         if (!jpeg) throw new Error('no preview found in this RAW file');
@@ -1828,7 +1930,15 @@ const app = {
                 offset += 2 + size;
             }
             if (tiff === -1) return null;
+            return this.readTiffInfo(view, tiff);
+        } catch (e) {
+            return null;
+        }
+    },
 
+    // The same from a TIFF block at `tiff` in `view` (any format's EXIF)
+    readTiffInfo(view, tiff) {
+        try {
             const bo = view.getUint16(tiff);
             const le = bo === 0x4949;
             if (!le && bo !== 0x4D4D) return null;
@@ -1896,6 +2006,15 @@ const app = {
                     const fileData = await file.handle.getFile();
                     const head = await fileData.slice(0, 256 * 1024).arrayBuffer();
                     info = this.readJpegExifInfo(head);
+                } catch (e) { /* none */ }
+            } else if (/\.(webp|avif|jxl|png|tiff?)$/i.test(file.name)) {
+                // Their EXIF can be anywhere (a WebP's comes after the picture,
+                // a TIFF's tags often after its pixels). A very big TIFF: its
+                // start only
+                try {
+                    const data = await file.handle.getFile();
+                    const tiff = ImageMeta.exifOf(new Uint8Array(await (data.size > 64 * 1024 * 1024 ? data.slice(0, 1024 * 1024) : data).arrayBuffer()));
+                    if (tiff) info = this.readTiffInfo(new DataView(tiff.buffer, tiff.byteOffset, tiff.byteLength), 0);
                 } catch (e) { /* none */ }
             }
             file._exif = info;
@@ -2395,6 +2514,7 @@ const app = {
         this.dirHandle = null;
         this.elements.gridView.innerHTML = '';
         this.elements.thumbnailStrip.innerHTML = '';
+        this._gridWin = this._stripWin = null;
         this.elements.mainInterface.classList.add('hidden');
         this.elements.dropZone.classList.remove('hidden');
         Places.apply();
@@ -2445,7 +2565,10 @@ const app = {
     // The film strip (single view). Items load their thumbnail as they
     // scroll into sight.
     renderThumbnails() {
+        // Read before the items go: a windowed strip keeps its place
+        const scrollWas = this._stripWin ? this.elements.thumbnailStrip.scrollLeft : null;
         this.elements.thumbnailStrip.innerHTML = '';
+        this._stripWin = null;
         const frag = document.createDocumentFragment();
         if (this._stripObserver) this._stripObserver.disconnect();
         this._stripObserver = new IntersectionObserver((entries) => {
@@ -2457,10 +2580,117 @@ const app = {
             });
         }, { root: this.elements.thumbnailStrip, rootMargin: '0px 400px' });
 
-        this.viewFiles().forEach((file) => frag.appendChild(this.makeStripItem(file)));
-        this.elements.thumbnailStrip.appendChild(frag);
         this._activeStripEl = null;
+        const files = this.viewFiles();
+        if (files.length >= this.GRID_WINDOW_MIN) {
+            // A huge folder: only the items near the view, as in the grid
+            const spacer = () => {
+                const s = document.createElement('div');
+                s.className = 'strip-spacer';
+                s.setAttribute('aria-hidden', 'true');
+                return s;
+            };
+            this._stripWin = { files, before: spacer(), after: spacer(), start: 0, end: 0, tiles: new Map(), pitch: 0 };
+            this.elements.thumbnailStrip.append(this._stripWin.before, this._stripWin.after);
+            this.updateStripWindow({ force: true, left: scrollWas });
+        } else {
+            files.forEach((file) => frag.appendChild(this.makeStripItem(file)));
+            this.elements.thumbnailStrip.appendChild(frag);
+        }
         this.updateActiveThumbnail();
+    },
+
+    // The film strip's window (see GRID_WINDOW_MIN): the items in and near
+    // the view, and spacers as wide as the rest
+    updateStripWindow({ force = false, left = null } = {}) {
+        const win = this._stripWin;
+        if (!win) return;
+        const strip = this.elements.thumbnailStrip;
+        if (!strip.clientWidth) { win.stale = true; return; }
+        if (win.stale) { win.stale = false; force = true; }
+        if (force && left === null) left = strip.scrollLeft;
+        const files = win.files, n = files.length;
+        const make = (i) => {
+            const el = this.makeStripItem(files[i]);
+            win.tiles.set(files[i], el);
+            return el;
+        };
+        const drop = (f) => {
+            const el = win.tiles.get(f);
+            if (!el) return;
+            win.tiles.delete(f);
+            if (this._stripObserver) this._stripObserver.unobserve(el);
+            el.remove();
+            if (f._stripEl === el) f._stripEl = null;
+            if (this._activeStripEl === el) this._activeStripEl = null;
+        };
+        if (force) {
+            for (const f of [...win.tiles.keys()]) drop(f);
+            win.start = win.end = 0;
+            win.gap = parseFloat(getComputedStyle(strip).columnGap) || 0;
+            win.before.style.display = '';
+            win.before.style.width = '0px';
+            win.after.style.display = 'none';
+            win.base = win.before.offsetLeft;
+            if (!win.pitch) win.pitch = Math.max(8, strip.clientHeight - 16) + win.gap;
+        }
+        const place = (pitch) => {
+            const x = (left !== null ? left : strip.scrollLeft) - win.base;
+            const screen = Math.max(1, Math.ceil(strip.clientWidth / pitch));
+            const first = Math.floor(x / pitch), last = Math.floor((x + strip.clientWidth) / pitch);
+            if (!force && win.end > win.start && win.start <= Math.max(0, first - (screen >> 1)) && win.end - 1 >= Math.min(n - 1, last + (screen >> 1))) return false;
+            const from = Math.max(0, Math.min(n - 1, first - screen));
+            return { start: from, end: Math.min(n, Math.max(from, last + screen) + 1) };
+        };
+        const apply = ({ start, end }) => {
+            const o0 = win.start, o1 = win.end;
+            for (let i = o0; i < o1; i++) if (i < start || i >= end) drop(files[i]);
+            const lo = Math.max(start, o0), hi = Math.min(end, o1);
+            const front = document.createDocumentFragment(), back = document.createDocumentFragment();
+            if (lo >= hi) {
+                for (let i = start; i < end; i++) back.appendChild(make(i));
+            } else {
+                for (let i = start; i < lo; i++) front.appendChild(make(i));
+                for (let i = hi; i < end; i++) back.appendChild(make(i));
+            }
+            win.before.after(front);
+            win.after.before(back);
+            win.start = start;
+            win.end = end;
+            const size = (s, k) => {
+                s.style.display = k > 0 ? '' : 'none';
+                s.style.width = k > 0 ? `${k * win.pitch - win.gap}px` : '0px';
+            };
+            size(win.before, start);
+            size(win.after, n - end);
+        };
+        const want = place(win.pitch);
+        if (want) {
+            apply(want);
+            const a = win.tiles.get(files[win.start]), b = win.tiles.get(files[win.start + 1]);
+            const pitch = a && b ? b.offsetLeft - a.offsetLeft : a ? a.offsetWidth + win.gap : 0;
+            if (pitch > 0 && Math.abs(pitch - win.pitch) > 0.5) {
+                win.pitch = pitch;
+                force = true;
+                apply(place(pitch));
+            }
+        }
+        if (left !== null) strip.scrollLeft = left;
+    },
+
+    // A photo's film strip item, built (and scrolled to) if the window
+    // hasn't got it
+    revealInStrip(file) {
+        const win = this._stripWin;
+        if (!win || !file) return file ? file._stripEl : null;
+        if (win.stale) this.updateStripWindow();
+        if (file._stripEl && file._stripEl.isConnected) return file._stripEl;
+        const strip = this.elements.thumbnailStrip;
+        const i = win.files.indexOf(file);
+        if (i < 0 || !strip.clientWidth) return null;
+        strip.scrollLeft = Math.max(0, win.base + i * win.pitch - (strip.clientWidth - win.pitch) / 2);
+        this.updateStripWindow();
+        return file._stripEl && file._stripEl.isConnected ? file._stripEl : null;
     },
 
     makeStripItem(file) {
@@ -2468,6 +2698,11 @@ const app = {
         div.className = 'thumb-item';
         div._file = file;
         file._stripEl = div;
+        // Built as the window moves: it starts highlighted if it's the one
+        if (file === this.currentFile) {
+            div.classList.add('active');
+            this._activeStripEl = div;
+        }
         Flags.decorate(div, file);
         Edits.decorate(div, file);
         div.onclick = () => this.openSingle(file);
@@ -2499,6 +2734,7 @@ const app = {
     // 2000-photo folder.
     updateActiveThumbnail() {
         const strip = this.elements.thumbnailStrip;
+        if (this._stripWin && !strip.classList.contains('hidden')) this.revealInStrip(this.currentFile);
         const el = this.currentFile && this.currentFile._stripEl;
         if (this._activeStripEl && this._activeStripEl !== el) this._activeStripEl.classList.remove('active');
         this._activeStripEl = el && el.isConnected ? el : null;
@@ -2512,21 +2748,28 @@ const app = {
     // Grid View with Lazy Loading. sync: every tile now, so a re-render
     // after a move keeps the scroll position.
     renderGrid({ sync = false } = {}) {
+        // Read before the tiles go: a windowed grid keeps its place
+        const scrollWas = this._gridWin ? this.elements.gridView.scrollTop : null;
         this.elements.gridView.innerHTML = '';
         this._shownSelected = new Set();
         this._activeGridEl = null;
 
         // Tiles load once and keep their thumbnail; leaving the viewport no
         // longer blanks them (re-decoding on re-entry was a scroll-jank source)
+        // Each urgent request goes to the front of the queue, so the ones
+        // nearest the middle of the screen are asked for last, to be made
+        // first (in DOM order, the rows below the view came first, and a
+        // jump in a big folder waited seconds for the photos on screen)
         const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (!entry.isIntersecting) return;
-                const img = entry.target;
-                const file = img._file;
-                if (!file) return;
-                observer.unobserve(img);
-                this.loadImageThumbnail(file, img); // urgent: jumps the precache queue
-            });
+            const mid = window.innerHeight / 2;
+            const far = (e) => Math.abs(e.boundingClientRect.top + e.boundingClientRect.height / 2 - mid);
+            entries.filter(e => e.isIntersecting && e.target._file)
+                .sort((a, b) => far(b) - far(a))
+                .forEach(entry => {
+                    const img = entry.target;
+                    observer.unobserve(img);
+                    this.loadImageThumbnail(img._file, img); // urgent: jumps the precache queue
+                });
         }, { root: null, rootMargin: '1000px' });
         this.elements.gridView._observer = observer; // Stash for refreshThumbnailUI
 
@@ -2542,6 +2785,27 @@ const app = {
         const empty = this.emptyState(files, folderTiles);
         if (empty) this.elements.gridView.append(empty);
         Folders.render();
+
+        // A huge folder: only the tiles near the view are built (gridWindow)
+        this._gridWin = null;
+        if (files.length >= this.GRID_WINDOW_MIN) {
+            this._gridRenderToken = (this._gridRenderToken || 0) + 1;
+            this.gridRendering = false;
+            const spacer = () => {
+                const s = document.createElement('div');
+                s.className = 'grid-spacer';
+                s.setAttribute('aria-hidden', 'true');
+                return s;
+            };
+            const win = this._gridWin = {
+                files, folders: folderTiles.length, observer,
+                before: spacer(), after: spacer(),
+                start: 0, end: 0, tiles: new Map(), pitch: 0
+            };
+            this.elements.gridView.append(win.before, win.after);
+            this.updateGridWindow({ force: true, top: scrollWas });
+            return;
+        }
 
         // Chunked render: big folders paint the first screenfuls immediately
         // and append the rest during idle time. (gridRendering: tiles are
@@ -2566,6 +2830,135 @@ const app = {
         renderChunk(0);
     },
 
+    // A folder this big (shown at once) gets a windowed grid: only the tiles
+    // in and near the view are built. Laying out 10,000 tiles cost ~200 ms
+    // a frame while scrolling, and Select all, search and coming back from
+    // a photo each touched every tile. Spacers stand in for the rows above
+    // and below at their real height, so the scroll bar and every position
+    // are as if all were there. Smaller folders build every tile, as before.
+    GRID_WINDOW_MIN: 1000,
+
+    // Content position (px from the grid's top edge, scrolled or not)
+    gridY(el) {
+        const grid = this.elements.gridView;
+        return el.getBoundingClientRect().top - grid.getBoundingClientRect().top + grid.scrollTop;
+    },
+
+    // Builds the tiles the view needs, and drops the rest. force: start
+    // over (a new grid, other columns, another tile size). top: the scroll
+    // position to keep (the grid was just rebuilt, and is short until now).
+    updateGridWindow({ force = false, top = null } = {}) {
+        const win = this._gridWin;
+        if (!win) return;
+        const grid = this.elements.gridView;
+        // Hidden (the viewer): done when it shows (resize observer, revealInGrid)
+        if (!grid.clientWidth) { win.stale = true; return; }
+        if (win.stale) { win.stale = false; force = true; }
+        const files = win.files, n = files.length;
+        const cols = this.getGridColumnCount();
+        if (cols !== win.cols) force = true;
+        // Read now: once the tiles go, the grid is too short to keep it
+        if (force && top === null) top = grid.scrollTop;
+        const make = (i) => {
+            const el = this.makeGridTile(files[i], win.observer);
+            win.tiles.set(files[i], el);
+            return el;
+        };
+        const drop = (f) => {
+            const el = win.tiles.get(f);
+            if (!el) return;
+            win.tiles.delete(f);
+            const img = el.querySelector(':scope > img');
+            if (img) win.observer.unobserve(img);
+            el.remove();
+            if (f._gridEl === el) f._gridEl = null;
+            if (this._activeGridEl === el) this._activeGridEl = null;
+        };
+        if (force) {
+            for (const f of [...win.tiles.keys()]) drop(f);
+            win.start = win.end = 0;
+            win.cols = cols;
+            // Photos sharing a row with the subfolder tiles are always there
+            win.head = Math.min(n, win.folders ? Math.ceil(win.folders / cols) * cols - win.folders : 0);
+            const frag = document.createDocumentFragment();
+            for (let i = 0; i < win.head; i++) frag.appendChild(make(i));
+            win.before.before(frag);
+            win.gap = parseFloat(getComputedStyle(grid).rowGap) || 0;
+            // The first windowed row starts where the top spacer does
+            win.before.style.display = '';
+            win.before.style.height = '0px';
+            win.after.style.display = 'none';
+            win.base = this.gridY(win.before);
+            if (!win.pitch) win.pitch = (parseFloat(getComputedStyle(grid).gridTemplateColumns) || 150) + win.gap;
+        }
+        const head = win.head, rows = Math.ceil((n - head) / cols);
+        const place = (pitch) => {
+            const y = (top !== null ? top : grid.scrollTop) - win.base;
+            const screen = Math.max(1, Math.ceil(grid.clientHeight / pitch));
+            const first = Math.floor(y / pitch), last = Math.floor((y + grid.clientHeight) / pitch);
+            // Still a half screen built either side: nothing to do
+            const r0 = (win.start - head) / cols, r1 = (win.end - head) / cols - 1;
+            if (!force && win.end > win.start && r0 <= Math.max(0, first - (screen >> 1)) && r1 >= Math.min(rows - 1, last + (screen >> 1))) return false;
+            const from = Math.max(0, Math.min(rows - 1, first - screen));
+            const to = Math.max(from, Math.min(rows - 1, last + screen));
+            return { start: head + from * cols, end: Math.min(n, head + (to + 1) * cols) };
+        };
+        const apply = ({ start, end }) => {
+            const o0 = win.start, o1 = win.end;
+            for (let i = o0; i < o1; i++) if (i < start || i >= end) drop(files[i]);
+            const lo = Math.max(start, o0), hi = Math.min(end, o1);
+            const front = document.createDocumentFragment(), back = document.createDocumentFragment();
+            if (lo >= hi) {
+                for (let i = start; i < end; i++) back.appendChild(make(i));
+            } else {
+                for (let i = start; i < lo; i++) front.appendChild(make(i));
+                for (let i = hi; i < end; i++) back.appendChild(make(i));
+            }
+            win.before.after(front);
+            win.after.before(back);
+            win.start = start;
+            win.end = end;
+            const above = (start - head) / cols, below = rows - Math.ceil((end - head) / cols);
+            const size = (s, k) => {
+                s.style.display = k > 0 ? '' : 'none';
+                s.style.height = k > 0 ? `${k * win.pitch - win.gap}px` : '0px';
+            };
+            size(win.before, above);
+            size(win.after, below);
+        };
+        const want = place(win.pitch);
+        if (want) {
+            apply(want);
+            // The real row height, now there are tiles to measure (a theme
+            // can give tiles a caption)
+            const a = files[win.start] && win.tiles.get(files[win.start]);
+            const b = files[win.start + cols] && win.tiles.get(files[win.start + cols]);
+            const pitch = a && b ? this.gridY(b) - this.gridY(a) : a ? a.offsetHeight + win.gap : 0;
+            if (pitch > 0 && Math.abs(pitch - win.pitch) > 0.5) {
+                win.pitch = pitch;
+                force = true; // spacers redone at the right height
+                apply(place(pitch));
+            }
+        }
+        if (top !== null) grid.scrollTop = top;
+    },
+
+    // A photo's grid tile, built (and scrolled to) if the window hasn't got
+    // it: for whatever needs the tile itself, to scroll it into view say
+    revealInGrid(file) {
+        const win = this._gridWin;
+        if (!win || !file) return file ? file._gridEl : null;
+        if (win.stale) this.updateGridWindow();
+        if (file._gridEl && file._gridEl.isConnected) return file._gridEl;
+        const i = win.files.indexOf(file);
+        const grid = this.elements.gridView;
+        if (i < 0 || !grid.clientWidth) return null;
+        const row = Math.floor((i - win.head) / win.cols);
+        grid.scrollTop = Math.max(0, win.base + row * win.pitch - (grid.clientHeight - win.pitch) / 2);
+        this.updateGridWindow();
+        return file._gridEl && file._gridEl.isConnected ? file._gridEl : null;
+    },
+
     // Transparent stand-in while a tile's thumbnail is on its way
     BLANK_THUMB: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PC9zdmc+',
 
@@ -2588,6 +2981,7 @@ const app = {
     makeGridTile(file, observer) {
         const div = document.createElement('div');
         div.className = 'grid-item';
+        div.dataset.name = file.name; // a theme's tile caption (themes.js)
         div._file = file;
         file._gridEl = div;
         // Tiles are built in chunks: each one starts in the right state
@@ -3208,12 +3602,12 @@ const app = {
             }
             this.updateSelectionUI();
 
-            // Scroll to current
-            const currentEl = this.currentFile && this.currentFile._gridEl;
-            if (currentEl) {
-                // setTimeout to allow layout
+            // Scroll to current (after a moment, to allow layout)
+            const current = this.currentFile;
+            if (current && (current._gridEl || this._gridWin)) {
                 setTimeout(() => {
-                    currentEl.scrollIntoView({ block: 'center' });
+                    const el = this.revealInGrid(current);
+                    if (el) el.scrollIntoView({ block: 'center' });
                 }, 10);
             }
 
@@ -3750,7 +4144,7 @@ const app = {
         this.selection.clear();
         this.selection.add(file);
         this.updateSelectionUI();
-        const item = file._gridEl;
+        const item = this.revealInGrid(file);
         if (item) {
             const rect = item.getBoundingClientRect();
             const containerRect = this.elements.gridView.getBoundingClientRect();
@@ -3940,6 +4334,8 @@ const app = {
         ['edit.paint', 'global', 'Edit', 'Paint: brushes, shapes, text and layers', ['B']],
         ['edit.copyAdjust', 'global', 'Edit', 'Copy the photo\'s adjustments', ['Ctrl+Shift+C']],
         ['edit.pasteAdjust', 'global', 'Edit', 'Paste adjustments (onto the selection in grid)', ['Ctrl+Shift+V']],
+        ['edit.copyImage', 'global', 'Edit', 'Copy the photo as it looks, to paste into another app', ['Ctrl+C']],
+        ['edit.pasteImage', 'global', 'Edit', 'Paste an image from another app: a new picture, in Paint', ['Ctrl+V']],
         ['edit.rename', 'global', 'Edit', 'Rename (the selection in grid view)', ['F2']],
         ['edit.trash', 'global', 'Edit', 'Move to trash', ['Delete']],
         ['edit.undo', 'global', 'Edit', 'Undo', ['Ctrl+Z']],
@@ -3954,6 +4350,7 @@ const app = {
         ['flag.purple', 'global', 'Flags', 'Purple label', ['5']],
         ['flag.clear', 'global', 'Flags', 'Clear flags', ['U']],
         ['edit.autoCrop', 'global', 'Edit', 'Auto crop the selection (grid)', ['Shift+A']],
+        ['edit.upright', 'global', 'Edit', 'Turn upright (the selection, or the photo)', ['Shift+U']],
         ['edit.moveTo', 'global', 'Folders', 'Move to a folder…', ['M']],
         ['edit.copyTo', 'global', 'Folders', 'Copy to a folder…', ['Shift+M']],
         ['folders.new', 'global', 'Folders', 'New folder', ['Shift+N']],
@@ -3972,6 +4369,7 @@ const app = {
         ['view.fullscreen', 'global', 'View', 'Full screen', ['F']],
         ['view.slideshow', 'global', 'View', 'Slideshow', []],
         ['app.dupes', 'global', 'App', 'Find duplicates (WIP)', ['D']],
+        ['app.convert', 'global', 'App', 'Convert: format, quality and storage…', []],
         ['app.import', 'global', 'App', 'Import from a camera or card…', ['Ctrl+I']],
         ['app.refresh', 'global', 'App', 'Rescan folder', ['R']],
         ['app.search', 'global', 'App', 'Search photos', ['Ctrl+F', '/']],
@@ -4008,9 +4406,12 @@ const app = {
         ['adjust.before', 'adjust', 'Adjust', 'Before and after', ['\\']],
         ['adjust.auto', 'adjust', 'Adjust', 'Auto (levels from the photo)', ['Shift+A']],
         ['adjust.autoColor', 'adjust', 'Adjust', 'Auto color (each channel)', ['Shift+C']],
+        ['adjust.whiteBalance', 'adjust', 'Adjust', 'White balance: click something grey', ['W']],
         ['adjust.reset', 'adjust', 'Adjust', 'Reset everything', ['R']],
         ['adjust.copy', 'adjust', 'Adjust', 'Copy the adjustments', ['Ctrl+Shift+C']],
         ['adjust.paste', 'adjust', 'Adjust', 'Paste adjustments', ['Ctrl+Shift+V']],
+        ['adjust.copyImage', 'adjust', 'Adjust', 'Copy the photo as it looks, to paste into another app', ['Ctrl+C']],
+        ['adjust.pasteImage', 'adjust', 'Adjust', 'Paste an image from another app: a new picture, in Paint', ['Ctrl+V']],
         ['adjust.undo', 'adjust', 'Adjust', 'Undo', ['Ctrl+Z']],
         ['adjust.redo', 'adjust', 'Adjust', 'Redo', ['Ctrl+Shift+Z', 'Ctrl+Y']],
         ['paint.done', 'paint', 'Paint', 'Put down what\'s being moved, or back to Photos (what you did is kept)', ['Enter']],
@@ -4031,8 +4432,8 @@ const app = {
         ['paint.text', 'paint', 'Paint', 'Text', ['T']],
         ['paint.picker', 'paint', 'Paint', 'Colour picker', ['I']],
         ['paint.hand', 'paint', 'Paint', 'Hand', ['H']],
-        ['paint.smaller', 'paint', 'Paint', 'Brush smaller', ['[']],
-        ['paint.bigger', 'paint', 'Paint', 'Brush bigger', [']']],
+        ['paint.smaller', 'paint', 'Paint', 'Brush (or line, or text) smaller', ['[']],
+        ['paint.bigger', 'paint', 'Paint', 'Brush (or line, or text) bigger', [']']],
         ['paint.swap', 'paint', 'Paint', 'Swap the colours', ['X']],
         ['paint.colours', 'paint', 'Paint', 'Black and white', ['D']],
         ['paint.selectAll', 'paint', 'Paint', 'Select all', ['Ctrl+A']],
@@ -4118,6 +4519,10 @@ const app = {
             'edit.paint': () => this.enterPaint(),
             'edit.copyAdjust': () => this.copyAdjust(),
             'edit.pasteAdjust': () => this.pasteAdjust(grid() && this.selection.size ? [...this.selection] : [this.currentFile]),
+            // Text picked out (in Info, say) is copied as text, as usual
+            'edit.copyImage': () => (String(getSelection()) ? false : this.copyImage()),
+            // The paste event brings the image (paste below)
+            'edit.pasteImage': () => false,
             'edit.rename': () => this.openRename(grid() && this.selection.size ? [...this.selection] : [this.currentFile]),
             'edit.trash': () => this.moveToTrash(grid() && this.selection.size
                 ? [...this.selection] : [this.currentFile]),
@@ -4137,6 +4542,7 @@ const app = {
             'flag.purple': () => Flags.apply('purple'),
             'flag.clear': () => Flags.apply('clear'),
             'edit.autoCrop': () => this.batchAutoCrop(Folders.targets()),
+            'edit.upright': () => this.turnUpright(Folders.targets()),
             'edit.moveTo': () => Folders.openPicker(Folders.targets(), 'move'),
             'edit.copyTo': () => Folders.openPicker(Folders.targets(), 'copy'),
             'folders.new': () => this.dirHandle ? Folders.newFolder() : false,
@@ -4164,6 +4570,9 @@ const app = {
             'view.fullscreen': () => this.toggleFullscreen(),
             'view.slideshow': () => this.startSlideshow(),
             'app.dupes': () => this.openDupes(),
+            // The photo open, the selection in the grid, else the whole project
+            'app.convert': () => Convert.open(this.viewMode === 'single' && this.currentFile ? { files: [this.currentFile] }
+                : this.viewMode === 'grid' && this.selection.size > 1 ? { files: [...this.selection] } : {}),
             'app.import': () => Import.open(),
             'app.refresh': () => this.refreshFolder(),
             'app.search': () => Flags.focusSearch(),
@@ -4197,13 +4606,16 @@ const app = {
             // No Done or Cancel: Adjust keeps what's done, as Lightroom does
             'adjust.done': () => Modes.go('photos'),
             'adjust.doneNext': () => Modes.stepBy(1),
-            'adjust.cancel': () => (Adjust.ready ? Modes.go('photos') : this.cancelAdjust()),
+            'adjust.cancel': () => (Adjust.picking ? Adjust.pickWhite(false) : Adjust.ready ? Modes.go('photos') : this.cancelAdjust()),
             'adjust.before': () => Adjust.toggleBefore(),
             'adjust.auto': () => Adjust.auto(),
             'adjust.autoColor': () => Adjust.auto({ color: true }),
+            'adjust.whiteBalance': () => Adjust.pickWhite(),
             'adjust.reset': () => Adjust.reset(),
             'adjust.copy': () => Adjust.copy(),
             'adjust.paste': () => Adjust.paste(),
+            'adjust.copyImage': () => (String(getSelection()) ? false : this.copyImage(Adjust.file, Adjust.result())),
+            'adjust.pasteImage': () => false,
             'adjust.undo': () => { if (!Adjust.undo()) this.showToast('Nothing to undo', 1200); },
             'adjust.redo': () => { if (!Adjust.redo()) this.showToast('Nothing to redo', 1200); },
             'paint.done': () => { if (PaintEditor.float) PaintEditor.commitFloat(); else Modes.go('photos'); },
@@ -4228,8 +4640,8 @@ const app = {
             'paint.text': () => PaintEditor.setTool('text'),
             'paint.picker': () => PaintEditor.setTool('picker'),
             'paint.hand': () => PaintEditor.setTool('hand'),
-            'paint.smaller': () => { PaintEditor.opts.size = Math.max(1, Math.round(PaintEditor.opts.size / 1.25)); PaintEditor.buildOptions(); PaintEditor.renderSoon(); },
-            'paint.bigger': () => { PaintEditor.opts.size = Math.min(400, Math.round(PaintEditor.opts.size * 1.25) + 1); PaintEditor.buildOptions(); PaintEditor.renderSoon(); },
+            'paint.smaller': () => PaintEditor.nudgeSize(1 / 1.2, true),
+            'paint.bigger': () => PaintEditor.nudgeSize(1.2, true),
             'paint.swap': () => PaintEditor.swapColours(),
             'paint.colours': () => PaintEditor.defaultColours(),
             'paint.selectAll': () => PaintEditor.selectAll(),
@@ -4456,6 +4868,20 @@ const app = {
         window.addEventListener('keydown', (e) => this.recordKey(e), true);
     },
 
+    // A button clicked (mouse, pen or touch) doesn't keep the keyboard:
+    // kept, the next key (Esc, an arrow to the next photo) showed its
+    // keyboard ring, stuck there until something else was clicked, and
+    // Space or Enter pressed it again. In a dialog or a menu it keeps it
+    // (Tab moves on from there). After the click's own handlers, which may
+    // move it somewhere on purpose.
+    releaseClickedButtons() {
+        document.addEventListener('click', (e) => {
+            const b = e.detail > 0 && e.target.closest && e.target.closest('button, [role="button"]');
+            if (!b || b.closest('.dialog-overlay, [role="dialog"], [role="menu"], #context-menu')) return;
+            setTimeout(() => { if (document.activeElement === b) b.blur(); }, 0);
+        }, true);
+    },
+
     isTypingTarget(t) {
         if (!t || !t.tagName) return false;
         if (t.isContentEditable || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') return true;
@@ -4523,7 +4949,7 @@ const app = {
         if (!id) return;
         // Only the shortcut list and debug console work from the start screen
         const onStart = this.elements.mainInterface.classList.contains('hidden');
-        if (onStart && context === 'global' && !['app.shortcuts', 'app.debug', 'app.settings', 'app.import'].includes(id)) return;
+        if (onStart && context === 'global' && !['app.shortcuts', 'app.debug', 'app.settings', 'app.import', 'edit.pasteImage'].includes(id)) return;
         if (context === 'crop' && CropEditor.busy) {
             e.preventDefault(); // saving: the crop being written stays as it is
             return;
@@ -4865,7 +5291,9 @@ const app = {
         const anchor = this.gridAnchor();
         document.documentElement.style.setProperty('--grid-item-size', `${px}px`);
         this.syncGridTile();
-        if (anchor) grid.scrollTop += anchor.el.getBoundingClientRect().top - anchor.top;
+        if (this._gridWin) this.updateGridWindow({ force: true });
+        const el = anchor && (anchor.el._file ? this.revealInGrid(anchor.el._file) : anchor.el);
+        if (el && el.isConnected) grid.scrollTop += el.getBoundingClientRect().top - anchor.top;
     },
 
     // Run fn (which rebuilds the grid) and scroll so the photo that anchored
@@ -4875,7 +5303,7 @@ const app = {
         const result = fn();
         if (a) {
             const grid = this.elements.gridView;
-            const el = a.el._file ? a.el._file._gridEl
+            const el = a.el._file ? this.revealInGrid(a.el._file)
                 : grid.querySelector(`.folder-tile[data-folder-path="${CSS.escape(a.el.dataset.folderPath || '')}"]`);
             if (el && el.isConnected) grid.scrollTop += el.getBoundingClientRect().top - a.top;
         }
@@ -4898,6 +5326,7 @@ const app = {
             const midY = (view.top + view.bottom) / 2;
             let best = Infinity;
             for (const t of grid.children) {
+                if (t.classList.contains('grid-spacer')) continue;
                 const r = t.getBoundingClientRect();
                 if (r.bottom < view.top || r.top > view.bottom) continue;
                 const d = Math.abs((r.top + r.bottom) / 2 - midY);
@@ -4997,13 +5426,20 @@ const app = {
     // is re-read or re-decoded after a rotation — that's what makes it snappy.
     // Lags reset to 0 whenever a preview is regenerated from fresh disk bytes.
 
-    async rotateBulk(deg) {
-        if (this.selection.size === 0) return;
+    // `turns`: each photo's own turn (Turn upright), in place of `deg`
+    async rotateBulk(deg, turns = null) {
+        if (!turns && this.selection.size === 0) return;
         if (!this.ensureWritable()) return;
+        const degOf = (f) => turns ? turns.get(f) : deg;
+        const byTurn = (files) => {
+            const m = new Map();
+            for (const f of files) m.set(degOf(f), [...(m.get(degOf(f)) || []), f]);
+            return m;
+        };
 
         // Snapshot the selection NOW: photos the user clicks or selects while
         // this batch is saving must never join it.
-        const snapshot = [...this.selection];
+        const snapshot = turns ? [...turns.keys()] : [...this.selection];
         const filesToRotate = snapshot.filter(f => !/\.gif$/i.test(f.name));
         const skippedGifs = snapshot.length - filesToRotate.length;
         if (skippedGifs > 0) this.showToast(`Skipped ${skippedGifs} GIF${skippedGifs > 1 ? 's' : ''} (rotation would lose animation)`);
@@ -5013,11 +5449,13 @@ const app = {
         const kept = filesToRotate.filter(f => Edits.keeps(f));
         if (kept.length) {
             if (this.editsSaving()) return;
-            this.turnHeld(kept, deg);
-            Edits.rotate(kept, deg);
+            for (const [d, files] of byTurn(kept)) {
+                this.turnHeld(files, d);
+                Edits.rotate(files, d);
+            }
             if (kept.length === filesToRotate.length) {
                 const n = kept.length;
-                this.showToast(`Turned ${n} photo${n > 1 ? 's' : ''} ${Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left'}`, 1600, null, null, { kind: 'rotate' });
+                this.showToast(`Turned ${n} photo${n > 1 ? 's' : ''} ${turns ? 'upright' : Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left'}`, 1600, null, null, { kind: 'rotate' });
                 return;
             }
             filesToRotate.splice(0, filesToRotate.length, ...filesToRotate.filter(f => !kept.includes(f)));
@@ -5034,7 +5472,7 @@ const app = {
 
         // Instant preview on every selected photo, before any disk work
         for (const file of filesToRotate) {
-            file.pendingRotation = (file.pendingRotation || 0) + deg;
+            file.pendingRotation = (file.pendingRotation || 0) + degOf(file);
             this.applyPreviewRotation(file);
         }
 
@@ -5069,7 +5507,7 @@ const app = {
         batchDone();
         // Nothing was saved (all failed): no empty undo step
         if (!group.items.length) this._undoStack = (this._undoStack || []).filter(e => e !== group);
-        const how = Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left';
+        const how = turns ? 'upright' : Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left';
         this.showToast(ok ? `Rotated ${label} ${how}` : 'Some photos failed to rotate', 2000, null, null, ok ? { kind: 'rotate' } : {});
         this.log('Bulk rotation finished');
     },
@@ -5415,6 +5853,8 @@ const app = {
                 await Folders.undo(entry);
             } else if (entry.type === 'transfer') {
                 await Windows.undo(entry);
+            } else if (entry.type === 'convert') {
+                await Convert.undo(entry);
             } else if (entry.type === 'trash') {
                 const n = await this.restoreManyFromTrash(entry.items);
                 this.sortFiles();
@@ -5691,6 +6131,10 @@ const app = {
             if (f._gridEl) f._gridEl.remove();
             if (f._stripEl) f._stripEl.remove();
         }
+        // A huge folder's grid and strip (only the tiles near the view) are
+        // built again
+        if (this._stripWin && this.files.length) this.renderThumbnails();
+        if (this._gridWin && this.files.length) this.keepGridPlace(() => this.renderGrid());
 
         if (this.files.length === 0 && this.dirHandle && !this.readOnlyMode) {
             // The last photo went: the project stays open, empty
@@ -5861,6 +6305,12 @@ const app = {
         } else {
             throw new Error('No folder access');
         }
+        this.nameChanged(file, newName);
+    },
+
+    // A photo's name changed on disk (renamed, or converted: convert.js):
+    // the screen and the flags and edits follow it
+    nameChanged(file, newName) {
         file.name = newName;
         if (file.relPath) file.relPath = file.relPath.replace(/[^/]+$/, newName);
         // Flags or edits left by a photo that once had this name aren't this one's
@@ -5873,6 +6323,7 @@ const app = {
         }
         const gridImg = file._gridEl && file._gridEl.querySelector('img');
         if (gridImg) gridImg.alt = newName;
+        if (file._gridEl) file._gridEl.dataset.name = newName;
     },
 
     // Rename many files at once ([{ file, newName }], names already
@@ -6132,11 +6583,11 @@ const app = {
 
     // ---- Export copies ----
 
-    // Copies of `files` (edits in them, RAWs as JPEGs). From the Export
+    // Copies of `files` (edits in them, RAWs and HEICs as JPEGs). From the Export
     // window (export.js): `maxEdge` (0: full size) and `dir`, the folder
     // they go into, called `where`; else asked here, into "jEditor Export"
     // in the project
-    async exportCopies(files, { maxEdge = null, dir = null, where = '"jEditor Export"' } = {}) {
+    async exportCopies(files, { maxEdge = null, dir = null, where = '"jEditor Export"', format = 'same' } = {}) {
         const list = files.filter(Boolean);
         if (!list.length) return;
         if (!this.dirHandle) {
@@ -6162,24 +6613,37 @@ const app = {
             let done = 0, failed = 0;
             for (const f of list) {
                 try {
-                    // A RAW: from its own JPEG, written as a JPEG
-                    const data = await this.readImage(f);
-                    let out = f._edit ? await this.renderEdited(f, data) : data;
-                    if (maxEdge > 0) {
-                        const bmp = await createImageBitmap(out);
-                        const scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
-                        if (scale < 1) {
-                            const canvas = document.createElement('canvas');
-                            canvas.width = Math.round(bmp.width * scale);
-                            canvas.height = Math.round(bmp.height * scale);
-                            canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
-                            const { type, quality } = this.getSaveFormat(f.name);
-                            out = await new Promise(r => canvas.toBlob(r, type, quality));
-                        }
-                        bmp.close();
+                    // A RAW: from its own JPEG, written as a JPEG (or the
+                    // format chosen). A HEIC: decoded (a PNG, or a JPEG when
+                    // edited), written as a JPEG (or the format chosen), with
+                    // the HEIC's EXIF
+                    const heif = Codec.isHeif(f.name);
+                    const raw = Raw.is(f.name) || heif;
+                    const file = raw ? await this.readImage(f) : await f.handle.getFile();
+                    let out = f._edit ? await this.renderEdited(f, file) : file;
+                    const from = heif ? (out.type === 'image/jpeg' ? 'jpeg' : 'png') : raw ? 'jpeg' : this.formatOf(f.name);
+                    const to = format === 'same' ? (heif ? 'jpeg' : from) : format;
+                    // Smaller, or another format: drawn again and written as that
+                    let bmp = null, scale = 1;
+                    if (maxEdge > 0 || to !== from) {
+                        // (a JPEG XL or TIFF, as written or edited, decoded by the codecs)
+                        const coded = Codec.decoded('x.' + (f._edit ? Codec.of(f.name) || from : from));
+                        bmp = await createImageBitmap(coded ? await Codec.showable(out instanceof File ? out : new File([out], f.name)) : out);
+                        if (maxEdge > 0) scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
                     }
+                    if (bmp && (scale < 1 || to !== from)) {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = Math.round(bmp.width * scale);
+                        canvas.height = Math.round(bmp.height * scale);
+                        canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+                        out = await this.encodeAs(canvas, to === 'gif' ? 'jpeg' : to, new Uint8Array(await (heif ? await f.handle.getFile() : file).arrayBuffer()));
+                        canvas.width = canvas.height = 0;
+                    }
+                    if (bmp) bmp.close();
                     if (!out) throw new Error('encode failed');
-                    const h = await dir.getFileHandle(Raw.is(f.name) ? Raw.jpegName(f.name) : f.name, { create: true });
+                    const name = raw && to === 'jpeg' ? Raw.jpegName(f.name)
+                        : to === from ? f.name : f.name.replace(/\.[^.]+$/, '') + '.' + (to === 'gif' ? 'jpg' : Codec.ext(to));
+                    const h = await dir.getFileHandle(name, { create: true });
                     const w = await h.createWritable();
                     await w.write(out);
                     await w.close();
@@ -6201,6 +6665,31 @@ const app = {
         }
     },
 
+    // What a photo's file is, by its name: 'jpeg', 'png', 'webp', 'gif',
+    // 'avif', 'jxl' or 'tiff'
+    formatOf(name) {
+        return /\.gif$/i.test(name || '') ? 'gif' : Codec.formatOf(name) || 'jpeg';
+    },
+
+    // A canvas written as a format, with the metadata of `original` (its
+    // file's bytes) that's still true → Blob. AVIF and JPEG XL by the codecs
+    async encodeAs(canvas, to, original) {
+        const w = canvas.width, h = canvas.height;
+        const blobOf = (type, q) => new Promise(r => canvas.toBlob(r, type, q));
+        const tiff = ImageMeta.exifOf(original);
+        if (to === 'avif' || to === 'jxl' || to === 'tiff') return Codec.file(await blobOf('image/png'), to, Codec.FORMATS[to].quality, tiff);
+        const type = { png: 'image/png', webp: 'image/webp' }[to] || 'image/jpeg';
+        const blob = await blobOf(type, type === 'image/png' ? undefined : 0.95);
+        if (!blob) return null;
+        if (to === 'webp') return new Blob([Codec.withExif(new Uint8Array(await blob.arrayBuffer()), 'webp', tiff, w, h)], { type });
+        // From the same kind of file: its metadata as Save edits copies it
+        const kind = ImageMeta.jpegSegments(original, { partial: true }) ? 'jpeg' : ImageMeta.pngChunks(original, { partial: true }) ? 'png' : null;
+        if (kind === (type === 'image/png' ? 'png' : 'jpeg')) return ImageMeta.transplant(original, blob, type, w, h);
+        // A JPEG or PNG from another format: its EXIF goes in
+        if (tiff) return new Blob([Codec.withExif(new Uint8Array(await blob.arrayBuffer()), to === 'png' ? 'png' : 'jpeg', tiff, w, h)], { type });
+        return blob;
+    },
+
     // A photo with its edit not saved yet (edits.js), at full size, as
     // saving it would write it
     async renderEdited(f, data) {
@@ -6214,13 +6703,21 @@ const app = {
                 if (b) return b;
             } catch (e) { /* re-encode */ }
         }
-        const { type, quality } = this.getSaveFormat(f.name);
-        const canvas = await CropEditor.renderSnapshot(data, edit, type, original);
+        const coded = Codec.of(f.name);
+        const { type, quality } = coded ? { type: 'image/png' } : this.getSaveFormat(f.name);
+        const canvas = await CropEditor.renderSnapshot(coded ? await this.readImage(f) : data, edit, type, original);
         if (!canvas) return data;
         const w = canvas.width, h = canvas.height;
         const blob = await new Promise(r => canvas.toBlob(r, type, quality));
         canvas.width = canvas.height = 0;
         if (!blob) throw new Error('encoding failed');
+        // AVIF and JPEG XL: written by the codecs, in their own format, with their EXIF
+        if (coded) return Codec.file(blob, coded, Codec.FORMATS[coded].quality, ImageMeta.exifOf(new Uint8Array(await (await f.handle.getFile()).arrayBuffer())));
+        // A HEIC (decoded already: never written): a JPEG, with the HEIC's EXIF
+        if (Codec.isHeif(f.name)) {
+            const exif = ImageMeta.exifOf(new Uint8Array(await (await f.handle.getFile()).arrayBuffer()));
+            return new Blob([Codec.withExif(new Uint8Array(await blob.arrayBuffer()), 'jpeg', exif, w, h)], { type });
+        }
         return ImageMeta.transplant(original, blob, type, w, h);
     },
 
@@ -6285,6 +6782,7 @@ const app = {
                     [`Rotate ${n} right`, () => this.rotateBulk(90)],
                     [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
                     [`Auto crop ${n}`, () => this.batchAutoCrop(sel)],
+                    [`Turn ${n} upright`, () => this.turnUpright(sel)],
                     ...(Adjust.clipboard() ? [[`Paste adjustments onto ${n}`, () => this.pasteAdjust(sel)]] : []),
                     ...(sel.some(f => f._edit) ? [[`Discard edits on ${sel.filter(f => f._edit).length.toLocaleString()}`, () => Edits.discard(sel)]] : []),
                     ['—'],
@@ -6292,6 +6790,7 @@ const app = {
                     [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy')],
                     [`Rename ${n}…`, () => this.openRename(sel)],
                     [`Export ${n}…`, () => Export.open({ files: sel })],
+                    [`Convert ${n}…`, () => Convert.open({ files: sel })],
                     ['—'],
                     [`Delete ${n}`, () => this.moveToTrash(sel), true]
                 ];
@@ -6304,6 +6803,7 @@ const app = {
                 ['Rotate left', () => this.rotateImage(file, -90)],
                 ['Rotate right', () => this.rotateImage(file, 90)],
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
+                ['Turn upright', () => this.turnUpright([file])],
                 ['Crop and straighten', () => { this.openSingle(file); this.enterCrop(); }],
                 ['Adjust…', () => this.enterAdjust(file)],
                 ...(file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
@@ -6313,9 +6813,11 @@ const app = {
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
                 ['Copy to…', () => Folders.openPicker([file], 'copy')],
+                ['Copy image', () => this.copyImage(file)],
                 ['Rename…', () => this.promptRename(file)],
                 ['File info', () => { this.toggleInfoPanel(true, { file }); }],
                 ['Export…', () => Export.open({ files: [file] })],
+                ['Convert…', () => Convert.open({ files: [file] })],
                 ['—'],
                 ['Delete', () => this.moveToTrash([file]), true]
             ];
@@ -6328,6 +6830,7 @@ const app = {
                 ['Rotate left', () => this.rotateImage(file, -90)],
                 ['Rotate right', () => this.rotateImage(file, 90)],
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
+                ['Turn upright', () => this.turnUpright([file])],
                 ['Crop and straighten', () => this.enterCrop()],
                 ['Adjust…', () => this.enterAdjust()],
                 ...(file && file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
@@ -6337,9 +6840,11 @@ const app = {
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
                 ['Copy to…', () => Folders.openPicker([file], 'copy')],
+                ['Copy image', () => this.copyImage(file)],
                 ['Rename…', () => this.promptRename(file)],
                 ['File info', () => this.toggleInfoPanel(true)],
                 ['Export…', () => Export.open({ files: [file] })],
+                ['Convert…', () => Convert.open({ files: [file] })],
                 ['—'],
                 ['Full screen', () => this.toggleFullscreen()],
                 ['Start slideshow', () => this.startSlideshow()],
@@ -6353,6 +6858,7 @@ const app = {
             ['—'],
             ...(this.dirHandle ? [['New folder…', () => Folders.newFolder()]] : []),
             ...(Blank.can() ? [['New blank image…', () => Blank.open()]] : []),
+            ...(Blank.can() && navigator.clipboard && navigator.clipboard.read ? [['Paste image', () => this.pasteFromMenu()]] : []),
             ['Rename all…', () => this.openRename([])],
             ['Search…', () => Flags.focusSearch()],
             [Folders.scope === null ? 'Project info' : 'Folder info', () => this.toggleInfoPanel(true, { folder: Folders.scope })],
@@ -6377,9 +6883,13 @@ const app = {
         return [
             ['flags', sel],
             ['—'],
+            // On the bar in the themes; in jEditor's own look only here (and [ ])
+            [`Rotate ${n} left`, () => this.rotateBulk(-90)],
+            [`Rotate ${n} right`, () => this.rotateBulk(90)],
             [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
             [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy')],
             [`Export ${n}…`, () => Export.open({ files: sel })],
+            [`Convert ${n}…`, () => Convert.open({ files: sel })],
             ['—'],
             ['Select all', () => { this.selection = new Set(this.viewFiles()); this.updateSelectionUI(); }]
         ];
@@ -6429,7 +6939,9 @@ const app = {
                 : (i + (e.key === 'ArrowDown' ? 1 : -1) + all.length) % all.length;
             all[next].focus();
         });
-        this._menuReturn = document.activeElement;
+        // Given back on Esc when opened from the keyboard (after a click,
+        // that button's keyboard ring would show, and stay: UI.sync)
+        this._menuReturn = UI._pointer ? null : document.activeElement;
         document.body.appendChild(menu);
         const r = menu.getBoundingClientRect();
         const top = opts.above ? y - r.height : y;
@@ -6687,6 +7199,107 @@ const app = {
         }
     },
 
+    // ---- Images on the system clipboard ----
+
+    // Ctrl+C: the photo shown, or the one picked out in the grid
+    imageTarget() {
+        if (document.body.dataset.view !== 'grid' || !this.selection.size) return this.currentFile;
+        return this.selection.has(this.currentFile) ? this.currentFile : [...this.selection][0];
+    },
+
+    // The photo as it looks (its crop, adjustments and paint; in Adjust,
+    // adj: what's on screen now) onto the clipboard as a PNG, for other apps
+    copyImage(file = this.imageTarget(), adj = undefined) {
+        if (!file) return;
+        if (!navigator.clipboard || !navigator.clipboard.write || typeof ClipboardItem !== 'function') {
+            this.showToast('This browser can\'t copy pictures: use Export instead', 3000);
+            return;
+        }
+        // Asked for now, while the key press still counts; the picture follows
+        navigator.clipboard.write([new ClipboardItem({ 'image/png': this.imagePng(file, adj) })])
+            .then(() => this.showToast(`Copied ${file.name}`, 1500, null, null, { type: 'success' }))
+            .catch(e => this.showToast(`Couldn't copy ${file.name}: ${e.message}`, 3500));
+    },
+
+    async imagePng(file, adj) {
+        const data = await this.readImage(file);
+        const edit = adj === undefined ? file._edit || null : Edits.withAdj(file._edit || null, adj, file._edit);
+        let canvas = edit ? await CropEditor.renderSnapshot(data, edit, 'image/png') : null;
+        if (!canvas) {
+            const bmp = await createImageBitmap(data);
+            canvas = document.createElement('canvas');
+            canvas.width = bmp.width;
+            canvas.height = bmp.height;
+            canvas.getContext('2d').drawImage(bmp, 0, 0);
+            bmp.close();
+        }
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+        canvas.width = canvas.height = 0;
+        if (!blob) throw new Error('the picture couldn\'t be made');
+        return blob;
+    },
+
+    // Ctrl+V in Photos or Adjust (Paint pastes into the painting itself)
+    initPasteImage() {
+        document.addEventListener('paste', (e) => {
+            if (!e.clipboardData || this.isTypingTarget(e.target) || Modes.current() === 'paint') return;
+            if (UI.isOpen() || this.cropState.active && this.cropState.tool !== 'adjust') return;
+            const item = [...e.clipboardData.items].find(i => i.kind === 'file' && /^image\//.test(i.type));
+            const blob = item && item.getAsFile();
+            if (!blob) return;
+            e.preventDefault();
+            this.pasteImage(blob);
+        });
+    },
+
+    // Paste image, from the menu: read from the clipboard (it may ask first)
+    async pasteFromMenu() {
+        try {
+            for (const item of await navigator.clipboard.read()) {
+                const type = item.types.find(t => /^image\//.test(t));
+                if (type) return this.pasteImage(await item.getType(type));
+            }
+            this.showToast('No picture copied: copy one in another app first', 2500);
+        } catch (e) {
+            this.showToast(Host.keys('Press Ctrl+V to paste the picture'), 2500);
+        }
+    },
+
+    // A picture from another app: saved as a new image (in the folder shown,
+    // or where you choose with no project open), then opened in Paint
+    async pasteImage(blob) {
+        const ext = { 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' }[blob.type] || 'png';
+        if (Blank.can()) {
+            const folder = Folders.newFolderParent();
+            let name = `Pasted.${ext}`;
+            const taken = Blank.taken(folder);
+            for (let i = 2; taken.has(name.toLowerCase()); i++) name = `Pasted-${i}.${ext}`;
+            return Blank.place(() => blob, name, folder);
+        }
+        if (Modes.current() !== 'photos' && !(await Modes.leave(true))) return null;
+        if (typeof window.showSaveFilePicker === 'function') {
+            let handle;
+            try {
+                handle = await window.showSaveFilePicker({ id: 'jeditor-paint', suggestedName: `Pasted.${ext}`, types: [{ description: 'Image', accept: { [blob.type || 'image/png']: [`.${ext}`] } }] });
+            } catch (e) {
+                return null; // cancelled
+            }
+            const out = await handle.createWritable();
+            await out.write(blob);
+            await out.close();
+            Modes.next = 'paint';
+            await this.openFileHandles([handle]);
+            return this.files[0] || null;
+        }
+        if (typeof Picked !== 'undefined' && Picked.available()) {
+            Modes.next = 'paint';
+            await Picked.open([new File([blob], `Pasted.${ext}`, { type: blob.type || 'image/png' })]);
+            return this.files[0] || null;
+        }
+        this.showToast('Open a folder first: the picture is saved into it', 3000);
+        return null;
+    },
+
     copyAdjust(file = this.currentFile) {
         if (!file) return;
         Adjust.remember(file._edit && file._edit.adj);
@@ -6849,6 +7462,47 @@ const app = {
 
     // ask: false skips the "Auto crop N photos?" question (scans, see
     // scan.js); feeder: they're from a sheet feeder (CropAuto.detectFeeder)
+    // Turn upright (Shift+U, and after a scan): each photo turned the way
+    // up Upright finds, when it's sure; one undo step for them all.
+    // `backs`: a scan's backs, turned with their fronts. Returns how many
+    // were turned.
+    async turnUpright(files, { backs = null, quiet = false } = {}) {
+        files = files.filter(f => !/\.gif$/i.test(f.name));
+        if (!files.length || !this.ensureWritable()) return 0;
+        if (!Upright.load()) { if (!quiet) this.showToast('Turn upright isn\'t available here'); return 0; }
+        const task = 'upright-' + (this._batchSeq = (this._batchSeq || 0) + 1);
+        this.beginTask(task, `Finding which way is up (${files.length})…`);
+        const turns = new Map();
+        try {
+            for (const [i, f] of files.entries()) {
+                if (f._rotationQueue) await f._rotationQueue;
+                let g = null;
+                try { g = await Upright.guess(await this.readImage(f)); } catch (e) { this.log(`Turn upright: ${f.name}: ${e.message}`); }
+                // Turns from the file as saved; a turn waiting with its other
+                // edits is taken off
+                const held = (f._edit && f._edit.q) || 0;
+                const q = g && g.sure >= Upright.SURE ? ((g.turns - held) % 4 + 4) % 4 : 0;
+                if (g) this.log(`Turn upright: ${f.name}: ${g.turns * 90}° (${Math.round(g.sure * 100)}% sure)${q ? '' : ', left as it is'}`);
+                if (q) {
+                    turns.set(f, q === 3 ? -90 : q * 90);
+                    const back = backs && backs.get(f);
+                    if (back) turns.set(back, q === 3 ? -90 : q * 90);
+                }
+                if (files.length > 10 && i % 10 === 9) this.updateTask(task, `Finding which way is up (${i + 1}/${files.length})…`);
+                await new Promise(r => setTimeout(r, 0));
+            }
+        } finally {
+            this.endTask(task);
+        }
+        const n = [...turns.keys()].filter(f => files.includes(f)).length;
+        if (!turns.size) {
+            if (!quiet) this.showToast(files.length === 1 ? 'It looks upright already' : 'They all look upright already', 2000);
+            return 0;
+        }
+        await this.rotateBulk(0, turns);
+        return n;
+    },
+
     async batchAutoCrop(files, { ask = true, feeder = false, scan = false } = {}) {
         if (!this.ensureWritable()) return;
         if (!this.dirHandle) {
@@ -7133,10 +7787,11 @@ const app = {
             this.showToast('Saving edits needs a folder opened with Open folder');
             return false;
         }
-        // RAW files are never written (raw.js): JPEG copies of them instead
-        const raws = list.filter(f => Raw.is(f.name));
+        // RAW and HEIC files are never written (raw.js, codec.js): JPEG copies of them instead
+        const never = (f) => Raw.is(f.name) || Codec.isHeif(f.name);
+        const raws = list.filter(never);
         if (raws.length) {
-            list = list.filter(f => !Raw.is(f.name));
+            list = list.filter(f => !never(f));
             await this.exportCopies(raws);
             if (!list.length) return true;
         }
@@ -7215,7 +7870,7 @@ const app = {
         const fileData = await file.handle.getFile();
         if (edit.size && fileData.size !== edit.size) return 'changed';
         const n = edit.n, eq = (a, b) => Math.abs(a - b) < 1e-6;
-        if (!edit.adj && !edit.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5) && !/\.gif$/i.test(file.name)) {
+        if (!edit.adj && !edit.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5) && !/\.gif$/i.test(file.name) && !Codec.of(file.name)) {
             const q = edit.q % 4;
             delete file._edit;
             file.pendingRotation = q === 3 ? -90 : q * 90;

@@ -89,7 +89,7 @@ const Picked = {
         this.input = document.createElement('input');
         this.input.type = 'file';
         this.input.multiple = true;
-        this.input.accept = 'image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif';
+        this.input.accept = 'image/jpeg,image/png,image/webp,image/gif,image/avif,image/jxl,.jpg,.jpeg,.png,.webp,.gif,.avif,.jxl';
         this.input.id = 'picked-input';
         this.input.hidden = true;
         this.input.addEventListener('change', () => this.open([...this.input.files]));
@@ -108,8 +108,8 @@ const Picked = {
 
     async open(files) {
         const app = this.app;
-        // RAW files (raw.js) are never written, so they need a folder
-        const photos = files.filter(f => app.isImage(f.name) && !Raw.is(f.name));
+        // RAW and HEIC files (raw.js, codec.js) are never written, so they need a folder
+        const photos = files.filter(f => app.isImage(f.name) && !Raw.is(f.name) && !Codec.isHeif(f.name));
         if (!photos.length) {
             if (files.length) UI.alert({ title: 'No photos there', message: 'jEditor opens JPEG, PNG, WebP and GIF photos.' });
             return;

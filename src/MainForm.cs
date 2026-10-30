@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -187,6 +188,11 @@ sealed class MainForm : Form
 
     protected override void WndProc(ref Message m)
     {
+        if (m.Msg == WM_NCCALCSIZE && ownTitleBar && !fullScreen && m.WParam != IntPtr.Zero)
+        {
+            OwnTitleBarFrame(ref m);
+            return;
+        }
         if (m.Msg == WM_DEVICECHANGE && (m.WParam == DBT_DEVICEARRIVAL || m.WParam == DBT_DEVICEREMOVECOMPLETE))
         {
             if (drivesTimer is null)
@@ -275,6 +281,9 @@ sealed class MainForm : Form
         s.IsPasswordAutosaveEnabled = false;
         s.AreDevToolsEnabled = options.Dev;
         s.AreHostObjectsAllowed = false;
+        // A theme's own title bar moves the window by its app-region: drag
+        // (double-click maximises, right-click is the window's menu)
+        s.IsNonClientRegionSupportEnabled = true;
 
         Core.WebMessageReceived += OnMessage;
         Core.NavigationStarting += OnNavigationStarting;
@@ -477,6 +486,14 @@ sealed class MainForm : Form
                 break;
             case "closeHeard":
                 closeHeard = true;
+                break;
+            case "titleBar":
+                var own = msg["on"]?.GetValue<bool>() ?? false;
+                BeginInvoke(() => SetOwnTitleBar(own));
+                break;
+            case "window":
+                var action = Str(msg, "action");
+                BeginInvoke(() => WindowAction(action));
                 break;
             case "closeWindow":
                 closeAsked = default;
@@ -1250,6 +1267,92 @@ sealed class MainForm : Form
         Log.Write($"Opening {path}");
         Post(new { type = "openFolder", path, smoke = smoke is not null }, handle);
     }
+
+    // ---- A theme's own title bar (app/themes.js) ----
+    // The window's caption goes, keeping its edges (resizing, snapping, the
+    // shadow); the page draws the title bar, which moves the window by its
+    // app-region: drag, and has the minimise, maximise and close buttons.
+    // The top edge resizes from the page too (WindowAction "resizeTop").
+
+    bool ownTitleBar;
+    const int WM_NCCALCSIZE = 0x0083, WM_NCLBUTTONDOWN = 0x00A1, HTTOP = 12;
+    const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10, SWP_FRAMECHANGED = 0x20;
+
+    void SetOwnTitleBar(bool on)
+    {
+        if (on == ownTitleBar || !IsHandleCreated) return;
+        ownTitleBar = on;
+        Log.Write(on ? "Title bar: the theme's own" : "Title bar: Windows'");
+        // The frame worked out again (WM_NCCALCSIZE)
+        SetWindowPos(Handle, IntPtr.Zero, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        PostWindowState();
+    }
+
+    // The usual frame at the sides and bottom, none at the top. Maximised,
+    // a window reaches past the screen's edges by its frame: the top keeps
+    // that much off, as the sides do.
+    void OwnTitleBarFrame(ref Message m)
+    {
+        var before = Marshal.PtrToStructure<NcCalcSizeParams>(m.LParam);
+        base.WndProc(ref m);
+        var after = Marshal.PtrToStructure<NcCalcSizeParams>(m.LParam);
+        int border = after.Rect0.Left - before.Rect0.Left;
+        after.Rect0.Top = before.Rect0.Top + (IsZoomed(Handle) ? border : 0);
+        Marshal.StructureToPtr(after, m.LParam, false);
+        m.Result = IntPtr.Zero;
+    }
+
+    void WindowAction(string? action)
+    {
+        switch (action)
+        {
+            case "minimize":
+                WindowState = FormWindowState.Minimized;
+                break;
+            case "maximize":
+                WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized;
+                break;
+            case "close":
+                Close();
+                break;
+            case "resizeTop":
+                if (WindowState != FormWindowState.Normal) break;
+                ReleaseCapture();
+                SendMessage(Handle, WM_NCLBUTTONDOWN, (IntPtr)HTTOP, IntPtr.Zero);
+                break;
+        }
+    }
+
+    // Maximised or not, for the page's maximise button
+    void PostWindowState()
+    {
+        if (web.CoreWebView2 is not null && IsOurs(Core.Source))
+            Post(new { type = "windowState", maximized = WindowState == FormWindowState.Maximized, own = ownTitleBar });
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        if (ownTitleBar) PostWindowState();
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct NcRect { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct NcCalcSizeParams { public NcRect Rect0, Rect1, Rect2; public IntPtr Pos; }
+
+    [DllImport("user32.dll")]
+    static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+
+    [DllImport("user32.dll")]
+    static extern bool IsZoomed(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    static extern bool ReleaseCapture();
+
+    [DllImport("user32.dll")]
+    static extern IntPtr SendMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
 
     // ---- Theme, full screen, window placement ----
 

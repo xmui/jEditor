@@ -28,6 +28,7 @@ Checked by `test/parity.test.js`: each ✓ must match the app's `features` list,
 | `camera` | Tethered shooting | ✓ | | | | not yet on Mac and Linux; browser |
 | `log` | The app's log, in Settings | ✓ | | | | not yet on Mac and Linux; browser |
 | `burn` | Burning a project onto a CD or DVD | ✓ | | | | not yet on Mac and Linux; browser |
+| `themes` | Themes in Settings → Appearance, with their own title bar | ✓ | ✓ | ✓ | | browser (by choice: the web keeps today's look) |
 | `quickAccess` | Explorer's Quick Access in the sidebar's Pinned | ✓ | | | | system |
 | `backdrop` | Mica or Acrylic behind the window | ✓ | | | | system |
 | `permissions` | The Mac's privacy settings jEditor needs, in one window | | ✓ | | | system |
@@ -35,6 +36,8 @@ Checked by `test/parity.test.js`: each ✓ must match the app's `features` list,
 Linux updates cover the AppImage, the `.deb` and the Arch package. The Mac app also has the macOS 26 native toolbar (Liquid Glass, `mac/native/`), which is the Mac host's own and not a page feature.
 
 ## The same everywhere
+
+Settings → Glass → Liquid bends what's under the glass where the page's web engine can draw an SVG filter behind an element: Chromium, so the Windows app (WebView2), the Mac and Linux apps (Electron), Chrome and Edge. Safari and Firefox get the same glass unbent. It isn't an app feature, so it has no row: `app/liquid.js` asks the browser.
 
 These don't depend on the app, so every platform has them: viewing, rotating, cropping and Auto crop, flags, rename, move, duplicates, import from a card, Save edits when done, and export. Adjust and Paint, and the experiments in **Settings → Experimental**, are the same everywhere too.
 

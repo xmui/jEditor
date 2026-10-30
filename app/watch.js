@@ -275,7 +275,8 @@ const Watch = {
     // ---- Listing ----
 
     skipDir(name) {
-        return name === FolderCache.DIR || name === FolderCache.LEGACY_TRASH || name === 'jEditor Export';
+        // (Export's copies and Convert's are copies, not the project's photos)
+        return name === FolderCache.DIR || name === FolderCache.LEGACY_TRASH || name === 'jEditor Export' || name === 'jEditor Converted';
     },
 
     // own: jEditor's folders found here (.jeditor, the old .jeditor-trash)
@@ -547,7 +548,15 @@ const Watch = {
         const view = app.viewFiles();
         const grid = app.elements.gridView;
         const strip = app.elements.thumbnailStrip;
+        // A huge folder's grid only has the tiles near the view: it's
+        // built again (that's quick), rather than slotted into
+        const windowed = !!app._gridWin;
         app.keepGridPlace(() => {
+            if (windowed) {
+                app.renderGrid();
+                app.renderThumbnails();
+                return;
+            }
             let nextTile = null, nextStrip = null;
             for (let i = view.length - 1; i >= 0; i--) {
                 const f = view[i];

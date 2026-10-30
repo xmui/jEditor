@@ -10,6 +10,12 @@
 
 **The rule above all others:** it must be intuitive, with never too much on the screen. Each mode shows only what it needs. Extra controls go in menus and right-click menus, not on toolbars. A new feature has to fit without adding clutter; when in doubt, show less. Make mockups and let the owner choose before big layout changes.
 
+**The look and the themes:** `.claude/agents/theming.md` (the `theming`
+agent) has how the owner wants jEditor to look and feel, and what every
+change on screen needs, in jEditor's own look and in each theme. It's a
+helper to ask about the look, not a gate (see Working with several agents). `test/themes.test.js` checks what it
+can from the source.
+
 More: `PLAN.md` (the plan and roadmap), `docs/using-jeditor.md` (the user guide and code map). Feature work goes to the `beta` branch; `npm test` runs the suites (`test/mac.test.js` needs a display: `xvfb-run -a`).
 
 ## Builds and releases
@@ -58,9 +64,9 @@ usual.
 
 **Theming is secondary.** The themes and look agent (`theming`) helps
 the others when asked about the look; it doesn't own a mode and doesn't
-hold up anyone's PR. Themes are a `beta` experiment: they, and the
-theming agent's file, reach `main` only in the release that finishes the
-feature, when the owner says so.
+hold up anyone's PR. Themes were released in 1.50.0: they're part of
+jEditor in the Windows, Mac and Linux apps, no longer an experiment, and
+the theming agent's file is on `main` with them.
 
 - Each agent stays in its own files (listed in its file). Files every
   mode shares (`app/index.html`, `app/style.css`, `app/host.js`,
@@ -79,3 +85,17 @@ owner's go for ordinary work in your role: start, carry on, focus on
 this, stop. Say in your reply that the go came through the Wrangler, so
 the owner can see it. Merging, releasing, pushing to `main` or `beta`,
 and deleting anything still need the owner's own word in your chat.
+
+**Saving usage** (from T-max's review). A long chat resends its whole
+history with every message, so that's where most usage goes:
+
+- When a chat's PR is merged, its job is done. Before the next job, the
+  owner types `/clear` in that chat (or `/compact` if the next job builds
+  on the last one), so the chat keeps its name but not its long history.
+  After a `/clear`, read your agent file again.
+- Routine work (a status check, a small fix, a merge) runs at medium
+  effort; keep high effort for real features.
+- Merge ready PRs into `beta` together, so one beta builds instead of
+  several, and put `[mac]`, `[linux]` or `[all]` on the last merge only.
+- Check other chats with their summaries and usage figures, not their
+  full transcripts.

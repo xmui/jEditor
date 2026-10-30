@@ -204,6 +204,40 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await app.close();
     }
 
+    console.log('mac: a theme\'s menus in the Mac\'s menu bar');
+    {
+        const { app, page, errors } = await launch(profile, [smith]);
+        await loaded(page, 4);
+        const bar = () => app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.map(m => ({
+            label: m.label, role: m.role,
+            items: m.submenu ? m.submenu.items.filter(i => i.type !== 'separator').map(i => ({ label: i.label, role: i.role, key: i.accelerator || '', reg: i.registerAccelerator, on: i.enabled })) : []
+        })));
+        const own = await bar();
+        const choose = async (t) => { await page.evaluate((t) => { Themes.choose(t); }, t); await page.waitForTimeout(500); };
+        await choose('snow/finder');
+        const snow = await bar();
+        const names = (b) => b.slice(1).map(m => m.label).join();
+        const find = (b, menu, label) => (b.find(m => m.label === menu) || { items: [] }).items.find(i => i.label === label);
+        const undo = find(snow, 'Edit', 'Undo');
+        check('Snow Leopard: the menu bar has jEditor\'s commands, by iPhoto\'s menus', names(snow) === 'File,Edit,View,Photos,Window,Help' && !!find(snow, 'Photos', 'Rotate left') && !!find(snow, 'File', 'New Window'), names(snow));
+        check('... each with its key, shown and left to the page (so letters still type)', !!undo && undo.key === 'CmdOrCtrl+Z' && undo.reg === false, JSON.stringify(undo));
+        check('... and Cut, Copy and Paste for text fields', ['cut', 'copy', 'paste'].every(r => (snow.find(m => m.label === 'Edit') || { items: [] }).items.some(i => i.role === r)));
+        // A command from the menu bar runs in the page: View → the other view
+        const before = await page.evaluate(() => document.body.dataset.view);
+        await app.evaluate(({ Menu }, other) => { const v = Menu.getApplicationMenu().items.find(m => m.label === 'View'); v.submenu.items.find(i => i.label === other).click(); }, before === 'single' ? 'Photos' : 'One photo');
+        await page.waitForTimeout(500);
+        const after = await page.evaluate(() => document.body.dataset.view);
+        check('... and a command chosen there runs (View → Photos or One photo)', !!before && after !== before, `${before} → ${after}`);
+        await choose('xp/royale');
+        const xp = await bar();
+        check('XP: its own menus in the Mac\'s menu bar too', names(xp) === 'File,Edit,View,Picture,Tools,Window,Help', names(xp));
+        await choose('');
+        const back = await bar();
+        check('jEditor\'s own look: the app\'s usual menus again', names(back) === names(own) && names(own) === 'File,Edit,View,Window', names(back));
+        check('no JS errors', errors.length === 0, errors.join('; '));
+        await app.close();
+    }
+
     console.log('mac: several windows');
     {
         const { app, page, errors } = await launch(profile, [smith]);
@@ -427,10 +461,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
 
         // The pill's glass alone (its text hidden), over each photo, against
         // the theme's text colors
-        const measure = async (theme, i) => {
-            await page.evaluate(async ([t, i]) => {
+        const measure = async (theme, i, glass) => {
+            await page.evaluate(async ([t, i, glass]) => {
                 app.uiPrefs.theme = t;
-                app.uiPrefs.glass = 'rich';
+                app.uiPrefs.glass = glass;
                 app.applyUiPrefs();
                 app.setView('single');
                 app.loadIndex(i);
@@ -439,7 +473,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 s.id = 'hide-text';
                 s.textContent = '.file-info, .file-info * { color: transparent !important; } .file-info svg { visibility: hidden; }';
                 document.head.appendChild(s);
-            }, [theme, i]);
+            }, [theme, i, glass]);
             await page.waitForTimeout(300);
             const box = await page.evaluate(() => {
                 const r = document.querySelector('.file-info').getBoundingClientRect();
@@ -460,11 +494,16 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             return { bg, c1: +contrast(box.text1, bg).toFixed(2), c2: +contrast(box.text2, bg).toFixed(2) };
         };
         const m = {};
-        for (const theme of ['dark', 'light']) for (const [i, photo] of [[0, 'white'], [1, 'black']]) m[`${theme} over ${photo}`] = await measure(theme, i);
-        const worst = Object.entries(m).sort((a, b) => a[1].c2 - b[1].c2)[0];
-        check('the glass keeps text readable over any photo: 7:1 for text, 4.5:1 for secondary text (measured on screen)',
-            Object.values(m).every(v => v.c1 >= 7 && v.c2 >= 4.5), JSON.stringify(m));
-        console.log(`        (lowest: secondary text ${worst[1].c2}:1, ${worst[0]})`);
+        // The default glass (Crystal) and Liquid
+        for (const glass of ['crystal', 'liquid']) for (const theme of ['dark', 'light']) for (const [i, photo] of [[0, 'white'], [1, 'black']]) m[`${glass}, ${theme} over ${photo}`] = await measure(theme, i, glass);
+        const worst = Object.entries(m).sort((a, b) => a[1].c1 - b[1].c1)[0];
+        // Crystal and Liquid keep their look over plain white or black, the
+        // owner's call (2026-10-29): there the halo round the letters does the
+        // rest (ui.test.js). This only keeps the glass from getting clearer
+        // than it is (both give about 2.9-3.1:1 here)
+        check('the glass alone keeps text 2.5:1 over a plain white or black photo (measured on screen)',
+            Object.values(m).every(v => v.c1 >= 2.5), JSON.stringify(m));
+        console.log(`        (lowest: text ${worst[1].c1}:1, ${worst[0]})`);
 
         const r = await page.evaluate(async () => {
             const out = {};
@@ -491,30 +530,83 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             // The top row moves the window; buttons in it don't
             out.drag = getComputedStyle(document.body, '::before').getPropertyValue('-webkit-app-region') || getComputedStyle(document.body, '::before').getPropertyValue('app-region');
             out.noDrag = getComputedStyle(document.querySelector('#header-controls button')).getPropertyValue('-webkit-app-region') || getComputedStyle(document.querySelector('#header-controls button')).getPropertyValue('app-region');
-            // Glass: Off is solid
-            app.uiPrefs.glass = 'off';
-            app.applyUiPrefs();
-            out.offFilter = css('.file-info', 'backdrop-filter');
-            out.offBg = css('.file-info', 'background-color');
-            app.uiPrefs.glass = 'rich';
-            app.applyUiPrefs();
             return out;
         });
-        check('the Mac\'s glass: blurred, with light along its edge', r.platform === 'mac' && /blur\(20px\)/.test(r.filter) && /inset/.test(r.rim), JSON.stringify([r.filter, r.rim]));
+        check('the Mac\'s glass: blurred, with light along its edge', r.platform === 'mac' && /blur\(\d/.test(r.filter) && /inset/.test(r.rim), JSON.stringify([r.filter, r.rim]));
         check('the photo is never under glass', r.photoClear && (!r.photoFilter || r.photoFilter === 'none'), JSON.stringify([r.photoClear, r.photoFilter]));
         check('the traffic lights get their room, and give it back in full screen', r.lightsRoom === 72 && r.fullscreenRoom === 0, JSON.stringify([r.lightsRoom, r.fullscreenRoom]));
         check('the top row moves the window, its buttons don\'t', r.drag === 'drag' && r.noDrag === 'no-drag', JSON.stringify([r.drag, r.noDrag]));
-        check('Glass: Off is solid', r.offFilter === 'none' && /^rgb\(/.test(r.offBg), JSON.stringify([r.offFilter, r.offBg]));
-        await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }] });
-        const offReduced = await page.evaluate(() => {
-            app.uiPrefs.glass = 'off';
-            app.applyUiPrefs();
-            const bg = getComputedStyle(document.querySelector('.file-info')).backgroundColor;
-            app.uiPrefs.glass = 'rich';
-            app.applyUiPrefs();
-            return bg;
+
+        // The top row, the traffic lights and Photos · Adjust · Paint: at every
+        // Toolbar size, in each mode and view, nothing over anything else.
+        // (The pills zoom with Toolbar size and the lights don't: the room
+        // for them, and where the sidebar starts, once didn't follow.)
+        const lights = async () => (await app.evaluate(() => global.jeditorLights()))[0];
+        const overlaps = [], offRow = [];
+        for (const scale of [0.8, 1, 1.3, 1.6]) {
+            for (const where of ['grid', 'sidebar', 'single', 'adjust', 'paint']) {
+                await page.evaluate(async ([scale, where]) => {
+                    const wait = (ms) => new Promise(r => setTimeout(r, ms));
+                    if (Modes.current() !== 'photos') { await Modes.go('photos'); await wait(400); }
+                    app.uiPrefs.scale = scale;
+                    app.applyUiPrefs();
+                    app.setView(where === 'grid' || where === 'sidebar' ? 'grid' : 'single');
+                    await wait(300);
+                    const rail = !!document.getElementById('mode-seg').getClientRects().length;
+                    if (rail !== (where === 'sidebar')) app.keyHandlers()['folders.rail']();
+                    if (where === 'adjust' || where === 'paint') {
+                        Modes.go(where);
+                        for (let i = 0; i < 60 && !document.querySelector('.mode-float.over-mode:not(.hidden)'); i++) await wait(50);
+                    }
+                    await wait(500);
+                }, [scale, where]);
+                await page.waitForTimeout(250);
+                const l = await lights();
+                const r = await page.evaluate((l) => {
+                    const box = (e) => { const b = e.getBoundingClientRect(); return { name: e.id || e.className.split(' ')[0] || e.tagName, left: b.left, top: b.top, right: b.right, bottom: b.bottom }; };
+                    const seen = (sel) => [...document.querySelectorAll(sel)].filter(e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden').map(box);
+                    const hit = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+                    // Three lights, 14px each, 20px apart
+                    const lights = { name: 'the traffic lights', left: l.x, top: l.y, right: l.x + 54, bottom: l.y + 14 };
+                    // Over Adjust and Paint, only the mode chip: the rest is under them
+                    const editing = !!document.querySelector('.mode-screen:not(.hidden)');
+                    const pills = seen(editing ? '.mode-float' : 'header .toolbar, header .file-info, .folder-bar, .mode-float');
+                    const others = seen('#mode-seg, .folder-rail, .mode-screen:not(.hidden) .mode-head-acts, .paint-options, .paint-tools');
+                    const out = [];
+                    for (const a of [lights, ...pills]) for (const b of [...pills, ...others]) if (a !== b && hit(a, b) && !(a.name === 'mode-float' && b.name === 'folder-bar')) out.push(a.name + ' over ' + b.name);
+                    // The lights in line with the pill beside them
+                    const by = pills.find(p => p.left > lights.left && p.top < lights.bottom + 20);
+                    const off = by ? Math.abs((by.top + by.bottom) / 2 - (lights.top + 7)) : 0;
+                    return { out: [...new Set(out)], off: Math.round(off), by: by && by.name };
+                }, l);
+                for (const o of r.out) overlaps.push(`${where} at ${scale * 100}%: ${o}`);
+                if (r.off > 2) offRow.push(`${where} at ${scale * 100}%: ${r.off}px off ${r.by}`);
+            }
+        }
+        // Back to 100%, kept: the next windows open with this profile
+        await page.evaluate(async () => { await Modes.go('photos'); app.uiPrefs.scale = 1; app.applyUiPrefs(); app.saveUiPrefs(); });
+        check('the traffic lights, the top row and Photos · Adjust · Paint clear of each other, at every Toolbar size', overlaps.length === 0, overlaps.join('; '));
+        check('... the lights in line with the pill beside them (in Adjust and Paint, the mode chip)', offRow.length === 0, offRow.join('; '));
+        // macOS 26's toolbar holds the top row (its own part, below, needs a
+        // Mac on 26): none of the page's pills, the mode chip neither, is left
+        // there to sit under it
+        const under = await page.evaluate(async () => {
+            const wait = (ms) => new Promise(r => setTimeout(r, ms));
+            document.documentElement.classList.add('native-toolbar');
+            const out = [];
+            for (const view of ['grid', 'single']) {
+                app.setView(view);
+                await wait(400);
+                const band = parseFloat(getComputedStyle(document.getElementById('main-interface'), '::before').height);
+                for (const e of document.querySelectorAll('header, .folder-bar, .mode-float, #mode-chip-bar')) {
+                    const b = e.getBoundingClientRect();
+                    if (e.getClientRects().length && b.top < band) out.push(`${view}: ${e.id || e.className}`);
+                }
+            }
+            document.documentElement.classList.remove('native-toolbar');
+            return out;
         });
-        check('... even with reduced transparency', /^rgb\(/.test(offReduced), offReduced);
+        check('... with macOS 26\'s toolbar, nothing of the page\'s own top row under it', under.length === 0, under.join('; '));
 
         // Reduce transparency (System Settings → Accessibility): solid
         await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }] });
@@ -563,6 +655,35 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             check('searching from the toolbar finds photos', await page.evaluate(() => app.viewFiles().map(f => f.name).join()) === '2-black.jpg');
             await click('search', '');
             await page.waitForTimeout(600);
+
+            // Photos · Adjust · Paint: in the toolbar (as in the folder pill),
+            // never the page's own chip under it; over Adjust and Paint the
+            // toolbar steps aside and their head, with the chip, is the top row
+            await page.evaluate(() => { if (document.getElementById('mode-seg').getClientRects().length) app.keyHandlers()['folders.rail'](); });
+            await settle();
+            d = await describe();
+            const modeItem = d.items.find(i => i.id === 'mode');
+            const floatShown = await page.evaluate(() => !!document.getElementById('mode-float').getClientRects().length);
+            check('the mode is in the toolbar, after the sidebar\'s button, and the page\'s chip isn\'t under it', !!modeItem && modeItem.menu.includes('✓Photos') && d.items.findIndex(i => i.id === 'mode') === d.items.findIndex(i => i.id === 'rail') + 1 && !floatShown, JSON.stringify([d.items.map(i => i.id), modeItem, floatShown]));
+            // What reaches the toolbar from here (said if this goes wrong)
+            await app.evaluate(() => {
+                const t = global.jeditorToolbar;
+                global.sentModels = [];
+                if (!t._update) { t._update = t.update; t.update = (h, m) => { global.sentModels.push(`${Date.now() % 100000} ${m.visible ? 'shown' : 'hidden'} ${(m.items || []).map(i => i.id || '|').join(',')}`); return t._update(h, m); }; }
+            });
+            await click('mode', 'adjust');
+            // Adjust is open once its screen shows (after the photo's loaded)
+            await page.waitForFunction(() => !document.getElementById('adjust-editor').classList.contains('hidden'), null, { timeout: 15000 });
+            await settle();
+            d = await describe();
+            const chip = await page.evaluate(() => { const b = document.getElementById('mode-float').getBoundingClientRect(); return { top: b.top, height: b.height }; });
+            const sent = await app.evaluate(() => global.sentModels.slice(-4));
+            check('... choosing Adjust there opens it; the toolbar steps aside, the chip is in Adjust\'s head', d.visible === false && chip.height > 0 && chip.top < 20, JSON.stringify([d.visible, chip, `now ${await app.evaluate(() => Date.now() % 100000)}`, sent]));
+            await page.evaluate(() => Modes.go('photos'));
+            await page.waitForFunction(() => Modes.current() === 'photos', null, { timeout: 15000 });
+            await settle();
+            d = await describe();
+            check('... and back in Photos, the toolbar is back', d.visible && d.items.some(i => i.id === 'mode'), JSON.stringify(d).slice(0, 200));
 
             // The toolbar's empty space moves the window: pressed there, it's the
             // window's (the drag view), not the page's under it
@@ -870,6 +991,42 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         check('the new AppImage replaces this one, runnable, and jEditor restarts in it', fs.readFileSync(appImage).equals(image) && (fs.statSync(appImage).mode & 0o111) !== 0 && main.relaunched === appImage && main.quit, JSON.stringify(main));
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.evaluate(({ app }) => { app.quit = global.realQuit; });
+        await app.close();
+    }
+
+    console.log('linux: a theme, in a window without the system\'s frame');
+    {
+        const profileT = path.join(tmp, 'profile-linux-theme');
+        const { app, page, errors } = await launch(profileT, [smith], { JEDITOR_PLATFORM: 'linux' });
+        await loaded(page, 4);
+        const bounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map(w => w.getBounds()));
+        const before = await bounds();
+        // Linux can't take a frame off an open window: a new one takes its place
+        const swap = async (win, theme) => {
+            const next = app.waitForEvent('window');
+            await win.evaluate((t) => { Themes.choose(t); }, theme);
+            const w = await next;
+            await w.waitForFunction(() => typeof app !== 'undefined' && app.elements && !app.isLoading && app.files.length === 4, null, { timeout: 20000 });
+            await w.waitForTimeout(500);
+            return w;
+        };
+        const themed = await swap(page, 'xp/royale');
+        const kept = JSON.parse(fs.readFileSync(path.join(profileT, 'mac.json'), 'utf8'));
+        const r = await themed.evaluate(() => ({ skin: document.documentElement.dataset.skin, name: app.dirHandle.name, bar: !!document.getElementById('th-titlebar'), has: Host.has('themes') }));
+        const after = await bounds();
+        check('a theme on Linux: the window opens again without its frame, on the same project, where it was', r.has && r.skin === 'xp' && r.bar && r.name === 'Smith Order' && kept.themed === true && after.length === 1 && JSON.stringify(after[0]) === JSON.stringify(before[0]), JSON.stringify({ r, kept: kept.themed, before, after }));
+        // (xvfb has no window manager to maximise with: what's asked is checked)
+        // (a window that fills the screen counts as maximised on a Mac: the button unmaximises it)
+        await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; global.asked = []; for (const k of ['maximize', 'unmaximize', 'minimize']) w[k] = () => global.asked.push(k); });
+        await themed.evaluate(() => { Themes.window('maximize'); Themes.window('minimize'); });
+        await themed.waitForTimeout(300);
+        const asked = await app.evaluate(() => global.asked.join());
+        check('... and its title bar\'s buttons work the window', /^(maximize|unmaximize),minimize$/.test(asked), asked);
+        const plain = await swap(themed, '');
+        const back = await plain.evaluate(() => ({ skin: document.documentElement.dataset.skin || '', name: app.dirHandle.name }));
+        const kept2 = JSON.parse(fs.readFileSync(path.join(profileT, 'mac.json'), 'utf8'));
+        check('... and jEditor\'s look again: the system\'s frame back, the project still open', back.skin === '' && back.name === 'Smith Order' && kept2.themed === false && (await bounds()).length === 1, JSON.stringify({ back, kept: kept2.themed }));
+        check('no JS errors', errors.length === 0, errors.join('; '));
         await app.close();
     }
 

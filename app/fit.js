@@ -19,7 +19,7 @@ const Fit = {
     TOP: ['sort-short', 'sort-icon', 'count-off'],
     BOTTOM: ['edits-short', 'sel-aside', 'sel-icons', 'edits-stacked', 'size-short', 'sel-tight', 'size-off'],
     // Into More first: the least used
-    SQUEEZE: ['whatsnew', 'keys', 'dupes', 'fullscreen', 'strip', 'fit', 'customize', 'refresh', 'history', 'camera', 'info', 'scan', 'crop', 'view'],
+    SQUEEZE: ['whatsnew', 'keys', 'convert', 'dupes', 'fullscreen', 'strip', 'fit', 'customize', 'refresh', 'history', 'camera', 'info', 'scan', 'crop', 'view'],
     GAP: 12,       // between pills, screen pixels
     NAME_MIN: 96,  // a name shorter than this is cut with an ellipsis
 
@@ -37,7 +37,7 @@ const Fit = {
                 if (this.el(id)) ro.observe(this.el(id));
         }
         // Shown and hidden, the view, the folder list, More opened
-        const mo = new MutationObserver(soon);
+        const mo = this._mo = new MutationObserver(soon);
         mo.observe(iface, { attributes: true, attributeFilter: ['class'] });
         mo.observe(document.body, { attributes: true, attributeFilter: ['data-view'] });
         for (const id of ['folder-bar', 'header-controls', 'selection-bar', 'edits-bar', 'grid-controls'])
@@ -66,9 +66,29 @@ const Fit = {
         return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1;
     },
 
+    // What a run changes itself (the folder pill's tight, tried and taken
+    // back) isn't news: left in the observer, it woke the next run, every
+    // frame, laying out the whole grid over and over
     run() {
+        try {
+            this.fit();
+        } finally {
+            if (this._mo) this._mo.takeRecords();
+        }
+    },
+
+    fit() {
         const iface = this.el('main-interface');
         if (!iface || iface.classList.contains('hidden') || !iface.offsetWidth) return;
+        // A theme's docked bars (themes.js) have room for everything
+        if (document.documentElement.dataset.layout === 'docked') {
+            for (const b of document.querySelectorAll('[data-squeezed]')) delete b.dataset.squeezed;
+            const fi = document.querySelector('.file-info');
+            if (fi) fi.style.maxWidth = '';
+            iface.dataset.fit = '';
+            this.syncMore(this.el('header-controls'), this.el('btn-more'));
+            return;
+        }
         const tokens = new Set();
         const set = () => { iface.dataset.fit = [...tokens].join(' '); };
         this.fitTop(iface, tokens, set);
@@ -96,6 +116,9 @@ const Fit = {
         const gutter = parseFloat(getComputedStyle(iface).getPropertyValue('--gutter')) || 16;
         const grid = document.body.dataset.view === 'grid';
         const bar = grid && this.shown(fb) ? fb : null;
+        // In the single view the mode chip has the top left (modes.js)
+        const chip = this.el('mode-float');
+        const left = bar || (chip && !chip.classList.contains('over-mode') && chip.getClientRects().length ? chip : null);
         // Start from everything shown, the folder pill as small as it goes
         for (const b of hc.querySelectorAll('[data-squeezed]')) delete b.dataset.squeezed;
         this.syncMore(hc, more);
@@ -107,7 +130,7 @@ const Fit = {
             bar.style.setProperty('--bar-room', 'none');
         }
         set();
-        const leftEdge = () => bar ? bar.getBoundingClientRect().right : box.left + gutter;
+        const leftEdge = () => left ? left.getBoundingClientRect().right : box.left + gutter;
         const rightEdge = () => this.shown(hc) && !hc.classList.contains('vertical') ? hc.getBoundingClientRect().left : box.right - gutter;
         const room = () => rightEdge() - leftEdge() - 2 * this.GAP;
         const need = () => {

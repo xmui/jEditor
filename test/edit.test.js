@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // jEditor's editing tools, in headless Chromium: spot and dust removal
 // (retouch.js, adjust-spots.js), subject and sky masks, RAW previews, Paint,
-// a new blank image (blank.js), the modes (modes.js), crop's sliding sides and
-// the wheel the way a Mac does it (wheel.js). Run by `npm test` after the UI suite; on its own:
+// a new blank image (blank.js), the modes (modes.js), crop's sliding sides,
+// the wheel the way a Mac does it (wheel.js) and the themes (themes.js). Run by `npm test` after the UI suite; on its own:
 //   node test/edit.test.js [name …]     (only the sections named)
 
 const { chromium } = require('playwright-core');
@@ -29,7 +29,11 @@ const PROJECT = `
         try { await opfs.removeEntry(name, { recursive: true }); } catch (e) { /* fresh */ }
         const dir = await opfs.getDirectoryHandle(name, { create: true });
         for (const [n, blob] of Object.entries(photos)) {
-            const fh = await dir.getFileHandle(n, { create: true });
+            // "Folder/photo.jpg": in a folder
+            let d = dir;
+            const parts = n.split('/');
+            for (const p of parts.slice(0, -1)) d = await d.getDirectoryHandle(p, { create: true });
+            const fh = await d.getFileHandle(parts[parts.length - 1], { create: true });
             const w = await fh.createWritable(); await w.write(blob); await w.close();
         }
         window.showDirectoryPicker = async () => dir;
@@ -604,6 +608,72 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- HEIC: decoded by libheif (codec.js), never written, like a RAW ----
+    if (wanted('heic')) {
+        console.log('heic (codec.js, codec-worker.js, codecs/heif_dec.js)');
+        const { page, issues } = await open();
+        // 64 × 64, from libheif's own test files (fuzzing/data/corpus/colors-no-alpha.heic)
+        const HEIC = 'AAAAGGZ0eXBoZWljAAAAAG1pZjFoZWljAAABLm1ldGEAAAAAAAAAIWhkbHIAAAAAAAAAAHBpY3QAAAAAAAAAAAAAAAAAAAAADnBpdG0AAAAAAAEAAAAiaWxvYwAAAABEQAABAAEAAAAAAU4AAQAAAAAAAAClAAAAI2lpbmYAAAAAAAEAAAAVaW5mZQIAAAAAAQAAaHZjMQAAAACuaXBycAAAAJFpcGNvAAAAdWh2Y0MBA3AAAAAAAAAAAAAe8AD8/fj4AAAPAyAAAQAYQAEMAf//A3AAAAMAkAAAAwAAAwAeugJAIQABAChCAQEDcAAAAwCQAAADAAADAB6gIIEFlupJKa5sCAAAAwAIAAADAAhAIgABAAdEAcFysCJAAAAAFGlzcGUAAAAAAAAAQAAAAEAAAAAVaXBtYQAAAAAAAAABAAECgQIAAACtbWRhdAAAAKEmAa8TgIGSEXXAGM2sfMMD8HKXsBNBYjkEW6//QKl1HfLCc/SN/bWOG2ARaa8rk4JsxRuKJFz/vIlnrSBv0Pk7pYMv503LniUfVt0RGOMyTBZVcbnDhlXs0nsTVObq7679Fh7MfXPARYndCrwpKWSNTQcCjNVYWPVOenDxU81lLBnE070xnN107IoLiTNywdiNWzedf/q6zzV3iwZflrO94A==';
+        await page.evaluate((b) => { window.HEIC = new Blob([Uint8Array.from(atob(b), c => c.charCodeAt(0))], { type: 'image/heic' }); }, HEIC);
+        const r = await page.evaluate(async () => {
+            let step = 'names';
+            try {
+                const out = {};
+                out.names = [app.isImage('IMG_1.HEIC'), app.isImage('a.heif'), app.isImage('DSC1.HIF'), Codec.isHeif('a.jpg'), Codec.decoded('a.heic')].join();
+                step = 'decode';
+                const img = await pixels(await Codec.showable(new File([HEIC], 'IMG_1.heic')));
+                const d = img.data, seen = new Set();
+                for (let i = 0; i < d.length; i += 4 * 97) seen.add(d[i] >> 5 << 10 | d[i + 1] >> 5 << 5 | d[i + 2] >> 5);
+                out.decoded = [img.width, img.height, d[3] === 255, seen.size > 1];
+                step = 'project';
+                const dir = await openProject('heics', { 'IMG_1.heic': HEIC, 'b.jpg': await canvasBlob(scene(80, 60), 'image/jpeg', 0.9) });
+                const f = (n) => app.files.find(x => x.name === n);
+                const same = async () => { const a = new Uint8Array(await (await (await dir.getFileHandle('IMG_1.heic')).getFile()).arrayBuffer()), b = new Uint8Array(await HEIC.arrayBuffer()); return a.length === b.length && a.every((v, i) => v === b[i]); };
+                await until(() => f('IMG_1.heic').thumbnailUrl);
+                out.thumb = !!f('IMG_1.heic').thumbnailUrl;
+                step = 'viewer';
+                app.openSingle(f('IMG_1.heic'));
+                const src = await app.getDisplaySource(f('IMG_1.heic'));
+                const shown = await pixels(src.blob || await (await fetch(src.url)).blob());
+                out.viewer = [shown.width, shown.height];
+                // A turn: kept as an edit, the HEIC untouched
+                step = 'turn';
+                await app.rotateImage(f('IMG_1.heic'), 90);
+                await sleep(100);
+                out.turnKept = !!(f('IMG_1.heic')._edit && f('IMG_1.heic')._edit.q === 1) && await same();
+                // Export: a JPEG copy, named .jpg
+                step = 'export';
+                const prompt0 = UI.prompt;
+                UI.prompt = async () => '';
+                await app.exportCopies([f('IMG_1.heic')]);
+                const ex = await (await (await dir.getDirectoryHandle('jEditor Export')).getFileHandle('IMG_1.jpg')).getFile();
+                out.exported = [ex.type || 'image/jpeg', (await pixels(ex)).width, new Uint8Array(await ex.slice(0, 2).arrayBuffer()).join()];
+                // Save edits: exported, never written
+                step = 'save';
+                const choose = UI.choose;
+                UI.choose = async () => 'ok';
+                await Edits.saveAll({ list: [f('IMG_1.heic')] });
+                UI.choose = choose;
+                UI.prompt = prompt0;
+                out.saveNotWritten = await same() && !!f('IMG_1.heic')._edit;
+                // Convert: to WebP, whatever its size
+                step = 'convert';
+                const conv = await Codec.encode(await app.readImage(f('IMG_1.heic')), 'webp', 80);
+                out.converted = [conv.w, conv.h, conv.bytes.length > 0];
+                await Edits.flush();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('heic: .heic, .heif and .hif are photos, decoded by the codecs', r.names === 'true,true,true,false,true', JSON.stringify(r));
+        check('heic: decoded by the bundled libheif, 64 × 64, opaque, in colour', String(r.decoded) === '64,64,true,true', JSON.stringify(r));
+        check('heic: listed with a thumbnail, and shown', r.thumb && String(r.viewer) === '64,64', JSON.stringify(r));
+        check('heic: a turn is kept as an edit, the HEIC never written; Save edits exports instead', r.turnKept && r.saveNotWritten, JSON.stringify(r));
+        check('heic: Export writes a JPEG copy, IMG_1.jpg', r.exported && r.exported[1] === 64 && r.exported[2] === '255,216', JSON.stringify(r));
+        check('heic: Convert encodes it (to WebP)', String(r.converted) === '64,64,true', JSON.stringify(r));
+        check('heic: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Paint ----
     if (wanted('paint')) {
         console.log('paint (paint.js, paint-editor.js)');
@@ -695,6 +765,51 @@ const PROJECT = `
                 P.setTool('brush');
                 P.opts.hardness = 100;
                 P.opts.opacity = 100;
+                // Sizes are the photo's own pixels, kept the same part of
+                // each photo (a brush on a small photo is small); the slider
+                // spreads the small sizes out
+                step = 'sizes';
+                P.opts.size = 20; P.opts.sizeFor = 800;
+                P.fitSizes();
+                out.sizes = [P.opts.size, P.opts.sizeFor, P.sizeMax()];
+                P.opts.size = 20;
+                P.buildOptions();
+                const sizeIn = P.optRows.size.querySelector('input'), sizeNum = P.optRows.size.querySelector('.paint-num');
+                sizeIn.value = '300';
+                sizeIn.dispatchEvent(new Event('input'));
+                sizeIn.dispatchEvent(new Event('change'));
+                out.slider = [P.opts.size, sizeNum.textContent];
+                // The wheel sizes the brush, shown on the photo as it changes;
+                // Ctrl+wheel zooms; ] is bigger
+                step = 'wheel';
+                P.opts.size = 20;
+                P.optRows.size._sync();
+                pe('pointermove', 200, 150);
+                const wheel = (o = {}) => st.dispatchEvent(new WheelEvent('wheel', { ...at(200, 150), deltaY: -100, bubbles: true, cancelable: true, ...o }));
+                const z0 = P.view.z;
+                wheel();
+                out.wheel = [P.opts.size > 22 && P.opts.size < 26, sizeNum.textContent === P.sizeLabel(P.opts.size), performance.now() < P._sizeUntil, P.view.z === z0];
+                const s1 = P.opts.size;
+                wheel({ ctrlKey: true });
+                out.ctrlWheel = [P.opts.size === s1, P.view.z > z0];
+                P.fit();
+                pressKey(']');
+                out.bracket = P.opts.size >= Math.floor(s1) + 1;
+                // Shift-click paints straight on from where the last stroke ended
+                step = 'shift-click';
+                P.opts.size = 10;
+                pe('pointerdown', 50, 270); pe('pointermove', 60, 270); pe('pointerup', 60, 270);
+                const between = px(0, 100, 270)[3];
+                pe('pointerdown', 150, 270, { shiftKey: true }); pe('pointerup', 150, 270, { shiftKey: true });
+                out.shiftLine = [between, px(0, 100, 270)[3], px(0, 100, 285)[3]];
+                pressKey('z', { ctrlKey: true }); pressKey('z', { ctrlKey: true });
+                // A pen's pressure sizes the brush
+                step = 'pressure';
+                const pen = { pointerType: 'pen', pressure: 0.2 };
+                pe('pointerdown', 50, 270, pen); pe('pointermove', 100, 270, pen); pe('pointermove', 150, 270, pen); pe('pointerup', 150, 270, pen);
+                out.pressure = [px(0, 100, 270)[3], px(0, 100, 273)[3]];
+                pressKey('z', { ctrlKey: true });
+                P.opts.size = 20;
                 // A rectangle, filled, on a new layer
                 step = 'rect';
                 pressKey('N', { ctrlKey: true, shiftKey: true });
@@ -709,6 +824,24 @@ const PROJECT = `
                 P.setTool('fill');
                 pe('pointerdown', 300, 100); pe('pointerup', 300, 100);
                 out.fill = [px(1, 260, 60), px(1, 240, 100)[3]];
+                // Fill: the whole layer, whatever colour is clicked (inside a
+                // selection, only there); its colour options go
+                step = 'fill whole';
+                P.opts.fillWhat = 'layer';
+                P.buildOptions();
+                out.wholeOpts = !document.querySelector('#paint-options input[type=checkbox]');
+                P.fg = '#ff00ff';
+                P.setTool('rect-select');
+                pe('pointerdown', 10, 250); pe('pointermove', 60, 290); pe('pointerup', 60, 290);
+                P.setTool('fill');
+                pe('pointerdown', 30, 270); pe('pointerup', 30, 270);
+                out.wholeSel = [px(1, 30, 270), px(1, 100, 270)[3]];
+                P.deselect();
+                pe('pointerdown', 380, 280); pe('pointerup', 380, 280);
+                out.whole = [px(1, 5, 5), px(1, 395, 150)];
+                pressKey('z', { ctrlKey: true }); pressKey('z', { ctrlKey: true });
+                out.wholeUndone = px(1, 5, 5)[3] === 0 && px(1, 260, 60)[0] === 255;
+                P.opts.fillWhat = 'match';
                 // Text
                 step = 'text';
                 P.fg = '#000000'; P.opts.fontSize = 40;
@@ -797,8 +930,13 @@ const PROJECT = `
         check('paint: a brush stroke paints the layer (hard-edged), Ctrl+Z / Ctrl+Shift+Z inside', r.brush && r.brush[0] === 255 && r.brush[3] === 255 && r.brushEdge === 0 && r.undo === 0 && r.redo === 255, JSON.stringify(r));
         check('paint: a stroke at 50% opacity covers half, however it overlaps itself', r.half >= 120 && r.half <= 135, JSON.stringify(r));
         check('paint: a stroke shows as it\'s drawn exactly as it goes on (redone only where it reached), and the eraser too', String(r.previewOff) === '0,0', String(r.previewOff));
+        check('paint: sizes are the photo\'s own pixels, the same part of each photo (small on a small photo); the size slider spreads small sizes out', JSON.stringify(r.sizes) === '[10,400,200]' && JSON.stringify(r.slider) === '[5,"5"]', JSON.stringify([r.sizes, r.slider]));
+        check('paint: the wheel sizes the brush (shown on the photo as it changes), Ctrl+wheel zooms, ] is bigger', String(r.wheel) === 'true,true,true,true' && String(r.ctrlWheel) === 'true,true' && r.bracket, JSON.stringify([r.wheel, r.ctrlWheel, r.bracket]));
+        check('paint: Shift-click paints straight on from where the last stroke ended', String(r.shiftLine) === '0,255,0', String(r.shiftLine));
+        check('paint: a pen\'s pressure sizes the brush', r.pressure && r.pressure[0] > 200 && r.pressure[1] === 0, String(r.pressure));
         check('paint: a new layer; a filled rectangle on it', r.layers && r.rect && r.rect[0][1] === 255 && r.rect[1] === 0, JSON.stringify(r));
         check('paint: the fill takes the photo\'s blue square, not beyond it; text is drawn', r.fill && r.fill[0][0] === 255 && r.fill[0][1] === 255 && r.fill[1] === 0 && r.text > 50, JSON.stringify(r));
+        check('paint: the fill can fill the whole layer (only what\'s selected, with a selection), without the colour options; Ctrl+Z undoes it', r.wholeOpts && r.wholeSel && String(r.wholeSel[0]) === '255,0,255,255' && r.wholeSel[1] === 0 && String(r.whole) === '255,0,255,255,255,0,255,255' && r.wholeUndone, JSON.stringify([r.wholeOpts, r.wholeSel, r.whole, r.wholeUndone]));
         check('paint: a selection; Delete clears only inside it', r.selected && r.cleared[0] === 0 && r.cleared[1] === 255, JSON.stringify(r));
         check('paint: the wand selects by colour; Move drags it, Enter puts it down', r.wand && r.moved[0] === 0 && r.moved[1][3] === 255 && r.notDone, JSON.stringify(r));
         check('paint: Done keeps it with the photo (layers in the project\'s folder), the file untouched', r.kept && r.files === 2 && r.fileSame, JSON.stringify(r));
@@ -1341,6 +1479,400 @@ const PROJECT = `
         check('wheel: pinching the grid zooms it by how much the fingers move; a Ctrl+notch is a step', r.pinchGrid > 160 && r.pinchGrid <= 182 && r.notchGrid === r.pinchGrid + 20, JSON.stringify(r));
         check('wheel: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
+    }
+
+    // ---- Themes ----
+    if (wanted('themes')) {
+        console.log('themes (themes.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const $ = (id) => document.getElementById(id);
+                const root = document.documentElement;
+                const blob = async (color) => { const c = document.createElement('canvas'); c.width = 160; c.height = 120; const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, 160, 120); g.fillStyle = '#fff'; g.fillRect(40, 30, 60, 50); return canvasBlob(c); };
+                await openProject('Summer', { 'a.png': await blob('#806040'), 'b.png': await blob('#406080'), 'c.png': await blob('#408060') });
+                await until(() => app.files.every(f => f.thumbnailUrl));
+                // In a browser: no themes, nothing of them in Settings
+                step = 'browser';
+                app.toggleCustomizePanel(true);
+                app.showSettingsPage('appearance');
+                out.browserNone = !Themes.can() && $('set-themes').classList.contains('hidden') && !Experiments.shown().some(x => x.id === 'themes');
+                // An app with them (the Windows app's title bar calls)
+                step = 'app';
+                const calls = [];
+                window.JEditorNative = { platform: 'windows', features: ['themes'], titleBar: (on) => calls.push('titleBar:' + on), windowAction: (a) => calls.push(a) };
+                out.inApp = Themes.can() && !Experiments.shown().some(x => x.id === 'themes');
+                app.renderCustomizePanel();
+                const cards = [...$('set-themes').querySelectorAll('.theme-card')];
+                out.gallery = cards.map(c => c.dataset.skin).join() === ',xp/royale,snow/finder,mac84/finder' && cards[0].classList.contains('active');
+                // Royale: its stylesheets, the docked layout, light, its title bar and menu bar
+                step = 'royale';
+                cards[1].click();
+                await until(() => !root.classList.contains('theme-loading'));
+                out.on = root.dataset.skin === 'xp' && root.dataset.layout === 'docked' && root.dataset.theme === 'light' && app.uiPrefs.skin === 'xp/royale'
+                    && [...document.querySelectorAll('link[data-theme]')].map(l => l.getAttribute('href')).join() === 'themes/docked.css,themes/xp/luna.css,themes/xp/office.css,themes/xp/controls.css,themes/xp/modes.css,themes/xp/royale.css';
+                out.styled = getComputedStyle(document.querySelector('.interface')).display === 'grid' && /Tahoma/.test(getComputedStyle(document.body).fontFamily);
+                out.ownBar = calls.includes('titleBar:true') && !!$('th-top') && $('th-top').contains($('th-titlebar')) && $('th-top').contains($('th-menubar'))
+                    && parseFloat(getComputedStyle(root).getPropertyValue('--th-top')) > 40;
+                app.setView('grid');
+                await until(() => $('th-titlebar').querySelector('.th-title').textContent === 'Summer - jEditor');
+                out.title = $('th-titlebar').querySelector('.th-title').textContent === 'Summer - jEditor';
+                app.openSingle(app.files[1]);
+                await until(() => $('th-titlebar').querySelector('.th-title').textContent === 'b.png - jEditor');
+                out.titleFollows = true;
+                app.setView('grid');
+                // The window's buttons go to the app
+                $('th-titlebar').querySelector('.th-min').click();
+                $('th-titlebar').querySelector('.th-max').click();
+                $('th-titlebar').querySelector('.th-close').click();
+                out.caps = calls.slice(-3).join() === 'minimize,maximize,close';
+                dispatchEvent(new CustomEvent('jeditor-window', { detail: { maximized: true } }));
+                out.maxed = $('th-titlebar').classList.contains('maximized');
+                // Fitting stands down: docked bars have room for everything
+                out.noFit = !$('main-interface').dataset.fit && !document.querySelector('[data-squeezed]');
+                // The stylesheets write the folder's name and the counts from the app
+                out.facts = $('fb-crumbs').dataset.folder === 'Summer' && $('folder-bar').dataset.info.startsWith('3 items') && $('btn-clear-selection').dataset.total === '3';
+                // The menu bar: jEditor's commands, with their keys
+                step = 'menus';
+                const edit = [...$('th-menubar').querySelectorAll('.th-menu')].find(b => b.textContent === 'Edit');
+                edit.click();
+                const menu = $('context-menu');
+                out.menu = !!menu && menu.classList.contains('th-dropdown') && edit.classList.contains('open')
+                    && [...menu.querySelectorAll('button')].some(b => /^Select all/.test(b.textContent) && b.querySelector('.ctx-key') && b.querySelector('.ctx-key').textContent === 'Ctrl+A');
+                [...menu.querySelectorAll('button')].find(b => /^Select all/.test(b.textContent)).click();
+                await until(() => !edit.classList.contains('open'));
+                out.ran = app.selection.size === 3 && !$('context-menu');
+                // Full screen (the Mac app's, here): no title bar, the menu bar stays
+                root.classList.add('fullscreen');
+                out.fullscreen = getComputedStyle($('th-titlebar')).display === 'none' && getComputedStyle($('th-menubar')).display !== 'none';
+                root.classList.remove('fullscreen');
+                // A variant: Royale Red, another stylesheet on top
+                step = 'variant';
+                Themes.choose('xp/red');
+                await until(() => !root.classList.contains('theme-loading'));
+                out.variant = [...document.querySelectorAll('link[data-theme]')].pop().getAttribute('href') === 'themes/xp/red.css';
+                // Aperture is dark
+                Themes.choose('snow/aperture');
+                await until(() => !root.classList.contains('theme-loading'));
+                out.dark = root.dataset.skin === 'snow' && root.dataset.theme === 'dark' && !$('th-menubar');
+                // 1984: its own setting, the thumbnails dithered to one bit
+                step = '1984';
+                Themes.choose('mac84/finder');
+                await until(() => !root.classList.contains('theme-loading'));
+                app.renderCustomizePanel();
+                out.setting = root.dataset.tsThumbs === 'dither' && !!document.querySelector('#set-theme-settings input[value="grey"]');
+                const img = () => app.files[0]._gridEl.querySelector('img');
+                await until(() => img().src.startsWith('data:image/png'));
+                out.dithered = img().src.startsWith('data:image/png') && !!img().dataset.undithered;
+                document.querySelector('#set-theme-settings input[value="colour"]').click();
+                await until(() => !img().src.startsWith('data:'));
+                out.colour = root.dataset.tsThumbs === 'colour' && app.uiPrefs.skinSettings.mac84.thumbs === 'colour' && img().src === app.files[0].thumbnailUrl;
+                // Kept for next time: the theme and its setting read back as at a start
+                const prefs = app.uiPrefs;
+                app.loadUiPrefs();
+                out.kept = app.uiPrefs.skin === 'mac84/finder' && app.uiPrefs.skinSettings.mac84.thumbs === 'colour';
+                app.uiPrefs = prefs;
+                // Back to jEditor's own look: all of it gone, Windows' title bar back
+                step = 'off';
+                Themes.choose('');
+                out.off = !root.dataset.skin && !root.dataset.layout && !$('th-top') && !document.querySelector('link[data-theme]')
+                    && calls[calls.length - 1] === 'titleBar:false' && root.dataset.theme === app.uiPrefs.theme;
+                app.toggleCustomizePanel(false);
+                delete window.JEditorNative;
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('themes: none in a browser; in the apps, not an experiment', r.browserNone && r.inApp, JSON.stringify(r));
+        check('themes: Settings → Appearance shows them as a gallery, jEditor\'s own look first', r.gallery, JSON.stringify(r));
+        check('themes: one chosen puts its stylesheets on, docked, in its own light or dark', r.on && r.styled && r.dark, JSON.stringify(r));
+        check('themes: its own title bar and menu bar along the top; Windows\' title bar goes', r.ownBar, JSON.stringify(r));
+        check('themes: the title bar names the folder or photo; its buttons work the window', r.title && r.titleFollows && r.caps && r.maxed, JSON.stringify(r));
+        check('themes: no fitting in docked bars; the folder\'s name and counts are the real ones', r.noFit && r.facts, JSON.stringify(r));
+        check('themes: the menu bar\'s menus run jEditor\'s commands and show their keys', r.menu && r.ran, JSON.stringify(r));
+        check('themes: a variant is one stylesheet more', r.variant, JSON.stringify(r));
+        check('themes: full screen has no title bar, the menu bar stays', r.fullscreen, JSON.stringify(r));
+        check('themes: the theme chosen and its settings are there at the next start', r.kept, JSON.stringify(r));
+        check('themes: 1984\'s Thumbnails setting: dithered to one bit, or in colour again', r.setting && r.dithered && r.colour, JSON.stringify(r));
+        check('themes: back to jEditor\'s look takes all of it off', r.off, JSON.stringify(r));
+        check('themes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // TIFFs as other programs write them (made with Pillow, 12 × 8: dark blue
+    // with a red block at 4–8, 2–4): LZW with the predictor, PackBits,
+    // Deflate, a palette, and one turned (Orientation 6) with a camera and date
+    const TIFFS = {
+        "lzw": "SUkqAEYAAACAAoIFoAQWDQeEQmFQiBQSFw+IQyBw9fA5iREAEJ5DyEw2KRaMRqORKHQqKxeIyKOxOMS2FR6XTGDTCZTGAgsAAAEDAAEAAAAMAAAAAQEDAAEAAAAIAAAAAgEDAAMAAADQAAAAAwEDAAEAAAAFAAAABgEDAAEAAAACAAAAEQEEAAEAAAAIAAAAFQEDAAEAAAADAAAAFgEDAAEAAAAIAAAAFwEEAAEAAAA+AAAAHAEDAAEAAAABAAAAPQEDAAEAAAACAAAAAAAAAAgACAAIAA==",
+        "packbits": "SUkqADABAAAjChBaChBaChBaChBaChBaChBaChBaChBaChBaChBaChBaChBaIwoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWiMKEFoKEFoKEFoKEFrIHh7IHh7IHh7IHh7IHh4KEFoKEFoKEFojChBaChBaChBaChBayB4eyB4eyB4eyB4eyB4eChBaChBaChBaIwoQWgoQWgoQWgoQWsgeHsgeHsgeHsgeHsgeHgoQWgoQWgoQWiMKEFoKEFoKEFoKEFoKEFoKEFoKEFoKEFoKEFoKEFoKEFoKEFojChBaChBaChBaChBaChBaChBaChBaChBaChBaChBaChBaChBaIwoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoAAAEDAAEAAAAMAAAAAQEDAAEAAAAIAAAAAgEDAAMAAACuAQAAAwEDAAEAAAAFgAAABgEDAAEAAAACAAAAEQEEAAEAAAAIAAAAFQEDAAEAAAADAAAAFgEDAAEAAAAIAAAAFwEEAAEAAAAoAQAAHAEDAAEAAAABAAAAAAAAAAgACAAIAA==",
+        "deflate": "SUkqACAAAAB4nOMSiOKiNjohJ4eMaKqG1ggAz6kz8QAKAAABAwABAAAADAAAAAEBAwABAAAACAAAAAIBAwADAAAAngAAAAMBAwABAAAACAAAAAYBAwABAAAAAgAAABEBBAABAAAACAAAABUBAwABAAAAAwAAABYBAwABAAAACAAAABcBBAABAAAAFwAAABwBAwABAAAAAQAAAAAAAAAIAAgACAA=",
+        "palette": "SUkqAAgAAAAKAAABBAABAAAADAAAAAEBBAABAAAACAAAAAIBAwABAAAACAAAAAMBAwABAAAAAQAAAAYBAwABAAAAAwAAABEBBAABAAAAhgYAABYBBAABAAAACAAAABcBBAABAAAAYAAAABwBAwABAAAAAQAAAEABAwAAAwAAhgAAAAAAAAAAyAAKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4AWgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAAAAAABAQEBAQEBAAAAAAABAQEBAQEBAAAAAAABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+        "turned": "SUkqAAgAAAANAAABBAABAAAADAAAAAEBBAABAAAACAAAAAIBAwADAAAAqgAAAAMBAwABAAAAAQAAAAYBAwABAAAAAgAAAA8BAgAGAAAAsAAAABEBBAABAAAAygAAABIBAwABAAAABgAAABUBAwABAAAAAwAAABYBBAABAAAACAAAABcBBAABAAAAIAEAABwBAwABAAAAAQAAADIBAgAUAAAAtgAAAAAAAAAIAAgACABFcHNvbgAyMDAxOjAyOjAzIDA0OjA1OjA2AAoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWsgeHsgeHsgeHsgeHsgeHgoQWgoQWgoQWgoQWgoQWgoQWgoQWsgeHsgeHsgeHsgeHsgeHgoQWgoQWgoQWgoQWgoQWgoQWgoQWsgeHsgeHsgeHsgeHsgeHgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWgoQWg=="
+    };
+
+    // ---- Convert: AVIF, JPEG XL and WebP, their quality and storage (codec.js, convert.js) ----
+    if (wanted('convert')) {
+        console.log('convert: AVIF, JPEG XL, WebP, JPEG, PNG and TIFF, their EXIF, quality and storage, converting and Ctrl+Z (codec.js, convert.js, tiff.js)');
+        const { page, issues } = await open();
+        await page.evaluate((t) => { window.TIFFS = t; }, TIFFS);
+        const r = await page.evaluate(async () => {
+            let step = 'codecs';
+            try {
+                const out = {};
+                // EXIF by hand: Make "jEd", taken 2019-07-04 12:34:56, turned (orientation 6)
+                const exif = (() => {
+                    const b = new Uint8Array(100), v = new DataView(b.buffer), enc = new TextEncoder();
+                    b.set([0x4D, 0x4D, 0, 42]); v.setUint32(4, 8);
+                    v.setUint16(8, 3);
+                    v.setUint16(10, 0x010F); v.setUint16(12, 2); v.setUint32(14, 4); b.set(enc.encode('jEd\0'), 18);
+                    v.setUint16(22, 0x0112); v.setUint16(24, 3); v.setUint32(26, 1); v.setUint16(30, 6);
+                    v.setUint16(34, 0x8769); v.setUint16(36, 4); v.setUint32(38, 1); v.setUint32(42, 50);
+                    v.setUint32(46, 0);
+                    v.setUint16(50, 1); v.setUint16(52, 0x9003); v.setUint16(54, 2); v.setUint32(56, 20); v.setUint32(60, 68); v.setUint32(64, 0);
+                    b.set(enc.encode('2019:07:04 12:34:56\0'), 68);
+                    return b.slice(0, 88);
+                })();
+                const jpegWithExif = async (c) => new Blob([ImageMeta.withExifJpeg(new Uint8Array(await (await canvasBlob(c, 'image/jpeg', 0.95)).arrayBuffer()), exif)], { type: 'image/jpeg' });
+                // A clean picture (no grain: grain has to be kept to look the
+                // same, which takes the quality up), as photos of things are
+                const clean = (w, h, i) => {
+                    const c = document.createElement('canvas'); c.width = w; c.height = h;
+                    const g = c.getContext('2d');
+                    const grad = g.createLinearGradient(0, 0, w, h);
+                    grad.addColorStop(0, '#203860'); grad.addColorStop(0.5, '#d0a070'); grad.addColorStop(1, '#f0e8d0');
+                    g.fillStyle = grad; g.fillRect(0, 0, w, h);
+                    for (let k = 0; k < 6; k++) {
+                        g.fillStyle = ['#2050c0', '#c03020', '#20a050', '#a020c0', '#f0c030', '#303030'][(k + i) % 6];
+                        g.beginPath(); g.arc(w * (0.15 + k * 0.14), h * (0.3 + 0.4 * ((k + i) % 2)), h * 0.12, 0, Math.PI * 2); g.fill();
+                    }
+                    g.fillStyle = '#fff'; g.font = `${h / 8}px sans-serif`; g.fillText('jEditor ' + i, w * 0.1, h * 0.9);
+                    return c;
+                };
+                out.ready = await Codec.ready();
+                const pic = clean(320, 200, 0);
+                const src = await jpegWithExif(pic);
+                out.formats = {};
+                // The bundled JPEG XL decoder is checked even where the engine
+                // has its own (newer Chromium does), by saying it hasn't
+                out.engineJxl = await Codec.engineJxl();
+                const engineJxl = Codec._engineJxl;
+                Codec._engineJxl = Promise.resolve(false);
+                for (const f of ['avif', 'jxl', 'webp']) {
+                    const blob = await Codec.file(src, f, 70, ImageMeta.exifOf(new Uint8Array(await src.arrayBuffer())));
+                    const bytes = new Uint8Array(await blob.arrayBuffer());
+                    const t = ImageMeta.exifOf(bytes);
+                    const info = t && app.readTiffInfo(new DataView(t.buffer, t.byteOffset, t.byteLength), 0);
+                    // Orientation 1 now: the pixels are upright (the JPEG was shown turned)
+                    const ifd = t && ImageMeta.readIfd({ view: new DataView(t.buffer, t.byteOffset, t.byteLength), tiff: 0, le: false, end: t.length }, 8);
+                    const orient = ifd && ifd.entries.find(e => e.tag === 0x0112);
+                    const shown = await createImageBitmap(f === 'jxl' ? await Codec.showable(new File([blob], 'p.jxl')) : blob);
+                    out.formats[f] = [info && info.make, info && info.dateTaken && info.dateTaken.getFullYear(), orient && new DataView(t.buffer, t.byteOffset).getUint16(orient.pos + 8), shown.width, shown.height, bytes.length < src.size];
+                    shown.close();
+                }
+                Codec._engineJxl = engineJxl;
+
+                // TIFFs read (tiff.js), as other programs write them
+                step = 'tiff';
+                out.tiffs = {};
+                for (const [k, b64] of Object.entries(window.TIFFS)) {
+                    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+                    const bmp = await createImageBitmap(await Codec.showable(new File([bytes], k + '.tif')));
+                    const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+                    const g = c.getContext('2d'); g.drawImage(bmp, 0, 0);
+                    const at = (x, y) => [...g.getImageData(x, y, 1, 1).data.slice(0, 3)].map(v => Math.round(v / 10) * 10);
+                    const ex = k === 'turned' && ImageMeta.exifOf(bytes);
+                    out.tiffs[k] = k === 'turned' ? [bmp.width, bmp.height, (app.readTiffInfo(new DataView(ex.buffer, ex.byteOffset, ex.byteLength), 0) || {}).make] : [bmp.width, bmp.height, String(at(5, 3)), String(at(0, 0))];
+                }
+                // JPEG, PNG and TIFF written with the EXIF too
+                for (const f of ['jpeg', 'png', 'tiff']) {
+                    const blob = await Codec.file(src, f, 85, ImageMeta.exifOf(new Uint8Array(await src.arrayBuffer())));
+                    const bytes = new Uint8Array(await blob.arrayBuffer());
+                    const t = ImageMeta.exifOf(bytes);
+                    const info = t && app.readTiffInfo(new DataView(t.buffer, t.byteOffset, t.byteLength), 0);
+                    const shown = await createImageBitmap(f === 'tiff' ? await Codec.showable(new File([blob], 'p.tif')) : blob);
+                    out.formats[f] = [info && info.make, info && info.dateTaken && info.dateTaken.getFullYear(), shown.width, shown.height];
+                    shown.close();
+                }
+
+                // A project: two folders of photos, and a tiny one that won't get smaller
+                step = 'estimate';
+                const files = {};
+                for (let i = 0; i < 4; i++) files[(i < 2 ? 'Ceremony/' : 'Party/') + `p${i}.jpg`] = await jpegWithExif(clean(900, 600, i));
+                const tiny = document.createElement('canvas'); tiny.width = tiny.height = 4;
+                files['tiny.png'] = await canvasBlob(tiny, 'image/png');
+                const dir = await openProject('space', files);
+                const P0 = app.files.find(f => f.name === 'p0.jpg');
+                P0._flags = { star: true };
+                Edits.set([{ file: P0, edit: { q: 1, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 }, size: P0.size } }], 'rotation');
+                Convert.prefs.format = 'avif';
+                Convert.prefs.keep = false;
+                await Convert.open({ folder: '' });
+                await until(() => Convert.est && !Convert.est.working, 600);
+                const est = Convert.est;
+                out.estimate = [est.total > 0, est.after > 0 && est.after < est.total, est.byDir && est.byDir.size, !!Convert.suggested.avif, Convert.el('cv-folders').children.length];
+                out.closeUp = Convert.el('cv-after-cap').textContent.startsWith('After');
+
+                // Converting: each photo AVIF in its place, flags and edit with it
+                step = 'convert';
+                Convert.go();
+                await until(() => Convert.done, 800);
+                const done = Convert.done;
+                out.done = { saved: done.saved > 0, same: done.same, failed: done.failed, dots: Convert.el('cv-dots').children.length, hollow: Convert.el('cv-dots').querySelectorAll('.f').length };
+                out.names = app.files.map(f => f.relPath || f.name).sort().join();
+                out.kept = [P0.name, !!(P0._flags && P0._flags.star), !!P0._edit && P0._edit.size === P0.size];
+                const info = await app.getExifInfo(P0);
+                out.date = info && info.dateTaken && info.dateTaken.getFullYear();
+                const onDisk = async () => {
+                    const names = [];
+                    for (const d of ['Ceremony', 'Party']) for await (const e of (await dir.getDirectoryHandle(d)).values()) names.push(`${d}/${e.name}`);
+                    for await (const e of dir.values()) if (e.kind === 'file') names.push(e.name);
+                    return names.sort().join();
+                };
+                out.disk = await onDisk();
+                Convert.go(); // Done
+                out.closed = !Convert.isOpen();
+
+                // Ctrl+Z: the originals back, by their names, flags and edit too
+                step = 'undo';
+                await app.undo();
+                out.undone = app.files.map(f => f.relPath || f.name).sort().join();
+                out.undoneDisk = await onDisk();
+                out.undoneKept = [P0.name, !!(P0._flags && P0._flags.star), !!P0._edit && P0._edit.size === P0.size];
+
+                // Keep both: smaller copies in their own folder, not in the project
+                step = 'keep';
+                Convert.prefs.format = 'webp';
+                Convert.prefs.keep = true;
+                await Convert.open({ folder: 'Party' });
+                await until(() => Convert.est && !Convert.est.working, 600);
+                Convert.go();
+                await until(() => Convert.done, 800);
+                Convert.go();
+                const copies = [];
+                for await (const e of (await (await dir.getDirectoryHandle('jEditor Converted')).getDirectoryHandle('Party')).values()) copies.push(e.name);
+                out.copies = copies.sort().join();
+                out.notListed = !app.files.some(f => /jEditor Converted/.test(f.relPath || '')) && Watch.skipDir('jEditor Converted');
+
+                // Export as AVIF: a copy that's an AVIF, its EXIF with it
+                step = 'export';
+                await app.exportCopies([P0], { maxEdge: 0, format: 'avif' });
+                const ex = await (await (await dir.getDirectoryHandle('jEditor Export')).getFileHandle('p0.avif')).getFile();
+                const exBytes = new Uint8Array(await ex.arrayBuffer());
+                const exBmp = await createImageBitmap(ex);
+                const exT = ImageMeta.exifOf(exBytes);
+                const exInfo = exT && app.readTiffInfo(new DataView(exT.buffer, exT.byteOffset, exT.byteLength), 0);
+                // One photo, from its right-click menu: Convert… for it alone
+                step = 'one';
+                const tile = app.files.find(f => f.name === 'p1.jpg')._gridEl;
+                const items = tile ? app.buildContextItems(tile, false) : app.buildContextItems(null, true);
+                const conv = items.find(it => it[0] === 'Convert…');
+                out.oneMenu = !!conv;
+                Convert.prefs.format = 'jpeg'; Convert.prefs.keep = false; Convert.est = null;
+                if (conv) conv[1]();
+                await until(() => Convert.est && !Convert.est.working, 600);
+                out.oneScope = [Convert.scope.all.length, document.getElementById('cv-src-name').textContent];
+                Convert.prefs.format = 'png'; Convert.est = null;
+                Convert.setFormat('png');
+                await until(() => Convert.est && !Convert.est.working, 600);
+                Convert.go();
+                await until(() => Convert.done, 800);
+                out.one = app.files.map(f => f.relPath || f.name).sort().join();
+                Convert.go();
+                await app.undo();
+
+                // Upright (600 × 900), then turned a quarter by its edit
+                out.exported = [exBmp.width, exBmp.height, exInfo && exInfo.make];
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        const fmts = r.formats || {};
+        check('convert: the codecs load; AVIF, JPEG XL and WebP are written with their EXIF (date, camera; upright), smaller, and shown',
+            r.ready && ['avif', 'jxl', 'webp'].every(f => JSON.stringify(fmts[f]) === '["jEd",2019,1,200,320,true]'), JSON.stringify(r));
+        const tf = r.tiffs || {};
+        check('convert: TIFFs as other programs write them are read: LZW, PackBits, Deflate, a palette; one turned, with its camera',
+            ['lzw', 'packbits', 'deflate', 'palette'].every(k => tf[k] && tf[k][0] === 12 && tf[k][1] === 8 && tf[k][2] === '200,30,30' && tf[k][3] === '10,20,90') && String(tf.turned) === '8,12,Epson', JSON.stringify(tf));
+        check('convert: JPEG, PNG and TIFF are written with the EXIF (camera, date), and shown', ['jpeg', 'png', 'tiff'].every(f => JSON.stringify(fmts[f]) === '["jEd",2019,200,320]'), JSON.stringify([fmts.jpeg, fmts.png, fmts.tiff]));
+        check('convert: JPEG XL is shown by the bundled decoder where the engine can\'t', !!(fmts.jxl && fmts.jxl[3] === 200), JSON.stringify([r.engineJxl, fmts.jxl]));
+        check('convert: the quality that looks the same, a close-up, and the storage now and after from a sample, by folder', r.estimate && String(r.estimate) === 'true,true,3,true,3' && r.closeUp, JSON.stringify(r.estimate));
+        check('convert: the photos are AVIF in their places; one that wouldn\'t get smaller is left; the dots fill', r.names === 'Ceremony/p0.avif,Ceremony/p1.avif,Party/p2.avif,Party/p3.avif,tiny.png' &&
+            r.disk === 'Ceremony/p0.avif,Ceremony/p1.avif,Party/p2.avif,Party/p3.avif,tiny.png' && r.done && r.done.saved && r.done.same === 1 && !r.done.failed && r.done.dots === 100 && r.done.hollow > 0, JSON.stringify([r.names, r.disk, r.done]));
+        check('convert: flags, the edit and the date taken go with a photo', r.kept && r.kept[0] === 'p0.avif' && r.kept[1] && r.kept[2] && r.date === 2019, JSON.stringify([r.kept, r.date]));
+        check('convert: Ctrl+Z puts the originals back, by name, with their flags and edits', r.undone === 'Ceremony/p0.jpg,Ceremony/p1.jpg,Party/p2.jpg,Party/p3.jpg,tiny.png' &&
+            r.undoneDisk === r.undone && r.undoneKept && r.undoneKept[0] === 'p0.jpg' && r.undoneKept[1] && r.undoneKept[2], JSON.stringify([r.undone, r.undoneDisk, r.undoneKept]));
+        check('convert: Keep both puts the converted copies in "jEditor Converted", not in the project', r.copies === 'p2.webp,p3.webp' && r.notListed, JSON.stringify([r.copies, r.notListed]));
+        check('convert: one photo, from its right-click menu', r.oneMenu && r.oneScope && r.oneScope[0] === 1 && r.oneScope[1] === 'p1.jpg' && r.one === 'Ceremony/p0.jpg,Ceremony/p1.png,Party/p2.jpg,Party/p3.jpg,tiny.png', JSON.stringify([r.oneMenu, r.oneScope, r.one]));
+        check('export: as AVIF, with the edit and the EXIF', r.exported && String(r.exported) === '900,600,jEd', JSON.stringify(r.exported));
+        check('convert: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        // Saves still going (flags, edits) finished first: Chromium 141 aborts
+        // when a page closes with a file being written
+        await page.evaluate(async () => { Codec.stop(); await Edits.flush(); if (Flags._saveTimer) { clearTimeout(Flags._saveTimer); await Flags.save(); } await sleep(300); });
+        await page.close();
+
+        // Any folder, from the start page: converted where it is, not opened
+        const p2 = await open();
+        const o = await p2.page.evaluate(async () => {
+            let step = 'folder';
+            try {
+                const out = {};
+                const opfs = await navigator.storage.getDirectory();
+                try { await opfs.removeEntry('Holiday', { recursive: true }); } catch (e) { /* fresh */ }
+                const dir = await opfs.getDirectoryHandle('Holiday', { create: true });
+                const day = await dir.getDirectoryHandle('Day 1', { create: true });
+                for (let i = 0; i < 3; i++) {
+                    const c = document.createElement('canvas'); c.width = 600; c.height = 400;
+                    const g = c.getContext('2d'); g.fillStyle = ['#2050c0', '#c03020', '#20a050'][i]; g.fillRect(0, 0, 600, 400);
+                    g.fillStyle = '#fff'; g.beginPath(); g.arc(200 + i * 80, 200, 90, 0, Math.PI * 2); g.fill();
+                    const h = await (i ? day : dir).getFileHandle(`IMG_${i}.jpg`, { create: true });
+                    const w = await h.createWritable(); await w.write(await canvasBlob(c, 'image/jpeg', 0.95)); await w.close();
+                }
+                const names = async () => {
+                    const n = [];
+                    for await (const e of dir.values()) if (e.kind === 'file') n.push(e.name);
+                    for await (const e of day.values()) n.push('Day 1/' + e.name);
+                    return n.sort().join();
+                };
+                window.showDirectoryPicker = async () => dir;
+                Convert.prefs.format = 'avif';
+                Convert.prefs.keep = false;
+                document.getElementById('start-convert').click();
+                await until(() => Convert.est && !Convert.est.working, 600);
+                out.chosen = [document.getElementById('cv-src-name').textContent, [...document.querySelectorAll('.cv-folder .n')].map(e => e.firstChild.textContent).sort().join()];
+                step = 'convert';
+                Convert.go();
+                await until(() => Convert.done, 800);
+                out.converted = await names();
+                const trash = [];
+                for await (const e of (await (await dir.getDirectoryHandle('.jeditor')).getDirectoryHandle('trash')).values()) trash.push(e.name);
+                out.trash = trash.sort().join();
+                out.notOpened = !app.dirHandle && !app.files.length && !document.getElementById('drop-zone').classList.contains('hidden');
+                step = 'put back';
+                document.getElementById('cv-cancel').click();
+                await until(async () => (await names()).includes('IMG_0.jpg'), 100);
+                await sleep(200);
+                out.back = await names();
+                out.stillStart = !app.files.length && !document.getElementById('drop-zone').classList.contains('hidden');
+                // To TIFF: lossless, so bigger than the JPEGs, converted anyway
+                step = 'tiff';
+                Convert.prefs.format = 'tiff';
+                Convert.est = null;
+                document.getElementById('start-convert').click();
+                await until(() => Convert.est && !Convert.est.working, 600);
+                out.tiffEstimate = [Convert.est.after > Convert.est.total, !document.getElementById('cv-lossless').classList.contains('hidden')];
+                Convert.go();
+                await until(() => Convert.done, 800);
+                out.tiff = [await names(), document.getElementById('cv-saved-word').textContent, Convert.done.same];
+                Convert.go();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('convert: from the start page, any folder: its photos and its folders\', without opening it', o.chosen && o.chosen[0] === 'Holiday · 3 photos' && o.chosen[1] === 'Day 1,Holiday', JSON.stringify(o));
+        check('convert: a folder chosen is converted where it is, its originals in its own .jeditor/trash, not opened as the project', o.converted === 'Day 1/IMG_1.avif,Day 1/IMG_2.avif,IMG_0.avif' && o.trash === 'IMG_0.jpg,IMG_1.jpg,IMG_2.jpg' && o.notOpened, JSON.stringify(o));
+        check('convert: Put the originals back puts them back by name, still on the start page', o.back === 'Day 1/IMG_1.jpg,Day 1/IMG_2.jpg,IMG_0.jpg' && o.stillStart, JSON.stringify(o));
+        check('convert: to TIFF (lossless): converted though bigger, the storage says how much more', String(o.tiffEstimate) === 'true,true' && o.tiff && o.tiff[0] === 'Day 1/IMG_1.tif,Day 1/IMG_2.tif,IMG_0.tif' && o.tiff[1] === 'more storage' && o.tiff[2] === 0, JSON.stringify([o.tiffEstimate, o.tiff]));
+        check('convert (a folder chosen): no JS errors', p2.issues.errors.length === 0, p2.issues.errors.join('; '));
+        await p2.page.evaluate(async () => { Codec.stop(); await sleep(300); });
+        await p2.page.close();
     }
 
     await browser.close();

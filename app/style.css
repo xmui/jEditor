@@ -796,6 +796,12 @@ body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
     white-space: nowrap;
 }
 
+/* In jEditor's own look the photo number is as bright as the name: grey
+   was too faint on the clear glasses (the themes keep their own) */
+:root:not([data-skin]) #file-count {
+    color: var(--text-1);
+}
+
 .sort-control {
     display: flex;
     align-items: center;
@@ -829,8 +835,9 @@ body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
 
 .header-controls {
     position: absolute;
-    top: var(--gutter);
-    right: var(--gutter);
+    /* The gutter on screen, as the file pill's, whatever the Toolbar size */
+    top: calc(var(--gutter) / var(--ui-scale, 1));
+    right: calc(var(--gutter) / var(--ui-scale, 1));
 }
 
 /* "More": the overflow buttons appear inline when expanded */
@@ -847,7 +854,9 @@ body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
 .header-controls.expanded:not(.vertical) {
     flex-wrap: wrap;
     justify-content: flex-end;
-    width: var(--hc-w, auto);
+    /* at least four across: with most of them under More, the pill was only
+       as wide as More itself and they ran down off the window in a column */
+    width: max(var(--hc-w, 0px), min(calc(4 * var(--ctl-lg) + 8px), calc(100vw - 2 * var(--gutter))));
     height: auto;
     min-height: var(--ctl-lg);
     padding: 3px var(--sp-1);
@@ -1000,6 +1009,13 @@ header:has(.header-controls.expanded) {
     background: var(--strip-bg);
 }
 
+/* A huge folder's photos not built yet (updateStripWindow), at their width */
+.strip-spacer {
+    flex-shrink: 0;
+    height: 1px;
+    pointer-events: none;
+}
+
 .thumb-item {
     position: relative;
     flex-shrink: 0;
@@ -1094,6 +1110,12 @@ header:has(.header-controls.expanded) {
     content-visibility: auto;
     /* Tiles out of sight stand in at the real tile size (syncGridTile) */
     contain-intrinsic-size: var(--grid-tile, var(--grid-item-size, 150px)) var(--grid-tile, var(--grid-item-size, 150px));
+}
+
+/* A huge folder's rows not built yet (updateGridWindow), at their height */
+.grid-spacer {
+    grid-column: 1 / -1;
+    pointer-events: none;
 }
 
 .grid-item:hover {
@@ -1392,9 +1414,9 @@ header:has(.header-controls.expanded) {
     color: var(--flag-rescan);
 }
 
-/* Subtle glass: no blur anywhere, including the small chips on every tile */
-:root[data-glass="subtle"] .tile-folder,
-:root[data-glass="subtle"] .tile-flags {
+/* Opaque glass: no blur anywhere, including the small chips on every tile */
+:root[data-glass="opaque"] .tile-folder,
+:root[data-glass="opaque"] .tile-flags {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
 }
@@ -1433,7 +1455,7 @@ header:has(.header-controls.expanded) {
     height: 10px;
 }
 
-:root[data-glass="subtle"] .tile-edit {
+:root[data-glass="opaque"] .tile-edit {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
 }
@@ -1528,8 +1550,9 @@ body[data-view="single"] .edits-bar {
    clear of the center pill (Folders.fitBar sets --bar-room). */
 .folder-bar {
     position: absolute;
-    top: var(--gutter);
-    left: var(--gutter);
+    /* The gutter on screen, as the header's, whatever the Toolbar size */
+    top: calc(var(--gutter) / var(--ui-scale, 1));
+    left: calc(var(--gutter) / var(--ui-scale, 1));
     z-index: calc(var(--z-floating) + 1);
     max-width: var(--bar-room, calc(50% - 200px));
     overflow: hidden;
@@ -1733,10 +1756,11 @@ body[data-view="single"] .edits-bar {
     left: var(--gutter);
     bottom: var(--gutter);
     z-index: var(--z-chrome);
-    width: var(--rail-w, 240px);
+    width: var(--rail-now, 240px);
     display: flex;
     flex-direction: column;
     padding: var(--sp-2);
+    container: rail / inline-size;
     border-radius: var(--r-lg);
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
@@ -1749,7 +1773,36 @@ body[data-view="single"] .edits-bar {
 
 :root {
     --rail-w: 240px;
-    --rail-room: calc(var(--gutter) + var(--rail-w) + var(--sp-4));
+    /* The width dragged to (--side-rail, script.js: initSidebarResize),
+       never more than half the window */
+    --rail-now: min(var(--side-rail, var(--rail-w)), 50vw);
+    --rail-room: calc(var(--gutter) + var(--rail-now) + var(--sp-4));
+}
+
+/* A sidebar's inner edge: drag it to resize the sidebar, double-click for
+   its own width again (script.js: initSidebarResize) */
+.side-grip {
+    flex: none;
+    position: relative;
+    z-index: 2;
+    width: 6px;
+    margin: 0 -3px;
+    cursor: ew-resize;
+    background: transparent;
+    transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.side-grip:hover,
+.side-grip.dragging {
+    background: var(--accent-soft);
+}
+
+.folder-rail > .side-grip {
+    position: absolute;
+    top: var(--r-lg);
+    bottom: var(--r-lg);
+    right: -3px;
+    margin: 0;
 }
 
 .folder-tree {
@@ -2884,6 +2937,169 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     pointer-events: none;
 }
 
+/* Themes (themes.js): a gallery of cards, each a picture of jEditor in
+   it, with its variants as dots */
+.theme-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+    gap: var(--sp-3);
+    padding: var(--sp-2) 0 var(--sp-3);
+}
+
+.theme-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-2);
+    border-radius: var(--r-md);
+    cursor: pointer;
+    outline: none;
+    transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.theme-card:hover,
+.theme-card:focus-visible {
+    background: var(--tb-hover);
+}
+
+.theme-shot {
+    aspect-ratio: 16 / 10;
+    border-radius: var(--r-sm);
+    background: var(--bg-surface) center / cover no-repeat;
+    box-shadow: 0 0 0 1px var(--border);
+}
+
+.theme-card.active .theme-shot {
+    box-shadow: 0 0 0 2px var(--bg-surface), 0 0 0 4px var(--accent);
+}
+
+.theme-name {
+    font-weight: var(--fw-medium);
+}
+
+.theme-name small {
+    display: block;
+    color: var(--text-3);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-regular);
+}
+
+.theme-dots {
+    position: absolute;
+    right: var(--sp-2);
+    bottom: var(--sp-3);
+    display: flex;
+    gap: 6px;
+}
+
+.theme-dot {
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--sw);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.25);
+    cursor: pointer;
+}
+
+.theme-dot.active {
+    box-shadow: 0 0 0 2px var(--bg-surface), 0 0 0 3.5px var(--text-2);
+}
+
+/* While a theme's stylesheets come in: nothing, rather than jEditor's own look first */
+/* What a theme decides for itself (its colours, glass, sizes, layout):
+   not offered while one is on */
+:root[data-skin] .set-own-look {
+    display: none;
+}
+
+:root.theme-loading :is(.interface, #th-top) {
+    visibility: hidden;
+}
+
+/* A theme's title bar and menu bar: along the top of the window, over
+   everything (the start page, Adjust, Paint, dialogs), under the menus */
+#th-top {
+    position: fixed;
+    inset: 0 0 auto;
+    z-index: calc(var(--z-modal) + 5);
+    display: flex;
+    flex-direction: column;
+}
+
+:root.th-top body {
+    box-sizing: border-box;
+    padding-top: var(--th-top, 0px);
+}
+
+:root.th-top :is(.mode-screen, .drop-zone, .dialog-overlay) {
+    top: var(--th-top, 0px);
+}
+
+:root.th-top .scan-dock {
+    max-height: var(--dock-max, calc(100vh - var(--th-top, 0px) - 2 * var(--gutter) - 64px));
+}
+
+:root.th-top .mode-float.over-mode {
+    top: calc(var(--th-top, 0px) + 8px);
+}
+
+/* Full screen has no title bar, in any era (the menu bar stays) */
+:root.th-top:fullscreen #th-titlebar,
+:root.th-top.fullscreen #th-titlebar {
+    display: none;
+}
+
+/* The title bar moves the window (the Windows app); its buttons, menus
+   and the top edge (resizing) don't */
+#th-titlebar {
+    position: relative;
+    -webkit-app-region: drag;
+    app-region: drag;
+    user-select: none;
+}
+
+#th-titlebar .th-caps,
+#th-titlebar button,
+#th-titlebar .th-grip,
+#th-menubar {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+}
+
+#th-titlebar .th-grip {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 4px;
+    cursor: n-resize;
+    z-index: 1;
+}
+
+#th-titlebar.maximized .th-grip {
+    display: none;
+}
+
+:where(#th-menubar) .th-menu {
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: default;
+}
+
+/* A menu bar's menu: each command's key at the right */
+#context-menu.th-dropdown button {
+    gap: var(--sp-5);
+}
+
+#context-menu .ctx-key {
+    margin-left: auto;
+    color: var(--text-3);
+    font-size: var(--fs-small);
+}
+
 /* Accent colour: swatches and a custom pick */
 .accent-swatches {
     display: flex;
@@ -3537,6 +3753,455 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     flex-direction: column;
 }
 
+/* Convert (convert.js): the format, the quality with a close-up, and
+   what it does to storage; then dots for the photos as they're converted */
+.cv-card {
+    width: min(760px, 100%);
+}
+
+.cv-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+}
+
+.cv-src {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    min-width: 0;
+}
+
+.cv-src .cv-h {
+    margin: 0;
+}
+
+.cv-src-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: var(--fw-semibold);
+}
+
+.cv-lead {
+    margin: 0;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+}
+
+.cv-lead b {
+    color: var(--text-1);
+    font-weight: var(--fw-semibold);
+}
+
+.cv-h {
+    margin: 0 0 var(--sp-2);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-semibold);
+}
+
+.cv-big {
+    display: grid;
+    grid-template-columns: 72px 1fr 112px;
+    gap: var(--sp-2) var(--sp-3);
+    align-items: center;
+}
+
+.cv-big .lab {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.cv-big .num {
+    text-align: right;
+    font-weight: var(--fw-semibold);
+    font-variant-numeric: tabular-nums;
+}
+
+.cv-empty {
+    grid-column: 1 / -1;
+    color: var(--text-2);
+}
+
+.cv-bar {
+    position: relative;
+    height: 24px;
+    border-radius: var(--r-sm);
+    background: var(--bg-sunken);
+    overflow: hidden;
+}
+
+.cv-bar > i,
+.cv-mini > i {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    border-radius: inherit;
+}
+
+.cv-now {
+    background: color-mix(in srgb, var(--text-2) 70%, transparent);
+}
+
+.cv-after-bar {
+    background: var(--accent);
+}
+
+.cv-saved {
+    border: 1.5px dashed var(--success);
+    border-left: 0;
+    border-radius: 0 var(--r-sm) var(--r-sm) 0 !important;
+    background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--success) 45%, transparent) 0 6px, color-mix(in srgb, var(--success) 18%, transparent) 6px 12px);
+}
+
+/* PNG and TIFF can take more than now: amber, not green */
+.cv-saved.cv-more {
+    border-color: var(--warning-text, #d97706);
+    background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--warning-text, #d97706) 45%, transparent) 0 6px, color-mix(in srgb, var(--warning-text, #d97706) 18%, transparent) 6px 12px);
+}
+
+.cv-savedtag.cv-more,
+.cv-folder .s b.cv-more,
+.cv-run-row b.cv-more {
+    color: var(--warning-text, #d97706);
+}
+
+.cv-lossless {
+    margin: var(--sp-1) 0 0;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+}
+
+.cv-slider.hidden,
+.cv-ends.hidden,
+.cv-qnum.hidden {
+    display: none;
+}
+
+.cv-savedtag {
+    position: absolute;
+    top: 50%;
+    padding-left: var(--sp-2);
+    transform: translateY(-50%);
+    color: var(--success);
+    font-size: var(--fs-caption);
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.cv-working {
+    background: linear-gradient(90deg, var(--bg-sunken) 30%, var(--bg-hover) 50%, var(--bg-sunken) 70%) 0 0 / 300% 100%;
+    animation: cv-working 1.4s linear infinite;
+}
+
+@keyframes cv-working {
+    from { background-position: 100% 0; }
+    to { background-position: 0 0; }
+}
+
+.cv-folders {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+}
+
+.cv-folder {
+    display: grid;
+    grid-template-columns: 1fr 180px 130px;
+    gap: var(--sp-3);
+    align-items: center;
+    padding: var(--sp-2) var(--sp-3);
+    font-size: var(--fs-small);
+}
+
+.cv-folder + .cv-folder {
+    border-top: 1px solid var(--border);
+}
+
+.cv-folder small {
+    margin-left: var(--sp-2);
+    color: var(--text-3, var(--text-2));
+}
+
+.cv-folder .s {
+    text-align: right;
+    color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+}
+
+.cv-folder .s b {
+    color: var(--success);
+}
+
+.cv-mini {
+    position: relative;
+    height: 8px;
+    border-radius: 4px;
+    background: var(--bg-sunken);
+    overflow: hidden;
+}
+
+.cv-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-4);
+    align-items: flex-start;
+}
+
+.cv-seg {
+    display: inline-flex;
+    gap: 3px;
+    padding: 3px;
+    border-radius: var(--r-md);
+    background: var(--seg-bg);
+}
+
+.cv-seg button {
+    padding: 5px 12px;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--fs-small);
+    text-align: left;
+    cursor: pointer;
+}
+
+.cv-seg button small {
+    display: block;
+    color: var(--text-3, var(--text-2));
+    font-size: var(--fs-caption);
+}
+
+.cv-seg button[aria-checked="true"] {
+    background: var(--seg-active);
+    box-shadow: var(--shadow-1);
+    color: var(--text-1);
+}
+
+.cv-q {
+    flex: 1;
+    min-width: 220px;
+}
+
+.cv-qnum {
+    margin-left: var(--sp-1);
+    color: var(--text-1);
+    font-variant-numeric: tabular-nums;
+}
+
+.cv-slider {
+    position: relative;
+    height: 28px;
+}
+
+.cv-track {
+    position: absolute;
+    left: 9px;
+    right: 9px;
+    top: 11px;
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--danger) 0%, var(--warning-text, #d97706) 35%, var(--success) 62%, var(--success) 100%);
+    opacity: 0.85;
+}
+
+.cv-sugg {
+    position: absolute;
+    top: 0;
+    width: 2px;
+    height: 28px;
+    margin-left: 8px;
+    background: var(--text-1);
+    pointer-events: none;
+}
+
+.cv-sugg.hidden {
+    display: none;
+}
+
+.cv-sugg span {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    /* centred on the mark mid-way, flush with the slider's ends at its ends */
+    transform: translateX(calc(var(--at, 0.5) * -100%));
+    color: var(--success);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+    white-space: nowrap;
+}
+
+.cv-slider input[type="range"] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    margin: 0;
+    background: transparent;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.cv-slider input[type="range"]::-webkit-slider-runnable-track {
+    background: transparent;
+}
+
+.cv-slider input[type="range"]::-webkit-slider-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.cv-ends {
+    display: flex;
+    justify-content: space-between;
+    color: var(--text-3, var(--text-2));
+    font-size: var(--fs-caption);
+}
+
+.cv-compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--sp-3);
+}
+
+.cv-tile {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--bg-sunken);
+}
+
+.cv-tile.cv-after {
+    outline: 2px solid var(--success);
+    outline-offset: -2px;
+}
+
+.cv-tile canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    image-rendering: pixelated;
+}
+
+.cv-tile .cap {
+    position: absolute;
+    left: var(--sp-2);
+    bottom: var(--sp-2);
+    padding: 2px 9px;
+    border-radius: var(--r-pill);
+    background: rgba(0, 0, 0, 0.72);
+    color: #fff;
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+}
+
+.cv-tile .cap small {
+    margin-left: var(--sp-1);
+    font-weight: var(--fw-regular);
+    opacity: 0.85;
+}
+
+.cv-keep {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-3);
+    align-items: center;
+}
+
+.cv-keep .cv-h {
+    margin: 0;
+}
+
+.cv-dots {
+    display: grid;
+    grid-template-columns: repeat(25, 1fr);
+    gap: 6px;
+}
+
+.cv-dots i {
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: var(--text-3, var(--text-2));
+    opacity: 0.22;
+    transition: opacity var(--dur-base);
+}
+
+.cv-dots i.p {
+    opacity: 0.55;
+}
+
+.cv-dots i.d {
+    opacity: 1;
+}
+
+.cv-dots i.f {
+    opacity: 1;
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--success);
+}
+
+.cv-dots i.now {
+    opacity: 1;
+    box-shadow: 0 0 0 2px var(--text-1);
+}
+
+.cv-run-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--sp-3);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.cv-run-row b {
+    margin-right: var(--sp-1);
+    color: var(--success);
+    font-size: 26px;
+    font-variant-numeric: tabular-nums;
+}
+
+.cv-total-line {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+@media (max-width: 640px) {
+    .cv-big {
+        grid-template-columns: 56px 1fr 90px;
+    }
+
+    .cv-folder {
+        grid-template-columns: 1fr 90px;
+    }
+
+    .cv-folder .cv-mini {
+        display: none;
+    }
+
+    .cv-compare {
+        grid-template-columns: 1fr;
+    }
+
+    .cv-dots {
+        gap: 4px;
+    }
+}
+
 /* Move / copy picker */
 .dialog.folder-card {
     width: min(520px, 100%);
@@ -4034,7 +4699,7 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 }
 
 .adj-panel {
-    width: 300px;
+    width: min(var(--side-adjust, 300px), 45vw);
     flex: none;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -4081,6 +4746,7 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 .adj-sec-head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: var(--sp-2);
@@ -4251,7 +4917,50 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     font-weight: 600;
 }
 
+.adj-sub-acts {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Edit · Retouch · Masks, under the histogram */
+.adj-pane-tabs {
+    display: flex;
+    margin: var(--sp-2) 0 var(--sp-1);
+}
+
+.adj-pane-tabs .adj-tab {
+    flex: 1;
+    height: var(--ctl-md);
+    font-size: var(--fs-body);
+}
+
+/* Retouch and Masks hold one section each, always open: its head is a title */
+.adj-pane:not([data-pane="edit"]) > .adj-sec > summary {
+    cursor: default;
+}
+
+.adj-pane:not([data-pane="edit"]) > .adj-sec > summary > span:first-child::before {
+    display: none;
+}
+
+/* The looks in Basic: one row of cards, scrolled sideways */
+#adj-basic-sec .adj-looks {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: 76px;
+    overflow-x: auto;
+    padding-bottom: var(--sp-1);
+    scrollbar-width: thin;
+}
+
 #adj-spot-overlay {
+    cursor: crosshair;
+}
+
+/* Picking white balance: the click is on the photo, whatever's over it */
+.adj-picking #adj-stage,
+.adj-picking #adj-stage * {
     cursor: crosshair;
 }
 
@@ -4480,7 +5189,8 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     border-radius: var(--r-xs);
 }
 
-.mode-head-acts .btn[aria-pressed="true"] {
+.mode-head-acts .btn[aria-pressed="true"],
+.adj-sec-acts .btn[aria-pressed="true"] {
     background: var(--accent-soft);
     color: var(--accent-text);
 }
@@ -4497,6 +5207,9 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
         flex: 1;
         border-left: 0;
         border-top: 1px solid var(--border);
+    }
+    .adj-body > .side-grip {
+        display: none;
     }
     .mode-head-acts .mode-head-sep,
     #adj-copy,
@@ -4535,6 +5248,15 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 .paint-opt input[type="range"] {
     width: 110px;
+}
+
+/* A tool's hint gives way first, shortened with … (all of it on hover) */
+.paint-hint {
+    display: block;
+    flex: 1 1 0;
+    min-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .paint-opt .paint-num {
@@ -4627,7 +5349,7 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 }
 
 .paint-panel {
-    width: 260px;
+    width: min(var(--side-paint, 260px), 45vw);
     flex: none;
     display: flex;
     flex-direction: column;
@@ -4654,7 +5376,15 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 .paint-layer-acts {
     display: inline-flex;
-    gap: 2px;
+    flex: none;
+}
+
+/* Six buttons beside the word: with a wider font (Linux) the word gives way */
+.paint-sec-head > span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .paint-import {
@@ -4829,6 +5559,9 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
         padding-top: 0;
         border-left: 0;
         border-top: 1px solid var(--border);
+    }
+    .paint-body > .side-grip {
+        display: none;
     }
     .paint-palette {
         grid-template-columns: repeat(16, 1fr);
@@ -5182,6 +5915,35 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     box-shadow: var(--shadow-1);
 }
 
+/* The words never spill out of their button: when the sidebar is narrow
+   (a small window, comfortable density, larger system text) the switch
+   first draws closer, then leaves out its icons, and only then shortens
+   a word (a query on the switch itself: one on the sidebar would make it
+   the box everything fixed inside it is placed in) */
+.mode-seg {
+    container: modes / inline-size;
+}
+
+.mode-seg > button span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@container modes (width < 254px) {
+    .mode-seg > button {
+        gap: 4px;
+        padding: 0 var(--sp-1);
+    }
+}
+
+@container modes (width < 220px) {
+    .mode-seg > button .i {
+        display: none;
+    }
+}
+
 .mode-chip {
     flex: none;
     display: inline-flex;
@@ -5217,16 +5979,19 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 .mode-float {
     position: fixed;
-    top: var(--gutter);
-    left: var(--gutter);
+    top: calc(var(--gutter) / var(--ui-scale, 1));
+    left: calc(var(--gutter) / var(--ui-scale, 1));
     z-index: calc(var(--z-floating) + 1);
 }
 
-/* Over Adjust and Paint: in their heads' empty corner */
+/* Over Adjust and Paint: in their heads' empty corner, at the head's size
+   (it doesn't grow with Toolbar size: grown, it hung over Paint's options) */
 .mode-float.over-mode {
     top: 8px;
+    left: var(--gutter);
     height: calc(var(--ctl-lg) - 8px);
     z-index: calc(var(--z-mode) + 1);
+    zoom: 1;
 }
 
 .mode-menu {
@@ -7244,7 +8009,11 @@ button.sb-card-name:focus-visible .sb-card-edit {
 }
 
 .sb-card-export > span {
+    min-width: 0;
     margin-left: auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--text-2);
     font-weight: normal;
 }
@@ -7479,6 +8248,22 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     font-size: var(--fs-small);
 }
 
+/* No count yet: no room kept for one */
+.sb-row .fr-count:empty {
+    display: none;
+}
+
+/* A narrow sidebar: the name keeps its room. The date goes (it's in the
+   project's card), and Pin and Open take room only while the pointer is on
+   the row (both are in its right-click menu too); the name is in full on
+   hover */
+@container rail (max-width: 279px) {
+    .sb-meta,
+    .sb-row:not(:hover, :focus-within) :is(.sb-pin:not(.on), .sb-open) {
+        display: none;
+    }
+}
+
 .sb-row .fr-count {
     min-width: 2.2em;
     text-align: right;
@@ -7596,88 +8381,97 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    the top row of pills (mac/main.js places them from what bridge.js
    measures), and that row moves the window. The folder pill makes room
    for them; in full screen they're gone, and so is the room.
+   The pills zoom with Toolbar size (.toolbar) and the lights don't: so
+   the room for them, as the gutter, is divided by the zoom, to stay the
+   same on screen whatever the size.
    The start screen shows the Mac's own window material through it (main.js:
    vibrancy), tinted so its text reads as anywhere else. Photos, the grid
    and the colour behind photos stay solid.
    ========================================================================== */
 
-:root[data-platform="mac"] {
+:root[data-platform="mac"]:not([data-skin]) {
     --lights-w: 72px;
     /* More title bar to take hold of: the top row sits this much lower,
        and what's above it moves the window too */
     --mac-drag: 14px;
-    --top-row: calc(var(--gutter) + var(--mac-drag) + var(--ctl-lg));
+    --top-row: calc(var(--gutter) + var(--mac-drag) + var(--ctl-lg) * var(--ui-scale, 1));
 }
 
-:root[data-platform="mac"].fullscreen {
+:root[data-platform="mac"]:not([data-skin]).fullscreen {
     --lights-w: 0px;
     --mac-drag: 0px;
 }
 
-:root[data-platform="mac"] header {
+:root[data-platform="mac"]:not([data-skin]) header {
     top: var(--mac-drag);
 }
 
-:root[data-platform="mac"] .folder-bar {
-    top: calc(var(--gutter) + var(--mac-drag));
+:root[data-platform="mac"]:not([data-skin]) .folder-bar,
+:root[data-platform="mac"]:not([data-skin]) .mode-float {
+    top: calc((var(--gutter) + var(--mac-drag)) / var(--ui-scale, 1));
+    left: calc((var(--gutter) + var(--lights-w)) / var(--ui-scale, 1));
 }
 
-:root[data-platform="mac"] .folder-bar {
+/* Over Adjust and Paint the mode chip is in their head's row (unzoomed, as
+   the head is), and the lights follow it there (bridge.js: reportLights) */
+:root[data-platform="mac"]:not([data-skin]) .mode-float.over-mode {
+    top: 8px;
     left: calc(var(--gutter) + var(--lights-w));
 }
 
 /* The top row drags the window... */
-:root[data-platform="mac"] body::before {
+:root[data-platform="mac"]:not([data-skin]) body::before {
     content: "";
     position: fixed;
     inset: 0 0 auto 0;
-    height: calc(var(--gutter) * 2 + var(--ctl-lg) + var(--mac-drag));
+    height: calc(var(--gutter) * 2 + var(--mac-drag) + var(--ctl-lg) * var(--ui-scale, 1));
     -webkit-app-region: drag;
     pointer-events: none;
 }
 
 /* ...but never what's clicked or typed in */
-:root[data-platform="mac"] :is(button, input, select, textarea, a, label, [role="button"], [tabindex],
+:root[data-platform="mac"]:not([data-skin]) :is(button, input, select, textarea, a, label, [role="button"], [tabindex],
     .toolbar, .file-info, .folder-bar, .folder-rail, .dialog, .toast, .task-pill, #context-menu) {
     -webkit-app-region: no-drag;
 }
 
-:root[data-platform="mac"],
-:root[data-platform="mac"] body {
+:root[data-platform="mac"]:not([data-skin]),
+:root[data-platform="mac"]:not([data-skin]) body {
     background: transparent;
 }
 
-:root[data-platform="mac"] .interface {
+:root[data-platform="mac"]:not([data-skin]) .interface {
     background: var(--bg-canvas);
 }
 
-:root[data-platform="mac"] .drop-zone {
+:root[data-platform="mac"]:not([data-skin]) .drop-zone {
     background:
         radial-gradient(ellipse 60% 50% at 50% 35%, color-mix(in srgb, var(--bg-surface) 55%, transparent), transparent),
         color-mix(in srgb, var(--bg-canvas) 72%, transparent);
 }
 
-:root[data-platform="mac"][data-glass="off"] .drop-zone {
-    background: var(--bg-canvas);
-}
-
-@media (prefers-reduced-transparency: reduce) {
-    :root[data-platform="mac"] .drop-zone {
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+    :root[data-platform="mac"]:not([data-skin]) .drop-zone {
         background: var(--bg-canvas);
     }
 }
 
 /* ---- The Mac app with macOS 26's own toolbar (bridge.js: html.native-toolbar) ----
    The window's toolbar, in Liquid Glass, is the top row: the page's own
-   pills there go (the toolbar mirrors them), it holds the traffic lights,
-   and what was below the pills starts below it. */
-:root.native-toolbar {
+   pills there go (the toolbar mirrors them, the mode chip too), it holds
+   the traffic lights, and what was below the pills starts below it. Over
+   Adjust and Paint it steps aside (bridge.js) and their head is the top
+   row, with the mode chip in it, as before macOS 26. */
+/* (As particular as the Mac's own --top-row, above, to win over it: AppKit's
+   toolbar doesn't grow with Toolbar size) */
+:root[data-platform="mac"].native-toolbar {
     /* The toolbar, and a strip under it that moves the window too */
     --top-row: calc(52px + var(--mac-drag));
 }
 
 :root.native-toolbar header,
-:root.native-toolbar .folder-bar {
+:root.native-toolbar .folder-bar,
+:root.native-toolbar .mode-float:not(.over-mode) {
     display: none !important;
 }
 
@@ -7717,16 +8511,290 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     margin-top: var(--top-row);
 }
 
-:root.native-toolbar[data-glass="off"] .interface::before {
-    background: var(--bg-canvas);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-}
-
-@media (prefers-reduced-transparency: reduce) {
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
     :root.native-toolbar .interface::before {
         background: var(--bg-canvas);
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
     }
+}
+
+/* ==========================================================================
+   The sidebar and the selection bar, unified (jEditor's own look; each
+   theme dresses these parts its own way)
+   ========================================================================== */
+
+/* One set of corners: the sidebar's, and inside it (8px in) each part's
+   is the sidebar's less that. The mode switch is a pill, as the top bar */
+:root:not([data-skin]) .folder-rail {
+    border-radius: var(--r-xl);
+}
+
+:root:not([data-skin]) .mode-seg {
+    border-radius: var(--r-pill);
+}
+
+:root:not([data-skin]) .mode-seg > button {
+    border-radius: var(--r-pill);
+}
+
+/* The project: a heading, its name. What its buttons did is in
+   the … by it, and its right-click menu (places.js, cardItems) */
+:root:not([data-skin]) .sb-card {
+    position: relative;
+    padding: var(--sp-1) var(--sp-2) var(--sp-2);
+    background: none;
+}
+
+:root:not([data-skin]) .sb-card-btns,
+:root:not([data-skin]) .sb-card-export,
+:root:not([data-skin]) .sb-card-defer {
+    display: none;
+}
+
+:root:not([data-skin]) .sb-card-name {
+    font-size: var(--fs-title);
+    line-height: var(--lh-title);
+    padding-right: var(--ctl-sm);
+}
+
+:root:not([data-skin]) button.sb-card-name {
+    width: calc(100% + 2 * var(--sp-2) - var(--ctl-sm));
+    height: var(--ctl-sm);
+}
+
+
+.sb-card-more {
+    display: none;
+}
+
+:root:not([data-skin]) .sb-card-more {
+    display: inline-flex;
+    position: absolute;
+    top: 0;
+    right: 0;
+    border-radius: var(--r-pill);
+    color: var(--text-2);
+}
+
+/* The size is at the foot, for what's shown (and opens its details):
+   not again under the name */
+:root:not([data-skin]) .sb-card-meta {
+    display: none;
+}
+
+/* One kind of heading, in sentence case */
+:root:not([data-skin]) .sb-sec-btn,
+:root:not([data-skin]) .sb-sec-title {
+    color: var(--text-3);
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+:root:not([data-skin]) .sb-sec-btn:hover {
+    color: var(--text-1);
+}
+
+/* Choosing the projects folder is a row like the rest, not a button */
+:root:not([data-skin]) .sb-choose {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 6px;
+    height: var(--ctl-md);
+    padding: 0 var(--sp-2);
+    border: 1px solid transparent;
+    border-radius: var(--r-md);
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-2);
+    font-weight: var(--fw-regular);
+}
+
+:root:not([data-skin]) .sb-choose::before {
+    content: "+";
+    width: var(--icon-sm);
+    font-size: var(--fs-title);
+    text-align: center;
+}
+
+:root:not([data-skin]) .sb-choose:hover {
+    background: var(--tb-hover);
+    color: var(--text-1);
+}
+
+/* The selection bar: the count is quiet, the photos are what's chosen.
+   Rotate and Auto crop are in its … (and on [ ] Shift+A); the size slider
+   steps aside while it's up, so there's one pill */
+:root:not([data-skin]) .sel-count {
+    background: var(--seg-active);
+    color: var(--text-1);
+}
+
+:root:not([data-skin]) .sel-count:hover {
+    background: var(--tb-pressed);
+}
+
+:root:not([data-skin]) #selection-bar :is(#btn-rotate-left-bulk, #btn-rotate-right-bulk, #btn-auto-crop, .tb-sep) {
+    display: none;
+}
+
+:root:not([data-skin]) #selection-bar {
+    gap: var(--sp-1);
+}
+
+:root:not([data-skin]) #btn-trash {
+    color: var(--danger-text);
+}
+
+/* It fades where it is: moved, its box would be off the row the edits
+   bar lines up with (fit.js) */
+:root:not([data-skin]) .interface:has(#selection-bar:not(.hidden)) .grid-controls {
+    opacity: 0;
+    pointer-events: none;
+}
+
+:root:not([data-skin]) .grid-controls {
+    transition: opacity var(--dur-base) var(--ease-out);
+}
+
+/* Lens, Clear, Crystal and Liquid glass are too light to keep words
+   readable on their own over a bright photo: a halo behind them does
+   (--glass-halo, tokens.css; none on Opaque). Buttons and fields too,
+   which the browser gives no shadow of their own */
+:root:not([data-skin]) :is(.toolbar, .file-info, .folder-rail, #context-menu, .task-pill, .toast, .picked-bar),
+:root:not([data-skin]) :is(.toolbar, .file-info, .folder-rail, #context-menu, .task-pill, .toast, .picked-bar) :is(button, input, select) {
+    text-shadow: var(--glass-halo);
+}
+
+/* Liquid: the glass bends what's under its edges. liquid.js draws the bend
+   for each part's size and shape (--lg-bend: an SVG filter); until it has,
+   or where the browser can't draw it, the glass is the same, unbent */
+:root.liquid-bends :is(.toolbar, .file-info, .folder-rail, #context-menu, .task-pill, .toast, .picked-bar) {
+    backdrop-filter: var(--lg-bend, ) var(--glass-filter);
+    -webkit-backdrop-filter: var(--lg-bend, ) var(--glass-filter);
+}
+
+/* Lens: the sidebar is no panel, its folders on the window with a faint
+   glow from the left and a hairline down its edge; the chosen row is a
+   bubble of the glass, round like the pills */
+:root:not([data-skin])[data-glass="lens"] .folder-rail {
+    background: linear-gradient(90deg, rgb(255 255 255 / 0.05), rgb(255 255 255 / 0));
+    border-color: transparent;
+    box-shadow: inset -1px 0 0 rgb(255 255 255 / 0.08);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+:root:not([data-skin])[data-glass="lens"][data-theme="light"] .folder-rail {
+    background: linear-gradient(90deg, rgb(255 255 255 / 0.5), rgb(255 255 255 / 0));
+    box-shadow: inset -1px 0 0 rgb(0 0 0 / 0.08);
+}
+
+:root:not([data-skin])[data-glass="lens"] .fr-row {
+    border-radius: var(--r-pill);
+}
+
+:root:not([data-skin])[data-glass="lens"] .fr-row.active {
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.18), rgb(255 255 255 / 0.07));
+    box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.22), inset 0 -1px 1px rgb(0 0 0 / 0.15);
+}
+
+:root:not([data-skin])[data-glass="lens"][data-theme="light"] .fr-row.active {
+    background: linear-gradient(180deg, #fff, rgb(255 255 255 / 0.6));
+    box-shadow: inset 0 -1px 1px rgb(0 0 0 / 0.08), 0 1px 2px rgb(0 0 0 / 0.08);
+}
+
+/* ---- Motion (motion.js): short, after the fact, never in the way ---- */
+
+.seg-glide {
+    display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    /* The mode switch: one highlight, gliding to the mode chosen */
+    :root:not([data-skin]):not([data-motion="off"]) .mode-seg {
+        position: relative;
+    }
+
+    :root:not([data-skin]):not([data-motion="off"]) .seg-glide {
+        display: block;
+        position: absolute;
+        border-radius: var(--r-pill);
+        background: var(--seg-active);
+        box-shadow: var(--shadow-1);
+        pointer-events: none;
+    }
+
+    :root:not([data-skin]):not([data-motion="off"]) .mode-seg.glides .seg-glide {
+        transition: left var(--dur-slow) var(--ease-out), width var(--dur-slow) var(--ease-out), top var(--dur-slow) var(--ease-out);
+    }
+
+    :root:not([data-skin]):not([data-motion="off"]) .mode-seg > button {
+        position: relative;
+    }
+
+    :root:not([data-skin]):not([data-motion="off"]) .mode-seg > button.on {
+        background: transparent;
+        box-shadow: none;
+    }
+
+    /* A pill's button gives a little when pressed */
+    :root:not([data-skin]):not([data-motion="off"]) :is(.tb-btn, .sel-count, .mode-seg > button, .seg > button) {
+        transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), scale var(--dur-fast) var(--ease-out);
+    }
+
+    :root:not([data-skin]):not([data-motion="off"]) :is(.tb-btn, .sel-count, .mode-seg > button, .seg > button):active {
+        scale: 0.94;
+    }
+
+    /* Rotate: the arrow turns the way the photo did */
+    :root:not([data-skin]):not([data-motion="off"]) .turn-left svg {
+        animation: turn-left var(--dur-slow) var(--ease-out);
+    }
+
+    :root:not([data-skin]):not([data-motion="off"]) .turn-right svg {
+        animation: turn-right var(--dur-slow) var(--ease-out);
+    }
+
+    /* The count: the new number comes up from below */
+    :root:not([data-skin]):not([data-motion="off"]) #selection-count.tick {
+        display: inline-block;
+        animation: count-tick var(--dur-base) var(--ease-out);
+    }
+}
+
+/* Scrolling the grid: photos ease in as they come up from the bottom and
+   ease out as they go under the top, done by the browser as it scrolls
+   (nothing runs for it), and only at the edges: in the middle they're
+   still and whole. In a huge folder's grid, which builds its tiles as it
+   scrolls, not while it jumps (grid-jump, motion.js): it would cost a
+   frame there. No fill: the tiles out of sight keep their real size,
+   where the grid measures them (gridY, revealInGrid) */
+@supports (animation-timeline: view()) {
+    @media (prefers-reduced-motion: no-preference) {
+        :root:not([data-skin]):not([data-motion="off"]) .grid-view:not(.grid-jump) .grid-item:not(.is-new) {
+            animation: tile-woosh linear;
+            animation-timeline: view();
+            animation-range: cover 0% cover 100%;
+        }
+    }
+}
+
+@keyframes tile-woosh {
+    0% { opacity: 0.1; scale: 0.8; }
+    20% { opacity: 1; scale: 1; }
+    84% { opacity: 1; scale: 1; }
+    100% { opacity: 0.2; scale: 0.88; }
+}
+
+@keyframes turn-left {
+    from { rotate: 90deg; }
+}
+
+@keyframes turn-right {
+    from { rotate: -90deg; }
+}
+
+@keyframes count-tick {
+    from { opacity: 0.2; translate: 0 40%; }
 }

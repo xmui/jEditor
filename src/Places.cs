@@ -6,7 +6,7 @@ namespace JEditor;
 static class Places
 {
     static readonly HashSet<string> PhotoTypes = new(StringComparer.OrdinalIgnoreCase)
-        { ".jpg", ".jpeg", ".png", ".webp", ".gif", ".tif", ".tiff", ".bmp", ".heic",
+        { ".jpg", ".jpeg", ".png", ".webp", ".gif", ".tif", ".tiff", ".bmp", ".heic", ".heif", ".hif",
           ".dng", ".cr2", ".cr3", ".nef", ".nrw", ".arw", ".sr2", ".srf", ".orf", ".rw2", ".rwl", ".pef", ".srw", ".3fr", ".iiq", ".erf", ".kdc", ".dcr", ".mos", ".mef", ".raf" };
 
     // Counting stops here: "1,000+ photos" is enough to tell
@@ -103,7 +103,7 @@ static class Places
 static class Projects
 {
     static readonly HashSet<string> PhotoTypes = new(StringComparer.OrdinalIgnoreCase)
-        { ".jpg", ".jpeg", ".png", ".webp", ".gif", ".tif", ".tiff", ".bmp", ".heic",
+        { ".jpg", ".jpeg", ".png", ".webp", ".gif", ".tif", ".tiff", ".bmp", ".heic", ".heif", ".hif",
           ".dng", ".cr2", ".cr3", ".nef", ".nrw", ".arw", ".sr2", ".srf", ".orf", ".rw2", ".rwl", ".pef", ".srw", ".3fr", ".iiq", ".erf", ".kdc", ".dcr", ".mos", ".mef", ".raf" };
 
     public sealed record Project(string Name, string Path, DateTime Modified);

@@ -94,6 +94,15 @@ static void EnsureDragView(NSWindow *w) {
     [bar addSubview:drag positioned:NSWindowBelow relativeTo:nil];
 }
 
+// Taken off again, with the toolbar (a theme draws its own title bar)
+static void RemoveDragView(NSWindow *w) {
+    NSView *bar = [w standardWindowButton:NSWindowCloseButton].superview;
+    for (NSView *v = bar; v; v = v.superview) {
+        if ([NSStringFromClass([v class]) isEqualToString:@"NSTitlebarView"]) { bar = v; break; }
+    }
+    for (NSView *v in [bar.subviews copy]) if ([v isKindOfClass:[JEDragView class]]) [v removeFromSuperview];
+}
+
 @interface JEToolbar : NSObject <NSToolbarDelegate, NSSearchFieldDelegate>
 @property (nonatomic, weak) NSWindow *window;
 @property (nonatomic, strong) NSToolbar *toolbar;
@@ -388,6 +397,8 @@ static Napi::Value Detach(const Napi::CallbackInfo &info) {
         t.observers = nil;
         t.onAction.Release();
         w.toolbar = nil;
+        w.titleVisibility = NSWindowTitleHidden;
+        RemoveDragView(w);
         [controllers removeObjectForKey:w];
     }
     return info.Env().Undefined();

@@ -56,6 +56,20 @@ const Adjust = {
         bind('adj-paste', () => this.paste());
         bind('adj-auto', () => this.auto());
         bind('adj-auto-color', () => this.auto({ color: true }));
+        this.el('adj-wb-pick').addEventListener('click', (e) => {
+            e.preventDefault(); // in the section's head: not to fold it
+            e.stopPropagation();
+            e.currentTarget.blur();
+            if (!this.busy) this.pickWhite();
+        });
+        // Picking white balance: a click on the photo is the grey, before
+        // masks, spots or the 1:1 view see it
+        this.el('adj-stage').addEventListener('pointerdown', (e) => {
+            if (!this.picking || e.button !== 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+            this.pickAt(e);
+        }, true);
         this.el('adj-presets').addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -65,9 +79,10 @@ const Adjust = {
         });
 
         this.sliders = {};
-        const light = this.el('adj-light'), color = this.el('adj-color');
+        const light = this.el('adj-light'), wb = this.el('adj-wb'), color = this.el('adj-color');
         for (const [k, label] of this.LIGHT) light.appendChild(this.slider(k, label));
-        for (const [k, label] of this.COLOR) color.appendChild(this.slider(k, label));
+        // White balance above Light, Vibrance and Saturation below it, as in Lightroom
+        for (const [k, label] of this.COLOR) (k === 'temp' || k === 'tint' ? wb : color).appendChild(this.slider(k, label));
         const detail = this.el('adj-detail');
         for (const [k, label] of this.DETAIL) detail.appendChild(this.slider(k, label));
         this.initLoupe();
@@ -81,6 +96,7 @@ const Adjust = {
         this.initWheels();
         AdjustMasks.init(this);
         AdjustSpots.init(this);
+        this.initPanes();
         this.mixerSliders = Develop.HUES.map((h, i) => {
             const row = this.slider(`mix-${h.id}`, h.name, {
                 range: { min: -100, max: 100, step: 1 },
@@ -391,6 +407,7 @@ const Adjust = {
     },
 
     close() {
+        if (this.picking) this.pickWhite(false);
         this.isOpen = false;
         this.ready = false;
         if (this._raf) cancelAnimationFrame(this._raf);
@@ -471,7 +488,8 @@ const Adjust = {
         if (which === 'detail') for (const [k] of this.DETAIL) delete a[k];
         if (which === 'masks') delete a.masks;
         if (which === 'spots') delete a.spots;
-        if (which === 'look') { delete a.look; delete a.lookAmount; }
+        if (which === 'look' || which === 'basic') { delete a.look; delete a.lookAmount; }
+        if (which === 'basic') for (const [k] of [...this.LIGHT, ...this.COLOR]) delete a[k];
         this.setAll(a);
     },
 
@@ -486,6 +504,45 @@ const Adjust = {
         if (!this.ready) return;
         this.setAll(Develop.auto(this.sample, this.result(), { colour: color }));
         this.app.showToast(color ? 'Auto color: levels set for each channel' : 'Auto: levels set from the photo', 1600, null, null, { kind: 'adjust' });
+    },
+
+    // White balance from the photo (W): click something that should be
+    // white or grey, and Temperature and Tint make it so
+    pickWhite(on = !this.picking) {
+        if (on && !this.ready) return;
+        this.picking = on;
+        // W shows the button it presses: Edit, with Basic open
+        if (on) { this.showPane('edit'); this.el('adj-basic-sec').open = true; }
+        this.root.classList.toggle('adj-picking', on);
+        this.el('adj-wb-pick').setAttribute('aria-pressed', String(on));
+        if (on) this.app.showToast('Click something that should be white or grey (Esc to stop)', 2400, null, null, { kind: 'adjust' });
+    },
+
+    pickAt(e) {
+        const r = this.canvas.getBoundingClientRect();
+        const a = (e.clientX - r.left) / r.width, b = (e.clientY - r.top) / r.height;
+        if (a < 0 || a > 1 || b < 0 || b > 1) return;
+        // On the photo before its crop, with its spots done, unadjusted
+        const m = this.map.m;
+        const pic = this.retouchedBase(this.a.spots || []);
+        const W = pic.width, H = pic.height;
+        const x = Math.round((m[0] * a + m[1] * b + m[2]) * W), y = Math.round((m[3] * a + m[4] * b + m[5]) * H);
+        const k = Math.max(2, Math.round(Math.max(W, H) / 400));
+        const x0 = Math.max(0, x - k), y0 = Math.max(0, y - k);
+        const x1 = Math.min(W, x + k + 1), y1 = Math.min(H, y + k + 1);
+        if (x1 <= x0 || y1 <= y0) return;
+        const px = pic.getContext('2d', { willReadFrequently: true }).getImageData(x0, y0, x1 - x0, y1 - y0).data;
+        const wb = Develop.neutralWB(px);
+        if (!wb) {
+            this.app.showToast('That\'s too bright or too dark to tell: click a light grey', 2400, null, null, { kind: 'adjust' });
+            return;
+        }
+        this.pickWhite(false);
+        this.pushHistory();
+        this.a.temp = wb.temp;
+        this.a.tint = wb.tint;
+        this.changed();
+        this.app.showToast(`White balance: Temperature ${wb.temp}, Tint ${wb.tint}`, 1600, null, null, { kind: 'adjust' });
     },
 
     // Settings to put on another photo: its spots are its own
@@ -599,7 +656,7 @@ const Adjust = {
 
     detailOpen() {
         const sec = this.el('adj-detail-sec');
-        return !!(sec && sec.open);
+        return !!(sec && sec.open && this.pane === 'edit');
     },
 
     initLoupe() {
@@ -746,6 +803,12 @@ const Adjust = {
             tabs.appendChild(b);
         }
         const box = this.el('adj-looks');
+        // One row in Basic: a mouse wheel moves along it, not down the panel
+        box.addEventListener('wheel', (e) => {
+            if (e.deltaX || e.ctrlKey || box.scrollWidth <= box.clientWidth) return;
+            e.preventDefault();
+            box.scrollLeft += e.deltaY;
+        }, { passive: false });
         const tile = (look) => {
             const b = document.createElement('button');
             b.className = 'adj-look';
@@ -767,6 +830,46 @@ const Adjust = {
         tile(null);
         for (const l of Develop.LOOKS) tile(l);
         this.showLookTab(this.lookTab);
+    },
+
+    // Edit, Retouch and Masks. Retouch and Masks each hold one section
+    // (spots, masks) that's open while its tab is shown, so the tools there
+    // work only then; opening one of those sections shows its tab
+    initPanes() {
+        const tool = { retouch: this.el('adj-spots-sec'), masks: this.el('adj-masks-sec') };
+        for (const b of this.root.querySelectorAll('.adj-pane-tabs .adj-tab')) {
+            b.addEventListener('click', () => { b.blur(); this.showPane(b.dataset.pane); });
+        }
+        for (const [pane, sec] of Object.entries(tool)) {
+            sec.querySelector('summary').addEventListener('click', (e) => e.preventDefault());
+            sec.addEventListener('toggle', () => {
+                if (sec.open) this.showPane(pane);
+                else if (this.pane === pane) this.showPane('edit');
+            });
+        }
+        // Edit's sections: opening one shows the tab and folds the one open before
+        const edit = [...this.root.querySelectorAll('.adj-pane[data-pane="edit"] > details.adj-sec')];
+        for (const sec of edit) {
+            sec.addEventListener('toggle', () => {
+                if (!sec.open) return;
+                for (const o of edit) if (o !== sec && o.open) o.open = false;
+                this.showPane('edit');
+            });
+        }
+        this.pane = 'edit';
+    },
+
+    showPane(id) {
+        if (this.pane === id) return;
+        this.pane = id;
+        for (const b of this.root.querySelectorAll('.adj-pane-tabs .adj-tab')) b.setAttribute('aria-selected', String(b.dataset.pane === id));
+        for (const p of this.root.querySelectorAll('.adj-pane')) p.classList.toggle('hidden', p.dataset.pane !== id);
+        this.el('adj-spots-sec').open = id === 'retouch';
+        this.el('adj-masks-sec').open = id === 'masks';
+        this.drawPanels();
+        this.drawWheels();
+        this.placeLoupeBox();
+        if (this.detailOpen()) this.renderLoupe();
     },
 
     // One process's films (None is always there)
@@ -905,6 +1008,7 @@ const Adjust = {
         if (!this.wheels || !this.isOpen) return;
         for (const { z, cv } of this.wheels) {
             const { ctx, w, h } = this.fit(cv);
+            if (Math.min(w, h) < 8) continue; // folded away, or on a tab not shown
             const R = Math.min(w, h) / 2 - 2, cx = w / 2, cy = h / 2;
             // Hues round the ring (red to the right, going anticlockwise), grey in the middle
             const g = ctx.createConicGradient(0, cx, cy);

@@ -813,6 +813,7 @@ async function newPage(context, baseUrl, host = null) {
             out.toast = toasts();
 
             out.autoCropDefault = $('scan-autocrop').checked;
+            out.uprightDefault = $('scan-upright').checked;
             // Auto crop each photo: the scans go to Auto crop once they're in
             const realCrop = app.batchAutoCrop;
             app.batchAutoCrop = async (files, opts) => { out.cropped = files.map(f => f.name).join() + (opts && opts.ask === false ? ' (no question)' : ''); };
@@ -916,6 +917,7 @@ async function newPage(context, baseUrl, host = null) {
         check('scanned photos show up in the order', r.files === 'Ceremony/c1.jpg,photo1.jpg,photo2.jpg,photo3.jpg,photo4.jpg,photo5.jpg', r.files);
         check('a message says how many', /Scanned 2 photos into Scan Order/.test(r.toast), r.toast);
         check('Auto crop each photo is off to start with', r.autoCropDefault === false);
+        check('Turn upright is on to start with (as in FastFoto)', r.uprightDefault === true);
         check('Compatibility mode: offered for TWAIN scanners only, off to start with', r.compatShown && r.compatHiddenWia, JSON.stringify([r.compatShown, r.compatHiddenWia]));
         check('... sent with the scan, and remembered for that scanner', r.req.compat === true && r.compatKept, JSON.stringify([r.req.compat, r.compatKept]));
         check('... and crops each scan once it\'s in, without asking', r.cropped === 'c2.jpg,c3.jpg (no question)', r.cropped);

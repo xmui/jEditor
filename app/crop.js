@@ -1005,7 +1005,8 @@ const CropEditor = {
     },
 
     // The canvas can't use CSS variables: resolve the ones it draws with
-    // (the color behind photos and the accent) once per opening
+    // (the color behind photos, the accent, the labels on the photo and
+    // the theme's typeface) once per opening
     themeColors() {
         const probe = document.createElement('span');
         probe.style.display = 'none';
@@ -1015,14 +1016,18 @@ const CropEditor = {
             probe.style.color = `var(${v})`;
             return getComputedStyle(probe).color || fallback;
         };
-        const colors = { bg: read('--surround', '#0b0b0b'), accent: read('--accent-text', '#7aa7ff') };
+        const colors = {
+            bg: read('--surround', '#0b0b0b'), accent: read('--accent-text', '#7aa7ff'),
+            label: read('--on-photo-bg', 'rgba(0,0,0,0.6)'), labelText: read('--on-photo-text', '#fff'),
+            font: getComputedStyle(probe).getPropertyValue('--font-ui').trim() || 'system-ui, sans-serif'
+        };
         probe.remove();
         return colors;
     },
 
     render() {
         if (!this.isOpen || !this.canvas) return;
-        const colors = this.colors || { bg: '#0b0b0b', accent: '#7aa7ff' };
+        const colors = this.colors || { bg: '#0b0b0b', accent: '#7aa7ff', label: 'rgba(0,0,0,0.6)', labelText: '#fff', font: 'system-ui, sans-serif' };
         const ctx = this.ctx;
         const dpr = window.devicePixelRatio || 1;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1090,14 +1095,14 @@ const CropEditor = {
         // Angle readout while turning by hand
         if (this.drag && this.drag.mode === 'rotate') {
             const t = `${this.angle > 0 ? '+' : ''}${this.angle.toFixed(1)}°`;
-            ctx.font = '600 13px system-ui, sans-serif';
+            ctx.font = `600 13px ${colors.font}`;
             const tw = ctx.measureText(t).width;
             const bx = R.x + R.w / 2 - tw / 2 - 10, by = R.y + 12;
-            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillStyle = colors.label;
             ctx.beginPath();
             ctx.roundRect ? ctx.roundRect(bx, by, tw + 20, 24, 12) : ctx.rect(bx, by, tw + 20, 24);
             ctx.fill();
-            ctx.fillStyle = '#fff';
+            ctx.fillStyle = colors.labelText;
             ctx.fillText(t, bx + 10, by + 17);
         }
 
@@ -1112,7 +1117,7 @@ const CropEditor = {
             ctx.setLineDash([]);
             const t = this.levelAngle(this.drag.a, this.drag.b);
             if (t !== null) {
-                ctx.font = '600 12px system-ui, sans-serif';
+                ctx.font = `600 12px ${colors.font}`;
                 ctx.fillStyle = colors.accent;
                 ctx.fillText(`${t > 0 ? '+' : ''}${t.toFixed(1)}°`, q.x + 10, q.y - 10);
             }
@@ -1270,13 +1275,13 @@ const CropEditor = {
 
         // How close, in the corner
         const t = `${Math.round(ls * 100)}%`;
-        ctx.font = '600 11px system-ui, sans-serif';
+        ctx.font = `600 11px ${colors.font}`;
         const tw = ctx.measureText(t).width;
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillStyle = colors.label;
         ctx.beginPath();
         if (ctx.roundRect) ctx.roundRect(B.x + 8, B.y + B.size - 28, tw + 14, 20, 10); else ctx.rect(B.x + 8, B.y + B.size - 28, tw + 14, 20);
         ctx.fill();
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = colors.labelText;
         ctx.fillText(t, B.x + 15, B.y + B.size - 14);
         ctx.restore();
 

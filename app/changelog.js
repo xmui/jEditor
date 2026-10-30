@@ -6,6 +6,49 @@
 
 const CHANGELOG = [
     {
+        version: '1.50.0', date: '2026-10-29',
+        items: [
+            'Themes are part of jEditor now, no longer an experiment, in the Windows, Mac and Linux apps: no need to turn them on in Settings → Experimental. Choose one in Settings → Appearance: Windows XP (Royale, Royale Noir and Royale Red), Snow Leopard (Finder and Aperture) or the 1984 Macintosh, each with its own title bar and menus. The theme you chose is there at the next start.',
+            'Themes on the Mac and Linux: the theme\'s own title bar works the window, and on a Mac jEditor\'s commands are in the menu bar at the top of the screen while Snow Leopard is on. In full screen there\'s no title bar. The themes\' menus have Copy image and Paste image too, and their own scroll bars again, sideways ones included.',
+            'HEIC and HEIF photos (an iPhone\'s, and Sony\'s .hif) are shown with the rest, upright, everywhere. Crop, adjust and paint them like any photo: like a RAW, the HEIC is never changed, and Export and Save edits write a JPEG copy. Convert takes them too, into any of its formats.',
+            'Much faster in huge folders (10,000 photos and more): the grid opens in about a second, scrolls smoothly, and Select all, a search cleared, opening a photo and going back to the grid are instant. After a jump, the thumbnails in the middle of the screen come first.',
+            'The grid on the Mac no longer keeps itself busy when nothing is happening, so tiles, thumbnails, scrolling and clicks are all quicker there.',
+            'A new look in the sidebar: just a list, with Photos · Adjust · Paint as a pill. The project is its heading (click its name to rename it), and its … has what the card\'s buttons had: Scan, Show in Explorer or Finder, Split, Pin, Rename, Export and Save edits when done.',
+            'The selection bar in the grid is quieter: the count, then Move to…, Rename…, … and Delete. Rotate left and right are under its … (and on `[` and `]`).',
+            'Animations: tiles bounce when selected, a folder\'s photos ripple in, deleted ones shrink away while the rest slide into place, new photos fly in, and the mode switch\'s highlight glides. Settings → Appearance → Animations turns them off; so does the system\'s Reduce motion.',
+            'Glass, in Settings → Appearance: Crystal (the clearest, to start with), Liquid (like Apple\'s Liquid Glass, bending what\'s under its edges), Clear, Opaque (faster on older computers) or Lens, with a tint if you like. The words on the glass are easier to read. The system\'s Reduce transparency or Increase contrast makes it solid.',
+            'Adjust\'s panel has three tabs under the histogram: Edit, with the sliders in Lightroom\'s order (Basic first: the looks, white balance, light, vibrance and saturation), Retouch for spots and dust, and Masks.',
+            'A button you clicked no longer stays highlighted after you press a key or close a menu with `Esc`.',
+            'On the Mac, Photos · Adjust · Paint stays clear of the traffic lights and the toolbar, at any toolbar size and on macOS 26.',
+            'Delete on Windows: a photo another program has open for a moment is tried again, instead of Couldn\'t delete.'
+        ]
+    },
+    {
+        version: '1.46.1', date: '2026-10-23', beta: true,
+        items: [
+            'Drag the edge of the sidebar, or of Adjust\'s or Paint\'s panel, to make it wider or narrower: jEditor remembers each width, in its own look and in every theme. Double-click the edge to put it back. In the themes, project and folder names in the sidebar get the room they need instead of being cut short, and show in full when you point at them.',
+            '`Ctrl+C` copies the photo as it looks, crop, adjustments and paint included, to paste into another app (in Photos and in Adjust; or Copy image in the right-click menu). `Ctrl+V` with a picture copied in another app makes it a new image in the folder you\'re in and opens it in Paint (or Paste image, right-clicking the grid).',
+            'Adjust\'s Pick grey (`W`, at the top of Color) sets the white balance from the photo: click something that should be white or grey, and Temperature and Tint take the cast off it. One `Ctrl+Z` puts it back.',
+            'Convert (right-click a photo, the selected photos, a folder or the project; the toolbar\'s Convert; or Convert photos… on the start page): turns photos into AVIF, JPEG XL, WebP, JPEG, PNG or TIFF, in the project or in any folder on your computer (Choose a folder…), without opening it. Choose the quality on a slider marked where the photos still look the same, with a close-up of one of yours, original beside after, and see what it does to their storage before it starts, now and after, by folder. While it works, dots in your photos\' colours turn hollow for the storage freed. The originals go to the bin (one `Ctrl+Z` puts them all back), or keep both; flags, edits, dates and camera details go with each photo.',
+            'jEditor shows AVIF, JPEG XL and TIFF photos (TIFF scans are listed with the rest now), and Export can write copies as JPEG, PNG, TIFF, WebP, AVIF or JPEG XL.',
+            'Themes reach every part of jEditor, not just the main window: dialogs, Settings, Crop, Adjust, Paint, Duplicates, the scan window, Info and Undo history, each built the way that era\'s apps built theirs. In Windows XP Royale, dialogs are XP windows, Settings is a property sheet with tabs, and Adjust and Paint have Office 2003 command bars and task panes. In Snow Leopard, dialogs are sheets, Settings is a Preferences window, Info and Undo history are HUD panels, and Adjust and Paint have an inspector. In 1984, Paint is MacPaint\'s palette of one-bit tools.',
+            'Every toolbar button has its own icon in each theme, including Scan, Camera, Adjust, Paint, Duplicates, Full screen, Settings and What\'s new.',
+            'Photos · Adjust · Paint at the top of the sidebar no longer gets cut off in a narrow window or with a wider font: it tightens, then leaves out its icons, so the words fit.',
+            'A full toolbar wraps instead of running off the edge, and More opens at least four buttons across.',
+            'In Paint, the layer buttons stay inside the panel, and a long hint shortens with … instead of pushing the options off screen.',
+            'In Adjust, a section\'s buttons (such as Auto color) move under its name when there isn\'t room beside it.'
+        ]
+    },
+    {
+        version: '1.46.0', date: '2026-10-22', beta: true,
+        items: [
+            'Paint\'s brushes: the wheel over the photo sizes the brush (`[` and `]` too; `Ctrl`+wheel zooms), and as it changes the brush shows on the photo as it\'ll paint, with its size. Sizes follow the photo, so a brush is the same part of a small, low-resolution photo as of a big one, and the Size slider gives most of its length to small sizes. `Shift`-click paints a straight line on from the last stroke, a pen\'s pressure sizes the brush, and a brush too small to see has a cross round it.',
+            'Paint\'s fill can fill the whole layer (Fill → Whole layer along the top), or all of what\'s selected, whatever colours are there.',
+            'Turn upright (`Shift+U`, or the right-click menu) turns photos the right way up: jEditor\'s own small network looks at each one and turns it only when it\'s sure, and one `Ctrl+Z` undoes them all. The scan window does it to each photo as it comes in (Turn upright, on to start with), turning each back with its front.',
+            'New, as an experiment in the Windows app (on in betas): themes, in Settings → Appearance. jEditor as an app of another time, the same jEditor laid out the way that era\'s apps were, with its own title bar and a menu bar: Windows XP in Royale, Royale Noir and Royale Red; Snow Leopard as Finder or Aperture (dark); and 1984, the first Macintosh in one bit, whose Thumbnails setting shows the grid dithered (as MacPaint did), in black and white, or in colour. The menus have jEditor\'s commands with their keys; the title bar moves, maximises and closes the window. jEditor, first in the gallery, is the look you know.'
+        ]
+    },
+    {
         version: '1.45.0', date: '2026-10-22',
         items: [
             'Adjust and Paint are part of jEditor now, no longer experiments: no need to turn them on in Settings → Experimental. Switch modes at the top of the sidebar, or press `E` for Adjust and `B` for Paint.',

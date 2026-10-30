@@ -16,12 +16,22 @@ Changes are saved to the original files as you go.
 
 **Settings** (the gear in the toolbar's **More** section, the link on the start screen, or `Ctrl+,`) has a page for each kind of setting, chosen on the left; it opens on the last one you used.
 
-- **Appearance**: the theme (dark, light or match the system), the accent color and the color behind photos (black, gray or light, for judging color); on Windows 11 (22H2 or later), **Window background** puts Mica or Acrylic behind jEditor, like the Start menu, and **Transparency** sets how much of the desktop shows through (photos, Crop and Duplicates stay solid; it needs Windows' Transparency effects on, in Settings → Personalization → Colors); then glass (Rich, or Subtle, which is faster on older computers), density and toolbar size.
+- **Appearance**: in the Windows, Mac and Linux apps, a **theme** (see [Themes](#themes)); the theme (dark, light or match the system), the accent color and the color behind photos (black, gray or light, for judging color); on Windows 11 (22H2 or later), **Window background** puts Mica or Acrylic behind jEditor, like the Start menu, and **Transparency** sets how much of the desktop shows through (photos, Crop and Duplicates stay solid; it needs Windows' Transparency effects on, in Settings → Personalization → Colors); then glass (Crystal, the clearest, to start with; Liquid, like Apple's Liquid Glass, which bends what's under its edges; Clear; Opaque, which is faster on older computers; or Lens, a bubble of thick glass; the system's Reduce transparency or Increase contrast makes any of them solid) and its tint (none, your accent colour, warm, cool or rose: none is best for judging colour), animations (on, or off: things just change), density and toolbar size.
 - **Toolbar & keys**: keyboard shortcuts and their profiles, a vertical toolbar, the buttons above the film strip, and which buttons are in the toolbar.
 - **Messages**: which messages pop up after you do something.
 - **Auto crop**: keeping test scans to improve Auto crop, how many are kept, and exporting, recovering or clearing them.
 - **Projects**: watching the folder for changes, the thumbnail cache, stored projects and cleaning up the open one.
 - **Updates**: checking for updates, and the log.
+
+## Themes
+
+In the Windows, Mac and Linux apps, **Settings → Appearance → Theme** makes jEditor look like an app of another time: the same jEditor, laid out the way that era's apps were, with its own title bar and a menu bar.
+
+- **Windows XP**, in **Royale**, **Royale Noir** and **Royale Red** (the dots on its card): an Office 2003 program, with command bars, a task pane each side and a menu bar.
+- **Snow Leopard**, as **Finder** (light) or **Aperture** (dark): one toolbar with the labels under its buttons, a source list and a foot bar.
+- **1984**: the first Macintosh, in one bit. Its **Thumbnails** setting shows the grid dithered to one bit (as MacPaint did), in black and white, or in colour; the photo you open is always in colour.
+
+The menu bar's menus have jEditor's commands, with their keys. The title bar moves the window, a double-click maximises it, and its buttons minimise, maximise and close it (on a Mac they stand in for the traffic lights, and macOS 26's toolbar steps aside for the theme's). Snow Leopard has no menu bar in the window, as a Mac app never did: on a Mac, the menu bar at the top of the screen has jEditor's commands while a theme is on (File, Edit, View, Photos and Help for Snow Leopard; the theme's own menus for the others). In full screen the title bar goes; the menu bar stays. On Linux the window opens again (just as it was) when a theme goes on or off, so the theme's title bar takes the place of the system's. Adjust and Paint are in the toolbar's ⋯ (or More), the Picture menu, and `E` and `B`. Light or dark is the theme's, and so are the accent colour, glass, density and toolbar size: Settings leaves them out while a theme is on. The whole app wears it: the dialogs and Settings, Crop, Adjust and Paint (with their own tool icons), the scan window and every toolbar button. A toolbar with more buttons than fit wraps onto a second row. **jEditor** at the start of the gallery goes back to jEditor's own look.
 
 ## Watching the folder
 
@@ -51,7 +61,8 @@ Flags are kept with the order, in `.jeditor/flags.json`, so they follow renames 
 - **Rename.** Files are renamed in place. If the new names overlap the old ones (shifting a numbered sequence, say), they go through temporary names first. If a rename fails part-way, every file gets its original name back.
 - **Delete.** Photos are moved to `.jeditor/trash` inside the opened folder, not deleted. `Ctrl+Z` restores them.
 - **Move to a folder.** Photos are moved on disk, which is a rename and instant even for big scans; where a file can't be moved it's copied and the original removed. A copy is a byte-for-byte duplicate. Cached thumbnails and previews follow the photo, so moving doesn't make them again.
-- **Export.** Copies go to a `jEditor Export` folder (or onto a USB drive, or a folder you choose), optionally resized, with any adjustments and edits not saved yet.
+- **Export.** Copies go to a `jEditor Export` folder (or onto a USB drive, or a folder you choose), optionally resized or in another format, with any adjustments and edits not saved yet.
+- **Convert.** Each photo is written again as AVIF, JPEG XL or WebP, upright and in sRGB, with its EXIF (orientation reset, the old thumbnail dropped; the colour profile isn't kept, as the pixels are sRGB now). Replacing puts the original in the Recycle Bin or `.jeditor/trash`; `Ctrl+Z` puts it back under its old name.
 - **Adjust.** Never written into the photo in a project: the settings are kept in `.jeditor/edits.json`, and Export (or **Save edits…**) writes the result, re-encoded like a crop, with the metadata carried over. Without a project (photos picked on a phone, or dropped in), they're written into the photo when you leave Adjust.
 
 ## The .jeditor folder
@@ -87,7 +98,8 @@ It works like Lightroom or Apple Photos: the crop frame stays in the middle of t
 - **Loupe** (`M`): while you drag a corner or edge, or draw a level line, a close-up of that spot shows in a top corner of the window, at the photo's own pixels, with the crop's edge exactly where it will be saved. It moves to the other corner if your pointer comes near it. It's on to start with; turn it off with the button or `M`.
 - **Zoom** for a closer look: scroll on the photo (or pinch on a trackpad) to zoom in and out where the pointer is, or use `+` and `-` and the buttons in the bottom corner. Hold `Space` and drag, or drag with the middle button, to look around. Zoomed in, the view stays put while you drag and straighten; **Fit** (`Z`) goes back to the whole crop, as do a new aspect, a quarter turn, **Auto**, **Previous** and **Reset**. Close-ups use the full-size photo, not the screen-sized copy, once it's loaded.
 - **Auto** (`Shift+A`) finds the print on a scan, straightens it and crops to its edges. It needs a plain scanner lid or background around the photo (or, when the scan cut the print off at two opposite sides, down the other two), and it leaves a few pixels' margin so none of the bed shows. Turn on **Every photo** to run Auto on each photo as it opens. With `Shift+Enter` (save and next), a scan order then becomes: check the crop, press `Shift+Enter`, repeat.
-- **Batch Auto crop.** In the grid, select photos and press `Shift+A` (or **Auto crop** on the selection bar, or the right-click menu). Auto runs on each of them in the background, with the aspect ratio last chosen in the editor, and saves them. Photos with no print edge, or already cropped to it, are left alone. The originals are kept in `.jeditor/originals`, so one `Ctrl+Z` puts the whole batch back; flip through the results and fix the odd one in the editor.
+- **Turn upright** (`Shift+U`, or Turn upright in the right-click menu) turns the photo, or every photo selected in the grid, the right way up. jEditor's own small network looks at each one (in `upright.js`; how it was trained is in `tools/upright`) and only turns a photo when it's sure, so some are left for you. Each is turned the way the rotate buttons turn them, and one `Ctrl+Z` undoes them all. **Turn upright** in the scan window does it to each photo as it's scanned (on to start with), and turns a photo's back with its front.
+- **Batch Auto crop.** In the grid, select photos and press `Shift+A` (or **Auto crop** under ⋯ on the selection bar, or the right-click menu). Auto runs on each of them in the background, with the aspect ratio last chosen in the editor, and saves them. Photos with no print edge, or already cropped to it, are left alone. The originals are kept in `.jeditor/originals`, so one `Ctrl+Z` puts the whole batch back; flip through the results and fix the odd one in the editor.
 - `Ctrl+Z` inside the editor undoes the last adjustment; `Ctrl+Shift+Z` redoes it.
 - Aspect presets: 4×6, 5×7, 8×10, 11×14, square, 3:4, 16:9, original and free. `X` swaps portrait and landscape. A preset fits inside the current crop, so choosing one after Auto never takes in the bed.
 - **Previous** (`P`) applies the last crop again. This is useful when a batch of scans has the same borders.
@@ -97,10 +109,12 @@ It works like Lightroom or Apple Photos: the crop frame stays in the middle of t
 
 Like Lightroom's Develop, for one photo at a time: press `E` (or the sliders button, or right-click → **Adjust…**). The photo changes as you drag, on the graphics card, so even a big scan keeps up.
 
+Under the histogram, three tabs. **Edit** has the sliders, in Lightroom's order: **Basic** (the look, white balance, light, then vibrance and saturation), then Tone curve, Color mixer, Color grading, Detail and Effects, one open at a time. **Retouch** has spot removal and dust; **Masks** has the masks. Clicks on the photo go to spots or masks only while their tab is shown.
+
 - **Histogram and levels.** Red, green and blue, with marks at the ends when something clips. The handles under it set the black, mid-grey and white points; the lower two set the output range. Pick **R**, **G** or **B** to set one channel. **Auto** sets the levels from the photo; **Auto color** sets each channel on its own too, which takes the colour cast off a faded print.
 - **Light:** Exposure (in stops), Contrast, Highlights, Shadows, Whites and Blacks.
-- **Color:** Temperature, Tint, Vibrance (gentle on colours that are already strong) and Saturation.
-- **Curve:** click to add a point and drag it; drag a point off the side, or double-click it, to take it away. The curve never turns back on itself. **RGB** or one channel.
+- **Color:** Temperature, Tint, Vibrance (gentle on colours that are already strong) and Saturation. **Pick grey** (`W`, beside White balance in Basic) sets the white balance from the photo: click something that should be white or grey (a wall, a shirt, the paper's border) and Temperature and Tint take the cast off it. Something very bright or very dark can't tell, so pick a light grey. `Esc` stops picking.
+- **Tone curve:** click to add a point and drag it; drag a point off the side, or double-click it, to take it away. The curve never turns back on itself. **RGB** or one channel.
 - **Color mixer:** the hue, saturation and luminance of reds, oranges, yellows, greens, aquas, blues, purples and magentas, each on its own.
 - **Looks:** film simulations of real stocks, each shown on your photo, by process:
   - **Negative (C-41):** Kodak Portra 160, 400, 800, Ektar 100, Gold 200, UltraMax 400; Fujifilm Superia 400, Pro 400H, C200. Soft contrast and highlights, lifted blacks, colour grain.
@@ -126,11 +140,17 @@ Adjustments are non-destructive: the photo on disk isn't changed. They're kept w
 
 RAW files from cameras (DNG, CR2, CR3, NEF, ARW, RAF, ORF, RW2, PEF, SRW and the rest) are listed with the other photos and shown from the full-size JPEG the camera puts inside each one, turned as the camera was held. They can be flagged, renamed, moved, cropped, adjusted and painted on like any photo, but a RAW file is never written: its turns, crops and adjustments are always kept as edits, and **Export** (or **Save edits**) writes a JPEG copy (`IMG_0042.cr3` → `IMG_0042.jpg`). Editing the raw sensor data itself (rather than its JPEG) comes later.
 
+## HEIC photos
+
+HEIC and HEIF photos (an iPhone's `.heic`, and Sony's `.hif`) are listed and shown like any other, upright, decoded by libheif, a codec that comes with jEditor (a WebAssembly build, so it's the same on Windows, Mac, Linux and the web; not in `standalone.html` opened from disk). Nothing writes HEIC, so a HEIC is treated like a RAW: it can be flagged, renamed, moved, cropped, adjusted and painted on, its turns, crops and adjustments are kept as edits, and **Export** (or **Save edits**) writes a JPEG copy with its EXIF (`IMG_0042.heic` → `IMG_0042.jpg`). **Convert** turns HEIC photos into any of its formats, whatever their size. The photo's colour profile isn't used yet: an iPhone's Display P3 colours are shown as sRGB, a little duller.
+
 ## Photos, Adjust and Paint
 
 jEditor has three modes, like Lightroom's modules: **Photos** (sorting, rotating, cropping), **Adjust** and **Paint**. With the sidebar open, switch along its top; with it closed, the chip at the top left names the mode you're in and its menu switches (it's there in single view, and over Adjust and Paint too). `E` and `B` still open Adjust and Paint, and `Esc` goes back to Photos.
 
 Adjust and Paint have no Done bar: what you do is kept as you go, as in Lightroom (`Ctrl+Z` in Photos takes it off again). In the Windows, Mac and Linux apps, closing the window in Adjust or Paint with something not kept yet asks **Keep your changes?** first: **Keep**, **Don't keep** or **Cancel** (in a browser, it asks the browser's way). Their few buttons (Before, Reset, Copy, Paste; Undo, Redo, Fit, 100%) are at the top right. A film strip runs along the bottom: click another photo and it opens in the same mode. Their toolbar buttons are in the ⋯ menu.
+
+Drag the inner edge of the sidebar, or of Adjust's or Paint's panel, to make it wider or narrower; jEditor remembers each width, in every theme. Double-click the edge to put it back.
 
 The start page's **Start in** (Photos, Adjust or Paint) is remembered: a project you open from there lands in that mode, on its first photo. **Paint** there (or **New blank canvas…**) asks what to paint on: a **New canvas** (below), or **Open a file**: **An image…** opens a single picture on its own (the painting goes into it when you leave Paint), **A folder…** opens a folder of photos as a project in Paint.
 
@@ -138,27 +158,44 @@ The start page's **Start in** (Photos, Adjust or Paint) is remembered: a project
 
 Paint over a photo in layers, as a tool like Crop: press `B` (or the brush button, or right-click → **Paint…**).
 
-- **Tools** down the left: **Move** (drag the layer, or what's selected; its corners scale it, the knob above turns it, `Enter` puts it down), **Rectangle** and **Ellipse select**, **Lasso**, **Magic wand** (by colour, with **Tolerance**), **Brush** (Size, Hardness, Opacity, Flow), **Pencil** (hard edges), **Spray**, **Eraser**, **Fill** (by colour, looking at the photo and all the layers or just this one), **Gradient** (from the foreground colour to the background colour, or to nothing), **Line** (with an arrow if you like), **Rectangle**, **Ellipse** (stroked, filled or both), **Text** (click, type, `Ctrl+Enter`), the **Colour picker** and the **Hand**. Each tool's options are along the top.
+- **Tools** down the left: **Move** (drag the layer, or what's selected; its corners scale it, the knob above turns it, `Enter` puts it down), **Rectangle** and **Ellipse select**, **Lasso**, **Magic wand** (by colour, with **Tolerance**), **Brush** (Size, Hardness, Opacity, Flow), **Pencil** (hard edges), **Spray**, **Eraser**, **Fill** (by colour, looking at the photo and all the layers or just this one; or **Whole layer**, which fills all of the layer, or all that's selected), **Gradient** (from the foreground colour to the background colour, or to nothing), **Line** (with an arrow if you like), **Rectangle**, **Ellipse** (stroked, filled or both), **Text** (click, type, `Ctrl+Enter`), the **Colour picker** and the **Hand**. Each tool's options are along the top.
+- **Brushes:** with the brush, pencil, spray or eraser, the wheel over the photo sizes it (`[` and `]` too; on a Mac's trackpad, `Alt` and two fingers), and while it changes the brush shows on the photo as it'll paint, with its size in pixels (in the middle of the photo when you use the Size slider). `Shift`-click paints a straight line on from where the last stroke ended. A pen's pressure makes the brush smaller as you press lighter. Sizes are the photo's own pixels, kept the same part of the photo from one photo to the next: a brush that's a tenth of the way across a big photo is a tenth of the way across a small one, and the Size slider gives most of its length to the small sizes a small photo needs.
 - **Selections** keep painting inside them. `Shift` adds to a selection, `Alt` takes away; `Ctrl+A` selects everything, `Ctrl+D` nothing; `Delete` clears what's selected; `Ctrl+C` / `Ctrl+V` copy and paste it.
 - **Colours:** the foreground and background swatches (click to choose), a palette (`Alt`-click for the background colour), **Swap** (`X`) and black and white (`D`). `Alt`-click with a brush picks a colour from the photo.
 - **Layers:** add, duplicate, move up and down, merge down, delete, hide, rename (double-click), each with its **Opacity** and a **Blend** mode (Multiply, Screen, Overlay and the rest).
 - **Images:** **Bring in an image…** under the layers (`Ctrl+Shift+O`), drop an image file on Paint, or `Ctrl+V` an image copied in another app. It comes in on a layer of its own, named after it, fitted to the picture and left floating: drag it to move it, a corner to size it (`Shift` keeps its shape), the knob to turn it, and `Enter` puts it down. RAW files come in from the JPEG inside them. (`Ctrl+V` pastes Paint's own copy instead when that's the newest thing you copied.)
 - **A blank canvas:** right-click a folder (or the grid's background) → **New blank image…**, or the start page's Paint. Pick a size from the list (prints at 300 dpi in inches, screens and social posts, the photo you're looking at, the last one you made) or type one in pixels, inches or centimetres at a resolution (72 to 600 dpi), up to 10,000 pixels a side, either way round; a background (white, black, none or a colour); and the folder to save into (with no project open, you choose one and it opens as the project). It's saved as a PNG carrying its resolution, so it prints at that size, and opens in Paint straight away.
-- The wheel zooms; hold `Space` (or the Hand) and drag to move about; `0` fits the photo, `1` is 100%. `Ctrl+Z` / `Ctrl+Shift+Z` undo and redo inside Paint.
+- The wheel zooms (with a brush, `Ctrl`+wheel or a pinch); hold `Space` (or the Hand) and drag to move about; `0` fits the photo, `1` is 100%. `Ctrl+Z` / `Ctrl+Shift+Z` undo and redo inside Paint.
 
 Painting goes on last, over the photo as it's cropped and adjusted, so it looks as you painted it. It's non-destructive like the rest: the layers are kept with the project (in `.jeditor/paint`), so the painting can be opened and changed again, and a crop later leaves it where it was. **Export…** and **Save edits…** write it into copies or the photos. Without a project (photos picked on a phone, or an image opened on its own), leaving Paint paints into the photo.
 
 ## Drives, cards and discs
 
-**Export** on the project's card in the sidebar (or right-click a project, or **Export…** under ⋯ on the selection bar) opens one window for taking photos off this computer. Each choice says what goes and whether it fits before anything starts, and drives and discs show up as they're put in:
+**Export…** under the **…** by the project's name at the top of the sidebar (or right-click it, or a project in the list, or **Export…** under ⋯ on the selection bar; in a theme, **Export** on the project's card) opens one window for taking photos off this computer. Each choice says what goes and whether it fits before anything starts, and drives and discs show up as they're put in:
 
 - **USB drive or card** (Windows, Mac and Linux): the whole project, copied in one step, with how far it's got. Each drive is listed with the room left on it. The project's flags and edits go with it, so when it's opened in jEditor on another computer they're all there. **Eject it when it's done** ejects the drive after.
 - **CD or DVD** (Windows): the burner, whether there's a blank disc in it and whether the project fits, the disc's name, and (with edits not saved yet) whether to save them into the photos first, since the disc gets the photos as they are on disk. The disc comes out when it's done.
-- **Copies** (everywhere): copies of the selected photos, all of them or the starred ones, full size or smaller (the longest side: 4000, 3000, 2048, 1600, 1080 px or any other), with edits not saved yet in them, and RAWs as JPEGs. They go into `jEditor Export` in the project, into `jEditor Export` on a USB drive, or into a folder you choose.
+- **Copies** (everywhere): copies of the selected photos, all of them or the starred ones, full size or smaller (the longest side: 4000, 3000, 2048, 1600, 1080 px or any other), as they are or as JPEG, PNG, TIFF, WebP, AVIF or JPEG XL (**Format**), with edits not saved yet in them, and RAWs as JPEGs. They go into `jEditor Export` in the project, into `jEditor Export` on a USB drive, or into a folder you choose.
 
 In the Windows, Mac and Linux apps:
 
 - **Importing from a camera's card:** when a card with a DCIM folder is plugged in, jEditor offers to import it; or press `Ctrl+I` (in a browser, choose the card's folder). The photos go into the open project, a new project in your projects folder (named for the day and the card), or a folder you choose; into a folder per day if you like; only the ones not imported before; and the card is ejected after if you like. RAW files come too; videos stay on the card.
+
+## Converting photos: format, quality and storage
+
+**Convert…** turns photos, one or many, into another format: **AVIF** (smallest), **JPEG XL** (newest), **WebP** (for the web), **JPEG** (opens anywhere), **PNG** (lossless) or **TIFF** (lossless, for print). Open it from the toolbar's **Convert** button (under ⋯ to start with; Settings can put it on the toolbar; in single view it converts the photo open), **Convert photos…** on the start page, right-clicking a photo, the selected photos, a folder or the project in the sidebar, or ⋯ on the selection bar.
+
+- **Photos:** what's being converted: the project, a folder in it or the selected photos. **Choose a folder…** picks any folder on your computer instead, with the photos in its folders too, without opening it as the project (from the start page, it asks straight away). A folder chosen keeps its originals in the Recycle Bin, or in a `.jeditor/trash` of its own, and **Put the originals back** at the end takes the conversion back.
+
+- **Quality** goes from smaller to better, with a mark at the lowest quality that still looks the same as the original (worked out on one of your photos; *Closest to the original* where only the highest keeps its grain). PNG and TIFF keep every pixel, so they have no quality to choose. Under it, a close-up of that photo at its own pixels, the original beside the result, with their sizes.
+- **Storage:** what the photos take **Now** and **After** and by folder, worked out from a sample of them before anything happens, and again as you change the format or quality: what's freed striped green, or (PNG and TIFF, which often take more than a JPEG) how much more striped amber.
+- **The originals:** **Replace them** (the converted photo takes the original's place and the original goes to the Recycle Bin, or jEditor's trash; one `Ctrl+Z` puts them all back) or **Keep both** (the converted copies go into `jEditor Converted` in the project, which jEditor doesn't list as the project's photos).
+
+Flags and edits go with each photo, and so do its date taken, camera and the rest of its EXIF (into a TIFF: its camera and dates). RAW files, GIFs and photos already in that format are left as they are, and so, in the lossy formats, are photos that wouldn't get smaller (but not HEIC photos, which are converted so other apps can open them).
+
+While it works, 100 dots stand for the photos, each in their own colours once they're done; done dots turn hollow and green for the storage freed, as many as the share freed so far. Pause or Stop, or close the window and carry on: the corner says how far it's got. At the end: the storage freed, and the size before and after.
+
+AVIF and JPEG XL are written by codecs that come with jEditor (WebAssembly builds of libavif and libjxl), and TIFF by jEditor itself (8 bits, LZW, lossless, which every program that opens TIFF reads; all the photo's EXIF goes in, GPS too). jEditor shows JPEG XL and TIFF photos with its own decoders, where the browser engine can't: TIFFs uncompressed or LZW, Deflate or PackBits, 1 to 16 bits, colour, grey, CMYK or a palette (not JPEG-compressed ones yet). Edits on an AVIF, JPEG XL or TIFF photo are always kept as edits (as on a RAW); **Save edits** writes them in the same format. Not in `standalone.html` opened from disk, which can't load the codecs.
 
 ## Folders (collating)
 
@@ -218,6 +255,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `E` | Adjust: light, color, curves |
 | `B` | Paint: brushes, shapes, text and layers |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy the photo's adjustments / paste them (onto the selection in grid view) |
+| `Ctrl+C` / `Ctrl+V` | Copy the photo as it looks (crop, adjustments and paint), to paste into another app / paste a picture from another app: saved as `Pasted.png` in the folder you're in and opened in Paint (with no project open, you choose where it's saved) |
 | `+` `-` `0` | Zoom in, zoom out, fit. The mouse wheel zooms on the pointer, up to 3200% (past 100% the pixels show as sharp squares, with no smoothing). Double-click the photo: in to 100% on that spot, again to fit. On a Mac's trackpad, pinch to zoom and move a zoomed photo with two fingers. |
 | `I` | Info: the photo in single view; in the grid, the folder you're in (photos, total size, types, dates, flags, room taken by `.jeditor`), or the selection |
 | `F` | Full screen |
@@ -227,6 +265,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `1`–`5` | Red, yellow, green, blue, purple label |
 | `U` | Clear flags |
 | `Shift+A` | Auto crop (the selection in grid view) |
+| `Shift+U` | Turn upright (the selection, or the photo) |
 | `Ctrl+F`, `/` | Search |
 | `Shift+N` | New folder |
 | `A` | Switch between All photos and folders (grid view) |
@@ -243,9 +282,9 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 
 In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `\` rotate 180°, `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `M` loupe, `+` `-` zoom, `Z` fit, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
-In Adjust: `Enter` done, `Shift+Enter` done and next, `Esc` cancel, `\` before and after, `Shift+A` auto, `Shift+C` auto color, `R` reset, `Ctrl+Shift+C` / `Ctrl+Shift+V` copy / paste, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
+In Adjust: `Enter` done, `Shift+Enter` done and next, `Esc` cancel, `\` before and after, `Shift+A` auto, `Shift+C` auto color, `W` pick grey (white balance), `R` reset, `Ctrl+Shift+C` / `Ctrl+Shift+V` copy / paste the adjustments, `Ctrl+C` / `Ctrl+V` copy the photo as it looks / paste a picture from another app, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
-In Paint: `Enter` done (or put down what's being moved), `Esc` cancel, `V` move, `M` rectangle / ellipse select, `L` lasso, `W` magic wand, `B` brush, `N` pencil, `E` eraser, `G` fill / gradient, `U` line, `R` rectangle, `O` ellipse, `T` text, `I` colour picker, `H` hand, `[` `]` brush size, `X` swap colours, `D` black and white, `Ctrl+A` / `Ctrl+D` select all / nothing, `Delete` clear the selection, `Ctrl+C` / `Ctrl+V` copy / paste (an image copied in another app comes in as a layer), `Ctrl+Shift+O` bring in an image, `Ctrl+Shift+N` new layer, `Ctrl+J` duplicate the layer, `Ctrl+E` merge down, `0` fit, `1` 100%, `+` `-` zoom, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
+In Paint: `Enter` done (or put down what's being moved), `Esc` cancel, `V` move, `M` rectangle / ellipse select, `L` lasso, `W` magic wand, `B` brush, `N` pencil, `E` eraser, `G` fill / gradient, `U` line, `R` rectangle, `O` ellipse, `T` text, `I` colour picker, `H` hand, `[` `]` brush size (or a line's, or the text's), `Shift`-click a straight line from the last stroke, `X` swap colours, `D` black and white, `Ctrl+A` / `Ctrl+D` select all / nothing, `Delete` clear the selection, `Ctrl+C` / `Ctrl+V` copy / paste (an image copied in another app comes in as a layer), `Ctrl+Shift+O` bring in an image, `Ctrl+Shift+N` new layer, `Ctrl+J` duplicate the layer, `Ctrl+E` merge down, `0` fit, `1` 100%, `+` `-` zoom, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
 In find duplicates: `1`–`9` mark or unmark a photo, `K` keep the suggested photo and mark the rest, `Enter` trash marked and go to the next group, `N` not duplicates, `←` `→` previous / next group, `Esc` close.
 
@@ -262,12 +301,16 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `paint.js`, `paint-editor.js`: Paint (the layers kept with the photo, and the screen)
 - `import.js`: importing from a camera's card
 - `blank.js`: Paint's start: a new canvas (right-click a folder, or the start page's Paint), or an image or folder to open
+- `themes.js`, `themes/`: the themes (Settings → Appearance): the list, their stylesheets, the title bar and menu bar they draw, 1984's dithered thumbnails
 - `modes.js`: Photos, Adjust and Paint as modes: the switch (sidebar, chip), the strip in Adjust and Paint, Start in
 - `disc.js`: burning a CD or DVD (the Windows app's `src/Burn.cs`)
 - `export.js`: the Export window (a USB drive, a disc, or copies)
+- `convert.js`: Convert (photos to AVIF, JPEG XL or WebP: the quality and close-up, the storage now and after, the dots)
+- `codec.js`, `codec-worker.js`, `codecs/`, `tiff-codec.js`: writing AVIF, JPEG XL, WebP, JPEG, PNG and TIFF, and reading JPEG XL, HEIC and TIFF, in workers (libavif, libjxl and libheif as WebAssembly; TIFF jEditor's own)
 - `crop-auto.js`: finding the print on a scan (Auto)
+- `crop-boxes.js`: Auto's map-to-boxes finder and full-detail edge fit (being scored; `CropAuto.find(..., { boxes: true })`)
 - `changelog.js`: the list of changes shown in What's new, and the release notes
-- `meta.js`: reading and copying JPEG/PNG metadata
+- `meta.js`: reading and copying JPEG/PNG metadata, and EXIF in WebP, AVIF and JPEG XL
 - `dupes.js`: duplicate finder
 - `rename.js`: batch rename
 - `folders.js`: folders: the folder list, moving and copying photos, making, renaming and deleting folders
