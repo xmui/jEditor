@@ -17,7 +17,7 @@ const Experiments = {
         {
             id: 'auto-crop',
             title: 'Auto crop',
-            text: 'Finds the print on a scan, straightens it and crops to it: Auto in the crop editor, Auto crop on the selection (Shift+A), Auto crop in the scan window and boxes found on the glass, and keeping test scans to improve it. Off while it\'s being fixed'
+            text: 'Finds the print on a scan, straightens it and crops to it: Auto in the crop editor, Auto crop on the selection (Shift+A), Auto crop in the scan window, and keeping test scans to improve it. Off while it\'s being fixed'
         }
     ],
 

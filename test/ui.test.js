@@ -3500,7 +3500,6 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 editor: !hidden('crop-auto') && !hidden('crop-auto-each'),
                 settings: !document.querySelector('[data-page="autocrop"][role="tab"]').classList.contains('exp-off'),
                 scan: !hidden('scan-autocrop'),
-                find: !hidden('scan-pv-find'),
                 menu: app.buildContextItems({ _file: app.files[0] }, false).some(it => /^Auto crop/.test(it[0] || '')),
                 themeMenu: Themes.menuItems('Picture', { all: true }).some(it => it[0] === 'Auto crop'),
                 shortcut: app.actionOn('edit.autoCrop') && app.actionOn('crop.auto'),
@@ -3508,6 +3507,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             });
             out.expDefault = Experiments.on('auto-crop');
             out.offShows = shows();
+            out.findStays = !hidden('scan-pv-find'); // the owner's exception: Find prints stays
             const offBytes = (await (await dir.getFileHandle('scan1.jpg')).getFile()).size;
             window.dispatchEvent(new KeyboardEvent('keydown', { key: 'A', shiftKey: true, bubbles: true }));
             await new Promise(res => setTimeout(res, 300));
@@ -3610,6 +3610,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('auto crop experiment: off to start with', r.expDefault === false);
         check('auto crop experiment off: hidden everywhere (bar, editor, settings, scan, menus, shortcuts)', Object.values(r.offShows).every(v => v === false), JSON.stringify(r.offShows));
         check('auto crop experiment off: Shift+A does nothing', r.offNothing);
+        check('auto crop experiment off: Find prints stays in the scan window', r.findStays);
         check('auto crop experiment on: all back', Object.values(r.onShows).every(v => v === true), JSON.stringify(r.onShows));
         check('auto crop: says what it did, with Undo', /Auto-cropped 2 photos — no print found on 1/.test(r.toast), r.toast);
         check('auto crop: originals kept in .jeditor/originals; one Ctrl+Z restores every byte', r.backups === 2 && r.restored && r.backupsAfter === 0, JSON.stringify(r));

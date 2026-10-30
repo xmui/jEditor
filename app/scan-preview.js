@@ -150,7 +150,7 @@ const ScanPreview = {
         const img = this.el('scan-pv-img');
         const { width: W, height: H } = this.image;
         let f = null;
-        if (Scan.app.autoCropOn()) try { f = PhotoFind.at(img, img.naturalWidth || W, img.naturalHeight || H, p.x * (img.naturalWidth || W), p.y * (img.naturalHeight || H)); } catch (e) { /* none */ }
+        try { f = PhotoFind.at(img, img.naturalWidth || W, img.naturalHeight || H, p.x * (img.naturalWidth || W), p.y * (img.naturalHeight || H)); } catch (e) { /* none */ }
         let box;
         if (f) {
             // (in the image's own pixels, which may not be the preview's)

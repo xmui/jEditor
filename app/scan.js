@@ -1061,9 +1061,9 @@ const Scan = {
             this.adoptCompat(pv.device.id, p);
             pv.bed = { w: p.bedW, h: p.bedH };
             await ScanPreview.show(p);
-            // Prints boxed by themselves only with the Auto crop experiment
-            // on; otherwise drag a box, or Scan whole glass
-            ScanPreview.set(this.app.autoCropOn() ? ScanPreview.find(this.el('scan-pv-img')) : []);
+            // (Finding the prints on the glass stays with the Auto crop
+            // experiment off: the owner's exception)
+            ScanPreview.set(ScanPreview.find(this.el('scan-pv-img')));
             if (bed.guessed) this.app.showToast('The scanner didn\'t say how big its glass is, so jEditor took it to be A4: choose its size under Glass if that\'s wrong', 6000);
         } catch (e) {
             this.pvError(`The preview didn't work: ${e.message}`);
