@@ -4350,6 +4350,7 @@ const app = {
         ['flag.purple', 'global', 'Flags', 'Purple label', ['5']],
         ['flag.clear', 'global', 'Flags', 'Clear flags', ['U']],
         ['edit.autoCrop', 'global', 'Edit', 'Auto crop the selection (grid)', ['Shift+A']],
+        ['edit.cropLike', 'global', 'Edit', 'Crop the selection like the last crop (grid)', ['Shift+P']],
         ['edit.upright', 'global', 'Edit', 'Turn upright (the selection, or the photo)', ['Shift+U']],
         ['edit.moveTo', 'global', 'Folders', 'Move to a folder…', ['M']],
         ['edit.copyTo', 'global', 'Folders', 'Copy to a folder…', ['Shift+M']],
@@ -4542,6 +4543,7 @@ const app = {
             'flag.purple': () => Flags.apply('purple'),
             'flag.clear': () => Flags.apply('clear'),
             'edit.autoCrop': () => this.batchAutoCrop(Folders.targets()),
+            'edit.cropLike': () => this.cropLike(Folders.targets()),
             'edit.upright': () => this.turnUpright(Folders.targets()),
             'edit.moveTo': () => Folders.openPicker(Folders.targets(), 'move'),
             'edit.copyTo': () => Folders.openPicker(Folders.targets(), 'copy'),
@@ -6782,6 +6784,7 @@ const app = {
                     [`Rotate ${n} right`, () => this.rotateBulk(90)],
                     [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
                     [`Auto crop ${n}`, () => this.batchAutoCrop(sel)],
+                    ...(this.getLastCrop() ? [[`Crop ${n} like the last crop`, () => this.cropLike(sel)]] : []),
                     [`Turn ${n} upright`, () => this.turnUpright(sel)],
                     ...(Adjust.clipboard() ? [[`Paste adjustments onto ${n}`, () => this.pasteAdjust(sel)]] : []),
                     ...(sel.some(f => f._edit) ? [[`Discard edits on ${sel.filter(f => f._edit).length.toLocaleString()}`, () => Edits.discard(sel)]] : []),
@@ -6805,6 +6808,7 @@ const app = {
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
                 ['Turn upright', () => this.turnUpright([file])],
                 ['Crop and straighten', () => { this.openSingle(file); this.enterCrop(); }],
+                ...(this.getLastCrop() ? [['Crop like the last crop', () => this.cropLike([file])]] : []),
                 ['Adjust…', () => this.enterAdjust(file)],
                 ...(file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
                 ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : []),
@@ -6970,6 +6974,8 @@ const app = {
             this.showToast('Cropping GIFs is not supported (animation would be lost)');
             return;
         }
+        // The other photos selected with it: Save offers to crop them the same way
+        this._cropOthers = this.selection.size > 1 && this.selection.has(file) ? [...this.selection].filter(f => f !== file) : null;
         if (this.viewMode !== 'single') this.setView('single');
         // Active from here on: keys go to the editor and rotation is blocked
         this.cropState.active = true;
@@ -7339,6 +7345,22 @@ const app = {
         try { localStorage.setItem('jeditor.lastCrop', JSON.stringify(snap)); } catch (e) { /* private mode */ }
     },
 
+    // After a crop is saved: with other photos selected, an offer to crop
+    // them the same way (select, crop one, then the rest)
+    cropSavedToast(msg, snap, plain = false) {
+        const others = (this._cropOthers || []).filter(f => this.files.includes(f));
+        this._cropOthers = null;
+        if (plain || !others.length) {
+            this.showToast(msg, 1800, null, null, { kind: 'crop' });
+            return;
+        }
+        const n = others.length;
+        this.showToast(msg, 8000, null, {
+            label: `Crop the other ${n === 1 ? 'one' : n.toLocaleString()} the same way`,
+            run: () => this.cropLike(others, snap)
+        }); // shown even with crop messages off: it's a question
+    },
+
     // Save the crop. With next: step to the following photo and open the
     // editor again — the fast path through a scan order.
     async saveCrop({ next = false } = {}) {
@@ -7372,7 +7394,7 @@ const app = {
             if (none && !(had && !Edits.wholePhoto(had))) this.showToast('No changes', 1500);
             else {
                 Edits.set([{ file, edit: Edits.withAdj(none ? null : snap, had && had.adj, had) }], 'crop');
-                this.showToast(none ? 'Back to the whole photo' : 'Crop kept — saved into the photo when you save the edits', 2200, null, null, { kind: 'crop' });
+                this.cropSavedToast(none ? 'Back to the whole photo' : 'Crop kept — saved into the photo when you save the edits', snap, next || none);
             }
             goNext();
             return;
@@ -7438,7 +7460,7 @@ const app = {
             ed.busy = false;
             this.cancelCrop();
             await this.afterFileChanged(file);
-            this.showToast(`Saved ${w} × ${h}`, 1800, null, null, { kind: 'crop' });
+            this.cropSavedToast(`Saved ${w} × ${h}`, snap, next);
             goNext();
         } catch (err) {
             console.error('Crop save failed:', err);
@@ -7702,7 +7724,12 @@ const app = {
             bmp.close();
         }
         if (ed.isIdentity()) return 'same';
+        return this.writeCrop(file, ed, backups);
+    },
 
+    // The crop of a headless editor written over the photo, its original
+    // copied to backups first: the undo item { file, backup, backupName }
+    async writeCrop(file, ed, backups) {
         const { type, quality } = this.getSaveFormat(file.name);
         const fileData = await file.handle.getFile();
         const original = new Uint8Array(await fileData.arrayBuffer());
@@ -7734,12 +7761,163 @@ const app = {
         return { file, backup: bh, backupName };
     },
 
+    // ---- Bulk crop ----
+    //
+    // One crop on many photos, as Lightroom syncs one: the same aspect,
+    // frame and straighten, relative to each photo's size, turned with a
+    // photo that's the other way round (CropEditor.likeOn). Each keeps its
+    // own quarter turn. Written like batch Auto crop (originals kept, one
+    // Ctrl+Z), or kept as edits when edits wait for Save. snap: a crop
+    // editor snapshot, the last crop by default.
+
+    // A photo's size as the crop editor sees it (EXIF turn applied)
+    async cropDims(file) {
+        if (file._rotationQueue) await file._rotationQueue;
+        const src = await this.getDisplaySource(file, { raw: true });
+        if (src.isPreview && src.w && src.h) return { W: src.w, H: src.h };
+        const bmp = await createImageBitmap(await this.readImage(file));
+        try {
+            return { W: bmp.width, H: bmp.height };
+        } finally {
+            bmp.close();
+        }
+    },
+
+    // The crop part of a kept edit for this photo (null: the whole photo,
+    // unturned)
+    async cropSnapFor(file, snap = this.getLastCrop()) {
+        const { W, H } = await this.cropDims(file);
+        const ed = CropEditor.likeOn(W, H, snap, (file._edit && file._edit.q) || 0);
+        return ed.isIdentity() && !ed.q ? null : ed.snapshot();
+    },
+
+    // The kept edits [{ file, edit }] that crop these photos with snap,
+    // each keeping its adjustments and paint. Nothing is set: the caller
+    // does Edits.set, so it can be one undo step with other changes.
+    // each(): after every photo, for progress. A photo that fails is left out.
+    async cropEdits(files, snap, each = () => { }) {
+        const items = [];
+        let next = 0;
+        const worker = async () => {
+            while (next < files.length) {
+                const f = files[next++];
+                try {
+                    const crop = await this.cropSnapFor(f, snap);
+                    items.push({ file: f, edit: Edits.withAdj(crop, f._edit && f._edit.adj, f._edit) });
+                    each(f, !!crop);
+                } catch (e) {
+                    console.error('Crop failed for', f.name, e);
+                    each(f, false, e);
+                }
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(this.AUTO_CROP_CONCURRENCY, files.length) }, worker));
+        return items;
+    },
+
+    // For Adjust's Sync: the crop of source (its kept edit) on the other
+    // photos, as cropEdits. Sync puts its adjustments on these and does
+    // one Edits.set. null: source has no kept crop to sync.
+    async cropEditsLike(source, files) {
+        const e = source && source._edit;
+        if (!e || Edits.wholePhoto(e)) return null;
+        const { W, H } = await this.cropDims(source);
+        const wide = (e.q % 2 ? H >= W : W >= H);
+        return this.cropEdits(files.filter(f => f && f !== source && !/\.gif$/i.test(f.name)), { ...e, wide });
+    },
+
+    async cropLike(files, snap = this.getLastCrop()) {
+        if (!snap) {
+            this.showToast('No crop yet: crop a photo first, then use it on the others');
+            return;
+        }
+        if (!this.ensureWritable()) return;
+        const list = [...new Set(files.filter(Boolean))].filter(f => !/\.gif$/i.test(f.name));
+        if (!list.length) {
+            this.showToast(files.length ? 'GIFs can\'t be cropped (the animation would be lost)' : 'Select some photos first');
+            return;
+        }
+        if (this._autoCropping) {
+            this.showToast('A crop of many photos is already running');
+            return;
+        }
+        if (this.editsSaving()) return;
+        const kept = list.filter(f => Edits.keeps(f));
+        const written = list.filter(f => !Edits.keeps(f));
+        if (written.length && !this.dirHandle) {
+            this.showToast('Cropping many photos needs a folder opened with Open folder');
+            return;
+        }
+        this._autoCropping = true;
+        const key = 'crop-like';
+        let done = 0, cropped = 0, failed = 0;
+        const label = () => `Cropping ${done}/${list.length}`;
+        this.beginTask(key, label());
+        const edits = [];
+        const entry = { type: 'auto-crop', label: 'crop', items: [] };
+        const run = async (items, one) => {
+            let next = 0;
+            const worker = async () => {
+                while (next < items.length) {
+                    const f = items[next++];
+                    try {
+                        if (await one(f)) cropped++;
+                    } catch (e) {
+                        console.error('Crop failed for', f.name, e);
+                        failed++;
+                    }
+                    done++;
+                    this.updateTask(key, label());
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(this.AUTO_CROP_CONCURRENCY, items.length) }, worker));
+        };
+        try {
+            edits.push(...await this.cropEdits(kept, snap, (f, ok, err) => {
+                if (ok) cropped++;
+                if (err) failed++;
+                done++;
+                this.updateTask(key, label());
+            }));
+            if (written.length) {
+                await this.verifyPermission(this.dirHandle, true);
+                const backups = await (await FolderCache.root(this, true)).getDirectoryHandle('originals', { create: true });
+                await run(written, async (f) => {
+                    const { W, H } = await this.cropDims(f);
+                    const ed = CropEditor.likeOn(W, H, snap);
+                    if (ed.isIdentity()) return false;
+                    entry.items.push(await this.writeCrop(f, ed, backups));
+                    return true;
+                });
+            }
+        } catch (e) {
+            this.showToast('Crop failed: ' + e.message, 4000);
+        } finally {
+            this.endTask(key);
+            this._autoCropping = false;
+        }
+        if (edits.length) Edits.set(edits, 'crop');
+        if (entry.items.length) this.pushUndo(entry);
+        const msg = (cropped ? `Cropped ${cropped} photo${cropped === 1 ? '' : 's'} the same way` : 'Nothing was cropped') +
+            (failed ? ` — ${failed} failed` : '') + (cropped && kept.length && !written.length ? ' — check them, then Save' : '');
+        const last = (this._undoStack || [])[(this._undoStack || []).length - 1];
+        this.showToast(msg, cropped ? 5000 : 3000, null, cropped ? {
+            label: 'Undo',
+            run: () => {
+                const stack = this._undoStack || [];
+                if (stack[stack.length - 1] === last) this.undo();
+                else this.showToast('Something else changed since — use Ctrl+Z');
+            }
+        } : null, { type: failed && !cropped ? 'error' : 'crop', kind: 'crop' });
+        return cropped;
+    },
+
     // Put every photo of a batch back from .jeditor/originals
     async undoAutoCrop(entry) {
         const items = entry.items.slice();
         let failed = 0, next = 0;
         const many = items.length > 1;
-        if (many) this.beginTask('undo-auto-crop', `Undoing auto crop of ${items.length} photos…`);
+        if (many) this.beginTask('undo-auto-crop', `Undoing ${entry.label || 'auto crop'} of ${items.length} photos…`);
         const worker = async () => {
             while (next < items.length) {
                 const it = items[next++];
@@ -7762,7 +7940,7 @@ const app = {
             if (many) this.endTask('undo-auto-crop');
         }
         if (failed) throw new Error(`${failed} photo${failed === 1 ? '' : 's'} could not be put back`);
-        if (!entry.quiet) this.showToast(`Undid auto crop on ${items.length} photo${items.length === 1 ? '' : 's'}`, 3000, null, null, { kind: 'undo' });
+        if (!entry.quiet) this.showToast(`Undid ${entry.label || 'auto crop'} on ${items.length} photo${items.length === 1 ? '' : 's'}`, 3000, null, null, { kind: 'undo' });
     },
 
     // ---- Saving edits kept until saved (edits.js) ----

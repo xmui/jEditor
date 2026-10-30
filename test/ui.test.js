@@ -1240,6 +1240,45 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.previous = Math.abs(ed.rect.x0 + 150) < 1e-6 && Math.abs(ed.rect.x1 - 50) < 1e-6;
             app.cancelCrop();
 
+            {
+                // Bulk crop: one crop on many, relative to each photo's size and
+                // way round, its aspect kept exactly; one Ctrl+Z for them all
+                const likeSrc = CropEditor.headless(400, 300);
+                likeSrc.aspectKey = '4:5';
+                likeSrc.landscape = true;
+                likeSrc.angle = 2;
+                likeSrc.applyAspectToRect({ x0: -180, y0: -120, x1: 180, y1: 120 });
+                const like = likeSrc.snapshot();
+                const ratio = (h) => { const o = h.outputRect(); return o.w / o.h; };
+                const big = CropEditor.likeOn(800, 600, like), tall = CropEditor.likeOn(300, 400, like);
+                out.likeBig = Math.abs(ratio(big) - 1.25) < 0.01 && Math.abs((big.rect.x1 - big.rect.x0) / (likeSrc.rect.x1 - likeSrc.rect.x0) - 2) < 0.01 && big.angle === 2;
+                out.likeTall = Math.abs(ratio(tall) - 0.8) < 0.01 && tall.q === 0;
+                const bulkRoot = makeDir('Bulk');
+                const b1 = makeFakeFile('b1.jpg', await makeRealJpeg(400, 300, {}), 'image/jpeg');
+                const b2 = makeFakeFile('b2.jpg', await makeRealJpeg(300, 400, {}), 'image/jpeg');
+                const b1Before = b1.handle.bytes;
+                for (const f of [b1, b2]) { f.parentDir = bulkRoot; bulkRoot._files.set(f.name, f.handle); }
+                const savedDir = app.dirHandle;
+                app.dirHandle = bulkRoot;
+                app.files = [b1, b2];
+                app._undoStack = [];
+                const nBulk = await app.cropLike([b1, b2], like);
+                const dimsOf = async (f) => { const bm = await createImageBitmap(new Blob([f.handle.bytes])); const d = [bm.width, bm.height]; bm.close(); return d; };
+                const [w1, h1] = await dimsOf(b1), [w2, h2] = await dimsOf(b2);
+                out.bulkCropped = nBulk === 2 && Math.abs(w1 / h1 - 1.25) < 0.02 && Math.abs(w2 / h2 - 0.8) < 0.02 && app._undoStack.length === 1;
+                await app.undo();
+                out.bulkUndone = b1.handle.bytes.length === b1Before.length && (await dimsOf(b2)).join() === '300,400';
+                // Adjust's Sync: the source's kept crop as edits, nothing set
+                b1._edit = { q: 0, angle: 2, aspectKey: '4:5', landscape: true, n: like.n, adj: { exposure: 0.5 } };
+                const undos = app._undoStack.length;
+                const items = await app.cropEditsLike(b1, [b1, b2]);
+                const e2 = items && items[0] && items[0].edit;
+                out.syncCrop = items.length === 1 && items[0].file === b2 && !b2._edit && app._undoStack.length === undos &&
+                    e2.angle === 2 && Math.abs((e2.n.x1 - e2.n.x0) * 300 / ((e2.n.y1 - e2.n.y0) * 400) - 0.8) < 0.02;
+                delete b1._edit;
+                app.dirHandle = savedDir;
+            }
+
             // Save & Next opens the editor on the following photo
             const n1 = makeFakeFile('n1.jpg', await makeRealJpeg(300, 200, {}), 'image/jpeg');
             const n2 = makeFakeFile('n2.jpg', await makeRealJpeg(300, 200, {}), 'image/jpeg');
@@ -1521,6 +1560,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('level tool: near-vertical line → plumb (+2.86°)', Math.abs(r.plumb - 2.86) < 0.01, String(r.plumb));
         check('quarter turn without crop saves losslessly', r.quarterLossless);
         check('"Previous" reapplies the last crop', r.previous);
+        check('Bulk crop keeps the aspect, scaled to a bigger photo, with its tilt', r.likeBig);
+        check('Bulk crop turns the frame for a photo the other way round', r.likeTall);
+        check('Bulk crop crops each selected photo the same way', r.bulkCropped);
+        check('One Ctrl+Z puts a bulk crop back', r.bulkUndone);
+        check('Sync gets the crop as edits for the others, nothing set', r.syncCrop);
         check('Save & Next moves on and reopens the editor', r.next);
         check('PNG crop stays PNG and keeps DPI', r.pngType === 'image/png' && r.pngDpi === 300, `${r.pngType} ${r.pngDpi}`);
         check('Auto straightens a tilted print (−3°)', r.autoFound && Math.abs(r.autoAngle + 3) < 0.15, String(r.autoAngle));
