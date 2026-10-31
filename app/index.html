@@ -36,6 +36,7 @@
     <script src="adjust.js"></script>
     <script src="adjust-masks.js"></script>
     <script src="adjust-spots.js"></script>
+    <script src="adjust-sync.js"></script>
     <script src="paint.js"></script>
     <script src="paint-editor.js"></script>
     <script src="history.js"></script>
@@ -315,7 +316,7 @@
                 <button id="btn-rotate-right-bulk" class="tb-btn" title="Rotate right (])" aria-label="Rotate right">
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
                 </button>
-                <button id="btn-auto-crop" class="tb-btn labelled" title="Find the print on each scan, straighten and crop to it (Shift+A)">
+                <button id="btn-auto-crop" class="tb-btn labelled" data-experiment="auto-crop" title="Find the print on each scan, straighten and crop to it (Shift+A)">
                     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4M19 14v4M10 2v2M7 8H3M21 16h-4M11 3H9"/></svg>
                     <span>Auto crop</span>
                 </button>
@@ -419,8 +420,8 @@
                         <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
                     </button>
                 </span>
-                <span class="crop-sep" aria-hidden="true"></span>
-                <span class="crop-group">
+                <span class="crop-sep" aria-hidden="true" data-experiment="auto-crop"></span>
+                <span class="crop-group" data-experiment="auto-crop">
                     <button id="crop-auto" class="btn ghost crop-btn" title="Auto: straighten and crop to the print on a scan (Shift+A)">
                         <svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4M19 14v4M10 2v2M7 8H3M21 16h-4M11 3H9"/></svg>
                         Auto
@@ -448,6 +449,8 @@
             <span id="adj-file" class="mode-title"></span>
             <span id="adj-dims" class="crop-dims"></span>
             <span id="adj-before-tag" class="adj-tag hidden">Before</span>
+            <!-- Auto Sync on (adjust-sync.js): what's changed goes onto the others selected in the strip -->
+            <span id="adj-sync-chip" class="adj-sync-chip hidden" role="status">Auto sync: <span id="adj-sync-n"></span><button id="adj-sync-off" class="adj-sync-x" title="Turn Auto Sync off (Ctrl+Alt+Shift+S)" aria-label="Turn Auto Sync off">✕</button></span>
             <!-- No Done bar: what's done is kept; the mode switch (or Esc) goes back to Photos -->
             <span class="mode-head-acts" role="toolbar" aria-label="Adjust">
                 <button id="adj-before" class="btn ghost sm" aria-pressed="false" title="Before and after (\)">Before</button>
@@ -695,7 +698,7 @@
                     <button role="tab" data-page="appearance" aria-controls="set-page-appearance"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg><span>Appearance</span></button>
                     <button role="tab" data-page="toolbar" aria-controls="set-page-toolbar"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="7" x="3" y="4" rx="3.5"/><path d="M7 7.5h.01M11 7.5h.01M15 7.5h.01"/><path d="M4 17h16"/><path d="M4 20h10"/></svg><span>Toolbar &amp; keys</span></button>
                     <button role="tab" data-page="messages" aria-controls="set-page-messages"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span>Messages</span></button>
-                    <button role="tab" data-page="autocrop" aria-controls="set-page-autocrop"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg><span>Auto crop</span></button>
+                    <button role="tab" data-page="autocrop" data-experiment="auto-crop" aria-controls="set-page-autocrop"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg><span>Auto crop</span></button>
                     <button role="tab" data-page="projects" aria-controls="set-page-projects"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>Projects</span></button>
                     <button role="tab" data-page="experimental" aria-controls="set-page-experimental"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6.5L4.6 18.4A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.4-2.6L14 9.5V3"/><path d="M7.5 15h9"/></svg><span>Experimental</span></button>
                     <button role="tab" data-page="updates" data-needs="updates" aria-controls="set-page-updates"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg><span>Updates</span></button>
@@ -844,7 +847,7 @@
                         <div id="cust-toasts"></div>
                     </section>
 
-                    <section id="set-page-autocrop" class="settings-section" data-page="autocrop" role="tabpanel" aria-labelledby="set-h-autocrop">
+                    <section id="set-page-autocrop" class="settings-section" data-page="autocrop" data-experiment="auto-crop" role="tabpanel" aria-labelledby="set-h-autocrop">
                         <h3 id="set-h-autocrop" class="settings-page-title">Auto crop</h3>
                         <div class="set-row">
                             <label class="set-label" for="crop-log-on">Keep scans to improve Auto crop
@@ -1116,6 +1119,30 @@
         </div>
     </div>
 
+    <!-- Sync: one photo's settings onto the rest of the selection (adjust-sync.js) -->
+    <div id="sync-panel" class="dialog-overlay hidden">
+        <div class="dialog prompt-card sync-card" role="dialog" aria-modal="true" aria-labelledby="sync-title">
+            <div class="dialog-head">
+                <h2 id="sync-title" class="dialog-title">Sync settings</h2>
+            </div>
+            <div class="dialog-body">
+                <p id="sync-text" class="op-text"></p>
+                <div id="sync-groups" class="sync-groups" role="group" aria-label="Settings to sync"></div>
+                <p id="sync-note" class="sync-note"></p>
+            </div>
+            <div class="dialog-foot">
+                <span class="dialog-actions">
+                    <button id="sync-all" class="btn ghost sm">Check all</button>
+                    <button id="sync-none" class="btn ghost sm">Check none</button>
+                </span>
+                <span class="dialog-actions rename-actions">
+                    <button id="sync-cancel" class="btn secondary">Cancel</button>
+                    <button id="sync-ok" class="btn primary">Sync</button>
+                </span>
+            </div>
+        </div>
+    </div>
+
     <!-- Import from a camera's card (import.js) -->
     <div id="import-panel" class="dialog-overlay hidden">
         <div class="dialog prompt-card import-card" role="dialog" aria-modal="true" aria-labelledby="import-title">
@@ -1321,7 +1348,7 @@
                 <section class="scan-sec scan-checks">
                     <h3 class="scan-sec-head">Each photo</h3>
                     <div class="scan-switches">
-                        <label class="scan-switch" for="scan-autocrop">
+                        <label class="scan-switch" for="scan-autocrop" data-experiment="auto-crop">
                             <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
                             <span>Auto crop<small>jEditor finds each print and crops to it.</small></span>
                             <input id="scan-autocrop" type="checkbox" class="switch">

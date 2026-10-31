@@ -186,11 +186,24 @@ const app = {
         this.elements.gridSizeSlider.addEventListener('input', (e) => this.setGridSize(parseInt(e.target.value, 10)));
         // Off-screen tiles stand in at the real tile size (see syncGridTile)
         // (and a huge folder's grid builds the tiles the new size needs)
-        if (typeof ResizeObserver === 'function') new ResizeObserver(() => {
+        // Narrower or wider (the window, the folder list): other columns,
+        // and the photo the view was on stays where it was on screen
+        // (the content box: the folder list makes room with padding)
+        if (typeof ResizeObserver === 'function') new ResizeObserver((entries) => {
+            const w = entries[entries.length - 1].contentRect.width;
+            const place = w && this._gridW && w !== this._gridW ? this._gridPlace : null;
+            this._gridW = w;
             this.syncGridTile();
             this.updateGridWindow({ force: true });
+            if (place) this.restoreGridPlace(place);
+            this.rememberGridPlace();
         }).observe(this.elements.gridView);
-        this.elements.gridView.addEventListener('scroll', () => this.updateGridWindow(), { passive: true });
+        this.elements.gridView.addEventListener('scroll', () => {
+            this.updateGridWindow();
+            clearTimeout(this._gridPlaceTimer);
+            this._gridPlaceTimer = setTimeout(() => this.rememberGridPlace(), 120);
+        }, { passive: true });
+        this.elements.gridView.addEventListener('click', () => this.rememberGridPlace());
         this.elements.thumbnailStrip.addEventListener('scroll', () => this.updateStripWindow(), { passive: true });
         if (typeof ResizeObserver === 'function') new ResizeObserver(() => this.updateStripWindow({ force: true })).observe(this.elements.thumbnailStrip);
 
@@ -242,6 +255,7 @@ const app = {
 
         Folders.init(this);
         Recents.init(this);
+        AdjustSync.init(this);
         Stored.init(this);
         CropLog.init(this);
         Updates.init(this);
@@ -4149,7 +4163,10 @@ const app = {
             const rect = item.getBoundingClientRect();
             const containerRect = this.elements.gridView.getBoundingClientRect();
             if (rect.top < containerRect.top || rect.bottom > containerRect.bottom) {
-                item.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                // A key held: at once, rather than a smooth scroll begun
+                // again on every repeat, never catching up
+                const held = typeof Motion !== 'undefined' && Motion.held;
+                item.scrollIntoView({ block: 'center', behavior: held ? 'auto' : 'smooth' });
             }
         }
     },
@@ -4334,6 +4351,7 @@ const app = {
         ['edit.paint', 'global', 'Edit', 'Paint: brushes, shapes, text and layers', ['B']],
         ['edit.copyAdjust', 'global', 'Edit', 'Copy the photo\'s adjustments', ['Ctrl+Shift+C']],
         ['edit.pasteAdjust', 'global', 'Edit', 'Paste adjustments (onto the selection in grid)', ['Ctrl+Shift+V']],
+        ['edit.syncAdjust', 'global', 'Edit', 'Sync: the outlined photo\'s adjustments onto the rest of the selection', ['Ctrl+Shift+S']],
         ['edit.copyImage', 'global', 'Edit', 'Copy the photo as it looks, to paste into another app', ['Ctrl+C']],
         ['edit.pasteImage', 'global', 'Edit', 'Paste an image from another app: a new picture, in Paint', ['Ctrl+V']],
         ['edit.rename', 'global', 'Edit', 'Rename (the selection in grid view)', ['F2']],
@@ -4350,6 +4368,7 @@ const app = {
         ['flag.purple', 'global', 'Flags', 'Purple label', ['5']],
         ['flag.clear', 'global', 'Flags', 'Clear flags', ['U']],
         ['edit.autoCrop', 'global', 'Edit', 'Auto crop the selection (grid)', ['Shift+A']],
+        ['edit.cropLike', 'global', 'Edit', 'Crop the selection like the last crop (grid)', ['Shift+P']],
         ['edit.upright', 'global', 'Edit', 'Turn upright (the selection, or the photo)', ['Shift+U']],
         ['edit.moveTo', 'global', 'Folders', 'Move to a folder…', ['M']],
         ['edit.copyTo', 'global', 'Folders', 'Copy to a folder…', ['Shift+M']],
@@ -4410,6 +4429,8 @@ const app = {
         ['adjust.reset', 'adjust', 'Adjust', 'Reset everything', ['R']],
         ['adjust.copy', 'adjust', 'Adjust', 'Copy the adjustments', ['Ctrl+Shift+C']],
         ['adjust.paste', 'adjust', 'Adjust', 'Paste adjustments', ['Ctrl+Shift+V']],
+        ['adjust.sync', 'adjust', 'Adjust', 'Sync: these settings onto the others selected in the strip', ['Ctrl+Shift+S']],
+        ['adjust.autoSync', 'adjust', 'Adjust', 'Auto Sync: what you change goes onto the others selected in the strip too', ['Ctrl+Alt+Shift+S']],
         ['adjust.copyImage', 'adjust', 'Adjust', 'Copy the photo as it looks, to paste into another app', ['Ctrl+C']],
         ['adjust.pasteImage', 'adjust', 'Adjust', 'Paste an image from another app: a new picture, in Paint', ['Ctrl+V']],
         ['adjust.undo', 'adjust', 'Adjust', 'Undo', ['Ctrl+Z']],
@@ -4519,6 +4540,7 @@ const app = {
             'edit.paint': () => this.enterPaint(),
             'edit.copyAdjust': () => this.copyAdjust(),
             'edit.pasteAdjust': () => this.pasteAdjust(grid() && this.selection.size ? [...this.selection] : [this.currentFile]),
+            'edit.syncAdjust': () => this.syncAdjust(),
             // Text picked out (in Info, say) is copied as text, as usual
             'edit.copyImage': () => (String(getSelection()) ? false : this.copyImage()),
             // The paste event brings the image (paste below)
@@ -4542,6 +4564,7 @@ const app = {
             'flag.purple': () => Flags.apply('purple'),
             'flag.clear': () => Flags.apply('clear'),
             'edit.autoCrop': () => this.batchAutoCrop(Folders.targets()),
+            'edit.cropLike': () => this.cropLike(Folders.targets()),
             'edit.upright': () => this.turnUpright(Folders.targets()),
             'edit.moveTo': () => Folders.openPicker(Folders.targets(), 'move'),
             'edit.copyTo': () => Folders.openPicker(Folders.targets(), 'copy'),
@@ -4614,6 +4637,8 @@ const app = {
             'adjust.reset': () => Adjust.reset(),
             'adjust.copy': () => Adjust.copy(),
             'adjust.paste': () => Adjust.paste(),
+            'adjust.sync': () => AdjustSync.fromAdjust(),
+            'adjust.autoSync': () => AdjustSync.toggleAuto(),
             'adjust.copyImage': () => (String(getSelection()) ? false : this.copyImage(Adjust.file, Adjust.result())),
             'adjust.pasteImage': () => false,
             'adjust.undo': () => { if (!Adjust.undo()) this.showToast('Nothing to undo', 1200); },
@@ -4893,7 +4918,7 @@ const app = {
 
         // The rename tool, folder dialogs, Settings and the alert/confirm
         // dialogs handle their own keys
-        if (Renamer.isOpen || Folders.isModalOpen() || Export.isOpen() || Recents.isPromptOpen() || UI.isOpen() || Stored.isOpen() || Scan.isOpen() || Camera.isOpen() || Blank.isOpen()) return;
+        if (Renamer.isOpen || Folders.isModalOpen() || Export.isOpen() || Recents.isPromptOpen() || AdjustSync.isOpen() || UI.isOpen() || Stored.isOpen() || Scan.isOpen() || Camera.isOpen() || Blank.isOpen()) return;
 
         // What's New is modal: Esc closes it
         if (this.isWhatsNewOpen()) {
@@ -4970,11 +4995,25 @@ const app = {
         // A focused button's own Enter/Space press isn't a shortcut there
         if (context === 'adjust' && e.target && e.target.tagName === 'BUTTON' && (combo === 'Enter' || combo === 'Space')) return;
 
-        const handler = this.keyHandlers()[id];
+        const handler = this.actionOn(id) && this.keyHandlers()[id];
         if (!handler) return;
         if (handler(e) === false) return;
         e.preventDefault();
         e.stopImmediatePropagation();
+    },
+
+    // Auto crop is an experiment (Settings → Experimental), off to start
+    // with: while it's off it shows nowhere and nothing runs it
+    autoCropOn() {
+        return typeof Experiments !== 'undefined' && Experiments.on('auto-crop');
+    },
+
+    // Shortcuts and menu commands that belong to an experiment
+    ACTION_EXPERIMENTS: { 'edit.autoCrop': 'auto-crop', 'crop.auto': 'auto-crop' },
+
+    actionOn(id) {
+        const x = this.ACTION_EXPERIMENTS[id];
+        return !x || (typeof Experiments !== 'undefined' && Experiments.on(x));
     },
 
     openDupes() {
@@ -5160,6 +5199,7 @@ const app = {
         const groups = new Map();
         this.KEY_ACTIONS.forEach(a => {
             const [id, , group, label] = a;
+            if (!this.actionOn(id)) return;
             const keys = this.keyBindings[id];
             const text = (label + ' ' + keys.map(k => this.formatCombo(k)).join(' ')).toLowerCase();
             if (filter && !text.includes(filter)) return;
@@ -5301,13 +5341,28 @@ const app = {
     keepGridPlace(fn) {
         const a = this.gridAnchor();
         const result = fn();
-        if (a) {
-            const grid = this.elements.gridView;
-            const el = a.el._file ? this.revealInGrid(a.el._file)
-                : grid.querySelector(`.folder-tile[data-folder-path="${CSS.escape(a.el.dataset.folderPath || '')}"]`);
-            if (el && el.isConnected) grid.scrollTop += el.getBoundingClientRect().top - a.top;
-        }
+        if (a) this.restoreGridPlace(a);
         return result;
+    },
+
+    restoreGridPlace(a) {
+        const grid = this.elements.gridView;
+        const el = a.el._file ? this.revealInGrid(a.el._file)
+            : grid.querySelector(`.folder-tile[data-folder-path="${CSS.escape(a.el.dataset.folderPath || '')}"]`);
+        if (el && el.isConnected) grid.scrollTop += el.getBoundingClientRect().top - a.top;
+    },
+
+    // Where the view is, for when the grid changes width (its resize
+    // observer runs after the change, too late to look)
+    // Not while a new width is still to be seen: what's on screen then is
+    // the new layout, and the observer puts back the place noted before it
+    rememberGridPlace() {
+        const grid = this.elements.gridView;
+        if (!grid.clientWidth) { this._gridPlace = null; return; }
+        const cs = getComputedStyle(grid);
+        const w = grid.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+        if (this._gridW && Math.abs(w - this._gridW) > 0.5) return;
+        this._gridPlace = this.gridAnchor();
     },
 
     gridAnchor() {
@@ -6781,9 +6836,11 @@ const app = {
                     [`Rotate ${n} left`, () => this.rotateBulk(-90)],
                     [`Rotate ${n} right`, () => this.rotateBulk(90)],
                     [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
-                    [`Auto crop ${n}`, () => this.batchAutoCrop(sel)],
+                    ...(this.autoCropOn() ? [[`Auto crop ${n}`, () => this.batchAutoCrop(sel)]] : []),
+                    ...(this.getLastCrop() ? [[`Crop ${n} like the last crop`, () => this.cropLike(sel)]] : []),
                     [`Turn ${n} upright`, () => this.turnUpright(sel)],
                     ...(Adjust.clipboard() ? [[`Paste adjustments onto ${n}`, () => this.pasteAdjust(sel)]] : []),
+                    [`Sync adjustments from ${file.name}…`, () => this.syncAdjust(file, sel)],
                     ...(sel.some(f => f._edit) ? [[`Discard edits on ${sel.filter(f => f._edit).length.toLocaleString()}`, () => Edits.discard(sel)]] : []),
                     ['—'],
                     [`Move ${n} to…`, () => Folders.openPicker(sel, 'move')],
@@ -6805,6 +6862,7 @@ const app = {
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
                 ['Turn upright', () => this.turnUpright([file])],
                 ['Crop and straighten', () => { this.openSingle(file); this.enterCrop(); }],
+                ...(this.getLastCrop() ? [['Crop like the last crop', () => this.cropLike([file])]] : []),
                 ['Adjust…', () => this.enterAdjust(file)],
                 ...(file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
                 ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : []),
@@ -6970,6 +7028,8 @@ const app = {
             this.showToast('Cropping GIFs is not supported (animation would be lost)');
             return;
         }
+        // The other photos selected with it: Save offers to crop them the same way
+        this._cropOthers = this.selection.size > 1 && this.selection.has(file) ? [...this.selection].filter(f => f !== file) : null;
         if (this.viewMode !== 'single') this.setView('single');
         // Active from here on: keys go to the editor and rotation is blocked
         this.cropState.active = true;
@@ -7306,6 +7366,17 @@ const app = {
         this.showToast(file._edit && file._edit.adj ? `Copied the adjustments of ${file.name}` : 'Copied: no adjustments (pasting takes them off)', 1800, null, null, { kind: 'adjust' });
     },
 
+    // Sync (adjust-sync.js): the outlined photo's adjustments onto the rest
+    // of the selection
+    syncAdjust(source = this.currentFile, files = [...this.selection]) {
+        if (Modes.current() === 'adjust') return AdjustSync.fromAdjust();
+        if (Modes.current() !== 'photos') {
+            this.showToast('Sync is in Photos and Adjust: select the photos, then the one to sync from last');
+            return;
+        }
+        AdjustSync.open(source, files);
+    },
+
     // The copied adjustments onto these photos (their crops stay theirs)
     pasteAdjust(files) {
         files = files.filter(f => f && !/\.gif$/i.test(f.name));
@@ -7337,6 +7408,22 @@ const app = {
     rememberCrop(snap) {
         this._lastCrop = snap;
         try { localStorage.setItem('jeditor.lastCrop', JSON.stringify(snap)); } catch (e) { /* private mode */ }
+    },
+
+    // After a crop is saved: with other photos selected, an offer to crop
+    // them the same way (select, crop one, then the rest)
+    cropSavedToast(msg, snap, plain = false) {
+        const others = (this._cropOthers || []).filter(f => this.files.includes(f));
+        this._cropOthers = null;
+        if (plain || !others.length) {
+            this.showToast(msg, 1800, null, null, { kind: 'crop' });
+            return;
+        }
+        const n = others.length;
+        this.showToast(msg, 8000, null, {
+            label: `Crop the other ${n === 1 ? 'one' : n.toLocaleString()} the same way`,
+            run: () => this.cropLike(others, snap)
+        }); // shown even with crop messages off: it's a question
     },
 
     // Save the crop. With next: step to the following photo and open the
@@ -7372,7 +7459,7 @@ const app = {
             if (none && !(had && !Edits.wholePhoto(had))) this.showToast('No changes', 1500);
             else {
                 Edits.set([{ file, edit: Edits.withAdj(none ? null : snap, had && had.adj, had) }], 'crop');
-                this.showToast(none ? 'Back to the whole photo' : 'Crop kept — saved into the photo when you save the edits', 2200, null, null, { kind: 'crop' });
+                this.cropSavedToast(none ? 'Back to the whole photo' : 'Crop kept — saved into the photo when you save the edits', snap, next || none);
             }
             goNext();
             return;
@@ -7438,7 +7525,7 @@ const app = {
             ed.busy = false;
             this.cancelCrop();
             await this.afterFileChanged(file);
-            this.showToast(`Saved ${w} × ${h}`, 1800, null, null, { kind: 'crop' });
+            this.cropSavedToast(`Saved ${w} × ${h}`, snap, next);
             goNext();
         } catch (err) {
             console.error('Crop save failed:', err);
@@ -7504,6 +7591,7 @@ const app = {
     },
 
     async batchAutoCrop(files, { ask = true, feeder = false, scan = false } = {}) {
+        if (!this.autoCropOn()) return;
         if (!this.ensureWritable()) return;
         if (!this.dirHandle) {
             this.showToast('Auto crop needs a folder opened with Open folder');
@@ -7702,7 +7790,12 @@ const app = {
             bmp.close();
         }
         if (ed.isIdentity()) return 'same';
+        return this.writeCrop(file, ed, backups);
+    },
 
+    // The crop of a headless editor written over the photo, its original
+    // copied to backups first: the undo item { file, backup, backupName }
+    async writeCrop(file, ed, backups) {
         const { type, quality } = this.getSaveFormat(file.name);
         const fileData = await file.handle.getFile();
         const original = new Uint8Array(await fileData.arrayBuffer());
@@ -7734,12 +7827,163 @@ const app = {
         return { file, backup: bh, backupName };
     },
 
+    // ---- Bulk crop ----
+    //
+    // One crop on many photos, as Lightroom syncs one: the same aspect,
+    // frame and straighten, relative to each photo's size, turned with a
+    // photo that's the other way round (CropEditor.likeOn). Each keeps its
+    // own quarter turn. Written like batch Auto crop (originals kept, one
+    // Ctrl+Z), or kept as edits when edits wait for Save. snap: a crop
+    // editor snapshot, the last crop by default.
+
+    // A photo's size as the crop editor sees it (EXIF turn applied)
+    async cropDims(file) {
+        if (file._rotationQueue) await file._rotationQueue;
+        const src = await this.getDisplaySource(file, { raw: true });
+        if (src.isPreview && src.w && src.h) return { W: src.w, H: src.h };
+        const bmp = await createImageBitmap(await this.readImage(file));
+        try {
+            return { W: bmp.width, H: bmp.height };
+        } finally {
+            bmp.close();
+        }
+    },
+
+    // The crop part of a kept edit for this photo (null: the whole photo,
+    // unturned)
+    async cropSnapFor(file, snap = this.getLastCrop()) {
+        const { W, H } = await this.cropDims(file);
+        const ed = CropEditor.likeOn(W, H, snap, (file._edit && file._edit.q) || 0);
+        return ed.isIdentity() && !ed.q ? null : ed.snapshot();
+    },
+
+    // The kept edits [{ file, edit }] that crop these photos with snap,
+    // each keeping its adjustments and paint. Nothing is set: the caller
+    // does Edits.set, so it can be one undo step with other changes.
+    // each(): after every photo, for progress. A photo that fails is left out.
+    async cropEdits(files, snap, each = () => { }) {
+        const items = [];
+        let next = 0;
+        const worker = async () => {
+            while (next < files.length) {
+                const f = files[next++];
+                try {
+                    const crop = await this.cropSnapFor(f, snap);
+                    items.push({ file: f, edit: Edits.withAdj(crop, f._edit && f._edit.adj, f._edit) });
+                    each(f, !!crop);
+                } catch (e) {
+                    console.error('Crop failed for', f.name, e);
+                    each(f, false, e);
+                }
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(this.AUTO_CROP_CONCURRENCY, files.length) }, worker));
+        return items;
+    },
+
+    // For Adjust's Sync: the crop of source (its kept edit) on the other
+    // photos, as cropEdits. Sync puts its adjustments on these and does
+    // one Edits.set. null: source has no kept crop to sync.
+    async cropEditsLike(source, files) {
+        const e = source && source._edit;
+        if (!e || Edits.wholePhoto(e)) return null;
+        const { W, H } = await this.cropDims(source);
+        const wide = (e.q % 2 ? H >= W : W >= H);
+        return this.cropEdits(files.filter(f => f && f !== source && !/\.gif$/i.test(f.name)), { ...e, wide });
+    },
+
+    async cropLike(files, snap = this.getLastCrop()) {
+        if (!snap) {
+            this.showToast('No crop yet: crop a photo first, then use it on the others');
+            return;
+        }
+        if (!this.ensureWritable()) return;
+        const list = [...new Set(files.filter(Boolean))].filter(f => !/\.gif$/i.test(f.name));
+        if (!list.length) {
+            this.showToast(files.length ? 'GIFs can\'t be cropped (the animation would be lost)' : 'Select some photos first');
+            return;
+        }
+        if (this._autoCropping) {
+            this.showToast('A crop of many photos is already running');
+            return;
+        }
+        if (this.editsSaving()) return;
+        const kept = list.filter(f => Edits.keeps(f));
+        const written = list.filter(f => !Edits.keeps(f));
+        if (written.length && !this.dirHandle) {
+            this.showToast('Cropping many photos needs a folder opened with Open folder');
+            return;
+        }
+        this._autoCropping = true;
+        const key = 'crop-like';
+        let done = 0, cropped = 0, failed = 0;
+        const label = () => `Cropping ${done}/${list.length}`;
+        this.beginTask(key, label());
+        const edits = [];
+        const entry = { type: 'auto-crop', label: 'crop', items: [] };
+        const run = async (items, one) => {
+            let next = 0;
+            const worker = async () => {
+                while (next < items.length) {
+                    const f = items[next++];
+                    try {
+                        if (await one(f)) cropped++;
+                    } catch (e) {
+                        console.error('Crop failed for', f.name, e);
+                        failed++;
+                    }
+                    done++;
+                    this.updateTask(key, label());
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(this.AUTO_CROP_CONCURRENCY, items.length) }, worker));
+        };
+        try {
+            edits.push(...await this.cropEdits(kept, snap, (f, ok, err) => {
+                if (ok) cropped++;
+                if (err) failed++;
+                done++;
+                this.updateTask(key, label());
+            }));
+            if (written.length) {
+                await this.verifyPermission(this.dirHandle, true);
+                const backups = await (await FolderCache.root(this, true)).getDirectoryHandle('originals', { create: true });
+                await run(written, async (f) => {
+                    const { W, H } = await this.cropDims(f);
+                    const ed = CropEditor.likeOn(W, H, snap);
+                    if (ed.isIdentity()) return false;
+                    entry.items.push(await this.writeCrop(f, ed, backups));
+                    return true;
+                });
+            }
+        } catch (e) {
+            this.showToast('Crop failed: ' + e.message, 4000);
+        } finally {
+            this.endTask(key);
+            this._autoCropping = false;
+        }
+        if (edits.length) Edits.set(edits, 'crop');
+        if (entry.items.length) this.pushUndo(entry);
+        const msg = (cropped ? `Cropped ${cropped} photo${cropped === 1 ? '' : 's'} the same way` : 'Nothing was cropped') +
+            (failed ? ` — ${failed} failed` : '') + (cropped && kept.length && !written.length ? ' — check them, then Save' : '');
+        const last = (this._undoStack || [])[(this._undoStack || []).length - 1];
+        this.showToast(msg, cropped ? 5000 : 3000, null, cropped ? {
+            label: 'Undo',
+            run: () => {
+                const stack = this._undoStack || [];
+                if (stack[stack.length - 1] === last) this.undo();
+                else this.showToast('Something else changed since — use Ctrl+Z');
+            }
+        } : null, { type: failed && !cropped ? 'error' : 'crop', kind: 'crop' });
+        return cropped;
+    },
+
     // Put every photo of a batch back from .jeditor/originals
     async undoAutoCrop(entry) {
         const items = entry.items.slice();
         let failed = 0, next = 0;
         const many = items.length > 1;
-        if (many) this.beginTask('undo-auto-crop', `Undoing auto crop of ${items.length} photos…`);
+        if (many) this.beginTask('undo-auto-crop', `Undoing ${entry.label || 'auto crop'} of ${items.length} photos…`);
         const worker = async () => {
             while (next < items.length) {
                 const it = items[next++];
@@ -7762,7 +8006,7 @@ const app = {
             if (many) this.endTask('undo-auto-crop');
         }
         if (failed) throw new Error(`${failed} photo${failed === 1 ? '' : 's'} could not be put back`);
-        if (!entry.quiet) this.showToast(`Undid auto crop on ${items.length} photo${items.length === 1 ? '' : 's'}`, 3000, null, null, { kind: 'undo' });
+        if (!entry.quiet) this.showToast(`Undid ${entry.label || 'auto crop'} on ${items.length} photo${items.length === 1 ? '' : 's'}`, 3000, null, null, { kind: 'undo' });
     },
 
     // ---- Saving edits kept until saved (edits.js) ----

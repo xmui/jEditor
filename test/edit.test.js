@@ -276,6 +276,163 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- Sync: one photo's settings onto the rest (adjust-sync.js) ----
+    if (wanted('sync')) {
+        console.log('sync (adjust-sync.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            const out = {};
+            let step = 'open';
+            try {
+                const jpg = () => canvasBlob(scene(200, 150), 'image/jpeg', 0.9);
+                // p and d for Crop: one portrait, one turned a quarter
+                await openProject('sync', { 'a.jpg': await jpg(), 'b.jpg': await jpg(), 'c.jpg': await jpg(), 'p.jpg': await canvasBlob(scene(150, 200), 'image/jpeg', 0.9), 'd.jpg': await jpg() });
+                const f = (n) => app.files.find(x => x.name === n);
+                // The source: light, a look, a radial mask, a spot
+                step = 'source';
+                Edits.set([{ file: f('a.jpg'), edit: Edits.withAdj(null, { exposure: 1, contrast: 20, temp: 15, look: 'portra400', masks: [{ type: 'radial', adj: { exposure: 0.5 }, radial: [0.5, 0.5, 0.2, 0.2, 0, 0.5] }], spots: [{ x: 0.5, y: 0.5, r: 0.02, sx: 0.6, sy: 0.5 }] }) }], 'adjustments');
+                // b: its own white balance, mask and spot; c: cropped
+                Edits.set([
+                    { file: f('b.jpg'), edit: Edits.withAdj(null, { temp: -30, saturation: 40, masks: [{ type: 'linear', adj: { exposure: -1 }, linear: [0, 0, 0, 1] }], spots: [{ x: 0.2, y: 0.2, r: 0.02, sx: 0.3, sy: 0.2 }] }) },
+                    { file: f('c.jpg'), edit: { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0, y1: 0.5 } } }
+                ], 'setup');
+                // The dialog: masks and spots unticked to start with
+                step = 'dialog';
+                try { localStorage.removeItem(AdjustSync.KEY); } catch (e) { /* fresh */ }
+                app.selection = new Set([f('a.jpg'), f('b.jpg'), f('c.jpg')]);
+                app.currentFile = f('a.jpg');
+                app.syncAdjust();
+                await until(() => AdjustSync.isOpen());
+                const box = (id) => document.querySelector(`#sync-groups input[value="${id}"]`);
+                out.defaults = box('light').checked && box('look').checked && !box('masks').checked && !box('spots').checked;
+                out.unset = box('detail').parentElement.classList.contains('sync-unset') && !box('light').parentElement.classList.contains('sync-unset');
+                // Light and look only: b keeps its white balance, mask and spot
+                step = 'apply';
+                for (const i of document.querySelectorAll('#sync-groups input')) i.checked = ['light', 'look'].includes(i.value);
+                const undoBefore = (app._undoStack || []).length;
+                document.getElementById('sync-ok').click();
+                await until(() => !AdjustSync.isOpen());
+                const b = f('b.jpg')._edit.adj, c = f('c.jpg')._edit;
+                out.light = b.exposure === 1 && b.contrast === 20 && b.look === 'portra400';
+                out.keptOwn = b.temp === -30 && b.saturation === 40 && b.masks.length === 1 && b.masks[0].type === 'linear' && b.spots.length === 1;
+                out.cropKept = c && c.n.x1 === 0 && c.adj && c.adj.exposure === 1 && !c.adj.temp;
+                out.sourceSame = f('a.jpg')._edit.adj.temp === 15;
+                // (Crop, unticked only because a has no crop, stays on for next time)
+                out.remembered = JSON.stringify(JSON.parse(localStorage.getItem(AdjustSync.KEY)).on) === JSON.stringify(AdjustSync.cropper() ? ['look', 'light', 'crop'] : ['look', 'light']);
+                out.oneStep = app._undoStack.length === undoBefore + 1;
+                // One Ctrl+Z undoes it on both
+                step = 'undo';
+                pressKey('z', { ctrlKey: true });
+                await until(() => f('b.jpg')._edit.adj.exposure === undefined);
+                out.undone = f('b.jpg')._edit.adj.exposure === undefined && f('b.jpg')._edit.adj.temp === -30 && !f('c.jpg')._edit.adj;
+                // Masks ticked: the radial goes; a group the source hasn't
+                // changed, ticked, takes the other's off
+                step = 'masks';
+                await AdjustSync.apply(f('a.jpg'), [f('b.jpg')], ['masks', 'presence']);
+                const b2 = f('b.jpg')._edit.adj;
+                out.masks = b2.masks.length === 1 && b2.masks[0].type === 'radial' && !b2.saturation && b2.temp === -30;
+                // Sky and subject masks stay with their own photo
+                const own = Develop.synced({ masks: [{ type: 'radial', adj: {}, radial: [0.5, 0.5, 0.2, 0.2, 0, 0.5] }] }, { masks: [] }, ['masks']);
+                out.cleared = !own;
+                // Crop (with Photos' bulk crop): the same as "Crop like the
+                // last crop" on the same photos: a portrait one gets the frame
+                // turned to fit, a turned one keeps its own quarter turn
+                if (typeof app.cropEditsLike === 'function') {
+                    step = 'crop';
+                    Edits.set([
+                        { file: f('a.jpg'), edit: { q: 0, angle: 3, n: { x0: -0.4, y0: -0.3, x1: 0.2, y1: 0.4 } } },
+                        { file: f('c.jpg'), edit: null },
+                        { file: f('d.jpg'), edit: { q: 1, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } } }
+                    ], 'setup');
+                    out.cropRow = AdjustSync.groups()[0].id === 'crop' && !AdjustSync.groups()[0].off;
+                    const others = [f('c.jpg'), f('p.jpg'), f('d.jpg')];
+                    const crops = () => others.map(x => { const e = x._edit || {}; return { q: e.q, angle: e.angle, n: e.n, landscape: e.landscape }; });
+                    await AdjustSync.apply(f('a.jpg'), others, ['crop']);
+                    const synced = crops();
+                    pressKey('z', { ctrlKey: true });
+                    await until(() => !f('c.jpg')._edit);
+                    await app.cropLike(others, { ...f('a.jpg')._edit, wide: true });
+                    await until(() => f('c.jpg')._edit);
+                    const liked = crops();
+                    out.cropSame = JSON.stringify(synced) === JSON.stringify(liked);
+                    out.cropFits = synced[0].angle === 3 && synced[2].q === 1 && JSON.stringify(synced[0].n) !== JSON.stringify(synced[1].n);
+                    out.crop = { synced, liked };
+                } else out.cropSame = out.cropFits = out.cropRow = 'no bulk crop';
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('sync: the dialog starts with masks and spot removal unticked, and greys what the source hasn\'t changed', r.defaults && r.unset, JSON.stringify(r));
+        check('sync: the ticked groups go onto the rest; each keeps the rest of its own, and its crop', r.light && r.keptOwn && r.cropKept && r.sourceSame, JSON.stringify(r));
+        check('sync: what\'s ticked is remembered', r.remembered, JSON.stringify(r));
+        check('sync: one Ctrl+Z undoes it on every photo', r.oneStep && r.undone, JSON.stringify(r));
+        check('sync: masks, when ticked, go too; a group the source hasn\'t changed is taken off the others', r.masks && r.cleared, JSON.stringify(r));
+        // In Adjust: the strip's selection, Sync from what's being made,
+        // and Auto Sync
+        const r2 = await page.evaluate(async () => {
+            const out = {};
+            let step = 'adjust';
+            try {
+                const f = (n) => app.files.find(x => x.name === n);
+                Edits.set(['a.jpg', 'b.jpg', 'c.jpg'].map(n => ({ file: f(n), edit: null })), 'clear');
+                Edits.set([{ file: f('b.jpg'), edit: Edits.withAdj(null, { temp: -30 }) }], 'setup');
+                app.selection = new Set([f('a.jpg')]);
+                await app.enterAdjust(f('a.jpg'));
+                await until(() => Adjust.ready);
+                // Ctrl+click and Shift+click in the strip
+                step = 'strip';
+                const thumb = (n) => [...document.querySelectorAll('#mode-strip .mode-thumb')].find(d => d._file === f(n));
+                thumb('c.jpg').dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+                thumb('b.jpg').dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+                out.strip = Adjust.file === f('a.jpg') && thumb('b.jpg').classList.contains('sel') && thumb('c.jpg').classList.contains('sel') && !thumb('a.jpg').classList.contains('sel');
+                // Auto Sync: only the setting changed goes, a moment after
+                step = 'auto';
+                pressKey('S', { ctrlKey: true, altKey: true, shiftKey: true });
+                out.chip = AdjustSync.auto && !document.getElementById('adj-sync-chip').classList.contains('hidden') && /2 photos/.test(document.getElementById('adj-sync-chip').textContent);
+                Adjust.pushHistory();
+                Adjust.a.exposure = 0.8;
+                Adjust.changed();
+                await until(() => f('b.jpg')._edit && f('b.jpg')._edit.adj.exposure === 0.8);
+                out.auto = f('b.jpg')._edit.adj.exposure === 0.8 && f('b.jpg')._edit.adj.temp === -30 && f('c.jpg')._edit && f('c.jpg')._edit.adj.exposure === 0.8;
+                // c taken out: no longer changed; Ctrl+Z in Adjust takes the
+                // step off the others too
+                step = 'undo';
+                thumb('c.jpg').dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+                Adjust.undo();
+                await until(() => !f('b.jpg')._edit.adj.exposure);
+                out.undo = !f('b.jpg')._edit.adj.exposure && f('b.jpg')._edit.adj.temp === -30 && f('c.jpg')._edit.adj.exposure === 0.8;
+                // Sync with the dialog: Adjust's settings as they are now
+                step = 'sync';
+                Adjust.pushHistory();
+                Adjust.a.contrast = 30;
+                Adjust.changed();
+                AdjustSync.toggleAuto(false);
+                out.offFlushed = !AdjustSync.auto && f('b.jpg')._edit.adj.contrast === 30;
+                Adjust.a.contrast = 40;
+                Adjust.changed();
+                pressKey('S', { ctrlKey: true, shiftKey: true });
+                await until(() => AdjustSync.isOpen());
+                document.getElementById('sync-ok').click();
+                await until(() => f('b.jpg')._edit.adj.contrast === 40);
+                out.sync = f('b.jpg')._edit.adj.contrast === 40;
+                // A plain click opens that one alone; leaving turns it off
+                step = 'leave';
+                AdjustSync.toggleAuto(true);
+                thumb('b.jpg').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                await until(() => Adjust.file === f('b.jpg') && Adjust.ready);
+                out.leave = !AdjustSync.auto && !AdjustSync.targets().length && document.getElementById('adj-sync-chip').classList.contains('hidden');
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('sync in Adjust: Ctrl+click in the strip selects others, the open photo apart', r2.strip, JSON.stringify(r2));
+        check('sync in Adjust: Auto Sync puts a changed setting onto the others selected, only that one, with a chip while on', r2.chip && r2.auto, JSON.stringify(r2));
+        check('sync in Adjust: Ctrl+Z takes the step off the others too; one taken out of the selection isn\'t changed', r2.undo, JSON.stringify(r2));
+        check('sync in Adjust: turning it off sends the last change; Ctrl+Shift+S syncs Adjust\'s settings as they are', r2.offFlushed && r2.sync, JSON.stringify(r2));
+        check('sync in Adjust: a plain click opens that photo alone, and Auto Sync goes off', r2.leave, JSON.stringify(r2));
+        if (r.cropSame !== 'no bulk crop') check('sync: Crop, ticked to start with, gives what "Crop like the last crop" does (a portrait frame turned to fit, each photo\'s own quarter turn kept)', r.cropRow && r.cropSame && r.cropFits, JSON.stringify(r.crop || r));
+        check('sync: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Sky and subject masks ----
     if (wanted('masks')) {
         console.log('sky and subject masks (select.js)');
@@ -1048,6 +1205,36 @@ const PROJECT = `
         check('paint: a gradient from the foreground colour to the background', t.gradient, JSON.stringify(t));
         check('paint: merging down keeps a layer\'s opacity; Ctrl+Z undoes it', t.merged && t.unmerged, JSON.stringify(t));
         check('paint: what\'s moved scales from a corner, its selection with it', t.scaled && t.afterScale && t.afterScale[0] === 255 && t.afterScale[1], JSON.stringify(t));
+
+        // A tall photo fits on screen as Paint opens (not measured before
+        // the film strip is in), and again when the window changes size;
+        // zoomed in by hand, it stays as it was
+        const fitted = async () => page.evaluate(() => {
+            const P = PaintEditor, st = document.getElementById('paint-stage').getBoundingClientRect();
+            const top = st.top + P.view.y, bottom = top + P.OH * P.view.z;
+            return { z: +P.view.z.toFixed(3), top: Math.round(top), bottom: Math.round(bottom), stage: [Math.round(st.top), Math.round(st.bottom)], inside: top >= st.top - 1 && bottom <= st.bottom + 1 };
+        });
+        await page.evaluate(async () => {
+            const c = document.createElement('canvas'); c.width = 480; c.height = 1200;
+            const g = c.getContext('2d'); g.fillStyle = '#4a7'; g.fillRect(0, 0, 480, 1200);
+            await openProject('tall', { 'tall.png': await canvasBlob(c, 'image/png') });
+            app.openSingle(app.files[0]);
+            await sleep(100);
+            pressKey('b');
+            await until(() => PaintEditor.ready);
+        });
+        await page.waitForTimeout(400);
+        const fit = { open: await fitted() };
+        await page.setViewportSize({ width: 1100, height: 560 });
+        await page.waitForTimeout(400);
+        fit.smaller = await fitted();
+        await page.evaluate(() => PaintEditor.zoomTo(1));
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await page.waitForTimeout(400);
+        fit.zoomed = await fitted();
+        check('paint: a tall photo fits as it opens, and again when the window changes size', fit.open.inside && fit.smaller.inside && fit.smaller.z < fit.open.z, JSON.stringify(fit));
+        check('paint: zoomed in by hand, a new window size leaves the zoom alone', fit.zoomed.z === 1, JSON.stringify(fit.zoomed));
+        await page.evaluate(() => pressKey('Escape'));
         check('paint: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

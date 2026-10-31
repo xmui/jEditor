@@ -2721,6 +2721,65 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     font-weight: var(--fw-semibold);
 }
 
+/* Sync (adjust-sync.js): which groups of settings go */
+.sync-groups {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-2) var(--sp-4);
+    margin-top: var(--sp-4);
+}
+
+.sync-check {
+    color: var(--text-1);
+}
+
+/* The source hasn't changed it: ticked, it takes the others' off */
+.sync-check.sync-unset {
+    color: var(--text-3);
+}
+
+.sync-note {
+    margin: var(--sp-3) 0 0;
+    min-height: var(--lh-small);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+/* Auto Sync on, in Adjust's head: only while it's changing other photos */
+.adj-sync-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    padding: 0 2px 0 var(--sp-2);
+    border-radius: 999px;
+    border: 1px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    color: var(--text-1);
+    font-size: var(--fs-small);
+    line-height: var(--lh-small);
+    white-space: nowrap;
+}
+
+.adj-sync-chip.hidden {
+    display: none;
+}
+
+.adj-sync-x {
+    border: 0;
+    background: transparent;
+    color: var(--text-2);
+    padding: 0 var(--sp-1);
+    border-radius: 999px;
+    cursor: pointer;
+    font: inherit;
+}
+
+.adj-sync-x:hover,
+.adj-sync-x:focus-visible {
+    color: var(--text-1);
+    background: color-mix(in srgb, var(--text-1) 12%, transparent);
+}
+
 /* Prompt-style dialogs (folder name, alert/confirm/prompt) */
 .dialog.prompt-card {
     width: min(440px, 100%);
@@ -6102,6 +6161,22 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     outline-offset: 2px;
 }
 
+/* Selected too, in Adjust (Ctrl+click): what Sync puts the open photo's
+   settings onto. A ring inside, so the open one (outside) stays apart */
+.mode-thumb.sel {
+    position: relative;
+    opacity: 1;
+}
+
+.mode-thumb.sel::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 2px var(--accent);
+    pointer-events: none;
+}
+
 /* Duplicates */
 .dupes-head {
     justify-content: flex-start;
@@ -8646,17 +8721,6 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     color: var(--danger-text);
 }
 
-/* It fades where it is: moved, its box would be off the row the edits
-   bar lines up with (fit.js) */
-:root:not([data-skin]) .interface:has(#selection-bar:not(.hidden)) .grid-controls {
-    opacity: 0;
-    pointer-events: none;
-}
-
-:root:not([data-skin]) .grid-controls {
-    transition: opacity var(--dur-base) var(--ease-out);
-}
-
 /* Lens, Clear, Crystal and Liquid glass are too light to keep words
    readable on their own over a bright photo: a halo behind them does
    (--glass-halo, tokens.css; none on Opaque). Buttons and fields too,
@@ -8768,7 +8832,8 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    (nothing runs for it), and only at the edges: in the middle they're
    still and whole. In a huge folder's grid, which builds its tiles as it
    scrolls, not while it jumps (grid-jump, motion.js): it would cost a
-   frame there. No fill: the tiles out of sight keep their real size,
+   frame there. Nor while a key is held (motion.js), when it lagged and
+   showed rows faded to the background mid-view. No fill: the tiles out of sight keep their real size,
    where the grid measures them (gridY, revealInGrid) */
 @supports (animation-timeline: view()) {
     @media (prefers-reduced-motion: no-preference) {

@@ -81,6 +81,8 @@ const Themes = {
             ['Paste image', () => app.pasteFromMenu()],
             ['Copy adjustments', 'edit.copyAdjust', true],
             ['Paste adjustments', 'edit.pasteAdjust', true],
+            ['Sync adjustments…', 'edit.syncAdjust', true],
+            ['Auto Sync', 'adjust.autoSync', true],
             '—',
             ['Search', 'app.search', true]
         ],
@@ -358,6 +360,7 @@ const Themes = {
             if (item === '—') { out.push(['—']); continue; }
             const [label, act, needsProject] = item;
             if (needsProject && !app.dirHandle && !all) continue;
+            if (typeof act === 'string' && !app.actionOn(act)) continue; // an experiment that's off
             const run = typeof act === 'function' ? act : () => handlers[act] && handlers[act]();
             const keys = typeof act === 'string' && app.keyBindings && app.keyBindings[act];
             out.push([label, run, false, keys && keys.length ? Host.keys(keys[0]) : '', keys && keys.length ? keys[0] : '', !needsProject || !!app.dirHandle]);

@@ -30,8 +30,14 @@ static class Program
         // wrong): --log's file, else %LOCALAPPDATA%\jEditor\logs\jEditor.log
         Log.Init(options.LogFile ?? Log.Default());
         // The smoke test keeps its order data out of the real one
+        // (its store beside the order, out of %LOCALAPPDATA% as the real one is)
         if (options.SmokeDir is not null)
+        {
             Shell.DataDir = Path.Combine(Path.GetTempPath(), "jEditor-smoke-data-" + Guid.NewGuid().ToString("N"));
+            Shell.StoreDir = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(options.SmokeDir))!, "jEditor-smoke-store");
+        }
+        else
+            Shell.MoveOldOrders();
         Log.Write($"jEditor {Application.ProductVersion} starting: {string.Join(' ', args)}");
 
         ApplicationConfiguration.Initialize();

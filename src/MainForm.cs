@@ -570,7 +570,7 @@ sealed class MainForm : Form
             {
                 case "dataDir":
                 {
-                    Directory.CreateDirectory(Shell.OrdersDir);
+                    Shell.MakeOrdersDir();
                     var handle = FolderHandle(Shell.OrdersDir);
                     Reply(id, handle is null ? new { error = "no storage" } : new { path = Shell.OrdersDir }, handle);
                     break;

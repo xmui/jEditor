@@ -102,7 +102,7 @@ const History = {
             case 'rename': return { what: 'Rename', detail: `${e.oldName} → ${e.file.name}` };
             case 'batch-rename': return { what: 'Rename', detail: one(e.items) };
             case 'flags': return { what: this.flagWhat(e), detail: one(e.items) };
-            case 'auto-crop': return { what: 'Auto crop', detail: one(e.items) };
+            case 'auto-crop': return { what: e.label ? label(e.label) : 'Auto crop', detail: one(e.items) };
             case 'edits': return { what: e.label === 'edits' ? 'Discard edits' : `${label(e.label)} (kept)`, detail: one(e.items) };
             case 'saved-edits': return { what: 'Save edits', detail: one(e.edits) };
             case 'trash': return { what: 'Delete', detail: one(e.items, it => it.file ? it.file.name : it.name) };

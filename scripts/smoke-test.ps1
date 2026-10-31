@@ -10,7 +10,9 @@ param([string]$Exe = (Join-Path (Split-Path -Parent $PSScriptRoot) 'dist\publish
 $ErrorActionPreference = 'Stop'
 if (-not (Test-Path $Exe)) { throw "No $Exe; run scripts/build.ps1 first" }
 
-$work = Join-Path ([IO.Path]::GetTempPath()) ("jeditor-smoke-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+# In the user's folder, where orders are (Pictures, Documents): not under
+# %LOCALAPPDATA% (the temp folder), where WebView2 156 stops the page writing
+$work = Join-Path $env:USERPROFILE ("jeditor-smoke-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
 $photos = Join-Path $work 'Smoke Order'
 New-Item -ItemType Directory -Force $photos | Out-Null
 

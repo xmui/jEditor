@@ -425,12 +425,45 @@ const Modes = {
         // The same photos: kept as they are (their thumbnails loaded)
         const same = this._stripFor && this._stripFor.length === files.length && files.every((f, i) => f === this._stripFor[i]);
         if (!same || strip.childElementCount !== files.length) this.fillStrip(files);
-        for (const div of strip.children) div.classList.toggle('active', div._file === current);
+        for (const div of strip.children) {
+            div.classList.toggle('active', div._file === current);
+            div.classList.toggle('sel', mode === 'adjust' && div._file !== current && app.selection.has(div._file));
+        }
         const on = [...strip.children].find(d => d._file === current);
         if (on) {
             const target = on.offsetLeft - (strip.clientWidth - on.offsetWidth) / 2;
             if (Math.abs(strip.scrollLeft - target) > 1) strip.scrollLeft = target;
         }
+    },
+
+    // In Adjust, Ctrl+click picks others too and Shift+click a run of
+    // them, for Sync (adjust-sync.js); a plain click opens that one alone
+    stripClick(f, e) {
+        const app = this.app;
+        const cur = Adjust.file;
+        if (this.current() !== 'adjust' || !cur || !(e.ctrlKey || e.metaKey || e.shiftKey)) {
+            if (this.current() === 'adjust') this.stripSelect(new Set([f]));
+            this.step(f);
+            return;
+        }
+        const sel = new Set([...app.selection, cur]);
+        if (e.shiftKey) {
+            const files = app.viewFiles();
+            const [i, j] = [files.indexOf(cur), files.indexOf(f)].sort((x, y) => x - y);
+            for (const x of files.slice(i, j + 1)) sel.add(x);
+        } else if (f !== cur) {
+            if (sel.has(f)) sel.delete(f);
+            else sel.add(f);
+        }
+        this.stripSelect(sel);
+    },
+
+    stripSelect(sel) {
+        const app = this.app;
+        app.selection = sel;
+        if (app.updateSelectionUI) app.updateSelectionUI();
+        this.placeStrip(this.current());
+        AdjustSync.selected();
     },
 
     fillStrip(files) {
@@ -459,7 +492,13 @@ const Modes = {
             div.title = f.relPath || f.name;
             div.setAttribute('aria-label', f.name);
             div._file = f;
-            div.addEventListener('click', () => this.step(f));
+            div.addEventListener('click', (e) => this.stripClick(f, e));
+            div.addEventListener('contextmenu', (e) => {
+                if (this.current() !== 'adjust') return;
+                e.preventDefault();
+                if (f !== Adjust.file && !app.selection.has(f)) this.stripSelect(new Set([...app.selection, Adjust.file, f]));
+                app.openContextMenu(AdjustSync.stripItems(), e.clientX, e.clientY);
+            });
             frag.appendChild(div);
             this._observer.observe(div);
         }

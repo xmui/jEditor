@@ -83,6 +83,27 @@ sealed class Smoke
         return (false, $"no stored folder names {dir} (the path worked out from a photo was wrong?)");
     }
 
+    // An old orders folder with an order in it moves to the new place, and
+    // isn't moved over one that's there already
+    static string? MovedOrders()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "jEditor-smoke-move-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var from = Path.Combine(root, "old", "orders");
+            var to = Path.Combine(root, "new", "orders");
+            Directory.CreateDirectory(Path.Combine(from, "Smith-1"));
+            File.WriteAllText(Path.Combine(from, "Smith-1", "flags.json"), "{}");
+            if (!Shell.MoveOrders(from, to)) return "not moved";
+            if (!File.Exists(Path.Combine(to, "Smith-1", "flags.json")) || Directory.Exists(from)) return "not all there";
+            Directory.CreateDirectory(Path.Combine(from, "Jones-2"));
+            if (Shell.MoveOrders(from, to) || Directory.Exists(Path.Combine(to, "Jones-2"))) return "moved over the new one";
+            return null;
+        }
+        catch (Exception e) { return e.Message; }
+        finally { try { Directory.Delete(root, true); } catch (Exception) { } }
+    }
+
     // Three test scans after scan_0001…0003: scan_0004…0006, whole JPEGs,
     // nothing half-written left, and all three shown in jEditor
     (bool, string?) Scanned(JsonNode msg)
@@ -186,6 +207,12 @@ sealed class Smoke
         if (count != before.Count) problems.Add($"jEditor listed {count} photos, the folder has {before.Count}");
         if (msg["rotated"]?.GetValue<bool>() != true) problems.Add("the rotation reported failure");
         if (msg["errors"] is JsonArray errors && errors.Count > 0) problems.Add("JS errors: " + errors.ToJsonString());
+        // The page's store: out of %LOCALAPPDATA%, where WebView2 156 stops
+        // the page writing; and 1.50.0's orders moved into it, once
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (Shell.DefaultStoreDir.StartsWith(local + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            problems.Add($"the store {Shell.DefaultStoreDir} is under {local}");
+        if (MovedOrders() is string notMoved) problems.Add("moving 1.50.0's orders: " + notMoved);
         if (msg["steps"] is JsonObject steps)
         {
             Log.Write("Smoke steps: " + steps.ToJsonString());
