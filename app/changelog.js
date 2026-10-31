@@ -6,6 +6,12 @@
 
 const CHANGELOG = [
     {
+        version: '1.50.2', date: '2026-10-31', beta: true,
+        items: [
+            'Adjust no longer pauses for a moment when you let go of a slider: the looks\' pictures are drawn again in a fraction of the time.',
+        ]
+    },
+    {
         version: '1.50.1', date: '2026-10-31',
         items: [
             'Windows: flags, edits, Auto crop originals and thumbnails are saved again. The latest Windows update to WebView2 (what jEditor shows its window with) stopped jEditor saving them where it kept them, in AppData. They\'re now kept in a hidden .jeditor-app folder in your user folder, and what was saved before moves there by itself the first time jEditor starts.',
@@ -17,7 +23,6 @@ const CHANGELOG = [
             'The thumbnail-size slider at the bottom right of the grid is back, beside the selection bar.',
             'The grid keeps your place when you show or hide the folder list (`Ctrl+B`) or resize the window.',
             'Paint fits a tall photo on screen as it opens, and again when the window changes size.',
-            'Adjust no longer pauses for a moment when you let go of a slider: the looks\' pictures are drawn again in a fraction of the time.',
         ]
     },
     {
