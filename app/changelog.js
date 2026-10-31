@@ -12,6 +12,10 @@ const CHANGELOG = [
             'Auto crop is an experiment for now, off to start with, while it\'s being fixed: turn it on in Settings → Experimental. While it\'s off, Auto and Every photo in the crop editor, Auto crop on the selection (`Shift+A`), Auto crop in the scan window and its settings page don\'t show, and no test scans are kept. Finding the prints on the glass in the scan window stays.',
             'Sync, as in Lightroom (`Ctrl+Shift+S`, Edit → Sync adjustments…, or right-click a selection): select photos, click the one to sync from last, and tick what goes onto the rest: its crop (fitted to each, as Crop like the last crop does), look, white balance, light, levels, curve, color mixer, grading, detail and effects. Masks and spot removal start unticked, since they belong to one photo. Each photo keeps what isn\'t ticked, and one `Ctrl+Z` undoes it on all of them.',
             'Sync and Auto Sync in Adjust: `Ctrl`+click photos in the strip to select them too, then Sync (`Ctrl+Shift+S`, or right-click the strip) puts the open photo\'s settings onto them. Auto Sync (`Ctrl+Alt+Shift+S`) sends each setting you change onto them as well, only that one, while an Auto sync chip at the top says it\'s on.',
+            'Holding an arrow key in the grid no longer flashes black: the photos keep up, and the highlighted one stays in view.',
+            'The thumbnail-size slider at the bottom right of the grid is back, beside the selection bar.',
+            'The grid keeps your place when you show or hide the folder list (`Ctrl+B`) or resize the window.',
+            'Paint fits a tall photo on screen as it opens, and again when the window changes size.',
         ]
     },
     {

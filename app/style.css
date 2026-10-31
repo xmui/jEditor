@@ -8721,17 +8721,6 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     color: var(--danger-text);
 }
 
-/* It fades where it is: moved, its box would be off the row the edits
-   bar lines up with (fit.js) */
-:root:not([data-skin]) .interface:has(#selection-bar:not(.hidden)) .grid-controls {
-    opacity: 0;
-    pointer-events: none;
-}
-
-:root:not([data-skin]) .grid-controls {
-    transition: opacity var(--dur-base) var(--ease-out);
-}
-
 /* Lens, Clear, Crystal and Liquid glass are too light to keep words
    readable on their own over a bright photo: a halo behind them does
    (--glass-halo, tokens.css; none on Opaque). Buttons and fields too,
@@ -8843,7 +8832,8 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    (nothing runs for it), and only at the edges: in the middle they're
    still and whole. In a huge folder's grid, which builds its tiles as it
    scrolls, not while it jumps (grid-jump, motion.js): it would cost a
-   frame there. No fill: the tiles out of sight keep their real size,
+   frame there. Nor while a key is held (motion.js), when it lagged and
+   showed rows faded to the background mid-view. No fill: the tiles out of sight keep their real size,
    where the grid measures them (gridY, revealInGrid) */
 @supports (animation-timeline: view()) {
     @media (prefers-reduced-motion: no-preference) {
