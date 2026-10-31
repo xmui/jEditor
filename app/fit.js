@@ -80,12 +80,14 @@ const Fit = {
     fit() {
         const iface = this.el('main-interface');
         if (!iface || iface.classList.contains('hidden') || !iface.offsetWidth) return;
-        // A theme's docked bars (themes.js) have room for everything
+        // A theme's docked bars (themes.js) have room for everything, but
+        // for the foot bar in a narrow window (fitDocked)
         if (document.documentElement.dataset.layout === 'docked') {
             for (const b of document.querySelectorAll('[data-squeezed]')) delete b.dataset.squeezed;
             const fi = document.querySelector('.file-info');
             if (fi) fi.style.maxWidth = '';
             iface.dataset.fit = '';
+            this.fitDocked(iface);
             this.syncMore(this.el('header-controls'), this.el('btn-more'));
             return;
         }
@@ -96,6 +98,27 @@ const Fit = {
         this.fitToasts(tokens);
         set();
         if (typeof Folders !== 'undefined' && Folders.fitBar) Folders.fitBar();
+    },
+
+    // A theme's foot bar: the selection bar and the size slider share it,
+    // and in a narrow window the bar ran under the slider. A shorter
+    // slider first, then the bar scrolls sideways in the room left
+    fitDocked(iface) {
+        const sel = this.el('selection-bar'), size = this.el('grid-controls');
+        if (!sel || !size) return;
+        sel.style.maxWidth = '';
+        if (!this.shown(sel) || !this.shown(size)) return;
+        // Its buttons, not its box: a theme's bar can be wider than they are
+        const clear = () => {
+            const r = size.getBoundingClientRect();
+            return [...sel.children].every(b => { const c = b.getBoundingClientRect(); return !c.width || c.right <= r.left + 1 || c.left >= r.right - 1 || c.bottom <= r.top || c.top >= r.bottom; });
+        };
+        if (clear()) return;
+        iface.dataset.fit = 'size-short';
+        if (clear()) return;
+        iface.dataset.fit = 'size-short sel-scroll';
+        const room = size.getBoundingClientRect().left - sel.getBoundingClientRect().left - 8;
+        sel.style.maxWidth = `${Math.max(0, Math.floor(room / this.zoom()))}px`;
     },
 
     // ---- Top: file pill between the folder pill and the header buttons ----
