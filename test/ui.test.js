@@ -5079,8 +5079,26 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const at = (cv, x, y) => cv.getContext('2d').getImageData(x, y, 1, 1).data[0];
             out.maskCrop = [at(whole, 100, 100), at(left, 100, 100), at(whole, 300, 100), at(left, 180, 100)];
             out.maskClean = JSON.stringify(Develop.cleanMasks([{ type: 'radial', radial: [0.5, 0.5, 0, 50, 0, 2], adj: { exposure: 9, nope: 3 } }, { type: 'linear', linear: [0.2, 0.2, 0.2, 0.2] }, { type: 'brush', brush: [] }, { type: 'what' }]));
+            // The colour table (~15 ms to make) is made once for its colour
+            // settings: not again as Exposure is dragged, nor for a tab of
+            // looks drawn again (a slider let go, a 250–450 ms pause before)
+            const made = () => { let n = 0; const mk = Develop.makeColourLut; Develop.makeColourLut = function (...a) { n++; return mk.apply(this, a); }; return { n: () => n, done: () => { Develop.makeColourLut = mk; } }; };
+            let lc = made();
+            const sat = Develop.tables({ saturation: 20, exposure: 0.3 }).lut;
+            const sat2 = Develop.tables({ saturation: 20, exposure: 0.7, contrast: 10 }).lut;
+            const sat3 = Develop.tables({ saturation: 25, exposure: 0.7 }).lut;
+            out.lutKept = [lc.n(), sat === sat2, sat3 !== sat2, Math.abs(sat3[400] - sat2[400]) > 0];
+            lc.done();
+            const tab = Develop.LOOKS.filter(l => l.process === 'C-41');
+            for (const l of tab) Develop.tables({ exposure: 0.2, look: l.id });
+            lc = made();
+            for (const l of tab) Develop.tables({ exposure: 0.4, look: l.id });
+            out.lutKept.push(tab.length, lc.n());
+            lc.done();
             return out;
         });
+        check('adjust: the colour table is made once for its colour settings (dragging Exposure, a tab of looks drawn again)',
+            String(m.lutKept) === `2,true,true,true,${m.lutKept[4]},0` && m.lutKept[4] >= 5, JSON.stringify(m.lutKept));
         check('adjust: settings kept compact, nothing left is none, out of range brought in',
             m.compact === '{"exposure":0.5,"levels":{"r":[0.1,1,0.9,0,1]}}' && m.none && m.clamped === '{"exposure":5,"tint":-100,"levels":{"rgb":[0.8,9.99,0.81,0,1]}}', JSON.stringify(m));
         check('adjust: no settings change nothing; +1 EV doubles the light; curves never turn back', m.identity && m.exposure && m.monotone, JSON.stringify(m));
