@@ -6,7 +6,7 @@
 
 const CHANGELOG = [
     {
-        version: '1.50.1', date: '2026-10-30', beta: true,
+        version: '1.50.1', date: '2026-10-31',
         items: [
             'Windows: flags, edits, Auto crop originals and thumbnails are saved again. The latest Windows update to WebView2 (what jEditor shows its window with) stopped jEditor saving them where it kept them, in AppData. They\'re now kept in a hidden .jeditor-app folder in your user folder, and what was saved before moves there by itself the first time jEditor starts.',
             'Crop many photos the same way: select photos, crop one and Save, then Crop the other N the same way. Or select photos and press `Shift+P` (or Crop N like the last crop, right-clicking them) to use the last crop. Each gets the same aspect ratio, frame and straighten, fitted to its size, so a 4 × 6 stays 4 × 6; a portrait photo gets the frame turned to suit it. Each keeps its own quarter turn, and one `Ctrl+Z` puts them all back.',
