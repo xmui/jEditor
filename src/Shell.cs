@@ -12,9 +12,66 @@ static class Shell
     public static string DataDir { get; set; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "jEditor");
 
+    // Where the page keeps what it stores: %USERPROFILE%\.jeditor-app,
+    // hidden (not .jeditor, the name of the folder each order has).
+    // Not under %LOCALAPPDATA%, where WebView2 156 stopped the page writing
+    // through the folder handles the app gives it (1.50.0 kept it there).
+    // The smoke test uses a temporary one.
+    public static readonly string DefaultStoreDir =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".jeditor-app");
+    public static string StoreDir { get; set; } = DefaultStoreDir;
+
     // Each order's flags, cache and Auto crop originals: orders\<name>-<id>,
     // made and read by the page (app/folder-cache.js)
-    public static string OrdersDir => Path.Combine(DataDir, "orders");
+    public static string OrdersDir => Path.Combine(StoreDir, "orders");
+
+    // The orders folder, made (and the store hidden) for the page
+    public static void MakeOrdersDir()
+    {
+        Directory.CreateDirectory(OrdersDir);
+        try { File.SetAttributes(StoreDir, File.GetAttributes(StoreDir) | FileAttributes.Hidden); }
+        catch (Exception e) { Log.Write($"Couldn't hide {StoreDir}: {e.Message}"); }
+    }
+
+    // 1.50.0 and before kept the orders in %LOCALAPPDATA%\jEditor\orders:
+    // moved to the store once, at a start. Across drives (a redirected
+    // profile), copied, and the old one left as it was
+    public static void MoveOldOrders()
+    {
+        if (MoveOrders(Path.Combine(DataDir, "orders"), OrdersDir)) MakeOrdersDir();
+    }
+
+    // from → to, unless to is there already: true if moved (or copied)
+    public static bool MoveOrders(string from, string to)
+    {
+        if (!Directory.Exists(from) || Directory.Exists(to)) return false;
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+            try
+            {
+                Directory.Move(from, to);
+            }
+            catch (IOException)
+            {
+                CopyTree(from, to);
+            }
+            Log.Write($"Moved the stored orders from {from} to {to}");
+            return true;
+        }
+        catch (Exception e)
+        {
+            Log.Write($"Couldn't move the stored orders from {from} to {to}: {e.Message}");
+            return false;
+        }
+    }
+
+    static void CopyTree(string from, string to)
+    {
+        Directory.CreateDirectory(to);
+        foreach (var f in Directory.EnumerateFiles(from)) File.Copy(f, Path.Combine(to, Path.GetFileName(f)), true);
+        foreach (var d in Directory.EnumerateDirectories(from)) CopyTree(d, Path.Combine(to, Path.GetFileName(d)));
+    }
 
     // A link, in the default browser (or mail app)
     public static void OpenExternal(string url)

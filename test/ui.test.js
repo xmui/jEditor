@@ -3149,6 +3149,18 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         w.cols.push(await page.evaluate(() => app.getGridColumnCount())); w.tops.push(await placeTop());
         await page.evaluate(() => Folders.toggleRail());
         await frames(); await page.waitForTimeout(100);
+        // The place noted after a scroll (120ms on) landing between a change
+        // of width and the grid seeing it (a window resized): not taken
+        // from the new layout
+        await page.evaluate(() => {
+            const g = app.elements.gridView;
+            g.style.paddingRight = (parseFloat(getComputedStyle(g).paddingRight) + 260) + 'px';
+            app.rememberGridPlace();
+        });
+        await frames(); await page.waitForTimeout(100);
+        w.cols.push(await page.evaluate(() => app.getGridColumnCount())); w.tops.push(await placeTop());
+        await page.evaluate(() => { app.elements.gridView.style.paddingRight = ''; });
+        await frames(); await page.waitForTimeout(100);
         await page.setViewportSize({ width: 820, height: 820 });
         await frames(); await page.waitForTimeout(100);
         w.cols.push(await page.evaluate(() => app.getGridColumnCount())); w.tops.push(await placeTop());
