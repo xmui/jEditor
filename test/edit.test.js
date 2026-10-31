@@ -1783,6 +1783,31 @@ const PROJECT = `
         check('themes: the theme chosen and its settings are there at the next start', r.kept, JSON.stringify(r));
         check('themes: 1984\'s Thumbnails setting: dithered to one bit, or in colour again', r.setting && r.dithered && r.colour, JSON.stringify(r));
         check('themes: back to jEditor\'s look takes all of it off', r.off, JSON.stringify(r));
+
+        // A narrow window, a photo selected: the selection bar and the size
+        // slider share the foot bar, and the slider stays out from under it
+        await page.setViewportSize({ width: 640, height: 600 });
+        const foot = {};
+        for (const skin of ['xp/royale', 'snow/finder', 'mac84/finder']) {
+            foot[skin] = await page.evaluate(async (skin) => {
+                window.JEditorNative = { platform: 'windows', features: ['themes'], titleBar: () => { }, windowAction: () => { } };
+                Themes.choose(skin);
+                await until(() => !document.documentElement.classList.contains('theme-loading'));
+                app.setView('grid');
+                app.goTo(app.files[1]);
+                await sleep(300);
+                const s = app.elements.gridSizeSlider, r = s.getBoundingClientRect();
+                // Its buttons as shown (a bar that scrolls clips the rest)
+                const box = document.getElementById('selection-bar').getBoundingClientRect();
+                const bar = [...document.querySelectorAll('#selection-bar > *')].map(b => b.getBoundingClientRect()).filter(b => b.width)
+                    .map(b => ({ left: Math.max(b.left, box.left), right: Math.min(b.right, box.right), top: b.top, bottom: b.bottom }));
+                const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+                return { w: Math.round(r.width), hit: hit === s, under: bar.some(b => b.right > r.left + 1 && b.left < r.right - 1 && b.bottom > r.top && b.top < r.bottom) };
+            }, skin);
+        }
+        await page.evaluate(() => { Themes.choose(''); delete window.JEditorNative; });
+        await page.setViewportSize({ width: 1280, height: 720 });
+        check('themes: in a narrow window the size slider stays clear of the selection bar, and takes a click', Object.values(foot).every(f => f.w >= 40 && f.hit && !f.under), JSON.stringify(foot));
         check('themes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

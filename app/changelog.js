@@ -9,6 +9,7 @@ const CHANGELOG = [
         version: '1.50.2', date: '2026-10-31', beta: true,
         items: [
             'Adjust no longer pauses for a moment when you let go of a slider: the looks\' pictures are drawn again in a fraction of the time.',
+            'In the Windows XP, Snow Leopard and 1984 themes, the thumbnail-size slider no longer sits under the selection bar in a narrow window: it gets shorter, and the bar scrolls sideways if it still needs room.',
         ]
     },
     {
