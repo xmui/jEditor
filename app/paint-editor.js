@@ -202,7 +202,6 @@ const PaintEditor = {
             }
             // On a Mac (wheel.js): two fingers move about, a pinch zooms
             if (trackpad) {
-                this.fitted = false;
                 this.view.x -= e.deltaX;
                 this.view.y -= e.deltaY;
                 this.positionText();
@@ -236,13 +235,7 @@ const PaintEditor = {
             else e.stopPropagation();
         });
         ta.addEventListener('input', () => this.sizeText());
-        // Fitted, it fits again (the film strip coming in under it, the
-        // window made smaller); zoomed by hand, it stays as it is
-        this._resize = new ResizeObserver(() => {
-            if (!this.ready) return;
-            this.sizeCanvas();
-            if (this.fitted) this.fit(); else this.render();
-        });
+        this._resize = new ResizeObserver(() => { if (this.ready) { this.sizeCanvas(); this.render(); } });
         this._resize.observe(st);
     },
 
@@ -614,7 +607,6 @@ const PaintEditor = {
         const pad = 24;
         const z = Math.min((this.cssW - 2 * pad) / this.OW, (this.cssH - 2 * pad) / this.OH, 8);
         this.view = { z, x: (this.cssW - this.OW * z) / 2, y: (this.cssH - this.OH * z) / 2 };
-        this.fitted = true;
         this.render();
     },
 
@@ -625,7 +617,6 @@ const PaintEditor = {
     zoomAt(z, cx, cy) {
         if (!this.ready) return;
         z = Math.min(32, Math.max(0.02, z));
-        this.fitted = false;
         const v = this.view;
         const ox = (cx - v.x) / v.z, oy = (cy - v.y) / v.z;
         this.view = { z, x: cx - ox * z, y: cy - oy * z };
@@ -800,7 +791,6 @@ const PaintEditor = {
         const d = this.drag;
         if (!d) { this.renderSoon(); return; }
         if (d.kind === 'pan') {
-            this.fitted = false;
             this.view.x = d.vx + (p.sx - d.sx);
             this.view.y = d.vy + (p.sy - d.sy);
             this.positionText();

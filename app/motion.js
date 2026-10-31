@@ -23,13 +23,6 @@ const Motion = {
             if (b) this.replay(b, b.id.includes('left') ? 'turn-left' : 'turn-right');
         }, true);
         this.grid();
-        // A key held (its repeats): the grid races along. The easing at
-        // its edges lagged a frame behind, which showed whole rows faded
-        // to the background in the middle of the view (a black flash), and
-        // the bounces piled up: none of it until the key is let go
-        addEventListener('keydown', (e) => { if (e.repeat) this.hold(); }, true);
-        addEventListener('keyup', () => this.release(), true);
-        addEventListener('blur', () => this.release());
         // A tile clicked (chosen, or opened) bounces
         document.addEventListener('click', (e) => {
             const tile = e.target.closest('#grid-view .grid-item');
@@ -174,7 +167,7 @@ const Motion = {
             if (this._gridWin && self._gridY !== undefined && Math.abs(y - self._gridY) > grid.clientHeight) {
                 grid.classList.add('grid-jump');
                 clearTimeout(self._jumpTimer);
-                self._jumpTimer = setTimeout(() => { if (!self.held) grid.classList.remove('grid-jump'); }, 250);
+                self._jumpTimer = setTimeout(() => grid.classList.remove('grid-jump'), 250);
             }
             self._gridY = y;
             return update.apply(this, args);
@@ -184,7 +177,7 @@ const Motion = {
         // crowd: Select all and a long Shift range stay calm
         const selected = app.updateSelectionUI;
         app.updateSelectionUI = function (...args) {
-            const was = self.on() && !self.held && new Set(this._shownSelected || []);
+            const was = self.on() && new Set(this._shownSelected || []);
             const out = selected.apply(this, args);
             if (was) {
                 const fresh = [...this.selection].filter(f => !was.has(f) && f._gridEl && f._gridEl.isConnected);
@@ -216,25 +209,6 @@ const Motion = {
     },
 
     FEW: 4, // at most this many photos selected at once bounce
-
-    held: false, // a key is held down (app.goTo scrolls at once then)
-
-    hold() {
-        this.held = true;
-        clearTimeout(this._jumpTimer);
-        const g = document.getElementById('grid-view');
-        if (g) g.classList.add('grid-jump');
-    },
-
-    release() {
-        if (!this.held) return;
-        this.held = false;
-        clearTimeout(this._jumpTimer);
-        this._jumpTimer = setTimeout(() => {
-            const g = document.getElementById('grid-view');
-            if (g) g.classList.remove('grid-jump');
-        }, 250);
-    },
 
     // A tile's little bounce, once (a click that selects it asks twice)
     bounce(tile) {
