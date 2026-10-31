@@ -1205,6 +1205,36 @@ const PROJECT = `
         check('paint: a gradient from the foreground colour to the background', t.gradient, JSON.stringify(t));
         check('paint: merging down keeps a layer\'s opacity; Ctrl+Z undoes it', t.merged && t.unmerged, JSON.stringify(t));
         check('paint: what\'s moved scales from a corner, its selection with it', t.scaled && t.afterScale && t.afterScale[0] === 255 && t.afterScale[1], JSON.stringify(t));
+
+        // A tall photo fits on screen as Paint opens (not measured before
+        // the film strip is in), and again when the window changes size;
+        // zoomed in by hand, it stays as it was
+        const fitted = async () => page.evaluate(() => {
+            const P = PaintEditor, st = document.getElementById('paint-stage').getBoundingClientRect();
+            const top = st.top + P.view.y, bottom = top + P.OH * P.view.z;
+            return { z: +P.view.z.toFixed(3), top: Math.round(top), bottom: Math.round(bottom), stage: [Math.round(st.top), Math.round(st.bottom)], inside: top >= st.top - 1 && bottom <= st.bottom + 1 };
+        });
+        await page.evaluate(async () => {
+            const c = document.createElement('canvas'); c.width = 480; c.height = 1200;
+            const g = c.getContext('2d'); g.fillStyle = '#4a7'; g.fillRect(0, 0, 480, 1200);
+            await openProject('tall', { 'tall.png': await canvasBlob(c, 'image/png') });
+            app.openSingle(app.files[0]);
+            await sleep(100);
+            pressKey('b');
+            await until(() => PaintEditor.ready);
+        });
+        await page.waitForTimeout(400);
+        const fit = { open: await fitted() };
+        await page.setViewportSize({ width: 1100, height: 560 });
+        await page.waitForTimeout(400);
+        fit.smaller = await fitted();
+        await page.evaluate(() => PaintEditor.zoomTo(1));
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await page.waitForTimeout(400);
+        fit.zoomed = await fitted();
+        check('paint: a tall photo fits as it opens, and again when the window changes size', fit.open.inside && fit.smaller.inside && fit.smaller.z < fit.open.z, JSON.stringify(fit));
+        check('paint: zoomed in by hand, a new window size leaves the zoom alone', fit.zoomed.z === 1, JSON.stringify(fit.zoomed));
+        await page.evaluate(() => pressKey('Escape'));
         check('paint: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
