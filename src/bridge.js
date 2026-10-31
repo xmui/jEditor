@@ -689,6 +689,28 @@
                     } catch (e) {
                         steps.renamed = 'failed: ' + e.message;
                     }
+                    // Where the page may write through a folder handle the
+                    // app made (WebView2 156 refused it under %LOCALAPPDATA%):
+                    // a folder there, one in the user's home, one on the
+                    // drive's root. Logged, never a failure
+                    const home = here.split(/\\AppData\\/i)[0];
+                    const probe = {};
+                    for (const [where, parent] of [['localappdata', here.replace(/\\[^\\]+$/, '')], ['home', home], ['drive', here.slice(0, 3)]]) {
+                        let made = null;
+                        try {
+                            made = await window.JEditorNative.makeFolder(parent, 'jEditor probe ' + Date.now().toString(36));
+                            const dir = await window.JEditorNative.folderHandle(made);
+                            const sub = await dir.getDirectoryHandle('sub', { create: true });
+                            const w = await (await sub.getFileHandle('a.txt', { create: true })).createWritable();
+                            await w.write('ok');
+                            await w.close();
+                            probe[where] = true;
+                        } catch (e) {
+                            probe[where] = `${made || parent}: ${e.message}`;
+                        }
+                        if (made) await window.JEditorNative.recycle([made]).catch(() => { });
+                    }
+                    steps.probe = probe;
                 }
             }
             // Windows: a second one opens, the two split, and a photo moves

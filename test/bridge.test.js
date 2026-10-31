@@ -210,7 +210,7 @@ const waitForPost = (page, type) => page.waitForFunction(
             window.__onPost = async (m) => {
                 const reply = (data, objects = []) => setTimeout(() => window.__deliver({ replyTo: m.id, ...data }, objects), 5);
                 if (m.type === 'dataDir') reply({ path: 'C:\\data' }, [await (await navigator.storage.getDirectory()).getDirectoryHandle('appdata', { create: true })]);
-                else if (m.type === 'recycle') { if (!m.paths.some(x => /jEditor smoke/.test(x))) window.__recycledPaths = m.paths; else window.__cleanedUp = m.paths; reply({ results: m.paths.map(() => ({ noBin: true })) }); }
+                else if (m.type === 'recycle') { if (!m.paths.some(x => /jEditor (smoke|probe)/.test(x))) window.__recycledPaths = m.paths; else window.__cleanedUp = m.paths; reply({ results: m.paths.map(() => ({ noBin: true })) }); }
                 else if (m.type === 'smokeCheck') { (window.__checks = window.__checks || []).push(m); reply({ ok: true }); }
                 else if (m.type === 'places') reply({ drives: [{ path: 'C:\\', name: 'Local disk (C:)', kind: 'disk' }], home: [] });
                 else if (m.type === 'listDir') {
