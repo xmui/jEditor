@@ -4228,6 +4228,19 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const g = grid.getBoundingClientRect(), b = back && back.getBoundingClientRect();
             out.back = !!b && b.top >= g.top && b.bottom <= g.bottom;
 
+            // A photo deleted, and new ones arriving: the window is built again
+            step = 'remove';
+            const gone = files()[1201];
+            app.removeFilesFromApp([gone]);
+            await frame();
+            out.removed = !(gone._gridEl && gone._gridEl.isConnected) && !!files()[1201]._gridEl && files()[1201]._gridEl.isConnected;
+            step = 'arrive';
+            await put(dir, 'P1200a.jpg');
+            await Watch.rescan();
+            await frame();
+            const arrived = app.files.find(f => f.name === 'P1200a.jpg');
+            out.arrived = !!arrived && files().indexOf(arrived) === 1201 && grid.querySelectorAll('.grid-item').length < 400;
+
             // The tiles' easing as it scrolls (style.css) runs on scrolling
             // along, a wheel's step a frame, but not on a fast fling (more
             // than half a screen a frame): it cost ~30 ms a frame there.
@@ -4245,19 +4258,6 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const fast = await scrollBy(Math.round(grid.clientHeight * 0.6), 6);
             await new Promise(res => setTimeout(res, 400));
             out.fling = [slow, fast, wooshOff()];
-
-            // A photo deleted, and new ones arriving: the window is built again
-            step = 'remove';
-            const gone = files()[1201];
-            app.removeFilesFromApp([gone]);
-            await frame();
-            out.removed = !(gone._gridEl && gone._gridEl.isConnected) && !!files()[1201]._gridEl && files()[1201]._gridEl.isConnected;
-            step = 'arrive';
-            await put(dir, 'P1200a.jpg');
-            await Watch.rescan();
-            await frame();
-            const arrived = app.files.find(f => f.name === 'P1200a.jpg');
-            out.arrived = !!arrived && files().indexOf(arrived) === 1201 && grid.querySelectorAll('.grid-item').length < 400;
             return out;
             })(); } catch (e) { return { error: step + ': ' + e.message }; }
         });
