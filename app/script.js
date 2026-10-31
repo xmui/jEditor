@@ -5354,8 +5354,15 @@ const app = {
 
     // Where the view is, for when the grid changes width (its resize
     // observer runs after the change, too late to look)
+    // Not while a new width is still to be seen: what's on screen then is
+    // the new layout, and the observer puts back the place noted before it
     rememberGridPlace() {
-        this._gridPlace = this.elements.gridView.clientWidth ? this.gridAnchor() : null;
+        const grid = this.elements.gridView;
+        if (!grid.clientWidth) { this._gridPlace = null; return; }
+        const cs = getComputedStyle(grid);
+        const w = grid.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+        if (this._gridW && Math.abs(w - this._gridW) > 0.5) return;
+        this._gridPlace = this.gridAnchor();
     },
 
     gridAnchor() {

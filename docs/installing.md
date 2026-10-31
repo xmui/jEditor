@@ -10,7 +10,7 @@ The first time, Windows may say "Windows protected your PC", because the app isn
 
 Releases up to 1.35.1 are also in [xmui/jeditor-windows](https://github.com/xmui/jeditor-windows/releases), where the Windows app lived from 1.18.1 to 1.35.1; 1.35.1 and later look for updates here.
 
-To update, use Settings → Updates, or run the newer setup. To uninstall, use Settings → Apps. jEditor's settings and recent orders are kept in `%LOCALAPPDATA%\jEditor` either way.
+To update, use Settings → Updates, or run the newer setup. To uninstall, use Settings → Apps. jEditor's settings and recent orders are kept in `%LOCALAPPDATA%\jEditor` either way, and what it stores for each order (flags, edits, thumbnails) in a hidden `.jeditor-app` folder in your user folder (it was in `%LOCALAPPDATA%\jEditor\orders` until 1.50.1, and moves across by itself).
 
 There's also a **portable** zip. Unzip it anywhere and run `jEditor.exe`, with nothing to install.
 

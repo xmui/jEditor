@@ -177,6 +177,10 @@ jobs:
       - name: Build
         shell: pwsh
         run: ./scripts/build.ps1 -Tag ${{ needs.tag.outputs.tag }}
+      # On the WebView2 users have now, not the runner image's
+      - name: WebView2 runtime
+        shell: pwsh
+        run: ./scripts/update-webview2.ps1
       - name: Smoke test
         shell: pwsh
         run: ./scripts/smoke-test.ps1
