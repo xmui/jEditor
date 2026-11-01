@@ -112,7 +112,7 @@ const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - 
 const loaded = (page, n) => page.waitForFunction((n) => !app.isLoading && app.files.length === n, n, { timeout: 20000 });
 
 // A prompt nobody answers would wait for ever: fail instead
-setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a folder that never opened?)'); process.exit(1); }, 360000).unref(); // (the mode chip's cases, every size, look and theme, take a while)
+setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a folder that never opened?)'); process.exit(1); }, 600000).unref(); // (the mode chip's cases, every size, look and theme, take a while)
 
 (async () => {
     await new Promise(r => releaseServer.listen(0, '127.0.0.1', r));
@@ -608,17 +608,17 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 if ((app.uiPrefs.skin || '') !== theme) { Themes.choose(theme); await wait(600); }
                                 document.documentElement.classList.toggle('fullscreen', look === 'full');
                                 document.documentElement.classList.toggle('native-toolbar', look === 'native');
-                                if (Modes.current() !== 'photos') { await Modes.go('photos'); await wait(300); }
+                                if (Modes.current() !== 'photos') { await Modes.go('photos'); await wait(100); }
                                 app.uiPrefs.scale = scale;
                                 app.applyUiPrefs();
                                 app.setView('grid');
-                                await wait(200);
+                                await wait(80);
                                 if (!!document.getElementById('mode-seg').getClientRects().length !== rail) app.keyHandlers()['folders.rail']();
                                 Modes.go(where);
                                 for (let i = 0; i < 60 && !document.querySelector('.mode-float.over-mode:not(.hidden)'); i++) await wait(50);
                                 const name = document.querySelector('.mode-screen:not(.hidden) .mode-title');
                                 if (name) name.textContent = 'IMG_20261101_143207.jpg';
-                                await wait(400);
+                                await wait(150);
                                 const chip = document.querySelector('.mode-float.over-mode:not(.hidden) .mode-chip');
                                 if (!chip) return { miss: ['no chip'] };
                                 const b = chip.getBoundingClientRect();
