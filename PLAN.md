@@ -52,6 +52,8 @@ jEditor is one product, in this repo, shipped three ways from one UI (`app/`):
 
 Bugs the owner has seen and wants fixed, newest first. A fix takes its line out.
 
+- **Desktop apps: Reload is gone** (2026-11-01). Bring back `Ctrl+R` (`Cmd+R` on the Mac) to reload the page in the Windows, Mac and Linux apps, as a browser does. Windows turns off WebView2's own keys (`AreBrowserAcceleratorKeysEnabled = false` in `src/MainForm.cs`), and the Mac and Linux menus only have Reload in development builds (`mac/main.js`). `Ctrl+R` isn't taken by anything else (plain `R` is Rescan folder, and Reset in Crop and Adjust). Keep what's unsaved safe: ask first if there are changes, as closing the window does.
+- **A warning before opening a huge folder** (2026-11-01). Opening a folder of more than about 2,000 photos takes so long that it looks stuck, so ask first: "This folder has 8,412 photos. Opening it may take a while. Open it anyway?" (Open / Cancel, and Don't ask again). The number can change in Settings → Projects. Also find out why it's still slow for the owner after 1.50.0's huge-folder work, which measured the grid opening in about a second: the first scan of the folder, thumbnails being made, or the Windows app's file access.
 - **Mac: the Adjust and Paint chips clip into the window's title** (2026-11-01, after 1.50.1). In Adjust and Paint, the chip that names the mode, at the top left, runs into the title in the title bar and is cut off. #113 (1.50.0) kept Photos · Adjust · Paint clear of the traffic lights and the toolbar, but not these chips. Check every Toolbar size, macOS 26 and older, full screen, and with the sidebar open and closed.
 
 ## Roadmap (set 2026-10-17)
