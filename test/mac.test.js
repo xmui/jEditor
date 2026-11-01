@@ -431,6 +431,38 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await app.close().catch(() => { });
     }
 
+    console.log('mac: Reload (⌘R, View → Reload), asking first if something isn\'t kept');
+    {
+        const { app, page, errors } = await launch(profile);
+        await page.waitForFunction(() => typeof Modes !== 'undefined' && typeof UI !== 'undefined', null, { timeout: 15000 });
+        const item = await app.evaluate(({ Menu }) => {
+            const view = Menu.getApplicationMenu().items.find(i => i.label === 'View');
+            const r = view && view.submenu.items.find(i => i.label === 'Reload');
+            return r ? { accelerator: r.accelerator } : null;
+        });
+        check('View → Reload, ⌘R, in every build (not only development ones)', !!item && item.accelerator === 'CmdOrCtrl+R', JSON.stringify(item));
+        const mark = () => page.evaluate(() => { window.__mark = 1; });
+        const marked = () => page.evaluate(() => window.__mark === 1).catch(() => false);
+        // Something not kept: it asks, and Cancel stays
+        await mark();
+        await page.evaluate(() => { window.__unkept = Modes.unkept; Modes.unkept = () => true; window.__asked = 0; UI.choose = async () => { window.__asked++; return null; }; });
+        await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.find(i => i.label === 'View').submenu.items.find(i => i.label === 'Reload').click());
+        await page.waitForTimeout(600);
+        check('... with something not kept it asks first, and Cancel keeps the page', await marked() && await page.evaluate(() => window.__asked) === 1);
+        // Plain R is Rescan folder, not Reload
+        await page.evaluate(() => { Modes.unkept = window.__unkept; });
+        await page.keyboard.press('r');
+        await page.waitForTimeout(500);
+        const plainR = await marked();
+        // Nothing to keep: Ctrl+R reloads (the page's own key, as in the Windows app)
+        const loaded_ = page.waitForEvent('load', { timeout: 8000 }).then(() => true, () => false);
+        await page.keyboard.press('Control+r');
+        const reloaded = await loaded_ && !(await marked());
+        check('... plain R doesn\'t reload; Ctrl+R does, with nothing to keep', plainR && reloaded, JSON.stringify({ plainR, reloaded }));
+        check('Reload: no JS errors', errors.length === 0, errors.join('; '));
+        await app.close().catch(() => { });
+    }
+
     console.log('mac: Liquid Glass');
     {
         // Photos to put the glass over: pure white, pure black

@@ -49,6 +49,16 @@ const Modes = {
         addEventListener('beforeunload', (e) => {
             if (!Host.get() && this.unkept()) { e.preventDefault(); e.returnValue = ''; }
         });
+        // Reload in the apps, as a browser's (which has its own): Ctrl+R,
+        // ⌘R on the Mac (its menu's View → Reload sends it here too). Plain
+        // R stays Rescan folder.
+        addEventListener('keydown', (e) => {
+            if (Host.get() && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyR') {
+                e.preventDefault();
+                e.stopPropagation();
+                this.reload();
+            }
+        }, true);
         // The chip, in the folder pill (after the sidebar button) and on its own
         const bar = this.el('folder-bar');
         if (bar) {
@@ -312,6 +322,17 @@ const Modes = {
         if (!n || !n.holdClose || this._held === on) return;
         this._held = on;
         n.holdClose(on ? () => this.closing() : null);
+    },
+
+    // The page again, asking first (as closing does) if something isn't kept
+    async reload() {
+        if (this.reloading) return;
+        this.reloading = true;
+        try {
+            if (await this.closing()) location.reload();
+        } finally {
+            this.reloading = false;
+        }
     },
 
     // Anything done in Adjust or Paint that isn't kept yet

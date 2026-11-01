@@ -959,7 +959,10 @@ function ownMenus(send) {
         {
             label: 'View',
             submenu: [
-                ...(DEV ? [{ role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }] : []),
+                // Reload asks first if something isn't kept (the page's Modes.reload)
+                { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: send('reload') },
+                ...(DEV ? [{ role: 'toggleDevTools' }] : []),
+                { type: 'separator' },
                 { role: 'togglefullscreen' }
             ]
         }

@@ -655,6 +655,7 @@
             const a = await whenReady();
             if (msg.action === 'open') a.browseFolder();
             else if (msg.action === 'settings') a.toggleCustomizePanel(true);
+            else if (msg.action === 'reload') Modes.reload();
             else if (msg.action === 'permissions') Permissions.open();
             else if (String(msg.action).startsWith('theme:')) Themes.runMenu(msg.action.slice(6));
         }
