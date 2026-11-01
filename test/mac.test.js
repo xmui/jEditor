@@ -583,6 +583,66 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 if (r.off > 2) offRow.push(`${where} at ${scale * 100}%: ${r.off}px off ${r.by}`);
             }
         }
+        // The mode chip over Adjust and Paint, measured: whole (nothing over
+        // it or cutting it off) and clear of the title bar, at every Toolbar
+        // size, with the sidebar open and closed, in full screen, in
+        // jEditor's look and each theme (whose title bar is the page's own).
+        // The window's own title on macOS 26 is measured below, on a Mac.
+        // (Needs fixing, 2026-11-01: the third time this row needed fixing.)
+        const chipMiss = [];
+        const shotDir = process.env.JEDITOR_SCREENSHOTS;
+        for (const theme of ['', 'xp/royale', 'snow/finder', 'mac84/finder']) {
+            for (const full of [false, true]) {
+                if (full && theme) continue;
+                for (const scale of [0.8, 1, 1.3, 1.6]) {
+                    for (const rail of [false, true]) {
+                        for (const where of ['adjust', 'paint']) {
+                            const r = await page.evaluate(async ([theme, full, scale, rail, where]) => {
+                                const wait = (ms) => new Promise(r => setTimeout(r, ms));
+                                if ((app.uiPrefs.skin || '') !== theme) { Themes.choose(theme); await wait(600); }
+                                document.documentElement.classList.toggle('fullscreen', full);
+                                if (Modes.current() !== 'photos') { await Modes.go('photos'); await wait(300); }
+                                app.uiPrefs.scale = scale;
+                                app.applyUiPrefs();
+                                app.setView('grid');
+                                await wait(200);
+                                if (!!document.getElementById('mode-seg').getClientRects().length !== rail) app.keyHandlers()['folders.rail']();
+                                Modes.go(where);
+                                for (let i = 0; i < 60 && !document.querySelector('.mode-float.over-mode:not(.hidden)'); i++) await wait(50);
+                                await wait(400);
+                                const chip = document.querySelector('.mode-float.over-mode:not(.hidden) .mode-chip');
+                                if (!chip) return { miss: ['no chip'] };
+                                const b = chip.getBoundingClientRect();
+                                const miss = [];
+                                // Whole: each corner (2px in) and the middle are the chip's own (its
+                                // pill's round corners: the box it floats in)
+                                const pts = [[b.left + 2, b.top + 2], [b.right - 2, b.top + 2], [b.left + 2, b.bottom - 2], [b.right - 2, b.bottom - 2], [(b.left + b.right) / 2, (b.top + b.bottom) / 2]];
+                                for (const [x, y] of pts) {
+                                    const at = document.elementFromPoint(x, y);
+                                    if (!at || !chip.parentElement.contains(at)) miss.push(`at ${Math.round(x)},${Math.round(y)}: ${at ? (at.id || at.className || at.tagName) : 'outside the window'}`);
+                                }
+                                if (b.top < 0 || b.left < 0 || b.right > innerWidth) miss.push('outside the window');
+                                // Clear of a theme's title bar (its title in it)
+                                const bar = document.getElementById('th-titlebar');
+                                if (bar && bar.getClientRects().length) {
+                                    const t = bar.getBoundingClientRect();
+                                    if (b.top < t.bottom - 1) miss.push(`in the title bar (chip top ${Math.round(b.top)}, bar bottom ${Math.round(t.bottom)})`);
+                                }
+                                // In its head, not past it
+                                const head = document.querySelector('.mode-screen:not(.hidden) .mode-head');
+                                if (head) { const h = head.getBoundingClientRect(); if (b.bottom > h.bottom + 1 || b.top < h.top - 1) miss.push(`outside the head (${Math.round(b.top)}–${Math.round(b.bottom)} in ${Math.round(h.top)}–${Math.round(h.bottom)})`); }
+                                return { miss, box: [b.left, b.top, b.right, b.bottom].map(Math.round) };
+                            }, [theme, full, scale, rail, where]);
+                            const name = `${theme || 'jEditor'}${full ? ' full screen' : ''} ${where} at ${scale * 100}%${rail ? ', sidebar open' : ''}`;
+                            for (const m of r.miss) chipMiss.push(`${name}: ${m} ${JSON.stringify(r.box)}`);
+                            if (shotDir && scale === 1 && !rail) fs.writeFileSync(path.join(shotDir, `chip-${(theme || 'jeditor').replace('/', '-')}${full ? '-full' : ''}-${where}.png`), await page.screenshot({ clip: { x: 0, y: 0, width: 420, height: 90 } }));
+                        }
+                    }
+                }
+            }
+        }
+        await page.evaluate(async () => { document.documentElement.classList.remove('fullscreen'); Themes.choose(''); await new Promise(r => setTimeout(r, 600)); });
+        check('the mode chip over Adjust and Paint is whole and clear of the title bar: every Toolbar size, sidebar open and closed, full screen, each theme', chipMiss.length === 0, chipMiss.slice(0, 12).join('; '));
         // Back to 100%, kept: the next windows open with this profile
         await page.evaluate(async () => { await Modes.go('photos'); app.uiPrefs.scale = 1; app.applyUiPrefs(); app.saveUiPrefs(); });
         check('the traffic lights, the top row and Photos · Adjust · Paint clear of each other, at every Toolbar size', overlaps.length === 0, overlaps.join('; '));
@@ -679,6 +739,42 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             const chip = await page.evaluate(() => { const b = document.getElementById('mode-float').getBoundingClientRect(); return { top: b.top, height: b.height }; });
             const sent = await app.evaluate(() => global.sentModels.slice(-4));
             check('... choosing Adjust there opens it; the toolbar steps aside, the chip is in Adjust\'s head', d.visible === false && chip.height > 0 && chip.top < 20, JSON.stringify([d.visible, chip, `now ${await app.evaluate(() => Date.now() % 100000)}`, sent]));
+            // ...and with it the window's title: AppKit drew it after the lights,
+            // through the chip (Needs fixing, 2026-11-01). Measured, the chip's
+            // box against the title's and the toolbar's, at every Toolbar size,
+            // sidebar open and closed, in and out of full screen
+            const titleHits = [];
+            const full = (on) => app.evaluate(({ BrowserWindow }, on) => BrowserWindow.getAllWindows()[0].setFullScreen(on), on);
+            for (const fs_ of [false, true]) {
+                if (fs_) { await full(true); await page.waitForTimeout(1500); }
+                for (const scale of [0.8, 1, 1.3, 1.6]) {
+                    for (const rail of [false, true]) {
+                        for (const where of ['adjust', 'paint']) {
+                            const c = await page.evaluate(async ([scale, rail, where]) => {
+                                const wait = (ms) => new Promise(r => setTimeout(r, ms));
+                                if (Modes.current() !== 'photos') { await Modes.go('photos'); await wait(300); }
+                                app.uiPrefs.scale = scale;
+                                app.applyUiPrefs();
+                                if (!!document.getElementById('mode-seg').getClientRects().length !== rail) app.keyHandlers()['folders.rail']();
+                                await Modes.go(where);
+                                for (let i = 0; i < 60 && !document.querySelector('.mode-float.over-mode:not(.hidden)'); i++) await wait(50);
+                                await wait(400);
+                                const b = document.querySelector('#mode-float .mode-chip').getBoundingClientRect();
+                                return { left: b.left, top: b.top, right: b.right, bottom: b.bottom };
+                            }, [scale, rail, where]);
+                            d = await describe();
+                            const t = d.titleBox || {};
+                            const hit = t.right !== undefined && c.left < t.right - 1 && t.left < c.right - 1 && c.top < t.bottom - 1 && t.top < c.bottom - 1;
+                            const name = `${where} at ${scale * 100}%${rail ? ', sidebar open' : ''}${fs_ ? ', full screen' : ''}`;
+                            if (hit) titleHits.push(`${name}: the title "${d.title}" ${JSON.stringify(t)} over the chip ${JSON.stringify(c)}`);
+                            if (d.visible && c.top < d.toolbarHeight) titleHits.push(`${name}: the toolbar (${d.toolbarHeight}px) over the chip ${JSON.stringify(c)}`);
+                        }
+                    }
+                }
+                if (fs_) { await full(false); await page.waitForTimeout(1500); }
+            }
+            await page.evaluate(() => { app.uiPrefs.scale = 1; app.applyUiPrefs(); });
+            check('... no title or toolbar over the chip in Adjust and Paint: every Toolbar size, sidebar open and closed, full screen', titleHits.length === 0, titleHits.slice(0, 8).join('; '));
             await page.evaluate(() => Modes.go('photos'));
             await page.waitForFunction(() => Modes.current() === 'photos', null, { timeout: 15000 });
             await settle();
