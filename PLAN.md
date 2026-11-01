@@ -48,6 +48,12 @@ jEditor is one product, in this repo, shipped three ways from one UI (`app/`):
 
 **Back burner:** scanning on the Mac (Apple's ImageCaptureCore; the FastFoto has Mac drivers), tethering on the Mac, anything hardware-related on the web.
 
+## Needs fixing
+
+Bugs the owner has seen and wants fixed, newest first. A fix takes its line out.
+
+- **Mac: the Adjust and Paint chips clip into the window's title** (2026-11-01, after 1.50.1). In Adjust and Paint, the chip that names the mode, at the top left, runs into the title in the title bar and is cut off. #113 (1.50.0) kept Photos · Adjust · Paint clear of the traffic lights and the toolbar, but not these chips. Check every Toolbar size, macOS 26 and older, full screen, and with the sidebar open and closed.
+
 ## Roadmap (set 2026-10-17)
 
 **Rules for everything below.** Windows first: each feature is made the best it can be in the Windows app, then brought to the Mac, Linux and the web as well as each allows. The basic workflow (open a folder, look, rotate, crop, flag, move on) stays fast and responsive: a new feature never slows it, and the tests time it.
