@@ -591,6 +591,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         // (Needs fixing, 2026-11-01: the third time this row needed fixing.)
         const chipMiss = [];
         const shotDir = process.env.JEDITOR_SCREENSHOTS;
+        if (shotDir) fs.mkdirSync(shotDir, { recursive: true });
         const size = (width) => app.evaluate(({ BrowserWindow }, width) => { const w = BrowserWindow.getAllWindows()[0]; w.setSize(width, 860); }, width);
         // (The window's narrowest, 640, and a camera's long file name: the
         // head's title is centred, and slid under the chip there)
