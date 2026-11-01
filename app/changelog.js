@@ -9,6 +9,7 @@ const CHANGELOG = [
         version: '1.50.2', date: '2026-10-31', beta: true,
         items: [
             'Adjust no longer pauses for a moment when you let go of a slider: the looks\' pictures are drawn again in a fraction of the time.',
+            'Scrolling fast through a huge folder (Page Down, or a quick fling) is about twice as smooth: the photos ease in at the edges when you scroll along, and wait while you rush past.',
         ]
     },
     {
