@@ -648,7 +648,7 @@ async function handle(rec, type, data) {
         case 'listDir': {
             if (!isDir(data.path)) return { error: 'Not a folder' };
             const drive = (await places.drives()).find(d => d.path === data.path);
-            return places.listDir(data.path, drive && drive.name);
+            return places.listDir(data.path, drive && drive.name, !!data.libraries);
         }
         case 'listProjects':
             return { projects: await places.listProjects(data.path) };
@@ -657,7 +657,7 @@ async function handle(rec, type, data) {
         case 'renameFolder':
             return { path: await places.renameFolder(data.path, data.name) };
         case 'countPhotos': {
-            const counts = await Promise.all((data.paths || []).map(p => (path.isAbsolute(p) ? places.count(p) : -1)));
+            const counts = await Promise.all((data.paths || []).map(p => (path.isAbsolute(p) ? places.count(p, !!data.libraries) : -1)));
             return { counts, limit: places.LIMIT };
         }
         case 'eject': {

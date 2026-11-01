@@ -11,6 +11,7 @@ const CHANGELOG = [
             'Adjust no longer pauses for a moment when you let go of a slider: the looks\' pictures are drawn again in a fraction of the time.',
             'In the Windows XP, Snow Leopard and 1984 themes, the thumbnail-size slider no longer sits under the selection bar in a narrow window: it gets shorter, and the bar scrolls sideways if it still needs room.',
             'Scrolling fast through a huge folder (Page Down, or a quick fling) is about twice as smooth: the photos ease in at the edges when you scroll along, and wait while you rush past.',
+            'Opening a folder with a photo app\'s library in it (Pictures on a Mac, with the Photos library) no longer lists the library\'s own thumbnails and previews as photos. Photos, iPhoto, Aperture and Lightroom libraries are left out, as Finder shows them as one item. To open them like folders, turn on Settings → Projects → Open photo libraries as folders.',
         ]
     },
     {
