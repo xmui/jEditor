@@ -396,6 +396,42 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await app.close();
     }
 
+    console.log('mac: a huge folder asks before it opens');
+    {
+        const big = makeOrder(tmp, 'Big order', 3); // 3 photos and Ceremony/c1.jpg
+        const { app, page, errors } = await launch(profile, [big]);
+        await loaded(page, 4);
+        const r = await page.evaluate(async () => {
+            const wait = (ms) => new Promise(r => setTimeout(r, ms));
+            const shown = () => !document.getElementById('ui-dialog').classList.contains('hidden');
+            const dir = app.dirHandle, out = {};
+            app.renderCustomizePanel();
+            out.setting = document.getElementById('cust-huge-folder').value;
+            app.uiPrefs.hugeFolder = 3;
+            // Cancel: not opened, back to the start screen
+            let opening = app.openDirectory(dir, { scope: '' });
+            for (let i = 0; i < 100 && !shown(); i++) await wait(50);
+            out.message = document.getElementById('uid-text').textContent;
+            out.buttons = ['uid-ok', 'uid-alt', 'uid-cancel'].map(id => document.getElementById(id).textContent).join('|');
+            document.getElementById('uid-cancel').click();
+            await opening;
+            out.cancelled = !app.dirHandle && app.files.length === 0 && !app.elements.dropZone.classList.contains('hidden') && !app.isLoading;
+            // Don't ask again: opened, and not asked from then on
+            opening = app.openDirectory(dir, { scope: '' });
+            for (let i = 0; i < 100 && !shown(); i++) await wait(50);
+            document.getElementById('uid-alt').click();
+            await opening;
+            out.opened = app.files.length;
+            out.after = app.uiPrefs.hugeFolder;
+            app.uiPrefs.hugeFolder = 2000;
+            return out;
+        });
+        check('a folder of more photos than Settings → Projects says asks first: Open, Don\'t ask again, Cancel', r.setting === '2000' && /This folder has 4 photos\. Opening it may take a while\. Open it anyway\?/.test(r.message) && r.buttons === 'Open|Don\'t ask again|Cancel', JSON.stringify(r));
+        check('... Cancel doesn\'t open it; Don\'t ask again opens it and stops asking', r.cancelled && r.opened === 4 && r.after === 0, JSON.stringify(r));
+        check('huge folder: no JS errors', errors.length === 0, errors.join('; '));
+        await app.close();
+    }
+
     console.log('mac: closing in Adjust or Paint (holdClose)');
     {
         const { app, page, errors } = await launch(profile);

@@ -884,6 +884,11 @@
                             <input type="checkbox" id="cust-auto-check" class="switch">
                         </div>
                         <div class="set-row">
+                            <label class="set-label" for="cust-huge-folder">Ask before opening a huge folder
+                                <small>Of more photos than this. Empty: never ask</small></label>
+                            <input type="number" id="cust-huge-folder" class="field set-num" min="0" step="500" placeholder="Never" inputmode="numeric">
+                        </div>
+                        <div class="set-row">
                             <label class="set-label" for="cust-folder-cache"><span data-native-text="Keep a thumbnail cache">Save cache in the folder</span>
                                 <small data-native-text="Thumbnails are kept on {computer}, so a project opens fast the next time">Thumbnails go in .jeditor, so any computer that opens the project later starts fast</small></label>
                             <input type="checkbox" id="cust-folder-cache" class="switch">

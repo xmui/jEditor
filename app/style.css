@@ -2944,6 +2944,13 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     padding: var(--sp-2) 0;
 }
 
+/* A number in a setting's row (Ask before opening a huge folder) */
+.set-row .set-num {
+    flex: none;
+    width: 96px;
+    text-align: right;
+}
+
 .set-label {
     flex: 1;
     min-width: 0;
