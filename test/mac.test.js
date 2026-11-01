@@ -112,7 +112,7 @@ const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - 
 const loaded = (page, n) => page.waitForFunction((n) => !app.isLoading && app.files.length === n, n, { timeout: 20000 });
 
 // A prompt nobody answers would wait for ever: fail instead
-setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a folder that never opened?)'); process.exit(1); }, 180000).unref();
+setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a folder that never opened?)'); process.exit(1); }, 360000).unref(); // (the mode chip's cases, every size, look and theme, take a while)
 
 (async () => {
     await new Promise(r => releaseServer.listen(0, '127.0.0.1', r));
@@ -591,16 +591,22 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         // (Needs fixing, 2026-11-01: the third time this row needed fixing.)
         const chipMiss = [];
         const shotDir = process.env.JEDITOR_SCREENSHOTS;
-        for (const theme of ['', 'xp/royale', 'snow/finder', 'mac84/finder']) {
-            for (const full of [false, true]) {
-                if (full && theme) continue;
+        const size = (width) => app.evaluate(({ BrowserWindow }, width) => { const w = BrowserWindow.getAllWindows()[0]; w.setSize(width, 860); }, width);
+        // (The window's narrowest, 640, and a camera's long file name: the
+        // head's title is centred, and slid under the chip there)
+        for (const width of [1280, 640]) {
+          await size(width);
+          await page.waitForTimeout(300);
+          for (const theme of ['', 'xp/royale', 'snow/finder', 'mac84/finder']) {
+            for (const look of theme ? [''] : ['', 'full', 'native']) {
                 for (const scale of [0.8, 1, 1.3, 1.6]) {
                     for (const rail of [false, true]) {
                         for (const where of ['adjust', 'paint']) {
-                            const r = await page.evaluate(async ([theme, full, scale, rail, where]) => {
+                            const r = await page.evaluate(async ([theme, look, scale, rail, where]) => {
                                 const wait = (ms) => new Promise(r => setTimeout(r, ms));
                                 if ((app.uiPrefs.skin || '') !== theme) { Themes.choose(theme); await wait(600); }
-                                document.documentElement.classList.toggle('fullscreen', full);
+                                document.documentElement.classList.toggle('fullscreen', look === 'full');
+                                document.documentElement.classList.toggle('native-toolbar', look === 'native');
                                 if (Modes.current() !== 'photos') { await Modes.go('photos'); await wait(300); }
                                 app.uiPrefs.scale = scale;
                                 app.applyUiPrefs();
@@ -609,6 +615,8 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                 if (!!document.getElementById('mode-seg').getClientRects().length !== rail) app.keyHandlers()['folders.rail']();
                                 Modes.go(where);
                                 for (let i = 0; i < 60 && !document.querySelector('.mode-float.over-mode:not(.hidden)'); i++) await wait(50);
+                                const name = document.querySelector('.mode-screen:not(.hidden) .mode-title');
+                                if (name) name.textContent = 'IMG_20261101_143207.jpg';
                                 await wait(400);
                                 const chip = document.querySelector('.mode-float.over-mode:not(.hidden) .mode-chip');
                                 if (!chip) return { miss: ['no chip'] };
@@ -628,20 +636,42 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                                     const t = bar.getBoundingClientRect();
                                     if (b.top < t.bottom - 1) miss.push(`in the title bar (chip top ${Math.round(b.top)}, bar bottom ${Math.round(t.bottom)})`);
                                 }
+                                // Clear of the head's title and size, and its buttons
+                                for (const e of document.querySelectorAll('.mode-screen:not(.hidden) .mode-head > :is(.mode-title, .crop-dims, .mode-head-acts)')) {
+                                    const t = e.getBoundingClientRect();
+                                    if (t.width && b.left < t.right - 1 && t.left < b.right - 1 && b.top < t.bottom - 1 && t.top < b.bottom - 1) miss.push(`over ${e.id || e.className} [${[t.left, t.top, t.right, t.bottom].map(Math.round)}]`);
+                                }
+                                // ...and the title clear of the head's buttons
+                                const acts = document.querySelector('.mode-screen:not(.hidden) .mode-head-acts');
+                                for (const e of document.querySelectorAll('.mode-screen:not(.hidden) .mode-head > :is(.mode-title, .crop-dims)')) {
+                                    const t = e.getBoundingClientRect(), a = acts && acts.getBoundingClientRect();
+                                    if (a && t.width && a.left < t.right - 1 && t.left < a.right - 1 && a.top < t.bottom - 1 && t.top < a.bottom - 1) miss.push(`${e.id} under the head's buttons`);
+                                }
                                 // In its head, not past it
                                 const head = document.querySelector('.mode-screen:not(.hidden) .mode-head');
                                 if (head) { const h = head.getBoundingClientRect(); if (b.bottom > h.bottom + 1 || b.top < h.top - 1) miss.push(`outside the head (${Math.round(b.top)}–${Math.round(b.bottom)} in ${Math.round(h.top)}–${Math.round(h.bottom)})`); }
-                                return { miss, box: [b.left, b.top, b.right, b.bottom].map(Math.round) };
-                            }, [theme, full, scale, rail, where]);
-                            const name = `${theme || 'jEditor'}${full ? ' full screen' : ''} ${where} at ${scale * 100}%${rail ? ', sidebar open' : ''}`;
+                                const box = [b.left, b.top, b.right, b.bottom].map(Math.round);
+                                // Toolbar size back after each case: none leaks into later checks
+                                await Modes.go('photos');
+                                app.uiPrefs.scale = 1;
+                                app.applyUiPrefs();
+                                return { miss, box };
+                            }, [theme, look, scale, rail, where]);
+                            const name = `${theme || 'jEditor'}${look ? ' ' + look : ''} ${where} at ${scale * 100}%, ${width}px${rail ? ', sidebar open' : ''}`;
                             for (const m of r.miss) chipMiss.push(`${name}: ${m} ${JSON.stringify(r.box)}`);
-                            if (shotDir && scale === 1 && !rail) fs.writeFileSync(path.join(shotDir, `chip-${(theme || 'jeditor').replace('/', '-')}${full ? '-full' : ''}-${where}.png`), await page.screenshot({ clip: { x: 0, y: 0, width: 420, height: 90 } }));
+                            if (shotDir && !rail && where === 'adjust' && (scale === 1 || width === 640 && scale === 1.6)) {
+                                await page.evaluate(async ([where, scale]) => { app.uiPrefs.scale = scale; app.applyUiPrefs(); await Modes.go(where); document.querySelector('.mode-screen:not(.hidden) .mode-title').textContent = 'IMG_20261101_143207.jpg'; await new Promise(r => setTimeout(r, 400)); }, [where, scale]);
+                                fs.writeFileSync(path.join(shotDir, `chip-${(theme || 'jeditor').replace('/', '-')}${look ? '-' + look : ''}-${where}-${width}-${scale * 100}.png`), await page.screenshot({ clip: { x: 0, y: 0, width: Math.min(width, 640), height: 100 } }));
+                                await page.evaluate(async () => { await Modes.go('photos'); app.uiPrefs.scale = 1; app.applyUiPrefs(); });
+                            }
                         }
                     }
                 }
             }
+          }
         }
-        await page.evaluate(async () => { document.documentElement.classList.remove('fullscreen'); Themes.choose(''); await new Promise(r => setTimeout(r, 600)); });
+        await size(1280);
+        await page.evaluate(async () => { document.documentElement.classList.remove('fullscreen', 'native-toolbar'); Themes.choose(''); await new Promise(r => setTimeout(r, 600)); });
         check('the mode chip over Adjust and Paint is whole and clear of the title bar: every Toolbar size, sidebar open and closed, full screen, each theme', chipMiss.length === 0, chipMiss.slice(0, 12).join('; '));
         // Back to 100%, kept: the next windows open with this profile
         await page.evaluate(async () => { await Modes.go('photos'); app.uiPrefs.scale = 1; app.applyUiPrefs(); app.saveUiPrefs(); });

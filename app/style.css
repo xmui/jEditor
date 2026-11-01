@@ -4496,6 +4496,10 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 }
 
 .mode-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     margin: 0;
     font-size: var(--fs-title);
     line-height: var(--lh-title);
@@ -5582,7 +5586,8 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 @media (max-width: 760px) {
     .paint-head {
-        min-height: 0;
+        /* Still room for the mode chip in its corner (8px, the chip, 8px) */
+        min-height: calc(var(--ctl-lg) + 8px);
         padding: var(--sp-2) var(--sp-4);
     }
     .paint-options {
