@@ -4240,6 +4240,24 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await frame();
             const arrived = app.files.find(f => f.name === 'P1200a.jpg');
             out.arrived = !!arrived && files().indexOf(arrived) === 1201 && grid.querySelectorAll('.grid-item').length < 400;
+
+            // The tiles' easing as it scrolls (style.css) runs on scrolling
+            // along, a wheel's step a frame, but not on a fast fling (more
+            // than half a screen a frame): it cost ~30 ms a frame there.
+            // It comes back once the grid settles
+            step = 'fling';
+            const wooshOff = () => grid.classList.contains('grid-jump');
+            const scrollBy = async (dy, n) => {
+                let off = 0;
+                for (let i = 0; i < n; i++) { grid.scrollTop += dy; await frame(); if (wooshOff()) off++; }
+                return off;
+            };
+            grid.scrollTop = 0;
+            await new Promise(res => setTimeout(res, 400));
+            const slow = await scrollBy(120, 12);
+            const fast = await scrollBy(Math.round(grid.clientHeight * 0.6), 6);
+            await new Promise(res => setTimeout(res, 400));
+            out.fling = [slow, fast, wooshOff()];
             return out;
             })(); } catch (e) { return { error: step + ': ' + e.message }; }
         });
@@ -4250,6 +4268,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('... the arrow keys to a photo far below build its tile', r.goTo);
         check('... the film strip holds a window too, the photo in it and in its place; Next moves the highlight', r.strip && r.stripPlace && r.stripNext);
         check('... back to the grid, the photo is on screen', r.back);
+        check('... the tiles ease in as it scrolls along, not on a fast fling, and again once it settles', r.fling && r.fling[0] === 0 && r.fling[1] >= 5 && r.fling[2] === false, JSON.stringify(r.fling));
         check('... a deleted photo, and a new one arriving, rebuild the window', r.removed && r.arrived, JSON.stringify(r));
         check('huge folder: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();

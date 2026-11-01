@@ -166,12 +166,14 @@ const Motion = {
         // In a huge folder's grid a jump (the scroll bar dragged, Page Down,
         // End) builds a screenful of new tiles at once, and easing each in
         // as it scrolls (style.css) would cost a frame there: the easing
-        // waits until the grid has settled. Scrolling along keeps it
+        // waits until the grid has settled. So does a fast fling (more than
+        // half a screen a frame): the easing doubled its frames (60 ms, not
+        // 28) and can hardly be seen at that speed. Scrolling along keeps it
         const update = app.updateGridWindow;
         app.updateGridWindow = function (...args) {
             const grid = this.elements.gridView;
             const y = grid.scrollTop;
-            if (this._gridWin && self._gridY !== undefined && Math.abs(y - self._gridY) > grid.clientHeight) {
+            if (this._gridWin && self._gridY !== undefined && Math.abs(y - self._gridY) > grid.clientHeight / 2) {
                 grid.classList.add('grid-jump');
                 clearTimeout(self._jumpTimer);
                 self._jumpTimer = setTimeout(() => { if (!self.held) grid.classList.remove('grid-jump'); }, 250);
