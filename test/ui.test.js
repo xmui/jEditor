@@ -1037,6 +1037,35 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('only Liquid bends', !crystal.bends && !/url/.test(crystal.filter), JSON.stringify(crystal));
         check('Reduce transparency and Increase contrast: no bend, the glass solid', [reduced, contrast].every(x => !x.bends && x.filter === 'none' && /^rgb\(/.test(x.bg)), JSON.stringify([reduced, contrast]));
         check('a theme on: no bend', !skinned);
+        // The corners: the bend turns round them, with no crease. Read
+        // back from the maps (red: how far across, green: how far down)
+        const corners = await page.evaluate(async () => {
+            await new Promise(r => setTimeout(r, 300));
+            const read = async (w, h, r, bezel) => {
+                const im = new Image();
+                im.src = Liquid.map(w, h, r, bezel);
+                await im.decode();
+                const c = document.createElement('canvas');
+                c.width = w; c.height = h;
+                const g = c.getContext('2d');
+                g.drawImage(im, 0, 0);
+                return (x, y) => [...g.getImageData(x, y, 1, 1).data.slice(0, 2)].map(v => v - 128);
+            };
+            // A sidebar (16px corners, the band 24px): a step either side
+            // of the diagonal, 18px in from the corner, the bend about the
+            // same and both ways (it was across on one side, down on the other)
+            const rail = await read(290, 400, 16, 24);
+            const a = rail(18, 19), b = rail(19, 18);
+            // A pill (the probe, 44px high): its band and bend short of its
+            // middle, so the middle, where its words are, stays still
+            const key = Liquid.parts.get(document.getElementById('lg-probe')) || '';
+            const [, bezel, depth] = (key.match(/b(\d+)d(\d+)/) || []).map(Number);
+            const pill = await read(300, 44, 22, bezel);
+            return { a, b, bezel, depth, middle: pill(150, 22) };
+        });
+        const near = (p, q) => p.every((v, i) => Math.abs(v - q[i]) <= 12);
+        check('Liquid: the bend turns round a corner with no crease (sidebar, menu)', corners.a.every(v => v > 5) && near(corners.a, corners.b), JSON.stringify(corners));
+        check('Liquid: a pill\'s middle stays still, its ends bent no further than its middle', corners.bezel <= 17 && corners.depth <= 13 && corners.middle.every(v => v === 0), JSON.stringify(corners));
         await page.evaluate(() => document.getElementById('lg-probe').remove());
         check('liquid glass: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
