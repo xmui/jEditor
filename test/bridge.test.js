@@ -542,6 +542,23 @@ const waitForPost = (page, type) => page.waitForFunction(
         await context.close();
     }
 
+    console.log('bridge: Ctrl+R reloads, asking first if something isn\'t kept');
+    {
+        const { context, page, errors } = await openPage(browser);
+        await waitForPost(page, 'ready');
+        await page.evaluate(() => { window.__mark = 1; window.__unkept = Modes.unkept; Modes.unkept = () => true; window.__asked = 0; UI.choose = async () => { window.__asked++; return null; }; });
+        await page.keyboard.press('Control+r');
+        await page.waitForTimeout(500);
+        const kept = await page.evaluate(() => window.__mark === 1 && window.__asked === 1);
+        await page.evaluate(() => { Modes.unkept = window.__unkept; });
+        const loaded = page.waitForEvent('load', { timeout: 8000 }).then(() => true, () => false);
+        await page.keyboard.press('Control+r');
+        const reloaded = await loaded && await page.evaluate(() => window.__mark === undefined);
+        check('Ctrl+R (WebView2\'s own keys are off): asks with something not kept, Cancel stays; with nothing, reloads', kept && reloaded, JSON.stringify({ kept, reloaded }));
+        check('reload: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
     console.log('bridge: only in the Windows app');
     {
         const other = await openPage(browser, { origin: 'https://elsewhere.example' });
