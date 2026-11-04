@@ -484,6 +484,7 @@ const app = {
             folderCache: true, // keep thumbnails / duplicate data with the order's data (folder-cache.js)
             autoUpdate: true, // the Windows app looks for a new version once a day
             autoCheck: true, // pick up photos added, removed or edited outside jEditor
+            openLibraries: false, // go inside photo apps' libraries (.photoslibrary, …) as folders (watch.js)
             accent: null, // the accent colour (#rrggbb); null is the standard blue
             singleControls: true, // previous / rotate / next above the film strip in single view
             startIn: 'photos', // the landing page's Start in (modes.js): photos, adjust or paint
@@ -550,6 +551,7 @@ const app = {
                 if (typeof saved.thumbContain === 'boolean') this.uiPrefs.thumbContain = saved.thumbContain;
                 if (typeof saved.folderCache === 'boolean') this.uiPrefs.folderCache = saved.folderCache;
                 if (typeof saved.autoCheck === 'boolean') this.uiPrefs.autoCheck = saved.autoCheck;
+                if (typeof saved.openLibraries === 'boolean') this.uiPrefs.openLibraries = saved.openLibraries;
                 if (saved.toasts && typeof saved.toasts === 'object') {
                     for (const [k] of this.TOAST_KINDS) if (typeof saved.toasts[k] === 'boolean') this.uiPrefs.toasts[k] = saved.toasts[k];
                 }
@@ -852,6 +854,11 @@ const app = {
             if (e.target.checked) Watch.start();
             else Watch.stop();
         });
+        $('cust-open-libraries').addEventListener('change', (e) => {
+            this.uiPrefs.openLibraries = e.target.checked;
+            this.saveUiPrefs();
+            if (this.dirHandle) this.refreshFolder();
+        });
         $('cust-folder-cache').addEventListener('change', (e) => {
             this.uiPrefs.folderCache = e.target.checked;
             this.saveUiPrefs();
@@ -947,6 +954,7 @@ const app = {
         $('cust-debug').checked = !!this.uiPrefs.debugConsole;
         $('cust-folder-cache').checked = this.uiPrefs.folderCache !== false;
         $('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
+        $('cust-open-libraries').checked = !!this.uiPrefs.openLibraries;
         this.elements.customizePanel.querySelectorAll('input[data-toast]').forEach(i => { i.checked = this.toastOn(i.dataset.toast); });
         $('cust-cleanup').disabled = !this.dirHandle;
         Themes.render();

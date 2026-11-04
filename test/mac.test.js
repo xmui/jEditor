@@ -396,6 +396,36 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await app.close();
     }
 
+    console.log('mac: photo apps\' libraries are left out (a setting opens them)');
+    {
+        const pics = makeOrder(tmp, 'Pictures', 2); // 2 photos and Ceremony/c1.jpg
+        for (const lib of ['Photos Library.photoslibrary/resources/derivatives', 'iPhoto Library.photolibrary/Thumbnails', 'Aperture.aplibrary/Previews', 'Catalog Previews.lrdata/0', 'Lightroom.lrlibrary/x']) {
+            fs.mkdirSync(path.join(pics, lib), { recursive: true });
+            fs.writeFileSync(path.join(pics, lib, 'thumb.jpg'), JPEG);
+        }
+        const { app, page, errors } = await launch(profile, [pics]);
+        await loaded(page, 3);
+        const r = await page.evaluate(async (pics) => {
+            const out = { files: app.files.map(f => f.name).sort().join() };
+            const listed = await JEditorNative.listDir(pics);
+            out.listed = listed.folders.map(f => f.name).sort().join();
+            out.counted = (await JEditorNative.countPhotos([pics])).counts[0];
+            app.uiPrefs.openLibraries = true;
+            await app.refreshFolder();
+            for (let i = 0; i < 100 && app.files.length !== 8; i++) await new Promise(r => setTimeout(r, 100));
+            out.opened = app.files.length;
+            out.listedOn = (await JEditorNative.listDir(pics)).folders.length;
+            out.countedOn = (await JEditorNative.countPhotos([pics])).counts[0];
+            app.uiPrefs.openLibraries = false;
+            out.setting = !!document.getElementById('cust-open-libraries');
+            return out;
+        }, pics);
+        check('a folder with photo apps\' libraries in it: only your photos, not their previews', r.files === 'c1.jpg,photo1.jpg,photo2.jpg' && r.listed === 'Ceremony' && r.counted === 3, JSON.stringify(r));
+        check('... Settings → Projects can open them as folders', r.setting && r.opened === 8 && r.listedOn === 6 && r.countedOn === 8, JSON.stringify(r));
+        check('libraries: no JS errors', errors.length === 0, errors.join('; '));
+        await app.close();
+    }
+
     console.log('mac: closing in Adjust or Paint (holdClose)');
     {
         const { app, page, errors } = await launch(profile);

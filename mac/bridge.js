@@ -181,6 +181,8 @@
     // ---- What the app does for jEditor ----
     let onUpdateProgress = null;
     let onClosing = null; // holdClose
+    // Settings → Projects: photo apps' libraries opened as folders (places.js)
+    const libraries = () => { const a = jeditor(); return !!(a && a.uiPrefs && a.uiPrefs.openLibraries); };
     let nextCopy = 1;
     const copying = new Map(); // folder copy id → progress(done, total)
 
@@ -275,7 +277,7 @@
         },
         // A folder's folders → { path, name, parent, folders: [{ name, path }], photos, more }
         async listDir(path) {
-            return answer('listDir', { path });
+            return answer('listDir', { path, libraries: libraries() });
         },
         // The projects (folders) in a folder, newest first → [{ name, path, modified (ms) }]
         async listProjects(path) {
@@ -294,7 +296,7 @@
         },
         // Photos in each folder and its subfolders → { counts: [n, -1 if gone], limit }
         async countPhotos(paths) {
-            return answer('countPhotos', { paths });
+            return answer('countPhotos', { paths, libraries: libraries() });
         },
         // Ejects a drive → { ok, error? }
         async eject(path) {
