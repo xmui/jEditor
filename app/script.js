@@ -5482,7 +5482,8 @@ const app = {
     // Lags reset to 0 whenever a preview is regenerated from fresh disk bytes.
 
     // `turns`: each photo's own turn (Turn upright), in place of `deg`
-    async rotateBulk(deg, turns = null) {
+    // quiet: no toast (the scan window says how many it turned)
+    async rotateBulk(deg, turns = null, { quiet = false } = {}) {
         if (!turns && this.selection.size === 0) return;
         if (!this.ensureWritable()) return;
         const degOf = (f) => turns ? turns.get(f) : deg;
@@ -5510,7 +5511,7 @@ const app = {
             }
             if (kept.length === filesToRotate.length) {
                 const n = kept.length;
-                this.showToast(`Turned ${n} photo${n > 1 ? 's' : ''} ${turns ? 'upright' : Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left'}`, 1600, null, null, { kind: 'rotate' });
+                if (!quiet) this.showToast(`Turned ${n} photo${n > 1 ? 's' : ''} ${turns ? 'upright' : Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left'}`, 1600, null, null, { kind: 'rotate' });
                 return;
             }
             filesToRotate.splice(0, filesToRotate.length, ...filesToRotate.filter(f => !kept.includes(f)));
@@ -5563,7 +5564,7 @@ const app = {
         // Nothing was saved (all failed): no empty undo step
         if (!group.items.length) this._undoStack = (this._undoStack || []).filter(e => e !== group);
         const how = turns ? 'upright' : Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left';
-        this.showToast(ok ? `Rotated ${label} ${how}` : 'Some photos failed to rotate', 2000, null, null, ok ? { kind: 'rotate' } : {});
+        if (!ok || !quiet) this.showToast(ok ? `Rotated ${label} ${how}` : 'Some photos failed to rotate', 2000, null, null, ok ? { kind: 'rotate' } : {});
         this.log('Bulk rotation finished');
     },
 
@@ -7562,18 +7563,11 @@ const app = {
         const turns = new Map();
         try {
             for (const [i, f] of files.entries()) {
-                if (f._rotationQueue) await f._rotationQueue;
-                let g = null;
-                try { g = await Upright.guess(await this.readImage(f)); } catch (e) { this.log(`Turn upright: ${f.name}: ${e.message}`); }
-                // Turns from the file as saved; a turn waiting with its other
-                // edits is taken off
-                const held = (f._edit && f._edit.q) || 0;
-                const q = g && g.sure >= Upright.SURE ? ((g.turns - held) % 4 + 4) % 4 : 0;
-                if (g) this.log(`Turn upright: ${f.name}: ${g.turns * 90}° (${Math.round(g.sure * 100)}% sure)${q ? '' : ', left as it is'}`);
-                if (q) {
-                    turns.set(f, q === 3 ? -90 : q * 90);
+                const deg = await this.uprightTurn(f);
+                if (deg) {
+                    turns.set(f, deg);
                     const back = backs && backs.get(f);
-                    if (back) turns.set(back, q === 3 ? -90 : q * 90);
+                    if (back) turns.set(back, deg);
                 }
                 if (files.length > 10 && i % 10 === 9) this.updateTask(task, `Finding which way is up (${i + 1}/${files.length})…`);
                 await new Promise(r => setTimeout(r, 0));
@@ -7588,6 +7582,19 @@ const app = {
         }
         await this.rotateBulk(0, turns);
         return n;
+    },
+
+    // The turn that puts one photo upright, in degrees (0 when it's upright
+    // already, or Upright isn't sure): from the file as saved, a turn
+    // waiting with its other edits taken off
+    async uprightTurn(f) {
+        if (f._rotationQueue) await f._rotationQueue;
+        let g = null;
+        try { g = await Upright.guess(await this.readImage(f)); } catch (e) { this.log(`Turn upright: ${f.name}: ${e.message}`); }
+        const held = (f._edit && f._edit.q) || 0;
+        const q = g && g.sure >= Upright.SURE ? ((g.turns - held) % 4 + 4) % 4 : 0;
+        if (g) this.log(`Turn upright: ${f.name}: ${g.turns * 90}° (${Math.round(g.sure * 100)}% sure)${q ? '' : ', left as it is'}`);
+        return q === 3 ? -90 : q * 90;
     },
 
     async batchAutoCrop(files, { ask = true, feeder = false, scan = false } = {}) {
