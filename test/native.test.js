@@ -806,6 +806,10 @@ async function newPage(context, baseUrl, host = null) {
             await wait(() => app.files.some(f => f.name === 'photo5.jpg'));
             await wait(() => $('scan-panel').dataset.state === 'done');
             out.dock = { title: $('scan-title').textContent, status: $('scan-status').textContent, strip: $('scan-strip').querySelectorAll('figure').length, more: $('scan-go').textContent };
+            // The strip shows small copies made in the thumbnail worker, not the scans themselves
+            await wait(() => [...$('scan-strip').querySelectorAll('img')].filter(i => i.complete && i.naturalWidth).length === 2);
+            out.thumbW = app.THUMB_WIDTH;
+            out.stripWidths = [...$('scan-strip').querySelectorAll('img')].map(i => i.naturalWidth).join();
             out.req = window.__scanReq;
             out.compatKept = JSON.parse(localStorage.getItem('jeditor.scanCompat') || '{}')['EPSON FF-680W'] === true;
             out.files = app.files.map(f => f.relPath || f.name).sort().join(',');
@@ -914,6 +918,7 @@ async function newPage(context, baseUrl, host = null) {
         check('... each folder its own sequence', r.cerNames.join() === 'c,2', r.cerNames.join());
         check('the dock stays while it scans, then says how many, with the photos and Scan more', r.closed && /^Scanned 2 photos into Scan Order/.test(r.dock.status) && r.dock.strip === 2 && r.dock.more === 'Scan more' && /Scanned · EPSON FF-680W/.test(r.dock.title), JSON.stringify(r.dock));
         check('Scan asks the app to scan into the order\'s folder, by path', r.req && r.req.folder === 'D:\\Orders\\Scan Order' && r.req.device === 'EPSON FF-680W' && r.req.driver === 'twain' && r.req.prefix === 'photo' && r.req.next === 4, JSON.stringify(r.req));
+        check('the dock\'s strip shows a small copy of each scan (made in the thumbnail worker)', r.thumbW === 320 && r.stripWidths === `${r.thumbW},${r.thumbW}`, r.stripWidths);
         check('scanned photos show up in the order', r.files === 'Ceremony/c1.jpg,photo1.jpg,photo2.jpg,photo3.jpg,photo4.jpg,photo5.jpg', r.files);
         check('a message says how many', /Scanned 2 photos into Scan Order/.test(r.toast), r.toast);
         check('Auto crop each photo is off to start with', r.autoCropDefault === false);

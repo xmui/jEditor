@@ -365,10 +365,15 @@ const Scan = {
             const dir = await Folders.handleFor(folder);
             const file = await (await dir.getFileHandle(name)).getFile();
             if (!fig.isConnected) return;
+            // A small copy, made in the thumbnail worker: a 1200 dpi scan
+            // shown as it is held the window up for most of a second
+            let small = file;
+            try { small = await this.app.generateThumbnailBlob(file); } catch (e) { /* the scan itself */ }
+            if (!fig.isConnected) return;
             const img = document.createElement('img');
             img.alt = '';
             img.decoding = 'async';
-            img.src = URL.createObjectURL(file);
+            img.src = URL.createObjectURL(small);
             fig.prepend(img);
         } catch (e) { /* not readable yet: the name shows */ }
         if (sized) strip.scrollTop = strip.scrollHeight;
