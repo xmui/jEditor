@@ -13,6 +13,7 @@ const CHANGELOG = [
             'Scrolling fast through a huge folder (Page Down, or a quick fling) is about twice as smooth: the photos ease in at the edges when you scroll along, and wait while you rush past.',
             'Reload is back in the Windows, Mac and Linux apps: `Ctrl+R` (`Cmd+R` on a Mac, or View → Reload). If something in Adjust or Paint isn\'t kept yet, it asks first, as closing the window does. Plain `R` is still Rescan folder.',
             'Opening a folder with a photo app\'s library in it (Pictures on a Mac, with the Photos library) no longer lists the library\'s own thumbnails and previews as photos. Photos, iPhoto, Aperture and Lightroom libraries are left out, as Finder shows them as one item. To open them like folders, turn on Settings → Projects → Open photo libraries as folders.',
+            'Opening a folder of more than 2,000 photos asks first, as it can take a while: Open, Cancel, or Don\'t ask again. Change the number in Settings → Projects → Ask before opening a huge folder, or leave it empty to never be asked. How long each step of opening takes now goes in the log.',
         ]
     },
     {
