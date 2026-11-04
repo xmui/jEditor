@@ -3,7 +3,7 @@
 // checks for a blank disc and its room against the project's size, names
 // the disc (the project's name, as much as a disc keeps) and offers to
 // save edits not saved yet first (the disc gets the photos as they are on
-// disk); this burns it, with how far it's got, and ejects it.
+// disk); this burns it, with how far it's got, and ejects it if asked.
 
 const Disc = {
     native() { return FolderCache.native(); },
@@ -24,8 +24,9 @@ const Disc = {
     },
 
     // Burns the project at `path` onto the disc in `pick`, called `label`;
-    // edits not saved yet saved into the photos first if `saveEdits`
-    async burn(pick, path, label, { saveEdits = false } = {}) {
+    // edits not saved yet saved into the photos first if `saveEdits`; the
+    // disc ejected after if `eject`
+    async burn(pick, path, label, { saveEdits = false, eject = true } = {}) {
         const app = this.app;
         const native = this.native();
         const name = Places.baseName(path);
@@ -39,8 +40,8 @@ const Disc = {
             await native.burn(pick.id, path, String(label || '').trim() || name, (done, total) => {
                 const pct = total ? Math.min(100, Math.floor(done * 100 / total)) : null;
                 if (pct !== last) { last = pct; say(pct); }
-            }, true);
-            app.showToast(`Burnt ${name} to the ${pick.media} — take it out of the drive`, 8000, key, null, { type: 'success' });
+            }, eject);
+            app.showToast(`Burnt ${name} to the ${pick.media}${eject ? ' — take it out of the drive' : ''}`, 8000, key, null, { type: 'success' });
         } catch (e) {
             if (toast) app.dismissToast(toast);
             UI.alert({ title: `Couldn't burn ${name}`, message: e.message });

@@ -809,16 +809,18 @@ const Places = {
     // ---- A project onto a USB drive or card, in one step ----
     //
     // The drive chosen (if there's more than one), room checked, the folder
-    // copied, its flags and edits put with it (a .jeditor folder in the
-    // copy: wherever it's opened next, jEditor takes them in), and the
-    // drive ejected after if you like.
+    // copied as it is on disk, and the drive ejected after if you like. Its
+    // flags and kept edits stay on this computer: they go with it (a
+    // .jeditor folder in the copy, taken in wherever it's opened next) only
+    // when that's asked for, in the Export window.
 
     usbDrives(except = null) {
         return (this.drives || []).filter(d => d.kind === 'usb' && !(except && this.within(except, d.path)));
     },
 
-    // `eject` (true or false): chosen already, in the Export window
-    async copyToDrive(src = this.current(), { drive = null, at = null, eject = null } = {}) {
+    // `eject` (true or false): chosen already, in the Export window;
+    // `withData`: its flags and edits too, in a .jeditor folder in the copy
+    async copyToDrive(src = this.current(), { drive = null, at = null, eject = null, withData = false } = {}) {
         const app = this.app;
         if (!src) return;
         if (!this.drives) await this.refresh().catch(() => { });
@@ -831,7 +833,7 @@ const Places = {
             if (drives.length > 1) {
                 // Which one: a menu of them, with room on each
                 const p = at || { x: innerWidth / 2 - 120, y: innerHeight / 3 };
-                app.openContextMenu(drives.map(d => [`${d.name} — ${this.short(d.free)} free`, () => this.copyToDrive(src, { drive: d })]), p.x, p.y);
+                app.openContextMenu(drives.map(d => [`${d.name} — ${this.short(d.free)} free`, () => this.copyToDrive(src, { drive: d, eject, withData })]), p.x, p.y);
                 return;
             }
             drive = drives[0];
@@ -849,7 +851,7 @@ const Places = {
         const how = eject !== null ? (eject ? 'ok' : 'alt') : await UI.choose({
             title: `Copy ${name} to ${drive.name}?`,
             message: (bytes ? `${app.formatBytes(bytes)} of photos; ${app.formatBytes(drive.free)} free on ${drive.name}. ` : '') +
-                'Its flags and edits go with it, for when it\'s opened in jEditor on another computer.',
+                'The photos are copied as they are on disk.',
             ok: 'Copy and eject',
             alt: 'Copy'
         });
@@ -859,13 +861,14 @@ const Places = {
         await Promise.all([Edits.flush(), Flags.save()].map(p => p.catch(() => { })));
         const to = await this.copyInto(src, drive.path, { quiet: true });
         if (!to) return;
-        const carried = await this.carryData(src, to).catch((e) => { console.warn('Couldn\'t put the project\'s data with the copy:', e); return false; });
+        const carried = withData && await this.carryData(src, to).catch((e) => { console.warn('Couldn\'t put the project\'s data with the copy:', e); return false; });
         if (how === 'ok') {
             await this.eject(drive.path, drive.name);
-            return;
+            return to;
         }
         app.showToast(`Copied ${name} to ${drive.name}` + (carried ? ', flags and edits too' : ''), 6000, null,
             { label: 'Eject', run: () => this.eject(drive.path, drive.name) }, { type: 'success' });
+        return to;
     },
 
     // The project's data (flags, kept edits and their paint) into a .jeditor
