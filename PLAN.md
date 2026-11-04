@@ -52,7 +52,6 @@ jEditor is one product, in this repo, shipped three ways from one UI (`app/`):
 
 Bugs the owner has seen and wants fixed, newest first. A fix takes its line out.
 
-- **Mac: the Adjust and Paint chips clip into the window's title** (2026-11-01, after 1.50.1). In Adjust and Paint, the chip that names the mode, at the top left, runs into the title in the title bar and is cut off. #113 (1.50.0) kept Photos · Adjust · Paint clear of the traffic lights and the toolbar, but not these chips. Check every Toolbar size, macOS 26 and older, full screen, and with the sidebar open and closed.
 
 ## Roadmap (set 2026-10-17)
 
