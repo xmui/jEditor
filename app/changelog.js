@@ -11,6 +11,7 @@ const CHANGELOG = [
             'Adjust no longer pauses for a moment when you let go of a slider: the looks\' pictures are drawn again in a fraction of the time.',
             'In the Windows XP, Snow Leopard and 1984 themes, the thumbnail-size slider no longer sits under the selection bar in a narrow window: it gets shorter, and the bar scrolls sideways if it still needs room.',
             'Scrolling fast through a huge folder (Page Down, or a quick fling) is about twice as smooth: the photos ease in at the edges when you scroll along, and wait while you rush past.',
+            'Right-click a USB drive or card in the sidebar to Export the open project to it (copies of its photos) or Copy it there (the whole folder as it is). Right-click a disc drive to Burn the project to a disc.',
         ]
     },
     {

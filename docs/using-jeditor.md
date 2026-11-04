@@ -174,7 +174,7 @@ Painting goes on last, over the photo as it's cropped and adjusted, so it looks 
 
 ## Drives, cards and discs
 
-**Export…** under the **…** by the project's name at the top of the sidebar (or right-click it, or a project in the list, or **Export…** under ⋯ on the selection bar; in a theme, **Export** on the project's card) opens one window for taking photos off this computer. Each choice says what goes and whether it fits before anything starts, and drives and discs show up as they're put in:
+**Export…** under the **…** by the project's name at the top of the sidebar (or right-click it, or a project in the list, or **Export…** under ⋯ on the selection bar; in a theme, **Export** on the project's card) opens one window for taking photos off this computer. Or right-click a USB drive or card in the sidebar for **Export [project] to [drive]…** (copies of the photos) or **Copy [project] to [drive]…** (the whole folder as it is), or a disc drive for **Burn [project] to a disc…**. Each choice says what goes and whether it fits before anything starts, and drives and discs show up as they're put in:
 
 - **USB drive or card** (Windows, Mac and Linux): the whole project, copied in one step, with how far it's got. Each drive is listed with the room left on it. The project's flags and edits go with it, so when it's opened in jEditor on another computer they're all there. **Eject it when it's done** ejects the drive after.
 - **CD or DVD** (Windows): the burner, whether there's a blank disc in it and whether the project fits, the disc's name, and (with edits not saved yet) whether to save them into the photos first, since the disc gets the photos as they are on disk. The disc comes out when it's done.
