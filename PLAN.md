@@ -52,7 +52,6 @@ jEditor is one product, in this repo, shipped three ways from one UI (`app/`):
 
 Bugs the owner has seen and wants fixed, newest first. A fix takes its line out.
 
-
 ## Roadmap (set 2026-10-17)
 
 **Rules for everything below.** Windows first: each feature is made the best it can be in the Windows app, then brought to the Mac, Linux and the web as well as each allows. The basic workflow (open a folder, look, rotate, crop, flag, move on) stays fast and responsive: a new feature never slows it, and the tests time it.
