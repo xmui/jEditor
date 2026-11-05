@@ -417,14 +417,20 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const g = c.getContext('2d');
             g.fillStyle = '#7ab'; g.fillRect(0, 0, 120, 40);
             g.fillStyle = '#585'; g.fillRect(0, 40, 120, 40);
-            const ans = await Upright.guess(await new Promise(res => c.toBlob(res)));
+            const blob = await new Promise(res => c.toBlob(res));
+            const ans = await Upright.guess(blob);
             out.real = ans && [0, 1, 2, 3].includes(ans.turns) && ans.sure > 0.25 && ans.sure <= 1;
+            // ... looked at in a worker (the window keeps up), the same answer as here
+            out.inWorker = !!Upright.worker;
+            const here = await Upright.guessHere(blob);
+            out.same = !!here && here.turns === ans.turns && Math.abs(here.sure - ans.sure) < 1e-6;
             return out;
         });
         check('turn upright: the network is there', r.loaded);
         check('turn upright: each photo turned its own way; an unsure one left as it is', r.turned === 2 && r.orient === '6,8' && r.eWrites === 0, JSON.stringify(r));
         check('turn upright: one undo step for them all', r.oneStep);
         check('turn upright: the network answers for a photo', r.real, JSON.stringify(r));
+        check('turn upright: the network looks in a worker, with the same answer as on the window\'s thread', r.inWorker && r.same, JSON.stringify([r.inWorker, r.same]));
         await page.close();
     }
 
