@@ -172,6 +172,8 @@ const FAKE_NATIVE = `
                 await w.close();
                 scanned(name);
             }
+            // Held open after its photos are in (Turn upright mustn't wait for the end)
+            if (window.__scanHold) await window.__scanHold;
             if (window.__scanError) throw Object.assign(new Error(window.__scanError), { code: window.__scanCode || null, names: [] });
             return { count: pages, autosized: !!window.__scanAutosized };
         },
@@ -825,6 +827,32 @@ async function newPage(context, baseUrl, host = null) {
             await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '', prefix: 'Smith-B-', next: 1, digits: 3 });
             await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '' });
             out.typedMore = window.__scanReq.prefix + window.__scanReq.next;
+
+            // Turn upright: each photo as it comes in, its back with it, while
+            // the scan is still going (not all at the end)
+            {
+                const realGuess = Upright.guess, realRotate = app.rotateBulk;
+                Upright.guess = async () => ({ turns: 1, sure: 0.99 });
+                const rotated = [];
+                app.rotateBulk = async function (deg, turns, o) {
+                    rotated.push({ names: [...turns.keys()].map(f => f.name).join('+'), deg: [...turns.values()].join(), running: Scan.running, quiet: !!(o && o.quiet) });
+                    return realRotate.call(this, deg, turns, o);
+                };
+                window.__scanPages = 2;
+                window.__scanHold = new Promise(r => { window.__scanRelease = r; });
+                $('scan-upright').checked = true;
+                const run = Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '', source: 'feeder', sides: 'both', prefix: 'up', next: 1, digits: 2 });
+                await wait(() => rotated.length >= 2);
+                out.uprightEach = rotated.map(x => ({ ...x }));
+                window.__scanRelease();
+                await run;
+                out.uprightStatus = $('scan-status').textContent;
+                out.uprightAfter = rotated.length;
+                window.__scanHold = null;
+                window.__scanPages = 1; // as the scans below expect
+                Upright.guess = realGuess;
+                app.rotateBulk = realRotate;
+            }
             Scan.lastNaming = null; // the scans below follow the folder's names again
 
             // Details: the log so far, then new lines as the app writes them
@@ -911,6 +939,8 @@ async function newPage(context, baseUrl, host = null) {
         check('... unless the scanner cropped each photo itself (its own auto-size took)', r.croppedAgain === null, String(r.croppedAgain));
         check('Scan more in the dock carries on the names', r.more === 'photo6.jpg', r.more);
         check('a typed prefix carries on into the next scan', r.typedMore === 'Smith-B-2', r.typedMore);
+        check('Turn upright turns each photo as it comes in, its back with it, while the scan goes on', JSON.stringify(r.uprightEach) === JSON.stringify([{ names: 'up01.jpg+up01-b.jpg', deg: '90,90', running: true, quiet: true }, { names: 'up02.jpg+up02-b.jpg', deg: '90,90', running: true, quiet: true }]), JSON.stringify(r.uprightEach));
+        check('... and nothing is left to turn at the end; the dock says how many', r.uprightAfter === 2 && / · 2 turned upright$/.test(r.uprightStatus), JSON.stringify([r.uprightAfter, r.uprightStatus]));
         check('a scan that fails says why, and what was saved', /busy/.test(r.err || '') && /didn't finish/.test(r.alert) && /1 photo was saved/.test(r.alert) && !r.running, JSON.stringify([r.err, r.alert]));
         check('while scanning, the dock offers Stop; closing it only makes it small', r.stopOffered && r.small, JSON.stringify([r.stopOffered, r.small]));
         check('Stop ends a scan whose window never shows', r.stopped && r.stopToast === 'Scan stopped', JSON.stringify([r.stopped, r.stopToast]));
