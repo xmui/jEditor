@@ -410,8 +410,9 @@ const Develop = {
         if (!ed) return { m: [1, 0, 0, 0, 1, 0], asp: W / H };
         const o = ed.outputRect();
         const [c, s] = ed.cs();
+        const k = ed.mx ? ed.mx() : 1; // flipped: across the photo the other way
         return {
-            m: [c * o.w / W, s * o.h / W, (c * o.x0 + s * o.y0) / W + 0.5,
+            m: [k * c * o.w / W, k * s * o.h / W, k * (c * o.x0 + s * o.y0) / W + 0.5,
                 -s * o.w / H, c * o.h / H, (-s * o.x0 + c * o.y0) / H + 0.5],
             asp: W / H
         };

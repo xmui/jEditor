@@ -333,8 +333,8 @@ const PaintEditor = {
         // Layer space (the photo as on disk) to the picture shown, and back
         if (this.ed) {
             const o = this.ed.outputRect();
-            const [c, s] = this.ed.cs();
-            this.C = new DOMMatrix([c, s, -s, c, -o.x0, -o.y0]).translate(-this.W / 2, -this.H / 2);
+            const [a, b, c, d] = this.ed.mat(); // the turn, and any flip
+            this.C = new DOMMatrix([a, b, c, d, -o.x0, -o.y0]).translate(-this.W / 2, -this.H / 2);
         } else {
             this.C = new DOMMatrix();
         }

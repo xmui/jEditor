@@ -253,6 +253,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `←` `→` | Previous / next photo (`↑` `↓` move by rows in the grid) |
 | `[` `]` or `,` `.` or `Shift+←` `Shift+→` | Rotate left / right |
 | `\` | Rotate 180° |
+| `Shift+H` / `Shift+V` | Flip left to right / upside down |
 | `Space`, `G`, `S` | Toggle view, grid view, single view |
 | `C` | Crop and straighten |
 | `E` | Adjust: light, color, curves |
@@ -286,7 +287,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `?` | Show shortcuts |
 | `Ctrl+,` | Settings |
 
-In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `\` rotate 180°, `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `M` loupe, `+` `-` zoom, `Z` fit, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
+In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `\` rotate 180°, `Shift+H` `Shift+V` flip (or right-click the photo), `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `M` loupe, `+` `-` zoom, `Z` fit, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
 In Adjust: `Enter` done, `Shift+Enter` done and next, `Esc` cancel, `\` before and after, `Shift+A` auto, `Shift+C` auto color, `W` pick grey (white balance), `R` reset, `Ctrl+Shift+C` / `Ctrl+Shift+V` copy / paste the adjustments, `Ctrl+C` / `Ctrl+V` copy the photo as it looks / paste a picture from another app, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
