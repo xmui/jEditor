@@ -8,6 +8,7 @@ const CHANGELOG = [
     {
         version: '1.50.2', date: '2026-10-31', beta: true,
         items: [
+            'Mac: your Photos library is in the sidebar, under Locations. Open it out like a drive to see Favourites, Recently added and your albums, and click one to look through its photos (or Open, for the whole library). For now it\'s for looking only: nothing in the library is changed. macOS asks once whether jEditor may see it; it\'s in jEditor → Permissions… too.',
             'Adjust no longer pauses for a moment when you let go of a slider: the looks\' pictures are drawn again in a fraction of the time.',
             'In the Windows XP, Snow Leopard and 1984 themes, the thumbnail-size slider no longer sits under the selection bar in a narrow window: it gets shorter, and the bar scrolls sideways if it still needs room.',
             'Scrolling fast through a huge folder (Page Down, or a quick fling) is about twice as smooth: the photos ease in at the edges when you scroll along, and wait while you rush past.',

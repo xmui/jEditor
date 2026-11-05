@@ -20,6 +20,8 @@
 //   permissions  the Mac's privacy settings jEditor needs, in one window
 //   burn         burning a project onto a CD or DVD (disc.js)
 //   themes       Settings → Appearance's themes, with their own title bar (themes.js)
+//   photosLibrary  the Mac's Photos library in the sidebar (places.js): its albums
+//                open as the project, read-only (photosAlbum: a folder handle)
 //
 // Wording that names the system's own things comes from here too: in a
 // text, {files} is Explorer, Finder or Files, {computer} this PC or this Mac, and

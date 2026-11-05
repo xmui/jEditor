@@ -5,6 +5,8 @@ const app = {
     viewMode: 'single', // 'single' or 'grid'
     selection: new Set(), // Set of file objects
     readOnlyMode: false, // When true, saving is disabled (legacy drag-drop)
+    // An album of the Mac's Photos library is open (bridge.js: photosAlbum)
+    get library() { return !!(this.dirHandle && typeof this.dirHandle.photosLibrary === 'string'); },
     cropState: { // True while the Crop & Straighten editor, or Adjust, owns the screen (crop.js, adjust.js)
         active: false,
         tool: null // 'adjust' while it's Adjust
@@ -372,8 +374,10 @@ const app = {
     // Open a folder with read/write access: from the picker, or a recent
     // order. A folder inside an order opened before can open as part of
     // that order instead (scope: the folder to show, see Recents.offerOrder).
-    async openDirectory(dirHandle, { scope = null } = {}) {
-        if (scope === null) {
+    // library: an album of the Mac's Photos library (bridge.js: photosAlbum),
+    // read-only for now, never in Recent and not watched for changes.
+    async openDirectory(dirHandle, { scope = null, library = false } = {}) {
+        if (scope === null && !library) {
             const order = await Recents.offerOrder(dirHandle);
             if (order) return this.openDirectory(order.handle, { scope: order.path });
         }
@@ -390,7 +394,7 @@ const app = {
             this.cleanupURLs();
             this.files = [];
             this.dirHandle = dirHandle;
-            this.readOnlyMode = false; // Modern API supports writing
+            this.readOnlyMode = !!library; // Modern API supports writing; the Photos library can't be changed (yet)
 
             this.beginTask('scan', 'Scanning folder…');
             this.elements.dropZone.classList.add('hidden');
@@ -1707,8 +1711,9 @@ const app = {
                 if (this.dirHandle && !this.readOnlyMode) Recents.remember(this.dirHandle);
 
                 // Flags saved with the order, then keep an eye on the folder
+                // (not the Photos library's: it isn't a folder)
                 await Flags.load();
-                Watch.start();
+                if (!this.library) Watch.start();
                 const nested = this._nestedJeditor || [];
                 this._nestedJeditor = null;
                 if (nested.length && this.dirHandle && !this.readOnlyMode) FolderCache.absorbNested(this, nested);
@@ -1837,10 +1842,12 @@ const app = {
         const BATCH = 128;
         for (let i = 0; i < pending.length; i += BATCH) {
             const batch = pending.slice(i, i + BATCH);
-            const datas = await Promise.all(batch.map(p => p.entry.getFile().catch(() => null)));
+            // A photo in the Photos library says its size and date without being read (peek)
+            const datas = await Promise.all(batch.map(p => (typeof p.entry.peek === 'function' ? Promise.resolve(p.entry.peek()) : p.entry.getFile()).catch(() => null)));
             // A photo a scanner is writing right now is left for the folder
             // watch to add once it's whole (only just-changed files are checked)
-            const whole = await Promise.all(datas.map((d, j) => d && Date.now() - d.lastModified < Watch.SETTLED_MS
+            // (a library photo is always whole)
+            const whole = await Promise.all(datas.map((d, j) => d && !(d instanceof Blob) ? true : d && Date.now() - d.lastModified < Watch.SETTLED_MS
                 ? Watch.complete(d, batch[j].entry.name) : true));
             if (gen !== this._openGen) return;
             batch.forEach(({ entry, relPath, parentDir }, j) => {
@@ -1908,7 +1915,8 @@ const app = {
     // of letting an edit run and fail at the save.
     ensureWritable() {
         if (!this.readOnlyMode) return true;
-        this.showToast('These photos were opened read-only — use Open folder to edit and save', 4000);
+        if (this.library) this.showToast('Photos in the Photos library can\'t be changed yet: this is for looking through them', 4000);
+        else this.showToast('These photos were opened read-only — use Open folder to edit and save', 4000);
         return false;
     },
 
@@ -3367,6 +3375,18 @@ const app = {
         // lands while we decode shows up in the lag delta below.
         const savedAtRead = fileEntry._savedRotationTotal || 0;
         const editGen = fileEntry._editGen || 0;
+        // The Photos library has its own thumbnails: nothing to read or make
+        if (fileEntry.handle && typeof fileEntry.handle.getThumbnail === 'function' && !fileEntry._edit) {
+            const blob = await fileEntry.handle.getThumbnail(this.THUMB_WIDTH * (window.devicePixelRatio || 1));
+            if ((fileEntry._editGen || 0) !== editGen) return;
+            if (fileEntry.thumbnailUrl) URL.revokeObjectURL(fileEntry.thumbnailUrl);
+            fileEntry.thumbnailUrl = URL.createObjectURL(blob);
+            fileEntry.thumbLag = 0;
+            fileEntry._thumbPromise = null;
+            fileEntry._thumbStale = false;
+            this.deliverThumbnail(fileEntry);
+            return;
+        }
         const fileData = await this.readImage(fileEntry);
         if (!fileData.size) throw new Error('empty file (still being written?)');
 

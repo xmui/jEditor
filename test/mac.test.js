@@ -979,7 +979,70 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await app.close();
     }
 
-    console.log('mac: permissions, the first time');
+    console.log('mac: the Photos library (a stand-in: JEDITOR_PHOTOS_LIBRARY)');
+    {
+        const lib = path.join(tmp, 'PhotosLibrary');
+        for (const [album, n] of [['Wedding', 3], ['Favourites', 1], ['Birthday', 2]]) {
+            fs.mkdirSync(path.join(lib, album), { recursive: true });
+            for (let i = 1; i <= n; i++) fs.writeFileSync(path.join(lib, album, `IMG_000${i}.jpg`), JPEG);
+        }
+        // Two cameras' IMG_0001 in the whole library: both are there, under their own names
+        const before = fs.readdirSync(path.join(lib, 'Wedding')).map(n => fs.readFileSync(path.join(lib, 'Wedding', n)).toString('base64')).join();
+        const { app, page, errors } = await launch(path.join(tmp, 'profile-photos'), [], { JEDITOR_PHOTOS_LIBRARY: lib });
+        await page.waitForSelector('#start-places .sb-row[data-path="photos-library:"]', { timeout: 10000 }).catch(() => { });
+        const r = await page.evaluate(async () => {
+            const box = document.getElementById('start-places');
+            const row = () => box.querySelector('.sb-row[data-path="photos-library:"]');
+            const had = !!row() && row().querySelector('.fr-name').textContent;
+            row().querySelector('.fr-caret').click();
+            for (let i = 0; i < 50 && !box.querySelector('.sb-row[data-path^="photos-library:album"]'); i++) await new Promise(r => setTimeout(r, 100));
+            const albums = [...box.querySelectorAll('.sb-row[data-path^="photos-library:album"]')].map(r => [r.querySelector('.fr-name').textContent, r.querySelector('.sb-meta') ? r.querySelector('.sb-meta').textContent : '']);
+            return { feature: Host.has('photosLibrary'), had, albums, perm: (await JEditorNative.permissions()).rows.map(r => r.id + ':' + r.state).join() };
+        });
+        check('Locations has the Photos library (photosLibrary), with its own row in the permissions window', r.feature && r.had === 'Photos library' && /photos:granted/.test(r.perm), JSON.stringify(r));
+        check('... it opens out like a drive: Favourites first, then the albums by name, with how many photos', JSON.stringify(r.albums) === '[["Favourites","1"],["Birthday","2"],["Wedding","3"]]', JSON.stringify(r.albums));
+        await page.click('#start-places .sb-row[data-path="photos-library:album:Wedding"] .sb-main');
+        await loaded(page, 3);
+        const o = await page.evaluate(async () => {
+            for (let i = 0; i < 50 && !app.files.every(f => f.thumbnailUrl); i++) await new Promise(r => setTimeout(r, 100));
+            await Places.drawCard();
+            const card = document.getElementById('sb-card');
+            const f = app.files[0];
+            const data = await f.handle.getFile();
+            const toast = () => [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | ');
+            const writable = app.ensureWritable();
+            let wrote = 'no';
+            try { await f.handle.createWritable(); wrote = 'yes'; } catch (e) { wrote = e.name; }
+            return {
+                name: app.dirHandle.name, n: app.files.length, names: app.files.map(x => x.name).sort().join(),
+                readOnly: app.readOnlyMode, library: app.library, path: await JEditorNative.folderPath(app.dirHandle),
+                thumbs: app.files.every(x => /^blob:/.test(x.thumbnailUrl || '')), size: f.size, got: data.size, type: data.type,
+                cardName: card.querySelector('.sb-card-name').tagName, cardText: card.textContent,
+                renameBtn: !!card.querySelector('[data-act="rename"]'), exportBtn: !!card.querySelector('[data-act="export"]'), revealBtn: !!card.querySelector('[data-act="reveal"]'),
+                menu: Places.cardItems().map(i => i[0]).join('|'),
+                writable, wrote, toast: toast(),
+                active: !!document.querySelector('.sb-row.active[data-path="photos-library:album:Wedding"]'),
+                recent: JSON.stringify(localStorage).includes('Wedding')
+            };
+        });
+        check('an album opens as the project, read-only: its photos, its name, its path photos-library:<id>', o.name === 'Wedding' && o.n === 3 && o.names === 'IMG_0001.jpg,IMG_0002.jpg,IMG_0003.jpg' && o.readOnly && o.library && o.path === 'photos-library:album:Wedding', JSON.stringify(o));
+        check('... thumbnails come from the library, and a photo is the library\'s own (size and date without reading it)', o.thumbs && o.size === o.got && o.got > 0 && o.type === 'image/jpeg', JSON.stringify(o));
+        check('... its card has the album and no Finder, rename, pin or export', o.cardName === 'DIV' && /Photos library · read-only/.test(o.cardText) && !o.renameBtn && !o.exportBtn && !o.revealBtn && !/Rename|Export|Pin|Finder/.test(o.menu), JSON.stringify(o));
+        check('... nothing can be changed: editing says so, and nothing is written', o.writable === false && /Photos library can't be changed yet/.test(o.toast) && o.wrote === 'NotAllowedError', JSON.stringify(o));
+        check('... it\'s marked in the sidebar, and it isn\'t in Recent', o.active && !o.recent, JSON.stringify(o));
+        const whole = await page.evaluate(async () => {
+            await Places.open('photos-library:');
+            for (let i = 0; i < 50 && app.files.length !== 6; i++) await new Promise(r => setTimeout(r, 100));
+            return { name: app.dirHandle.name, names: app.files.map(f => f.name).sort().join() };
+        });
+        check('Open on the Photos library: all of it, two photos of one name both there', whole.name === 'Photos library' && whole.names === 'IMG_0001 (2).jpg,IMG_0001 (3).jpg,IMG_0001.jpg,IMG_0002 (2).jpg,IMG_0002.jpg,IMG_0003.jpg', JSON.stringify(whole));
+        const after = fs.readdirSync(path.join(lib, 'Wedding')).map(n => fs.readFileSync(path.join(lib, 'Wedding', n)).toString('base64')).join();
+        check('... and the library is as it was', before === after && fs.readdirSync(lib).sort().join() === 'Birthday,Favourites,Wedding');
+        check('no JS errors', errors.length === 0, errors.join('; '));
+        await app.close();
+    }
+
+        console.log('mac: permissions, the first time');
     {
         const vols = path.join(tmp, 'PermVolumes');
         fs.mkdirSync(path.join(vols, 'Card'), { recursive: true });
@@ -995,7 +1058,8 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         await first.page.evaluate(() => Permissions.refresh());
         const before = await rows();
         const full = before.find(r => r[0] === 'full');
-        check('the first time, it opens on its own: folders, drives, Full Disk Access', JSON.stringify(before.map(r => r[0])) === '["folders","volumes","full"]' && await first.page.evaluate(() => Permissions.isOpen()), JSON.stringify(before));
+        // (and the Photos library's, on a Mac with the native module: before Full Disk Access)
+        check('the first time, it opens on its own: folders, drives, Full Disk Access', JSON.stringify(before.map(r => r[0]).filter(id => id !== 'photos')) === '["folders","volumes","full"]' && await first.page.evaluate(() => Permissions.isOpen()), JSON.stringify(before));
         if (full && full[1] === 'granted') {
             check('... with Full Disk Access, everything is on', before.every(r => r[1] === 'granted'), JSON.stringify(before));
         } else {
