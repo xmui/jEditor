@@ -349,7 +349,9 @@
 :root[data-skin="snow"] .grid-view {
     background: #fff;
     gap: 10px 14px;
-    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(calc(var(--grid-item-size, 150px) * 128 / 150), 1fr));
+    /* The thumbnail-size slider (and Ctrl+wheel, a pinch) sizes the tiles:
+       128px at its default, 150 */
 }
 :root[data-skin="snow"] .grid-item {
     aspect-ratio: auto;

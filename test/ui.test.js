@@ -1077,6 +1077,58 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // The thumbnail size in each theme: the themes lay the grid out their
+    // own way, and once set their tiles' size without the slider's
+    console.log('themes: the thumbnail size changes the tiles');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        // Themes are the desktop apps': a stand-in app with them, which
+        // answers anything else with nothing (as design/themes/audit.js)
+        await page.addInitScript(() => {
+            const answers = { platform: 'windows', features: ['themes'], titleBar() {}, windowAction() {}, setState() {}, watchLog() {} };
+            window.JEditorNative = new Proxy(answers, { get: (t, k) => k in t ? t[k] : (typeof k === 'string' && !k.startsWith('on') ? async () => [] : undefined) });
+        });
+        await page.reload({ waitUntil: 'networkidle' });
+        await page.evaluate(PAGE_HELPERS);
+        await page.evaluate(async () => {
+            const dir = makeDir('Sizes');
+            for (let i = 1; i <= 12; i++) {
+                const h = makeHandle(`t${i}.jpg`, await makeRealJpeg(300, 200, { color: `hsl(${i * 30},60%,50%)` }), 'image/jpeg');
+                dir._files.set(h.name, h);
+            }
+            dir.values = async function* () { yield* dir._files.values(); };
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            Experiments.set('themes', true);
+        });
+        for (const theme of ['xp/royale', 'snow/finder', 'mac84/finder']) {
+            const r = await page.evaluate(async (theme) => {
+                const wait = (ms) => new Promise(res => setTimeout(res, ms));
+                Themes.choose(theme);
+                await wait(300);
+                const skin = document.documentElement.dataset.skin;
+                if (document.body.dataset.view === 'single') document.getElementById('btn-toggle-view').click();
+                await wait(300);
+                const slider = document.getElementById('grid-size-slider');
+                const tile = () => Math.round(document.querySelector('#grid-view .grid-item').getBoundingClientRect().width);
+                const set = async (v) => { slider.value = v; slider.dispatchEvent(new Event('input', { bubbles: true })); await wait(100); return tile(); };
+                const out = { skin, start: await set(150) };
+                out.big = await set(300);
+                out.small = await set(80);
+                // Ctrl+wheel (a mouse's notches), up: bigger
+                const grid = document.getElementById('grid-view');
+                for (let i = 0; i < 3; i++) grid.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, bubbles: true, cancelable: true }));
+                await wait(100);
+                out.wheel = tile();
+                await set(150);
+                return out;
+            }, theme);
+            check(`${theme}: the size slider and Ctrl+wheel change the thumbnails`, r.skin === theme.split('/')[0] && r.big > r.start + 40 && r.small < r.start - 30 && r.wheel > r.small + 20, JSON.stringify(r));
+        }
+        check('themes, thumbnail size: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     console.log('motion: a photo selected bounces (motion.js)');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
