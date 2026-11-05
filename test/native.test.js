@@ -1949,7 +1949,7 @@ async function newPage(context, baseUrl, host = null) {
                 step = 'card button';
                 await Places.drawCard();
                 out.cardButton = !!document.querySelector('.sb-card [data-act="export"]') && !document.querySelector('.sb-card [data-act="todrive"]');
-                // Copy: room checked, photos and data copied, a message with Eject
+                // Copy: room checked, the photos copied (no .jeditor folder), a message with Eject
                 step = 'copy';
                 const choose0 = UI.choose, alert0 = UI.alert;
                 UI.choose = async (o) => { out.asked = o.title; return 'alt'; };
@@ -1957,9 +1957,17 @@ async function newPage(context, baseUrl, host = null) {
                 const usb = await opfs('usb-E');
                 const copy = await usb.getDirectoryHandle('Alpha');
                 out.copied = (await names(copy)).filter(n => n.endsWith('.jpg')).length === 3 && await has(copy, 'Ceremony', 'c1.jpg');
-                out.data = await has(copy, '.jeditor', 'flags.json') && await has(copy, '.jeditor', 'edits.json');
-                await wait(() => /Copied Alpha to USB drive \(E:\), flags and edits too/.test(toasts()));
+                out.noData = !(await has(copy, '.jeditor'));
+                await wait(() => /Copied Alpha to USB drive \(E:\)/.test(toasts()));
                 out.toast = toasts();
+                out.askedText = out.asked;
+                // Asked for: its flags and edits go too, in a .jeditor folder
+                step = 'copy with data';
+                await usb.removeEntry('Alpha', { recursive: true });
+                await Places.copyToDrive(Places.current(), { drive: window.__drives.find(d => d.kind === 'usb'), withData: true });
+                const copy2 = await usb.getDirectoryHandle('Alpha');
+                out.data = await has(copy2, '.jeditor', 'flags.json') && await has(copy2, '.jeditor', 'edits.json');
+                await wait(() => /Copied Alpha to USB drive \(E:\), flags and edits too/.test(toasts()));
                 // Not enough room: says so, copies nothing
                 step = 'room';
                 window.__copies = [];
@@ -1970,7 +1978,7 @@ async function newPage(context, baseUrl, host = null) {
                 step = 'eject';
                 UI.choose = async () => 'ok';
                 await usb.removeEntry('Alpha', { recursive: true });
-                await Places.copyToDrive(Places.current(), { drive: window.__drives.find(d => d.kind === 'usb') });
+                await Places.copyToDrive(Places.current(), { drive: window.__drives.find(d => d.kind === 'usb'), withData: true });
                 await wait(() => window.__ejected);
                 out.ejected = window.__ejected === 'E:' + BS;
                 UI.choose = choose0;
@@ -2033,10 +2041,12 @@ async function newPage(context, baseUrl, host = null) {
                 out.burnPrompt = $('ex-title').textContent + ' / ' + $('ex-label').value + ' / ' + $('ex-go').textContent;
                 $('ex-label').value = 'Alpha 2026';
                 $('ex-label').dispatchEvent(new Event('input', { bubbles: true }));
+                out.burnEjectBox = !!$('ex-eject') && $('ex-eject').checked;
                 $('ex-save-first').click(); // burnt as they are
                 $('ex-go').click();
                 await wait(() => window.__burnt);
                 out.burnt = window.__burnt;
+
                 await wait(() => /Burnt Alpha to the DVD-R/.test(toasts()));
                 out.burnToast = /Burnt Alpha/.test(toasts());
                 // No blank disc: says so
@@ -2050,12 +2060,13 @@ async function newPage(context, baseUrl, host = null) {
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
         check('drives: the project card has one Export button (USB drive, disc, copies)', r.cardButton, JSON.stringify(r));
-        check('drives: a project copied to a USB drive in one step, its flags and edits with it, Eject offered', r.copied && r.data && /Copy Alpha to USB drive/.test(r.asked || '') && /Eject/.test(r.toast || ''), JSON.stringify(r));
+        check('drives: a project copied to a USB drive in one step, no .jeditor folder on it, Eject offered', r.copied && r.noData && /Copy Alpha to USB drive/.test(r.asked || '') && /Eject/.test(r.toast || '') && !/flags and edits/.test(r.toast || ''), JSON.stringify(r));
+        check('drives: its flags and edits go too (a .jeditor folder) only when asked for', r.data, JSON.stringify(r));
         check('drives: not enough room says so, and nothing\'s copied; Copy and eject ejects', /Not enough room on Tiny/.test(r.roomAlert || '') && r.noCopy && r.ejected, JSON.stringify(r));
         check('drives: opened from the drive, the project\'s flags and edits are taken in', r.carried && r.jeditorGone, JSON.stringify(r));
         check('import: a camera\'s card plugged in is offered to import', r.offered, JSON.stringify(r));
         check('import: its photos (not its videos) copied into the project; nothing new the second time', r.imported && r.importToast && /Import 3 photos/.test(r.goLabel || '') && /3 photos/.test(r.summary || '') && r.nothingNew, JSON.stringify(r));
-        check('burn: in Export, the burner and its blank disc, edits offered to save first, the disc named, burnt, and said', /Save the edits into 1 photo first/.test(r.burnAsked || '') && /Blank DVD-R/.test(r.burnAsked || '') && r.burnPrompt === 'Export Alpha / Alpha / Burn to the DVD-R' && r.burnt && r.burnt.label === 'Alpha 2026' && r.burnt.path === 'D:\\Orders\\Alpha' && r.burnToast, JSON.stringify(r));
+        check('burn: in Export, the burner and its blank disc, edits offered to save first, the disc named, burnt, and said', /Save the edits into 1 photo first/.test(r.burnAsked || '') && /Blank DVD-R/.test(r.burnAsked || '') && r.burnPrompt === 'Export Alpha / Alpha / Burn to the DVD-R' && r.burnt && r.burnt.label === 'Alpha 2026' && r.burnt.path === 'D:\\Orders\\Alpha' && r.burnt.eject === true && r.burnEjectBox && r.burnToast, JSON.stringify(r));
         check('burn: no blank disc in the drive says so, and Burn waits', /^true Put a blank disc in/.test(r.noDisc || ''), JSON.stringify(r));
         check('drives suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
@@ -2084,6 +2095,7 @@ async function newPage(context, baseUrl, host = null) {
             out.tabs = [...$('ex-tabs').querySelectorAll('button')].map(b => b.textContent + (b.classList.contains('active') ? '*' : '')).join(', ');
             out.usb = $('ex-body').textContent.replace(/\s+/g, ' ').trim();
             out.usbGo = $('ex-go').textContent;
+            out.withDataOff = $('ex-with-data') && !$('ex-with-data').checked;
             // Copy, not ejected after: no more questions
             $('ex-eject').click();
             const choose0 = UI.choose;
@@ -2091,7 +2103,9 @@ async function newPage(context, baseUrl, host = null) {
             $('ex-go').click();
             await wait(() => /Copied Beta to USB drive/.test(toasts()));
             UI.choose = choose0;
-            out.copied = !!(await (await opfs('usb-E')).getDirectoryHandle('Beta').catch(() => null));
+            const beta = await (await opfs('usb-E')).getDirectoryHandle('Beta').catch(() => null);
+            out.copied = !!beta;
+            out.noJeditor = !!beta && !(await beta.getDirectoryHandle('.jeditor').then(() => true, () => false));
             out.ejected = window.__ejected || null;
             // Copies of the selected photos, smaller, into the project's export folder
             Export.open({ files: [f('photo1.jpg')] });
@@ -2113,12 +2127,17 @@ async function newPage(context, baseUrl, host = null) {
             [...$('ex-body').querySelectorAll('input[name="ex-which"]')].find(i => i.value === 'star').click();
             [...$('ex-body').querySelectorAll('input[name="ex-where"]')].find(i => i.value.startsWith('drive:')).click();
             out.starGo = $('ex-go').textContent;
+            // Eject when done, for copies onto a drive too (off, remembered from the copy above: on again)
+            out.copiesEjectOff = !!$('ex-eject') && !$('ex-eject').checked;
+            $('ex-eject').click();
             $('ex-go').click();
             await wait(() => /Exported 2 to USB drive/.test(toasts()));
             const onUsb = await (await (await opfs('usb-E')).getDirectoryHandle('jEditor Export')).getDirectoryHandle('Beta');
             const names = [];
             for await (const k of onUsb.keys()) names.push(k);
             out.onUsb = names.sort().join();
+            await wait(() => window.__ejected);
+            out.copiesEjected = window.__ejected;
             // Remembered: the size, not the drive
             out.kept = JSON.parse(localStorage.getItem('jeditor.export'));
             // ⋯ on the selection bar: Export… opens it on Copies
@@ -2132,10 +2151,12 @@ async function newPage(context, baseUrl, host = null) {
             return out;
         });
         check('export: the project card opens one window: USB drive or card, CD or DVD, Copies', r.tabs === 'USB drive or card*, CD or DVD, Copies', r.tabs);
-        check('... USB: the drive, its room and whether it fits; Eject after offered', /USB drive \(E:\)/.test(r.usb) && /free of/.test(r.usb) && /Fits/.test(r.usb) && /Eject it when it's done/.test(r.usb) && r.usbGo === 'Copy to USB drive (E:)', JSON.stringify([r.usb, r.usbGo]));
+        check('... USB: the drive, its room and whether it fits; Eject after offered', /USB drive \(E:\)/.test(r.usb) && /free of/.test(r.usb) && /Fits/.test(r.usb) && /Eject when done/.test(r.usb) && r.usbGo === 'Copy to USB drive (E:)', JSON.stringify([r.usb, r.usbGo]));
+        check('... its flags and edits: an option, off to start with; no .jeditor folder on the drive', r.withDataOff && r.noJeditor, JSON.stringify([r.withDataOff, r.noJeditor]));
         check('... copied in one step (no more questions), not ejected when that\'s off', r.copied && !r.askedAgain && !r.ejected, JSON.stringify(r));
         check('... Copies: opened with the photos selected, smaller, into "jEditor Export"', r.copiesTab === 'Copies' && /photo selected\*/.test(r.which) && /2 starred/.test(r.which) && r.copiesGo === 'Export 1 copy' && r.size === 100, JSON.stringify(r));
         check('... the starred onto the USB drive, in its own folder', r.starGo === 'Export 2 copies' && r.onUsb === 'photo2.jpg,photo3.jpg', JSON.stringify([r.starGo, r.onUsb]));
+        check('... Eject when done for copies onto a drive (remembered), and it ejects', r.copiesEjectOff && r.copiesEjected === 'E:\\', JSON.stringify([r.copiesEjectOff, r.copiesEjected]));
         check('... the size is remembered, a drive isn\'t', r.kept.size === 100 && r.kept.where === 'project', JSON.stringify(r.kept));
         check('... ⋯ on the selection bar opens it, on the selection', r.menu === 'Export 2…' && r.fromMenu === 'Export 2 photos / Export 2 copies' && r.closed, JSON.stringify([r.menu, r.fromMenu]));
         check('export: no JS errors', errors.length === 0, errors.join('; '));
