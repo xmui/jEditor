@@ -8547,8 +8547,9 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    The window's toolbar, in Liquid Glass, is the top row: the page's own
    pills there go (the toolbar mirrors them, the mode chip too), it holds
    the traffic lights, and what was below the pills starts below it. Over
-   Adjust and Paint it steps aside (bridge.js) and their head is the top
-   row, with the mode chip in it, as before macOS 26. */
+   Adjust and Paint it stays with just the mode, the same button as in
+   Photos (bridge.js), and their head starts below it: the page's own chip
+   there sat in the toolbar's title bar, which took most presses on it. */
 /* (As particular as the Mac's own --top-row, above, to win over it: AppKit's
    toolbar doesn't grow with Toolbar size) */
 :root[data-platform="mac"].native-toolbar {
@@ -8558,8 +8559,12 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 
 :root.native-toolbar header,
 :root.native-toolbar .folder-bar,
-:root.native-toolbar .mode-float:not(.over-mode) {
+:root.native-toolbar .mode-float {
     display: none !important;
+}
+
+:root.native-toolbar :is(.adjust-editor, .paint-editor) {
+    padding-top: var(--top-row);
 }
 
 /* The page lies under the toolbar (Electron's hidden title bar), so it,
