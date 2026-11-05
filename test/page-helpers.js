@@ -3,9 +3,25 @@
 
 const fs = require('fs');
 
+// Playwright's own Chromium, when it's been installed
+// (`npx playwright-core install chromium-headless-shell`; the cloud
+// sessions' start-up hook does it). It comes before /opt/pw-browsers because
+// the cloud containers' Chromium there (Chrome for Testing 153) crashes the
+// whole browser when a folder handle read back from IndexedDB is used, which
+// Recents does every time a test opens a folder.
+function playwrightChromium() {
+    try {
+        const p = require('playwright-core').chromium.executablePath();
+        return p && fs.existsSync(p) ? p : null;
+    } catch (e) {
+        return null;
+    }
+}
+
 function launchOptions() {
     const candidates = [
         process.env.CHROME_PATH,
+        playwrightChromium(),
         '/opt/pw-browsers/chromium',
         '/usr/bin/chromium',
         '/usr/bin/chromium-browser',
