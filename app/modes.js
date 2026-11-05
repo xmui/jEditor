@@ -49,6 +49,16 @@ const Modes = {
         addEventListener('beforeunload', (e) => {
             if (!Host.get() && this.unkept()) { e.preventDefault(); e.returnValue = ''; }
         });
+        // Reload in the apps, as a browser's (which has its own): Ctrl+R,
+        // ⌘R on the Mac (its menu's View → Reload sends it here too). Plain
+        // R stays Rescan folder.
+        addEventListener('keydown', (e) => {
+            if (Host.get() && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyR') {
+                e.preventDefault();
+                e.stopPropagation();
+                this.reload();
+            }
+        }, true);
         // The chip, in the folder pill (after the sidebar button) and on its own
         const bar = this.el('folder-bar');
         if (bar) {
@@ -99,7 +109,9 @@ const Modes = {
         document.addEventListener('pointerdown', (e) => {
             if (this.menu && !this.menu.contains(e.target) && !e.target.closest('.mode-chip')) this.closeMenu();
         }, true);
-        addEventListener('resize', () => this.closeMenu());
+        addEventListener('resize', () => { this.closeMenu(); this.chipRoom(); });
+        // A theme on or off, full screen (the Mac's lights): the chip moves
+        new MutationObserver(() => this.chipRoom()).observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-skin', 'style'] });
         this.render();
     },
 
@@ -301,10 +313,31 @@ const Modes = {
             float.classList.toggle('over-mode', editing);
             this.drawChip(float.firstElementChild, mode);
         }
+        this.chipRoom();
         this.placeStrip(mode);
         this.renderStart();
         // Closing the window asks first while in Adjust or Paint
         this.holdClose(mode !== 'photos');
+    },
+
+    // Over Adjust and Paint the chip floats in their head's left corner, and
+    // their buttons on its right: the head keeps that much room each side,
+    // so its title (centred) never slides under them in a narrow window (on
+    // the Mac, the chip is after the traffic lights too)
+    chipRoom() {
+        cancelAnimationFrame(this.roomFrame);
+        this.roomFrame = requestAnimationFrame(() => {
+            const float = this.el('mode-float');
+            const on = float && float.classList.contains('over-mode') && !float.classList.contains('hidden');
+            const right = on ? float.getBoundingClientRect().right : 0;
+            for (const head of document.querySelectorAll('.adj-head, .paint-head')) {
+                const h = head.getBoundingClientRect();
+                const acts = head.querySelector('.mode-head-acts');
+                const a = on && acts && acts.getBoundingClientRect();
+                head.style.paddingLeft = right && h.width ? `${Math.ceil(right - h.left) + 12}px` : '';
+                head.style.paddingRight = a && a.width ? `${Math.ceil(h.right - a.left) + 12}px` : '';
+            }
+        });
     },
 
     holdClose(on) {
@@ -312,6 +345,17 @@ const Modes = {
         if (!n || !n.holdClose || this._held === on) return;
         this._held = on;
         n.holdClose(on ? () => this.closing() : null);
+    },
+
+    // The page again, asking first (as closing does) if something isn't kept
+    async reload() {
+        if (this.reloading) return;
+        this.reloading = true;
+        try {
+            if (await this.closing()) location.reload();
+        } finally {
+            this.reloading = false;
+        }
     },
 
     // Anything done in Adjust or Paint that isn't kept yet

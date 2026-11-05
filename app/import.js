@@ -77,7 +77,7 @@ const Import = {
     async scan(dir, rel = '', out = [], depth = 0) {
         if (depth > 6 || out.length > 20000) return out;
         for await (const [name, h] of dir.entries()) {
-            if (name.startsWith('.') || name.startsWith('$')) continue;
+            if (name.startsWith('.') || name.startsWith('$') || (h.kind === 'directory' && Watch.isLibrary(name))) continue;
             if (h.kind === 'directory') await this.scan(h, rel ? `${rel}/${name}` : name, out, depth + 1);
             else if (this.app.isImage(name)) {
                 const f = await h.getFile().catch(() => null);
