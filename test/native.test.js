@@ -2171,6 +2171,11 @@ async function newPage(context, baseUrl, host = null) {
             $('ex-cancel').click();
             out.closed = $('export-panel').classList.contains('hidden');
             // Right-click a USB drive in the sidebar: Export or Copy the project to it
+            // (E: plugged back in: Eject when done took it out above)
+            if (!window.__drives.some(d => d.path === 'E:' + BS)) {
+                window.__drives = window.__drives.concat([{ path: 'E:' + BS, name: 'USB drive (E:)', kind: 'usb', total: 64e9, free: 1e9 }]);
+                await Places.refresh();
+            }
             const rowFor = (p, name) => { const r = document.createElement('div'); r.dataset.path = p; r.innerHTML = '<span class="fr-name"></span>'; r.firstChild.textContent = name; return r; };
             const usbItems = Places.rowItems(rowFor('E:' + BS, 'USB drive (E:)'));
             out.usbMenu = usbItems.map(i => i[0]).filter(t => /Beta/.test(t)).join(' | ');
