@@ -20,6 +20,7 @@ const CHANGELOG = [
             'Copying a project to a USB drive no longer puts a .jeditor folder on it: the photos go as they are. To take its flags and edits along for jEditor on another computer, tick Take its flags and edits too in Export. Eject when done is there for copies onto a drive and for discs too.',
             'Right-click a USB drive or card in the sidebar to Export the open project to it (copies of its photos) or Copy it there (the whole folder as it is). Right-click a disc drive to Burn the project to a disc.',
             'Liquid glass has cleaner corners: the bend turns smoothly round the corners of the sidebar and menus, with no crease, and a pill\'s round ends no longer smear into a blob. File info and History bend like the rest. In every glass, the sidebar\'s corner now follows the Photos · Adjust · Paint switch in it, and the menus\' rows and the messages follow their corners.',
+            'Snow Leopard\'s scroll bars look like Snow Leopard\'s again, in Finder and Aperture: both arrows together at the end, a groove rounded at the far end, the bar turned properly when it runs sideways, and no white square where two bars meet.',
         ]
     },
     {
