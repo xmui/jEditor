@@ -2025,6 +2025,12 @@ const PROJECT = `
         const p2 = await open();
         const o = await p2.page.evaluate(async () => {
             let step = 'folder';
+            // The start page's Convert photos, then Photos… or A folder… from its menu
+            window.startConvert = async (item) => {
+                document.getElementById('start-convert').click();
+                await until(() => document.getElementById('context-menu'), 40);
+                [...document.querySelectorAll('#context-menu button')].find(b => b.textContent === item).click();
+            };
             try {
                 const out = {};
                 const opfs = await navigator.storage.getDirectory();
@@ -2047,7 +2053,7 @@ const PROJECT = `
                 window.showDirectoryPicker = async () => dir;
                 Convert.prefs.format = 'avif';
                 Convert.prefs.keep = false;
-                document.getElementById('start-convert').click();
+                await startConvert('A folder…');
                 await until(() => Convert.est && !Convert.est.working, 600);
                 out.chosen = [document.getElementById('cv-src-name').textContent, [...document.querySelectorAll('.cv-folder .n')].map(e => e.firstChild.textContent).sort().join()];
                 step = 'convert';
@@ -2068,7 +2074,7 @@ const PROJECT = `
                 step = 'tiff';
                 Convert.prefs.format = 'tiff';
                 Convert.est = null;
-                document.getElementById('start-convert').click();
+                await startConvert('A folder…');
                 await until(() => Convert.est && !Convert.est.working, 600);
                 out.tiffEstimate = [Convert.est.after > Convert.est.total, !document.getElementById('cv-lossless').classList.contains('hidden')];
                 Convert.go();
@@ -2085,6 +2091,132 @@ const PROJECT = `
         check('convert (a folder chosen): no JS errors', p2.issues.errors.length === 0, p2.issues.errors.join('; '));
         await p2.page.evaluate(async () => { Codec.stop(); await sleep(300); });
         await p2.page.close();
+
+        // Photos picked on the start page: converted there, its progress and
+        // what it did shown there; the folder they're in asked for first
+        const p3 = await open();
+        const q = await p3.page.evaluate(async () => {
+            let step = 'photos';
+            const drop = () => document.getElementById('drop-zone');
+            const box = () => document.getElementById('start-convert-run');
+            const shown = (el) => !!el && !el.classList.contains('hidden') && el.getBoundingClientRect().height > 0;
+            const pick = async (item) => {
+                document.getElementById('start-convert').click();
+                await until(() => document.getElementById('context-menu'), 40);
+                [...document.querySelectorAll('#context-menu button')].find(b => b.textContent === item).click();
+            };
+            try {
+                const out = {};
+                const opfs = await navigator.storage.getDirectory();
+                for (const n of ['Scans', 'Out']) { try { await opfs.removeEntry(n, { recursive: true }); } catch (e) { /* fresh */ } }
+                const dir = await opfs.getDirectoryHandle('Scans', { create: true });
+                const sub = await dir.getDirectoryHandle('1998', { create: true });
+                const outDir = await opfs.getDirectoryHandle('Out', { create: true });
+                const made = [];
+                for (let i = 0; i < 3; i++) {
+                    const c = document.createElement('canvas'); c.width = 600; c.height = 400;
+                    const g = c.getContext('2d'); g.fillStyle = ['#2050c0', '#c03020', '#20a050'][i]; g.fillRect(0, 0, 600, 400);
+                    g.fillStyle = '#fff'; g.beginPath(); g.arc(200 + i * 80, 200, 90, 0, Math.PI * 2); g.fill();
+                    const h = await (i ? sub : dir).getFileHandle(`scan${i}.jpg`, { create: true });
+                    const w = await h.createWritable(); await w.write(await canvasBlob(c, 'image/jpeg', 0.95)); await w.close();
+                    made.push(h);
+                }
+                // a photo that isn't a photo: left out
+                const txt = await dir.getFileHandle('notes.txt', { create: true });
+                const names = async (d = dir) => {
+                    const n = [];
+                    for await (const e of d.values()) {
+                        if (e.kind === 'file') n.push(e.name);
+                        else if (e.name !== '.jeditor') for await (const f of e.values()) n.push(e.name + '/' + f.name);
+                    }
+                    return n.sort().join();
+                };
+                const menu = [];
+                document.getElementById('start-convert').click();
+                await until(() => document.getElementById('context-menu'), 40);
+                menu.push(...[...document.querySelectorAll('#context-menu button')].map(b => b.textContent));
+                document.body.click();
+                out.menu = menu.join();
+                // Picked; the folder they're in is the next picker, opening where they are
+                let dirAsked = null;
+                // Fresh handles each time, as the picker gives (a run moves the ones it had)
+                const fresh = async () => [await dir.getFileHandle('scan0.jpg'), await sub.getFileHandle('scan1.jpg'), await sub.getFileHandle('scan2.jpg'), txt];
+                window.showOpenFilePicker = async (o) => { out.multiple = o.multiple; const h = await fresh(); made[0] = h[0]; return h; };
+                window.showDirectoryPicker = async (o) => { dirAsked = o; return dir; };
+                Convert.prefs.format = 'avif';
+                Convert.prefs.keep = false;
+                await pick('Photos…');
+                await until(() => Convert.est && !Convert.est.working, 600);
+                out.src = document.getElementById('cv-src-name').textContent;
+                out.note = document.getElementById('cv-note').textContent;
+                step = 'convert';
+                // What the panel says while it runs (it's quick: watched, not polled)
+                const seen = [];
+                const watch = new MutationObserver(() => {
+                    if (box().dataset.state === 'run') seen.push([shown(box()), !Convert.isOpen(), shown(drop()), box().querySelector('.scr-title').textContent,
+                        !!box().querySelector('[data-act="pause"]'), !!box().querySelector('[data-act="stop"]')]);
+                });
+                watch.observe(box(), { subtree: true, childList: true, characterData: true, attributes: true });
+                const going = Convert.go();
+                await until(() => dirAsked && (Convert.run || Convert.done), 200);
+                out.startIn = !!dirAsked && dirAsked.startIn === made[0];
+                await going;
+                watch.disconnect();
+                const last = seen.filter(x => /^Converting [1-3] of 3 photos to AVIF…$/.test(x[3])).pop();
+                out.running = last ? [...last.slice(0, 3), true, ...last.slice(4)] : seen.slice(-1);
+                await until(() => Convert.done, 800);
+                out.converted = await names();
+                const trash = [];
+                for await (const e of (await (await dir.getDirectoryHandle('.jeditor')).getDirectoryHandle('trash')).values()) trash.push(e.name);
+                out.trash = trash.sort().join();
+                out.done = [shown(box()), box().querySelector('.scr-title').textContent, box().querySelector('.scr-sub').textContent,
+                    [...box().querySelectorAll('.scr-actions button, .scr-back:not(.hidden) button')].map(b => b.textContent).join()];
+                out.notOpened = !app.dirHandle && !app.files.length && shown(drop());
+                step = 'put back';
+                box().querySelector('[data-act="back"]').click();
+                await until(async () => (await names()).includes('scan0.jpg'), 100);
+                await sleep(200);
+                out.back = [await names(), shown(box())];
+                // Keep both, into another folder: copies there, the photos as they were
+                step = 'keep';
+                window.showDirectoryPicker = async () => outDir;
+                Convert.prefs.keep = true;
+                Convert.est = null;
+                await pick('Photos…');
+                await until(() => Convert.est && !Convert.est.working, 600);
+                out.keepNote = document.getElementById('cv-note').textContent;
+                await Convert.go();
+                await until(() => Convert.done, 800);
+                out.kept = [await names(), await names(await outDir.getDirectoryHandle('jEditor Converted')), box().querySelector('.scr-sub').textContent];
+                box().querySelector('[data-act="done"]').click();
+                out.doneHides = !shown(box());
+                // Replacing, with a folder they aren't in: asked again, nothing changed
+                step = 'not in it';
+                Convert.prefs.keep = false;
+                Convert.est = null;
+                await pick('Photos…');
+                await until(() => Convert.est && !Convert.est.working, 600);
+                const tried = Convert.go();
+                await until(() => { const b = document.getElementById('uid-ok'); return b && b.getBoundingClientRect().height > 0; }, 100);
+                out.alert = document.getElementById('uid-ok').closest('[role="dialog"], [role="alertdialog"], .dialog').textContent;
+                document.getElementById('uid-ok').click();
+                await tried;
+                out.notIn = [await names(), !Convert.run && !Convert.done, Convert.isOpen()];
+                Convert.close();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('convert (start page): Convert photos offers Photos… and A folder…', q.menu === 'Photos…,A folder…', JSON.stringify(q));
+        check('convert (start page): photos picked, not a folder; the next picker opens where they are', q.multiple === true && q.src === 'Photos picked · 3 photos' && /^Next, choose the folder they're in/.test(q.note) && q.startIn, JSON.stringify([q.multiple, q.src, q.note, q.startIn]));
+        check('convert (start page): it runs on the start page, with how far it\'s got, Pause and Stop', q.running && q.running.every(Boolean), JSON.stringify(q.running));
+        check('convert (start page): converted where they are, originals in their folder\'s .jeditor/trash, nothing opened', q.converted === '1998/scan1.avif,1998/scan2.avif,notes.txt,scan0.avif' && q.trash === 'scan0.jpg,scan1.jpg,scan2.jpg' && q.notOpened, JSON.stringify([q.converted, q.trash, q.notOpened]));
+        check('convert (start page): what it did, shown there: Put them back, Convert more…, Done', q.done && q.done[0] && q.done[1] === 'Converted 3 photos to AVIF' && / → .*the originals are in \.jeditor\/trash in Scans/.test(q.done[2]) && q.done[3] === 'Put them back,Convert more…,Done', JSON.stringify(q.done));
+        check('convert (start page): Put them back puts the originals back and clears the panel', q.back && q.back[0] === '1998/scan1.jpg,1998/scan2.jpg,notes.txt,scan0.jpg' && !q.back[1], JSON.stringify(q.back));
+        check('convert (start page): Keep both, into a folder they aren\'t in: copies in its "jEditor Converted", the photos left', q.kept && q.kept[0] === '1998/scan1.jpg,1998/scan2.jpg,notes.txt,scan0.jpg' && q.kept[1] === 'scan0.avif,scan1.avif,scan2.avif' && /jEditor Converted/.test(q.kept[2]) && /^Next, choose where/.test(q.keepNote) && q.doneHides, JSON.stringify([q.kept, q.keepNote, q.doneHides]));
+        check('convert (start page): replacing needs the folder they\'re in; another one asks again and changes nothing', /Choose the folder they're in/.test(q.alert) && q.notIn && q.notIn[0] === '1998/scan1.jpg,1998/scan2.jpg,notes.txt,scan0.jpg' && q.notIn[1] && q.notIn[2], JSON.stringify([q.alert, q.notIn]));
+        check('convert (photos picked): no JS errors', p3.issues.errors.length === 0, p3.issues.errors.join('; '));
+        await p3.page.evaluate(async () => { Codec.stop(); await sleep(300); });
+        await p3.page.close();
     }
 
     await browser.close();

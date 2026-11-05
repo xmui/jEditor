@@ -51,6 +51,9 @@ const single = (then = '') => `app.openSingle(app.files[3]); setTimeout(() => { 
 // Screens: [folder open?, what to do]
 const SCREENS = {
     start: [false, ''],
+    // Photos picked on the start page, converting there (held part way), and done
+    startconvert: [false, `Convert.run = { start: true, format: 'avif', list: { length: 120 }, done: 34, saved: 31457280, busyMs: 34 * 1800, paused: false, stopped: false }; Convert.paintStart()`],
+    startconvert2: [false, `Convert.run = null; Convert.lastEntry = {}; Convert.done = { start: true, format: 'avif', list: { length: 120 }, done: 120, same: 0, taken: 0, failed: 0, total: 432013312, saved: 331350016, keep: false, outside: { handle: { name: 'Scans' }, path: 'C:\\\\Users\\\\you\\\\Pictures\\\\Scans' } }; Convert.paintStart()`],
     grid: [true, `if (document.body.dataset.view === 'single') document.getElementById('btn-toggle-view').click(); setTimeout(() => { if (document.getElementById('mode-seg')?.getClientRects().length && !document.documentElement.dataset.skin) ${H('folders.rail')}; }, 300)`],
     rail: [true, `if (document.body.dataset.view === 'single') document.getElementById('btn-toggle-view').click(); setTimeout(() => { if (!document.getElementById('folder-rail')?.getClientRects().length || (!document.documentElement.dataset.skin && !document.getElementById('mode-seg')?.getClientRects().length)) ${H('folders.rail')}; }, 300)`],
     photo: [true, single()],
@@ -113,6 +116,8 @@ const PARTS = [
     ['Main window', 'Info', 'info', '#info-panel'],
     ['Main window', 'Undo history', 'history', '#history-panel'],
     ['Main window', 'Start page', 'start', '.drop-content'],
+    ['Main window', 'Start page: converting photos', 'startconvert', '#start-convert-run'],
+    ['Main window', 'Start page: photos converted', 'startconvert2', '#start-convert-run'],
     ['Settings', 'Window and pages', 'settings', '.settings-card'],
     ['Settings', 'Theme gallery', 'settings', '#set-themes'],
     ['Settings', 'Rows, switches, lists', 'settings2', '.settings-body'],

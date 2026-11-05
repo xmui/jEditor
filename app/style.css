@@ -6444,6 +6444,79 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
     min-width: 200px;
 }
 
+/* Open folder and Convert photos, side by side (they stack when narrow) */
+.start-pair {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--sp-3);
+}
+
+.start-pair > .start-open {
+    min-width: 180px;
+}
+
+/* Convert photos: as big as Open folder, in glass beside it */
+:root:not([data-skin]) .start-convert {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-2), var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    color: var(--text-1);
+}
+
+/* Photos picked on the start page, converting here: how far, then what it did */
+.start-convert-run {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    width: min(400px, 100%);
+    margin-top: var(--sp-4);
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--r-lg);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-2), var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    color: var(--text-1);
+    text-align: left;
+}
+
+.start-convert-run.hidden {
+    display: none;
+}
+
+.scr-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.scr-sub {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
+.scr-sub .link-btn {
+    display: inline;
+    padding: 0;
+    font-size: inherit;
+    text-decoration: underline;
+    text-decoration-color: var(--border);
+    text-underline-offset: 3px;
+}
+
+.scr-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    margin-top: var(--sp-1);
+}
+
 .drop-hint {
     margin: var(--sp-3) 0 0;
     color: var(--text-2);
