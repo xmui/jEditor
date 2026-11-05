@@ -11,6 +11,7 @@ const CHANGELOG = [
             'Adjust no longer pauses for a moment when you let go of a slider: the looks\' pictures are drawn again in a fraction of the time.',
             'In the Windows XP, Snow Leopard and 1984 themes, the thumbnail-size slider no longer sits under the selection bar in a narrow window: it gets shorter, and the bar scrolls sideways if it still needs room.',
             'Scrolling fast through a huge folder (Page Down, or a quick fling) is about twice as smooth: the photos ease in at the edges when you scroll along, and wait while you rush past.',
+            'Liquid glass has cleaner corners: the bend turns smoothly round the corners of the sidebar and menus, with no crease, and a pill\'s round ends no longer smear into a blob. File info and History bend like the rest. In every glass, the sidebar\'s corner now follows the Photos · Adjust · Paint switch in it, and the menus\' rows and the messages follow their corners.',
         ]
     },
     {
