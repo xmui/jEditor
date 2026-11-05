@@ -1061,7 +1061,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         // (and the Photos library's, on a Mac with the native module: before Full Disk Access)
         check('the first time, it opens on its own: folders, drives, Full Disk Access', JSON.stringify(before.map(r => r[0]).filter(id => id !== 'photos')) === '["folders","volumes","full"]' && await first.page.evaluate(() => Permissions.isOpen()), JSON.stringify(before));
         if (full && full[1] === 'granted') {
-            check('... with Full Disk Access, everything is on', before.every(r => r[1] === 'granted'), JSON.stringify(before));
+            check('... with Full Disk Access, everything is on (but the Photos library, which asks on its own)', before.filter(r => r[0] !== 'photos').every(r => r[1] === 'granted'), JSON.stringify(before));
         } else {
             check('... each asks (Allow…), Full Disk Access opens System Settings', before[0][1] === 'ask' && before[0][2] === 'Allow…' && before[1][1] === 'ask' && full[2] === 'Open Settings', JSON.stringify(before));
             await first.page.click('#perm-list .perm-row[data-id="folders"] button');
