@@ -862,6 +862,7 @@ async function newPage(context, baseUrl, host = null) {
                 out.uprightStatus = $('scan-status').textContent;
                 out.uprightAfter = rotated.length;
                 window.__scanHold = null;
+                window.__scanPages = 1; // as the scans below expect
                 Upright.guess = realGuess;
                 app.rotateBulk = realRotate;
             }
