@@ -395,10 +395,13 @@ const app = {
             this.beginTask('scan', 'Scanning folder…');
             this.elements.dropZone.classList.add('hidden');
 
-            await this.scanDirectory(dirHandle);
+            if (!(await this.scanDirectory(dirHandle, { ask: true }))) return this.openCancelled(gen);
             if (gen !== this._openGen) return;
 
+            const t = performance.now();
             await this.finalizeLoad();
+            this.openTimes.finalize = Math.round(performance.now() - t);
+            this.log(`Opened ${this.files.length} photos: listing ${this.openTimes.list} ms, sizes and dates ${this.openTimes.stat} ms, showing ${this.openTimes.finalize} ms`);
         } catch (err) {
             if (gen !== this._openGen) return;
             this.isLoading = false;
@@ -484,6 +487,8 @@ const app = {
             folderCache: true, // keep thumbnails / duplicate data with the order's data (folder-cache.js)
             autoUpdate: true, // the Windows app looks for a new version once a day
             autoCheck: true, // pick up photos added, removed or edited outside jEditor
+            openLibraries: false, // go inside photo apps' libraries (.photoslibrary, …) as folders (watch.js)
+            hugeFolder: 2000, // ask before opening a folder of more photos than this; 0: never ask
             accent: null, // the accent colour (#rrggbb); null is the standard blue
             singleControls: true, // previous / rotate / next above the film strip in single view
             startIn: 'photos', // the landing page's Start in (modes.js): photos, adjust or paint
@@ -550,6 +555,8 @@ const app = {
                 if (typeof saved.thumbContain === 'boolean') this.uiPrefs.thumbContain = saved.thumbContain;
                 if (typeof saved.folderCache === 'boolean') this.uiPrefs.folderCache = saved.folderCache;
                 if (typeof saved.autoCheck === 'boolean') this.uiPrefs.autoCheck = saved.autoCheck;
+                if (typeof saved.openLibraries === 'boolean') this.uiPrefs.openLibraries = saved.openLibraries;
+                if (Number.isInteger(saved.hugeFolder) && saved.hugeFolder >= 0) this.uiPrefs.hugeFolder = saved.hugeFolder;
                 if (saved.toasts && typeof saved.toasts === 'object') {
                     for (const [k] of this.TOAST_KINDS) if (typeof saved.toasts[k] === 'boolean') this.uiPrefs.toasts[k] = saved.toasts[k];
                 }
@@ -852,6 +859,17 @@ const app = {
             if (e.target.checked) Watch.start();
             else Watch.stop();
         });
+        $('cust-open-libraries').addEventListener('change', (e) => {
+            this.uiPrefs.openLibraries = e.target.checked;
+            this.saveUiPrefs();
+            if (this.dirHandle) this.refreshFolder();
+        });
+        $('cust-huge-folder').addEventListener('change', (e) => {
+            const n = Math.round(Number(e.target.value));
+            this.uiPrefs.hugeFolder = n > 0 ? n : 0;
+            e.target.value = this.uiPrefs.hugeFolder || '';
+            this.saveUiPrefs();
+        });
         $('cust-folder-cache').addEventListener('change', (e) => {
             this.uiPrefs.folderCache = e.target.checked;
             this.saveUiPrefs();
@@ -947,6 +965,8 @@ const app = {
         $('cust-debug').checked = !!this.uiPrefs.debugConsole;
         $('cust-folder-cache').checked = this.uiPrefs.folderCache !== false;
         $('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
+        $('cust-open-libraries').checked = !!this.uiPrefs.openLibraries;
+        $('cust-huge-folder').value = this.uiPrefs.hugeFolder || '';
         this.elements.customizePanel.querySelectorAll('input[data-toast]').forEach(i => { i.checked = this.toastOn(i.dataset.toast); });
         $('cust-cleanup').disabled = !this.dirHandle;
         Themes.render();
@@ -1576,7 +1596,7 @@ const app = {
                         await this.verifyPermission(handle, true);
                         this.dirHandle = handle;
                         this.readOnlyMode = false;
-                        await this.scanDirectory(handle);
+                        if (!(await this.scanDirectory(handle, { ask: true }))) return this.openCancelled(this._openGen);
                     } else if (handle.kind === 'file') {
                         this.readOnlyMode = false;
                         if (this.isImage(handle.name)) {
@@ -1781,14 +1801,19 @@ const app = {
     // Load every photo in the folder and the folders inside it. Folders are
     // listed several at a time (see Watch.walk), which matters most on a
     // network drive where each listing is a round trip.
-    async scanDirectory(dirHandle) {
+    // ask: a folder being opened, which asks first when it's huge (false:
+    // not opened). openTimes: how long each step took, for the log and
+    // test/huge-folder.perf.js
+    async scanDirectory(dirHandle, { ask = false } = {}) {
         // Another folder opened meanwhile: this one stops adding photos
         const gen = this._openGen;
         // Paths already loaded, so nothing is added twice
         const seen = new Set(this.files.map(f => f.relPath || f.name));
         this.updateTask('scan', 'Scanning folder…');
+        let t = performance.now();
         const listings = await Watch.walk([{ path: '', handle: dirHandle }], true);
-        if (gen !== this._openGen) return;
+        this.openTimes = { list: Math.round(performance.now() - t) };
+        if (gen !== this._openGen) return true;
         const pending = [];
         // A subfolder opened on its own before has a .jeditor of its own:
         // merged into the order's once the folder is open (finalizeLoad). In
@@ -1806,7 +1831,9 @@ const app = {
                 pending.push({ entry, relPath, parentDir: l.handle });
             }
         }
+        if (ask && !(await this.askHuge(pending.length))) return false;
         // Size and date, read several at a time
+        t = performance.now();
         const BATCH = 128;
         for (let i = 0; i < pending.length; i += BATCH) {
             const batch = pending.slice(i, i + BATCH);
@@ -1830,6 +1857,43 @@ const app = {
             });
             this.updateTask('scan', `Scanning folder… ${this.files.length} images`);
         }
+        this.openTimes.stat = Math.round(performance.now() - t);
+        return true;
+    },
+
+    // A folder of more photos than Settings → Projects says (2,000 to start
+    // with) asks before it opens, as opening it takes a while: Open,
+    // Cancel, or Don't ask again (which opens it)
+    async askHuge(n) {
+        const limit = this.uiPrefs.hugeFolder;
+        if (!limit || n <= limit) return true;
+        this.endTask('scan');
+        const choice = await UI.choose({
+            title: 'Open this folder?',
+            message: `This folder has ${n.toLocaleString()} photos. Opening it may take a while. Open it anyway?`,
+            ok: 'Open',
+            alt: 'Don\'t ask again'
+        });
+        if (choice === 'alt') {
+            this.uiPrefs.hugeFolder = 0;
+            this.saveUiPrefs();
+            const input = document.getElementById('cust-huge-folder');
+            if (input) input.value = '';
+        }
+        if (!choice) return false;
+        this.beginTask('scan', 'Scanning folder…');
+        return true;
+    },
+
+    // A huge folder not opened after all: back to the start screen
+    openCancelled(gen) {
+        if (gen !== this._openGen) return;
+        this.isLoading = false;
+        this.files = [];
+        this.dirHandle = null;
+        this.endTask('scan');
+        this.elements.mainInterface.classList.add('hidden');
+        this.elements.dropZone.classList.remove('hidden');
     },
 
     // R: new photos come in, photos removed elsewhere go, edited ones are
