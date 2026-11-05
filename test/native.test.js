@@ -2135,6 +2135,29 @@ async function newPage(context, baseUrl, host = null) {
             out.fromMenu = $('ex-title').textContent + ' / ' + $('ex-go').textContent;
             $('ex-cancel').click();
             out.closed = $('export-panel').classList.contains('hidden');
+            // Right-click a USB drive in the sidebar: Export or Copy the project to it
+            const rowFor = (p, name) => { const r = document.createElement('div'); r.dataset.path = p; r.innerHTML = '<span class="fr-name"></span>'; r.firstChild.textContent = name; return r; };
+            const usbItems = Places.rowItems(rowFor('E:' + BS, 'USB drive (E:)'));
+            out.usbMenu = usbItems.map(i => i[0]).filter(t => /Beta/.test(t)).join(' | ');
+            usbItems.find(i => /^Export Beta to/.test(i[0]))[1]();
+            await wait(() => !$('export-panel').classList.contains('hidden'));
+            out.fromDrive = [...$('ex-tabs').querySelectorAll('button.active')].map(b => b.textContent).join() + ' / ' +
+                ([...$('ex-body').querySelectorAll('input[name="ex-where"]')].find(i => i.checked) || {}).value;
+            $('ex-cancel').click();
+            usbItems.find(i => /^Copy Beta to/.test(i[0]))[1]();
+            await wait(() => !$('export-panel').classList.contains('hidden'));
+            out.copyFromDrive = [...$('ex-tabs').querySelectorAll('button.active')].map(b => b.textContent).join() + ' / ' + $('ex-go').textContent;
+            $('ex-cancel').click();
+            // A disc drive: Burn, with its burner chosen
+            window.__burners = [{ id: 'b0', name: 'Other burner', drive: 'G:' + BS, media: 'DVD-R', blank: true, free: 4.7e9, canWrite: true },
+                { id: 'b1', name: 'HL-DT-ST DVDRAM', drive: 'F:' + BS, media: 'DVD-R', blank: true, free: 4.7e9, canWrite: true }];
+            Places.drives = Places.drives.concat([{ path: 'F:' + BS, name: 'DVD RW drive (F:)', kind: 'cd' }]);
+            const discItems = Places.rowItems(rowFor('F:' + BS, 'DVD RW drive (F:)'));
+            out.discMenu = discItems.map(i => i[0]).filter(t => /Beta/.test(t)).join(' | ');
+            discItems.find(i => /^Burn Beta/.test(i[0]))[1]();
+            await wait(() => !$('export-panel').classList.contains('hidden') && $('ex-body').querySelector('input[name="ex-burner"]'));
+            out.burnerPicked = $('ex-body').querySelector('input[name="ex-burner"]:checked').value;
+            $('ex-cancel').click();
             return out;
         });
         check('export: the project card opens one window: USB drive or card, CD or DVD, Copies', r.tabs === 'USB drive or card*, CD or DVD, Copies', r.tabs);
@@ -2146,6 +2169,8 @@ async function newPage(context, baseUrl, host = null) {
         check('... Eject when done for copies onto a drive (remembered), and it ejects', r.copiesEjectOff && r.copiesEjected === 'E:\\', JSON.stringify([r.copiesEjectOff, r.copiesEjected]));
         check('... the size is remembered, a drive isn\'t', r.kept.size === 100 && r.kept.where === 'project', JSON.stringify(r.kept));
         check('... ⋯ on the selection bar opens it, on the selection', r.menu === 'Export 2…' && r.fromMenu === 'Export 2 photos / Export 2 copies' && r.closed, JSON.stringify([r.menu, r.fromMenu]));
+        check('right-click a USB drive: Export or Copy the project to it, each opening Export there', r.usbMenu === 'Export Beta to USB drive (E:)… | Copy Beta to USB drive (E:)…' && r.fromDrive === 'Copies / drive:E:\\' && r.copyFromDrive === 'USB drive or card / Copy to USB drive (E:)', JSON.stringify([r.usbMenu, r.fromDrive, r.copyFromDrive]));
+        check('right-click a disc drive: Burn the project, with that drive\'s burner', r.discMenu === 'Burn Beta to a disc…' && r.burnerPicked === 'b1', JSON.stringify([r.discMenu, r.burnerPicked]));
         check('export: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
