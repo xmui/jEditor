@@ -129,6 +129,7 @@ const app = {
         document.getElementById('btn-auto-crop').addEventListener('click', () => this.batchAutoCrop([...this.selection]));
         document.getElementById('btn-move-to').addEventListener('click', (e) => Folders.openPicker([...this.selection], e.shiftKey ? 'copy' : 'move'));
         document.getElementById('btn-batch-rename').addEventListener('click', () => this.batchRename([...this.selection]));
+        document.getElementById('btn-sync').addEventListener('click', () => this.syncAdjust());
         // ⋯ on the selection bar: the less-used actions
         document.getElementById('btn-export').addEventListener('click', (e) => {
             e.stopPropagation();
@@ -3789,6 +3790,8 @@ const app = {
         if (this.selection.size > 0) {
             this.elements.selectionBar.classList.remove('hidden');
             this.elements.selectionCount.textContent = `${this.selection.size} selected`;
+            // Sync needs a photo to sync from and one to sync onto
+            document.getElementById('btn-sync').classList.toggle('hidden', this.selection.size < 2);
         } else {
             this.elements.selectionBar.classList.add('hidden');
         }

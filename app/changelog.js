@@ -8,6 +8,7 @@ const CHANGELOG = [
     {
         version: '1.50.2', date: '2026-10-31', beta: true,
         items: [
+            'Sync is in the grid\'s selection bar: select two or more photos, click the one to sync from last, then Sync… (beside Rename…) to put its crop and adjustments onto the rest. It\'s the same as `Ctrl+Shift+S`.',
             'Windows: scanning at high resolutions (1200 dpi and up) no longer makes jEditor lag. The scan is turned into a picture away from the window, the scan window\'s strip shows small copies instead of the full scans, and Turn upright looks at each photo in the background.',
             'Adjust no longer pauses for a moment when you let go of a slider: the looks\' pictures are drawn again in a fraction of the time.',
             'In the Windows XP, Snow Leopard and 1984 themes, the thumbnail-size slider no longer sits under the selection bar in a narrow window: it gets shorter, and the bar scrolls sideways if it still needs room.',
