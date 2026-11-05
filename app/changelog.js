@@ -15,6 +15,7 @@ const CHANGELOG = [
             'Opening a folder with a photo app\'s library in it (Pictures on a Mac, with the Photos library) no longer lists the library\'s own thumbnails and previews as photos. Photos, iPhoto, Aperture and Lightroom libraries are left out, as Finder shows them as one item. To open them like folders, turn on Settings → Projects → Open photo libraries as folders.',
             'Opening a folder of more than 2,000 photos asks first, as it can take a while: Open, Cancel, or Don\'t ask again. Change the number in Settings → Projects → Ask before opening a huge folder, or leave it empty to never be asked. How long each step of opening takes now goes in the log.',
             'In Adjust and Paint, the chip naming the mode at the top left no longer runs into the photo\'s name in a narrow window: the name keeps clear of the chip and of the buttons on the right. On a Mac with macOS 26, the window\'s own title no longer shows through the chip either.',
+            'Snow Leopard\'s scroll bars look like Snow Leopard\'s again, in Finder and Aperture: both arrows together at the end, a groove rounded at the far end, the bar turned properly when it runs sideways, and no white square where two bars meet.',
         ]
     },
     {
