@@ -18,20 +18,7 @@ const ORIGIN = 'https://jeditor.example';
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 
-function launchOptions() {
-    const candidates = [
-        process.env.CHROME_PATH,
-        '/opt/pw-browsers/chromium',
-        '/usr/bin/chromium',
-        '/usr/bin/chromium-browser',
-        '/usr/bin/google-chrome',
-        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
-    ].filter(Boolean);
-    for (const p of candidates) {
-        if (fs.existsSync(p)) return { executablePath: p, args: ['--no-sandbox'] };
-    }
-    return { channel: 'chrome', args: ['--no-sandbox'] };
-}
+const { launchOptions } = require('./page-helpers.js');
 
 let passed = 0, failed = 0;
 function check(name, ok, detail = '') {
