@@ -648,6 +648,116 @@ const ImageMeta = {
         return out;
     },
 
+    // ---- Export's choices: without the location, without the profile ----
+    //
+    // Export → Copies → More options. The location is taken out where it
+    // is (the GPS IFD emptied and its values zeroed, so the file keeps its
+    // length and every other offset; XMP that names a GPS position dropped);
+    // the colour profile, when the pixels were made sRGB.
+
+    // The GPS IFD of the TIFF block at bytes[t..end) emptied, in place
+    zeroGps(bytes, t, end) {
+        if (t + 8 > end) return false;
+        const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const bo = v.getUint16(t), le = bo === 0x4949;
+        if (!le && bo !== 0x4D4D) return false;
+        if (v.getUint16(t + 2, le) !== 42) return false;
+        const ifd0 = t + v.getUint32(t + 4, le);
+        if (ifd0 + 2 > end) return false;
+        const n0 = v.getUint16(ifd0, le);
+        for (let i = 0; i < n0; i++) {
+            const e = ifd0 + 2 + i * 12;
+            if (e + 12 > end) break;
+            if (v.getUint16(e, le) !== 0x8825) continue;
+            const g = t + v.getUint32(e + 8, le);
+            if (g + 2 > end) return false;
+            const n = v.getUint16(g, le);
+            for (let k = 0; k < n; k++) {
+                const ge = g + 2 + k * 12;
+                if (ge + 12 > end) break;
+                const size = (this.TIFF_TYPE_SIZE[v.getUint16(ge + 2, le)] || 1) * v.getUint32(ge + 4, le);
+                const at = t + v.getUint32(ge + 8, le);
+                if (size > 4 && at + size <= end) bytes.fill(0, at, at + size);
+                bytes.fill(0, ge, ge + 12);
+            }
+            v.setUint16(g, 0, le);
+            return true;
+        }
+        return false;
+    },
+
+    // A copy of a JPEG, PNG, WebP or TIFF without its location → bytes,
+    // or null for a file it can't be taken out of here (it's encoded again)
+    withoutLocation(src) {
+        const bytes = new Uint8Array(src);
+        const prefixed = (at) => bytes[at] === 0x45 && bytes[at + 1] === 0x78 && bytes[at + 2] === 0x69 && bytes[at + 3] === 0x66 && bytes[at + 4] === 0 && bytes[at + 5] === 0 ? at + 6 : at;
+        if (this.isTiffFile(bytes)) { this.zeroGps(bytes, 0, bytes.length); return bytes; }
+        const segs = this.jpegSegments(bytes);
+        if (segs) {
+            const drop = [];
+            for (const s of segs) {
+                if (this.isExifSeg(bytes, s)) this.zeroGps(bytes, s.start + 10, s.end);
+                else if (this.isXmpSeg(bytes, s) && /GPS(Latitude|Longitude)/.test(new TextDecoder('latin1').decode(bytes.subarray(s.start, s.end)))) drop.push(s);
+            }
+            if (!drop.length) return bytes;
+            const parts = [];
+            let at = 0;
+            for (const s of drop) { parts.push(bytes.subarray(at, s.start)); at = s.end; }
+            parts.push(bytes.subarray(at));
+            const out = new Uint8Array(parts.reduce((t, p) => t + p.length, 0));
+            let o = 0;
+            for (const p of parts) { out.set(p, o); o += p.length; }
+            return out;
+        }
+        const chunks = this.pngChunks(bytes);
+        if (chunks) {
+            for (const c of chunks.filter(x => x.type === 'eXIf')) {
+                if (!this.zeroGps(bytes, prefixed(c.data), c.end - 4)) continue;
+                // Its CRC, of the type and the data, again
+                if (!this._crc) {
+                    this._crc = new Uint32Array(256);
+                    for (let n = 0; n < 256; n++) { let x = n; for (let k = 0; k < 8; k++) x = x & 1 ? 0xEDB88320 ^ (x >>> 1) : x >>> 1; this._crc[n] = x >>> 0; }
+                }
+                let crc = 0xFFFFFFFF;
+                for (let i = c.start + 4; i < c.end - 4; i++) crc = this._crc[(crc ^ bytes[i]) & 255] ^ (crc >>> 8);
+                new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint32(c.end - 4, (crc ^ 0xFFFFFFFF) >>> 0);
+            }
+            return bytes;
+        }
+        const riff = this.webpChunks(bytes);
+        if (riff) {
+            for (const c of riff.filter(x => x.type === 'EXIF')) this.zeroGps(bytes, prefixed(c.data), c.data + c.size);
+            return bytes;
+        }
+        return null;
+    },
+
+    // Does the file carry a colour profile? (JPEG, PNG, WebP; a TIFF may)
+    hasProfile(bytes) {
+        if (this.isTiffFile(bytes)) return true;
+        if (this.jpegSegments(bytes, { partial: true })) return this.hasJpegIcc(bytes);
+        const chunks = this.pngChunks(bytes, { partial: true });
+        if (chunks) return chunks.some(c => c.type === 'iCCP');
+        const riff = this.webpChunks(bytes);
+        return !!riff && riff.some(c => c.type === 'ICCP');
+    },
+
+    // A JPEG or PNG without its colour profile (its pixels made sRGB)
+    withoutProfile(bytes) {
+        const segs = this.jpegSegments(bytes);
+        const cut = segs ? segs.filter(s => s.marker === 0xE2 && this.hasSig(bytes, s, 'ICC_PROFILE\0'))
+            : (this.pngChunks(bytes) || []).filter(c => this.PNG_COLOR_CHUNKS.includes(c.type));
+        if (!cut.length) return bytes;
+        const parts = [];
+        let at = 0;
+        for (const s of cut) { parts.push(bytes.subarray(at, s.start)); at = s.end; }
+        parts.push(bytes.subarray(at));
+        const out = new Uint8Array(parts.reduce((t, p) => t + p.length, 0));
+        let o = 0;
+        for (const p of parts) { out.set(p, o); o += p.length; }
+        return out;
+    },
+
     // ---- TIFF files ----
     //
     // A TIFF file is its own EXIF: its first IFD has the picture's tags and

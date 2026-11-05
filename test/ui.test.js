@@ -4828,6 +4828,79 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- Export → Copies: quality, metadata, colour, numbered names ----
+    console.log('export copies: without the location, quality, numbered');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('exportopts', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('exportopts', { create: true });
+            // A JPEG whose EXIF has a GPS IFD: N 51° 30' 12.34"
+            const t = new Uint8Array(80), v = new DataView(t.buffer);
+            t.set([0x49, 0x49, 42, 0]); v.setUint32(4, 8, true);
+            v.setUint16(8, 1, true); v.setUint16(10, 0x8825, true); v.setUint16(12, 4, true); v.setUint32(14, 1, true); v.setUint32(18, 26, true);
+            v.setUint16(26, 2, true);
+            v.setUint16(28, 1, true); v.setUint16(30, 2, true); v.setUint32(32, 2, true); t[36] = 0x4E;
+            v.setUint16(40, 2, true); v.setUint16(42, 5, true); v.setUint32(44, 3, true); v.setUint32(48, 56, true);
+            [[51, 1], [30, 1], [1234, 100]].forEach(([a, b], k) => { v.setUint32(56 + k * 8, a, true); v.setUint32(60 + k * 8, b, true); });
+            const jpeg = ImageMeta.withExifJpeg(await makeRealJpeg(400, 300), t);
+            const fh = await dir.getFileHandle('trip.jpg', { create: true });
+            const w = await fh.createWritable(); await w.write(new Blob([jpeg], { type: 'image/jpeg' })); await w.close();
+            await app.openDirectory(dir);
+            for (let i = 0; i < 100 && !app.files.length; i++) await new Promise(res => setTimeout(res, 30));
+            const f = app.files[0];
+            // The GPS IFD's entries in a file's EXIF, and whether 1234/100 is still in it
+            const gps = (bytes) => {
+                const x = ImageMeta.exifOf(bytes);
+                if (!x) return 'none';
+                const d = new DataView(x.buffer, x.byteOffset, x.byteLength);
+                const n0 = d.getUint16(d.getUint32(4, true), true);
+                for (let k = 0; k < n0; k++) {
+                    const e = d.getUint32(4, true) + 2 + k * 12;
+                    if (d.getUint16(e, true) === 0x8825) return d.getUint16(d.getUint32(e + 8, true), true);
+                }
+                return 'no gps ifd';
+            };
+            const has1234 = (bytes) => { for (let i = 0; i + 4 <= bytes.length; i++) if (bytes[i] === 0xD2 && bytes[i + 1] === 4 && bytes[i + 2] === 0 && bytes[i + 3] === 0) return true; return false; };
+            const read = async (d, name) => new Uint8Array(await (await (await d.getFileHandle(name)).getFile()).arrayBuffer());
+            out.before = [gps(jpeg), has1234(jpeg)];
+            // As it is, without the location: the same length, its GPS emptied
+            const a = await dir.getDirectoryHandle('A', { create: true });
+            await app.exportCopies([f], { maxEdge: 0, dir: a, where: 'A', meta: 'nogps' });
+            const aBytes = await read(a, 'trip.jpg');
+            out.asIs = [aBytes.length === jpeg.length, gps(aBytes), has1234(aBytes)];
+            // For the web: smaller, at 80%, numbered, still without it
+            const b = await dir.getDirectoryHandle('B', { create: true });
+            await app.exportCopies([f], { maxEdge: 100, dir: b, where: 'B', format: 'jpeg', quality: 80, meta: 'nogps', colour: 'srgb', names: 'Trip' });
+            const bBytes = await read(b, 'Trip 001.jpg');
+            const bmp = await createImageBitmap(new Blob([bBytes]));
+            out.web = [bmp.width, gps(bBytes), has1234(bBytes)];
+            // At 60% it's smaller than at 100%
+            const c = await dir.getDirectoryHandle('C', { create: true });
+            await app.exportCopies([f], { maxEdge: 300, dir: c, where: 'C', format: 'jpeg', quality: 100, names: 'Hi' });
+            await app.exportCopies([f], { maxEdge: 300, dir: c, where: 'C', format: 'jpeg', quality: 60, names: 'Lo' });
+            out.quality = (await read(c, 'Lo 001.jpg')).length < (await read(c, 'Hi 001.jpg')).length;
+            // No metadata at all
+            const d = await dir.getDirectoryHandle('D', { create: true });
+            await app.exportCopies([f], { maxEdge: 0, dir: d, where: 'D', meta: 'none' });
+            out.none = gps(await read(d, 'trip.jpg'));
+            // Left out of the project: not listed when it's rescanned
+            Export.setLeftOut('B', true);
+            out.leftOut = Watch.skipDir('B') && !Watch.skipDir('A');
+            Export.setLeftOut('B', false);
+            out.backIn = !Watch.skipDir('B');
+            return out;
+        });
+        check('export copies: as it is, without the location: same size, GPS emptied, its values gone', r.before[0] === 2 && r.before[1] && r.asIs[0] && r.asIs[1] === 0 && !r.asIs[2], JSON.stringify(r));
+        check('export copies: for the web: smaller, numbered, without the location', r.web[0] === 100 && r.web[1] === 0 && !r.web[2], JSON.stringify(r));
+        check('export copies: the quality chosen is used; None leaves no metadata', r.quality && r.none === 'none', JSON.stringify(r));
+        check('export copies: a folder left out isn\'t listed, and can be put back', r.leftOut && r.backIn, JSON.stringify(r));
+        check('export copies suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7. file:// — direct open and standalone build ----
     console.log('beta builds and experiments');
     {

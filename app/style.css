@@ -3819,6 +3819,70 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     flex-direction: column;
 }
 
+/* Copies: a preset, a sentence, glass pills that open menus, the folder's
+   name, and More options folded away */
+.ex-presets {
+    align-self: stretch;
+    display: flex;
+}
+
+.ex-presets > label {
+    flex: 1;
+}
+
+.ex-presets > label > span {
+    width: 100%;
+}
+
+.ex-sum b {
+    color: var(--text-1);
+    font-weight: var(--fw-semibold);
+}
+
+.ex-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+}
+
+.btn.ex-pill {
+    gap: var(--sp-1);
+    padding: 0 var(--sp-2) 0 var(--sp-3);
+    border-radius: var(--r-pill);
+    background: var(--glass-bg);
+    border-color: var(--glass-border);
+    box-shadow: var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+}
+
+.btn.ex-pill .i {
+    color: var(--text-2);
+}
+
+.ex-more {
+    align-self: flex-start;
+    color: var(--accent-text);
+    text-decoration: none;
+}
+
+.ex-more[aria-expanded="true"] .i {
+    transform: rotate(90deg);
+}
+
+.ex-more-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+
+@media (max-width: 520px) {
+    .ex-presets > label > span {
+        padding: 0 var(--sp-1);
+        font-size: var(--fs-small);
+    }
+}
+
 /* Convert (convert.js): the format, the quality with a close-up, and
    what it does to storage; then dots for the photos as they're converted */
 .cv-card {

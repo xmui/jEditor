@@ -275,8 +275,10 @@ const Watch = {
     // ---- Listing ----
 
     skipDir(name) {
-        // (Export's copies and Convert's are copies, not the project's photos)
+        // (Export's copies and Convert's are copies, not the project's photos;
+        // Copies' folders named after the project, when left out: export.js)
         return name === FolderCache.DIR || name === FolderCache.LEGACY_TRASH || name === 'jEditor Export' || name === 'jEditor Converted'
+            || (typeof Export !== 'undefined' && Export.isLeftOut(name))
             || (this.isLibrary(name) && !(this.app && this.app.uiPrefs && this.app.uiPrefs.openLibraries));
     },
 

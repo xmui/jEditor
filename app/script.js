@@ -6704,9 +6704,12 @@ const app = {
 
     // Copies of `files` (edits in them, RAWs and HEICs as JPEGs). From the Export
     // window (export.js): `maxEdge` (0: full size) and `dir`, the folder
-    // they go into, called `where`; else asked here, into "jEditor Export"
-    // in the project
-    async exportCopies(files, { maxEdge = null, dir = null, where = '"jEditor Export"', format = 'same' } = {}) {
+    // they go into, called `where`; the `quality` (%) of a JPEG, WebP, AVIF
+    // or JPEG XL written; `meta` ('all', 'nogps': without the location,
+    // 'none'); `colour` ('keep', or 'srgb': made sRGB, without a profile);
+    // `names` (a name to number them with, or null: their own). Else asked
+    // here, into "jEditor Export" in the project
+    async exportCopies(files, { maxEdge = null, dir = null, where = '"jEditor Export"', format = 'same', quality = 95, meta = 'all', colour = 'keep', names = null } = {}) {
         const list = files.filter(Boolean);
         if (!list.length) return;
         if (!this.dirHandle) {
@@ -6730,7 +6733,8 @@ const app = {
             dir = dir || await this.dirHandle.getDirectoryHandle('jEditor Export', { create: true });
             this.beginTask('export', `Exporting 0/${list.length}`);
             let done = 0, failed = 0;
-            for (const f of list) {
+            const digits = Math.max(3, String(list.length).length);
+            for (const [i, f] of list.entries()) {
                 try {
                     // A RAW: from its own JPEG, written as a JPEG (or the
                     // format chosen). A HEIC: decoded (a PNG, or a JPEG when
@@ -6742,26 +6746,43 @@ const app = {
                     let out = f._edit ? await this.renderEdited(f, file) : file;
                     const from = heif ? (out.type === 'image/jpeg' ? 'jpeg' : 'png') : raw ? 'jpeg' : this.formatOf(f.name);
                     const to = format === 'same' ? (heif ? 'jpeg' : from) : format;
-                    // Smaller, or another format: drawn again and written as that
-                    let bmp = null, scale = 1;
-                    if (maxEdge > 0 || to !== from) {
-                        // (a JPEG XL or TIFF, as written or edited, decoded by the codecs)
-                        const coded = Codec.decoded('x.' + (f._edit ? Codec.of(f.name) || from : from));
-                        bmp = await createImageBitmap(coded ? await Codec.showable(out instanceof File ? out : new File([out], f.name)) : out);
-                        if (maxEdge > 0) scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
+                    // As it is, unless its metadata or colour has to change
+                    // and can't be in place
+                    let again = maxEdge > 0 || to !== from || meta === 'none';
+                    if (!again && (meta === 'nogps' || colour === 'srgb')) {
+                        const bytes = new Uint8Array(await out.arrayBuffer());
+                        if (colour === 'srgb' && ImageMeta.hasProfile(bytes)) again = true;
+                        else if (meta === 'nogps') {
+                            const clean = ImageMeta.withoutLocation(bytes);
+                            if (clean) out = new Blob([clean], { type: out.type });
+                            else again = true;
+                        }
                     }
-                    if (bmp && (scale < 1 || to !== from)) {
+                    // Smaller, another format, or its metadata or colour: drawn again and written as that
+                    let bmp = null, scale = 1;
+                    if (again) {
+                        // (a JPEG XL or TIFF, as written or edited, decoded by the codecs).
+                        // Its colour as it is when its profile goes with it, else made sRGB
+                        const original = new Uint8Array(await (heif ? await f.handle.getFile() : file).arrayBuffer());
+                        const carries = colour === 'keep' && meta !== 'none' && !raw && to === from && (to === 'jpeg' || to === 'png')
+                            && ImageMeta.canCarryProfile(to === 'png' ? 'image/png' : 'image/jpeg', original) && ImageMeta.hasProfile(original);
+                        const coded = Codec.decoded('x.' + (f._edit ? Codec.of(f.name) || from : from));
+                        const src = coded ? await Codec.showable(out instanceof File ? out : new File([out], f.name)) : out;
+                        bmp = await createImageBitmap(src, carries ? { colorSpaceConversion: 'none' } : undefined);
+                        if (maxEdge > 0) scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
                         const canvas = document.createElement('canvas');
                         canvas.width = Math.round(bmp.width * scale);
                         canvas.height = Math.round(bmp.height * scale);
                         canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
-                        out = await this.encodeAs(canvas, to === 'gif' ? 'jpeg' : to, new Uint8Array(await (heif ? await f.handle.getFile() : file).arrayBuffer()));
+                        out = await this.encodeAs(canvas, to === 'gif' ? 'jpeg' : to, original, { quality, meta, colour });
                         canvas.width = canvas.height = 0;
+                        bmp.close();
                     }
-                    if (bmp) bmp.close();
                     if (!out) throw new Error('encode failed');
-                    const name = raw && to === 'jpeg' ? Raw.jpegName(f.name)
-                        : to === from ? f.name : f.name.replace(/\.[^.]+$/, '') + '.' + (to === 'gif' ? 'jpg' : Codec.ext(to));
+                    const ext = to === 'gif' && again ? 'jpg' : to === from && !raw ? null : Codec.ext(to === 'gif' ? 'jpeg' : to);
+                    const own = raw && to === 'jpeg' ? Raw.jpegName(f.name)
+                        : !ext ? f.name : f.name.replace(/\.[^.]+$/, '') + '.' + ext;
+                    const name = names ? `${names} ${String(i + 1).padStart(digits, '0')}${(own.match(/\.[^.]+$/) || [''])[0].toLowerCase()}` : own;
                     const h = await dir.getFileHandle(name, { create: true });
                     const w = await h.createWritable();
                     await w.write(out);
@@ -6792,18 +6813,29 @@ const app = {
 
     // A canvas written as a format, with the metadata of `original` (its
     // file's bytes) that's still true → Blob. AVIF and JPEG XL by the codecs
-    async encodeAs(canvas, to, original) {
+    // Export's choices (exportCopies): `quality` (%), `meta` ('all',
+    // 'nogps', 'none') and `colour` ('srgb': no profile goes with it)
+    async encodeAs(canvas, to, original, { quality = 95, meta = 'all', colour = 'keep' } = {}) {
         const w = canvas.width, h = canvas.height;
         const blobOf = (type, q) => new Promise(r => canvas.toBlob(r, type, q));
-        const tiff = ImageMeta.exifOf(original);
-        if (to === 'avif' || to === 'jxl' || to === 'tiff') return Codec.file(await blobOf('image/png'), to, Codec.FORMATS[to].quality, tiff);
+        let tiff = meta === 'none' ? null : ImageMeta.exifOf(original);
+        if (tiff && meta === 'nogps') { tiff = new Uint8Array(tiff); ImageMeta.zeroGps(tiff, 0, tiff.length); }
+        if (to === 'avif' || to === 'jxl' || to === 'tiff') return Codec.file(await blobOf('image/png'), to, to === 'tiff' ? Codec.FORMATS[to].quality : quality, tiff);
         const type = { png: 'image/png', webp: 'image/webp' }[to] || 'image/jpeg';
-        const blob = await blobOf(type, type === 'image/png' ? undefined : 0.95);
+        const blob = await blobOf(type, type === 'image/png' ? undefined : Math.max(0.1, Math.min(1, quality / 100)));
         if (!blob) return null;
+        if (meta === 'none') return blob;
         if (to === 'webp') return new Blob([Codec.withExif(new Uint8Array(await blob.arrayBuffer()), 'webp', tiff, w, h)], { type });
         // From the same kind of file: its metadata as Save edits copies it
         const kind = ImageMeta.jpegSegments(original, { partial: true }) ? 'jpeg' : ImageMeta.pngChunks(original, { partial: true }) ? 'png' : null;
-        if (kind === (type === 'image/png' ? 'png' : 'jpeg')) return ImageMeta.transplant(original, blob, type, w, h);
+        if (kind === (type === 'image/png' ? 'png' : 'jpeg')) {
+            const moved = await ImageMeta.transplant(original, blob, type, w, h);
+            if (meta === 'all' && colour === 'keep') return moved;
+            let bytes = new Uint8Array(await moved.arrayBuffer());
+            if (meta === 'nogps') bytes = ImageMeta.withoutLocation(bytes) || bytes;
+            if (colour === 'srgb') bytes = ImageMeta.withoutProfile(bytes);
+            return new Blob([bytes], { type });
+        }
         // A JPEG or PNG from another format: its EXIF goes in
         if (tiff) return new Blob([Codec.withExif(new Uint8Array(await blob.arrayBuffer()), to === 'png' ? 'png' : 'jpeg', tiff, w, h)], { type });
         return blob;
