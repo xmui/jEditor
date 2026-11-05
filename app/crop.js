@@ -25,6 +25,18 @@
 const CropGeom = {
     rad(deg) { return deg * Math.PI / 180; },
 
+    // A turn q, tilt and mirror m flipped as it's seen: 'h' left to right,
+    // 'v' upside down. A flip of what's on screen is the mirror the other
+    // way round with the turn and tilt reversed (upside down: half a turn
+    // more); the crop (n, in output space) is mirrored with it, when given
+    flipped(e, axis) {
+        const q = e.q || 0;
+        const out = { q: ((axis === 'v' ? 2 - q : -q) % 4 + 4) % 4, angle: e.angle ? -e.angle : 0, m: !e.m };
+        const n = e.n;
+        if (n) out.n = axis === 'v' ? { x0: n.x0, y0: -n.y1, x1: n.x1, y1: -n.y0 } : { x0: -n.x1, y0: n.y0, x1: -n.x0, y1: n.y1 };
+        return out;
+    },
+
     // cos/sin of the total rotation; exact for pure quarter turns so an
     // unstraightened crop is a pixel-exact copy
     cosSin(q, angle) {
@@ -411,6 +423,7 @@ const CropEditor = {
         this.dpi = dpi;
 
         this.q = 0;
+        this.m = false;
         this.angle = 0;
         this.aspectKey = this.loadAspect();
         this.landscape = this.W >= this.H;
@@ -452,6 +465,17 @@ const CropEditor = {
 
     cs() { return CropGeom.cosSin(this.q, this.angle); },
 
+    // Mirrored (m: flipped left to right before it's turned): −1, or 1.
+    // A flip upside down is kept as a mirror and half a turn (see flip)
+    mx() { return this.m ? -1 : 1; },
+
+    // The photo's own centered coordinates → output space, as a canvas
+    // transform's [a, b, c, d]: the turn after the mirror
+    mat() {
+        const [c, s] = this.cs(), k = this.mx();
+        return [c * k, s * k, -s, c];
+    },
+
     // Straightened crops stay 1px clear of the edge so resampling never
     // blends in the transparent outside
     margin() { return this.angle === 0 ? 0 : 1; },
@@ -464,11 +488,11 @@ const CropEditor = {
     // Output space ↔ the upright image's own (centered) coordinates
     toImage(p) {
         const [c, s] = this.cs();
-        return { x: c * p.x + s * p.y, y: -s * p.x + c * p.y };
+        return { x: this.mx() * (c * p.x + s * p.y), y: -s * p.x + c * p.y };
     },
     fromImage(p) {
-        const [c, s] = this.cs();
-        return { x: c * p.x - s * p.y, y: s * p.x + c * p.y };
+        const [c, s] = this.cs(), x = this.mx() * p.x;
+        return { x: c * x - s * p.y, y: s * x + c * p.y };
     },
 
     fullRect() {
@@ -533,17 +557,18 @@ const CropEditor = {
         return { x0, y0, x1, y1, w: Math.round(x1 - x0), h: Math.round(y1 - y0) };
     },
 
-    // Nothing to save: full frame, no rotation of any kind
-    isIdentity() {
+    // Nothing to save: full frame, no rotation of any kind and no flip
+    // (mirror: true, a flip doesn't count)
+    isIdentity(mirror = false) {
         const o = this.outputRect(), d = this.turnedDims();
-        return this.angle === 0 && o.w === d.w && o.h === d.h;
+        return (mirror || !this.m) && this.angle === 0 && o.w === d.w && o.h === d.h;
     },
 
     // ---- edit history (Ctrl+Z inside the editor) ----
 
     state() {
         return {
-            q: this.q, angle: this.angle, rect: { ...this.rect },
+            q: this.q, m: this.m, angle: this.angle, rect: { ...this.rect },
             base: { ...this.base, c: { ...this.base.c } },
             aspectKey: this.aspectKey, landscape: this.landscape
         };
@@ -551,7 +576,7 @@ const CropEditor = {
 
     sameState(p, q) {
         const r = p.rect, t = q.rect;
-        return p.q === q.q && p.angle === q.angle && p.aspectKey === q.aspectKey && p.landscape === q.landscape &&
+        return p.q === q.q && !p.m === !q.m && p.angle === q.angle && p.aspectKey === q.aspectKey && p.landscape === q.landscape &&
             Math.abs(r.x0 - t.x0) < 1e-6 && Math.abs(r.y0 - t.y0) < 1e-6 &&
             Math.abs(r.x1 - t.x1) < 1e-6 && Math.abs(r.y1 - t.y1) < 1e-6;
     },
@@ -580,7 +605,7 @@ const CropEditor = {
 
     restore(st) {
         Object.assign(this, {
-            q: st.q, angle: st.angle, rect: { ...st.rect },
+            q: st.q, m: !!st.m, angle: st.angle, rect: { ...st.rect },
             base: { ...st.base, c: { ...st.base.c } },
             aspectKey: st.aspectKey, landscape: st.landscape
         });
@@ -650,6 +675,17 @@ const CropEditor = {
         this.fitView(false);
     },
 
+    // Flipped as it's seen: 'h' left to right, 'v' upside down. The crop
+    // stays on the same part of the photo, mirrored with it
+    flip(axis) {
+        if (!this.ready) return;
+        this.pushHistory();
+        Object.assign(this, CropGeom.flipped(this, axis));
+        this.syncAngleUi();
+        this.refit();
+        this.fitView(false);
+    },
+
     setAspect(key) {
         if (!this.ready) return;
         this.pushHistory();
@@ -698,6 +734,7 @@ const CropEditor = {
         if (!this.ready) return;
         this.pushHistory();
         this.q = 0;
+        this.m = false;
         this.angle = 0;
         this.level = false;
         this.landscape = this.W >= this.H;
@@ -774,7 +811,7 @@ const CropEditor = {
     // the aspect ratio last chosen there
     headless(W, H) {
         const h = Object.create(this);
-        Object.assign(h, { W, H, q: 0, angle: 0, aspectKey: this.loadAspect(), landscape: W >= H, render() { } });
+        Object.assign(h, { W, H, q: 0, m: false, angle: 0, aspectKey: this.loadAspect(), landscape: W >= H, render() { } });
         h.setRect(h.fullRect());
         return h;
     },
@@ -785,7 +822,7 @@ const CropEditor = {
         const d = this.turnedDims();
         const r = this.rect;
         return {
-            q: this.q, angle: this.angle, aspectKey: this.aspectKey, landscape: this.landscape,
+            q: this.q, ...(this.m ? { m: true } : {}), angle: this.angle, aspectKey: this.aspectKey, landscape: this.landscape,
             wide: d.w >= d.h, // the photo's way round, for likeOn
             n: { x0: r.x0 / d.w, y0: r.y0 / d.h, x1: r.x1 / d.w, y1: r.y1 / d.h }
         };
@@ -809,6 +846,7 @@ const CropEditor = {
     // crop, scaled to its size and kept inside it
     applySnapshot(snap) {
         this.q = (((snap.q || 0) % 4) + 4) % 4;
+        this.m = !!snap.m;
         this.angle = snap.angle || 0;
         this.aspectKey = snap.aspectKey || 'free';
         this.landscape = !!snap.landscape;
@@ -821,10 +859,11 @@ const CropEditor = {
     // A crop on another W × H photo, the way Lightroom syncs one: the same
     // aspect, frame and straighten, relative to its size. A photo the other
     // way round (portrait for landscape) gets the frame turned with it; it
-    // keeps its own quarter turn (q). Off screen, like headless.
-    likeOn(W, H, snap, q = 0) {
+    // keeps its own quarter turn (q) and flip (m). Off screen, like headless.
+    likeOn(W, H, snap, q = 0, m = false) {
         const h = this.headless(W, H);
         h.q = ((q % 4) + 4) % 4;
+        h.m = !!m;
         h.angle = Math.max(-this.MAX_ANGLE, Math.min(this.MAX_ANGLE, snap.angle || 0));
         h.aspectKey = snap.aspectKey || 'free';
         h.landscape = !!snap.landscape;
@@ -890,10 +929,10 @@ const CropEditor = {
         canvas.height = o.h;
         const ctx = canvas.getContext('2d');
         if (!ctx) throw new Error('image too large to process');
-        const [c, s] = this.cs();
+        const [a, b, c, d] = this.mat();
         ctx.imageSmoothingEnabled = this.angle !== 0;
         ctx.imageSmoothingQuality = 'high';
-        ctx.setTransform(c, s, -s, c, -o.x0, -o.y0);
+        ctx.setTransform(a, b, c, d, -o.x0, -o.y0);
         ctx.drawImage(bmp, -this.W / 2, -this.H / 2);
         return canvas;
     },
@@ -905,7 +944,7 @@ const CropEditor = {
         try {
             const ed = this.fromSnapshot(bmp.width, bmp.height, snap);
             const adj = snap.adj && Develop.active(snap.adj);
-            if (ed.isIdentity() && !ed.q && !adj && !Paint.has(snap)) return null;
+            if (ed.isIdentity() && !ed.q && !adj && !Paint.has(snap)) return null; // (a flip isn't identity)
             // Spots (retouch.js) on the whole photo, then the crop
             const base = await Retouch.retouched(bmp, snap);
             const canvas = ed.drawOutput(base);
@@ -1164,6 +1203,7 @@ const CropEditor = {
         const src = this.source(s);
         ctx.imageSmoothingEnabled = !crisp || s * (window.devicePixelRatio || 1) * this.W / src.width < 2;
         ctx.imageSmoothingQuality = 'high';
+        if (this.m) ctx.scale(-1, 1); // flipped (the transform set has the turn)
         ctx.drawImage(src, -this.W / 2, -this.H / 2, this.W, this.H);
     },
 

@@ -16,7 +16,7 @@
 // contrast (the glass is solid then, tokens.css).
 
 const Liquid = {
-    SELECTOR: '.toolbar, .file-info, .folder-rail, #context-menu, .task-pill, .toast, .picked-bar',
+    SELECTOR: '.toolbar, .file-info, .folder-rail, #context-menu, .popover, .task-pill, .toast, .picked-bar',
     KEEP: 24, // maps kept for sizes no part has now (a message that comes back)
 
     on: false,
@@ -109,8 +109,12 @@ const Liquid = {
         const cs = getComputedStyle(el);
         const r = Math.min(parseFloat(cs.borderTopLeftRadius) || 0, w / 2, h / 2);
         const root = getComputedStyle(document.documentElement);
-        const bezel = Math.min(parseFloat(root.getPropertyValue('--lg-bezel')) || 16, w / 2, h / 2);
-        const depth = parseFloat(root.getPropertyValue('--lg-depth')) || 14;
+        // Sized to the part: on a pill the band and the bend stay short of
+        // its middle, so the words there stay still and the round ends
+        // don't pull everything to one point
+        const half = Math.min(w, h) / 2;
+        const bezel = Math.round(Math.min(parseFloat(root.getPropertyValue('--lg-bezel')) || 16, half * 0.75));
+        const depth = Math.round(Math.min(parseFloat(root.getPropertyValue('--lg-depth')) || 14, half * 0.6));
         const key = `${w}x${h}r${Math.round(r)}b${Math.round(bezel)}d${depth}`;
         if (this.parts.get(el) === key) return;
         this.release(el);
@@ -160,7 +164,13 @@ const Liquid = {
     // red (x) and green (y), how far to look in from the edge, 0 in the
     // middle, rising to the full depth at the edge over the bezel. The rim
     // curves ever more steeply, so the last pixels fold back on themselves,
-    // the thin bright line round real glass
+    // the thin bright line round real glass.
+    //
+    // The corners: measured from a corner as round as the band is wide
+    // (at least), the bend turns smoothly round it, the way the rim does.
+    // Measured from the part's own corner, a sidebar's or menu's (rounder
+    // than the band is wide) had a crease from each corner inward, the
+    // bend going one way on one side of it and the other way on the other
     map(w, h, r, bezel) {
         const c = document.createElement('canvas');
         c.width = w;
@@ -168,7 +178,8 @@ const Liquid = {
         const g = c.getContext('2d');
         const im = g.createImageData(w, h);
         const d = im.data;
-        const iw = w / 2 - r, ih = h / 2 - r; // the straight part's half size
+        const R = Math.min(Math.max(r, bezel), w / 2, h / 2); // the corner the bend turns round
+        const iw = w / 2 - R, ih = h / 2 - R; // the straight part's half size
         for (let y = 0; y < h; y++) {
             const py = y + 0.5 - h / 2, qy = Math.abs(py) - ih;
             for (let x = 0; x < w; x++) {
@@ -176,14 +187,14 @@ const Liquid = {
                 // How far in from the edge, and which way is in
                 let dist, nx, ny;
                 if (qx > 0 && qy > 0) {
-                    const l = Math.hypot(qx, qy);
-                    dist = r - l;
+                    const l = Math.hypot(qx, qy) || 1;
+                    dist = R - l;
                     nx = qx / l;
                     ny = qy / l;
                 } else if (qx > qy) {
-                    dist = r - qx; nx = 1; ny = 0;
+                    dist = R - qx; nx = 1; ny = 0;
                 } else {
-                    dist = r - qy; nx = 0; ny = 1;
+                    dist = R - qy; nx = 0; ny = 1;
                 }
                 const t = dist < bezel ? Math.min(1, Math.max(0, 1 - dist / bezel)) : 0;
                 const m = t * t * (1.6 - 0.6 * t); // gentle inside, steep at the rim

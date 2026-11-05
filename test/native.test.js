@@ -13,20 +13,7 @@ const path = require('path');
 const { chromium } = require('playwright-core');
 const { createServer } = require('../scripts/serve.js');
 
-function launchOptions() {
-    const candidates = [
-        process.env.CHROME_PATH,
-        '/opt/pw-browsers/chromium',
-        '/usr/bin/chromium',
-        '/usr/bin/chromium-browser',
-        '/usr/bin/google-chrome',
-        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
-    ].filter(Boolean);
-    for (const p of candidates) {
-        if (fs.existsSync(p)) return { executablePath: p, args: ['--no-sandbox'] };
-    }
-    return { channel: 'chrome', args: ['--no-sandbox'] };
-}
+const { launchOptions } = require('./page-helpers.js');
 
 let passed = 0, failed = 0;
 function check(name, ok, detail = '') {
@@ -185,6 +172,8 @@ const FAKE_NATIVE = `
                 await w.close();
                 scanned(name);
             }
+            // Held open after its photos are in (Turn upright mustn't wait for the end)
+            if (window.__scanHold) await window.__scanHold;
             if (window.__scanError) throw Object.assign(new Error(window.__scanError), { code: window.__scanCode || null, names: [] });
             return { count: pages, autosized: !!window.__scanAutosized };
         },
@@ -806,6 +795,10 @@ async function newPage(context, baseUrl, host = null) {
             await wait(() => app.files.some(f => f.name === 'photo5.jpg'));
             await wait(() => $('scan-panel').dataset.state === 'done');
             out.dock = { title: $('scan-title').textContent, status: $('scan-status').textContent, strip: $('scan-strip').querySelectorAll('figure').length, more: $('scan-go').textContent };
+            // The strip shows small copies made in the thumbnail worker, not the scans themselves
+            await wait(() => [...$('scan-strip').querySelectorAll('img')].filter(i => i.complete && i.naturalWidth).length === 2);
+            out.thumbW = app.THUMB_WIDTH;
+            out.stripWidths = [...$('scan-strip').querySelectorAll('img')].map(i => i.naturalWidth).join();
             out.req = window.__scanReq;
             out.compatKept = JSON.parse(localStorage.getItem('jeditor.scanCompat') || '{}')['EPSON FF-680W'] === true;
             out.files = app.files.map(f => f.relPath || f.name).sort().join(',');
@@ -838,6 +831,32 @@ async function newPage(context, baseUrl, host = null) {
             await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '', prefix: 'Smith-B-', next: 1, digits: 3 });
             await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '' });
             out.typedMore = window.__scanReq.prefix + window.__scanReq.next;
+
+            // Turn upright: each photo as it comes in, its back with it, while
+            // the scan is still going (not all at the end)
+            {
+                const realGuess = Upright.guess, realRotate = app.rotateBulk;
+                Upright.guess = async () => ({ turns: 1, sure: 0.99 });
+                const rotated = [];
+                app.rotateBulk = async function (deg, turns, o) {
+                    rotated.push({ names: [...turns.keys()].map(f => f.name).join('+'), deg: [...turns.values()].join(), running: Scan.running, quiet: !!(o && o.quiet) });
+                    return realRotate.call(this, deg, turns, o);
+                };
+                window.__scanPages = 2;
+                window.__scanHold = new Promise(r => { window.__scanRelease = r; });
+                $('scan-upright').checked = true;
+                const run = Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '', source: 'feeder', sides: 'both', prefix: 'up', next: 1, digits: 2 });
+                await wait(() => rotated.length >= 2);
+                out.uprightEach = rotated.map(x => ({ ...x }));
+                window.__scanRelease();
+                await run;
+                out.uprightStatus = $('scan-status').textContent;
+                out.uprightAfter = rotated.length;
+                window.__scanHold = null;
+                window.__scanPages = 1; // as the scans below expect
+                Upright.guess = realGuess;
+                app.rotateBulk = realRotate;
+            }
             Scan.lastNaming = null; // the scans below follow the folder's names again
 
             // Details: the log so far, then new lines as the app writes them
@@ -914,6 +933,7 @@ async function newPage(context, baseUrl, host = null) {
         check('... each folder its own sequence', r.cerNames.join() === 'c,2', r.cerNames.join());
         check('the dock stays while it scans, then says how many, with the photos and Scan more', r.closed && /^Scanned 2 photos into Scan Order/.test(r.dock.status) && r.dock.strip === 2 && r.dock.more === 'Scan more' && /Scanned · EPSON FF-680W/.test(r.dock.title), JSON.stringify(r.dock));
         check('Scan asks the app to scan into the order\'s folder, by path', r.req && r.req.folder === 'D:\\Orders\\Scan Order' && r.req.device === 'EPSON FF-680W' && r.req.driver === 'twain' && r.req.prefix === 'photo' && r.req.next === 4, JSON.stringify(r.req));
+        check('the dock\'s strip shows a small copy of each scan (made in the thumbnail worker)', r.thumbW === 320 && r.stripWidths === `${r.thumbW},${r.thumbW}`, r.stripWidths);
         check('scanned photos show up in the order', r.files === 'Ceremony/c1.jpg,photo1.jpg,photo2.jpg,photo3.jpg,photo4.jpg,photo5.jpg', r.files);
         check('a message says how many', /Scanned 2 photos into Scan Order/.test(r.toast), r.toast);
         check('Auto crop each photo is off to start with', r.autoCropDefault === false);
@@ -924,6 +944,8 @@ async function newPage(context, baseUrl, host = null) {
         check('... unless the scanner cropped each photo itself (its own auto-size took)', r.croppedAgain === null, String(r.croppedAgain));
         check('Scan more in the dock carries on the names', r.more === 'photo6.jpg', r.more);
         check('a typed prefix carries on into the next scan', r.typedMore === 'Smith-B-2', r.typedMore);
+        check('Turn upright turns each photo as it comes in, its back with it, while the scan goes on', JSON.stringify(r.uprightEach) === JSON.stringify([{ names: 'up01.jpg+up01-b.jpg', deg: '90,90', running: true, quiet: true }, { names: 'up02.jpg+up02-b.jpg', deg: '90,90', running: true, quiet: true }]), JSON.stringify(r.uprightEach));
+        check('... and nothing is left to turn at the end; the dock says how many', r.uprightAfter === 2 && / · 2 turned upright$/.test(r.uprightStatus), JSON.stringify([r.uprightAfter, r.uprightStatus]));
         check('a scan that fails says why, and what was saved', /busy/.test(r.err || '') && /didn't finish/.test(r.alert) && /1 photo was saved/.test(r.alert) && !r.running, JSON.stringify([r.err, r.alert]));
         check('while scanning, the dock offers Stop; closing it only makes it small', r.stopOffered && r.small, JSON.stringify([r.stopOffered, r.small]));
         check('Stop ends a scan whose window never shows', r.stopped && r.stopToast === 'Scan stopped', JSON.stringify([r.stopped, r.stopToast]));
@@ -2174,10 +2196,11 @@ async function newPage(context, baseUrl, host = null) {
             $('ex-cancel').click();
             out.closed = $('export-panel').classList.contains('hidden');
             // Right-click a USB drive in the sidebar: Export or Copy the project to it
-            // (plugged in again: it was ejected above)
-            await wait(() => !Places.drives.some(d => d.kind === 'usb'));
-            window.__drives = window.__drives.concat([{ path: 'E:' + BS, name: 'USB drive (E:)', kind: 'usb', total: 64e9, free: 1e9 }]);
-            await Places.refresh();
+            // (E: plugged back in: Eject when done took it out above)
+            if (!window.__drives.some(d => d.path === 'E:' + BS)) {
+                window.__drives = window.__drives.concat([{ path: 'E:' + BS, name: 'USB drive (E:)', kind: 'usb', total: 64e9, free: 1e9 }]);
+                await Places.refresh();
+            }
             const rowFor = (p, name) => { const r = document.createElement('div'); r.dataset.path = p; r.innerHTML = '<span class="fr-name"></span>'; r.firstChild.textContent = name; return r; };
             const usbItems = Places.rowItems(rowFor('E:' + BS, 'USB drive (E:)'));
             out.usbMenu = usbItems.map(i => i[0]).filter(t => /Beta/.test(t)).join(' | ');

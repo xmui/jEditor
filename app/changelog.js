@@ -8,9 +8,11 @@ const CHANGELOG = [
     {
         version: '1.50.2', date: '2026-10-31', beta: true,
         items: [
+            'Windows: scanning at high resolutions (1200 dpi and up) no longer makes jEditor lag. The scan is turned into a picture away from the window, the scan window\'s strip shows small copies instead of the full scans, and Turn upright looks at each photo in the background.',
             'Adjust no longer pauses for a moment when you let go of a slider: the looks\' pictures are drawn again in a fraction of the time.',
             'In the Windows XP, Snow Leopard and 1984 themes, the thumbnail-size slider no longer sits under the selection bar in a narrow window: it gets shorter, and the bar scrolls sideways if it still needs room.',
             'Scrolling fast through a huge folder (Page Down, or a quick fling) is about twice as smooth: the photos ease in at the edges when you scroll along, and wait while you rush past.',
+            'Scanning: Turn upright turns each photo as it comes in again, its back with it, instead of leaving them all to the end of the scan. Each is its own `Ctrl+Z`.',
             'Reload is back in the Windows, Mac and Linux apps: `Ctrl+R` (`Cmd+R` on a Mac, or View → Reload). If something in Adjust or Paint isn\'t kept yet, it asks first, as closing the window does. Plain `R` is still Rescan folder.',
             'Opening a folder with a photo app\'s library in it (Pictures on a Mac, with the Photos library) no longer lists the library\'s own thumbnails and previews as photos. Photos, iPhoto, Aperture and Lightroom libraries are left out, as Finder shows them as one item. To open them like folders, turn on Settings → Projects → Open photo libraries as folders.',
             'Opening a folder of more than 2,000 photos asks first, as it can take a while: Open, Cancel, or Don\'t ask again. Change the number in Settings → Projects → Ask before opening a huge folder, or leave it empty to never be asked. How long each step of opening takes now goes in the log.',
@@ -18,6 +20,11 @@ const CHANGELOG = [
             'Copying a project to a USB drive no longer puts a .jeditor folder on it: the photos go as they are. To take its flags and edits along for jEditor on another computer, tick Take its flags and edits too in Export. Eject when done is there for copies onto a drive and for discs too.',
             'Export → Copies is simpler and does more: pick Full quality, For the web or For print, and a sentence says what will happen. Pills set which photos, the format and its quality, the size, the names (their own or numbered) and where. The folder is named after the project ("Summer 2024 export"), and you can rename it. More options has the metadata (keep the location or leave it out), the colour (sRGB for the web), and keeping the copies out of the project.',
             'Right-click a USB drive or card in the sidebar to Export the open project to it (copies of its photos) or Copy it there (the whole folder as it is). Right-click a disc drive to Burn the project to a disc.',
+            'Right-click a USB drive or card in the sidebar to Export the open project to it (copies of its photos) or Copy it there (the whole folder as it is). Right-click a disc drive to Burn the project to a disc.',
+            'Liquid glass has cleaner corners: the bend turns smoothly round the corners of the sidebar and menus, with no crease, and a pill\'s round ends no longer smear into a blob. File info and History bend like the rest. In every glass, the sidebar\'s corner now follows the Photos · Adjust · Paint switch in it, and the menus\' rows and the messages follow their corners.',
+            'Snow Leopard\'s scroll bars look like Snow Leopard\'s again, in Finder and Aperture: both arrows together at the end, a groove rounded at the far end, the bar turned properly when it runs sideways, and no white square where two bars meet.',
+            'In the Windows XP, Snow Leopard and 1984 themes, the thumbnail-size slider, `Ctrl`+wheel and a pinch change the size of the thumbnails again.',
+            'Flip a photo left to right (`Shift+H`) or upside down (`Shift+V`), or a whole selection in the grid at once: from the right-click menu, beside Rotate, and in Crop and straighten too (right-click the photo). A JPEG is flipped without losing any quality, like a rotation, and `Ctrl+Z` puts it back. With Save edits when done, the flip waits with the other edits, and Adjust, Paint, Sync and Export all show it.',
         ]
     },
     {

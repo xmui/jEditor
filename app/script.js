@@ -2414,12 +2414,15 @@ const app = {
     // In-place edits that rotate a JPEG which already has an orientation
     // tag: [{ position, data }] for the tag (and any XMP tiff:Orientation in
     // the header), or null when the file needs a full rewrite.
-    async orientationPatch(fileData, deg) {
+    // op: the new orientation from the old one, in place of turning by deg
+    // (a flip: flipOrientation)
+    async orientationPatch(fileData, deg, op = null) {
         const head = new Uint8Array(await fileData.slice(0, 256 * 1024).arrayBuffer());
         const view = new DataView(head.buffer);
         const loc = this.findJpegOrientation(view);
         if (!loc || loc.valueOffset === undefined) return null;
-        const next = this.composeOrientation(view.getUint16(loc.valueOffset, loc.littleEndian), deg);
+        const cur = view.getUint16(loc.valueOffset, loc.littleEndian);
+        const next = op ? op(cur) : this.composeOrientation(cur, deg);
         const tag = new Uint8Array(2);
         new DataView(tag.buffer).setUint16(0, next, loc.littleEndian);
         const edits = [{ position: loc.valueOffset, data: tag }];
@@ -2474,15 +2477,17 @@ const app = {
     },
 
     // Returns a rotated JPEG Blob without re-encoding, or null if the file
-    // can't be patched (caller falls back to canvas re-encode).
-    rotateJpegLossless(buffer, deg) {
+    // can't be patched (caller falls back to canvas re-encode). op: as in
+    // orientationPatch
+    rotateJpegLossless(buffer, deg, op = null) {
+        const turn = (o) => op ? op(o) : this.composeOrientation(o, deg);
         const view = new DataView(buffer);
         const loc = this.findJpegOrientation(view);
         if (!loc) return null;
         let bytes = new Uint8Array(buffer);
         let orientation;
         if (loc.insert) {
-            orientation = this.composeOrientation(1, deg);
+            orientation = turn(1);
             const seg = this.buildOrientationExif(orientation);
             const out = new Uint8Array(bytes.length + seg.length);
             out.set(bytes.subarray(0, 2), 0);
@@ -2490,12 +2495,12 @@ const app = {
             out.set(bytes.subarray(2), 2 + seg.length);
             bytes = out;
         } else if (loc.relocate) {
-            orientation = this.composeOrientation(1, deg);
+            orientation = turn(1);
             bytes = ImageMeta.insertExifOrientation(bytes, loc.relocate, orientation);
             if (!bytes) return null;
         } else {
             const current = view.getUint16(loc.valueOffset, loc.littleEndian);
-            orientation = this.composeOrientation(current, deg);
+            orientation = turn(current);
             view.setUint16(loc.valueOffset, orientation, loc.littleEndian);
         }
         // Keep an XMP tiff:Orientation (Lightroom writes one) in agreement
@@ -2524,6 +2529,163 @@ const app = {
             canvas.height = is90or270 ? bitmap.width : bitmap.height;
             ctx.translate(canvas.width / 2, canvas.height / 2);
             ctx.rotate(normalizedDeg * Math.PI / 180);
+            ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+            const blob = await new Promise(r => canvas.toBlob(r, type, quality));
+            if (!blob) return null;
+            return ImageMeta.transplant(original, blob, type, canvas.width, canvas.height);
+        } finally {
+            bitmap.close();
+        }
+    },
+
+    // ---- Flipping ----
+    //
+    // Flipped as it's seen: 'h' left to right, 'v' upside down. Like a
+    // rotation: kept as an edit with the other edits when they wait for
+    // Save (Edits.flip), otherwise written into the file straight away,
+    // losslessly for a JPEG (EXIF orientation has mirrored values as well
+    // as turns) and re-encoded otherwise. A selection is one Ctrl+Z.
+
+    // A mirror left to right composed onto each EXIF orientation value
+    // (see ORIENTATION_ROTATE_CW): 1↔2, 3↔4, 5↔6, 7↔8
+    ORIENTATION_FLIP_H: { 1: 2, 2: 1, 3: 4, 4: 3, 5: 6, 6: 5, 7: 8, 8: 7 },
+
+    // Flipped, then turned deg (a kept edit is a mirror, then its turn).
+    // Upside down is left to right and half a turn
+    flipOrientation(current, axis, deg = 0) {
+        const o = this.ORIENTATION_FLIP_H[(current >= 1 && current <= 8) ? current : 1];
+        return this.composeOrientation(o, (axis === 'v' ? 180 : 0) + deg);
+    },
+
+    flipCurrent(axis) {
+        return this.currentFile ? this.flipFiles([this.currentFile], axis) : Promise.resolve(false);
+    },
+
+    flipBulk(axis) {
+        return this.selection.size ? this.flipFiles([...this.selection], axis) : Promise.resolve(false);
+    },
+
+    async flipFiles(files, axis) {
+        if (!files.length || !this.ensureWritable()) return false;
+        const list = files.filter(f => !/\.gif$/i.test(f.name));
+        if (list.length < files.length) this.showToast('Skipped GIFs (flipping would lose the animation)');
+        if (!list.length) return false;
+        const how = axis === 'v' ? 'upside down' : 'left to right';
+        const said = (fs) => fs.length === 1 ? fs[0].name : `${fs.length.toLocaleString()} photos`;
+        // Kept with the other edits until they're saved
+        const kept = list.filter(f => Edits.keeps(f));
+        if (kept.length) {
+            if (this.editsSaving()) return false;
+            Edits.flip(kept, axis);
+        }
+        const now = list.filter(f => !kept.includes(f));
+        if (!now.length) {
+            this.showToast(`Flipped ${said(kept)} ${how}`, 1600, null, null, { kind: 'rotate' });
+            return true;
+        }
+        // One undo step for them all (in the history now, filled as each is written)
+        let finished;
+        const group = { type: 'group', label: axis === 'v' ? 'flip upside down' : 'flip', items: [], count: now.length, done: new Promise(r => { finished = r; }) };
+        this.pushUndo(group);
+        const key = 'flip-' + (this._batchSeq = (this._batchSeq || 0) + 1);
+        this.beginTask(key, `Flipping ${said(now)}…`);
+        let ok = true, next = 0;
+        const worker = async () => {
+            while (next < now.length) {
+                const f = now[next++];
+                try {
+                    group.items.push(await this.flipOnDisk(f, axis));
+                } catch (e) {
+                    console.error('Flip failed:', e);
+                    ok = false;
+                }
+            }
+        };
+        try {
+            await Promise.all(Array.from({ length: Math.min(4, now.length) }, worker));
+        } finally {
+            this.endTask(key);
+            finished();
+        }
+        if (!group.items.length) {
+            this._undoStack = (this._undoStack || []).filter(e => e !== group);
+            History.changed();
+        }
+        this.showToast(ok ? `Flipped ${said(list)} ${how}` : 'Some photos could not be flipped: they may be in use', 2000, null, null, ok ? { kind: 'rotate' } : {});
+        return ok;
+    },
+
+    // Written into the file: flipped, then turned deg. The undo item comes
+    // back: { type: 'flip' } (done again, which undoes it: a flip, turned
+    // or not, is its own opposite) or the original bytes when re-encoded
+    async flipOnDisk(f, axis, { deg = 0 } = {}) {
+        // After a rotation being written; rotations wait for this in turn
+        while (f._rotationQueue || f._flipping) await (f._rotationQueue || f._flipping).catch(() => { });
+        let release;
+        f._flipping = new Promise(r => { release = r; });
+        f.isBusy = true;
+        try {
+            const verify = () => this.verifyPermission(this.dirHandle || f.handle, true);
+            const data = await f.handle.getFile();
+            const isJpeg = /\.jpe?g$/i.test(f.name);
+            const op = (o) => this.flipOrientation(o, axis, deg);
+            const entry = { type: 'flip', file: f, axis, deg, label: 'flip' };
+            // The orientation tag rewritten where it is: nothing else read
+            if (isJpeg) {
+                const patch = await this.orientationPatch(data, 0, op);
+                if (patch) {
+                    await verify();
+                    if (await this.writeInPlace(f.handle, patch)) return entry;
+                }
+            }
+            const buf = await data.arrayBuffer();
+            let blob = null, undo = entry;
+            if (isJpeg) {
+                try { blob = this.rotateJpegLossless(buf, 0, op); } catch (e) { this.log('Lossless flip unavailable, re-encoding: ' + e.message); }
+            }
+            if (!blob) {
+                undo = { type: 'bytes', file: f, blob: new Blob([buf], { type: data.type }), label: 'flip' };
+                blob = await this.flipByReencoding(data, f.name, axis, deg);
+            }
+            if (!blob) throw new Error('could not encode the photo');
+            await verify();
+            const w = await f.handle.createWritable();
+            await w.write(blob);
+            await w.close();
+            return undo;
+        } finally {
+            f.isBusy = false;
+            // New pixels on disk: previews made again (a turn asked for
+            // meanwhile is still to come)
+            const pending = f.pendingRotation || 0;
+            try { await this.afterFileChanged(f); } catch (e) { /* shown when it's read next */ }
+            if (pending) {
+                f.pendingRotation = pending;
+                this.applyPreviewRotation(f);
+            }
+            f._flipping = null;
+            release();
+        }
+    },
+
+    // Decoded, flipped (then turned deg) and re-encoded in the file's own
+    // format, with its metadata
+    async flipByReencoding(fileData, name, axis, deg = 0) {
+        const { type, quality } = this.getSaveFormat(name);
+        const original = new Uint8Array(await fileData.arrayBuffer());
+        const bitmap = await createImageBitmap(fileData, {
+            colorSpaceConversion: ImageMeta.canCarryProfile(type, original) ? 'none' : 'default'
+        });
+        try {
+            const d = ((deg % 360) + 360) % 360;
+            const canvas = document.createElement('canvas');
+            canvas.width = d % 180 ? bitmap.height : bitmap.width;
+            canvas.height = d % 180 ? bitmap.width : bitmap.height;
+            const ctx = canvas.getContext('2d');
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.rotate(d * Math.PI / 180);
+            if (axis === 'v') ctx.scale(1, -1);
+            else ctx.scale(-1, 1);
             ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
             const blob = await new Promise(r => canvas.toBlob(r, type, quality));
             if (!blob) return null;
@@ -4410,6 +4572,8 @@ const app = {
         ['edit.rotateLeft', 'global', 'Edit', 'Rotate left (whole selection in grid)', ['[', ',', 'Shift+ArrowLeft']],
         ['edit.rotateRight', 'global', 'Edit', 'Rotate right (whole selection in grid)', [']', '.', 'Shift+ArrowRight']],
         ['edit.rotate180', 'global', 'Edit', 'Rotate 180° (whole selection in grid)', ['\\']],
+        ['edit.flipH', 'global', 'Edit', 'Flip left to right (whole selection in grid)', ['Shift+H']],
+        ['edit.flipV', 'global', 'Edit', 'Flip upside down (whole selection in grid)', ['Shift+V']],
         ['edit.crop', 'global', 'Edit', 'Crop & straighten', ['C']],
         ['edit.adjust', 'global', 'Edit', 'Adjust: light, color, curves', ['E']],
         ['edit.paint', 'global', 'Edit', 'Paint: brushes, shapes, text and layers', ['B']],
@@ -4465,6 +4629,8 @@ const app = {
         ['crop.rotateLeft', 'crop', 'Crop & Straighten', 'Rotate left 90°', ['[']],
         ['crop.rotateRight', 'crop', 'Crop & Straighten', 'Rotate right 90°', [']']],
         ['crop.rotate180', 'crop', 'Crop & Straighten', 'Rotate 180°', ['\\']],
+        ['crop.flipH', 'crop', 'Crop & Straighten', 'Flip left to right', ['Shift+H']],
+        ['crop.flipV', 'crop', 'Crop & Straighten', 'Flip upside down', ['Shift+V']],
         ['crop.angleDown', 'crop', 'Crop & Straighten', 'Straighten −0.1°', [',']],
         ['crop.angleUp', 'crop', 'Crop & Straighten', 'Straighten +0.1°', ['.']],
         ['crop.angleDownBig', 'crop', 'Crop & Straighten', 'Straighten −1°', ['<']],
@@ -4599,6 +4765,8 @@ const app = {
             'edit.rotateLeft': () => grid() ? this.rotateBulk(-90) : this.rotateCurrent(-90),
             'edit.rotateRight': () => grid() ? this.rotateBulk(90) : this.rotateCurrent(90),
             'edit.rotate180': () => grid() ? this.rotateBulk(180) : this.rotateCurrent(180),
+            'edit.flipH': () => grid() ? this.flipBulk('h') : this.flipCurrent('h'),
+            'edit.flipV': () => grid() ? this.flipBulk('v') : this.flipCurrent('v'),
             'edit.crop': () => this.enterCrop(),
             'edit.adjust': () => this.enterAdjust(),
             'edit.paint': () => this.enterPaint(),
@@ -4672,6 +4840,8 @@ const app = {
             'crop.rotateLeft': () => ed.rotateQuarter(-1),
             'crop.rotateRight': () => ed.rotateQuarter(1),
             'crop.rotate180': () => ed.rotateHalf(),
+            'crop.flipH': () => ed.flip('h'),
+            'crop.flipV': () => ed.flip('v'),
             'crop.angleDown': () => ed.nudgeAngle(-0.1),
             'crop.angleUp': () => ed.nudgeAngle(0.1),
             'crop.angleDownBig': () => ed.nudgeAngle(-1),
@@ -5546,7 +5716,8 @@ const app = {
     // Lags reset to 0 whenever a preview is regenerated from fresh disk bytes.
 
     // `turns`: each photo's own turn (Turn upright), in place of `deg`
-    async rotateBulk(deg, turns = null) {
+    // quiet: no toast (the scan window says how many it turned)
+    async rotateBulk(deg, turns = null, { quiet = false } = {}) {
         if (!turns && this.selection.size === 0) return;
         if (!this.ensureWritable()) return;
         const degOf = (f) => turns ? turns.get(f) : deg;
@@ -5574,7 +5745,7 @@ const app = {
             }
             if (kept.length === filesToRotate.length) {
                 const n = kept.length;
-                this.showToast(`Turned ${n} photo${n > 1 ? 's' : ''} ${turns ? 'upright' : Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left'}`, 1600, null, null, { kind: 'rotate' });
+                if (!quiet) this.showToast(`Turned ${n} photo${n > 1 ? 's' : ''} ${turns ? 'upright' : Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left'}`, 1600, null, null, { kind: 'rotate' });
                 return;
             }
             filesToRotate.splice(0, filesToRotate.length, ...filesToRotate.filter(f => !kept.includes(f)));
@@ -5627,7 +5798,7 @@ const app = {
         // Nothing was saved (all failed): no empty undo step
         if (!group.items.length) this._undoStack = (this._undoStack || []).filter(e => e !== group);
         const how = turns ? 'upright' : Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left';
-        this.showToast(ok ? `Rotated ${label} ${how}` : 'Some photos failed to rotate', 2000, null, null, ok ? { kind: 'rotate' } : {});
+        if (!ok || !quiet) this.showToast(ok ? `Rotated ${label} ${how}` : 'Some photos failed to rotate', 2000, null, null, ok ? { kind: 'rotate' } : {});
         this.log('Bulk rotation finished');
     },
 
@@ -5663,6 +5834,7 @@ const app = {
     },
 
     async drainRotationQueue(fileEntry) {
+        if (fileEntry._flipping) await fileEntry._flipping; // flipOnDisk
         fileEntry.isBusy = true;
         let undoEntry = null;
         try {
@@ -5881,6 +6053,10 @@ const app = {
     async undoFileEdit(entry) {
         const f = entry.file;
         if (f._rotationQueue) await f._rotationQueue;
+        if (entry.type === 'flip') {
+            await this.flipOnDisk(f, entry.axis, { deg: entry.deg || 0 });
+            return;
+        }
         if (entry.type === 'bytes') {
             f.pendingRotation = 0;
             f.savingRotation = 0;
@@ -5929,9 +6105,9 @@ const app = {
             if (entry.type === 'bytes') {
                 await this.undoFileEdit(entry);
                 this.showToast(`Undid ${entry.label} on ${entry.file.name}`, 3000, null, null, { kind: 'undo' });
-            } else if (entry.type === 'rotate') {
+            } else if (entry.type === 'rotate' || entry.type === 'flip') {
                 await this.undoFileEdit(entry);
-                this.showToast(`Undid rotation on ${entry.file.name}`, 3000, null, null, { kind: 'undo' });
+                this.showToast(`Undid ${entry.type === 'flip' ? 'flip' : 'rotation'} on ${entry.file.name}`, 3000, null, null, { kind: 'undo' });
             } else if (entry.type === 'group') {
                 // A rotation of a whole selection: every photo, in one step
                 // (once the batch has finished saving, so none are missed)
@@ -5945,14 +6121,15 @@ const app = {
                     }
                 };
                 const many = items.length > 1;
-                if (many) this.beginTask('undo-group', `Undoing rotation of ${items.length} photos…`);
+                const what = entry.label || 'rotation';
+                if (many) this.beginTask('undo-group', `Undoing ${what} of ${items.length} photos…`);
                 try {
                     await Promise.all(Array.from({ length: Math.min(4, items.length) }, worker));
                 } finally {
                     if (many) this.endTask('undo-group');
                 }
                 if (failed) throw new Error(`${failed} photo${failed === 1 ? '' : 's'} could not be put back`);
-                this.showToast(`Undid rotation on ${items.length} photo${items.length === 1 ? '' : 's'}`, 3000, null, null, { kind: 'undo' });
+                this.showToast(`Undid ${what} on ${items.length} photo${items.length === 1 ? '' : 's'}`, 3000, null, null, { kind: 'undo' });
             } else if (entry.type === 'rename') {
                 await this.renameFile(entry.file, entry.oldName, { skipUndo: true });
                 this.showToast('Rename undone', 3000, null, null, { kind: 'undo' });
@@ -6850,7 +7027,7 @@ const app = {
         const turnOnly = !edit.adj && !edit.paint && !edit.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5);
         if (turnOnly && /\.jpe?g$/i.test(f.name)) {
             try {
-                const b = this.rotateJpegLossless(original.buffer, edit.q * 90);
+                const b = this.rotateJpegLossless(original.buffer, edit.q * 90, edit.m ? (o) => this.flipOrientation(o, 'h', edit.q * 90) : null);
                 if (b) return b;
             } catch (e) { /* re-encode */ }
         }
@@ -6894,6 +7071,18 @@ const app = {
 
     initContextMenu() {
         document.addEventListener('contextmenu', (e) => {
+            if (this.cropState.active && CropEditor.ready && e.target.closest && e.target.closest('.crop-stage')) {
+                e.preventDefault();
+                const ed = CropEditor;
+                this.openContextMenu([
+                    ['Rotate left', () => ed.rotateQuarter(-1)],
+                    ['Rotate right', () => ed.rotateQuarter(1)],
+                    ['Rotate 180°', () => ed.rotateHalf()],
+                    ['Flip left to right', () => ed.flip('h')],
+                    ['Flip upside down', () => ed.flip('v')]
+                ], e.clientX, e.clientY);
+                return;
+            }
             if (this.cropState.active || Dupes.isOpen) { e.preventDefault(); return; }
             if (this.elements.mainInterface.classList.contains('hidden')) return;
             const folder = this.dirHandle && e.target.closest && e.target.closest('[data-folder-path]');
@@ -6932,6 +7121,8 @@ const app = {
                     [`Rotate ${n} left`, () => this.rotateBulk(-90)],
                     [`Rotate ${n} right`, () => this.rotateBulk(90)],
                     [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
+                    [`Flip ${n} left to right`, () => this.flipFiles(sel, 'h')],
+                    [`Flip ${n} upside down`, () => this.flipFiles(sel, 'v')],
                     ...(this.autoCropOn() ? [[`Auto crop ${n}`, () => this.batchAutoCrop(sel)]] : []),
                     ...(this.getLastCrop() ? [[`Crop ${n} like the last crop`, () => this.cropLike(sel)]] : []),
                     [`Turn ${n} upright`, () => this.turnUpright(sel)],
@@ -6956,6 +7147,8 @@ const app = {
                 ['Rotate left', () => this.rotateImage(file, -90)],
                 ['Rotate right', () => this.rotateImage(file, 90)],
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
+                ['Flip left to right', () => this.flipFiles([file], 'h')],
+                ['Flip upside down', () => this.flipFiles([file], 'v')],
                 ['Turn upright', () => this.turnUpright([file])],
                 ['Crop and straighten', () => { this.openSingle(file); this.enterCrop(); }],
                 ...(this.getLastCrop() ? [['Crop like the last crop', () => this.cropLike([file])]] : []),
@@ -6984,6 +7177,8 @@ const app = {
                 ['Rotate left', () => this.rotateImage(file, -90)],
                 ['Rotate right', () => this.rotateImage(file, 90)],
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
+                ['Flip left to right', () => this.flipFiles([file], 'h')],
+                ['Flip upside down', () => this.flipFiles([file], 'v')],
                 ['Turn upright', () => this.turnUpright([file])],
                 ['Crop and straighten', () => this.enterCrop()],
                 ['Adjust…', () => this.enterAdjust()],
@@ -7561,6 +7756,24 @@ const app = {
             return;
         }
 
+        // Flipped (and maybe turned), no crop or tilt: written losslessly
+        // where the file allows, as a flip is
+        if (ed.m && ed.isIdentity(true)) {
+            if (logged) { const b = logged.auto ? bytesNow() : null; CropLog.keep(logged, () => b); }
+            const deg = ed.q * 90;
+            this.rememberCrop(snap);
+            this.cancelCrop();
+            this.flipOnDisk(file, 'h', { deg }).then(entry => {
+                this.pushUndo(entry);
+                this.showToast(`Flipped${deg ? ' and turned' : ''} ${file.name}`, 1500, null, null, { kind: 'rotate' });
+            }, e => {
+                console.error('Flip failed:', e);
+                this.showToast('Flip failed: the file may be in use');
+            });
+            goNext();
+            return;
+        }
+
         // Only quarter turns and no crop: that's a rotation — do it
         // losslessly through the rotation engine instead of re-encoding
         if (ed.isIdentity()) {
@@ -7658,18 +7871,11 @@ const app = {
         const turns = new Map();
         try {
             for (const [i, f] of files.entries()) {
-                if (f._rotationQueue) await f._rotationQueue;
-                let g = null;
-                try { g = await Upright.guess(await this.readImage(f)); } catch (e) { this.log(`Turn upright: ${f.name}: ${e.message}`); }
-                // Turns from the file as saved; a turn waiting with its other
-                // edits is taken off
-                const held = (f._edit && f._edit.q) || 0;
-                const q = g && g.sure >= Upright.SURE ? ((g.turns - held) % 4 + 4) % 4 : 0;
-                if (g) this.log(`Turn upright: ${f.name}: ${g.turns * 90}° (${Math.round(g.sure * 100)}% sure)${q ? '' : ', left as it is'}`);
-                if (q) {
-                    turns.set(f, q === 3 ? -90 : q * 90);
+                const deg = await this.uprightTurn(f);
+                if (deg) {
+                    turns.set(f, deg);
                     const back = backs && backs.get(f);
-                    if (back) turns.set(back, q === 3 ? -90 : q * 90);
+                    if (back) turns.set(back, deg);
                 }
                 if (files.length > 10 && i % 10 === 9) this.updateTask(task, `Finding which way is up (${i + 1}/${files.length})…`);
                 await new Promise(r => setTimeout(r, 0));
@@ -7684,6 +7890,22 @@ const app = {
         }
         await this.rotateBulk(0, turns);
         return n;
+    },
+
+    // The turn that puts one photo upright, in degrees (0 when it's upright
+    // already, or Upright isn't sure): from the file as saved, a turn
+    // waiting with its other edits taken off
+    async uprightTurn(f) {
+        if (f._rotationQueue) await f._rotationQueue;
+        let g = null;
+        try { g = await Upright.guess(await this.readImage(f)); } catch (e) { this.log(`Turn upright: ${f.name}: ${e.message}`); }
+        // Turns from the file as saved; a turn waiting with its other edits
+        // is taken off (a flip held too: the turn up goes the other way round)
+        const held = (f._edit && f._edit.q) || 0;
+        const want = g && f._edit && f._edit.m ? -g.turns : g && g.turns;
+        const q = g && g.sure >= Upright.SURE ? ((want - held) % 4 + 4) % 4 : 0;
+        if (g) this.log(`Turn upright: ${f.name}: ${g.turns * 90}° (${Math.round(g.sure * 100)}% sure)${q ? '' : ', left as it is'}`);
+        return q === 3 ? -90 : q * 90;
     },
 
     async batchAutoCrop(files, { ask = true, feeder = false, scan = false } = {}) {
@@ -7949,7 +8171,7 @@ const app = {
     // unturned)
     async cropSnapFor(file, snap = this.getLastCrop()) {
         const { W, H } = await this.cropDims(file);
-        const ed = CropEditor.likeOn(W, H, snap, (file._edit && file._edit.q) || 0);
+        const ed = CropEditor.likeOn(W, H, snap, (file._edit && file._edit.q) || 0, !!(file._edit && file._edit.m));
         return ed.isIdentity() && !ed.q ? null : ed.snapshot();
     },
 
@@ -8213,6 +8435,17 @@ const app = {
         if (!edit.adj && !edit.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5) && !/\.gif$/i.test(file.name) && !Codec.of(file.name)) {
             const q = edit.q % 4;
             delete file._edit;
+            // Flipped too: flipped and turned in one go (JPEG: losslessly)
+            if (edit.m) {
+                try {
+                    group.items.push(await this.flipOnDisk(file, 'h', { deg: q * 90 }));
+                } catch (e) {
+                    file._edit = edit;
+                    throw e;
+                }
+                this.dropEdited(file);
+                return 'turned';
+            }
             file.pendingRotation = q === 3 ? -90 : q * 90;
             file._undoGroup = group;
             try {

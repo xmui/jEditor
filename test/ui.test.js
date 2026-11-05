@@ -417,14 +417,20 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const g = c.getContext('2d');
             g.fillStyle = '#7ab'; g.fillRect(0, 0, 120, 40);
             g.fillStyle = '#585'; g.fillRect(0, 40, 120, 40);
-            const ans = await Upright.guess(await new Promise(res => c.toBlob(res)));
+            const blob = await new Promise(res => c.toBlob(res));
+            const ans = await Upright.guess(blob);
             out.real = ans && [0, 1, 2, 3].includes(ans.turns) && ans.sure > 0.25 && ans.sure <= 1;
+            // ... looked at in a worker (the window keeps up), the same answer as here
+            out.inWorker = !!Upright.worker;
+            const here = await Upright.guessHere(blob);
+            out.same = !!here && here.turns === ans.turns && Math.abs(here.sure - ans.sure) < 1e-6;
             return out;
         });
         check('turn upright: the network is there', r.loaded);
         check('turn upright: each photo turned its own way; an unsure one left as it is', r.turned === 2 && r.orient === '6,8' && r.eWrites === 0, JSON.stringify(r));
         check('turn upright: one undo step for them all', r.oneStep);
         check('turn upright: the network answers for a photo', r.real, JSON.stringify(r));
+        check('turn upright: the network looks in a worker, with the same answer as on the window\'s thread', r.inWorker && r.same, JSON.stringify([r.inWorker, r.same]));
         await page.close();
     }
 
@@ -1037,8 +1043,89 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('only Liquid bends', !crystal.bends && !/url/.test(crystal.filter), JSON.stringify(crystal));
         check('Reduce transparency and Increase contrast: no bend, the glass solid', [reduced, contrast].every(x => !x.bends && x.filter === 'none' && /^rgb\(/.test(x.bg)), JSON.stringify([reduced, contrast]));
         check('a theme on: no bend', !skinned);
+        // The corners: the bend turns round them, with no crease. Read
+        // back from the maps (red: how far across, green: how far down)
+        const corners = await page.evaluate(async () => {
+            await new Promise(r => setTimeout(r, 300));
+            const read = async (w, h, r, bezel) => {
+                const im = new Image();
+                im.src = Liquid.map(w, h, r, bezel);
+                await im.decode();
+                const c = document.createElement('canvas');
+                c.width = w; c.height = h;
+                const g = c.getContext('2d');
+                g.drawImage(im, 0, 0);
+                return (x, y) => [...g.getImageData(x, y, 1, 1).data.slice(0, 2)].map(v => v - 128);
+            };
+            // A sidebar (16px corners, the band 24px): a step either side
+            // of the diagonal, 18px in from the corner, the bend about the
+            // same and both ways (it was across on one side, down on the other)
+            const rail = await read(290, 400, 16, 24);
+            const a = rail(18, 19), b = rail(19, 18);
+            // A pill (the probe, 44px high): its band and bend short of its
+            // middle, so the middle, where its words are, stays still
+            const key = Liquid.parts.get(document.getElementById('lg-probe')) || '';
+            const [, bezel, depth] = (key.match(/b(\d+)d(\d+)/) || []).map(Number);
+            const pill = await read(300, 44, 22, bezel);
+            return { a, b, bezel, depth, middle: pill(150, 22) };
+        });
+        const near = (p, q) => p.every((v, i) => Math.abs(v - q[i]) <= 12);
+        check('Liquid: the bend turns round a corner with no crease (sidebar, menu)', corners.a.every(v => v > 5) && near(corners.a, corners.b), JSON.stringify(corners));
+        check('Liquid: a pill\'s middle stays still, its ends bent no further than its middle', corners.bezel <= 17 && corners.depth <= 13 && corners.middle.every(v => v === 0), JSON.stringify(corners));
         await page.evaluate(() => document.getElementById('lg-probe').remove());
         check('liquid glass: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // The thumbnail size in each theme: the themes lay the grid out their
+    // own way, and once set their tiles' size without the slider's
+    console.log('themes: the thumbnail size changes the tiles');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        // Themes are the desktop apps': a stand-in app with them, which
+        // answers anything else with nothing (as design/themes/audit.js)
+        await page.addInitScript(() => {
+            const answers = { platform: 'windows', features: ['themes'], titleBar() {}, windowAction() {}, setState() {}, watchLog() {} };
+            window.JEditorNative = new Proxy(answers, { get: (t, k) => k in t ? t[k] : (typeof k === 'string' && !k.startsWith('on') ? async () => [] : undefined) });
+        });
+        await page.reload({ waitUntil: 'networkidle' });
+        await page.evaluate(PAGE_HELPERS);
+        await page.evaluate(async () => {
+            const dir = makeDir('Sizes');
+            for (let i = 1; i <= 12; i++) {
+                const h = makeHandle(`t${i}.jpg`, await makeRealJpeg(300, 200, { color: `hsl(${i * 30},60%,50%)` }), 'image/jpeg');
+                dir._files.set(h.name, h);
+            }
+            dir.values = async function* () { yield* dir._files.values(); };
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            Experiments.set('themes', true);
+        });
+        for (const theme of ['xp/royale', 'snow/finder', 'mac84/finder']) {
+            const r = await page.evaluate(async (theme) => {
+                const wait = (ms) => new Promise(res => setTimeout(res, ms));
+                Themes.choose(theme);
+                await wait(300);
+                const skin = document.documentElement.dataset.skin;
+                if (document.body.dataset.view === 'single') document.getElementById('btn-toggle-view').click();
+                await wait(300);
+                const slider = document.getElementById('grid-size-slider');
+                const tile = () => Math.round(document.querySelector('#grid-view .grid-item').getBoundingClientRect().width);
+                const set = async (v) => { slider.value = v; slider.dispatchEvent(new Event('input', { bubbles: true })); await wait(100); return tile(); };
+                const out = { skin, start: await set(150) };
+                out.big = await set(300);
+                out.small = await set(80);
+                // Ctrl+wheel (a mouse's notches), up: bigger
+                const grid = document.getElementById('grid-view');
+                for (let i = 0; i < 3; i++) grid.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, bubbles: true, cancelable: true }));
+                await wait(100);
+                out.wheel = tile();
+                await set(150);
+                return out;
+            }, theme);
+            check(`${theme}: the size slider and Ctrl+wheel change the thumbnails`, r.skin === theme.split('/')[0] && r.big > r.start + 40 && r.small < r.start - 30 && r.wheel > r.small + 20, JSON.stringify(r));
+        }
+        check('themes, thumbnail size: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
