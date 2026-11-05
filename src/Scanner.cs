@@ -255,6 +255,7 @@ sealed class Scanner : IDisposable
             path = Path.Combine(r.Folder, name);
             var write = page.Write;
             var part = path + ".part";
+            var took = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 await Task.Run(() => write(part));
@@ -266,7 +267,7 @@ sealed class Scanner : IDisposable
                 throw;
             }
             count++;
-            Log.Write($"Scanned {name}");
+            Log.Write($"Scanned {name} ({took.ElapsedMilliseconds} ms to cut and save)");
             saved(name);
         }
         return count;
@@ -430,7 +431,10 @@ sealed class Scanner : IDisposable
         }
         await foreach (var image in Run(Make, r.Compat, cancel))
         {
-            using (image) yield return images.RenderToBitmap(image);
+            // Off the window's thread: a 1200 dpi photo takes a while
+            Bitmap bmp;
+            using (image) bmp = await Task.Run(() => images.RenderToBitmap(image));
+            yield return bmp;
         }
     }
 
@@ -625,7 +629,7 @@ sealed class Scanner : IDisposable
             ? await Task.Run(() => FakeBed.Draw(dpi, bedH), cancel)
             : await ScanBed(c => For(deviceId, driver, c), compat, bedW, bedH, dpi, false, owner, cancel, "Previewing the glass (small, only to find the prints; the scan itself is at the resolution chosen)");
         using var ms = new MemoryStream();
-        SaveJpeg(bmp, ms, 85);
+        await Task.Run(() => SaveJpeg(bmp, ms, 85));
         Log.Write($"Preview: {bmp.Width} × {bmp.Height} at {dpi} dpi");
         return new Preview(ms.ToArray(), bmp.Width, bmp.Height, bedW, bedH);
     }
@@ -638,7 +642,11 @@ sealed class Scanner : IDisposable
         {
             using (image)
             {
-                if (result is null) result = images.RenderToBitmap(image);
+                // Off the window's thread: the whole glass at 1200 dpi is
+                // over 100 megapixels, and the window froze while it was made
+                var took = System.Diagnostics.Stopwatch.StartNew();
+                if (result is null) result = await Task.Run(() => images.RenderToBitmap(image));
+                Log.Write($"{what}: the image made in {took.ElapsedMilliseconds} ms");
             }
         }
         return result ?? throw new InvalidOperationException("The scanner sent nothing back");
@@ -666,7 +674,11 @@ sealed class Scanner : IDisposable
         var bottom = Math.Min(1, boxes.Max(b => Bottom(b, r.BedW, r.BedH) / r.BedH));
         var height = Math.Min(r.BedH, bottom * r.BedH + 0.1); // a little past it: scanners round
         var fakeScan = r.DeviceId == FakeId && fake;
-        var dpi = fakeScan ? Math.Min(r.Dpi, 300) : r.Dpi;
+        // (the test scanner stops at 300 dpi, unless JEDITOR_TEST_SCANNER_DPI
+        // says more: to time a 1200 dpi scan without a scanner)
+        var fakeMax = int.TryParse(Environment.GetEnvironmentVariable("JEDITOR_TEST_SCANNER_DPI"), out var most) ? Math.Clamp(most, 50, 1200) : 300;
+        var dpi = fakeScan ? Math.Min(r.Dpi, fakeMax) : r.Dpi;
+        var scanned = System.Diagnostics.Stopwatch.StartNew();
         var bmp = fakeScan
             ? await Task.Run(() => FakeBed.Draw(dpi, height), cancel)
             : await ScanBed(c => For(r.DeviceId, r.Driver, c), r.Compat, r.BedW, height, dpi, r.Gray, owner, cancel, "Scanning the glass");
@@ -678,7 +690,7 @@ sealed class Scanner : IDisposable
             double Ppi(float said, int px, double inches) => said >= 50 && Math.Abs(said - dpi) <= dpi * 0.1 ? said : px / inches;
             var ppiX = Ppi(bmp.HorizontalResolution, bmp.Width, r.BedW);
             var ppiY = Ppi(bmp.VerticalResolution, bmp.Height, height);
-            Log.Write($"Bed scanned: {bmp.Width} × {bmp.Height} px ({ppiX:0} × {ppiY:0} ppi); cutting {boxes.Length} photo{(boxes.Length == 1 ? "" : "s")}");
+            Log.Write($"Bed scanned in {scanned.Elapsed.TotalSeconds:0.0} s: {bmp.Width} × {bmp.Height} px ({ppiX:0} × {ppiY:0} ppi); cutting {boxes.Length} photo{(boxes.Length == 1 ? "" : "s")}");
             foreach (var b in boxes)
             {
                 var rect = Rectangle.Intersect(new Rectangle(0, 0, bmp.Width, bmp.Height), Rectangle.FromLTRB(

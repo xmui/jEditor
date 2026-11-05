@@ -104,6 +104,8 @@ const Themes = {
             ['Rotate left', 'edit.rotateLeft', true],
             ['Rotate right', 'edit.rotateRight', true],
             ['Rotate 180°', 'edit.rotate180', true],
+            ['Flip left to right', 'edit.flipH', true],
+            ['Flip upside down', 'edit.flipV', true],
             '—',
             ['Crop and straighten', 'edit.crop', true],
             ['Auto crop', 'edit.autoCrop', true],

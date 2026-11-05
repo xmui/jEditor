@@ -8652,8 +8652,21 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 
 /* One set of corners: the sidebar's, and inside it (8px in) each part's
    is the sidebar's less that. The mode switch is a pill, as the top bar */
+/* The sidebar's corner is round about the mode switch in it, a pill
+   (the switch's half height + the 8px in + the border), so the two curves
+   follow each other */
 :root:not([data-skin]) .folder-rail {
-    border-radius: var(--r-xl);
+    border-radius: calc(var(--ctl-md) / 2 + var(--sp-1) + var(--sp-2) + 1px);
+}
+
+/* The same inside the right-click menu (4px in) and a message (8px in,
+   its Undo a pill): each corner is its part's less the room between */
+:root:not([data-skin]) #context-menu button {
+    border-radius: calc(var(--r-lg) - var(--sp-1));
+}
+
+:root:not([data-skin]) .toast {
+    border-radius: calc(var(--r-xl) + var(--sp-2));
 }
 
 :root:not([data-skin]) .mode-seg {
@@ -8784,7 +8797,7 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 /* Liquid: the glass bends what's under its edges. liquid.js draws the bend
    for each part's size and shape (--lg-bend: an SVG filter); until it has,
    or where the browser can't draw it, the glass is the same, unbent */
-:root.liquid-bends :is(.toolbar, .file-info, .folder-rail, #context-menu, .task-pill, .toast, .picked-bar) {
+:root.liquid-bends :is(.toolbar, .file-info, .folder-rail, #context-menu, .popover, .task-pill, .toast, .picked-bar) {
     backdrop-filter: var(--lg-bend, ) var(--glass-filter);
     -webkit-backdrop-filter: var(--lg-bend, ) var(--glass-filter);
 }
