@@ -16,6 +16,7 @@ const CHANGELOG = [
             'Opening a folder of more than 2,000 photos asks first, as it can take a while: Open, Cancel, or Don\'t ask again. Change the number in Settings → Projects → Ask before opening a huge folder, or leave it empty to never be asked. How long each step of opening takes now goes in the log.',
             'In Adjust and Paint, the chip naming the mode at the top left no longer runs into the photo\'s name in a narrow window: the name keeps clear of the chip and of the buttons on the right. On a Mac with macOS 26, the window\'s own title no longer shows through the chip either.',
             'Copying a project to a USB drive no longer puts a .jeditor folder on it: the photos go as they are. To take its flags and edits along for jEditor on another computer, tick Take its flags and edits too in Export. Eject when done is there for copies onto a drive and for discs too.',
+            'Right-click a USB drive or card in the sidebar to Export the open project to it (copies of its photos) or Copy it there (the whole folder as it is). Right-click a disc drive to Burn the project to a disc.',
         ]
     },
     {

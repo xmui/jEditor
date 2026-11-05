@@ -533,13 +533,20 @@ const Places = {
         if (!drive) items.push(['—'], ['Rename…', () => this.renameFolder(path)]);
         if (Host.has('reveal')) items.push(['—'], [Host.say('Show in {files}'), () => this.native().reveal(path)]);
         items.push([pinned ? 'Unpin' : 'Pin to the sidebar', () => pinned ? this.unpin(path) : this.pin(path, name)]);
-        // Onto a USB drive or card, burnt to a disc; a card's photos imported
-        const usb = (this.drives || []).find(d => this.key(d.path).replace(/[\\/]+$/, '') === this.key(path).replace(/[\\/]+$/, '') && d.kind === 'usb');
+        // The open project onto a USB drive or card (copies of its photos, or
+        // the whole folder as it is), or burnt to a disc; a card's photos imported
+        const here = (this.drives || []).find(d => this.key(d.path).replace(/[\\/]+$/, '') === this.key(path).replace(/[\\/]+$/, ''));
+        const usb = here && here.kind === 'usb' ? here : null;
+        const cur = this.current(), proj = this.app.dirHandle && this.app.dirHandle.name;
         if (usb) {
             items.push(['—']);
-            if (this.current() && !this.within(this.current(), usb.path)) items.push([`Copy ${this.app.dirHandle.name} here…`, () => Export.open({ path: this.current(), tab: 'usb', drive: usb.path })]);
+            if (cur && proj && !this.within(cur, usb.path)) {
+                items.push([`Export ${proj} to ${usb.name}…`, () => Export.open({ path: cur, tab: 'copies', where: 'drive:' + usb.path })]);
+                items.push([`Copy ${proj} to ${usb.name}…`, () => Export.open({ path: cur, tab: 'usb', drive: usb.path })]);
+            }
             items.push(['Import photos from here…', () => Import.open({ path: usb.path, name: usb.name })]);
         }
+        if (here && here.kind === 'cd' && cur && proj && Host.has('burn')) items.push(['—'], [`Burn ${proj} to a disc…`, () => Export.open({ path: cur, tab: 'disc', drive: here.path })]);
         if (!drive) items.push(['—'], ['Export: USB drive' + (Host.has('burn') ? ', disc' : '') + ', copies…', () => Export.open({ path })]);
         // The open project's photos in another format
         if (!drive && this.app.files.length && this.key(path) === this.key(this.current())) items.push(['Convert…', () => Convert.open({ folder: '' })]);

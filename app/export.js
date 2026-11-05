@@ -77,9 +77,10 @@ const Export = {
             : !!path && Host.has('burn'));
     },
 
-    // { path, files, tab, drive }: the project (its path, in an app), the
-    // photos chosen (Copies starts with them), the tab, a drive to pick
-    async open({ path = Host.has('places') ? Places.current() : null, files = null, tab = null, drive = null } = {}) {
+    // { path, files, tab, drive, where }: the project (its path, in an app),
+    // the photos chosen (Copies starts with them), the tab, a drive (or a
+    // disc's drive) to pick, where Copies go ('drive:' + a drive's path)
+    async open({ path = Host.has('places') ? Places.current() : null, files = null, tab = null, drive = null, where = null } = {}) {
         const app = this.app;
         if (!app.dirHandle && !path) {
             app.showToast('Open a project first', 3000);
@@ -92,7 +93,7 @@ const Export = {
         this.size = saved.size || 0;
         this.format = this.FORMATS.some(([v]) => v === saved.format) ? saved.format : 'same';
         Codec.ready().then(ok => { this.codecs = ok; if (this.isOpen() && this.tab === 'copies') this.render(); });
-        this.where = saved.where === 'project' || !saved.where ? 'project' : saved.where;
+        this.where = where || (saved.where === 'project' || !saved.where ? 'project' : saved.where);
         this.chosen = null;
         this.drive = drive;
         this.eject = saved.eject !== false;
@@ -247,6 +248,9 @@ const Export = {
         if (b === 'loading' || b === null) return { html: html + '<div class="ex-empty">Looking for a disc burner…</div>', ready: false, go: 'Burn' };
         if (b.error) return { html: html + `<div class="ex-empty">Couldn't look for a disc burner: ${this.esc(b.error)} ${again}</div>`, ready: false, go: 'Burn' };
         if (!b.length) return { html: html + `<div class="ex-empty">${this.esc(Host.say('{computer} has no drive that can burn CDs or DVDs.'))} Copy it to a USB drive instead.</div>`, ready: false, go: 'Burn' };
+        // The burner asked for (a disc's drive, right-clicked), or one with a blank disc
+        const asked = this.drive && b.find(x => x.drive && Places.key(x.drive) === Places.key(this.drive));
+        if (asked) { this.burner = asked.id; this.drive = null; }
         if (!b.some(x => x.id === this.burner)) this.burner = (b.find(x => x.canWrite) || b[0]).id;
         html += '<div class="ex-list" role="radiogroup" aria-label="Burner">';
         for (const x of b) {
