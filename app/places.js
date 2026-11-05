@@ -3,11 +3,13 @@
 // on the start screen.
 //
 //   Projects   every project in your projects folder (chosen the first
-//              time, changed from the section's header), newest first,
-//              with how many photos and when it last changed, and a
-//              search box. Then recent projects opened from elsewhere.
-//   Pinned     folders pinned here, and those pinned in Explorer's Quick
-//              Access. They open out like Explorer's.
+//              time, changed from the section's header), the pinned ones
+//              first, then newest first, with how many photos and when it
+//              last changed. Three show; Show more lists the rest. Search
+//              and New project are icons in the heading. Then recent
+//              projects opened from elsewhere.
+//   Pinned     folders pinned here that aren't projects, and those pinned
+//              in Explorer's Quick Access. They open out like Explorer's.
 //   This PC    the drives. A USB drive plugged in while jEditor is open is
 //              marked New, and can be ejected from here.
 //
@@ -20,7 +22,7 @@ const Places = {
     KEY_DIR: 'jeditor.projectsFolder',
     KEY_PINS: 'jeditor.pins',
     KEY_CLOSED: 'jeditor.sidebarClosed',
-    SHOWN: 30, // projects listed before "Show all"
+    SHOWN: 3, // projects listed before "Show more"
 
     expanded: new Set(), // folders opened out (paths, lowercase)
     listings: new Map(), // path → its folders (listDir)
@@ -28,6 +30,7 @@ const Places = {
     fresh: new Set(),    // drives plugged in since jEditor started, not yet looked at
     query: '',
     showAll: false,
+    searching: false, // the search box shown (the icon in the heading)
     drives: null,
     quick: [],
     projects: null,      // the projects folder's folders
@@ -47,6 +50,8 @@ const Places = {
         reveal: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7"/><path d="M10 14 21 3"/><path d="M21 14v7H3V3h7"/></svg>',
         split: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>',
         plus: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+        search: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+        down: '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
         rename: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg>',
         more: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="19" cy="12" r="1.25" fill="currentColor"/></svg>'
     },
@@ -88,6 +93,15 @@ const Places = {
                 e.preventDefault();
                 e.stopPropagation();
                 this.app.openContextMenu(this.rowItems(row), e.clientX, e.clientY);
+            });
+            // Esc in the search box: emptied and hidden
+            box.addEventListener('keydown', (e) => {
+                if (e.key !== 'Escape' || !e.target.classList.contains('sb-search')) return;
+                e.preventDefault();
+                e.stopPropagation();
+                this.searching = false;
+                this.query = '';
+                this.draw();
             });
             box.addEventListener('input', (e) => {
                 if (!e.target.classList.contains('sb-search')) return;
@@ -208,9 +222,10 @@ const Places = {
 
         const dir = this.projectsDir();
         const dirName = dir ? (dir.split(/[\\/]/).filter(Boolean).pop() || dir) : '';
+        // The search box: shown by its icon in the heading, or while there's something in it
+        const searching = this.searching || !!this.query;
         const projects = dir
-            ? `<button class="btn secondary sm sb-new" data-act="newproject" title="Make a new folder in ${this.esc(dirName)} and open it">${this.icons.plus}New project</button>` +
-              `<input class="field sm sb-search" type="search" placeholder="Search projects" value="${this.esc(this.query)}" aria-label="Search projects" spellcheck="false" autocomplete="off">` +
+            ? `<input class="field sm sb-search" type="search" placeholder="Search projects" value="${this.esc(this.query)}" aria-label="Search projects" spellcheck="false" autocomplete="off"${searching ? '' : ' hidden'}>` +
               `<div class="sb-projects">${await this.projectRows()}</div>`
             : `<button class="btn secondary sb-choose" data-act="choose" title="The folder your projects are in: each folder in it is listed here, newest first">Choose your projects folder…</button>`;
         const elsewhere = await this.elsewhereRows();
@@ -218,7 +233,9 @@ const Places = {
         const pins = await this.pinRows();
         const drives = await this.driveRows();
         return section('projects', 'Projects',
-            dir ? `<button class="sb-sec-link" data-act="choose" title="${this.esc(dir)} — click to choose another folder">${this.esc(dirName)}</button>` : '',
+            dir ? `<button class="sb-sec-link" data-act="choose" title="${this.esc(dir)} — click to choose another folder">${this.esc(dirName)}</button>` +
+                `<button class="sb-sec-icon${searching ? ' on' : ''}" data-act="search" title="Search projects" aria-label="Search projects" aria-pressed="${searching}">${this.icons.search}</button>` +
+                `<button class="sb-sec-icon" data-act="newproject" title="New project: a new folder in ${this.esc(dirName)}, opened" aria-label="New project">${this.icons.plus}</button>` : '',
             projects + (elsewhere ? `<div class="sb-sub">Opened from elsewhere</div>${elsewhere}` : '')) +
             // Nothing pinned yet: no section (the pin by a folder's name adds one)
             (pins ? section('pinned', 'Pinned', '', pins) : '') +
@@ -275,14 +292,17 @@ const Places = {
             return this.projectsDir() ? '<p class="sb-help">The projects folder isn\'t there. Is the drive connected?</p>' : '';
         }
         const q = this.query.trim().toLowerCase();
-        const list = q ? this.projects.filter(p => p.name.toLowerCase().includes(q)) : this.projects;
+        // The pinned ones first (each lot newest first, as they come)
+        const all = this.projects.filter(p => this.isPinned(p.path)).concat(this.projects.filter(p => !this.isPinned(p.path)));
+        const list = q ? all.filter(p => p.name.toLowerCase().includes(q)) : all;
         const shown = q || this.showAll ? list : list.slice(0, this.SHOWN);
         let html = '';
         for (const p of shown) {
             html += await this.tree(p.path, p.name, 0, { project: true, icon: this.icons.project, row: { meta: this.when(p.modified), pin: this.isPinned(p.path) } });
         }
         if (!list.length) html += `<p class="sb-help">${q ? 'No project matches' : 'No projects in this folder yet'}</p>`;
-        if (!q && !this.showAll && list.length > shown.length) html += `<button class="link-btn sb-more" data-act="all">Show all ${list.length.toLocaleString()}</button>`;
+        // Show more, and Show less once it's open
+        if (!q && list.length > this.SHOWN) html += `<button class="link-btn sb-more${this.showAll ? ' open' : ''}" data-act="all" aria-expanded="${this.showAll}" title="${this.showAll ? `The first ${this.SHOWN}` : `All ${list.length.toLocaleString()} projects`}">${this.showAll ? 'Show less' : 'Show more'}${this.icons.down}</button>`;
         return html;
     },
 
@@ -308,8 +328,11 @@ const Places = {
     async pinRows() {
         const seen = new Set();
         let html = '';
+        // (a pinned project is first in Projects: not again here)
+        const projects = new Set((this.projects || []).map(p => this.key(p.path)));
         for (const p of this.pins()) {
             seen.add(this.key(p.path));
+            if (projects.has(this.key(p.path))) continue;
             html += await this.tree(p.path, p.name, 0, { icon: this.icons.pin, row: { pin: true, cls: 'sb-pinned' } });
         }
         for (const q of this.quick) {
@@ -486,7 +509,8 @@ const Places = {
         if (act === 'section') return this.toggleSection(b.dataset.sec);
         if (act === 'choose') return this.chooseFolder();
         if (act === 'newproject') return this.newProject();
-        if (act === 'all') { this.showAll = true; return this.drawProjects(); }
+        if (act === 'all') { this.showAll = !this.showAll; return this.drawProjects(); }
+        if (act === 'search') return this.toggleSearch(b);
         if (!path) return;
         if (act === 'open' && this.newWindowClick(e)) return Windows.newWindow(path); // in a window of its own
         if (act === 'open') return this.open(path);
@@ -500,6 +524,19 @@ const Places = {
         if (act === 'pin') return this.pin(path, row.querySelector('.fr-name').textContent);
         if (act === 'unpin') return this.unpin(path);
         if (act === 'eject') return this.eject(path, row.querySelector('.fr-name').textContent);
+    },
+
+    // The search icon: the box shown and typed in, or hidden and emptied
+    async toggleSearch(b) {
+        this.searching = !(this.searching || this.query);
+        if (!this.searching) this.query = '';
+        // (the section opens if it's folded)
+        const closed = this.closed();
+        if (this.searching && closed.has('projects')) { closed.delete('projects'); this.set(this.KEY_CLOSED, [...closed]); }
+        await this.draw();
+        if (!this.searching) return;
+        const s = ([...this.boxes].find(x => x.contains(b)) || this.boxes[0]).querySelector('.sb-search');
+        if (s) s.focus();
     },
 
     toggleSection(id) {

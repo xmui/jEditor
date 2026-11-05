@@ -1806,8 +1806,37 @@ async function newPage(context, baseUrl, host = null) {
             out.scanOpen = Scan.visible();
             Scan.close();
             $('sb-card').querySelector('[data-act="pin"]').click();
-            await wait(() => [...side.querySelectorAll('.sb-pinned .fr-name')].some(n => n.textContent === 'Alpha'));
+            // A pinned project: first in Projects, not again under Pinned
+            const projNames = () => [...side.querySelectorAll('.sb-projects > .sb-row .fr-name')].map(n => n.textContent);
+            await wait(() => projNames()[0] === 'Alpha');
             out.pinned = Places.pins().map(p => p.name).join();
+            out.pinnedFirst = projNames()[0] === 'Alpha' && ![...side.querySelectorAll('.sb-pinned .fr-name')].some(n => n.textContent === 'Alpha');
+            // Three shown, then Show more (Show less once open)
+            await makeOrder('Delta', 1);
+            await makeOrder('Epsilon', 1);
+            window.__modified = { ...window.__modified, Delta: Date.now() - 1000, Epsilon: Date.now() - 2000 };
+            await Places.refresh();
+            await wait(() => Places.projects && Places.projects.length >= 5 && side.querySelector('.sb-more'));
+            out.three = projNames().length + ' ' + side.querySelector('.sb-more').textContent;
+            side.querySelector('.sb-more').click();
+            await wait(() => projNames().length >= 5);
+            out.more = projNames().length + ' ' + side.querySelector('.sb-more').textContent;
+            side.querySelector('.sb-more').click();
+            await wait(() => projNames().length === 3);
+            out.less = projNames().length + ' ' + side.querySelector('.sb-more').textContent;
+            // Search and New project: icons in the heading; the search box shows when asked for
+            const searchBox = () => side.querySelector('.sb-search');
+            out.searchHidden = !!searchBox() && searchBox().hidden && !!side.querySelector('.sb-sec-icon[data-act="newproject"]');
+            side.querySelector('.sb-sec-icon[data-act="search"]').click();
+            await wait(() => searchBox() && !searchBox().hidden);
+            out.searchShown = document.activeElement === searchBox();
+            searchBox().value = 'eps';
+            searchBox().dispatchEvent(new Event('input', { bubbles: true }));
+            await wait(() => projNames().join() === 'Epsilon');
+            out.searched = projNames().join() + (side.querySelector('.sb-more') ? ' +more' : '');
+            searchBox().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            await wait(() => searchBox() && searchBox().hidden && projNames().length === 3);
+            out.searchEsc = searchBox().hidden && Places.query === '';
             // Renaming the open project: closed, renamed, opened again at its new name
             window.__opened = null;
             UI.prompt = async () => 'Alpha Smith';
@@ -1912,6 +1941,8 @@ async function newPage(context, baseUrl, host = null) {
         check('... with its real photo count; others counted up to 1,000+', r.listCounts === '3,1,000+', r.listCounts);
         check('card: no rename button; the name renames on a click, as the file name in the top pill, with a pencil by it', r.noRenameButton);
         check('card: Rename closes the open project, renames it and opens it again', r.reopened === 'D:\\Orders\\Alpha Smith' && r.pinRenamed.split(',').includes('Alpha Smith') && !r.pinRenamed.split(',').includes('Alpha'), JSON.stringify([r.reopened, r.pinRenamed]));
+        check('projects: a pinned one is first (not again under Pinned); three shown, Show more and Show less', r.pinnedFirst && r.three === '3 Show more' && r.more === '5 Show less' && r.less === '3 Show more', JSON.stringify([r.pinnedFirst, r.three, r.more, r.less]));
+        check('projects: Search and New project are icons in the heading; the search box shows when asked, Esc hides it', r.searchHidden && r.searchShown && r.searched === 'Epsilon' && r.searchEsc, JSON.stringify([r.searchHidden, r.searchShown, r.searched, r.searchEsc]));
         check('card buttons: Explorer, Scan, Pin', r.revealed === 'D:\\Orders\\Alpha' && r.scanOpen && r.pinned.split(',').includes('Alpha'), JSON.stringify([r.revealed, r.scanOpen, r.pinned]));
         check('card: Save edits when done turns on for the project, kept on the PC', r.deferOff && r.deferKept, JSON.stringify([r.deferOff, r.deferKept]));
         check('a drive opens out to its folders, in number order', r.inside === 'Order 9,Order 10', r.inside);
