@@ -544,6 +544,7 @@ const Edits = {
 
     // How many are waiting, with Save and Discard
     updateBar() {
+        if (typeof Places !== 'undefined' && Places.drawPending) Places.drawPending();
         const bar = document.getElementById('edits-bar');
         if (!bar) return;
         const on = this.on();
