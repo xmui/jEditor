@@ -19,6 +19,7 @@ const CHANGELOG = [
             'In Adjust and Paint, the chip naming the mode at the top left no longer runs into the photo\'s name in a narrow window: the name keeps clear of the chip and of the buttons on the right. On a Mac with macOS 26, the window\'s own title no longer shows through the chip either.',
             'Copying a project to a USB drive no longer puts a .jeditor folder on it: the photos go as they are. To take its flags and edits along for jEditor on another computer, tick Take its flags and edits too in Export. Eject when done is there for copies onto a drive and for discs too.',
             'Right-click a USB drive or card in the sidebar to Export the open project to it (copies of its photos) or Copy it there (the whole folder as it is). Right-click a disc drive to Burn the project to a disc.',
+            'Liquid glass has cleaner corners: the bend turns smoothly round the corners of the sidebar and menus, with no crease, and a pill\'s round ends no longer smear into a blob. File info and History bend like the rest. In every glass, the sidebar\'s corner now follows the Photos · Adjust · Paint switch in it, and the menus\' rows and the messages follow their corners.',
         ]
     },
     {
