@@ -52,7 +52,6 @@ const Export = {
             if (b.dataset.act === 'burners') this.loadBurners();
             // (its menu stays open: a click anywhere else closes menus)
             else if (b.dataset.act === 'pill') { e.stopPropagation(); this.pillMenu(b); }
-            else if (b.dataset.act === 'more') { this.more = !this.more; this.render(); }
         });
         this.el('ex-go').addEventListener('click', () => this.go());
         // A drive plugged in or taken out while it's open
@@ -280,18 +279,30 @@ const Export = {
 
     // ---- Copies ----
     //
-    // A preset says what they're for (Full quality, For the web, For print);
-    // a sentence says what will happen; a glass pill for each choice (which,
-    // format and quality, size, names, where) opens a small menu, and
-    // changing one makes it Custom. The folder's named after the project.
-    // More options: metadata, colour, and leaving them out of the project.
+    // A preset says what they're for, as a row of glass pills; what it sets
+    // shows under it as chips (Custom: the fields instead). Then a sentence
+    // of what will happen, a pill each for which, names and where (each opens
+    // a small menu), and the folder, named after the preset.
 
+    // [value, label, settings, what it's for, the folder's "– …"]
     PRESETS: [
-        ['full', 'Full quality', { format: 'same', quality: 92, size: 0, meta: 'all', colour: 'keep' }],
-        ['web', 'For the web', { format: 'jpeg', quality: 80, size: 2048, meta: 'nogps', colour: 'srgb' }],
-        ['print', 'For print', { format: 'tiff', quality: 92, size: 0, meta: 'all', colour: 'keep' }],
-        ['custom', 'Custom', null]
+        ['full', 'Full quality', { format: 'same', quality: 92, size: 0, meta: 'all', colour: 'keep' }, 'The photos as they are, at full size', 'full quality'],
+        ['email', 'Email', { format: 'jpeg', quality: 80, size: 2048, meta: 'nogps', colour: 'srgb' }, 'Small, to email or send in a message', 'to email'],
+        ['web', 'Web', { format: 'jpeg', quality: 90, size: 3000, meta: 'nogps', colour: 'srgb' }, 'Sharp on big screens, for a website or an online album', 'for the web'],
+        ['social', 'Social', { format: 'jpeg', quality: 85, size: 1080, meta: 'nogps', colour: 'srgb' }, 'For phones and social media', 'for social'],
+        ['print', 'Print', { format: 'jpeg', quality: 95, size: 0, meta: 'all', colour: 'keep' }, 'Full size, the best JPEG, with its colour profile and DPI, for a print shop', 'for print'],
+        ['archive', 'Archive', { format: 'tiff', quality: 92, size: 0, meta: 'all', colour: 'keep' }, 'Lossless TIFF with all its metadata, to keep', 'archive'],
+        ['custom', 'Custom', null, 'Choose each setting', 'export']
     ],
+    PRESET_ICONS: {
+        full: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
+        email: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>',
+        web: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+        social: '<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>',
+        print: '<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
+        archive: '<rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>',
+        custom: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>'
+    },
     QUALITIES: [100, 95, 90, 85, 80, 70, 60],
     METAS: [['all', 'All of it'], ['nogps', 'All but the location'], ['none', 'None']],
     COLOURS: [['keep', 'As it is (its own colour profile)'], ['srgb', 'sRGB, for screens and the web']],
@@ -307,17 +318,18 @@ const Export = {
         this.applyPreset(this.preset);
         this.names = saved.names === 'number' ? 'number' : 'keep';
         this.leaveOut = saved.leaveOut !== false;
-        this.more = false;
-        this.folder = null; // the project's "… export" until it's typed
+        this.folder = null; // the preset's name until it's typed
     },
 
     applyPreset(p) {
         const set = (this.PRESETS.find(([v]) => v === p) || [])[2] || this.custom;
         for (const k of this.SET) this[k] = set[k];
+        // (TIFF without the codecs: PNG, lossless too)
+        if (this.codecs === false && Codec.of('x.' + this.format)) this.format = 'png';
         this.preset = p;
     },
 
-    // A pill's choice: Custom from then on, remembered as Custom
+    // A Custom field: remembered as Custom
     setCopy(k, v) {
         this[k] = v;
         if (this.SET.includes(k)) {
@@ -328,19 +340,22 @@ const Export = {
     },
 
     folderName() {
-        return this.folder !== null ? this.folder : `${this.name() || 'Photos'} export`;
-    },
-
-    formatLabel(v = this.format) {
-        if (v === 'same') return 'As they are';
-        const label = (this.FORMATS.find(([x]) => x === v) || [, v])[1].replace(/ \(.*\)$/, '');
-        return this.lossy(v) ? `${label} · ${this.quality}%` : label;
+        if (this.folder !== null) return this.folder;
+        const name = this.name() || 'Photos';
+        const p = this.PRESETS.find(([v]) => v === this.preset);
+        return !p || p[0] === 'custom' ? `${name} export` : `${name} – ${p[4]}`;
     },
 
     lossy(v = this.format) { return ['jpeg', 'webp', 'avif', 'jxl'].includes(v); },
 
-    sizeLabel() {
-        return this.size ? `${this.size.toLocaleString()} px` : 'Full size';
+    // What the settings are, as chips under the preset
+    chips() {
+        const f = this.FORMATS.find(([x]) => x === this.format);
+        const format = this.format === 'same' ? 'As they are' : this.format === 'tiff' ? 'TIFF, lossless'
+            : this.format === 'png' ? 'PNG, lossless' : `${(f ? f[1] : this.format).replace(/ \(.*\)$/, '')} ${this.quality}%`;
+        return [format, this.size ? `${this.size.toLocaleString()} px` : 'Full size',
+            this.colour === 'srgb' ? 'sRGB' : 'Its own colour',
+            this.meta === 'all' ? (this.preset === 'print' ? 'All metadata, DPI too' : 'All metadata') : this.meta === 'nogps' ? 'No location' : 'No metadata'];
     },
 
     whereLabel() {
@@ -354,33 +369,38 @@ const Export = {
         const starred = files.filter(f => Flags.has(f, 'star')).length;
         if (this.which === 'star' && !starred) this.which = 'all';
         const formats = this.FORMATS.filter(([v]) => this.codecs !== false || !Codec.of('x.' + v));
-        if (!formats.some(([v]) => v === this.format)) this.format = 'same';
+        if (!formats.some(([v]) => v === this.format)) this.format = this.codecs === false && Codec.of('x.' + this.format) ? 'png' : 'same';
         const drives = this.usb();
         if (this.where.startsWith('drive:') && !drives.some(d => 'drive:' + d.path === this.where)) this.where = 'project';
         if (this.where === 'chosen' && !this.chosen) this.where = 'project';
         const list = this.copies();
         const n = list.length;
-        let html = '<div class="seg ex-presets" role="radiogroup" aria-label="What they\'re for">' +
-            this.PRESETS.map(([v, label]) => `<label><input type="radio" name="ex-preset" value="${v}"${v === this.preset ? ' checked' : ''}><span>${label}</span></label>`).join('') + '</div>';
+        const icon = (d) => `<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+        let html = '<div class="ex-presets" role="radiogroup" aria-label="What they\'re for">' +
+            this.PRESETS.map(([v, label, , title]) => `<label title="${this.esc(title)}"><input type="radio" name="ex-preset" value="${v}"${v === this.preset ? ' checked' : ''}><span>${icon(this.PRESET_ICONS[v])}${label}</span></label>`).join('') + '</div>';
+        // What the preset sets (Custom: the fields)
+        if (this.preset === 'custom') {
+            const sel = (id, label, opts, v) => `<label class="ex-cf">${label}<select id="${id}" class="field">` +
+                opts.map(([x, l]) => `<option value="${x}"${String(x) === String(v) ? ' selected' : ''}>${this.esc(l)}</option>`).join('') + '</select></label>';
+            const sizes = this.SIZES.some(([v]) => v === this.size) ? this.SIZES : this.SIZES.concat([[this.size, `${this.size.toLocaleString()} px`]]);
+            html += '<div class="ex-under ex-custom">' + sel('ex-format', 'Format', formats, this.format) +
+                (this.lossy() ? sel('ex-quality', 'Quality', this.QUALITIES.map(q => [q, `${q}%`]), this.quality) : '') +
+                sel('ex-size', 'Size (longest side)', sizes.concat([['other', 'Other…']]), this.size) +
+                sel('ex-meta', 'Metadata', this.METAS, this.meta) + sel('ex-colour', 'Colour', this.COLOURS, this.colour) + '</div>';
+        } else {
+            html += '<div class="ex-under"><div class="ex-chips">' + this.chips().map(c => `<span class="ex-chip">${this.esc(c)}</span>`).join('') + '</div></div>';
+        }
         // What happens, in a sentence
         const bytes = this.format === 'same' && !this.size ? list.reduce((t, f) => t + (f.size || 0), 0) : 0;
         const into = this.where === 'project' ? ' in this project' : this.where === 'chosen' ? ` in ${this.esc(this.whereLabel())}` : ` on ${this.esc(this.whereLabel())}`;
         html += `<p class="ex-lead ex-sum">${n.toLocaleString()} photo${n === 1 ? '' : 's'}${bytes ? `, about ${this.fmt(bytes)}` : ''}, into <b>${this.esc(this.folderName())}</b>${into}.</p>`;
         const which = this.which === 'selected' ? `${this.files.length.toLocaleString()} selected` : this.which === 'star' ? `${starred.toLocaleString()} starred` : `All ${files.length.toLocaleString()}`;
         const pill = (k, label, title) => `<button type="button" class="btn secondary ex-pill" data-act="pill" data-pill="${k}" aria-haspopup="menu" title="${title}">${this.esc(label)}<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>`;
-        html += '<div class="ex-pills">' + pill('which', which, 'Which photos') + pill('format', this.formatLabel(), 'Format and quality') +
-            pill('size', this.sizeLabel(), 'Size') + pill('names', this.names === 'number' ? 'Numbered' : 'Keep names', 'Names') +
-            pill('where', this.whereLabel(), 'Where') + '</div>';
+        html += '<div class="ex-pills">' + pill('which', which, 'Which photos') +
+            pill('names', this.names === 'number' ? 'Numbered' : 'Keep names', 'Names') +
+            pill('where', this.whereLabel(), 'Where, and whether the project lists them') + '</div>';
         html += `<label class="ex-field">Folder name <input id="ex-folder" class="field" type="text" spellcheck="false" maxlength="200" value="${this.esc(this.folderName())}"></label>`;
         if (this.where.startsWith('drive:')) html += this.ejectBox();
-        html += `<button type="button" class="link-btn ex-more" data-act="more" aria-expanded="${this.more}">More options: metadata, colour, leave out<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>`;
-        if (this.more) {
-            const sel = (id, label, opts, v) => `<label class="ex-field">${label} <span class="ex-row"><select id="${id}" class="field">` +
-                opts.map(([x, l]) => `<option value="${x}"${x === v ? ' selected' : ''}>${l}</option>`).join('') + '</select></span></label>';
-            html += '<div class="ex-more-body">' + sel('ex-meta', 'Metadata (camera, dates, location)', this.METAS, this.meta) + sel('ex-colour', 'Colour', this.COLOURS, this.colour);
-            if (this.where === 'project') html += `<label class="ex-check"><input type="checkbox" id="ex-leave-out"${this.leaveOut ? ' checked' : ''}> Leave them out of the project (Rescan doesn't list them)</label>`;
-            html += '</div>';
-        }
         const problem = this.folderProblem();
         const edited = list.filter(f => f._edit).length;
         const raws = list.filter(f => Raw.is(f.name)).length;
@@ -441,21 +461,6 @@ const Export = {
             if (this.files) items.push([tick(this.which === 'selected', `The ${this.files.length === 1 ? 'photo' : `${this.files.length.toLocaleString()} photos`} selected`), pick('which', 'selected')]);
             items.push([tick(this.which === 'all', `All ${files.length.toLocaleString()} in the project`), pick('which', 'all')]);
             if (starred) items.push([tick(this.which === 'star', `The ${starred.toLocaleString()} starred`), pick('which', 'star')]);
-        } else if (k === 'format') {
-            const formats = this.FORMATS.filter(([v]) => this.codecs !== false || !Codec.of('x.' + v));
-            items = formats.map(([v, label]) => [tick(v === this.format, label), pick('format', v)]);
-            if (this.lossy()) {
-                items.push(['—']);
-                for (const q of this.QUALITIES) items.push([tick(q === this.quality, `Quality ${q}%${q === 100 ? ' (biggest)' : q === 80 ? ' (good for the web)' : ''}`), pick('quality', q)]);
-            }
-        } else if (k === 'size') {
-            items = this.SIZES.map(([v, label]) => [tick(v === this.size, label + (v ? ' on the longest side' : '')), pick('size', v)]);
-            const custom = !this.SIZES.some(([v]) => v === this.size);
-            items.push([tick(custom, custom ? `${this.size.toLocaleString()} px…` : 'Other…'), async () => {
-                const v = await UI.prompt({ title: 'Size', input: { label: 'Longest side in pixels', value: String(this.size || 2000), inputMode: 'numeric' }, ok: 'Use' });
-                const px = parseInt(v, 10);
-                if (px >= 16) { this.setCopy('size', px); this.render(); }
-            }]);
         } else if (k === 'names') {
             const base = this.folderName().trim() || 'Photo';
             items = [[tick(this.names === 'keep', 'Keep their names'), () => { this.names = 'keep'; this.remember({ names: 'keep' }); this.render(); }],
@@ -471,6 +476,11 @@ const Export = {
                     if (chosen) { this.chosen = chosen; this.where = 'chosen'; }
                     this.render();
                 }]);
+            }
+            // Copies in the project: listed in it, or not (Rescan doesn't list them)
+            if (this.where === 'project') {
+                items.push(['—']);
+                items.push([tick(this.leaveOut, 'Leave them out of the project (Rescan doesn\'t list them)'), () => { this.leaveOut = !this.leaveOut; this.remember({ leaveOut: this.leaveOut }); }]);
             }
         }
         const r = b.getBoundingClientRect();
@@ -500,7 +510,16 @@ const Export = {
         }
         else if (t.id === 'ex-meta') this.setCopy('meta', t.value);
         else if (t.id === 'ex-colour') this.setCopy('colour', t.value);
-        else if (t.id === 'ex-leave-out') { this.leaveOut = t.checked; this.remember({ leaveOut: t.checked }); return; }
+        else if (t.id === 'ex-format') this.setCopy('format', t.value);
+        else if (t.id === 'ex-quality') this.setCopy('quality', +t.value);
+        else if (t.id === 'ex-size') {
+            if (t.value !== 'other') this.setCopy('size', +t.value);
+            else {
+                const v = await UI.prompt({ title: 'Size', input: { label: 'Longest side in pixels', value: String(this.size || 2000), inputMode: 'numeric' }, ok: 'Use' });
+                const px = parseInt(v, 10);
+                if (px >= 16) this.setCopy('size', px);
+            }
+        }
         this.render();
     },
 
