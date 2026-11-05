@@ -174,11 +174,11 @@ Painting goes on last, over the photo as it's cropped and adjusted, so it looks 
 
 ## Drives, cards and discs
 
-**Export…** under the **…** by the project's name at the top of the sidebar (or right-click it, or a project in the list, or **Export…** under ⋯ on the selection bar; in a theme, **Export** on the project's card) opens one window for taking photos off this computer. Each choice says what goes and whether it fits before anything starts, and drives and discs show up as they're put in:
+**Export…** under the **…** by the project's name at the top of the sidebar (or right-click it, or a project in the list, or **Export…** under ⋯ on the selection bar; in a theme, **Export** on the project's card) opens one window for taking photos off this computer. Or right-click a USB drive or card in the sidebar for **Export [project] to [drive]…** (copies of the photos) or **Copy [project] to [drive]…** (the whole folder as it is), or a disc drive for **Burn [project] to a disc…**. Each choice says what goes and whether it fits before anything starts, and drives and discs show up as they're put in:
 
-- **USB drive or card** (Windows, Mac and Linux): the whole project, copied in one step, with how far it's got. Each drive is listed with the room left on it. The project's flags and edits go with it, so when it's opened in jEditor on another computer they're all there. **Eject it when it's done** ejects the drive after.
-- **CD or DVD** (Windows): the burner, whether there's a blank disc in it and whether the project fits, the disc's name, and (with edits not saved yet) whether to save them into the photos first, since the disc gets the photos as they are on disk. The disc comes out when it's done.
-- **Copies** (everywhere): copies of the selected photos, all of them or the starred ones, full size or smaller (the longest side: 4000, 3000, 2048, 1600, 1080 px or any other), as they are or as JPEG, PNG, TIFF, WebP, AVIF or JPEG XL (**Format**), with edits not saved yet in them, and RAWs as JPEGs. They go into `jEditor Export` in the project, into `jEditor Export` on a USB drive, or into a folder you choose.
+- **USB drive or card** (Windows, Mac and Linux): the whole project, copied in one step, with how far it's got. Each drive is listed with the room left on it. The photos are copied as they are on disk, with no `.jeditor` folder: the flags and edits stay on this computer. Tick **Take its flags and edits too** (off to start with) to put them in a `.jeditor` folder in the copy, so when it's opened in jEditor on another computer they're all there. **Eject when done** ejects the drive after.
+- **CD or DVD** (Windows): the burner, whether there's a blank disc in it and whether the project fits, the disc's name, and (with edits not saved yet) whether to save them into the photos first, since the disc gets the photos as they are on disk. **Eject when done** brings the disc out after.
+- **Copies** (everywhere): copies of the selected photos, all of them or the starred ones, full size or smaller (the longest side: 4000, 3000, 2048, 1600, 1080 px or any other), as they are or as JPEG, PNG, TIFF, WebP, AVIF or JPEG XL (**Format**), with edits not saved yet in them, and RAWs as JPEGs. They go into `jEditor Export` in the project, into `jEditor Export` on a USB drive (**Eject when done** ejects it after), or into a folder you choose.
 
 In the Windows, Mac and Linux apps:
 
@@ -253,6 +253,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `←` `→` | Previous / next photo (`↑` `↓` move by rows in the grid) |
 | `[` `]` or `,` `.` or `Shift+←` `Shift+→` | Rotate left / right |
 | `\` | Rotate 180° |
+| `Shift+H` / `Shift+V` | Flip left to right / upside down |
 | `Space`, `G`, `S` | Toggle view, grid view, single view |
 | `C` | Crop and straighten |
 | `E` | Adjust: light, color, curves |
@@ -286,7 +287,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `?` | Show shortcuts |
 | `Ctrl+,` | Settings |
 
-In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `\` rotate 180°, `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `M` loupe, `+` `-` zoom, `Z` fit, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
+In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `\` rotate 180°, `Shift+H` `Shift+V` flip (or right-click the photo), `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `M` loupe, `+` `-` zoom, `Z` fit, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
 In Adjust: `Enter` done, `Shift+Enter` done and next, `Esc` cancel, `\` before and after, `Shift+A` auto, `Shift+C` auto color, `W` pick grey (white balance), `R` reset, `Ctrl+Shift+C` / `Ctrl+Shift+V` copy / paste the adjustments, `Ctrl+C` / `Ctrl+V` copy the photo as it looks / paste a picture from another app, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 

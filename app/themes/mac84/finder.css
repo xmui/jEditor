@@ -279,7 +279,9 @@
 :root[data-skin="mac84"] .grid-view {
     background: #fff;
     gap: 8px 12px;
-    grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(calc(var(--grid-item-size, 150px) * 124 / 150), 1fr));
+    /* The thumbnail-size slider (and Ctrl+wheel, a pinch) sizes the tiles:
+       124px at its default, 150 */
 }
 :root[data-skin="mac84"] .grid-item {
     aspect-ratio: auto;

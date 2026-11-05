@@ -79,15 +79,34 @@
 :root[data-skin="snow"] .slider-group > svg { color: #ccc; }
 :root[data-skin="snow"] input[type="range"]::-webkit-slider-runnable-track { background: linear-gradient(180deg, #151515, #2c2c2c); box-shadow: inset 0 1px 1px rgb(0 0 0 / 0.6), 0 1px 0 rgb(255 255 255 / 0.1); }
 
-/* Toast and scroll bars, in the dark */
+/* The toast, in the dark */
 :root[data-skin="snow"] .toast { background: rgb(20 20 20 / 0.85); border: 1px solid #555; }
-:root[data-skin="snow"] ::-webkit-scrollbar { background: #222; }
-:root[data-skin="snow"] ::-webkit-scrollbar-track { background: linear-gradient(90deg, #1a1a1a, #2a2a2a); box-shadow: inset 1px 0 0 #111; }
-:root[data-skin="snow"] ::-webkit-scrollbar-thumb {
-    background: linear-gradient(90deg, #7a7a7a, #9a9a9a 45%, #858585 60%, #6a6a6a);
-    background-clip: padding-box;
-    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.6);
+
+/* Scroll bars, in the dark (finder.css has why they're written this way) */
+:where(:root[data-skin="snow"] *)::-webkit-scrollbar { background: #222; }
+:where(:root[data-skin="snow"] *)::-webkit-scrollbar-track:vertical { background: linear-gradient(90deg, #141414, #1d1d1d 2px, #262626 40%, #2c2c2c 70%, #242424); box-shadow: inset 1px 0 0 #0c0c0c, inset 0 3px 3px -2px rgb(0 0 0 / 0.6); }
+:where(:root[data-skin="snow"] *)::-webkit-scrollbar-track:horizontal { background: linear-gradient(180deg, #141414, #1d1d1d 2px, #262626 40%, #2c2c2c 70%, #242424); box-shadow: inset 0 1px 0 #0c0c0c, inset 3px 0 3px -2px rgb(0 0 0 / 0.6); }
+:where(:root[data-skin="snow"] *)::-webkit-scrollbar-thumb:vertical,
+:where(:root[data-skin="snow"] *)::-webkit-scrollbar-thumb:horizontal { box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.65); }
+:where(:root[data-skin="snow"] *)::-webkit-scrollbar-thumb:vertical {
+    background:
+        linear-gradient(90deg, rgb(255 255 255 / 0) 0, rgb(255 255 255 / 0.35) 30%, rgb(255 255 255 / 0.08) 60%, rgb(255 255 255 / 0)) 3px 0 / 5px 100% no-repeat padding-box,
+        linear-gradient(90deg, #6a6a6a, #8e8e8e 45%, #9a9a9a 60%, #6e6e6e) padding-box;
 }
+:where(:root[data-skin="snow"] *)::-webkit-scrollbar-thumb:horizontal {
+    background:
+        linear-gradient(180deg, rgb(255 255 255 / 0) 0, rgb(255 255 255 / 0.35) 30%, rgb(255 255 255 / 0.08) 60%, rgb(255 255 255 / 0)) 0 3px / 100% 5px no-repeat padding-box,
+        linear-gradient(180deg, #6a6a6a, #8e8e8e 45%, #9a9a9a 60%, #6e6e6e) padding-box;
+}
+:where(:root[data-skin="snow"] *)::-webkit-scrollbar-button:vertical { background: var(--sb-arrow) no-repeat center, linear-gradient(90deg, #2a2a2a, #3c3c3c 45%, #404040 55%, #2e2e2e); box-shadow: inset 1px 0 0 #0c0c0c, inset 0 1px 0 #111; }
+:where(:root[data-skin="snow"] *)::-webkit-scrollbar-button:horizontal { background: var(--sb-arrow) no-repeat center, linear-gradient(180deg, #2a2a2a, #3c3c3c 45%, #404040 55%, #2e2e2e); box-shadow: inset 0 1px 0 #0c0c0c, inset 1px 0 0 #111; }
+:where(:root[data-skin="snow"] *)::-webkit-scrollbar-button:vertical:active { background: var(--sb-arrow) no-repeat center, linear-gradient(90deg, #1a1a1a, #262626 50%, #1e1e1e); }
+:where(:root[data-skin="snow"] *)::-webkit-scrollbar-button:horizontal:active { background: var(--sb-arrow) no-repeat center, linear-gradient(180deg, #1a1a1a, #262626 50%, #1e1e1e); }
+:where(:root[data-skin="snow"] *)::-webkit-scrollbar-button:vertical:decrement { --sb-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='6'%3E%3Cpath d='M0 6l3.5-6L7 6z' fill='%23c8c8c8'/%3E%3C/svg%3E"); }
+:where(:root[data-skin="snow"] *)::-webkit-scrollbar-button:vertical:increment { --sb-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='6'%3E%3Cpath d='M0 0l3.5 6L7 0z' fill='%23c8c8c8'/%3E%3C/svg%3E"); }
+:where(:root[data-skin="snow"] *)::-webkit-scrollbar-button:horizontal:decrement { --sb-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='7'%3E%3Cpath d='M6 0L0 3.5 6 7z' fill='%23c8c8c8'/%3E%3C/svg%3E"); }
+:where(:root[data-skin="snow"] *)::-webkit-scrollbar-button:horizontal:increment { --sb-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='7'%3E%3Cpath d='M0 0l6 3.5L0 7z' fill='%23c8c8c8'/%3E%3C/svg%3E"); }
+:where(:root[data-skin="snow"] *)::-webkit-scrollbar-corner { background: linear-gradient(#0c0c0c, #0c0c0c) 0 0 / 100% 1px no-repeat, linear-gradient(#0c0c0c, #0c0c0c) 0 0 / 1px 100% no-repeat, #222; }
 
 /* Detail pass: the glyphs in light grey, the capsules smoky */
 :root[data-skin="snow"] {
@@ -128,15 +147,6 @@
 :root[data-skin="snow"] .th-title::before { filter: brightness(1.1); }
 :root[data-skin="snow"] .fr-root::after { border-top-color: #9a9a9a; }
 :root[data-skin="snow"] .fr-count { background: #5a5a5a; }
-:root[data-skin="snow"] ::-webkit-scrollbar-button:single-button { box-shadow: inset 1px 0 0 #111; }
-:root[data-skin="snow"] ::-webkit-scrollbar-button:vertical:decrement { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='5'%3E%3Cpath d='M0 5l3.5-5L7 5z' fill='%23ccc'/%3E%3C/svg%3E") no-repeat center, linear-gradient(90deg, #2a2a2a, #3a3a3a 50%, #2e2e2e); }
-:root[data-skin="snow"] ::-webkit-scrollbar-button:vertical:increment { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='5'%3E%3Cpath d='M0 0l3.5 5L7 0z' fill='%23ccc'/%3E%3C/svg%3E") no-repeat center, linear-gradient(90deg, #2a2a2a, #3a3a3a 50%, #2e2e2e); }
-:root[data-skin="snow"] ::-webkit-scrollbar-track:horizontal { background: linear-gradient(180deg, #1a1a1a, #2a2a2a); box-shadow: inset 0 1px 0 #111; }
-:root[data-skin="snow"] ::-webkit-scrollbar-thumb:horizontal { background: linear-gradient(180deg, #7a7a7a, #9a9a9a 45%, #858585 60%, #6a6a6a); background-clip: padding-box; }
-:root[data-skin="snow"] ::-webkit-scrollbar-button:horizontal { box-shadow: inset 0 1px 0 #111; }
-:root[data-skin="snow"] ::-webkit-scrollbar-button:horizontal:decrement { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='7'%3E%3Cpath d='M5 0L0 3.5 5 7z' fill='%23ccc'/%3E%3C/svg%3E") no-repeat center, linear-gradient(180deg, #2a2a2a, #3a3a3a 50%, #2e2e2e); }
-:root[data-skin="snow"] ::-webkit-scrollbar-button:horizontal:increment { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='7'%3E%3Cpath d='M0 0l5 3.5L0 7z' fill='%23ccc'/%3E%3C/svg%3E") no-repeat center, linear-gradient(180deg, #2a2a2a, #3a3a3a 50%, #2e2e2e); }
-:root[data-skin="snow"] ::-webkit-scrollbar-track { background: linear-gradient(90deg, #1a1a1a, #2a2a2a); box-shadow: inset 1px 0 0 #111; }
 
 /* ---- Windows, sheets and controls, in graphite (controls.css, modes.css
    read these) ---- */

@@ -1,15 +1,17 @@
 // Export: one window for taking photos off this computer (the project
 // card's Export, ⋯ on the selection bar, a folder's right-click menu).
 //
-//   USB drive or card  the whole project copied onto one, its flags and
-//                      edits with it, and the drive ejected after if you
-//                      like (the apps: places.js's copyToDrive)
-//   CD or DVD          the whole project burnt onto a disc (the Windows
-//                      app: disc.js)
+//   USB drive or card  the whole project copied onto one, as it is on
+//                      disk (its flags and edits too only if asked: a
+//                      .jeditor folder in the copy), and the drive ejected
+//                      after if you like (the apps: places.js's copyToDrive)
+//   CD or DVD          the whole project burnt onto a disc, ejected after
+//                      if you like (the Windows app: disc.js)
 //   Copies             copies of the photos (all, the selected ones or the
 //                      starred), full size or smaller, edits in them: into
 //                      "jEditor Export" in the project, onto a USB drive,
-//                      or into a folder chosen (app.exportCopies)
+//                      or into a folder chosen (app.exportCopies); a
+//                      drive ejected after if you like
 //
 // Each says what goes and whether it fits before anything starts, and
 // follows drives and discs as they're put in.
@@ -75,9 +77,10 @@ const Export = {
             : !!path && Host.has('burn'));
     },
 
-    // { path, files, tab, drive }: the project (its path, in an app), the
-    // photos chosen (Copies starts with them), the tab, a drive to pick
-    async open({ path = Host.has('places') ? Places.current() : null, files = null, tab = null, drive = null } = {}) {
+    // { path, files, tab, drive, where }: the project (its path, in an app),
+    // the photos chosen (Copies starts with them), the tab, a drive (or a
+    // disc's drive) to pick, where Copies go ('drive:' + a drive's path)
+    async open({ path = Host.has('places') ? Places.current() : null, files = null, tab = null, drive = null, where = null } = {}) {
         const app = this.app;
         if (!app.dirHandle && !path) {
             app.showToast('Open a project first', 3000);
@@ -90,10 +93,11 @@ const Export = {
         this.size = saved.size || 0;
         this.format = this.FORMATS.some(([v]) => v === saved.format) ? saved.format : 'same';
         Codec.ready().then(ok => { this.codecs = ok; if (this.isOpen() && this.tab === 'copies') this.render(); });
-        this.where = saved.where === 'project' || !saved.where ? 'project' : saved.where;
+        this.where = where || (saved.where === 'project' || !saved.where ? 'project' : saved.where);
         this.chosen = null;
         this.drive = drive;
         this.eject = saved.eject !== false;
+        this.withData = saved.withData === true; // off to start with
         this.saveFirst = true;
         this.label = Places.baseName(path || (app.dirHandle && app.dirHandle.name) || '').slice(0, 16);
         this.burnerList = null;
@@ -200,7 +204,7 @@ const Export = {
             // The one with the most room, to start with
             this.drive = drives.slice().sort((a, b) => (b.free || 0) - (a.free || 0))[0].path;
         }
-        let html = `<p class="ex-lead">Copies ${this.esc(this.name())}${bytes ? ` (${n.toLocaleString()} photos, ${this.fmt(bytes)})` : ''} onto a USB drive or memory card, with its flags and edits, for opening in jEditor on another computer.</p>`;
+        let html = `<p class="ex-lead">Copies ${this.esc(this.name())}${bytes ? ` (${n.toLocaleString()} photos, ${this.fmt(bytes)})` : ''} onto a USB drive or memory card, as it is on disk.</p>`;
         if (!drives.length) {
             html += '<div class="ex-empty">Plug in a USB drive or a memory card: it shows up here.</div>';
             return { html, ready: false, go: 'Copy' };
@@ -215,14 +219,23 @@ const Export = {
             });
         }
         html += '</div>';
-        html += `<label class="ex-check"><input type="checkbox" id="ex-eject"${this.eject ? ' checked' : ''}> Eject it when it's done, ready to take out</label>`;
+        html += this.ejectBox();
+        // Its flags and kept edits: on this computer only, unless asked for
+        html += `<label class="ex-check"><input type="checkbox" id="ex-with-data"${this.withData ? ' checked' : ''}> Take its flags and edits too, for jEditor on another computer</label>`;
         const d = drives.find(x => Places.key(x.path) === Places.key(this.drive));
         const fits = !(need && d && d.free && need > d.free);
+        const kept = Edits.count();
         return {
             html, ready: !!d && fits,
             go: d ? `Copy to ${d.name}` : 'Copy',
-            note: d && !fits ? `${this.name()} needs ${this.fmt(need)}; ${d.name} has ${this.fmt(d.free)} free.` : ''
+            note: d && !fits ? `${this.name()} needs ${this.fmt(need)}; ${d.name} has ${this.fmt(d.free)} free.`
+                : kept && !this.withData ? `${kept.toLocaleString()} photo${kept === 1 ? ' has' : 's have'} edits not saved yet: copied without them.` : ''
         };
+    },
+
+    // Eject when done: one choice for a drive or a disc, remembered
+    ejectBox() {
+        return `<label class="ex-check"><input type="checkbox" id="ex-eject"${this.eject ? ' checked' : ''}> Eject when done</label>`;
     },
 
     // ---- CD or DVD ----
@@ -230,11 +243,14 @@ const Export = {
     discBody() {
         const bytes = this.projectBytes();
         const b = this.burnerList;
-        let html = `<p class="ex-lead">Burns ${this.esc(this.name())}${bytes ? ` (${this.fmt(bytes)})` : ''} onto a blank CD or DVD, as the photos are on disk. The disc comes out when it's done.</p>`;
+        let html = `<p class="ex-lead">Burns ${this.esc(this.name())}${bytes ? ` (${this.fmt(bytes)})` : ''} onto a blank CD or DVD, as the photos are on disk.</p>`;
         const again = `<button type="button" class="btn ghost sm" data-act="burners">Look again</button>`;
         if (b === 'loading' || b === null) return { html: html + '<div class="ex-empty">Looking for a disc burner…</div>', ready: false, go: 'Burn' };
         if (b.error) return { html: html + `<div class="ex-empty">Couldn't look for a disc burner: ${this.esc(b.error)} ${again}</div>`, ready: false, go: 'Burn' };
         if (!b.length) return { html: html + `<div class="ex-empty">${this.esc(Host.say('{computer} has no drive that can burn CDs or DVDs.'))} Copy it to a USB drive instead.</div>`, ready: false, go: 'Burn' };
+        // The burner asked for (a disc's drive, right-clicked), or one with a blank disc
+        const asked = this.drive && b.find(x => x.drive && Places.key(x.drive) === Places.key(this.drive));
+        if (asked) { this.burner = asked.id; this.drive = null; }
         if (!b.some(x => x.id === this.burner)) this.burner = (b.find(x => x.canWrite) || b[0]).id;
         html += '<div class="ex-list" role="radiogroup" aria-label="Burner">';
         for (const x of b) {
@@ -249,6 +265,7 @@ const Export = {
         html += `<label class="ex-field">The disc's name <input id="ex-label" class="field" type="text" maxlength="16" spellcheck="false" value="${this.esc(this.label)}"></label>`;
         const n = Edits.count();
         if (n) html += `<label class="ex-check"><input type="checkbox" id="ex-save-first"${this.saveFirst ? ' checked' : ''}> Save the edits into ${n.toLocaleString()} photo${n === 1 ? '' : 's'} first (else the disc gets them without)</label>`;
+        html += this.ejectBox();
         const pick = b.find(x => x.id === this.burner);
         const fits = !(pick && pick.canWrite && bytes && bytes > pick.free);
         return {
@@ -291,6 +308,7 @@ const Export = {
         if (canChoose) html += radio('ex-where', 'chosen', this.chosen ? this.esc(this.chosen.label) : 'A folder you choose…', this.where === 'chosen' && !!this.chosen, this.chosen ? 'chosen' : '');
         if (this.where === 'chosen' && !this.chosen) this.where = 'project';
         html += '</div></div>';
+        if (this.where.startsWith('drive:')) html += this.ejectBox();
         const n = list.length;
         const edited = list.filter(f => f._edit).length;
         const raws = list.filter(f => Raw.is(f.name)).length;
@@ -310,6 +328,7 @@ const Export = {
         if (t.name === 'ex-drive') this.drive = t.value;
         else if (t.name === 'ex-burner') this.burner = t.value;
         else if (t.id === 'ex-eject') { this.eject = t.checked; this.remember({ eject: t.checked }); return; }
+        else if (t.id === 'ex-with-data') { this.withData = t.checked; this.remember({ withData: t.checked }); }
         else if (t.id === 'ex-save-first') { this.saveFirst = t.checked; return; }
         else if (t.id === 'ex-label') { this.label = t.value; return; }
         else if (t.name === 'ex-which') this.which = t.value;
@@ -359,22 +378,22 @@ const Export = {
             const drive = this.usb().find(d => Places.key(d.path) === Places.key(this.drive));
             const path = this.path;
             this.close();
-            if (drive) await Places.copyToDrive(path, { drive, eject: this.eject });
+            if (drive) await Places.copyToDrive(path, { drive, eject: this.eject, withData: this.withData });
         } else if (this.tab === 'disc') {
             const pick = Array.isArray(this.burnerList) && this.burnerList.find(x => x.id === this.burner);
-            const path = this.path, label = this.label, saveEdits = this.saveFirst;
+            const path = this.path, label = this.label, saveEdits = this.saveFirst, eject = this.eject;
             this.close();
-            if (pick) await Disc.burn(pick, path, label, { saveEdits });
+            if (pick) await Disc.burn(pick, path, label, { saveEdits, eject });
         } else {
             const list = this.copies();
             const maxEdge = this.size || 0;
-            let dir = null, where = '"jEditor Export"';
+            let dir = null, where = '"jEditor Export"', drive = null;
             try {
                 if (this.where === 'chosen' && this.chosen) {
                     dir = this.chosen.handle;
                     where = this.chosen.label;
                 } else if (this.where.startsWith('drive:')) {
-                    const drive = this.usb().find(d => 'drive:' + d.path === this.where);
+                    drive = this.usb().find(d => 'drive:' + d.path === this.where);
                     const root = await this.native().folderHandle(drive.path);
                     dir = await (await root.getDirectoryHandle('jEditor Export', { create: true })).getDirectoryHandle(this.name() || 'Photos', { create: true });
                     where = `${drive.name}, "jEditor Export"`;
@@ -383,8 +402,11 @@ const Export = {
                 UI.alert({ title: 'Couldn\'t export there', message: e.message });
                 return;
             }
+            const eject = this.eject;
             this.close();
-            await app.exportCopies(list, { maxEdge, dir, where, format: this.format });
+            const r = await app.exportCopies(list, { maxEdge, dir, where, format: this.format });
+            // Onto a drive, ejected after if asked (not when some failed: it's left to look at)
+            if (drive && eject && r && r.done && !r.failed) await Places.eject(drive.path, drive.name);
         }
     }
 };

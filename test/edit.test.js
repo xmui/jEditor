@@ -1563,6 +1563,161 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- Flip ----
+    if (wanted('flip')) {
+        console.log('flip: left to right and upside down (script.js, crop.js, edits.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            const out = {};
+            // A photo whose halves differ: red left, blue right, a green
+            // band along the top
+            const make = async (type, w = 64, h = 32) => {
+                const c = document.createElement('canvas'); c.width = w; c.height = h;
+                const g = c.getContext('2d');
+                g.fillStyle = '#f00'; g.fillRect(0, 0, w / 2, h);
+                g.fillStyle = '#00f'; g.fillRect(w / 2, 0, w / 2, h);
+                g.fillStyle = '#0f0'; g.fillRect(0, 0, w, h / 4);
+                return canvasBlob(c, type, 0.95);
+            };
+            // What's at a spot (fractions across and down), as the photo shows
+            const at = async (blob, u, v) => {
+                const bmp = await createImageBitmap(blob);
+                const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+                const g = c.getContext('2d'); g.drawImage(bmp, 0, 0); bmp.close();
+                const d = g.getImageData(Math.floor(u * c.width), Math.floor(v * c.height), 1, 1).data;
+                return d[0] > 150 && d[1] < 100 && d[2] < 100 ? 'red' : d[2] > 150 && d[0] < 100 && d[1] < 100 ? 'blue' : d[1] > 150 && d[0] < 100 && d[2] < 100 ? 'green' : `${d[0]},${d[1]},${d[2]}`;
+            };
+            const look = async (blob) => [await at(blob, 0.1, 0.6), await at(blob, 0.9, 0.6), await at(blob, 0.25, 0.05), await at(blob, 0.25, 0.95)].join(' ');
+            const sides = async (blob) => [await at(blob, 0.1, 0.5), await at(blob, 0.9, 0.5)].join(' ');
+            const bytesOf = async (f) => new Uint8Array(await (await f.handle.getFile()).arrayBuffer());
+
+            // The orientation table: each flip twice is back where it was;
+            // left to right then upside down is half a turn
+            out.involution = [1, 2, 3, 4, 5, 6, 7, 8].every(o => app.flipOrientation(app.flipOrientation(o, 'h'), 'h') === o && app.flipOrientation(app.flipOrientation(o, 'v'), 'v') === o);
+            out.halfTurn = [1, 2, 3, 4, 5, 6, 7, 8].every(o => app.flipOrientation(app.flipOrientation(o, 'h'), 'v') === app.composeOrientation(o, 180));
+            out.turnedFlip = [1, 6, 3, 8].every(o => app.flipOrientation(app.flipOrientation(o, 'h', 90), 'h', 90) === o);
+
+            await openProject('Flip', { 'a.jpg': await make('image/jpeg'), 'b.png': await make('image/png'), 'c.jpg': await make('image/jpeg') });
+            const [a, b, c] = ['a.jpg', 'b.png', 'c.jpg'].map(n => app.files.find(f => f.name === n));
+            out.before = await look(await a.handle.getFile());
+
+            // A JPEG, left to right: only its orientation changes
+            const aBefore = await bytesOf(a);
+            await app.flipFiles([a], 'h');
+            const aAfter = await bytesOf(a);
+            out.jpegH = [await look(new Blob([aAfter])), readOrientation(aAfter)];
+            // (a scanner's JPEG has no EXIF: one is added, the picture data untouched)
+            out.jpegLossless = aAfter.length - aBefore.length < 100 && aAfter.subarray(aAfter.length - 200).every((x, i) => x === aBefore[aBefore.length - 200 + i]);
+            await app.undo();
+            out.jpegUndo = [await look(await a.handle.getFile()), readOrientation(await bytesOf(a)) || 1];
+            // Upside down
+            await app.flipFiles([a], 'v');
+            out.jpegV = [await look(await a.handle.getFile()), readOrientation(await bytesOf(a))];
+            await app.undo();
+
+            // A PNG is re-encoded; Ctrl+Z puts its bytes back exactly
+            const bBefore = await bytesOf(b);
+            await app.flipFiles([b], 'h');
+            out.png = await look(await b.handle.getFile());
+            await app.undo();
+            const bBack = await bytesOf(b);
+            out.pngUndo = bBack.length === bBefore.length && bBack.every((x, i) => x === bBefore[i]);
+
+            // A selection: one Ctrl+Z
+            const depth = (app._undoStack || []).length;
+            await app.flipFiles([a, c], 'h');
+            out.oneStep = (app._undoStack || []).length === depth + 1;
+            out.both = [readOrientation(await bytesOf(a)), readOrientation(await bytesOf(c))];
+            await app.undo();
+            out.bothBack = [readOrientation(await bytesOf(a)) || 1, readOrientation(await bytesOf(c)) || 1];
+
+            // Kept until saved (Save edits when done): an edit, the crop
+            // box mirrored with it; twice is no edit at all
+            await Edits.setDefer(true);
+            Edits.set([{ file: c, edit: { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0, y1: 0.5 } } }], 'crop');
+            await app.flipFiles([c], 'h');
+            const e = c._edit;
+            out.kept = e && e.m === true && e.n.x0 === 0 && e.n.x1 === 0.5;
+            // The left half kept, shown flipped: red, all of it
+            const shown = await CropEditor.renderSnapshot(await c.handle.getFile(), e, 'image/png');
+            out.keptLook = await look(await canvasBlob(shown));
+            out.diskUntouched = (readOrientation(await bytesOf(c)) || 1) === 1;
+            await app.flipFiles([c], 'h');
+            out.twice = c._edit && !c._edit.m && c._edit.n.x1 === 0;
+            Edits.set([{ file: c, edit: null }], 'edits');
+            await app.flipFiles([c], 'v');
+            await app.flipFiles([c], 'v');
+            out.twiceNothing = !c._edit;
+            // Flipped and turned: Save edits writes it losslessly, as one
+            await app.flipFiles([c], 'h');
+            await app.rotateBulk(90, new Map([[c, 90]]));
+            const cBefore = await bytesOf(c);
+            await app.saveEdits([c]);
+            const cSaved = await bytesOf(c);
+            out.saved = [readOrientation(cSaved), !c._edit, cSaved.length - cBefore.length < 100];
+            await app.undo();
+            out.savedUndo = [readOrientation(await bytesOf(c)) || 1, !!(c._edit && c._edit.m && c._edit.q === 1)];
+            Edits.set([{ file: c, edit: null }], 'edits');
+            await Edits.setDefer(false);
+
+            // The crop editor's geometry: the photo point under a spot, and
+            // back; Adjust's mask map (Develop.cropMap) agrees with it
+            const ed = CropEditor.fromSnapshot(400, 300, { q: 1, m: true, angle: 3, n: { x0: -0.4, y0: -0.3, x1: 0.2, y1: 0.4 } });
+            const p = { x: 37, y: -21 }, back = ed.fromImage(ed.toImage(p));
+            out.roundTrip = Math.hypot(back.x - p.x, back.y - p.y) < 1e-9;
+            const map = Develop.cropMap(ed, 400, 300).m, o = ed.outputRect();
+            const U = 0.25, V = 0.7, img = ed.toImage({ x: o.x0 + U * o.w, y: o.y0 + V * o.h });
+            out.maskMap = Math.abs(map[0] * U + map[1] * V + map[2] - (img.x / 400 + 0.5)) < 1e-9 && Math.abs(map[3] * U + map[4] * V + map[5] - (img.y / 300 + 0.5)) < 1e-9;
+            // Paint draws its layers through the same flip
+            const src = document.createElement('canvas'); src.width = 400; src.height = 300;
+            const sg = src.getContext('2d'); sg.fillStyle = '#f00'; sg.fillRect(0, 0, 200, 300); sg.fillStyle = '#00f'; sg.fillRect(200, 0, 200, 300);
+            const flat = CropEditor.fromSnapshot(400, 300, { q: 0, m: true, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } });
+            const canvas = document.createElement('canvas'); canvas.width = 400; canvas.height = 300;
+            Paint.drawThrough(canvas.getContext('2d'), flat, src, 400, 300);
+            out.paint = await sides(await canvasBlob(canvas));
+            const drawn = flat.drawOutput(src);
+            out.drawOutput = await sides(await canvasBlob(drawn));
+
+            // In the crop editor: Shift+H flips, its own Ctrl+Z takes it back
+            app.currentFile = a;
+            app.setView('single');
+            await sleep(300);
+            await app.enterCrop();
+            await until(() => CropEditor.ready);
+            CropEditor.flip('h');
+            out.editorFlip = CropEditor.m === true && CropEditor.snapshot().m === true;
+            CropEditor.flip('v');
+            out.editorBoth = !CropEditor.m && CropEditor.q === 2;
+            CropEditor.undo();
+            CropEditor.undo();
+            out.editorUndo = !CropEditor.m && CropEditor.q === 0;
+            CropEditor.flip('h');
+            await app.saveCrop();
+            for (let i = 0; i < 100 && readOrientation(await bytesOf(a)) !== 2; i++) await sleep(50);
+            out.editorSaved = [await look(await a.handle.getFile()), readOrientation(await bytesOf(a))];
+            return out;
+        });
+        check('flip: each flip twice is back as it was, and both together are half a turn', r.involution && r.halfTurn && r.turnedFlip, JSON.stringify(r));
+        check('flip: the test photo is red left, blue right, green along the top', r.before === 'red blue green red', r.before);
+        check('flip: a JPEG flipped left to right, by its orientation (2)', r.jpegH[0] === 'blue red green blue' && r.jpegH[1] === 2, JSON.stringify(r.jpegH));
+        check('flip: ...losslessly: the picture data is the same', r.jpegLossless);
+        check('flip: Ctrl+Z puts it back', r.jpegUndo[0] === 'red blue green red' && r.jpegUndo[1] === 1, JSON.stringify(r.jpegUndo));
+        check('flip: upside down (orientation 4)', r.jpegV[0] === 'red blue red green' && r.jpegV[1] === 4, JSON.stringify(r.jpegV));
+        check('flip: a PNG is re-encoded flipped, and Ctrl+Z puts its bytes back exactly', r.png === 'blue red green blue' && r.pngUndo, JSON.stringify([r.png, r.pngUndo]));
+        check('flip: a selection is one Ctrl+Z', r.oneStep && r.both.join() === '2,2' && r.bothBack.join() === '1,1', JSON.stringify([r.oneStep, r.both, r.bothBack]));
+        check('flip: with Save edits when done, kept as an edit with its crop mirrored, the file untouched', r.kept && r.diskUntouched, JSON.stringify([r.kept, r.diskUntouched]));
+        check('flip: the kept edit shows the left half, flipped', r.keptLook === 'red red green red', r.keptLook);
+        check('flip: flipped twice is the edit it was; upside down twice is no edit', r.twice && r.twiceNothing, JSON.stringify([r.twice, r.twiceNothing]));
+        check('flip: flipped and turned, Save edits writes it losslessly in one go (orientation 7), and Ctrl+Z keeps the edit again', r.saved[0] === 7 && r.saved[1] && r.saved[2] && r.savedUndo[0] === 1 && r.savedUndo[1], JSON.stringify([r.saved, r.savedUndo]));
+        check('flip: the crop editor\'s geometry goes there and back, flipped', r.roundTrip);
+        check('flip: Adjust\'s masks are placed through the flip (Develop.cropMap)', r.maskMap);
+        check('flip: Paint\'s layers and the crop are drawn flipped', r.paint === 'blue red' && r.drawOutput === 'blue red', JSON.stringify([r.paint, r.drawOutput]));
+        check('flip: in the crop editor, flip and its own undo', r.editorFlip && r.editorBoth && r.editorUndo, JSON.stringify([r.editorFlip, r.editorBoth, r.editorUndo]));
+        check('flip: Save in the crop editor writes a flip with no crop losslessly', r.editorSaved[0] === 'blue red green blue' && r.editorSaved[1] === 2, JSON.stringify(r.editorSaved));
+        check('flip: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- The wheel on a Mac ----
     if (wanted('wheel')) {
         console.log('the wheel on a Mac (wheel.js)');
