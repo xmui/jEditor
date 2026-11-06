@@ -65,7 +65,7 @@ const Adjust = {
         // Picking white balance: a click on the photo is the grey, before
         // masks, spots or the 1:1 view see it
         this.el('adj-stage').addEventListener('pointerdown', (e) => {
-            if (!this.picking || e.button !== 0) return;
+            if (!this.picking || e.button !== 0 || this.space) return;
             e.preventDefault();
             e.stopPropagation();
             this.pickAt(e);
@@ -97,6 +97,7 @@ const Adjust = {
         AdjustMasks.init(this);
         AdjustSpots.init(this);
         this.initPanes();
+        this.initZoom();
         this.mixerSliders = Develop.HUES.map((h, i) => {
             const row = this.slider(`mix-${h.id}`, h.name, {
                 range: { min: -100, max: 100, step: 1 },
@@ -137,7 +138,7 @@ const Adjust = {
 
         this.initLevels();
         this.initCurve();
-        this._resize = new ResizeObserver(() => { this.layout(); this.drawPanels(); this.placeLoupeBox(); AdjustMasks.place(); AdjustMasks.draw(); AdjustSpots.place(); AdjustSpots.draw(); this.placePaint(); });
+        this._resize = new ResizeObserver(() => { this.viewChanged(); this.drawPanels(); });
         this._resize.observe(this.el('adj-stage'));
         this._resize.observe(this.el('adj-panel'));
     },
@@ -250,6 +251,12 @@ const Adjust = {
         if (!current()) { this.dropPicture(); return; }
         const o = this.cropped ? this.cropped.outputRect() : { w: base.width, h: base.height };
         this.el('adj-dims').textContent = `${Math.round(o.w * scale)} × ${Math.round(o.h * scale)}`;
+        // The photo's own size, as shown (cropped): what the zoom is of
+        this.PW = o.w * scale;
+        this.PH = o.h * scale;
+        this.fitted = true;
+        this.view = null;
+        this.hideSharp();
         if (this.gl && this.gl.lost) this.useCpu();
         this.usePicture();
         this.ready = true;
@@ -416,6 +423,10 @@ const Adjust = {
         this.src = this.out = this.sample = this.sampleOut = this.srcData = null;
         this.dropPicture();
         this.drawPaint(null);
+        clearTimeout(this._sharpTimer);
+        this.hideSharp();
+        this.view = null;
+        this.pan = null;
         clearTimeout(this._detailTimer);
         clearTimeout(this._loupeTimer);
         if (this.fullCanvas) this.fullCanvas.width = this.fullCanvas.height = 0;
@@ -599,15 +610,329 @@ const Adjust = {
         });
     },
 
-    // The canvas at the stage's size, the photo fitted in it
+    // ---- Zoom and pan ----
+    //
+    // As in Lightroom: the photo fitted to start with; Ctrl/Cmd + wheel (or
+    // a pinch) zooms about the pointer, Ctrl/Cmd + = and − in and out,
+    // Ctrl/Cmd + 0 fits, Ctrl/Cmd + 1 is 100%, a double-click goes between
+    // the two. Zoomed in, a drag (or the wheel, or two fingers) moves about;
+    // Space and a drag does too, whatever tool is out. The zoom is shown in
+    // a quiet chip in the corner (Fit · 100%).
+    //
+    // view.z is screen (css) pixels to one of the photo's own pixels, so 1
+    // is 100%, as in Photos' viewer and Paint; view.x and y are where the
+    // picture's top left corner is on the stage. The canvas is laid out at
+    // that size and place, and everything over it (paint, masks, spots, the
+    // 1:1 box) follows the canvas, as it did when it only fitted. Past the
+    // working copy's own pixels (a photo bigger than EDGE), what's on
+    // screen is drawn again from the full-size photo, so 100% is sharp.
+
+    MAX_ZOOM: 16,       // 1600%, as Lightroom
+    PAD: 16,            // round the photo when it's fitted
+
+    // The zoom that fits the photo (at most 4× the working copy, as before)
+    fitZoom() {
+        const box = this.el('adj-stage').getBoundingClientRect();
+        return Math.max(1e-3, Math.min((box.width - 2 * this.PAD) / this.PW, (box.height - 2 * this.PAD) / this.PH, 4 * this.w / this.PW));
+    },
+
+    // The view kept on the photo: centred on an axis where it's smaller
+    // than the stage, never past its edges where it's bigger
+    clampView() {
+        const box = this.el('adj-stage').getBoundingClientRect(), v = this.view;
+        const cw = this.PW * v.z, ch = this.PH * v.z;
+        v.x = cw <= box.width ? (box.width - cw) / 2 : Math.min(0, Math.max(box.width - cw, v.x));
+        v.y = ch <= box.height ? (box.height - ch) / 2 : Math.min(0, Math.max(box.height - ch, v.y));
+    },
+
+    // The canvas at the view's size and place (fitted: the stage's size)
     layout() {
         if (!this.ready) return;
         const box = this.el('adj-stage').getBoundingClientRect();
-        const pad = 16;
-        const s = Math.min((box.width - 2 * pad) / this.w, (box.height - 2 * pad) / this.h, 4);
-        this.canvas.style.width = `${Math.max(1, Math.floor(this.w * s))}px`;
-        this.canvas.style.height = `${Math.max(1, Math.floor(this.h * s))}px`;
+        if (!this.view || this.fitted) {
+            const z = this.fitZoom();
+            const cw = Math.max(1, Math.floor(this.PW * z)), ch = Math.max(1, Math.floor(this.PH * z));
+            this.view = { z: cw / this.PW, x: Math.round((box.width - cw) / 2), y: Math.round((box.height - ch) / 2) };
+        } else {
+            this.clampView();
+        }
+        const v = this.view;
+        Object.assign(this.canvas.style, { width: `${Math.max(1, this.PW * v.z)}px`, height: `${Math.max(1, this.PH * v.z)}px`, left: `${v.x}px`, top: `${v.y}px` });
+        this.root.classList.toggle('adj-zoomed', !this.fitted);
         this.placePaint();
+        this.placeSharp();
+        this.showZoom();
+    },
+
+    // Everything over the photo put where the photo now is
+    viewChanged() {
+        this.layout();
+        this.placeLoupeBox();
+        AdjustMasks.place();
+        AdjustMasks.draw();
+        AdjustSpots.place();
+        AdjustSpots.draw();
+        this.sharpSoon();
+    },
+
+    // To zoom z, keeping the stage point (cx, cy) where it is (the middle
+    // when not given). At or below fit, fitted (a small photo can go down
+    // to 100%)
+    zoomAt(z, cx = null, cy = null) {
+        if (!this.ready) return;
+        const box = this.el('adj-stage').getBoundingClientRect();
+        if (cx === null) { cx = box.width / 2; cy = box.height / 2; }
+        const fit = this.fitZoom();
+        z = Math.max(Math.min(fit, 1), Math.min(this.MAX_ZOOM, z));
+        const v = this.view;
+        if (Math.abs(z - fit) < 1e-4 * fit || (z < fit && fit <= 1)) {
+            this.fitted = true;
+        } else {
+            // The photo's point under (cx, cy) stays there
+            const px = (cx - v.x) / v.z, py = (cy - v.y) / v.z;
+            this.fitted = false;
+            this.view = { z, x: cx - px * z, y: cy - py * z };
+        }
+        this.viewChanged();
+    },
+
+    zoomBy(k) {
+        if (this.ready) this.zoomAt(this.view.z * k);
+    },
+
+    zoomFit() {
+        if (!this.ready) return;
+        this.fitted = true;
+        this.viewChanged();
+    },
+
+    // 100%: one photo pixel to one screen pixel (a photo smaller than
+    // the stage: twice fit, so it still zooms in)
+    zoom100(cx = null, cy = null) {
+        if (!this.ready) return;
+        const fit = this.fitZoom();
+        this.zoomAt(fit >= 0.99 ? fit * 2 : 1, cx, cy);
+    },
+
+    // Double-click: fit to 100% on the spot, anything else back to fit
+    toggleZoom(cx, cy) {
+        if (this.fitted) this.zoom100(cx, cy);
+        else this.zoomFit();
+    },
+
+    // Moved about by (dx, dy) screen pixels, when zoomed in
+    panBy(dx, dy) {
+        if (!this.ready || this.fitted) return;
+        this.view.x += dx;
+        this.view.y += dy;
+        this.viewChanged();
+    },
+
+    // The chip: Fit or 100% lit when it's at that, the zoom between
+    showZoom() {
+        const chip = this.el('adj-zoom');
+        if (!chip) return;
+        const z = this.view ? this.view.z : 1;
+        const at100 = !this.fitted && Math.abs(z - 1) < 0.005;
+        this.el('adj-zoom-fit').setAttribute('aria-pressed', String(!!this.fitted));
+        this.el('adj-zoom-100').setAttribute('aria-pressed', String(at100));
+        const level = this.el('adj-zoom-level');
+        level.textContent = `${Math.round(z * 100)}%`;
+        level.classList.toggle('hidden', !!this.fitted || at100);
+    },
+
+    initZoom() {
+        const stage = this.el('adj-stage');
+        this.el('adj-zoom-fit').addEventListener('click', (e) => { e.currentTarget.blur(); this.zoomFit(); });
+        this.el('adj-zoom-100').addEventListener('click', (e) => { e.currentTarget.blur(); this.zoom100(); });
+        const at = (e) => { const r = stage.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+        // Ctrl/Cmd + wheel, or a pinch (Ctrl + wheel to the page), zooms
+        // about the pointer; zoomed in, the wheel or two fingers move about
+        stage.addEventListener('wheel', (e) => {
+            if (!this.ready || e.target.closest('.adj-zoom')) return;
+            const px = Wheel.pixels(e, stage);
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                const dy = Math.max(-25, Math.min(25, px.y || px.x));
+                this.zoomAt(this.view.z * Math.exp(-dy * 0.01), ...at(e));
+                return;
+            }
+            if (this.fitted) return;
+            e.preventDefault();
+            // A mouse with Shift held goes sideways
+            if (e.shiftKey && !px.x) this.panBy(-px.y, 0);
+            else this.panBy(-px.x, -px.y);
+        }, { passive: false });
+        stage.addEventListener('dblclick', (e) => {
+            if (!this.ready || this.picking || e.target.closest('.adj-zoom')) return;
+            // The masks' and spots' tools have the photo while they're out
+            if (e.target.classList.contains('adj-overlay')) return;
+            e.preventDefault();
+            this.toggleZoom(...at(e));
+        });
+        // A drag moves about: Space held (first, whatever tool is out), or
+        // zoomed in with no tool out (the masks and spots tools keep theirs)
+        const grab = (e) => {
+            if (!this.ready || this.pan || (e.button !== 0 && e.button !== 1)) return;
+            if (e.target.closest('.adj-zoom')) return;
+            if (!this.space && e.button !== 1 && (this.fitted || this.picking)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            this.pan = { id: e.pointerId, sx: e.clientX, sy: e.clientY, moved: false, at: at(e) };
+            try { stage.setPointerCapture(e.pointerId); } catch (err) { /* not a live pointer */ }
+            this.root.classList.add('adj-grabbing');
+        };
+        stage.addEventListener('pointerdown', (e) => { if (this.space) grab(e); }, true);
+        stage.addEventListener('pointerdown', grab);
+        stage.addEventListener('pointermove', (e) => {
+            const p = this.pan;
+            if (!p || e.pointerId !== p.id) return;
+            const dx = e.clientX - p.sx, dy = e.clientY - p.sy;
+            if (!p.moved && Math.hypot(dx, dy) < 3) return;
+            p.moved = true;
+            p.sx = e.clientX;
+            p.sy = e.clientY;
+            this.panBy(dx, dy);
+        });
+        const end = (e) => {
+            const p = this.pan;
+            if (!p || e.pointerId !== p.id) return;
+            this.pan = null;
+            this.root.classList.remove('adj-grabbing');
+            // A click (no drag) with the 1:1 view out moves it there
+            if (!p.moved && e.type === 'pointerup' && this.detailOpen()) this.loupeTo(e);
+        };
+        stage.addEventListener('pointerup', end);
+        stage.addEventListener('pointercancel', end);
+        // Space held: the hand, as in Paint
+        window.addEventListener('keydown', (e) => {
+            if (!this.isOpen || e.code !== 'Space' || this.app.isTypingTarget(e.target)) return;
+            if (this.root.classList.contains('hidden')) return;
+            e.preventDefault();
+            if (!this.space) { this.space = true; this.root.classList.add('adj-space'); }
+        }, true);
+        const up = () => { this.space = false; if (this.root) this.root.classList.remove('adj-space'); };
+        window.addEventListener('keyup', (e) => { if (e.code === 'Space') up(); }, true);
+        window.addEventListener('blur', up);
+    },
+
+    // ---- At 100%, sharp ----
+    //
+    // The working copy is at most EDGE across. Zoomed in past its pixels,
+    // the part on screen is drawn from the full-size photo (loadFull, as
+    // the 1:1 view is), with detail done on its own pixels, and adjusted on
+    // the GPU as the sliders move, on its own canvas laid over the
+    // picture. A moment after the view stops moving it's drawn again for
+    // where it is now; in between, the picture under it shows round it.
+
+    SHARP_MAX: 16e6,    // pixels in the sharp part, at most
+
+    // Is there more to see than the working copy has?
+    needSharp() {
+        if (!this.ready || this.fitted || !this.view) return false;
+        if (this.PW <= this.w * 1.01) return false;       // it's the whole photo already
+        const dpr = window.devicePixelRatio || 1;
+        return this.view.z * dpr * this.PW / this.w > 1.01;
+    },
+
+    sharpSoon() {
+        clearTimeout(this._sharpTimer);
+        if (!this.needSharp()) { this.hideSharp(); return; }
+        this._sharpTimer = setTimeout(() => this.renderSharp(), 120);
+    },
+
+    hideSharp() {
+        const cv = this.el('adj-sharp');
+        if (cv) cv.classList.add('hidden');
+        this._sharp = null;
+    },
+
+    // The part of the full-size photo on screen (a little round it too),
+    // in its pixels
+    sharpRegion(FW, FH) {
+        const box = this.el('adj-stage').getBoundingClientRect(), v = this.view;
+        const cw = this.PW * v.z, ch = this.PH * v.z;
+        const m = 48;
+        const x0 = Math.max(0, Math.floor((Math.max(0, -v.x) - m) / cw * FW));
+        const y0 = Math.max(0, Math.floor((Math.max(0, -v.y) - m) / ch * FH));
+        const x1 = Math.min(FW, Math.ceil((Math.min(cw, box.width - v.x) + m) / cw * FW));
+        const y1 = Math.min(FH, Math.ceil((Math.min(ch, box.height - v.y) + m) / ch * FH));
+        return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
+    },
+
+    async renderSharp() {
+        if (!this.needSharp()) { this.hideSharp(); return; }
+        const full = await this.loadFull();
+        if (!full || !this.needSharp() || full !== this.fullCanvas) return;
+        const cv = this.el('adj-sharp');
+        const FW = full.width, FH = full.height;
+        const r = this.sharpRegion(FW, FH);
+        if (!r.w || !r.h || r.w * r.h > this.SHARP_MAX) { this.hideSharp(); return; }
+        if (this._sharpGl === undefined) this._sharpGl = Develop.renderer(cv);
+        const R = this._sharpGl && !this._sharpGl.lost ? this._sharpGl : null;
+        if (R && (r.w > R.max || r.h > R.max)) { this.hideSharp(); return; }
+        const d = this.before ? null : Develop.detail(this.a);
+        const key = JSON.stringify([r, this._fullKey, d, this.before]);
+        if (!this._sharp || this._sharp.key !== key) {
+            const img = d ? Develop.detailBlock((a, b, c, e) => this.fullCtx.getImageData(a, b, c, e), r.x, r.y, r.w, r.h, FW, FH, d, 1)
+                : this.fullCtx.getImageData(r.x, r.y, r.w, r.h);
+            if (R) R.setImage(img);
+            this._sharp = { key, r, FW, FH, img: R ? null : img, out: R ? null : new ImageData(r.w, r.h) };
+        }
+        this.drawSharp();
+        this.placeSharp();
+        cv.classList.remove('hidden');
+    },
+
+    // The sharp part adjusted as the picture is (called with draw())
+    drawSharp() {
+        const s = this._sharp;
+        if (!s) return;
+        const T = Develop.tables(this.a);
+        const { r, FW, FH } = s;
+        const frame = { x: r.x, y: r.y, w: r.w, W: FW, H: FH, glow: this.glow, map: this.map };
+        const R = this._sharpGl && !this._sharpGl.lost ? this._sharpGl : null;
+        if (R) {
+            try {
+                if (this.glow) R.setGlow(this.glow);
+                const brush = Develop.brushFor(T.masks, this.map.asp);
+                if (brush) R.setBrush(brush);
+                R.setTables(T);
+                R.draw(r.w, r.h, { before: this.before, frame });
+            } catch (e) {
+                console.warn('Adjust: GPU failed (100%):', e);
+                this.hideSharp();
+            }
+        } else if (s.img) {
+            const cv = this.el('adj-sharp');
+            if (cv.width !== r.w) cv.width = r.w;
+            if (cv.height !== r.h) cv.height = r.h;
+            const ctx = cv.getContext('2d');
+            if (this.before) ctx.putImageData(s.img, 0, 0);
+            else {
+                Develop.applyCPU(s.img.data, T, s.out.data, { ...frame, brush: Develop.brushFor(T.masks, this.map.asp) });
+                ctx.putImageData(s.out, 0, 0);
+            }
+        }
+    },
+
+    // Over the picture, where its part of the photo is
+    placeSharp() {
+        const cv = this.el('adj-sharp'), s = this._sharp;
+        if (!cv || !s || !this.view) return;
+        const v = this.view, kx = this.PW * v.z / s.FW, ky = this.PH * v.z / s.FH;
+        Object.assign(cv.style, { left: `${v.x + s.r.x * kx}px`, top: `${v.y + s.r.y * ky}px`, width: `${s.r.w * kx}px`, height: `${s.r.h * ky}px` });
+    },
+
+    // Where the canvas shows on the stage, for what's laid over it: only
+    // the part on the stage (zoomed in, the canvas is far bigger), and
+    // where that is on the canvas. { left, top, w, h } on the stage, ox, oy
+    // into the canvas, cw, ch the canvas's whole size (css px)
+    overlayRect() {
+        const cr = this.canvas.getBoundingClientRect(), sr = this.el('adj-stage').getBoundingClientRect();
+        const l = Math.max(cr.left, sr.left), t = Math.max(cr.top, sr.top);
+        const r = Math.min(cr.right, sr.right), b = Math.min(cr.bottom, sr.bottom);
+        return { left: l - sr.left, top: t - sr.top, w: Math.max(1, r - l), h: Math.max(1, b - t), ox: l - cr.left, oy: t - cr.top, cw: cr.width, ch: cr.height };
     },
 
     draw() {
@@ -641,6 +966,8 @@ const Adjust = {
                 this.ctx.putImageData(this.out, 0, 0);
             }
         }
+        this.drawSharp();
+        this.sharpSoon();
         const px = this.before ? this.sample : Develop.applyCPU(this.sample, T, this.sampleOut, { x: 0, y: 0, w: this.sampleW, W: this.sampleW, H: this.sampleH, glow, map: this.map, brush });
         this.hist = Develop.histogram(px);
         this.drawPanels();
@@ -668,15 +995,20 @@ const Adjust = {
             if (sec.open) this.renderLoupe();
             this.placeLoupeBox();
         });
-        // A click on the photo moves the 1:1 view there
+        // A click on the photo moves the 1:1 view there (zoomed in, a
+        // drag moves about: a click without one does, initZoom)
         this.el('adj-stage').addEventListener('pointerdown', (e) => {
-            if (!this.ready || !this.detailOpen()) return;
-            const r = this.canvas.getBoundingClientRect();
-            const u = (e.clientX - r.left) / r.width, v = (e.clientY - r.top) / r.height;
-            if (u < 0 || u > 1 || v < 0 || v > 1) return;
-            this.loupeAt = { u, v };
-            this.renderLoupe();
+            if (!this.ready || !this.detailOpen() || !this.fitted || this.space) return;
+            this.loupeTo(e);
         });
+    },
+
+    loupeTo(e) {
+        const r = this.canvas.getBoundingClientRect();
+        const u = (e.clientX - r.left) / r.width, v = (e.clientY - r.top) / r.height;
+        if (u < 0 || u > 1 || v < 0 || v > 1) return;
+        this.loupeAt = { u, v };
+        this.renderLoupe();
     },
 
     // The working copy with detail done (debounced: it's on the CPU)
