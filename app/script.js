@@ -3058,6 +3058,9 @@ const app = {
             const frag = document.createDocumentFragment();
             const end = Math.min(start + CHUNK, files.length);
             for (let i = start; i < end; i++) {
+                // Duplicates in the grid: each group under its heading
+                const head = Dupes.inGrid && Dupes.gridHeading(files[i]);
+                if (head) frag.appendChild(head);
                 frag.appendChild(this.makeGridTile(files[i], observer));
             }
             this.elements.gridView.appendChild(frag);
@@ -3255,6 +3258,7 @@ const app = {
         Folders.addChip(div, file);
         Flags.decorate(div, file);
         Edits.decorate(div, file);
+        Dupes.decorate(div, file);
         // Just arrived (auto-check): a brief glow so it's easy to spot
         if (file._arrived && Date.now() - file._arrived < 6000) div.classList.add('is-new');
 
@@ -4372,6 +4376,29 @@ const app = {
         this.goTo(view[newIndex]);
     },
 
+    // Up and Down in the grid: a row's worth, or, when rows don't run on
+    // (duplicates in the grid start each group on a new row), the photo
+    // nearest above or below on screen
+    navigateRow(dir) {
+        if (!Dupes.inGrid) return this.navigate(dir * this.getGridColumnCount());
+        const view = this.viewFiles();
+        const at = this.currentFile && this.currentFile._gridEl;
+        if (!at || !at.isConnected) return this.navigate(dir);
+        const r = at.getBoundingClientRect();
+        const cx = r.left + r.width / 2;
+        let best = null, bestRow = Infinity, bestX = Infinity;
+        for (const f of view) {
+            const el = f._gridEl;
+            if (!el || !el.isConnected || el === at) continue;
+            const b = el.getBoundingClientRect();
+            const dy = (b.top - r.top) * dir;
+            if (dy < r.height / 2) continue;
+            const dx = Math.abs(b.left + b.width / 2 - cx);
+            if (dy < bestRow - 1 || (Math.abs(dy - bestRow) <= 1 && dx < bestX)) { best = f; bestRow = dy; bestX = dx; }
+        }
+        if (best) this.goTo(best);
+    },
+
     goTo(file) {
         if (!file) return;
         if (this.viewMode !== 'grid') {
@@ -4700,11 +4727,9 @@ const app = {
         ['paint.actual', 'paint', 'Paint', 'Actual pixels', ['1']],
         ['paint.zoomIn', 'paint', 'Paint', 'Zoom in', ['+', '=']],
         ['paint.zoomOut', 'paint', 'Paint', 'Zoom out', ['-']],
-        ['dupes.next', 'dupes', 'Duplicates (WIP)', 'Next group', ['ArrowRight']],
-        ['dupes.prev', 'dupes', 'Duplicates (WIP)', 'Previous group', ['ArrowLeft']],
-        ['dupes.keepBest', 'dupes', 'Duplicates (WIP)', 'Keep suggested, mark the rest', ['K']],
-        ['dupes.apply', 'dupes', 'Duplicates (WIP)', 'Trash marked & next group', ['Enter']],
-        ['dupes.skip', 'dupes', 'Duplicates (WIP)', 'Not duplicates (skip group)', ['N']],
+        ['dupes.keepBest', 'dupes', 'Duplicates (WIP)', 'Back to the suggested keepers', ['K']],
+        ['dupes.apply', 'dupes', 'Duplicates (WIP)', 'Trash every marked photo', ['Enter']],
+        ['dupes.grid', 'dupes', 'Duplicates (WIP)', 'Show in grid', ['G']],
         ['dupes.close', 'dupes', 'Duplicates (WIP)', 'Close', ['Escape']]
     ],
 
@@ -4758,8 +4783,8 @@ const app = {
         return {
             'nav.prev': () => this.navigate(-1),
             'nav.next': () => this.navigate(1),
-            'nav.up': () => grid() ? this.navigate(-this.getGridColumnCount()) : false,
-            'nav.down': () => grid() ? this.navigate(this.getGridColumnCount()) : false,
+            'nav.up': () => grid() ? this.navigateRow(-1) : false,
+            'nav.down': () => grid() ? this.navigateRow(1) : false,
             'nav.first': () => this.goTo(this.viewFiles()[0]),
             'nav.last': () => { const v = this.viewFiles(); this.goTo(v[v.length - 1]); },
             'edit.rotateLeft': () => grid() ? this.rotateBulk(-90) : this.rotateCurrent(-90),
@@ -4916,11 +4941,9 @@ const app = {
             'paint.actual': () => PaintEditor.zoomTo(1),
             'paint.zoomIn': () => PaintEditor.zoomTo(PaintEditor.view.z * 1.25),
             'paint.zoomOut': () => PaintEditor.zoomTo(PaintEditor.view.z / 1.25),
-            'dupes.next': () => Dupes.step(1),
-            'dupes.prev': () => Dupes.step(-1),
             'dupes.keepBest': () => Dupes.keepBest(),
             'dupes.apply': () => Dupes.apply(),
-            'dupes.skip': () => Dupes.skip(),
+            'dupes.grid': () => Dupes.showInGrid(),
             'dupes.close': () => Dupes.close()
         };
     },
@@ -5194,12 +5217,6 @@ const app = {
 
         const tool = this.cropState.tool;
         const context = this.cropState.active ? (tool === 'adjust' || tool === 'paint' ? tool : 'crop') : (Dupes.isOpen ? 'dupes' : 'global');
-        // Duplicates view: 1–9 mark/unmark the photo with that number
-        if (context === 'dupes' && /^[1-9]$/.test(combo)) {
-            e.preventDefault();
-            Dupes.toggle(parseInt(combo, 10) - 1);
-            return;
-        }
         let id = this._keyMaps[context].get(combo);
         // Duplicates: Undo (it says Ctrl+Z restores) works there too
         if (!id && context === 'dupes' && this._keyMaps.global.get(combo) === 'edit.undo') id = 'edit.undo';
@@ -5694,6 +5711,7 @@ const app = {
             Folders.addChip(gridDiv, file);
             Flags.decorate(gridDiv, file);
             Edits.decorate(gridDiv, file);
+            Dupes.decorate(gridDiv, file);
 
             // Force reload
             this.loadImageThumbnail(file, img, true);

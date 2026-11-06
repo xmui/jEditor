@@ -167,12 +167,14 @@ const Folders = {
     // The photos the grid, film strip and arrow keys go through
     // (narrowed further by a flag filter or search, see flags.js)
     viewFiles() {
+        if (Dupes.inGrid) return Dupes.gridFiles();
         const files = this.app.files;
         if (this.scope === null || !this.enabled()) return Flags.narrow(files);
         return Flags.narrow(files.filter(f => this.dirOf(f) === this.scope));
     },
 
     inView(file) {
+        if (Dupes.inGrid) return !!file && Dupes.inGridView(file);
         return !!file && (this.scope === null || !this.enabled() || this.dirOf(file) === this.scope) &&
             (!Flags.active() || Flags.passes(file));
     },
