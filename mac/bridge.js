@@ -502,8 +502,19 @@
         const a = jeditor();
         const open = !!(a && a.dirHandle) && shown(a.elements.mainInterface);
         if (!open) return { visible: false, title: 'jEditor', subtitle: '', items: [] };
-        // Over Adjust and Paint their head is the top row (style.css)
-        if (typeof Modes !== 'undefined' && Modes.current() !== 'photos') return { visible: false, title: $('file-name-text').textContent || a.dirHandle.name, subtitle: '', items: [] };
+        const modeItem = () => {
+            const mode = Modes.current();
+            const label = (m) => (Modes.LIST.find(x => x[0] === m) || [])[1] || m;
+            return {
+                id: 'mode', kind: 'menu', symbol: MODE_SYMBOLS[mode], label: label(mode), tooltip: ($('mode-chip-float') || {}).title || label(mode), navigational: true,
+                menu: Modes.shown().map(([m, l]) => ({ id: m, label: l, symbol: MODE_SYMBOLS[m], checked: m === mode }))
+            };
+        };
+        // Over Adjust and Paint the toolbar keeps just the mode, the same
+        // button as in Photos, and their head starts below it (style.css).
+        // (Stepped aside, the toolbar's title bar still took the press on
+        // the page's own chip there: hard to press, Needs fixing 2026-11-05)
+        if (typeof Modes !== 'undefined' && Modes.current() !== 'photos') return { visible: true, title: $('file-name-text').textContent || a.dirHandle.name, subtitle: '', items: [modeItem(), { kind: 'flexible' }] };
         const items = [];
         const bar = $('folder-bar');
         const browsing = shown(bar);
@@ -511,14 +522,7 @@
         // The mode chip, as in the folder pill (or on its own in the single
         // view): not while the sidebar shows its own switch
         const modeChip = [$('mode-chip-bar'), $('mode-float')].find(shown);
-        if (modeChip && typeof Modes !== 'undefined') {
-            const mode = Modes.current();
-            const label = (m) => (Modes.LIST.find(x => x[0] === m) || [])[1] || m;
-            items.push({
-                id: 'mode', kind: 'menu', symbol: MODE_SYMBOLS[mode], label: label(mode), tooltip: modeChip.title, navigational: true,
-                menu: Modes.shown().map(([m, l]) => ({ id: m, label: l, symbol: MODE_SYMBOLS[m], checked: m === mode }))
-            });
-        }
+        if (modeChip && typeof Modes !== 'undefined') items.push(modeItem());
         if (browsing) items.push({ id: 'scope', kind: 'segment', segments: ['All photos', 'Folders'], selected: $('fb-all').classList.contains('active') ? 0 : 1, navigational: true });
         items.push({ kind: 'flexible' });
         const chip = $('fb-filter-chip');
