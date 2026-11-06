@@ -451,7 +451,11 @@ const Places = {
             `</div>` +
             // Taking it off this computer: a USB drive, a disc, copies (export.js)
             (path ? `<button class="btn secondary sm sb-card-export" data-act="export" title="Copy it to a USB drive or card${Host.has('burn') ? ', burn it to a disc' : ''}, or export copies of the photos">${this.icons.export}Export<span>${Host.has('places') ? 'USB drive' : ''}${Host.has('burn') ? ' · disc' : ''} · copies</span></button>` : '') +
-            (app.readOnlyMode ? '' : `<label class="sb-card-defer" title="Crops and turns are kept on the photos, to change as often as you like, and saved into them (or exported) when you're done"><input type="checkbox" data-act="defer"${Edits.defer ? ' checked' : ''}><span>Save edits when done</span></label>`);
+            // Save edits when done, a switch; while it's on and edits are
+            // waiting, a pill: "3 edits to save · Save now" (drawPending)
+            (app.readOnlyMode ? '' : `<label class="sb-card-defer" title="Crops and turns are kept on the photos, to change as often as you like, and saved into them (or exported) when you're done"><span>Save edits when done</span><input type="checkbox" class="switch" role="switch" data-act="defer"${Edits.defer ? ' checked' : ''}></label>` +
+                '<div class="sb-card-pending" hidden></div>');
+        this.drawPending();
         // The current project is marked in the lists
         for (const box of this.boxes) {
             box.querySelectorAll('.sb-row').forEach(r => r.classList.toggle('active', this.key(r.dataset.path) === this.key(path)));
@@ -468,13 +472,23 @@ const Places = {
         if (path) items.push(['Rename…', () => this.cardAction('rename')]);
         items.push(['—']);
         if (path) items.push(['Export…', () => this.cardAction('export')]);
-        if (!this.app.readOnlyMode) items.push([(Edits.defer ? '✓ ' : '') + 'Save edits when done', async () => { await Edits.setDefer(!Edits.defer); this.drawCard(); }]);
         return items;
+    },
+
+    // The card's "3 edits to save · Save now", while Save edits when done is
+    // on and edits are waiting (Edits.updateBar asks again as they change)
+    drawPending() {
+        const box = this.el('sb-card') && this.el('sb-card').querySelector('.sb-card-pending');
+        if (!box) return;
+        const n = typeof Edits !== 'undefined' && Edits.on() ? Edits.count() : 0;
+        box.hidden = !n;
+        box.innerHTML = n ? `<button class="sb-card-save" data-act="savenow" title="Save the edits into the photos, or export edited copies">${n.toLocaleString()} edit${n === 1 ? '' : 's'} to save<b>Save now</b></button>` : '';
     },
 
     cardAction(act) {
         const path = this._currentPath;
-        if (act === 'scan') Scan.open();
+        if (act === 'savenow') Edits.saveAll();
+        else if (act === 'scan') Scan.open();
         else if (act === 'rename' && path) this.renameFolder(path);
         else if (act === 'split') Windows.split();
         else if (act === 'export' && path) Export.open({ path });
