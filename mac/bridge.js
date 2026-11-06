@@ -146,6 +146,7 @@
     // → the folder's path, or null if it never came through here
     async function folderPath(handle) {
         if (!handle || handle.kind !== 'directory') return null;
+        if (typeof handle.photosLibrary === 'string') return LIBRARY + handle.photosLibrary;
         const name = String(handle.name || '').toLowerCase();
         const nameOf = (p) => (p.split('/').filter(Boolean).pop() || '').toLowerCase();
         const look = async (list) => {
@@ -176,6 +177,84 @@
             else r = await inside(known) || await inside(all);
         }
         return r ? r.path : null;
+    }
+
+    // ---- The Photos library, read-only (photos.js) ----
+    // An album (or the whole library: id '') as a folder handle the page can
+    // read like any other, with its photos as file handles: getFile() is the
+    // photo itself (from iCloud if need be), getThumbnail(w) the library's
+    // own thumbnail, peek() its size and date without reading it. Nothing
+    // in it can be written. Its path is "photos-library:<id>".
+    const LIBRARY = 'photos-library:';
+    const SHOWN = /\.(jpe?g|png|gif|webp)$/i; // served as they are; the rest come as JPEG (photos.mm)
+    const denied = (what) => new DOMException(`${what}: the Photos library can't be changed`, 'NotAllowedError');
+    const notFound = (name) => new DOMException(`${name} isn't in this album`, 'NotFoundError');
+    const photoUrl = (kind, id) => `/__photos/${kind}/${encodeURIComponent(id)}`;
+    async function fetched(url) {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error((await r.text().catch(() => '')) || 'That photo couldn\'t be read');
+        return r.blob();
+    }
+    function libraryFile(a, name) {
+        const created = a.created || 0;
+        return {
+            kind: 'file',
+            name,
+            photosAsset: a.id,
+            async getFile() {
+                const blob = await fetched(photoUrl('full', a.id));
+                return new File([blob], name, { type: blob.type, lastModified: created });
+            },
+            getThumbnail: (w) => fetched(photoUrl('thumb', a.id) + '?w=' + Math.round(w || 320)),
+            peek: () => ({ size: a.fileSize || 0, lastModified: created, width: a.w || 0, height: a.h || 0 }),
+            async isSameEntry(o) { return !!o && o.photosAsset === a.id; },
+            async queryPermission(d) { return d && d.mode === 'readwrite' ? 'denied' : 'granted'; },
+            async requestPermission(d) { return this.queryPermission(d); },
+            async createWritable() { throw denied(name); },
+            async move() { throw denied(name); },
+            async remove() { throw denied(name); }
+        };
+    }
+    async function photosAlbum(id = '', name = 'Photos library') {
+        id = String(id || '');
+        let files = null;
+        const list = async () => {
+            if (files) return files;
+            const { assets } = await answer('photosAssets', { id });
+            // Two photos of the same name (two cameras' IMG_0001): the second is "IMG_0001 (2)"
+            const used = new Map();
+            files = assets.map(a => {
+                let n = String(a.originalFilename || 'Photo.jpg');
+                if (!SHOWN.test(n)) n = n.replace(/\.[^.]*$/, '') + '.jpg';
+                const k = n.toLowerCase();
+                const count = (used.get(k) || 0) + 1;
+                used.set(k, count);
+                if (count > 1) n = n.replace(/(\.[^.]*)?$/, ` (${count})$1`);
+                return libraryFile(a, n);
+            });
+            return files;
+        };
+        return {
+            kind: 'directory',
+            name,
+            photosLibrary: id,
+            async *entries() { for (const f of await list()) yield [f.name, f]; },
+            async *values() { for (const f of await list()) yield f; },
+            async *keys() { for (const f of await list()) yield f.name; },
+            [Symbol.asyncIterator]() { return this.entries(); },
+            async getFileHandle(n, o) {
+                if (o && o.create) throw denied(n);
+                const f = (await list()).find(x => x.name === n);
+                if (!f) throw notFound(n);
+                return f;
+            },
+            async getDirectoryHandle(n, o) { throw o && o.create ? denied(n) : notFound(n); },
+            async removeEntry(n) { throw denied(n); },
+            async resolve() { return null; },
+            async isSameEntry(o) { return !!o && o.photosLibrary === id; },
+            async queryPermission(d) { return d && d.mode === 'readwrite' ? 'denied' : 'granted'; },
+            async requestPermission(d) { return this.queryPermission(d); }
+        };
     }
 
     // ---- What the app does for jEditor ----
@@ -238,15 +317,28 @@
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: mac.platform,
-        features: ['reveal', 'windows', 'places'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : [], ['themes']),
+        features: ['reveal', 'windows', 'places'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : [], ['themes'], mac.platform === 'mac' && mac.photos ? ['photosLibrary'] : []),
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage
         async dataDir() {
             const root = await navigator.storage.getDirectory();
             return root.getDirectoryHandle('jeditor-data', { create: true });
         },
-        // Where a folder handle is on disk (null: not known)
+        // Where a folder handle is on disk (null: not known); a Photos
+        // library album's is "photos-library:<id>"
         folderPath,
+        // ---- The Photos library (photosLibrary), read-only ----
+        // Whether jEditor may see it: 'granted', 'limited', 'denied',
+        // 'restricted' or 'ask'; ask: true has macOS ask first
+        async photosAccess(ask = false) {
+            return (await answer('photosAccess', { ask: !!ask })).status;
+        },
+        // What's in it → [{ id, kind: favourites | recent | album, name, count }]
+        async photosCollections() {
+            return (await answer('photosLibrary')).collections;
+        },
+        // An album ('' : the whole library) as a read-only folder handle
+        photosAlbum,
         // A folder handle for a path, with permission to edit it
         async folderHandle(path) {
             const ok = (await answer('exists', { paths: [path] })).exists[0];

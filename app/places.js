@@ -11,7 +11,10 @@
 //   Pinned     folders pinned here that aren't projects, and those pinned
 //              in Explorer's Quick Access. They open out like Explorer's.
 //   This PC    the drives. A USB drive plugged in while jEditor is open is
-//              marked New, and can be ejected from here.
+//              marked New, and can be ejected from here. On a Mac (Locations)
+//              the Photos library too (photosLibrary): it opens out like a
+//              drive to Favourites, Recently added and the albums, and each
+//              opens as the project, read-only.
 //
 // Clicking a folder opens it as the project, straight away; the caret opens
 // it out to show what's inside. A drive opens out when clicked.
@@ -43,6 +46,10 @@ const Places = {
         disk: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M5.5 13 8 4h8l2.5 9"/><path d="M17 17h.01"/></svg>',
         network: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="7" rx="2"/><path d="M7 6.5h.01"/><path d="M12 10v5"/><path d="M4 19h16"/><circle cx="12" cy="17" r="2"/></svg>',
         export: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M20 15v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4"/></svg>',
+        photos: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7.5" r="3.5"/><circle cx="12" cy="16.5" r="3.5"/><circle cx="7.5" cy="12" r="3.5"/><circle cx="16.5" cy="12" r="3.5"/></svg>',
+        album: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 3h10"/><circle cx="9" cy="10" r="1.5"/><path d="m21 15-4-4-9 8"/></svg>',
+        heart: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/></svg>',
+        clock: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
         cd: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/></svg>',
         caret: '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1.5 6.5 5 3 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
         eject: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15h14L12 7z"/><path d="M5 19h14"/></svg>',
@@ -71,6 +78,10 @@ const Places = {
     newWindowClick(e) {
         return Host.has('windows') && (e.button === 1 || (Host.mac() ? e.metaKey : e.ctrlKey));
     },
+    // The Photos library (an album's path is "photos-library:<id>"; the
+    // whole library's is "photos-library:")
+    LIBRARY: 'photos-library:',
+    isLibrary(path) { return String(path || '').startsWith(this.LIBRARY); },
     esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); },
 
     init(app) {
@@ -92,7 +103,8 @@ const Places = {
                 if (!row || !row.dataset.path) return;
                 e.preventDefault();
                 e.stopPropagation();
-                this.app.openContextMenu(this.rowItems(row), e.clientX, e.clientY);
+                const items = this.rowItems(row);
+                if (items.length) this.app.openContextMenu(items, e.clientX, e.clientY);
             });
             // Esc in the search box: emptied and hidden
             box.addEventListener('keydown', (e) => {
@@ -231,7 +243,7 @@ const Places = {
         const elsewhere = await this.elsewhereRows();
 
         const pins = await this.pinRows();
-        const drives = await this.driveRows();
+        const drives = await this.driveRows() + await this.libraryRows();
         return section('projects', 'Projects',
             dir ? `<button class="sb-sec-link" data-act="choose" title="${this.esc(dir)} — click to choose another folder">${this.esc(dirName)}</button>` +
                 `<button class="sb-sec-icon${searching ? ' on' : ''}" data-act="search" title="Search projects" aria-label="Search projects" aria-pressed="${searching}">${this.icons.search}</button>` +
@@ -366,6 +378,54 @@ const Places = {
         return html;
     },
 
+    // The Photos library, under the drives: opened out, its albums. The
+    // first time it's opened out macOS asks whether jEditor may see it.
+    async libraryRows() {
+        if (!Host.has('photosLibrary')) return '';
+        const root = this.LIBRARY;
+        const open = this.expanded.has(this.key(root));
+        let html = this.row({
+            path: root, name: 'Photos library', icon: this.icons.photos, caret: true, open, act: 'toggle', drive: true,
+            title: 'The Photos library: its albums, to look through (read-only)',
+            extra: `<button class="sb-open" data-act="open" title="Open the whole Photos library (or double-click it)">Open</button>`
+        });
+        if (!open) return html;
+        const native = this.native();
+        let status = await native.photosAccess(false).catch(() => 'denied');
+        if (status === 'ask' && this._libraryAsked !== true) {
+            this._libraryAsked = true;
+            status = await native.photosAccess(true).catch(() => 'denied');
+        }
+        if (status !== 'granted' && status !== 'limited') {
+            return html + `<div class="sb-empty" style="--depth:1">${status === 'ask' ? 'macOS hasn\'t said yet whether jEditor may see it' : 'jEditor isn\'t allowed to see it'} · <button class="sb-sec-link" data-act="library-settings">${status === 'ask' ? 'Allow…' : 'Open Settings'}</button></div>`;
+        }
+        if (!this.libraryList) {
+            try { this.libraryList = await native.photosCollections(); } catch (e) { this.libraryList = []; }
+        }
+        const names = { favourites: 'Favourites', recent: 'Recently added' };
+        const icons = { favourites: this.icons.heart, recent: this.icons.clock };
+        for (const c of this.libraryList) {
+            html += this.row({
+                path: root + c.id, name: names[c.kind] || c.name, icon: icons[c.kind] || this.icons.album, depth: 1, drive: true,
+                meta: c.count ? c.count.toLocaleString() : '', title: `${names[c.kind] || c.name}: ${c.count.toLocaleString()} photo${c.count === 1 ? '' : 's'} (read-only)`
+            });
+        }
+        if (!this.libraryList.length) html += `<div class="sb-empty" style="--depth:1">No albums</div>`;
+        return html;
+    },
+
+    // An album of the Photos library (its path), opened as the project
+    async openLibrary(path) {
+        const id = path.slice(this.LIBRARY.length);
+        const c = (this.libraryList || []).find(x => x.id === id);
+        const name = !id ? 'Photos library' : c ? ({ favourites: 'Favourites', recent: 'Recently added' }[c.kind] || c.name) : 'Album';
+        try {
+            await this.app.openDirectory(await this.native().photosAlbum(id, name), { library: true });
+        } catch (e) {
+            UI.alert({ title: 'Couldn\'t open it', message: e.message });
+        }
+    },
+
     // "12 GB", "850 MB": short enough for a row
     short(n) {
         if (!(n >= 0)) return '';
@@ -428,8 +488,10 @@ const Places = {
             card.innerHTML = '';
             return;
         }
-        const path = await FolderCache.orderPath(app).catch(() => null);
-        this._currentPath = path;
+        const where = await FolderCache.orderPath(app).catch(() => null);
+        this._currentPath = where;
+        // The Photos library: the album's name, nothing to rename, show or export
+        const path = this.isLibrary(where) ? null : where;
         let bytes = 0;
         for (const f of app.files) bytes += f.size || 0;
         const n = app.files.length;
@@ -442,6 +504,7 @@ const Places = {
             // in this menu (cardItems). The themes show the buttons instead
             `<button class="btn ghost icon sm sb-card-more" data-act="more" title="More: ${Host.has('scan') ? 'scan, ' : ''}${path && Host.has('reveal') ? Host.words().files + ', ' : ''}export" aria-label="More" aria-haspopup="menu">${this.icons.more}</button>` +
             (path ? `<div class="sb-card-path" title="${this.esc(path)}">${this.esc(path)}</div>` : '') +
+            (app.library ? `<div class="sb-card-path">Photos library · read-only</div>` : '') +
             `<div class="sb-card-meta">${n.toLocaleString()} photo${n === 1 ? '' : 's'} · ${app.formatBytes(bytes)}</div>` +
             `<div class="sb-card-btns">` +
             (Host.has('scan') ? `<button class="btn primary sm" data-act="scan">${this.icons.scan}Scan</button>` : '') +
@@ -458,13 +521,13 @@ const Places = {
         this.drawPending();
         // The current project is marked in the lists
         for (const box of this.boxes) {
-            box.querySelectorAll('.sb-row').forEach(r => r.classList.toggle('active', this.key(r.dataset.path) === this.key(path)));
+            box.querySelectorAll('.sb-row').forEach(r => r.classList.toggle('active', this.key(r.dataset.path) === this.key(where)));
         }
     },
 
     // The card's buttons as a menu: the "…" by its name, or a right-click
     cardItems() {
-        const path = this._currentPath, items = [];
+        const path = this.isLibrary(this._currentPath) ? null : this._currentPath, items = [];
         if (Host.has('scan')) items.push(['Scan…', () => this.cardAction('scan')]);
         if (path && Host.has('reveal')) items.push([Host.say('Show in {files}'), () => this.cardAction('reveal')]);
         if (Host.has('windows')) items.push(['Split with another window', () => this.cardAction('split')]);
@@ -486,7 +549,7 @@ const Places = {
     },
 
     cardAction(act) {
-        const path = this._currentPath;
+        const path = this.isLibrary(this._currentPath) ? null : this._currentPath;
         if (act === 'savenow') Edits.saveAll();
         else if (act === 'scan') Scan.open();
         else if (act === 'rename' && path) this.renameFolder(path);
@@ -523,6 +586,7 @@ const Places = {
         if (act === 'section') return this.toggleSection(b.dataset.sec);
         if (act === 'choose') return this.chooseFolder();
         if (act === 'newproject') return this.newProject();
+        if (act === 'library-settings') return this.librarySettings();
         if (act === 'all') { this.showAll = !this.showAll; return this.drawProjects(); }
         if (act === 'search') return this.toggleSearch(b);
         if (!path) return;
@@ -531,7 +595,7 @@ const Places = {
         if (act === 'toggle') {
             const k = this.key(path);
             if (this.expanded.has(k)) this.expanded.delete(k);
-            else { this.expanded.add(k); this.listings.delete(k); }
+            else { this.expanded.add(k); this.listings.delete(k); if (this.isLibrary(path)) this.libraryList = null; }
             this.fresh.delete(k);
             return this.draw();
         }
@@ -572,9 +636,21 @@ const Places = {
         await this.refresh();
     },
 
+    // Not allowed to see the Photos library: macOS asks again, or (once
+    // it's said no) System Settings → Privacy & Security → Photos
+    async librarySettings() {
+        const native = this.native();
+        const status = await native.photosAccess(true).catch(() => 'denied');
+        if (status !== 'granted' && status !== 'limited') await native.openPermissionSettings('photos').catch(() => { });
+        this.libraryList = null;
+        this.draw();
+    },
+
     // A sidebar folder's right-click menu
     rowItems(row) {
         const path = row.dataset.path;
+        // The Photos library's: only opening it (it isn't a folder)
+        if (this.isLibrary(path)) return this.key(path) === this.key(this.current()) ? [] : [['Open as the project', () => this.open(path)]];
         const name = row.querySelector('.fr-name').textContent;
         const drive = this.isDrive(path);
         const pinned = this.pins().some(p => this.key(p.path) === this.key(path));
@@ -667,6 +743,7 @@ const Places = {
 
     async open(path) {
         if (this.key(path) === this.key(this.current())) return;
+        if (this.isLibrary(path)) return this.openLibrary(path);
         const ok = await this.native().openPath(path).catch(() => false);
         if (!ok) {
             this.app.showToast(`Couldn't open ${path}: it isn't there any more`, 4000);
@@ -706,7 +783,7 @@ const Places = {
         const start = (e) => {
             const row = e.target.closest && e.target.closest('.sb-row[data-path], #folder-tree .fr-row[data-folder-path]');
             // (not a drive itself)
-            if (!row || (this.drives || []).some(d => this.key(d.path) === this.key(row.dataset.path))) return;
+            if (!row || (this.drives || []).some(d => this.key(d.path) === this.key(row.dataset.path)) || this.isLibrary(row.dataset.path)) return;
             const path = row.dataset.path !== undefined ? row.dataset.path : this.projectPath(row.dataset.folderPath);
             if (!path) return;
             this.dragging = path;
@@ -772,6 +849,7 @@ const Places = {
         const from = this.dragging;
         if (row) {
             const dest = row.dataset.path;
+            if (this.isLibrary(dest)) return null; // read-only
             if (from && (this.within(dest, from) || this.key(this.parentOf(from)) === this.key(dest.replace(/[\\/]+$/, '')))) return null;
             return { copy: dest, el: row };
         }

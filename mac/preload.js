@@ -12,5 +12,7 @@ contextBridge.exposeInMainWorld('jeditorMac', {
     nativeToolbar: process.argv.includes('--jeditor-native-toolbar'),
     // 'mac' or 'linux', and whether this copy can update itself (main.js)
     platform: process.argv.includes('--jeditor-linux') ? 'linux' : 'mac',
-    updates: !process.argv.includes('--jeditor-no-updates')
+    updates: !process.argv.includes('--jeditor-no-updates'),
+    // The Photos library: the native module, or the tests' stand-in (photos.js)
+    photos: process.argv.includes('--jeditor-photos')
 });

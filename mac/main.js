@@ -23,6 +23,7 @@ const os = require('os');
 const path = require('path');
 const places = require('./places');
 const toolbar = require('./native'); // null without the native module
+const photos = require('./photos'); // the Photos library (photos.library: null without one)
 
 // macOS 26's own toolbar, in Liquid Glass, for the window's top row (the
 // page's pills mirror into it); before 26, or without the module, the
@@ -190,6 +191,7 @@ function serve() {
         if (url.host !== HOST) return new Response('Not found', { status: 404 });
         let rel = decodeURIComponent(url.pathname);
         if (rel === '/__host/bridge.js') return fileResponse(path.join(__dirname, 'bridge.js'));
+        if (rel.startsWith('/__photos/')) return (await photos.respond(url)) || new Response('Not found', { status: 404 });
         if (rel === '/') rel = '/index.html';
         const file = path.join(UI, rel);
         if (!file.startsWith(UI + path.sep)) return new Response('Not found', { status: 404 });
@@ -478,7 +480,8 @@ async function openDmg(file, got, total, why) {
 // doesn't open on its own (the tests).
 const PRIVACY = {
     files: 'x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders',
-    full: 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles'
+    full: 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles',
+    photos: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Photos'
 };
 const readable = (p) => fs.promises.readdir(p).then(() => true, () => false);
 
@@ -505,19 +508,36 @@ async function permissionRows() {
         return (await Promise.all(paths.map(readable))).every(Boolean) ? 'granted' : 'denied';
     };
     const drives = await removableDrives();
+    // The Photos library has its own question, Full Disk Access or not
+    const library = photos.permissionState();
     return [
         { id: 'folders', state: await check('folders', homeFolders()) },
         { id: 'volumes', state: !drives.length && !full ? 'later' : await check('volumes', drives) },
+        ...(library ? [{ id: 'photos', state: library }] : []),
         { id: 'full', state: full ? 'granted' : 'off' }
     ];
 }
 
 // The system's own question comes up as each is first read
 async function askPermission(id) {
+    if (id === 'photos') return askPhotos();
     const paths = id === 'folders' ? homeFolders() : id === 'volumes' ? await removableDrives() : [];
     for (const p of paths) await readable(p);
     settings.asked = { ...(settings.asked || {}), [id]: true };
     saveSettings();
+}
+
+// macOS's question for the Photos library → its answer ('granted', 'limited', 'denied', …)
+async function askPhotos() {
+    const lib = photos.library;
+    if (!lib) return 'denied';
+    const now = lib.authStatus();
+    if (now !== 'ask') return now;
+    if (!photos.mayAsk(app.isPackaged)) {
+        log('warn', 'Photos library: only the built app can ask for access (it has NSPhotoLibraryUsageDescription)');
+        return now;
+    }
+    return lib.requestAuth();
 }
 
 // ---- What the page asks for (bridge.js) ----
@@ -552,8 +572,18 @@ async function handle(rec, type, data) {
             await askPermission(data.id);
             return { ok: true };
         case 'openPermissionSettings':
-            await shell.openExternal(data.id === 'full' ? PRIVACY.full : PRIVACY.files);
+            await shell.openExternal(data.id === 'full' ? PRIVACY.full : data.id === 'photos' ? PRIVACY.photos : PRIVACY.files);
             return { ok: true };
+        // The Photos library (photos.js): whether jEditor may see it (ask:
+        // macOS asks now), what's in it, and an album's photos
+        case 'photosAccess':
+            return { status: data.ask ? await askPhotos() : (photos.library ? photos.library.authStatus() : 'denied') };
+        case 'photosLibrary':
+            if (!photos.library) throw new Error('No Photos library here');
+            return { collections: await photos.library.collections() };
+        case 'photosAssets':
+            if (!photos.library) throw new Error('No Photos library here');
+            return { assets: await photos.library.assets(String(data.id || '')) };
         case 'permissionsSeen':
             settings.permissionsSeen = true;
             saveSettings();
@@ -1027,6 +1057,7 @@ function createWindow(at = null) {
             additionalArguments: [
                 ...(NATIVE_TOOLBAR ? ['--jeditor-native-toolbar'] : []),
                 ...(LINUX ? ['--jeditor-linux'] : []),
+                ...(photos.library && !LINUX ? ['--jeditor-photos'] : []),
                 ...(LINUX && !APPIMAGE && !PACKAGE && !process.env.JEDITOR_RELEASES ? ['--jeditor-no-updates'] : [])
             ]
         }
