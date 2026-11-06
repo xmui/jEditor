@@ -130,6 +130,7 @@
 :root[data-skin="snow"] #btn-auto-crop { --g: url(../snow/glyphs/autocrop-dark.svg); }
 :root[data-skin="snow"] #btn-move-to { --g: url(../snow/glyphs/move-dark.svg); }
 :root[data-skin="snow"] #btn-batch-rename { --g: url(../snow/glyphs/rename-dark.svg); }
+:root[data-skin="snow"] #btn-sync { --g: url(../snow/glyphs/adjust-dark.svg); }
 :root[data-skin="snow"] #btn-trash { --g: url(../snow/glyphs/trash-dark.svg); }
 :root[data-skin="snow"] #btn-prev { --g: url(../snow/glyphs/prev-dark.svg); }
 :root[data-skin="snow"] #btn-next { --g: url(../snow/glyphs/next-dark.svg); }

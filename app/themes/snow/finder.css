@@ -623,6 +623,7 @@
 :root[data-skin="snow"] #btn-auto-crop { --g: url(glyphs/autocrop.svg); }
 :root[data-skin="snow"] #btn-move-to { --g: url(glyphs/move.svg); }
 :root[data-skin="snow"] #btn-batch-rename { --g: url(glyphs/rename.svg); }
+:root[data-skin="snow"] #btn-sync { --g: url(glyphs/adjust.svg); }
 :root[data-skin="snow"] #btn-trash { --g: url(glyphs/trash.svg); }
 :root[data-skin="snow"] #btn-prev { --g: url(glyphs/prev.svg); }
 :root[data-skin="snow"] #btn-next { --g: url(glyphs/next.svg); }

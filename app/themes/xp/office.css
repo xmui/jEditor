@@ -367,6 +367,7 @@
 :root[data-skin="xp"] #btn-auto-crop { --ico: url(../xp/icons/autocrop16.svg); }
 :root[data-skin="xp"] #btn-move-to { --ico: url(../xp/icons/go-jump16.png); }
 :root[data-skin="xp"] #btn-batch-rename { --ico: url(../xp/icons/accessories-text-editor16.png); }
+:root[data-skin="xp"] #btn-sync { --ico: url(../xp/icons/adjust16.png); }
 :root[data-skin="xp"] #btn-export { --ico: url(../xp/icons/more16.svg); }
 :root[data-skin="xp"] #btn-trash { --ico: url(../xp/icons/user-trash16.png); }
 :root[data-skin="xp"] .selection-bar .tb-btn.danger { color: var(--o-link); }
