@@ -8288,13 +8288,6 @@ button.sb-card-name:focus-visible .sb-card-edit {
     transform: none;
 }
 
-.sb-new {
-    display: flex;
-    gap: 6px;
-    width: 100%;
-    justify-content: center;
-    margin: 2px 0 var(--sp-2);
-}
 
 .sb-sec-link {
     margin-left: auto;
@@ -8315,9 +8308,49 @@ button.sb-card-name:focus-visible .sb-card-edit {
     text-decoration: underline;
 }
 
+/* Search and New project: icons in the Projects heading */
+.sb-sec-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: var(--r-sm, 6px);
+    background: none;
+    color: var(--text-2);
+    cursor: pointer;
+}
+
+.sb-sec-link + .sb-sec-icon,
+.sb-sec-btn + .sb-sec-icon {
+    margin-left: auto;
+}
+
+.sb-sec-link + .sb-sec-icon {
+    margin-left: 2px;
+}
+
+.sb-sec-icon .i {
+    width: 15px;
+    height: 15px;
+}
+
+.sb-sec-icon:hover,
+.sb-sec-icon.on {
+    color: var(--text-1);
+    background: var(--bg-hover);
+}
+
 .sb-search {
     width: 100%;
     margin: 2px 0 var(--sp-1);
+}
+
+.sb-search[hidden] {
+    display: none;
 }
 
 .sb-sub {
@@ -8577,7 +8610,13 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 
 .sb-more {
     margin: 2px var(--sp-2) var(--sp-1);
+    color: var(--accent-text);
     font-size: var(--fs-small);
+    text-decoration: none;
+}
+
+.sb-more.open .i {
+    transform: rotate(180deg);
 }
 
 .start-places {
