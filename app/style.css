@@ -3819,6 +3819,137 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     flex-direction: column;
 }
 
+/* Copies: what they're for as a row of glass pills, what it sets as chips
+   under it (Custom: the fields), a sentence, pills that open menus, and
+   the folder's name */
+.ex-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+}
+
+.ex-presets > label {
+    position: relative;
+    cursor: pointer;
+}
+
+.ex-presets input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.ex-presets span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 var(--sp-3);
+    border-radius: var(--r-pill);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    color: var(--text-1);
+    font-size: var(--fs-small);
+}
+
+.ex-presets span .i {
+    color: var(--text-2);
+}
+
+.ex-presets label:hover span {
+    background: var(--bg-hover);
+}
+
+.ex-presets input:checked + span {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent, #fff);
+}
+
+.ex-presets input:checked + span .i {
+    color: inherit;
+}
+
+.ex-presets input:focus-visible + span {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.ex-under {
+    padding: var(--sp-3);
+    border-radius: var(--r-md);
+    background: var(--bg-sunken);
+    border: 1px solid var(--border-subtle);
+}
+
+.ex-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.ex-chip {
+    padding: 2px var(--sp-2);
+    border-radius: var(--r-pill);
+    background: var(--bg-hover);
+    color: var(--text-2);
+    font-size: var(--fs-caption);
+}
+
+.ex-custom {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--sp-2) var(--sp-3);
+}
+
+.ex-cf {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    color: var(--text-2);
+    font-size: var(--fs-caption);
+}
+
+.ex-cf .field {
+    width: 100%;
+}
+
+.ex-sum b {
+    color: var(--text-1);
+    font-weight: var(--fw-semibold);
+}
+
+.ex-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+}
+
+.btn.ex-pill {
+    gap: var(--sp-1);
+    padding: 0 var(--sp-2) 0 var(--sp-3);
+    border-radius: var(--r-pill);
+    background: var(--glass-bg);
+    border-color: var(--glass-border);
+    box-shadow: var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+}
+
+.btn.ex-pill .i {
+    color: var(--text-2);
+}
+
+@media (max-width: 520px) {
+    .ex-custom {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Convert (convert.js): the format, the quality with a close-up, and
    what it does to storage; then dots for the photos as they're converted */
 .cv-card {

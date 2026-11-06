@@ -2130,38 +2130,65 @@ async function newPage(context, baseUrl, host = null) {
             out.noJeditor = !!beta && !(await beta.getDirectoryHandle('.jeditor').then(() => true, () => false));
             out.ejected = window.__ejected || null;
             // Copies of the selected photos, smaller, into the project's export folder
+            const pill = (k) => $('ex-body').querySelector(`[data-pill="${k}"]`);
+            const menu = (k) => { pill(k).click(); return [...document.querySelectorAll('#context-menu button')]; };
+            const choose = (k, re) => menu(k).find(b => re.test(b.textContent)).click();
             Export.open({ files: [f('photo1.jpg')] });
             out.copiesTab = [...$('ex-tabs').querySelectorAll('button.active')].map(b => b.textContent).join();
-            out.which = [...$('ex-body').querySelectorAll('input[name="ex-which"]')].map(i => i.parentElement.textContent.trim() + (i.checked ? '*' : '')).join(' | ');
+            out.presets = [...$('ex-body').querySelectorAll('input[name="ex-preset"]')].map(i => i.parentElement.textContent.trim() + (i.checked ? '*' : '')).join(' | ');
+            out.pills = [...$('ex-body').querySelectorAll('.ex-pill')].map(b => b.textContent.trim()).join(' | ');
+            out.sum = $('ex-body').querySelector('.ex-sum').textContent;
+            out.folder = $('ex-folder').value;
+            out.which = menu('which').map(b => b.textContent).join(' | ');
+            app.closeContextMenu();
             // (Other…: a size typed)
-            $('ex-size').value = 'custom';
+            const prompt0 = UI.prompt;
+            UI.prompt = async () => '100';
+            [...$('ex-body').querySelectorAll('input[name="ex-preset"]')].find(i => i.value === 'custom').click();
+            $('ex-size').value = 'other';
             $('ex-size').dispatchEvent(new Event('change', { bubbles: true }));
-            $('ex-size-px').value = '100';
-            $('ex-size-px').dispatchEvent(new Event('input', { bubbles: true }));
+            await wait(() => $('ex-size') && $('ex-size').value === '100');
+            UI.prompt = prompt0;
+            out.custom = $('ex-body').querySelector('input[name="ex-preset"]:checked').value;
             out.copiesGo = $('ex-go').textContent;
             $('ex-go').click();
-            await wait(() => /Exported 1 to "jEditor Export"/.test(toasts()));
-            const exported = await (await dir.getDirectoryHandle('jEditor Export')).getFileHandle('photo1.jpg').then(h => h.getFile());
+            await wait(() => /Exported 1 to "Beta export"/.test(toasts()));
+            const exported = await (await dir.getDirectoryHandle('Beta export')).getFileHandle('photo1.jpg').then(h => h.getFile());
             const bmp = await createImageBitmap(exported);
             out.size = Math.max(bmp.width, bmp.height);
-            // The starred, onto the USB drive
+            // Left out of the project: Rescan doesn't list them
+            out.leftOut = Watch.skipDir('Beta export') && !Watch.skipDir('Beta');
+            // Remembered: Custom and its size, not the drive
+            out.kept = JSON.parse(localStorage.getItem('jeditor.export'));
+            // Email: JPEG at 80%, 2048 px, sRGB, without the location; the folder named after it
             Export.open({ tab: 'copies' });
-            [...$('ex-body').querySelectorAll('input[name="ex-which"]')].find(i => i.value === 'star').click();
-            [...$('ex-body').querySelectorAll('input[name="ex-where"]')].find(i => i.value.startsWith('drive:')).click();
+            [...$('ex-body').querySelectorAll('input[name="ex-preset"]')].find(i => i.value === 'email').click();
+            out.web = [...$('ex-body').querySelectorAll('.ex-chip')].map(b => b.textContent).join(' | ');
+            out.webMore = Export.meta + ' ' + Export.colour + ' ' + $('ex-folder').value + ' ' + menu('where').some(b => /Leave them out/.test(b.textContent));
+            app.closeContextMenu();
+            $('ex-folder').value = 'a/b';
+            $('ex-folder').dispatchEvent(new Event('input', { bubbles: true }));
+            out.badName = $('ex-go').disabled && /can't contain/.test($('ex-note').textContent);
+            $('ex-cancel').click();
+            // The starred, onto the USB drive, numbered
+            Export.open({ tab: 'copies' });
+            choose('which', /starred/);
+            choose('where', /USB drive/);
+            choose('names', /^Numbered/);
             out.starGo = $('ex-go').textContent;
+            out.starSum = $('ex-body').querySelector('.ex-sum').textContent;
             // Eject when done, for copies onto a drive too (off, remembered from the copy above: on again)
             out.copiesEjectOff = !!$('ex-eject') && !$('ex-eject').checked;
             $('ex-eject').click();
             $('ex-go').click();
             await wait(() => /Exported 2 to USB drive/.test(toasts()));
-            const onUsb = await (await (await opfs('usb-E')).getDirectoryHandle('jEditor Export')).getDirectoryHandle('Beta');
+            const onUsb = await (await opfs('usb-E')).getDirectoryHandle('Beta – to email');
             const names = [];
             for await (const k of onUsb.keys()) names.push(k);
             out.onUsb = names.sort().join();
             await wait(() => window.__ejected);
             out.copiesEjected = window.__ejected;
-            // Remembered: the size, not the drive
-            out.kept = JSON.parse(localStorage.getItem('jeditor.export'));
+            out.keptWhere = JSON.parse(localStorage.getItem('jeditor.export')).where;
             // ⋯ on the selection bar: Export… opens it on Copies
             app.selection = new Set([f('photo1.jpg'), f('photo2.jpg')]);
             const item = app.selectionMoreItems().find(i => /^Export/.test(i[0]));
@@ -2181,8 +2208,7 @@ async function newPage(context, baseUrl, host = null) {
             out.usbMenu = usbItems.map(i => i[0]).filter(t => /Beta/.test(t)).join(' | ');
             usbItems.find(i => /^Export Beta to/.test(i[0]))[1]();
             await wait(() => !$('export-panel').classList.contains('hidden'));
-            out.fromDrive = [...$('ex-tabs').querySelectorAll('button.active')].map(b => b.textContent).join() + ' / ' +
-                ([...$('ex-body').querySelectorAll('input[name="ex-where"]')].find(i => i.checked) || {}).value;
+            out.fromDrive = [...$('ex-tabs').querySelectorAll('button.active')].map(b => b.textContent).join() + ' / ' + Export.where;
             $('ex-cancel').click();
             usbItems.find(i => /^Copy Beta to/.test(i[0]))[1]();
             await wait(() => !$('export-panel').classList.contains('hidden'));
@@ -2204,10 +2230,12 @@ async function newPage(context, baseUrl, host = null) {
         check('... USB: the drive, its room and whether it fits; Eject after offered', /USB drive \(E:\)/.test(r.usb) && /free of/.test(r.usb) && /Fits/.test(r.usb) && /Eject when done/.test(r.usb) && r.usbGo === 'Copy to USB drive (E:)', JSON.stringify([r.usb, r.usbGo]));
         check('... its flags and edits: an option, off to start with; no .jeditor folder on the drive', r.withDataOff && r.noJeditor, JSON.stringify([r.withDataOff, r.noJeditor]));
         check('... copied in one step (no more questions), not ejected when that\'s off', r.copied && !r.askedAgain && !r.ejected, JSON.stringify(r));
-        check('... Copies: opened with the photos selected, smaller, into "jEditor Export"', r.copiesTab === 'Copies' && /photo selected\*/.test(r.which) && /2 starred/.test(r.which) && r.copiesGo === 'Export 1 copy' && r.size === 100, JSON.stringify(r));
-        check('... the starred onto the USB drive, in its own folder', r.starGo === 'Export 2 copies' && r.onUsb === 'photo2.jpg,photo3.jpg', JSON.stringify([r.starGo, r.onUsb]));
+        check('... Copies: presets, a sentence, pills, the folder named after the preset', r.copiesTab === 'Copies' && r.presets === 'Full quality* | Email | Web | Social | Print | Archive | Custom' && r.pills === '1 selected | Keep names | In this project' && /^1 photo, about .+, into Beta – full quality in this project\.$/.test(r.sum) && r.folder === 'Beta – full quality', JSON.stringify([r.presets, r.pills, r.sum, r.folder]));
+        check('... the photos selected, a size typed (Custom), into "Beta export", left out of the project', /✓ The photo selected/.test(r.which) && /2 starred/.test(r.which) && r.custom === 'custom' && r.copiesGo === 'Export 1 copy' && r.size === 100 && r.leftOut, JSON.stringify(r));
+        check('... the starred onto the USB drive, numbered, in their own folder', r.starGo === 'Export 2 copies' && /on USB drive/.test(r.starSum) && r.onUsb === 'Beta – to email 001.jpg,Beta – to email 002.jpg', JSON.stringify([r.starGo, r.starSum, r.onUsb]));
         check('... Eject when done for copies onto a drive (remembered), and it ejects', r.copiesEjectOff && r.copiesEjected === 'E:\\', JSON.stringify([r.copiesEjectOff, r.copiesEjected]));
-        check('... the size is remembered, a drive isn\'t', r.kept.size === 100 && r.kept.where === 'project', JSON.stringify(r.kept));
+        check('... Email: JPEG at 80%, 2048 px, sRGB, no location, its own folder; Leave out is in Where; a bad folder name stops it', r.web === 'JPEG 80% | 2,048 px | sRGB | No location' && r.webMore === 'nogps srgb Beta – to email true' && r.badName, JSON.stringify([r.web, r.webMore, r.badName]));
+        check('... Custom is remembered, a drive isn\'t', r.kept.preset === 'custom' && r.kept.custom.size === 100 && r.keptWhere === 'project', JSON.stringify(r.kept));
         check('... ⋯ on the selection bar opens it, on the selection', r.menu === 'Export 2…' && r.fromMenu === 'Export 2 photos / Export 2 copies' && r.closed, JSON.stringify([r.menu, r.fromMenu]));
         check('right-click a USB drive: Export or Copy the project to it, each opening Export there', r.usbMenu === 'Export Beta to USB drive (E:)… | Copy Beta to USB drive (E:)…' && r.fromDrive === 'Copies / drive:E:\\' && r.copyFromDrive === 'USB drive or card / Copy to USB drive (E:)', JSON.stringify([r.usbMenu, r.fromDrive, r.copyFromDrive]));
         check('right-click a disc drive: Burn the project, with that drive\'s burner', r.discMenu === 'Burn Beta to a disc…' && r.burnerPicked === 'b1', JSON.stringify([r.discMenu, r.burnerPicked]));
