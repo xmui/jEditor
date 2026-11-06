@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // jEditor's editing tools, in headless Chromium: spot and dust removal
 // (retouch.js, adjust-spots.js), subject and sky masks, RAW previews, Paint,
-// a new blank image (blank.js), the modes (modes.js), crop's sliding sides,
+// zooming in Adjust (adjust.js), a new blank image (blank.js), the modes (modes.js), crop's sliding sides,
 // the wheel the way a Mac does it (wheel.js) and the themes (themes.js). Run by `npm test` after the UI suite; on its own:
 //   node test/edit.test.js [name …]     (only the sections named)
 
@@ -277,6 +277,176 @@ const PROJECT = `
     }
 
     // ---- Sync: one photo's settings onto the rest (adjust-sync.js) ----
+    // ---- Zoom in Adjust ----
+    if (wanted('zoom')) {
+        console.log('zoom in Adjust (adjust.js)');
+        const { page, issues } = await open();
+        const z = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                // Bigger than the working copy (EDGE), with fine detail: a
+                // one-pixel checker on the left, flat grey on the right
+                const W = 4000, H = 2600;
+                const c = document.createElement('canvas'); c.width = W; c.height = H;
+                const g = c.getContext('2d'), img = g.createImageData(W, H);
+                for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+                    const i = (y * W + x) * 4, v = x < W / 2 ? ((x + y) & 1 ? 200 : 60) : 128;
+                    img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
+                }
+                g.putImageData(img, 0, 0);
+                await openProject('zoomy', { 'big.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                step = 'open Adjust';
+                pressKey('e');
+                await until(() => Adjust.ready);
+                await sleep(100);
+                const chip = (id) => document.getElementById(id).getAttribute('aria-pressed') === 'true';
+                const level = document.getElementById('adj-zoom-level');
+                out.fit = [Adjust.fitted, chip('adj-zoom-fit'), chip('adj-zoom-100'), level.classList.contains('hidden'), Adjust.w < W];
+                step = 'Ctrl+1';
+                pressKey('1', { ctrlKey: true });
+                const cr = () => Adjust.canvas.getBoundingClientRect();
+                out.at100 = [Adjust.fitted, Math.round(Adjust.view.z * 1000) / 1000, Math.round(cr().width), chip('adj-zoom-100'), chip('adj-zoom-fit'), level.classList.contains('hidden')];
+                // Sharp: the part on screen from the full-size photo, one of
+                // its pixels to one screen pixel, the checker still there
+                step = 'sharp';
+                const sharp = document.getElementById('adj-sharp');
+                await until(() => !sharp.classList.contains('hidden') && Adjust._sharp);
+                const s = Adjust._sharp, sr = sharp.getBoundingClientRect();
+                out.sharpSize = [s.FW, s.FH, sharp.width === s.r.w, Math.abs(sr.width - s.r.w) < 1];
+                const grab = (cv, x, y, w, h) => {
+                    const t = document.createElement('canvas'); t.width = w; t.height = h;
+                    t.getContext('2d').drawImage(cv, x, y, w, h, 0, 0, w, h);
+                    return t.getContext('2d').getImageData(0, 0, w, h).data;
+                };
+                const contrast = (d) => { let m = 0; for (let i = 4; i < d.length; i += 4) m += Math.abs(d[i] - d[i - 4]); return m / (d.length / 4 - 1); };
+                const mean = (d) => { let m = 0; for (let i = 0; i < d.length; i += 4) m += d[i]; return m / (d.length / 4); };
+                // Where the checker is on screen, in the sharp part's pixels
+                // and the working copy's
+                const stage = document.getElementById('adj-stage').getBoundingClientRect();
+                const atX = stage.left + 40, atY = stage.top + 40;
+                const sx = Math.round((atX - sr.left) / sr.width * sharp.width), sy = Math.round((atY - sr.top) / sr.height * sharp.height);
+                const wx = Math.round((atX - cr().left) / cr().width * Adjust.canvas.width), wy = Math.round((atY - cr().top) / cr().height * Adjust.canvas.height);
+                Adjust.draw();
+                out.inChecker = (atX - cr().left) / cr().width < 0.5;
+                out.contrast = [contrast(grab(sharp, sx, sy, 32, 1)), contrast(grab(Adjust.canvas, wx, wy, 32, 1))].map(Math.round);
+                // Adjusted the same as the picture under it
+                step = 'adjusted';
+                Adjust.a.exposure = 1; Adjust.changed(); Adjust.draw();
+                const flatX = stage.left + stage.width - 60;
+                const toSharp = (x, y) => [Math.round((x - sr.left) / sr.width * sharp.width), Math.round((y - sr.top) / sr.height * sharp.height)];
+                const toWork = (x, y) => [Math.round((x - cr().left) / cr().width * Adjust.canvas.width), Math.round((y - cr().top) / cr().height * Adjust.canvas.height)];
+                const fx = (flatX - cr().left) / cr().width;
+                if (fx > 0.5) {
+                    out.same = [mean(grab(sharp, ...toSharp(flatX, atY), 8, 8)), mean(grab(Adjust.canvas, ...toWork(flatX, atY), 8, 8))].map(Math.round);
+                } else {
+                    out.same = [mean(grab(sharp, sx, sy, 32, 8)), mean(grab(Adjust.canvas, wx, wy, 32, 8))].map(Math.round);
+                }
+                // Before and after zooms too: the view stays, the sharp part
+                // shows the photo as it was
+                step = 'before';
+                const v0 = JSON.stringify(Adjust.view);
+                Adjust.toggleBefore(true);
+                Adjust.draw();
+                await sleep(250);
+                Adjust.draw();
+                out.before = [JSON.stringify(Adjust.view) === v0, !sharp.classList.contains('hidden'), Math.round(mean(grab(sharp, sx, sy, 32, 8)))];
+                Adjust.toggleBefore(false);
+                Adjust.a.exposure = 0; Adjust.changed();
+                // Overlays stay on the photo: a spot drawn where it is on the
+                // canvas, the overlay no bigger than the stage
+                step = 'overlays';
+                document.getElementById('adj-spots-sec').open = true;
+                await sleep(50);
+                const sv = document.getElementById('adj-spot-overlay').getBoundingClientRect();
+                const u = (stage.left + stage.width / 2 - cr().left) / cr().width, vv = (stage.top + stage.height / 2 - cr().top) / cr().height;
+                const p = AdjustSpots.fromPhoto(u, vv);
+                const mp = (AdjustMasks.place(), AdjustMasks.fromPhoto(u, vv));
+                const mv = document.getElementById('adj-overlay').getBoundingClientRect();
+                out.overlay = [
+                    Math.abs(sv.left + p.x - (cr().left + u * cr().width)) < 1 && Math.abs(sv.top + p.y - (cr().top + vv * cr().height)) < 1,
+                    sv.width <= stage.width + 1 && sv.height <= stage.height + 1,
+                    Math.abs(mv.left + mp.x - (cr().left + u * cr().width)) < 1,
+                    Math.abs(AdjustSpots.toPhoto(p.x, p.y).u - u) < 1e-6
+                ];
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('zoom: Adjust opens fitted, the chip says Fit (a big photo, a smaller working copy)', z.fit && String(z.fit) === 'true,true,false,true,true', JSON.stringify(z));
+        check('zoom: Ctrl+1 shows it at 100% (one photo pixel to a screen pixel), the chip says so', z.at100 && String(z.at100) === 'false,1,4000,true,false,true', JSON.stringify(z.at100));
+        check('zoom: at 100% the part on screen is drawn from the full-size photo, pixel for pixel', z.sharpSize && String(z.sharpSize) === '4000,2600,true,true', JSON.stringify(z.sharpSize));
+        check('zoom: sharp at 100%: fine detail the screen-sized copy loses is there', z.inChecker && z.contrast && z.contrast[0] > 100 && z.contrast[0] > z.contrast[1] * 2, JSON.stringify(z.contrast));
+        check('zoom: the sharp part is adjusted as the picture under it is', z.same && Math.abs(z.same[0] - z.same[1]) <= 6 && z.same[0] > 150, JSON.stringify(z.same));
+        check('zoom: Before stays zoomed, and shows the photo as it was there', z.before && z.before[0] && z.before[1] && Math.abs(z.before[2] - 130) <= 8, JSON.stringify(z.before));
+        check('zoom: masks and spots stay on the photo zoomed in, their overlays only the size of the stage', z.overlay && String(z.overlay) === 'true,true,true,true', JSON.stringify(z.overlay));
+
+        // With the real mouse and keys
+        const st = await page.evaluate(() => { document.getElementById('adj-spots-sec').open = false; Adjust.zoomFit(); const r = document.getElementById('adj-stage').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
+        const view = () => page.evaluate(() => ({ fitted: Adjust.fitted, ...Adjust.view }));
+        const under = (x, y) => page.evaluate(([x, y]) => { const r = Adjust.canvas.getBoundingClientRect(); return [(x - r.left) / r.width, (y - r.top) / r.height]; }, [x, y]);
+        const px = st.x + st.w * 0.3, py = st.y + st.h * 0.4;
+        const before = await under(px, py);
+        await page.mouse.move(px, py);
+        await page.keyboard.down('Control');
+        for (let i = 0; i < 4; i++) await page.mouse.wheel(0, -100);
+        await page.keyboard.up('Control');
+        await page.waitForTimeout(100);
+        const zoomed = await view(), after = await under(px, py);
+        check('zoom: Ctrl+wheel zooms in about the pointer', !zoomed.fitted && Math.abs(before[0] - after[0]) < 0.002 && Math.abs(before[1] - after[1]) < 0.002, JSON.stringify([zoomed, before, after]));
+        // A plain drag moves about, zoomed in
+        await page.mouse.move(st.x + st.w / 2, st.y + st.h / 2);
+        await page.mouse.down();
+        await page.mouse.move(st.x + st.w / 2 + 60, st.y + st.h / 2 + 30, { steps: 4 });
+        await page.mouse.up();
+        const dragged = await view();
+        check('zoom: zoomed in, a drag moves the photo about', Math.abs(dragged.x - zoomed.x - 60) < 1.5 && Math.abs(dragged.y - zoomed.y - 30) < 1.5 && Math.abs(dragged.z - zoomed.z) < 1e-9, JSON.stringify([zoomed, dragged]));
+        // The wheel alone moves it too (two fingers on a trackpad)
+        await page.mouse.wheel(40, 20);
+        await page.waitForTimeout(80);
+        const wheeled = await view();
+        check('zoom: zoomed in, the wheel (or two fingers) moves about', Math.abs(wheeled.x - dragged.x + 40) < 1.5 && Math.abs(wheeled.y - dragged.y + 20) < 1.5, JSON.stringify([dragged, wheeled]));
+        // With the spots tool out a drag is its own, Space+drag still moves
+        await page.evaluate(() => { document.getElementById('adj-spots-sec').open = true; });
+        await page.waitForTimeout(50);
+        const sp0 = await page.evaluate(() => (Adjust.a.spots || []).length);
+        await page.keyboard.down(' ');
+        await page.mouse.move(st.x + st.w / 2, st.y + st.h / 2);
+        await page.mouse.down();
+        await page.mouse.move(st.x + st.w / 2 - 50, st.y + st.h / 2, { steps: 4 });
+        await page.mouse.up();
+        await page.keyboard.up(' ');
+        const spaced = await view();
+        const sp1 = await page.evaluate(() => (Adjust.a.spots || []).length);
+        check('zoom: Space+drag moves about with a tool out, and the tool does nothing', Math.abs(spaced.x - wheeled.x + 50) < 1.5 && sp0 === sp1, JSON.stringify([wheeled, spaced, sp0, sp1]));
+        await page.evaluate(() => { document.getElementById('adj-spots-sec').open = false; });
+        // Keys: Ctrl+0 fits, Ctrl+= and Ctrl+- in and out
+        await page.keyboard.press('Control+0');
+        const fitted = await view();
+        await page.keyboard.press('Control+=');
+        const zin = await view();
+        await page.keyboard.press('Control+-');
+        const zout = await view();
+        check('zoom: Ctrl+0 fits; Ctrl+= zooms in, Ctrl+- out', fitted.fitted && !zin.fitted && zin.z > fitted.z * 1.2 && zout.z < zin.z, JSON.stringify([fitted, zin, zout]));
+        // Double-click: fit to 100% where it's clicked, and back
+        await page.keyboard.press('Control+0');
+        const dpt = [st.x + st.w * 0.6, st.y + st.h * 0.5];
+        const dBefore = await under(...dpt);
+        await page.mouse.dblclick(...dpt);
+        const d1 = await view(), dAfter = await under(...dpt);
+        await page.mouse.dblclick(...dpt);
+        const d2 = await view();
+        check('zoom: double-click goes to 100% on the spot clicked, and back to fit', !d1.fitted && Math.abs(d1.z - 1) < 1e-6 && Math.abs(dBefore[0] - dAfter[0]) < 0.002 && d2.fitted, JSON.stringify([d1, d2, dBefore, dAfter]));
+        // The chip: 100% and Fit
+        await page.click('#adj-zoom-100');
+        const c1 = await view();
+        await page.click('#adj-zoom-fit');
+        const c2 = await view();
+        check('zoom: the chip\'s 100% and Fit do as they say', !c1.fitted && Math.abs(c1.z - 1) < 1e-6 && c2.fitted, JSON.stringify([c1, c2]));
+        check('zoom: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     if (wanted('sync')) {
         console.log('sync (adjust-sync.js)');
         const { page, issues } = await open();

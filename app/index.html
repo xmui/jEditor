@@ -461,7 +461,9 @@
             </span>
         </div>
         <div class="adj-body">
-            <div id="adj-stage" class="adj-stage"><canvas id="adj-canvas"></canvas><canvas id="adj-paint" class="adj-paint hidden" aria-hidden="true"></canvas><div id="adj-loupe-box" class="adj-loupe-box hidden" aria-hidden="true"></div><canvas id="adj-overlay" class="adj-overlay hidden"></canvas><canvas id="adj-spot-overlay" class="adj-overlay hidden"></canvas></div>
+            <div id="adj-stage" class="adj-stage"><canvas id="adj-canvas"></canvas><canvas id="adj-sharp" class="adj-sharp hidden" aria-hidden="true"></canvas><canvas id="adj-paint" class="adj-paint hidden" aria-hidden="true"></canvas><div id="adj-loupe-box" class="adj-loupe-box hidden" aria-hidden="true"></div><canvas id="adj-overlay" class="adj-overlay hidden"></canvas><canvas id="adj-spot-overlay" class="adj-overlay hidden"></canvas>
+                <!-- Zoom (adjust.js): Ctrl+wheel or a pinch, Ctrl+= and Ctrl+−, double-click; Fit and 100% here -->
+                <div id="adj-zoom" class="adj-zoom" role="group" aria-label="Zoom"><span id="adj-zoom-level" class="adj-zoom-level hidden"></span><button id="adj-zoom-fit" class="adj-zoom-btn" aria-pressed="true" title="Fit the photo (Ctrl+0). Ctrl+wheel or pinch zooms; double-click goes between Fit and 100%">Fit</button><button id="adj-zoom-100" class="adj-zoom-btn" aria-pressed="false" title="Show at 100% (Ctrl+1). Zoomed in, drag (or hold Space and drag) to move about">100%</button></div></div>
             <div class="side-grip" data-side="adjust" data-edge="left" title="Drag to resize; double-click for its own width" aria-hidden="true"></div>
             <aside id="adj-panel" class="adj-panel" aria-label="Adjustments">
                 <section class="adj-sec adj-hist-box" aria-label="Histogram and levels">

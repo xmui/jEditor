@@ -4765,7 +4765,79 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 #adj-canvas {
     display: block;
+    position: absolute;
     box-shadow: var(--shadow-2);
+}
+
+/* At 100%: the part on screen from the full-size photo (adjust.js) */
+.adj-sharp {
+    position: absolute;
+    pointer-events: none;
+}
+
+/* Zoomed in, a drag moves about; Space held, whatever tool is out */
+.adjust-editor.adj-zoomed .adj-stage,
+.adjust-editor.adj-zoomed #adj-canvas,
+.adjust-editor.adj-space .adj-stage,
+.adjust-editor.adj-space #adj-canvas {
+    cursor: grab;
+}
+
+.adjust-editor.adj-space .adj-overlay {
+    pointer-events: none;
+}
+
+.adjust-editor.adj-grabbing .adj-stage,
+.adjust-editor.adj-grabbing #adj-canvas {
+    cursor: grabbing;
+}
+
+/* The zoom: a quiet chip in the corner, Fit · 100% (and the zoom between) */
+.adj-zoom {
+    position: absolute;
+    right: var(--sp-3);
+    bottom: var(--sp-3);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: var(--r-pill);
+    background: var(--on-photo-bg);
+    color: var(--on-photo-text);
+    font-size: var(--fs-small);
+    font-variant-numeric: tabular-nums;
+    opacity: 0.7;
+    transition: opacity var(--dur-base) var(--ease-out);
+}
+
+.adj-zoom:hover,
+.adj-zoom:focus-within,
+.adjust-editor.adj-zoomed .adj-zoom {
+    opacity: 1;
+}
+
+.adj-zoom-level {
+    padding: 0 var(--sp-2);
+}
+
+.adj-zoom-btn {
+    padding: 1px var(--sp-2);
+    border: 0;
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.adj-zoom-btn:hover {
+    background: rgb(255 255 255 / 0.12);
+}
+
+.adj-zoom-btn[aria-pressed="true"] {
+    background: rgb(255 255 255 / 0.22);
+    font-weight: var(--fw-semibold);
 }
 
 .adj-panel {
