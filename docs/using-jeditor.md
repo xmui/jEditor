@@ -232,7 +232,9 @@ Press `D` in a folder. It looks for:
 - exact copies (identical file contents), and
 - the same print scanned more than once, including when it was turned, placed at a different angle, cropped slightly differently, exposed differently, or scanned in black and white.
 
-Scanner bed and film borders are ignored when comparing. Matches are shown in groups, side by side, with a match percentage. The copy with the most pixels is suggested as the one to keep. `K` marks the others and `Enter` moves them to the trash.
+Scanner bed and film borders are ignored when comparing. Every group is shown on one page that scrolls, a row of thumbnails each, with the size and date under each photo and how alike it is to the one kept. In each group the copy with the most pixels is kept and the others are marked **Trash**; click a photo to keep it or mark it. **Not duplicates** leaves a group alone. **Trash N photos** (`Enter`) moves every marked photo to the trash at once, and one `Ctrl+Z` brings them back. `K` goes back to the suggested keepers.
+
+**Show in grid** (`G`) shows the duplicates in the grid instead: each group on its own rows under a heading, the suggested keeper first with a **Keep** badge, and the marked photos already selected, so the selection bar's Delete trashes them. Everything else in the grid works as usual (open, rotate, flag, move). A **Duplicates (N)** chip beside the search says it's on; click it to see every photo again. When no group has two photos left, the grid shows everything again by itself.
 
 It can still miss some re-scans or group photos that look alike, so check each group before trashing. The **Sensitivity** setting trades one for the other.
 
@@ -293,7 +295,7 @@ In Adjust: `Enter` done, `Shift+Enter` done and next, `Esc` cancel, `\` before a
 
 In Paint: `Enter` done (or put down what's being moved), `Esc` cancel, `V` move, `M` rectangle / ellipse select, `L` lasso, `W` magic wand, `B` brush, `N` pencil, `E` eraser, `G` fill / gradient, `U` line, `R` rectangle, `O` ellipse, `T` text, `I` colour picker, `H` hand, `[` `]` brush size (or a line's, or the text's), `Shift`-click a straight line from the last stroke, `X` swap colours, `D` black and white, `Ctrl+A` / `Ctrl+D` select all / nothing, `Delete` clear the selection, `Ctrl+C` / `Ctrl+V` copy / paste (an image copied in another app comes in as a layer), `Ctrl+Shift+O` bring in an image, `Ctrl+Shift+N` new layer, `Ctrl+J` duplicate the layer, `Ctrl+E` merge down, `0` fit, `1` 100%, `+` `-` zoom, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
-In find duplicates: `1`–`9` mark or unmark a photo, `K` keep the suggested photo and mark the rest, `Enter` trash marked and go to the next group, `N` not duplicates, `←` `→` previous / next group, `Esc` close.
+In find duplicates: click a photo to keep or mark it, `K` back to the suggested keepers, `Enter` trash every marked photo, `G` show in grid, `Esc` close.
 
 ## Where things are in the code
 

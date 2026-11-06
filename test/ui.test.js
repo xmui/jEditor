@@ -2121,7 +2121,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             }
             out.open = Dupes.isOpen;
             out.groups = Dupes.groups.map(g => g.files.map(f => f.name).sort().join('+'));
-            const g = Dupes.groups[0];
+            let g = Dupes.groups[0];
             out.best = g && g.best.name;
             out.exact = g && [...g.exact].map(f => f.name).sort().join('+');
             out.cards = document.querySelectorAll('.dupe-card').length;
@@ -2134,6 +2134,27 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.simOther = Dupes.similarity(fa, fb).map(v => v.toFixed(2)).join('/');
             out.rescanMatches = Dupes.isMatch(fa, fr, Dupes.SENSITIVITY.normal);
             out.otherRejected = !Dupes.isMatch(fa, fb, Dupes.SENSITIVITY.loose);
+
+            // Show in grid (G): only the group, its extras selected, a chip;
+            // the chip shows everything again
+            out.startMarked = Dupes.markedFiles().map(f => f.name).sort().join('+');
+            press('g');
+            out.grid = {
+                closed: !Dupes.isOpen,
+                view: app.viewFiles().map(f => f.name).join('+'),
+                heads: document.querySelectorAll('#grid-view .dupe-grid-head').length,
+                keep: [...document.querySelectorAll('#grid-view .dupe-tile-keep')].map(b => b.parentElement._file.name).join(),
+                selected: [...app.selection].map(f => f.name).sort().join('+'),
+                chip: document.getElementById('fb-dupes-chip').textContent
+            };
+            document.getElementById('fb-dupes-chip').click();
+            out.gridBack = app.viewFiles().length === 5 && !Dupes.inGrid &&
+                document.getElementById('fb-dupes-chip').classList.contains('hidden') && !document.querySelector('#grid-view .dupe-grid-head');
+            press('d');
+            for (let i = 0; i < 200 && !(Dupes.groups && Dupes.groups.length && document.querySelector('.dupe-card')); i++) {
+                await new Promise(res => setTimeout(res, 25));
+            }
+            g = Dupes.groups[0];
 
             // Cull: keep suggested (K), trash the rest (Enter)
             press('k');
@@ -2154,7 +2175,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('rotation-invariant match (re-scan matches, other photo does not)', r.rescanMatches && r.otherRejected, `${r.simRescan} / ${r.simOther}`);
         check('suggests the highest-resolution copy', r.best === 'a_rescan.jpg', String(r.best));
         check('exact copies flagged', r.exact === 'a.jpg+a_copy.jpg', String(r.exact));
-        check('side-by-side cards rendered', r.cards === 3, String(r.cards));
+        check('every group\'s cards rendered', r.cards === 3, String(r.cards));
+        check('every group starts with all but the suggested keeper marked', r.startMarked === 'a.jpg+a_copy.jpg', r.startMarked);
+        check('Show in grid: only the group, keeper first, under a heading with a Keep badge', r.grid.closed && /^a_rescan\.jpg\+(a\.jpg\+a_copy\.jpg|a_copy\.jpg\+a\.jpg)$/.test(r.grid.view) && r.grid.heads === 1 && r.grid.keep === 'a_rescan.jpg', JSON.stringify(r.grid));
+        check('Show in grid: the marked photos come selected, the chip counts them all', r.grid.selected === 'a.jpg+a_copy.jpg' && /^Duplicates \(3\)/.test(r.grid.chip), JSON.stringify(r.grid));
+        check('the Duplicates chip shows every photo again', r.gridBack);
         check('K marks all but the suggested keeper', r.marked === 2, String(r.marked));
         check('Enter trashes marked photos', r.left === 'a_rescan.jpg,b.jpg,c.jpg', r.left);
         check('finished state reported', /All done/.test(r.doneMessage), r.doneMessage);

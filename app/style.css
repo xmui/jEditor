@@ -6405,6 +6405,126 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     overflow-y: auto;
 }
 
+/* Every group on one page that scrolls, a row of cards each */
+.dupes-stage.dupes-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-5);
+    padding: var(--sp-2) var(--sp-5) var(--sp-5);
+}
+
+.dupe-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+
+.dupe-ghead {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-3);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.dupe-ghead b {
+    color: var(--text-1);
+    font-size: var(--fs-body);
+    font-weight: var(--fw-semibold);
+}
+
+.dupe-ghead .dupe-not {
+    margin-left: auto;
+    color: var(--text-2);
+}
+
+.dupe-row {
+    display: flex;
+    gap: var(--sp-3);
+    overflow-x: auto;
+    padding-bottom: 2px;
+}
+
+.dupe-row .dupe-card {
+    flex: 0 1 auto;
+    width: min(360px, 32%);
+    min-width: 200px;
+}
+
+.dupe-row .dupe-frame {
+    flex: none;
+    height: var(--dupe-h, 220px);
+    min-height: 0;
+}
+
+.dupe-card.kept {
+    border-color: var(--success);
+}
+
+.dupe-card:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.dupe-pill {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    padding: 2px var(--sp-2);
+    border-radius: var(--r-pill);
+    background: var(--on-photo-keep);
+    color: var(--on-photo-text);
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    font-weight: var(--fw-semibold);
+}
+
+.dupe-card.marked .dupe-pill {
+    left: auto;
+    right: 10px;
+    background: var(--danger);
+    color: var(--on-danger);
+}
+
+.dupe-big {
+    color: var(--text-1);
+}
+
+/* Duplicates in the grid: a heading over each group, and its keeper's badge */
+.dupe-grid-head {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-3);
+    padding: var(--sp-3) 2px 0;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.dupe-grid-head:first-child {
+    padding-top: 0;
+}
+
+.dupe-grid-head b {
+    color: var(--text-1);
+    font-weight: var(--fw-semibold);
+}
+
+.dupe-tile-keep {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    z-index: 2;
+    padding: 2px var(--sp-2);
+    border-radius: var(--r-pill);
+    background: var(--on-photo-keep);
+    color: var(--on-photo-text);
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    font-weight: var(--fw-semibold);
+    pointer-events: none;
+}
+
 .dupes-message {
     grid-column: 1 / -1;
     align-self: center;
@@ -6457,54 +6577,6 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 .dupe-card.marked .dupe-frame img {
     opacity: 0.45;
-}
-
-.dupe-badges {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    display: flex;
-    gap: 6px;
-}
-
-.dupe-badge {
-    padding: 2px var(--sp-2);
-    border-radius: var(--r-pill);
-    background: var(--on-photo-bg);
-    color: var(--on-photo-text);
-    font-size: var(--fs-caption);
-    line-height: var(--lh-caption);
-    font-weight: var(--fw-semibold);
-}
-
-.dupe-badge.keep {
-    background: var(--on-photo-keep);
-}
-
-.dupe-badge.exact {
-    background: var(--accent);
-    color: var(--on-accent);
-}
-
-.dupe-badge.score {
-    font-variant-numeric: tabular-nums;
-}
-
-.dupe-mark {
-    display: none;
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    padding: 2px 10px;
-    border-radius: var(--r-pill);
-    background: var(--danger);
-    color: var(--on-danger);
-    font-size: var(--fs-small);
-    font-weight: 700;
-}
-
-.dupe-card.marked .dupe-mark {
-    display: block;
 }
 
 .dupe-meta {

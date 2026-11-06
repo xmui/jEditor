@@ -29,6 +29,8 @@ const CHANGELOG = [
             'Snow Leopard\'s scroll bars look like Snow Leopard\'s again, in Finder and Aperture: both arrows together at the end, a groove rounded at the far end, the bar turned properly when it runs sideways, and no white square where two bars meet.',
             'In the Windows XP, Snow Leopard and 1984 themes, the thumbnail-size slider, `Ctrl`+wheel and a pinch change the size of the thumbnails again.',
             'Flip a photo left to right (`Shift+H`) or upside down (`Shift+V`), or a whole selection in the grid at once: from the right-click menu, beside Rotate, and in Crop and straighten too (right-click the photo). A JPEG is flipped without losing any quality, like a rotation, and `Ctrl+Z` puts it back. With Save edits when done, the flip waits with the other edits, and Adjust, Paint, Sync and Export all show it.',
+            'Find duplicates shows every group on one page that scrolls, with big thumbnails and the size and date under each. The largest copy of each is kept and the rest marked; click a photo to change it, then Trash N photos does them all at once (`Ctrl+Z` brings them back). Not duplicates leaves a group alone.',
+            'Show in grid, in Find duplicates (`G`): the grid shows only the duplicates, a group to a heading, the copy to keep marked Keep and the rest already selected, so Delete does the job. A Duplicates chip beside the search shows everything again.',
         ]
     },
     {
