@@ -1,4 +1,4 @@
-// jEditor for Mac: the Photos library (PhotoKit), read-only. main.js asks
+// jEditor for Mac: the Photos library (PhotoKit). main.js asks
 // for these and the page gets them through the app:// protocol and the
 // bridge (bridge.js: photosAlbum). Everything but authStatus returns a
 // promise; the work runs off the main thread, with PhotoKit's synchronous
@@ -15,6 +15,15 @@
 //                          the photo as it is now (edits included), as JPEG
 //                          unless it's already JPEG, PNG, GIF or WebP, with
 //                          its EXIF kept; from iCloud if it isn't on this Mac
+//   save(id, bytes)      → { modified, fileSize, w, h }: bytes (the photo as
+//                          jEditor made it from image(): the current version)
+//                          saved as a Photos edit, so it's the new current
+//                          version, in Photos and on every device. Photos
+//                          keeps the original and the edits before (Revert
+//                          to Original). macOS may ask to allow the change.
+//   add(paths, album)    → { added, album: { id, name } }: files put into the
+//                          library as new photos, as they are, in the album
+//                          of that name (made if there's none)
 
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
@@ -198,14 +207,20 @@ static Napi::Value Assets(const Napi::CallbackInfo &info) {
         for (PHAsset *a in found) {
             @autoreleasepool {
                 PHAssetResource *r = MainResource(a);
+                // The size of the photo as it is now: an edited one's is its
+                // full-size rendering, so it changes when it's edited (jEditor's
+                // kept edits for it are then out of date, as for a changed file)
+                PHAssetResource *now = r;
+                for (PHAssetResource *x in [PHAssetResource assetResourcesForAsset:a]) if (x.type == PHAssetResourceTypeFullSizePhoto) now = x;
                 id size = nil;
                 // Not in the headers, but how every photo app gets it
-                @try { size = [r valueForKey:@"fileSize"]; } @catch (NSException *e) { size = nil; }
+                @try { size = [now valueForKey:@"fileSize"]; } @catch (NSException *e) { size = nil; }
                 [out addObject:@{
                     @"id": a.localIdentifier,
                     @"originalFilename": r.originalFilename ?: @"Photo.jpg",
                     @"created": @(a.creationDate ? a.creationDate.timeIntervalSince1970 * 1000 : 0),
                     @"fileSize": [size isKindOfClass:[NSNumber class]] ? size : @0,
+                    @"modified": @(a.modificationDate ? a.modificationDate.timeIntervalSince1970 * 1000 : 0),
                     @"w": @(a.pixelWidth),
                     @"h": @(a.pixelHeight)
                 }];
@@ -300,6 +315,163 @@ static Napi::Value FullImage(const Napi::CallbackInfo &info) {
     });
 }
 
+// ---- Saving edits back (a Photos edit on the current version) ----
+
+// What jEditor's edits are called in Photos' adjustment data. jEditor
+// never claims it can read anyone's adjustment data (its own included), so
+// PhotoKit always gives it the photo as it is now, every earlier edit
+// applied: jEditor's edit stacks on top, and Photos keeps what was there.
+static NSString *const kFormat = @"app.jeditor.edit";
+
+// The bytes as an upright JPEG with their metadata (Photos' rendered
+// version must be a JPEG, and has no orientation of its own to lean on)
+static NSData *RenderedJPEG(NSData *bytes, NSError **err) {
+    CGImageSourceRef src = CGImageSourceCreateWithData((__bridge CFDataRef)bytes, NULL);
+    if (!src) { *err = Fail(@"jEditor's edit couldn't be read"); return nil; }
+    NSDictionary *props = CFBridgingRelease(CGImageSourceCopyPropertiesAtIndex(src, 0, NULL)) ?: @{};
+    NSString *uti = (__bridge NSString *)CGImageSourceGetType(src);
+    int orientation = [props[(__bridge NSString *)kCGImagePropertyOrientation] intValue];
+    if ([uti isEqualToString:@"public.jpeg"] && orientation <= 1) {
+        CFRelease(src);
+        return bytes;
+    }
+    NSMutableDictionary *meta = [props mutableCopy];
+    meta[(__bridge NSString *)kCGImagePropertyOrientation] = @1;
+    NSMutableDictionary *tiff = [meta[(__bridge NSString *)kCGImagePropertyTIFFDictionary] mutableCopy];
+    if (tiff) { tiff[(__bridge NSString *)kCGImagePropertyTIFFOrientation] = @1; meta[(__bridge NSString *)kCGImagePropertyTIFFDictionary] = tiff; }
+    meta[(__bridge NSString *)kCGImageDestinationLossyCompressionQuality] = @0.92;
+    CGImageRef img = NULL;
+    if (orientation > 1) {
+        // Turned upright at full size
+        double w = [props[(__bridge NSString *)kCGImagePropertyPixelWidth] doubleValue];
+        double h = [props[(__bridge NSString *)kCGImagePropertyPixelHeight] doubleValue];
+        NSDictionary *o = @{
+            (__bridge NSString *)kCGImageSourceCreateThumbnailFromImageAlways: @YES,
+            (__bridge NSString *)kCGImageSourceCreateThumbnailWithTransform: @YES,
+            (__bridge NSString *)kCGImageSourceThumbnailMaxPixelSize: @(MAX(w, h))
+        };
+        img = CGImageSourceCreateThumbnailAtIndex(src, 0, (__bridge CFDictionaryRef)o);
+    } else {
+        img = CGImageSourceCreateImageAtIndex(src, 0, NULL);
+    }
+    CFRelease(src);
+    if (!img) { *err = Fail(@"jEditor's edit couldn't be read"); return nil; }
+    NSMutableData *out = [NSMutableData data];
+    CGImageDestinationRef dest = CGImageDestinationCreateWithData((__bridge CFMutableDataRef)out, CFSTR("public.jpeg"), 1, NULL);
+    BOOL ok = NO;
+    if (dest) {
+        CGImageDestinationAddImage(dest, img, (__bridge CFDictionaryRef)meta);
+        ok = CGImageDestinationFinalize(dest);
+        CFRelease(dest);
+    }
+    CGImageRelease(img);
+    if (!ok) { *err = Fail(@"jEditor's edit couldn't be made into a JPEG"); return nil; }
+    return out;
+}
+
+static Napi::Value Save(const Napi::CallbackInfo &info) {
+    NSString *aid = Arg(info, 0);
+    if (info.Length() < 2 || !info[1].IsTypedArray()) {
+        Napi::TypeError::New(info.Env(), "save(id, bytes): bytes is a Uint8Array").ThrowAsJavaScriptException();
+        return info.Env().Undefined();
+    }
+    Napi::Uint8Array arr = info[1].As<Napi::Uint8Array>();
+    NSData *bytes = [NSData dataWithBytes:arr.Data() length:arr.ByteLength()];
+    return Run(info.Env(), ^id {
+        if (!Allowed()) return Fail(@"jEditor isn't allowed to change the Photos library");
+        PHAsset *a = AssetFor(aid);
+        if (!a) return Fail(@"That photo isn't in the library any more");
+        if (![a canPerformEditOperation:PHAssetEditOperationContent]) return Fail(@"Photos doesn't allow that photo to be edited");
+        NSError *err = nil;
+        NSData *jpeg = RenderedJPEG(bytes, &err);
+        if (!jpeg) return err;
+
+        // The photo as it is now (canHandleAdjustmentData: NO), from iCloud if need be.
+        // Photos answers on the main thread, which is free: this runs off it.
+        PHContentEditingInputRequestOptions *ro = [[PHContentEditingInputRequestOptions alloc] init];
+        ro.networkAccessAllowed = YES;
+        ro.canHandleAdjustmentData = ^BOOL(PHAdjustmentData *d) { return NO; };
+        __block PHContentEditingInput *input = nil;
+        dispatch_semaphore_t got = dispatch_semaphore_create(0);
+        [a requestContentEditingInputWithOptions:ro completionHandler:^(PHContentEditingInput *editing, NSDictionary *meta) {
+            input = editing;
+            dispatch_semaphore_signal(got);
+        }];
+        if (dispatch_semaphore_wait(got, dispatch_time(DISPATCH_TIME_NOW, 120 * NSEC_PER_SEC))) return Fail(@"Photos didn't answer (is the photo still downloading from iCloud?)");
+        if (!input) return Fail(@"Photos couldn't open that photo for editing");
+
+        PHContentEditingOutput *out = [[PHContentEditingOutput alloc] initWithContentEditingInput:input];
+        NSDictionary *note = @{ @"app": @"jEditor", @"on": @"current", @"at": @((long long)([[NSDate date] timeIntervalSince1970] * 1000)) };
+        NSData *payload = [NSJSONSerialization dataWithJSONObject:note options:0 error:nil];
+        out.adjustmentData = [[PHAdjustmentData alloc] initWithFormatIdentifier:kFormat formatVersion:@"1" data:payload];
+        if (![jpeg writeToURL:out.renderedContentURL options:NSDataWritingAtomic error:&err]) return err ?: Fail(@"The edit couldn't be written");
+        BOOL ok = [[PHPhotoLibrary sharedPhotoLibrary] performChangesAndWait:^{
+            PHAssetChangeRequest *r = [PHAssetChangeRequest changeRequestForAsset:a];
+            r.contentEditingOutput = out;
+        } error:&err];
+        if (!ok) return err ?: Fail(@"Photos didn't take the edit");
+        PHAsset *now = AssetFor(aid) ?: a;
+        return @{
+            @"modified": @(now.modificationDate ? now.modificationDate.timeIntervalSince1970 * 1000 : [[NSDate date] timeIntervalSince1970] * 1000),
+            @"fileSize": @(jpeg.length),
+            @"w": @(now.pixelWidth),
+            @"h": @(now.pixelHeight)
+        };
+    });
+}
+
+// ---- Adding photos (a scan order, a card, an export) ----
+
+static Napi::Value Add(const Napi::CallbackInfo &info) {
+    NSMutableArray<NSString *> *paths = [NSMutableArray array];
+    if (info.Length() > 0 && info[0].IsArray()) {
+        Napi::Array a = info[0].As<Napi::Array>();
+        for (uint32_t i = 0; i < a.Length(); i++) {
+            Napi::Value v = a.Get(i);
+            if (v.IsString()) [paths addObject:[NSString stringWithUTF8String:v.As<Napi::String>().Utf8Value().c_str()] ?: @""];
+        }
+    }
+    NSString *title = Arg(info, 1);
+    return Run(info.Env(), ^id {
+        if (!Allowed()) return Fail(@"jEditor isn't allowed to change the Photos library");
+        // The album of that name, or a new one
+        __block PHAssetCollection *album = nil;
+        if (title.length) {
+            PHFetchResult<PHAssetCollection *> *all = [PHAssetCollection fetchAssetCollectionsWithType:PHAssetCollectionTypeAlbum subtype:PHAssetCollectionSubtypeAlbumRegular options:nil];
+            for (PHAssetCollection *c in all) if ([c.localizedTitle isEqualToString:title]) { album = c; break; }
+        }
+        NSError *err = nil;
+        if (title.length && !album) {
+            __block NSString *made = nil;
+            BOOL ok = [[PHPhotoLibrary sharedPhotoLibrary] performChangesAndWait:^{
+                made = [PHAssetCollectionChangeRequest creationRequestForAssetCollectionWithTitle:title].placeholderForCreatedAssetCollection.localIdentifier;
+            } error:&err];
+            if (!ok || !made) return err ?: Fail(@"The album couldn't be made");
+            album = [PHAssetCollection fetchAssetCollectionsWithLocalIdentifiers:@[made] options:nil].firstObject;
+        }
+        // In tens, so a big order shows in Photos as it goes and one bad file spoils only its ten
+        NSUInteger added = 0;
+        for (NSUInteger i = 0; i < paths.count; i += 10) {
+            NSArray *some = [paths subarrayWithRange:NSMakeRange(i, MIN((NSUInteger)10, paths.count - i))];
+            BOOL ok = [[PHPhotoLibrary sharedPhotoLibrary] performChangesAndWait:^{
+                NSMutableArray *made = [NSMutableArray array];
+                for (NSString *p in some) {
+                    PHAssetCreationRequest *r = [PHAssetCreationRequest creationRequestForAsset];
+                    PHAssetResourceCreationOptions *o = [[PHAssetResourceCreationOptions alloc] init];
+                    o.originalFilename = p.lastPathComponent;
+                    o.shouldMoveFile = NO;
+                    [r addResourceWithType:PHAssetResourceTypePhoto fileURL:[NSURL fileURLWithPath:p] options:o];
+                    if (r.placeholderForCreatedAsset) [made addObject:r.placeholderForCreatedAsset];
+                }
+                if (album && made.count) [[PHAssetCollectionChangeRequest changeRequestForAssetCollection:album] addAssets:made];
+            } error:&err];
+            if (!ok) return err ?: Fail(@"Photos didn't take those photos");
+            added += some.count;
+        }
+        return @{ @"added": @(added), @"album": album ? (id)@{ @"id": album.localIdentifier, @"name": album.localizedTitle ?: title } : (id)[NSNull null] };
+    });
+}
+
 static Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("authStatus", Napi::Function::New(env, AuthStatus));
     exports.Set("requestAuth", Napi::Function::New(env, RequestAuth));
@@ -307,6 +479,8 @@ static Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("assets", Napi::Function::New(env, Assets));
     exports.Set("thumbnail", Napi::Function::New(env, Thumbnail));
     exports.Set("image", Napi::Function::New(env, FullImage));
+    exports.Set("save", Napi::Function::New(env, Save));
+    exports.Set("add", Napi::Function::New(env, Add));
     return exports;
 }
 

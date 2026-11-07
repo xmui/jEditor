@@ -43,7 +43,7 @@ const Windows = {
         this._publish = setTimeout(async () => {
             const app = this.app;
             // A read-only one (the Photos library) isn't somewhere to move photos to
-            const path = app.dirHandle && !app.readOnlyMode ? await FolderCache.orderPath(app).catch(() => null) : null;
+            const path = app.dirHandle && !app.fixedFiles ? await FolderCache.orderPath(app).catch(() => null) : null;
             this.native().setState({
                 name: app.dirHandle ? app.dirHandle.name : null,
                 path,
@@ -88,7 +88,7 @@ const Windows = {
     // ---- Photos from another window ----
 
     foreign(e) {
-        return !Folders.dragging && this.app.dirHandle && !this.app.readOnlyMode &&
+        return !Folders.dragging && this.app.dirHandle && !this.app.fixedFiles &&
             e.dataTransfer && [...e.dataTransfer.types].includes(this.TYPE);
     },
 

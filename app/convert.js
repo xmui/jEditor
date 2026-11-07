@@ -97,7 +97,7 @@ const Convert = {
             app.showToast('Converting can\'t run here: open jEditor from its app or its web page');
             return;
         }
-        if (choose || !app.dirHandle || app.readOnlyMode || !app.files.length) {
+        if (choose || !app.dirHandle || app.fixedFiles || !app.files.length) {
             await this.chooseFolder();
             return;
         }

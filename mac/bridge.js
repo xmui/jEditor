@@ -179,12 +179,15 @@
         return r ? r.path : null;
     }
 
-    // ---- The Photos library, read-only (photos.js) ----
+    // ---- The Photos library (photos.js) ----
     // An album (or the whole library: id '') as a folder handle the page can
     // read like any other, with its photos as file handles: getFile() is the
-    // photo itself (from iCloud if need be), getThumbnail(w) the library's
-    // own thumbnail, peek() its size and date without reading it. Nothing
-    // in it can be written. Its path is "photos-library:<id>".
+    // photo as it is now (from iCloud if need be), getThumbnail(w) the
+    // library's own thumbnail, peek() its size and date without reading it.
+    // A photo can be written (createWritable): what's written is saved back
+    // as a Photos edit on top of the photo as it is now, every edit before
+    // kept by Photos (photos.mm: save). Nothing can be added, renamed or
+    // removed: that's for Photos. Its path is "photos-library:<id>".
     const LIBRARY = 'photos-library:';
     const SHOWN = /\.(jpe?g|png|gif|webp)$/i; // served as they are; the rest come as JPEG (photos.mm)
     const denied = (what) => new DOMException(`${what}: the Photos library can't be changed`, 'NotAllowedError');
@@ -195,22 +198,65 @@
         if (!r.ok) throw new Error((await r.text().catch(() => '')) || 'That photo couldn\'t be read');
         return r.blob();
     }
+    // What a writable is given, as bytes
+    async function bytesOf(d) {
+        if (d instanceof Blob) return new Uint8Array(await d.arrayBuffer());
+        if (typeof d === 'string') return new TextEncoder().encode(d);
+        if (d instanceof ArrayBuffer) return new Uint8Array(d);
+        if (ArrayBuffer.isView(d)) return new Uint8Array(d.buffer, d.byteOffset, d.byteLength);
+        throw new TypeError('Can\'t write that');
+    }
+    // A FileSystemWritableFileStream's calls (write, seek, truncate, close,
+    // abort), kept in memory; close() hands the whole photo to save(bytes)
+    function memoryWritable(start, save) {
+        let buf = start, pos = 0, done = false;
+        const grow = (n) => { if (n > buf.length) { const b = new Uint8Array(n); b.set(buf); buf = b; } };
+        const open = () => { if (done) throw new DOMException('The writable is closed', 'InvalidStateError'); };
+        return {
+            async write(d) {
+                open();
+                if (d && typeof d === 'object' && !(d instanceof Blob) && !(d instanceof ArrayBuffer) && !ArrayBuffer.isView(d) && 'type' in d) {
+                    if (d.type === 'seek') { pos = d.position; return; }
+                    if (d.type === 'truncate') { this.truncate(d.size); return; }
+                    if (d.position != null) pos = d.position;
+                    d = d.data;
+                }
+                const b = await bytesOf(d);
+                grow(pos + b.length);
+                buf.set(b, pos);
+                pos += b.length;
+            },
+            async seek(p) { open(); pos = p; },
+            async truncate(n) { open(); if (n < buf.length) buf = buf.slice(0, n); else grow(n); if (pos > n) pos = n; },
+            async close() { open(); done = true; await save(buf); },
+            async abort() { done = true; }
+        };
+    }
     function libraryFile(a, name) {
         const created = a.created || 0;
+        const when = () => a.modified || created;
         return {
             kind: 'file',
             name,
             photosAsset: a.id,
             async getFile() {
                 const blob = await fetched(photoUrl('full', a.id));
-                return new File([blob], name, { type: blob.type, lastModified: created });
+                return new File([blob], name, { type: blob.type, lastModified: when() });
             },
-            getThumbnail: (w) => fetched(photoUrl('thumb', a.id) + '?w=' + Math.round(w || 320)),
-            peek: () => ({ size: a.fileSize || 0, lastModified: created, width: a.w || 0, height: a.h || 0 }),
+            getThumbnail: (w) => fetched(photoUrl('thumb', a.id) + '?w=' + Math.round(w || 320) + '&v=' + when()),
+            peek: () => ({ size: a.fileSize || 0, lastModified: when(), width: a.w || 0, height: a.h || 0 }),
             async isSameEntry(o) { return !!o && o.photosAsset === a.id; },
-            async queryPermission(d) { return d && d.mode === 'readwrite' ? 'denied' : 'granted'; },
-            async requestPermission(d) { return this.queryPermission(d); },
-            async createWritable() { throw denied(name); },
+            async queryPermission() { return 'granted'; },
+            async requestPermission() { return 'granted'; },
+            // Saved back as a Photos edit when it's closed (the photo as it is
+            // now, then what jEditor wrote over it)
+            async createWritable(o) {
+                const start = o && o.keepExistingData ? new Uint8Array(await (await this.getFile()).arrayBuffer()) : new Uint8Array(0);
+                return memoryWritable(start, async (bytes) => {
+                    const r = await answer('photosSave', { id: a.id, bytes });
+                    Object.assign(a, { modified: r.modified || Date.now(), fileSize: r.fileSize || bytes.length, w: r.w || a.w, h: r.h || a.h });
+                });
+            },
             async move() { throw denied(name); },
             async remove() { throw denied(name); }
         };
@@ -252,8 +298,9 @@
             async removeEntry(n) { throw denied(n); },
             async resolve() { return null; },
             async isSameEntry(o) { return !!o && o.photosLibrary === id; },
-            async queryPermission(d) { return d && d.mode === 'readwrite' ? 'denied' : 'granted'; },
-            async requestPermission(d) { return this.queryPermission(d); }
+            // Its photos may be edited (not added to or removed: denied above)
+            async queryPermission() { return 'granted'; },
+            async requestPermission() { return 'granted'; }
         };
     }
 
@@ -317,7 +364,7 @@
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: mac.platform,
-        features: ['reveal', 'windows', 'places'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : [], ['themes'], mac.platform === 'mac' && mac.photos ? ['photosLibrary'] : []),
+        features: ['reveal', 'windows', 'places'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : [], ['themes'], mac.platform === 'mac' && mac.photos ? ['photosLibrary', 'photosAdd'] : []),
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage
         async dataDir() {
@@ -327,7 +374,7 @@
         // Where a folder handle is on disk (null: not known); a Photos
         // library album's is "photos-library:<id>"
         folderPath,
-        // ---- The Photos library (photosLibrary), read-only ----
+        // ---- The Photos library (photosLibrary) ----
         // Whether jEditor may see it: 'granted', 'limited', 'denied',
         // 'restricted' or 'ask'; ask: true has macOS ask first
         async photosAccess(ask = false) {
@@ -337,8 +384,13 @@
         async photosCollections() {
             return (await answer('photosLibrary')).collections;
         },
-        // An album ('' : the whole library) as a read-only folder handle
+        // An album ('' : the whole library) as a folder handle (its photos editable)
         photosAlbum,
+        // Photos on this Mac (paths) put into the library, in the album
+        // called `album` (made if there's none) → { added, album: { id, name } }
+        async photosAdd(paths, album = '') {
+            return answer('photosAdd', { paths, album });
+        },
         // A folder handle for a path, with permission to edit it
         async folderHandle(path) {
             const ok = (await answer('exists', { paths: [path] })).exists[0];

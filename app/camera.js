@@ -110,7 +110,7 @@ const Camera = {
             this.setSmall(false);
             return;
         }
-        if (!app.dirHandle || app.readOnlyMode) {
+        if (!app.dirHandle || app.fixedFiles) {
             app.showToast('Open a project first: photos go into its folder', 3500);
             return;
         }
