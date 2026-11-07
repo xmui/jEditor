@@ -1169,6 +1169,52 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    console.log('motion: a photo opened from the grid zooms out of its tile, and back (motion.js)');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const dir = makeDir('Zoom');
+            for (let i = 0; i < 6; i++) {
+                const h = makeHandle(`z${i}.jpg`, await makeRealJpeg(300, 200, { color: `hsl(${i * 50},60%,50%)` }), 'image/jpeg');
+                dir._files.set(h.name, h);
+            }
+            dir.values = async function* () { yield* dir._files.values(); };
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            app.setView('grid');
+            await new Promise(r => setTimeout(r, 600));
+            const box = app.elements.imageContainer;
+            const ghosts = () => [...document.body.children].filter(e => e.style.zIndex === '50' && e.style.position === 'fixed').length;
+            const hidden = () => document.querySelectorAll('#grid-view img[style*="hidden"]').length;
+            const f = app.viewFiles()[3];
+            app.openSingle(f);
+            out.opens = box.getAnimations().length;
+            await new Promise(r => setTimeout(r, 300));
+            out.openDone = box.getAnimations().length;
+            app.setView('grid');
+            out.back = ghosts() === 1 && hidden() === 1;
+            // Space pressed again and again: one zoom at a time, nothing left behind
+            for (let i = 0; i < 9; i++) app.toggleView();
+            out.mid = ghosts() + box.getAnimations().length;
+            await new Promise(r => setTimeout(r, 300));
+            out.after = ghosts() + hidden() + box.getAnimations().length;
+            app.setView('grid');
+            await new Promise(r => setTimeout(r, 300));
+            document.documentElement.dataset.motion = 'off';
+            app.openSingle(f);
+            app.setView('grid');
+            out.off = ghosts() + box.getAnimations().length;
+            document.documentElement.dataset.motion = 'on';
+            return out;
+        });
+        check('a photo opened from the grid zooms out of its tile, and back down into it', r.opens === 1 && r.openDone === 0 && r.back, JSON.stringify(r));
+        check('grid zoom: repeated presses never pile up, and leave nothing behind; none with Animations off', r.mid <= 1 && r.after === 0 && r.off === 0, JSON.stringify(r));
+        check('grid zoom: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7a. Lossless rotation for scanner JPEGs (EXIF without Orientation) ----
     console.log('lossless rotation: EXIF without orientation');
     {
