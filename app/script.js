@@ -290,6 +290,7 @@ const app = {
         Themes.init(this);
         Fit.init();
         History.init(this);
+        Tour.init();
         Watch.init(this);
         this.initContextMenu();
         this.initPasteImage();
@@ -4697,6 +4698,7 @@ const app = {
         ['app.search', 'global', 'App', 'Search photos', ['Ctrl+F', '/']],
         ['app.shortcuts', 'global', 'App', 'Keyboard shortcuts', ['?']],
         ['app.guide', 'global', 'App', 'Guide: how-tos and shortcuts', ['F1']],
+        ['app.tour', 'global', 'App', 'Take the tour', []],
         ['app.settings', 'global', 'App', 'Settings', ['Ctrl+,']],
         ['app.debug', 'global', 'App', 'Debug console', ['Ctrl+Shift+D']],
         ['crop.save', 'crop', 'Crop & Straighten', 'Save', ['Enter']],
@@ -4911,6 +4913,7 @@ const app = {
             'app.search': () => Flags.focusSearch(),
             'app.shortcuts': () => this.toggleShortcutsPanel(),
             'app.guide': () => Guide.toggle(),
+            'app.tour': () => Tour.start(),
             'app.settings': () => this.toggleCustomizePanel(true),
             'app.debug': () => this.toggleDebugConsole(),
             'crop.save': () => this.saveCrop(),

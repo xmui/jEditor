@@ -256,9 +256,11 @@ It's built and tested for orders of 500–2000 photos. With 2000 scans at 1800×
 
 Undo keeps up to 50 steps. Rotating a selection in the grid is one step, however many photos it covers. Rotations are undone by rotating back, so they don't use memory. Crops keep a copy of the original file so they can be undone, up to 256 MB in total; older crop steps are dropped after that.
 
-## The guide
+## The tour and the guide
 
-Press `F1` (anywhere: Photos, Crop, Adjust, Paint or the home page), or choose **Guide** in the home page's gear menu or a theme's **Help** menu. A panel opens beside the photo with short how-tos for Photos, Adjust and Paint, and the keyboard shortcuts as they're set now. Type in **How do I…** to search both, or pick **Photos**, **Adjust**, **Paint** or **Keys**. The app keeps working while it's open: in Adjust and Paint it moves to the left, out of their panel's way. `Esc` or × closes it.
+**The tour** walks through the real app, one stop at a time: the three apps (Photos, Adjust and Paint), the sidebar, looking and flagging, turning, cropping, Scan and Camera (where the app has them), More, Duplicates, Convert, Adjust and Paint. Each stop lights up the control it's about, with a card that says what it does and its keys; the rest of the window dims but keeps working, so you can try each one (press `]` and the photo turns, `Ctrl+Z` puts it back). The tour opens the view each stop needs and puts it back as it was at the end. **Next** and **Back** move through it, and `Esc` or × ends it. It's offered once, on the home page the first time jEditor opens (**Not now** puts it away), and it's always in the home page's gear menu (**Take the tour**), a theme's **Help** menu and the guide. In a browser it ends with a few things the apps also do, and **Download the full version**.
+
+**The guide** (`F1`, from anywhere: Photos, Crop, Adjust, Paint or the home page; also **Guide** in the gear menu and a theme's **Help** menu) is for looking things up later: topics down the side (Start here, Photos, Crop, Flags, Files and folders, Adjust, Paint, Keyboard shortcuts), each a set of cards with a little clip of what it does, a line of words and its keys as they're set now. **Search the guide** finds cards and keys. **Watch the tour again** is at the bottom of the topics. `Esc` or × closes it.
 
 ## Keyboard shortcuts
 
@@ -343,7 +345,8 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `start.js`: the home page: its tiles, the Settings menu (Save edits when done, When jEditor opens), the update dot, All projects, and on the web the app for this computer
 - `recents.js`: the home page's stacks of prints (recent folders, with small pictures kept for each) and its Recent print (a photo opened on its own), and spotting a folder that's part of an order
 - `ui.js`: the app's own alert / confirm / prompt dialogs, and focus handling for every dialog
-- `guide.js`: the guide (`F1`): short how-tos and the shortcuts as they're set, with a search
+- `guide.js`: the guide (`F1`): cards with clips by topic, the shortcuts as they're set, and a search
+- `tour.js`: the welcome tour: a walk through the real app, offered once on the home page
 - `tokens.css`: the design tokens (colours, type, spacing, radii, shadows, motion, layers) and the theme, density, glass, surround and window background switches; `style.css` builds every component from them
 
 Building, testing and releasing are in the [README](../README.md).

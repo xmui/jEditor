@@ -8,6 +8,7 @@ const ASSETS = [
     './script.js',
     './ui.js',
     './guide.js',
+    './tour.js',
     './fit.js',
     './tokens.css',
     './version.js',
