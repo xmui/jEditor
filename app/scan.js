@@ -162,7 +162,7 @@ const Scan = {
             this.setSmall(false);
             return;
         }
-        if (!app.dirHandle || app.readOnlyMode) {
+        if (!app.dirHandle || app.fixedFiles) {
             app.showToast('Open a project first: scans go into its folder', 3500);
             return;
         }

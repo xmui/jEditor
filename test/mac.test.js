@@ -1044,8 +1044,9 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             const data = await f.handle.getFile();
             const toast = () => [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | ');
             const writable = app.ensureWritable();
-            let wrote = 'no';
-            try { await f.handle.createWritable(); wrote = 'yes'; } catch (e) { wrote = e.name; }
+            const files = app.ensureWritable({ files: true });
+            let made = 'no';
+            try { await app.dirHandle.getFileHandle('New.jpg', { create: true }); made = 'yes'; } catch (e) { made = e.name; }
             return {
                 name: app.dirHandle.name, n: app.files.length, names: app.files.map(x => x.name).sort().join(),
                 readOnly: app.readOnlyMode, library: app.library, path: await JEditorNative.folderPath(app.dirHandle),
@@ -1053,15 +1054,44 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
                 cardName: card.querySelector('.sb-card-name').tagName, cardText: card.textContent,
                 renameBtn: !!card.querySelector('[data-act="rename"]'), exportBtn: !!card.querySelector('[data-act="export"]'), revealBtn: !!card.querySelector('[data-act="reveal"]'),
                 menu: Places.cardItems().map(i => i[0]).join('|'),
-                writable, wrote, toast: toast(),
+                writable, files, made, toast: toast(), fixed: app.fixedFiles,
                 active: !!document.querySelector('.sb-row.active[data-path="photos-library:album:Wedding"]'),
                 recent: JSON.stringify(localStorage).includes('Wedding')
             };
         });
-        check('an album opens as the project, read-only: its photos, its name, its path photos-library:<id>', o.name === 'Wedding' && o.n === 3 && o.names === 'IMG_0001.jpg,IMG_0002.jpg,IMG_0003.jpg' && o.readOnly && o.library && o.path === 'photos-library:album:Wedding', JSON.stringify(o));
+        check('an album opens as the project: its photos, its name, its path photos-library:<id>', o.name === 'Wedding' && o.n === 3 && o.names === 'IMG_0001.jpg,IMG_0002.jpg,IMG_0003.jpg' && !o.readOnly && o.library && o.fixed && o.path === 'photos-library:album:Wedding', JSON.stringify(o));
         check('... thumbnails come from the library, and a photo is the library\'s own (size and date without reading it)', o.thumbs && o.size === o.got && o.got > 0 && o.type === 'image/jpeg', JSON.stringify(o));
-        check('... its card has the album and no Finder, rename, pin or export', o.cardName === 'DIV' && /Photos library · read-only/.test(o.cardText) && !o.renameBtn && !o.exportBtn && !o.revealBtn && !/Rename|Export|Pin|Finder/.test(o.menu), JSON.stringify(o));
-        check('... nothing can be changed: editing says so, and nothing is written', o.writable === false && /Photos library can't be changed yet/.test(o.toast) && o.wrote === 'NotAllowedError', JSON.stringify(o));
+        check('... its card has the album and no Finder, rename, pin or export', o.cardName === 'DIV' && /Photos library/.test(o.cardText) && !/read-only/.test(o.cardText) && !o.renameBtn && !o.exportBtn && !o.revealBtn && !/Rename|Export|Pin|Finder/.test(o.menu), JSON.stringify(o));
+        check('... its photos can be edited, but none added, renamed, moved or deleted (that\'s for Photos)', o.writable === true && o.files === false && /renamed, moved and deleted in Photos/.test(o.toast) && o.made === 'NotAllowedError', JSON.stringify(o));
+        // An edit saved back: rotating a photo writes it into the library (a
+        // Photos edit on the current version); the original is kept, and undo
+        // saves the version before as one more edit
+        const wed = (n) => fs.readFileSync(path.join(lib, 'Wedding', n));
+        const ed = await page.evaluate(async () => {
+            const f = app.files.find(x => x.name === 'IMG_0001.jpg');
+            const ok = await app.rotateImage(f, 90);
+            for (let i = 0; i < 50 && (f.isBusy || f._rotationQueue); i++) await new Promise(r => setTimeout(r, 100));
+            const peek = f.handle.peek();
+            const got = await f.handle.getFile();
+            return { ok, size: got.size, peekSize: peek.size, modified: got.lastModified, undo: (app._undoStack || []).length };
+        });
+        const rotated = wed('IMG_0001.jpg');
+        const orig = path.join(lib, '.originals', 'Wedding', 'IMG_0001.jpg');
+        check('editing a library photo saves it back into the library, the original kept (as Photos keeps it)', ed.ok !== false && !rotated.equals(JPEG) && fs.existsSync(orig) && fs.readFileSync(orig).equals(JPEG) && ed.size === rotated.length && ed.peekSize === rotated.length && ed.undo > 0, JSON.stringify(ed));
+        await page.evaluate(async () => {
+            await app.undo();
+            const f = app.files.find(x => x.name === 'IMG_0001.jpg');
+            for (let i = 0; i < 50 && (f.isBusy || f._rotationQueue); i++) await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => setTimeout(r, 300));
+        });
+        const vers = fs.readdirSync(path.join(lib, '.versions', 'Wedding')).filter(n => n.startsWith('IMG_0001.jpg.'));
+        check('... undo puts it back as it was, saved as one more edit (nothing in the library lost)', !wed('IMG_0001.jpg').equals(rotated) && vers.length === 2 && fs.readFileSync(path.join(lib, '.versions', 'Wedding', vers.sort()[1])).equals(rotated), JSON.stringify({ vers, same: wed('IMG_0001.jpg').equals(JPEG) }));
+        const menus = await page.evaluate(() => {
+            app.currentFile = app.files[0];
+            const labels = (items) => items.map(i => i[0]).filter(l => typeof l === 'string').join('|');
+            return { photo: labels(app.buildContextItems(null, true)), grid: labels(app.buildContextItems(null, false)) };
+        });
+        check('... its menus have no Move, Rename, Convert or Delete, and no Add to Photos (it\'s there)', /Rotate left/.test(menus.photo) && /Adjust/.test(menus.photo) && !/Move|Rename|Convert|Delete|Add to Photos/.test(menus.photo) && !/New folder|Rename all|Clean up|Add all/.test(menus.grid) && !/—\|—/.test(menus.photo), JSON.stringify(menus));
         check('... it\'s marked in the sidebar, and it isn\'t in Recent', o.active && !o.recent, JSON.stringify(o));
         const whole = await page.evaluate(async () => {
             await Places.open('photos-library:');
@@ -1069,8 +1099,22 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             return { name: app.dirHandle.name, names: app.files.map(f => f.name).sort().join() };
         });
         check('Open on the Photos library: all of it, two photos of one name both there', whole.name === 'Photos library' && whole.names === 'IMG_0001 (2).jpg,IMG_0001 (3).jpg,IMG_0001.jpg,IMG_0002 (2).jpg,IMG_0002.jpg,IMG_0003.jpg', JSON.stringify(whole));
-        const after = fs.readdirSync(path.join(lib, 'Wedding')).map(n => fs.readFileSync(path.join(lib, 'Wedding', n)).toString('base64')).join();
-        check('... and the library is as it was', before === after && fs.readdirSync(lib).sort().join() === 'Birthday,Favourites,Wedding');
+        const others = ['IMG_0002.jpg', 'IMG_0003.jpg'].map(n => wed(n).toString('base64')).join();
+        check('... and the rest of the library is as it was: no photos or albums added, renamed or removed', before.split(',').slice(1).join() === others && fs.readdirSync(lib).filter(n => !n.startsWith('.')).sort().join() === 'Birthday,Favourites,Wedding' && fs.readdirSync(path.join(lib, 'Wedding')).sort().join() === 'IMG_0001.jpg,IMG_0002.jpg,IMG_0003.jpg');
+        // Add to Photos library (photosAdd): a folder project's photos into an album named after it
+        const order = path.join(tmp, 'Order 1207');
+        fs.mkdirSync(order, { recursive: true });
+        for (const n of ['scan 1.jpg', 'scan 2.jpg']) fs.writeFileSync(path.join(order, n), JPEG);
+        await page.evaluate((p) => JEditorNative.openPath(p), order);
+        await loaded(page, 2);
+        const add = await page.evaluate(async () => {
+            for (let i = 0; i < 50 && app.isLoading; i++) await new Promise(r => setTimeout(r, 100));
+            const can = Host.has('photosAdd') && app.canAddToPhotos();
+            const added = await app.addToPhotos(app.files);
+            return { can, added, toast: [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | ') };
+        });
+        const album = path.join(lib, 'Order 1207');
+        check('Add to Photos library: a project\'s photos go in as they are, in an album named after it', add.can && add.added === 2 && fs.existsSync(album) && fs.readdirSync(album).sort().join() === 'scan 1.jpg,scan 2.jpg' && fs.readFileSync(path.join(album, 'scan 1.jpg')).equals(JPEG) && /Added 2 photos to the Photos library \(the album “Order 1207”\)/.test(add.toast), JSON.stringify(add));
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.close();
     }

@@ -32,7 +32,8 @@ Checked by `test/parity.test.js`: each ✓ must match the app's `features` list,
 | `quickAccess` | Explorer's Quick Access in the sidebar's Pinned | ✓ | | | | system |
 | `backdrop` | Mica or Acrylic behind the window | ✓ | | | | system |
 | `permissions` | The Mac's privacy settings jEditor needs, in one window | | ✓ | | | system |
-| `photosLibrary` | The Photos library in the sidebar (Locations): its albums, opened read-only | | ✓ | | | system |
+| `photosLibrary` | The Photos library in the sidebar (Locations): its albums open as the project, and edits are saved back into Photos on top of the current version | | ✓ | | | system |
+| `photosAdd` | Add to Photos library: a project's photos into Photos, in an album named after it | | ✓ | | | system |
 
 Linux updates cover the AppImage, the `.deb` and the Arch package. The Mac app also has the macOS 26 native toolbar (Liquid Glass, `mac/native/`), which is the Mac host's own and not a page feature.
 
