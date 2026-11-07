@@ -188,7 +188,8 @@ const app = {
         document.getElementById('btn-toggle-fit').addEventListener('click', () => this.toggleThumbnailFit());
 
         // Browse Folder Button (uses modern File System Access API for write support)
-        document.getElementById('btn-browse-folder').addEventListener('click', () => this.browseFolder());
+        // The Open a folder card (open-card.js); straight to the picker where there's no card
+        document.getElementById('btn-browse-folder').addEventListener('click', () => OpenCard.available() ? OpenCard.open() : this.browseFolder());
 
         // Grid Size Slider
         this.elements.gridSizeSlider.addEventListener('input', (e) => this.setGridSize(parseInt(e.target.value, 10)));
@@ -265,6 +266,8 @@ const app = {
         Recents.init(this);
         AdjustSync.init(this);
         Stored.init(this);
+        FolderMove.init(this);
+        OpenCard.init(this);
         CropLog.init(this);
         Updates.init(this);
         Experiments.init(this);
@@ -984,6 +987,7 @@ const app = {
         $('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
         $('cust-defer-new').checked = !!this.uiPrefs.deferNew;
         Start.drawOnOpen();
+        FolderMove.draw();
         $('cust-open-libraries').checked = !!this.uiPrefs.openLibraries;
         $('cust-huge-folder').value = this.uiPrefs.hugeFolder || '';
         this.elements.customizePanel.querySelectorAll('input[data-toast]').forEach(i => { i.checked = this.toastOn(i.dataset.toast); });

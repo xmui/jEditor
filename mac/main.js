@@ -22,6 +22,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const places = require('./places');
+const move = require('./move');
 const toolbar = require('./native'); // null without the native module
 const photos = require('./photos'); // the Photos library (photos.library: null without one)
 
@@ -722,6 +723,29 @@ async function handle(rec, type, data) {
             } catch (e) {
                 if (e.stopped) return { cancelled: true };
                 throw e;
+            } finally {
+                copies.delete(data.copy);
+            }
+        }
+        case 'folderSize': {
+            // What a move would take, and the room where it'd go (folderMove)
+            const out = await move.size(data.path);
+            if (!data.dest) return out;
+            return { ...out, ...(await move.space(data.dest, data.path)), refused: move.refuse(data.path, data.dest) };
+        }
+        case 'moveFolder': {
+            const stop = { stopped: false };
+            copies.set(data.copy, stop);
+            try {
+                const r = await move.run(data.path, data.dest, (done, total, moved) => {
+                    wc.send('jeditor', { type: 'copyProgress', copy: data.copy, done, total, moved });
+                }, stop);
+                log('info', `Moved ${r.moved} from ${data.path} to ${data.dest}${r.error ? ': ' + r.error : ''}`);
+                drivesChanged();
+                return r;
+            } catch (e) {
+                log('error', `Couldn't move ${data.path} to ${data.dest}: ${e.message}`);
+                return { moved: 0, left: [], error: e.message };
             } finally {
                 copies.delete(data.copy);
             }

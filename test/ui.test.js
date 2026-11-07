@@ -3190,6 +3190,151 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 7n2. The Open a folder card, moving the projects folder, Clear cache ----
+    console.log('open a folder card, moving folders');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const wait = async (fn) => { for (let i = 0; i < 150 && !fn(); i++) await new Promise(res => setTimeout(res, 20)); return fn(); };
+            const shown = (id) => !document.getElementById(id).classList.contains('hidden');
+            await Recents.tx('readwrite', s => s.clear());
+            const opfs = await navigator.storage.getDirectory();
+            const make = async (name) => {
+                try { await opfs.removeEntry(name, { recursive: true }); } catch (e) { /* fresh */ }
+                const d = await opfs.getDirectoryHandle(name, { create: true });
+                const w = await (await d.getFileHandle('a.jpg', { create: true })).createWritable();
+                await w.write(new Blob([await makeRealJpeg(200, 150)], { type: 'image/jpeg' }));
+                await w.close();
+                return d;
+            };
+            const pick = async (d) => { window.showDirectoryPicker = async () => d; await app.browseFolder(); await Recents.saving; };
+            await pick(await make('card Summer'));
+            await pick(await make('card Lake'));
+
+            // The tile opens the card: search, the drop place, Browse, recents
+            document.getElementById('btn-browse-folder').click();
+            await wait(() => document.querySelectorAll('#oc-recents .oc-recent').length === 2);
+            out.open = shown('open-card') && document.activeElement === document.getElementById('oc-search') &&
+                [...document.querySelectorAll('#oc-recents .oc-name')].map(x => x.textContent).join(',') === 'card Lake,card Summer' &&
+                !!document.getElementById('oc-drop') && !document.querySelector('#oc-list .oc-library');
+            // Search filters as you type; Enter opens the first
+            const s = document.getElementById('oc-search');
+            s.value = 'sum';
+            s.dispatchEvent(new Event('input'));
+            out.search = [...document.querySelectorAll('#oc-recents .oc-name')].map(x => x.textContent).join(',') === 'card Summer';
+            s.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            await wait(() => app.dirHandle && app.dirHandle.name === 'card Summer' && app.files.length);
+            out.enter = !shown('open-card') && app.dirHandle.name === 'card Summer';
+            // Escape closes it; Browse… is the folder picker
+            document.getElementById('btn-browse-folder').click();
+            document.getElementById('oc-search').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            out.escape = !shown('open-card');
+            let browsed = 0;
+            window.showDirectoryPicker = async () => { browsed++; throw new DOMException('no', 'AbortError'); };
+            document.getElementById('btn-browse-folder').click();
+            document.getElementById('oc-browse').click();
+            await wait(() => browsed);
+            out.browse = browsed === 1 && !shown('open-card');
+
+            // An app with the projects folder and the move (a stand-in)
+            const moves = [];
+            let room = 10e9, fail = null;
+            const store = await opfs.getDirectoryHandle('card-data', { create: true });
+            const thumbs = await (await (await store.getDirectoryHandle(FolderCache.storeName('D:\\Projects\\Hendersons'), { create: true }))
+                .getDirectoryHandle('cache', { create: true })).getDirectoryHandle('thumbs', { create: true });
+            const tw = await (await thumbs.getFileHandle('x.img', { create: true })).createWritable();
+            await tw.write(new Blob([await makeRealJpeg(40, 30)], { type: 'image/jpeg' }));
+            await tw.close();
+            let picked = 'E:\\New';
+            window.JEditorNative = {
+                features: ['places', 'folderMove'],
+                dataDir: async () => store,
+                places: async () => ({ drives: [], home: [] }),
+                listProjects: async (dir) => dir === 'D:\\Projects' ? [{ name: 'Hendersons', path: 'D:\\Projects\\Hendersons', modified: Date.now() }, { name: 'Okafor', path: 'D:\\Projects\\Okafor', modified: Date.now() - 86400000 }] : [],
+                countPhotos: async (paths) => ({ counts: paths.map(() => 7), limit: 1000 }),
+                pickPath: async () => picked,
+                folderSize: async (path, dest) => ({ folders: 2, files: 9, bytes: 48.2 * 2 ** 30, free: room, drive: 'E:', sameDrive: false, refused: null }),
+                moveFolder: (path, dest, progress) => { moves.push([path, dest]); progress(1, 2, 1); return Promise.resolve(fail || { moved: 2, left: [] }); },
+                cancelCopy: () => { },
+                reveal: () => { }
+            };
+            Places.set(Places.KEY_DIR, 'D:\\Projects');
+            const answer = async (id) => { await wait(() => shown('ui-dialog')); const text = document.getElementById('ui-dialog').textContent; document.getElementById(id).click(); return text; };
+
+            // The card lists the projects, with their pictures and counts
+            OpenCard.open();
+            await wait(() => document.querySelectorAll('#oc-list .oc-row').length === 2 && document.querySelector('#oc-list img.oc-pic'));
+            const rows = [...document.querySelectorAll('#oc-list .oc-row')];
+            out.projects = rows.map(x => x.querySelector('.oc-name').textContent).join(',') === 'Hendersons,Okafor' &&
+                rows[0].querySelectorAll('img.oc-pic').length === 1 && rows[1].querySelectorAll('.oc-pic.ghost').length === 3;
+            await wait(() => /7 photos/.test(rows[0].textContent) || /7 photos/.test(document.querySelector('#oc-list .oc-row').textContent));
+            out.counts = /7 photos · Today/.test(document.querySelector('#oc-list .oc-row').textContent);
+            OpenCard.close();
+
+            // Not enough room: the numbers, and nothing moved
+            room = 31.5 * 2 ** 30;
+            let flow = FolderMove.changeProjects();
+            out.ask = /2 projects/.test(await answer('uid-ok'));
+            out.noRoom = /48\.2 GB.*31\.5 GB free\. Nothing was moved.*16\.7 GB/s.test(await answer('uid-ok'));
+            await flow;
+            out.noRoomKept = !moves.length && Places.projectsDir() === 'D:\\Projects';
+            // Leave: the folder changes, nothing moves
+            room = 100 * 2 ** 30;
+            flow = FolderMove.changeProjects();
+            await answer('uid-alt');
+            await flow;
+            out.left = !moves.length && Places.projectsDir() === 'E:\\New';
+            // Move: asked, confirmed with how it's kept safe, then moved
+            picked = 'F:\\Moved';
+            flow = FolderMove.changeProjects();
+            await answer('uid-ok');
+            out.confirm = /checked file by file.*nothing is lost/s.test(await answer('uid-ok'));
+            await flow;
+            out.moved = moves.length === 1 && moves[0][0] === 'E:\\New' && moves[0][1] === 'F:\\Moved' && Places.projectsDir() === 'F:\\Moved';
+            // Failing before anything moved: the folder stays, and it says nothing was lost
+            fail = { moved: 0, left: [], error: 'Hendersons: the drive went away' };
+            picked = 'G:\\Other';
+            flow = FolderMove.changeProjects();
+            await answer('uid-ok');
+            await answer('uid-ok');
+            out.failed = /Nothing was moved.*Nothing was lost/s.test(await answer('uid-ok'));
+            await flow;
+            out.failedKept = Places.projectsDir() === 'F:\\Moved';
+
+            // Clear cache: the thumbnails go, and recents become ghost stacks
+            await Recents.tx('readwrite', s => s.getAll()).then(() => null);
+            const recs = await Recents.list();
+            await Recents.tx('readwrite', s => recs.forEach(x => s.put({ ...x, thumbs: [new Blob(['x'], { type: 'image/jpeg' })] })));
+            await Recents.render();
+            out.before = !document.querySelector('#recent-list li.ghosted');
+            flow = FolderMove.clearCache();
+            out.clearAsk = /Clear the cache/.test(await answer('uid-ok'));
+            await flow;
+            const gone = await store.getDirectoryHandle(FolderCache.storeName('D:\\Projects\\Hendersons')).then(h => h.getDirectoryHandle('cache')).then(() => false, () => true);
+            const li = document.querySelector('#recent-list li');
+            out.cleared = gone && li.classList.contains('ghosted') && getComputedStyle(li.querySelector('.recent-sub')).display === 'none' &&
+                getComputedStyle(li.querySelector('.recent-name')).display !== 'none';
+            delete window.JEditorNative;
+            Places.set(Places.KEY_DIR, null);
+            await opfs.removeEntry('card-data', { recursive: true });
+            return out;
+        });
+        check('open card: the tile opens it, with search, the drop place and recents', r.open, JSON.stringify(r));
+        check('open card: search filters as you type, and Enter opens the first', r.search && r.enter);
+        check('open card: Escape closes it, and Browse… is the folder picker', r.escape && r.browse);
+        check('open card: lists the projects folder\'s projects, with cached pictures or ghost frames', r.projects);
+        check('open card: each project says how many photos and when', r.counts);
+        check('move: asks to move or leave, with the count', r.ask);
+        check('move: not enough room shows the numbers and moves nothing', r.noRoom && r.noRoomKept);
+        check('move: Leave changes the folder and moves nothing', r.left);
+        check('move: Move confirms how it\'s kept safe, then moves', r.confirm && r.moved);
+        check('move: a failed move keeps the old folder and says nothing was lost', r.failed && r.failedKept);
+        check('clear cache: removes the thumbnails, and recents show as ghost stacks with only the name', r.before && r.clearAsk && r.cleared);
+        check('open card suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7o. Zooming the grid keeps your place ----
     console.log('grid zoom keeps your place');
     {

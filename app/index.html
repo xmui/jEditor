@@ -62,6 +62,8 @@
     <script src="convert.js"></script>
     <script src="windows.js"></script>
     <script src="start.js"></script>
+    <script src="folder-move.js"></script>
+    <script src="open-card.js"></script>
     <script src="picked.js"></script>
     <script src="permissions.js"></script>
     <script src="motion.js"></script>
@@ -886,6 +888,27 @@
 
                     <section id="set-page-projects" class="settings-section" data-page="projects" role="tabpanel" aria-labelledby="set-h-folder">
                         <h3 id="set-h-folder" class="settings-page-title">Projects</h3>
+                        <!-- Where projects and the cache are kept (folder-move.js) -->
+                        <div id="set-folders" class="native-only">
+                            <h4 class="set-group">Folders</h4>
+                            <div class="set-row" data-needs="places">
+                                <span class="set-label">Projects folder
+                                    <small>Choose the folder that holds your photo folders. Each folder inside it shows here as a project.</small>
+                                    <small id="set-projects-where" class="set-path"></small></span>
+                                <button id="set-projects-change" class="btn secondary">Change…</button>
+                            </div>
+                            <div class="set-row" data-needs="cacheFolder">
+                                <span class="set-label">Cache folder
+                                    <small>Thumbnails, flags and edits for each project, so projects open fast</small>
+                                    <small id="set-cache-where" class="set-path"></small></span>
+                                <button id="set-cache-change" class="btn secondary">Change…</button>
+                            </div>
+                            <div class="set-row">
+                                <span class="set-label"><span id="set-cache-size">Cache</span>
+                                    <small>Clearing it frees the space. Projects stay, shown as ghost prints with their names until their thumbnails are made again.</small></span>
+                                <button id="set-cache-clear" class="btn secondary">Clear cache…</button>
+                            </div>
+                        </div>
                         <div class="set-row" data-needs="permissions">
                             <span class="set-label">Permissions
                                 <small>What macOS lets jEditor open: your folders, USB drives and memory cards</small></span>

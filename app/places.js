@@ -239,7 +239,7 @@ const Places = {
         const projects = dir
             ? `<input class="field sm sb-search" type="search" placeholder="Search projects" value="${this.esc(this.query)}" aria-label="Search projects" spellcheck="false" autocomplete="off"${searching ? '' : ' hidden'}>` +
               `<div class="sb-projects">${await this.projectRows()}</div>`
-            : `<button class="btn secondary sb-choose" data-act="choose" title="The folder your projects are in: each folder in it is listed here, newest first">Choose your projects folder…</button>`;
+            : `<button class="btn secondary sb-choose" data-act="choose" title="${FolderMove.ADVICE}">Choose your projects folder…</button>`;
         const elsewhere = await this.elsewhereRows();
 
         const pins = await this.pinRows();
@@ -624,9 +624,10 @@ const Places = {
         this.draw();
     },
 
-    async chooseFolder() {
-        const path = await this.native().pickPath('Choose your projects folder', this.projectsDir());
-        if (!path) return;
+    // A new projects folder, through the move flow (folder-move.js)
+    chooseFolder() { return FolderMove.changeProjects(); },
+
+    async setProjectsDir(path) {
         this.set(this.KEY_DIR, path);
         this.showAll = false;
         this.query = '';
