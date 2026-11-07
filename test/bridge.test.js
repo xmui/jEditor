@@ -18,7 +18,7 @@ const ORIGIN = 'https://jeditor.example';
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 
-const { launchOptions } = require('./page-helpers.js');
+const { launchOptions, QUIET_FIRST_OPEN } = require('./page-helpers.js');
 
 let passed = 0, failed = 0;
 function check(name, ok, detail = '') {
@@ -90,6 +90,7 @@ async function openPage(browser, { origin = ORIGIN, webview = true, dev = false 
     if (webview) await page.addInitScript(FAKE_WEBVIEW);
     if (dev) await page.addInitScript('window.__jeditorDev = true;');
     await page.addInitScript(BRIDGE);
+    await page.addInitScript(QUIET_FIRST_OPEN);
     await page.goto(origin + '/index.html');
     await page.waitForFunction(() => typeof app !== 'undefined' && app.elements);
     return { context, page, errors };
@@ -141,7 +142,10 @@ const waitForPost = (page, type) => page.waitForFunction(
                 else if (m.type === 'dataDir') window.__deliver({ replyTo: m.id, path: 'C:\\data' }, [await (await navigator.storage.getDirectory()).getDirectoryHandle('appdata', { create: true })]);
             };
         }, MAKE_FOLDER.toString());
+        // Open a folder opens the card (open-card.js); Browse… asks the app
         await page.click('#btn-browse-folder');
+        await page.waitForSelector('#open-card:not(.hidden)');
+        await page.click('#oc-browse');
         await page.waitForFunction(() => app.files.length === 3 && !app.isLoading, null, { timeout: 15000 });
         const r = await page.evaluate(() => ({
             picks: window.__posted.filter(m => m.type === 'pickFolder').length,
@@ -168,6 +172,7 @@ const waitForPost = (page, type) => page.waitForFunction(
             window.__onPost = (m) => { if (m.type === 'pickFolder') setTimeout(() => window.__deliver({ replyTo: m.id, cancelled: true }), 10); };
         });
         await page.click('#btn-browse-folder');
+        await page.click('#oc-browse');
         await page.waitForFunction(() => window.__posted.some(m => m.type === 'pickFolder'));
         await page.waitForTimeout(300);
         const r = await page.evaluate(() => ({

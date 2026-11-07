@@ -18,6 +18,8 @@ sealed class Settings
     public string? Backdrop { get; set; }
     public string? LastFolder { get; set; }
     public string? UiStamp { get; set; }
+    // The cache folder chosen in Settings → Projects (null: the default)
+    public string? CacheDir { get; set; }
 
     static string FilePath => Path.Combine(Shell.DataDir, "window.json");
     static readonly JsonSerializerOptions json = new() { WriteIndented = true };
