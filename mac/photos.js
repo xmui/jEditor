@@ -1,10 +1,15 @@
-// jEditor for Mac: the Photos library, read-only (step 1: browse it). The
-// sidebar's "Photos library" row under Locations opens out to Favourites,
-// Recently added and the albums; one opens as the project, read-only.
+// jEditor for Mac: the Photos library. The sidebar's "Photos library" row
+// under Locations opens out to Favourites, Recently added and the albums;
+// one opens as the project. Its photos are edited in place: an edit is
+// saved back as a Photos edit on the photo as it is now (save), so it
+// stacks on the edits already made in Photos or another app, and Photos
+// keeps the original and those. Photos can also be added to it (add).
 //
 // It's the native module (native/photos.mm, PhotoKit), or for the tests a
 // stand-in, JEDITOR_PHOTOS_LIBRARY=<folder>: each folder in it is an album
 // (one called Favourites is the favourites), its photos are the library.
+// The stand-in keeps each photo's original in .originals/ and every
+// version saved in .versions/, as Photos keeps them; it isn't an album.
 // Either way it's the same calls (see photos.mm), and main.js serves the
 // pictures at app://jeditor/__photos/thumb/<id>?w=<px> and /__photos/full/<id>.
 
@@ -26,6 +31,7 @@ function standIn(root) {
                 .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
         } catch (e) { return []; }
     };
+    const kept = (what) => path.join(root, what);
     const fileOf = (id) => {
         const file = path.resolve(root, id);
         if (!file.startsWith(path.resolve(root) + path.sep)) throw new Error('That photo isn\'t in the library');
@@ -37,7 +43,8 @@ function standIn(root) {
         const st = fs.statSync(file);
         let w = 0, h = 0;
         try { ({ width: w, height: h } = require('electron').nativeImage.createFromPath(file).getSize()); } catch (e) { /* unknown */ }
-        return { id, originalFilename: path.basename(file), created: st.mtimeMs, fileSize: st.size, w, h };
+        const born = fs.existsSync(path.join(kept('.originals'), id)) ? fs.statSync(path.join(kept('.originals'), id)).mtimeMs : st.mtimeMs;
+        return { id, originalFilename: path.basename(file), created: born, modified: st.mtimeMs, fileSize: st.size, w, h };
     };
     return {
         authStatus: () => process.env.JEDITOR_PHOTOS_AUTH || 'granted',
@@ -63,6 +70,32 @@ function standIn(root) {
             const { width, height } = img.getSize();
             const s = Math.min(1, px / Math.max(width, height));
             return img.resize({ width: Math.max(1, Math.round(width * s)), height: Math.max(1, Math.round(height * s)), quality: 'good' }).toJPEG(80);
+        },
+        // A Photos edit: the original kept the first time, each version after
+        async save(id, bytes) {
+            const file = fileOf(id);
+            const orig = path.join(kept('.originals'), id);
+            fs.mkdirSync(path.dirname(orig), { recursive: true });
+            if (!fs.existsSync(orig)) fs.copyFileSync(file, orig, fs.constants.COPYFILE_EXCL);
+            const n = (fs.existsSync(path.dirname(path.join(kept('.versions'), id))) ? fs.readdirSync(path.dirname(path.join(kept('.versions'), id))).filter(x => x.startsWith(path.basename(id) + '.')).length : 0) + 1;
+            const ver = path.join(kept('.versions'), `${id}.${n}`);
+            fs.mkdirSync(path.dirname(ver), { recursive: true });
+            fs.copyFileSync(file, ver);
+            await fs.promises.writeFile(file, Buffer.from(bytes));
+            const a = asset(id);
+            return { modified: a.modified, fileSize: a.fileSize, w: a.w, h: a.h };
+        },
+        async add(paths, album) {
+            const dir = album ? path.join(root, album.replace(/[/\\:]/g, '_')) : root;
+            fs.mkdirSync(dir, { recursive: true });
+            let added = 0;
+            for (const p of paths) {
+                let name = path.basename(p), i = 1;
+                while (fs.existsSync(path.join(dir, name))) name = path.basename(p).replace(/(\.[^.]*)?$/, ` ${++i}$1`);
+                fs.copyFileSync(p, path.join(dir, name));
+                added++;
+            }
+            return { added, album: album ? { id: 'album:' + path.basename(dir), name: path.basename(dir) } : null };
         },
         async image(id) {
             const file = fileOf(id);

@@ -585,6 +585,21 @@ async function handle(rec, type, data) {
         case 'photosAssets':
             if (!photos.library) throw new Error('No Photos library here');
             return { assets: await photos.library.assets(String(data.id || '')) };
+        // An edit saved back: the photo as jEditor made it, a Photos edit on
+        // the current version (photos.mm: save)
+        case 'photosSave': {
+            if (!photos.library) throw new Error('No Photos library here');
+            const bytes = data.bytes instanceof Uint8Array ? data.bytes : new Uint8Array(data.bytes || []);
+            if (!bytes.length) throw new Error('Nothing to save');
+            return await photos.library.save(String(data.id || ''), bytes);
+        }
+        // Photos on disk put into the library, in an album of that name
+        case 'photosAdd': {
+            if (!photos.library) throw new Error('No Photos library here');
+            const paths = (Array.isArray(data.paths) ? data.paths : []).map(String).filter(p => path.isAbsolute(p) && fs.existsSync(p));
+            if (!paths.length) throw new Error('Those photos aren\'t on this Mac');
+            return await photos.library.add(paths, String(data.album || ''));
+        }
         case 'permissionsSeen':
             settings.permissionsSeen = true;
             saveSettings();

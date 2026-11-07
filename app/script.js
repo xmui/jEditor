@@ -7,6 +7,9 @@ const app = {
     readOnlyMode: false, // When true, saving is disabled (legacy drag-drop)
     // An album of the Mac's Photos library is open (bridge.js: photosAlbum)
     get library() { return !!(this.dirHandle && typeof this.dirHandle.photosLibrary === 'string'); },
+    // Its photos can be edited, but none added, moved, renamed or removed:
+    // read-only, or the Photos library (that's for Photos)
+    get fixedFiles() { return this.readOnlyMode || this.library; },
     cropState: { // True while the Crop & Straighten editor, or Adjust, owns the screen (crop.js, adjust.js)
         active: false,
         tool: null // 'adjust' while it's Adjust
@@ -404,7 +407,7 @@ const app = {
             this.cleanupURLs();
             this.files = [];
             this.dirHandle = dirHandle;
-            this.readOnlyMode = !!library; // Modern API supports writing; the Photos library can't be changed (yet)
+            this.readOnlyMode = false; // Modern API supports writing; the Photos library's photos are edited in place (bridge.js: photosAlbum)
 
             this.beginTask('scan', 'Scanning folder…');
             this.elements.dropZone.classList.add('hidden');
@@ -1735,7 +1738,7 @@ const app = {
                 this.precacheThumbnails();
 
                 // Top of Recent on the start screen
-                if (this.dirHandle && !this.readOnlyMode) Recents.remember(this.dirHandle);
+                if (this.dirHandle && !this.fixedFiles) Recents.remember(this.dirHandle);
 
                 // Flags saved with the order, then keep an eye on the folder
                 // (not the Photos library's: it isn't a folder)
@@ -1743,9 +1746,9 @@ const app = {
                 if (!this.library) Watch.start();
                 const nested = this._nestedJeditor || [];
                 this._nestedJeditor = null;
-                if (nested.length && this.dirHandle && !this.readOnlyMode) FolderCache.absorbNested(this, nested);
+                if (nested.length && this.dirHandle && !this.fixedFiles) FolderCache.absorbNested(this, nested);
                 Modes.afterLoad();
-            } else if (this.dirHandle && !this.readOnlyMode) {
+            } else if (this.dirHandle && !this.fixedFiles) {
                 // No photos yet: it opens anyway, to scan into, make folders
                 // in, or fill from elsewhere (they show up as they land)
                 this._openScope = null;
@@ -1940,10 +1943,15 @@ const app = {
 
     // Legacy drag-and-drop gives read-only files. Say so up front instead
     // of letting an edit run and fail at the save.
-    ensureWritable() {
+    // files: it adds, moves, renames or removes photos, which the Photos
+    // library's aren't (their edits are saved back into Photos)
+    ensureWritable({ files = false } = {}) {
+        if (files && this.library) {
+            this.showToast('Photos in the Photos library are renamed, moved and deleted in Photos. Edits made here are saved back into it', 5000);
+            return false;
+        }
         if (!this.readOnlyMode) return true;
-        if (this.library) this.showToast('Photos in the Photos library can\'t be changed yet: this is for looking through them', 4000);
-        else this.showToast('These photos were opened read-only — use Open folder to edit and save', 4000);
+        this.showToast('These photos were opened read-only — use Open folder to edit and save', 4000);
         return false;
     },
 
@@ -3298,7 +3306,7 @@ const app = {
         if (file._arrived && Date.now() - file._arrived < 6000) div.classList.add('is-new');
 
         // Drag onto a folder to move it there (Ctrl/Alt copies)
-        if (this.dirHandle && !this.readOnlyMode) {
+        if (this.dirHandle && !this.fixedFiles) {
             div.draggable = true;
             div.addEventListener('dragstart', (e) => Folders.dragStart(e, file));
         }
@@ -3716,7 +3724,7 @@ const app = {
     // go for good) and the cache. For when an order is finished.
     async cleanUpFolder() {
         if (!this.dirHandle) return;
-        if (!this.ensureWritable()) return;
+        if (!this.ensureWritable({ files: true })) return;
         const inTrash = await FolderCache.trashCount(this);
         const flagged = Flags.count();
         const edited = Edits.count();
@@ -6293,7 +6301,7 @@ const app = {
     async moveToTrash(files) {
         let list = [...new Set(files.filter(Boolean))];
         if (!list.length) return;
-        if (!this.ensureWritable()) return;
+        if (!this.ensureWritable({ files: true })) return;
         if (!this.dirHandle) {
             this.showToast('Deleting requires opening a folder (not loose files)');
             return;
@@ -6507,7 +6515,7 @@ const app = {
         if (this._stripWin && this.files.length) this.renderThumbnails();
         if (this._gridWin && this.files.length) this.keepGridPlace(() => this.renderGrid());
 
-        if (this.files.length === 0 && this.dirHandle && !this.readOnlyMode) {
+        if (this.files.length === 0 && this.dirHandle && !this.fixedFiles) {
             // The last photo went: the project stays open, empty
             this.currentFile = null;
             this.setView('grid');
@@ -6705,7 +6713,7 @@ const app = {
     async renameMany(pairs, { skipUndo = false } = {}) {
         pairs = pairs.filter(p => p.file && p.newName && p.newName !== p.file.name);
         if (!pairs.length) return true;
-        if (!this.ensureWritable()) return false;
+        if (!this.ensureWritable({ files: true })) return false;
         const dirKey = (f) => { const r = f.relPath || f.name; return r.includes('/') ? r.slice(0, r.lastIndexOf('/')) : ''; };
         const original = new Map(pairs.map(p => [p.file, p.file.name]));
         const oldNames = new Set(pairs.map(p => dirKey(p.file) + '/' + p.file.name.toLowerCase()));
@@ -6781,7 +6789,7 @@ const app = {
     },
 
     openRename(files) {
-        if (!this.ensureWritable()) return;
+        if (!this.ensureWritable({ files: true })) return;
         if (!this.dirHandle) {
             this.showToast('Renaming needs a folder opened with Open folder');
             return;
@@ -7179,6 +7187,25 @@ const app = {
     },
 
     buildContextItems(tile, inSingle) {
+        const items = this.contextItemsFor(tile, inSingle);
+        return this.library ? this.withoutFileChanges(items) : items;
+    },
+
+    // The Photos library's photos are moved, renamed, converted and deleted
+    // in Photos: those go from its menus (and a separator left doubled)
+    withoutFileChanges(items) {
+        const changes = /^(Move |Copy (\S+ )?to…|Rename|Convert|Delete|New folder|New blank image|Paste image|Clean up folder)/;
+        const out = [];
+        for (const it of items) {
+            if (typeof it[0] === 'string' && changes.test(it[0])) continue;
+            if (it[0] === '—' && (!out.length || out[out.length - 1][0] === '—')) continue;
+            out.push(it);
+        }
+        while (out.length && out[out.length - 1][0] === '—') out.pop();
+        return out;
+    },
+
+    contextItemsFor(tile, inSingle) {
         if (tile) {
             const file = tile._file;
             if (!this.selection.has(file)) {
@@ -7210,6 +7237,7 @@ const app = {
                     [`Rename ${n}…`, () => this.openRename(sel)],
                     [`Export ${n}…`, () => Export.open({ files: sel })],
                     [`Convert ${n}…`, () => Convert.open({ files: sel })],
+                    ...(this.canAddToPhotos() ? [[`Add ${n} to Photos library`, () => this.addToPhotos(sel)]] : []),
                     ['—'],
                     [`Delete ${n}`, () => this.moveToTrash(sel), true]
                 ];
@@ -7240,6 +7268,7 @@ const app = {
                 ['File info', () => { this.toggleInfoPanel(true, { file }); }],
                 ['Export…', () => Export.open({ files: [file] })],
                 ['Convert…', () => Convert.open({ files: [file] })],
+                ...(this.canAddToPhotos() ? [['Add to Photos library', () => this.addToPhotos([file])]] : []),
                 ['—'],
                 ['Delete', () => this.moveToTrash([file]), true]
             ];
@@ -7269,6 +7298,7 @@ const app = {
                 ['File info', () => this.toggleInfoPanel(true)],
                 ['Export…', () => Export.open({ files: [file] })],
                 ['Convert…', () => Convert.open({ files: [file] })],
+                ...(this.canAddToPhotos() ? [['Add to Photos library', () => this.addToPhotos([file])]] : []),
                 ['—'],
                 ['Full screen', () => this.toggleFullscreen()],
                 ['Start slideshow', () => this.startSlideshow()],
@@ -7296,15 +7326,67 @@ const app = {
                 [Edits.defer ? 'Save edits straight away' : 'Save edits when done', () => Edits.setDefer(!Edits.defer)],
                 ...(Edits.count() ? [['Save edits…', () => Edits.saveAll()]] : [])
             ] : []),
+            ...(this.canAddToPhotos() && this.files.length ? [['Add all to Photos library', () => this.addToPhotos(this.viewFiles())]] : []),
             ['Clean up folder…', () => this.cleanUpFolder()]
         ];
+    },
+
+    // ---- Into the Mac's Photos library (photosAdd; bridge.js: photosAdd) ----
+
+    // A folder project's photos can go into the library (not the library's own)
+    canAddToPhotos() {
+        return Host.has('photosAdd') && !!this.dirHandle && !this.library && !this.readOnlyMode;
+    },
+
+    // Photos as they are on disk into the library, in an album named after
+    // the project (a scan order: an album per order). Their metadata goes
+    // with them. Kept edits are saved first, so Photos gets the photo as it
+    // looks here.
+    async addToPhotos(files) {
+        files = (files || []).filter(Boolean);
+        if (!files.length || !this.canAddToPhotos()) return 0;
+        const native = Host.get();
+        const kept = files.filter(f => f._edit);
+        if (kept.length) {
+            const n = kept.length;
+            this.showToast(`${n === files.length ? (n === 1 ? 'It has' : 'They have') : `${n.toLocaleString()} of them have`} edits not saved yet: Save edits first, so Photos gets them`, 5000);
+            return 0;
+        }
+        let access = await native.photosAccess().catch(() => 'denied');
+        if (access === 'ask') access = await native.photosAccess(true).catch(() => 'denied');
+        if (access !== 'granted' && access !== 'limited') {
+            this.showToast('jEditor isn\'t allowed to add to the Photos library: allow it in System Settings → Privacy & Security → Photos', 6000);
+            return 0;
+        }
+        const base = await FolderCache.orderPath(this).catch(() => null);
+        if (!base) {
+            this.showToast('jEditor can\'t tell where these photos are on this Mac, so they can\'t go into Photos', 5000);
+            return 0;
+        }
+        const album = this.dirHandle.name;
+        const key = 'to-photos';
+        const n = files.length;
+        this.beginTask(key, `Adding ${n.toLocaleString()} photo${n === 1 ? '' : 's'} to Photos…`);
+        try {
+            const r = await native.photosAdd(files.map(f => base.replace(/\/+$/, '') + '/' + (f.relPath || f.name)), album);
+            const added = (r && r.added) || 0;
+            const where = r && r.album ? ` (the album “${r.album.name}”)` : '';
+            this.showToast(`Added ${added.toLocaleString()} photo${added === 1 ? '' : 's'} to the Photos library${where}`, 4000);
+            if (typeof Places !== 'undefined') Places.libraryList = null; // its albums and counts, again when next opened out
+            return added;
+        } catch (e) {
+            this.showToast('Adding to Photos failed: ' + e.message, 5000);
+            return 0;
+        } finally {
+            this.endTask(key);
+        }
     },
 
     // The selection bar's ⋯ menu: what doesn't earn a place on the bar
     selectionMoreItems() {
         const sel = [...this.selection];
         const n = sel.length.toLocaleString();
-        return [
+        const items = [
             ['flags', sel],
             ['—'],
             // On the bar in the themes; in jEditor's own look only here (and [ ])
@@ -7314,9 +7396,11 @@ const app = {
             [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy')],
             [`Export ${n}…`, () => Export.open({ files: sel })],
             [`Convert ${n}…`, () => Convert.open({ files: sel })],
+            ...(this.canAddToPhotos() ? [[`Add ${n} to Photos library`, () => this.addToPhotos(sel)]] : []),
             ['—'],
             ['Select all', () => { this.selection = new Set(this.viewFiles()); this.updateSelectionUI(); }]
         ];
+        return this.library ? this.withoutFileChanges(items) : items;
     },
 
     // items: [label, action, danger] | ['—'] | ['flags', files]
