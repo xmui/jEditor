@@ -1558,8 +1558,10 @@ const PROJECT = `
                 // To Paint from the chip's menu: Paint on the same photo
                 step = 'to paint';
                 $('mode-chip-float').click();
-                const items = [...document.querySelectorAll('.mode-menu .mode-mi')].map(b => b.textContent);
-                out.menu = items.length === 3 && /Paint/.test(items[2]) && document.querySelector('.mode-menu .mode-mi.on') && /Adjust/.test(document.querySelector('.mode-menu .mode-mi.on').textContent);
+                // The three modes, then Find anything (palette.js)
+                const items = [...document.querySelectorAll('.mode-menu .mode-mi:not(.mode-find)')].map(b => b.textContent);
+                out.menu = items.length === 3 && /Paint/.test(items[2]) && document.querySelector('.mode-menu .mode-mi.on') && /Adjust/.test(document.querySelector('.mode-menu .mode-mi.on').textContent) &&
+                    /Find anything/.test(document.querySelector('.mode-menu .mode-mi:last-child').textContent);
                 document.querySelectorAll('.mode-menu .mode-mi')[2].click();
                 await until(() => PaintEditor.ready && Modes.strip.parentElement === $('paint-editor'));
                 out.inPaint = Modes.current() === 'paint' && PaintEditor.file === app.viewFiles()[1] && Modes.strip.parentElement === $('paint-editor');

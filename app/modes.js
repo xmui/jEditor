@@ -401,6 +401,17 @@ const Modes = {
             b.addEventListener('click', () => this.go(m));
             menu.appendChild(b);
         }
+        // Find anything (palette.js), in each mode: the one menu every mode has
+        if (typeof Palette !== 'undefined') {
+            const keys = (this.app.keyBindings && this.app.keyBindings['app.palette']) || [];
+            const f = document.createElement('button');
+            f.type = 'button';
+            f.setAttribute('role', 'menuitem');
+            f.className = 'mode-mi mode-find';
+            f.innerHTML = `${this.icon('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>')}<span>Find anything…</span>${keys.length ? `<kbd>${this.app.formatCombo(keys[0]).replace(/ \+ /g, '+')}</kbd>` : ''}`;
+            f.addEventListener('click', () => { this.closeMenu(); Palette.open(); });
+            menu.appendChild(f);
+        }
         document.body.appendChild(menu);
         const r = chip.getBoundingClientRect();
         menu.style.left = `${Math.max(8, Math.min(innerWidth - menu.offsetWidth - 8, r.left))}px`;

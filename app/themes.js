@@ -84,7 +84,8 @@ const Themes = {
             ['Sync adjustments…', 'edit.syncAdjust', true],
             ['Auto Sync', 'adjust.autoSync', true],
             '—',
-            ['Search', 'app.search', true]
+            ['Search', 'app.search', true],
+            ['Find anything…', 'app.palette']
         ],
         View: [
             ['Photos', 'view.grid', true],

@@ -271,6 +271,7 @@ const app = {
         Stored.init(this);
         FolderMove.init(this);
         OpenCard.init(this);
+        Palette.init(this); // Find anything, Ctrl+K
         FirstOpen.init(this);
         CropLog.init(this);
         Updates.init(this);
@@ -4705,6 +4706,7 @@ const app = {
         ['app.import', 'global', 'App', 'Import from a camera or card…', ['Ctrl+I']],
         ['app.refresh', 'global', 'App', 'Rescan folder', ['R']],
         ['app.search', 'global', 'App', 'Search photos', ['Ctrl+F', '/']],
+        ['app.palette', 'global', 'App', 'Find anything: photos, folders, projects and commands', ['Ctrl+K']],
         ['app.shortcuts', 'global', 'App', 'Keyboard shortcuts', ['?']],
         ['app.guide', 'global', 'App', 'Guide: how-tos and shortcuts', ['F1']],
         ['app.tour', 'global', 'App', 'Take the tour', []],
@@ -4920,6 +4922,7 @@ const app = {
             'app.import': () => Import.open(),
             'app.refresh': () => this.refreshFolder(),
             'app.search': () => Flags.focusSearch(),
+            'app.palette': () => Palette.toggle(),
             'app.shortcuts': () => this.toggleShortcutsPanel(),
             'app.guide': () => Guide.toggle(),
             'app.tour': () => Tour.start(),
@@ -5245,7 +5248,20 @@ const app = {
 
         // The rename tool, folder dialogs, Settings and the alert/confirm
         // dialogs handle their own keys
-        if (Renamer.isOpen || Folders.isModalOpen() || Export.isOpen() || Recents.isPromptOpen() || AdjustSync.isOpen() || UI.isOpen() || Stored.isOpen() || Scan.isOpen() || Camera.isOpen() || Blank.isOpen()) return;
+        const modal = Renamer.isOpen || Folders.isModalOpen() || Export.isOpen() || Recents.isPromptOpen() || AdjustSync.isOpen() || UI.isOpen() || Stored.isOpen() || Scan.isOpen() || Camera.isOpen() || Blank.isOpen();
+
+        // Find anything (palette.js): its key works everywhere, in each mode
+        // and from inside a box being typed in; open, it has the keys
+        if (!modal && !Palette.isOpen() && !this.isWhatsNewOpen() && !this.isShortcutsOpen()) {
+            const c = this.comboFromEvent(e);
+            if (c && (this.keyBindings['app.palette'] || []).includes(c)) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                Palette.open();
+                return;
+            }
+        }
+        if (modal || Palette.isOpen()) return;
 
         // What's New is modal: Esc closes it
         if (this.isWhatsNewOpen()) {
@@ -5297,7 +5313,7 @@ const app = {
         if (!id) return;
         // Only the shortcut list and debug console work from the start screen
         const onStart = this.elements.mainInterface.classList.contains('hidden');
-        if (onStart && context === 'global' && !['app.shortcuts', 'app.guide', 'app.debug', 'app.settings', 'app.import', 'edit.pasteImage'].includes(id)) return;
+        if (onStart && context === 'global' && !['app.shortcuts', 'app.debug', 'app.settings', 'app.import', 'edit.pasteImage', 'app.palette', 'app.guide'].includes(id)) return;
         if (context === 'crop' && CropEditor.busy) {
             e.preventDefault(); // saving: the crop being written stays as it is
             return;

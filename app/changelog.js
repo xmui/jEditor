@@ -8,6 +8,7 @@ const CHANGELOG = [
     {
         version: '1.50.2', date: '2026-10-31', beta: true,
         items: [
+            'Find anything: `Ctrl+K` (`⌘K` on a Mac), or Find anything… in the Photos ▾ menu, opens one box that finds commands, photos, folders and your other projects as you type, and `Enter` runs the one you pick. It forgives typos and words in any order, says what a command will act on ("3 selected"), shows each command\'s key so you learn it, and puts what you use most first. It works in Photos, Adjust and Paint.',
             'A welcome tour: a walk through the real app, one stop at a time, from the three apps and the sidebar to cropping, Scan, Duplicates and Convert. Each stop lights up its control, and the app keeps working under it, so you can try it. It\'s offered once on the home page, and Take the tour is in the gear menu any time.',
             'The guide: press `F1` anywhere for cards by topic, each with a little clip of what it does and its keys as they\'re set now, every keyboard shortcut, and a search. Watch the tour again is there too.',
             'Save edits when done is a switch on the project card, where you can see it. While it\'s on and edits are waiting, a small pill under it says how many ("3 edits to save"), with Save now.',

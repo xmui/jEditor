@@ -54,6 +54,15 @@ Flags are kept with the order, in `.jeditor/flags.json`, so they follow renames 
 
 `Ctrl+F` or `/` (or the magnifier in the folder pill) searches the photos by name and folder as you type. Every word must match, in any order: `smith 004` finds `Smith_0042.jpg`, `ceremony` finds everything in the Ceremony folder. `is:star`, `is:rescan`, `is:flagged`, `is:unflagged` and `is:red` (or another colour) match flags. `Enter` goes back to the grid with the results; `Esc` clears the search. The arrow keys, film strip and `Ctrl+A` cover the results only.
 
+## Find anything
+
+`Ctrl+K` (`⌘K` on a Mac), or **Find anything…** in the mode menu (the **Photos ▾** chip, **Adjust ▾** or **Paint ▾** in those modes; Edit in a theme's menu bar), opens one box that finds jEditor's commands, the project's photos and folders, and your other projects as you type. `↑` `↓` choose, `Enter` runs it, `Esc` closes. It works in Photos, Adjust, Paint, Crop and Duplicates, and lists what works there: in Adjust, Auto color and Before and after; in Paint, the tools.
+
+- **Forgiving:** every word must match, in any order. `rot` finds Rotate left and right, `rtl` Rotate left, `delte` Move to trash, `delete` too (other words for the same thing count), and a photo by its name or its folder's.
+- **Says what it acts on:** with photos selected in the grid, the commands that act on them say "3 selected".
+- **Teaches the keys:** each command shows its key at the right, as you've set them in Keyboard shortcuts.
+- **Learns:** what you pick often and lately comes first. Opened with nothing typed, it shows the last few you picked, then what fits: for the selection (Move to…, Star, Rotate, Turn upright, Rename, Export…), or in Adjust and Paint, their usual ones.
+
 ## What it does to your files
 
 - **Rotation.** JPEGs are rotated by changing the EXIF orientation tag, so the image data isn't recompressed. This works on scanner files that have no orientation tag yet. PNG and WebP are re-encoded; PNG stays lossless. GIFs aren't rotated, because that would lose the animation.
@@ -258,7 +267,7 @@ Undo keeps up to 50 steps. Rotating a selection in the grid is one step, however
 
 ## The tour and the guide
 
-**The tour** walks through the real app, one stop at a time: the three apps (Photos, Adjust and Paint), the sidebar, looking and flagging, turning, cropping, Scan and Camera (where the app has them), More, Duplicates, Convert, Adjust and Paint. Each stop lights up the control it's about, with a card that says what it does and its keys; the rest of the window dims but keeps working, so you can try each one (press `]` and the photo turns, `Ctrl+Z` puts it back). The tour opens the view each stop needs and puts it back as it was at the end. **Next** and **Back** move through it, and `Esc` or × ends it. It's offered once, on the home page the first time jEditor opens (**Not now** puts it away), and it's always in the home page's gear menu (**Take the tour**), a theme's **Help** menu and the guide. In a browser it ends with a few things the apps also do, and **Download the full version**.
+**The tour** walks through the real app, one stop at a time: the three apps (Photos, Adjust and Paint), the sidebar, looking and flagging, turning, cropping, Scan and Camera (where the app has them), More, Find anything (`Ctrl+K`, which you can try there and then), Duplicates, Convert, Adjust and Paint. Each stop lights up the control it's about, with a card that says what it does and its keys; the rest of the window dims but keeps working, so you can try each one (press `]` and the photo turns, `Ctrl+Z` puts it back). The tour opens the view each stop needs and puts it back as it was at the end. **Next** and **Back** move through it, and `Esc` or × ends it. It's offered once, on the home page the first time jEditor opens (**Not now** puts it away), and it's always in the home page's gear menu (**Take the tour**), a theme's **Help** menu and the guide. In a browser it ends with a few things the apps also do, and **Download the full version**.
 
 **The guide** (`F1`, from anywhere: Photos, Crop, Adjust, Paint or the home page; also **Guide** in the gear menu and a theme's **Help** menu) is for looking things up later: topics down the side (Start here, Photos, Crop, Flags, Files and folders, Adjust, Paint, Keyboard shortcuts), each a set of cards with a little clip of what it does, a line of words and its keys as they're set now. **Search the guide** finds cards and keys. **Watch the tour again** is at the bottom of the topics. `Esc` or × closes it.
 
@@ -292,6 +301,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `Shift+P` | Crop the selection like the last crop (grid view) |
 | `Shift+U` | Turn upright (the selection, or the photo) |
 | `Ctrl+F`, `/` | Search |
+| `Ctrl+K` | Find anything: photos, folders, projects and commands |
 | `Shift+N` | New folder |
 | `A` | Switch between All photos and folders (grid view) |
 | `Backspace` | Up a folder (grid view) |
@@ -343,6 +353,7 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `flags.js`: flags (star, rescan, colour labels) and search
 - `watch.js`: watching the folder for changes, and rescanning
 - `start.js`: the home page: its tiles, the Settings menu (Save edits when done, When jEditor opens), the update dot, All projects, and on the web the app for this computer
+- `palette.js`: Find anything (`Ctrl+K`): the box, what it finds where you are (the shortcuts' commands, the theme menus' own, photos, folders, projects), matching and ranking, and running the one picked
 - `recents.js`: the home page's stacks of prints (recent folders, with small pictures kept for each) and its Recent print (a photo opened on its own), and spotting a folder that's part of an order
 - `ui.js`: the app's own alert / confirm / prompt dialogs, and focus handling for every dialog
 - `guide.js`: the guide (`F1`): cards with clips by topic, the shortcuts as they're set, and a search
