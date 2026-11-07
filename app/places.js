@@ -732,9 +732,9 @@ const Places = {
             check: { label: 'Save edits when done', note: 'Edits wait until you save them. Off: they\'re written into the photos as you go.', value: !!this.app.uiPrefs.deferNew },
             ok: 'Create'
         });
-        const name = r && r.value;
+        const name = typeof r === 'string' ? r : r && r.value;
         if (!name || !name.trim()) return;
-        FirstOpen.preset(name.trim(), r.checked); // so it isn't asked when it opens
+        FirstOpen.preset(name.trim(), r && typeof r === 'object' ? r.checked : !!this.app.uiPrefs.deferNew); // so it isn't asked when it opens
         try {
             const path = await this.native().makeFolder(dir, name.trim());
             this.listings.clear();
