@@ -3182,9 +3182,10 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     padding-top: var(--th-top, 0px);
 }
 
-:root.th-top :is(.mode-screen, .drop-zone, .dialog-overlay) {
+:root.th-top :is(.mode-screen, .dialog-overlay) {
     top: var(--th-top, 0px);
 }
+/* The home page is in #app, which already starts under the bars */
 
 :root.th-top .scan-dock {
     max-height: var(--dock-max, calc(100vh - var(--th-top, 0px) - 2 * var(--gutter) - 64px));

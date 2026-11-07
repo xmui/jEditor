@@ -645,3 +645,101 @@
 /* More storage than now (PNG, TIFF): amber, as XP's warnings were */
 :root[data-skin="xp"] :is(.cv-savedtag.cv-more, .cv-folder .s b.cv-more, .cv-run-row b.cv-more) { color: #b35a00; }
 :root[data-skin="xp"] .cv-saved.cv-more { border-color: #c06000; }
+
+/* ---- The home page (start.js): prints on a table, the big tiles as
+   Office 2003's task buttons, a 16 px icon each ---- */
+:root[data-skin="xp"] .home-brand { color: var(--xp-groupbox); font: 700 13px "Trebuchet MS", var(--xp-font); }
+:root[data-skin="xp"] .home-ver .app-version { color: #444; font: 11px var(--xp-font); }
+:root[data-skin="xp"] .home-gear { width: 24px; height: 24px; min-width: 0; padding: 0; border: 1px solid transparent; border-radius: 0; background: none; box-shadow: none; }
+:root[data-skin="xp"] .home-gear > svg { display: none; }
+:root[data-skin="xp"] .home-gear::before { content: ""; position: absolute; inset: 0; margin: auto; width: 16px; height: 16px; background: url(../xp/icons/settings16.png) no-repeat center; }
+:root[data-skin="xp"] .home-gear:hover:not(:disabled) { border-color: var(--o-hot-edge); background: var(--o-hot); }
+:root[data-skin="xp"] .home-gear:active:not(:disabled) { background: var(--o-on); }
+:root[data-skin="xp"] .home-dot { box-shadow: 0 0 0 1px #fff; }
+:root[data-skin="xp"] .recent-name { color: var(--o-link); font: 700 11px var(--xp-font); }
+:root[data-skin="xp"] .recent-open:hover .recent-name { color: var(--xp-link-hover); text-decoration: underline; }
+:root[data-skin="xp"] :is(.recent-sub, .recent-when, .recent-meta, .home-empty p) { color: #444; font: 11px var(--xp-font); }
+:root[data-skin="xp"] .recent-print { border-radius: 0; box-shadow: 2px 2px 3px rgb(0 0 0 / 0.35); }
+:root[data-skin="xp"] .recent-print.ghost { border: 1px dashed var(--xp-edit); background: #fff; }
+:root[data-skin="xp"] .recent-print.ghost.first { border: 1px dashed var(--xp-hilite); background: var(--o-sel); color: var(--xp-groupbox); }
+:root[data-skin="xp"] .recent-remove { width: 16px; height: 16px; border: 1px solid var(--xp-edit); border-radius: 0; background: #fff; color: #000; font: 11px/1 var(--xp-font); }
+:root[data-skin="xp"] .home-tile {
+    border: 1px solid var(--o-pane-line);
+    border-radius: 3px;
+    background: #fff;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    color: var(--o-link);
+    font: 700 11px var(--xp-font);
+    transition: none;
+}
+:root[data-skin="xp"] .home-tile > svg { display: none; }
+:root[data-skin="xp"] .home-tile::before { content: ""; width: 16px; height: 16px; background: var(--ico) no-repeat center / 16px; }
+:root[data-skin="xp"] #btn-browse-folder { --ico: url(../xp/icons/folder16.png); }
+:root[data-skin="xp"] #start-capture { --ico: url(../xp/icons/scan16.png); }
+:root[data-skin="xp"] #start-blank { --ico: url(../xp/icons/image16.png); }
+:root[data-skin="xp"] #start-convert { --ico: url(../xp/icons/convert16.svg); }
+:root[data-skin="xp"] #start-adjust { --ico: url(../xp/icons/adjust16.png); }
+:root[data-skin="xp"] #start-paint { --ico: url(../xp/icons/paint16.png); }
+:root[data-skin="xp"] .home-tile-sub { color: #444; font-weight: 400; }
+:root[data-skin="xp"] .home-tile:hover { transform: none; border-color: var(--o-hot-edge); background: var(--o-hot); box-shadow: none; }
+:root[data-skin="xp"] .home-tile:active { background: var(--o-on); }
+:root[data-skin="xp"] .home-tile:focus-visible { box-shadow: none; outline: 1px dotted #000; outline-offset: -4px; }
+/* The one to start with: as if pressed in, Office's "on" */
+:root[data-skin="xp"] .home-tile.primary { border-color: var(--o-hot-edge); background: var(--o-on); color: #000; }
+:root[data-skin="xp"] .home-tile.primary .home-tile-sub { color: #000; }
+:root[data-skin="xp"] .home-tile.card { border-color: var(--xp-hilite); }
+:root[data-skin="xp"] .home-places { border: 1px solid #0831d9; border-radius: 0; background: #fff; box-shadow: 2px 2px 6px rgb(0 0 0 / 0.4); }
+:root[data-skin="xp"] .home-places-head { background: var(--o-head); border-bottom: 1px solid var(--o-pane-line); color: var(--o-title, #0f3c9c); font: 700 11px var(--xp-font); }
+
+/* ---- Open a folder (open-card.js) and the first-time questions (first-open.js) ---- */
+:root[data-skin="xp"] .oc-top { border-bottom-color: var(--xp-shadow); }
+:root[data-skin="xp"] .oc-search { height: 21px; padding: 0 3px; border: 1px solid var(--xp-edit); border-radius: 0; background: #fff; }
+:root[data-skin="xp"] .oc-search > svg { display: none; }
+:root[data-skin="xp"] .oc-search::before { content: ""; flex: none; width: 16px; height: 16px; background: url(../xp/icons/edit-find16.png) no-repeat center; }
+:root[data-skin="xp"] .dialog .oc-search input:is([type="search"], :focus, :hover) { height: auto; padding: 0; border: 0; outline: none; background: none; box-shadow: none; font: 11px var(--xp-font); }
+:root[data-skin="xp"] .oc-drop { border: 1px dashed var(--xp-edit); border-radius: 0; background: #fff; }
+:root[data-skin="xp"] .oc-drop.over { border-color: var(--o-hot-edge); background: var(--o-hot); }
+:root[data-skin="xp"] .oc-drop-icon > svg { display: none; }
+:root[data-skin="xp"] .oc-drop-icon::before { content: ""; width: 16px; height: 16px; background: url(../xp/icons/folder16.png) no-repeat center; }
+:root[data-skin="xp"] :is(.oc-drop-name, .oc-sub, .fo-sub) { color: var(--xp-groupbox); font: 700 11px var(--xp-font); }
+:root[data-skin="xp"] :is(.oc-drop-sub, .oc-meta, .oc-empty, .oc-foot, .fo-help, .fo-note, .fo-choice small) { color: #444; font: 11px var(--xp-font); }
+:root[data-skin="xp"] :is(.oc-recent, .oc-row) { border: 1px solid transparent; border-radius: 0; }
+:root[data-skin="xp"] .oc-recent { border-color: var(--xp-edit); background: #fff; }
+:root[data-skin="xp"] :is(.oc-recent, .oc-row):hover { border-color: var(--o-hot-edge); background: var(--o-hot); }
+:root[data-skin="xp"] .oc-name { font: 11px var(--xp-font); }
+:root[data-skin="xp"] .oc-pic { border-radius: 0; }
+:root[data-skin="xp"] .oc-pic.ghost { border-color: var(--xp-edit); }
+:root[data-skin="xp"] .oc-icon { color: var(--xp-hilite); }
+:root[data-skin="xp"] .oc-foot { border-top-color: var(--xp-shadow); }
+:root[data-skin="xp"] :is(.oc-foot-path, .fo-dir) { color: #000; font: 11px var(--xp-font); }
+:root[data-skin="xp"] .fo-choice { border: 1px solid var(--xp-edit); border-radius: 0; background: #fff; }
+:root[data-skin="xp"] .fo-choice:has(input:checked) { border-color: var(--xp-hilite); background: var(--o-sel); }
+:root[data-skin="xp"] .fo-choice-name { font: 700 11px var(--xp-font); }
+
+/* ---- The guide (guide.js): Help and Support, a task pane down the side ---- */
+:root[data-skin="xp"] .guide-scrim { background: none; animation: none; }
+:root[data-skin="xp"] .guide { border: 1px solid #0831d9; border-radius: 0; background: #fff; box-shadow: 2px 2px 6px rgb(0 0 0 / 0.4); font: 11px var(--xp-font); animation: none; }
+:root[data-skin="xp"] .guide-nav { background: var(--o-pane); border-right: 1px solid var(--o-pane-line); }
+:root[data-skin="xp"] .guide-nav h2 { color: var(--xp-groupbox); font: 700 15px "Trebuchet MS", var(--xp-font); }
+:root[data-skin="xp"] .guide-topics button { border-radius: 0; color: var(--o-link); }
+:root[data-skin="xp"] .guide-topics button:hover { background: none; color: var(--xp-link-hover); text-decoration: underline; }
+:root[data-skin="xp"] .guide-topics button[aria-current="true"] { background: var(--o-sel); color: #000; font-weight: 700; text-decoration: none; }
+:root[data-skin="xp"] .guide-tour { border-radius: 0; background: none; color: var(--o-link); font: 11px var(--xp-font); }
+:root[data-skin="xp"] .guide-tour:hover { filter: none; color: var(--xp-link-hover); text-decoration: underline; }
+:root[data-skin="xp"] .guide-search { height: 21px; padding: 0 3px; border: 1px solid var(--xp-edit); border-radius: 0; background: #fff; }
+:root[data-skin="xp"] .guide-search:focus-within { box-shadow: none; }
+:root[data-skin="xp"] .guide-search > svg { display: none; }
+:root[data-skin="xp"] .guide-search::before { content: ""; flex: none; width: 16px; height: 16px; background: url(../xp/icons/edit-find16.png) no-repeat center; }
+:root[data-skin="xp"] .guide-search input { height: auto; padding: 0; border: 0; box-shadow: none; font: 11px var(--xp-font); }
+:root[data-skin="xp"] .guide-x { width: 21px; height: 21px; border: 1px solid transparent; border-radius: 0; color: #000; font: 15px/1 var(--xp-font); }
+:root[data-skin="xp"] .guide-x:hover { border-color: var(--o-hot-edge); background: var(--o-hot); color: #000; }
+:root[data-skin="xp"] .guide-card { border: 1px solid var(--o-pane-line); border-radius: 0; background: #fff; }
+:root[data-skin="xp"] .guide-card h3,
+:root[data-skin="xp"] .guide-keylist h3 { color: var(--xp-groupbox); font: 700 11px var(--xp-font); }
+:root[data-skin="xp"] .guide-card p,
+:root[data-skin="xp"] .guide-none { color: #444; font: 11px/1.4 var(--xp-font); }
+:root[data-skin="xp"] .guide-keylist h4 { color: var(--xp-groupbox); font: 700 11px var(--xp-font); }
+:root[data-skin="xp"] .guide-keyrow { border-top-color: #d4d0c8; }
+:root[data-skin="xp"] .guide-k { border: 1px solid var(--xp-shadow); border-radius: 2px; background: linear-gradient(180deg, #fff, var(--xp-face)); box-shadow: 0 1px 0 var(--xp-shadow); color: #000; font: 11px var(--xp-font); }
