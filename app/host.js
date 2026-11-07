@@ -19,6 +19,9 @@
 //   updates      looking for a new version and installing it
 //   permissions  the Mac's privacy settings jEditor needs, in one window
 //   burn         burning a project onto a CD or DVD (disc.js)
+//   folderMove   a new projects folder can take the projects along: each
+//                copied, checked and only then removed (folder-move.js)
+//   cacheFolder  Settings → Projects: where the cache is kept (folder-move.js)
 //   themes       Settings → Appearance's themes, with their own title bar (themes.js)
 //   photosLibrary  the Mac's Photos library in the sidebar (places.js): its albums
 //                open as the project (photosAlbum: a folder handle); an edit is

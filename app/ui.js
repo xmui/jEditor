@@ -121,7 +121,8 @@ const UI = {
     // ---- alert / confirm / prompt ----
 
     // opts: { title, message, items: [text], note, ok, cancel, danger, input: { label, value, placeholder, inputMode },
-    //        alt, altDanger (choose) }
+    //        alt, altDanger (choose), check: { label, note, value } (a switch under
+    //        a prompt: it then answers { value, checked }, or null) }
     // Text only, never HTML: file names go in safely.
     show(kind, opts) {
         this.init();
@@ -159,6 +160,13 @@ const UI = {
         const field = this.el('uid-field');
         const input = this.el('uid-input');
         field.classList.toggle('hidden', kind !== 'prompt');
+        const check = this.el('uid-check');
+        check.classList.toggle('hidden', !o.check);
+        if (o.check) {
+            this.el('uid-check-label').textContent = o.check.label || '';
+            this.el('uid-check-note').textContent = o.check.note || '';
+            this.el('uid-check-box').checked = !!o.check.value;
+        }
         if (kind === 'prompt') {
             const f = o.input || {};
             this.el('uid-field-label').textContent = f.label || '';
@@ -186,7 +194,7 @@ const UI = {
             if (kind === 'prompt') { input.focus(); input.select(); }
             else (o.danger ? cancel : ok).focus();
         });
-        return new Promise(resolve => { this._pending = { kind, resolve }; });
+        return new Promise(resolve => { this._pending = { kind, resolve, check: !!o.check }; });
     },
 
     answer(yes) {
@@ -197,6 +205,7 @@ const UI = {
         if (p.kind === 'alert') p.resolve();
         else if (p.kind === 'confirm') p.resolve(!!yes);
         else if (p.kind === 'choose') p.resolve(yes === 'alt' ? 'alt' : yes ? 'ok' : null);
+        else if (p.check) p.resolve(yes ? { value: this.el('uid-input').value, checked: this.el('uid-check-box').checked } : null);
         else p.resolve(yes ? this.el('uid-input').value : null);
     },
 

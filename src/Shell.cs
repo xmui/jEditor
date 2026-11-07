@@ -23,12 +23,19 @@ static class Shell
 
     // Each order's flags, cache and Auto crop originals: orders\<name>-<id>,
     // made and read by the page (app/folder-cache.js)
-    public static string OrdersDir => Path.Combine(StoreDir, "orders");
+    // Or the cache folder chosen in Settings → Projects (CacheDir, moved
+    // there by folderMove; app/folder-move.js)
+    public static string OrdersDir => CacheDir ?? Path.Combine(StoreDir, "orders");
+    public static string? CacheDir { get; set; }
+
+    // Where a chosen cache folder keeps it: a folder of its own inside it
+    public static string CacheIn(string chosen) => Path.Combine(chosen, "jEditor cache");
 
     // The orders folder, made (and the store hidden) for the page
     public static void MakeOrdersDir()
     {
         Directory.CreateDirectory(OrdersDir);
+        if (CacheDir is not null) return; // a folder the user chose stays as it is
         try { File.SetAttributes(StoreDir, File.GetAttributes(StoreDir) | FileAttributes.Hidden); }
         catch (Exception e) { Log.Write($"Couldn't hide {StoreDir}: {e.Message}"); }
     }

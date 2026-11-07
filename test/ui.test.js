@@ -3236,6 +3236,241 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 7n2. The Open a folder card, moving the projects folder, Clear cache ----
+    console.log('open a folder card, moving folders');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const wait = async (fn) => { for (let i = 0; i < 150 && !fn(); i++) await new Promise(res => setTimeout(res, 20)); return fn(); };
+            const shown = (id) => !document.getElementById(id).classList.contains('hidden');
+            await Recents.tx('readwrite', s => s.clear());
+            const opfs = await navigator.storage.getDirectory();
+            const make = async (name) => {
+                try { await opfs.removeEntry(name, { recursive: true }); } catch (e) { /* fresh */ }
+                const d = await opfs.getDirectoryHandle(name, { create: true });
+                const w = await (await d.getFileHandle('a.jpg', { create: true })).createWritable();
+                await w.write(new Blob([await makeRealJpeg(200, 150)], { type: 'image/jpeg' }));
+                await w.close();
+                return d;
+            };
+            const pick = async (d) => { window.showDirectoryPicker = async () => d; await app.browseFolder(); await Recents.saving; };
+            await pick(await make('card Summer'));
+            await pick(await make('card Lake'));
+
+            // The tile opens the card: search, the drop place, Browse, recents
+            document.getElementById('btn-browse-folder').click();
+            await wait(() => document.querySelectorAll('#oc-recents .oc-recent').length === 2);
+            out.open = shown('open-card') && document.activeElement === document.getElementById('oc-search') &&
+                [...document.querySelectorAll('#oc-recents .oc-name')].map(x => x.textContent).join(',') === 'card Lake,card Summer' &&
+                !!document.getElementById('oc-drop') && !document.querySelector('#oc-list .oc-library');
+            // Search filters as you type; Enter opens the first
+            const s = document.getElementById('oc-search');
+            s.value = 'sum';
+            s.dispatchEvent(new Event('input'));
+            out.search = [...document.querySelectorAll('#oc-recents .oc-name')].map(x => x.textContent).join(',') === 'card Summer';
+            s.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            await wait(() => app.dirHandle && app.dirHandle.name === 'card Summer' && app.files.length);
+            out.enter = !shown('open-card') && app.dirHandle.name === 'card Summer';
+            // Escape closes it; Browse… is the folder picker
+            document.getElementById('btn-browse-folder').click();
+            document.getElementById('oc-search').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            out.escape = !shown('open-card');
+            let browsed = 0;
+            window.showDirectoryPicker = async () => { browsed++; throw new DOMException('no', 'AbortError'); };
+            document.getElementById('btn-browse-folder').click();
+            document.getElementById('oc-browse').click();
+            await wait(() => browsed);
+            out.browse = browsed === 1 && !shown('open-card');
+
+            // An app with the projects folder and the move (a stand-in)
+            const moves = [];
+            let room = 10e9, fail = null;
+            const store = await opfs.getDirectoryHandle('card-data', { create: true });
+            const thumbs = await (await (await store.getDirectoryHandle(FolderCache.storeName('D:\\Projects\\Hendersons'), { create: true }))
+                .getDirectoryHandle('cache', { create: true })).getDirectoryHandle('thumbs', { create: true });
+            const tw = await (await thumbs.getFileHandle('x.img', { create: true })).createWritable();
+            await tw.write(new Blob([await makeRealJpeg(40, 30)], { type: 'image/jpeg' }));
+            await tw.close();
+            let picked = 'E:\\New';
+            window.JEditorNative = {
+                features: ['places', 'folderMove'],
+                dataDir: async () => store,
+                places: async () => ({ drives: [], home: [] }),
+                listProjects: async (dir) => dir === 'D:\\Projects' ? [{ name: 'Hendersons', path: 'D:\\Projects\\Hendersons', modified: Date.now() }, { name: 'Okafor', path: 'D:\\Projects\\Okafor', modified: Date.now() - 86400000 }] : [],
+                countPhotos: async (paths) => ({ counts: paths.map(() => 7), limit: 1000 }),
+                pickPath: async () => picked,
+                folderSize: async (path, dest) => ({ folders: 2, files: 9, bytes: 48.2 * 2 ** 30, free: room, drive: 'E:', sameDrive: false, refused: null }),
+                moveFolder: (path, dest, progress) => { moves.push([path, dest]); progress(1, 2, 1); return Promise.resolve(fail || { moved: 2, left: [] }); },
+                cancelCopy: () => { },
+                reveal: () => { }
+            };
+            Places.set(Places.KEY_DIR, 'D:\\Projects');
+            const answer = async (id) => { await wait(() => shown('ui-dialog')); const text = document.getElementById('ui-dialog').textContent; document.getElementById(id).click(); return text; };
+
+            // The card lists the projects, with their pictures and counts
+            OpenCard.open();
+            await wait(() => document.querySelectorAll('#oc-list .oc-row').length === 2 && document.querySelector('#oc-list img.oc-pic'));
+            const rows = [...document.querySelectorAll('#oc-list .oc-row')];
+            out.projects = rows.map(x => x.querySelector('.oc-name').textContent).join(',') === 'Hendersons,Okafor' &&
+                rows[0].querySelectorAll('img.oc-pic').length === 1 && rows[1].querySelectorAll('.oc-pic.ghost').length === 3;
+            await wait(() => /7 photos/.test(rows[0].textContent) || /7 photos/.test(document.querySelector('#oc-list .oc-row').textContent));
+            out.counts = /7 photos · Today/.test(document.querySelector('#oc-list .oc-row').textContent);
+            // Its foot: where the projects are, and a small link to change it
+            const foot = document.getElementById('oc-foot');
+            out.foot = !foot.classList.contains('hidden') && /Projects folder:\s*D:\\Projects/.test(foot.textContent) && document.getElementById('oc-change').textContent === 'Change…';
+            OpenCard.close();
+
+            // Not enough room: the numbers, and nothing moved
+            room = 31.5 * 2 ** 30;
+            let flow = FolderMove.changeProjects();
+            out.ask = /2 projects/.test(await answer('uid-ok'));
+            out.noRoom = /48\.2 GB.*31\.5 GB free\. Nothing was moved.*16\.7 GB/s.test(await answer('uid-ok'));
+            await flow;
+            out.noRoomKept = !moves.length && Places.projectsDir() === 'D:\\Projects';
+            // Leave: the folder changes, nothing moves
+            room = 100 * 2 ** 30;
+            flow = FolderMove.changeProjects();
+            await answer('uid-alt');
+            await flow;
+            out.left = !moves.length && Places.projectsDir() === 'E:\\New';
+            // Move: asked, confirmed with how it's kept safe, then moved
+            picked = 'F:\\Moved';
+            flow = FolderMove.changeProjects();
+            await answer('uid-ok');
+            out.confirm = /checked file by file.*nothing is lost/s.test(await answer('uid-ok'));
+            await flow;
+            out.moved = moves.length === 1 && moves[0][0] === 'E:\\New' && moves[0][1] === 'F:\\Moved' && Places.projectsDir() === 'F:\\Moved';
+            // Failing before anything moved: the folder stays, and it says nothing was lost
+            fail = { moved: 0, left: [], error: 'Hendersons: the drive went away' };
+            picked = 'G:\\Other';
+            flow = FolderMove.changeProjects();
+            await answer('uid-ok');
+            await answer('uid-ok');
+            out.failed = /Nothing was moved.*Nothing was lost/s.test(await answer('uid-ok'));
+            await flow;
+            out.failedKept = Places.projectsDir() === 'F:\\Moved';
+
+            // Clear cache: the thumbnails go, and recents become ghost stacks
+            await Recents.tx('readwrite', s => s.getAll()).then(() => null);
+            const recs = await Recents.list();
+            await Recents.tx('readwrite', s => recs.forEach(x => s.put({ ...x, thumbs: [new Blob(['x'], { type: 'image/jpeg' })] })));
+            await Recents.render();
+            out.before = !document.querySelector('#recent-list li.ghosted');
+            flow = FolderMove.clearCache();
+            out.clearAsk = /Clear the cache/.test(await answer('uid-ok'));
+            await flow;
+            const gone = await store.getDirectoryHandle(FolderCache.storeName('D:\\Projects\\Hendersons')).then(h => h.getDirectoryHandle('cache')).then(() => false, () => true);
+            const li = document.querySelector('#recent-list li');
+            out.cleared = gone && li.classList.contains('ghosted') && getComputedStyle(li.querySelector('.recent-sub')).display === 'none' &&
+                getComputedStyle(li.querySelector('.recent-name')).display !== 'none';
+            delete window.JEditorNative;
+            Places.set(Places.KEY_DIR, null);
+            await opfs.removeEntry('card-data', { recursive: true });
+            return out;
+        });
+        check('open card: the tile opens it, with search, the drop place and recents', r.open, JSON.stringify(r));
+        check('open card: search filters as you type, and Enter opens the first', r.search && r.enter);
+        check('open card: Escape closes it, and Browse… is the folder picker', r.escape && r.browse);
+        check('open card: lists the projects folder\'s projects, with cached pictures or ghost frames', r.projects);
+        check('open card: each project says how many photos and when', r.counts);
+        check('open card: its foot says where the projects folder is, with a link to change it', r.foot);
+        check('move: asks to move or leave, with the count', r.ask);
+        check('move: not enough room shows the numbers and moves nothing', r.noRoom && r.noRoomKept);
+        check('move: Leave changes the folder and moves nothing', r.left);
+        check('move: Move confirms how it\'s kept safe, then moves', r.confirm && r.moved);
+        check('move: a failed move keeps the old folder and says nothing was lost', r.failed && r.failedKept);
+        check('clear cache: removes the thumbnails, and recents show as ghost stacks with only the name', r.before && r.clearAsk && r.cleared);
+
+        // The first-time questions (first-open.js)
+        const f = await page.evaluate(async () => {
+            const out = {};
+            const wait = async (fn) => { for (let i = 0; i < 150 && !fn(); i++) await new Promise(res => setTimeout(res, 20)); return fn(); };
+            const shown = (id) => !!document.getElementById(id) && !document.getElementById(id).classList.contains('hidden');
+            const opfs = await navigator.storage.getDirectory();
+            const make = async (name) => {
+                try { await opfs.removeEntry(name, { recursive: true }); } catch (e) { /* fresh */ }
+                const d = await opfs.getDirectoryHandle(name, { create: true });
+                const w = await (await d.getFileHandle('a.jpg', { create: true })).createWritable();
+                await w.write(new Blob([await makeRealJpeg(200, 150)], { type: 'image/jpeg' }));
+                await w.close();
+                return d;
+            };
+            const openIt = async (d) => { window.showDirectoryPicker = async () => d; await app.browseFolder(); await wait(() => app.dirHandle === d && !app.isLoading); };
+            localStorage.removeItem('jeditor.firstOpen');
+            Start.setDeferNew(false);
+            // The first Open a folder: one dialog, with Save edits when done
+            document.getElementById('btn-browse-folder').click();
+            await wait(() => document.getElementById('first-open'));
+            const fo = document.getElementById('first-open');
+            out.welcome = !!fo && fo.querySelectorAll('input[name="fo-defer"]').length === 2 && /Keep until I save/.test(fo.textContent) &&
+                !document.getElementById('fo-dir') && !shown('open-card');
+            fo.querySelector('input[value="on"]').click();
+            document.getElementById('fo-ok').click();
+            await wait(() => shown('open-card'));
+            out.remembered = !document.getElementById('first-open') && FirstOpen.asked() && app.uiPrefs.deferNew === true && shown('open-card');
+            OpenCard.close();
+            // ... and its answer is the folder opened then: not asked again
+            await openIt(await make('fo First'));
+            await new Promise(res => setTimeout(res, 300));
+            out.firstFolder = !shown('ui-dialog') && Edits.chosen && Edits.defer === true;
+            // Another folder's first time: asked (Settings can turn it on and off)
+            FirstOpen.set({ ask: true });
+            await openIt(await make('fo Second'));
+            await wait(() => shown('ui-dialog'));
+            out.asked = /Save edits to fo Second when done/.test(document.getElementById('uid-title').textContent);
+            document.getElementById('uid-alt').click();
+            await wait(() => Edits.chosen);
+            out.answered = Edits.defer === false && Edits.chosen;
+            await Edits.flush();
+            // Opened again: it chose already
+            await openIt(await make('fo Other'));
+            await wait(() => shown('ui-dialog'));
+            document.getElementById('uid-cancel').click();
+            await openIt(await opfs.getDirectoryHandle('fo Second'));
+            await new Promise(res => setTimeout(res, 300));
+            out.again = !shown('ui-dialog') && Edits.chosen && Edits.defer === false;
+            // Asking off: a new folder follows Save edits when done
+            FirstOpen.set({ ask: false });
+            await openIt(await make('fo Third'));
+            await new Promise(res => setTimeout(res, 300));
+            out.off = !shown('ui-dialog') && Edits.defer === true && !Edits.chosen;
+            app.toggleCustomizePanel(true);
+            out.setting = document.getElementById('cust-ask-defer').checked === false;
+            app.toggleCustomizePanel(false);
+            // A folder dragged in before anything was asked: the dialog, for it
+            localStorage.removeItem('jeditor.firstOpen');
+            await openIt(await make('fo Dropped'));
+            await wait(() => document.getElementById('first-open'));
+            out.dropped = /Opening fo Dropped/.test(document.getElementById('fo-title').textContent);
+            document.getElementById('first-open').querySelector('input[value="off"]').click();
+            document.getElementById('fo-ok').click();
+            await wait(() => Edits.chosen);
+            out.droppedKept = Edits.defer === false && app.uiPrefs.deferNew === false;
+            // A prompt with a switch (New project's name dialog) answers both
+            const p = UI.prompt({ title: 'New project', input: { label: 'Name' }, check: { label: 'Save edits when done', value: true } });
+            document.getElementById('uid-input').value = 'Smith';
+            const hasSwitch = shown('uid-check') && document.getElementById('uid-check-box').checked;
+            document.getElementById('uid-ok').click();
+            const got = await p;
+            out.prompt = got && got.value === 'Smith' && got.checked === true && hasSwitch;
+            const q = UI.prompt({ title: 'x' });
+            out.plainPrompt = !shown('uid-check');
+            UI.answer(false);
+            await q;
+            return out;
+        });
+        check('first open: the first Open a folder asks once, with both choices explained', f.welcome, JSON.stringify(f));
+        check('first open: the answer is remembered, and Save edits when done is set', f.remembered);
+        check('first open: the folder opened then isn\'t asked again', f.firstFolder);
+        check('first open: each other folder\'s first time asks, and keeps the answer', f.asked && f.answered && f.again);
+        check('first open: with asking off in Settings, a folder follows Save edits when done', f.off && f.setting);
+        check('first open: a folder dragged in first gets the dialog, for that folder', f.dropped && f.droppedKept);
+        check('new project: the name dialog has a Save edits when done switch', f.prompt && f.plainPrompt);
+        check('open card suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7o. Zooming the grid keeps your place ----
     console.log('grid zoom keeps your place');
     {
@@ -4611,8 +4846,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             step = 'Turned off with edits waiting: discard them';
             UI.choose = async () => 'alt';
             await Edits.setDefer(false);
-            await until(async () => !(await kept()));
-            out.off = !Edits.on() && Edits.count() === 0 && bar().classList.contains('hidden') && !(await kept()) &&
+            // The choice stays (off, nothing waiting), so the folder isn't asked again (first-open.js)
+            const offKept = async () => { const k = await kept(); return !!k && k.defer === false && !Object.keys(k.edits || {}).length; };
+            await until(offKept);
+            out.off = !Edits.on() && Edits.count() === 0 && bar().classList.contains('hidden') && await offKept() &&
                 await same('scan1.jpg') && (await dims(dir, 'plain.jpg')).join('x') === '400x300';
             return out;
             })(); } catch (err) { return { crash: `${step}: ${err.message}`, toasts: [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | ') }; }
