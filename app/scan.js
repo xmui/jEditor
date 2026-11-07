@@ -365,10 +365,15 @@ const Scan = {
             const dir = await Folders.handleFor(folder);
             const file = await (await dir.getFileHandle(name)).getFile();
             if (!fig.isConnected) return;
+            // A small copy, made in the thumbnail worker: a 1200 dpi scan
+            // shown as it is held the window up for most of a second
+            let small = file;
+            try { small = await this.app.generateThumbnailBlob(file); } catch (e) { /* the scan itself */ }
+            if (!fig.isConnected) return;
             const img = document.createElement('img');
             img.alt = '';
             img.decoding = 'async';
-            img.src = URL.createObjectURL(file);
+            img.src = URL.createObjectURL(small);
             fig.prepend(img);
         } catch (e) { /* not readable yet: the name shows */ }
         if (sized) strip.scrollTop = strip.scrollHeight;
@@ -1254,6 +1259,9 @@ const Scan = {
             if (!names.includes(rel)) names.push(rel);
             advance(name);
         };
+        // Turn upright as each photo comes in, while the scan goes on (after
+        // Auto crop instead, when that's on: the network should see the print)
+        const upright = this.el('scan-upright').checked && !autoCrop ? this.uprightEach({ pairs: source === 'feeder' && settings.sides === 'both' }) : null;
         let result;
         try {
             if (compat === undefined) compat = driver === 'twain' && !!this.compat()[device];
@@ -1262,6 +1270,7 @@ const Scan = {
             if (dpi) request.dpi = dpi;
             result = await native.scan(request, (name) => {
                 add(name);
+                if (upright) upright.add(folder ? `${folder}/${name}` : name);
                 app.updateTask('scanner', label());
                 this.status(label());
                 this.addThumb(folder, name);
@@ -1316,8 +1325,8 @@ const Scan = {
                 await this.autoCrop(names, { feeder: source === 'feeder' });
                 if (panel.dataset.state === 'done') this.status((result.cancelled ? 'Stopped after ' : 'Scanned ') + said + ' · auto cropped');
             }
-            if (this.el('scan-upright').checked) {
-                const turned = await this.upright(names);
+            if (upright || this.el('scan-upright').checked) {
+                const turned = upright ? await upright.done() : await this.upright(names);
                 if (turned && panel.dataset.state === 'done') this.status(`${this.el('scan-status').textContent} · ${turned} turned upright`);
             }
         } else if (result.cancelled) {
@@ -1328,6 +1337,56 @@ const Scan = {
             app.showToast('Nothing was scanned', 3000, null, null, { type: 'info' });
         }
         return { count: n, names, cancelled: result.cancelled };
+    },
+
+    // Turn upright, one photo at a time as each comes in: add(name) as it's
+    // saved, done() → how many were turned. Each is its own Ctrl+Z, its
+    // back (-b) turned with it; `pairs`: both sides are coming, so a front
+    // waits for its back
+    uprightEach({ pairs = false } = {}) {
+        const app = this.app;
+        let chain = Promise.resolve(), turned = 0, waiting = null;
+        const isBack = (n) => /-b\.[^.]+$/.test(n);
+        const listed = async (n) => {
+            for (let i = 0; i < 50; i++) {
+                const f = app.files.find(x => (x.relPath || x.name) === n);
+                if (f) return f;
+                await new Promise(r => setTimeout(r, 200));
+            }
+            return null;
+        };
+        const turn = (front, back) => {
+            chain = chain.then(async () => {
+                const f = await listed(front);
+                if (!f) return;
+                const deg = await app.uprightTurn(f);
+                if (!deg) return;
+                const turns = new Map([[f, deg]]);
+                const b = back && await listed(back);
+                if (b) turns.set(b, deg);
+                await app.rotateBulk(0, turns, { quiet: true });
+                turned++;
+            }).catch(e => app.log(`Turn upright: ${front}: ${e.message}`));
+        };
+        return {
+            add: (n) => {
+                if (!/\.(jpe?g|png|webp)$/i.test(n)) return;
+                if (isBack(n)) {
+                    // Its front's turn: the front came just before it
+                    const front = n.replace(/-b(\.[^.]+)$/, '$1');
+                    if (waiting === front) { waiting = null; turn(front, n); }
+                    return;
+                }
+                if (waiting) turn(waiting);
+                waiting = null;
+                if (pairs) waiting = n; else turn(n);
+            },
+            done: () => {
+                if (waiting) turn(waiting);
+                waiting = null;
+                return chain.then(() => turned);
+            }
+        };
     },
 
     // Prints come in all sizes: each scan is cropped to the print on it

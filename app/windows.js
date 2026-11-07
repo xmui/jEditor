@@ -42,7 +42,8 @@ const Windows = {
         clearTimeout(this._publish);
         this._publish = setTimeout(async () => {
             const app = this.app;
-            const path = app.dirHandle ? await FolderCache.orderPath(app).catch(() => null) : null;
+            // A read-only one (the Photos library) isn't somewhere to move photos to
+            const path = app.dirHandle && !app.readOnlyMode ? await FolderCache.orderPath(app).catch(() => null) : null;
             this.native().setState({
                 name: app.dirHandle ? app.dirHandle.name : null,
                 path,

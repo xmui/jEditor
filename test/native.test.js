@@ -13,20 +13,7 @@ const path = require('path');
 const { chromium } = require('playwright-core');
 const { createServer } = require('../scripts/serve.js');
 
-function launchOptions() {
-    const candidates = [
-        process.env.CHROME_PATH,
-        '/opt/pw-browsers/chromium',
-        '/usr/bin/chromium',
-        '/usr/bin/chromium-browser',
-        '/usr/bin/google-chrome',
-        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
-    ].filter(Boolean);
-    for (const p of candidates) {
-        if (fs.existsSync(p)) return { executablePath: p, args: ['--no-sandbox'] };
-    }
-    return { channel: 'chrome', args: ['--no-sandbox'] };
-}
+const { launchOptions } = require('./page-helpers.js');
 
 let passed = 0, failed = 0;
 function check(name, ok, detail = '') {
@@ -185,6 +172,8 @@ const FAKE_NATIVE = `
                 await w.close();
                 scanned(name);
             }
+            // Held open after its photos are in (Turn upright mustn't wait for the end)
+            if (window.__scanHold) await window.__scanHold;
             if (window.__scanError) throw Object.assign(new Error(window.__scanError), { code: window.__scanCode || null, names: [] });
             return { count: pages, autosized: !!window.__scanAutosized };
         },
@@ -806,6 +795,10 @@ async function newPage(context, baseUrl, host = null) {
             await wait(() => app.files.some(f => f.name === 'photo5.jpg'));
             await wait(() => $('scan-panel').dataset.state === 'done');
             out.dock = { title: $('scan-title').textContent, status: $('scan-status').textContent, strip: $('scan-strip').querySelectorAll('figure').length, more: $('scan-go').textContent };
+            // The strip shows small copies made in the thumbnail worker, not the scans themselves
+            await wait(() => [...$('scan-strip').querySelectorAll('img')].filter(i => i.complete && i.naturalWidth).length === 2);
+            out.thumbW = app.THUMB_WIDTH;
+            out.stripWidths = [...$('scan-strip').querySelectorAll('img')].map(i => i.naturalWidth).join();
             out.req = window.__scanReq;
             out.compatKept = JSON.parse(localStorage.getItem('jeditor.scanCompat') || '{}')['EPSON FF-680W'] === true;
             out.files = app.files.map(f => f.relPath || f.name).sort().join(',');
@@ -838,6 +831,32 @@ async function newPage(context, baseUrl, host = null) {
             await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '', prefix: 'Smith-B-', next: 1, digits: 3 });
             await Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '' });
             out.typedMore = window.__scanReq.prefix + window.__scanReq.next;
+
+            // Turn upright: each photo as it comes in, its back with it, while
+            // the scan is still going (not all at the end)
+            {
+                const realGuess = Upright.guess, realRotate = app.rotateBulk;
+                Upright.guess = async () => ({ turns: 1, sure: 0.99 });
+                const rotated = [];
+                app.rotateBulk = async function (deg, turns, o) {
+                    rotated.push({ names: [...turns.keys()].map(f => f.name).join('+'), deg: [...turns.values()].join(), running: Scan.running, quiet: !!(o && o.quiet) });
+                    return realRotate.call(this, deg, turns, o);
+                };
+                window.__scanPages = 2;
+                window.__scanHold = new Promise(r => { window.__scanRelease = r; });
+                $('scan-upright').checked = true;
+                const run = Scan.run({ device: 'EPSON FF-680W', driver: 'twain', folder: '', source: 'feeder', sides: 'both', prefix: 'up', next: 1, digits: 2 });
+                await wait(() => rotated.length >= 2);
+                out.uprightEach = rotated.map(x => ({ ...x }));
+                window.__scanRelease();
+                await run;
+                out.uprightStatus = $('scan-status').textContent;
+                out.uprightAfter = rotated.length;
+                window.__scanHold = null;
+                window.__scanPages = 1; // as the scans below expect
+                Upright.guess = realGuess;
+                app.rotateBulk = realRotate;
+            }
             Scan.lastNaming = null; // the scans below follow the folder's names again
 
             // Details: the log so far, then new lines as the app writes them
@@ -914,6 +933,7 @@ async function newPage(context, baseUrl, host = null) {
         check('... each folder its own sequence', r.cerNames.join() === 'c,2', r.cerNames.join());
         check('the dock stays while it scans, then says how many, with the photos and Scan more', r.closed && /^Scanned 2 photos into Scan Order/.test(r.dock.status) && r.dock.strip === 2 && r.dock.more === 'Scan more' && /Scanned · EPSON FF-680W/.test(r.dock.title), JSON.stringify(r.dock));
         check('Scan asks the app to scan into the order\'s folder, by path', r.req && r.req.folder === 'D:\\Orders\\Scan Order' && r.req.device === 'EPSON FF-680W' && r.req.driver === 'twain' && r.req.prefix === 'photo' && r.req.next === 4, JSON.stringify(r.req));
+        check('the dock\'s strip shows a small copy of each scan (made in the thumbnail worker)', r.thumbW === 320 && r.stripWidths === `${r.thumbW},${r.thumbW}`, r.stripWidths);
         check('scanned photos show up in the order', r.files === 'Ceremony/c1.jpg,photo1.jpg,photo2.jpg,photo3.jpg,photo4.jpg,photo5.jpg', r.files);
         check('a message says how many', /Scanned 2 photos into Scan Order/.test(r.toast), r.toast);
         check('Auto crop each photo is off to start with', r.autoCropDefault === false);
@@ -924,6 +944,8 @@ async function newPage(context, baseUrl, host = null) {
         check('... unless the scanner cropped each photo itself (its own auto-size took)', r.croppedAgain === null, String(r.croppedAgain));
         check('Scan more in the dock carries on the names', r.more === 'photo6.jpg', r.more);
         check('a typed prefix carries on into the next scan', r.typedMore === 'Smith-B-2', r.typedMore);
+        check('Turn upright turns each photo as it comes in, its back with it, while the scan goes on', JSON.stringify(r.uprightEach) === JSON.stringify([{ names: 'up01.jpg+up01-b.jpg', deg: '90,90', running: true, quiet: true }, { names: 'up02.jpg+up02-b.jpg', deg: '90,90', running: true, quiet: true }]), JSON.stringify(r.uprightEach));
+        check('... and nothing is left to turn at the end; the dock says how many', r.uprightAfter === 2 && / · 2 turned upright$/.test(r.uprightStatus), JSON.stringify([r.uprightAfter, r.uprightStatus]));
         check('a scan that fails says why, and what was saved', /busy/.test(r.err || '') && /didn't finish/.test(r.alert) && /1 photo was saved/.test(r.alert) && !r.running, JSON.stringify([r.err, r.alert]));
         check('while scanning, the dock offers Stop; closing it only makes it small', r.stopOffered && r.small, JSON.stringify([r.stopOffered, r.small]));
         check('Stop ends a scan whose window never shows', r.stopped && r.stopToast === 'Scan stopped', JSON.stringify([r.stopped, r.stopToast]));
@@ -1806,8 +1828,37 @@ async function newPage(context, baseUrl, host = null) {
             out.scanOpen = Scan.visible();
             Scan.close();
             $('sb-card').querySelector('[data-act="pin"]').click();
-            await wait(() => [...side.querySelectorAll('.sb-pinned .fr-name')].some(n => n.textContent === 'Alpha'));
+            // A pinned project: first in Projects, not again under Pinned
+            const projNames = () => [...side.querySelectorAll('.sb-projects > .sb-row .fr-name')].map(n => n.textContent);
+            await wait(() => projNames()[0] === 'Alpha');
             out.pinned = Places.pins().map(p => p.name).join();
+            out.pinnedFirst = projNames()[0] === 'Alpha' && ![...side.querySelectorAll('.sb-pinned .fr-name')].some(n => n.textContent === 'Alpha');
+            // Three shown, then Show more (Show less once open)
+            await makeOrder('Delta', 1);
+            await makeOrder('Epsilon', 1);
+            window.__modified = { ...window.__modified, Delta: Date.now() - 1000, Epsilon: Date.now() - 2000 };
+            await Places.refresh();
+            await wait(() => Places.projects && Places.projects.length >= 5 && side.querySelector('.sb-more'));
+            out.three = projNames().length + ' ' + side.querySelector('.sb-more').textContent;
+            side.querySelector('.sb-more').click();
+            await wait(() => projNames().length >= 5);
+            out.more = projNames().length + ' ' + side.querySelector('.sb-more').textContent;
+            side.querySelector('.sb-more').click();
+            await wait(() => projNames().length === 3);
+            out.less = projNames().length + ' ' + side.querySelector('.sb-more').textContent;
+            // Search and New project: icons in the heading; the search box shows when asked for
+            const searchBox = () => side.querySelector('.sb-search');
+            out.searchHidden = !!searchBox() && searchBox().hidden && !!side.querySelector('.sb-sec-icon[data-act="newproject"]');
+            side.querySelector('.sb-sec-icon[data-act="search"]').click();
+            await wait(() => searchBox() && !searchBox().hidden);
+            out.searchShown = document.activeElement === searchBox();
+            searchBox().value = 'eps';
+            searchBox().dispatchEvent(new Event('input', { bubbles: true }));
+            await wait(() => projNames().join() === 'Epsilon');
+            out.searched = projNames().join() + (side.querySelector('.sb-more') ? ' +more' : '');
+            searchBox().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            await wait(() => searchBox() && searchBox().hidden && projNames().length === 3);
+            out.searchEsc = searchBox().hidden && Places.query === '';
             // Renaming the open project: closed, renamed, opened again at its new name
             window.__opened = null;
             UI.prompt = async () => 'Alpha Smith';
@@ -1829,6 +1880,22 @@ async function newPage(context, baseUrl, host = null) {
             const kept = await store();
             out.deferKept = JSON.parse(await (await (await kept.getFileHandle('edits.json')).getFile()).text()).defer === true &&
                 !$('edits-bar').classList.contains('hidden');
+            // While it's on, edits waiting: "N edits to save · Save now" on the card
+            const pending = () => $('sb-card').querySelector('.sb-card-pending');
+            out.pendingNone = !!pending() && pending().hidden;
+            const pf = app.files[0];
+            pf._edit = { q: 1, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } };
+            Edits.updateBar();
+            out.pendingText = pending().hidden ? '' : pending().textContent;
+            const saveAll0 = Edits.saveAll;
+            let savedNow = false;
+            Edits.saveAll = async () => { savedNow = true; return true; };
+            pending().querySelector('[data-act="savenow"]').click();
+            Edits.saveAll = saveAll0;
+            out.savedNow = savedNow;
+            delete pf._edit;
+            Edits.updateBar();
+            out.pendingGone = pending().hidden;
 
             // A drive opens out; a folder in it opens as the project
             rowOf(side, 'USB drive (E:)').querySelector('.sb-main').click();
@@ -1912,8 +1979,11 @@ async function newPage(context, baseUrl, host = null) {
         check('... with its real photo count; others counted up to 1,000+', r.listCounts === '3,1,000+', r.listCounts);
         check('card: no rename button; the name renames on a click, as the file name in the top pill, with a pencil by it', r.noRenameButton);
         check('card: Rename closes the open project, renames it and opens it again', r.reopened === 'D:\\Orders\\Alpha Smith' && r.pinRenamed.split(',').includes('Alpha Smith') && !r.pinRenamed.split(',').includes('Alpha'), JSON.stringify([r.reopened, r.pinRenamed]));
+        check('projects: a pinned one is first (not again under Pinned); three shown, Show more and Show less', r.pinnedFirst && r.three === '3 Show more' && r.more === '5 Show less' && r.less === '3 Show more', JSON.stringify([r.pinnedFirst, r.three, r.more, r.less]));
+        check('projects: Search and New project are icons in the heading; the search box shows when asked, Esc hides it', r.searchHidden && r.searchShown && r.searched === 'Epsilon' && r.searchEsc, JSON.stringify([r.searchHidden, r.searchShown, r.searched, r.searchEsc]));
         check('card buttons: Explorer, Scan, Pin', r.revealed === 'D:\\Orders\\Alpha' && r.scanOpen && r.pinned.split(',').includes('Alpha'), JSON.stringify([r.revealed, r.scanOpen, r.pinned]));
         check('card: Save edits when done turns on for the project, kept on the PC', r.deferOff && r.deferKept, JSON.stringify([r.deferOff, r.deferKept]));
+        check('card: while it\'s on and edits wait, "1 edit to save · Save now"; Save now saves them; gone when none wait', r.pendingNone && r.pendingText === '1 edit to saveSave now' && r.savedNow && r.pendingGone, JSON.stringify([r.pendingNone, r.pendingText, r.savedNow, r.pendingGone]));
         check('a drive opens out to its folders, in number order', r.inside === 'Order 9,Order 10', r.inside);
         check('browsing: clicking a folder only opens it out, it isn\'t loaded', r.browseOnly);
         check('... Open makes it the project, and so does a double-click', r.openedUsb === 'E:\\Order 9' && r.dblOpened === 'E:\\Order 10', JSON.stringify([r.openedUsb, r.dblOpened]));
@@ -1949,7 +2019,7 @@ async function newPage(context, baseUrl, host = null) {
                 step = 'card button';
                 await Places.drawCard();
                 out.cardButton = !!document.querySelector('.sb-card [data-act="export"]') && !document.querySelector('.sb-card [data-act="todrive"]');
-                // Copy: room checked, photos and data copied, a message with Eject
+                // Copy: room checked, the photos copied (no .jeditor folder), a message with Eject
                 step = 'copy';
                 const choose0 = UI.choose, alert0 = UI.alert;
                 UI.choose = async (o) => { out.asked = o.title; return 'alt'; };
@@ -1957,9 +2027,17 @@ async function newPage(context, baseUrl, host = null) {
                 const usb = await opfs('usb-E');
                 const copy = await usb.getDirectoryHandle('Alpha');
                 out.copied = (await names(copy)).filter(n => n.endsWith('.jpg')).length === 3 && await has(copy, 'Ceremony', 'c1.jpg');
-                out.data = await has(copy, '.jeditor', 'flags.json') && await has(copy, '.jeditor', 'edits.json');
-                await wait(() => /Copied Alpha to USB drive \(E:\), flags and edits too/.test(toasts()));
+                out.noData = !(await has(copy, '.jeditor'));
+                await wait(() => /Copied Alpha to USB drive \(E:\)/.test(toasts()));
                 out.toast = toasts();
+                out.askedText = out.asked;
+                // Asked for: its flags and edits go too, in a .jeditor folder
+                step = 'copy with data';
+                await usb.removeEntry('Alpha', { recursive: true });
+                await Places.copyToDrive(Places.current(), { drive: window.__drives.find(d => d.kind === 'usb'), withData: true });
+                const copy2 = await usb.getDirectoryHandle('Alpha');
+                out.data = await has(copy2, '.jeditor', 'flags.json') && await has(copy2, '.jeditor', 'edits.json');
+                await wait(() => /Copied Alpha to USB drive \(E:\), flags and edits too/.test(toasts()));
                 // Not enough room: says so, copies nothing
                 step = 'room';
                 window.__copies = [];
@@ -1970,7 +2048,7 @@ async function newPage(context, baseUrl, host = null) {
                 step = 'eject';
                 UI.choose = async () => 'ok';
                 await usb.removeEntry('Alpha', { recursive: true });
-                await Places.copyToDrive(Places.current(), { drive: window.__drives.find(d => d.kind === 'usb') });
+                await Places.copyToDrive(Places.current(), { drive: window.__drives.find(d => d.kind === 'usb'), withData: true });
                 await wait(() => window.__ejected);
                 out.ejected = window.__ejected === 'E:' + BS;
                 UI.choose = choose0;
@@ -2033,10 +2111,12 @@ async function newPage(context, baseUrl, host = null) {
                 out.burnPrompt = $('ex-title').textContent + ' / ' + $('ex-label').value + ' / ' + $('ex-go').textContent;
                 $('ex-label').value = 'Alpha 2026';
                 $('ex-label').dispatchEvent(new Event('input', { bubbles: true }));
+                out.burnEjectBox = !!$('ex-eject') && $('ex-eject').checked;
                 $('ex-save-first').click(); // burnt as they are
                 $('ex-go').click();
                 await wait(() => window.__burnt);
                 out.burnt = window.__burnt;
+
                 await wait(() => /Burnt Alpha to the DVD-R/.test(toasts()));
                 out.burnToast = /Burnt Alpha/.test(toasts());
                 // No blank disc: says so
@@ -2050,12 +2130,13 @@ async function newPage(context, baseUrl, host = null) {
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
         check('drives: the project card has one Export button (USB drive, disc, copies)', r.cardButton, JSON.stringify(r));
-        check('drives: a project copied to a USB drive in one step, its flags and edits with it, Eject offered', r.copied && r.data && /Copy Alpha to USB drive/.test(r.asked || '') && /Eject/.test(r.toast || ''), JSON.stringify(r));
+        check('drives: a project copied to a USB drive in one step, no .jeditor folder on it, Eject offered', r.copied && r.noData && /Copy Alpha to USB drive/.test(r.asked || '') && /Eject/.test(r.toast || '') && !/flags and edits/.test(r.toast || ''), JSON.stringify(r));
+        check('drives: its flags and edits go too (a .jeditor folder) only when asked for', r.data, JSON.stringify(r));
         check('drives: not enough room says so, and nothing\'s copied; Copy and eject ejects', /Not enough room on Tiny/.test(r.roomAlert || '') && r.noCopy && r.ejected, JSON.stringify(r));
         check('drives: opened from the drive, the project\'s flags and edits are taken in', r.carried && r.jeditorGone, JSON.stringify(r));
         check('import: a camera\'s card plugged in is offered to import', r.offered, JSON.stringify(r));
         check('import: its photos (not its videos) copied into the project; nothing new the second time', r.imported && r.importToast && /Import 3 photos/.test(r.goLabel || '') && /3 photos/.test(r.summary || '') && r.nothingNew, JSON.stringify(r));
-        check('burn: in Export, the burner and its blank disc, edits offered to save first, the disc named, burnt, and said', /Save the edits into 1 photo first/.test(r.burnAsked || '') && /Blank DVD-R/.test(r.burnAsked || '') && r.burnPrompt === 'Export Alpha / Alpha / Burn to the DVD-R' && r.burnt && r.burnt.label === 'Alpha 2026' && r.burnt.path === 'D:\\Orders\\Alpha' && r.burnToast, JSON.stringify(r));
+        check('burn: in Export, the burner and its blank disc, edits offered to save first, the disc named, burnt, and said', /Save the edits into 1 photo first/.test(r.burnAsked || '') && /Blank DVD-R/.test(r.burnAsked || '') && r.burnPrompt === 'Export Alpha / Alpha / Burn to the DVD-R' && r.burnt && r.burnt.label === 'Alpha 2026' && r.burnt.path === 'D:\\Orders\\Alpha' && r.burnt.eject === true && r.burnEjectBox && r.burnToast, JSON.stringify(r));
         check('burn: no blank disc in the drive says so, and Burn waits', /^true Put a blank disc in/.test(r.noDisc || ''), JSON.stringify(r));
         check('drives suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
@@ -2084,6 +2165,7 @@ async function newPage(context, baseUrl, host = null) {
             out.tabs = [...$('ex-tabs').querySelectorAll('button')].map(b => b.textContent + (b.classList.contains('active') ? '*' : '')).join(', ');
             out.usb = $('ex-body').textContent.replace(/\s+/g, ' ').trim();
             out.usbGo = $('ex-go').textContent;
+            out.withDataOff = $('ex-with-data') && !$('ex-with-data').checked;
             // Copy, not ejected after: no more questions
             $('ex-eject').click();
             const choose0 = UI.choose;
@@ -2091,36 +2173,70 @@ async function newPage(context, baseUrl, host = null) {
             $('ex-go').click();
             await wait(() => /Copied Beta to USB drive/.test(toasts()));
             UI.choose = choose0;
-            out.copied = !!(await (await opfs('usb-E')).getDirectoryHandle('Beta').catch(() => null));
+            const beta = await (await opfs('usb-E')).getDirectoryHandle('Beta').catch(() => null);
+            out.copied = !!beta;
+            out.noJeditor = !!beta && !(await beta.getDirectoryHandle('.jeditor').then(() => true, () => false));
             out.ejected = window.__ejected || null;
             // Copies of the selected photos, smaller, into the project's export folder
+            const pill = (k) => $('ex-body').querySelector(`[data-pill="${k}"]`);
+            const menu = (k) => { pill(k).click(); return [...document.querySelectorAll('#context-menu button')]; };
+            const choose = (k, re) => menu(k).find(b => re.test(b.textContent)).click();
             Export.open({ files: [f('photo1.jpg')] });
             out.copiesTab = [...$('ex-tabs').querySelectorAll('button.active')].map(b => b.textContent).join();
-            out.which = [...$('ex-body').querySelectorAll('input[name="ex-which"]')].map(i => i.parentElement.textContent.trim() + (i.checked ? '*' : '')).join(' | ');
+            out.presets = [...$('ex-body').querySelectorAll('input[name="ex-preset"]')].map(i => i.parentElement.textContent.trim() + (i.checked ? '*' : '')).join(' | ');
+            out.pills = [...$('ex-body').querySelectorAll('.ex-pill')].map(b => b.textContent.trim()).join(' | ');
+            out.sum = $('ex-body').querySelector('.ex-sum').textContent;
+            out.folder = $('ex-folder').value;
+            out.which = menu('which').map(b => b.textContent).join(' | ');
+            app.closeContextMenu();
             // (Other…: a size typed)
-            $('ex-size').value = 'custom';
+            const prompt0 = UI.prompt;
+            UI.prompt = async () => '100';
+            [...$('ex-body').querySelectorAll('input[name="ex-preset"]')].find(i => i.value === 'custom').click();
+            $('ex-size').value = 'other';
             $('ex-size').dispatchEvent(new Event('change', { bubbles: true }));
-            $('ex-size-px').value = '100';
-            $('ex-size-px').dispatchEvent(new Event('input', { bubbles: true }));
+            await wait(() => $('ex-size') && $('ex-size').value === '100');
+            UI.prompt = prompt0;
+            out.custom = $('ex-body').querySelector('input[name="ex-preset"]:checked').value;
             out.copiesGo = $('ex-go').textContent;
             $('ex-go').click();
-            await wait(() => /Exported 1 to "jEditor Export"/.test(toasts()));
-            const exported = await (await dir.getDirectoryHandle('jEditor Export')).getFileHandle('photo1.jpg').then(h => h.getFile());
+            await wait(() => /Exported 1 to "Beta export"/.test(toasts()));
+            const exported = await (await dir.getDirectoryHandle('Beta export')).getFileHandle('photo1.jpg').then(h => h.getFile());
             const bmp = await createImageBitmap(exported);
             out.size = Math.max(bmp.width, bmp.height);
-            // The starred, onto the USB drive
+            // Left out of the project: Rescan doesn't list them
+            out.leftOut = Watch.skipDir('Beta export') && !Watch.skipDir('Beta');
+            // Remembered: Custom and its size, not the drive
+            out.kept = JSON.parse(localStorage.getItem('jeditor.export'));
+            // Email: JPEG at 80%, 2048 px, sRGB, without the location; the folder named after it
             Export.open({ tab: 'copies' });
-            [...$('ex-body').querySelectorAll('input[name="ex-which"]')].find(i => i.value === 'star').click();
-            [...$('ex-body').querySelectorAll('input[name="ex-where"]')].find(i => i.value.startsWith('drive:')).click();
+            [...$('ex-body').querySelectorAll('input[name="ex-preset"]')].find(i => i.value === 'email').click();
+            out.web = [...$('ex-body').querySelectorAll('.ex-chip')].map(b => b.textContent).join(' | ');
+            out.webMore = Export.meta + ' ' + Export.colour + ' ' + $('ex-folder').value + ' ' + menu('where').some(b => /Leave them out/.test(b.textContent));
+            app.closeContextMenu();
+            $('ex-folder').value = 'a/b';
+            $('ex-folder').dispatchEvent(new Event('input', { bubbles: true }));
+            out.badName = $('ex-go').disabled && /can't contain/.test($('ex-note').textContent);
+            $('ex-cancel').click();
+            // The starred, onto the USB drive, numbered
+            Export.open({ tab: 'copies' });
+            choose('which', /starred/);
+            choose('where', /USB drive/);
+            choose('names', /^Numbered/);
             out.starGo = $('ex-go').textContent;
+            out.starSum = $('ex-body').querySelector('.ex-sum').textContent;
+            // Eject when done, for copies onto a drive too (off, remembered from the copy above: on again)
+            out.copiesEjectOff = !!$('ex-eject') && !$('ex-eject').checked;
+            $('ex-eject').click();
             $('ex-go').click();
             await wait(() => /Exported 2 to USB drive/.test(toasts()));
-            const onUsb = await (await (await opfs('usb-E')).getDirectoryHandle('jEditor Export')).getDirectoryHandle('Beta');
+            const onUsb = await (await opfs('usb-E')).getDirectoryHandle('Beta – to email');
             const names = [];
             for await (const k of onUsb.keys()) names.push(k);
             out.onUsb = names.sort().join();
-            // Remembered: the size, not the drive
-            out.kept = JSON.parse(localStorage.getItem('jeditor.export'));
+            await wait(() => window.__ejected);
+            out.copiesEjected = window.__ejected;
+            out.keptWhere = JSON.parse(localStorage.getItem('jeditor.export')).where;
             // ⋯ on the selection bar: Export… opens it on Copies
             app.selection = new Set([f('photo1.jpg'), f('photo2.jpg')]);
             const item = app.selectionMoreItems().find(i => /^Export/.test(i[0]));
@@ -2129,15 +2245,48 @@ async function newPage(context, baseUrl, host = null) {
             out.fromMenu = $('ex-title').textContent + ' / ' + $('ex-go').textContent;
             $('ex-cancel').click();
             out.closed = $('export-panel').classList.contains('hidden');
+            // Right-click a USB drive in the sidebar: Export or Copy the project to it
+            // (E: plugged back in: Eject when done took it out above)
+            if (!window.__drives.some(d => d.path === 'E:' + BS)) {
+                window.__drives = window.__drives.concat([{ path: 'E:' + BS, name: 'USB drive (E:)', kind: 'usb', total: 64e9, free: 1e9 }]);
+                await Places.refresh();
+            }
+            const rowFor = (p, name) => { const r = document.createElement('div'); r.dataset.path = p; r.innerHTML = '<span class="fr-name"></span>'; r.firstChild.textContent = name; return r; };
+            const usbItems = Places.rowItems(rowFor('E:' + BS, 'USB drive (E:)'));
+            out.usbMenu = usbItems.map(i => i[0]).filter(t => /Beta/.test(t)).join(' | ');
+            usbItems.find(i => /^Export Beta to/.test(i[0]))[1]();
+            await wait(() => !$('export-panel').classList.contains('hidden'));
+            out.fromDrive = [...$('ex-tabs').querySelectorAll('button.active')].map(b => b.textContent).join() + ' / ' + Export.where;
+            $('ex-cancel').click();
+            usbItems.find(i => /^Copy Beta to/.test(i[0]))[1]();
+            await wait(() => !$('export-panel').classList.contains('hidden'));
+            out.copyFromDrive = [...$('ex-tabs').querySelectorAll('button.active')].map(b => b.textContent).join() + ' / ' + $('ex-go').textContent;
+            $('ex-cancel').click();
+            // A disc drive: Burn, with its burner chosen
+            window.__burners = [{ id: 'b0', name: 'Other burner', drive: 'G:' + BS, media: 'DVD-R', blank: true, free: 4.7e9, canWrite: true },
+                { id: 'b1', name: 'HL-DT-ST DVDRAM', drive: 'F:' + BS, media: 'DVD-R', blank: true, free: 4.7e9, canWrite: true }];
+            Places.drives = Places.drives.concat([{ path: 'F:' + BS, name: 'DVD RW drive (F:)', kind: 'cd' }]);
+            const discItems = Places.rowItems(rowFor('F:' + BS, 'DVD RW drive (F:)'));
+            out.discMenu = discItems.map(i => i[0]).filter(t => /Beta/.test(t)).join(' | ');
+            discItems.find(i => /^Burn Beta/.test(i[0]))[1]();
+            await wait(() => !$('export-panel').classList.contains('hidden') && $('ex-body').querySelector('input[name="ex-burner"]'));
+            out.burnerPicked = $('ex-body').querySelector('input[name="ex-burner"]:checked').value;
+            $('ex-cancel').click();
             return out;
         });
         check('export: the project card opens one window: USB drive or card, CD or DVD, Copies', r.tabs === 'USB drive or card*, CD or DVD, Copies', r.tabs);
-        check('... USB: the drive, its room and whether it fits; Eject after offered', /USB drive \(E:\)/.test(r.usb) && /free of/.test(r.usb) && /Fits/.test(r.usb) && /Eject it when it's done/.test(r.usb) && r.usbGo === 'Copy to USB drive (E:)', JSON.stringify([r.usb, r.usbGo]));
+        check('... USB: the drive, its room and whether it fits; Eject after offered', /USB drive \(E:\)/.test(r.usb) && /free of/.test(r.usb) && /Fits/.test(r.usb) && /Eject when done/.test(r.usb) && r.usbGo === 'Copy to USB drive (E:)', JSON.stringify([r.usb, r.usbGo]));
+        check('... its flags and edits: an option, off to start with; no .jeditor folder on the drive', r.withDataOff && r.noJeditor, JSON.stringify([r.withDataOff, r.noJeditor]));
         check('... copied in one step (no more questions), not ejected when that\'s off', r.copied && !r.askedAgain && !r.ejected, JSON.stringify(r));
-        check('... Copies: opened with the photos selected, smaller, into "jEditor Export"', r.copiesTab === 'Copies' && /photo selected\*/.test(r.which) && /2 starred/.test(r.which) && r.copiesGo === 'Export 1 copy' && r.size === 100, JSON.stringify(r));
-        check('... the starred onto the USB drive, in its own folder', r.starGo === 'Export 2 copies' && r.onUsb === 'photo2.jpg,photo3.jpg', JSON.stringify([r.starGo, r.onUsb]));
-        check('... the size is remembered, a drive isn\'t', r.kept.size === 100 && r.kept.where === 'project', JSON.stringify(r.kept));
+        check('... Copies: presets, a sentence, pills, the folder named after the preset', r.copiesTab === 'Copies' && r.presets === 'Full quality* | Email | Web | Social | Print | Archive | Custom' && r.pills === '1 selected | Keep names | In this project' && /^1 photo, about .+, into Beta – full quality in this project\.$/.test(r.sum) && r.folder === 'Beta – full quality', JSON.stringify([r.presets, r.pills, r.sum, r.folder]));
+        check('... the photos selected, a size typed (Custom), into "Beta export", left out of the project', /✓ The photo selected/.test(r.which) && /2 starred/.test(r.which) && r.custom === 'custom' && r.copiesGo === 'Export 1 copy' && r.size === 100 && r.leftOut, JSON.stringify(r));
+        check('... the starred onto the USB drive, numbered, in their own folder', r.starGo === 'Export 2 copies' && /on USB drive/.test(r.starSum) && r.onUsb === 'Beta – to email 001.jpg,Beta – to email 002.jpg', JSON.stringify([r.starGo, r.starSum, r.onUsb]));
+        check('... Eject when done for copies onto a drive (remembered), and it ejects', r.copiesEjectOff && r.copiesEjected === 'E:\\', JSON.stringify([r.copiesEjectOff, r.copiesEjected]));
+        check('... Email: JPEG at 80%, 2048 px, sRGB, no location, its own folder; Leave out is in Where; a bad folder name stops it', r.web === 'JPEG 80% | 2,048 px | sRGB | No location' && r.webMore === 'nogps srgb Beta – to email true' && r.badName, JSON.stringify([r.web, r.webMore, r.badName]));
+        check('... Custom is remembered, a drive isn\'t', r.kept.preset === 'custom' && r.kept.custom.size === 100 && r.keptWhere === 'project', JSON.stringify(r.kept));
         check('... ⋯ on the selection bar opens it, on the selection', r.menu === 'Export 2…' && r.fromMenu === 'Export 2 photos / Export 2 copies' && r.closed, JSON.stringify([r.menu, r.fromMenu]));
+        check('right-click a USB drive: Export or Copy the project to it, each opening Export there', r.usbMenu === 'Export Beta to USB drive (E:)… | Copy Beta to USB drive (E:)…' && r.fromDrive === 'Copies / drive:E:\\' && r.copyFromDrive === 'USB drive or card / Copy to USB drive (E:)', JSON.stringify([r.usbMenu, r.fromDrive, r.copyFromDrive]));
+        check('right-click a disc drive: Burn the project, with that drive\'s burner', r.discMenu === 'Burn Beta to a disc…' && r.burnerPicked === 'b1', JSON.stringify([r.discMenu, r.burnerPicked]));
         check('export: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }

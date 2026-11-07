@@ -417,14 +417,20 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const g = c.getContext('2d');
             g.fillStyle = '#7ab'; g.fillRect(0, 0, 120, 40);
             g.fillStyle = '#585'; g.fillRect(0, 40, 120, 40);
-            const ans = await Upright.guess(await new Promise(res => c.toBlob(res)));
+            const blob = await new Promise(res => c.toBlob(res));
+            const ans = await Upright.guess(blob);
             out.real = ans && [0, 1, 2, 3].includes(ans.turns) && ans.sure > 0.25 && ans.sure <= 1;
+            // ... looked at in a worker (the window keeps up), the same answer as here
+            out.inWorker = !!Upright.worker;
+            const here = await Upright.guessHere(blob);
+            out.same = !!here && here.turns === ans.turns && Math.abs(here.sure - ans.sure) < 1e-6;
             return out;
         });
         check('turn upright: the network is there', r.loaded);
         check('turn upright: each photo turned its own way; an unsure one left as it is', r.turned === 2 && r.orient === '6,8' && r.eWrites === 0, JSON.stringify(r));
         check('turn upright: one undo step for them all', r.oneStep);
         check('turn upright: the network answers for a photo', r.real, JSON.stringify(r));
+        check('turn upright: the network looks in a worker, with the same answer as on the window\'s thread', r.inWorker && r.same, JSON.stringify([r.inWorker, r.same]));
         await page.close();
     }
 
@@ -1037,8 +1043,89 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('only Liquid bends', !crystal.bends && !/url/.test(crystal.filter), JSON.stringify(crystal));
         check('Reduce transparency and Increase contrast: no bend, the glass solid', [reduced, contrast].every(x => !x.bends && x.filter === 'none' && /^rgb\(/.test(x.bg)), JSON.stringify([reduced, contrast]));
         check('a theme on: no bend', !skinned);
+        // The corners: the bend turns round them, with no crease. Read
+        // back from the maps (red: how far across, green: how far down)
+        const corners = await page.evaluate(async () => {
+            await new Promise(r => setTimeout(r, 300));
+            const read = async (w, h, r, bezel) => {
+                const im = new Image();
+                im.src = Liquid.map(w, h, r, bezel);
+                await im.decode();
+                const c = document.createElement('canvas');
+                c.width = w; c.height = h;
+                const g = c.getContext('2d');
+                g.drawImage(im, 0, 0);
+                return (x, y) => [...g.getImageData(x, y, 1, 1).data.slice(0, 2)].map(v => v - 128);
+            };
+            // A sidebar (16px corners, the band 24px): a step either side
+            // of the diagonal, 18px in from the corner, the bend about the
+            // same and both ways (it was across on one side, down on the other)
+            const rail = await read(290, 400, 16, 24);
+            const a = rail(18, 19), b = rail(19, 18);
+            // A pill (the probe, 44px high): its band and bend short of its
+            // middle, so the middle, where its words are, stays still
+            const key = Liquid.parts.get(document.getElementById('lg-probe')) || '';
+            const [, bezel, depth] = (key.match(/b(\d+)d(\d+)/) || []).map(Number);
+            const pill = await read(300, 44, 22, bezel);
+            return { a, b, bezel, depth, middle: pill(150, 22) };
+        });
+        const near = (p, q) => p.every((v, i) => Math.abs(v - q[i]) <= 12);
+        check('Liquid: the bend turns round a corner with no crease (sidebar, menu)', corners.a.every(v => v > 5) && near(corners.a, corners.b), JSON.stringify(corners));
+        check('Liquid: a pill\'s middle stays still, its ends bent no further than its middle', corners.bezel <= 17 && corners.depth <= 13 && corners.middle.every(v => v === 0), JSON.stringify(corners));
         await page.evaluate(() => document.getElementById('lg-probe').remove());
         check('liquid glass: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // The thumbnail size in each theme: the themes lay the grid out their
+    // own way, and once set their tiles' size without the slider's
+    console.log('themes: the thumbnail size changes the tiles');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        // Themes are the desktop apps': a stand-in app with them, which
+        // answers anything else with nothing (as design/themes/audit.js)
+        await page.addInitScript(() => {
+            const answers = { platform: 'windows', features: ['themes'], titleBar() {}, windowAction() {}, setState() {}, watchLog() {} };
+            window.JEditorNative = new Proxy(answers, { get: (t, k) => k in t ? t[k] : (typeof k === 'string' && !k.startsWith('on') ? async () => [] : undefined) });
+        });
+        await page.reload({ waitUntil: 'networkidle' });
+        await page.evaluate(PAGE_HELPERS);
+        await page.evaluate(async () => {
+            const dir = makeDir('Sizes');
+            for (let i = 1; i <= 12; i++) {
+                const h = makeHandle(`t${i}.jpg`, await makeRealJpeg(300, 200, { color: `hsl(${i * 30},60%,50%)` }), 'image/jpeg');
+                dir._files.set(h.name, h);
+            }
+            dir.values = async function* () { yield* dir._files.values(); };
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            Experiments.set('themes', true);
+        });
+        for (const theme of ['xp/royale', 'snow/finder', 'mac84/finder']) {
+            const r = await page.evaluate(async (theme) => {
+                const wait = (ms) => new Promise(res => setTimeout(res, ms));
+                Themes.choose(theme);
+                await wait(300);
+                const skin = document.documentElement.dataset.skin;
+                if (document.body.dataset.view === 'single') document.getElementById('btn-toggle-view').click();
+                await wait(300);
+                const slider = document.getElementById('grid-size-slider');
+                const tile = () => Math.round(document.querySelector('#grid-view .grid-item').getBoundingClientRect().width);
+                const set = async (v) => { slider.value = v; slider.dispatchEvent(new Event('input', { bubbles: true })); await wait(100); return tile(); };
+                const out = { skin, start: await set(150) };
+                out.big = await set(300);
+                out.small = await set(80);
+                // Ctrl+wheel (a mouse's notches), up: bigger
+                const grid = document.getElementById('grid-view');
+                for (let i = 0; i < 3; i++) grid.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, bubbles: true, cancelable: true }));
+                await wait(100);
+                out.wheel = tile();
+                await set(150);
+                return out;
+            }, theme);
+            check(`${theme}: the size slider and Ctrl+wheel change the thumbnails`, r.skin === theme.split('/')[0] && r.big > r.start + 40 && r.small < r.start - 30 && r.wheel > r.small + 20, JSON.stringify(r));
+        }
+        check('themes, thumbnail size: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
@@ -2034,7 +2121,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             }
             out.open = Dupes.isOpen;
             out.groups = Dupes.groups.map(g => g.files.map(f => f.name).sort().join('+'));
-            const g = Dupes.groups[0];
+            let g = Dupes.groups[0];
             out.best = g && g.best.name;
             out.exact = g && [...g.exact].map(f => f.name).sort().join('+');
             out.cards = document.querySelectorAll('.dupe-card').length;
@@ -2047,6 +2134,27 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.simOther = Dupes.similarity(fa, fb).map(v => v.toFixed(2)).join('/');
             out.rescanMatches = Dupes.isMatch(fa, fr, Dupes.SENSITIVITY.normal);
             out.otherRejected = !Dupes.isMatch(fa, fb, Dupes.SENSITIVITY.loose);
+
+            // Show in grid (G): only the group, its extras selected, a chip;
+            // the chip shows everything again
+            out.startMarked = Dupes.markedFiles().map(f => f.name).sort().join('+');
+            press('g');
+            out.grid = {
+                closed: !Dupes.isOpen,
+                view: app.viewFiles().map(f => f.name).join('+'),
+                heads: document.querySelectorAll('#grid-view .dupe-grid-head').length,
+                keep: [...document.querySelectorAll('#grid-view .dupe-tile-keep')].map(b => b.parentElement._file.name).join(),
+                selected: [...app.selection].map(f => f.name).sort().join('+'),
+                chip: document.getElementById('fb-dupes-chip').textContent
+            };
+            document.getElementById('fb-dupes-chip').click();
+            out.gridBack = app.viewFiles().length === 5 && !Dupes.inGrid &&
+                document.getElementById('fb-dupes-chip').classList.contains('hidden') && !document.querySelector('#grid-view .dupe-grid-head');
+            press('d');
+            for (let i = 0; i < 200 && !(Dupes.groups && Dupes.groups.length && document.querySelector('.dupe-card')); i++) {
+                await new Promise(res => setTimeout(res, 25));
+            }
+            g = Dupes.groups[0];
 
             // Cull: keep suggested (K), trash the rest (Enter)
             press('k');
@@ -2067,7 +2175,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('rotation-invariant match (re-scan matches, other photo does not)', r.rescanMatches && r.otherRejected, `${r.simRescan} / ${r.simOther}`);
         check('suggests the highest-resolution copy', r.best === 'a_rescan.jpg', String(r.best));
         check('exact copies flagged', r.exact === 'a.jpg+a_copy.jpg', String(r.exact));
-        check('side-by-side cards rendered', r.cards === 3, String(r.cards));
+        check('every group\'s cards rendered', r.cards === 3, String(r.cards));
+        check('every group starts with all but the suggested keeper marked', r.startMarked === 'a.jpg+a_copy.jpg', r.startMarked);
+        check('Show in grid: only the group, keeper first, under a heading with a Keep badge', r.grid.closed && /^a_rescan\.jpg\+(a\.jpg\+a_copy\.jpg|a_copy\.jpg\+a\.jpg)$/.test(r.grid.view) && r.grid.heads === 1 && r.grid.keep === 'a_rescan.jpg', JSON.stringify(r.grid));
+        check('Show in grid: the marked photos come selected, the chip counts them all', r.grid.selected === 'a.jpg+a_copy.jpg' && /^Duplicates \(3\)/.test(r.grid.chip), JSON.stringify(r.grid));
+        check('the Duplicates chip shows every photo again', r.gridBack);
         check('K marks all but the suggested keeper', r.marked === 2, String(r.marked));
         check('Enter trashes marked photos', r.left === 'a_rescan.jpg,b.jpg,c.jpg', r.left);
         check('finished state reported', /All done/.test(r.doneMessage), r.doneMessage);
@@ -3013,7 +3125,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const open = async (d) => { window.showDirectoryPicker = async () => d; await app.browseFolder(); await Recents.saving; };
             const names = async () => (await Recents.list()).map(x => x.name).join(',');
             const shown = () => [...document.querySelectorAll('#recent-list .recent-name')].map(x => x.textContent).join(',');
-            out.hiddenWhenEmpty = document.getElementById('recents').classList.contains('hidden');
+            await Recents.render();
+            out.hiddenWhenEmpty = document.getElementById('recents').classList.contains('hidden') && !document.getElementById('home-empty').classList.contains('hidden');
             const a = await make('rec A'), b = await make('rec B');
             await open(a);
             await open(b);
@@ -3035,10 +3148,23 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await Recents.saving;
             out.clicked = app.dirHandle.name === 'rec 3' && app.files.length === 1 && (await names()).startsWith('rec 3,');
             // × forgets it (the folder stays)
-            const li = [...document.querySelectorAll('#recent-list li')].find(x => x.querySelector('.recent-name').textContent === 'rec 1');
+            // The table shows four: rec 3 (just opened), rec 6, rec 5, rec 4; the list keeps six
+            out.onTable = shown() === 'rec 3,rec 6,rec 5,rec 4';
+            out.emptyGone = document.getElementById('home-empty').classList.contains('hidden');
+            const li = [...document.querySelectorAll('#recent-list li')].find(x => x.querySelector('.recent-name').textContent === 'rec 4');
             li.querySelector('.recent-remove').click();
-            for (let i = 0; i < 50 && shown().includes('rec 1'); i++) await new Promise(res => setTimeout(res, 20));
-            out.removed = !(await names()).includes('rec 1') && !shown().includes('rec 1') && !!(await opfs.getDirectoryHandle('rec 1'));
+            for (let i = 0; i < 50 && shown().includes('rec 4'); i++) await new Promise(res => setTimeout(res, 20));
+            out.removed = !(await names()).includes('rec 4') && !shown().includes('rec 4') && !!(await opfs.getDirectoryHandle('rec 4'));
+            // A photo opened on its own in Adjust or Paint: one print called Recent, first on the table
+            const before3 = await names();
+            await Recents.rememberPhoto(await (await opfs.getDirectoryHandle('rec 5')).getFileHandle('a.jpg'), 'adjust');
+            const first = document.querySelector('#recent-list li');
+            out.single = first.classList.contains('single') && first.querySelector('.recent-name').textContent === 'Recent' &&
+                /^a\.jpg · Today$/.test(first.querySelector('.recent-sub').textContent) && first.querySelectorAll('.recent-print').length === 1 &&
+                document.querySelectorAll('#recent-list li').length === 4 && (await names()) === before3;
+            // ... until a folder is opened after it
+            await open(await opfs.getDirectoryHandle('rec 6'));
+            out.singleGone = !document.querySelector('#recent-list li.single');
             // A folder that's gone says so and offers to remove it
             await opfs.removeEntry('rec 2', { recursive: true });
             const rec2 = (await Recents.list()).find(x => x.name === 'rec 2');
@@ -3048,13 +3174,16 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.when = [Recents.when(Date.now()), Recents.when(Date.now() - 86400000), Recents.when(new Date(2020, 2, 4).getTime())].join('|');
             return out;
         });
-        check('recent: hidden until a folder has been opened', r.hiddenWhenEmpty);
+        check('recent: an empty table shows ghost prints until a folder has been opened', r.hiddenWhenEmpty);
         check('recent: newest first', r.order === 'rec B,rec A', r.order);
         check('recent: opening one again moves it to the top, once', r.reopened === 'rec A,rec B', r.reopened);
-        check('recent: listed on the start screen with when', r.shown);
+        check('recent: on the home page\'s table, with when', r.shown);
         check('recent: keeps the newest six', r.capped === 'rec 6,rec 5,rec 4,rec 3,rec 2,rec 1', r.capped);
         check('recent: click reopens the folder', r.clicked);
+        check('recent: the table shows the newest four (and no ghost prints)', r.onTable && r.emptyGone, r.capped);
         check('recent: × removes it from the list only', r.removed);
+        check('recent: a photo opened on its own lies first, as one print called Recent', r.single, JSON.stringify(r));
+        check('... and comes off once a folder is opened after it', r.singleGone);
         check('recent: a folder that has gone says so', r.missing);
         check('recent: dates read Today / Yesterday / Mar 4, 2020', /^Today\|Yesterday\|Mar 4, 2020$/.test(r.when), r.when);
         check('recent suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
@@ -4240,6 +4369,24 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await frame();
             const arrived = app.files.find(f => f.name === 'P1200a.jpg');
             out.arrived = !!arrived && files().indexOf(arrived) === 1201 && grid.querySelectorAll('.grid-item').length < 400;
+
+            // The tiles' easing as it scrolls (style.css) runs on scrolling
+            // along, a wheel's step a frame, but not on a fast fling (more
+            // than half a screen a frame): it cost ~30 ms a frame there.
+            // It comes back once the grid settles
+            step = 'fling';
+            const wooshOff = () => grid.classList.contains('grid-jump');
+            const scrollBy = async (dy, n) => {
+                let off = 0;
+                for (let i = 0; i < n; i++) { grid.scrollTop += dy; await frame(); if (wooshOff()) off++; }
+                return off;
+            };
+            grid.scrollTop = 0;
+            await new Promise(res => setTimeout(res, 400));
+            const slow = await scrollBy(120, 12);
+            const fast = await scrollBy(Math.round(grid.clientHeight * 0.6), 6);
+            await new Promise(res => setTimeout(res, 400));
+            out.fling = [slow, fast, wooshOff()];
             return out;
             })(); } catch (e) { return { error: step + ': ' + e.message }; }
         });
@@ -4250,6 +4397,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('... the arrow keys to a photo far below build its tile', r.goTo);
         check('... the film strip holds a window too, the photo in it and in its place; Next moves the highlight', r.strip && r.stripPlace && r.stripNext);
         check('... back to the grid, the photo is on screen', r.back);
+        check('... the tiles ease in as it scrolls along, not on a fast fling, and again once it settles', r.fling && r.fling[0] === 0 && r.fling[1] >= 5 && r.fling[2] === false, JSON.stringify(r.fling));
         check('... a deleted photo, and a new one arriving, rebuild the window', r.removed && r.arrived, JSON.stringify(r));
         check('huge folder: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
@@ -4809,6 +4957,79 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- Export → Copies: quality, metadata, colour, numbered names ----
+    console.log('export copies: without the location, quality, numbered');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('exportopts', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('exportopts', { create: true });
+            // A JPEG whose EXIF has a GPS IFD: N 51° 30' 12.34"
+            const t = new Uint8Array(80), v = new DataView(t.buffer);
+            t.set([0x49, 0x49, 42, 0]); v.setUint32(4, 8, true);
+            v.setUint16(8, 1, true); v.setUint16(10, 0x8825, true); v.setUint16(12, 4, true); v.setUint32(14, 1, true); v.setUint32(18, 26, true);
+            v.setUint16(26, 2, true);
+            v.setUint16(28, 1, true); v.setUint16(30, 2, true); v.setUint32(32, 2, true); t[36] = 0x4E;
+            v.setUint16(40, 2, true); v.setUint16(42, 5, true); v.setUint32(44, 3, true); v.setUint32(48, 56, true);
+            [[51, 1], [30, 1], [1234, 100]].forEach(([a, b], k) => { v.setUint32(56 + k * 8, a, true); v.setUint32(60 + k * 8, b, true); });
+            const jpeg = ImageMeta.withExifJpeg(await makeRealJpeg(400, 300), t);
+            const fh = await dir.getFileHandle('trip.jpg', { create: true });
+            const w = await fh.createWritable(); await w.write(new Blob([jpeg], { type: 'image/jpeg' })); await w.close();
+            await app.openDirectory(dir);
+            for (let i = 0; i < 100 && !app.files.length; i++) await new Promise(res => setTimeout(res, 30));
+            const f = app.files[0];
+            // The GPS IFD's entries in a file's EXIF, and whether 1234/100 is still in it
+            const gps = (bytes) => {
+                const x = ImageMeta.exifOf(bytes);
+                if (!x) return 'none';
+                const d = new DataView(x.buffer, x.byteOffset, x.byteLength);
+                const n0 = d.getUint16(d.getUint32(4, true), true);
+                for (let k = 0; k < n0; k++) {
+                    const e = d.getUint32(4, true) + 2 + k * 12;
+                    if (d.getUint16(e, true) === 0x8825) return d.getUint16(d.getUint32(e + 8, true), true);
+                }
+                return 'no gps ifd';
+            };
+            const has1234 = (bytes) => { for (let i = 0; i + 4 <= bytes.length; i++) if (bytes[i] === 0xD2 && bytes[i + 1] === 4 && bytes[i + 2] === 0 && bytes[i + 3] === 0) return true; return false; };
+            const read = async (d, name) => new Uint8Array(await (await (await d.getFileHandle(name)).getFile()).arrayBuffer());
+            out.before = [gps(jpeg), has1234(jpeg)];
+            // As it is, without the location: the same length, its GPS emptied
+            const a = await dir.getDirectoryHandle('A', { create: true });
+            await app.exportCopies([f], { maxEdge: 0, dir: a, where: 'A', meta: 'nogps' });
+            const aBytes = await read(a, 'trip.jpg');
+            out.asIs = [aBytes.length === jpeg.length, gps(aBytes), has1234(aBytes)];
+            // For the web: smaller, at 80%, numbered, still without it
+            const b = await dir.getDirectoryHandle('B', { create: true });
+            await app.exportCopies([f], { maxEdge: 100, dir: b, where: 'B', format: 'jpeg', quality: 80, meta: 'nogps', colour: 'srgb', names: 'Trip' });
+            const bBytes = await read(b, 'Trip 001.jpg');
+            const bmp = await createImageBitmap(new Blob([bBytes]));
+            out.web = [bmp.width, gps(bBytes), has1234(bBytes)];
+            // At 60% it's smaller than at 100%
+            const c = await dir.getDirectoryHandle('C', { create: true });
+            await app.exportCopies([f], { maxEdge: 300, dir: c, where: 'C', format: 'jpeg', quality: 100, names: 'Hi' });
+            await app.exportCopies([f], { maxEdge: 300, dir: c, where: 'C', format: 'jpeg', quality: 60, names: 'Lo' });
+            out.quality = (await read(c, 'Lo 001.jpg')).length < (await read(c, 'Hi 001.jpg')).length;
+            // No metadata at all
+            const d = await dir.getDirectoryHandle('D', { create: true });
+            await app.exportCopies([f], { maxEdge: 0, dir: d, where: 'D', meta: 'none' });
+            out.none = gps(await read(d, 'trip.jpg'));
+            // Left out of the project: not listed when it's rescanned
+            Export.setLeftOut('B', true);
+            out.leftOut = Watch.skipDir('B') && !Watch.skipDir('A');
+            Export.setLeftOut('B', false);
+            out.backIn = !Watch.skipDir('B');
+            return out;
+        });
+        check('export copies: as it is, without the location: same size, GPS emptied, its values gone', r.before[0] === 2 && r.before[1] && r.asIs[0] && r.asIs[1] === 0 && !r.asIs[2], JSON.stringify(r));
+        check('export copies: for the web: smaller, numbered, without the location', r.web[0] === 100 && r.web[1] === 0 && !r.web[2], JSON.stringify(r));
+        check('export copies: the quality chosen is used; None leaves no metadata', r.quality && r.none === 'none', JSON.stringify(r));
+        check('export copies: a folder left out isn\'t listed, and can be put back', r.leftOut && r.backIn, JSON.stringify(r));
+        check('export copies suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7. file:// — direct open and standalone build ----
     console.log('beta builds and experiments');
     {
@@ -5079,8 +5300,26 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const at = (cv, x, y) => cv.getContext('2d').getImageData(x, y, 1, 1).data[0];
             out.maskCrop = [at(whole, 100, 100), at(left, 100, 100), at(whole, 300, 100), at(left, 180, 100)];
             out.maskClean = JSON.stringify(Develop.cleanMasks([{ type: 'radial', radial: [0.5, 0.5, 0, 50, 0, 2], adj: { exposure: 9, nope: 3 } }, { type: 'linear', linear: [0.2, 0.2, 0.2, 0.2] }, { type: 'brush', brush: [] }, { type: 'what' }]));
+            // The colour table (~15 ms to make) is made once for its colour
+            // settings: not again as Exposure is dragged, nor for a tab of
+            // looks drawn again (a slider let go, a 250–450 ms pause before)
+            const made = () => { let n = 0; const mk = Develop.makeColourLut; Develop.makeColourLut = function (...a) { n++; return mk.apply(this, a); }; return { n: () => n, done: () => { Develop.makeColourLut = mk; } }; };
+            let lc = made();
+            const sat = Develop.tables({ saturation: 20, exposure: 0.3 }).lut;
+            const sat2 = Develop.tables({ saturation: 20, exposure: 0.7, contrast: 10 }).lut;
+            const sat3 = Develop.tables({ saturation: 25, exposure: 0.7 }).lut;
+            out.lutKept = [lc.n(), sat === sat2, sat3 !== sat2, Math.abs(sat3[400] - sat2[400]) > 0];
+            lc.done();
+            const tab = Develop.LOOKS.filter(l => l.process === 'C-41');
+            for (const l of tab) Develop.tables({ exposure: 0.2, look: l.id });
+            lc = made();
+            for (const l of tab) Develop.tables({ exposure: 0.4, look: l.id });
+            out.lutKept.push(tab.length, lc.n());
+            lc.done();
             return out;
         });
+        check('adjust: the colour table is made once for its colour settings (dragging Exposure, a tab of looks drawn again)',
+            String(m.lutKept) === `2,true,true,true,${m.lutKept[4]},0` && m.lutKept[4] >= 5, JSON.stringify(m.lutKept));
         check('adjust: settings kept compact, nothing left is none, out of range brought in',
             m.compact === '{"exposure":0.5,"levels":{"r":[0.1,1,0.9,0,1]}}' && m.none && m.clamped === '{"exposure":5,"tint":-100,"levels":{"rgb":[0.8,9.99,0.81,0,1]}}', JSON.stringify(m));
         check('adjust: no settings change nothing; +1 EV doubles the light; curves never turn back', m.identity && m.exposure && m.monotone, JSON.stringify(m));

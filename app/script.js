@@ -5,6 +5,8 @@ const app = {
     viewMode: 'single', // 'single' or 'grid'
     selection: new Set(), // Set of file objects
     readOnlyMode: false, // When true, saving is disabled (legacy drag-drop)
+    // An album of the Mac's Photos library is open (bridge.js: photosAlbum)
+    get library() { return !!(this.dirHandle && typeof this.dirHandle.photosLibrary === 'string'); },
     cropState: { // True while the Crop & Straighten editor, or Adjust, owns the screen (crop.js, adjust.js)
         active: false,
         tool: null // 'adjust' while it's Adjust
@@ -70,8 +72,13 @@ const app = {
         this.checkForUpdateNotice();
         const title = document.getElementById('app-title');
         if (title && typeof APP_VERSION !== 'undefined') {
-            // "jEditor 1.2.3": the version as a quiet badge beside the name
-            title.textContent = 'jEditor ';
+            // "jEditor 1.2.3": the version, quiet, beside Settings (the
+            // name is the brand's, so it's there only to be read out)
+            title.textContent = '';
+            const name = document.createElement('span');
+            name.className = 'sr-only';
+            name.textContent = 'jEditor ';
+            title.appendChild(name);
             const v = document.createElement('span');
             v.className = 'app-version';
             // A beta says which: "1.42.0 beta 3"
@@ -129,6 +136,7 @@ const app = {
         document.getElementById('btn-auto-crop').addEventListener('click', () => this.batchAutoCrop([...this.selection]));
         document.getElementById('btn-move-to').addEventListener('click', (e) => Folders.openPicker([...this.selection], e.shiftKey ? 'copy' : 'move'));
         document.getElementById('btn-batch-rename').addEventListener('click', () => this.batchRename([...this.selection]));
+        document.getElementById('btn-sync').addEventListener('click', () => this.syncAdjust());
         // ⋯ on the selection bar: the less-used actions
         document.getElementById('btn-export').addEventListener('click', (e) => {
             e.stopPropagation();
@@ -275,6 +283,7 @@ const app = {
         Convert.init(this);
         Blank.init(this);
         Modes.init(this);
+        Start.home(this);
         Themes.init(this);
         Fit.init();
         History.init(this);
@@ -305,7 +314,6 @@ const app = {
         document.getElementById('btn-whatsnew').addEventListener('click', () => this.toggleWhatsNew());
         document.getElementById('btn-whatsnew-start').addEventListener('click', () => this.toggleWhatsNew(true));
         document.getElementById('btn-shortcuts-start').addEventListener('click', () => this.toggleShortcutsPanel(true));
-        document.getElementById('btn-settings-start').addEventListener('click', () => this.toggleCustomizePanel(true));
         document.getElementById('whatsnew-close').addEventListener('click', () => this.toggleWhatsNew(false));
         document.getElementById('whatsnew-panel').addEventListener('mousedown', (e) => {
             if (e.target === e.currentTarget) this.toggleWhatsNew(false);
@@ -372,8 +380,10 @@ const app = {
     // Open a folder with read/write access: from the picker, or a recent
     // order. A folder inside an order opened before can open as part of
     // that order instead (scope: the folder to show, see Recents.offerOrder).
-    async openDirectory(dirHandle, { scope = null } = {}) {
-        if (scope === null) {
+    // library: an album of the Mac's Photos library (bridge.js: photosAlbum),
+    // read-only for now, never in Recent and not watched for changes.
+    async openDirectory(dirHandle, { scope = null, library = false } = {}) {
+        if (scope === null && !library) {
             const order = await Recents.offerOrder(dirHandle);
             if (order) return this.openDirectory(order.handle, { scope: order.path });
         }
@@ -390,15 +400,18 @@ const app = {
             this.cleanupURLs();
             this.files = [];
             this.dirHandle = dirHandle;
-            this.readOnlyMode = false; // Modern API supports writing
+            this.readOnlyMode = !!library; // Modern API supports writing; the Photos library can't be changed (yet)
 
             this.beginTask('scan', 'Scanning folder…');
             this.elements.dropZone.classList.add('hidden');
 
-            await this.scanDirectory(dirHandle);
+            if (!(await this.scanDirectory(dirHandle, { ask: true }))) return this.openCancelled(gen);
             if (gen !== this._openGen) return;
 
+            const t = performance.now();
             await this.finalizeLoad();
+            this.openTimes.finalize = Math.round(performance.now() - t);
+            this.log(`Opened ${this.files.length} photos: listing ${this.openTimes.list} ms, sizes and dates ${this.openTimes.stat} ms, showing ${this.openTimes.finalize} ms`);
         } catch (err) {
             if (gen !== this._openGen) return;
             this.isLoading = false;
@@ -484,6 +497,8 @@ const app = {
             folderCache: true, // keep thumbnails / duplicate data with the order's data (folder-cache.js)
             autoUpdate: true, // the Windows app looks for a new version once a day
             autoCheck: true, // pick up photos added, removed or edited outside jEditor
+            openLibraries: false, // go inside photo apps' libraries (.photoslibrary, …) as folders (watch.js)
+            hugeFolder: 2000, // ask before opening a folder of more photos than this; 0: never ask
             accent: null, // the accent colour (#rrggbb); null is the standard blue
             singleControls: true, // previous / rotate / next above the film strip in single view
             startIn: 'photos', // the landing page's Start in (modes.js): photos, adjust or paint
@@ -550,6 +565,8 @@ const app = {
                 if (typeof saved.thumbContain === 'boolean') this.uiPrefs.thumbContain = saved.thumbContain;
                 if (typeof saved.folderCache === 'boolean') this.uiPrefs.folderCache = saved.folderCache;
                 if (typeof saved.autoCheck === 'boolean') this.uiPrefs.autoCheck = saved.autoCheck;
+                if (typeof saved.openLibraries === 'boolean') this.uiPrefs.openLibraries = saved.openLibraries;
+                if (Number.isInteger(saved.hugeFolder) && saved.hugeFolder >= 0) this.uiPrefs.hugeFolder = saved.hugeFolder;
                 if (saved.toasts && typeof saved.toasts === 'object') {
                     for (const [k] of this.TOAST_KINDS) if (typeof saved.toasts[k] === 'boolean') this.uiPrefs.toasts[k] = saved.toasts[k];
                 }
@@ -562,6 +579,11 @@ const app = {
                 if (typeof saved.singleControls === 'boolean') this.uiPrefs.singleControls = saved.singleControls;
                 if (typeof saved.folderRail === 'boolean') this.uiPrefs.folderRail = saved.folderRail;
                 if (['photos', 'adjust', 'paint'].includes(saved.startIn)) this.uiPrefs.startIn = saved.startIn;
+                // The home page's Settings menu (start.js)
+                if (typeof saved.deferNew === 'boolean') this.uiPrefs.deferNew = saved.deferNew;
+                if (['home', 'last', 'pick'].includes(saved.onOpen)) this.uiPrefs.onOpen = saved.onOpen;
+                if (typeof saved.onOpenId === 'string') this.uiPrefs.onOpenId = saved.onOpenId;
+                if (typeof saved.onOpenName === 'string') this.uiPrefs.onOpenName = saved.onOpenName;
                 // Before the mode switch, Adjust and Paint had buttons on the main row: the switch has them now
                 if (saved.modes !== 1) {
                     for (const k of ['adjust', 'paint']) if (this.uiPrefs.placement[k] === 'main') this.uiPrefs.placement[k] = 'more';
@@ -846,11 +868,24 @@ const app = {
         }
 
         // Folder
+        $('cust-on-open').addEventListener('change', (e) => Start.onOpenChanged(e.target.value));
+        $('cust-defer-new').addEventListener('change', (e) => Start.setDeferNew(e.target.checked));
         $('cust-auto-check').addEventListener('change', (e) => {
             this.uiPrefs.autoCheck = e.target.checked;
             this.saveUiPrefs();
             if (e.target.checked) Watch.start();
             else Watch.stop();
+        });
+        $('cust-open-libraries').addEventListener('change', (e) => {
+            this.uiPrefs.openLibraries = e.target.checked;
+            this.saveUiPrefs();
+            if (this.dirHandle) this.refreshFolder();
+        });
+        $('cust-huge-folder').addEventListener('change', (e) => {
+            const n = Math.round(Number(e.target.value));
+            this.uiPrefs.hugeFolder = n > 0 ? n : 0;
+            e.target.value = this.uiPrefs.hugeFolder || '';
+            this.saveUiPrefs();
         });
         $('cust-folder-cache').addEventListener('change', (e) => {
             this.uiPrefs.folderCache = e.target.checked;
@@ -947,6 +982,10 @@ const app = {
         $('cust-debug').checked = !!this.uiPrefs.debugConsole;
         $('cust-folder-cache').checked = this.uiPrefs.folderCache !== false;
         $('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
+        $('cust-defer-new').checked = !!this.uiPrefs.deferNew;
+        Start.drawOnOpen();
+        $('cust-open-libraries').checked = !!this.uiPrefs.openLibraries;
+        $('cust-huge-folder').value = this.uiPrefs.hugeFolder || '';
         this.elements.customizePanel.querySelectorAll('input[data-toast]').forEach(i => { i.checked = this.toastOn(i.dataset.toast); });
         $('cust-cleanup').disabled = !this.dirHandle;
         Themes.render();
@@ -1576,7 +1615,7 @@ const app = {
                         await this.verifyPermission(handle, true);
                         this.dirHandle = handle;
                         this.readOnlyMode = false;
-                        await this.scanDirectory(handle);
+                        if (!(await this.scanDirectory(handle, { ask: true }))) return this.openCancelled(this._openGen);
                     } else if (handle.kind === 'file') {
                         this.readOnlyMode = false;
                         if (this.isImage(handle.name)) {
@@ -1619,6 +1658,8 @@ const app = {
     // in place, as dropped files are
     async openFileHandles(handles) {
         this._openGen = (this._openGen || 0) + 1;
+        // One photo opened in Adjust or Paint: the Recent print on the home page
+        const mode = typeof Modes !== 'undefined' ? Modes.next : null;
         this.isLoading = true;
         try {
             this.cleanupURLs();
@@ -1633,6 +1674,7 @@ const app = {
                 this.files.push({ name: h.name, handle: h, size: f.size, lastModified: f.lastModified });
             }
             await this.finalizeLoad();
+            if (handles.length === 1 && this.files.length === 1 && ['adjust', 'paint'].includes(mode)) Recents.rememberPhoto(handles[0], mode);
         } catch (err) {
             console.error('Opening files failed:', err);
             UI.alert({ title: 'Couldn\'t open that', message: err.message });
@@ -1687,8 +1729,9 @@ const app = {
                 if (this.dirHandle && !this.readOnlyMode) Recents.remember(this.dirHandle);
 
                 // Flags saved with the order, then keep an eye on the folder
+                // (not the Photos library's: it isn't a folder)
                 await Flags.load();
-                Watch.start();
+                if (!this.library) Watch.start();
                 const nested = this._nestedJeditor || [];
                 this._nestedJeditor = null;
                 if (nested.length && this.dirHandle && !this.readOnlyMode) FolderCache.absorbNested(this, nested);
@@ -1781,14 +1824,19 @@ const app = {
     // Load every photo in the folder and the folders inside it. Folders are
     // listed several at a time (see Watch.walk), which matters most on a
     // network drive where each listing is a round trip.
-    async scanDirectory(dirHandle) {
+    // ask: a folder being opened, which asks first when it's huge (false:
+    // not opened). openTimes: how long each step took, for the log and
+    // test/huge-folder.perf.js
+    async scanDirectory(dirHandle, { ask = false } = {}) {
         // Another folder opened meanwhile: this one stops adding photos
         const gen = this._openGen;
         // Paths already loaded, so nothing is added twice
         const seen = new Set(this.files.map(f => f.relPath || f.name));
         this.updateTask('scan', 'Scanning folder…');
+        let t = performance.now();
         const listings = await Watch.walk([{ path: '', handle: dirHandle }], true);
-        if (gen !== this._openGen) return;
+        this.openTimes = { list: Math.round(performance.now() - t) };
+        if (gen !== this._openGen) return true;
         const pending = [];
         // A subfolder opened on its own before has a .jeditor of its own:
         // merged into the order's once the folder is open (finalizeLoad). In
@@ -1806,14 +1854,18 @@ const app = {
                 pending.push({ entry, relPath, parentDir: l.handle });
             }
         }
+        if (ask && !(await this.askHuge(pending.length))) return false;
         // Size and date, read several at a time
+        t = performance.now();
         const BATCH = 128;
         for (let i = 0; i < pending.length; i += BATCH) {
             const batch = pending.slice(i, i + BATCH);
-            const datas = await Promise.all(batch.map(p => p.entry.getFile().catch(() => null)));
+            // A photo in the Photos library says its size and date without being read (peek)
+            const datas = await Promise.all(batch.map(p => (typeof p.entry.peek === 'function' ? Promise.resolve(p.entry.peek()) : p.entry.getFile()).catch(() => null)));
             // A photo a scanner is writing right now is left for the folder
             // watch to add once it's whole (only just-changed files are checked)
-            const whole = await Promise.all(datas.map((d, j) => d && Date.now() - d.lastModified < Watch.SETTLED_MS
+            // (a library photo is always whole)
+            const whole = await Promise.all(datas.map((d, j) => d && !(d instanceof Blob) ? true : d && Date.now() - d.lastModified < Watch.SETTLED_MS
                 ? Watch.complete(d, batch[j].entry.name) : true));
             if (gen !== this._openGen) return;
             batch.forEach(({ entry, relPath, parentDir }, j) => {
@@ -1830,6 +1882,43 @@ const app = {
             });
             this.updateTask('scan', `Scanning folder… ${this.files.length} images`);
         }
+        this.openTimes.stat = Math.round(performance.now() - t);
+        return true;
+    },
+
+    // A folder of more photos than Settings → Projects says (2,000 to start
+    // with) asks before it opens, as opening it takes a while: Open,
+    // Cancel, or Don't ask again (which opens it)
+    async askHuge(n) {
+        const limit = this.uiPrefs.hugeFolder;
+        if (!limit || n <= limit) return true;
+        this.endTask('scan');
+        const choice = await UI.choose({
+            title: 'Open this folder?',
+            message: `This folder has ${n.toLocaleString()} photos. Opening it may take a while. Open it anyway?`,
+            ok: 'Open',
+            alt: 'Don\'t ask again'
+        });
+        if (choice === 'alt') {
+            this.uiPrefs.hugeFolder = 0;
+            this.saveUiPrefs();
+            const input = document.getElementById('cust-huge-folder');
+            if (input) input.value = '';
+        }
+        if (!choice) return false;
+        this.beginTask('scan', 'Scanning folder…');
+        return true;
+    },
+
+    // A huge folder not opened after all: back to the start screen
+    openCancelled(gen) {
+        if (gen !== this._openGen) return;
+        this.isLoading = false;
+        this.files = [];
+        this.dirHandle = null;
+        this.endTask('scan');
+        this.elements.mainInterface.classList.add('hidden');
+        this.elements.dropZone.classList.remove('hidden');
     },
 
     // R: new photos come in, photos removed elsewhere go, edited ones are
@@ -1844,7 +1933,8 @@ const app = {
     // of letting an edit run and fail at the save.
     ensureWritable() {
         if (!this.readOnlyMode) return true;
-        this.showToast('These photos were opened read-only — use Open folder to edit and save', 4000);
+        if (this.library) this.showToast('Photos in the Photos library can\'t be changed yet: this is for looking through them', 4000);
+        else this.showToast('These photos were opened read-only — use Open folder to edit and save', 4000);
         return false;
     },
 
@@ -2350,12 +2440,15 @@ const app = {
     // In-place edits that rotate a JPEG which already has an orientation
     // tag: [{ position, data }] for the tag (and any XMP tiff:Orientation in
     // the header), or null when the file needs a full rewrite.
-    async orientationPatch(fileData, deg) {
+    // op: the new orientation from the old one, in place of turning by deg
+    // (a flip: flipOrientation)
+    async orientationPatch(fileData, deg, op = null) {
         const head = new Uint8Array(await fileData.slice(0, 256 * 1024).arrayBuffer());
         const view = new DataView(head.buffer);
         const loc = this.findJpegOrientation(view);
         if (!loc || loc.valueOffset === undefined) return null;
-        const next = this.composeOrientation(view.getUint16(loc.valueOffset, loc.littleEndian), deg);
+        const cur = view.getUint16(loc.valueOffset, loc.littleEndian);
+        const next = op ? op(cur) : this.composeOrientation(cur, deg);
         const tag = new Uint8Array(2);
         new DataView(tag.buffer).setUint16(0, next, loc.littleEndian);
         const edits = [{ position: loc.valueOffset, data: tag }];
@@ -2410,15 +2503,17 @@ const app = {
     },
 
     // Returns a rotated JPEG Blob without re-encoding, or null if the file
-    // can't be patched (caller falls back to canvas re-encode).
-    rotateJpegLossless(buffer, deg) {
+    // can't be patched (caller falls back to canvas re-encode). op: as in
+    // orientationPatch
+    rotateJpegLossless(buffer, deg, op = null) {
+        const turn = (o) => op ? op(o) : this.composeOrientation(o, deg);
         const view = new DataView(buffer);
         const loc = this.findJpegOrientation(view);
         if (!loc) return null;
         let bytes = new Uint8Array(buffer);
         let orientation;
         if (loc.insert) {
-            orientation = this.composeOrientation(1, deg);
+            orientation = turn(1);
             const seg = this.buildOrientationExif(orientation);
             const out = new Uint8Array(bytes.length + seg.length);
             out.set(bytes.subarray(0, 2), 0);
@@ -2426,12 +2521,12 @@ const app = {
             out.set(bytes.subarray(2), 2 + seg.length);
             bytes = out;
         } else if (loc.relocate) {
-            orientation = this.composeOrientation(1, deg);
+            orientation = turn(1);
             bytes = ImageMeta.insertExifOrientation(bytes, loc.relocate, orientation);
             if (!bytes) return null;
         } else {
             const current = view.getUint16(loc.valueOffset, loc.littleEndian);
-            orientation = this.composeOrientation(current, deg);
+            orientation = turn(current);
             view.setUint16(loc.valueOffset, orientation, loc.littleEndian);
         }
         // Keep an XMP tiff:Orientation (Lightroom writes one) in agreement
@@ -2460,6 +2555,163 @@ const app = {
             canvas.height = is90or270 ? bitmap.width : bitmap.height;
             ctx.translate(canvas.width / 2, canvas.height / 2);
             ctx.rotate(normalizedDeg * Math.PI / 180);
+            ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+            const blob = await new Promise(r => canvas.toBlob(r, type, quality));
+            if (!blob) return null;
+            return ImageMeta.transplant(original, blob, type, canvas.width, canvas.height);
+        } finally {
+            bitmap.close();
+        }
+    },
+
+    // ---- Flipping ----
+    //
+    // Flipped as it's seen: 'h' left to right, 'v' upside down. Like a
+    // rotation: kept as an edit with the other edits when they wait for
+    // Save (Edits.flip), otherwise written into the file straight away,
+    // losslessly for a JPEG (EXIF orientation has mirrored values as well
+    // as turns) and re-encoded otherwise. A selection is one Ctrl+Z.
+
+    // A mirror left to right composed onto each EXIF orientation value
+    // (see ORIENTATION_ROTATE_CW): 1↔2, 3↔4, 5↔6, 7↔8
+    ORIENTATION_FLIP_H: { 1: 2, 2: 1, 3: 4, 4: 3, 5: 6, 6: 5, 7: 8, 8: 7 },
+
+    // Flipped, then turned deg (a kept edit is a mirror, then its turn).
+    // Upside down is left to right and half a turn
+    flipOrientation(current, axis, deg = 0) {
+        const o = this.ORIENTATION_FLIP_H[(current >= 1 && current <= 8) ? current : 1];
+        return this.composeOrientation(o, (axis === 'v' ? 180 : 0) + deg);
+    },
+
+    flipCurrent(axis) {
+        return this.currentFile ? this.flipFiles([this.currentFile], axis) : Promise.resolve(false);
+    },
+
+    flipBulk(axis) {
+        return this.selection.size ? this.flipFiles([...this.selection], axis) : Promise.resolve(false);
+    },
+
+    async flipFiles(files, axis) {
+        if (!files.length || !this.ensureWritable()) return false;
+        const list = files.filter(f => !/\.gif$/i.test(f.name));
+        if (list.length < files.length) this.showToast('Skipped GIFs (flipping would lose the animation)');
+        if (!list.length) return false;
+        const how = axis === 'v' ? 'upside down' : 'left to right';
+        const said = (fs) => fs.length === 1 ? fs[0].name : `${fs.length.toLocaleString()} photos`;
+        // Kept with the other edits until they're saved
+        const kept = list.filter(f => Edits.keeps(f));
+        if (kept.length) {
+            if (this.editsSaving()) return false;
+            Edits.flip(kept, axis);
+        }
+        const now = list.filter(f => !kept.includes(f));
+        if (!now.length) {
+            this.showToast(`Flipped ${said(kept)} ${how}`, 1600, null, null, { kind: 'rotate' });
+            return true;
+        }
+        // One undo step for them all (in the history now, filled as each is written)
+        let finished;
+        const group = { type: 'group', label: axis === 'v' ? 'flip upside down' : 'flip', items: [], count: now.length, done: new Promise(r => { finished = r; }) };
+        this.pushUndo(group);
+        const key = 'flip-' + (this._batchSeq = (this._batchSeq || 0) + 1);
+        this.beginTask(key, `Flipping ${said(now)}…`);
+        let ok = true, next = 0;
+        const worker = async () => {
+            while (next < now.length) {
+                const f = now[next++];
+                try {
+                    group.items.push(await this.flipOnDisk(f, axis));
+                } catch (e) {
+                    console.error('Flip failed:', e);
+                    ok = false;
+                }
+            }
+        };
+        try {
+            await Promise.all(Array.from({ length: Math.min(4, now.length) }, worker));
+        } finally {
+            this.endTask(key);
+            finished();
+        }
+        if (!group.items.length) {
+            this._undoStack = (this._undoStack || []).filter(e => e !== group);
+            History.changed();
+        }
+        this.showToast(ok ? `Flipped ${said(list)} ${how}` : 'Some photos could not be flipped: they may be in use', 2000, null, null, ok ? { kind: 'rotate' } : {});
+        return ok;
+    },
+
+    // Written into the file: flipped, then turned deg. The undo item comes
+    // back: { type: 'flip' } (done again, which undoes it: a flip, turned
+    // or not, is its own opposite) or the original bytes when re-encoded
+    async flipOnDisk(f, axis, { deg = 0 } = {}) {
+        // After a rotation being written; rotations wait for this in turn
+        while (f._rotationQueue || f._flipping) await (f._rotationQueue || f._flipping).catch(() => { });
+        let release;
+        f._flipping = new Promise(r => { release = r; });
+        f.isBusy = true;
+        try {
+            const verify = () => this.verifyPermission(this.dirHandle || f.handle, true);
+            const data = await f.handle.getFile();
+            const isJpeg = /\.jpe?g$/i.test(f.name);
+            const op = (o) => this.flipOrientation(o, axis, deg);
+            const entry = { type: 'flip', file: f, axis, deg, label: 'flip' };
+            // The orientation tag rewritten where it is: nothing else read
+            if (isJpeg) {
+                const patch = await this.orientationPatch(data, 0, op);
+                if (patch) {
+                    await verify();
+                    if (await this.writeInPlace(f.handle, patch)) return entry;
+                }
+            }
+            const buf = await data.arrayBuffer();
+            let blob = null, undo = entry;
+            if (isJpeg) {
+                try { blob = this.rotateJpegLossless(buf, 0, op); } catch (e) { this.log('Lossless flip unavailable, re-encoding: ' + e.message); }
+            }
+            if (!blob) {
+                undo = { type: 'bytes', file: f, blob: new Blob([buf], { type: data.type }), label: 'flip' };
+                blob = await this.flipByReencoding(data, f.name, axis, deg);
+            }
+            if (!blob) throw new Error('could not encode the photo');
+            await verify();
+            const w = await f.handle.createWritable();
+            await w.write(blob);
+            await w.close();
+            return undo;
+        } finally {
+            f.isBusy = false;
+            // New pixels on disk: previews made again (a turn asked for
+            // meanwhile is still to come)
+            const pending = f.pendingRotation || 0;
+            try { await this.afterFileChanged(f); } catch (e) { /* shown when it's read next */ }
+            if (pending) {
+                f.pendingRotation = pending;
+                this.applyPreviewRotation(f);
+            }
+            f._flipping = null;
+            release();
+        }
+    },
+
+    // Decoded, flipped (then turned deg) and re-encoded in the file's own
+    // format, with its metadata
+    async flipByReencoding(fileData, name, axis, deg = 0) {
+        const { type, quality } = this.getSaveFormat(name);
+        const original = new Uint8Array(await fileData.arrayBuffer());
+        const bitmap = await createImageBitmap(fileData, {
+            colorSpaceConversion: ImageMeta.canCarryProfile(type, original) ? 'none' : 'default'
+        });
+        try {
+            const d = ((deg % 360) + 360) % 360;
+            const canvas = document.createElement('canvas');
+            canvas.width = d % 180 ? bitmap.height : bitmap.width;
+            canvas.height = d % 180 ? bitmap.width : bitmap.height;
+            const ctx = canvas.getContext('2d');
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.rotate(d * Math.PI / 180);
+            if (axis === 'v') ctx.scale(1, -1);
+            else ctx.scale(-1, 1);
             ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
             const blob = await new Promise(r => canvas.toBlob(r, type, quality));
             if (!blob) return null;
@@ -2832,6 +3084,9 @@ const app = {
             const frag = document.createDocumentFragment();
             const end = Math.min(start + CHUNK, files.length);
             for (let i = start; i < end; i++) {
+                // Duplicates in the grid: each group under its heading
+                const head = Dupes.inGrid && Dupes.gridHeading(files[i]);
+                if (head) frag.appendChild(head);
                 frag.appendChild(this.makeGridTile(files[i], observer));
             }
             this.elements.gridView.appendChild(frag);
@@ -3029,6 +3284,7 @@ const app = {
         Folders.addChip(div, file);
         Flags.decorate(div, file);
         Edits.decorate(div, file);
+        Dupes.decorate(div, file);
         // Just arrived (auto-check): a brief glow so it's easy to spot
         if (file._arrived && Date.now() - file._arrived < 6000) div.classList.add('is-new');
 
@@ -3303,6 +3559,18 @@ const app = {
         // lands while we decode shows up in the lag delta below.
         const savedAtRead = fileEntry._savedRotationTotal || 0;
         const editGen = fileEntry._editGen || 0;
+        // The Photos library has its own thumbnails: nothing to read or make
+        if (fileEntry.handle && typeof fileEntry.handle.getThumbnail === 'function' && !fileEntry._edit) {
+            const blob = await fileEntry.handle.getThumbnail(this.THUMB_WIDTH * (window.devicePixelRatio || 1));
+            if ((fileEntry._editGen || 0) !== editGen) return;
+            if (fileEntry.thumbnailUrl) URL.revokeObjectURL(fileEntry.thumbnailUrl);
+            fileEntry.thumbnailUrl = URL.createObjectURL(blob);
+            fileEntry.thumbLag = 0;
+            fileEntry._thumbPromise = null;
+            fileEntry._thumbStale = false;
+            this.deliverThumbnail(fileEntry);
+            return;
+        }
         const fileData = await this.readImage(fileEntry);
         if (!fileData.size) throw new Error('empty file (still being written?)');
 
@@ -3563,6 +3831,8 @@ const app = {
         if (this.selection.size > 0) {
             this.elements.selectionBar.classList.remove('hidden');
             this.elements.selectionCount.textContent = `${this.selection.size} selected`;
+            // Sync needs a photo to sync from and one to sync onto
+            document.getElementById('btn-sync').classList.toggle('hidden', this.selection.size < 2);
         } else {
             this.elements.selectionBar.classList.add('hidden');
         }
@@ -4146,6 +4416,29 @@ const app = {
         this.goTo(view[newIndex]);
     },
 
+    // Up and Down in the grid: a row's worth, or, when rows don't run on
+    // (duplicates in the grid start each group on a new row), the photo
+    // nearest above or below on screen
+    navigateRow(dir) {
+        if (!Dupes.inGrid) return this.navigate(dir * this.getGridColumnCount());
+        const view = this.viewFiles();
+        const at = this.currentFile && this.currentFile._gridEl;
+        if (!at || !at.isConnected) return this.navigate(dir);
+        const r = at.getBoundingClientRect();
+        const cx = r.left + r.width / 2;
+        let best = null, bestRow = Infinity, bestX = Infinity;
+        for (const f of view) {
+            const el = f._gridEl;
+            if (!el || !el.isConnected || el === at) continue;
+            const b = el.getBoundingClientRect();
+            const dy = (b.top - r.top) * dir;
+            if (dy < r.height / 2) continue;
+            const dx = Math.abs(b.left + b.width / 2 - cx);
+            if (dy < bestRow - 1 || (Math.abs(dy - bestRow) <= 1 && dx < bestX)) { best = f; bestRow = dy; bestX = dx; }
+        }
+        if (best) this.goTo(best);
+    },
+
     goTo(file) {
         if (!file) return;
         if (this.viewMode !== 'grid') {
@@ -4346,6 +4639,8 @@ const app = {
         ['edit.rotateLeft', 'global', 'Edit', 'Rotate left (whole selection in grid)', ['[', ',', 'Shift+ArrowLeft']],
         ['edit.rotateRight', 'global', 'Edit', 'Rotate right (whole selection in grid)', [']', '.', 'Shift+ArrowRight']],
         ['edit.rotate180', 'global', 'Edit', 'Rotate 180° (whole selection in grid)', ['\\']],
+        ['edit.flipH', 'global', 'Edit', 'Flip left to right (whole selection in grid)', ['Shift+H']],
+        ['edit.flipV', 'global', 'Edit', 'Flip upside down (whole selection in grid)', ['Shift+V']],
         ['edit.crop', 'global', 'Edit', 'Crop & straighten', ['C']],
         ['edit.adjust', 'global', 'Edit', 'Adjust: light, color, curves', ['E']],
         ['edit.paint', 'global', 'Edit', 'Paint: brushes, shapes, text and layers', ['B']],
@@ -4401,6 +4696,8 @@ const app = {
         ['crop.rotateLeft', 'crop', 'Crop & Straighten', 'Rotate left 90°', ['[']],
         ['crop.rotateRight', 'crop', 'Crop & Straighten', 'Rotate right 90°', [']']],
         ['crop.rotate180', 'crop', 'Crop & Straighten', 'Rotate 180°', ['\\']],
+        ['crop.flipH', 'crop', 'Crop & Straighten', 'Flip left to right', ['Shift+H']],
+        ['crop.flipV', 'crop', 'Crop & Straighten', 'Flip upside down', ['Shift+V']],
         ['crop.angleDown', 'crop', 'Crop & Straighten', 'Straighten −0.1°', [',']],
         ['crop.angleUp', 'crop', 'Crop & Straighten', 'Straighten +0.1°', ['.']],
         ['crop.angleDownBig', 'crop', 'Crop & Straighten', 'Straighten −1°', ['<']],
@@ -4433,6 +4730,10 @@ const app = {
         ['adjust.autoSync', 'adjust', 'Adjust', 'Auto Sync: what you change goes onto the others selected in the strip too', ['Ctrl+Alt+Shift+S']],
         ['adjust.copyImage', 'adjust', 'Adjust', 'Copy the photo as it looks, to paste into another app', ['Ctrl+C']],
         ['adjust.pasteImage', 'adjust', 'Adjust', 'Paste an image from another app: a new picture, in Paint', ['Ctrl+V']],
+        ['adjust.zoomIn', 'adjust', 'Adjust', 'Zoom in (Ctrl+wheel or a pinch zooms where the pointer is)', ['Ctrl+=', 'Ctrl++']],
+        ['adjust.zoomOut', 'adjust', 'Adjust', 'Zoom out', ['Ctrl+-']],
+        ['adjust.zoomFit', 'adjust', 'Adjust', 'Fit the photo (double-click: Fit or 100%)', ['Ctrl+0']],
+        ['adjust.zoom100', 'adjust', 'Adjust', 'Show at 100% (zoomed in, drag or Space+drag moves about)', ['Ctrl+1']],
         ['adjust.undo', 'adjust', 'Adjust', 'Undo', ['Ctrl+Z']],
         ['adjust.redo', 'adjust', 'Adjust', 'Redo', ['Ctrl+Shift+Z', 'Ctrl+Y']],
         ['paint.done', 'paint', 'Paint', 'Put down what\'s being moved, or back to Photos (what you did is kept)', ['Enter']],
@@ -4470,11 +4771,9 @@ const app = {
         ['paint.actual', 'paint', 'Paint', 'Actual pixels', ['1']],
         ['paint.zoomIn', 'paint', 'Paint', 'Zoom in', ['+', '=']],
         ['paint.zoomOut', 'paint', 'Paint', 'Zoom out', ['-']],
-        ['dupes.next', 'dupes', 'Duplicates (WIP)', 'Next group', ['ArrowRight']],
-        ['dupes.prev', 'dupes', 'Duplicates (WIP)', 'Previous group', ['ArrowLeft']],
-        ['dupes.keepBest', 'dupes', 'Duplicates (WIP)', 'Keep suggested, mark the rest', ['K']],
-        ['dupes.apply', 'dupes', 'Duplicates (WIP)', 'Trash marked & next group', ['Enter']],
-        ['dupes.skip', 'dupes', 'Duplicates (WIP)', 'Not duplicates (skip group)', ['N']],
+        ['dupes.keepBest', 'dupes', 'Duplicates (WIP)', 'Back to the suggested keepers', ['K']],
+        ['dupes.apply', 'dupes', 'Duplicates (WIP)', 'Trash every marked photo', ['Enter']],
+        ['dupes.grid', 'dupes', 'Duplicates (WIP)', 'Show in grid', ['G']],
         ['dupes.close', 'dupes', 'Duplicates (WIP)', 'Close', ['Escape']]
     ],
 
@@ -4528,13 +4827,15 @@ const app = {
         return {
             'nav.prev': () => this.navigate(-1),
             'nav.next': () => this.navigate(1),
-            'nav.up': () => grid() ? this.navigate(-this.getGridColumnCount()) : false,
-            'nav.down': () => grid() ? this.navigate(this.getGridColumnCount()) : false,
+            'nav.up': () => grid() ? this.navigateRow(-1) : false,
+            'nav.down': () => grid() ? this.navigateRow(1) : false,
             'nav.first': () => this.goTo(this.viewFiles()[0]),
             'nav.last': () => { const v = this.viewFiles(); this.goTo(v[v.length - 1]); },
             'edit.rotateLeft': () => grid() ? this.rotateBulk(-90) : this.rotateCurrent(-90),
             'edit.rotateRight': () => grid() ? this.rotateBulk(90) : this.rotateCurrent(90),
             'edit.rotate180': () => grid() ? this.rotateBulk(180) : this.rotateCurrent(180),
+            'edit.flipH': () => grid() ? this.flipBulk('h') : this.flipCurrent('h'),
+            'edit.flipV': () => grid() ? this.flipBulk('v') : this.flipCurrent('v'),
             'edit.crop': () => this.enterCrop(),
             'edit.adjust': () => this.enterAdjust(),
             'edit.paint': () => this.enterPaint(),
@@ -4608,6 +4909,8 @@ const app = {
             'crop.rotateLeft': () => ed.rotateQuarter(-1),
             'crop.rotateRight': () => ed.rotateQuarter(1),
             'crop.rotate180': () => ed.rotateHalf(),
+            'crop.flipH': () => ed.flip('h'),
+            'crop.flipV': () => ed.flip('v'),
             'crop.angleDown': () => ed.nudgeAngle(-0.1),
             'crop.angleUp': () => ed.nudgeAngle(0.1),
             'crop.angleDownBig': () => ed.nudgeAngle(-1),
@@ -4641,6 +4944,10 @@ const app = {
             'adjust.autoSync': () => AdjustSync.toggleAuto(),
             'adjust.copyImage': () => (String(getSelection()) ? false : this.copyImage(Adjust.file, Adjust.result())),
             'adjust.pasteImage': () => false,
+            'adjust.zoomIn': () => Adjust.zoomBy(1.25),
+            'adjust.zoomOut': () => Adjust.zoomBy(0.8),
+            'adjust.zoomFit': () => Adjust.zoomFit(),
+            'adjust.zoom100': () => Adjust.zoom100(),
             'adjust.undo': () => { if (!Adjust.undo()) this.showToast('Nothing to undo', 1200); },
             'adjust.redo': () => { if (!Adjust.redo()) this.showToast('Nothing to redo', 1200); },
             'paint.done': () => { if (PaintEditor.float) PaintEditor.commitFloat(); else Modes.go('photos'); },
@@ -4682,11 +4989,9 @@ const app = {
             'paint.actual': () => PaintEditor.zoomTo(1),
             'paint.zoomIn': () => PaintEditor.zoomTo(PaintEditor.view.z * 1.25),
             'paint.zoomOut': () => PaintEditor.zoomTo(PaintEditor.view.z / 1.25),
-            'dupes.next': () => Dupes.step(1),
-            'dupes.prev': () => Dupes.step(-1),
             'dupes.keepBest': () => Dupes.keepBest(),
             'dupes.apply': () => Dupes.apply(),
-            'dupes.skip': () => Dupes.skip(),
+            'dupes.grid': () => Dupes.showInGrid(),
             'dupes.close': () => Dupes.close()
         };
     },
@@ -4960,12 +5265,6 @@ const app = {
 
         const tool = this.cropState.tool;
         const context = this.cropState.active ? (tool === 'adjust' || tool === 'paint' ? tool : 'crop') : (Dupes.isOpen ? 'dupes' : 'global');
-        // Duplicates view: 1–9 mark/unmark the photo with that number
-        if (context === 'dupes' && /^[1-9]$/.test(combo)) {
-            e.preventDefault();
-            Dupes.toggle(parseInt(combo, 10) - 1);
-            return;
-        }
         let id = this._keyMaps[context].get(combo);
         // Duplicates: Undo (it says Ctrl+Z restores) works there too
         if (!id && context === 'dupes' && this._keyMaps.global.get(combo) === 'edit.undo') id = 'edit.undo';
@@ -5460,6 +5759,7 @@ const app = {
             Folders.addChip(gridDiv, file);
             Flags.decorate(gridDiv, file);
             Edits.decorate(gridDiv, file);
+            Dupes.decorate(gridDiv, file);
 
             // Force reload
             this.loadImageThumbnail(file, img, true);
@@ -5482,7 +5782,8 @@ const app = {
     // Lags reset to 0 whenever a preview is regenerated from fresh disk bytes.
 
     // `turns`: each photo's own turn (Turn upright), in place of `deg`
-    async rotateBulk(deg, turns = null) {
+    // quiet: no toast (the scan window says how many it turned)
+    async rotateBulk(deg, turns = null, { quiet = false } = {}) {
         if (!turns && this.selection.size === 0) return;
         if (!this.ensureWritable()) return;
         const degOf = (f) => turns ? turns.get(f) : deg;
@@ -5510,7 +5811,7 @@ const app = {
             }
             if (kept.length === filesToRotate.length) {
                 const n = kept.length;
-                this.showToast(`Turned ${n} photo${n > 1 ? 's' : ''} ${turns ? 'upright' : Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left'}`, 1600, null, null, { kind: 'rotate' });
+                if (!quiet) this.showToast(`Turned ${n} photo${n > 1 ? 's' : ''} ${turns ? 'upright' : Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left'}`, 1600, null, null, { kind: 'rotate' });
                 return;
             }
             filesToRotate.splice(0, filesToRotate.length, ...filesToRotate.filter(f => !kept.includes(f)));
@@ -5563,7 +5864,7 @@ const app = {
         // Nothing was saved (all failed): no empty undo step
         if (!group.items.length) this._undoStack = (this._undoStack || []).filter(e => e !== group);
         const how = turns ? 'upright' : Math.abs(deg) === 180 ? '180°' : deg > 0 ? 'right' : 'left';
-        this.showToast(ok ? `Rotated ${label} ${how}` : 'Some photos failed to rotate', 2000, null, null, ok ? { kind: 'rotate' } : {});
+        if (!ok || !quiet) this.showToast(ok ? `Rotated ${label} ${how}` : 'Some photos failed to rotate', 2000, null, null, ok ? { kind: 'rotate' } : {});
         this.log('Bulk rotation finished');
     },
 
@@ -5599,6 +5900,7 @@ const app = {
     },
 
     async drainRotationQueue(fileEntry) {
+        if (fileEntry._flipping) await fileEntry._flipping; // flipOnDisk
         fileEntry.isBusy = true;
         let undoEntry = null;
         try {
@@ -5817,6 +6119,10 @@ const app = {
     async undoFileEdit(entry) {
         const f = entry.file;
         if (f._rotationQueue) await f._rotationQueue;
+        if (entry.type === 'flip') {
+            await this.flipOnDisk(f, entry.axis, { deg: entry.deg || 0 });
+            return;
+        }
         if (entry.type === 'bytes') {
             f.pendingRotation = 0;
             f.savingRotation = 0;
@@ -5865,9 +6171,9 @@ const app = {
             if (entry.type === 'bytes') {
                 await this.undoFileEdit(entry);
                 this.showToast(`Undid ${entry.label} on ${entry.file.name}`, 3000, null, null, { kind: 'undo' });
-            } else if (entry.type === 'rotate') {
+            } else if (entry.type === 'rotate' || entry.type === 'flip') {
                 await this.undoFileEdit(entry);
-                this.showToast(`Undid rotation on ${entry.file.name}`, 3000, null, null, { kind: 'undo' });
+                this.showToast(`Undid ${entry.type === 'flip' ? 'flip' : 'rotation'} on ${entry.file.name}`, 3000, null, null, { kind: 'undo' });
             } else if (entry.type === 'group') {
                 // A rotation of a whole selection: every photo, in one step
                 // (once the batch has finished saving, so none are missed)
@@ -5881,14 +6187,15 @@ const app = {
                     }
                 };
                 const many = items.length > 1;
-                if (many) this.beginTask('undo-group', `Undoing rotation of ${items.length} photos…`);
+                const what = entry.label || 'rotation';
+                if (many) this.beginTask('undo-group', `Undoing ${what} of ${items.length} photos…`);
                 try {
                     await Promise.all(Array.from({ length: Math.min(4, items.length) }, worker));
                 } finally {
                     if (many) this.endTask('undo-group');
                 }
                 if (failed) throw new Error(`${failed} photo${failed === 1 ? '' : 's'} could not be put back`);
-                this.showToast(`Undid rotation on ${items.length} photo${items.length === 1 ? '' : 's'}`, 3000, null, null, { kind: 'undo' });
+                this.showToast(`Undid ${what} on ${items.length} photo${items.length === 1 ? '' : 's'}`, 3000, null, null, { kind: 'undo' });
             } else if (entry.type === 'rename') {
                 await this.renameFile(entry.file, entry.oldName, { skipUndo: true });
                 this.showToast('Rename undone', 3000, null, null, { kind: 'undo' });
@@ -6640,9 +6947,12 @@ const app = {
 
     // Copies of `files` (edits in them, RAWs and HEICs as JPEGs). From the Export
     // window (export.js): `maxEdge` (0: full size) and `dir`, the folder
-    // they go into, called `where`; else asked here, into "jEditor Export"
-    // in the project
-    async exportCopies(files, { maxEdge = null, dir = null, where = '"jEditor Export"', format = 'same' } = {}) {
+    // they go into, called `where`; the `quality` (%) of a JPEG, WebP, AVIF
+    // or JPEG XL written; `meta` ('all', 'nogps': without the location,
+    // 'none'); `colour` ('keep', or 'srgb': made sRGB, without a profile);
+    // `names` (a name to number them with, or null: their own). Else asked
+    // here, into "jEditor Export" in the project
+    async exportCopies(files, { maxEdge = null, dir = null, where = '"jEditor Export"', format = 'same', quality = 95, meta = 'all', colour = 'keep', names = null } = {}) {
         const list = files.filter(Boolean);
         if (!list.length) return;
         if (!this.dirHandle) {
@@ -6666,7 +6976,8 @@ const app = {
             dir = dir || await this.dirHandle.getDirectoryHandle('jEditor Export', { create: true });
             this.beginTask('export', `Exporting 0/${list.length}`);
             let done = 0, failed = 0;
-            for (const f of list) {
+            const digits = Math.max(3, String(list.length).length);
+            for (const [i, f] of list.entries()) {
                 try {
                     // A RAW: from its own JPEG, written as a JPEG (or the
                     // format chosen). A HEIC: decoded (a PNG, or a JPEG when
@@ -6678,26 +6989,43 @@ const app = {
                     let out = f._edit ? await this.renderEdited(f, file) : file;
                     const from = heif ? (out.type === 'image/jpeg' ? 'jpeg' : 'png') : raw ? 'jpeg' : this.formatOf(f.name);
                     const to = format === 'same' ? (heif ? 'jpeg' : from) : format;
-                    // Smaller, or another format: drawn again and written as that
-                    let bmp = null, scale = 1;
-                    if (maxEdge > 0 || to !== from) {
-                        // (a JPEG XL or TIFF, as written or edited, decoded by the codecs)
-                        const coded = Codec.decoded('x.' + (f._edit ? Codec.of(f.name) || from : from));
-                        bmp = await createImageBitmap(coded ? await Codec.showable(out instanceof File ? out : new File([out], f.name)) : out);
-                        if (maxEdge > 0) scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
+                    // As it is, unless its metadata or colour has to change
+                    // and can't be in place
+                    let again = maxEdge > 0 || to !== from || meta === 'none';
+                    if (!again && (meta === 'nogps' || colour === 'srgb')) {
+                        const bytes = new Uint8Array(await out.arrayBuffer());
+                        if (colour === 'srgb' && ImageMeta.hasProfile(bytes)) again = true;
+                        else if (meta === 'nogps') {
+                            const clean = ImageMeta.withoutLocation(bytes);
+                            if (clean) out = new Blob([clean], { type: out.type });
+                            else again = true;
+                        }
                     }
-                    if (bmp && (scale < 1 || to !== from)) {
+                    // Smaller, another format, or its metadata or colour: drawn again and written as that
+                    let bmp = null, scale = 1;
+                    if (again) {
+                        // (a JPEG XL or TIFF, as written or edited, decoded by the codecs).
+                        // Its colour as it is when its profile goes with it, else made sRGB
+                        const original = new Uint8Array(await (heif ? await f.handle.getFile() : file).arrayBuffer());
+                        const carries = colour === 'keep' && meta !== 'none' && !raw && to === from && (to === 'jpeg' || to === 'png')
+                            && ImageMeta.canCarryProfile(to === 'png' ? 'image/png' : 'image/jpeg', original) && ImageMeta.hasProfile(original);
+                        const coded = Codec.decoded('x.' + (f._edit ? Codec.of(f.name) || from : from));
+                        const src = coded ? await Codec.showable(out instanceof File ? out : new File([out], f.name)) : out;
+                        bmp = await createImageBitmap(src, carries ? { colorSpaceConversion: 'none' } : undefined);
+                        if (maxEdge > 0) scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
                         const canvas = document.createElement('canvas');
                         canvas.width = Math.round(bmp.width * scale);
                         canvas.height = Math.round(bmp.height * scale);
                         canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
-                        out = await this.encodeAs(canvas, to === 'gif' ? 'jpeg' : to, new Uint8Array(await (heif ? await f.handle.getFile() : file).arrayBuffer()));
+                        out = await this.encodeAs(canvas, to === 'gif' ? 'jpeg' : to, original, { quality, meta, colour });
                         canvas.width = canvas.height = 0;
+                        bmp.close();
                     }
-                    if (bmp) bmp.close();
                     if (!out) throw new Error('encode failed');
-                    const name = raw && to === 'jpeg' ? Raw.jpegName(f.name)
-                        : to === from ? f.name : f.name.replace(/\.[^.]+$/, '') + '.' + (to === 'gif' ? 'jpg' : Codec.ext(to));
+                    const ext = to === 'gif' && again ? 'jpg' : to === from && !raw ? null : Codec.ext(to === 'gif' ? 'jpeg' : to);
+                    const own = raw && to === 'jpeg' ? Raw.jpegName(f.name)
+                        : !ext ? f.name : f.name.replace(/\.[^.]+$/, '') + '.' + ext;
+                    const name = names ? `${names} ${String(i + 1).padStart(digits, '0')}${(own.match(/\.[^.]+$/) || [''])[0].toLowerCase()}` : own;
                     const h = await dir.getFileHandle(name, { create: true });
                     const w = await h.createWritable();
                     await w.write(out);
@@ -6728,18 +7056,29 @@ const app = {
 
     // A canvas written as a format, with the metadata of `original` (its
     // file's bytes) that's still true → Blob. AVIF and JPEG XL by the codecs
-    async encodeAs(canvas, to, original) {
+    // Export's choices (exportCopies): `quality` (%), `meta` ('all',
+    // 'nogps', 'none') and `colour` ('srgb': no profile goes with it)
+    async encodeAs(canvas, to, original, { quality = 95, meta = 'all', colour = 'keep' } = {}) {
         const w = canvas.width, h = canvas.height;
         const blobOf = (type, q) => new Promise(r => canvas.toBlob(r, type, q));
-        const tiff = ImageMeta.exifOf(original);
-        if (to === 'avif' || to === 'jxl' || to === 'tiff') return Codec.file(await blobOf('image/png'), to, Codec.FORMATS[to].quality, tiff);
+        let tiff = meta === 'none' ? null : ImageMeta.exifOf(original);
+        if (tiff && meta === 'nogps') { tiff = new Uint8Array(tiff); ImageMeta.zeroGps(tiff, 0, tiff.length); }
+        if (to === 'avif' || to === 'jxl' || to === 'tiff') return Codec.file(await blobOf('image/png'), to, to === 'tiff' ? Codec.FORMATS[to].quality : quality, tiff);
         const type = { png: 'image/png', webp: 'image/webp' }[to] || 'image/jpeg';
-        const blob = await blobOf(type, type === 'image/png' ? undefined : 0.95);
+        const blob = await blobOf(type, type === 'image/png' ? undefined : Math.max(0.1, Math.min(1, quality / 100)));
         if (!blob) return null;
+        if (meta === 'none') return blob;
         if (to === 'webp') return new Blob([Codec.withExif(new Uint8Array(await blob.arrayBuffer()), 'webp', tiff, w, h)], { type });
         // From the same kind of file: its metadata as Save edits copies it
         const kind = ImageMeta.jpegSegments(original, { partial: true }) ? 'jpeg' : ImageMeta.pngChunks(original, { partial: true }) ? 'png' : null;
-        if (kind === (type === 'image/png' ? 'png' : 'jpeg')) return ImageMeta.transplant(original, blob, type, w, h);
+        if (kind === (type === 'image/png' ? 'png' : 'jpeg')) {
+            const moved = await ImageMeta.transplant(original, blob, type, w, h);
+            if (meta === 'all' && colour === 'keep') return moved;
+            let bytes = new Uint8Array(await moved.arrayBuffer());
+            if (meta === 'nogps') bytes = ImageMeta.withoutLocation(bytes) || bytes;
+            if (colour === 'srgb') bytes = ImageMeta.withoutProfile(bytes);
+            return new Blob([bytes], { type });
+        }
         // A JPEG or PNG from another format: its EXIF goes in
         if (tiff) return new Blob([Codec.withExif(new Uint8Array(await blob.arrayBuffer()), to === 'png' ? 'png' : 'jpeg', tiff, w, h)], { type });
         return blob;
@@ -6754,7 +7093,7 @@ const app = {
         const turnOnly = !edit.adj && !edit.paint && !edit.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5);
         if (turnOnly && /\.jpe?g$/i.test(f.name)) {
             try {
-                const b = this.rotateJpegLossless(original.buffer, edit.q * 90);
+                const b = this.rotateJpegLossless(original.buffer, edit.q * 90, edit.m ? (o) => this.flipOrientation(o, 'h', edit.q * 90) : null);
                 if (b) return b;
             } catch (e) { /* re-encode */ }
         }
@@ -6798,6 +7137,18 @@ const app = {
 
     initContextMenu() {
         document.addEventListener('contextmenu', (e) => {
+            if (this.cropState.active && CropEditor.ready && e.target.closest && e.target.closest('.crop-stage')) {
+                e.preventDefault();
+                const ed = CropEditor;
+                this.openContextMenu([
+                    ['Rotate left', () => ed.rotateQuarter(-1)],
+                    ['Rotate right', () => ed.rotateQuarter(1)],
+                    ['Rotate 180°', () => ed.rotateHalf()],
+                    ['Flip left to right', () => ed.flip('h')],
+                    ['Flip upside down', () => ed.flip('v')]
+                ], e.clientX, e.clientY);
+                return;
+            }
             if (this.cropState.active || Dupes.isOpen) { e.preventDefault(); return; }
             if (this.elements.mainInterface.classList.contains('hidden')) return;
             const folder = this.dirHandle && e.target.closest && e.target.closest('[data-folder-path]');
@@ -6836,6 +7187,8 @@ const app = {
                     [`Rotate ${n} left`, () => this.rotateBulk(-90)],
                     [`Rotate ${n} right`, () => this.rotateBulk(90)],
                     [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
+                    [`Flip ${n} left to right`, () => this.flipFiles(sel, 'h')],
+                    [`Flip ${n} upside down`, () => this.flipFiles(sel, 'v')],
                     ...(this.autoCropOn() ? [[`Auto crop ${n}`, () => this.batchAutoCrop(sel)]] : []),
                     ...(this.getLastCrop() ? [[`Crop ${n} like the last crop`, () => this.cropLike(sel)]] : []),
                     [`Turn ${n} upright`, () => this.turnUpright(sel)],
@@ -6860,6 +7213,8 @@ const app = {
                 ['Rotate left', () => this.rotateImage(file, -90)],
                 ['Rotate right', () => this.rotateImage(file, 90)],
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
+                ['Flip left to right', () => this.flipFiles([file], 'h')],
+                ['Flip upside down', () => this.flipFiles([file], 'v')],
                 ['Turn upright', () => this.turnUpright([file])],
                 ['Crop and straighten', () => { this.openSingle(file); this.enterCrop(); }],
                 ...(this.getLastCrop() ? [['Crop like the last crop', () => this.cropLike([file])]] : []),
@@ -6888,6 +7243,8 @@ const app = {
                 ['Rotate left', () => this.rotateImage(file, -90)],
                 ['Rotate right', () => this.rotateImage(file, 90)],
                 ['Rotate 180°', () => this.rotateImage(file, 180)],
+                ['Flip left to right', () => this.flipFiles([file], 'h')],
+                ['Flip upside down', () => this.flipFiles([file], 'v')],
                 ['Turn upright', () => this.turnUpright([file])],
                 ['Crop and straighten', () => this.enterCrop()],
                 ['Adjust…', () => this.enterAdjust()],
@@ -6961,7 +7318,15 @@ const app = {
         const menu = document.createElement('div');
         menu.id = 'context-menu';
         menu.setAttribute('role', 'menu');
-        items.forEach(([label, action, danger]) => {
+        items.forEach(([label, action, danger, checked]) => {
+            // A heading over the items after it
+            if (action === null) {
+                const h = document.createElement('div');
+                h.className = 'ctx-heading';
+                h.textContent = label;
+                menu.appendChild(h);
+                return;
+            }
             if (label === 'flags') {
                 if (this.dirHandle && !this.readOnlyMode) menu.appendChild(Flags.menuRow(action));
                 return;
@@ -6978,6 +7343,11 @@ const app = {
             btn.textContent = label;
             btn.setAttribute('role', 'menuitem');
             if (danger) btn.classList.add('danger');
+            // A setting that's on (true) or off (false): ticked when on
+            if (typeof checked === 'boolean') {
+                btn.setAttribute('role', 'menuitemcheckbox');
+                btn.setAttribute('aria-checked', String(checked));
+            }
             btn.onclick = (ev) => {
                 ev.stopPropagation();
                 this.closeContextMenu();
@@ -7005,7 +7375,7 @@ const app = {
         const top = opts.above ? y - r.height : y;
         menu.style.left = Math.max(8, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
         menu.style.top = Math.max(8, Math.min(top, window.innerHeight - r.height - 8)) + 'px';
-        const first = menu.querySelector('[role="menuitem"]');
+        const first = menu.querySelector('[role^="menuitem"]');
         if (first) first.focus({ preventScroll: true });
     },
 
@@ -7465,6 +7835,24 @@ const app = {
             return;
         }
 
+        // Flipped (and maybe turned), no crop or tilt: written losslessly
+        // where the file allows, as a flip is
+        if (ed.m && ed.isIdentity(true)) {
+            if (logged) { const b = logged.auto ? bytesNow() : null; CropLog.keep(logged, () => b); }
+            const deg = ed.q * 90;
+            this.rememberCrop(snap);
+            this.cancelCrop();
+            this.flipOnDisk(file, 'h', { deg }).then(entry => {
+                this.pushUndo(entry);
+                this.showToast(`Flipped${deg ? ' and turned' : ''} ${file.name}`, 1500, null, null, { kind: 'rotate' });
+            }, e => {
+                console.error('Flip failed:', e);
+                this.showToast('Flip failed: the file may be in use');
+            });
+            goNext();
+            return;
+        }
+
         // Only quarter turns and no crop: that's a rotation — do it
         // losslessly through the rotation engine instead of re-encoding
         if (ed.isIdentity()) {
@@ -7562,18 +7950,11 @@ const app = {
         const turns = new Map();
         try {
             for (const [i, f] of files.entries()) {
-                if (f._rotationQueue) await f._rotationQueue;
-                let g = null;
-                try { g = await Upright.guess(await this.readImage(f)); } catch (e) { this.log(`Turn upright: ${f.name}: ${e.message}`); }
-                // Turns from the file as saved; a turn waiting with its other
-                // edits is taken off
-                const held = (f._edit && f._edit.q) || 0;
-                const q = g && g.sure >= Upright.SURE ? ((g.turns - held) % 4 + 4) % 4 : 0;
-                if (g) this.log(`Turn upright: ${f.name}: ${g.turns * 90}° (${Math.round(g.sure * 100)}% sure)${q ? '' : ', left as it is'}`);
-                if (q) {
-                    turns.set(f, q === 3 ? -90 : q * 90);
+                const deg = await this.uprightTurn(f);
+                if (deg) {
+                    turns.set(f, deg);
                     const back = backs && backs.get(f);
-                    if (back) turns.set(back, q === 3 ? -90 : q * 90);
+                    if (back) turns.set(back, deg);
                 }
                 if (files.length > 10 && i % 10 === 9) this.updateTask(task, `Finding which way is up (${i + 1}/${files.length})…`);
                 await new Promise(r => setTimeout(r, 0));
@@ -7588,6 +7969,22 @@ const app = {
         }
         await this.rotateBulk(0, turns);
         return n;
+    },
+
+    // The turn that puts one photo upright, in degrees (0 when it's upright
+    // already, or Upright isn't sure): from the file as saved, a turn
+    // waiting with its other edits taken off
+    async uprightTurn(f) {
+        if (f._rotationQueue) await f._rotationQueue;
+        let g = null;
+        try { g = await Upright.guess(await this.readImage(f)); } catch (e) { this.log(`Turn upright: ${f.name}: ${e.message}`); }
+        // Turns from the file as saved; a turn waiting with its other edits
+        // is taken off (a flip held too: the turn up goes the other way round)
+        const held = (f._edit && f._edit.q) || 0;
+        const want = g && f._edit && f._edit.m ? -g.turns : g && g.turns;
+        const q = g && g.sure >= Upright.SURE ? ((want - held) % 4 + 4) % 4 : 0;
+        if (g) this.log(`Turn upright: ${f.name}: ${g.turns * 90}° (${Math.round(g.sure * 100)}% sure)${q ? '' : ', left as it is'}`);
+        return q === 3 ? -90 : q * 90;
     },
 
     async batchAutoCrop(files, { ask = true, feeder = false, scan = false } = {}) {
@@ -7853,7 +8250,7 @@ const app = {
     // unturned)
     async cropSnapFor(file, snap = this.getLastCrop()) {
         const { W, H } = await this.cropDims(file);
-        const ed = CropEditor.likeOn(W, H, snap, (file._edit && file._edit.q) || 0);
+        const ed = CropEditor.likeOn(W, H, snap, (file._edit && file._edit.q) || 0, !!(file._edit && file._edit.m));
         return ed.isIdentity() && !ed.q ? null : ed.snapshot();
     },
 
@@ -8117,6 +8514,17 @@ const app = {
         if (!edit.adj && !edit.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5) && !/\.gif$/i.test(file.name) && !Codec.of(file.name)) {
             const q = edit.q % 4;
             delete file._edit;
+            // Flipped too: flipped and turned in one go (JPEG: losslessly)
+            if (edit.m) {
+                try {
+                    group.items.push(await this.flipOnDisk(file, 'h', { deg: q * 90 }));
+                } catch (e) {
+                    file._edit = edit;
+                    throw e;
+                }
+                this.dropEdited(file);
+                return 'turned';
+            }
             file.pendingRotation = q === 3 ? -90 : q * 90;
             file._undoGroup = group;
             try {

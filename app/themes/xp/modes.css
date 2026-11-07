@@ -416,7 +416,7 @@
 :root[data-skin="xp"] .dupes-foot .btn > svg { display: none; }
 :root[data-skin="xp"] .dupe-card { border-radius: 0; }
 :root[data-skin="xp"] .dupe-card.marked { background: var(--o-sel); }
-:root[data-skin="xp"] .dupe-badge { border-radius: 0; font: 11px var(--xp-font); }
+:root[data-skin="xp"] .dupe-pill, :root[data-skin="xp"] .dupe-tile-keep { border-radius: 0; font: 11px var(--xp-font); }
 :root[data-skin="xp"] .dupes-message,
 :root[data-skin="xp"] .dupes-summary { color: #000; font: 11px var(--xp-font); }
 

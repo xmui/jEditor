@@ -49,6 +49,16 @@ const Modes = {
         addEventListener('beforeunload', (e) => {
             if (!Host.get() && this.unkept()) { e.preventDefault(); e.returnValue = ''; }
         });
+        // Reload in the apps, as a browser's (which has its own): Ctrl+R,
+        // ⌘R on the Mac (its menu's View → Reload sends it here too). Plain
+        // R stays Rescan folder.
+        addEventListener('keydown', (e) => {
+            if (Host.get() && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyR') {
+                e.preventDefault();
+                e.stopPropagation();
+                this.reload();
+            }
+        }, true);
         // The chip, in the folder pill (after the sidebar button) and on its own
         const bar = this.el('folder-bar');
         if (bar) {
@@ -72,25 +82,19 @@ const Modes = {
             strip.scrollLeft += Wheel.pixels(e, strip).y;
         }, { passive: false });
         this.strip = strip;
-        // Start in, on the landing page
-        const start = this.el('start-in');
-        if (start) {
-            for (const b of start.querySelectorAll('[data-mode]')) {
-                b.addEventListener('click', () => this.pickStart(b.dataset.mode));
-            }
-        }
         const blank = this.el('start-blank');
         if (blank) blank.addEventListener('click', () => this.paintStart());
-        // Convert photos…: any folder, without opening it (convert.js)
+        // Convert photos: photos (converted on this page) or any folder,
+        // without opening it (convert.js)
         const convert = this.el('start-convert');
-        if (convert) convert.addEventListener('click', () => Convert.open({ choose: true }));
-        // A project opened from the landing page lands in Start in's mode
+        if (convert) convert.addEventListener('click', (e) => { e.stopPropagation(); Convert.startMenu(convert); });
+        // A project opened from the home page lands in Photos, unless a tile said otherwise
         const drop = app.elements.dropZone;
         if (drop) {
             let shown = !drop.classList.contains('hidden');
             new MutationObserver(() => {
                 const now = !drop.classList.contains('hidden');
-                if (shown && !now && !this.hold) this.pending = this.next || this.startIn();
+                if (shown && !now && !this.hold) this.pending = this.next || 'photos';
                 if (now) { this.pending = null; this.next = null; }
                 shown = now;
                 this.renderStart();
@@ -99,7 +103,9 @@ const Modes = {
         document.addEventListener('pointerdown', (e) => {
             if (this.menu && !this.menu.contains(e.target) && !e.target.closest('.mode-chip')) this.closeMenu();
         }, true);
-        addEventListener('resize', () => this.closeMenu());
+        addEventListener('resize', () => { this.closeMenu(); this.chipRoom(); });
+        // A theme on or off, full screen (the Mac's lights): the chip moves
+        new MutationObserver(() => this.chipRoom()).observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-skin', 'style'] });
         this.render();
     },
 
@@ -219,19 +225,6 @@ const Modes = {
 
     // ---- The landing page ----
 
-    startIn() {
-        const m = this.app.uiPrefs && this.app.uiPrefs.startIn;
-        return m && m !== 'photos' && this.on(m) ? m : 'photos';
-    },
-
-    pickStart(mode) {
-        const app = this.app;
-        app.uiPrefs.startIn = mode;
-        app.saveUiPrefs();
-        this.renderStart();
-        if (mode === 'paint') this.paintStart();
-    },
-
     // Paint from the landing page: what to paint on
     paintStart() {
         Blank.open(null, { start: true });
@@ -301,10 +294,31 @@ const Modes = {
             float.classList.toggle('over-mode', editing);
             this.drawChip(float.firstElementChild, mode);
         }
+        this.chipRoom();
         this.placeStrip(mode);
         this.renderStart();
         // Closing the window asks first while in Adjust or Paint
         this.holdClose(mode !== 'photos');
+    },
+
+    // Over Adjust and Paint the chip floats in their head's left corner, and
+    // their buttons on its right: the head keeps that much room each side,
+    // so its title (centred) never slides under them in a narrow window (on
+    // the Mac, the chip is after the traffic lights too)
+    chipRoom() {
+        cancelAnimationFrame(this.roomFrame);
+        this.roomFrame = requestAnimationFrame(() => {
+            const float = this.el('mode-float');
+            const on = float && float.classList.contains('over-mode') && !float.classList.contains('hidden');
+            const right = on ? float.getBoundingClientRect().right : 0;
+            for (const head of document.querySelectorAll('.adj-head, .paint-head')) {
+                const h = head.getBoundingClientRect();
+                const acts = head.querySelector('.mode-head-acts');
+                const a = on && acts && acts.getBoundingClientRect();
+                head.style.paddingLeft = right && h.width ? `${Math.ceil(right - h.left) + 12}px` : '';
+                head.style.paddingRight = a && a.width ? `${Math.ceil(h.right - a.left) + 12}px` : '';
+            }
+        });
     },
 
     holdClose(on) {
@@ -312,6 +326,17 @@ const Modes = {
         if (!n || !n.holdClose || this._held === on) return;
         this._held = on;
         n.holdClose(on ? () => this.closing() : null);
+    },
+
+    // The page again, asking first (as closing does) if something isn't kept
+    async reload() {
+        if (this.reloading) return;
+        this.reloading = true;
+        try {
+            if (await this.closing()) location.reload();
+        } finally {
+            this.reloading = false;
+        }
     },
 
     // Anything done in Adjust or Paint that isn't kept yet
@@ -505,20 +530,9 @@ const Modes = {
         strip.appendChild(frag);
     },
 
-    // ---- Start in, on the landing page ----
+    // ---- The home page's tiles (start.js) ----
 
     renderStart() {
-        const start = this.el('start-in');
-        if (!start || !this.app || !this.app.uiPrefs) return;
-        const shown = this.shown();
-        start.classList.toggle('hidden', shown.length < 2);
-        const mode = this.startIn();
-        for (const b of start.querySelectorAll('[data-mode]')) {
-            b.classList.toggle('hidden', !this.on(b.dataset.mode));
-            b.classList.toggle('active', b.dataset.mode === mode);
-            b.setAttribute('aria-checked', String(b.dataset.mode === mode));
-        }
-        const blank = this.el('start-blank-wrap');
-        if (blank) blank.classList.toggle('hidden', !this.on('paint'));
+        if (typeof Start !== 'undefined' && Start.app) Start.tiles();
     }
 };

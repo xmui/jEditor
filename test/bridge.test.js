@@ -18,20 +18,7 @@ const ORIGIN = 'https://jeditor.example';
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 
-function launchOptions() {
-    const candidates = [
-        process.env.CHROME_PATH,
-        '/opt/pw-browsers/chromium',
-        '/usr/bin/chromium',
-        '/usr/bin/chromium-browser',
-        '/usr/bin/google-chrome',
-        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
-    ].filter(Boolean);
-    for (const p of candidates) {
-        if (fs.existsSync(p)) return { executablePath: p, args: ['--no-sandbox'] };
-    }
-    return { channel: 'chrome', args: ['--no-sandbox'] };
-}
+const { launchOptions } = require('./page-helpers.js');
 
 let passed = 0, failed = 0;
 function check(name, ok, detail = '') {
@@ -539,6 +526,23 @@ const waitForPost = (page, type) => page.waitForFunction(
         check('holdClose tells the app; closing asks the page and says whether to close',
             r.held === 'true' && r.no && r.yes && r.released === 'true,false', JSON.stringify(r));
         check('closing: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+    }
+
+    console.log('bridge: Ctrl+R reloads, asking first if something isn\'t kept');
+    {
+        const { context, page, errors } = await openPage(browser);
+        await waitForPost(page, 'ready');
+        await page.evaluate(() => { window.__mark = 1; window.__unkept = Modes.unkept; Modes.unkept = () => true; window.__asked = 0; UI.choose = async () => { window.__asked++; return null; }; });
+        await page.keyboard.press('Control+r');
+        await page.waitForTimeout(500);
+        const kept = await page.evaluate(() => window.__mark === 1 && window.__asked === 1);
+        await page.evaluate(() => { Modes.unkept = window.__unkept; });
+        const loaded = page.waitForEvent('load', { timeout: 8000 }).then(() => true, () => false);
+        await page.keyboard.press('Control+r');
+        const reloaded = await loaded && await page.evaluate(() => window.__mark === undefined);
+        check('Ctrl+R (WebView2\'s own keys are off): asks with something not kept, Cancel stays; with nothing, reloads', kept && reloaded, JSON.stringify({ kept, reloaded }));
+        check('reload: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
     }
 

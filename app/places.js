@@ -3,13 +3,18 @@
 // on the start screen.
 //
 //   Projects   every project in your projects folder (chosen the first
-//              time, changed from the section's header), newest first,
-//              with how many photos and when it last changed, and a
-//              search box. Then recent projects opened from elsewhere.
-//   Pinned     folders pinned here, and those pinned in Explorer's Quick
-//              Access. They open out like Explorer's.
+//              time, changed from the section's header), the pinned ones
+//              first, then newest first, with how many photos and when it
+//              last changed. Three show; Show more lists the rest. Search
+//              and New project are icons in the heading. Then recent
+//              projects opened from elsewhere.
+//   Pinned     folders pinned here that aren't projects, and those pinned
+//              in Explorer's Quick Access. They open out like Explorer's.
 //   This PC    the drives. A USB drive plugged in while jEditor is open is
-//              marked New, and can be ejected from here.
+//              marked New, and can be ejected from here. On a Mac (Locations)
+//              the Photos library too (photosLibrary): it opens out like a
+//              drive to Favourites, Recently added and the albums, and each
+//              opens as the project, read-only.
 //
 // Clicking a folder opens it as the project, straight away; the caret opens
 // it out to show what's inside. A drive opens out when clicked.
@@ -20,7 +25,7 @@ const Places = {
     KEY_DIR: 'jeditor.projectsFolder',
     KEY_PINS: 'jeditor.pins',
     KEY_CLOSED: 'jeditor.sidebarClosed',
-    SHOWN: 30, // projects listed before "Show all"
+    SHOWN: 3, // projects listed before "Show more"
 
     expanded: new Set(), // folders opened out (paths, lowercase)
     listings: new Map(), // path → its folders (listDir)
@@ -28,6 +33,7 @@ const Places = {
     fresh: new Set(),    // drives plugged in since jEditor started, not yet looked at
     query: '',
     showAll: false,
+    searching: false, // the search box shown (the icon in the heading)
     drives: null,
     quick: [],
     projects: null,      // the projects folder's folders
@@ -40,6 +46,10 @@ const Places = {
         disk: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M5.5 13 8 4h8l2.5 9"/><path d="M17 17h.01"/></svg>',
         network: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="7" rx="2"/><path d="M7 6.5h.01"/><path d="M12 10v5"/><path d="M4 19h16"/><circle cx="12" cy="17" r="2"/></svg>',
         export: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M20 15v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4"/></svg>',
+        photos: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7.5" r="3.5"/><circle cx="12" cy="16.5" r="3.5"/><circle cx="7.5" cy="12" r="3.5"/><circle cx="16.5" cy="12" r="3.5"/></svg>',
+        album: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 3h10"/><circle cx="9" cy="10" r="1.5"/><path d="m21 15-4-4-9 8"/></svg>',
+        heart: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/></svg>',
+        clock: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
         cd: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/></svg>',
         caret: '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1.5 6.5 5 3 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
         eject: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15h14L12 7z"/><path d="M5 19h14"/></svg>',
@@ -47,6 +57,8 @@ const Places = {
         reveal: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7"/><path d="M10 14 21 3"/><path d="M21 14v7H3V3h7"/></svg>',
         split: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>',
         plus: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+        search: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+        down: '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
         rename: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg>',
         more: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="19" cy="12" r="1.25" fill="currentColor"/></svg>'
     },
@@ -66,6 +78,10 @@ const Places = {
     newWindowClick(e) {
         return Host.has('windows') && (e.button === 1 || (Host.mac() ? e.metaKey : e.ctrlKey));
     },
+    // The Photos library (an album's path is "photos-library:<id>"; the
+    // whole library's is "photos-library:")
+    LIBRARY: 'photos-library:',
+    isLibrary(path) { return String(path || '').startsWith(this.LIBRARY); },
     esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); },
 
     init(app) {
@@ -87,7 +103,17 @@ const Places = {
                 if (!row || !row.dataset.path) return;
                 e.preventDefault();
                 e.stopPropagation();
-                this.app.openContextMenu(this.rowItems(row), e.clientX, e.clientY);
+                const items = this.rowItems(row);
+                if (items.length) this.app.openContextMenu(items, e.clientX, e.clientY);
+            });
+            // Esc in the search box: emptied and hidden
+            box.addEventListener('keydown', (e) => {
+                if (e.key !== 'Escape' || !e.target.classList.contains('sb-search')) return;
+                e.preventDefault();
+                e.stopPropagation();
+                this.searching = false;
+                this.query = '';
+                this.draw();
             });
             box.addEventListener('input', (e) => {
                 if (!e.target.classList.contains('sb-search')) return;
@@ -208,17 +234,20 @@ const Places = {
 
         const dir = this.projectsDir();
         const dirName = dir ? (dir.split(/[\\/]/).filter(Boolean).pop() || dir) : '';
+        // The search box: shown by its icon in the heading, or while there's something in it
+        const searching = this.searching || !!this.query;
         const projects = dir
-            ? `<button class="btn secondary sm sb-new" data-act="newproject" title="Make a new folder in ${this.esc(dirName)} and open it">${this.icons.plus}New project</button>` +
-              `<input class="field sm sb-search" type="search" placeholder="Search projects" value="${this.esc(this.query)}" aria-label="Search projects" spellcheck="false" autocomplete="off">` +
+            ? `<input class="field sm sb-search" type="search" placeholder="Search projects" value="${this.esc(this.query)}" aria-label="Search projects" spellcheck="false" autocomplete="off"${searching ? '' : ' hidden'}>` +
               `<div class="sb-projects">${await this.projectRows()}</div>`
             : `<button class="btn secondary sb-choose" data-act="choose" title="The folder your projects are in: each folder in it is listed here, newest first">Choose your projects folder…</button>`;
         const elsewhere = await this.elsewhereRows();
 
         const pins = await this.pinRows();
-        const drives = await this.driveRows();
+        const drives = await this.driveRows() + await this.libraryRows();
         return section('projects', 'Projects',
-            dir ? `<button class="sb-sec-link" data-act="choose" title="${this.esc(dir)} — click to choose another folder">${this.esc(dirName)}</button>` : '',
+            dir ? `<button class="sb-sec-link" data-act="choose" title="${this.esc(dir)} — click to choose another folder">${this.esc(dirName)}</button>` +
+                `<button class="sb-sec-icon${searching ? ' on' : ''}" data-act="search" title="Search projects" aria-label="Search projects" aria-pressed="${searching}">${this.icons.search}</button>` +
+                `<button class="sb-sec-icon" data-act="newproject" title="New project: a new folder in ${this.esc(dirName)}, opened" aria-label="New project">${this.icons.plus}</button>` : '',
             projects + (elsewhere ? `<div class="sb-sub">Opened from elsewhere</div>${elsewhere}` : '')) +
             // Nothing pinned yet: no section (the pin by a folder's name adds one)
             (pins ? section('pinned', 'Pinned', '', pins) : '') +
@@ -275,14 +304,17 @@ const Places = {
             return this.projectsDir() ? '<p class="sb-help">The projects folder isn\'t there. Is the drive connected?</p>' : '';
         }
         const q = this.query.trim().toLowerCase();
-        const list = q ? this.projects.filter(p => p.name.toLowerCase().includes(q)) : this.projects;
+        // The pinned ones first (each lot newest first, as they come)
+        const all = this.projects.filter(p => this.isPinned(p.path)).concat(this.projects.filter(p => !this.isPinned(p.path)));
+        const list = q ? all.filter(p => p.name.toLowerCase().includes(q)) : all;
         const shown = q || this.showAll ? list : list.slice(0, this.SHOWN);
         let html = '';
         for (const p of shown) {
             html += await this.tree(p.path, p.name, 0, { project: true, icon: this.icons.project, row: { meta: this.when(p.modified), pin: this.isPinned(p.path) } });
         }
         if (!list.length) html += `<p class="sb-help">${q ? 'No project matches' : 'No projects in this folder yet'}</p>`;
-        if (!q && !this.showAll && list.length > shown.length) html += `<button class="link-btn sb-more" data-act="all">Show all ${list.length.toLocaleString()}</button>`;
+        // Show more, and Show less once it's open
+        if (!q && list.length > this.SHOWN) html += `<button class="link-btn sb-more${this.showAll ? ' open' : ''}" data-act="all" aria-expanded="${this.showAll}" title="${this.showAll ? `The first ${this.SHOWN}` : `All ${list.length.toLocaleString()} projects`}">${this.showAll ? 'Show less' : 'Show more'}${this.icons.down}</button>`;
         return html;
     },
 
@@ -308,8 +340,11 @@ const Places = {
     async pinRows() {
         const seen = new Set();
         let html = '';
+        // (a pinned project is first in Projects: not again here)
+        const projects = new Set((this.projects || []).map(p => this.key(p.path)));
         for (const p of this.pins()) {
             seen.add(this.key(p.path));
+            if (projects.has(this.key(p.path))) continue;
             html += await this.tree(p.path, p.name, 0, { icon: this.icons.pin, row: { pin: true, cls: 'sb-pinned' } });
         }
         for (const q of this.quick) {
@@ -341,6 +376,54 @@ const Places = {
             });
         }
         return html;
+    },
+
+    // The Photos library, under the drives: opened out, its albums. The
+    // first time it's opened out macOS asks whether jEditor may see it.
+    async libraryRows() {
+        if (!Host.has('photosLibrary')) return '';
+        const root = this.LIBRARY;
+        const open = this.expanded.has(this.key(root));
+        let html = this.row({
+            path: root, name: 'Photos library', icon: this.icons.photos, caret: true, open, act: 'toggle', drive: true,
+            title: 'The Photos library: its albums, to look through (read-only)',
+            extra: `<button class="sb-open" data-act="open" title="Open the whole Photos library (or double-click it)">Open</button>`
+        });
+        if (!open) return html;
+        const native = this.native();
+        let status = await native.photosAccess(false).catch(() => 'denied');
+        if (status === 'ask' && this._libraryAsked !== true) {
+            this._libraryAsked = true;
+            status = await native.photosAccess(true).catch(() => 'denied');
+        }
+        if (status !== 'granted' && status !== 'limited') {
+            return html + `<div class="sb-empty" style="--depth:1">${status === 'ask' ? 'macOS hasn\'t said yet whether jEditor may see it' : 'jEditor isn\'t allowed to see it'} · <button class="sb-sec-link" data-act="library-settings">${status === 'ask' ? 'Allow…' : 'Open Settings'}</button></div>`;
+        }
+        if (!this.libraryList) {
+            try { this.libraryList = await native.photosCollections(); } catch (e) { this.libraryList = []; }
+        }
+        const names = { favourites: 'Favourites', recent: 'Recently added' };
+        const icons = { favourites: this.icons.heart, recent: this.icons.clock };
+        for (const c of this.libraryList) {
+            html += this.row({
+                path: root + c.id, name: names[c.kind] || c.name, icon: icons[c.kind] || this.icons.album, depth: 1, drive: true,
+                meta: c.count ? c.count.toLocaleString() : '', title: `${names[c.kind] || c.name}: ${c.count.toLocaleString()} photo${c.count === 1 ? '' : 's'} (read-only)`
+            });
+        }
+        if (!this.libraryList.length) html += `<div class="sb-empty" style="--depth:1">No albums</div>`;
+        return html;
+    },
+
+    // An album of the Photos library (its path), opened as the project
+    async openLibrary(path) {
+        const id = path.slice(this.LIBRARY.length);
+        const c = (this.libraryList || []).find(x => x.id === id);
+        const name = !id ? 'Photos library' : c ? ({ favourites: 'Favourites', recent: 'Recently added' }[c.kind] || c.name) : 'Album';
+        try {
+            await this.app.openDirectory(await this.native().photosAlbum(id, name), { library: true });
+        } catch (e) {
+            UI.alert({ title: 'Couldn\'t open it', message: e.message });
+        }
     },
 
     // "12 GB", "850 MB": short enough for a row
@@ -405,8 +488,10 @@ const Places = {
             card.innerHTML = '';
             return;
         }
-        const path = await FolderCache.orderPath(app).catch(() => null);
-        this._currentPath = path;
+        const where = await FolderCache.orderPath(app).catch(() => null);
+        this._currentPath = where;
+        // The Photos library: the album's name, nothing to rename, show or export
+        const path = this.isLibrary(where) ? null : where;
         let bytes = 0;
         for (const f of app.files) bytes += f.size || 0;
         const n = app.files.length;
@@ -419,6 +504,7 @@ const Places = {
             // in this menu (cardItems). The themes show the buttons instead
             `<button class="btn ghost icon sm sb-card-more" data-act="more" title="More: ${Host.has('scan') ? 'scan, ' : ''}${path && Host.has('reveal') ? Host.words().files + ', ' : ''}export" aria-label="More" aria-haspopup="menu">${this.icons.more}</button>` +
             (path ? `<div class="sb-card-path" title="${this.esc(path)}">${this.esc(path)}</div>` : '') +
+            (app.library ? `<div class="sb-card-path">Photos library · read-only</div>` : '') +
             `<div class="sb-card-meta">${n.toLocaleString()} photo${n === 1 ? '' : 's'} · ${app.formatBytes(bytes)}</div>` +
             `<div class="sb-card-btns">` +
             (Host.has('scan') ? `<button class="btn primary sm" data-act="scan">${this.icons.scan}Scan</button>` : '') +
@@ -428,16 +514,20 @@ const Places = {
             `</div>` +
             // Taking it off this computer: a USB drive, a disc, copies (export.js)
             (path ? `<button class="btn secondary sm sb-card-export" data-act="export" title="Copy it to a USB drive or card${Host.has('burn') ? ', burn it to a disc' : ''}, or export copies of the photos">${this.icons.export}Export<span>${Host.has('places') ? 'USB drive' : ''}${Host.has('burn') ? ' · disc' : ''} · copies</span></button>` : '') +
-            (app.readOnlyMode ? '' : `<label class="sb-card-defer" title="Crops and turns are kept on the photos, to change as often as you like, and saved into them (or exported) when you're done"><input type="checkbox" data-act="defer"${Edits.defer ? ' checked' : ''}><span>Save edits when done</span></label>`);
+            // Save edits when done, a switch; while it's on and edits are
+            // waiting, a pill: "3 edits to save · Save now" (drawPending)
+            (app.readOnlyMode ? '' : `<label class="sb-card-defer" title="Crops and turns are kept on the photos, to change as often as you like, and saved into them (or exported) when you're done"><span>Save edits when done</span><input type="checkbox" class="switch" role="switch" data-act="defer"${Edits.defer ? ' checked' : ''}></label>` +
+                '<div class="sb-card-pending" hidden></div>');
+        this.drawPending();
         // The current project is marked in the lists
         for (const box of this.boxes) {
-            box.querySelectorAll('.sb-row').forEach(r => r.classList.toggle('active', this.key(r.dataset.path) === this.key(path)));
+            box.querySelectorAll('.sb-row').forEach(r => r.classList.toggle('active', this.key(r.dataset.path) === this.key(where)));
         }
     },
 
     // The card's buttons as a menu: the "…" by its name, or a right-click
     cardItems() {
-        const path = this._currentPath, items = [];
+        const path = this.isLibrary(this._currentPath) ? null : this._currentPath, items = [];
         if (Host.has('scan')) items.push(['Scan…', () => this.cardAction('scan')]);
         if (path && Host.has('reveal')) items.push([Host.say('Show in {files}'), () => this.cardAction('reveal')]);
         if (Host.has('windows')) items.push(['Split with another window', () => this.cardAction('split')]);
@@ -445,13 +535,23 @@ const Places = {
         if (path) items.push(['Rename…', () => this.cardAction('rename')]);
         items.push(['—']);
         if (path) items.push(['Export…', () => this.cardAction('export')]);
-        if (!this.app.readOnlyMode) items.push([(Edits.defer ? '✓ ' : '') + 'Save edits when done', async () => { await Edits.setDefer(!Edits.defer); this.drawCard(); }]);
         return items;
     },
 
+    // The card's "3 edits to save · Save now", while Save edits when done is
+    // on and edits are waiting (Edits.updateBar asks again as they change)
+    drawPending() {
+        const box = this.el('sb-card') && this.el('sb-card').querySelector('.sb-card-pending');
+        if (!box) return;
+        const n = typeof Edits !== 'undefined' && Edits.on() ? Edits.count() : 0;
+        box.hidden = !n;
+        box.innerHTML = n ? `<button class="sb-card-save" data-act="savenow" title="Save the edits into the photos, or export edited copies">${n.toLocaleString()} edit${n === 1 ? '' : 's'} to save<b>Save now</b></button>` : '';
+    },
+
     cardAction(act) {
-        const path = this._currentPath;
-        if (act === 'scan') Scan.open();
+        const path = this.isLibrary(this._currentPath) ? null : this._currentPath;
+        if (act === 'savenow') Edits.saveAll();
+        else if (act === 'scan') Scan.open();
         else if (act === 'rename' && path) this.renameFolder(path);
         else if (act === 'split') Windows.split();
         else if (act === 'export' && path) Export.open({ path });
@@ -486,20 +586,35 @@ const Places = {
         if (act === 'section') return this.toggleSection(b.dataset.sec);
         if (act === 'choose') return this.chooseFolder();
         if (act === 'newproject') return this.newProject();
-        if (act === 'all') { this.showAll = true; return this.drawProjects(); }
+        if (act === 'library-settings') return this.librarySettings();
+        if (act === 'all') { this.showAll = !this.showAll; return this.drawProjects(); }
+        if (act === 'search') return this.toggleSearch(b);
         if (!path) return;
         if (act === 'open' && this.newWindowClick(e)) return Windows.newWindow(path); // in a window of its own
         if (act === 'open') return this.open(path);
         if (act === 'toggle') {
             const k = this.key(path);
             if (this.expanded.has(k)) this.expanded.delete(k);
-            else { this.expanded.add(k); this.listings.delete(k); }
+            else { this.expanded.add(k); this.listings.delete(k); if (this.isLibrary(path)) this.libraryList = null; }
             this.fresh.delete(k);
             return this.draw();
         }
         if (act === 'pin') return this.pin(path, row.querySelector('.fr-name').textContent);
         if (act === 'unpin') return this.unpin(path);
         if (act === 'eject') return this.eject(path, row.querySelector('.fr-name').textContent);
+    },
+
+    // The search icon: the box shown and typed in, or hidden and emptied
+    async toggleSearch(b) {
+        this.searching = !(this.searching || this.query);
+        if (!this.searching) this.query = '';
+        // (the section opens if it's folded)
+        const closed = this.closed();
+        if (this.searching && closed.has('projects')) { closed.delete('projects'); this.set(this.KEY_CLOSED, [...closed]); }
+        await this.draw();
+        if (!this.searching) return;
+        const s = ([...this.boxes].find(x => x.contains(b)) || this.boxes[0]).querySelector('.sb-search');
+        if (s) s.focus();
     },
 
     toggleSection(id) {
@@ -521,9 +636,21 @@ const Places = {
         await this.refresh();
     },
 
+    // Not allowed to see the Photos library: macOS asks again, or (once
+    // it's said no) System Settings → Privacy & Security → Photos
+    async librarySettings() {
+        const native = this.native();
+        const status = await native.photosAccess(true).catch(() => 'denied');
+        if (status !== 'granted' && status !== 'limited') await native.openPermissionSettings('photos').catch(() => { });
+        this.libraryList = null;
+        this.draw();
+    },
+
     // A sidebar folder's right-click menu
     rowItems(row) {
         const path = row.dataset.path;
+        // The Photos library's: only opening it (it isn't a folder)
+        if (this.isLibrary(path)) return this.key(path) === this.key(this.current()) ? [] : [['Open as the project', () => this.open(path)]];
         const name = row.querySelector('.fr-name').textContent;
         const drive = this.isDrive(path);
         const pinned = this.pins().some(p => this.key(p.path) === this.key(path));
@@ -533,13 +660,20 @@ const Places = {
         if (!drive) items.push(['—'], ['Rename…', () => this.renameFolder(path)]);
         if (Host.has('reveal')) items.push(['—'], [Host.say('Show in {files}'), () => this.native().reveal(path)]);
         items.push([pinned ? 'Unpin' : 'Pin to the sidebar', () => pinned ? this.unpin(path) : this.pin(path, name)]);
-        // Onto a USB drive or card, burnt to a disc; a card's photos imported
-        const usb = (this.drives || []).find(d => this.key(d.path).replace(/[\\/]+$/, '') === this.key(path).replace(/[\\/]+$/, '') && d.kind === 'usb');
+        // The open project onto a USB drive or card (copies of its photos, or
+        // the whole folder as it is), or burnt to a disc; a card's photos imported
+        const here = (this.drives || []).find(d => this.key(d.path).replace(/[\\/]+$/, '') === this.key(path).replace(/[\\/]+$/, ''));
+        const usb = here && here.kind === 'usb' ? here : null;
+        const cur = this.current(), proj = this.app.dirHandle && this.app.dirHandle.name;
         if (usb) {
             items.push(['—']);
-            if (this.current() && !this.within(this.current(), usb.path)) items.push([`Copy ${this.app.dirHandle.name} here…`, () => Export.open({ path: this.current(), tab: 'usb', drive: usb.path })]);
+            if (cur && proj && !this.within(cur, usb.path)) {
+                items.push([`Export ${proj} to ${usb.name}…`, () => Export.open({ path: cur, tab: 'copies', where: 'drive:' + usb.path })]);
+                items.push([`Copy ${proj} to ${usb.name}…`, () => Export.open({ path: cur, tab: 'usb', drive: usb.path })]);
+            }
             items.push(['Import photos from here…', () => Import.open({ path: usb.path, name: usb.name })]);
         }
+        if (here && here.kind === 'cd' && cur && proj && Host.has('burn')) items.push(['—'], [`Burn ${proj} to a disc…`, () => Export.open({ path: cur, tab: 'disc', drive: here.path })]);
         if (!drive) items.push(['—'], ['Export: USB drive' + (Host.has('burn') ? ', disc' : '') + ', copies…', () => Export.open({ path })]);
         // The open project's photos in another format
         if (!drive && this.app.files.length && this.key(path) === this.key(this.current())) items.push(['Convert…', () => Convert.open({ folder: '' })]);
@@ -609,6 +743,7 @@ const Places = {
 
     async open(path) {
         if (this.key(path) === this.key(this.current())) return;
+        if (this.isLibrary(path)) return this.openLibrary(path);
         const ok = await this.native().openPath(path).catch(() => false);
         if (!ok) {
             this.app.showToast(`Couldn't open ${path}: it isn't there any more`, 4000);
@@ -648,7 +783,7 @@ const Places = {
         const start = (e) => {
             const row = e.target.closest && e.target.closest('.sb-row[data-path], #folder-tree .fr-row[data-folder-path]');
             // (not a drive itself)
-            if (!row || (this.drives || []).some(d => this.key(d.path) === this.key(row.dataset.path))) return;
+            if (!row || (this.drives || []).some(d => this.key(d.path) === this.key(row.dataset.path)) || this.isLibrary(row.dataset.path)) return;
             const path = row.dataset.path !== undefined ? row.dataset.path : this.projectPath(row.dataset.folderPath);
             if (!path) return;
             this.dragging = path;
@@ -714,6 +849,7 @@ const Places = {
         const from = this.dragging;
         if (row) {
             const dest = row.dataset.path;
+            if (this.isLibrary(dest)) return null; // read-only
             if (from && (this.within(dest, from) || this.key(this.parentOf(from)) === this.key(dest.replace(/[\\/]+$/, '')))) return null;
             return { copy: dest, el: row };
         }
@@ -809,16 +945,18 @@ const Places = {
     // ---- A project onto a USB drive or card, in one step ----
     //
     // The drive chosen (if there's more than one), room checked, the folder
-    // copied, its flags and edits put with it (a .jeditor folder in the
-    // copy: wherever it's opened next, jEditor takes them in), and the
-    // drive ejected after if you like.
+    // copied as it is on disk, and the drive ejected after if you like. Its
+    // flags and kept edits stay on this computer: they go with it (a
+    // .jeditor folder in the copy, taken in wherever it's opened next) only
+    // when that's asked for, in the Export window.
 
     usbDrives(except = null) {
         return (this.drives || []).filter(d => d.kind === 'usb' && !(except && this.within(except, d.path)));
     },
 
-    // `eject` (true or false): chosen already, in the Export window
-    async copyToDrive(src = this.current(), { drive = null, at = null, eject = null } = {}) {
+    // `eject` (true or false): chosen already, in the Export window;
+    // `withData`: its flags and edits too, in a .jeditor folder in the copy
+    async copyToDrive(src = this.current(), { drive = null, at = null, eject = null, withData = false } = {}) {
         const app = this.app;
         if (!src) return;
         if (!this.drives) await this.refresh().catch(() => { });
@@ -831,7 +969,7 @@ const Places = {
             if (drives.length > 1) {
                 // Which one: a menu of them, with room on each
                 const p = at || { x: innerWidth / 2 - 120, y: innerHeight / 3 };
-                app.openContextMenu(drives.map(d => [`${d.name} — ${this.short(d.free)} free`, () => this.copyToDrive(src, { drive: d })]), p.x, p.y);
+                app.openContextMenu(drives.map(d => [`${d.name} — ${this.short(d.free)} free`, () => this.copyToDrive(src, { drive: d, eject, withData })]), p.x, p.y);
                 return;
             }
             drive = drives[0];
@@ -849,7 +987,7 @@ const Places = {
         const how = eject !== null ? (eject ? 'ok' : 'alt') : await UI.choose({
             title: `Copy ${name} to ${drive.name}?`,
             message: (bytes ? `${app.formatBytes(bytes)} of photos; ${app.formatBytes(drive.free)} free on ${drive.name}. ` : '') +
-                'Its flags and edits go with it, for when it\'s opened in jEditor on another computer.',
+                'The photos are copied as they are on disk.',
             ok: 'Copy and eject',
             alt: 'Copy'
         });
@@ -859,13 +997,14 @@ const Places = {
         await Promise.all([Edits.flush(), Flags.save()].map(p => p.catch(() => { })));
         const to = await this.copyInto(src, drive.path, { quiet: true });
         if (!to) return;
-        const carried = await this.carryData(src, to).catch((e) => { console.warn('Couldn\'t put the project\'s data with the copy:', e); return false; });
+        const carried = withData && await this.carryData(src, to).catch((e) => { console.warn('Couldn\'t put the project\'s data with the copy:', e); return false; });
         if (how === 'ok') {
             await this.eject(drive.path, drive.name);
-            return;
+            return to;
         }
         app.showToast(`Copied ${name} to ${drive.name}` + (carried ? ', flags and edits too' : ''), 6000, null,
             { label: 'Eject', run: () => this.eject(drive.path, drive.name) }, { type: 'success' });
+        return to;
     },
 
     // The project's data (flags, kept edits and their paint) into a .jeditor
@@ -964,6 +1103,9 @@ const Places = {
         this.drives = places.drives;
         this.listings.clear();
         await this.draw();
+        // A camera's card in: the home page's second tile is Import (start.js)
+        const found = await Promise.all(places.drives.filter(d => d.kind !== 'cd').map(async d => (await Import.isCard(d)) ? d : null));
+        if (typeof Start !== 'undefined' && Start.setCard) Start.setCard(found.find(Boolean) || null);
     },
 
     // A drive, opened out in the sidebar (or on the start screen)

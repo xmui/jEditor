@@ -30,16 +30,16 @@ const version = /APP_VERSION = '([0-9.]+)'/.exec(fs.readFileSync(path.join(ROOT,
 const dirOnly = process.argv.includes('--dir');
 const linux = process.platform === 'linux';
 
-// The native toolbar (native/), built for both Macs if it isn't yet
-const toolbarNode = path.join(__dirname, 'native', 'build', 'Release', 'toolbar.node');
-if (!linux && !fs.existsSync(toolbarNode)) execFileSync(process.execPath, [path.join(__dirname, 'native', 'build.js')], { stdio: 'inherit' });
+// The native modules (native/: the toolbar, the Photos library), built for both Macs if they aren't yet
+const nativeNodes = ['toolbar', 'photos'].map(m => path.join(__dirname, 'native', 'build', 'Release', `${m}.node`));
+if (!linux && !nativeNodes.every(f => fs.existsSync(f))) execFileSync(process.execPath, [path.join(__dirname, 'native', 'build.js')], { stdio: 'inherit' });
 
 const config = {
     appId: 'com.xmui.jeditor',
     productName: 'jEditor',
     copyright: 'jEditor',
     directories: { output: path.join(ROOT, 'dist'), buildResources: path.join(__dirname, 'build') },
-    files: ['main.js', 'preload.js', 'bridge.js', 'places.js', 'package.json', 'native/index.js', ...(linux ? [] : ['native/build/Release/toolbar.node'])],
+    files: ['main.js', 'preload.js', 'bridge.js', 'places.js', 'package.json', 'photos.js', 'native/index.js', 'native/photos.js', ...(linux ? [] : ['native/build/Release/toolbar.node', 'native/build/Release/photos.node'])],
     // A native module is loaded from disk, not from inside app.asar
     asarUnpack: ['native/build/Release/*.node'],
     extraResources: [{ from: path.join(ROOT, 'app'), to: 'app', filter: ['**/*'] }],
@@ -56,8 +56,10 @@ const config = {
         gatekeeperAssess: false,
         minimumSystemVersion: '12.0',
         // Already universal (native/build.js), so the same in both halves
-        x64ArchFiles: '**/toolbar.node',
+        x64ArchFiles: '**/{toolbar,photos}.node',
         extendInfo: {
+            // What macOS says when jEditor first asks to see the Photos library
+            NSPhotoLibraryUsageDescription: 'jEditor shows the photos in your Photos library, so you can look through them.',
             // Finder's Open With, and the Dock: folders, and photos (their folder opens)
             CFBundleDocumentTypes: [
                 { CFBundleTypeName: 'Folder', CFBundleTypeRole: 'Viewer', LSHandlerRank: 'Alternate', LSItemContentTypes: ['public.folder'] },
