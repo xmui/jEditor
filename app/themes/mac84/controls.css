@@ -356,6 +356,8 @@
 :root[data-skin="mac84"] .start-title { font: 24px var(--m-font); letter-spacing: 0; }
 :root[data-skin="mac84"] :is(.start-tagline, .drop-hint, .start-in-label) { color: #000; font: 12px var(--m-font); }
 :root[data-skin="mac84"] .start-open { height: 22px; }
+:root[data-skin="mac84"] .start-convert-run { border: 1px solid #000; border-radius: 0; background: #fff; box-shadow: 1px 1px 0 #000; backdrop-filter: none; -webkit-backdrop-filter: none; color: #000; font: 12px var(--m-font); }
+:root[data-skin="mac84"] .start-convert-run .scr-sub { color: #000; font-size: 12px; }
 :root[data-skin="mac84"] .start-foot .link-btn kbd { display: none; }
 :root[data-skin="mac84"] .start-dot { background: #000; }
 :root[data-skin="mac84"] .recent-list button { border-radius: 0; color: #000; }

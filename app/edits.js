@@ -154,7 +154,8 @@ const Edits = {
             data = fh && JSON.parse(await (await fh.getFile()).text());
         } catch (e) { /* nothing kept */ }
         if (this._loadedFor !== app.dirHandle) return [];
-        this.defer = !!(data && data.defer);
+        // A project that hasn't chosen: as Settings says for new ones (start.js)
+        this.defer = data && typeof data.defer === 'boolean' ? data.defer : !!(app.uiPrefs && app.uiPrefs.deferNew);
         const saved = new Map(Object.entries((data && data.edits) || {}));
         for (const f of app.files) {
             const rel = f.relPath || f.name;
@@ -255,7 +256,9 @@ const Edits = {
 
     // Nothing to keep: no setting, no edits
     isEmpty(data) {
-        return !data.defer && !Object.keys(data.edits).length;
+        // (with new projects keeping edits, "off" is a choice to keep)
+        const deferNew = !!(this.app && this.app.uiPrefs && this.app.uiPrefs.deferNew);
+        return !data.defer && !deferNew && !Object.keys(data.edits).length;
     },
 
     // The setting and every edit, as edits.json holds them

@@ -3125,7 +3125,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const open = async (d) => { window.showDirectoryPicker = async () => d; await app.browseFolder(); await Recents.saving; };
             const names = async () => (await Recents.list()).map(x => x.name).join(',');
             const shown = () => [...document.querySelectorAll('#recent-list .recent-name')].map(x => x.textContent).join(',');
-            out.hiddenWhenEmpty = document.getElementById('recents').classList.contains('hidden');
+            await Recents.render();
+            out.hiddenWhenEmpty = document.getElementById('recents').classList.contains('hidden') && !document.getElementById('home-empty').classList.contains('hidden');
             const a = await make('rec A'), b = await make('rec B');
             await open(a);
             await open(b);
@@ -3147,10 +3148,23 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await Recents.saving;
             out.clicked = app.dirHandle.name === 'rec 3' && app.files.length === 1 && (await names()).startsWith('rec 3,');
             // × forgets it (the folder stays)
-            const li = [...document.querySelectorAll('#recent-list li')].find(x => x.querySelector('.recent-name').textContent === 'rec 1');
+            // The table shows four: rec 3 (just opened), rec 6, rec 5, rec 4; the list keeps six
+            out.onTable = shown() === 'rec 3,rec 6,rec 5,rec 4';
+            out.emptyGone = document.getElementById('home-empty').classList.contains('hidden');
+            const li = [...document.querySelectorAll('#recent-list li')].find(x => x.querySelector('.recent-name').textContent === 'rec 4');
             li.querySelector('.recent-remove').click();
-            for (let i = 0; i < 50 && shown().includes('rec 1'); i++) await new Promise(res => setTimeout(res, 20));
-            out.removed = !(await names()).includes('rec 1') && !shown().includes('rec 1') && !!(await opfs.getDirectoryHandle('rec 1'));
+            for (let i = 0; i < 50 && shown().includes('rec 4'); i++) await new Promise(res => setTimeout(res, 20));
+            out.removed = !(await names()).includes('rec 4') && !shown().includes('rec 4') && !!(await opfs.getDirectoryHandle('rec 4'));
+            // A photo opened on its own in Adjust or Paint: one print called Recent, first on the table
+            const before3 = await names();
+            await Recents.rememberPhoto(await (await opfs.getDirectoryHandle('rec 5')).getFileHandle('a.jpg'), 'adjust');
+            const first = document.querySelector('#recent-list li');
+            out.single = first.classList.contains('single') && first.querySelector('.recent-name').textContent === 'Recent' &&
+                /^a\.jpg · Today$/.test(first.querySelector('.recent-sub').textContent) && first.querySelectorAll('.recent-print').length === 1 &&
+                document.querySelectorAll('#recent-list li').length === 4 && (await names()) === before3;
+            // ... until a folder is opened after it
+            await open(await opfs.getDirectoryHandle('rec 6'));
+            out.singleGone = !document.querySelector('#recent-list li.single');
             // A folder that's gone says so and offers to remove it
             await opfs.removeEntry('rec 2', { recursive: true });
             const rec2 = (await Recents.list()).find(x => x.name === 'rec 2');
@@ -3160,13 +3174,16 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.when = [Recents.when(Date.now()), Recents.when(Date.now() - 86400000), Recents.when(new Date(2020, 2, 4).getTime())].join('|');
             return out;
         });
-        check('recent: hidden until a folder has been opened', r.hiddenWhenEmpty);
+        check('recent: an empty table shows ghost prints until a folder has been opened', r.hiddenWhenEmpty);
         check('recent: newest first', r.order === 'rec B,rec A', r.order);
         check('recent: opening one again moves it to the top, once', r.reopened === 'rec A,rec B', r.reopened);
-        check('recent: listed on the start screen with when', r.shown);
+        check('recent: on the home page\'s table, with when', r.shown);
         check('recent: keeps the newest six', r.capped === 'rec 6,rec 5,rec 4,rec 3,rec 2,rec 1', r.capped);
         check('recent: click reopens the folder', r.clicked);
+        check('recent: the table shows the newest four (and no ghost prints)', r.onTable && r.emptyGone, r.capped);
         check('recent: × removes it from the list only', r.removed);
+        check('recent: a photo opened on its own lies first, as one print called Recent', r.single, JSON.stringify(r));
+        check('... and comes off once a folder is opened after it', r.singleGone);
         check('recent: a folder that has gone says so', r.missing);
         check('recent: dates read Today / Yesterday / Mar 4, 2020', /^Today\|Yesterday\|Mar 4, 2020$/.test(r.when), r.when);
         check('recent suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));

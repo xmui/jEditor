@@ -82,25 +82,19 @@ const Modes = {
             strip.scrollLeft += Wheel.pixels(e, strip).y;
         }, { passive: false });
         this.strip = strip;
-        // Start in, on the landing page
-        const start = this.el('start-in');
-        if (start) {
-            for (const b of start.querySelectorAll('[data-mode]')) {
-                b.addEventListener('click', () => this.pickStart(b.dataset.mode));
-            }
-        }
         const blank = this.el('start-blank');
         if (blank) blank.addEventListener('click', () => this.paintStart());
-        // Convert photos…: any folder, without opening it (convert.js)
+        // Convert photos: photos (converted on this page) or any folder,
+        // without opening it (convert.js)
         const convert = this.el('start-convert');
-        if (convert) convert.addEventListener('click', () => Convert.open({ choose: true }));
-        // A project opened from the landing page lands in Start in's mode
+        if (convert) convert.addEventListener('click', (e) => { e.stopPropagation(); Convert.startMenu(convert); });
+        // A project opened from the home page lands in Photos, unless a tile said otherwise
         const drop = app.elements.dropZone;
         if (drop) {
             let shown = !drop.classList.contains('hidden');
             new MutationObserver(() => {
                 const now = !drop.classList.contains('hidden');
-                if (shown && !now && !this.hold) this.pending = this.next || this.startIn();
+                if (shown && !now && !this.hold) this.pending = this.next || 'photos';
                 if (now) { this.pending = null; this.next = null; }
                 shown = now;
                 this.renderStart();
@@ -230,19 +224,6 @@ const Modes = {
     },
 
     // ---- The landing page ----
-
-    startIn() {
-        const m = this.app.uiPrefs && this.app.uiPrefs.startIn;
-        return m && m !== 'photos' && this.on(m) ? m : 'photos';
-    },
-
-    pickStart(mode) {
-        const app = this.app;
-        app.uiPrefs.startIn = mode;
-        app.saveUiPrefs();
-        this.renderStart();
-        if (mode === 'paint') this.paintStart();
-    },
 
     // Paint from the landing page: what to paint on
     paintStart() {
@@ -549,20 +530,9 @@ const Modes = {
         strip.appendChild(frag);
     },
 
-    // ---- Start in, on the landing page ----
+    // ---- The home page's tiles (start.js) ----
 
     renderStart() {
-        const start = this.el('start-in');
-        if (!start || !this.app || !this.app.uiPrefs) return;
-        const shown = this.shown();
-        start.classList.toggle('hidden', shown.length < 2);
-        const mode = this.startIn();
-        for (const b of start.querySelectorAll('[data-mode]')) {
-            b.classList.toggle('hidden', !this.on(b.dataset.mode));
-            b.classList.toggle('active', b.dataset.mode === mode);
-            b.setAttribute('aria-checked', String(b.dataset.mode === mode));
-        }
-        const blank = this.el('start-blank-wrap');
-        if (blank) blank.classList.toggle('hidden', !this.on('paint'));
+        if (typeof Start !== 'undefined' && Start.app) Start.tiles();
     }
 };

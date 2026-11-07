@@ -434,6 +434,9 @@
 :root[data-skin="snow"] .start-open { height: 21px; min-width: 110px; }
 :root[data-skin="snow"] .start-in-seg > button { font-size: 11px; height: 20px; }
 :root[data-skin="snow"] .start-in-seg > button > svg { display: none; }
+:root[data-skin="snow"] .start-convert-run { border: 1px solid #a5a5a5; border-radius: 4px; background: rgb(255 255 255 / 0.75); box-shadow: 0 1px 3px rgb(0 0 0 / 0.2); backdrop-filter: none; -webkit-backdrop-filter: none; color: #222; font: 12px var(--sl-font); }
+:root[data-skin="snow"] .start-convert-run .scr-title { font-weight: 700; }
+:root[data-skin="snow"] .start-convert-run .scr-sub { color: var(--sl-ink-2); font-size: 11px; }
 :root[data-skin="snow"] .recent-list button { border-radius: 0; }
 
 /* The task pill: a small HUD */
