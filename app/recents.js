@@ -179,6 +179,14 @@ const Recents = {
         this.render();
     },
 
+    // Clear cache (folder-move.js): the stacks' pictures go, so they lie
+    // on the table as ghost stacks until they're made again
+    async clearThumbs() {
+        const all = await this.all();
+        await this.tx('readwrite', s => all.forEach(r => { if (r.thumbs && r.thumbs.length) s.put({ ...r, thumbs: [] }); }));
+        await this.render();
+    },
+
     // "Today", "Yesterday", "Monday", "Oct 3", "Oct 3, 2025"
     when(ts) {
         const d = new Date(ts), now = new Date();

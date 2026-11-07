@@ -78,7 +78,7 @@
         } else if (msg.type === 'logLines' && onLogLines) {
             onLogLines(msg.lines || []);
         } else if (msg.type === 'copyProgress' && copying.has(msg.copy)) {
-            copying.get(msg.copy)(msg.done, msg.total);
+            copying.get(msg.copy)(msg.done, msg.total, msg.moved);
         } else if (msg.type === 'burnProgress' && burning.has(msg.burn)) {
             burning.get(msg.burn)(msg.done, msg.total);
         } else if (msg.type === 'scanned' && onScanned) {
@@ -210,7 +210,7 @@
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: 'windows',
-        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn', 'themes'],
+        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn', 'themes', 'folderMove', 'cacheFolder'],
         // jEditor's storage on this PC: a folder handle, one subfolder per
         // order (see app/folder-cache.js)
         async dataDir() {
@@ -433,6 +433,42 @@
                 if (msg.error) throw new Error(msg.error);
                 return { bytes: msg.bytes };
             });
+        },
+        // ---- Moving the projects folder or the cache (folderMove,
+        // cacheFolder; app/folder-move.js) ----
+        // What's in a folder: { folders, files, bytes }, and with dest the
+        // room there: { free (-1: unknown), drive, sameDrive, refused }
+        async folderSize(path, dest) {
+            const { msg } = await answer('folderSize', { path, dest });
+            if (msg.error) throw new Error(msg.error);
+            return msg;
+        },
+        // Everything in path into dest, each item copied, checked and only
+        // then removed; progress(done, total, moved) → { moved, left:
+        // [{ name, why }], error, stopped }. Has a copyId, for cancelCopy.
+        moveFolder(path, dest, progress) {
+            const id = nextId++;
+            copying.set(id, progress || (() => { }));
+            const done = new Promise((resolve) => {
+                pending.set(id, resolve);
+                post({ type: 'moveFolder', id, path, dest });
+            }).then(({ msg }) => {
+                copying.delete(id);
+                return { moved: msg.moved || 0, left: msg.left || [], error: msg.error || null, stopped: !!msg.stopped };
+            });
+            done.copyId = id;
+            return done;
+        },
+        // The cache's folder: { path, chosen }
+        async cacheDir() {
+            return (await answer('cacheDir')).msg;
+        },
+        // The cache kept in a folder of its own in path from now on (null:
+        // where it was at first) → its folder
+        async setCacheDir(path) {
+            const { msg } = await answer('setCacheDir', { path });
+            if (msg.error) throw new Error(msg.error);
+            return msg.path;
         },
         cancelCopy(id) {
             post({ type: 'cancelCopy', copy: id });

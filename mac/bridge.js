@@ -317,7 +317,7 @@
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: mac.platform,
-        features: ['reveal', 'windows', 'places'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : [], ['themes'], mac.platform === 'mac' && mac.photos ? ['photosLibrary'] : []),
+        features: ['reveal', 'windows', 'places', 'folderMove'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : [], ['themes'], mac.platform === 'mac' && mac.photos ? ['photosLibrary'] : []),
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage
         async dataDir() {
@@ -414,6 +414,24 @@
                     if (progress && typeof msg.done === 'number' && msg.done > last) progress(msg.done, msg.total);
                     return { to: msg.to };
                 })
+                .finally(() => copying.delete(id));
+            done.copyId = id;
+            return done;
+        },
+        // ---- Moving the projects folder (folderMove; app/folder-move.js) ----
+        // What's in a folder: { folders, files, bytes }, and with dest the
+        // room there: { free (-1: unknown), drive, sameDrive, refused }
+        async folderSize(path, dest) {
+            return answer('folderSize', { path, dest });
+        },
+        // Everything in path into dest, each item copied, checked and only
+        // then removed; progress(done, total, moved) → { moved, left:
+        // [{ name, why }], error, stopped }. Has a copyId, for cancelCopy.
+        moveFolder(path, dest, progress) {
+            const id = nextCopy++;
+            copying.set(id, progress || (() => { }));
+            const done = answer('moveFolder', { path, dest, copy: id })
+                .then(msg => ({ moved: msg.moved || 0, left: msg.left || [], error: msg.error || null, stopped: !!msg.stopped }))
                 .finally(() => copying.delete(id));
             done.copyId = id;
             return done;
@@ -738,7 +756,7 @@
         } else if (msg.type === 'drivesChanged') {
             dispatchEvent(new Event('jeditor-drives')); // places.js
         } else if (msg.type === 'copyProgress') {
-            if (copying.has(msg.copy)) copying.get(msg.copy)(msg.done, msg.total);
+            if (copying.has(msg.copy)) copying.get(msg.copy)(msg.done, msg.total, msg.moved);
         } else if (msg.type === 'filesChanged') {
             dispatchEvent(new Event('jeditor-files')); // another window moved photos
         } else if (msg.type === 'closing') {

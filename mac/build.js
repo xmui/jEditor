@@ -39,7 +39,7 @@ const config = {
     productName: 'jEditor',
     copyright: 'jEditor',
     directories: { output: path.join(ROOT, 'dist'), buildResources: path.join(__dirname, 'build') },
-    files: ['main.js', 'preload.js', 'bridge.js', 'places.js', 'package.json', 'photos.js', 'native/index.js', 'native/photos.js', ...(linux ? [] : ['native/build/Release/toolbar.node', 'native/build/Release/photos.node'])],
+    files: ['main.js', 'preload.js', 'bridge.js', 'places.js', 'move.js', 'package.json', 'photos.js', 'native/index.js', 'native/photos.js', ...(linux ? [] : ['native/build/Release/toolbar.node', 'native/build/Release/photos.node'])],
     // A native module is loaded from disk, not from inside app.asar
     asarUnpack: ['native/build/Release/*.node'],
     extraResources: [{ from: path.join(ROOT, 'app'), to: 'app', filter: ['**/*'] }],

@@ -31,6 +31,8 @@ Checked by `test/parity.test.js`: each ✓ must match the app's `features` list,
 | `themes` | Themes in Settings → Appearance, with their own title bar | ✓ | ✓ | ✓ | | browser (by choice: the web keeps today's look) |
 | `quickAccess` | Explorer's Quick Access in the sidebar's Pinned | ✓ | | | | system |
 | `backdrop` | Mica or Acrylic behind the window | ✓ | | | | system |
+| `folderMove` | Changing the projects folder moves the projects there (copied, checked, then removed) | ✓ | ✓ | ✓ | | browser |
+| `cacheFolder` | Choosing where the cache is kept, in Settings → Projects | ✓ | | | | not yet on Mac and Linux (their cache is in the app's private storage); browser |
 | `permissions` | The Mac's privacy settings jEditor needs, in one window | | ✓ | | | system |
 | `photosLibrary` | The Photos library in the sidebar (Locations): its albums, opened read-only | | ✓ | | | system |
 
@@ -63,6 +65,7 @@ Each of these is exclusive only because nobody has built it for the other system
 | `recycle` | Electron's `shell.trashItem` moves a photo to the Trash. Ctrl+Z also needs to find it there and put it back. | The same, to the desktop's trash (freedesktop). | small |
 | `log` | The Electron host writes a log file, and the page shows it as on Windows. | The same. | small |
 | Pinned from the system (like `quickAccess`) | Finder's sidebar favourites can't be read easily, so probably not. | GTK bookmarks (`~/.config/gtk-3.0/bookmarks`) | small (Linux) |
+| `cacheFolder` | The Electron host keeps the cache in Chromium's private storage. It would need the page's storage to come from a real folder (as on Windows), then the same move. | The same. | medium |
 | `burn` | `drutil` / `hdiutil burn` | `xorriso` / `growisofs` | medium |
 | `scan` | ImageCaptureCore, for scanners with a Mac (ICA) driver | SANE | large |
 | `camera` | gphoto2, or the camera maker's SDK | gphoto2 | large |
