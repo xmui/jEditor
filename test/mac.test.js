@@ -12,6 +12,7 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 const { _electron: electron } = require('playwright-core');
+const { QUIET_FIRST_OPEN } = require('./page-helpers.js');
 
 const ROOT = path.join(__dirname, '..');
 const MAC = path.join(ROOT, 'mac');
@@ -76,6 +77,7 @@ async function launch(profile, args = [], env = {}) {
     page.on('pageerror', e => errors.push(e.message));
     page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
     await page.waitForFunction(() => typeof app !== 'undefined' && app.elements && window.JEditorNative);
+    await page.evaluate(QUIET_FIRST_OPEN);
     return { app, page, errors };
 }
 

@@ -37,7 +37,13 @@ static class Program
             Shell.StoreDir = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(options.SmokeDir))!, "jEditor-smoke-store");
         }
         else
+        {
+            // The cache folder chosen in Settings → Projects, while it's there
+            var cache = Settings.Load().CacheDir;
+            if (cache is not null && Directory.Exists(cache)) Shell.CacheDir = cache;
+            else if (cache is not null) Log.Write($"The cache folder {cache} isn't there: using the default");
             Shell.MoveOldOrders();
+        }
         Log.Write($"jEditor {Application.ProductVersion} starting: {string.Join(' ', args)}");
 
         ApplicationConfiguration.Initialize();

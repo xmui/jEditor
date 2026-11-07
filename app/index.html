@@ -62,6 +62,9 @@
     <script src="convert.js"></script>
     <script src="windows.js"></script>
     <script src="start.js"></script>
+    <script src="folder-move.js"></script>
+    <script src="open-card.js"></script>
+    <script src="first-open.js"></script>
     <script src="picked.js"></script>
     <script src="permissions.js"></script>
     <script src="motion.js"></script>
@@ -888,6 +891,27 @@
 
                     <section id="set-page-projects" class="settings-section" data-page="projects" role="tabpanel" aria-labelledby="set-h-folder">
                         <h3 id="set-h-folder" class="settings-page-title">Projects</h3>
+                        <!-- Where projects and the cache are kept (folder-move.js) -->
+                        <div id="set-folders" class="native-only">
+                            <h4 class="set-group">Folders</h4>
+                            <div class="set-row" data-needs="places">
+                                <span class="set-label">Projects folder
+                                    <small>Choose the folder that holds your photo folders. Each folder inside it shows here as a project.</small>
+                                    <small id="set-projects-where" class="set-path"></small></span>
+                                <button id="set-projects-change" class="btn secondary">Change…</button>
+                            </div>
+                            <div class="set-row" data-needs="cacheFolder">
+                                <span class="set-label">Cache folder
+                                    <small>Thumbnails, flags and edits for each project, so projects open fast</small>
+                                    <small id="set-cache-where" class="set-path"></small></span>
+                                <button id="set-cache-change" class="btn secondary">Change…</button>
+                            </div>
+                            <div class="set-row">
+                                <span class="set-label"><span id="set-cache-size">Cache</span>
+                                    <small>Clearing it frees the space. Projects stay, shown as ghost prints with their names until their thumbnails are made again.</small></span>
+                                <button id="set-cache-clear" class="btn secondary">Clear cache…</button>
+                            </div>
+                        </div>
                         <div class="set-row" data-needs="permissions">
                             <span class="set-label">Permissions
                                 <small>What macOS lets jEditor open: your folders, USB drives and memory cards</small></span>
@@ -902,6 +926,11 @@
                             <label class="set-label" for="cust-defer-new">Save edits when done
                                 <small>Projects opened from now on keep crops and turns until you save them. Each project can change it in its card.</small></label>
                             <input type="checkbox" id="cust-defer-new" class="switch">
+                        </div>
+                        <div class="set-row">
+                            <label class="set-label" for="cust-ask-defer">Ask about saving edits when opening a folder
+                                <small>The first time each folder is opened. Off: it follows Save edits when done</small></label>
+                            <input type="checkbox" id="cust-ask-defer" class="switch">
                         </div>
                         <div class="set-row">
                             <label class="set-label" for="cust-auto-check">Watch the folder for changes
@@ -1646,6 +1675,10 @@
                     <label id="uid-field-label" for="uid-input"></label>
                     <input id="uid-input" class="field" type="text" spellcheck="false" autocomplete="off">
                 </div>
+                <label id="uid-check" class="set-row uid-check hidden">
+                    <span class="set-label"><span id="uid-check-label"></span><small id="uid-check-note"></small></span>
+                    <input id="uid-check-box" type="checkbox" class="switch">
+                </label>
             </div>
             <div class="dialog-foot">
                 <span></span>

@@ -27,6 +27,7 @@ const Edits = {
     FILE: 'edits.json',
 
     defer: false,       // this project keeps edits until saved
+    chosen: false,      // ... and it was asked (first-open.js), so it's kept
     orphans: new Map(), // path → edit of photos not in the folder now
 
     ICON: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/></svg>',
@@ -140,6 +141,7 @@ const Edits = {
         this._loadedFor = app.dirHandle;
         this.orphans = new Map();
         this.defer = false;
+        this.chosen = false;
         if (!app.dirHandle || app.readOnlyMode) {
             this.updateBar();
             return [];
@@ -156,6 +158,7 @@ const Edits = {
         if (this._loadedFor !== app.dirHandle) return [];
         // A project that hasn't chosen: as Settings says for new ones (start.js)
         this.defer = data && typeof data.defer === 'boolean' ? data.defer : !!(app.uiPrefs && app.uiPrefs.deferNew);
+        this.chosen = !!data && typeof data.defer === 'boolean';
         const saved = new Map(Object.entries((data && data.edits) || {}));
         for (const f of app.files) {
             const rel = f.relPath || f.name;
@@ -258,7 +261,7 @@ const Edits = {
     isEmpty(data) {
         // (with new projects keeping edits, "off" is a choice to keep)
         const deferNew = !!(this.app && this.app.uiPrefs && this.app.uiPrefs.deferNew);
-        return !data.defer && !deferNew && !Object.keys(data.edits).length;
+        return !data.defer && !deferNew && !this.chosen && !Object.keys(data.edits).length;
     },
 
     // The setting and every edit, as edits.json holds them
@@ -461,6 +464,7 @@ const Edits = {
             }
         }
         this.defer = on;
+        this.chosen = true;
         this.saveSoon();
         await this.flush();
         this.updateBar();

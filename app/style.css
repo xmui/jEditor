@@ -1,4 +1,4 @@
-/* ==========================================================================
+/* ===================================================================
    jEditor styles. Every value comes from tokens.css.
 
     1. Base
@@ -9794,3 +9794,286 @@ body.touring .controls.idle button { pointer-events: auto; }
     .tour-hole, .tour-card { transition: opacity var(--dur-fast); }
     .tour-offer { animation: none; }
 }
+=======
+/* ---- The Open a folder card (open-card.js) ---- */
+.dialog.open-card {
+    width: min(760px, 100%);
+    height: min(780px, 100%);
+}
+
+.oc-top {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gutter);
+    padding: 4px var(--gutter) var(--gutter);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.oc-search {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: var(--ctl-lg);
+    padding: 0 14px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    color: var(--text-3);
+}
+
+.oc-search:focus-within { border-color: var(--accent); }
+
+.oc-search input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    border: 0;
+    background: none;
+    color: var(--text-1);
+    font: inherit;
+    font-size: var(--fs-body);
+    outline: none;
+}
+
+.oc-drop {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border: 1.5px dashed var(--border);
+    border-radius: var(--r-md);
+    transition: border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+
+.oc-drop.over {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.oc-drop-icon { color: var(--accent); display: flex; }
+.oc-drop-icon .i { width: 24px; height: 24px; }
+
+.oc-drop-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.oc-drop-name { font-weight: var(--fw-medium); }
+.oc-drop-sub { color: var(--text-2); font-size: var(--fs-small); }
+
+.oc-sub {
+    margin: 0 0 8px;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-medium);
+}
+
+.oc-recents {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.oc-recent {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 240px;
+    padding: 6px 12px 6px 6px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-md);
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.oc-recent:hover, .oc-row:hover { background: var(--bg-hover); }
+
+.oc-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.oc-name {
+    overflow: hidden;
+    font-weight: var(--fw-medium);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.oc-meta {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    white-space: nowrap;
+}
+
+.oc-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--gutter);
+    padding-top: 12px;
+}
+
+.oc-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: var(--r-md);
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.oc-row .oc-name { flex: 1; min-width: 0; }
+.oc-library { margin-bottom: 8px; }
+
+.oc-pics {
+    display: flex;
+    flex: none;
+    gap: 2px;
+}
+
+.oc-pic {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--r-xs);
+    object-fit: cover;
+}
+
+.oc-pics.one .oc-pic { width: 40px; height: 40px; }
+
+.oc-pic.ghost {
+    border: 1px dashed var(--border);
+}
+
+.oc-icon {
+    align-items: center;
+    justify-content: center;
+    width: 106px;
+    height: 34px;
+    color: var(--accent);
+}
+
+.oc-empty {
+    margin: 8px 10px;
+    color: var(--text-3);
+    font-size: var(--fs-small);
+}
+
+.oc-foot:empty { display: none; }
+
+@media (max-width: 560px) {
+    .oc-drop { flex-wrap: wrap; }
+    .oc-row .oc-pics { display: none; }
+}
+
+/* Settings → Projects: where a folder is */
+.set-label small.set-path {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    overflow-wrap: anywhere;
+}
+
+/* A recent whose pictures were cleared: a ghost stack, its name small
+   under it and nothing else */
+.recent-list li.ghosted .recent-sub { display: none; }
+.recent-list li.ghosted .recent-name { color: var(--text-2); font-size: var(--fs-small); }
+
+.oc-foot {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 10px var(--gutter);
+    border-top: 1px solid var(--border-subtle);
+    color: var(--text-3);
+    font-size: var(--fs-small);
+}
+
+.oc-foot-path {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-2);
+    font-family: var(--font-mono);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The first-time questions (first-open.js) */
+.dialog.first-open { width: min(520px, 100%); }
+
+.fo-body {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.fo-sub {
+    margin: 0 0 6px;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-semibold);
+}
+
+.fo-help, .fo-note {
+    margin: 0 0 8px;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.fo-note { margin: 0; color: var(--text-3); }
+
+.fo-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.fo-dir {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-size: var(--fs-small);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fo-dir.none { color: var(--text-3); font-family: inherit; }
+
+.fo-choices {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.fo-choice {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    cursor: pointer;
+}
+
+.fo-choice:has(input:checked) {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.fo-choice input { margin-top: 3px; accent-color: var(--accent); }
+.fo-choice-name { display: block; font-weight: var(--fw-medium); }
+.fo-choice small { display: block; color: var(--text-2); font-size: var(--fs-small); }
+
+/* A switch under a prompt (ui.js: check) */
+.uid-check { margin-top: 12px; padding: 0; cursor: pointer; }

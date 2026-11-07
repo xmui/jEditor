@@ -192,8 +192,15 @@ const PAGE_HELPERS = `
     };
 `;
 
+// The first-time questions (first-open.js) answered already, so they
+// don't cover what a test clicks; the tests of them clear this
+const QUIET_FIRST_OPEN = () => {
+    try { if (!localStorage.getItem('jeditor.firstOpen')) localStorage.setItem('jeditor.firstOpen', JSON.stringify({ asked: true, ask: false })); } catch (e) { /* no storage */ }
+};
+
 async function newPage(browser, url) {
     const page = await browser.newPage();
+    await page.addInitScript(QUIET_FIRST_OPEN);
     const issues = { errors: [], failedRequests: [] };
     page.on('pageerror', e => issues.errors.push('PAGEERROR: ' + e.message));
     page.on('console', m => { if (m.type() === 'error') issues.errors.push('CONSOLE: ' + m.text()); });
@@ -206,4 +213,4 @@ async function newPage(browser, url) {
     return { page, issues };
 }
 
-module.exports = { launchOptions, PAGE_HELPERS, newPage };
+module.exports = { launchOptions, PAGE_HELPERS, newPage, QUIET_FIRST_OPEN };
