@@ -27,6 +27,7 @@ const Guide = {
         ['start flags', 'flag', 'Flag photos', 'Star the picks, mark the ones to scan again, add a colour.', ['flag.star', 'flag.rescan']],
         ['start adjust', 'light', 'Light and colour', 'Exposure, white balance, curves and looks, as in Lightroom.', ['edit.adjust']],
         ['start paint', 'brush', 'Paint on layers', 'Brush, fill, text and shapes, over the photo.', ['edit.paint']],
+        ['start photos', 'find', 'Find anything', 'Type a command, a photo, a folder or a project, and Enter runs it. Each command shows its key.', ['app.palette']],
         ['photos', 'grid', 'One photo or the grid', 'The arrows move through the folder; this switches views.', ['view.toggle']],
         ['photos', 'undo', 'Undo anything', 'Turns, crops, renames, moves and deletes, even after you\'ve moved on.', ['edit.undo', 'edit.history']],
         ['photos files', 'rename', 'Rename', 'One photo, or every selected photo at once with a pattern.', ['edit.rename']],
@@ -91,7 +92,8 @@ const Guide = {
             copy: '<i class="gc-pair"><i class="gc-scene gc-warm"></i><i class="gc-scene gc-catch"></i></i>',
             layers: '<i class="gc-layers"><b></b><b></b><b></b></i>',
             image: scene + '<i class="gc-pasted"></i>',
-            canvas: '<i class="gc-blank"></i>'
+            canvas: '<i class="gc-blank"></i>',
+            find: '<i class="gc-pal"><b class="gc-q">rot</b><b></b><b></b><b></b></i>'
         };
         return `<div class="gclip gclip-${kind}" aria-hidden="true">${parts[kind] || scene}</div>`;
     },

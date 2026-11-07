@@ -1991,6 +1991,17 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await sleep(50);
             // On the start page: projects and the commands that work there
             out.menus = Themes.MENUS.Edit.some(m => m[1] === 'app.palette') && app.KEY_ACTIONS.some(a => a[0] === 'app.palette' && a[4][0] === 'Ctrl+K');
+            // In the guide and the tour; during the tour Esc closes it, not the tour
+            out.guide = Guide.CARDS.some(c => c[2] === 'Find anything' && c[4].includes('app.palette'));
+            await Tour.start();
+            await Tour.go(Tour.steps.findIndex(x => x.id === 'find'));
+            await sleep(200);
+            out.stop = Tour.steps[Tour.i].id === 'find' && /Ctrl/.test(document.querySelector('.tour-card').textContent);
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true }));
+            out.inTour = Palette.isOpen();
+            press('Escape');
+            out.tourStays = !Palette.isOpen() && Tour.running;
+            Tour.end();
             return out;
         });
         check('Ctrl+K opens Find anything, its box ready to type in', r.opens, JSON.stringify(r));
@@ -2002,6 +2013,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('find anything: what was picked comes first next time; arrows move; Esc closes', r.recent === 'Recent: Rotate left' && r.moved && r.escape, JSON.stringify(r));
         check('find anything: never opens over another dialog', r.notOver, JSON.stringify(r));
         check('find anything: in the menus and the shortcuts list', r.menus, JSON.stringify(r));
+        check('find anything: a card in the guide, and a stop in the tour where Ctrl+K works', r.guide && r.stop && r.inTour, JSON.stringify(r));
+        check('find anything: during the tour, Esc closes it and the tour carries on', r.tourStays, JSON.stringify(r));
         check('find anything: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

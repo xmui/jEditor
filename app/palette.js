@@ -50,6 +50,8 @@ const Palette = {
         'flag.rescan': 'redo reject bad',
         'flag.clear': 'unflag',
         'app.search': 'find filter',
+        'app.guide': 'help how tutorial manual',
+        'menu.tour': 'help tutorial welcome walk through',
         'app.settings': 'preferences options',
         'app.dupes': 'duplicates same similar',
         'app.convert': 'format jpeg jpg webp heic tiff',
@@ -180,6 +182,7 @@ const Palette = {
                 if (typeof Export !== 'undefined') out.push(this.cmd('menu.export', 'Export…', 'export', '', () => Export.open({ files: a.selection.size ? [...a.selection] : null })));
                 if (a.pasteFromMenu) out.push(this.cmd('menu.paste', 'Paste image', 'paste image from another app clipboard', this.keyOf('edit.pasteImage'), () => a.pasteFromMenu()));
             }
+            if (typeof Tour !== 'undefined' && Tour.start) out.push(this.cmd('menu.tour', 'Take the tour', 'tour', '', () => Tour.start()));
             out.push(this.cmd('menu.whatsnew', 'What\'s new', 'whats new changelog version update', '', () => a.toggleWhatsNew()));
         }
         // The other modes, from Adjust and Paint
