@@ -156,7 +156,7 @@ const Folders = {
     },
 
     canEdit() {
-        if (!this.app.ensureWritable()) return false;
+        if (!this.app.ensureWritable({ files: true })) return false;
         if (!this.app.dirHandle) {
             this.app.showToast('Folders need a folder opened with Open folder');
             return false;
@@ -1732,7 +1732,7 @@ const Folders = {
 
     dragStart(e, file) {
         const app = this.app;
-        if (!this.enabled() || app.readOnlyMode) {
+        if (!this.enabled() || app.fixedFiles) {
             e.preventDefault();
             return;
         }

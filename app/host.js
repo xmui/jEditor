@@ -21,7 +21,11 @@
 //   burn         burning a project onto a CD or DVD (disc.js)
 //   themes       Settings → Appearance's themes, with their own title bar (themes.js)
 //   photosLibrary  the Mac's Photos library in the sidebar (places.js): its albums
-//                open as the project, read-only (photosAlbum: a folder handle)
+//                open as the project (photosAlbum: a folder handle); an edit is
+//                saved back as a Photos edit on the photo as it is now, and
+//                nothing is added, renamed or removed (app.fixedFiles)
+//   photosAdd    Add to Photos library: a project's photos into Photos, in an
+//                album named after it (script.js: addToPhotos)
 //
 // Wording that names the system's own things comes from here too: in a
 // text, {files} is Explorer, Finder or Files, {computer} this PC or this Mac, and

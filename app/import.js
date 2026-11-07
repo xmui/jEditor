@@ -138,7 +138,7 @@ const Import = {
         const span = first.toDateString() === last.toDateString() ? first.toLocaleDateString() : `${first.toLocaleDateString()} – ${last.toLocaleDateString()}`;
         this.el('import-summary').textContent = `${this.photos.length.toLocaleString()} photo${this.photos.length === 1 ? '' : 's'}, ${span}` +
             (this.fresh.length < this.photos.length ? ` — ${this.fresh.length.toLocaleString()} not imported before` : '');
-        const here = !!(app.dirHandle && !app.readOnlyMode);
+        const here = !!(app.dirHandle && !app.fixedFiles);
         const projects = Host.has('places') && Places.get(Places.KEY_DIR, null);
         this.el('import-to-here').disabled = !here;
         this.el('import-to-here-label').textContent = here ? `Into ${app.dirHandle.name}` : 'Into the open project';

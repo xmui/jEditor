@@ -504,7 +504,7 @@ const Places = {
             // in this menu (cardItems). The themes show the buttons instead
             `<button class="btn ghost icon sm sb-card-more" data-act="more" title="More: ${Host.has('scan') ? 'scan, ' : ''}${path && Host.has('reveal') ? Host.words().files + ', ' : ''}export" aria-label="More" aria-haspopup="menu">${this.icons.more}</button>` +
             (path ? `<div class="sb-card-path" title="${this.esc(path)}">${this.esc(path)}</div>` : '') +
-            (app.library ? `<div class="sb-card-path">Photos library · read-only</div>` : '') +
+            (app.library ? `<div class="sb-card-path">Photos library</div>` : '') +
             `<div class="sb-card-meta">${n.toLocaleString()} photo${n === 1 ? '' : 's'} · ${app.formatBytes(bytes)}</div>` +
             `<div class="sb-card-btns">` +
             (Host.has('scan') ? `<button class="btn primary sm" data-act="scan">${this.icons.scan}Scan</button>` : '') +

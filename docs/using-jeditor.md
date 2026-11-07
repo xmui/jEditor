@@ -185,6 +185,15 @@ In the Windows, Mac and Linux apps:
 
 - **Importing from a camera's card:** when a card with a DCIM folder is plugged in, jEditor offers to import it; or press `Ctrl+I` (in a browser, choose the card's folder). The photos go into the open project, a new project in your projects folder (named for the day and the card), or a folder you choose; into a folder per day if you like; only the ones not imported before; and the card is ejected after if you like. RAW files come too; videos stay on the card.
 
+## The Photos library (Mac)
+
+The Mac app has your Photos library in the sidebar, under Locations (`photosLibrary`). Open it out for Favourites, Recently added and your albums; click one to open it as the project, or **Open** for the whole library. macOS asks once whether jEditor may see it (and it's in jEditor → Permissions…).
+
+- **Editing a photo from it** works as for any photo: rotate, flip, crop and straighten, Adjust, Paint, Save edits. jEditor starts from the photo **as it is now**, with whatever was done to it before in Photos or another app, and the edit is saved back into Photos on top of that, as a Photos edit. So it shows in Photos and on your other devices, the earlier edits are kept in it, and Photos keeps the untouched original: **Revert to Original** in Photos goes back to it. `⌘Z` in jEditor puts the photo back as it was before (saved as one more edit, so nothing in Photos is lost). macOS may ask you to allow jEditor to change each photo.
+- Photos sees jEditor's edit as finished pixels: Photos' own sliders for the earlier edits can't be moved again after it (Revert to Original still undoes the lot). jEditor keeps its own edits re-editable until they're saved, as it does for any photo (Save edits when done).
+- **Renaming, moving and deleting** library photos are left to Photos, so those aren't in the menus. Flags and kept edits are kept on this Mac, for each album.
+- **Add to Photos library** (`photosAdd`), on a photo's right-click, under ⋯ on the selection bar, or **Add all to Photos library** on the grid's right-click, puts a folder project's photos into Photos as they are on disk, with their dates, DPI and the rest of their metadata, in an album named after the project (made the first time). A scan order becomes an album. If some have edits not saved yet, jEditor asks you to save them first (Save edits…), so Photos gets the photo as it looks here.
+
 ## Converting photos: format, quality and storage
 
 **Convert…** turns photos, one or many, into another format: **AVIF** (smallest), **JPEG XL** (newest), **WebP** (for the web), **JPEG** (opens anywhere), **PNG** (lossless) or **TIFF** (lossless, for print). Open it from the toolbar's **Convert** button (under ⋯ to start with; Settings can put it on the toolbar; in single view it converts the photo open), **Convert photos…** on the start page, right-clicking a photo, the selected photos, a folder or the project in the sidebar, or ⋯ on the selection bar.

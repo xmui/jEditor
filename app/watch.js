@@ -54,7 +54,7 @@ const Watch = {
 
     enabled() {
         const app = this.app;
-        return !!(app && app.dirHandle && !app.readOnlyMode && app.uiPrefs && app.uiPrefs.autoCheck !== false);
+        return !!(app && app.dirHandle && !app.fixedFiles && app.uiPrefs && app.uiPrefs.autoCheck !== false);
     },
 
     // While one of these runs, the folder on disk and what's loaded can
