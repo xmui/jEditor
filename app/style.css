@@ -9756,3 +9756,92 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    under it and nothing else */
 .recent-list li.ghosted .recent-sub { display: none; }
 .recent-list li.ghosted .recent-name { color: var(--text-2); font-size: var(--fs-small); }
+
+.oc-foot {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 10px var(--gutter);
+    border-top: 1px solid var(--border-subtle);
+    color: var(--text-3);
+    font-size: var(--fs-small);
+}
+
+.oc-foot-path {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-2);
+    font-family: var(--font-mono);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The first-time questions (first-open.js) */
+.dialog.first-open { width: min(520px, 100%); }
+
+.fo-body {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.fo-sub {
+    margin: 0 0 6px;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-semibold);
+}
+
+.fo-help, .fo-note {
+    margin: 0 0 8px;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.fo-note { margin: 0; color: var(--text-3); }
+
+.fo-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.fo-dir {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-size: var(--fs-small);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fo-dir.none { color: var(--text-3); font-family: inherit; }
+
+.fo-choices {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.fo-choice {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    cursor: pointer;
+}
+
+.fo-choice:has(input:checked) {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.fo-choice input { margin-top: 3px; accent-color: var(--accent); }
+.fo-choice-name { display: block; font-weight: var(--fw-medium); }
+.fo-choice small { display: block; color: var(--text-2); font-size: var(--fs-small); }
+
+/* A switch under a prompt (ui.js: check) */
+.uid-check { margin-top: 12px; padding: 0; cursor: pointer; }

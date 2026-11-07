@@ -13,7 +13,7 @@ const path = require('path');
 const { chromium } = require('playwright-core');
 const { createServer } = require('../scripts/serve.js');
 
-const { launchOptions } = require('./page-helpers.js');
+const { launchOptions, QUIET_FIRST_OPEN } = require('./page-helpers.js');
 
 let passed = 0, failed = 0;
 function check(name, ok, detail = '') {
@@ -435,6 +435,7 @@ async function newPage(context, baseUrl, host = null) {
     page.on('pageerror', e => errors.push(e.message + (process.env.STACKS ? ' @ ' + e.stack : '')));
     page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
     await page.addInitScript(FAKE_NATIVE);
+    await page.addInitScript(QUIET_FIRST_OPEN);
     if (host) await page.addInitScript(h => Object.assign(window.JEditorNative, h), host);
     await page.goto(`${baseUrl}/index.html`);
     await page.waitForFunction(() => typeof app !== 'undefined' && app.elements);

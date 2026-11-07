@@ -64,6 +64,7 @@
     <script src="start.js"></script>
     <script src="folder-move.js"></script>
     <script src="open-card.js"></script>
+    <script src="first-open.js"></script>
     <script src="picked.js"></script>
     <script src="permissions.js"></script>
     <script src="motion.js"></script>
@@ -925,6 +926,11 @@
                             <input type="checkbox" id="cust-defer-new" class="switch">
                         </div>
                         <div class="set-row">
+                            <label class="set-label" for="cust-ask-defer">Ask about saving edits when opening a folder
+                                <small>The first time each folder is opened. Off: it follows Save edits when done</small></label>
+                            <input type="checkbox" id="cust-ask-defer" class="switch">
+                        </div>
+                        <div class="set-row">
                             <label class="set-label" for="cust-auto-check">Watch the folder for changes
                                 <small>Photos a scanner saves, or that are removed or edited elsewhere, show up on their own</small></label>
                             <input type="checkbox" id="cust-auto-check" class="switch">
@@ -1667,6 +1673,10 @@
                     <label id="uid-field-label" for="uid-input"></label>
                     <input id="uid-input" class="field" type="text" spellcheck="false" autocomplete="off">
                 </div>
+                <label id="uid-check" class="set-row uid-check hidden">
+                    <span class="set-label"><span id="uid-check-label"></span><small id="uid-check-note"></small></span>
+                    <input id="uid-check-box" type="checkbox" class="switch">
+                </label>
             </div>
             <div class="dialog-foot">
                 <span></span>

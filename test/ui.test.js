@@ -3270,6 +3270,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 rows[0].querySelectorAll('img.oc-pic').length === 1 && rows[1].querySelectorAll('.oc-pic.ghost').length === 3;
             await wait(() => /7 photos/.test(rows[0].textContent) || /7 photos/.test(document.querySelector('#oc-list .oc-row').textContent));
             out.counts = /7 photos · Today/.test(document.querySelector('#oc-list .oc-row').textContent);
+            // Its foot: where the projects are, and a small link to change it
+            const foot = document.getElementById('oc-foot');
+            out.foot = !foot.classList.contains('hidden') && /Projects folder:\s*D:\\Projects/.test(foot.textContent) && document.getElementById('oc-change').textContent === 'Change…';
             OpenCard.close();
 
             // Not enough room: the numbers, and nothing moved
@@ -3325,12 +3328,99 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('open card: Escape closes it, and Browse… is the folder picker', r.escape && r.browse);
         check('open card: lists the projects folder\'s projects, with cached pictures or ghost frames', r.projects);
         check('open card: each project says how many photos and when', r.counts);
+        check('open card: its foot says where the projects folder is, with a link to change it', r.foot);
         check('move: asks to move or leave, with the count', r.ask);
         check('move: not enough room shows the numbers and moves nothing', r.noRoom && r.noRoomKept);
         check('move: Leave changes the folder and moves nothing', r.left);
         check('move: Move confirms how it\'s kept safe, then moves', r.confirm && r.moved);
         check('move: a failed move keeps the old folder and says nothing was lost', r.failed && r.failedKept);
         check('clear cache: removes the thumbnails, and recents show as ghost stacks with only the name', r.before && r.clearAsk && r.cleared);
+
+        // The first-time questions (first-open.js)
+        const f = await page.evaluate(async () => {
+            const out = {};
+            const wait = async (fn) => { for (let i = 0; i < 150 && !fn(); i++) await new Promise(res => setTimeout(res, 20)); return fn(); };
+            const shown = (id) => !!document.getElementById(id) && !document.getElementById(id).classList.contains('hidden');
+            const opfs = await navigator.storage.getDirectory();
+            const make = async (name) => {
+                try { await opfs.removeEntry(name, { recursive: true }); } catch (e) { /* fresh */ }
+                const d = await opfs.getDirectoryHandle(name, { create: true });
+                const w = await (await d.getFileHandle('a.jpg', { create: true })).createWritable();
+                await w.write(new Blob([await makeRealJpeg(200, 150)], { type: 'image/jpeg' }));
+                await w.close();
+                return d;
+            };
+            const openIt = async (d) => { window.showDirectoryPicker = async () => d; await app.browseFolder(); await wait(() => app.dirHandle === d && !app.isLoading); };
+            localStorage.removeItem('jeditor.firstOpen');
+            Start.setDeferNew(false);
+            // The first Open a folder: one dialog, with Save edits when done
+            document.getElementById('btn-browse-folder').click();
+            await wait(() => document.getElementById('first-open'));
+            const fo = document.getElementById('first-open');
+            out.welcome = !!fo && fo.querySelectorAll('input[name="fo-defer"]').length === 2 && /Keep until I save/.test(fo.textContent) &&
+                !document.getElementById('fo-dir') && !shown('open-card');
+            fo.querySelector('input[value="on"]').click();
+            document.getElementById('fo-ok').click();
+            await wait(() => shown('open-card'));
+            out.remembered = !document.getElementById('first-open') && FirstOpen.asked() && app.uiPrefs.deferNew === true && shown('open-card');
+            OpenCard.close();
+            // ... and its answer is the folder opened then: not asked again
+            await openIt(await make('fo First'));
+            await new Promise(res => setTimeout(res, 300));
+            out.firstFolder = !shown('ui-dialog') && Edits.chosen && Edits.defer === true;
+            // Another folder's first time: asked (Settings can turn it on and off)
+            FirstOpen.set({ ask: true });
+            await openIt(await make('fo Second'));
+            await wait(() => shown('ui-dialog'));
+            out.asked = /Save edits to fo Second when done/.test(document.getElementById('uid-title').textContent);
+            document.getElementById('uid-alt').click();
+            await wait(() => Edits.chosen);
+            out.answered = Edits.defer === false && Edits.chosen;
+            await Edits.flush();
+            // Opened again: it chose already
+            await openIt(await make('fo Other'));
+            await wait(() => shown('ui-dialog'));
+            document.getElementById('uid-cancel').click();
+            await openIt(await opfs.getDirectoryHandle('fo Second'));
+            await new Promise(res => setTimeout(res, 300));
+            out.again = !shown('ui-dialog') && Edits.chosen && Edits.defer === false;
+            // Asking off: a new folder follows Save edits when done
+            FirstOpen.set({ ask: false });
+            await openIt(await make('fo Third'));
+            await new Promise(res => setTimeout(res, 300));
+            out.off = !shown('ui-dialog') && Edits.defer === true && !Edits.chosen;
+            app.toggleCustomizePanel(true);
+            out.setting = document.getElementById('cust-ask-defer').checked === false;
+            app.toggleCustomizePanel(false);
+            // A folder dragged in before anything was asked: the dialog, for it
+            localStorage.removeItem('jeditor.firstOpen');
+            await openIt(await make('fo Dropped'));
+            await wait(() => document.getElementById('first-open'));
+            out.dropped = /Opening fo Dropped/.test(document.getElementById('fo-title').textContent);
+            document.getElementById('first-open').querySelector('input[value="off"]').click();
+            document.getElementById('fo-ok').click();
+            await wait(() => Edits.chosen);
+            out.droppedKept = Edits.defer === false && app.uiPrefs.deferNew === false;
+            // A prompt with a switch (New project's name dialog) answers both
+            const p = UI.prompt({ title: 'New project', input: { label: 'Name' }, check: { label: 'Save edits when done', value: true } });
+            document.getElementById('uid-input').value = 'Smith';
+            const hasSwitch = shown('uid-check') && document.getElementById('uid-check-box').checked;
+            document.getElementById('uid-ok').click();
+            const got = await p;
+            out.prompt = got && got.value === 'Smith' && got.checked === true && hasSwitch;
+            const q = UI.prompt({ title: 'x' });
+            out.plainPrompt = !shown('uid-check');
+            UI.answer(false);
+            await q;
+            return out;
+        });
+        check('first open: the first Open a folder asks once, with both choices explained', f.welcome, JSON.stringify(f));
+        check('first open: the answer is remembered, and Save edits when done is set', f.remembered);
+        check('first open: the folder opened then isn\'t asked again', f.firstFolder);
+        check('first open: each other folder\'s first time asks, and keeps the answer', f.asked && f.answered && f.again);
+        check('first open: with asking off in Settings, a folder follows Save edits when done', f.off && f.setting);
+        check('first open: a folder dragged in first gets the dialog, for that folder', f.dropped && f.droppedKept);
+        check('new project: the name dialog has a Save edits when done switch', f.prompt && f.plainPrompt);
         check('open card suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

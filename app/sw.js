@@ -28,6 +28,7 @@ const ASSETS = [
     './start.js',
     './folder-move.js',
     './open-card.js',
+    './first-open.js',
     './picked.js',
     './permissions.js',
     './motion.js',

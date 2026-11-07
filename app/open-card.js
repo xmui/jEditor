@@ -10,8 +10,7 @@
 //
 // Where there's no folder to pick (Safari, phones: picked.js) the tile
 // goes straight to the photo picker instead. Choosing the projects folder
-// isn't in the card (Settings → Projects, or the sidebar); .oc-foot is
-// kept for it.
+// is a small link at its foot (and in Settings → Projects).
 
 const OpenCard = {
     SHOWN_RECENTS: 6,
@@ -176,6 +175,15 @@ const OpenCard = {
             html += '<p class="oc-empty">Nothing matches</p>';
         }
         this.el('oc-list').innerHTML = html;
+        // Where the projects are, and a small link to change it
+        const foot = this.el('oc-foot');
+        const places = Host.has('places') && typeof Places !== 'undefined';
+        foot.classList.toggle('hidden', !places);
+        if (places) {
+            foot.innerHTML = `<span class="oc-foot-label">Projects folder:</span> <span class="oc-foot-path" title="${this.esc(FolderMove.ADVICE)}">${this.esc(this.dir || 'not chosen yet')}</span>` +
+                `<button id="oc-change" class="link-btn" title="${this.esc(FolderMove.ADVICE)}">${this.dir ? 'Change…' : 'Choose…'}</button>`;
+            this.el('oc-change').addEventListener('click', async () => { await FolderMove.changeProjects(); this.refresh(); });
+        }
         setTimeout(() => old.forEach(u => URL.revokeObjectURL(u)), 0);
     },
 

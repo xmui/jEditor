@@ -725,13 +725,16 @@ const Places = {
         const dir = this.projectsDir();
         if (!dir) return this.chooseFolder();
         const dirName = dir.split(/[\\/]/).filter(Boolean).pop() || dir;
-        const name = await UI.prompt({
+        const r = await UI.prompt({
             title: 'New project',
             message: `A new folder in ${dirName}, opened as the project, ready to scan or shoot into.`,
             input: { label: 'Name', placeholder: 'Smith Order' },
+            check: { label: 'Save edits when done', note: 'Edits wait until you save them. Off: they\'re written into the photos as you go.', value: !!this.app.uiPrefs.deferNew },
             ok: 'Create'
         });
-        if (name === null || !name.trim()) return;
+        const name = r && r.value;
+        if (!name || !name.trim()) return;
+        FirstOpen.preset(name.trim(), r.checked); // so it isn't asked when it opens
         try {
             const path = await this.native().makeFolder(dir, name.trim());
             this.listings.clear();

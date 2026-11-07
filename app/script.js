@@ -189,7 +189,7 @@ const app = {
 
         // Browse Folder Button (uses modern File System Access API for write support)
         // The Open a folder card (open-card.js); straight to the picker where there's no card
-        document.getElementById('btn-browse-folder').addEventListener('click', () => OpenCard.available() ? OpenCard.open() : this.browseFolder());
+        document.getElementById('btn-browse-folder').addEventListener('click', () => OpenCard.available() ? FirstOpen.before(() => OpenCard.open()) : this.browseFolder());
 
         // Grid Size Slider
         this.elements.gridSizeSlider.addEventListener('input', (e) => this.setGridSize(parseInt(e.target.value, 10)));
@@ -268,6 +268,7 @@ const app = {
         Stored.init(this);
         FolderMove.init(this);
         OpenCard.init(this);
+        FirstOpen.init(this);
         CropLog.init(this);
         Updates.init(this);
         Experiments.init(this);
@@ -873,6 +874,7 @@ const app = {
         // Folder
         $('cust-on-open').addEventListener('change', (e) => Start.onOpenChanged(e.target.value));
         $('cust-defer-new').addEventListener('change', (e) => Start.setDeferNew(e.target.checked));
+        $('cust-ask-defer').addEventListener('change', (e) => FirstOpen.set({ ask: e.target.checked }));
         $('cust-auto-check').addEventListener('change', (e) => {
             this.uiPrefs.autoCheck = e.target.checked;
             this.saveUiPrefs();
@@ -986,6 +988,7 @@ const app = {
         $('cust-folder-cache').checked = this.uiPrefs.folderCache !== false;
         $('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
         $('cust-defer-new').checked = !!this.uiPrefs.deferNew;
+        $('cust-ask-defer').checked = FirstOpen.get().ask !== false;
         Start.drawOnOpen();
         FolderMove.draw();
         $('cust-open-libraries').checked = !!this.uiPrefs.openLibraries;
@@ -1695,6 +1698,8 @@ const app = {
             this.sortFiles(false); // pass false to avoid re-rendering twice
             // Edits kept until saved: the thumbnails are made with them
             await Edits.loadFor(1500);
+            // A folder's first time: whether it keeps edits until saved (first-open.js)
+            setTimeout(() => FirstOpen.afterLoad(), 0);
 
             if (this.files.length > 0) {
                 this.showToast(`Loaded ${this.files.length.toLocaleString()} photo${this.files.length === 1 ? '' : 's'}`, 2500, null, null, { kind: 'load' });
