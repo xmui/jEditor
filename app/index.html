@@ -96,7 +96,15 @@
                     </div>
                     <!-- Nothing opened yet -->
                     <div id="home-empty" class="home-empty hidden">
-                        <p>Folders you open lie here as stacks of prints.</p>
+                        <ul class="recent-list">
+                            <li class="ghost-first ghosted"><button id="home-first" type="button" class="recent-open" title="Open a folder">
+                                <span class="recent-pile" aria-hidden="true"><span class="recent-print ghost"></span><span class="recent-print ghost first"><svg class="i" viewBox="0 0 24 24"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg></span></span>
+                                <span class="recent-label"><span class="recent-name">Your first folder</span><span class="recent-sub">Open one, or drop it here</span></span></button></li>
+                            <li class="ghosted" aria-hidden="true"><span class="recent-pile"><span class="recent-print ghost"></span><span class="recent-print ghost"></span></span><span class="ghost-lines"><i></i><i></i></span></li>
+                            <li class="ghosted" aria-hidden="true"><span class="recent-pile"><span class="recent-print ghost"></span><span class="recent-print ghost"></span></span><span class="ghost-lines"><i></i><i></i></span></li>
+                            <li class="ghosted" aria-hidden="true"><span class="recent-pile"><span class="recent-print ghost"></span><span class="recent-print ghost"></span></span><span class="ghost-lines"><i></i><i></i></span></li>
+                        </ul>
+                        <p>Folders you open lie here as stacks of prints, newest first.</p>
                     </div>
                     <!-- Photos picked here are converted here: how far, and what it did (convert.js) -->
                     <div id="start-convert-run" class="start-convert-run hidden" role="status" aria-live="polite"></div>

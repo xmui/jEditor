@@ -6895,6 +6895,7 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
 
 .recent-pile {
     position: relative;
+    display: block;
     width: 190px;
     height: 150px;
 }
@@ -6911,17 +6912,81 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
     transition: transform 380ms var(--ease-out), box-shadow 380ms var(--ease-out);
 }
 
-.recent-print img,
-.recent-print .recent-blank {
+.recent-print img {
     display: block;
     width: 100%;
     height: 100%;
     object-fit: cover;
 }
 
-/* A print with no picture kept yet: the paper's own grey */
-.recent-blank {
-    background: linear-gradient(160deg, #e9ecf1, #d5dae2);
+/* Ghost prints: where a stack will lie, or a stack whose pictures
+   aren't kept (not made yet, or the cache was cleared) */
+.recent-print.ghost {
+    display: grid;
+    place-items: center;
+    padding: var(--sp-3);
+    border: 1.5px dashed color-mix(in srgb, var(--text-3) 45%, transparent);
+    background: color-mix(in srgb, var(--text-1) 3%, transparent);
+    box-shadow: none;
+}
+
+.ghost-name {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    color: var(--text-2);
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+    text-align: center;
+}
+
+.recent-print.ghost.first {
+    border: 2px dashed var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.recent-print.ghost.first .i {
+    width: 32px;
+    height: 32px;
+}
+
+/* The empty table: the first slot invites a folder, the others fade */
+.home-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-5);
+}
+
+.home-empty li:not(.ghost-first) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: none;
+}
+.home-empty li:nth-child(3) { opacity: .7; }
+.home-empty li:nth-child(4) { opacity: .45; }
+
+.ghost-lines {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    margin-top: var(--sp-4);
+}
+
+.ghost-lines i {
+    display: block;
+    width: 110px;
+    height: 8px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--text-3) 22%, transparent);
+}
+
+.ghost-lines i + i {
+    width: 70px;
 }
 
 .recent-print:nth-child(1) { transform: rotate(-7deg) translate(-6px, 4px); }
@@ -6930,9 +6995,14 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
 .recent-print:nth-child(4) { transform: rotate(1.5deg) translate(1px, -2px); box-shadow: var(--shadow-3); }
 
 /* Pointed at: the prints fan out */
-.recent-list li:hover .recent-print:nth-child(1),
+.home-empty .recent-print:nth-child(1) { transform: rotate(-6deg) translate(-5px, 4px); }
+.home-empty .recent-print:nth-child(2) { transform: rotate(3deg) translate(4px, 1px); }
+.home-empty li.ghost-first:hover .recent-print.first,
+.home-empty .recent-open:focus-visible .recent-print.first { transform: translateY(-8px) scale(1.04); }
+
+.recent-list li:not(.ghosted):hover .recent-print:nth-child(1),
 .recent-open:focus-visible .recent-print:nth-child(1) { transform: rotate(-16deg) translate(-70px, -10px); }
-.recent-list li:hover .recent-print:nth-child(2),
+.recent-list li:not(.ghosted):hover .recent-print:nth-child(2),
 .recent-open:focus-visible .recent-print:nth-child(2) { transform: rotate(12deg) translate(70px, -12px); }
 .recent-list li:hover .recent-print:nth-child(3),
 .recent-open:focus-visible .recent-print:nth-child(3) { transform: rotate(-5deg) translate(-24px, -22px); }

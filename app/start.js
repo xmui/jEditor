@@ -171,6 +171,7 @@ const Start = {
         on('btn-settings-start', (e) => { e.stopPropagation(); this.settingsMenu(e.currentTarget); });
         on('start-capture', (e) => { e.stopPropagation(); this.capture(e.currentTarget); });
         on('start-adjust', () => this.openPhoto('adjust'));
+        on('home-first', () => this.el('btn-browse-folder').click());
         on('start-paint', () => Modes.paintStart());
         on('home-all', () => this.places(true));
         on('home-places-x', () => this.places(false));

@@ -212,11 +212,10 @@ const Recents = {
             pile.className = 'recent-pile';
             pile.setAttribute('aria-hidden', 'true');
             const thumbs = (rec.thumbs || []).slice(0, photo ? 1 : this.THUMBS);
-            const n = photo ? 1 : Math.max(3, thumbs.length);
-            for (let i = n - 1; i >= 0; i--) {
-                const print = document.createElement('span');
-                print.className = 'recent-print';
-                if (thumbs[i]) {
+            if (thumbs.length) {
+                for (let i = thumbs.length - 1; i >= 0; i--) {
+                    const print = document.createElement('span');
+                    print.className = 'recent-print';
                     const img = document.createElement('img');
                     const url = URL.createObjectURL(thumbs[i]);
                     this._urls.push(url);
@@ -224,12 +223,23 @@ const Recents = {
                     img.alt = '';
                     img.decoding = 'async';
                     print.appendChild(img);
-                } else {
-                    const blank = document.createElement('span');
-                    blank.className = 'recent-blank';
-                    print.appendChild(blank);
+                    pile.appendChild(print);
                 }
-                pile.appendChild(print);
+            } else {
+                // No pictures kept (not made yet, or the cache was cleared):
+                // ghost prints with the name on the top one
+                li.classList.add('ghosted');
+                for (let i = 0; i < (photo ? 1 : 2); i++) {
+                    const print = document.createElement('span');
+                    print.className = 'recent-print ghost';
+                    if (i === (photo ? 0 : 1)) {
+                        const n = document.createElement('span');
+                        n.className = 'ghost-name';
+                        n.textContent = rec.name;
+                        print.appendChild(n);
+                    }
+                    pile.appendChild(print);
+                }
             }
             const label = document.createElement('span');
             label.className = 'recent-label';
