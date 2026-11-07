@@ -9565,7 +9565,9 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 
 /* ---- The guide (guide.js): a sheet of cards with clips ---- */
 .guide-scrim {
-    position: fixed; inset: 0; z-index: var(--z-modal); display: grid; place-items: center; padding: var(--sp-4);
+    position: fixed; inset: 0; z-index: var(--z-modal); display: grid; place-items: center;
+    /* Under a theme's title and menu bar (--th-top), where there's one */
+    padding: calc(var(--th-top, 0px) + var(--sp-4)) var(--sp-4) var(--sp-4);
     background: var(--scrim); animation: guide-fade var(--dur-base) var(--ease-out) both;
 }
 .guide {
