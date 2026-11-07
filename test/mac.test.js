@@ -305,8 +305,10 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         const { app, page, errors } = await launch(profile, [], { JEDITOR_VOLUMES: volumes });
         await app.evaluate(({ dialog }, p) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] }); }, projectsDir);
         const r = await page.evaluate(async (p) => {
+            // All projects…, on the home page
+            document.getElementById('home-all').click();
             const box = document.getElementById('start-places');
-            const shown = getComputedStyle(box).display !== 'none';
+            const shown = getComputedStyle(box).display !== 'none' && box.getClientRects().length > 0;
             await Places.chooseFolder();
             const places = await JEditorNative.places();
             return {
@@ -1019,6 +1021,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         // Two cameras' IMG_0001 in the whole library: both are there, under their own names
         const before = fs.readdirSync(path.join(lib, 'Wedding')).map(n => fs.readFileSync(path.join(lib, 'Wedding', n)).toString('base64')).join();
         const { app, page, errors } = await launch(path.join(tmp, 'profile-photos'), [], { JEDITOR_PHOTOS_LIBRARY: lib });
+        await page.click('#home-all');
         await page.waitForSelector('#start-places .sb-row[data-path="photos-library:"]', { timeout: 10000 }).catch(() => { });
         const r = await page.evaluate(async () => {
             const box = document.getElementById('start-places');

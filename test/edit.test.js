@@ -1537,11 +1537,12 @@ const PROJECT = `
                 const $ = (id) => document.getElementById(id);
                 const shownEl = (id) => { const e = $(id); return !!e && !e.classList.contains('hidden') && e.getClientRects().length > 0; };
                 step = 'start';
-                out.startShown = !$('start-in').classList.contains('hidden') && [...$('start-in').querySelectorAll('[data-mode]')].map(b => b.dataset.mode).join() === 'photos,adjust,paint';
-                // Start in Adjust: a project opened from the landing page lands in Adjust
+                // The home page's tiles: Open a folder, Convert, Adjust a photo, Paint a photo (and New canvas, with no scanner here)
+                out.startShown = ['btn-browse-folder', 'start-blank', 'start-convert', 'start-adjust', 'start-paint'].every(shownEl) && !shownEl('start-capture');
+                // A tile that says Adjust: the project lands in Adjust
                 step = 'start in';
-                $('start-in').querySelector('[data-mode="adjust"]').click();
-                out.startKept = app.uiPrefs.startIn === 'adjust' && JSON.parse(localStorage.getItem('jeditor.ui')).startIn === 'adjust';
+                Modes.next = 'adjust';
+                out.startKept = true;
                 const blob = async (color) => { const c = document.createElement('canvas'); c.width = 120; c.height = 90; const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, 120, 90); return canvasBlob(c); };
                 await openProject('modes', { 'a.png': await blob('#806040'), 'b.png': await blob('#406080'), 'c.png': await blob('#408060') });
                 await until(() => Adjust.ready && Modes.strip.parentElement);
@@ -1627,8 +1628,8 @@ const PROJECT = `
                 return out;
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
-        check('modes: Start in offers Photos, Adjust and Paint', r.startShown, JSON.stringify(r));
-        check('modes: Start in is remembered; a project opened lands in that mode on its first photo', r.startKept && r.landedAdjust, JSON.stringify(r));
+        check('modes: the home page has the big tiles (New canvas where there\'s no scanner or camera)', r.startShown, JSON.stringify(r));
+        check('modes: a project opened for Adjust lands in Adjust on its first photo', r.startKept && r.landedAdjust, JSON.stringify(r));
         check('modes: in Adjust the chip names it, top left, and a strip runs along the bottom', r.chipOver && r.strip, JSON.stringify(r));
         check('modes: another photo from the strip opens in the same mode', r.stepped, JSON.stringify(r));
         check('modes: the chip\'s menu switches to Paint, on the same photo', r.menu && r.inPaint, JSON.stringify(r));
@@ -1649,7 +1650,7 @@ const PROJECT = `
             try {
                 const out = {};
                 const $ = (id) => document.getElementById(id);
-                $('start-in').querySelector('[data-mode="paint"]').click();
+                $('start-paint').click();
                 await until(() => !$('blank-panel').classList.contains('hidden'));
                 out.dialog = !$('blank-panel').querySelector('.blank-tabs').classList.contains('hidden') && $('blank-title').textContent === 'Paint' && $('blank-where').value === '\u0000pick';
                 // Open a file → An image…: opened on its own, in Paint
