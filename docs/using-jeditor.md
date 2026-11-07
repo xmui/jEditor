@@ -54,6 +54,15 @@ Flags are kept with the order, in `.jeditor/flags.json`, so they follow renames 
 
 `Ctrl+F` or `/` (or the magnifier in the folder pill) searches the photos by name and folder as you type. Every word must match, in any order: `smith 004` finds `Smith_0042.jpg`, `ceremony` finds everything in the Ceremony folder. `is:star`, `is:rescan`, `is:flagged`, `is:unflagged` and `is:red` (or another colour) match flags. `Enter` goes back to the grid with the results; `Esc` clears the search. The arrow keys, film strip and `Ctrl+A` cover the results only.
 
+## Find anything
+
+`Ctrl+K` (`⌘K` on a Mac), or **Find anything…** in the mode menu (the **Photos ▾** chip, **Adjust ▾** or **Paint ▾** in those modes; Edit in a theme's menu bar), opens one box that finds jEditor's commands, the project's photos and folders, and your other projects as you type. `↑` `↓` choose, `Enter` runs it, `Esc` closes. It works in Photos, Adjust, Paint, Crop and Duplicates, and lists what works there: in Adjust, Auto color and Before and after; in Paint, the tools.
+
+- **Forgiving:** every word must match, in any order. `rot` finds Rotate left and right, `rtl` Rotate left, `delte` Move to trash, `delete` too (other words for the same thing count), and a photo by its name or its folder's.
+- **Says what it acts on:** with photos selected in the grid, the commands that act on them say "3 selected".
+- **Teaches the keys:** each command shows its key at the right, as you've set them in Keyboard shortcuts.
+- **Learns:** what you pick often and lately comes first. Opened with nothing typed, it shows the last few you picked, then what fits: for the selection (Move to…, Star, Rotate, Turn upright, Rename, Export…), or in Adjust and Paint, their usual ones.
+
 ## What it does to your files
 
 - **Rotation.** JPEGs are rotated by changing the EXIF orientation tag, so the image data isn't recompressed. This works on scanner files that have no orientation tag yet. PNG and WebP are re-encoded; PNG stays lossless. GIFs aren't rotated, because that would lose the animation.
@@ -286,6 +295,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `Shift+P` | Crop the selection like the last crop (grid view) |
 | `Shift+U` | Turn upright (the selection, or the photo) |
 | `Ctrl+F`, `/` | Search |
+| `Ctrl+K` | Find anything: photos, folders, projects and commands |
 | `Shift+N` | New folder |
 | `A` | Switch between All photos and folders (grid view) |
 | `Backspace` | Up a folder (grid view) |
@@ -336,6 +346,7 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `flags.js`: flags (star, rescan, colour labels) and search
 - `watch.js`: watching the folder for changes, and rescanning
 - `start.js`: the home page: its tiles, the Settings menu (Save edits when done, When jEditor opens), the update dot, All projects, and on the web the app for this computer
+- `palette.js`: Find anything (`Ctrl+K`): the box, what it finds where you are (the shortcuts' commands, the theme menus' own, photos, folders, projects), matching and ranking, and running the one picked
 - `recents.js`: the home page's stacks of prints (recent folders, with small pictures kept for each) and its Recent print (a photo opened on its own), and spotting a folder that's part of an order
 - `ui.js`: the app's own alert / confirm / prompt dialogs, and focus handling for every dialog
 - `tokens.css`: the design tokens (colours, type, spacing, radii, shadows, motion, layers) and the theme, density, glass, surround and window background switches; `style.css` builds every component from them

@@ -522,3 +522,11 @@
 :root[data-skin="snow"] .cv-folders { border-color: #a5a5a5; border-radius: 4px; background: var(--sl-list); }
 :root[data-skin="snow"] .cv-tile { border-color: #a5a5a5; border-radius: 4px; }
 :root[data-skin="snow"] .cv-seg > button[aria-checked="true"] small { color: rgb(255 255 255 / 0.85); opacity: 1; }
+
+/* Find anything (palette.js): rows as Snow Leopard's menus, blue when picked */
+:root[data-skin="snow"] .palette-field input { font: 14px var(--sl-font); }
+:root[data-skin="snow"] :is(.palette-for, .palette-head, .palette-row, .palette-sub, .palette-key, .palette-none) { font-family: var(--sl-font); }
+:root[data-skin="snow"] .palette-row { min-height: 24px; border-radius: 0; }
+:root[data-skin="snow"] .palette-row.on { background: linear-gradient(180deg, #6383f6, #2858ee); color: #fff; }
+:root[data-skin="snow"] .palette-row.on :is(.palette-sub, .palette-key, .i) { color: #fff; }
+:root[data-skin="snow"] .palette-thumb { border-radius: 2px; }

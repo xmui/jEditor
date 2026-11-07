@@ -8,6 +8,7 @@ const CHANGELOG = [
     {
         version: '1.50.2', date: '2026-10-31', beta: true,
         items: [
+            'Find anything: `Ctrl+K` (`⌘K` on a Mac), or Find anything… in the Photos ▾ menu, opens one box that finds commands, photos, folders and your other projects as you type, and `Enter` runs the one you pick. It forgives typos and words in any order, says what a command will act on ("3 selected"), shows each command\'s key so you learn it, and puts what you use most first. It works in Photos, Adjust and Paint.',
             'Save edits when done is a switch on the project card, where you can see it. While it\'s on and edits are waiting, a small pill under it says how many ("3 edits to save"), with Save now.',
             'Sync is in the grid\'s selection bar: select two or more photos, click the one to sync from last, then Sync… (beside Rename…) to put its crop and adjustments onto the rest. It\'s the same as `Ctrl+Shift+S`.',
             'Mac: your Photos library is in the sidebar, under Locations. Open it out like a drive to see Favourites, Recently added and your albums, and click one to look through its photos (or Open, for the whole library). macOS asks once whether jEditor may see it; it\'s in jEditor → Permissions… too.',

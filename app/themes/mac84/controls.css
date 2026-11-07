@@ -448,3 +448,13 @@
 :root[data-skin="mac84"] .cv-dots i.f { background: repeating-linear-gradient(135deg, #000 0 1px, #fff 1px 3px) !important; }
 :root[data-skin="mac84"] .cv-dots i.now { box-shadow: inset 0 0 0 3px #000; }
 :root[data-skin="mac84"] .cv-run-row b { color: #000; font: 24px var(--m-font); }
+
+/* Find anything (palette.js): rows as the 1984 menus, black when picked */
+:root[data-skin="mac84"] .palette-field { border-bottom: 1px solid #000; }
+:root[data-skin="mac84"] .palette-field input { font: 12px var(--m-font); }
+:root[data-skin="mac84"] :is(.palette-for, .palette-head, .palette-row, .palette-sub, .palette-key, .palette-none) { font-family: var(--m-font); font-size: 12px; letter-spacing: 0; color: #000; }
+:root[data-skin="mac84"] .palette-row { min-height: 18px; border-radius: 0; }
+:root[data-skin="mac84"] .palette-row.on { background: #000; color: #fff; }
+:root[data-skin="mac84"] .palette-row.on :is(.palette-sub, .palette-key, .i) { color: #fff; }
+:root[data-skin="mac84"] .palette-row .i { shape-rendering: crispEdges; }
+:root[data-skin="mac84"] .palette-thumb { border-radius: 0; image-rendering: pixelated; }

@@ -4671,6 +4671,137 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     padding: 0 var(--sp-5) var(--sp-4);
 }
 
+/* Find anything, Ctrl+K (palette.js): a dialog near the top, its box
+   on top, then the results as a list, keys at the right as in menus */
+.palette-overlay {
+    align-items: flex-start;
+    padding-top: max(var(--sp-6), 14vh);
+}
+
+.palette {
+    width: min(560px, 100%);
+    max-height: min(560px, calc(100% - var(--sp-6)));
+}
+
+.palette-field {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    flex: none;
+    min-height: 52px;
+    padding: 0 var(--sp-4);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.palette-field .i {
+    width: var(--icon-md);
+    height: var(--icon-md);
+    flex: none;
+    color: var(--text-2);
+}
+
+.palette-field input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-1);
+    font: inherit;
+    font-size: var(--fs-title);
+    outline: none;
+}
+
+.palette-field input::placeholder {
+    color: var(--text-3);
+}
+
+.palette-for {
+    flex: none;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    white-space: nowrap;
+}
+
+.palette-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--sp-1);
+    overscroll-behavior: contain;
+}
+
+.palette-head {
+    padding: var(--sp-2) var(--sp-3) 2px;
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+}
+
+.palette-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    min-height: var(--ctl-md);
+    padding: 0 var(--sp-3);
+    border-radius: var(--r-sm);
+    color: var(--text-1);
+    cursor: pointer;
+}
+
+.palette-row.on {
+    background: var(--bg-hover);
+}
+
+.palette-row .i {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+    flex: none;
+    color: var(--text-2);
+}
+
+.palette-thumb {
+    width: var(--icon-md);
+    height: var(--icon-md);
+    flex: none;
+    margin: 0 -2px;
+    object-fit: cover;
+    border-radius: var(--r-xs);
+}
+
+.palette-name {
+    min-width: 0;
+    flex: 0 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.palette-sub {
+    min-width: 0;
+    flex: 0 10 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.palette-key {
+    flex: none;
+    margin-left: auto;
+    padding-left: var(--sp-4);
+    color: var(--text-3);
+    font-size: var(--fs-small);
+    white-space: nowrap;
+}
+
+.palette-none {
+    padding: var(--sp-4) var(--sp-3);
+    color: var(--text-2);
+}
+
 /* ---- 12. Full-screen modes ---- */
 
 .mode-screen {
