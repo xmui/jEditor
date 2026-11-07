@@ -5030,6 +5030,60 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 7v. The guide (guide.js): F1, search, keys as they're set ----
+    console.log('guide');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1200, height: 800 });
+        await page.waitForTimeout(300);
+        await page.keyboard.press('F1');
+        await page.waitForTimeout(100);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const panel = () => document.getElementById('guide-panel');
+            const titles = () => [...panel().querySelectorAll('.guide-row h3')].map(h => h.textContent);
+            const keyRows = () => [...panel().querySelectorAll('.guide-keyrow')];
+            out.opensOnHome = !!panel() && Guide.isOpen && document.activeElement && document.activeElement.id === 'guide-search';
+            out.allHowtos = titles().length === Guide.HOWTO.length && keyRows().length === 0;
+            const q = document.getElementById('guide-search');
+            q.value = 'crop';
+            q.dispatchEvent(new Event('input'));
+            out.searchFinds = titles().includes('Crop and straighten') && titles().includes('Crop many in a row') && !titles().includes('Layers') && keyRows().length === 0;
+            panel().querySelector('[data-filter="keys"]').click();
+            out.searchKeys = titles().length === 0 && keyRows().length > 0 && keyRows().every(r => /crop/i.test(r.textContent));
+            panel().querySelector('[data-filter="howto"]').click();
+            q.value = 'zzqx';
+            q.dispatchEvent(new Event('input'));
+            out.nothing = !!panel().querySelector('.guide-none');
+            q.value = '';
+            q.dispatchEvent(new Event('input'));
+            panel().querySelector('[data-filter="paint"]').click();
+            out.paintOnly = titles().length > 0 && titles().every(t => Guide.HOWTO.find(h => h[1] === t)[0] === 'paint');
+            panel().querySelector('[data-filter="keys"]').click();
+            out.keysListed = titles().length === 0 && keyRows().length > 20 && panel().querySelector('[data-filter="keys"]').getAttribute('aria-pressed') === 'true';
+            // A shortcut changed in Toolbar & keys shows as it's set now
+            app.removeKey('edit.crop', 'C');
+            app.assignKey('edit.crop', 'K');
+            panel().querySelector('[data-filter="howto"]').click();
+            const crop = [...panel().querySelectorAll('.guide-row')].find(r => r.querySelector('h3')?.textContent === 'Crop and straighten');
+            out.followsKeys = !!crop && crop.querySelector('kbd').textContent === 'K';
+            return out;
+        });
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(50);
+        const closed = await page.evaluate(() => !document.getElementById('guide-panel') && !Guide.isOpen);
+        await page.keyboard.press('F1');
+        await page.waitForTimeout(50);
+        const again = await page.evaluate(() => Guide.isOpen && document.getElementById('guide-search').value === '');
+        check('guide: F1 opens it on the home page, with every how-to and the search focused', r.opensOnHome && r.allHowtos, JSON.stringify(r));
+        check('guide: the search finds how-tos and shortcuts, and says when nothing matches', r.searchFinds && r.searchKeys && r.nothing, JSON.stringify(r));
+        check('guide: Paint shows only Paint, Keys lists the shortcuts', r.paintOnly && r.keysListed, JSON.stringify(r));
+        check('guide: shows the keys as they\'re set now', r.followsKeys, JSON.stringify(r));
+        check('guide: Esc closes it, and F1 opens it again with an empty search', closed && again);
+        check('guide suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7. file:// — direct open and standalone build ----
     console.log('beta builds and experiments');
     {

@@ -256,6 +256,10 @@ It's built and tested for orders of 500–2000 photos. With 2000 scans at 1800×
 
 Undo keeps up to 50 steps. Rotating a selection in the grid is one step, however many photos it covers. Rotations are undone by rotating back, so they don't use memory. Crops keep a copy of the original file so they can be undone, up to 256 MB in total; older crop steps are dropped after that.
 
+## The guide
+
+Press `F1` (anywhere: Photos, Crop, Adjust, Paint or the home page), or choose **Guide** in the home page's gear menu or a theme's **Help** menu. A panel opens beside the photo with short how-tos for Photos, Adjust and Paint, and the keyboard shortcuts as they're set now. Type in **How do I…** to search both, or pick **Photos**, **Adjust**, **Paint** or **Keys**. The app keeps working while it's open: in Adjust and Paint it moves to the left, out of their panel's way. `Esc` or × closes it.
+
 ## Keyboard shortcuts
 
 Press `?` in the app to see all of them. Any shortcut can be changed there. The defaults:
@@ -297,6 +301,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `Ctrl+I` | Import from a camera or card |
 | `R` | Rescan the folder |
 | `?` | Show shortcuts |
+| `F1` | The guide: how-tos and shortcuts |
 | `Ctrl+,` | Settings |
 
 In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `\` rotate 180°, `Shift+H` `Shift+V` flip (or right-click the photo), `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `M` loupe, `+` `-` zoom, `Z` fit, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
@@ -338,6 +343,7 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `start.js`: the home page: its tiles, the Settings menu (Save edits when done, When jEditor opens), the update dot, All projects, and on the web the app for this computer
 - `recents.js`: the home page's stacks of prints (recent folders, with small pictures kept for each) and its Recent print (a photo opened on its own), and spotting a folder that's part of an order
 - `ui.js`: the app's own alert / confirm / prompt dialogs, and focus handling for every dialog
+- `guide.js`: the guide (`F1`): short how-tos and the shortcuts as they're set, with a search
 - `tokens.css`: the design tokens (colours, type, spacing, radii, shadows, motion, layers) and the theme, density, glass, surround and window background switches; `style.css` builds every component from them
 
 Building, testing and releasing are in the [README](../README.md).

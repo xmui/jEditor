@@ -303,6 +303,7 @@ const Start = {
         items.push(['The last project', () => this.setOnOpen('last'), false, opens === 'last']);
         items.push([opens === 'pick' && p.onOpenName ? `${p.onOpenName}…` : 'A project you pick…', () => this.pickProject(btn), false, opens === 'pick']);
         items.push(['—'], ['Settings…', () => app.toggleCustomizePanel(true)]);
+        items.push(['Guide', () => Guide.open()]);
         items.push(['Keyboard shortcuts', () => this.el('btn-shortcuts-start').click()]);
         items.push([this.el('btn-whatsnew-start').textContent, () => this.el('btn-whatsnew-start').click()]);
         const r = btn.getBoundingClientRect();

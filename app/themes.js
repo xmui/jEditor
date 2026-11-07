@@ -124,6 +124,7 @@ const Themes = {
             ['Settings…', 'app.settings']
         ],
         Help: [
+            ['Guide', 'app.guide'],
             ['Keyboard shortcuts', 'app.shortcuts'],
             ['What\'s new', () => app.toggleWhatsNew()]
         ]
