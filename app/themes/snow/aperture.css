@@ -239,3 +239,7 @@
 :root[data-skin="snow"] #btn-customize { --g: url(../snow/glyphs/settings-dark.svg); }
 :root[data-skin="snow"] #btn-toggle-fit { --g: url(../snow/glyphs/fit-dark.svg); }
 :root[data-skin="snow"] #btn-toggle-strip { --g: url(../snow/glyphs/strip-dark.svg); }
+
+/* The guide (guide.js): Aperture's dark panels, not Finder's light one */
+:root[data-skin="snow"] .guide { background: var(--sl-list); border-color: var(--sl-toolbar-line); }
+:root[data-skin="snow"] .guide-nav { background: var(--sl-inspector); }

@@ -3,7 +3,8 @@
 // icon the way they turn the photo, the selection count ticks when it
 // changes, and in the grid a folder's photos ripple in, deleted ones
 // shrink away while the rest slide into their places, and a new flag
-// pops. A tile clicked or selected gives a little bounce, and photos that turn up in
+// pops. A photo opened from the grid zooms out of its tile into the
+// viewer, and going back zooms it down into its tile again (zoom). A tile clicked or selected gives a little bounce, and photos that turn up in
 // the folder while it's open fly into their places. They follow what happened and never hold anything up (the change
 // is made first, then shown moving); the themes and Reduce motion have
 // none, nor with Settings → Animations off. The tiles easing in and out as the grid scrolls are CSS only.
@@ -202,6 +203,18 @@ const Motion = {
             self.flip(before);
             return out;
         };
+        // Grid to viewer and back: the photo zooms out of its tile, and down into it
+        const view = app.setView;
+        app.setView = function (mode, ...rest) {
+            const from = this.viewMode;
+            if (from === mode || !self.on() || self.held) return view.call(this, mode, ...rest);
+            const tile = from === 'grid' && mode === 'single' ? self.tileOf(this.currentFile) : null;
+            const was = from === 'single' && mode === 'grid' ? self.photoRect(this.currentFile) : null;
+            const out = view.call(this, mode, ...rest);
+            if (tile && this.viewMode === 'single' && this.currentFile === tile._file) self.zoomOut(tile);
+            if (was && this.viewMode === 'grid') self.zoomIn(this.currentFile, was);
+            return out;
+        };
         // A flag set on a tile in sight pops in (not each time tiles are drawn)
         if (typeof Flags !== 'undefined') {
             const decorate = Flags.decorate;
@@ -215,6 +228,97 @@ const Motion = {
                 return out;
             };
         }
+    },
+
+    ZOOM: 200, // ms: grid to viewer, and back
+
+    // A photo's tile in sight in the grid, with where it is
+    tileOf(f) {
+        const el = f && f._gridEl;
+        if (!el || !el.isConnected || !el.offsetParent) return null;
+        const img = el.querySelector('img');
+        const r = (img || el).getBoundingClientRect();
+        if (!r.width || r.bottom < 0 || r.top > innerHeight) return null;
+        return { el, img, r, _file: f, w: img && img.naturalWidth, h: img && img.naturalHeight };
+    },
+
+    // Where the photo is (or will be) in the viewer: the image on screen
+    // when it's this photo's, or the viewer's box fitted to its shape
+    photoRect(f, w, h) {
+        const cur = app.elements.currentImage;
+        if (cur && app._displayFile === f && cur.naturalWidth) {
+            const r = cur.getBoundingClientRect();
+            if (r.width) return r;
+        }
+        const box = app.elements.imageContainer.getBoundingClientRect();
+        if (!box.width || !box.height) return null;
+        w = w || (f && f._dims && f._dims.w) || box.width;
+        h = h || (f && f._dims && f._dims.h) || box.height;
+        if (Math.round(app.getDisplayRotation(f, 'thumb') / 90) % 2) [w, h] = [h, w];
+        const k = Math.min(box.width / w, box.height / h, f && f._dims ? Math.max(f._dims.w, f._dims.h) / Math.max(w, h) : Infinity);
+        const pw = w * k, ph = h * k;
+        return { left: box.left + (box.width - pw) / 2, top: box.top + (box.height - ph) / 2, width: pw, height: ph };
+    },
+
+    // One zoom at a time: a new one (or Space pressed again) ends the last
+    endZoom() {
+        if (this._zoom) this._zoom();
+        this._zoom = null;
+    },
+
+    // Opened from the grid: the viewer starts on the tile and grows into place
+    zoomOut(tile) {
+        this.endZoom();
+        const box = app.elements.imageContainer;
+        const C = box.getBoundingClientRect();
+        const P = this.photoRect(tile._file, tile.w, tile.h);
+        if (!P || !C.width) return;
+        // Scaled about the viewer's middle, the photo lands on the tile
+        const s = Math.min(tile.r.width / P.width, tile.r.height / P.height);
+        const cx = C.left + C.width / 2, cy = C.top + C.height / 2;
+        const px = P.left + P.width / 2, py = P.top + P.height / 2;
+        const tx = tile.r.left + tile.r.width / 2 - cx - s * (px - cx);
+        const ty = tile.r.top + tile.r.height / 2 - cy - s * (py - cy);
+        const a = box.animate([
+            { translate: `${tx}px ${ty}px`, scale: String(s), opacity: 0.4 },
+            { translate: '0 0', scale: '1', opacity: 1 }
+        ], { duration: this.ZOOM, easing: 'cubic-bezier(0.2, 0, 0, 1)' });
+        this._zoom = () => a.cancel();
+        a.finished.then(() => { if (this._zoom) this._zoom = null; }, () => { });
+    },
+
+    // Back to the grid: the photo's tile starts where the photo was and
+    // shrinks into its place (a copy above the grid, the tile's own hidden under it)
+    zoomIn(f, P) {
+        this.endZoom();
+        if (!f) return;
+        // Scrolled to now (setView does it again a moment later, to the same place)
+        const el = app.revealInGrid ? app.revealInGrid(f) : f._gridEl;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center' });
+        const tile = this.tileOf(f);
+        if (!tile) return;
+        const r = tile.r;
+        // Only the photo: its name and flags would grow huge at the start
+        const img = tile.img;
+        if (!img) return;
+        const ghost = document.createElement('div');
+        const shot = img.cloneNode(false);
+        shot.removeAttribute('loading');
+        Object.assign(shot.style, { width: '100%', height: '100%', display: 'block', objectFit: getComputedStyle(img).objectFit });
+        ghost.appendChild(shot);
+        Object.assign(ghost.style, { position: 'fixed', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', overflow: 'hidden', borderRadius: getComputedStyle(img).borderRadius, pointerEvents: 'none', zIndex: 50, transformOrigin: '0 0', willChange: 'transform' });
+        document.body.appendChild(ghost);
+        img.style.visibility = 'hidden';
+        const s = Math.max(P.width / r.width, P.height / r.height);
+        const tx = P.left + P.width / 2 - s * r.width / 2 - r.left;
+        const ty = P.top + P.height / 2 - s * r.height / 2 - r.top;
+        const a = ghost.animate([
+            { transform: `translate(${tx}px, ${ty}px) scale(${s})`, opacity: 0.6 },
+            { transform: 'none', opacity: 1 }
+        ], { duration: this.ZOOM, easing: 'cubic-bezier(0.2, 0, 0, 1)' });
+        const done = () => { ghost.remove(); img.style.visibility = ''; if (this._zoom === done) this._zoom = null; };
+        this._zoom = done;
+        a.finished.then(done, done);
     },
 
     FEW: 4, // at most this many photos selected at once bounce

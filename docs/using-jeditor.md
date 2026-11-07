@@ -7,7 +7,7 @@ To install it, see the [README](../README.md). The version number is shown at th
 ## Using it
 
 1. On the home page, click **Open a folder**, or drag a folder onto the window. **Open a folder** opens a card: search your projects and recent folders as you type, drag a folder onto it or click **Browse…**, pick a recent folder, the Photos library (on a Mac), or any project in your projects folder (the Windows, Mac and Linux apps), with a few of its thumbnails. Its foot says where your projects folder is, with a small link to change it. The first time you click **Open a folder** (or drag a folder in), jEditor asks two things once: where your projects are kept (in the apps), and whether edits are saved straight away or kept until you save them (**Save edits when done**). After that, each folder you open for the first time asks whether to keep its edits until saved; turn that off in Settings → Projects (**Ask about saving edits when opening a folder**), and new folders follow Save edits when done. **New project** has the same switch in its name dialog, so a project made there isn't asked. Subfolders are included. The home page is a table: the last folders you opened lie on it as stacks of prints, newest first (four at most; three in a small window), each with when you opened it and how many photos it had. A photo you opened on its own in Adjust or Paint lies there too, as one print called **Recent**, while it's the last thing you opened. Point at a stack and its prints fan out; click it to open it again, straight in the grid, or click × to take it off the table (the folder isn't touched). **All projects…** (the Windows, Mac and Linux apps) lists your projects folder, pinned folders and drives. Under the table are the main jobs as big tiles: **Open a folder**, **Scan or Capture** (the Windows app; it's **Import** while a camera's card is plugged in, and **New canvas** where there's no scanner or camera), **Convert**, **Adjust a photo** and **Paint a photo**. At the top right are the version, with a dot on **Settings** when an update is ready, and **Settings**, whose menu has **Save edits when done** (for projects opened from then on; each project can still change it in its card), **When jEditor opens** (this page, the last project, or a project you pick; in a browser, a project that needs asking for permission again waits on the table), Settings, keyboard shortcuts and what's new. Both settings are in Settings → Projects too. If you open a folder that's inside an order you've opened before, jEditor offers to open the whole order at that folder instead, so the order keeps a single `.jeditor` folder. (For now this only works for orders on the Recent list; jEditor can't yet tell from a folder alone which order it's in.)
-2. Move through photos with `←` / `→`. In single view the buttons above the film strip fade away after a few seconds; move the pointer there to bring them back, or turn off **Buttons above the film strip** in Settings to hide them for good. `Space` switches between single view and grid. In the grid, the slider at the bottom right or `Ctrl` + mouse wheel makes the tiles bigger or smaller; the highlighted photo stays where it is on screen.
+2. Move through photos with `←` / `→`. In single view the buttons above the film strip fade away after a few seconds; move the pointer there to bring them back, or turn off **Buttons above the film strip** in Settings to hide them for good. `Space` switches between single view and grid: a photo opened from the grid zooms quickly out of its thumbnail, and shrinks back into it on the way back (not with Animations off, the system's Reduce motion, or a theme). In the grid, the slider at the bottom right or `Ctrl` + mouse wheel makes the tiles bigger or smaller; the highlighted photo stays where it is on screen.
 3. Rotate with `[` / `]`. In grid view this rotates every selected photo.
 4. Press `C` to crop and straighten. `Enter` saves, `Shift+Enter` saves and opens the next photo, `Esc` cancels.
 5. `Ctrl+Z` undoes the last rotation, crop, rename or delete.
@@ -265,6 +265,12 @@ It's built and tested for orders of 500–2000 photos. With 2000 scans at 1800×
 
 Undo keeps up to 50 steps. Rotating a selection in the grid is one step, however many photos it covers. Rotations are undone by rotating back, so they don't use memory. Crops keep a copy of the original file so they can be undone, up to 256 MB in total; older crop steps are dropped after that.
 
+## The tour and the guide
+
+**The tour** walks through the real app, one stop at a time: the three apps (Photos, Adjust and Paint), the sidebar, looking and flagging, turning, cropping, Scan and Camera (where the app has them), More, Duplicates, Convert, Adjust and Paint. Each stop lights up the control it's about, with a card that says what it does and its keys; the rest of the window dims but keeps working, so you can try each one (press `]` and the photo turns, `Ctrl+Z` puts it back). The tour opens the view each stop needs and puts it back as it was at the end. **Next** and **Back** move through it, and `Esc` or × ends it. It's offered once, on the home page the first time jEditor opens (**Not now** puts it away), and it's always in the home page's gear menu (**Take the tour**), a theme's **Help** menu and the guide. In a browser it ends with a few things the apps also do, and **Download the full version**.
+
+**The guide** (`F1`, from anywhere: Photos, Crop, Adjust, Paint or the home page; also **Guide** in the gear menu and a theme's **Help** menu) is for looking things up later: topics down the side (Start here, Photos, Crop, Flags, Files and folders, Adjust, Paint, Keyboard shortcuts), each a set of cards with a little clip of what it does, a line of words and its keys as they're set now. **Search the guide** finds cards and keys. **Watch the tour again** is at the bottom of the topics. `Esc` or × closes it.
+
 ## Keyboard shortcuts
 
 Press `?` in the app to see all of them. Any shortcut can be changed there. The defaults:
@@ -307,6 +313,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `Ctrl+I` | Import from a camera or card |
 | `R` | Rescan the folder |
 | `?` | Show shortcuts |
+| `F1` | The guide: how-tos and shortcuts |
 | `Ctrl+,` | Settings |
 
 In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `\` rotate 180°, `Shift+H` `Shift+V` flip (or right-click the photo), `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `M` loupe, `+` `-` zoom, `Z` fit, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
@@ -349,6 +356,8 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `palette.js`: Find anything (`Ctrl+K`): the box, what it finds where you are (the shortcuts' commands, the theme menus' own, photos, folders, projects), matching and ranking, and running the one picked
 - `recents.js`: the home page's stacks of prints (recent folders, with small pictures kept for each) and its Recent print (a photo opened on its own), and spotting a folder that's part of an order
 - `ui.js`: the app's own alert / confirm / prompt dialogs, and focus handling for every dialog
+- `guide.js`: the guide (`F1`): cards with clips by topic, the shortcuts as they're set, and a search
+- `tour.js`: the welcome tour: a walk through the real app, offered once on the home page
 - `tokens.css`: the design tokens (colours, type, spacing, radii, shadows, motion, layers) and the theme, density, glass, surround and window background switches; `style.css` builds every component from them
 
 Building, testing and releasing are in the [README](../README.md).

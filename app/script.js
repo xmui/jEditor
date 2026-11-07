@@ -295,6 +295,7 @@ const app = {
         Themes.init(this);
         Fit.init();
         History.init(this);
+        Tour.init();
         Watch.init(this);
         this.initContextMenu();
         this.initPasteImage();
@@ -4707,6 +4708,8 @@ const app = {
         ['app.search', 'global', 'App', 'Search photos', ['Ctrl+F', '/']],
         ['app.palette', 'global', 'App', 'Find anything: photos, folders, projects and commands', ['Ctrl+K']],
         ['app.shortcuts', 'global', 'App', 'Keyboard shortcuts', ['?']],
+        ['app.guide', 'global', 'App', 'Guide: how-tos and shortcuts', ['F1']],
+        ['app.tour', 'global', 'App', 'Take the tour', []],
         ['app.settings', 'global', 'App', 'Settings', ['Ctrl+,']],
         ['app.debug', 'global', 'App', 'Debug console', ['Ctrl+Shift+D']],
         ['crop.save', 'crop', 'Crop & Straighten', 'Save', ['Enter']],
@@ -4921,6 +4924,8 @@ const app = {
             'app.search': () => Flags.focusSearch(),
             'app.palette': () => Palette.toggle(),
             'app.shortcuts': () => this.toggleShortcutsPanel(),
+            'app.guide': () => Guide.toggle(),
+            'app.tour': () => Tour.start(),
             'app.settings': () => this.toggleCustomizePanel(true),
             'app.debug': () => this.toggleDebugConsole(),
             'crop.save': () => this.saveCrop(),
@@ -5301,12 +5306,14 @@ const app = {
         let id = this._keyMaps[context].get(combo);
         // Duplicates: Undo (it says Ctrl+Z restores) works there too
         if (!id && context === 'dupes' && this._keyMaps.global.get(combo) === 'edit.undo') id = 'edit.undo';
+        // The guide (guide.js) opens from every screen
+        if (!id && this._keyMaps.global.get(combo) === 'app.guide') id = 'app.guide';
         // A focused button's own Enter/Space press isn't a shortcut there
         if (id && context === 'dupes' && e.target && e.target.tagName === 'BUTTON' && (combo === 'Enter' || combo === 'Space')) return;
         if (!id) return;
         // Only the shortcut list and debug console work from the start screen
         const onStart = this.elements.mainInterface.classList.contains('hidden');
-        if (onStart && context === 'global' && !['app.shortcuts', 'app.debug', 'app.settings', 'app.import', 'edit.pasteImage', 'app.palette'].includes(id)) return;
+        if (onStart && context === 'global' && !['app.shortcuts', 'app.debug', 'app.settings', 'app.import', 'edit.pasteImage', 'app.palette', 'app.guide'].includes(id)) return;
         if (context === 'crop' && CropEditor.busy) {
             e.preventDefault(); // saving: the crop being written stays as it is
             return;

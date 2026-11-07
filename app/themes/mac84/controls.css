@@ -458,3 +458,7 @@
 :root[data-skin="mac84"] .palette-row.on :is(.palette-sub, .palette-key, .i) { color: #fff; }
 :root[data-skin="mac84"] .palette-row .i { shape-rendering: crispEdges; }
 :root[data-skin="mac84"] .palette-thumb { border-radius: 0; image-rendering: pixelated; }
+/* The guide (guide.js): the chosen topic and Watch the tour again, inverted */
+:root[data-skin="mac84"] .guide-topics button[aria-current="true"],
+:root[data-skin="mac84"] .guide-tour { background: #000; color: #fff; }
+:root[data-skin="mac84"] .guide-card { border-color: #000; }
