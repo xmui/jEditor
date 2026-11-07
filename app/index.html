@@ -75,39 +75,54 @@
     <div id="app">
         <!-- Start screen / drop zone -->
         <div id="drop-zone" class="drop-zone">
-            <div class="drop-content">
-                <img class="start-icon" src="icon.png" alt="" width="72" height="72">
-                <h1 id="app-title" class="start-title">jEditor</h1>
-                <p class="start-tagline">Rotate, crop and sort photos. Edits the files on your disk.</p>
-                <button id="btn-browse-folder" class="btn primary lg start-open">
-                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
-                    Open folder
-                </button>
-                <!-- Where a project opened from here lands (modes.js) -->
-                <div id="start-in" class="start-in hidden">
-                    <span class="start-in-label" id="start-in-label">Start in</span>
-                    <span class="seg start-in-seg" role="radiogroup" aria-labelledby="start-in-label">
-                        <button type="button" role="radio" data-mode="photos" title="Sort, rotate and crop"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Photos</button>
-                        <button type="button" role="radio" data-mode="adjust" title="Light, colour and film looks, photo by photo"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>Adjust</button>
-                        <button type="button" role="radio" data-mode="paint" title="Paint on a photo, or start a new canvas"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L12 14.8 9.2 12z"/><path d="M9.2 12c-2.5 0-4.2 1.6-4.2 4 0 1.5-.8 2.6-2.4 3.4C4.4 21 6.3 21.5 8 21.5c3 0 5-1.9 4.9-4.6z"/></svg>Paint</button>
-                    </span>
+            <!-- Home (start.js): the last folders as stacks of prints on a table,
+                 and the main jobs as big tiles along the bottom -->
+            <div class="drop-content home">
+                <div class="home-bar">
+                    <span class="home-brand"><img src="icon.png" alt="" width="24" height="24">jEditor</span>
+                    <span class="home-gap"></span>
+                    <!-- Which jEditor and its version (script.js, start.js) -->
+                    <h1 id="app-title" class="home-ver">jEditor</h1>
+                    <!-- Settings, and on the home page what's for it: a menu (start.js) -->
+                    <button id="btn-settings-start" type="button" class="btn ghost icon home-gear" title="Settings" aria-label="Settings" aria-haspopup="menu"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span class="home-dot hidden" aria-hidden="true"></span></button>
+                    <!-- In that menu -->
+                    <button id="btn-shortcuts-start" type="button" class="hidden">Keyboard shortcuts</button>
+                    <button id="btn-whatsnew-start" type="button" class="hidden">What's new</button>
                 </div>
-                <p class="drop-hint">or drop a folder anywhere in this window<span id="start-blank-wrap"> · <button id="start-blank" type="button" class="link-btn">New blank canvas…</button></span><span id="start-convert-wrap"> · <button id="start-convert" type="button" class="link-btn">Convert photos…</button></span></p>
-                <!-- Recent orders (recents.js) -->
-                <div id="recents" class="recents hidden">
-                    <h2 class="recents-title">Recent</h2>
-                    <ul id="recent-list" class="recent-list"></ul>
+                <div class="home-table">
+                    <!-- Recent folders as stacks, and a photo opened on its own as one print (recents.js) -->
+                    <div id="recents" class="recents hidden">
+                        <ul id="recent-list" class="recent-list"></ul>
+                    </div>
+                    <!-- Nothing opened yet -->
+                    <div id="home-empty" class="home-empty hidden">
+                        <ul class="recent-list">
+                            <li class="ghost-first ghosted"><button id="home-first" type="button" class="recent-open" title="Open a folder">
+                                <span class="recent-pile" aria-hidden="true"><span class="recent-print ghost"></span><span class="recent-print ghost"></span><span class="recent-print ghost first"><svg class="i" viewBox="0 0 24 24"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg></span></span></button></li>
+                            <li class="ghosted" aria-hidden="true"><span class="recent-pile"><span class="recent-print ghost"></span><span class="recent-print ghost"></span><span class="recent-print ghost"></span></span></li>
+                            <li class="ghosted" aria-hidden="true"><span class="recent-pile"><span class="recent-print ghost"></span><span class="recent-print ghost"></span><span class="recent-print ghost"></span></span></li>
+                            <li class="ghosted" aria-hidden="true"><span class="recent-pile"><span class="recent-print ghost"></span><span class="recent-print ghost"></span><span class="recent-print ghost"></span></span></li>
+                        </ul>
+                        <p>Folders you open lie here as stacks of prints, newest first.</p>
+                    </div>
+                    <!-- Photos picked here are converted here: how far, and what it did (convert.js) -->
+                    <div id="start-convert-run" class="start-convert-run hidden" role="status" aria-live="polite"></div>
+                    <!-- The web version: the app for this computer (start.js) -->
+                    <div id="start-get" class="start-get hidden"></div>
                 </div>
-                <!-- Projects, pinned folders, drives (places.js, the Windows app) -->
-                <div id="start-places" class="start-places sb-places" data-needs="places"></div>
-                <!-- The web version: the app for this computer (start.js) -->
-                <div id="start-get" class="start-get hidden"></div>
-                <div class="start-foot">
-                    <button id="btn-shortcuts-start" class="link-btn">Keyboard shortcuts <kbd>?</kbd></button>
-                    <span class="start-dot" aria-hidden="true"></span>
-                    <button id="btn-settings-start" class="link-btn">Settings</button>
-                    <span class="start-dot" aria-hidden="true"></span>
-                    <button id="btn-whatsnew-start" class="link-btn">What's new</button>
+                <p class="drop-hint">Drop a folder or photos anywhere in this window<span data-needs="places"> · <button id="home-all" type="button" class="link-btn">All projects…</button></span></p>
+                <div class="home-tiles">
+                    <button id="btn-browse-folder" type="button" class="home-tile primary"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg><span class="home-tile-text"><span class="home-tile-name">Open a folder</span><span class="home-tile-sub">or a project</span></span></button>
+                    <button id="start-capture" type="button" class="home-tile hidden"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="8" rx="2"/><path d="M6 11V5h12v6M7 15h4"/></svg><span class="home-tile-text"><span class="home-tile-name">Scan or Capture</span><span class="home-tile-sub">scanner or camera</span></span></button>
+                    <button id="start-blank" type="button" class="home-tile hidden"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12h8"/></svg><span class="home-tile-text"><span class="home-tile-name">New canvas</span><span class="home-tile-sub">a blank page</span></span></button>
+                    <button id="start-convert" type="button" class="home-tile" aria-haspopup="menu"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h13l-3-3M20 17H7l3 3"/></svg><span class="home-tile-text"><span class="home-tile-name">Convert</span><span class="home-tile-sub">photos or a folder</span></span></button>
+                    <button id="start-adjust" type="button" class="home-tile"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span class="home-tile-text"><span class="home-tile-name">Adjust a photo</span><span class="home-tile-sub">light and colour</span></span></button>
+                    <button id="start-paint" type="button" class="home-tile"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L12 14.8 9.2 12z"/><path d="M9.2 12c-2.5 0-4.2 1.6-4.2 4 0 1.5-.8 2.6-2.4 3.4C4.4 21 6.3 21.5 8 21.5c3 0 5-1.9 4.9-4.6z"/></svg><span class="home-tile-text"><span class="home-tile-name">Paint a photo</span><span class="home-tile-sub">or a new canvas</span></span></button>
+                </div>
+                <!-- All projects: the projects folder, pinned folders and drives (places.js, the apps) -->
+                <div id="home-places" class="home-places hidden" role="dialog" aria-label="All projects" data-needs="places">
+                    <div class="home-places-head"><span>All projects</span><button id="home-places-x" type="button" class="btn ghost sm icon" title="Close" aria-label="Close"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+                    <div id="start-places" class="start-places sb-places" data-needs="places"></div>
                 </div>
             </div>
         </div>
@@ -875,6 +890,16 @@
                             <span class="set-label">Permissions
                                 <small>What macOS lets jEditor open: your folders, USB drives and memory cards</small></span>
                             <button id="cust-permissions" class="btn secondary">Review…</button>
+                        </div>
+                        <div class="set-row">
+                            <label class="set-label" for="cust-on-open">When jEditor opens
+                                <small>The home page, the project you had open last, or one you pick</small></label>
+                            <select id="cust-on-open" class="field"></select>
+                        </div>
+                        <div class="set-row">
+                            <label class="set-label" for="cust-defer-new">Save edits when done
+                                <small>Projects opened from now on keep crops and turns until you save them. Each project can change it in its card.</small></label>
+                            <input type="checkbox" id="cust-defer-new" class="switch">
                         </div>
                         <div class="set-row">
                             <label class="set-label" for="cust-auto-check">Watch the folder for changes

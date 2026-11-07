@@ -1103,6 +1103,9 @@ const Places = {
         this.drives = places.drives;
         this.listings.clear();
         await this.draw();
+        // A camera's card in: the home page's second tile is Import (start.js)
+        const found = await Promise.all(places.drives.filter(d => d.kind !== 'cd').map(async d => (await Import.isCard(d)) ? d : null));
+        if (typeof Start !== 'undefined' && Start.setCard) Start.setCard(found.find(Boolean) || null);
     },
 
     // A drive, opened out in the sidebar (or on the start screen)

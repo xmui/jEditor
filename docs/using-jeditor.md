@@ -2,11 +2,11 @@
 
 jEditor is a photo viewer for rotating, cropping and straightening folders of photos, built for working through scan orders. It edits the files on your disk directly. Nothing is uploaded.
 
-To install it, see the [README](../README.md). The version number is shown on the start screen.
+To install it, see the [README](../README.md). The version number is shown at the top right of the home page.
 
 ## Using it
 
-1. Click **Open folder**, or drag a folder onto the window. Subfolders are included. The last six folders you opened are listed under **Recent** on the start screen; click one to open it again, or hover and click × to take it off the list. If you open a folder that's inside an order on the Recent list, jEditor offers to open the whole order at that folder instead, so the order keeps a single `.jeditor` folder. (For now this only works for orders on the Recent list; jEditor can't yet tell from a folder alone which order it's in.)
+1. On the home page, click **Open a folder**, or drag a folder onto the window. Subfolders are included. The home page is a table: the last folders you opened lie on it as stacks of prints, newest first (four at most; three in a small window), each with when you opened it and how many photos it had. A photo you opened on its own in Adjust or Paint lies there too, as one print called **Recent**, while it's the last thing you opened. Point at a stack and its prints fan out; click it to open it again, straight in the grid, or click × to take it off the table (the folder isn't touched). **All projects…** (the Windows, Mac and Linux apps) lists your projects folder, pinned folders and drives. Under the table are the main jobs as big tiles: **Open a folder**, **Scan or Capture** (the Windows app; it's **Import** while a camera's card is plugged in, and **New canvas** where there's no scanner or camera), **Convert**, **Adjust a photo** and **Paint a photo**. At the top right are the version, with a dot on **Settings** when an update is ready, and **Settings**, whose menu has **Save edits when done** (for projects opened from then on; each project can still change it in its card), **When jEditor opens** (this page, the last project, or a project you pick; in a browser, a project that needs asking for permission again waits on the table), Settings, keyboard shortcuts and what's new. Both settings are in Settings → Projects too. If you open a folder that's inside an order you've opened before, jEditor offers to open the whole order at that folder instead, so the order keeps a single `.jeditor` folder. (For now this only works for orders on the Recent list; jEditor can't yet tell from a folder alone which order it's in.)
 2. Move through photos with `←` / `→`. In single view the buttons above the film strip fade away after a few seconds; move the pointer there to bring them back, or turn off **Buttons above the film strip** in Settings to hide them for good. `Space` switches between single view and grid. In the grid, the slider at the bottom right or `Ctrl` + mouse wheel makes the tiles bigger or smaller; the highlighted photo stays where it is on screen.
 3. Rotate with `[` / `]`. In grid view this rotates every selected photo.
 4. Press `C` to crop and straighten. `Enter` saves, `Shift+Enter` saves and opens the next photo, `Esc` cancels.
@@ -14,7 +14,7 @@ To install it, see the [README](../README.md). The version number is shown on th
 
 Changes are saved to the original files as you go.
 
-**Settings** (the gear in the toolbar's **More** section, the link on the start screen, or `Ctrl+,`) has a page for each kind of setting, chosen on the left; it opens on the last one you used.
+**Settings** (the gear in the toolbar's **More** section, the home page's gear menu, or `Ctrl+,`) has a page for each kind of setting, chosen on the left; it opens on the last one you used.
 
 - **Appearance**: in the Windows, Mac and Linux apps, a **theme** (see [Themes](#themes)); the theme (dark, light or match the system), the accent color and the color behind photos (black, gray or light, for judging color); on Windows 11 (22H2 or later), **Window background** puts Mica or Acrylic behind jEditor, like the Start menu, and **Transparency** sets how much of the desktop shows through (photos, Crop and Duplicates stay solid; it needs Windows' Transparency effects on, in Settings → Personalization → Colors); then glass (Crystal, the clearest, to start with; Liquid, like Apple's Liquid Glass, which bends what's under its edges; Clear; Opaque, which is faster on older computers; or Lens, a bubble of thick glass; the system's Reduce transparency or Increase contrast makes any of them solid) and its tint (none, your accent colour, warm, cool or rose: none is best for judging colour), animations (on, or off: things just change), density and toolbar size.
 - **Toolbar & keys**: keyboard shortcuts and their profiles, a vertical toolbar, the buttons above the film strip, and which buttons are in the toolbar.
@@ -156,7 +156,7 @@ Adjust and Paint have no Done bar: what you do is kept as you go, as in Lightroo
 
 Drag the inner edge of the sidebar, or of Adjust's or Paint's panel, to make it wider or narrower; jEditor remembers each width, in every theme. Double-click the edge to put it back.
 
-The start page's **Start in** (Photos, Adjust or Paint) is remembered: a project you open from there lands in that mode, on its first photo. **Paint** there (or **New blank canvas…**) asks what to paint on: a **New canvas** (below), or **Open a file**: **An image…** opens a single picture on its own (the painting goes into it when you leave Paint), **A folder…** opens a folder of photos as a project in Paint.
+The home page's **Adjust a photo** opens one photo on its own in Adjust (in a browser that can't open one file, a folder, in Adjust). **Paint a photo** there (or **New canvas**) asks what to paint on: a **New canvas** (below), or **Open a file**: **An image…** opens a single picture on its own (the painting goes into it when you leave Paint), **A folder…** opens a folder of photos as a project in Paint.
 
 ## Paint
 
@@ -196,7 +196,7 @@ The Mac app has your Photos library in the sidebar, under Locations (`photosLibr
 
 ## Converting photos: format, quality and storage
 
-**Convert…** turns photos, one or many, into another format: **AVIF** (smallest), **JPEG XL** (newest), **WebP** (for the web), **JPEG** (opens anywhere), **PNG** (lossless) or **TIFF** (lossless, for print). Open it from the toolbar's **Convert** button (under ⋯ to start with; Settings can put it on the toolbar; in single view it converts the photo open), **Convert photos…** on the start page, right-clicking a photo, the selected photos, a folder or the project in the sidebar, or ⋯ on the selection bar.
+**Convert…** turns photos, one or many, into another format: **AVIF** (smallest), **JPEG XL** (newest), **WebP** (for the web), **JPEG** (opens anywhere), **PNG** (lossless) or **TIFF** (lossless, for print). Open it from the toolbar's **Convert** button (under ⋯ to start with; Settings can put it on the toolbar; in single view it converts the photo open), **Convert** on the home page, right-clicking a photo, the selected photos, a folder or the project in the sidebar, or ⋯ on the selection bar.
 
 - **Photos:** what's being converted: the project, a folder in it or the selected photos. **Choose a folder…** picks any folder on your computer instead, with the photos in its folders too, without opening it as the project (from the start page, it asks straight away). A folder chosen keeps its originals in the Recycle Bin, or in a `.jeditor/trash` of its own, and **Put the originals back** at the end takes the conversion back.
 
@@ -321,7 +321,7 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `import.js`: importing from a camera's card
 - `blank.js`: Paint's start: a new canvas (right-click a folder, or the start page's Paint), or an image or folder to open
 - `themes.js`, `themes/`: the themes (Settings → Appearance): the list, their stylesheets, the title bar and menu bar they draw, 1984's dithered thumbnails
-- `modes.js`: Photos, Adjust and Paint as modes: the switch (sidebar, chip), the strip in Adjust and Paint, Start in
+- `modes.js`: Photos, Adjust and Paint as modes: the switch (sidebar, chip), the strip in Adjust and Paint
 - `disc.js`: burning a CD or DVD (the Windows app's `src/Burn.cs`)
 - `export.js`: the Export window (a USB drive, a disc, or copies)
 - `convert.js`: Convert (photos to AVIF, JPEG XL or WebP: the quality and close-up, the storage now and after, the dots)
@@ -335,7 +335,8 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `folders.js`: folders: the folder list, moving and copying photos, making, renaming and deleting folders
 - `flags.js`: flags (star, rescan, colour labels) and search
 - `watch.js`: watching the folder for changes, and rescanning
-- `recents.js`: recent orders on the start screen, and spotting a folder that's part of one
+- `start.js`: the home page: its tiles, the Settings menu (Save edits when done, When jEditor opens), the update dot, All projects, and on the web the app for this computer
+- `recents.js`: the home page's stacks of prints (recent folders, with small pictures kept for each) and its Recent print (a photo opened on its own), and spotting a folder that's part of an order
 - `ui.js`: the app's own alert / confirm / prompt dialogs, and focus handling for every dialog
 - `tokens.css`: the design tokens (colours, type, spacing, radii, shadows, motion, layers) and the theme, density, glass, surround and window background switches; `style.css` builds every component from them
 

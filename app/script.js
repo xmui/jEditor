@@ -75,8 +75,13 @@ const app = {
         this.checkForUpdateNotice();
         const title = document.getElementById('app-title');
         if (title && typeof APP_VERSION !== 'undefined') {
-            // "jEditor 1.2.3": the version as a quiet badge beside the name
-            title.textContent = 'jEditor ';
+            // "jEditor 1.2.3": the version, quiet, beside Settings (the
+            // name is the brand's, so it's there only to be read out)
+            title.textContent = '';
+            const name = document.createElement('span');
+            name.className = 'sr-only';
+            name.textContent = 'jEditor ';
+            title.appendChild(name);
             const v = document.createElement('span');
             v.className = 'app-version';
             // A beta says which: "1.42.0 beta 3"
@@ -281,6 +286,7 @@ const app = {
         Convert.init(this);
         Blank.init(this);
         Modes.init(this);
+        Start.home(this);
         Themes.init(this);
         Fit.init();
         History.init(this);
@@ -311,7 +317,6 @@ const app = {
         document.getElementById('btn-whatsnew').addEventListener('click', () => this.toggleWhatsNew());
         document.getElementById('btn-whatsnew-start').addEventListener('click', () => this.toggleWhatsNew(true));
         document.getElementById('btn-shortcuts-start').addEventListener('click', () => this.toggleShortcutsPanel(true));
-        document.getElementById('btn-settings-start').addEventListener('click', () => this.toggleCustomizePanel(true));
         document.getElementById('whatsnew-close').addEventListener('click', () => this.toggleWhatsNew(false));
         document.getElementById('whatsnew-panel').addEventListener('mousedown', (e) => {
             if (e.target === e.currentTarget) this.toggleWhatsNew(false);
@@ -577,6 +582,11 @@ const app = {
                 if (typeof saved.singleControls === 'boolean') this.uiPrefs.singleControls = saved.singleControls;
                 if (typeof saved.folderRail === 'boolean') this.uiPrefs.folderRail = saved.folderRail;
                 if (['photos', 'adjust', 'paint'].includes(saved.startIn)) this.uiPrefs.startIn = saved.startIn;
+                // The home page's Settings menu (start.js)
+                if (typeof saved.deferNew === 'boolean') this.uiPrefs.deferNew = saved.deferNew;
+                if (['home', 'last', 'pick'].includes(saved.onOpen)) this.uiPrefs.onOpen = saved.onOpen;
+                if (typeof saved.onOpenId === 'string') this.uiPrefs.onOpenId = saved.onOpenId;
+                if (typeof saved.onOpenName === 'string') this.uiPrefs.onOpenName = saved.onOpenName;
                 // Before the mode switch, Adjust and Paint had buttons on the main row: the switch has them now
                 if (saved.modes !== 1) {
                     for (const k of ['adjust', 'paint']) if (this.uiPrefs.placement[k] === 'main') this.uiPrefs.placement[k] = 'more';
@@ -861,6 +871,8 @@ const app = {
         }
 
         // Folder
+        $('cust-on-open').addEventListener('change', (e) => Start.onOpenChanged(e.target.value));
+        $('cust-defer-new').addEventListener('change', (e) => Start.setDeferNew(e.target.checked));
         $('cust-auto-check').addEventListener('change', (e) => {
             this.uiPrefs.autoCheck = e.target.checked;
             this.saveUiPrefs();
@@ -973,6 +985,8 @@ const app = {
         $('cust-debug').checked = !!this.uiPrefs.debugConsole;
         $('cust-folder-cache').checked = this.uiPrefs.folderCache !== false;
         $('cust-auto-check').checked = this.uiPrefs.autoCheck !== false;
+        $('cust-defer-new').checked = !!this.uiPrefs.deferNew;
+        Start.drawOnOpen();
         $('cust-open-libraries').checked = !!this.uiPrefs.openLibraries;
         $('cust-huge-folder').value = this.uiPrefs.hugeFolder || '';
         this.elements.customizePanel.querySelectorAll('input[data-toast]').forEach(i => { i.checked = this.toastOn(i.dataset.toast); });
@@ -1647,6 +1661,8 @@ const app = {
     // in place, as dropped files are
     async openFileHandles(handles) {
         this._openGen = (this._openGen || 0) + 1;
+        // One photo opened in Adjust or Paint: the Recent print on the home page
+        const mode = typeof Modes !== 'undefined' ? Modes.next : null;
         this.isLoading = true;
         try {
             this.cleanupURLs();
@@ -1661,6 +1677,7 @@ const app = {
                 this.files.push({ name: h.name, handle: h, size: f.size, lastModified: f.lastModified });
             }
             await this.finalizeLoad();
+            if (handles.length === 1 && this.files.length === 1 && ['adjust', 'paint'].includes(mode)) Recents.rememberPhoto(handles[0], mode);
         } catch (err) {
             console.error('Opening files failed:', err);
             UI.alert({ title: 'Couldn\'t open that', message: err.message });
@@ -7385,7 +7402,15 @@ const app = {
         const menu = document.createElement('div');
         menu.id = 'context-menu';
         menu.setAttribute('role', 'menu');
-        items.forEach(([label, action, danger]) => {
+        items.forEach(([label, action, danger, checked]) => {
+            // A heading over the items after it
+            if (action === null) {
+                const h = document.createElement('div');
+                h.className = 'ctx-heading';
+                h.textContent = label;
+                menu.appendChild(h);
+                return;
+            }
             if (label === 'flags') {
                 if (this.dirHandle && !this.readOnlyMode) menu.appendChild(Flags.menuRow(action));
                 return;
@@ -7402,6 +7427,11 @@ const app = {
             btn.textContent = label;
             btn.setAttribute('role', 'menuitem');
             if (danger) btn.classList.add('danger');
+            // A setting that's on (true) or off (false): ticked when on
+            if (typeof checked === 'boolean') {
+                btn.setAttribute('role', 'menuitemcheckbox');
+                btn.setAttribute('aria-checked', String(checked));
+            }
             btn.onclick = (ev) => {
                 ev.stopPropagation();
                 this.closeContextMenu();
@@ -7429,7 +7459,7 @@ const app = {
         const top = opts.above ? y - r.height : y;
         menu.style.left = Math.max(8, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
         menu.style.top = Math.max(8, Math.min(top, window.innerHeight - r.height - 8)) + 'px';
-        const first = menu.querySelector('[role="menuitem"]');
+        const first = menu.querySelector('[role^="menuitem"]');
         if (first) first.focus({ preventScroll: true });
     },
 
