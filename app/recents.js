@@ -227,17 +227,11 @@ const Recents = {
                 }
             } else {
                 // No pictures kept (not made yet, or the cache was cleared):
-                // ghost prints with the name on the top one
+                // ghost prints, a stack like any other; the name is under it
                 li.classList.add('ghosted');
-                for (let i = 0; i < (photo ? 1 : 2); i++) {
+                for (let i = 0; i < (photo ? 1 : 3); i++) {
                     const print = document.createElement('span');
                     print.className = 'recent-print ghost';
-                    if (i === (photo ? 0 : 1)) {
-                        const n = document.createElement('span');
-                        n.className = 'ghost-name';
-                        n.textContent = rec.name;
-                        print.appendChild(n);
-                    }
                     pile.appendChild(print);
                 }
             }

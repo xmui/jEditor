@@ -6930,17 +6930,6 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
     box-shadow: none;
 }
 
-.ghost-name {
-    overflow: hidden;
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
-    color: var(--text-2);
-    font-size: var(--fs-body);
-    font-weight: var(--fw-medium);
-    text-align: center;
-}
-
 .recent-print.ghost.first {
     border: 2px dashed var(--accent);
     background: var(--accent-soft);
@@ -6957,7 +6946,7 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--sp-5);
+    gap: var(--sp-8);
 }
 
 .home-empty li:not(.ghost-first) {
@@ -6969,34 +6958,12 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
 .home-empty li:nth-child(3) { opacity: .7; }
 .home-empty li:nth-child(4) { opacity: .45; }
 
-.ghost-lines {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    margin-top: var(--sp-4);
-}
-
-.ghost-lines i {
-    display: block;
-    width: 110px;
-    height: 8px;
-    border-radius: 4px;
-    background: color-mix(in srgb, var(--text-3) 22%, transparent);
-}
-
-.ghost-lines i + i {
-    width: 70px;
-}
-
 .recent-print:nth-child(1) { transform: rotate(-7deg) translate(-6px, 4px); }
 .recent-print:nth-child(2) { transform: rotate(5deg) translate(6px, 2px); }
 .recent-print:nth-child(3) { transform: rotate(-2deg); }
 .recent-print:nth-child(4) { transform: rotate(1.5deg) translate(1px, -2px); box-shadow: var(--shadow-3); }
 
 /* Pointed at: the prints fan out */
-.home-empty .recent-print:nth-child(1) { transform: rotate(-6deg) translate(-5px, 4px); }
-.home-empty .recent-print:nth-child(2) { transform: rotate(3deg) translate(4px, 1px); }
 .home-empty li.ghost-first:hover .recent-print.first,
 .home-empty .recent-open:focus-visible .recent-print.first { transform: translateY(-8px) scale(1.04); }
 
