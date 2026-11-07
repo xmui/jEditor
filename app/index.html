@@ -79,10 +79,19 @@
                 <img class="start-icon" src="icon.png" alt="" width="72" height="72">
                 <h1 id="app-title" class="start-title">jEditor</h1>
                 <p class="start-tagline">Rotate, crop and sort photos. Edits the files on your disk.</p>
-                <button id="btn-browse-folder" class="btn primary lg start-open">
-                    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
-                    Open folder
-                </button>
+                <!-- Open folder, and Convert photos: photos or a folder (convert.js) -->
+                <div class="start-pair">
+                    <button id="btn-browse-folder" class="btn primary lg start-open">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
+                        Open folder
+                    </button>
+                    <button id="start-convert" type="button" class="btn lg start-open start-convert" aria-haspopup="menu">
+                        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h13l-3-3M20 17H7l3 3"/></svg>
+                        Convert photos
+                    </button>
+                </div>
+                <!-- Photos picked here are converted here: how far, and what it did (convert.js) -->
+                <div id="start-convert-run" class="start-convert-run hidden" role="status" aria-live="polite"></div>
                 <!-- Where a project opened from here lands (modes.js) -->
                 <div id="start-in" class="start-in hidden">
                     <span class="start-in-label" id="start-in-label">Start in</span>
@@ -92,7 +101,7 @@
                         <button type="button" role="radio" data-mode="paint" title="Paint on a photo, or start a new canvas"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L12 14.8 9.2 12z"/><path d="M9.2 12c-2.5 0-4.2 1.6-4.2 4 0 1.5-.8 2.6-2.4 3.4C4.4 21 6.3 21.5 8 21.5c3 0 5-1.9 4.9-4.6z"/></svg>Paint</button>
                     </span>
                 </div>
-                <p class="drop-hint">or drop a folder anywhere in this window<span id="start-blank-wrap"> · <button id="start-blank" type="button" class="link-btn">New blank canvas…</button></span><span id="start-convert-wrap"> · <button id="start-convert" type="button" class="link-btn">Convert photos…</button></span></p>
+                <p class="drop-hint">or drop a folder anywhere in this window<span id="start-blank-wrap"> · <button id="start-blank" type="button" class="link-btn">New blank canvas…</button></span></p>
                 <!-- Recent orders (recents.js) -->
                 <div id="recents" class="recents hidden">
                     <h2 class="recents-title">Recent</h2>
