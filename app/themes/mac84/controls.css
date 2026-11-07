@@ -448,3 +448,8 @@
 :root[data-skin="mac84"] .cv-dots i.f { background: repeating-linear-gradient(135deg, #000 0 1px, #fff 1px 3px) !important; }
 :root[data-skin="mac84"] .cv-dots i.now { box-shadow: inset 0 0 0 3px #000; }
 :root[data-skin="mac84"] .cv-run-row b { color: #000; font: 24px var(--m-font); }
+
+/* The guide (guide.js): the chosen topic and Watch the tour again, inverted */
+:root[data-skin="mac84"] .guide-topics button[aria-current="true"],
+:root[data-skin="mac84"] .guide-tour { background: #000; color: #fff; }
+:root[data-skin="mac84"] .guide-card { border-color: #000; }

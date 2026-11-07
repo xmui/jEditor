@@ -5313,6 +5313,138 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 7v. The guide (guide.js): F1, topics, cards, search, keys as they're set ----
+    console.log('guide');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1200, height: 800 });
+        await page.waitForTimeout(300);
+        await page.keyboard.press('F1');
+        await page.waitForTimeout(100);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const box = () => document.getElementById('guide');
+            const titles = () => [...box().querySelectorAll('.guide-card h3')].map(h => h.textContent);
+            const keyRows = () => [...box().querySelectorAll('.guide-keyrow')];
+            const topic = (id) => box().querySelector(`[data-topic="${id}"]`).click();
+            out.opensOnHome = !!box() && Guide.isOpen && document.activeElement && document.activeElement.id === 'guide-search';
+            out.startHere = titles().join('|') === Guide.CARDS.filter(c => c[0].split(' ').includes('start')).map(c => c[2]).join('|')
+                && box().querySelectorAll('.guide-card .gclip').length === titles().length && keyRows().length === 0;
+            out.current = box().querySelector('[data-topic="start"]').getAttribute('aria-current') === 'true';
+            topic('paint');
+            out.paint = titles().includes('Layers') && !titles().includes('Crop and straighten');
+            // Scan and Camera only where the app has them (none here: a browser)
+            topic('files');
+            out.noScan = !titles().includes('Scan') && !titles().includes('Shoot from the camera') && titles().includes('Convert to save room');
+            topic('keys');
+            out.keys = titles().length === 0 && keyRows().length > 20 && box().querySelectorAll('.guide-keylist h4').length > 3;
+            const q = document.getElementById('guide-search');
+            q.value = 'crop';
+            q.dispatchEvent(new Event('input'));
+            out.search = titles().includes('Crop and straighten') && titles().includes('Crop many in a row') && !titles().includes('Layers')
+                && keyRows().length > 0
+                && keyRows().length === app.KEY_ACTIONS.filter(([id, , g, l]) => (app.keyBindings[id] || []).length && /crop/i.test(`${g} ${l}`)).length;
+            q.value = 'zzqx';
+            q.dispatchEvent(new Event('input'));
+            out.nothing = !!box().querySelector('.guide-none');
+            // A shortcut changed in Toolbar & keys shows as it's set now
+            app.removeKey('edit.crop', 'C');
+            app.assignKey('edit.crop', 'K');
+            topic('crop');
+            const crop = [...box().querySelectorAll('.guide-card')].find(c => c.querySelector('h3').textContent === 'Crop and straighten');
+            out.followsKeys = !!crop && [...crop.querySelectorAll('kbd')].map(k => k.textContent).join('') === 'K';
+            out.cleared = q.value === '';
+            return out;
+        });
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(50);
+        const closed = await page.evaluate(() => !document.getElementById('guide') && !Guide.isOpen);
+        await page.keyboard.press('F1');
+        await page.waitForTimeout(50);
+        const again = await page.evaluate(() => Guide.isOpen && document.getElementById('guide-search').value === '');
+        // Watch the tour again: the guide closes and the tour starts
+        const tour = await page.evaluate(() => {
+            document.querySelector('#guide [data-tour]').click();
+            const ok = !Guide.isOpen && Tour.running && !!document.querySelector('.tour-card');
+            Tour.end();
+            return ok;
+        });
+        check('guide: F1 opens it on the home page, at Start here, with a clip on every card', r.opensOnHome && r.startHere && r.current, JSON.stringify(r));
+        check('guide: each topic shows its cards; Scan and Camera only where the app has them', r.paint && r.noScan, JSON.stringify(r));
+        check('guide: Keyboard shortcuts lists every key, in groups', r.keys, JSON.stringify(r));
+        check('guide: the search finds cards and keys, and says when nothing matches', r.search && r.nothing, JSON.stringify(r));
+        check('guide: shows the keys as they\'re set now; a topic clears the search', r.followsKeys && r.cleared, JSON.stringify(r));
+        check('guide: Esc closes it, F1 opens it again, Watch the tour again starts the tour', closed && again && tour);
+        check('guide suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7w. The welcome tour (tour.js) ----
+    console.log('welcome tour');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1200, height: 800 });
+        await page.waitForTimeout(800);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const until = async (f, ms = 4000) => { for (let t = 0; t < ms / 50 && !f(); t++) await sleep(50); return f(); };
+            // First run: offered on the empty table; Not now puts it away for good
+            out.offered = !!document.querySelector('.tour-offer') && document.getElementById('home-empty').classList.contains('tour-offering');
+            document.querySelector('.tour-offer [data-later]').click();
+            out.later = !document.querySelector('.tour-offer') && JSON.parse(localStorage.getItem('jeditor.tour')).offered === true
+                && !document.getElementById('home-empty').classList.contains('tour-offering');
+            Tour.offer();
+            out.once = !document.querySelector('.tour-offer');
+            // From the home page, with nothing open: it starts with a folder
+            Tour.start();
+            await until(() => !Tour.busy);
+            out.firstOpen = Tour.steps[0].id === 'open' && /Start with a folder/.test(document.querySelector('.tour-card').textContent);
+            // In a browser there's no Scan or Camera stop
+            out.noScan = !Tour.steps.some(s => s.id === 'scan' || s.id === 'camera');
+            // Opening a folder carries it on
+            const dir = makeDir('Tour');
+            for (let i = 1; i <= 3; i++) {
+                const h = makeHandle(`t${i}.jpg`, await makeRealJpeg(300, 200), 'image/jpeg');
+                dir._files.set(h.name, h);
+            }
+            dir.values = async function* () { yield* dir._files.values(); };
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            out.carriesOn = await until(() => Tour.steps[Tour.i].id === 'modes' && !Tour.busy);
+            out.lit = parseFloat(document.querySelector('.tour-hole').style.width) > 0;
+            out.count = document.querySelector('.tour-step').textContent === `2 of ${Tour.steps.length}`;
+            // Next: the sidebar, in the grid
+            document.querySelector('.tour-card [data-act="next"]').click();
+            out.sidebar = await until(() => Tour.steps[Tour.i].id === 'sidebar' && !Tour.busy) && document.body.dataset.view === 'grid';
+            // On to the turn buttons, in single view
+            while (Tour.steps[Tour.i].id !== 'turn') { document.querySelector('.tour-card [data-act="next"]').click(); await until(() => !Tour.busy); }
+            out.single = document.body.dataset.view === 'single' && parseFloat(document.querySelector('.tour-hole').style.width) > 0;
+            // Back goes back
+            document.querySelector('.tour-card [data-act="back"]').click();
+            out.back = await until(() => Tour.steps[Tour.i].id === 'strip' && !Tour.busy);
+            // The end, in a browser: what the apps also have, and the download
+            Tour.go(Tour.steps.length - 1);
+            await until(() => !Tour.busy && Tour.steps[Tour.i].end);
+            const card = document.querySelector('.tour-card');
+            const dl = [...card.querySelectorAll('a')].find(a => a.textContent === 'Download the full version');
+            out.webEnd = card.querySelectorAll('.tour-gaps li').length >= 2 && card.querySelectorAll('.tour-gaps li').length <= 5
+                && !!dl && /github\.com\/xmui\/jEditor\/releases/.test(dl.href);
+            return out;
+        });
+        // Esc ends it, back to Photos as it was
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(300);
+        const ended = await page.evaluate(() => !Tour.running && !document.querySelector('.tour-hole') && !document.querySelector('.tour-card') && !document.body.classList.contains('touring'));
+        check('tour: offered once on first run, and Not now keeps it away', r.offered && r.later && r.once, JSON.stringify(r));
+        check('tour: with nothing open it starts with a folder, and goes on once one is open', r.firstOpen && r.carriesOn && r.lit && r.count, JSON.stringify(r));
+        check('tour: takes the app to each stop\'s view (the grid, one photo), and Back goes back', r.sidebar && r.single && r.back, JSON.stringify(r));
+        check('tour: in a browser, no Scan or Camera stop, and it ends with what the apps also have and the download', r.noScan && r.webEnd, JSON.stringify(r));
+        check('tour: Esc ends it', ended);
+        check('tour suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- 7. file:// — direct open and standalone build ----
     console.log('beta builds and experiments');
     {
