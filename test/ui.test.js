@@ -4800,8 +4800,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             step = 'Turned off with edits waiting: discard them';
             UI.choose = async () => 'alt';
             await Edits.setDefer(false);
-            await until(async () => !(await kept()));
-            out.off = !Edits.on() && Edits.count() === 0 && bar().classList.contains('hidden') && !(await kept()) &&
+            // The choice stays (off, nothing waiting), so the folder isn't asked again (first-open.js)
+            const offKept = async () => { const k = await kept(); return !!k && k.defer === false && !Object.keys(k.edits || {}).length; };
+            await until(offKept);
+            out.off = !Edits.on() && Edits.count() === 0 && bar().classList.contains('hidden') && await offKept() &&
                 await same('scan1.jpg') && (await dims(dir, 'plain.jpg')).join('x') === '400x300';
             return out;
             })(); } catch (err) { return { crash: `${step}: ${err.message}`, toasts: [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | ') }; }
