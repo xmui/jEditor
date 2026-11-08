@@ -9,6 +9,8 @@
 @font-face { font-family: "jE Chicago"; src: url(fonts/ChicagoFLF.ttf) format("truetype"); }
 
 :root[data-skin="mac84"] {
+    /* A photo opened from the grid (motion.js): the zoom outlines */
+    --grid-zoom: rects;
     color-scheme: light;
     --m-font: "jE Chicago", monospace;
     --m-grey: repeating-conic-gradient(#000 0 25%, #fff 0 50%) 0 0 / 2px 2px;

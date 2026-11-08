@@ -243,3 +243,17 @@
 /* The guide (guide.js): Aperture's dark panels, not Finder's light one */
 :root[data-skin="snow"] .guide { background: var(--sl-list); border-color: var(--sl-toolbar-line); }
 :root[data-skin="snow"] .guide-nav { background: var(--sl-inspector); }
+
+/* The home page's tiles and Settings, and Open a folder: the light glyphs */
+:root[data-skin="snow"] .home-gear::before { background-image: url(../snow/glyphs/settings-dark.svg); }
+:root[data-skin="snow"] #btn-browse-folder { --g: url(../snow/glyphs/folder-dark.svg); }
+:root[data-skin="snow"] #start-capture { --g: url(../snow/glyphs/scan-dark.svg); }
+:root[data-skin="snow"] #start-blank { --g: url(../snow/glyphs/photo-dark.svg); }
+:root[data-skin="snow"] #start-convert { --g: url(../snow/glyphs/convert-dark.svg); }
+:root[data-skin="snow"] #start-adjust { --g: url(../snow/glyphs/adjust-dark.svg); }
+:root[data-skin="snow"] #start-paint { --g: url(../snow/glyphs/paint-dark.svg); }
+:root[data-skin="snow"] #btn-browse-folder.primary { --g: url(../snow/glyphs/folder.svg); }
+:root[data-skin="snow"] .oc-drop-icon::before { background-image: url(../snow/glyphs/folder-dark.svg); }
+:root[data-skin="snow"] .guide-nav { background: var(--sl-inspector); border-right-color: #111; }
+:root[data-skin="snow"] .guide-topics button { color: var(--sl-ink); }
+:root[data-skin="snow"] .recent-print.ghost { background: rgb(255 255 255 / 0.06); }

@@ -15,6 +15,7 @@ G = {
     'keys': '<path fill-rule="evenodd" d="M1 3.5h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1zM2 5.5v1.6h1.6V5.5zm3 0v1.6h1.6V5.5zm3 0v1.6h1.6V5.5zm3 0v1.6h1.6V5.5zM3.5 8.3v1.6h1.6V8.3zm3 0v1.6h1.6V8.3zm3 0v1.6h1.6V8.3zM4 10.8v1.4h8v-1.4z"/>',
     'whatsnew': '<path d="M8 .6l2.2 4.6 5 .7-3.6 3.5.9 5L8 12 3.5 14.4l.9-5L.8 5.9l5-.7z"/>',
     'settings': '<path fill-rule="evenodd" d="M4.5 4h7a4 4 0 0 1 0 8h-7a4 4 0 0 1 0-8zm6.8 1.7a2.3 2.3 0 1 0 0 4.6 2.3 2.3 0 0 0 0-4.6z"/>',
+    'folder': '<path d="M0 3.4A1.2 1.2 0 0 1 1.2 2.2h4.4l1.6 1.7h7.6A1.2 1.2 0 0 1 16 5.1v1.2H0z"/><path d="M0 7.4h16v5.7a1.2 1.2 0 0 1-1.2 1.2H1.2A1.2 1.2 0 0 1 0 13.1z"/>',
     'fit': '<path fill-rule="evenodd" d="M0 2h16v12H0zm1.6 1.6v8.8h12.8V3.6z"/><path d="M4 5.5h8v5H4z"/>',
     'strip': '<path fill-rule="evenodd" d="M0 3h16v10H0zm1.2 1v1.3h1.4V4zm3 0v1.3h1.4V4zm3 0v1.3h1.4V4zm3 0v1.3h1.4V4zm3 0v1.3h1.4V4zM1.2 10.7V12h1.4v-1.3zm3 0V12h1.4v-1.3zm3 0V12h1.4v-1.3zm3 0V12h1.4v-1.3zm3 0V12h1.4v-1.3zM2 6.3v3.4h5.4V6.3zm6.6 0v3.4H14V6.3z"/>',
 }
