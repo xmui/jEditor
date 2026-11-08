@@ -941,7 +941,14 @@ const PROJECT = `
         const { page, issues } = await open();
         // 64 × 64, from libheif's own test files (fuzzing/data/corpus/colors-no-alpha.heic)
         const HEIC = 'AAAAGGZ0eXBoZWljAAAAAG1pZjFoZWljAAABLm1ldGEAAAAAAAAAIWhkbHIAAAAAAAAAAHBpY3QAAAAAAAAAAAAAAAAAAAAADnBpdG0AAAAAAAEAAAAiaWxvYwAAAABEQAABAAEAAAAAAU4AAQAAAAAAAAClAAAAI2lpbmYAAAAAAAEAAAAVaW5mZQIAAAAAAQAAaHZjMQAAAACuaXBycAAAAJFpcGNvAAAAdWh2Y0MBA3AAAAAAAAAAAAAe8AD8/fj4AAAPAyAAAQAYQAEMAf//A3AAAAMAkAAAAwAAAwAeugJAIQABAChCAQEDcAAAAwCQAAADAAADAB6gIIEFlupJKa5sCAAAAwAIAAADAAhAIgABAAdEAcFysCJAAAAAFGlzcGUAAAAAAAAAQAAAAEAAAAAVaXBtYQAAAAAAAAABAAECgQIAAACtbWRhdAAAAKEmAa8TgIGSEXXAGM2sfMMD8HKXsBNBYjkEW6//QKl1HfLCc/SN/bWOG2ARaa8rk4JsxRuKJFz/vIlnrSBv0Pk7pYMv503LniUfVt0RGOMyTBZVcbnDhlXs0nsTVObq7679Fh7MfXPARYndCrwpKWSNTQcCjNVYWPVOenDxU81lLBnE070xnN107IoLiTNywdiNWzedf/q6zzV3iwZflrO94A==';
-        await page.evaluate((b) => { window.HEIC = new Blob([Uint8Array.from(atob(b), c => c.charCodeAt(0))], { type: 'image/heic' }); }, HEIC);
+        // 600 × 800 (a 800 × 600 photo turned by its EXIF, white top left: so
+        // white top right once turned), with a 240 × 320 thumbnail inside, as
+        // an iPhone's have (heif-enc -t 320)
+        const THUMBED = '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';
+        await page.evaluate(([b, t]) => {
+            window.HEIC = new Blob([Uint8Array.from(atob(b), c => c.charCodeAt(0))], { type: 'image/heic' });
+            window.THUMBED = new Blob([Uint8Array.from(atob(t), c => c.charCodeAt(0))], { type: 'image/heic' });
+        }, [HEIC, THUMBED]);
         const r = await page.evaluate(async () => {
             let step = 'names';
             try {
@@ -958,6 +965,27 @@ const PROJECT = `
                 const same = async () => { const a = new Uint8Array(await (await (await dir.getFileHandle('IMG_1.heic')).getFile()).arrayBuffer()), b = new Uint8Array(await HEIC.arrayBuffer()); return a.length === b.length && a.every((v, i) => v === b[i]); };
                 await until(() => f('IMG_1.heic').thumbnailUrl);
                 out.thumb = !!f('IMG_1.heic').thumbnailUrl;
+                // Grid thumbnails: the HEIC's own when it has one (240 wide, not
+                // the 320 a decode of the photo gives), turned as the photo is
+                step = 'own thumbnail';
+                const own = await pixels(await Codec.thumbnail(new File([THUMBED], 'IMG_2.heic', { type: 'image/heic' }), 320));
+                const at = (img, x, y) => img.data.slice((Math.floor(y) * img.width + Math.floor(x)) * 4, (Math.floor(y) * img.width + Math.floor(x)) * 4 + 3);
+                const white = (c) => c[0] > 200 && c[1] > 200 && c[2] > 200, red = (c) => c[0] > 150 && c[1] < 100 && c[2] < 100;
+                out.ownThumb = [own.width, own.height, white(at(own, own.width * 0.9, own.height * 0.05)), red(at(own, own.width * 0.1, own.height * 0.6))];
+                // ...and with none, from the photo (no bigger than it is)
+                const none = await pixels(await Codec.thumbnail(new File([HEIC], 'IMG_1.heic', { type: 'image/heic' }), 320));
+                out.noOwnThumb = [none.width, none.height];
+                // Opened again: its cached thumbnail, with nothing decoded
+                step = 'cached';
+                const ops = [], run = Codec.run;
+                Codec.run = function (msg) { ops.push(msg.op); return run.call(this, msg); };
+                Codec._shown.length = 0;
+                const fe = f('IMG_1.heic');
+                URL.revokeObjectURL(fe.thumbnailUrl);
+                fe.thumbnailUrl = null;
+                await app.makeThumbnail(fe);
+                Codec.run = run;
+                out.cached = [!!fe.thumbnailUrl, ops.join() || 'none'];
                 step = 'viewer';
                 app.openSingle(f('IMG_1.heic'));
                 const src = await app.getDisplaySource(f('IMG_1.heic'));
@@ -994,6 +1022,9 @@ const PROJECT = `
         check('heic: .heic, .heif and .hif are photos, decoded by the codecs', r.names === 'true,true,true,false,true', JSON.stringify(r));
         check('heic: decoded by the bundled libheif, 64 × 64, opaque, in colour', String(r.decoded) === '64,64,true,true', JSON.stringify(r));
         check('heic: listed with a thumbnail, and shown', r.thumb && String(r.viewer) === '64,64', JSON.stringify(r));
+        check('heic: a grid thumbnail is the HEIC\'s own when it has one, turned as the photo is', String(r.ownThumb) === '240,320,true,true', JSON.stringify(r));
+        check('heic: ...and made from the photo when it has none', String(r.noOwnThumb) === '64,64', JSON.stringify(r));
+        check('heic: a cached thumbnail is used without decoding the HEIC again', String(r.cached) === 'true,none', JSON.stringify(r));
         check('heic: a turn is kept as an edit, the HEIC never written; Save edits exports instead', r.turnKept && r.saveNotWritten, JSON.stringify(r));
         check('heic: Export writes a JPEG copy, IMG_1.jpg', r.exported && r.exported[1] === 64 && r.exported[2] === '255,216', JSON.stringify(r));
         check('heic: Convert encodes it (to WebP)', String(r.converted) === '64,64,true', JSON.stringify(r));
