@@ -144,5 +144,16 @@ for (const f of fs.readdirSync(APP).filter(f => f.endsWith('.js'))) {
 }
 check('words on a canvas are in the theme\'s typeface (--font-ui)', !fixed.length, `a fixed font at ${fixed.join(', ')}`);
 
+// ---- Merges ----
+// A conflict marker left in by a merge breaks the rule after it (in CSS the
+// whole rule is dropped) without any error to see
+const markers = [];
+for (const f of fs.readdirSync(APP, { recursive: true }).filter(f => /\.(css|js|html)$/.test(f))) {
+    fs.readFileSync(path.join(APP, f), 'utf8').split('\n').forEach((line, i) => {
+        if (/^(<{7}|={7}|>{7})(\s|$)/.test(line)) markers.push(`app/${f.split(path.sep).join('/')}:${i + 1}`);
+    });
+}
+check('no merge conflict markers left in app/', !markers.length, markers.join(', '));
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
