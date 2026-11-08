@@ -624,7 +624,8 @@
     // The traffic lights: in line with the top row of pills (their centre:
     // the gutter plus half a pill, which the UI scale zooms), and at the
     // gutter's distance from the left edge; over Adjust and Paint, in line
-    // with the mode chip in their head. A light is 14px.
+    // with the mode chip in their head; on the home page, with jEditor in its
+    // top bar, which leaves room for them. A light is 14px.
     let lastLights = '';
     let themed = false; // a theme draws the title bar (titleBar above)
     const reportLights = () => {
@@ -633,7 +634,8 @@
         const scale = parseFloat(css.getPropertyValue('--ui-scale')) || 1;
         const gutter = px('--gutter');
         const chip = document.querySelector('.mode-float.over-mode:not(.hidden)');
-        const r = chip && chip.getBoundingClientRect();
+        const home = document.querySelector('.drop-zone:not(.hidden) .home-brand');
+        const r = chip ? chip.getBoundingClientRect() : home ? home.getBoundingClientRect() : null;
         const middle = r && r.height ? r.top + r.height / 2 : px('--mac-drag') + gutter + (px('--ctl-lg') * scale) / 2;
         const at = { x: Math.max(12, gutter), y: middle - 7 };
         const key = at.x + ',' + at.y;
@@ -783,6 +785,8 @@
         if (!mac.nativeToolbar) addEventListener('resize', lightsSoon);
         // Into Adjust or Paint and out: the lights follow the mode chip
         if (!mac.nativeToolbar && $('mode-float')) new MutationObserver(reportLights).observe($('mode-float'), { attributes: true, attributeFilter: ['class'] });
+        // The home page shown or left: the lights go to its top bar, and back
+        if (!mac.nativeToolbar && $('drop-zone')) new MutationObserver(lightsSoon).observe($('drop-zone'), { attributes: true, attributeFilter: ['class'] });
         mac.request('ready', { version: typeof APP_VERSION !== 'undefined' ? APP_VERSION : null });
     });
 

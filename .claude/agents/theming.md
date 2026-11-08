@@ -99,7 +99,14 @@ something new.
    `design/themes/audit.js`. Run it, commit the updated
    `docs/themes-checklist.md`, and add what it can't check to the "Checked
    by hand" tables.
-8. **Before pushing:** `node test/themes.test.js` (part of `npm test`), and
+8. **Anything floating over the page** (a dialog, a menu, a card, a
+   popup, a message) stays below the window's top: a theme's title and
+   menu bars, and on the Mac the traffic lights and macOS 26's toolbar.
+   Use `--top-safe` in CSS, or `UI.topSafe()` for something placed from
+   script, never a fixed distance from the top. Add a new one to
+   `floatingBoxes` in `test/page-helpers.js`, so the UI and Mac suites
+   check it.
+9. **Before pushing:** `node test/themes.test.js` (part of `npm test`), and
    screenshots (`SHOTS=dir node design/themes/audit.js <look> <screen>`) of
    the new part in jEditor's own look, dark and light, and in each theme.
    If the audit won't run, load the page under a stand-in host with

@@ -2306,6 +2306,9 @@ body[data-view="single"] .edits-bar {
     position: fixed;
     z-index: var(--z-menu);
     min-width: 220px;
+    /* Between the window's top (--top-safe, script.js) and its bottom */
+    max-height: calc(100vh - var(--top-safe) - 16px);
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     padding: var(--sp-1);
@@ -2701,6 +2704,9 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     align-items: center;
     justify-content: center;
     padding: var(--sp-4);
+    /* Clear of the window's top (--top-safe): below a theme's bars the
+       overlay starts already (:root.th-top), so only what's more than them */
+    padding-top: calc(var(--top-safe) - var(--th-top, 0px) + var(--sp-4));
     background: var(--scrim);
     animation: fade-in var(--dur-base) var(--ease-out);
 }
@@ -4677,7 +4683,7 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 .palette-overlay {
     z-index: calc(var(--z-toast) + 2); /* over the tour's card: Ctrl+K works during the tour */
     align-items: flex-start;
-    padding-top: max(var(--sp-6), 14vh);
+    padding-top: max(calc(var(--top-safe) - var(--th-top, 0px) + var(--sp-6)), 14vh);
 }
 
 .palette {
@@ -9295,6 +9301,26 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     --mac-drag: 0px;
 }
 
+/* ---- The top of the window, kept clear (--top-safe) ----
+   What's drawn along the top of the window over the page: a theme's title
+   and menu bars (--th-top), or on the Mac the traffic lights in the top
+   row and, on macOS 26, the window's own toolbar (native-toolbar, below:
+   there in full screen too). Whatever floats over the page (dialogs, the
+   guide, Find anything, menus, the tour's card) keeps below it, here and
+   in UI.topSafe() for what's placed from script. Everywhere else it's 0. */
+:root {
+    --top-safe: var(--th-top, 0px);
+}
+
+:root[data-platform="mac"]:not([data-skin]) {
+    --top-safe: var(--top-row);
+}
+
+/* Full screen without the toolbar: no lights, nothing over the page */
+:root[data-platform="mac"]:not([data-skin]).fullscreen:not(.native-toolbar) {
+    --top-safe: 0px;
+}
+
 :root[data-platform="mac"]:not([data-skin]) header {
     top: var(--mac-drag);
 }
@@ -9303,6 +9329,14 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 :root[data-platform="mac"]:not([data-skin]) .mode-float {
     top: calc((var(--gutter) + var(--mac-drag)) / var(--ui-scale, 1));
     left: calc((var(--gutter) + var(--lights-w)) / var(--ui-scale, 1));
+}
+
+/* The home page's top bar (jEditor, and Settings at the right) makes room
+   for the lights, as the pills do, and they come up into line with it
+   (bridge.js: reportLights). With macOS 26's toolbar, which isn't shown
+   on the home page, AppKit puts them in the same corner. */
+:root[data-platform="mac"]:not([data-skin]) .home-bar {
+    padding-left: max(var(--sp-5), calc(var(--gutter) + var(--lights-w)));
 }
 
 /* Over Adjust and Paint the mode chip is in their head's row (unzoomed, as
@@ -9699,8 +9733,8 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 /* ---- The guide (guide.js): a sheet of cards with clips ---- */
 .guide-scrim {
     position: fixed; inset: 0; z-index: var(--z-modal); display: grid; place-items: center;
-    /* Under a theme's title and menu bar (--th-top), where there's one */
-    padding: calc(var(--th-top, 0px) + var(--sp-4)) var(--sp-4) var(--sp-4);
+    /* Under a theme's title and menu bar, or the Mac's toolbar (--top-safe) */
+    padding: calc(var(--top-safe) + var(--sp-4)) var(--sp-4) var(--sp-4);
     background: var(--scrim); animation: guide-fade var(--dur-base) var(--ease-out) both;
 }
 .guide {

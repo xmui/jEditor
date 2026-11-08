@@ -12,7 +12,7 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 const { _electron: electron } = require('playwright-core');
-const { QUIET_FIRST_OPEN } = require('./page-helpers.js');
+const { QUIET_FIRST_OPEN, floatingBoxes, overTopBar } = require('./page-helpers.js');
 
 const ROOT = path.join(__dirname, '..');
 const MAC = path.join(ROOT, 'mac');
@@ -1009,6 +1009,102 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
             d = await describe();
             check('on the start screen, no toolbar', d.visible === false, JSON.stringify(d).slice(0, 200));
         }
+        check('no JS errors', errors.length === 0, errors.join('; '));
+        await app.close();
+    }
+
+    // What floats over the page (dialogs, the guide, Find anything, menus, a
+    // message, the tour's card at every stop) stays out of what the window
+    // draws over its top: macOS 26's toolbar (its real height), or the
+    // traffic lights where bridge.js put them; and under a theme (Snow
+    // Leopard, 1984), out of its title and menu bars. At the window's
+    // biggest and smallest, and in full screen on a Mac. (Needs fixing,
+    // 2026-11-08: the tour went up under the toolbar, one more overlay
+    // after others: style.css's --top-safe is for all of them now.)
+    // The home page's top bar (jEditor, the version, Settings) makes room for
+    // the traffic lights, and they're in line with it (bridge.js:
+    // reportLights). (Needs fixing, 2026-11-08: the lights hung under the
+    // jEditor logo there.) With macOS 26's toolbar AppKit places them.
+    console.log('mac: the home page and the traffic lights');
+    {
+        const { app, page, errors } = await launch(profile);
+        const native = await page.evaluate(() => !!window.jeditorMac.nativeToolbar);
+        // In jEditor's own look (a theme hides the lights)
+        await page.evaluate(async () => { if (app.uiPrefs.skin) { Themes.choose(''); await new Promise(r => setTimeout(r, 800)); } });
+        if (native) {
+            console.log('        (skipped: with macOS 26\'s toolbar, AppKit places the lights)');
+        } else {
+            const miss = [];
+            for (const [w, h] of [[1280, 860], [640, 480]]) {
+                await app.evaluate(({ BrowserWindow }, [w, h]) => BrowserWindow.getAllWindows()[0].setSize(w, h), [w, h]);
+                await page.waitForTimeout(600);
+                const l = (await app.evaluate(() => global.jeditorLights()))[0];
+                const r = await page.evaluate(() => {
+                    const box = (e) => { const b = e.getBoundingClientRect(); return { name: e.className || e.id, left: b.left, top: b.top, right: b.right, bottom: b.bottom }; };
+                    const bar = document.querySelector('.drop-zone:not(.hidden) .home-bar');
+                    return bar && { brand: box(bar.querySelector('.home-brand')), parts: [...bar.children].filter(e => e.getClientRects().length && !e.classList.contains('home-gap')).map(box) };
+                });
+                if (!l || !r) { miss.push(`${w}×${h}: ${!l ? 'no lights reported' : 'no home bar'}`); continue; }
+                const lights = { name: 'the traffic lights', left: l.x, top: l.y, right: l.x + 54, bottom: l.y + 14 };
+                for (const o of overTopBar(r.parts, [lights])) miss.push(`${w}×${h}: ${o}`);
+                const off = Math.abs((r.brand.top + r.brand.bottom) / 2 - (l.y + 7));
+                if (off > 2) miss.push(`${w}×${h}: the lights ${Math.round(off)}px out of line with jEditor`);
+            }
+            check('the home page\'s top bar leaves room for the traffic lights, in line with them', miss.length === 0, miss.join('; '));
+            await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1280, 860));
+        }
+        check('no JS errors', errors.length === 0, errors.join('; '));
+        await app.close();
+    }
+
+    console.log('mac: the window\'s top bar, kept clear');
+    {
+        const { app, page, errors } = await launch(profile, [path.join(tmp, 'Glass')]);
+        await loaded(page, 2);
+        await page.evaluate(() => localStorage.setItem('jeditor.tour', JSON.stringify({ offered: true })));
+        const native = await page.evaluate(() => !!window.jeditorMac.nativeToolbar);
+        const size = (w, h) => app.evaluate(({ BrowserWindow }, [w, h]) => BrowserWindow.getAllWindows()[0].setSize(w, h), [w, h]);
+        const full = (on) => app.evaluate(({ BrowserWindow }, on) => BrowserWindow.getAllWindows()[0].setFullScreen(on), on);
+        // What's over the top of the page now
+        const bars = async (theme) => {
+            if (theme) {
+                return page.evaluate(() => {
+                    const r = document.getElementById('th-top').getBoundingClientRect();
+                    return [{ name: 'the theme\'s title and menu bars', left: r.left, top: r.top, right: r.right, bottom: r.bottom }];
+                });
+            }
+            if (native) {
+                const d = await app.evaluate(({ BrowserWindow }) => global.jeditorToolbar.describe(BrowserWindow.getAllWindows()[0].getNativeWindowHandle()));
+                return d.toolbarHeight ? [{ name: 'the toolbar', left: 0, top: 0, right: 1e5, bottom: d.toolbarHeight }] : [];
+            }
+            const l = (await app.evaluate(() => global.jeditorLights()))[0];
+            const fullscreen = await page.evaluate(() => document.documentElement.classList.contains('fullscreen'));
+            // Three lights, 14px each, 20px apart (as above)
+            return l && !fullscreen ? [{ name: 'the traffic lights', left: l.x, top: l.y, right: l.x + 54, bottom: l.y + 14 }] : [];
+        };
+        const over = [], unmeasured = [];
+        const cases = [];
+        for (const theme of ['', 'snow/finder', 'mac84/finder']) for (const [w, h] of [[1280, 860], [640, 480]]) cases.push({ theme, w, h });
+        if (process.platform === 'darwin') cases.push({ theme: '', w: 1280, h: 860, full: true });
+        for (const c of cases) {
+            const name = `${c.theme || 'jEditor\'s look'}, ${c.full ? 'full screen' : `${c.w}×${c.h}`}`;
+            await page.evaluate(async (theme) => {
+                if ((app.uiPrefs.skin || '') !== theme) { Themes.choose(theme); await new Promise(r => setTimeout(r, 800)); }
+            }, c.theme);
+            await size(c.w, c.h);
+            if (c.full) await full(true);
+            await page.waitForTimeout(c.full ? 1500 : 600);
+            const b = await bars(c.theme);
+            if (!b.length && !c.full) unmeasured.push(name);
+            const boxes = await floatingBoxes(page);
+            for (const o of overTopBar(boxes, b)) over.push(`${name}: ${o}`);
+            if (boxes.length < 15) unmeasured.push(`${name}: only ${boxes.length} (${boxes.map(x => x.name).join(', ')})`);
+            if (c.full) { await full(false); await page.waitForTimeout(1500); }
+        }
+        await page.evaluate(() => { if (app.uiPrefs.skin) Themes.choose(''); });
+        await size(1280, 860);
+        check('dialogs, the guide, Find anything, menus, messages and the tour\'s card stay clear of the toolbar, the traffic lights and a theme\'s bars', over.length === 0, over.slice(0, 8).join('; '));
+        check('... each measured, with what\'s over the top known', unmeasured.length === 0, unmeasured.join('; '));
         check('no JS errors', errors.length === 0, errors.join('; '));
         await app.close();
     }

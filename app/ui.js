@@ -19,6 +19,20 @@ const UI = {
 
     el(id) { return document.getElementById(id); },
 
+    // How far down from the window's top something floating over the page
+    // has to stay, in px: a theme's title and menu bars, or the Mac's
+    // traffic lights and toolbar (style.css: --top-safe). 0 elsewhere.
+    topSafe() {
+        let p = this._safe;
+        if (!p) {
+            p = this._safe = document.createElement('div');
+            p.setAttribute('aria-hidden', 'true');
+            p.style.cssText = 'position:fixed;top:0;left:0;width:0;height:var(--top-safe,0px);visibility:hidden;pointer-events:none';
+        }
+        if (!p.isConnected) document.body.appendChild(p);
+        return p.getBoundingClientRect().height;
+    },
+
     init() {
         if (this._inited) return;
         this._inited = true;

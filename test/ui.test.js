@@ -13,7 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright-core');
 const { createServer } = require('../scripts/serve.js');
-const { launchOptions, PAGE_HELPERS, newPage } = require('./page-helpers.js');
+const { launchOptions, PAGE_HELPERS, newPage, floatingBoxes, overTopBar } = require('./page-helpers.js');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -5542,6 +5542,55 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('tour: Esc ends it', ended);
         check('tour suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
+    }
+
+    // The Mac's top bar, kept clear (style.css: --top-safe): the page as the
+    // Mac app shows it, with macOS 26's own toolbar over its top, or the
+    // traffic lights in its top row. Everything that floats over the page
+    // (dialogs, the guide, Find anything, menus, a message, the tour's card
+    // at every stop) stays out of them, at the window's narrowest and
+    // shortest too. (Needs fixing, 2026-11-08: the tour went up under the
+    // toolbar, and it kept happening on the Mac, one overlay at a time.)
+    // The real windows are measured on a Mac too (mac.test.js).
+    console.log('the Mac\'s top bar, kept clear (simulated)');
+    {
+        const over = [];
+        let errors = [];
+        for (const chrome of ['toolbar', 'lights']) {
+            for (const [width, height] of [[1280, 800], [640, 480]]) {
+                const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+                await page.setViewportSize({ width, height });
+                await page.evaluate(async (chrome) => {
+                    localStorage.setItem('jeditor.tour', JSON.stringify({ offered: true }));
+                    document.documentElement.dataset.platform = 'mac';
+                    document.documentElement.classList.toggle('native-toolbar', chrome === 'toolbar');
+                    const dir = makeDir('Top bar');
+                    for (let i = 1; i <= 3; i++) {
+                        const h = makeHandle(`t${i}.jpg`, await makeRealJpeg(300, 200), 'image/jpeg');
+                        dir._files.set(h.name, h);
+                    }
+                    dir.values = async function* () { yield* dir._files.values(); };
+                    window.showDirectoryPicker = async () => dir;
+                    await app.browseFolder();
+                }, chrome);
+                await page.waitForFunction(() => !app.isLoading && app.files.length === 3, null, { timeout: 15000 });
+                // Where the Mac puts them: the toolbar, 52px (AppKit's); the
+                // lights, 14px tall and 54 wide, as bridge.js places them
+                const bars = await page.evaluate((chrome) => {
+                    if (chrome === 'toolbar') return [{ name: 'the toolbar', left: 0, top: 0, right: innerWidth, bottom: 52 }];
+                    const css = getComputedStyle(document.documentElement), px = (n) => parseFloat(css.getPropertyValue(n)) || 0;
+                    const gutter = px('--gutter'), x = Math.max(12, gutter), y = px('--mac-drag') + gutter + px('--ctl-lg') / 2 - 7;
+                    return [{ name: 'the traffic lights', left: x, top: y, right: x + 54, bottom: y + 14 }];
+                }, chrome);
+                const boxes = await floatingBoxes(page);
+                for (const o of overTopBar(boxes, bars)) over.push(`${chrome}, ${width}×${height}: ${o}`);
+                if (boxes.length < 15) over.push(`${chrome}, ${width}×${height}: only ${boxes.length} measured (${boxes.map(b => b.name).join(', ')})`);
+                errors = errors.concat(issues.errors);
+                await page.close();
+            }
+        }
+        check('Mac top bar: dialogs, the guide, Find anything, menus, messages and the tour\'s card stay clear of the toolbar and the traffic lights', over.length === 0, over.slice(0, 8).join('; '));
+        check('Mac top bar: no JS errors', errors.length === 0, errors.join('; '));
     }
 
     // ---- 7. file:// — direct open and standalone build ----
