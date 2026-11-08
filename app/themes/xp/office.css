@@ -6,6 +6,8 @@
    ========================================================================== */
 
 :root[data-skin="xp"] {
+    /* A photo opened from the grid (motion.js): XP just shows it */
+    --grid-zoom: none;
     --o-dock: linear-gradient(90deg, #9ebef5, #c4dafa 60%, #d6e6fc);
     --o-bar: linear-gradient(180deg, #f6faff, #dcebfe 35%, #c0d8fc 60%, #9fc0f2 90%, #8bb0e9);
     --o-bar-edge: #3b619c;

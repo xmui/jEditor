@@ -7,7 +7,8 @@
 // viewer, and going back zooms it down into its tile again (zoom). A tile clicked or selected gives a little bounce, and photos that turn up in
 // the folder while it's open fly into their places. They follow what happened and never hold anything up (the change
 // is made first, then shown moving); the themes and Reduce motion have
-// none, nor with Settings → Animations off. The tiles easing in and out as the grid scrolls are CSS only.
+// none, nor with Settings → Animations off. A theme can still open a photo
+// from the grid its own way (--grid-zoom: zoomStyle). The tiles easing in and out as the grid scrolls are CSS only.
 const Motion = {
     init() {
         // The mode switch is made after this (modes.js), into the sidebar
@@ -207,10 +208,16 @@ const Motion = {
         const view = app.setView;
         app.setView = function (mode, ...rest) {
             const from = this.viewMode;
-            if (from === mode || !self.on() || self.held) return view.call(this, mode, ...rest);
+            const how = self.zoomStyle();
+            if (from === mode || !how || self.held) return view.call(this, mode, ...rest);
             const tile = from === 'grid' && mode === 'single' ? self.tileOf(this.currentFile) : null;
             const was = from === 'single' && mode === 'grid' ? self.photoRect(this.currentFile) : null;
             const out = view.call(this, mode, ...rest);
+            if (how === 'rects') {
+                if (tile && this.viewMode === 'single' && this.currentFile === tile._file) self.zoomRects(tile.r, self.photoRect(tile._file, tile.w, tile.h));
+                if (was && this.viewMode === 'grid') self.zoomRects(was, self.revealTile(this.currentFile));
+                return out;
+            }
             if (tile && this.viewMode === 'single' && this.currentFile === tile._file) self.zoomOut(tile);
             if (was && this.viewMode === 'grid') self.zoomIn(this.currentFile, was);
             return out;
@@ -231,6 +238,51 @@ const Motion = {
     },
 
     ZOOM: 200, // ms: grid to viewer, and back
+
+    // How a photo opens from the grid: 'zoom' (jEditor's own look), or in a
+    // theme what its stylesheets say (--grid-zoom: zoom, rects or none);
+    // nothing with Animations off or Reduce motion
+    zoomStyle() {
+        const root = document.documentElement;
+        if (root.dataset.motion === 'off' || matchMedia('(prefers-reduced-motion: reduce)').matches) return '';
+        if (!root.dataset.skin) return 'zoom';
+        const how = getComputedStyle(root).getPropertyValue('--grid-zoom').trim();
+        return how === 'none' ? '' : how;
+    },
+
+    // The photo's tile, scrolled into sight: where it is
+    revealTile(f) {
+        const el = f && (app.revealInGrid ? app.revealInGrid(f) : f._gridEl);
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center' });
+        const t = this.tileOf(f);
+        return t && t.r;
+    },
+
+    // The classic Mac's zoom: outlines stepping from one box to the other,
+    // each drawn and then rubbed out (XOR'd: white with difference, the same
+    // over any picture in every look)
+    zoomRects(from, to) {
+        this.endZoom();
+        if (!from || !to) return;
+        const box = document.createElement('div');
+        Object.assign(box.style, { position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: 50 });
+        document.body.appendChild(box);
+        const N = 8, step = this.ZOOM / N, timers = [];
+        const at = (k, t) => from[k] + (to[k] - from[k]) * t;
+        for (let i = 1; i <= N; i++) {
+            const t = i / N, r = document.createElement('div');
+            Object.assign(r.style, {
+                position: 'absolute', left: at('left', t) + 'px', top: at('top', t) + 'px', width: at('width', t) + 'px', height: at('height', t) + 'px',
+                border: '1px solid #fff', mixBlendMode: 'difference', visibility: 'hidden'
+            });
+            box.appendChild(r);
+            timers.push(setTimeout(() => { r.style.visibility = 'visible'; }, (i - 1) * step));
+            timers.push(setTimeout(() => r.remove(), (i + 2) * step));
+        }
+        const done = () => { timers.forEach(clearTimeout); box.remove(); if (this._zoom === done) this._zoom = null; };
+        this._zoom = done;
+        timers.push(setTimeout(done, (N + 3) * step));
+    },
 
     // A photo's tile in sight in the grid, with where it is
     tileOf(f) {

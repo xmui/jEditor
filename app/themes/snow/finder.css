@@ -6,6 +6,8 @@
    ========================================================================== */
 
 :root[data-skin="snow"] {
+    /* A photo opened from the grid (motion.js): iPhoto's zoom out of its tile */
+    --grid-zoom: zoom;
     color-scheme: light;
     --sl-font: "Lucida Grande", "Lucida Sans Unicode", "DejaVu Sans", sans-serif;
     --font-ui: var(--sl-font);

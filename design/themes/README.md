@@ -11,6 +11,10 @@ they go into the app. Nothing here is loaded by the app.
     mkdir -p photos && for id in 10 15 17 28 29 37 42 54 57 64 76 82 91 102 110 129 137 152 164 177; do curl -sSL -o photos/p$id.jpg https://picsum.photos/id/$id/1600/1067; done
     VIEWS=grid WAIT=3500 node shot.js out/studio studio
 
+`node audit.js` (the look checklist) fetches the same photos itself the
+first time. `photos/` isn't kept in git: make it here, not as a link to
+somewhere else.
+
 `shot.js <out> <theme folder>` opens the app with 20 photos, loads the theme
 and writes `<out>-grid.png` and `<out>-photo.png` (VIEWS picks which). A
 theme folder has `theme.css`, an optional `setup.js` and `theme.json`

@@ -3182,9 +3182,10 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     padding-top: var(--th-top, 0px);
 }
 
-:root.th-top :is(.mode-screen, .drop-zone, .dialog-overlay) {
+:root.th-top :is(.mode-screen, .dialog-overlay) {
     top: var(--th-top, 0px);
 }
+/* The home page is in #app, which already starts under the bars */
 
 :root.th-top .scan-dock {
     max-height: var(--dock-max, calc(100vh - var(--th-top, 0px) - 2 * var(--gutter) - 64px));
@@ -9909,10 +9910,13 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 body.touring .controls.idle { opacity: 1; transform: translateX(-50%); }
 body.touring .controls.idle button { pointer-events: auto; }
 /* The offer, on the empty table of the home page */
-.home-empty.tour-offering { position: relative; }
+/* The card and the hidden prints share one cell, so a card taller than the
+   table (a short window) makes room instead of covering what's around it */
+.home-empty.tour-offering { display: grid; place-items: center; }
+.home-empty.tour-offering > * { grid-area: 1 / 1; }
 .home-empty.tour-offering > :not(.tour-offer) { visibility: hidden; }
 .tour-offer {
-    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(440px, calc(100% - 32px)); box-sizing: border-box;
+    position: relative; z-index: 1; width: min(440px, calc(100vw - 32px)); box-sizing: border-box;
     padding: var(--sp-6) var(--sp-6) var(--sp-5); text-align: center; border-radius: var(--r-xl);
     background: var(--bg-surface); color: var(--text-1); border: 1px solid var(--border-subtle); box-shadow: var(--shadow-4);
     font: var(--fs-body) var(--font-ui); animation: tour-rise var(--dur-slow) var(--ease-out) both;
@@ -9927,14 +9931,13 @@ body.touring .controls.idle button { pointer-events: auto; }
 .tour-offer p { margin: 0 0 var(--sp-4); color: var(--text-2); }
 .tour-offer-row { display: flex; justify-content: center; gap: var(--sp-2); }
 .tour-offer small { display: block; margin-top: var(--sp-3); color: var(--text-3); font-size: var(--fs-caption); }
-@keyframes tour-rise { from { opacity: 0; transform: translate(-50%, calc(-50% + 10px)) scale(.98); } }
+@keyframes tour-rise { from { opacity: 0; transform: translateY(10px) scale(.98); } }
 :root[data-motion="off"] .tour-hole, :root[data-motion="off"] .tour-card { transition: none; }
 :root[data-motion="off"] .tour-offer { animation: none; }
 @media (prefers-reduced-motion: reduce) {
     .tour-hole, .tour-card { transition: opacity var(--dur-fast); }
     .tour-offer { animation: none; }
 }
-=======
 /* ---- The Open a folder card (open-card.js) ---- */
 .dialog.open-card {
     width: min(760px, 100%);
