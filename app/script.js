@@ -7534,7 +7534,9 @@ const app = {
         const r = menu.getBoundingClientRect();
         const top = opts.above ? y - r.height : y;
         menu.style.left = Math.max(8, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
-        menu.style.top = Math.max(8, Math.min(top, window.innerHeight - r.height - 8)) + 'px';
+        // Never under the window's top: a theme's bars, the Mac's toolbar (UI.topSafe)
+        const safe = UI.topSafe() + 8;
+        menu.style.top = Math.max(safe, Math.min(top, window.innerHeight - r.height - 8)) + 'px';
         const first = menu.querySelector('[role^="menuitem"]');
         if (first) first.focus({ preventScroll: true });
     },

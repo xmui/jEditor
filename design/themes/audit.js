@@ -18,7 +18,9 @@
 // What a part is checked for (inside its own element):
 //   off screen   something you'd click or read is past the window's edge, or
 //                cut off by its box, with no scrolling to reach it
-//   covered      under the theme's title bar or menu bar
+//   covered      under the theme's title bar or menu bar; or, floating over
+//                the page (a dialog, a menu, the tour), under the Mac's
+//                toolbar or traffic lights (style.css: --top-safe)
 //   no icon      a button with neither words nor a picture
 //   spills       its words or icon reach outside its own button
 //   overlaps     two buttons over each other
@@ -233,6 +235,24 @@ const pageAudit = ({ sel, font }) => {
     const ownText = (el) => [...el.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim());
     const LEAVES = 'button, input, select, textarea, label, a, img, canvas, h1, h2, h3, h4, [role="tab"], [role="option"], .tb-btn, .paint-tool';
     const seen = new Set();
+    // What the Mac window draws over the page's top, in jEditor's own look:
+    // macOS 26's toolbar (52px), or the traffic lights where bridge.js puts
+    // them (in line with the mode chip over Adjust and Paint, jEditor on the
+    // home page, or else the top row of pills). Only what floats over the
+    // page is checked against it: the grid is meant to pass under it.
+    const macTop = [];
+    const html = document.documentElement;
+    if (html.dataset.platform === 'mac' && !html.dataset.skin) {
+        if (html.classList.contains('native-toolbar')) macTop.push({ name: 'Mac\'s toolbar', left: 0, top: 0, right: innerWidth, bottom: 52 });
+        else if (!html.classList.contains('fullscreen')) {
+            const css = getComputedStyle(html), px = (n) => parseFloat(css.getPropertyValue(n)) || 0;
+            const gutter = px('--gutter'), at = document.querySelector('.mode-float.over-mode:not(.hidden), .drop-zone:not(.hidden) .home-brand');
+            const ar = at && at.getBoundingClientRect();
+            const y = (ar && ar.height ? ar.top + ar.height / 2 : px('--mac-drag') + gutter + px('--ctl-lg') / 2) - 7, x = Math.max(12, gutter);
+            macTop.push({ name: 'traffic lights', left: x, top: y, right: x + 54, bottom: y + 14 });
+        }
+    }
+    const FLOATING = '.dialog-overlay, .guide-scrim, #context-menu, .tour-card, .toast';
     for (const root of roots) {
         const els = [...root.querySelectorAll('*')].filter(el => el.matches(LEAVES) || ownText(el));
         for (const el of els) {
@@ -299,6 +319,12 @@ const pageAudit = ({ sel, font }) => {
                     const x = Math.min(vw - 1, Math.max(0, r.left + r.width / 2)), y = Math.max(0, Math.min(r.top + 2, tr.bottom - 1));
                     const at = document.elementFromPoint(x, y);
                     if (at && top.contains(at)) out.push(['covered', `${what} is under the title bar`]);
+                }
+            }
+            // Floating over the page, under the Mac window's own top
+            if (macTop.length && !scrolls && r.height > 4 && el.closest(FLOATING)) {
+                for (const b of macTop) {
+                    if (r.left < b.right - 1 && b.left < r.right - 1 && r.top < b.bottom - 1 && b.top < r.bottom - 1) out.push(['covered', `${what} is under the ${b.name}`]);
                 }
             }
             // A button with neither words nor a picture
@@ -458,7 +484,7 @@ const srv = http.createServer((req, res) => {
     const cell = (r) => !r.shown ? '—' : r.issues.length ? `⚠ ${r.issues.length}` : '✓';
     const OWN = LOOKS.filter(l => !l[2]), THEMED = LOOKS.filter(l => l[2]);
     let md = '# Look checklist\n\n';
-    md += 'Every part of jEditor: in its own look on each platform (the Windows app, the Mac app with and without macOS 26\'s own toolbar, Linux, a browser) and in every theme (the Windows app). Written by `node design/themes/audit.js`, which opens each screen at 1280×800, 1024×640 and 800×600 with comfortable density, and checks each part for: words or buttons off screen or cut off; anything under a theme\'s title bar; buttons with neither words nor an icon; words or icons spilling out of their button; buttons over each other; words cut off without "…"; words in the wrong font; files that aren\'t there. Run it again after changing how anything looks.\n\n';
+    md += 'Every part of jEditor: in its own look on each platform (the Windows app, the Mac app with and without macOS 26\'s own toolbar, Linux, a browser) and in every theme (the Windows app). Written by `node design/themes/audit.js`, which opens each screen at 1280×800, 1024×640 and 800×600 with comfortable density, and checks each part for: words or buttons off screen or cut off; anything under a theme\'s title bar, or floating over the page under the Mac\'s toolbar or traffic lights; buttons with neither words nor an icon; words or icons spilling out of their button; buttons over each other; words cut off without "…"; words in the wrong font; files that aren\'t there. Run it again after changing how anything looks.\n\n';
     md += 'The platforms\' own fonts aren\'t on the machine it runs on: Inter stands in for Segoe UI and SF (a little wider, so what fits here fits there), DejaVu Sans for Linux and a browser.\n\n';
     md += '✓ nothing found · ⚠ n problems (listed below) · — not on screen there\n\n';
     md += `Checked ${new Date().toISOString().slice(0, 10)}.\n\n`;

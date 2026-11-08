@@ -308,10 +308,13 @@ const Tour = {
         if (fill) this.fill(s);
         // The card: beside what's lit, on the side asked for if it fits
         const c = this.card, W = c.offsetWidth, H = c.offsetHeight, gap = 14, m = 16;
+        // Never up in the window's top: a theme's bars, the Mac's toolbar
+        // or traffic lights (UI.topSafe)
+        const top = UI.topSafe() + m;
         let x = innerWidth / 2 - W / 2, y = innerHeight / 2 - H / 2;
         if (r) {
             const fits = {
-                below: r.bottom + pad + gap + H <= innerHeight - m, above: r.top - pad - gap - H >= m,
+                below: r.bottom + pad + gap + H <= innerHeight - m, above: r.top - pad - gap - H >= top,
                 right: r.right + pad + gap + W <= innerWidth - m, left: r.left - pad - gap - W >= m
             };
             const side = fits[s.side] ? s.side : ['below', 'above', 'right', 'left'].find(k => fits[k]) || 'inside';
@@ -323,7 +326,7 @@ const Tour = {
             else { x = r.right - W - m; y = r.bottom - H - m; }
         }
         c.style.left = Math.round(Math.max(m, Math.min(innerWidth - W - m, x))) + 'px';
-        c.style.top = Math.round(Math.max(m, Math.min(innerHeight - H - m, y))) + 'px';
+        c.style.top = Math.round(Math.max(top, Math.min(innerHeight - H - m, y))) + 'px';
     },
 
     fill(s) {

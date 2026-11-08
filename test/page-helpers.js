@@ -213,4 +213,74 @@ async function newPage(browser, url) {
     return { page, issues };
 }
 
-module.exports = { launchOptions, PAGE_HELPERS, newPage, QUIET_FIRST_OPEN };
+// Everything that floats over the page, opened one at a time and measured:
+// dialogs, the guide, Find anything, right-click menus (one at the very
+// top, a long one pushed up from the bottom), a message, the first-time
+// questions, the Open a folder card, and the tour's card at each stop.
+// → [{ name, left, top, right, bottom }] of what showed. For the checks
+// that nothing goes up into the window's top bar (style.css: --top-safe).
+async function floatingBoxes(page, { tour = true } = {}) {
+    const out = [];
+    const settle = (ms = 350) => page.waitForTimeout(ms);
+    const measure = async (name, selector) => {
+        const b = await page.evaluate((sel) => {
+            const el = [...document.querySelectorAll(sel)].find(e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden');
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+        }, selector);
+        if (b) out.push({ name, ...b });
+        return !!b;
+    };
+    const esc = async () => { await page.keyboard.press('Escape'); await settle(250); };
+    const each = [
+        ['Settings', () => app.keyHandlers()['app.settings'](), '.dialog-overlay:not(.hidden) .dialog'],
+        ['a question (UI.confirm)', () => { UI.confirm('A question, to see where it shows?'); }, '#ui-dialog:not(.hidden) .dialog'],
+        ['the guide', () => Guide.open(), '.guide'],
+        ['Find anything', () => Palette.open(), '.palette'],
+        ['the first-time questions', () => { FirstOpen.welcome(); }, '.first-open'],
+        ['the Open a folder card', () => { if (typeof OpenCard !== 'undefined' && OpenCard.available()) OpenCard.open(); }, '#open-card:not(.hidden) .dialog']
+    ];
+    for (const [name, open, selector] of each) {
+        await page.evaluate(open).catch(() => null);
+        await settle();
+        await measure(name, selector);
+        await esc();
+    }
+    // Right-click menus: one asked for at the very top, a long one from the bottom
+    for (const [name, at, n] of [['a right-click menu at the top', 'top', 4], ['a long right-click menu', 'bottom', 40]]) {
+        await page.evaluate(([at, n]) => {
+            const items = Array.from({ length: n }, (_, i) => [`Item ${i + 1}`, () => { }]);
+            app.openContextMenu(items, 200, at === 'top' ? 2 : innerHeight - 4, { above: at !== 'top' });
+        }, [at, n]);
+        await settle(150);
+        await measure(name, '#context-menu');
+        await page.evaluate(() => app.closeContextMenu());
+    }
+    await page.evaluate(() => app.showToast('A message, to see where it shows', 4000));
+    await settle(300);
+    await measure('a message', '.toast');
+    if (tour) {
+        const stops = await page.evaluate(() => { Tour.start(); return Tour.steps.map(s => s.id); });
+        for (let i = 0; i < stops.length; i++) {
+            await page.evaluate((i) => Tour.go(i), i);
+            await page.waitForFunction(() => !Tour.busy, null, { timeout: 10000 }).catch(() => null);
+            await settle(700); // the card slides there
+            await measure(`the tour's card (${stops[i]})`, '.tour-card');
+        }
+        await page.evaluate(() => Tour.end(true));
+        await settle(200);
+    }
+    return out;
+}
+
+// Which of those boxes go into a part of the window's top: [{ name, … }]
+// (a box: { name, left, top, right, bottom }) → ['X over Y', …]
+function overTopBar(boxes, bars) {
+    const hit = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+    const out = [];
+    for (const a of boxes) for (const b of bars) if (hit(a, b)) out.push(`${a.name} (top ${Math.round(a.top)}) over ${b.name} (to ${Math.round(b.bottom)})`);
+    return out;
+}
+
+module.exports = { launchOptions, PAGE_HELPERS, newPage, QUIET_FIRST_OPEN, floatingBoxes, overTopBar };
