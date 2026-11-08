@@ -3590,6 +3590,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             let out0;
             app.goTo(f);
             await frames();
+            // Where it sits, once the bounce of being selected (motion.js) is
+            // over (not the scroll-driven ease at the edges, which has no end)
+            const still = () => Promise.all(f._gridEl.getAnimations().filter(a => a.timeline === document.timeline).map(a => a.finished));
+            await still();
             const top = () => Math.round(f._gridEl.getBoundingClientRect().top);
             // Put it 400px down and wait for the layout to hold still there
             for (let i = 0; i < 20 && top() !== 400; i++) {
@@ -3621,6 +3625,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // Rescan (R) with new photos sorting in before it: the highlighted one stays put
             app.goTo(f);
             await frames();
+            await still();
             for (let i = 0; i < 20 && top() !== 300; i++) {
                 grid.scrollTop += f._gridEl.getBoundingClientRect().top - 300;
                 await frames();

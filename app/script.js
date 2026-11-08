@@ -5672,7 +5672,7 @@ const app = {
         this.syncGridTile();
         if (this._gridWin) this.updateGridWindow({ force: true });
         const el = anchor && (anchor.el._file ? this.revealInGrid(anchor.el._file) : anchor.el);
-        if (el && el.isConnected) grid.scrollTop += el.getBoundingClientRect().top - anchor.top;
+        if (el && el.isConnected) grid.scrollTop += this.tileTop(el) - anchor.top;
     },
 
     // Run fn (which rebuilds the grid) and scroll so the photo that anchored
@@ -5688,7 +5688,7 @@ const app = {
         const grid = this.elements.gridView;
         const el = a.el._file ? this.revealInGrid(a.el._file)
             : grid.querySelector(`.folder-tile[data-folder-path="${CSS.escape(a.el.dataset.folderPath || '')}"]`);
-        if (el && el.isConnected) grid.scrollTop += el.getBoundingClientRect().top - a.top;
+        if (el && el.isConnected) grid.scrollTop += this.tileTop(el) - a.top;
     },
 
     // Where the view is, for when the grid changes width (its resize
@@ -5727,7 +5727,19 @@ const app = {
                 if (d < best) { best = d; el = t; }
             }
         }
-        return el ? { el, top: el.getBoundingClientRect().top } : null;
+        return el ? { el, top: this.tileTop(el) } : null;
+    },
+
+    // Where a tile sits, not where an animation has it this frame (a
+    // selected tile's bounce scales it, motion.js): those end first, or the
+    // grid keeps the place a few pixels off once they're over. Not the
+    // scroll-driven ease at the grid's edges (style.css), which follows
+    // the scrolling and has no end
+    tileTop(el) {
+        if (el.getAnimations) for (const a of el.getAnimations()) {
+            if (a.timeline === document.timeline && isFinite(a.effect.getComputedTiming().endTime)) a.finish();
+        }
+        return el.getBoundingClientRect().top;
     },
 
     // Tiles scrolled out of sight aren't laid out (content-visibility), so
