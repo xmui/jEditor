@@ -271,6 +271,7 @@ const app = {
         Stored.init(this);
         FolderMove.init(this);
         OpenCard.init(this);
+        Palette.init(this); // Find anything, Ctrl+K
         FirstOpen.init(this);
         CropLog.init(this);
         Updates.init(this);
@@ -4705,6 +4706,7 @@ const app = {
         ['app.import', 'global', 'App', 'Import from a camera or card…', ['Ctrl+I']],
         ['app.refresh', 'global', 'App', 'Rescan folder', ['R']],
         ['app.search', 'global', 'App', 'Search photos', ['Ctrl+F', '/']],
+        ['app.palette', 'global', 'App', 'Find anything: photos, folders, projects and commands', ['Ctrl+K']],
         ['app.shortcuts', 'global', 'App', 'Keyboard shortcuts', ['?']],
         ['app.guide', 'global', 'App', 'Guide: how-tos and shortcuts', ['F1']],
         ['app.tour', 'global', 'App', 'Take the tour', []],
@@ -4920,6 +4922,7 @@ const app = {
             'app.import': () => Import.open(),
             'app.refresh': () => this.refreshFolder(),
             'app.search': () => Flags.focusSearch(),
+            'app.palette': () => Palette.toggle(),
             'app.shortcuts': () => this.toggleShortcutsPanel(),
             'app.guide': () => Guide.toggle(),
             'app.tour': () => Tour.start(),
@@ -5245,7 +5248,20 @@ const app = {
 
         // The rename tool, folder dialogs, Settings and the alert/confirm
         // dialogs handle their own keys
-        if (Renamer.isOpen || Folders.isModalOpen() || Export.isOpen() || Recents.isPromptOpen() || AdjustSync.isOpen() || UI.isOpen() || Stored.isOpen() || Scan.isOpen() || Camera.isOpen() || Blank.isOpen()) return;
+        const modal = Renamer.isOpen || Folders.isModalOpen() || Export.isOpen() || Recents.isPromptOpen() || AdjustSync.isOpen() || UI.isOpen() || Stored.isOpen() || Scan.isOpen() || Camera.isOpen() || Blank.isOpen();
+
+        // Find anything (palette.js): its key works everywhere, in each mode
+        // and from inside a box being typed in; open, it has the keys
+        if (!modal && !Palette.isOpen() && !this.isWhatsNewOpen() && !this.isShortcutsOpen()) {
+            const c = this.comboFromEvent(e);
+            if (c && (this.keyBindings['app.palette'] || []).includes(c)) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                Palette.open();
+                return;
+            }
+        }
+        if (modal || Palette.isOpen()) return;
 
         // What's New is modal: Esc closes it
         if (this.isWhatsNewOpen()) {
@@ -5297,7 +5313,7 @@ const app = {
         if (!id) return;
         // Only the shortcut list and debug console work from the start screen
         const onStart = this.elements.mainInterface.classList.contains('hidden');
-        if (onStart && context === 'global' && !['app.shortcuts', 'app.guide', 'app.debug', 'app.settings', 'app.import', 'edit.pasteImage'].includes(id)) return;
+        if (onStart && context === 'global' && !['app.shortcuts', 'app.debug', 'app.settings', 'app.import', 'edit.pasteImage', 'app.palette', 'app.guide'].includes(id)) return;
         if (context === 'crop' && CropEditor.busy) {
             e.preventDefault(); // saving: the crop being written stays as it is
             return;
@@ -5656,7 +5672,7 @@ const app = {
         this.syncGridTile();
         if (this._gridWin) this.updateGridWindow({ force: true });
         const el = anchor && (anchor.el._file ? this.revealInGrid(anchor.el._file) : anchor.el);
-        if (el && el.isConnected) grid.scrollTop += el.getBoundingClientRect().top - anchor.top;
+        if (el && el.isConnected) grid.scrollTop += this.tileTop(el) - anchor.top;
     },
 
     // Run fn (which rebuilds the grid) and scroll so the photo that anchored
@@ -5672,7 +5688,7 @@ const app = {
         const grid = this.elements.gridView;
         const el = a.el._file ? this.revealInGrid(a.el._file)
             : grid.querySelector(`.folder-tile[data-folder-path="${CSS.escape(a.el.dataset.folderPath || '')}"]`);
-        if (el && el.isConnected) grid.scrollTop += el.getBoundingClientRect().top - a.top;
+        if (el && el.isConnected) grid.scrollTop += this.tileTop(el) - a.top;
     },
 
     // Where the view is, for when the grid changes width (its resize
@@ -5711,7 +5727,19 @@ const app = {
                 if (d < best) { best = d; el = t; }
             }
         }
-        return el ? { el, top: el.getBoundingClientRect().top } : null;
+        return el ? { el, top: this.tileTop(el) } : null;
+    },
+
+    // Where a tile sits, not where an animation has it this frame (a
+    // selected tile's bounce scales it, motion.js): those end first, or the
+    // grid keeps the place a few pixels off once they're over. Not the
+    // scroll-driven ease at the grid's edges (style.css), which follows
+    // the scrolling and has no end
+    tileTop(el) {
+        if (el.getAnimations) for (const a of el.getAnimations()) {
+            if (a.timeline === document.timeline && isFinite(a.effect.getComputedTiming().endTime)) a.finish();
+        }
+        return el.getBoundingClientRect().top;
     },
 
     // Tiles scrolled out of sight aren't laid out (content-visibility), so

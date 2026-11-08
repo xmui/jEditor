@@ -10,6 +10,8 @@
 // the home page's gear menu, Help in a theme's menu bar, and "Watch the
 // tour again" in the guide (guide.js).
 //
+// Ctrl+K works during it: Find anything opens over the tour's card.
+//
 // Every platform. Scan and Camera are stops only where the app has them
 // (Host.has). In a browser (no app around the page) the tour ends with a
 // few lines on what the apps also do, from the feature names the apps
@@ -87,6 +89,11 @@ const Tour = {
             text: () => 'Rename ({key:edit.rename}), move ({key:edit.moveTo}), export and the rest are in More and the right-click menu, so the screen stays clear.'
         },
         {
+            id: 'find', view: 'single', target: ['#mode-chip-bar', '#mode-chip-float', '#mode-seg'], side: 'below',
+            title: 'Find anything',
+            text: () => 'Or just type what you want: {key:app.palette}, then a command, a photo, a folder or a project, and Enter runs it. Each command shows its key, so you learn them. It\'s in this menu too.'
+        },
+        {
             id: 'dupes', view: 'single', more: true, target: ['#btn-dupes'], side: 'below',
             title: 'Find duplicates',
             text: () => 'Groups the photos that look the same and suggests which to keep. Nothing goes until you say.'
@@ -118,6 +125,7 @@ const Tour = {
         // Esc leaves the tour (before the app's own Esc, which would leave Adjust)
         addEventListener('keydown', (e) => {
             if (!this.running || e.key !== 'Escape' || (typeof Guide !== 'undefined' && Guide.isOpen)) return;
+            if (typeof Palette !== 'undefined' && Palette.isOpen()) return; // Find anything closes first
             if (document.querySelector('.modal:not(.hidden), .context-menu:not(.hidden), #context-menu')) return;
             e.preventDefault();
             e.stopImmediatePropagation();

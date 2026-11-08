@@ -30,6 +30,7 @@ const ASSETS = [
     './start.js',
     './folder-move.js',
     './open-card.js',
+    './palette.js',
     './first-open.js',
     './picked.js',
     './permissions.js',

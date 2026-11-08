@@ -1925,6 +1925,100 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
     }
 
     // ---- 7d. Opening a folder, instant navigation, grid & read-only fixes ----
+    console.log('find anything: Ctrl+K (palette.js)');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            localStorage.removeItem('jeditor.palette');
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('palette', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('palette', { create: true });
+            const bytes = await makeRealJpeg(120, 80);
+            const put = async (d, name) => {
+                const w = await (await d.getFileHandle(name, { create: true })).createWritable();
+                await w.write(new Blob([bytes], { type: 'image/jpeg' }));
+                await w.close();
+            };
+            for (let i = 1; i <= 4; i++) await put(dir, `IMG_000${i}.jpg`);
+            await put(await dir.getDirectoryHandle('Ceremony', { create: true }), 'vows.jpg');
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            await sleep(100);
+            document.getElementById('fo-ok')?.click();
+            app.setView('grid');
+            const f = (n) => app.files.find(x => x.name === n);
+            app.selection = new Set([f('IMG_0001.jpg'), f('IMG_0002.jpg')]);
+            app.updateSelectionUI();
+            const input = document.getElementById('palette-input');
+            const type = (q) => { input.value = q; input.dispatchEvent(new Event('input')); };
+            const press = (key, opts = {}) => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...opts }));
+            const first = () => document.querySelector('#palette-list .palette-row.on .palette-name')?.textContent;
+            const heads = () => [...document.querySelectorAll('#palette-list .palette-head')].map(h => h.textContent);
+
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true }));
+            out.opens = Palette.isOpen() && document.activeElement === input;
+            out.selected = document.getElementById('palette-for').textContent;
+            out.suggests = heads()[0];
+            type('rtl'); out.letters = first();
+            type('delte'); out.typo = first();
+            type('remove'); out.also = first();
+            type('vows'); out.photo = first() + ' ' + heads().join(',');
+            type('cerem'); out.folder = heads().includes('Folders') && [...document.querySelectorAll('#palette-list .palette-row[data-kind=folder] .palette-name')].some(n => n.textContent === 'Ceremony');
+            type('rotate left'); out.says = document.querySelector('#palette-list .palette-row.on .palette-sub')?.textContent;
+            out.key = document.querySelector('#palette-list .palette-row.on .palette-key')?.textContent;
+            // Enter runs it on the selection, and closes
+            const calls = [];
+            const rotate = app.rotateBulk;
+            app.rotateBulk = function (deg) { calls.push(deg); };
+            press('Enter');
+            app.rotateBulk = rotate;
+            out.ran = JSON.stringify(calls) === '[-90]' && !Palette.isOpen();
+            // Picked: it comes first next time, under Recent
+            Palette.open();
+            out.recent = heads()[0] + ': ' + first();
+            press('ArrowDown');
+            out.moved = first() !== 'Rotate left';
+            press('Escape');
+            out.escape = !Palette.isOpen();
+            // Not over another dialog
+            UI.confirm({ title: 'Sure?', message: 'A test' });
+            await sleep(50);
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true }));
+            out.notOver = !Palette.isOpen();
+            document.querySelector('#ui-dialog .btn:not(.primary)')?.click();
+            await sleep(50);
+            // On the start page: projects and the commands that work there
+            out.menus = Themes.MENUS.Edit.some(m => m[1] === 'app.palette') && app.KEY_ACTIONS.some(a => a[0] === 'app.palette' && a[4][0] === 'Ctrl+K');
+            // In the guide and the tour; during the tour Esc closes it, not the tour
+            out.guide = Guide.CARDS.some(c => c[2] === 'Find anything' && c[4].includes('app.palette'));
+            await Tour.start();
+            await Tour.go(Tour.steps.findIndex(x => x.id === 'find'));
+            await sleep(200);
+            out.stop = Tour.steps[Tour.i].id === 'find' && /Ctrl/.test(document.querySelector('.tour-card').textContent);
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true }));
+            out.inTour = Palette.isOpen();
+            press('Escape');
+            out.tourStays = !Palette.isOpen() && Tour.running;
+            Tour.end();
+            return out;
+        });
+        check('Ctrl+K opens Find anything, its box ready to type in', r.opens, JSON.stringify(r));
+        check('find anything: says what is selected, and suggests what fits it', r.selected === '2 selected' && r.suggests === 'For the 2 selected', JSON.stringify(r));
+        check('find anything: letters in order, a typo and other words for it all match', r.letters === 'Rotate left' && r.typo === 'Move to trash' && r.also === 'Move to trash', JSON.stringify(r));
+        check('find anything: finds photos (in subfolders too) and folders', r.photo.startsWith('vows.jpg') && r.folder, JSON.stringify(r));
+        check('find anything: commands say what they act on, and show their key', r.says === '2 selected' && r.key === '[', JSON.stringify(r));
+        check('find anything: Enter runs the command on the selection and closes', r.ran, JSON.stringify(r));
+        check('find anything: what was picked comes first next time; arrows move; Esc closes', r.recent === 'Recent: Rotate left' && r.moved && r.escape, JSON.stringify(r));
+        check('find anything: never opens over another dialog', r.notOver, JSON.stringify(r));
+        check('find anything: in the menus and the shortcuts list', r.menus, JSON.stringify(r));
+        check('find anything: a card in the guide, and a stop in the tour where Ctrl+K works', r.guide && r.stop && r.inTour, JSON.stringify(r));
+        check('find anything: during the tour, Esc closes it and the tour carries on', r.tourStays, JSON.stringify(r));
+        check('find anything: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     console.log('viewer: open, instant navigation, grid, read-only');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
@@ -3496,6 +3590,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             let out0;
             app.goTo(f);
             await frames();
+            // Where it sits, once the bounce of being selected (motion.js) is
+            // over (not the scroll-driven ease at the edges, which has no end)
+            const still = () => Promise.all(f._gridEl.getAnimations().filter(a => a.timeline === document.timeline).map(a => a.finished));
+            await still();
             const top = () => Math.round(f._gridEl.getBoundingClientRect().top);
             // Put it 400px down and wait for the layout to hold still there
             for (let i = 0; i < 20 && top() !== 400; i++) {
@@ -3527,6 +3625,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // Rescan (R) with new photos sorting in before it: the highlighted one stays put
             app.goTo(f);
             await frames();
+            await still();
             for (let i = 0; i < 20 && top() !== 300; i++) {
                 grid.scrollTop += f._gridEl.getBoundingClientRect().top - 300;
                 await frames();

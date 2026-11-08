@@ -743,3 +743,12 @@
 :root[data-skin="xp"] .guide-keylist h4 { color: var(--xp-groupbox); font: 700 11px var(--xp-font); }
 :root[data-skin="xp"] .guide-keyrow { border-top-color: #d4d0c8; }
 :root[data-skin="xp"] .guide-k { border: 1px solid var(--xp-shadow); border-radius: 2px; background: linear-gradient(180deg, #fff, var(--xp-face)); box-shadow: 0 1px 0 var(--xp-shadow); color: #000; font: 11px var(--xp-font); }
+/* Find anything (palette.js): rows as Office 2003's menus, the box a plain edit */
+:root[data-skin="xp"] .palette-field { min-height: 34px; padding: 4px 8px; gap: 6px; border-bottom: 1px solid var(--o-line); }
+:root[data-skin="xp"] .palette-field input { height: 22px; padding: 0 4px; font: 11px var(--xp-font); }
+:root[data-skin="xp"] :is(.palette-for, .palette-head, .palette-row, .palette-sub, .palette-key, .palette-none) { font-family: var(--xp-font); font-size: 11px; }
+:root[data-skin="xp"] .palette-head { color: #000; font-weight: 700; padding: 6px 6px 2px; }
+:root[data-skin="xp"] .palette-row { min-height: 22px; border: 1px solid transparent; border-radius: 0; color: #000; }
+:root[data-skin="xp"] .palette-row.on { border-color: var(--o-hot-edge); background: var(--o-hot); }
+:root[data-skin="xp"] :is(.palette-sub, .palette-key) { color: #444; }
+:root[data-skin="xp"] .palette-thumb { border-radius: 0; }

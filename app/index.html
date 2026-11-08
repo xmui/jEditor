@@ -64,6 +64,7 @@
     <script src="start.js"></script>
     <script src="folder-move.js"></script>
     <script src="open-card.js"></script>
+    <script src="palette.js"></script>
     <script src="first-open.js"></script>
     <script src="picked.js"></script>
     <script src="permissions.js"></script>
@@ -1662,6 +1663,18 @@
                 <button id="cam-take" type="button" class="btn primary">Take photo</button>
             </div>
         </form>
+    </div>
+
+    <!-- Find anything, Ctrl+K (palette.js) -->
+    <div id="palette" class="dialog-overlay palette-overlay hidden">
+        <div class="dialog palette" role="dialog" aria-modal="true" aria-label="Find anything">
+            <div class="palette-field">
+                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <input id="palette-input" type="text" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list" aria-label="Find a photo, folder or command">
+                <span id="palette-for" class="palette-for"></span>
+            </div>
+            <div id="palette-list" class="palette-list" role="listbox" aria-label="Results"></div>
+        </div>
     </div>
 
     <div id="ui-dialog" class="dialog-overlay hidden">

@@ -620,3 +620,10 @@
 :root[data-skin="snow"] .guide-keylist h4 { color: var(--sl-head); font: 700 11px var(--sl-font); text-transform: uppercase; }
 :root[data-skin="snow"] .guide-keyrow { border-top-color: var(--sl-line); }
 :root[data-skin="snow"] .guide-k { border: 0; border-radius: 3px; background: var(--sl-btn); box-shadow: var(--sl-btn-edge); color: var(--sl-ink); font: 11px var(--sl-font); }
+/* Find anything (palette.js): rows as Snow Leopard's menus, blue when picked */
+:root[data-skin="snow"] .palette-field input { font: 14px var(--sl-font); }
+:root[data-skin="snow"] :is(.palette-for, .palette-head, .palette-row, .palette-sub, .palette-key, .palette-none) { font-family: var(--sl-font); }
+:root[data-skin="snow"] .palette-row { min-height: 24px; border-radius: 0; }
+:root[data-skin="snow"] .palette-row.on { background: linear-gradient(180deg, #6383f6, #2858ee); color: #fff; }
+:root[data-skin="snow"] .palette-row.on :is(.palette-sub, .palette-key, .i) { color: #fff; }
+:root[data-skin="snow"] .palette-thumb { border-radius: 2px; }
