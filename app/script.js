@@ -3147,8 +3147,14 @@ const app = {
         if (cols !== win.cols) force = true;
         // Read now: once the tiles go, the grid is too short to keep it
         if (force && top === null) top = grid.scrollTop;
+        // Tiles taken down for a rebuild (force) that are wanted again: put
+        // back as they are, not built anew. A drag of the size slider (or a
+        // pinch) rebuilt every tile on each step, and that was most of it.
+        let spare = null;
         const make = (i) => {
-            const el = this.makeGridTile(files[i], win.observer);
+            let el = spare && spare.get(files[i]);
+            if (el) spare.delete(files[i]);
+            else el = this.makeGridTile(files[i], win.observer);
             win.tiles.set(files[i], el);
             return el;
         };
@@ -3163,7 +3169,9 @@ const app = {
             if (this._activeGridEl === el) this._activeGridEl = null;
         };
         if (force) {
-            for (const f of [...win.tiles.keys()]) drop(f);
+            spare = new Map(win.tiles);
+            win.tiles.clear();
+            for (const el of spare.values()) el.remove();
             win.start = win.end = 0;
             win.cols = cols;
             // Photos sharing a row with the subfolder tiles are always there
@@ -3228,6 +3236,8 @@ const app = {
                 apply(place(pitch));
             }
         }
+        // The ones not wanted again go for good
+        if (spare) for (const [f, el] of spare) { win.tiles.set(f, el); drop(f); }
         if (top !== null) grid.scrollTop = top;
     },
 
@@ -3590,21 +3600,25 @@ const app = {
             this.deliverThumbnail(fileEntry);
             return;
         }
-        const fileData = await this.readImage(fileEntry);
-        if (!fileData.size) throw new Error('empty file (still being written?)');
+        // The file as it is on disk. A HEIC, TIFF, JPEG XL or RAW is only
+        // converted (readImage) when its thumbnail isn't cached: converting
+        // first cost a full decode of every HEIC each time a folder opened
+        const disk = await fileEntry.handle.getFile();
+        if (!disk.size) throw new Error('empty file (still being written?)');
+        const converted = Codec.decoded(fileEntry.name) || Raw.is(fileEntry.name);
 
         let blob;
         if (fileEntry._edit) {
             // Edited, not saved yet: from the edited preview (not cached)
             blob = await this.editedThumbnail(fileEntry);
-        } else if (fileData.size <= this.THUMB_FAST_PATH_BYTES) {
+        } else if (!converted && disk.size <= this.THUMB_FAST_PATH_BYTES) {
             // A copy, not the File itself — the File stops being readable
             // once the photo is rotated
-            blob = new Blob([await fileData.arrayBuffer()], { type: fileData.type });
+            blob = new Blob([await disk.arrayBuffer()], { type: disk.type });
         } else {
             // Persistent cache: reopening a folder skips regeneration.
             // The key includes size+mtime, so edits invalidate naturally.
-            const cacheKey = `${fileEntry.relPath || fileEntry.name}|${fileData.size}|${fileData.lastModified}`;
+            const cacheKey = `${fileEntry.relPath || fileEntry.name}|${disk.size}|${disk.lastModified}`;
             // This browser's cache, then the folder's own (.jeditor) — made
             // on any computer that opened the folder — then generate
             blob = await this.idbGetThumb(cacheKey);
@@ -3612,7 +3626,7 @@ const app = {
                 blob = await FolderCache.getThumb(this, cacheKey);
                 if (blob) this.idbPutThumb(cacheKey, blob);
                 else {
-                    blob = await this.generateThumbnailBlob(fileData);
+                    blob = await this.convertedThumbnail(fileEntry, disk);
                     if (blob) this.idbPutThumb(cacheKey, blob);
                 }
             }
@@ -3629,6 +3643,16 @@ const app = {
         fileEntry._thumbPromise = null;
         fileEntry._thumbStale = false;
         this.deliverThumbnail(fileEntry);
+    },
+
+    // A thumbnail made from the file: a HEIC, TIFF or JPEG XL straight from
+    // the codecs' pixels, a RAW from the JPEG inside it, the rest as they are
+    async convertedThumbnail(fileEntry, disk) {
+        if (Codec.decoded(fileEntry.name)) {
+            const blob = await Codec.thumbnail(disk, this.THUMB_WIDTH, /\.(tiff?|jxl)$/i.test(fileEntry.name)).catch(() => null);
+            if (blob) return blob;
+        }
+        return this.generateThumbnailBlob(await this.readImage(fileEntry));
     },
 
     async editedThumbnail(file) {
@@ -3995,10 +4019,25 @@ const app = {
             // instead of making a new one from the full scan
             if (file._cacheFrom) await this.carryCache(file).catch(() => { });
             const savedAtRead = file._savedRotationTotal || 0;
-            const data = await this.readImage(file);
+            // Keyed by the file on disk: a HEIC, TIFF, JPEG XL or RAW whose
+            // preview is cached isn't converted at all (that full decode
+            // came first, cached or not, on every open)
+            const disk = await file.handle.getFile();
             const edge = this.previewEdge();
-            const key = `p|${file.relPath || file.name}|${data.size}|${data.lastModified}|${edge}`;
+            const key = `p|${file.relPath || file.name}|${disk.size}|${disk.lastModified}|${edge}`;
             if (file._preview && file._preview.key === key) return file._preview;
+            const keep = (rec) => {
+                if (file._preview) URL.revokeObjectURL(file._preview.url);
+                file._preview = {
+                    key, blob: rec.blob, url: URL.createObjectURL(rec.blob),
+                    isPreview: true, savedAtRead, w: rec.w, h: rec.h
+                };
+                return file._preview;
+            };
+            const converted = Codec.decoded(file.name) || Raw.is(file.name);
+            let rec = converted ? await this.idbGet('previews', key) : null;
+            if (rec && rec.blob) return keep(rec);
+            const data = converted ? await this.readImage(file) : disk;
 
             // Already about screen size? The header says so: show the
             // original without decoding it in the worker first (that full
@@ -4011,19 +4050,12 @@ const app = {
                 return { ...src, w: dims.w, h: dims.h };
             }
 
-            let rec = await this.idbGet('previews', key);
+            if (!converted) rec = await this.idbGet('previews', key);
             if (!rec) {
                 rec = await this.generatePreview(data, edge);
                 if (rec && rec.blob) this.idbPutPreview(key, rec);
             }
-            if (rec && rec.blob) {
-                if (file._preview) URL.revokeObjectURL(file._preview.url);
-                file._preview = {
-                    key, blob: rec.blob, url: URL.createObjectURL(rec.blob),
-                    isPreview: true, savedAtRead, w: rec.w, h: rec.h
-                };
-                return file._preview;
-            }
+            if (rec && rec.blob) return keep(rec);
             // Already screen-sized (or no worker): the original is the source
             return this.getOriginalSource(file, data, savedAtRead);
         })();

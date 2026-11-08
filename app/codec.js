@@ -8,6 +8,8 @@
 //                               → { bytes, w, h, rgb, preview }
 //   Codec.showable(blob)        a JPEG XL, HEIC or TIFF as something the
 //                               engine shows (itself when it can, else a PNG)
+//   Codec.thumbnail(blob, w)    one of those as a grid thumbnail, w wide
+//                               (a JPEG, or a PNG with alpha) → Blob
 
 const Codec = {
     // exts: what files of it are called (the first, when one's written);
@@ -152,6 +154,14 @@ const Codec = {
         this._shown.unshift({ key, png });
         this._shown.length = Math.min(this._shown.length, 4);
         return png;
+    },
+
+    // Straight to thumbnail size in the worker: a full-size PNG made only to
+    // be read again cost ~1 s a 12 MP HEIC, and pushed the photo being
+    // looked at out of the few kept above
+    async thumbnail(file, width, alpha = false) {
+        if (this.isJxl(file.name || '') && await this.engineJxl()) return null;
+        return (await this.run({ op: 'thumb', file, width, alpha })).blob;
     },
 
     isJxl(name) {
