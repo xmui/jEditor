@@ -1024,10 +1024,12 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
     // The home page's top bar (jEditor, the version, Settings) makes room for
     // the traffic lights, and they're in line with it (bridge.js:
     // reportLights). (Needs fixing, 2026-11-08: the lights hung under the
-    // jEditor logo there.) With macOS 26's toolbar AppKit places them.
+    // jEditor logo there.) With macOS 26's toolbar, AppKit places them in
+    // the same corner, which the room is for too.
     console.log('mac: the home page and the traffic lights');
     {
-        const { app, page, errors } = await launch(profile);
+        // Without macOS 26's toolbar: bridge.js places the lights
+        const { app, page, errors } = await launch(profile, [], { JEDITOR_NATIVE_TOOLBAR: '0' });
         const native = await page.evaluate(() => !!window.jeditorMac.nativeToolbar);
         // In jEditor's own look (a theme hides the lights)
         await page.evaluate(async () => { if (app.uiPrefs.skin) { Themes.choose(''); await new Promise(r => setTimeout(r, 800)); } });
@@ -1059,54 +1061,60 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
 
     console.log('mac: the window\'s top bar, kept clear');
     {
-        const { app, page, errors } = await launch(profile, [path.join(tmp, 'Glass')]);
-        await loaded(page, 2);
-        await page.evaluate(() => localStorage.setItem('jeditor.tour', JSON.stringify({ offered: true })));
-        const native = await page.evaluate(() => !!window.jeditorMac.nativeToolbar);
-        const size = (w, h) => app.evaluate(({ BrowserWindow }, [w, h]) => BrowserWindow.getAllWindows()[0].setSize(w, h), [w, h]);
-        const full = (on) => app.evaluate(({ BrowserWindow }, on) => BrowserWindow.getAllWindows()[0].setFullScreen(on), on);
-        // What's over the top of the page now
-        const bars = async (theme) => {
-            if (theme) {
-                return page.evaluate(() => {
-                    const r = document.getElementById('th-top').getBoundingClientRect();
-                    return [{ name: 'the theme\'s title and menu bars', left: r.left, top: r.top, right: r.right, bottom: r.bottom }];
-                });
+        // On a Mac, again without macOS 26's toolbar (as before macOS 26, or
+        // when it's off): the traffic lights in the page's top row, for real
+        const passes = [{ env: {}, themes: ['', 'snow/finder', 'mac84/finder'], tag: '' }];
+        if (process.platform === 'darwin') passes.push({ env: { JEDITOR_NATIVE_TOOLBAR: '0' }, themes: [''], tag: ', without macOS 26\'s toolbar' });
+        for (const pass of passes) {
+            const { app, page, errors } = await launch(profile, [path.join(tmp, 'Glass')], pass.env);
+            await loaded(page, 2);
+            await page.evaluate(() => localStorage.setItem('jeditor.tour', JSON.stringify({ offered: true })));
+            const native = await page.evaluate(() => !!window.jeditorMac.nativeToolbar);
+            const size = (w, h) => app.evaluate(({ BrowserWindow }, [w, h]) => BrowserWindow.getAllWindows()[0].setSize(w, h), [w, h]);
+            const full = (on) => app.evaluate(({ BrowserWindow }, on) => BrowserWindow.getAllWindows()[0].setFullScreen(on), on);
+            // What's over the top of the page now
+            const bars = async (theme) => {
+                if (theme) {
+                    return page.evaluate(() => {
+                        const r = document.getElementById('th-top').getBoundingClientRect();
+                        return [{ name: 'the theme\'s title and menu bars', left: r.left, top: r.top, right: r.right, bottom: r.bottom }];
+                    });
+                }
+                if (native) {
+                    const d = await app.evaluate(({ BrowserWindow }) => global.jeditorToolbar.describe(BrowserWindow.getAllWindows()[0].getNativeWindowHandle()));
+                    return d.toolbarHeight ? [{ name: 'the toolbar', left: 0, top: 0, right: 1e5, bottom: d.toolbarHeight }] : [];
+                }
+                const l = (await app.evaluate(() => global.jeditorLights()))[0];
+                const fullscreen = await page.evaluate(() => document.documentElement.classList.contains('fullscreen'));
+                // Three lights, 14px each, 20px apart (as above)
+                return l && !fullscreen ? [{ name: 'the traffic lights', left: l.x, top: l.y, right: l.x + 54, bottom: l.y + 14 }] : [];
+            };
+            const over = [], unmeasured = [];
+            const cases = [];
+            for (const theme of pass.themes) for (const [w, h] of [[1280, 860], [640, 480]]) cases.push({ theme, w, h });
+            if (process.platform === 'darwin') cases.push({ theme: '', w: 1280, h: 860, full: true });
+            for (const c of cases) {
+                const name = `${c.theme || 'jEditor\'s look'}, ${c.full ? 'full screen' : `${c.w}×${c.h}`}`;
+                await page.evaluate(async (theme) => {
+                    if ((app.uiPrefs.skin || '') !== theme) { Themes.choose(theme); await new Promise(r => setTimeout(r, 800)); }
+                }, c.theme);
+                await size(c.w, c.h);
+                if (c.full) await full(true);
+                await page.waitForTimeout(c.full ? 1500 : 600);
+                const b = await bars(c.theme);
+                if (!b.length && !c.full) unmeasured.push(name);
+                const boxes = await floatingBoxes(page);
+                for (const o of overTopBar(boxes, b)) over.push(`${name}: ${o}`);
+                if (boxes.length < 15) unmeasured.push(`${name}: only ${boxes.length} (${boxes.map(x => x.name).join(', ')})`);
+                if (c.full) { await full(false); await page.waitForTimeout(1500); }
             }
-            if (native) {
-                const d = await app.evaluate(({ BrowserWindow }) => global.jeditorToolbar.describe(BrowserWindow.getAllWindows()[0].getNativeWindowHandle()));
-                return d.toolbarHeight ? [{ name: 'the toolbar', left: 0, top: 0, right: 1e5, bottom: d.toolbarHeight }] : [];
-            }
-            const l = (await app.evaluate(() => global.jeditorLights()))[0];
-            const fullscreen = await page.evaluate(() => document.documentElement.classList.contains('fullscreen'));
-            // Three lights, 14px each, 20px apart (as above)
-            return l && !fullscreen ? [{ name: 'the traffic lights', left: l.x, top: l.y, right: l.x + 54, bottom: l.y + 14 }] : [];
-        };
-        const over = [], unmeasured = [];
-        const cases = [];
-        for (const theme of ['', 'snow/finder', 'mac84/finder']) for (const [w, h] of [[1280, 860], [640, 480]]) cases.push({ theme, w, h });
-        if (process.platform === 'darwin') cases.push({ theme: '', w: 1280, h: 860, full: true });
-        for (const c of cases) {
-            const name = `${c.theme || 'jEditor\'s look'}, ${c.full ? 'full screen' : `${c.w}×${c.h}`}`;
-            await page.evaluate(async (theme) => {
-                if ((app.uiPrefs.skin || '') !== theme) { Themes.choose(theme); await new Promise(r => setTimeout(r, 800)); }
-            }, c.theme);
-            await size(c.w, c.h);
-            if (c.full) await full(true);
-            await page.waitForTimeout(c.full ? 1500 : 600);
-            const b = await bars(c.theme);
-            if (!b.length && !c.full) unmeasured.push(name);
-            const boxes = await floatingBoxes(page);
-            for (const o of overTopBar(boxes, b)) over.push(`${name}: ${o}`);
-            if (boxes.length < 15) unmeasured.push(`${name}: only ${boxes.length} (${boxes.map(x => x.name).join(', ')})`);
-            if (c.full) { await full(false); await page.waitForTimeout(1500); }
+            await page.evaluate(() => { if (app.uiPrefs.skin) Themes.choose(''); });
+            await size(1280, 860);
+            check('dialogs, the guide, Find anything, menus, messages and the tour\'s card stay clear of the toolbar, the traffic lights and a theme\'s bars' + pass.tag, over.length === 0, over.slice(0, 8).join('; '));
+            check('... each measured, with what\'s over the top known' + pass.tag, unmeasured.length === 0, unmeasured.join('; '));
+            check('no JS errors' + pass.tag, errors.length === 0, errors.join('; '));
+            await app.close();
         }
-        await page.evaluate(() => { if (app.uiPrefs.skin) Themes.choose(''); });
-        await size(1280, 860);
-        check('dialogs, the guide, Find anything, menus, messages and the tour\'s card stay clear of the toolbar, the traffic lights and a theme\'s bars', over.length === 0, over.slice(0, 8).join('; '));
-        check('... each measured, with what\'s over the top known', unmeasured.length === 0, unmeasured.join('; '));
-        check('no JS errors', errors.length === 0, errors.join('; '));
-        await app.close();
     }
 
     console.log('mac: the Photos library (a stand-in: JEDITOR_PHOTOS_LIBRARY)');
