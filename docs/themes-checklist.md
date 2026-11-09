@@ -6,7 +6,7 @@ The platforms' own fonts aren't on the machine it runs on: Inter stands in for S
 
 ✓ nothing found · ⚠ n problems (listed below) · — not on screen there
 
-Checked 2026-10-23.
+Checked 2026-11-08.
 
 
 ## Main window
@@ -20,7 +20,7 @@ Checked 2026-10-23.
 | Toolbar, with every button on it | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Toolbar, with every button under More | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Folder bar and search | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Folder list | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Folder list | ⚠ 1 | ⚠ 1 | ⚠ 1 | ⚠ 1 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Photos · Adjust · Paint, sidebar open | ✓ | ✓ | ✓ | ✓ | ✓ | — | — | — | — | — | — |
 | Photos · Adjust · Paint chip, sidebar closed | ✓ | ✓ | — | ✓ | ✓ | — | — | — | — | — | — |
 | Thumbnails | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -30,18 +30,23 @@ Checked 2026-10-23.
 | Previous, rotate, next | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Film strip | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Status bar | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Right-click menu | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Right-click menu | ⚠ 4 | ⚠ 4 | ⚠ 4 | ⚠ 4 | ⚠ 4 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Note (toast) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Info | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Undo history | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Start page | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Home page: prints on the table | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Home page: the big tiles | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Home page: name, version, Settings | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Start page: converting photos | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Start page: photos converted | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ## Settings
 
 | Part | Windows | Mac | Mac, macOS 26 | Linux | Web | Royale | Noir | Red | Finder | Aperture | 1984 |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | Window and pages | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Theme gallery | — | — | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Theme gallery | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Rows, switches, lists | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ## Dialogs
@@ -52,12 +57,21 @@ Checked 2026-10-23.
 | A name to type | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Rename | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Export | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Convert: format, quality, close-up, storage | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Convert, running | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Convert one photo | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Convert to TIFF: lossless, more storage | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Convert to PNG, running: more storage | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Move to… | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | New blank image | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Keyboard shortcuts | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Find anything (Ctrl+K) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | What's new | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Scan window | ✓ | — | — | — | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Open a folder | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| First folder: where projects are, saving edits | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Guide (F1) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Guide, searched | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ## Duplicates
 
@@ -79,7 +93,7 @@ Checked 2026-10-23.
 | Part | Windows | Mac | Mac, macOS 26 | Linux | Web | Royale | Noir | Red | Finder | Aperture | 1984 |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | Head and its buttons | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Mode switch | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Mode switch | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Mode switch menu | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Histogram, levels, looks | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Sliders, curve, mixer, grading, masks, spots, detail | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -128,6 +142,8 @@ What the script can't see. Tick each on the real app.
 | Part of a project (order prompt) | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
 | Camera window | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
 | Drag and drop onto the window | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
+| A photo opened from the grid, and back (Snow Leopard zooms, 1984 draws zoom outlines, XP just shows it) | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
+| The home page's prints pointed at, and one taken off the table | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
 | A real scan: preview, boxes, the photos coming in | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
 | Photos picked one by one (the Save… bar) | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ |
 
@@ -135,23 +151,42 @@ What the script can't see. Tick each on the real app.
 
 ### Windows
 
-None.
+- **Main window · Folder list** (1280×800) overlaps: button.sb-card-name "Summer 2024 — click to rename" and button.btn.ghost "More" are over each other
+- **Main window · Right-click menu** (1024×640) off screen: button.danger "Delete" is cut off by body
+- **Main window · Right-click menu** (800×600, comfortable) off screen: button "File info" is cut off by body
+- **Main window · Right-click menu** (800×600, comfortable) off screen: button "Export…" is cut off by body
+- **Main window · Right-click menu** (800×600, comfortable) off screen: button "Convert…" is cut off by body
 
 ### Mac
 
-None.
+- **Main window · Folder list** (1280×800) overlaps: button.sb-card-name "Summer 2024 — click to rename" and button.btn.ghost "More" are over each other
+- **Main window · Right-click menu** (1024×640) off screen: button.danger "Delete" is cut off by body
+- **Main window · Right-click menu** (800×600, comfortable) off screen: button "File info" is cut off by body
+- **Main window · Right-click menu** (800×600, comfortable) off screen: button "Export…" is cut off by body
+- **Main window · Right-click menu** (800×600, comfortable) off screen: button "Convert…" is cut off by body
 
 ### Mac, macOS 26
 
-None.
+- **Main window · Folder list** (1280×800) overlaps: button.sb-card-name "Summer 2024 — click to rename" and button.btn.ghost "More" are over each other
+- **Main window · Right-click menu** (1024×640) off screen: button.danger "Delete" is cut off by body
+- **Main window · Right-click menu** (800×600, comfortable) off screen: button "File info" is cut off by body
+- **Main window · Right-click menu** (800×600, comfortable) off screen: button "Export…" is cut off by body
+- **Main window · Right-click menu** (800×600, comfortable) off screen: button "Convert…" is cut off by body
 
 ### Linux
 
-None.
+- **Main window · Folder list** (1280×800) overlaps: button.sb-card-name "Summer 2024 — click to rename" and button.btn.ghost "More" are over each other
+- **Main window · Right-click menu** (1024×640) off screen: button.danger "Delete" is cut off by body
+- **Main window · Right-click menu** (800×600, comfortable) off screen: button "File info" is cut off by body
+- **Main window · Right-click menu** (800×600, comfortable) off screen: button "Export…" is cut off by body
+- **Main window · Right-click menu** (800×600, comfortable) off screen: button "Convert…" is cut off by body
 
 ### Web
 
-None.
+- **Main window · Right-click menu** (1024×640) off screen: button.danger "Delete" is cut off by body
+- **Main window · Right-click menu** (800×600, comfortable) off screen: button "File info" is cut off by body
+- **Main window · Right-click menu** (800×600, comfortable) off screen: button "Export…" is cut off by body
+- **Main window · Right-click menu** (800×600, comfortable) off screen: button "Convert…" is cut off by body
 
 ### Royale
 
