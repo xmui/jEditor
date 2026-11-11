@@ -10,10 +10,10 @@ are at the end.
 
 ## In one paragraph
 
-A **Rust** engine (`engine/`), one library with a plain C interface, used by all
-three apps the same way: the Windows app (.NET) and the Mac/Linux app (Electron)
-start it as a **helper process** next to them; a Tauri app, if the "lighter
-desktop app" work picks Tauri, would link it straight in. **The page sends
+A **Rust** engine (`engine/`), one library with a plain C interface, **inside
+each desktop app's own process**: a DLL the Windows app (C#) loads, linked
+straight into the Mac and Linux app if it becomes Tauri (the lighter-desktop
+plan, #165), or an N-API addon while it's still Electron. **The page sends
 settings, the engine owns the pixels**: it reads files, makes thumbnails and
 previews, and does Export, Save edits and Convert from file to file, so a
 full-size photo never crosses into the page. What the page does show (a
@@ -118,20 +118,24 @@ the owner's Windows PC (Phase 0).
   libjxl, libtiff, LibRaw (or the pure-Rust `rawler`). C++ would only win if we
   wanted a C++ library with no Rust equivalent, and none on the list needs it.
 
-### Where it runs: a helper process
+### Where it runs: inside the app, a helper only if needed
 
-The engine is one library (`jeditor-engine`) with a C interface, built two ways:
+The engine is one library (`jeditor-engine`) with a C interface. It runs in the
+app's own process, the shape the lighter-desktop plan (#165) has too:
 
-- **`jeditor-engine.exe` / `jeditor-engine`, a helper process** the app starts
-  (Windows: from `src/`; Mac/Linux: from `mac/main.js`, like any child process).
-  This is the plan for the Windows, Mac and Linux apps.
-- **A Rust crate**, for a Tauri app later (or in-process, if the helper ever
-  costs too much).
+- **Windows:** `jeditor_engine.dll`, loaded by the C# host (P/Invoke).
+- **Mac and Linux on Tauri (#165):** a Rust crate, linked into the host.
+- **Mac and Linux while still on Electron:** the same library as an N-API addon
+  in the main process (as `mac/native` is today), so the engine doesn't wait for
+  the host decision.
 
-Why a process of its own: a decoder crashing on a damaged file takes down the
-helper, not the app (and not an unsaved painting); the app restarts it and marks
-the file. A long Export can be cancelled by stopping it. And it's the same for
-.NET, Electron and Tauri, so the host decision (below) doesn't hold it up.
+The risk of running in-process is a decoder crashing on a damaged file and
+taking jEditor (and an unsaved painting) with it. Our own Rust code can't do
+that; the C libraries (libheif, LibRaw) can. So the same library also builds as
+**`jeditor-engine`, a small helper program**, and the app can hand just the
+risky decoders to it (crash-safe, restartable, killable to cancel) if Phase 1's
+testing on real customer files shows crashes or hangs. Off by default; the
+owner decides.
 
 ### How the page talks to it
 
@@ -140,13 +144,14 @@ Three paths, each for what it's good at:
 1. **Commands, through the bridge** (`JEditorNative.engine`, small JSON):
    `thumbnail`, `preview`, `export`, `convert`, `cancel`, progress events.
    Windows: `chrome.webview` messages, as the bridge does now; Mac/Linux: the
-   preload's `request`. The app passes them to the helper over a pipe.
+   preload's `request`. Tauri: its commands. The app calls the engine directly.
 2. **Pictures for the screen, as URLs:** a thumbnail or a preview is
-   `https://jeditor.example/engine/thumb?f=…&w=320` (Windows:
-   `WebResourceRequested`; Mac/Linux: the `protocol.handle` the app already
-   has). The page uses it in an `<img>` or `createImageBitmap`, as it does a
-   file now, so the grid barely changes. The helper writes into shared memory
-   (a file mapping); the app hands those bytes to the web view. No base64, no
+   `https://jeditor.example/engine/thumb?f=…&w=320` on Windows
+   (`WebResourceRequested`), `jimg://…` in Tauri (#165's custom scheme), the
+   `protocol.handle` the Electron app already has meanwhile. The page uses it in
+   an `<img>` or `createImageBitmap`, as it does a file now, so the grid barely
+   changes. The engine reads the file by its path itself (the host knows every
+   handle's path) and hands the result's bytes straight to the web view. No base64, no
    JSON, and the thumbnail cache lives on disk in the engine's own format.
 3. **Raw pixels for the page's own drawing** (Adjust's working copy, Paint's
    layers) when needed: Windows has `CoreWebView2SharedBuffer`, an ArrayBuffer
@@ -190,21 +195,22 @@ Adjust's look must not change when the engine does it. So:
 ### Building and signing
 
 - `engine/`: a Cargo workspace (`core`: the pipeline and cache; `gpu`: wgpu and
-  the WGSL shaders; `codecs`: the C libraries; `cli`: the helper process; later
+  the WGSL shaders; `codecs`: the C libraries; `cli`: the optional helper program; later
   `wasm`).
 - **Windows:** built with MSVC on `windows-latest` (x64; ARM64 later),
-  `jeditor-engine.exe` installed beside `jEditor.exe` by the installer and the
+  `jeditor_engine.dll` installed beside `jEditor.exe` by the installer and the
   portable zip.
 - **Mac:** `aarch64` and `x86_64` built and joined (`lipo`) into a universal
-  binary, put in the app's `Contents/MacOS` and signed with it (ad hoc now, as
+  binary (linked into the Tauri app, or the `.node` addon in Electron's
+  resources), signed with the app (ad hoc now, as
   the app is; with the Developer ID and notarised when the app is). The
   hardened runtime needs no extra entitlements: no JIT.
 - **Linux:** x64, built against an old glibc (as old as the AppImage supports),
   in the AppImage, the `.deb` and the Arch package.
 - **Signing:** the Windows app isn't signed today and the Mac app is signed ad
-  hoc; the helper is signed the same way as its app, and moves with it when the
-  apps get real certificates. It's a second program on disk, so antivirus and
-  Gatekeeper see it too: signing it matters as much as signing the app.
+  hoc; the engine is signed the same way as its app, and moves with it when the
+  apps get real certificates. A DLL or addon next to the app is seen by
+  antivirus and Gatekeeper too, so signing it matters as much as the app.
 - **CI:** Rust builds are slow cold (~5 min); cached (`rust-cache`) and rebuilt
   only when `engine/` changes, otherwise the last build's binaries are used.
   Builds follow CLAUDE.md as now: pull requests build Windows only.
@@ -217,9 +223,10 @@ Adjust's look must not change when the engine does it. So:
 The engine doesn't depend on the host, and it should come **before** the host
 changes, because it helps that move:
 
-- **Tauri:** the engine links straight in; the URLs (path 2) become a Tauri
-  custom protocol, the commands become Tauri commands. Nothing in `app/`
-  changes.
+- **Tauri (#165):** the engine links straight in, in the host's process; the
+  URLs (path 2) are #165's custom scheme, the commands Tauri commands, files
+  read by path. Nothing in `app/` changes. This plan and #165 have the same
+  shape; the one addition here is the optional decode helper (above).
 - **A system web view** (WebView2 stays on Windows; WKWebView on the Mac;
   WebKitGTK on Linux): Electron was picked for the Mac because only Chromium has
   the File System Access API (PLAN.md, Decisions). An engine that reads, writes,
@@ -255,16 +262,25 @@ phase is measured before and after on Windows first, then the Mac.
 | Phase | What | Expected gain | Size |
 |---|---|---|---|
 | **0** | Measure on the owner's Windows PC and a Mac: the grid test, an Adjust/Export/Paint test (`test/engine-speed.perf.js`, from the script used for this plan), and the parity scenes. No engine yet. | The real baseline | small |
-| **1** | **Decoding and thumbnails** (Windows first, then Mac and Linux): the helper process, the bridge commands, `/engine/` URLs, the engine's thumbnail cache. JPEG scaled decode, HEIC (libheif native, multi-threaded; ImageIO on the Mac), TIFF, JPEG XL, AVIF, WebP; RAW previews; EXIF orientation. Every core used, not 4 workers. | Cold JPEG thumbnails **~4–8× faster** (12.6 s → ~2–3 s for 400); HEIC without a thumbnail **~5–10×** (0.9 s → ~0.1–0.2 s each); opening a HEIC or TIFF in the viewer as fast as a JPEG; first screen of thumbnails under 1 s cold | large |
+| **1** | **Decoding and thumbnails** (Windows first, then Mac and Linux): the engine DLL/addon, the bridge commands, `/engine/` URLs, the engine's thumbnail cache. JPEG scaled decode, HEIC (libheif native, multi-threaded; ImageIO on the Mac), TIFF, JPEG XL, AVIF, WebP; RAW previews; EXIF orientation. Every core used, not 4 workers. | Cold JPEG thumbnails **~4–8× faster** (12.6 s → ~2–3 s for 400); HEIC without a thumbnail **~5–10×** (0.9 s → ~0.1–0.2 s each); opening a HEIC or TIFF in the viewer as fast as a JPEG; first screen of thumbnails under 1 s cold | large |
 | **2** | **Adjust at full size:** Export, Save edits and Convert done by the engine file to file, with Detail, masks, spots, effects and the paint layers on the GPU. The 1:1 view from the engine. | Export of 24 MP with Detail **from seconds to well under 1 s**; Save edits on a selection of 100 photos in the background, every core | large |
 | **3** | **Adjust's working copy from the engine:** the right size for the screen and zoom (no 2560 cap; zoomed in, the photo's own pixels), with Detail done, so Detail shows live at every zoom. The sliders stay on WebGL2. | Detail and 1:1 everywhere, live | medium |
 | **4** | **RAW development** (`rawDevelop`): demosaic the sensor data (LibRaw or rawler), white balance and highlight recovery from the raw, into Adjust. | A new capability, not a speed-up | large |
 | **5** | **Paint on the engine** (`fullSizePaint`): tiled layers at full size on the GPU, undo by tiles (no read-backs), the pro update's filters (blur, liquify, healing) as GPU passes. Only after Phase 0 shows where Paint's latency is with a pen. | Full-size layers; filters live on 24 MP | large |
 | **6** | Optional: the web's WebAssembly build (Detail, RAW); a native GPU view under the page if frame copies show up in the numbers; the lighter desktop app with the engine inside. | | — |
 
-Each phase is its own pull request into `beta` (or a few), behind the `engine`
-feature, with today's code as the fallback: an app without the helper, or a
-helper that fails, works exactly as now.
+**Every slice, in every phase:**
+
+- ships behind a feature name (`Host.has('engine')` first, then the ones above
+  as they come), with its row in `docs/platforms.md` and its line at the top of
+  `app/host.js`;
+- keeps today's JavaScript as the fallback: an app without the engine, or an
+  engine that fails, works exactly as now (and the web runs it);
+- comes with before-and-after numbers from the same tests, on Windows first,
+  in its pull request.
+
+Each phase is its own pull request into `beta` (or a few). The desktop apps
+come first; the web follows only where a WebAssembly/WebGPU build is worth it.
 
 **Who does it:** Phases 1–3 touch the shared files (`src/`, `mac/`,
 `app/host.js`, `app/script.js` for the grid, `app/develop.js` and
@@ -283,9 +299,9 @@ CLAUDE.md says.
 - **A second program to ship and sign:** the installer, the portable zip, the
   Mac app's signing and notarisation, the Linux packages and their tests all
   take it in. More moving parts in every release.
-- **Native decoders on customers' files:** a crash or a hang on a bad file.
-  The helper process contains it (restarted, the file marked, today's code used
-  for it).
+- **Native decoders on customers' files:** a crash or a hang on a bad file,
+  in the app's process. Our code is Rust; the C decoders are fuzzed in CI, and
+  can be moved into the helper program if real files crash them.
 - **GPU drivers:** wgpu on old Intel graphics or a VM can fail; the engine falls
   back to the CPU (SIMD Rust, still much faster than JavaScript), and the app to
   today's code.
@@ -300,9 +316,8 @@ CLAUDE.md says.
 
 1. **Go for Phase 0 and Phase 1** (measure on your Windows PC, then decoding and
    thumbnails on Windows first)?
-2. **A helper process** (crash-safe, the same for every host), or the engine
-   inside the app (a little faster to call, but a bad file can crash jEditor)?
-   Recommended: the helper.
+2. **The engine inside the app** (as #165 has it; recommended), with the risky
+   C decoders moved to a helper program only if real files crash them?
 3. **The lighter desktop app waits** until Phase 1–2's numbers are in, and is
    decided with them?
 4. **Licences:** fine to ship libheif/libde265 (as now) and LibRaw (LGPL) as
