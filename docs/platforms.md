@@ -28,7 +28,7 @@ Checked by `test/parity.test.js`: each ✓ must match the app's `features` list,
 | `camera` | Tethered shooting | ✓ | | | | not yet on Mac and Linux; browser |
 | `log` | The app's log, in Settings | ✓ | | | | not yet on Mac and Linux; browser |
 | `burn` | Burning a project onto a CD or DVD | ✓ | | | | not yet on Mac and Linux; browser |
-| `themes` | Themes in Settings → Appearance, with their own title bar | ✓ | ✓ | ✓ | | browser (by choice: the web keeps today's look) |
+| `themes` | Themes in Settings → Appearance, with their own title bar (paused: an experiment, off to start with) | ✓ | ✓ | ✓ | | browser (by choice: the web keeps today's look) |
 | `quickAccess` | Explorer's Quick Access in the sidebar's Pinned | ✓ | | | | system |
 | `backdrop` | Mica or Acrylic behind the window | ✓ | | | | system |
 | `folderMove` | Changing the projects folder moves the projects there (copied, checked, then removed) | ✓ | ✓ | ✓ | | browser |

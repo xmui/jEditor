@@ -2049,7 +2049,27 @@ const PROJECT = `
                 step = 'app';
                 const calls = [];
                 window.JEditorNative = { platform: 'windows', features: ['themes'], titleBar: (on) => calls.push('titleBar:' + on), windowAction: (a) => calls.push(a) };
-                out.inApp = Themes.can() && !Experiments.shown().some(x => x.id === 'themes');
+                // Paused (2.0.0): an experiment, off to start with, in a beta too
+                // (a dev page has no APP_BUILD: a beta's, for now)
+                window.APP_BUILD = 'v2.0.0-beta.1';
+                out.offered = Experiments.betaBuild() && Experiments.shown().some(x => x.id === 'themes') && !Experiments.on('themes') && !Themes.can();
+                delete window.APP_BUILD;
+                app.renderCustomizePanel();
+                out.pickerHidden = [...document.querySelectorAll('.set-themes-part')].every(e => e.classList.contains('hidden'));
+                // A theme chosen before: not on while the experiment's off
+                app.uiPrefs.skin = 'xp/royale';
+                Themes.apply();
+                out.ownLook = !root.dataset.skin && !$('th-top');
+                // Turned on (Settings → Experimental): the theme's back at once
+                Experiments.set('themes', true);
+                await until(() => root.dataset.skin === 'xp' && !root.classList.contains('theme-loading'));
+                out.back = root.dataset.skin === 'xp' && !!$('th-top') && !$('set-themes').classList.contains('hidden');
+                // Off again: jEditor's own look, and the choice kept
+                Experiments.set('themes', false);
+                out.offAgain = !root.dataset.skin && !$('th-top') && app.uiPrefs.skin === 'xp/royale' && calls[calls.length - 1] === 'titleBar:false';
+                Experiments.set('themes', true);
+                Themes.choose('');
+                out.inApp = Themes.can();
                 app.renderCustomizePanel();
                 const cards = [...$('set-themes').querySelectorAll('.theme-card')];
                 out.gallery = cards.map(c => c.dataset.skin).join() === ',xp/royale,snow/finder,mac84/finder' && cards[0].classList.contains('active');
@@ -2130,7 +2150,8 @@ const PROJECT = `
                 return out;
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
-        check('themes: none in a browser; in the apps, not an experiment', r.browserNone && r.inApp, JSON.stringify(r));
+        check('themes: none in a browser; in the apps, an experiment, off to start with (betas too), the picker hidden', r.browserNone && r.offered && r.pickerHidden, JSON.stringify(r));
+        check('themes: a theme chosen isn\'t on while the experiment\'s off, comes back the moment it\'s turned on, and goes (kept) when it\'s off again', r.ownLook && r.back && r.offAgain && r.inApp, JSON.stringify(r));
         check('themes: Settings → Appearance shows them as a gallery, jEditor\'s own look first', r.gallery, JSON.stringify(r));
         check('themes: one chosen puts its stylesheets on, docked, in its own light or dark', r.on && r.styled && r.dark, JSON.stringify(r));
         check('themes: its own title bar and menu bar along the top; Windows\' title bar goes', r.ownBar, JSON.stringify(r));
