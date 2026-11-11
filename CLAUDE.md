@@ -69,9 +69,11 @@ usual.
 
 **Theming is secondary.** The themes and look agent (`theming`) helps
 the others when asked about the look; it doesn't own a mode and doesn't
-hold up anyone's PR. **Themes are paused**: they're back under
-Settings → Experimental, off to start with (betas too), and frozen. No
-theming work unless the owner asks for it: a new part of jEditor needs
+hold up anyone's PR. **Themes are paused** and experimental until the
+2.0 UI refinement is done: they're back under Settings → Experimental,
+off to start with (betas too), and frozen. Then they come back, dressed
+to match the refined look. Until then, no theming work unless the owner
+asks for it: a new part of jEditor needs
 to look right in jEditor's own look, not in each theme, and a test that
 uses a theme turns the experiment on first.
 
