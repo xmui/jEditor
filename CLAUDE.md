@@ -36,6 +36,11 @@ asking first, since both publish (`.github/workflows/release.yml`).
 
 ## Platforms
 
+**The desktop apps (Windows, Mac, Linux) always come first.** They get
+the best version of every feature, and they keep parity with each other.
+The web is a lighter version: it may use a different engine and doesn't
+need full parity (mark what it lacks, as below).
+
 Every feature is for Windows, Mac, Linux and the web unless there's a
 reason it can't be. Before building one, decide which platforms it's for
 and say so in the pull request. If it's only for some:
