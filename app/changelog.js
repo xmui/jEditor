@@ -6,7 +6,7 @@
 
 const CHANGELOG = [
     {
-        version: '1.51.0', date: '2026-11-08',
+        version: '2.0.0', date: '2026-11-11',
         items: [
             'Find anything: `Ctrl+K` (`⌘K` on a Mac), or Find anything… in the Photos ▾ menu, opens one box that finds commands, photos, folders and your other projects as you type, and `Enter` runs the one you pick. It forgives typos and words in any order, says what a command will act on ("3 selected"), shows each command\'s key so you learn it, and puts what you use most first. It works in Photos, Adjust and Paint.',
             'A welcome tour: a walk through the real app, one stop at a time, from the three apps and the sidebar to cropping, Scan, Duplicates and Convert. Each stop lights up its control, and the app keeps working under it, so you can try it. It\'s offered once on the home page, and Take the tour is in the gear menu any time.',
@@ -19,6 +19,7 @@ const CHANGELOG = [
             'Mac: your Photos library is in the sidebar, under Locations. Open it out like a drive to see Favourites, Recently added and your albums, and click one to look through its photos (or Open, for the whole library). macOS asks once whether jEditor may see it; it\'s in jEditor → Permissions… too.',
             'Mac: photos in the Photos library can be edited in jEditor: rotate, crop, Adjust and Paint them as any other. The edit is saved back into Photos on top of the photo as it is now, so edits made before in Photos or another app stay, and Photos keeps the original: its Revert to Original goes back to it. The edit shows in Photos and on your other devices. Renaming, moving and deleting are left to Photos. macOS may ask you to allow each change.',
             'Mac: Add to Photos library, on a photo\'s right-click, the selection\'s ⋯ menu and the grid\'s right-click (Add all), puts a project\'s photos into Photos as they are, with their dates and metadata, in an album named after the project: a scan order becomes an album.',
+            'Themes are paused for now: they\'re under Settings → Experimental again, off to start with, while the rest of jEditor changes. Turn them on there and the theme you chose comes straight back.',
         ]
     },
     {

@@ -22,7 +22,8 @@
 //   folderMove   a new projects folder can take the projects along: each
 //                copied, checked and only then removed (folder-move.js)
 //   cacheFolder  Settings → Projects: where the cache is kept (folder-move.js)
-//   themes       Settings → Appearance's themes, with their own title bar (themes.js)
+//   themes       Settings → Appearance's themes, with their own title bar (themes.js);
+//                paused, under Settings → Experimental (experiments.js)
 //   photosLibrary  the Mac's Photos library in the sidebar (places.js): its albums
 //                open as the project (photosAlbum: a folder handle); an edit is
 //                saved back as a Photos edit on the photo as it is now, and

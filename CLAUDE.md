@@ -69,9 +69,11 @@ usual.
 
 **Theming is secondary.** The themes and look agent (`theming`) helps
 the others when asked about the look; it doesn't own a mode and doesn't
-hold up anyone's PR. Themes were released in 1.50.0: they're part of
-jEditor in the Windows, Mac and Linux apps, no longer an experiment, and
-the theming agent's file is on `main` with them.
+hold up anyone's PR. **Themes are paused** (2.0.0): they're back under
+Settings → Experimental, off to start with (betas too), and frozen. No
+theming work unless the owner asks for it: a new part of jEditor needs
+to look right in jEditor's own look, not in each theme, and a test that
+uses a theme turns the experiment on first.
 
 - Each agent stays in its own files (listed in its file). Files every
   mode shares (`app/index.html`, `app/style.css`, `app/host.js`,

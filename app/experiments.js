@@ -15,6 +15,13 @@
 const Experiments = {
     LIST: [
         {
+            // Paused for 2.0.0: not kept up with what's new, so off to start
+            // with, in betas too (themes.js: can)
+            id: 'themes', needs: 'themes',
+            title: 'Themes',
+            text: 'jEditor as an app of another time, in Settings → Appearance: Windows XP (Royale, Royale Noir and Royale Red), Snow Leopard (Finder and Aperture) and the 1984 Macintosh, each with its own title bar and menus. Paused for now: newer parts of jEditor may not look right in them'
+        },
+        {
             id: 'auto-crop',
             title: 'Auto crop',
             text: 'Finds the print on a scan, straightens it and crops to it: Auto in the crop editor, Auto crop on the selection (Shift+A), Auto crop in the scan window, and keeping test scans to improve it. Off while it\'s being fixed'
