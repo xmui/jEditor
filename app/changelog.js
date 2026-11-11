@@ -6,7 +6,7 @@
 
 const CHANGELOG = [
     {
-        version: '2.0.0', date: '2026-11-11',
+        version: '1.51.0', date: '2026-11-08',
         items: [
             'Find anything: `Ctrl+K` (`⌘K` on a Mac), or Find anything… in the Photos ▾ menu, opens one box that finds commands, photos, folders and your other projects as you type, and `Enter` runs the one you pick. It forgives typos and words in any order, says what a command will act on ("3 selected"), shows each command\'s key so you learn it, and puts what you use most first. It works in Photos, Adjust and Paint.',
             'A welcome tour: a walk through the real app, one stop at a time, from the three apps and the sidebar to cropping, Scan, Duplicates and Convert. Each stop lights up its control, and the app keeps working under it, so you can try it. It\'s offered once on the home page, and Take the tour is in the gear menu any time.',

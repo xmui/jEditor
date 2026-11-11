@@ -15,7 +15,7 @@
 const Experiments = {
     LIST: [
         {
-            // Paused for 2.0.0: not kept up with what's new, so off to start
+            // Paused: not kept up with what's new, so off to start
             // with, in betas too (themes.js: can)
             id: 'themes', needs: 'themes',
             title: 'Themes',
