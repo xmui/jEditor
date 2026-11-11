@@ -12,6 +12,41 @@ Whichever host is picked, this is most of the work. The page edits files through
 
 **dataDir moves out of OPFS** to a real folder (`~/Library/Application Support/jEditor/data`, `~/.local/share/jeditor/data`) through the same handles. That gets rid of WebKit's OPFS differences, and it means `cacheFolder` can come to the Mac and Linux almost for free.
 
+### Bridging the file layer, sized
+
+Windows gets real handles from WebView2 (`CreateWebFileSystemDirectoryHandle`, `src/MainForm.cs`). On WebKit the host makes them itself. Each part of the page's file layer, and what it takes:
+
+| The page uses | How it's bridged | Size | Page change |
+|---|---|---|---|
+| Directory and file handles: `entries`/`keys`/`values`, `getFileHandle`, `getDirectoryHandle`, `removeEntry`, `move`, `resolve`, `isSameEntry` | JS classes, one host call each, keyed by path. Errors carry the same names (`NotFoundError`, `TypeMismatchError`, `InvalidModificationError`) | ~400 lines of JS + ~300 of Rust | None |
+| `getFile()` | A real `File`, its bytes fetched from a custom scheme (`jfs://`, Range-capable), not passed as JSON | in the above | **Listing a folder** calls `getFile()` on every photo only for size and date (`script.js` ~1635, 1685, 1821). Reading every file there would make a 2,000-scan folder crawl, so those 3 places ask `Host.stat(handle)` (one host call for the whole folder; Chromium falls back to `getFile()`) |
+| `createWritable` / `write` / `close` | Chunks streamed to a temp file, renamed into place on `close()`, as Chromium does | ~100 + ~80 | None |
+| `queryPermission` / `requestPermission` | Always `granted` (the app has the disk, as on Windows) | tiny | None |
+| `showDirectoryPicker`, `showOpenFilePicker`, `showSaveFilePicker` | The system's dialogs, returning handles | ~60 | None |
+| A folder dropped from Finder or Files (`getAsFileSystemHandle`, `script.js` 1572, `places.js` 880) | The host gets the drop's paths. The bridge patches `DataTransferItem.getAsFileSystemHandle` to return handles for them | ~60 | None |
+| `FileSystemObserver` (`watch.js`) | The host watches the folder (FSEvents, inotify; Rust's `notify`) and the bridge gives the page a `FileSystemObserver` with Chrome's record shape. Without it, `watch.js` already falls back to polling | ~120 + ~100 | None |
+| Handles kept in IndexedDB (`recents.js`: the recent folders) | WebKit can't store a made-up handle in IndexedDB. The bridge stores `{ path }` in its place and turns it back into a handle on the way out (wrapping `put` and `get` on that store) | ~80 | None, or a 2-line hook in `recents.js` if the wrapping proves fragile |
+| OPFS (`dataDir`) | A real folder through the same handles (above) | none extra | None |
+| Workers | No handle goes to a worker today; they get bytes | none | None |
+
+**In all:** about 900 lines of JS (shared by the Mac, Linux and a future iPad app) and 600 of Rust. The page changes in 3 places (`Host.stat`), plus maybe 2 lines in `recents.js`.
+
+**Parity:**
+- **Low risk:** the page code is the same everywhere, and the `features` lists don't change.
+- **The risk:** the made-up handles behaving slightly differently from Chromium's in an edge case (an error's name, a half-written file, a move across drives).
+- **Covering it:** the handles first replace Chromium's own under Electron, and `test/mac.test.js` and `test/ui.test.js` must pass with them before WebKit is involved (step 1). A conformance test runs the same file operations against both, and stays in `npm test`.
+
+### How it fits the fast engine
+
+A native engine that decodes and renders on the GPU through the host gives the page results, not files. The host already knows every handle's path, so the page tells the engine *which* photo and *what* edit, and the engine reads the file from disk itself. Heavy bytes never cross into JS, which makes the handles' `getFile()` cost matter far less.
+
+- **In Tauri the engine is Rust** (`wgpu`: Metal on the Mac, Vulkan on Linux, DX12 on Windows) in the same process as the host. Thumbnails and previews come back as images on the custom scheme (`<img src="jimg://…">`), with no JS decode.
+- **The same engine can be a DLL** that the Windows host (C#) loads, so it's one engine for all three apps.
+- **Live editing** sends preview-size frames. Drawing straight into a GPU layer under the web view is possible later, per platform.
+- **With Electron,** the engine would be an N-API addon with the same copies, plus Chromium's own GPU process next to it. That's one more reason the Rust host fits.
+
+*I haven't seen the owner's plan for the engine. The above is how a Tauri host would carry one, to be checked against that plan.*
+
 ## Tauri v2 or a Swift app plus a GTK app
 
 | | **Tauri v2** (Rust; WKWebView on Mac, WebKitGTK on Linux) | **Swift WKWebView app (Mac) + WebKitGTK app (Linux)** | Electron today |
@@ -34,6 +69,7 @@ The figures are typical numbers for these stacks, not jEditor's. Step 0 measures
 - **Wails v3** (Go, the same web views): like Tauri, with less packaging and fewer users. There's no reason to pick it over Tauri.
 - **Electrobun** (Bun, the system web view or a bundled CEF per platform): could put CEF on Linux and WebKit on the Mac. It's too young to ship on yet; worth another look.
 - **CEF or Neutralino:** CEF is Chromium again, so it doesn't save any size. Neutralino's native side is too thin for Photos, drives and moves.
+- **Staying on Electron, or a slimmer Chromium host:** this needs no file bridge, so the page runs exactly as on Windows. But the app stays ~150 MB, is slow to start and heavy on memory, and a GPU engine would have to sit beside Chromium's own GPU process. Bridging the file layer is about 1,500 lines with a clear way to test it, so it isn't a reason to stay.
 
 ## What changes for the page (WebKit against Chromium)
 
