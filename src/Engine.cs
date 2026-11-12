@@ -114,7 +114,7 @@ static class Engine
             var cors = $"Access-Control-Allow-Origin: {pageOrigin}\r\nCache-Control: no-store";
             try
             {
-                var (status, body) = await Task.Run(() => Answer(uri));
+                var (status, body) = await Gated(uri);
                 if (!loggedFirst) { loggedFirst = true; Log.Write($"Engine: first request answered {status} ({body?.Length ?? 0} bytes)"); }
                 e.Response = core.Environment.CreateWebResourceResponse(
                     body is null ? null : new MemoryStream(body), status, status == 200 ? "OK" : status == 204 ? "No Content" : "Not Found",
@@ -130,6 +130,30 @@ static class Engine
                 deferral.Complete();
             }
         };
+    }
+
+    // At most one decode per core: the page asks for a dozen at once, and
+    // more decodes than cores only slow each other down. HEICs (a second or
+    // so each) get at most half the cores, so JPEGs are never stuck behind
+    // them
+    static readonly SemaphoreSlim cores = new(Math.Max(1, Environment.ProcessorCount));
+    static readonly SemaphoreSlim heavy = new(Math.Max(1, Environment.ProcessorCount / 2));
+
+    static async Task<(int, byte[]?)> Gated(Uri uri)
+    {
+        var q = System.Web.HttpUtility.ParseQueryString(uri.Query)["path"] ?? "";
+        var slow = Path.GetExtension(q).ToLowerInvariant() is ".heic" or ".heif";
+        if (slow) await heavy.WaitAsync();
+        try
+        {
+            await cores.WaitAsync();
+            try { return await Task.Run(() => Answer(uri)); }
+            finally { cores.Release(); }
+        }
+        finally
+        {
+            if (slow) heavy.Release();
+        }
     }
 
     // How the answers went, for the log every 50 (test/grid-speed.perf.js
