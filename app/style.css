@@ -10769,3 +10769,190 @@ body.touring .controls.idle button { pointer-events: auto; }
 
 /* A switch under a prompt (ui.js: check) */
 .uid-check { margin-top: 12px; padding: 0; cursor: pointer; }
+
+/* ==========================================================================
+   The 2.0 refinement: the shared layer (jEditor's own look; tokens.css has
+   its values). One of each control, in every mode: one section heading
+   (the sidebar's small grey one), one switch between a few, one slider,
+   one button family; dialogs without their rules and bulk; menus solid,
+   in 28 px rows. Nothing moves: the parts agree.
+   ========================================================================== */
+
+:root:not([data-skin]) .i {
+    stroke-width: 1.5;
+}
+
+/* ---- Section headings: small and grey, in sentence case ---- */
+:root:not([data-skin]) :is(.set-group, .sb-sec-title, .adj-sub, .palette-head, .paint-sec-head > span:first-child),
+:root:not([data-skin]) #context-menu .ctx-heading {
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+:root:not([data-skin]) .set-group {
+    margin-top: var(--sp-5);
+    padding-top: 0;
+    border-top: 0;
+}
+
+/* ---- A switch between a few: a soft track, the chosen part raised ---- */
+:root:not([data-skin]) :is(.seg, .adj-tabs) {
+    padding: var(--sp-0);
+    border-radius: var(--r-md);
+    background: var(--seg-bg);
+}
+
+:root:not([data-skin]) :is(.seg > button, .seg > label > span, .adj-tab) {
+    border-radius: calc(var(--r-md) - var(--sp-0));
+}
+
+/* ---- The slider: Adjust's, everywhere. Those with a look of their own
+   (Adjust's coloured tracks, Crop's straighten, a colour's) keep it:
+   :where() leaves these rules as light as the browser's ---- */
+:where(:root:not([data-skin])) input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: var(--icon-sm);
+    background: transparent;
+}
+
+:where(:root:not([data-skin])) input[type="range"]::-webkit-slider-runnable-track {
+    height: 3px;
+    border-radius: var(--r-pill);
+    background: var(--slider-track);
+}
+
+:where(:root:not([data-skin])) input[type="range"]::-moz-range-track {
+    height: 3px;
+    border-radius: var(--r-pill);
+    background: var(--slider-track);
+}
+
+:where(:root:not([data-skin])) input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    margin-top: -4.5px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--slider-knob);
+    box-shadow: var(--slider-knob-edge);
+}
+
+:where(:root:not([data-skin])) input[type="range"]::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--slider-knob);
+    box-shadow: var(--slider-knob-edge);
+}
+
+:where(:root:not([data-skin])) input[type="range"]:focus-visible {
+    outline: none;
+}
+
+:where(:root:not([data-skin])) input[type="range"]:focus-visible::-webkit-slider-thumb {
+    box-shadow: var(--slider-knob-edge), var(--focus-ring);
+}
+
+/* ---- Buttons: the plain one looks pressable; a filled one catches light ---- */
+:root:not([data-skin]) .btn.secondary,
+:root:not([data-skin]) .dialog-foot .btn:not(.primary, .danger, .ghost) {
+    border-color: var(--border-subtle);
+    background: var(--bg-raised);
+    color: var(--text-1);
+}
+
+:root:not([data-skin]) .btn.secondary:hover,
+:root:not([data-skin]) .dialog-foot .btn:not(.primary, .danger, .ghost):hover {
+    border-color: var(--border);
+}
+
+:root:not([data-skin]) :is(.btn.primary, .btn.danger) {
+    box-shadow: var(--btn-sheen);
+}
+
+/* ---- Dialogs: no rules under the title or over the buttons, which are
+   a desktop's size and at the right. Settings keeps its two rules: its
+   middle scrolls under them ---- */
+:root:not([data-skin]) .dialog {
+    border-color: var(--border-subtle);
+    border-radius: var(--r-xl);
+}
+
+:root:not([data-skin]) .dialog-head {
+    min-height: var(--sp-12);
+    padding: var(--sp-3) var(--sp-3) var(--sp-1) var(--sp-5);
+    border-bottom: 0;
+}
+
+:root:not([data-skin]) .dialog-body {
+    padding: var(--sp-2) var(--sp-5) var(--sp-4);
+}
+
+:root:not([data-skin]) .dialog-foot {
+    padding: var(--sp-1) var(--sp-4) var(--sp-4) var(--sp-5);
+    border-top: 0;
+}
+
+:root:not([data-skin]) .dialog-foot > :only-child {
+    margin-left: auto;
+}
+
+:root:not([data-skin]) .dialog-foot .btn {
+    min-width: 76px;
+    height: var(--ctl-md);
+    padding: 0 var(--sp-4);
+}
+
+:root:not([data-skin]) .dialog.settings-card .dialog-head {
+    padding-bottom: var(--sp-2);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+:root:not([data-skin]) .dialog.settings-card .dialog-foot {
+    padding-top: var(--sp-3);
+    padding-bottom: var(--sp-3);
+    border-top: 1px solid var(--border-subtle);
+}
+
+/* ---- Menus: solid, in rows ---- */
+:root:not([data-skin]) #context-menu {
+    min-width: 232px;
+    padding: 5px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-lg);
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-3);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+:root:not([data-skin]) #context-menu button {
+    min-height: var(--row);
+    padding: 0 10px;
+}
+
+:root:not([data-skin]) #context-menu button[aria-checked] {
+    padding-left: 30px;
+}
+
+:root:not([data-skin]) #context-menu .ctx-divider {
+    margin: 5px 10px;
+    background: var(--border-subtle);
+}
+
+/* On a touch screen a row stays a finger's height */
+@media (pointer: coarse) {
+    :root:not([data-skin]) {
+        --row: var(--ctl-md);
+        --ctl-lg: 44px;
+    }
+    :root:not([data-skin]) .dialog-foot .btn {
+        height: var(--ctl-lg);
+    }
+}
