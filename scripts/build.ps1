@@ -25,10 +25,16 @@ Write-Host "jEditor $version"
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 # The engine (engine/, Rust) is built with it: required on CI, optional
 # elsewhere (without Rust the app works as before, just slower thumbnails)
+# HEIC in the engine when libheif is in vcpkg (scripts/engine-heif.ps1):
+# required on CI too
 $requireEngine = if ($env:CI -eq 'true') { 'true' } else { 'false' }
-dotnet publish (Join-Path $root 'src\jEditor.csproj') -c Release -o $publish "-p:ReleaseTag=$Tag" "-p:RequireEngine=$requireEngine"
+dotnet publish (Join-Path $root 'src\jEditor.csproj') -c Release -o $publish "-p:ReleaseTag=$Tag" "-p:RequireEngine=$requireEngine" "-p:RequireHeif=$requireEngine"
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
-if (Test-Path (Join-Path $publish 'jeditor_engine.dll')) { Write-Host "With the engine (jeditor_engine.dll)" }
+if (Test-Path (Join-Path $publish 'jeditor_engine.dll')) {
+    $heif = Test-Path (Join-Path $publish 'heif.dll')
+    Write-Host "With the engine (jeditor_engine.dll)$(if ($heif) { ', with HEIC (heif.dll)' } else { ', JPEG only' })"
+    if ($requireEngine -eq 'true' -and -not $heif) { throw "No heif.dll in $publish" }
+}
 elseif ($requireEngine -eq 'true') { throw "No jeditor_engine.dll in $publish" }
 else { Write-Warning "Built without the engine (no Rust or nasm): the page makes its own thumbnails" }
 

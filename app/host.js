@@ -35,6 +35,9 @@
 //                than decoding the whole photo in the page (script.js:
 //                engineThumbnail; JEditorNative.engineThumb). Today's code is
 //                the fallback, for the web and for whatever the engine can't do
+//   engineHeic   the engine makes HEIC grid thumbnails too (libheif, with
+//                libde265; its DLLs beside the engine's), natively and many
+//                at once, rather than the page's decoder (the fallback)
 //
 // Wording that names the system's own things comes from here too: in a
 // text, {files} is Explorer, Finder or Files, {computer} this PC or this Mac, and

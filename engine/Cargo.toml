@@ -16,6 +16,13 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 mozjpeg = "0.10.13"
 fast_image_resize = "6.1.0"
+# HEIC/HEIF (feature heif): libheif, with libde265 for HEVC. Linked
+# dynamically (LGPL): on Windows from vcpkg's x64-windows DLLs, shipped
+# beside jeditor_engine.dll; elsewhere the system's (pkg-config)
+libheif-rs = { version = "3", optional = true, default-features = false, features = ["v1_17"] }
+
+[features]
+heif = ["dep:libheif-rs"]
 
 [profile.release]
 opt-level = 3

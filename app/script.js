@@ -3649,16 +3649,19 @@ const app = {
 
     // The app's engine makes it (Host.has('engine'): src/Engine.cs) from
     // the file on disk, decoding only as much as the thumbnail needs:
-    // several times faster than a whole decode here. Null: the page makes
-    // it (not a JPEG, no path for the folder, or the engine couldn't)
+    // several times faster than a whole decode here. A HEIC too when the
+    // engine reads them (Host.has('engineHeic')). Null: the page makes it
+    // (another kind of file, no path for the folder, or the engine couldn't)
     async engineThumbnail(fileEntry) {
-        if (!Host.has('engine') || !/\.jpe?g$/i.test(fileEntry.name) || !this.dirHandle) return null;
+        if (!Host.has('engine') || !this.dirHandle) return null;
+        if (!/\.jpe?g$/i.test(fileEntry.name) && !(Host.has('engineHeic') && /\.hei[cf]$/i.test(fileEntry.name))) return null;
         const handle = this.dirHandle;
         if (!this._engineDir || this._engineDir.handle !== handle) {
             this._engineDir = { handle, path: Host.get().folderPath(handle).catch(() => null) };
         }
         const dir = await this._engineDir.path;
         if (!dir) return null;
+        this._engineAsked = (this._engineAsked || 0) + 1; // test/grid-speed.perf.js counts them
         try {
             const r = await fetch(Host.get().engineThumb(dir, fileEntry.relPath || fileEntry.name, this.THUMB_WIDTH));
             return r.status === 200 ? await r.blob() : null;

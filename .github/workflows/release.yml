@@ -179,6 +179,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: engine
+      # HEIC in the engine: libheif and libde265 from vcpkg, as DLLs (LGPL);
+      # vcpkg's built packages kept between runs
+      - uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\vcpkg\archives
+          key: vcpkg-libheif-${{ hashFiles('scripts/engine-heif.ps1') }}
+          restore-keys: vcpkg-libheif-
+      - name: libheif (vcpkg)
+        shell: pwsh
+        run: ./scripts/engine-heif.ps1
       - name: Build
         shell: pwsh
         run: ./scripts/build.ps1 -Tag ${{ needs.tag.outputs.tag }}

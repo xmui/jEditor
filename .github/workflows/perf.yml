@@ -43,6 +43,16 @@ jobs:
           workspaces: engine
       - run: npm ci
       - run: pip install pillow numpy pillow-heif
+      # HEIC in the engine: libheif and libde265 from vcpkg, as DLLs (LGPL);
+      # vcpkg's built packages kept between runs
+      - uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\vcpkg\archives
+          key: vcpkg-libheif-${{ hashFiles('scripts/engine-heif.ps1') }}
+          restore-keys: vcpkg-libheif-
+      - name: libheif (vcpkg)
+        shell: pwsh
+        run: ./scripts/engine-heif.ps1
       - name: Build (with the engine)
         shell: pwsh
         run: ./scripts/build.ps1 -SkipInstaller
@@ -76,7 +86,9 @@ jobs:
         working-directory: engine
         run: |
           $folder = Join-Path $env:USERPROFILE "jeditor-grid-speed\folder-$env:JPEG-$env:HEIC-$env:DNG"
-          cargo run --release --locked --bin engine-bench -- $folder 2>&1 | Tee-Object ../perf/engine-bench-windows.txt
+          $env:VCPKG_ROOT = $env:VCPKG_INSTALLATION_ROOT; $env:VCPKGRS_DYNAMIC = '1'
+          $env:PATH = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin;$env:PATH"
+          cargo run --release --locked --features heif --bin engine-bench -- $folder 2>&1 | Tee-Object ../perf/engine-bench-windows.txt
       - name: Adjust, Export and Paint, Chrome
         timeout-minutes: 10
         continue-on-error: true

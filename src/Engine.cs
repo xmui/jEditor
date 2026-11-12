@@ -9,7 +9,9 @@ namespace JEditor;
 // rather than in the page. The page asks for a result by URL:
 //
 //   https://engine.jeditor.example/thumb?w=320&path=<the photo on disk>
-//     → a JPEG thumbnail, w wide as shown (after its EXIF orientation)
+//     → a JPEG thumbnail, w wide as shown (after its EXIF orientation), of
+//       a JPEG, or of a HEIC when the engine was built with libheif
+//       (Formats; its DLLs beside it, scripts/engine-heif.ps1)
 //
 // so a full-size photo is never read into the page, and the page shows
 // the answer as it would any picture. Without the DLL (a build with no
@@ -33,10 +35,17 @@ static class Engine
     static extern IntPtr je_version();
 
     [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+    static extern IntPtr je_formats();
+
+    [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
     static extern int je_thumbnail_file(byte[] path, nuint pathLen, uint width, out JeBuf buf);
 
     [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
     static extern void je_free(JeBuf buf);
+
+    // What a page can ask for: photos the engine reads, by name (je_formats).
+    // Before Version: static fields start in order, and Load sets this
+    static string[] Reads = [".jpg", ".jpeg"];
 
     // The engine's version, or null when the DLL isn't there or won't load
     public static readonly string? Version = Load();
@@ -54,7 +63,8 @@ static class Engine
         try
         {
             var v = Marshal.PtrToStringUTF8(je_version());
-            Log.Write($"Engine: {v}");
+            Reads = (Marshal.PtrToStringUTF8(je_formats()) ?? "jpg jpeg").Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => "." + x).ToArray();
+            Log.Write($"Engine: {v} ({string.Join(' ', Reads)})");
             return v;
         }
         catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
@@ -64,8 +74,8 @@ static class Engine
         }
     }
 
-    // What a page can ask for: photos the engine reads, by name
-    static readonly string[] Reads = [".jpg", ".jpeg"];
+    // It reads HEICs (built with libheif): the page asks it for them too
+    public static bool Heic => Available && Reads.Contains(".heic");
 
     // A JPEG thumbnail of the photo at path, width wide; null if the engine
     // can't make it (code says why: 1 not supported, 2 unreadable, 3 bad)
@@ -104,7 +114,7 @@ static class Engine
             var cors = $"Access-Control-Allow-Origin: {pageOrigin}\r\nCache-Control: no-store";
             try
             {
-                var (status, body) = await Task.Run(() => Answer(uri));
+                var (status, body) = await Gated(uri);
                 if (!loggedFirst) { loggedFirst = true; Log.Write($"Engine: first request answered {status} ({body?.Length ?? 0} bytes)"); }
                 e.Response = core.Environment.CreateWebResourceResponse(
                     body is null ? null : new MemoryStream(body), status, status == 200 ? "OK" : status == 204 ? "No Content" : "Not Found",
@@ -122,6 +132,47 @@ static class Engine
         };
     }
 
+    // At most one decode per core: the page asks for a dozen at once, and
+    // more decodes than cores only slow each other down. HEICs (a second or
+    // so each) get every core but one, so a JPEG never waits behind them
+    static readonly SemaphoreSlim cores = new(Math.Max(1, Environment.ProcessorCount));
+    static readonly SemaphoreSlim heavy = new(Math.Max(1, Environment.ProcessorCount - 1));
+
+    static async Task<(int, byte[]?)> Gated(Uri uri)
+    {
+        var q = System.Web.HttpUtility.ParseQueryString(uri.Query)["path"] ?? "";
+        var slow = Path.GetExtension(q).ToLowerInvariant() is ".heic" or ".heif";
+        if (slow) await heavy.WaitAsync();
+        try
+        {
+            await cores.WaitAsync();
+            try { return await Task.Run(() => Answer(uri)); }
+            finally { cores.Release(); }
+        }
+        finally
+        {
+            if (slow) heavy.Release();
+        }
+    }
+
+    // How the answers went, for the log every 50 (test/grid-speed.perf.js
+    // shows it): how many, how long, by kind
+    static readonly object statsLock = new();
+    static readonly Dictionary<string, (int n, int made, double ms, double most)> stats = [];
+    static int answered;
+
+    static void Count(string ext, bool made, double ms)
+    {
+        lock (statsLock)
+        {
+            stats.TryGetValue(ext, out var s);
+            stats[ext] = (s.n + 1, s.made + (made ? 1 : 0), s.ms + ms, Math.Max(s.most, ms));
+            if (++answered % 50 != 0) return;
+            Log.Write($"Engine: {answered} answered; " + string.Join("; ", stats.Select(kv =>
+                $"{kv.Key} {kv.Value.made}/{kv.Value.n} made, {kv.Value.ms / kv.Value.n:F0} ms each (longest {kv.Value.most:F0})")));
+        }
+    }
+
     static (int, byte[]?) Answer(Uri uri)
     {
         var q = System.Web.HttpUtility.ParseQueryString(uri.Query);
@@ -129,7 +180,9 @@ static class Engine
         var path = q["path"];
         if (string.IsNullOrEmpty(path) || !int.TryParse(q["w"], out var w) || w < 1 || w > 4096) return (404, null);
         if (!Path.IsPathFullyQualified(path) || !Reads.Contains(Path.GetExtension(path).ToLowerInvariant())) return (204, null);
+        var t = System.Diagnostics.Stopwatch.StartNew();
         var bytes = Thumbnail(path, w, out var code);
+        Count(Path.GetExtension(path).ToLowerInvariant(), bytes is not null, t.Elapsed.TotalMilliseconds);
         if (bytes is null && code != 1) Log.Write($"Engine: no thumbnail for {path} (code {code})");
         return bytes is null ? (204, null) : (200, bytes);
     }

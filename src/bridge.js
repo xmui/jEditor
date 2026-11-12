@@ -211,7 +211,7 @@
         // (app/host.js says what each feature covers)
         platform: 'windows',
         // (engine: when jeditor_engine.dll loaded; the app says so, Engine.cs)
-        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn', 'themes', 'folderMove', 'cacheFolder'].concat(window.__jeditorEngine ? ['engine'] : []),
+        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn', 'themes', 'folderMove', 'cacheFolder'].concat(window.__jeditorEngine ? ['engine'] : [], window.__jeditorEngine && window.__jeditorEngine.heic ? ['engineHeic'] : []),
         // jEditor's storage on this PC: a folder handle, one subfolder per
         // order (see app/folder-cache.js)
         async dataDir() {
@@ -230,8 +230,11 @@
         },
         // A folder handle for a path, with permission to edit it
         async folderHandle(path) {
-            const { objects } = await answer('folderHandle', { path });
+            const { msg, objects } = await answer('folderHandle', { path });
             if (!objects[0]) throw new Error('That folder isn\'t there');
+            // Remembered with its path, as a picked folder is (folderPath:
+            // the engine asks by path)
+            remember(objects[0], msg.path || path);
             return objects[0];
         },
         // Files to the Recycle Bin, by path. Per file: { token } (Ctrl+Z:
@@ -614,6 +617,17 @@
                     : bmp.width === 64 ? true : `a thumbnail ${bmp.width} px wide, not 64`;
             } catch (e) {
                 steps.engine = 'failed: ' + (e && e.message || e);
+            }
+        }
+        // And a HEIC's (scripts/smoke-test.ps1 puts one beside the order)
+        if (window.JEditorNative.features.includes('engineHeic')) {
+            try {
+                const here = await window.JEditorNative.folderPath(a.dirHandle);
+                const r = await fetch(window.JEditorNative.engineThumb(here + '\\..', 'engine-check.heic', 64));
+                const bmp = r.status === 200 ? await createImageBitmap(await r.blob()) : null;
+                steps.engineHeic = !bmp ? `the app answered ${r.status}` : bmp.width === 64 ? true : `a thumbnail ${bmp.width} px wide, not 64`;
+            } catch (e) {
+                steps.engineHeic = 'failed: ' + (e && e.message || e);
             }
         }
         try {

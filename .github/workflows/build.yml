@@ -57,12 +57,26 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: engine
+      # HEIC in the engine: libheif and libde265 from vcpkg, as DLLs (LGPL);
+      # vcpkg's built packages kept between runs
+      - uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\vcpkg\archives
+          key: vcpkg-libheif-${{ hashFiles('scripts/engine-heif.ps1') }}
+          restore-keys: vcpkg-libheif-
+      - name: libheif (vcpkg)
+        shell: pwsh
+        run: ./scripts/engine-heif.ps1
       - name: Build
         shell: pwsh
         run: ./scripts/build.ps1
       - name: Engine tests
         working-directory: engine
-        run: cargo test --release --locked
+        shell: pwsh
+        run: |
+          $env:VCPKG_ROOT = $env:VCPKG_INSTALLATION_ROOT; $env:VCPKGRS_DYNAMIC = '1'
+          $env:PATH = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin;$env:PATH"
+          cargo test --release --locked --features heif
       # On the WebView2 users have now, not the runner image's
       - name: WebView2 runtime
         shell: pwsh

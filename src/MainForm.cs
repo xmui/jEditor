@@ -155,10 +155,11 @@ sealed class MainForm : Form
             Configure();
             await PrepareCacheAsync();
             if (options.Dev) await Core.AddScriptToExecuteOnDocumentCreatedAsync("window.__jeditorDev = true;");
-            // The engine (Engine.cs): the bridge lists `engine`, the page asks it
+            // The engine (Engine.cs): the bridge lists `engine` (and `engineHeic`
+            // when it reads HEICs), the page asks it
             if (Engine.Available)
             {
-                await Core.AddScriptToExecuteOnDocumentCreatedAsync("window.__jeditorEngine = true;");
+                await Core.AddScriptToExecuteOnDocumentCreatedAsync(Engine.Heic ? "window.__jeditorEngine = { heic: true };" : "window.__jeditorEngine = true;");
                 Engine.Serve(Core, "https://" + HostName);
             }
             await Core.AddScriptToExecuteOnDocumentCreatedAsync(ReadBridge());

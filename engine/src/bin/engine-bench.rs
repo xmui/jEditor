@@ -5,6 +5,7 @@
 //
 // Prints ms per photo on one thread, and the whole folder on `threads`
 // (default: every core), for docs/plans/fast-engine.md's before-and-after.
+// Built with the feature heif, the folder's HEICs too.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
@@ -46,6 +47,41 @@ fn main() {
                 let Some(p) = files.get(i) else { break };
                 let b = std::fs::read(p).unwrap();
                 std::hint::black_box(thumb::jpeg_thumbnail(&b, width, 80.0).map(|v| v.len()).unwrap_or(0));
+            });
+        }
+    });
+    let all = t.elapsed().as_secs_f64() * 1000.0;
+    println!("  whole folder, from disk: {:.0} ms ({:.1} ms/photo)", all, all / files.len() as f64);
+
+    #[cfg(feature = "heif")]
+    heics(dir, width, threads);
+}
+
+#[cfg(feature = "heif")]
+fn heics(dir: &str, width: u32, threads: usize) {
+    use jeditor_engine::heif;
+    let mut files: Vec<_> = std::fs::read_dir(dir).expect("folder").filter_map(|e| e.ok()).map(|e| e.path())
+        .filter(|p| p.extension().map(|x| { let x = x.to_string_lossy().to_lowercase(); x == "heic" || x == "heif" }).unwrap_or(false))
+        .collect();
+    files.sort();
+    if files.is_empty() { println!("no HEICs in {dir}"); return; }
+    let first = std::fs::read(&files[0]).unwrap();
+    let full = heif::decode_full(&first).unwrap();
+    println!("{} HEICs, the first {} × {}, {:.1} MB", files.len(), full.w, full.h, first.len() as f64 / 1e6);
+    let n = files.len().min(6);
+    let photos: Vec<Vec<u8>> = files[..n].iter().map(|p| std::fs::read(p).unwrap()).collect();
+    let t = Instant::now();
+    for b in &photos { std::hint::black_box(heif::heic_thumbnail(b, width, 80.0).unwrap().len()); }
+    println!("  one thread: engine thumbnail {:.1} ms/photo", t.elapsed().as_secs_f64() * 1000.0 / n as f64);
+    let next = AtomicUsize::new(0);
+    let t = Instant::now();
+    std::thread::scope(|s| {
+        for _ in 0..threads {
+            s.spawn(|| loop {
+                let i = next.fetch_add(1, Ordering::Relaxed);
+                let Some(p) = files.get(i) else { break };
+                let b = std::fs::read(p).unwrap();
+                std::hint::black_box(heif::heic_thumbnail(&b, width, 80.0).map(|v| v.len()).unwrap_or(0));
             });
         }
     });

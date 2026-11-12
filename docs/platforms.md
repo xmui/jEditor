@@ -37,6 +37,7 @@ Checked by `test/parity.test.js`: each ✓ must match the app's `features` list,
 | `photosLibrary` | The Photos library in the sidebar (Locations): its albums open as the project, and edits are saved back into Photos on top of the current version | | ✓ | | | system |
 | `photosAdd` | Add to Photos library: a project's photos into Photos, in an album named after it | | ✓ | | | system |
 | `engine` | The app's own engine (Rust, `engine/`) makes JPEG thumbnails from the file on disk, several times faster than the page; more of the heavy work moves there phase by phase (`docs/plans/fast-engine.md`) | ✓ | | | | not yet on Mac and Linux; browser (the web keeps today's code, or later a WebAssembly build) |
+| `engineHeic` | The engine makes HEIC thumbnails for the grid too (libheif and libde265, shipped as their own DLLs: LGPL), rather than the page's decoder | ✓ | | | | not yet on Mac (it will use the system's own decoder) and Linux; browser (the web keeps the page's decoder) |
 
 Linux updates cover the AppImage, the `.deb` and the Arch package. The Mac app also has the macOS 26 native toolbar (Liquid Glass, `mac/native/`), which is the Mac host's own and not a page feature.
 
