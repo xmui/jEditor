@@ -3228,9 +3228,14 @@ const app = {
             // The real row height, now there are tiles to measure (a theme
             // can give tiles a caption)
             const a = files[win.start] && win.tiles.get(files[win.start]);
-            const b = files[win.start + cols] && win.tiles.get(files[win.start + cols]);
-            const pitch = a && b ? this.gridY(b) - this.gridY(a) : a ? a.offsetHeight + win.gap : 0;
-            if (pitch > 0 && Math.abs(pitch - win.pitch) > 0.5) {
+            // Over every row built, not one: a row's height isn't quite the
+            // column's width when that's a fraction of a pixel (the docked
+            // sidebar's 232 px leaves one), and a hundredth of a pixel a
+            // row is pixels by the end of a huge folder
+            const span = Math.floor((win.end - 1 - win.start) / cols);
+            const b = span > 0 && win.tiles.get(files[win.start + span * cols]);
+            const pitch = a && b ? (this.gridY(b) - this.gridY(a)) / span : a ? a.offsetHeight + win.gap : 0;
+            if (pitch > 0 && Math.abs(pitch - win.pitch) > 0.001) {
                 win.pitch = pitch;
                 force = true; // spacers redone at the right height
                 apply(place(pitch));

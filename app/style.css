@@ -10131,6 +10131,22 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) {
     :root:not([data-skin]) .folder-rail {
         box-shadow: var(--shadow-4);
     }
+    /* ...and from under the top row, whose pills keep the window's whole
+       width (beside the sidebar there's no room for them: fit.js) and the
+       button that closes it */
+    :root:not([data-skin]):not([data-platform="mac"]) .folder-rail {
+        top: calc(var(--top-row) + var(--sp-3));
+        border-top: 1px solid var(--sidebar-line);
+        border-top-right-radius: var(--r-lg);
+    }
+    :root:not([data-skin]) .interface.rail-open .folder-bar {
+        left: calc(var(--gutter) / var(--ui-scale, 1));
+    }
+    :root:not([data-skin]) .interface.rail-open header {
+        left: 0;
+        width: 100%;
+        right: auto;
+    }
 }
 
 /* ---- Motion (motion.js): short, after the fact, never in the way ---- */
