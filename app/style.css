@@ -2434,34 +2434,34 @@ body[data-view="single"] .edits-bar {
 /* One stack in the bottom-left corner, clear of the photo in the middle.
    --toast-bottom / --toast-left follow the view (set below). */
 
-body {
+body :is(#toast-stack, .task-pill) {
     --toast-left: var(--gutter);
     /* Grid: above the selection bar's row */
     --toast-bottom: calc(var(--gutter) + var(--ctl-lg) + var(--sp-3));
 }
 
 /* Single view: just above the film strip, beside the centered controls */
-body[data-view="single"] {
+body[data-view="single"] :is(#toast-stack, .task-pill) {
     --toast-bottom: calc(var(--strip-height, 80px) + 28px + var(--gutter));
 }
 
 /* Grid with the folder list open: beside the list */
-body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) {
+body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-stack, .task-pill) {
     --toast-left: var(--rail-room);
 }
 
 /* Single view on a narrow window: above the prev / rotate / next pill
    rather than into it (fit.js) */
-body[data-view="single"]:has(#main-interface[data-fit~="toast-up"]:not(.hidden)) {
+body[data-view="single"]:has(#main-interface[data-fit~="toast-up"]:not(.hidden)) :is(#toast-stack, .task-pill) {
     --toast-bottom: calc(var(--strip-height, 80px) + 28px + var(--gutter) + var(--ctl-lg) + var(--sp-2));
 }
 
 /* Grid with the edits bar up above the slider (fit.js): above that too */
-body[data-view="grid"]:has(#main-interface.edits-on[data-fit~="edits-stacked"]:not(.hidden)) {
+body[data-view="grid"]:has(#main-interface.edits-on[data-fit~="edits-stacked"]:not(.hidden)) :is(#toast-stack, .task-pill) {
     --toast-bottom: calc(var(--gutter) + 2 * var(--ctl-lg) + var(--sp-2) + var(--sp-3));
 }
 
-body:has(#drop-zone:not(.hidden)) {
+body:has(#drop-zone:not(.hidden)) :is(#toast-stack, .task-pill) {
     --toast-bottom: var(--sp-6);
 }
 
@@ -7637,7 +7637,7 @@ body.dragging-photos .folder-tile:hover {
         left: var(--gutter);
     }
     /* The folder list overlays the grid here: toasts stay at the edge */
-    body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) {
+    body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-stack, .task-pill) {
         --toast-left: var(--gutter);
     }
     .folder-rail {
@@ -9665,7 +9665,7 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     padding-left: var(--rail-now);
 }
 
-body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) {
+body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-stack, .task-pill) {
     --toast-left: var(--rail-room);
 }
 
@@ -11071,4 +11071,22 @@ body.touring .controls.idle button { pointer-events: auto; }
 
 :root:not([data-skin]) :is(.adj-look img, .adj-look canvas) {
     border-radius: var(--r-photo);
+}
+
+/* Paint's Layers heading in a narrow window at the Comfortable size: its
+   six buttons gave nothing up, and the word was cut to "L…". The buttons
+   close up first now, and the word stays whole */
+:root:not([data-skin]) .paint-layers-sec .paint-sec-head > span:first-child {
+    flex: none;
+}
+
+:root:not([data-skin]) .paint-layer-acts {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+:root:not([data-skin]) .paint-layer-acts .btn {
+    flex: 0 1 auto;
+    min-width: 24px;
+    padding-inline: 0;
 }
