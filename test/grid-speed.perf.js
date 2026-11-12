@@ -156,7 +156,7 @@ async function launchWeb(profile) {
 
 async function ready(page) {
     page.on('pageerror', e => console.log('  PAGEERROR', e.message));
-    page.on('console', m => { if (m.text().startsWith('PERF ')) console.log('  ' + m.text()); });
+    page.on('console', m => { if (m.text().startsWith('PERF ') || m.type() === 'error' || m.type() === 'warning') console.log('  ' + (m.type() === 'log' ? '' : m.type().toUpperCase() + ' ') + m.text()); });
     await page.waitForFunction(() => typeof app !== 'undefined' && app.elements && app.elements.gridView);
     await page.evaluate(QUIET_FIRST_OPEN);
     await page.evaluate(() => { if (app.uiPrefs) app.uiPrefs.hugeFolder = 0; });
@@ -221,7 +221,11 @@ async function measure(page, lib) {
         } else {
             await app.openDirectory(window.__folder);
         }
-        await until(() => app.files.length > 0);
+        // Opened and empty: say so (and what the page logged) rather than wait
+        if (!(await until(() => app.files.length > 0, 120000))) {
+            const log = [...document.querySelectorAll('#debug-log > div')].slice(-10).map(d => d.textContent).join('\n');
+            throw new Error(`The folder opened with no photos (folder ${app.dirHandle ? app.dirHandle.name : 'none'}, loading ${!!app.isLoading}). The page's log:\n${log}`);
+        }
         out.photos = app.files.length;
         out['open: usable'] = ms(performance.now() - t0);
         await watch;
@@ -351,7 +355,8 @@ async function main() {
                 const open = [...document.querySelectorAll('dialog[open], [role=dialog], [role=alertdialog], .modal, .overlay')]
                     .filter(e => e.offsetParent !== null || getComputedStyle(e).position === 'fixed' && getComputedStyle(e).display !== 'none' && getComputedStyle(e).visibility !== 'hidden')
                     .map(e => (e.id || e.className || e.tagName) + ': ' + (e.innerText || '').replace(/\s+/g, ' ').slice(0, 120));
-                return `files ${(app.files || []).length}, loading ${!!app.isLoading}, view ${app.viewMode}, tiles ${tiles}, thumbnails ${thumbs}` + (open.length ? `; on screen: ${open.join(' | ')}` : '');
+                const log = [...document.querySelectorAll('#debug-log > div')].slice(-4).map(d => d.textContent).join(' / ');
+                return `files ${(app.files || []).length}, loading ${!!app.isLoading}, view ${app.viewMode}, tiles ${tiles}, thumbnails ${thumbs}, folder ${app.dirHandle ? app.dirHandle.name : 'none'} (asked ${window.__folder ? window.__folder.name : 'none'})` + (open.length ? `; on screen: ${open.join(' | ')}` : '') + (log ? `; log: ${log}` : '');
             }).then(t => console.log('  ... ' + t), () => {}), 20000);
             const r = await measure(s.page, false).finally(() => clearInterval(beat));
             results[`${target} ${run}`] = r;
