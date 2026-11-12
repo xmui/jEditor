@@ -8,7 +8,7 @@ namespace JEditor;
 // jeditor_engine.dll beside jEditor.exe, the heavy image work done here
 // rather than in the page. The page asks for a result by URL:
 //
-//   https://jeditor.example/engine/thumb?w=320&path=<the photo on disk>
+//   https://engine.jeditor.example/thumb?w=320&path=<the photo on disk>
 //     → a JPEG thumbnail, w wide as shown (after its EXIF orientation)
 //
 // so a full-size photo is never read into the page, and the page shows
@@ -86,27 +86,34 @@ static class Engine
         }
     }
 
-    // Answers the page's /engine/ requests (MainForm hooks this up when
-    // the engine's there). The work runs off the UI thread, many at once.
-    public static void Serve(CoreWebView2 core, string host)
+    // Where the page asks: a host of its own, not the UI's (whose files
+    // WebView2 serves from the app folder itself), answered here only
+    public const string Host = "engine.jeditor.example";
+    static bool loggedFirst;
+
+    // Answers the page's requests to Host (MainForm hooks this up when the
+    // engine's there). The work runs off the UI thread, many at once.
+    // pageOrigin: the UI's origin, allowed to read the answers (CORS)
+    public static void Serve(CoreWebView2 core, string pageOrigin)
     {
-        core.AddWebResourceRequestedFilter($"https://{host}/engine/*", CoreWebView2WebResourceContext.All);
+        core.AddWebResourceRequestedFilter($"https://{Host}/*", CoreWebView2WebResourceContext.All, CoreWebView2WebResourceRequestSourceKinds.All);
         core.WebResourceRequested += async (_, e) =>
         {
-            var uri = new Uri(e.Request.Uri);
-            if (!uri.AbsolutePath.StartsWith("/engine/", StringComparison.Ordinal)) return;
+            if (!Uri.TryCreate(e.Request.Uri, UriKind.Absolute, out var uri) || uri.Host != Host) return;
             var deferral = e.GetDeferral();
+            var cors = $"Access-Control-Allow-Origin: {pageOrigin}\r\nCache-Control: no-store";
             try
             {
                 var (status, body) = await Task.Run(() => Answer(uri));
+                if (!loggedFirst) { loggedFirst = true; Log.Write($"Engine: first request answered {status} ({body?.Length ?? 0} bytes)"); }
                 e.Response = core.Environment.CreateWebResourceResponse(
                     body is null ? null : new MemoryStream(body), status, status == 200 ? "OK" : status == 204 ? "No Content" : "Not Found",
-                    body is null ? "Cache-Control: no-store" : "Content-Type: image/jpeg\r\nCache-Control: no-store");
+                    body is null ? cors : "Content-Type: image/jpeg\r\n" + cors);
             }
             catch (Exception ex)
             {
-                Log.Write("Engine request failed: " + ex.Message);
-                e.Response = core.Environment.CreateWebResourceResponse(null, 500, "Error", "Cache-Control: no-store");
+                Log.Write("Engine request failed: " + ex);
+                e.Response = core.Environment.CreateWebResourceResponse(null, 500, "Error", cors);
             }
             finally
             {
@@ -118,7 +125,7 @@ static class Engine
     static (int, byte[]?) Answer(Uri uri)
     {
         var q = System.Web.HttpUtility.ParseQueryString(uri.Query);
-        if (uri.AbsolutePath != "/engine/thumb") return (404, null);
+        if (uri.AbsolutePath != "/thumb") return (404, null);
         var path = q["path"];
         if (string.IsNullOrEmpty(path) || !int.TryParse(q["w"], out var w) || w < 1 || w > 4096) return (404, null);
         if (!Path.IsPathFullyQualified(path) || !Reads.Contains(Path.GetExtension(path).ToLowerInvariant())) return (204, null);

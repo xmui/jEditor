@@ -226,7 +226,7 @@
         // shown; 204 (no content) when the engine can't make it
         engineThumb(dir, relPath, w) {
             const path = dir.replace(/[\\/]+$/, '') + '\\' + String(relPath).replace(/\//g, '\\');
-            return `/engine/thumb?w=${w}&path=${encodeURIComponent(path)}`;
+            return `https://engine.jeditor.example/thumb?w=${w}&path=${encodeURIComponent(path)}`;
         },
         // A folder handle for a path, with permission to edit it
         async folderHandle(path) {

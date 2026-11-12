@@ -181,11 +181,11 @@ const waitForPost = (page, type) => page.waitForFunction(
             return [...new Uint8Array(await b.arrayBuffer())];
         }));
         const asked = [];
-        await page.route(ORIGIN + '/engine/**', (route) => {
+        await page.route('https://engine.jeditor.example/**', (route) => {
             const u = new URL(route.request().url());
             asked.push({ w: u.searchParams.get('w'), path: u.searchParams.get('path') });
-            if (/photo4\.jpg$/.test(u.searchParams.get('path'))) return route.fulfill({ status: 204, body: '' });
-            route.fulfill({ status: 200, contentType: 'image/jpeg', body: magenta });
+            if (/photo4\.jpg$/.test(u.searchParams.get('path'))) return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': ORIGIN }, body: '' });
+            route.fulfill({ status: 200, contentType: 'image/jpeg', headers: { 'Access-Control-Allow-Origin': ORIGIN }, body: magenta });
         });
         // Four photos big enough to need a thumbnail (past the size that
         // serves as its own), in green
