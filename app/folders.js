@@ -42,6 +42,12 @@ const Folders = {
         const center = document.querySelector('.file-info');
         if (center && typeof ResizeObserver === 'function') new ResizeObserver(() => this.fitBar()).observe(center);
         window.addEventListener('resize', () => this.fitBar());
+        // Narrow enough that the sidebar would cover the photo, or wide again
+        if (window.matchMedia) {
+            const narrow = matchMedia('(max-width: 767px)');
+            const again = () => { if (this.app && this.app.viewMode === 'single') this.render(); };
+            if (narrow.addEventListener) narrow.addEventListener('change', again);
+        }
     },
 
     // A new folder was opened: forget the old one's folders
@@ -219,6 +225,12 @@ const Folders = {
 
     // ---- Layout: rail, top bar, folder tiles, folder chips ----
 
+    // The single view keeps the sidebar: in jEditor's own look (a theme lays
+    // out its own), on a window wide enough for it and the photo
+    besideSingle() {
+        return !document.documentElement.dataset.skin && !(window.matchMedia && matchMedia('(max-width: 767px)').matches);
+    },
+
     railOpen() {
         const pref = this.app.uiPrefs && this.app.uiPrefs.folderRail;
         return typeof pref === 'boolean' ? pref : this.hasSubfolders();
@@ -234,7 +246,10 @@ const Folders = {
         if (!this.app) return;
         const ui = this.app.elements.mainInterface;
         const on = this.enabled() && this.app.viewMode === 'grid';
-        const rail = on && this.railOpen();
+        // The sidebar stays open in the single view too, the photo beside it
+        // (jEditor's own look, docked: style.css), where there's room for both
+        const beside = !on && this.enabled() && this.app.viewMode === 'single' && this.besideSingle();
+        const rail = (on || beside) && this.railOpen();
         ui.classList.toggle('folders-on', on);
         ui.classList.toggle('rail-open', rail);
         this.el('folder-bar').classList.toggle('hidden', !on);
@@ -243,13 +258,14 @@ const Folders = {
         // just the grid's (a project left in single view was missing there)
         if (typeof Windows !== 'undefined') Windows.publish();
         if (typeof Modes !== 'undefined') Modes.render();
-        if (!on) return;
+        if (!on && !rail) return;
         const counts = this.counts();
         if (rail) {
             this.renderRail(counts);
             Flags.renderList();
             if (typeof Places !== 'undefined') Places.apply();
         }
+        if (!on) return;
         this.renderBar(counts);
         Flags.syncSearchUI();
         this.fitBar();

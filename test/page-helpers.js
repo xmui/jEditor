@@ -216,7 +216,8 @@ async function newPage(browser, url) {
 // Everything that floats over the page, opened one at a time and measured:
 // dialogs, the guide, Find anything, right-click menus (one at the very
 // top, a long one pushed up from the bottom), a message, the first-time
-// questions, the Open a folder card, and the tour's card at each stop.
+// questions, the Open a folder card, the project picker, and the tour's
+// card at each stop.
 // → [{ name, left, top, right, bottom }] of what showed. For the checks
 // that nothing goes up into the window's top bar (style.css: --top-safe).
 async function floatingBoxes(page, { tour = true } = {}) {
@@ -239,7 +240,9 @@ async function floatingBoxes(page, { tour = true } = {}) {
         ['the guide', () => Guide.open(), '.guide'],
         ['Find anything', () => Palette.open(), '.palette'],
         ['the first-time questions', () => { FirstOpen.welcome(); }, '.first-open'],
-        ['the Open a folder card', () => { if (typeof OpenCard !== 'undefined' && OpenCard.available()) OpenCard.open(); }, '#open-card:not(.hidden) .dialog']
+        ['the Open a folder card', () => { if (typeof OpenCard !== 'undefined' && OpenCard.available()) OpenCard.open(); }, '#open-card:not(.hidden) .dialog'],
+        // (the apps': a click on the project's name in the sidebar)
+        ['the project picker', () => { const n = document.querySelector('#sb-card .sb-card-name'); if (n && n.offsetParent && typeof Picker !== 'undefined') Picker.open(n); }, '#sb-picker:not([hidden])']
     ];
     for (const [name, open, selector] of each) {
         await page.evaluate(open).catch(() => null);

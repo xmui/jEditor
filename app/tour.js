@@ -27,7 +27,7 @@ const Tour = {
     // What the apps do that a browser can't, by feature name (Host.has):
     // the web's ending lists the first few
     APP_ONLY: [
-        ['places', 'Your projects, pinned folders and drives in the sidebar'],
+        ['places', 'Your recent projects, pinned folders and drives in the sidebar'],
         ['scan', 'Scanning straight into a project'],
         ['camera', 'Shooting from a camera on a cable'],
         ['windows', 'Several windows side by side'],
@@ -53,10 +53,15 @@ const Tour = {
         {
             id: 'sidebar', view: 'grid', target: ['#folder-rail'], side: 'right',
             title: 'The sidebar',
-            text: () => 'The folders in this project' +
-                (Host.has('places') ? ', your projects, pinned folders and drives' : '') +
+            text: () => 'The folders in this project, with how many photos are in each' +
+                (Host.has('places') ? ', your recent projects, pinned folders and drives, with the room left on each' : '') +
                 (Host.has('photosLibrary') ? ', and your Photos library' : '') +
-                ', and the flags you\'ve set. {key:folders.rail} shows or hides it.'
+                '. It stays beside the photo when you open one. {key:folders.rail} shows or hides it, and its edge drags wider.'
+        },
+        {
+            id: 'projects', needs: 'places', view: 'grid', target: ['#sb-card .sb-card-name'], side: 'right',
+            title: 'Switch projects',
+            text: () => 'Click the project\'s name for your recent projects, or type to find any of them. Right-click it, or any project in Recents, to rename it right there.'
         },
         {
             id: 'strip', view: 'single', target: ['#thumbnail-strip'], side: 'above',

@@ -4721,7 +4721,7 @@ const app = {
         ['folders.new', 'global', 'Folders', 'New folder', ['Shift+N']],
         ['folders.up', 'global', 'Folders', 'Up one folder (grid)', ['Backspace', 'Alt+ArrowUp']],
         ['folders.all', 'global', 'Folders', 'Switch between All photos and folders (grid)', ['A']],
-        ['folders.rail', 'global', 'Folders', 'Show / hide the folder list (grid)', ['Ctrl+B']],
+        ['folders.rail', 'global', 'Folders', 'Show / hide the sidebar', ['Ctrl+B']],
         ['view.toggle', 'global', 'View', 'Toggle grid / single view', ['Space']],
         ['view.grid', 'global', 'View', 'Grid view', ['G']],
         ['view.single', 'global', 'View', 'Single view', ['S']],
@@ -4933,7 +4933,8 @@ const app = {
                 Folders.setScope(Folders.scope === null ? (Folders.map.has(Folders.lastScope) ? Folders.lastScope : '') : null);
             },
             'folders.rail': () => {
-                if (!grid() || !this.dirHandle) return false;
+                // (the single view keeps it docked beside the photo: folders.js)
+                if (!this.dirHandle || !(grid() || (this.viewMode === 'single' && !this.cropState.active && Folders.besideSingle()))) return false;
                 Folders.toggleRail();
             },
             'view.toggle': () => this.toggleView(),
@@ -6295,6 +6296,8 @@ const app = {
                 Edits.undo(entry);
             } else if (entry.type === 'saved-edits') {
                 await this.undoSavedEdits(entry);
+            } else if (entry.type === 'project-rename') {
+                if (!(await Places.undoRename(entry))) throw new Error('the old name couldn\'t be put back');
             } else if (entry.type === 'relocate' || entry.type.startsWith('folder-')) {
                 await Folders.undo(entry);
             } else if (entry.type === 'transfer') {

@@ -153,7 +153,9 @@ const Fit = {
             bar.style.setProperty('--bar-room', 'none');
         }
         set();
-        const leftEdge = () => left ? left.getBoundingClientRect().right : box.left + gutter;
+        // (the single view with the sidebar docked beside it: from its edge)
+        const rail = !left && !grid && this.shown(this.el('folder-rail')) ? this.el('folder-rail') : null;
+        const leftEdge = () => left ? left.getBoundingClientRect().right : rail ? rail.getBoundingClientRect().right + gutter : box.left + gutter;
         const rightEdge = () => this.shown(hc) && !hc.classList.contains('vertical') ? hc.getBoundingClientRect().left : box.right - gutter;
         const room = () => rightEdge() - leftEdge() - 2 * this.GAP;
         const need = () => {

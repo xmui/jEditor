@@ -165,6 +165,22 @@ Adjust and Paint have no Done bar: what you do is kept as you go, as in Lightroo
 
 Drag the inner edge of the sidebar, or of Adjust's or Paint's panel, to make it wider or narrower; jEditor remembers each width, in every theme. Double-click the edge to put it back.
 
+## The sidebar
+
+The sidebar runs down the window's left edge, the full height of it, as Finder's and Preview's do: a quiet tint (on a Mac, the window's own see-through material; on Windows 11, Mica when the window's background is on), small grey headings, compact rows and one soft highlight, on what the grid is showing. `Ctrl+B` folds it away and back; drag its edge to make it wider. It stays beside the photo when you open one (not on a phone-sized window, where it would cover it). On a Mac the traffic lights sit in its top corner.
+
+From the top:
+
+- **Photos · Adjust · Paint**, the mode switch.
+- **The project's name** (the Windows, Mac and Linux apps). Click it for the **project picker**: type to find any project, your recent ones first, the open one ticked; **All projects…** lists every one by name, with your projects folder (click its name to choose another); **New project…** and **Open a folder…** are there too. `↑` `↓` and `Enter` open one, `Esc` closes it. Right-click the name (or its **…**) for **Rename…**, **Show in Explorer** (Finder, Files), **Scan…**, **Export…**, **Save edits when done**, **Split with another window** and **Pin to the sidebar**.
+- **The folders** in the project, with how many photos are in each, under **All photos**. The project's own top folder is a row only while it has photos of its own. Right-click the sidebar's empty space for **New folder…**.
+- **Recents**: the last four projects you opened (not the open one: it's the heading), with how many photos each has, then **Show all…** (the picker, every project). Right-click one for **Open**, **Open in a new window**, **Rename…**, **Show in Explorer** and **Remove from Recents** (it comes off this list and the home page's table; the folder isn't touched).
+- **Pinned** folders, and **This PC** (**Locations** on a Mac): each drive with a thin bar of how full it is and how much room is left (`182 GB free`; in red when less than a tenth is left). A drive opens out to its folders; a USB drive has **Eject** when you point at it.
+
+**Rename…** renames a project in place, as Finder does: its name becomes a field, chosen, ready to type over. `Enter` renames it, `Esc` or clicking away leaves it as it was. The folder is renamed on the disk; the open project is closed and opened again under its new name, and its flags, kept edits, thumbnails, pins, the projects folder and Recents all follow it. `Ctrl+Z` (or **Undo** on the message) puts the old name back.
+
+In a theme, the sidebar is the theme's own, as it was: its project card has Scan, Explorer, Export and the Save edits switch as buttons.
+
 The home page's **Adjust a photo** opens one photo on its own in Adjust (in a browser that can't open one file, a folder, in Adjust). **Paint a photo** there (or **New canvas**) asks what to paint on: a **New canvas** (below), or **Open a file**: **An image…** opens a single picture on its own (the painting goes into it when you leave Paint), **A folder…** opens a folder of photos as a project in Paint.
 
 ## Paint
@@ -184,7 +200,7 @@ Painting goes on last, over the photo as it's cropped and adjusted, so it looks 
 
 ## Drives, cards and discs
 
-**Export…** under the **…** by the project's name at the top of the sidebar (or right-click it, or a project in the list, or **Export…** under ⋯ on the selection bar; in a theme, **Export** on the project's card) opens one window for taking photos off this computer. Or right-click a USB drive or card in the sidebar for **Export [project] to [drive]…** (copies of the photos) or **Copy [project] to [drive]…** (the whole folder as it is), or a disc drive for **Burn [project] to a disc…**. Each choice says what goes and whether it fits before anything starts, and drives and discs show up as they're put in:
+**Export…** under the **…** by the project's name at the top of the sidebar (or right-click it, or **Export…** under ⋯ on the selection bar; in a theme, **Export** on the project's card) opens one window for taking photos off this computer. Or right-click a USB drive or card in the sidebar for **Export [project] to [drive]…** (copies of the photos) or **Copy [project] to [drive]…** (the whole folder as it is), or a disc drive for **Burn [project] to a disc…**. Each choice says what goes and whether it fits before anything starts, and drives and discs show up as they're put in:
 
 - **USB drive or card** (Windows, Mac and Linux): the whole project, copied in one step, with how far it's got. Each drive is listed with the room left on it. The photos are copied as they are on disk, with no `.jeditor` folder: the flags and edits stay on this computer. Tick **Take its flags and edits too** (off to start with) to put them in a `.jeditor` folder in the copy, so when it's opened in jEditor on another computer they're all there. **Eject when done** ejects the drive after.
 - **CD or DVD** (Windows): the burner, whether there's a blank disc in it and whether the project fits, the disc's name, and (with edits not saved yet) whether to save them into the photos first, since the disc gets the photos as they are on disk. **Eject when done** brings the disc out after.
@@ -227,9 +243,9 @@ Some orders are collated: the photos go into labelled folders. Open the order fo
 - **All photos** (top of the list, or the switch in the folder pill at the top left) shows every photo in the order, whatever folder it's in, with each photo's folder named on its tile. It's what you see when an order is opened. `A` switches between All photos and the last folder.
 - **Moving.** Drag the selected photos onto a folder, in the list, a folder tile or the breadcrumb. Hold `Ctrl` (or `Alt`) when you let go to copy them instead. Or press `M` (`Shift+M` copies), or use **Move to…** on the selection bar or the right-click menu. That opens a list of folders: type to find one, or type a new name to make that folder and move the photos into it in one go. `Wedding/Speeches` makes a folder inside another.
 - **Name clashes.** If a photo with the same name is already in the folder, you're asked what to do: keep both (the moved photo gets a number, `IMG_0042 (2).jpg`), skip it, or replace the one that's there, which goes to the trash. You can apply the answer to the rest of the clashes. Cancel and nothing is moved.
-- **Folders.** **New folder** at the bottom of the folder list, `Shift+N`, or right-clicking the grid makes one inside the folder you're looking at. Right-click a folder to rename it, make a folder inside it, make a **New blank image…** in it (to paint on), or delete it once it's empty.
+- **Folders.** `Shift+N`, right-clicking the grid or the sidebar's empty space (**New folder…**), or in a theme **New folder** at the bottom of the folder list, makes one inside the folder you're looking at. Right-click a folder to rename it, make a folder inside it, make a **New blank image…** in it (to paint on), or delete it once it's empty.
 - In a folder, `←` `→`, the film strip, `Ctrl+A` and **Rename all…** cover that folder's photos only.
-- **Folder details.** The bottom of the folder list shows the total for what you're looking at (`1,240 photos · 4.80 GB`); click it, press `I` in the grid, or right-click a folder for **Folder info**. It lists how many photos there are (directly in the folder and with its subfolders), the total, average and largest size, file types, dates and flags. For the whole order it also shows how much room `.jeditor` takes: trash, cache and Auto crop originals. Select several photos to see the same for the selection.
+- **Folder details.** Press `I` in the grid, or right-click a folder for **Folder info** (in a theme, the bottom of the folder list shows the total for what you're looking at, `1,240 photos · 4.80 GB`, and a click on it opens it too). It lists how many photos there are (directly in the folder and with its subfolders), the total, average and largest size, file types, dates and flags. For the whole order it also shows how much room `.jeditor` takes: trash, cache and Auto crop originals. Select several photos to see the same for the selection.
 
 `Ctrl+Z` undoes a move or copy in one step, together with any photos it replaced and the folder made for it. Making, renaming and deleting folders can be undone too.
 
@@ -305,7 +321,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `Shift+N` | New folder |
 | `A` | Switch between All photos and folders (grid view) |
 | `Backspace` | Up a folder (grid view) |
-| `Ctrl+B` | Show or hide the folder list (grid view) |
+| `Ctrl+B` | Show or hide the sidebar |
 | `Delete` | Move to trash |
 | `Ctrl+Z` | Undo |
 | `Ctrl+A` | Select all (grid view) |
@@ -354,6 +370,7 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `watch.js`: watching the folder for changes, and rescanning
 - `start.js`: the home page: its tiles, the Settings menu (Save edits when done, When jEditor opens), the update dot, All projects, and on the web the app for this computer
 - `palette.js`: Find anything (`Ctrl+K`): the box, what it finds where you are (the shortcuts' commands, the theme menus' own, photos, folders, projects), matching and ranking, and running the one picked
+- `places.js`: the sidebar's places in the apps: the project's name and its picker (find a project), Recents, pinned folders and drives with the room on each, renaming a project in place (and its Undo), and All projects… on the home page
 - `recents.js`: the home page's stacks of prints (recent folders, with small pictures kept for each) and its Recent print (a photo opened on its own), and spotting a folder that's part of an order
 - `ui.js`: the app's own alert / confirm / prompt dialogs, and focus handling for every dialog
 - `guide.js`: the guide (`F1`): cards with clips by topic, the shortcuts as they're set, and a search
