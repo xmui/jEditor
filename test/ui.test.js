@@ -3130,7 +3130,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.chipGrid = chipShown();
             // Grid rows never overlap, however wide the tiles stretch
             Folders.setScope(null);
-            document.documentElement.style.setProperty('--grid-item-size', '130px');
+            // (big enough for two rows of the seven, the grid as wide as it is beside the sidebar)
+            document.documentElement.style.setProperty('--grid-item-size', `${Math.ceil(document.getElementById('grid-view').clientWidth / 5)}px`);
             await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
             const gridTiles = [...document.querySelectorAll('#grid-view .grid-item')];
             const cols = app.getGridColumnCount();

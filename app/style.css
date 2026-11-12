@@ -683,6 +683,8 @@ header {
     padding: 0;
     background-image: none;
     color: transparent;
+    /* (and no halo: it would draw the hidden words, --glass-halo) */
+    text-shadow: none !important;
 }
 
 .interface[data-fit~="sort-icon"] .sort-control select option {
@@ -9458,13 +9460,6 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 
 /* One set of corners: the sidebar's, and inside it (8px in) each part's
    is the sidebar's less that. The mode switch is a pill, as the top bar */
-/* The sidebar's corner is round about the mode switch in it, a pill
-   (the switch's half height + the 8px in + the border), so the two curves
-   follow each other */
-:root:not([data-skin]) .folder-rail {
-    border-radius: calc(var(--ctl-md) / 2 + var(--sp-1) + var(--sp-2) + 1px);
-}
-
 /* The same inside the right-click menu (4px in) and a message (8px in,
    its Undo a pill): each corner is its part's less the room between */
 :root:not([data-skin]) #context-menu button {
@@ -9591,47 +9586,567 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    readable on their own over a bright photo: a halo behind them does
    (--glass-halo, tokens.css; none on Opaque). Buttons and fields too,
    which the browser gives no shadow of their own */
-:root:not([data-skin]) :is(.toolbar, .file-info, .folder-rail, #context-menu, .task-pill, .toast, .picked-bar),
-:root:not([data-skin]) :is(.toolbar, .file-info, .folder-rail, #context-menu, .task-pill, .toast, .picked-bar) :is(button, input, select) {
+:root:not([data-skin]) :is(.toolbar, .file-info, #context-menu, .sb-picker, .task-pill, .toast, .picked-bar),
+:root:not([data-skin]) :is(.toolbar, .file-info, #context-menu, .sb-picker, .task-pill, .toast, .picked-bar) :is(button, input, select) {
     text-shadow: var(--glass-halo);
 }
 
 /* Liquid: the glass bends what's under its edges. liquid.js draws the bend
    for each part's size and shape (--lg-bend: an SVG filter); until it has,
    or where the browser can't draw it, the glass is the same, unbent */
-:root.liquid-bends :is(.toolbar, .file-info, .folder-rail, #context-menu, .popover, .task-pill, .toast, .picked-bar) {
+:root.liquid-bends :is(.toolbar, .file-info, #context-menu, .sb-picker, .popover, .task-pill, .toast, .picked-bar) {
     backdrop-filter: var(--lg-bend, ) var(--glass-filter);
     -webkit-backdrop-filter: var(--lg-bend, ) var(--glass-filter);
 }
 
-/* Lens: the sidebar is no panel, its folders on the window with a faint
-   glow from the left and a hairline down its edge; the chosen row is a
-   bubble of the glass, round like the pills */
-:root:not([data-skin])[data-glass="lens"] .folder-rail {
-    background: linear-gradient(90deg, rgb(255 255 255 / 0.05), rgb(255 255 255 / 0));
-    border-color: transparent;
-    box-shadow: inset -1px 0 0 rgb(255 255 255 / 0.08);
+/* ==========================================================================
+   The docked sidebar (jEditor's own look; each theme docks its own in
+   themes/docked.css). Against the window's left edge and the full height
+   of it, as Finder's and Preview's: a quiet tint (the Mac's own window
+   material through it, Mica on Windows), a hairline down its edge, small
+   grey headings, compact rows and one soft highlight. Its edge drags to
+   resize it (script.js: initSidebarResize) and Ctrl+B folds it away. In
+   the single view too, the photo beside it (folders.js: render).
+   ========================================================================== */
+
+:root:not([data-skin]) {
+    --rail-w: 232px;
+    /* What's beside it starts this far in: the sidebar, then the gutter */
+    --rail-room: calc(var(--rail-now) + var(--gutter));
+}
+
+:root:not([data-skin])[data-density="comfortable"] {
+    --rail-w: 256px;
+}
+
+:root:not([data-skin]) .folder-rail {
+    top: 0;
+    left: 0;
+    bottom: 0;
+    padding: var(--sp-3) var(--sp-2) var(--sp-2);
+    border: 0;
+    border-right: 1px solid var(--sidebar-line);
+    border-radius: 0;
+    background: var(--sidebar-bg);
+    box-shadow: none;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
 }
 
-:root:not([data-skin])[data-glass="lens"][data-theme="light"] .folder-rail {
-    background: linear-gradient(90deg, rgb(255 255 255 / 0.5), rgb(255 255 255 / 0));
-    box-shadow: inset -1px 0 0 rgb(0 0 0 / 0.08);
+:root:not([data-skin]) .folder-rail > .side-grip {
+    top: 0;
+    bottom: 0;
 }
 
-:root:not([data-skin])[data-glass="lens"] .fr-row {
-    border-radius: var(--r-pill);
+/* The pills start beside it, the file pill centred over what's beside it */
+:root:not([data-skin]) .interface.rail-open .folder-bar {
+    left: calc(var(--rail-room) / var(--ui-scale, 1));
 }
 
-:root:not([data-skin])[data-glass="lens"] .fr-row.active {
-    background: linear-gradient(180deg, rgb(255 255 255 / 0.18), rgb(255 255 255 / 0.07));
-    box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.22), inset 0 -1px 1px rgb(0 0 0 / 0.15);
+:root:not([data-skin]) .interface.rail-open header {
+    left: var(--rail-now);
+    width: auto;
+    right: 0;
 }
 
-:root:not([data-skin])[data-glass="lens"][data-theme="light"] .fr-row.active {
-    background: linear-gradient(180deg, #fff, rgb(255 255 255 / 0.6));
-    box-shadow: inset 0 -1px 1px rgb(0 0 0 / 0.08), 0 1px 2px rgb(0 0 0 / 0.08);
+/* The single view: the photo and the film strip beside it. Only where the
+   window's wide enough (folders.js: render): on a phone it would cover
+   the photo */
+:root:not([data-skin]) body[data-view="single"] .interface.rail-open {
+    padding-left: var(--rail-now);
+}
+
+body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) {
+    --toast-left: var(--rail-room);
+}
+
+/* ---- The Mac: the traffic lights in the sidebar's top, as Finder's ----
+   They stay in line with the pills (bridge.js: reportLights), so what's in
+   the sidebar starts below that row, which moves the window as the rest of
+   the top row does. The window's own material shows through it (main.js:
+   vibrancy), tinted so its words read as anywhere else; never under the
+   photos or the grid. */
+:root[data-platform="mac"]:not([data-skin]) .folder-rail {
+    padding-top: calc(var(--top-row) + var(--sp-2));
+}
+
+:root[data-platform="mac"]:not([data-skin]) .folder-rail::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: var(--top-row);
+    -webkit-app-region: drag;
+}
+
+:root[data-platform="mac"]:not([data-skin]) {
+    --sidebar-bg: color-mix(in srgb, var(--sidebar-solid) 74%, transparent);
+}
+
+:root[data-platform="mac"]:not([data-skin]) .interface.rail-open {
+    background: linear-gradient(90deg, transparent var(--rail-now), var(--bg-canvas) var(--rail-now));
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+    :root[data-platform="mac"]:not([data-skin]) {
+        --sidebar-bg: var(--sidebar-solid);
+    }
+}
+
+/* ---- What's in it ---- */
+
+/* Photos · Adjust · Paint: quiet, no tray behind it; the mode you're in
+   a soft grey pill */
+:root:not([data-skin]) .folder-rail .mode-seg {
+    gap: 2px;
+    padding: 0;
+    margin-bottom: var(--sp-3);
+    background: none;
+}
+
+:root:not([data-skin]) .folder-rail .mode-seg > button {
+    height: calc(var(--ctl-md) - 6px);
+    color: var(--text-2);
+}
+
+:root:not([data-skin]) .folder-rail .mode-seg > button .i {
+    display: none;
+}
+
+:root:not([data-skin]) .folder-rail .mode-seg > button.on,
+:root:not([data-skin]) .folder-rail .mode-seg .seg-glide {
+    background: var(--sidebar-sel);
+    box-shadow: none;
+}
+
+:root:not([data-skin]) .folder-rail .mode-seg > button.on {
+    color: var(--text-1);
+}
+
+/* (the pill glides from one to the next: motion.js) */
+:root:not([data-skin]) .folder-rail .mode-seg.glides > button.on {
+    background: transparent;
+}
+
+/* Rows: compact, small icons in grey, one soft highlight */
+:root:not([data-skin]) .folder-rail .fr-row {
+    min-height: calc(var(--ctl-md) - 4px);
+    border: 0;
+    border-radius: var(--r-md);
+}
+
+:root:not([data-skin]) .folder-rail .fr-row:hover {
+    background: var(--sidebar-hover);
+}
+
+:root:not([data-skin]) .folder-rail .fr-row.active {
+    background: var(--sidebar-sel);
+    box-shadow: none;
+}
+
+/* The open project is the heading: where it's also a row (pinned, say),
+   it isn't highlighted again. One highlight: what the grid shows */
+:root:not([data-skin]) .folder-rail .sb-row.active:not(:hover) {
+    background: none;
+}
+
+:root:not([data-skin]) .folder-rail :is(.fr-row > svg, .fr-icon, .sb-icon, .fr-row.active .fr-icon, .sb-row.active .sb-icon, .sb-usb .sb-icon) {
+    color: var(--text-2);
+}
+
+:root:not([data-skin]) .folder-rail .fr-row :is(svg, .sb-icon svg) {
+    width: 15px;
+    height: 15px;
+}
+
+:root:not([data-skin]) .folder-rail .fr-caret svg {
+    width: 10px;
+    height: 10px;
+}
+
+:root:not([data-skin]) .folder-rail .fr-caret {
+    width: 12px;
+}
+
+:root:not([data-skin]) .folder-rail .fr-count {
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+}
+
+:root:not([data-skin]) .folder-rail .fr-all {
+    margin-bottom: 0;
+}
+
+/* The project is the heading above its folders: its own top folder is a
+   row only while it has photos of its own (the rows under it move up) */
+:root:not([data-skin]) .folder-rail .fr-root.empty {
+    display: none;
+}
+
+:root:not([data-skin]) .folder-rail #folder-tree:has(.fr-root.empty) .fr-row:not(.fr-all) {
+    padding-left: calc(var(--sp-1) + (var(--depth, 1) - 1) * 14px);
+}
+
+:root:not([data-skin]) .folder-rail .fr-root {
+    font-weight: inherit;
+}
+
+/* Headings: small and grey, the section's own words; the fold arrow and
+   the heading's buttons come when the pointer's on it */
+:root:not([data-skin]) .folder-rail .sb-sec {
+    margin: var(--sp-4) 0 2px;
+    padding-left: var(--sp-1);
+}
+
+:root:not([data-skin]) .folder-rail .sb-sec-btn {
+    font-size: var(--fs-caption);
+    padding-left: var(--sp-1);
+}
+
+:root:not([data-skin]) .folder-rail .sb-sec-caret {
+    order: 1;
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+
+:root:not([data-skin]) .folder-rail .sb-sec:hover .sb-sec-caret,
+:root:not([data-skin]) .folder-rail .sb-sec-btn:focus-visible .sb-sec-caret,
+:root:not([data-skin]) .folder-rail .sb-sec.closed .sb-sec-caret {
+    opacity: 1;
+}
+
+:root:not([data-skin]) .folder-rail .sb-sec-here,
+:root:not([data-skin]) .folder-rail .fr-foot {
+    display: none;
+}
+
+/* "Show all…" under Recents: quiet, a row like the others */
+:root:not([data-skin]) .folder-rail .sb-all {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: calc(var(--ctl-md) - 4px);
+    padding: 0 var(--sp-2) 0 calc(var(--sp-1) + 12px + 6px + 15px + 6px);
+    border: 0;
+    border-radius: var(--r-md);
+    background: none;
+    color: var(--text-3);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+:root:not([data-skin]) .folder-rail .sb-all:hover {
+    background: var(--sidebar-hover);
+    color: var(--text-1);
+}
+
+/* The project: its name, the heading over its folders. A click opens the
+   project picker (places.js: Picker); the rest of what its card had is in
+   its … and its right-click menu (cardItems) */
+:root:not([data-skin]) .folder-rail .sb-card {
+    margin: 0 0 var(--sp-1);
+    padding: 0;
+}
+
+:root:not([data-skin]) .folder-rail :is(.sb-card-btns, .sb-card-export, .sb-card-defer, .sb-card-path, .sb-card-meta, .sb-card-edit, .sb-card-name > svg) {
+    display: none;
+}
+
+:root:not([data-skin]) .folder-rail .sb-card-name {
+    width: 100%;
+    height: calc(var(--ctl-md) - 2px);
+    margin: 0;
+    padding: 0 calc(var(--ctl-sm) + var(--sp-1)) 0 var(--sp-2);
+    border-radius: var(--r-md);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    font-weight: var(--fw-semibold);
+    gap: 4px;
+}
+
+:root:not([data-skin]) .folder-rail .sb-card-name span {
+    flex: 0 1 auto;
+}
+
+:root:not([data-skin]) .folder-rail button.sb-card-name:hover,
+:root:not([data-skin]) .folder-rail button.sb-card-name[aria-expanded="true"] {
+    background: var(--sidebar-hover);
+}
+
+.sb-card-chev {
+    display: none;
+}
+
+:root:not([data-skin]) .folder-rail .sb-card-chev {
+    display: inline-flex;
+    flex: none;
+    color: var(--text-3);
+}
+
+:root:not([data-skin]) .folder-rail .sb-card-more {
+    top: 2px;
+    right: 2px;
+    width: calc(var(--ctl-md) - 6px);
+    height: calc(var(--ctl-md) - 6px);
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+:root:not([data-skin]) .folder-rail .sb-card:hover .sb-card-more,
+:root:not([data-skin]) .folder-rail .sb-card-more:focus-visible,
+:root:not([data-skin]) .folder-rail .sb-card-more[aria-expanded="true"] {
+    opacity: 1;
+}
+
+/* Drives: the room left on every one, a thin bar of how full it is and
+   "182 GB free" under its name; nearly full, in red */
+:root:not([data-skin]) .folder-rail .sb-free {
+    gap: var(--sp-2);
+    margin-top: 2px;
+}
+
+:root:not([data-skin]) .folder-rail .sb-free-bar {
+    flex: 1;
+    width: auto;
+    height: 3px;
+    background: var(--sidebar-sel);
+}
+
+:root:not([data-skin]) .folder-rail .sb-free-bar > span {
+    background: var(--text-3);
+}
+
+:root:not([data-skin]) .folder-rail .sb-free.low .sb-free-bar > span {
+    background: var(--danger-text);
+}
+
+:root:not([data-skin]) .folder-rail .sb-text {
+    padding: 4px 0;
+}
+
+/* A theme shows the room left on a USB drive only, as it was drawn for
+   (the themes are as they were; jEditor's own look shows it on every drive) */
+:root[data-skin] .sb-row:not(.sb-usb) .sb-free {
+    display: none;
+}
+
+/* Eject comes with the pointer, as the other row buttons do */
+:root:not([data-skin]) .folder-rail .sb-row:not(:hover, :focus-within) .sb-eject {
+    opacity: 0;
+}
+
+/* Renaming in place (places.js: renameInPlace): a field over the name,
+   in the row's own box */
+.sb-row,
+.sb-card,
+.sb-picker-list {
+    position: relative;
+}
+
+.sb-rename {
+    position: absolute;
+    z-index: 2;
+    transform: translateY(-50%);
+    min-width: 0;
+    max-width: calc(100% - 8px);
+    height: calc(var(--ctl-md) - 8px);
+    margin: 0 0 0 -4px;
+    padding: 0 4px;
+    border: 0;
+    border-radius: var(--r-sm);
+    outline: 2px solid var(--accent);
+    background: var(--bg-surface);
+    color: var(--text-1);
+    font: inherit;
+}
+
+/* ---- The project picker (places.js: Picker): a click on the project's
+   name. Find a project, your recent ones first, then All projects…, New
+   project… and Open a folder…. Floats as the right-click menu does, below
+   the window's top (--top-safe) ---- */
+.sb-picker {
+    position: fixed;
+    z-index: var(--z-menu);
+    width: 280px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - var(--top-safe) - 16px);
+    display: flex;
+    flex-direction: column;
+    padding: var(--sp-1);
+    border-radius: var(--r-lg);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-3), var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    color: var(--text-1);
+    font-size: var(--fs-body);
+    animation: popover-in var(--dur-base) var(--ease-out);
+}
+
+.sb-picker[hidden] {
+    display: none;
+}
+
+.sb-picker-find {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    height: var(--ctl-md);
+    margin: 2px 2px var(--sp-1);
+    padding: 0 var(--sp-2);
+    border-radius: var(--r-md);
+    background: var(--seg-bg);
+    color: var(--text-3);
+}
+
+.sb-picker-find .i {
+    width: 15px;
+    height: 15px;
+    flex: none;
+}
+
+.sb-picker-find input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: none;
+    color: var(--text-1);
+    font: inherit;
+}
+
+.sb-picker-list {
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.sb-picker-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.3em;
+    padding: var(--sp-2) var(--sp-2) var(--sp-1);
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+}
+
+.sb-picker-head button {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text-3);
+    font: inherit;
+    font-weight: var(--fw-regular);
+    cursor: pointer;
+}
+
+.sb-picker-head button:hover {
+    color: var(--text-1);
+    text-decoration: underline;
+}
+
+.sb-pick {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    width: 100%;
+    min-height: var(--ctl-md);
+    padding: 0 var(--sp-2);
+    border: 0;
+    border-radius: calc(var(--r-lg) - var(--sp-1));
+    background: none;
+    color: var(--text-1);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.sb-pick .sb-pick-tick {
+    flex: none;
+    width: 12px;
+    color: var(--accent-text);
+    font-size: var(--fs-small);
+}
+
+.sb-pick .i {
+    flex: none;
+    width: 15px;
+    height: 15px;
+    color: var(--text-2);
+}
+
+.sb-pick-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-pick-name b {
+    font-weight: var(--fw-semibold);
+}
+
+.sb-pick-count {
+    flex: none;
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+    font-variant-numeric: tabular-nums;
+}
+
+.sb-pick.on,
+.sb-pick:hover {
+    background: var(--accent);
+    color: var(--on-accent);
+}
+
+.sb-pick.on :is(.i, .sb-pick-count, .sb-pick-tick),
+.sb-pick:hover :is(.i, .sb-pick-count, .sb-pick-tick) {
+    color: inherit;
+}
+
+.sb-picker-sep {
+    flex: none;
+    height: 1px;
+    margin: var(--sp-1) var(--sp-2);
+    background: var(--border);
+}
+
+.sb-picker-none {
+    padding: var(--sp-2) var(--sp-2) var(--sp-3);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+/* Phones: the sidebar over the grid, with a shadow, as before */
+@media (max-width: 767px) {
+    :root:not([data-skin]) .folder-rail {
+        box-shadow: var(--shadow-4);
+    }
+    /* ...and from under the top row, whose pills keep the window's whole
+       width (beside the sidebar there's no room for them: fit.js) and the
+       button that closes it */
+    :root:not([data-skin]):not([data-platform="mac"]) .folder-rail {
+        top: calc(var(--top-row) + var(--sp-3));
+        border-top: 1px solid var(--sidebar-line);
+        border-top-right-radius: var(--r-lg);
+    }
+    :root:not([data-skin]) .interface.rail-open .folder-bar {
+        left: calc(var(--gutter) / var(--ui-scale, 1));
+    }
+    :root:not([data-skin]) .interface.rail-open header {
+        left: 0;
+        width: 100%;
+        right: auto;
+    }
 }
 
 /* ---- Motion (motion.js): short, after the fact, never in the way ---- */

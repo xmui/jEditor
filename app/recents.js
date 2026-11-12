@@ -174,6 +174,15 @@ const Recents = {
         await this.render();
     },
 
+    // The same folder under a new name (renamed in the sidebar: places.js),
+    // where it was in the list
+    async replace(id, handle) {
+        const rec = (await this.all()).find(r => r.id === id);
+        if (!rec || !handle) return;
+        await this.tx('readwrite', s => s.put({ ...rec, handle, name: handle.name }));
+        await this.render();
+    },
+
     async forget(id) {
         await this.tx('readwrite', s => s.delete(id));
         this.render();

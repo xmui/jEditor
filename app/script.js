@@ -3228,9 +3228,14 @@ const app = {
             // The real row height, now there are tiles to measure (a theme
             // can give tiles a caption)
             const a = files[win.start] && win.tiles.get(files[win.start]);
-            const b = files[win.start + cols] && win.tiles.get(files[win.start + cols]);
-            const pitch = a && b ? this.gridY(b) - this.gridY(a) : a ? a.offsetHeight + win.gap : 0;
-            if (pitch > 0 && Math.abs(pitch - win.pitch) > 0.5) {
+            // Over every row built, not one: a row's height isn't quite the
+            // column's width when that's a fraction of a pixel (the docked
+            // sidebar's 232 px leaves one), and a hundredth of a pixel a
+            // row is pixels by the end of a huge folder
+            const span = Math.floor((win.end - 1 - win.start) / cols);
+            const b = span > 0 && win.tiles.get(files[win.start + span * cols]);
+            const pitch = a && b ? (this.gridY(b) - this.gridY(a)) / span : a ? a.offsetHeight + win.gap : 0;
+            if (pitch > 0 && Math.abs(pitch - win.pitch) > 0.001) {
                 win.pitch = pitch;
                 force = true; // spacers redone at the right height
                 apply(place(pitch));
@@ -4746,7 +4751,7 @@ const app = {
         ['folders.new', 'global', 'Folders', 'New folder', ['Shift+N']],
         ['folders.up', 'global', 'Folders', 'Up one folder (grid)', ['Backspace', 'Alt+ArrowUp']],
         ['folders.all', 'global', 'Folders', 'Switch between All photos and folders (grid)', ['A']],
-        ['folders.rail', 'global', 'Folders', 'Show / hide the folder list (grid)', ['Ctrl+B']],
+        ['folders.rail', 'global', 'Folders', 'Show / hide the sidebar', ['Ctrl+B']],
         ['view.toggle', 'global', 'View', 'Toggle grid / single view', ['Space']],
         ['view.grid', 'global', 'View', 'Grid view', ['G']],
         ['view.single', 'global', 'View', 'Single view', ['S']],
@@ -4958,7 +4963,8 @@ const app = {
                 Folders.setScope(Folders.scope === null ? (Folders.map.has(Folders.lastScope) ? Folders.lastScope : '') : null);
             },
             'folders.rail': () => {
-                if (!grid() || !this.dirHandle) return false;
+                // (the single view keeps it docked beside the photo: folders.js)
+                if (!this.dirHandle || !(grid() || (this.viewMode === 'single' && !this.cropState.active && Folders.besideSingle()))) return false;
                 Folders.toggleRail();
             },
             'view.toggle': () => this.toggleView(),
@@ -6320,6 +6326,8 @@ const app = {
                 Edits.undo(entry);
             } else if (entry.type === 'saved-edits') {
                 await this.undoSavedEdits(entry);
+            } else if (entry.type === 'project-rename') {
+                if (!(await Places.undoRename(entry))) throw new Error('the old name couldn\'t be put back');
             } else if (entry.type === 'relocate' || entry.type.startsWith('folder-')) {
                 await Folders.undo(entry);
             } else if (entry.type === 'transfer') {

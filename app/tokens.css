@@ -119,6 +119,13 @@
     --seg-bg: rgb(255 255 255 / 0.06);       /* segmented control track */
     --seg-active: rgb(255 255 255 / 0.16);   /* its chosen segment */
     --switch-off: rgb(255 255 255 / 0.24);
+    /* The docked sidebar (style.css): a quiet tint against the window's
+       edge, a hairline down it, and one soft highlight on the chosen row */
+    --sidebar-solid: #121214;
+    --sidebar-bg: var(--sidebar-solid);
+    --sidebar-line: rgb(255 255 255 / 0.08);
+    --sidebar-hover: rgb(255 255 255 / 0.05);
+    --sidebar-sel: rgb(255 255 255 / 0.10);
     /* Labels and badges drawn on top of photos: always dark, any theme */
     --on-photo-bg: rgb(0 0 0 / 0.62);
     --on-photo-shade: rgb(0 0 0 / 0.8);      /* gradient under folder names */
@@ -184,6 +191,8 @@
 :root.backdrop {
     --bg-window: color-mix(in srgb, var(--bg-canvas) var(--backdrop-tint), transparent);
     --bg-window-glow: color-mix(in srgb, var(--bg-surface) var(--backdrop-tint), transparent);
+    /* Mica or Acrylic through the sidebar too, a little more than the grid */
+    --sidebar-bg: color-mix(in srgb, var(--sidebar-solid) calc(var(--backdrop-tint) * 0.85), transparent);
 }
 
 /* ---- Light theme ---- */
@@ -215,6 +224,10 @@
     --seg-bg: rgb(0 0 0 / 0.06);
     --seg-active: #ffffff;
     --switch-off: rgb(0 0 0 / 0.24);
+    --sidebar-solid: #efeff1;
+    --sidebar-line: rgb(0 0 0 / 0.09);
+    --sidebar-hover: rgb(0 0 0 / 0.04);
+    --sidebar-sel: rgb(0 0 0 / 0.075);
 
     --danger-text: #b91c1c;
     --danger-soft: rgb(220 38 38 / 0.10);
@@ -349,6 +362,7 @@
         --glass-border: var(--border);
         --glass-rim: var(--highlight);
         --backdrop-tint: 100%;
+        --sidebar-bg: var(--sidebar-solid);
     }
 }
 
