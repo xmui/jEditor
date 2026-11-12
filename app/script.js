@@ -7293,6 +7293,21 @@ const app = {
 
     // The Photos library's photos are moved, renamed, converted and deleted
     // in Photos: those go from its menus (and a separator left doubled)
+    // Turn and flip, in a photo's right-click menu: one row, its six
+    // commands in a menu beside it, each with its key
+    turnItems(file) {
+        return [
+            ['Rotate left', () => this.rotateImage(file, -90), false, undefined, 'edit.rotateLeft'],
+            ['Rotate right', () => this.rotateImage(file, 90), false, undefined, 'edit.rotateRight'],
+            ['Rotate 180°', () => this.rotateImage(file, 180), false, undefined, 'edit.rotate180'],
+            ['—'],
+            ['Flip left to right', () => this.flipFiles([file], 'h'), false, undefined, 'edit.flipH'],
+            ['Flip upside down', () => this.flipFiles([file], 'v'), false, undefined, 'edit.flipV'],
+            ['—'],
+            ['Turn upright', () => this.turnUpright([file]), false, undefined, 'edit.upright']
+        ];
+    },
+
     withoutFileChanges(items) {
         const changes = /^(Move |Copy (\S+ )?to…|Rename|Convert|Delete|New folder|New blank image|Paste image|Clean up folder)/;
         const out = [];
@@ -7345,32 +7360,27 @@ const app = {
             return [
                 ['flags', [file]],
                 ['—'],
-                ['Open', () => this.openSingle(file)],
+                ['Open', () => this.openSingle(file), false, undefined, 'view.open'],
                 ['—'],
-                ['Rotate left', () => this.rotateImage(file, -90)],
-                ['Rotate right', () => this.rotateImage(file, 90)],
-                ['Rotate 180°', () => this.rotateImage(file, 180)],
-                ['Flip left to right', () => this.flipFiles([file], 'h')],
-                ['Flip upside down', () => this.flipFiles([file], 'v')],
-                ['Turn upright', () => this.turnUpright([file])],
-                ['Crop and straighten', () => { this.openSingle(file); this.enterCrop(); }],
+                ['Turn and flip', this.turnItems(file)],
+                ['Crop and straighten', () => { this.openSingle(file); this.enterCrop(); }, false, undefined, 'edit.crop'],
                 ...(this.getLastCrop() ? [['Crop like the last crop', () => this.cropLike([file])]] : []),
-                ['Adjust…', () => this.enterAdjust(file)],
+                ['Adjust…', () => this.enterAdjust(file), false, undefined, 'edit.adjust'],
                 ...(file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
                 ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : []),
-                ['Paint…', () => this.enterPaint(file)],
+                ['Paint…', () => this.enterPaint(file), false, undefined, 'edit.paint'],
                 ...(file._edit ? [['Discard edit', () => Edits.discard([file])]] : []),
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
                 ['Copy to…', () => Folders.openPicker([file], 'copy')],
-                ['Copy image', () => this.copyImage(file)],
-                ['Rename…', () => this.promptRename(file)],
-                ['File info', () => { this.toggleInfoPanel(true, { file }); }],
+                ['Copy image', () => this.copyImage(file), false, undefined, 'edit.copyImage'],
+                ['Rename…', () => this.promptRename(file), false, undefined, 'edit.rename'],
+                ['File info', () => { this.toggleInfoPanel(true, { file }); }, false, undefined, 'view.info'],
                 ['Export…', () => Export.open({ files: [file] })],
                 ['Convert…', () => Convert.open({ files: [file] })],
                 ...(this.canAddToPhotos() ? [['Add to Photos library', () => this.addToPhotos([file])]] : []),
                 ['—'],
-                ['Delete', () => this.moveToTrash([file]), true]
+                ['Delete', () => this.moveToTrash([file]), true, undefined, 'edit.trash']
             ];
         }
         if (inSingle) {
@@ -7378,24 +7388,19 @@ const app = {
             return [
                 ['flags', [file]],
                 ['—'],
-                ['Rotate left', () => this.rotateImage(file, -90)],
-                ['Rotate right', () => this.rotateImage(file, 90)],
-                ['Rotate 180°', () => this.rotateImage(file, 180)],
-                ['Flip left to right', () => this.flipFiles([file], 'h')],
-                ['Flip upside down', () => this.flipFiles([file], 'v')],
-                ['Turn upright', () => this.turnUpright([file])],
-                ['Crop and straighten', () => this.enterCrop()],
-                ['Adjust…', () => this.enterAdjust()],
+                ['Turn and flip', this.turnItems(file)],
+                ['Crop and straighten', () => this.enterCrop(), false, undefined, 'edit.crop'],
+                ['Adjust…', () => this.enterAdjust(), false, undefined, 'edit.adjust'],
                 ...(file && file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
                 ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : []),
-                ['Paint…', () => this.enterPaint()],
+                ['Paint…', () => this.enterPaint(), false, undefined, 'edit.paint'],
                 ...(file && file._edit ? [['Discard edit', () => Edits.discard([file])]] : []),
                 ['—'],
                 ['Move to…', () => Folders.openPicker([file], 'move')],
                 ['Copy to…', () => Folders.openPicker([file], 'copy')],
-                ['Copy image', () => this.copyImage(file)],
-                ['Rename…', () => this.promptRename(file)],
-                ['File info', () => this.toggleInfoPanel(true)],
+                ['Copy image', () => this.copyImage(file), false, undefined, 'edit.copyImage'],
+                ['Rename…', () => this.promptRename(file), false, undefined, 'edit.rename'],
+                ['File info', () => this.toggleInfoPanel(true), false, undefined, 'view.info'],
                 ['Export…', () => Export.open({ files: [file] })],
                 ['Convert…', () => Convert.open({ files: [file] })],
                 ...(this.canAddToPhotos() ? [['Add to Photos library', () => this.addToPhotos([file])]] : []),
@@ -7403,7 +7408,7 @@ const app = {
                 ['Full screen', () => this.toggleFullscreen()],
                 ['Start slideshow', () => this.startSlideshow()],
                 ['—'],
-                ['Delete', () => this.moveToTrash([file]), true]
+                ['Delete', () => this.moveToTrash([file]), true, undefined, 'edit.trash']
             ];
         }
         return [
@@ -7503,7 +7508,10 @@ const app = {
         return this.library ? this.withoutFileChanges(items) : items;
     },
 
-    // items: [label, action, danger] | ['—'] | ['flags', files]
+    // items: [label, action, danger, checked, key] | ['—'] | ['flags', files]
+    // action an array: a menu of its own, opened beside the row (in a theme,
+    // whose menus are its own, its items are listed in place). key: the
+    // command (KEY_COMMANDS) whose key shows at the right, as it's set now.
     // opts.above: x, y is the top-left of the button it opens from; the
     // menu opens upwards from there
     openContextMenu(items, x, y, opts = {}) {
@@ -7511,7 +7519,28 @@ const app = {
         const menu = document.createElement('div');
         menu.id = 'context-menu';
         menu.setAttribute('role', 'menu');
-        items.forEach(([label, action, danger, checked]) => {
+        if (document.documentElement.dataset.skin) items = items.flatMap(it => Array.isArray(it[1]) ? it[1] : [it]);
+        this.fillMenu(menu, items);
+        if (menu.lastChild && menu.lastChild.className === 'ctx-divider') menu.lastChild.remove();
+        // Arrow keys move through the items; Esc closes (handleKey)
+        menu.addEventListener('keydown', (e) => this.menuKey(menu, e));
+        // Given back on Esc when opened from the keyboard (after a click,
+        // that button's keyboard ring would show, and stay: UI.sync)
+        this._menuReturn = UI._pointer ? null : document.activeElement;
+        document.body.appendChild(menu);
+        const r = menu.getBoundingClientRect();
+        const top = opts.above ? y - r.height : y;
+        menu.style.left = Math.max(8, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
+        // Never under the window's top: a theme's bars, the Mac's toolbar (UI.topSafe)
+        const safe = UI.topSafe() + 8;
+        menu.style.top = Math.max(safe, Math.min(top, window.innerHeight - r.height - 8)) + 'px';
+        const first = menu.querySelector('[role^="menuitem"]');
+        if (first) first.focus({ preventScroll: true });
+    },
+
+    // A menu's rows (the right-click menu's, and a menu opened beside one)
+    fillMenu(menu, items) {
+        items.forEach(([label, action, danger, checked, key]) => {
             // A heading over the items after it
             if (action === null) {
                 const h = document.createElement('div');
@@ -7541,42 +7570,105 @@ const app = {
                 btn.setAttribute('role', 'menuitemcheckbox');
                 btn.setAttribute('aria-checked', String(checked));
             }
-            btn.onclick = (ev) => {
-                ev.stopPropagation();
-                this.closeContextMenu();
-                action();
-            };
+            const keys = key && this.keyBindings && this.keyBindings[key];
+            if (keys && keys.length) {
+                const k = document.createElement('span');
+                k.className = 'ctx-key';
+                k.textContent = this.formatCombo(keys[0]).replace(/ \+ /g, '+');
+                btn.appendChild(k);
+            }
+            if (Array.isArray(action)) {
+                // A menu of its own: opened by pointing at the row, a click,
+                // Enter or the right arrow
+                btn.classList.add('ctx-more');
+                btn.setAttribute('aria-haspopup', 'menu');
+                btn.setAttribute('aria-expanded', 'false');
+                btn._items = action;
+                btn.onclick = (ev) => { ev.stopPropagation(); this.openFly(btn, true); };
+                btn.onmouseenter = () => this.openFly(btn);
+            } else {
+                btn.onclick = (ev) => {
+                    ev.stopPropagation();
+                    this.closeContextMenu();
+                    action();
+                };
+                // Another row pointed at: the menu beside the last one goes
+                if (menu.id === 'context-menu') btn.onmouseenter = () => this.closeFly();
+            }
             menu.appendChild(btn);
         });
         if (menu.lastChild && menu.lastChild.className === 'ctx-divider') menu.lastChild.remove();
-        // Arrow keys move through the items; Esc closes (handleKey)
-        menu.addEventListener('keydown', (e) => {
-            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+    },
+
+    // Arrow keys move through a menu's items; right opens the menu beside a
+    // row and left goes back to it; Esc closes (handleKey)
+    menuKey(menu, e) {
+        const at = document.activeElement;
+        if (e.key === 'ArrowRight' && at && at._items) {
             e.preventDefault();
             e.stopPropagation();
-            const all = [...menu.querySelectorAll('button')];
-            const i = all.indexOf(document.activeElement);
-            const next = e.key === 'Home' ? 0 : e.key === 'End' ? all.length - 1
-                : (i + (e.key === 'ArrowDown' ? 1 : -1) + all.length) % all.length;
-            all[next].focus();
-        });
-        // Given back on Esc when opened from the keyboard (after a click,
-        // that button's keyboard ring would show, and stay: UI.sync)
-        this._menuReturn = UI._pointer ? null : document.activeElement;
-        document.body.appendChild(menu);
-        const r = menu.getBoundingClientRect();
-        const top = opts.above ? y - r.height : y;
-        menu.style.left = Math.max(8, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
-        // Never under the window's top: a theme's bars, the Mac's toolbar (UI.topSafe)
-        const safe = UI.topSafe() + 8;
-        menu.style.top = Math.max(safe, Math.min(top, window.innerHeight - r.height - 8)) + 'px';
-        const first = menu.querySelector('[role^="menuitem"]');
-        if (first) first.focus({ preventScroll: true });
+            this.openFly(at, true);
+            return;
+        }
+        if (e.key === 'ArrowLeft' && menu._from) {
+            e.preventDefault();
+            e.stopPropagation();
+            const from = menu._from;
+            this.closeFly();
+            from.focus({ preventScroll: true });
+            return;
+        }
+        if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const all = [...menu.querySelectorAll('button')];
+        const i = all.indexOf(at);
+        const next = e.key === 'Home' ? 0 : e.key === 'End' ? all.length - 1
+            : (i + (e.key === 'ArrowDown' ? 1 : -1) + all.length) % all.length;
+        all[next].focus();
+    },
+
+    // The menu beside a row of the right-click menu (Turn and flip): to its
+    // right, or its left where there's no room. focus: opened by a click or
+    // a key, so its first row takes the focus
+    openFly(row, focus) {
+        let fly = document.getElementById('context-fly');
+        if (!fly || fly._from !== row) {
+            this.closeFly();
+            fly = document.createElement('div');
+            fly.id = 'context-fly';
+            fly.className = 'ctx-fly';
+            fly.setAttribute('role', 'menu');
+            fly._from = row;
+            this.fillMenu(fly, row._items);
+            fly.addEventListener('keydown', (e) => this.menuKey(fly, e));
+            document.body.appendChild(fly);
+            row.setAttribute('aria-expanded', 'true');
+            const r = row.getBoundingClientRect(), f = fly.getBoundingClientRect();
+            const right = r.right + f.width + 8 <= window.innerWidth;
+            fly.style.left = (right ? r.right + 2 : Math.max(8, r.left - f.width - 2)) + 'px';
+            fly.style.top = Math.max(UI.topSafe() + 8, Math.min(r.top - 5, window.innerHeight - f.height - 8)) + 'px';
+        }
+        if (focus) {
+            const first = fly.querySelector('button');
+            if (first) first.focus({ preventScroll: true });
+        }
+    },
+
+    closeFly() {
+        const fly = document.getElementById('context-fly');
+        if (!fly) return;
+        if (fly._from) fly._from.setAttribute('aria-expanded', 'false');
+        fly.remove();
     },
 
     closeContextMenu() {
         const menu = document.getElementById('context-menu');
+        const fly = document.getElementById('context-fly');
+        const inFly = !!fly && fly.contains(document.activeElement);
+        this.closeFly();
         if (!menu) return;
+        if (inFly && this._menuReturn && this._menuReturn.isConnected) this._menuReturn.focus({ preventScroll: true });
         const hadFocus = menu.contains(document.activeElement);
         menu.remove();
         if (hadFocus && this._menuReturn && this._menuReturn.isConnected) this._menuReturn.focus({ preventScroll: true });

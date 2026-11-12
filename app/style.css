@@ -2304,7 +2304,8 @@ body[data-view="single"] .edits-bar {
 }
 
 /* Right-click menu */
-#context-menu {
+#context-menu,
+.ctx-fly {
     position: fixed;
     z-index: var(--z-menu);
     min-width: 220px;
@@ -2317,7 +2318,8 @@ body[data-view="single"] .edits-bar {
     border-radius: var(--r-lg);
 }
 
-#context-menu button {
+#context-menu button,
+.ctx-fly button {
     display: flex;
     align-items: center;
     min-height: var(--ctl-md);
@@ -2332,7 +2334,10 @@ body[data-view="single"] .edits-bar {
 }
 
 #context-menu button:hover,
-#context-menu button:focus-visible {
+#context-menu button:focus-visible,
+.ctx-fly button:hover,
+.ctx-fly button:focus-visible,
+#context-menu button[aria-expanded="true"] {
     background: var(--tb-hover);
     outline: none;
 }
@@ -2345,7 +2350,8 @@ body[data-view="single"] .edits-bar {
     background: var(--danger-soft);
 }
 
-#context-menu .ctx-divider {
+#context-menu .ctx-divider,
+.ctx-fly .ctx-divider {
     height: 1px;
     margin: var(--sp-1) var(--sp-2);
     background: var(--border);
@@ -3251,8 +3257,11 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     gap: var(--sp-5);
 }
 
-#context-menu .ctx-key {
+#context-menu .ctx-key,
+.ctx-fly .ctx-key {
     margin-left: auto;
+    padding-left: var(--sp-6);
+    font-variant-numeric: tabular-nums;
     color: var(--text-3);
     font-size: var(--fs-small);
 }
@@ -10921,7 +10930,7 @@ body.touring .controls.idle button { pointer-events: auto; }
 }
 
 /* ---- Menus: solid, in rows ---- */
-:root:not([data-skin]) #context-menu {
+:root:not([data-skin]) :is(#context-menu, .ctx-fly) {
     min-width: 232px;
     padding: 5px;
     border: 1px solid var(--border-subtle);
@@ -10932,7 +10941,7 @@ body.touring .controls.idle button { pointer-events: auto; }
     -webkit-backdrop-filter: none;
 }
 
-:root:not([data-skin]) #context-menu button {
+:root:not([data-skin]) :is(#context-menu, .ctx-fly) button {
     min-height: var(--row);
     padding: 0 10px;
 }
@@ -10941,9 +10950,25 @@ body.touring .controls.idle button { pointer-events: auto; }
     padding-left: 30px;
 }
 
-:root:not([data-skin]) #context-menu .ctx-divider {
+:root:not([data-skin]) :is(#context-menu, .ctx-fly) .ctx-divider {
     margin: 5px 10px;
     background: var(--border-subtle);
+}
+
+/* A row with a menu of its own (Turn and flip): an arrow at its right,
+   and that menu beside it */
+#context-menu button.ctx-more::after {
+    content: "";
+    width: 6px;
+    height: 6px;
+    margin-left: auto;
+    border: solid var(--text-3);
+    border-width: 1.5px 1.5px 0 0;
+    transform: rotate(45deg);
+}
+
+:root:not([data-skin]) .ctx-fly {
+    min-width: 200px;
 }
 
 /* On a touch screen a row stays a finger's height */
@@ -10955,4 +10980,44 @@ body.touring .controls.idle button { pointer-events: auto; }
     :root:not([data-skin]) .dialog-foot .btn {
         height: var(--ctl-lg);
     }
+}
+
+/* ==========================================================================
+   The 2.0 refinement: the grid and the viewer (jEditor's own look). Photos
+   lie straight on the canvas, with no plate behind them: a folder of mixed
+   shapes shows the photos' own shapes, not a wall of squares. The plate
+   comes back, faintly, under the pointer. What's chosen is shown one way:
+   a soft accent plate and a ring (the tick is flags.js's). The photo the
+   keys are on, when it isn't chosen, has a quiet ring of its own.
+   ========================================================================== */
+
+:root:not([data-skin]) {
+    --tile-bg: transparent;
+}
+
+:root:not([data-skin]) .grid-item:not(.folder-tile) img {
+    padding: 5px;
+    border-radius: calc(var(--r-photo) + 5px);
+    background: transparent;
+}
+
+:root:not([data-skin]) .grid-item:not(.folder-tile):hover {
+    background: var(--bg-hover);
+}
+
+:root:not([data-skin]) .grid-item.selected {
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+:root:not([data-skin]) .grid-item.active {
+    outline: none;
+}
+
+:root:not([data-skin]) .grid-item.active:not(.selected) {
+    box-shadow: inset 0 0 0 1.5px var(--text-3);
+}
+
+:root:not([data-skin]) :is(.thumb-item, .mode-thumb) {
+    border-radius: var(--r-photo);
 }

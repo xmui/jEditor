@@ -794,6 +794,32 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.menuActionRan = clicked;
             out.menuClosed = !document.getElementById('context-menu');
 
+            // A row with a menu of its own, and a command's key at its right
+            let turned = '';
+            app.openContextMenu([['Open', () => { }, false, undefined, 'view.open'], ['Turn and flip', [['Left', () => { turned = 'left'; }, false, undefined, 'edit.rotateLeft'], ['—'], ['Right', () => { turned = 'right'; }]]]], 20, 60);
+            const menu2 = document.getElementById('context-menu');
+            const more = menu2.querySelector('button.ctx-more');
+            const key = (el, k) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+            out.subKey = menu2.querySelector('button .ctx-key').textContent;
+            out.subShut = !document.getElementById('context-fly') && more.getAttribute('aria-expanded') === 'false';
+            more.focus();
+            key(more, 'ArrowRight');
+            const fly = document.getElementById('context-fly');
+            out.subOpen = !!fly && fly.querySelectorAll('button').length === 2 && document.activeElement === fly.querySelector('button') && more.getAttribute('aria-expanded') === 'true';
+            // Beside its row, in the window
+            const fr = fly.getBoundingClientRect(), mr = menu2.getBoundingClientRect();
+            out.subBeside = (fr.left >= mr.right - 4 || fr.right <= mr.left + 4) && fr.left >= 0 && fr.right <= innerWidth;
+            key(document.activeElement, 'ArrowLeft');
+            out.subBack = !document.getElementById('context-fly') && document.activeElement === more;
+            more.click();
+            document.getElementById('context-fly').querySelectorAll('button')[1].click();
+            out.subRan = turned === 'right' && !document.getElementById('context-menu') && !document.getElementById('context-fly');
+            // A photo's own menu: the six under one row
+            const tile = document.querySelector('#grid-view .grid-item:not(.folder-tile)');
+            const items = tile && tile.offsetParent ? app.contextItemsFor(tile, false) : app.contextItemsFor(null, true);
+            const sub = items.find(it => it[0] === 'Turn and flip');
+            out.subPhoto = !!sub && sub[1].filter(it => typeof it[1] === 'function').length === 6 && !items.some(it => it[0] === 'Rotate left');
+
             // --- Ctrl+wheel grid zoom ---
             const before = document.getElementById('grid-size-slider').value;
             document.getElementById('grid-view').dispatchEvent(
@@ -814,6 +840,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('capture-date sort orders by dateTaken', r.takenOrder === 'two.jpg,one.jpg', r.takenOrder);
         check('export writes a copy to jEditor Export', r.exported);
         check('context menu renders and runs actions', r.menuButtons === 2 && r.menuDividers === 1 && r.menuActionRan && r.menuClosed);
+        check('... a row\'s own menu opens beside it (right arrow, a click), goes back on the left arrow and runs its commands; a command shows its key',
+            r.subShut && r.subOpen && r.subBeside && r.subBack && r.subRan && r.subKey === 'Enter', JSON.stringify([r.subShut, r.subOpen, r.subBeside, r.subBack, r.subRan, r.subKey]));
+        check('... a photo\'s six turn and flip commands are under Turn and flip', r.subPhoto);
         check('ctrl+wheel zooms the grid', r.zoomChanged);
         await page.close();
     }
