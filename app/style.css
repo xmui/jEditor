@@ -11021,3 +11021,54 @@ body.touring .controls.idle button { pointer-events: auto; }
 :root:not([data-skin]) :is(.thumb-item, .mode-thumb) {
     border-radius: var(--r-photo);
 }
+
+/* ==========================================================================
+   The 2.0 refinement: Adjust and Paint (jEditor's own look). One frame for
+   both: a top bar, a panel at the right and the film strip, the panel and
+   the bars on the sidebar's tint (--chrome), so each reads as the same
+   window with another panel. A slider's number is plain until it's
+   pointed at or typed in. The chosen tool is a soft accent square, as a
+   chosen row is anywhere else.
+   ========================================================================== */
+
+:root:not([data-skin]) :is(.adj-panel, .paint-panel, .paint-options, .paint-tools) {
+    border-color: var(--chrome-line);
+    background: var(--chrome);
+}
+
+:root:not([data-skin]) .mode-head {
+    min-height: var(--sp-12);
+    padding-top: var(--sp-1);
+    padding-bottom: var(--sp-1);
+}
+
+:root:not([data-skin]) .paint-options {
+    min-height: 36px;
+    border-top-color: transparent;
+}
+
+:root:not([data-skin]) .adj-num:not(:hover, :focus) {
+    border-color: transparent;
+    background: transparent;
+    color: var(--text-2);
+}
+
+:root:not([data-skin]) .paint-tool {
+    width: var(--ctl-md);
+    height: var(--ctl-md);
+    border-radius: var(--r-md);
+}
+
+:root:not([data-skin]) .paint-tool[aria-pressed="true"] {
+    border-color: transparent;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+}
+
+:root:not([data-skin]) .paint-layer {
+    border-radius: var(--r-md);
+}
+
+:root:not([data-skin]) :is(.adj-look img, .adj-look canvas) {
+    border-radius: var(--r-photo);
+}
