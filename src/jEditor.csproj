@@ -94,6 +94,23 @@
     </ItemGroup>
   </Target>
 
+  <!-- The engine (engine/, Rust; Engine.cs): jeditor_engine.dll beside the
+       exe. Built with cargo when Rust is installed (and nasm, for libjpeg's
+       SIMD); without them the app builds and works as before, the page making
+       its own thumbnails. RequireEngine=true (CI: scripts/build.ps1) makes a
+       failed engine build an error -->
+  <PropertyGroup>
+    <EngineDir>$(MSBuildThisFileDirectory)..\engine\</EngineDir>
+    <EngineDll>$(EngineDir)target\release\jeditor_engine.dll</EngineDll>
+  </PropertyGroup>
+  <Target Name="BuildEngine" BeforeTargets="AssignTargetPaths" Condition="'$(OS)' == 'Windows_NT'">
+    <Exec Condition="'$(RequireEngine)' == 'true'" Command="cargo build --release --locked --manifest-path &quot;$(EngineDir)Cargo.toml&quot; --lib" />
+    <Exec Condition="'$(RequireEngine)' != 'true'" Command="cargo build --release --locked --manifest-path &quot;$(EngineDir)Cargo.toml&quot; --lib" ContinueOnError="WarnAndContinue" />
+    <ItemGroup Condition="Exists('$(EngineDll)')">
+      <Content Include="$(EngineDll)" Link="jeditor_engine.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    </ItemGroup>
+  </Target>
+
   <!-- Shipped as plain files beside the exe (not inside it), so a UI change
        is a file change, never a rebuild -->
   <ItemGroup>

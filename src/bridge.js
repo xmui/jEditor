@@ -210,7 +210,8 @@
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: 'windows',
-        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn', 'themes', 'folderMove', 'cacheFolder'],
+        // (engine: when jeditor_engine.dll loaded; the app says so, Engine.cs)
+        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn', 'themes', 'folderMove', 'cacheFolder'].concat(window.__jeditorEngine ? ['engine'] : []),
         // jEditor's storage on this PC: a folder handle, one subfolder per
         // order (see app/folder-cache.js)
         async dataDir() {
@@ -220,6 +221,13 @@
         },
         // Where a folder handle is on disk (null: not known)
         folderPath,
+        // The engine's thumbnail of the photo at relPath ('a/b.jpg') in the
+        // folder at dir: a URL the app answers (Engine.cs), w px wide as
+        // shown; 204 (no content) when the engine can't make it
+        engineThumb(dir, relPath, w) {
+            const path = dir.replace(/[\\/]+$/, '') + '\\' + String(relPath).replace(/\//g, '\\');
+            return `/engine/thumb?w=${w}&path=${encodeURIComponent(path)}`;
+        },
         // A folder handle for a path, with permission to edit it
         async folderHandle(path) {
             const { objects } = await answer('folderHandle', { path });
@@ -595,6 +603,19 @@
         let lastScanned = null; // the scan step's last photo, moved by the windows step
         const file = a.files[0];
         const rotated = file ? await a.rotateImage(file, 90) !== false : false;
+        // The engine: a thumbnail of the first photo, made by the app
+        // (Engine.cs) from the file on disk, 64 px wide
+        if (window.JEditorNative.features.includes('engine') && file) {
+            try {
+                const here = await window.JEditorNative.folderPath(a.dirHandle);
+                const r = await fetch(window.JEditorNative.engineThumb(here, file.relPath || file.name, 64));
+                const bmp = r.status === 200 ? await createImageBitmap(await r.blob()) : null;
+                steps.engine = !here ? 'no path for the folder' : !bmp ? `the app answered ${r.status}`
+                    : bmp.width === 64 ? true : `a thumbnail ${bmp.width} px wide, not 64`;
+            } catch (e) {
+                steps.engine = 'failed: ' + (e && e.message || e);
+            }
+        }
         try {
             Flags.apply('star', [file]);
             await Flags.save();

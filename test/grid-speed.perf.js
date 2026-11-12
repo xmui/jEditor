@@ -1,11 +1,16 @@
-// Times the grid in the Mac app (mac/, Electron) and the web page, on the
+// Times the grid in the Mac app (mac/, Electron), the Windows app and the web page, on the
 // same folder on disk: the first screen of thumbnails, every thumbnail
 // made, scrolling, resizing the tiles, and opening a photo and going back
 // (with its zoom). Not part of npm test: run it by hand before and after a
 // speed change (under xvfb-run -a on Linux).
 //
-//   node test/grid-speed.perf.js                 both, cold then warm
-//   ONLY=mac node test/grid-speed.perf.js        (or web)
+//   node test/grid-speed.perf.js                 the Mac app and the web, cold then warm
+//   ONLY=mac node test/grid-speed.perf.js        (or web, or windows)
+//
+// The Windows app: ONLY=windows, JEDITOR_EXE=<its jEditor.exe> (default
+// dist\publish\jEditor.exe). It's driven over WebView2's DevTools port.
+// JEDITOR_NO_ENGINE=1 runs it without its engine (src/Engine.cs), for the
+// before and after of docs/plans/fast-engine.md.
 //   JPEG=2400 HEIC=300 DNG=300 LIB=600 node test/grid-speed.perf.js
 //
 // The folder (camera-sized JPEGs, iPhone-sized HEICs, DNGs with a full-size
@@ -31,7 +36,7 @@ const LIBRARY = path.join(BASE, `library-${N.lib}`);
 const VIEW = { width: 1440, height: 900 };
 
 function makePhotos() {
-    execFileSync('python3', [path.join(__dirname, 'grid-speed-photos.py'), FOLDER, N.jpeg, N.heic, N.dng, LIBRARY, N.lib].map(String), { stdio: 'inherit' });
+    execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'), [path.join(__dirname, 'grid-speed-photos.py'), FOLDER, N.jpeg, N.heic, N.dng, LIBRARY, N.lib].map(String), { stdio: 'inherit' });
 }
 
 // A real folder handle for a path: the folder dropped onto the page
@@ -68,6 +73,37 @@ async function launchMac(profile) {
     }, VIEW);
     await ready(page);
     return { page, cdp: await page.context().newCDPSession(page), close: () => app.close() };
+}
+
+// The Windows app, its own WebView2 profile in `profile`, driven through
+// WebView2's DevTools port. The folder's handle comes from the app with its
+// path (JEditorNative.folderHandle), as a folder opened there does
+async function launchWindows(profile) {
+    const { spawn } = require('child_process');
+    const exe = process.env.JEDITOR_EXE || path.join(ROOT, 'dist', 'publish', 'jEditor.exe');
+    if (!fs.existsSync(exe)) throw new Error(`No ${exe}: build it (scripts/build.ps1) or set JEDITOR_EXE`);
+    const port = 9333;
+    const proc = spawn(exe, ['--user-data', profile], {
+        env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}` }, stdio: 'ignore'
+    });
+    let browser = null;
+    for (let i = 0; i < 150 && !browser; i++) {
+        browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`).catch(() => null);
+        if (!browser) await new Promise(r => setTimeout(r, 200));
+    }
+    if (!browser) { proc.kill(); throw new Error('The Windows app didn\'t open its DevTools port'); }
+    let page = null;
+    for (let i = 0; i < 150 && !page; i++) {
+        page = browser.contexts().flatMap(c => c.pages()).find(p => p.url().startsWith('https://jeditor.example/'));
+        if (!page) await new Promise(r => setTimeout(r, 200));
+    }
+    await ready(page);
+    const engine = await page.evaluate(() => Host.has('engine'));
+    console.log(`  (the Windows app, ${engine ? 'with' : 'without'} its engine)`);
+    return {
+        page, cdp: null, windows: true,
+        close: async () => { await browser.close().catch(() => {}); proc.kill(); await new Promise(r => setTimeout(r, 1500)); }
+    };
 }
 
 let server = null;
@@ -272,8 +308,9 @@ async function main() {
     for (const target of targets) {
         const profile = fs.mkdtempSync(path.join(os.tmpdir(), `jeditor-grid-speed-${target}-`));
         for (const run of ['cold', 'warm']) {
-            const s = target === 'mac' ? await launchMac(profile) : await launchWeb(profile);
-            await dropFolder(s.page, s.cdp, FOLDER);
+            const s = target === 'mac' ? await launchMac(profile) : target === 'windows' ? await launchWindows(profile) : await launchWeb(profile);
+            if (s.windows) await s.page.evaluate(async (dir) => { window.__folder = await window.JEditorNative.folderHandle(dir); }, FOLDER);
+            else await dropFolder(s.page, s.cdp, FOLDER);
             const r = await measure(s.page, false);
             results[`${target} ${run}`] = r;
             print(`${target}, folder, ${run}`, r);
@@ -298,4 +335,4 @@ function print(title, r) {
 }
 
 if (require.main === module) main().catch(e => { console.error(e); process.exit(1); });
-module.exports = { launchMac, launchWeb, dropFolder, measure, FOLDER, LIBRARY };
+module.exports = { launchMac, launchWeb, launchWindows, dropFolder, measure, FOLDER, LIBRARY };
