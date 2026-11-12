@@ -52,9 +52,17 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+      # The engine (engine/, Rust): nasm for libjpeg's SIMD; cargo's builds kept
+      - uses: ilammy/setup-nasm@v1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine
       - name: Build
         shell: pwsh
         run: ./scripts/build.ps1
+      - name: Engine tests
+        working-directory: engine
+        run: cargo test --release --locked
       # On the WebView2 users have now, not the runner image's
       - name: WebView2 runtime
         shell: pwsh

@@ -3549,7 +3549,9 @@ const app = {
 
     pumpThumbQueue() {
         this._thumbActive = this._thumbActive || 0;
-        while (this._thumbActive < this.THUMB_CONCURRENCY && this._thumbQueue && this._thumbQueue.length) {
+        // The engine works on every core, so more at once go to it
+        const most = Host.has('engine') ? Math.max(this.THUMB_CONCURRENCY, Math.min(12, navigator.hardwareConcurrency || 4)) : this.THUMB_CONCURRENCY;
+        while (this._thumbActive < most && this._thumbQueue && this._thumbQueue.length) {
             const job = this._thumbQueue.shift();
             this._thumbActive++;
             this.runThumbJob(job).finally(() => {
@@ -3626,7 +3628,7 @@ const app = {
                 blob = await FolderCache.getThumb(this, cacheKey);
                 if (blob) this.idbPutThumb(cacheKey, blob);
                 else {
-                    blob = await this.convertedThumbnail(fileEntry, disk);
+                    blob = await this.engineThumbnail(fileEntry) || await this.convertedThumbnail(fileEntry, disk);
                     if (blob) this.idbPutThumb(cacheKey, blob);
                 }
             }
@@ -3643,6 +3645,26 @@ const app = {
         fileEntry._thumbPromise = null;
         fileEntry._thumbStale = false;
         this.deliverThumbnail(fileEntry);
+    },
+
+    // The app's engine makes it (Host.has('engine'): src/Engine.cs) from
+    // the file on disk, decoding only as much as the thumbnail needs:
+    // several times faster than a whole decode here. Null: the page makes
+    // it (not a JPEG, no path for the folder, or the engine couldn't)
+    async engineThumbnail(fileEntry) {
+        if (!Host.has('engine') || !/\.jpe?g$/i.test(fileEntry.name) || !this.dirHandle) return null;
+        const handle = this.dirHandle;
+        if (!this._engineDir || this._engineDir.handle !== handle) {
+            this._engineDir = { handle, path: Host.get().folderPath(handle).catch(() => null) };
+        }
+        const dir = await this._engineDir.path;
+        if (!dir) return null;
+        try {
+            const r = await fetch(Host.get().engineThumb(dir, fileEntry.relPath || fileEntry.name, this.THUMB_WIDTH));
+            return r.status === 200 ? await r.blob() : null;
+        } catch (e) {
+            return null;
+        }
     },
 
     // A thumbnail made from the file: a HEIC, TIFF or JPEG XL straight from

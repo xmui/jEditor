@@ -1,0 +1,158 @@
+name: Speed
+
+# The fast engine's numbers (docs/plans/fast-engine.md): the grid on a
+# folder of generated photos (JPEG, HEIC, DNG; test/grid-speed-photos.py),
+# Adjust, Export and Paint (test/engine-speed.perf.js) and the engine on
+# its own (engine-bench), on GitHub's Windows and Mac runners. These are
+# CI numbers, not a real PC's: good for before and after, not for how fast
+# jEditor feels on the owner's computer.
+#
+# On demand only, to keep CI minutes small: run it by hand (Actions → Speed
+# → Run workflow), or label a pull request `perf` (each push to it then
+# measures again). The numbers are in the run's summary and its artifacts.
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled, synchronize]
+
+env:
+  JPEG: 400
+  HEIC: 60
+  DNG: 60
+  LIB: 0
+
+jobs:
+  windows:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'perf')
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/setup-nasm@v1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine
+      - run: npm ci
+      - run: pip install pillow numpy pillow-heif
+      - name: Build (with the engine)
+        shell: pwsh
+        run: ./scripts/build.ps1 -SkipInstaller
+      - name: WebView2 runtime
+        shell: pwsh
+        run: ./scripts/update-webview2.ps1
+      - name: Grid, the Windows app, without the engine (before)
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force perf | Out-Null
+          $env:ONLY = 'windows'; $env:JEDITOR_NO_ENGINE = '1'; $env:JSON = 'perf/grid-windows-before.json'
+          node test/grid-speed.perf.js 2>&1 | Tee-Object perf/grid-windows-before.txt
+      - name: Grid, the Windows app, with the engine (after)
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          $env:ONLY = 'windows'; $env:JSON = 'perf/grid-windows-after.json'
+          node test/grid-speed.perf.js 2>&1 | Tee-Object perf/grid-windows-after.txt
+      - name: Grid, Chrome
+        timeout-minutes: 10
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $env:ONLY = 'web'; $env:JSON = 'perf/grid-web-windows.json'
+          node test/grid-speed.perf.js 2>&1 | Tee-Object perf/grid-web-windows.txt
+      - name: The engine alone
+        timeout-minutes: 10
+        continue-on-error: true
+        shell: pwsh
+        working-directory: engine
+        run: |
+          $folder = Join-Path $env:USERPROFILE "jeditor-grid-speed\folder-$env:JPEG-$env:HEIC-$env:DNG"
+          cargo run --release --locked --bin engine-bench -- $folder 2>&1 | Tee-Object ../perf/engine-bench-windows.txt
+      - name: Adjust, Export and Paint, Chrome
+        timeout-minutes: 10
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $env:JSON = 'perf/engine-speed-windows.json'
+          node test/engine-speed.perf.js 2>&1 | Tee-Object perf/engine-speed-windows.txt
+      - name: Summary
+        if: always()
+        shell: pwsh
+        run: |
+          "## Speed on windows-latest (CI numbers, not a real PC's)" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          Get-ChildItem perf -Filter *.txt | ForEach-Object {
+            "### $($_.BaseName)`n``````" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+            Get-Content $_.FullName | Where-Object { $_ -notmatch 'PERF |DevTools|^\s*$' } | Out-File -Append $env:GITHUB_STEP_SUMMARY
+            "``````" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: speed-windows
+          path: perf
+          if-no-files-found: ignore
+
+  mac:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'perf')
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/setup-nasm@v1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine
+      - run: npm ci
+      - run: npm ci
+        working-directory: mac
+      - run: pip install pillow numpy pillow-heif
+      - name: Grid, the Mac app (no engine there yet)
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          mkdir -p perf
+          ONLY=mac JSON=perf/grid-mac.json node test/grid-speed.perf.js 2>&1 | tee perf/grid-mac.txt
+      - name: Grid, Chrome
+        timeout-minutes: 10
+        continue-on-error: true
+        run: ONLY=web JSON=perf/grid-web-mac.json node test/grid-speed.perf.js 2>&1 | tee perf/grid-web-mac.txt
+      - name: The engine alone (for the Mac's turn)
+        timeout-minutes: 10
+        continue-on-error: true
+        working-directory: engine
+        run: cargo run --release --locked --bin engine-bench -- "$(node -p "require('os').tmpdir()")/jeditor-grid-speed/folder-$JPEG-$HEIC-$DNG" 2>&1 | tee ../perf/engine-bench-mac.txt
+      - name: Adjust, Export and Paint, Chrome
+        timeout-minutes: 10
+        continue-on-error: true
+        run: JSON=perf/engine-speed-mac.json node test/engine-speed.perf.js 2>&1 | tee perf/engine-speed-mac.txt
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Speed on macos-latest (CI numbers, not a real Mac's)" >> "$GITHUB_STEP_SUMMARY"
+          for f in perf/*.txt; do
+            echo "### $(basename "$f" .txt)" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            grep -v -E 'PERF |DevTools|^\s*$' "$f" >> "$GITHUB_STEP_SUMMARY" || true
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: speed-mac
+          path: perf
+          if-no-files-found: ignore

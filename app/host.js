@@ -30,6 +30,11 @@
 //                nothing is added, renamed or removed (app.fixedFiles)
 //   photosAdd    Add to Photos library: a project's photos into Photos, in an
 //                album named after it (script.js: addToPhotos)
+//   engine       the app's own engine (engine/, Rust; docs/plans/fast-engine.md):
+//                JPEG grid thumbnails made from the file on disk, much faster
+//                than decoding the whole photo in the page (script.js:
+//                engineThumbnail; JEditorNative.engineThumb). Today's code is
+//                the fallback, for the web and for whatever the engine can't do
 //
 // Wording that names the system's own things comes from here too: in a
 // text, {files} is Explorer, Finder or Files, {computer} this PC or this Mac, and

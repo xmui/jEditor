@@ -61,6 +61,16 @@ On Linux, the same with `node mac/build.js`: `dist/jEditor-x.y.z-linux.AppImage`
 
 Every push builds on GitHub Actions: the tests, then on Windows the build, the smoke test and an install/uninstall test, on a Mac the Mac app's tests, its build and its smoke test, and on Linux the same tests as the Linux app, its AppImage, .deb and pacman package, and install tests of the .deb on Ubuntu and the pacman package in an Arch Linux container. The setup, the zip, the .dmg and the Linux packages from each run are on the run's page under **Artifacts**.
 
+### The engine
+
+`engine/` is jEditor's engine: the heavy image work in Rust, run by the desktop apps instead of the page ([the plan](plans/fast-engine.md)). The page asks for results by URL and gets pictures back; full-size pixels never go to the page. It's the `engine` feature (`Host.has('engine')`), and today's JavaScript stays the fallback for the web and for whatever the engine can't do.
+
+- **What it does so far (Phase 1, first slice):** JPEG grid thumbnails, decoded straight to about the size wanted (libjpeg's scaled decode), turned as their EXIF says, on every core. `engine/src/thumb.rs`, `exif.rs`; the C interface the apps call is in `engine/src/lib.rs` (`je_thumbnail_file`, `je_free`, `je_version`).
+- **In the Windows app:** `jeditor_engine.dll` beside `jEditor.exe`, loaded by `src/Engine.cs`, which answers the page's `https://engine.jeditor.example/thumb?w=…&path=…` (a host of its own, with CORS for the UI's origin) (a JPEG, or 204 when the engine can't make it and the page does). The bridge lists `engine` only when the DLL loaded, and gives the page `JEditorNative.engineThumb(dir, relPath, w)`; the page's side is `engineThumbnail` in `app/script.js`. Not in the Mac and Linux app yet.
+- **Building:** `src/jEditor.csproj` runs `cargo build --release --lib` in `engine/` on Windows and ships the DLL. It needs [Rust](https://rustup.rs) (MSVC) and [nasm](https://www.nasm.us) (for libjpeg's SIMD) on the PATH; without them the app still builds, without the engine. CI (`scripts/build.ps1` with `CI=true`) requires it. On any OS, `cargo build --release` in `engine/` builds the library and the bench.
+- **Testing:** `cargo test --release` in `engine/` (EXIF orientation, sizes and turns, bad files as errors); `test/bridge.test.js` checks the page uses the engine's thumbnails and falls back; the smoke test (`scripts/smoke-test.ps1`) has the real app's engine make one.
+- **Timing:** `cargo run --release --bin engine-bench -- <folder of JPEGs>` (the engine alone, against a full decode); `ONLY=windows node test/grid-speed.perf.js` (the Windows app's grid; `JEDITOR_NO_ENGINE=1` turns the engine off for the before); `node test/engine-speed.perf.js` (Adjust, Export and Paint in Chrome, the next phases' baseline).
+
 ### Releasing
 
 ```

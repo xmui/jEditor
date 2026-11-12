@@ -80,7 +80,7 @@ async function serveUi(context, origin = ORIGIN) {
 
 // A page as the Windows app shows it: fake webview, then the bridge, then
 // jEditor
-async function openPage(browser, { origin = ORIGIN, webview = true, dev = false } = {}) {
+async function openPage(browser, { origin = ORIGIN, webview = true, dev = false, engine = false } = {}) {
     const context = await browser.newContext();
     await serveUi(context, origin);
     const page = await context.newPage();
@@ -89,6 +89,7 @@ async function openPage(browser, { origin = ORIGIN, webview = true, dev = false 
     page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
     if (webview) await page.addInitScript(FAKE_WEBVIEW);
     if (dev) await page.addInitScript('window.__jeditorDev = true;');
+    if (engine) await page.addInitScript('window.__jeditorEngine = true;');
     await page.addInitScript(BRIDGE);
     await page.addInitScript(QUIET_FIRST_OPEN);
     await page.goto(origin + '/index.html');
@@ -162,6 +163,84 @@ const waitForPost = (page, type) => page.waitForFunction(
         check('the folder goes on the Recent list', recents[0] === 'Smith Order', JSON.stringify(recents));
         check('open folder: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
+    }
+
+    console.log('bridge: the engine (grid thumbnails from the app)');
+    {
+        const { context, page, errors } = await openPage(browser, { engine: true });
+        await waitForPost(page, 'ready');
+        // What the app's engine answers: a magenta picture, so it shows which
+        // thumbnails came from it; photo4 it can't make (204, no content)
+        const magenta = Buffer.from(await page.evaluate(async () => {
+            const c = document.createElement('canvas');
+            c.width = 320; c.height = 240;
+            const g = c.getContext('2d');
+            g.fillStyle = '#ff00ff';
+            g.fillRect(0, 0, 320, 240);
+            const b = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+            return [...new Uint8Array(await b.arrayBuffer())];
+        }));
+        const asked = [];
+        await page.route('https://engine.jeditor.example/**', (route) => {
+            const u = new URL(route.request().url());
+            asked.push({ w: u.searchParams.get('w'), path: u.searchParams.get('path') });
+            if (/photo4\.jpg$/.test(u.searchParams.get('path'))) return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': ORIGIN }, body: '' });
+            route.fulfill({ status: 200, contentType: 'image/jpeg', headers: { 'Access-Control-Allow-Origin': ORIGIN }, body: magenta });
+        });
+        // Four photos big enough to need a thumbnail (past the size that
+        // serves as its own), in green
+        await page.evaluate(async () => {
+            const root = await navigator.storage.getDirectory();
+            try { await root.removeEntry('Engine Order', { recursive: true }); } catch (e) { }
+            const dir = await root.getDirectoryHandle('Engine Order', { create: true });
+            for (let i = 1; i <= 4; i++) {
+                const c = document.createElement('canvas');
+                c.width = 1200; c.height = 900;
+                const g = c.getContext('2d');
+                g.fillStyle = '#00c000';
+                g.fillRect(0, 0, 1200, 900);
+                // Noise, so the JPEG is big
+                const img = g.getImageData(0, 0, 1200, 900);
+                for (let k = 0; k < img.data.length; k += 4) img.data[k + 2] = (Math.random() * 60) | 0;
+                g.putImageData(img, 0, 0);
+                const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.95));
+                const w = await (await dir.getFileHandle(`photo${i}.jpg`, { create: true })).createWritable();
+                await w.write(blob);
+                await w.close();
+            }
+            window.__onPost = async (m) => {
+                if (m.type === 'pickFolder') setTimeout(() => window.__deliver({ replyTo: m.id, path: 'D:\\Orders\\Engine Order' }, [dir]), 10);
+                else if (m.type === 'dataDir') window.__deliver({ replyTo: m.id, path: 'C:\\data' }, [await (await navigator.storage.getDirectory()).getDirectoryHandle('appdata', { create: true })]);
+            };
+        });
+        await page.click('#btn-browse-folder');
+        await page.waitForSelector('#open-card:not(.hidden)');
+        await page.click('#oc-browse');
+        await page.waitForFunction(() => app.files.length === 4 && !app.isLoading, null, { timeout: 15000 });
+        await page.waitForFunction(() => app.files.every(f => f.thumbnailUrl), null, { timeout: 20000 });
+        const r = await page.evaluate(async () => {
+            const out = { has: Host.has('engine'), colour: {} };
+            for (const f of app.files) {
+                const bmp = await createImageBitmap(await (await fetch(f.thumbnailUrl)).blob());
+                const c = new OffscreenCanvas(bmp.width, bmp.height);
+                c.getContext('2d').drawImage(bmp, 0, 0);
+                const [R, G, B] = c.getContext('2d').getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data;
+                out.colour[f.name] = R > 200 && B > 200 && G < 60 ? 'engine' : G > 150 && R < 60 ? 'page' : `${R},${G},${B}`;
+            }
+            return out;
+        });
+        check('lists the engine when the app has it', r.has, JSON.stringify(r));
+        check('JPEG thumbnails come from the engine', ['photo1.jpg', 'photo2.jpg', 'photo3.jpg'].every(n => r.colour[n] === 'engine'), JSON.stringify(r.colour));
+        check('one the engine can\'t make, the page makes itself', r.colour['photo4.jpg'] === 'page', JSON.stringify(r.colour));
+        const one = asked.find(q => /photo1\.jpg$/.test(q.path));
+        check('asks by the photo\'s path on disk, 320 wide', one && one.w === '320' && one.path === 'D:\\Orders\\Engine Order\\photo1.jpg', JSON.stringify(asked));
+        check('engine: no JS errors', errors.length === 0, errors.join('; '));
+        await context.close();
+
+        // Without it (no DLL), the feature isn't listed and nothing is asked
+        const plain = await openPage(browser);
+        check('no engine: not listed', await plain.page.evaluate(() => !Host.has('engine')));
+        await plain.context.close();
     }
 
     console.log('bridge: picker canceled');

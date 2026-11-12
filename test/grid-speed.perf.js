@@ -1,11 +1,16 @@
-// Times the grid in the Mac app (mac/, Electron) and the web page, on the
+// Times the grid in the Mac app (mac/, Electron), the Windows app and the web page, on the
 // same folder on disk: the first screen of thumbnails, every thumbnail
 // made, scrolling, resizing the tiles, and opening a photo and going back
 // (with its zoom). Not part of npm test: run it by hand before and after a
 // speed change (under xvfb-run -a on Linux).
 //
-//   node test/grid-speed.perf.js                 both, cold then warm
-//   ONLY=mac node test/grid-speed.perf.js        (or web)
+//   node test/grid-speed.perf.js                 the Mac app and the web, cold then warm
+//   ONLY=mac node test/grid-speed.perf.js        (or web, or windows)
+//
+// The Windows app: ONLY=windows, JEDITOR_EXE=<its jEditor.exe> (default
+// dist\publish\jEditor.exe). It's driven over WebView2's DevTools port.
+// JEDITOR_NO_ENGINE=1 runs it without its engine (src/Engine.cs), for the
+// before and after of docs/plans/fast-engine.md.
 //   JPEG=2400 HEIC=300 DNG=300 LIB=600 node test/grid-speed.perf.js
 //
 // The folder (camera-sized JPEGs, iPhone-sized HEICs, DNGs with a full-size
@@ -25,13 +30,15 @@ const { launchOptions, QUIET_FIRST_OPEN } = require('./page-helpers');
 const ROOT = path.join(__dirname, '..');
 const MAC = path.join(ROOT, 'mac');
 const N = { jpeg: +(process.env.JPEG || 2400), heic: +(process.env.HEIC || 300), dng: +(process.env.DNG || 300), lib: +(process.env.LIB || 600) };
-const BASE = process.env.PHOTOS || path.join(os.tmpdir(), 'jeditor-grid-speed');
+// On Windows in the user's folder, not the temp folder: WebView2 doesn't let
+// the page read a folder under %LOCALAPPDATA% (it opens, and lists nothing)
+const BASE = process.env.PHOTOS || path.join(process.platform === 'win32' ? os.homedir() : os.tmpdir(), 'jeditor-grid-speed');
 const FOLDER = path.join(BASE, `folder-${N.jpeg}-${N.heic}-${N.dng}`);
 const LIBRARY = path.join(BASE, `library-${N.lib}`);
 const VIEW = { width: 1440, height: 900 };
 
 function makePhotos() {
-    execFileSync('python3', [path.join(__dirname, 'grid-speed-photos.py'), FOLDER, N.jpeg, N.heic, N.dng, LIBRARY, N.lib].map(String), { stdio: 'inherit' });
+    execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'), [path.join(__dirname, 'grid-speed-photos.py'), FOLDER, N.jpeg, N.heic, N.dng, LIBRARY, N.lib].map(String), { stdio: 'inherit' });
 }
 
 // A real folder handle for a path: the folder dropped onto the page
@@ -52,7 +59,9 @@ async function dropFolder(page, cdp, dir) {
     });
     const data = { items: [], files: [dir], dragOperationsMask: 1 };
     for (const type of ['dragEnter', 'dragOver', 'drop']) await cdp.send('Input.dispatchDragEvent', { type, x: 4, y: 4, data });
-    await page.evaluate(() => window.__dropped);
+    // A drop that never lands (seen in Chrome on CI's Windows) fails here, not hangs
+    const landed = await page.evaluate(() => Promise.race([window.__dropped.then(() => true), new Promise(r => setTimeout(() => r(false), 60000))]));
+    if (!landed) throw new Error(`The folder dropped onto the page never arrived (${dir})`);
 }
 
 async function launchMac(profile) {
@@ -68,6 +77,67 @@ async function launchMac(profile) {
     }, VIEW);
     await ready(page);
     return { page, cdp: await page.context().newCDPSession(page), close: () => app.close() };
+}
+
+// The Windows app, its own WebView2 profile in `profile`, driven through
+// WebView2's DevTools port. The folder's handle comes from the app with its
+// path (JEditorNative.folderHandle), as a folder opened there does
+async function launchWindows(profile) {
+    const { spawn } = require('child_process');
+    const exe = process.env.JEDITOR_EXE || path.join(ROOT, 'dist', 'publish', 'jEditor.exe');
+    if (!fs.existsSync(exe)) throw new Error(`No ${exe}: build it (scripts/build.ps1) or set JEDITOR_EXE`);
+    // WebView2 picks a free DevTools port and writes it to the profile's
+    // DevToolsActivePort (port 0), so no guessing which one it took
+    const n = (launchWindows.n = (launchWindows.n || 0) + 1);
+    // Its own store too (the app keeps the thumbnail cache there, not in
+    // the WebView2 profile): kept for the warm run, new for each profile.
+    // In the user's folder: WebView2 stops the page writing under
+    // %LOCALAPPDATA% (the temp folder), as the smoke test's store is
+    const store = path.join(os.homedir(), 'jeditor-speed-' + path.basename(profile));
+    // The app's log, shown if it doesn't come up
+    const log = path.join(os.tmpdir(), `jeditor-speed-${path.basename(profile)}-${n}.log`);
+    const active = path.join(profile, 'EBWebView', 'DevToolsActivePort');
+    try { fs.rmSync(active, { force: true }); } catch (e) { /* none */ }
+    const proc = spawn(exe, ['--user-data', profile, '--store', store, '--log', log], {
+        env: { ...process.env, JEDITOR_DEVTOOLS: '1', WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-port=0' }, stdio: 'ignore'
+    });
+    let exited = null;
+    proc.on('exit', code => { exited = code; });
+    let browser = null, port = null;
+    for (let i = 0; i < 300 && !browser && exited === null; i++) {
+        // (WebView2 may still be writing it: busy, read again next time)
+        if (!port && fs.existsSync(active)) { try { port = Number(fs.readFileSync(active, 'utf8').split(/\r?\n/)[0]) || null; } catch (e) { /* busy */ } }
+        if (port) {
+            for (const host of ['127.0.0.1', '[::1]', 'localhost']) {
+                browser = await chromium.connectOverCDP(`http://${host}:${port}`).catch(() => null);
+                if (browser) break;
+            }
+        }
+        if (!browser) await new Promise(r => setTimeout(r, 200));
+    }
+    if (!browser) {
+        try { execFileSync('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore' }); } catch (e) { /* gone */ }
+        const said = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split(/\r?\n/).slice(-30).join('\n') : '(no log)';
+        const why = port ? `port ${port} didn't answer` : `no ${active}: WebView2 didn't take --remote-debugging-port`;
+        throw new Error(`The Windows app didn't open DevTools (${why}; ${exited === null ? 'still running after 60 s' : 'exited with ' + exited}). Its log:\n${said}`);
+    }
+    let page = null;
+    for (let i = 0; i < 150 && !page; i++) {
+        page = browser.contexts().flatMap(c => c.pages()).find(p => p.url().startsWith('https://jeditor.example/'));
+        if (!page) await new Promise(r => setTimeout(r, 200));
+    }
+    await ready(page);
+    const engine = await page.evaluate(() => Host.has('engine'));
+    console.log(`  (the Windows app, ${engine ? 'with' : 'without'} its engine)`);
+    return {
+        page, cdp: null, windows: true,
+        // The app and its WebView2 processes, all of them
+        close: async () => {
+            await browser.close().catch(() => {});
+            try { execFileSync('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore' }); } catch (e) { /* gone */ }
+            await new Promise(r => setTimeout(r, 3000));
+        }
+    };
 }
 
 let server = null;
@@ -89,7 +159,7 @@ async function launchWeb(profile) {
 
 async function ready(page) {
     page.on('pageerror', e => console.log('  PAGEERROR', e.message));
-    page.on('console', m => { if (m.text().startsWith('PERF ')) console.log('  ' + m.text()); });
+    page.on('console', m => { if (m.text().startsWith('PERF ') || m.type() === 'error' || m.type() === 'warning') console.log('  ' + (m.type() === 'log' ? '' : m.type().toUpperCase() + ' ') + m.text()); });
     await page.waitForFunction(() => typeof app !== 'undefined' && app.elements && app.elements.gridView);
     await page.evaluate(QUIET_FIRST_OPEN);
     await page.evaluate(() => { if (app.uiPrefs) app.uiPrefs.hugeFolder = 0; });
@@ -154,7 +224,11 @@ async function measure(page, lib) {
         } else {
             await app.openDirectory(window.__folder);
         }
-        await until(() => app.files.length > 0);
+        // Opened and empty: say so (and what the page logged) rather than wait
+        if (!(await until(() => app.files.length > 0, 120000))) {
+            const log = [...document.querySelectorAll('#debug-log > div')].slice(-10).map(d => d.textContent).join('\n');
+            throw new Error(`The folder opened with no photos (folder ${app.dirHandle ? app.dirHandle.name : 'none'}, loading ${!!app.isLoading}). The page's log:\n${log}`);
+        }
         out.photos = app.files.length;
         out['open: usable'] = ms(performance.now() - t0);
         await watch;
@@ -272,9 +346,22 @@ async function main() {
     for (const target of targets) {
         const profile = fs.mkdtempSync(path.join(os.tmpdir(), `jeditor-grid-speed-${target}-`));
         for (const run of ['cold', 'warm']) {
-            const s = target === 'mac' ? await launchMac(profile) : await launchWeb(profile);
-            await dropFolder(s.page, s.cdp, FOLDER);
-            const r = await measure(s.page, false);
+            const s = target === 'mac' ? await launchMac(profile) : target === 'windows' ? await launchWindows(profile) : await launchWeb(profile);
+            if (s.windows) await s.page.evaluate(async (dir) => { window.__folder = await window.JEditorNative.folderHandle(dir); }, FOLDER);
+            else await dropFolder(s.page, s.cdp, FOLDER);
+            // Every 20 s, where it's got to (and any dialog in the way), so
+            // a run that stalls on CI says where
+            const beat = setInterval(() => s.page.evaluate(() => {
+                const grid = app.elements.gridView;
+                const tiles = grid ? grid.querySelectorAll('.grid-item').length : 0;
+                const thumbs = (app.files || []).filter(f => f.thumbnailUrl).length;
+                const open = [...document.querySelectorAll('dialog[open], [role=dialog], [role=alertdialog], .modal, .overlay')]
+                    .filter(e => e.offsetParent !== null || getComputedStyle(e).position === 'fixed' && getComputedStyle(e).display !== 'none' && getComputedStyle(e).visibility !== 'hidden')
+                    .map(e => (e.id || e.className || e.tagName) + ': ' + (e.innerText || '').replace(/\s+/g, ' ').slice(0, 120));
+                const log = [...document.querySelectorAll('#debug-log > div')].slice(-4).map(d => d.textContent).join(' / ');
+                return `files ${(app.files || []).length}, loading ${!!app.isLoading}, view ${app.viewMode}, tiles ${tiles}, thumbnails ${thumbs}, folder ${app.dirHandle ? app.dirHandle.name : 'none'} (asked ${window.__folder ? window.__folder.name : 'none'})` + (open.length ? `; on screen: ${open.join(' | ')}` : '') + (log ? `; log: ${log}` : '');
+            }).then(t => console.log('  ... ' + t), () => {}), 20000);
+            const r = await measure(s.page, false).finally(() => clearInterval(beat));
             results[`${target} ${run}`] = r;
             print(`${target}, folder, ${run}`, r);
             if (target === 'mac' && run === 'warm' && N.lib) {
@@ -298,4 +385,4 @@ function print(title, r) {
 }
 
 if (require.main === module) main().catch(e => { console.error(e); process.exit(1); });
-module.exports = { launchMac, launchWeb, dropFolder, measure, FOLDER, LIBRARY };
+module.exports = { launchMac, launchWeb, launchWindows, dropFolder, measure, FOLDER, LIBRARY };

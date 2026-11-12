@@ -1,0 +1,25 @@
+# jEditor's engine: the heavy image work, in Rust, for the desktop apps
+# (docs/plans/fast-engine.md; how it's built: docs/developing.md, Engine).
+[package]
+name = "jeditor-engine"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+
+[lib]
+name = "jeditor_engine"
+# cdylib: jeditor_engine.dll for the Windows app (and later the Mac and
+# Linux hosts); rlib: the bench and the tests
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+mozjpeg = "0.10.13"
+fast_image_resize = "6.1.0"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+# Panics are caught at the C boundary (a bad file is an error, not a crash)
+panic = "unwind"
