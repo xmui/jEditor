@@ -5731,7 +5731,9 @@ const app = {
     setGridSize(px) {
         const grid = this.elements.gridView;
         const anchor = this.gridAnchor();
-        document.documentElement.style.setProperty('--grid-item-size', `${px}px`);
+        // On the grid, not the page: a variable on the page's root has every
+        // part of the window styled again, 5 ms a step with 300 photos
+        grid.style.setProperty('--grid-item-size', `${px}px`);
         this.syncGridTile();
         if (this._gridWin) this.updateGridWindow({ force: true });
         const el = anchor && (anchor.el._file ? this.revealInGrid(anchor.el._file) : anchor.el);
@@ -5813,9 +5815,12 @@ const app = {
         const grid = this.elements.gridView;
         if (!grid.clientWidth) return;
         // The selection bar centers on the grid, less its scrollbar
-        document.documentElement.style.setProperty('--grid-scrollbar', `${grid.offsetWidth - grid.clientWidth}px`);
+        // (each only when it changes, and the tile's size on the grid alone:
+        // setting either on the page's root styles the whole window again)
+        const bar = `${grid.offsetWidth - grid.clientWidth}px`;
+        if (bar !== this._gridBar) document.documentElement.style.setProperty('--grid-scrollbar', this._gridBar = bar);
         const first = parseFloat(getComputedStyle(grid).gridTemplateColumns);
-        if (first > 0) document.documentElement.style.setProperty('--grid-tile', `${first}px`);
+        if (first > 0 && first !== this._gridTile) grid.style.setProperty('--grid-tile', `${this._gridTile = first}px`);
     },
 
     getGridColumnCount() {

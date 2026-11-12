@@ -2078,7 +2078,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
 
             // Grid Up/Down follows the real column count
             app.setView('grid');
-            document.documentElement.style.setProperty('--grid-item-size', '300px');
+            document.getElementById('grid-view').style.setProperty('--grid-item-size', '300px');
             const cols = getComputedStyle(document.getElementById('grid-view')).gridTemplateColumns.split(' ').length;
             out.cols = app.getGridColumnCount() === cols;
 
@@ -3160,14 +3160,14 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // Grid rows never overlap, however wide the tiles stretch
             Folders.setScope(null);
             // (big enough for two rows of the seven, the grid as wide as it is beside the sidebar)
-            document.documentElement.style.setProperty('--grid-item-size', `${Math.ceil(document.getElementById('grid-view').clientWidth / 5)}px`);
+            document.getElementById('grid-view').style.setProperty('--grid-item-size', `${Math.ceil(document.getElementById('grid-view').clientWidth / 5)}px`);
             await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
             const gridTiles = [...document.querySelectorAll('#grid-view .grid-item')];
             const cols = app.getGridColumnCount();
             const r1 = gridTiles[0].getBoundingClientRect(), r2 = gridTiles[cols].getBoundingClientRect();
             out.rowGap = Math.round(r2.top - r1.bottom);
             out.square = Math.abs(r1.width - r1.height) < 1;
-            document.documentElement.style.removeProperty('--grid-item-size');
+            document.getElementById('grid-view').style.removeProperty('--grid-item-size');
             return out;
         });
         check('folders: every folder found, empty ones too', r.folders === '|Wedding|Wedding/Ceremony|Wedding/Reception', r.folders);
