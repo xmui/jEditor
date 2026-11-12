@@ -33,6 +33,24 @@ something new.
   plain white or black photo. Round the letters, text there is about
   4.2-4.5:1 and secondary text about 2:1; `test/mac.test.js` only keeps
   the glass from getting any clearer.
+- **The 2.0 refined look** (the owner's OK, 2026-11-12; the proposal:
+  https://claude.ai/artifact/FY44w17n9u8TLNT1vE3FEM). Three rules:
+  - *Docked is solid, floating is glass.* What's docked to the window's
+    edge (the sidebar, Adjust's and Paint's panels and bars) sits on one
+    quiet tint, `--chrome`. Only what floats over photos is glass.
+  - *One of each control.* One slider (a thin track, a white knob), one
+    switch between a few, one section heading (small and grey, in
+    sentence case), one button family, in every mode. A new part uses
+    these, not a look of its own.
+  - *The photo is never dressed.* No plate behind a photo in the grid, a
+    3 px corner (`--r-photo`), and greys beside a photo stay pure grey.
+  Sizes: rows in lists and menus 28 px (`--row`), buttons and fields 32,
+  floating toolbars 40 (44 on a touch screen); corners 7 for a control,
+  10 for a menu or card, 12 for a dialog. Dialogs have no rules under the
+  title or over the buttons. Menus are solid, show each command's key,
+  and group related commands under one row with its own menu beside it
+  (Turn and flip). The accent is for what's chosen, the one main button
+  and keyboard focus, nothing else. Find anything keeps its dialog look.
 - **Calm.** Short, quiet transitions (`--dur-*`, `--ease-*`), nothing that
   bounces for show. Reduced motion means a plain fade or nothing.
 - **It fits any window.** 800×600 with Comfortable density is the worst
