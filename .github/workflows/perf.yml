@@ -75,7 +75,7 @@ jobs:
         shell: pwsh
         working-directory: engine
         run: |
-          $folder = Join-Path $env:TEMP "jeditor-grid-speed\folder-$env:JPEG-$env:HEIC-$env:DNG"
+          $folder = Join-Path $env:USERPROFILE "jeditor-grid-speed\folder-$env:JPEG-$env:HEIC-$env:DNG"
           cargo run --release --locked --bin engine-bench -- $folder 2>&1 | Tee-Object ../perf/engine-bench-windows.txt
       - name: Adjust, Export and Paint, Chrome
         timeout-minutes: 10

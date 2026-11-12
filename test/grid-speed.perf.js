@@ -30,7 +30,9 @@ const { launchOptions, QUIET_FIRST_OPEN } = require('./page-helpers');
 const ROOT = path.join(__dirname, '..');
 const MAC = path.join(ROOT, 'mac');
 const N = { jpeg: +(process.env.JPEG || 2400), heic: +(process.env.HEIC || 300), dng: +(process.env.DNG || 300), lib: +(process.env.LIB || 600) };
-const BASE = process.env.PHOTOS || path.join(os.tmpdir(), 'jeditor-grid-speed');
+// On Windows in the user's folder, not the temp folder: WebView2 doesn't let
+// the page read a folder under %LOCALAPPDATA% (it opens, and lists nothing)
+const BASE = process.env.PHOTOS || path.join(process.platform === 'win32' ? os.homedir() : os.tmpdir(), 'jeditor-grid-speed');
 const FOLDER = path.join(BASE, `folder-${N.jpeg}-${N.heic}-${N.dng}`);
 const LIBRARY = path.join(BASE, `library-${N.lib}`);
 const VIEW = { width: 1440, height: 900 };
