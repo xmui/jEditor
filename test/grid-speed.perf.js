@@ -342,7 +342,18 @@ async function main() {
             const s = target === 'mac' ? await launchMac(profile) : target === 'windows' ? await launchWindows(profile) : await launchWeb(profile);
             if (s.windows) await s.page.evaluate(async (dir) => { window.__folder = await window.JEditorNative.folderHandle(dir); }, FOLDER);
             else await dropFolder(s.page, s.cdp, FOLDER);
-            const r = await measure(s.page, false);
+            // Every 20 s, where it's got to (and any dialog in the way), so
+            // a run that stalls on CI says where
+            const beat = setInterval(() => s.page.evaluate(() => {
+                const grid = app.elements.gridView;
+                const tiles = grid ? grid.querySelectorAll('.grid-item').length : 0;
+                const thumbs = (app.files || []).filter(f => f.thumbnailUrl).length;
+                const open = [...document.querySelectorAll('dialog[open], [role=dialog], [role=alertdialog], .modal, .overlay')]
+                    .filter(e => e.offsetParent !== null || getComputedStyle(e).position === 'fixed' && getComputedStyle(e).display !== 'none' && getComputedStyle(e).visibility !== 'hidden')
+                    .map(e => (e.id || e.className || e.tagName) + ': ' + (e.innerText || '').replace(/\s+/g, ' ').slice(0, 120));
+                return `files ${(app.files || []).length}, loading ${!!app.isLoading}, view ${app.viewMode}, tiles ${tiles}, thumbnails ${thumbs}` + (open.length ? `; on screen: ${open.join(' | ')}` : '');
+            }).then(t => console.log('  ... ' + t), () => {}), 20000);
+            const r = await measure(s.page, false).finally(() => clearInterval(beat));
             results[`${target} ${run}`] = r;
             print(`${target}, folder, ${run}`, r);
             if (target === 'mac' && run === 'warm' && N.lib) {
