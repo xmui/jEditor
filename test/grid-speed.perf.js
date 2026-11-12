@@ -92,15 +92,23 @@ async function launchWindows(profile) {
     // In the user's folder: WebView2 stops the page writing under
     // %LOCALAPPDATA% (the temp folder), as the smoke test's store is
     const store = path.join(os.homedir(), 'jeditor-speed-' + path.basename(profile));
-    const proc = spawn(exe, ['--user-data', profile, '--store', store], {
+    // The app's log, shown if it doesn't come up
+    const log = path.join(os.tmpdir(), `jeditor-speed-${port}.log`);
+    const proc = spawn(exe, ['--user-data', profile, '--store', store, '--log', log], {
         env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}` }, stdio: 'ignore'
     });
+    let exited = null;
+    proc.on('exit', code => { exited = code; });
     let browser = null;
-    for (let i = 0; i < 150 && !browser; i++) {
+    for (let i = 0; i < 300 && !browser && exited === null; i++) {
         browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`).catch(() => null);
         if (!browser) await new Promise(r => setTimeout(r, 200));
     }
-    if (!browser) { proc.kill(); throw new Error('The Windows app didn\'t open its DevTools port'); }
+    if (!browser) {
+        try { execFileSync('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore' }); } catch (e) { /* gone */ }
+        const said = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split(/\r?\n/).slice(-30).join('\n') : '(no log)';
+        throw new Error(`The Windows app didn't open its DevTools port ${port} (${exited === null ? 'still running after 60 s' : 'exited with ' + exited}). Its log:\n${said}`);
+    }
     let page = null;
     for (let i = 0; i < 150 && !page; i++) {
         page = browser.contexts().flatMap(c => c.pages()).find(p => p.url().startsWith('https://jeditor.example/'));
