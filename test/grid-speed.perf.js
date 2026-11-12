@@ -57,7 +57,9 @@ async function dropFolder(page, cdp, dir) {
     });
     const data = { items: [], files: [dir], dragOperationsMask: 1 };
     for (const type of ['dragEnter', 'dragOver', 'drop']) await cdp.send('Input.dispatchDragEvent', { type, x: 4, y: 4, data });
-    await page.evaluate(() => window.__dropped);
+    // A drop that never lands (seen in Chrome on CI's Windows) fails here, not hangs
+    const landed = await page.evaluate(() => Promise.race([window.__dropped.then(() => true), new Promise(r => setTimeout(() => r(false), 60000))]));
+    if (!landed) throw new Error(`The folder dropped onto the page never arrived (${dir})`);
 }
 
 async function launchMac(profile) {
@@ -82,8 +84,15 @@ async function launchWindows(profile) {
     const { spawn } = require('child_process');
     const exe = process.env.JEDITOR_EXE || path.join(ROOT, 'dist', 'publish', 'jEditor.exe');
     if (!fs.existsSync(exe)) throw new Error(`No ${exe}: build it (scripts/build.ps1) or set JEDITOR_EXE`);
-    const port = 9333;
-    const proc = spawn(exe, ['--user-data', profile], {
+    // A port of its own each time: a WebView2 from the last launch that's
+    // still closing must not be the one connected to
+    const port = 9333 + (launchWindows.n = (launchWindows.n || 0) + 1);
+    // Its own store too (the app keeps the thumbnail cache there, not in
+    // the WebView2 profile): kept for the warm run, new for each profile.
+    // In the user's folder: WebView2 stops the page writing under
+    // %LOCALAPPDATA% (the temp folder), as the smoke test's store is
+    const store = path.join(os.homedir(), 'jeditor-speed-' + path.basename(profile));
+    const proc = spawn(exe, ['--user-data', profile, '--store', store], {
         env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}` }, stdio: 'ignore'
     });
     let browser = null;
@@ -102,7 +111,12 @@ async function launchWindows(profile) {
     console.log(`  (the Windows app, ${engine ? 'with' : 'without'} its engine)`);
     return {
         page, cdp: null, windows: true,
-        close: async () => { await browser.close().catch(() => {}); proc.kill(); await new Promise(r => setTimeout(r, 1500)); }
+        // The app and its WebView2 processes, all of them
+        close: async () => {
+            await browser.close().catch(() => {});
+            try { execFileSync('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore' }); } catch (e) { /* gone */ }
+            await new Promise(r => setTimeout(r, 3000));
+        }
     };
 }
 

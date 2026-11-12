@@ -50,25 +50,27 @@ jobs:
         shell: pwsh
         run: ./scripts/update-webview2.ps1
       - name: Grid, the Windows app, without the engine (before)
-        continue-on-error: true
+        timeout-minutes: 10
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force perf | Out-Null
           $env:ONLY = 'windows'; $env:JEDITOR_NO_ENGINE = '1'; $env:JSON = 'perf/grid-windows-before.json'
           node test/grid-speed.perf.js 2>&1 | Tee-Object perf/grid-windows-before.txt
       - name: Grid, the Windows app, with the engine (after)
-        continue-on-error: true
+        timeout-minutes: 10
         shell: pwsh
         run: |
           $env:ONLY = 'windows'; $env:JSON = 'perf/grid-windows-after.json'
           node test/grid-speed.perf.js 2>&1 | Tee-Object perf/grid-windows-after.txt
       - name: Grid, Chrome
+        timeout-minutes: 10
         continue-on-error: true
         shell: pwsh
         run: |
           $env:ONLY = 'web'; $env:JSON = 'perf/grid-web-windows.json'
           node test/grid-speed.perf.js 2>&1 | Tee-Object perf/grid-web-windows.txt
       - name: The engine alone
+        timeout-minutes: 10
         continue-on-error: true
         shell: pwsh
         working-directory: engine
@@ -76,6 +78,7 @@ jobs:
           $folder = Join-Path $env:TEMP "jeditor-grid-speed\folder-$env:JPEG-$env:HEIC-$env:DNG"
           cargo run --release --locked --bin engine-bench -- $folder 2>&1 | Tee-Object ../perf/engine-bench-windows.txt
       - name: Adjust, Export and Paint, Chrome
+        timeout-minutes: 10
         continue-on-error: true
         shell: pwsh
         run: |
@@ -119,18 +122,22 @@ jobs:
         working-directory: mac
       - run: pip install pillow numpy pillow-heif
       - name: Grid, the Mac app (no engine there yet)
+        timeout-minutes: 10
         continue-on-error: true
         run: |
           mkdir -p perf
           ONLY=mac JSON=perf/grid-mac.json node test/grid-speed.perf.js 2>&1 | tee perf/grid-mac.txt
       - name: Grid, Chrome
+        timeout-minutes: 10
         continue-on-error: true
         run: ONLY=web JSON=perf/grid-web-mac.json node test/grid-speed.perf.js 2>&1 | tee perf/grid-web-mac.txt
       - name: The engine alone (for the Mac's turn)
+        timeout-minutes: 10
         continue-on-error: true
         working-directory: engine
         run: cargo run --release --locked --bin engine-bench -- "$(node -p "require('os').tmpdir()")/jeditor-grid-speed/folder-$JPEG-$HEIC-$DNG" 2>&1 | tee ../perf/engine-bench-mac.txt
       - name: Adjust, Export and Paint, Chrome
+        timeout-minutes: 10
         continue-on-error: true
         run: JSON=perf/engine-speed-mac.json node test/engine-speed.perf.js 2>&1 | tee perf/engine-speed-mac.txt
       - name: Summary

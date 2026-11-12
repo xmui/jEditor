@@ -6,6 +6,8 @@ namespace JEditor;
 //     --log <file>                  write a log
 //     --smoke-test <dir>            open <dir>, rotate a photo, check it saved, exit 0 or 1
 //     --user-data <dir>             WebView2 profile (default %LOCALAPPDATA%\jEditor\WebView2)
+//     --store <dir>                 jEditor's own storage and settings in <dir>, not the user's
+//                                   (test/grid-speed.perf.js: a cold run that is cold)
 //     --fake-scanner                adds a test scanner that makes photos (also: the smoke test)
 //     --fake-camera                 adds a test camera for tethered shooting (also: the smoke test)
 //     --update-failed <log>         an update didn't install (the setup opens jEditor again with this)
@@ -17,6 +19,7 @@ sealed class Options
     public string? LogFile { get; private set; }
     public string? SmokeDir { get; private set; }
     public string? UserDataDir { get; private set; }
+    public string? StoreDir { get; private set; }
     public bool FakeScanner { get; private set; }
     public bool FakeCamera { get; private set; }
     public string? UpdateFailedLog { get; private set; }
@@ -45,6 +48,7 @@ sealed class Options
                 case "--log": o.LogFile = Path.GetFullPath(Value()); break;
                 case "--smoke-test": o.SmokeDir = Path.GetFullPath(Value()); break;
                 case "--user-data": o.UserDataDir = Path.GetFullPath(Value()); break;
+                case "--store": o.StoreDir = Path.GetFullPath(Value()); break;
                 case "--fake-scanner": o.FakeScanner = true; break;
                 case "--fake-camera": o.FakeCamera = true; break;
                 case "--update-failed": o.UpdateFailedLog = Value(); break;

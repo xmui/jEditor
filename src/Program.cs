@@ -38,6 +38,12 @@ static class Program
         }
         else
         {
+            // A store of its own (--store: timing a cold start)
+            if (options.StoreDir is not null)
+            {
+                Shell.DataDir = Path.Combine(options.StoreDir, "data");
+                Shell.StoreDir = Path.Combine(options.StoreDir, "store");
+            }
             // The cache folder chosen in Settings → Projects, while it's there
             var cache = Settings.Load().CacheDir;
             if (cache is not null && Directory.Exists(cache)) Shell.CacheDir = cache;
