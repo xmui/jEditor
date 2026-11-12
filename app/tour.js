@@ -91,7 +91,7 @@ const Tour = {
         {
             id: 'more', view: 'single', more: false, target: ['#btn-more'], side: 'below',
             title: 'The rest is a click away',
-            text: () => 'Rename ({key:edit.rename}), move ({key:edit.moveTo}), export and the rest are in More and the right-click menu, so the screen stays clear.'
+            text: () => 'Rename ({key:edit.rename}), move ({key:edit.moveTo}), export and the rest are in More and the right-click menu, so the screen stays clear. The right-click menu shows each command\'s key, and turning and flipping are under Turn and flip.'
         },
         {
             id: 'find', view: 'single', target: ['#mode-chip-bar', '#mode-chip-float', '#mode-seg'], side: 'below',
