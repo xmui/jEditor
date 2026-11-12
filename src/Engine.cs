@@ -134,10 +134,9 @@ static class Engine
 
     // At most one decode per core: the page asks for a dozen at once, and
     // more decodes than cores only slow each other down. HEICs (a second or
-    // so each) get at most half the cores, so JPEGs are never stuck behind
-    // them
+    // so each) get every core but one, so a JPEG never waits behind them
     static readonly SemaphoreSlim cores = new(Math.Max(1, Environment.ProcessorCount));
-    static readonly SemaphoreSlim heavy = new(Math.Max(1, Environment.ProcessorCount / 2));
+    static readonly SemaphoreSlim heavy = new(Math.Max(1, Environment.ProcessorCount - 1));
 
     static async Task<(int, byte[]?)> Gated(Uri uri)
     {
