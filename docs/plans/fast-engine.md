@@ -27,9 +27,10 @@ written once in WGSL, the same language WebGPU uses in a browser.
 Measured 2026-11-11 in this repo's cloud container: Chromium (the engine
 WebView2 and Electron both are), 4 cores, **no real GPU** (WebGL runs on
 SwiftShader, the CPU), so GPU numbers here are pessimistic and the CPU numbers
-are roughly a mid laptop's. Before Phase 1 starts, the same measurements are
-taken on the owner's Windows PC and a Mac (Phase 0), and those become the
-baseline.
+are roughly a mid laptop's. The same measurements are taken on GitHub's Windows and
+Mac runners (Phase 0, the Speed workflow): CI numbers, not a real PC's,
+but the same machines before and after each phase. The owner checks on real
+hardware later, with the beta.
 
 ### Thumbnails and decoding (`test/grid-speed.perf.js`, web, 520 photos)
 
@@ -261,7 +262,7 @@ phase is measured before and after on Windows first, then the Mac.
 
 | Phase | What | Expected gain | Size |
 |---|---|---|---|
-| **0** | Measure on the owner's Windows PC and a Mac: the grid test, an Adjust/Export/Paint test (`test/engine-speed.perf.js`, from the script used for this plan), and the parity scenes. No engine yet. | The real baseline | small |
+| **0** | Measure on CI (decided 2026-11-11: the owner can't run things on their own machines for now): GitHub's `windows-latest` and `macos-latest` runners, on generated photos (JPEG, HEIC, DNG), in the **Speed** workflow (`.github/workflows/perf.yml`, run by hand or on a PR labelled `perf`): the grid test, `test/engine-speed.perf.js` (Adjust, Export, Paint) and the engine alone. **These are CI numbers, not a real PC's**; the owner checks on real hardware later with the beta. | The baseline, on CI | small |
 | **1** | **Decoding and thumbnails** (Windows first, then Mac and Linux): the engine DLL/addon, the bridge commands, `/engine/` URLs, the engine's thumbnail cache. JPEG scaled decode, HEIC (libheif native, multi-threaded; ImageIO on the Mac), TIFF, JPEG XL, AVIF, WebP; RAW previews; EXIF orientation. Every core used, not 4 workers. | Cold JPEG thumbnails **~4–8× faster** (12.6 s → ~2–3 s for 400); HEIC without a thumbnail **~5–10×** (0.9 s → ~0.1–0.2 s each); opening a HEIC or TIFF in the viewer as fast as a JPEG; first screen of thumbnails under 1 s cold | large |
 | **2** | **Adjust at full size:** Export, Save edits and Convert done by the engine file to file, with Detail, masks, spots, effects and the paint layers on the GPU. The 1:1 view from the engine. | Export of 24 MP with Detail **from seconds to well under 1 s**; Save edits on a selection of 100 photos in the background, every core | large |
 | **3** | **Adjust's working copy from the engine:** the right size for the screen and zoom (no 2560 cap; zoomed in, the photo's own pixels), with Detail done, so Detail shows live at every zoom. The sliders stay on WebGL2. | Detail and 1:1 everywhere, live | medium |
