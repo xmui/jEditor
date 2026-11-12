@@ -10983,6 +10983,53 @@ body.touring .controls.idle button { pointer-events: auto; }
 }
 
 /* ==========================================================================
+   The 2.0 refinement: motion (jEditor's own look). Three speeds, each for
+   one job, so parts stop choosing their own:
+     120 ms  pointing and pressing: a colour fade. A pressed button
+             darkens; nothing shrinks or bounces
+     180 ms  things that appear (menus, dialogs, messages, badges): a fade
+             while growing from 98%
+     280 ms  changes of place
+   The springy curve is retired (tokens.css), and selection never
+   animates: its mark appears at once, so a redrawn grid can't flicker.
+   ========================================================================== */
+
+@keyframes appear {
+    from { opacity: 0; transform: scale(0.98); }
+}
+
+@keyframes count-flash {
+    40% { color: var(--text-1); }
+}
+
+:root:not([data-skin]) .btn:active:not(:disabled),
+:root:not([data-skin]) .toast-action:active {
+    transform: none;
+    filter: brightness(0.9);
+}
+
+:root:not([data-skin]) .grid-item.selected::before {
+    animation: none;
+}
+
+:root:not([data-skin]) :is(.tile-flags, .tile-edit, .fb-filter-chip, .task-pill) {
+    animation: appear var(--dur-base) var(--ease-out);
+}
+
+:root:not([data-skin]) .toast.visible:not(.t-progress) .toast-icon svg {
+    animation: appear var(--dur-base) var(--ease-out) both;
+}
+
+:root:not([data-skin]) .toast.bump .toast-count {
+    animation: count-flash var(--dur-slow) var(--ease-out);
+}
+
+:root:not([data-skin]) .dialog {
+    animation-duration: var(--dur-base);
+}
+
+
+/* ==========================================================================
    The 2.0 refinement: the grid and the viewer (jEditor's own look). Photos
    lie straight on the canvas, with no plate behind them: a folder of mixed
    shapes shows the photos' own shapes, not a wall of squares. The plate

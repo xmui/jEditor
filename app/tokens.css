@@ -403,6 +403,8 @@
    --bg-raised for the controls on them. Greys beside a photo stay pure.
    ========================================================================== */
 :root:not([data-skin]) {
+    /* Calm: nothing overshoots (style.css: the 2.0 refinement, motion) */
+    --ease-spring: var(--ease-out);
     --chrome: var(--sidebar-bg);
     --chrome-line: var(--sidebar-line);
     --bg-surface: #1b1b1d;

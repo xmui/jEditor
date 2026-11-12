@@ -22,6 +22,7 @@ const CHANGELOG = [
             'The sidebar is docked: it sits against the window\'s left edge, the full height of it, with small grey headings and compact rows, and stays beside the photo when you open one. The project\'s name at its top is a picker: click it to find a project by name, with your recent ones first, then All projects…, New project… and Open a folder…. Recents lists the last projects with how many photos each has, each drive shows how much room is free (red when under a tenth is left), and right-click → Rename… renames a project where it stands, with Undo. In a narrow window it lies over the grid, under the top row, as before.',
             'A refined look, first steps: photos in the grid lie straight on the background, without a dark square behind each one, and what\'s selected has one soft ring. Sliders, headings, switches and buttons are the same in Photos, Adjust, Paint and Settings; dialogs are lighter, with smaller buttons; and the right-click menu is solid, shows each command\'s key, and keeps the six turn and flip commands under one row, Turn and flip.',
             'Themes are paused for now: they\'re under Settings → Experimental again, off to start with, while the rest of jEditor changes. Turn them on there and the theme you chose comes straight back.',
+            'Calmer motion in jEditor\'s own look: nothing bounces or overshoots any more. A pressed button darkens instead of shrinking, messages and badges fade in, dialogs open a little quicker, and the tick on a selected photo appears at once.',
         ]
     },
     {
