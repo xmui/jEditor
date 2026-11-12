@@ -19,6 +19,7 @@ const CHANGELOG = [
             'Mac: your Photos library is in the sidebar, under Locations. Open it out like a drive to see Favourites, Recently added and your albums, and click one to look through its photos (or Open, for the whole library). macOS asks once whether jEditor may see it; it\'s in jEditor → Permissions… too.',
             'Mac: photos in the Photos library can be edited in jEditor: rotate, crop, Adjust and Paint them as any other. The edit is saved back into Photos on top of the photo as it is now, so edits made before in Photos or another app stay, and Photos keeps the original: its Revert to Original goes back to it. The edit shows in Photos and on your other devices. Renaming, moving and deleting are left to Photos. macOS may ask you to allow each change.',
             'Mac: Add to Photos library, on a photo\'s right-click, the selection\'s ⋯ menu and the grid\'s right-click (Add all), puts a project\'s photos into Photos as they are, with their dates and metadata, in an album named after the project: a scan order becomes an album.',
+            'Themes are paused for now: they\'re under Settings → Experimental again, off to start with, while the rest of jEditor changes. Turn them on there and the theme you chose comes straight back.',
         ]
     },
     {

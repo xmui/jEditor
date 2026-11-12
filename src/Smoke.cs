@@ -216,7 +216,12 @@ sealed class Smoke
         if (msg["steps"] is JsonObject steps)
         {
             Log.Write("Smoke steps: " + steps.ToJsonString());
-            foreach (var step in new[] { "stored", "recycled", "deleted", "restored", "scanned", "fed", "cropped", "tethered", "logged", "places", "browsed", "projects", "counted", "pins", "renamed", "windows", "moved", "unmoved", "back" })
+            var required = new List<string> { "stored", "recycled", "deleted", "restored", "scanned", "fed", "cropped", "tethered", "logged", "places", "browsed", "projects", "counted", "pins", "renamed", "windows", "moved", "unmoved", "back" };
+            // The engine made a thumbnail for the page (Engine.cs), when it's there
+            // (and when its DLL is there but didn't load: libheif's missing)
+            if (Engine.Available || File.Exists(Path.Combine(AppContext.BaseDirectory, "jeditor_engine.dll"))) required.Add("engine");
+            if (Engine.Heic) required.Add("engineHeic");
+            foreach (var step in required)
                 if (steps[step] is not JsonValue v || !v.TryGetValue<bool>(out var ok) || !ok) problems.Add($"{step}: {steps[step]?.ToJsonString() ?? "not reached"}");
             if (steps["error"] is not null) problems.Add("error: " + steps["error"]);
         }

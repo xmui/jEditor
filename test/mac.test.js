@@ -78,6 +78,9 @@ async function launch(profile, args = [], env = {}) {
     page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
     await page.waitForFunction(() => typeof app !== 'undefined' && app.elements && window.JEditorNative);
     await page.evaluate(QUIET_FIRST_OPEN);
+    // Themes are paused, under Settings → Experimental (off to start with):
+    // on here, for the tests that use one (a test of it being off sets it)
+    await page.evaluate(() => { if (!Experiments.on('themes')) Experiments.set('themes', true); });
     return { app, page, errors };
 }
 

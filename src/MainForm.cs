@@ -155,6 +155,13 @@ sealed class MainForm : Form
             Configure();
             await PrepareCacheAsync();
             if (options.Dev) await Core.AddScriptToExecuteOnDocumentCreatedAsync("window.__jeditorDev = true;");
+            // The engine (Engine.cs): the bridge lists `engine` (and `engineHeic`
+            // when it reads HEICs), the page asks it
+            if (Engine.Available)
+            {
+                await Core.AddScriptToExecuteOnDocumentCreatedAsync(Engine.Heic ? "window.__jeditorEngine = { heic: true };" : "window.__jeditorEngine = true;");
+                Engine.Serve(Core, "https://" + HostName);
+            }
             await Core.AddScriptToExecuteOnDocumentCreatedAsync(ReadBridge());
             Core.SetVirtualHostNameToFolderMapping(HostName, options.UiDir!, CoreWebView2HostResourceAccessKind.Allow);
             if (options.Dev) WatchUi();
