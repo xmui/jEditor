@@ -3935,23 +3935,27 @@ const app = {
         this.viewMode = mode;
         this._infoTarget = null;
         document.body.dataset.view = mode; // toasts and the phone layout follow the view
+        const iconGrid = this.elements.btnToggleView.querySelector('.icon-grid');
+        const iconSingle = this.elements.btnToggleView.querySelector('.icon-single');
+        // Everything is shown or hidden first, and the sidebar and the
+        // switch drawn after: they measure the window, and measuring it
+        // half-changed laid the whole window out twice on the way back
+        const grid = mode === 'grid';
+        document.getElementById('main-view').classList.toggle('hidden', grid);
+        this.elements.imageContainer.classList.toggle('hidden', grid);
+        this.elements.gridView.classList.toggle('hidden', !grid);
+        this.elements.thumbnailStrip.parentElement.querySelector('.controls').classList.toggle('hidden', grid); // the floating controls
+        this.elements.thumbnailStrip.classList.toggle('hidden', grid);
+        if (this.elements.stripResize) this.elements.stripResize.classList.toggle('hidden', grid);
+        this.elements.gridControls.classList.toggle('hidden', !grid);
+        iconGrid.classList.toggle('hidden', grid);
+        iconSingle.classList.toggle('hidden', !grid);
         Folders.render();
         this.updateStatusBar();
         this.refreshInfoSoon();
-        const iconGrid = this.elements.btnToggleView.querySelector('.icon-grid');
-        const iconSingle = this.elements.btnToggleView.querySelector('.icon-single');
 
-        if (mode === 'grid') {
-            document.getElementById('main-view').classList.add('hidden');
-            this.elements.imageContainer.classList.add('hidden');
-            this.elements.gridView.classList.remove('hidden');
-            this.elements.thumbnailStrip.parentElement.querySelector('.controls').classList.add('hidden'); // Hide float controls
-            this.elements.thumbnailStrip.classList.add('hidden');
-            if (this.elements.stripResize) this.elements.stripResize.classList.add('hidden');
-            this.elements.gridControls.classList.remove('hidden');
+        if (grid) {
             this.syncGridTile(); // now, not when the resize observer gets round to it
-            iconGrid.classList.add('hidden');
-            iconSingle.classList.remove('hidden');
 
             // Ensure selection UI is correct
             if (this.selection.size === 0 && Folders.inView(this.currentFile)) {
@@ -3969,16 +3973,7 @@ const app = {
             }
 
         } else {
-            document.getElementById('main-view').classList.remove('hidden');
-            this.elements.imageContainer.classList.remove('hidden');
-            this.elements.gridView.classList.add('hidden');
-            this.elements.thumbnailStrip.parentElement.querySelector('.controls').classList.remove('hidden');
             this.showControls(false); // shown on the way in, then out of the way
-            this.elements.thumbnailStrip.classList.remove('hidden');
-            if (this.elements.stripResize) this.elements.stripResize.classList.remove('hidden');
-            this.elements.gridControls.classList.add('hidden');
-            iconGrid.classList.remove('hidden');
-            iconSingle.classList.add('hidden');
             // Single view has no selection. Clear the tiles' highlight too, now
             // while the grid is hidden: left in place, the photos selected
             // last time lit up for a moment when the grid came back.

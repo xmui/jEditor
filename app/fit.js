@@ -92,7 +92,7 @@ const Fit = {
             return;
         }
         const tokens = new Set();
-        const set = () => { iface.dataset.fit = [...tokens].join(' '); };
+        const set = () => { const v = [...tokens].join(' '); if (iface.dataset.fit !== v) iface.dataset.fit = v; };
         this.fitTop(iface, tokens, set);
         this.fitBottom(iface, tokens, set);
         this.fitToasts(tokens);
@@ -227,9 +227,13 @@ const Fit = {
         const startOf = () => box.left + (parseFloat(getComputedStyle(sel).left) || gutter) * this.zoom();
         const measure = () => {
             // The selection bar makes room for the edits bar and the slider
+            // (on the two bars that use them, and only when they change: set
+            // on the whole interface, each one styled every photo in the
+            // grid again, three times over on the way back from a photo)
             const ew = edits && this.shown(edits) ? edits.offsetWidth : 0;
-            iface.style.setProperty('--edits-room', ew + 'px');
-            iface.style.setProperty('--size-room', (this.shown(size) ? size.offsetWidth : 0) + 'px');
+            const put = (k, v) => { for (const b of [sel, edits]) if (b && b.style.getPropertyValue(k) !== v) b.style.setProperty(k, v); };
+            put('--edits-room', ew + 'px');
+            put('--size-room', (this.shown(size) ? size.offsetWidth : 0) + 'px');
         };
         const fits = () => {
             measure();

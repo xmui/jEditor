@@ -349,14 +349,20 @@ const Folders = {
             if (open) kids.forEach(k => walk(k, depth + 1));
         };
         if (this.map.has('')) walk('', 0);
-        tree.innerHTML = rows.join('');
+        // Only when it's changed: this runs on every change of view, and
+        // building the same rows again was most of the wait going back to the grid
+        const html = rows.join('');
+        const same = tree._html === html && tree.childElementCount > 0;
+        if (!same) tree.innerHTML = tree._html = html;
         // The total at the bottom: what's being shown (the whole order in All photos)
         const scopeFiles = this.scope === null ? this.app.files : this.app.files.filter(f => this.within(this.dirOf(f), this.scope));
         let bytes = 0;
         for (const f of scopeFiles) bytes += f.size || 0;
         const totalEl = this.el('fr-total');
-        totalEl.textContent = `${scopeFiles.length.toLocaleString()} photo${scopeFiles.length === 1 ? '' : 's'} · ${fmt(bytes)}`;
+        const totalText = `${scopeFiles.length.toLocaleString()} photo${scopeFiles.length === 1 ? '' : 's'} · ${fmt(bytes)}`;
+        if (totalEl.textContent !== totalText) totalEl.textContent = totalText;
         totalEl.title = (this.scope === null ? 'The whole project' : `${this.label(this.scope)}, including subfolders`) + ' — click for details';
+        if (same) return; // and the list stays where it was scrolled to
         const active = tree.querySelector('.fr-row.active');
         if (active && (active.offsetTop < tree.scrollTop || active.offsetTop > tree.scrollTop + tree.clientHeight - 30)) {
             tree.scrollTop = active.offsetTop - tree.clientHeight / 2;
