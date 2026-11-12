@@ -84,30 +84,39 @@ async function launchWindows(profile) {
     const { spawn } = require('child_process');
     const exe = process.env.JEDITOR_EXE || path.join(ROOT, 'dist', 'publish', 'jEditor.exe');
     if (!fs.existsSync(exe)) throw new Error(`No ${exe}: build it (scripts/build.ps1) or set JEDITOR_EXE`);
-    // A port of its own each time: a WebView2 from the last launch that's
-    // still closing must not be the one connected to
-    const port = 9333 + (launchWindows.n = (launchWindows.n || 0) + 1);
+    // WebView2 picks a free DevTools port and writes it to the profile's
+    // DevToolsActivePort (port 0), so no guessing which one it took
+    const n = (launchWindows.n = (launchWindows.n || 0) + 1);
     // Its own store too (the app keeps the thumbnail cache there, not in
     // the WebView2 profile): kept for the warm run, new for each profile.
     // In the user's folder: WebView2 stops the page writing under
     // %LOCALAPPDATA% (the temp folder), as the smoke test's store is
     const store = path.join(os.homedir(), 'jeditor-speed-' + path.basename(profile));
     // The app's log, shown if it doesn't come up
-    const log = path.join(os.tmpdir(), `jeditor-speed-${port}.log`);
+    const log = path.join(os.tmpdir(), `jeditor-speed-${path.basename(profile)}-${n}.log`);
+    const active = path.join(profile, 'EBWebView', 'DevToolsActivePort');
+    try { fs.rmSync(active, { force: true }); } catch (e) { /* none */ }
     const proc = spawn(exe, ['--user-data', profile, '--store', store, '--log', log], {
-        env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}` }, stdio: 'ignore'
+        env: { ...process.env, JEDITOR_DEVTOOLS: '1', WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-port=0' }, stdio: 'ignore'
     });
     let exited = null;
     proc.on('exit', code => { exited = code; });
-    let browser = null;
+    let browser = null, port = null;
     for (let i = 0; i < 300 && !browser && exited === null; i++) {
-        browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`).catch(() => null);
+        if (!port && fs.existsSync(active)) port = Number(fs.readFileSync(active, 'utf8').split(/\r?\n/)[0]) || null;
+        if (port) {
+            for (const host of ['127.0.0.1', '[::1]', 'localhost']) {
+                browser = await chromium.connectOverCDP(`http://${host}:${port}`).catch(() => null);
+                if (browser) break;
+            }
+        }
         if (!browser) await new Promise(r => setTimeout(r, 200));
     }
     if (!browser) {
         try { execFileSync('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore' }); } catch (e) { /* gone */ }
         const said = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split(/\r?\n/).slice(-30).join('\n') : '(no log)';
-        throw new Error(`The Windows app didn't open its DevTools port ${port} (${exited === null ? 'still running after 60 s' : 'exited with ' + exited}). Its log:\n${said}`);
+        const why = port ? `port ${port} didn't answer` : `no ${active}: WebView2 didn't take --remote-debugging-port`;
+        throw new Error(`The Windows app didn't open DevTools (${why}; ${exited === null ? 'still running after 60 s' : 'exited with ' + exited}). Its log:\n${said}`);
     }
     let page = null;
     for (let i = 0; i < 150 && !page; i++) {
