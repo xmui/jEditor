@@ -393,3 +393,46 @@
         --ease-spring: var(--ease-out);
     }
 }
+
+/* ==========================================================================
+   The 2.0 refinement, in jEditor's own look (the themes keep the values
+   above until they're dressed to match). Three surfaces, by what they're
+   for: the canvas behind photos (--bg-canvas, unchanged), the docked
+   chrome (--chrome: the sidebar's tint, shared by panels and bars) and
+   what's raised over the page (--bg-surface: dialogs and menus), with
+   --bg-raised for the controls on them. Greys beside a photo stay pure.
+   ========================================================================== */
+:root:not([data-skin]) {
+    --chrome: var(--sidebar-bg);
+    --chrome-line: var(--sidebar-line);
+    --bg-surface: #1b1b1d;
+    --bg-raised: #252528;
+    --border-subtle: rgb(255 255 255 / 0.07);
+    --border: rgb(255 255 255 / 0.11);
+    --scrim: rgb(0 0 0 / 0.42);
+
+    /* Corners: a photo, a control, a menu or card, a dialog */
+    --r-photo: 3px;
+    --r-md: 7px;
+    --r-lg: 10px;
+    --r-xl: 12px;
+
+    --row: 28px;         /* a row in a list or a menu */
+    --ctl-lg: 40px;      /* floating toolbars */
+
+    /* The one slider: a thin track and a white knob */
+    --slider-track: rgb(255 255 255 / 0.22);
+    --slider-knob: #fff;
+    --slider-knob-edge: 0 0 0 1px rgb(0 0 0 / 0.28), 0 1px 3px rgb(0 0 0 / 0.4);
+    /* The light along the top of a filled button */
+    --btn-sheen: inset 0 1px 0 rgb(255 255 255 / 0.14);
+}
+
+:root:not([data-skin])[data-theme="light"] {
+    --bg-surface: #ffffff;
+    --bg-raised: #f1f1f3;
+    --border-subtle: rgb(0 0 0 / 0.07);
+    --border: rgb(0 0 0 / 0.12);
+    --scrim: rgb(0 0 0 / 0.28);
+    --slider-track: rgb(0 0 0 / 0.2);
+}
