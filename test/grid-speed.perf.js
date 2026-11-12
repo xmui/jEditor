@@ -105,7 +105,8 @@ async function launchWindows(profile) {
     proc.on('exit', code => { exited = code; });
     let browser = null, port = null;
     for (let i = 0; i < 300 && !browser && exited === null; i++) {
-        if (!port && fs.existsSync(active)) port = Number(fs.readFileSync(active, 'utf8').split(/\r?\n/)[0]) || null;
+        // (WebView2 may still be writing it: busy, read again next time)
+        if (!port && fs.existsSync(active)) { try { port = Number(fs.readFileSync(active, 'utf8').split(/\r?\n/)[0]) || null; } catch (e) { /* busy */ } }
         if (port) {
             for (const host of ['127.0.0.1', '[::1]', 'localhost']) {
                 browser = await chromium.connectOverCDP(`http://${host}:${port}`).catch(() => null);
