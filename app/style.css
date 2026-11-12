@@ -11072,3 +11072,21 @@ body.touring .controls.idle button { pointer-events: auto; }
 :root:not([data-skin]) :is(.adj-look img, .adj-look canvas) {
     border-radius: var(--r-photo);
 }
+
+/* Paint's Layers heading in a narrow window at the Comfortable size: its
+   six buttons gave nothing up, and the word was cut to "L…". The buttons
+   close up first now, and the word stays whole */
+:root:not([data-skin]) .paint-layers-sec .paint-sec-head > span:first-child {
+    flex: none;
+}
+
+:root:not([data-skin]) .paint-layer-acts {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+:root:not([data-skin]) .paint-layer-acts .btn {
+    flex: 0 1 auto;
+    min-width: 24px;
+    padding-inline: 0;
+}
