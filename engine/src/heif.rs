@@ -28,7 +28,9 @@ pub fn heic_thumbnail(bytes: &[u8], width: u32, quality: f32) -> Result<Vec<u8>,
 /// The same, as RGB pixels
 pub fn heic_thumbnail_rgb(bytes: &[u8], width: u32) -> Result<Rgb, Error> {
     let lib = lib();
-    let ctx = HeifContext::read_from_bytes(bytes).map_err(|e| Error::Bad(e.to_string()))?;
+    let mut ctx = HeifContext::read_from_bytes(bytes).map_err(|e| Error::Bad(e.to_string()))?;
+    // One thread each: the grid asks for many at once, one per core
+    ctx.set_max_decoding_threads(1);
     let primary = ctx.primary_image_handle().map_err(|e| Error::Bad(e.to_string()))?;
     let handle = own_thumbnail(&primary, width).unwrap_or(primary);
     let img = decode(lib, &handle)?;

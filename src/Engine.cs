@@ -132,6 +132,24 @@ static class Engine
         };
     }
 
+    // How the answers went, for the log every 50 (test/grid-speed.perf.js
+    // shows it): how many, how long, by kind
+    static readonly object statsLock = new();
+    static readonly Dictionary<string, (int n, int made, double ms, double most)> stats = [];
+    static int answered;
+
+    static void Count(string ext, bool made, double ms)
+    {
+        lock (statsLock)
+        {
+            stats.TryGetValue(ext, out var s);
+            stats[ext] = (s.n + 1, s.made + (made ? 1 : 0), s.ms + ms, Math.Max(s.most, ms));
+            if (++answered % 50 != 0) return;
+            Log.Write($"Engine: {answered} answered; " + string.Join("; ", stats.Select(kv =>
+                $"{kv.Key} {kv.Value.made}/{kv.Value.n} made, {kv.Value.ms / kv.Value.n:F0} ms each (longest {kv.Value.most:F0})")));
+        }
+    }
+
     static (int, byte[]?) Answer(Uri uri)
     {
         var q = System.Web.HttpUtility.ParseQueryString(uri.Query);
@@ -139,7 +157,9 @@ static class Engine
         var path = q["path"];
         if (string.IsNullOrEmpty(path) || !int.TryParse(q["w"], out var w) || w < 1 || w > 4096) return (404, null);
         if (!Path.IsPathFullyQualified(path) || !Reads.Contains(Path.GetExtension(path).ToLowerInvariant())) return (204, null);
+        var t = System.Diagnostics.Stopwatch.StartNew();
         var bytes = Thumbnail(path, w, out var code);
+        Count(Path.GetExtension(path).ToLowerInvariant(), bytes is not null, t.Elapsed.TotalMilliseconds);
         if (bytes is null && code != 1) Log.Write($"Engine: no thumbnail for {path} (code {code})");
         return bytes is null ? (204, null) : (200, bytes);
     }

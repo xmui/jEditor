@@ -133,6 +133,11 @@ async function launchWindows(profile) {
         page, cdp: null, windows: true,
         // The app and its WebView2 processes, all of them
         close: async () => {
+            // What the engine said it did (Engine.cs, every 50 answers)
+            if (fs.existsSync(log)) {
+                const said = fs.readFileSync(log, 'utf8').split(/\r?\n/).filter(l => / Engine: \d+ answered/.test(l));
+                if (said.length) console.log('  engine: ' + said[said.length - 1].replace(/^.*?Engine: /, ''));
+            }
             await browser.close().catch(() => {});
             try { execFileSync('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore' }); } catch (e) { /* gone */ }
             await new Promise(r => setTimeout(r, 3000));
@@ -162,6 +167,7 @@ async function ready(page) {
     page.on('console', m => { if (m.text().startsWith('PERF ') || m.type() === 'error' || m.type() === 'warning') console.log('  ' + (m.type() === 'log' ? '' : m.type().toUpperCase() + ' ') + m.text()); });
     await page.waitForFunction(() => typeof app !== 'undefined' && app.elements && app.elements.gridView);
     await page.evaluate(QUIET_FIRST_OPEN);
+    await page.evaluate(() => performance.setResourceTimingBufferSize(10000));
     await page.evaluate(() => { if (app.uiPrefs) app.uiPrefs.hugeFolder = 0; });
 }
 
@@ -362,6 +368,18 @@ async function main() {
                 return `files ${(app.files || []).length}, loading ${!!app.isLoading}, view ${app.viewMode}, tiles ${tiles}, thumbnails ${thumbs}, folder ${app.dirHandle ? app.dirHandle.name : 'none'} (asked ${window.__folder ? window.__folder.name : 'none'})` + (open.length ? `; on screen: ${open.join(' | ')}` : '') + (log ? `; log: ${log}` : '');
             }).then(t => console.log('  ... ' + t), () => {}), 20000);
             const r = await measure(s.page, false).finally(() => clearInterval(beat));
+            // The engine's answers as the page saw them: how many, how long
+            if (s.windows) console.log('  page saw: ' + await s.page.evaluate(() => {
+                const by = {};
+                for (const e of performance.getEntriesByType('resource')) {
+                    if (!e.name.startsWith('https://engine.jeditor.example/')) continue;
+                    const k = (decodeURIComponent(e.name).match(/\.(\w+)$/) || [, '?'])[1].toLowerCase();
+                    const b = by[k] = by[k] || { n: 0, ms: 0, most: 0, status: {} };
+                    b.n++; b.ms += e.duration; b.most = Math.max(b.most, e.duration);
+                    b.status[e.responseStatus] = (b.status[e.responseStatus] || 0) + 1;
+                }
+                return Object.entries(by).map(([k, b]) => `${k} ${b.n} asked, ${Math.round(b.ms / b.n)} ms each (longest ${Math.round(b.most)}), status ${JSON.stringify(b.status)}`).join('; ') || 'nothing asked of the engine';
+            }));
             results[`${target} ${run}`] = r;
             print(`${target}, folder, ${run}`, r);
             if (target === 'mac' && run === 'warm' && N.lib) {
