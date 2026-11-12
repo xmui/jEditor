@@ -2,10 +2,13 @@
 // Rust, inside the desktop apps. The page asks for results (a thumbnail of
 // this file, this wide), never pixels it has to move itself.
 //
-// Phase 1, first slice: JPEG thumbnails (thumb.rs), called by the Windows
-// app through the C interface below (src/Engine.cs).
+// Phase 1: JPEG thumbnails (thumb.rs) and, with the feature `heif`, HEIC
+// thumbnails (heif.rs), called by the Windows app through the C interface
+// below (src/Engine.cs).
 
 pub mod exif;
+#[cfg(feature = "heif")]
+pub mod heif;
 pub mod thumb;
 
 use std::os::raw::c_char;
@@ -45,6 +48,17 @@ pub extern "C" fn je_version() -> *const c_char {
     concat!("jeditor-engine ", env!("CARGO_PKG_VERSION"), "\0").as_ptr() as *const c_char
 }
 
+/// The kinds of photo je_thumbnail_file reads, by extension, space
+/// separated ("jpg jpeg heic heif"): the host asks only for these
+#[no_mangle]
+pub extern "C" fn je_formats() -> *const c_char {
+    #[cfg(feature = "heif")]
+    let f = "jpg jpeg heic heif\0";
+    #[cfg(not(feature = "heif"))]
+    let f = "jpg jpeg\0";
+    f.as_ptr() as *const c_char
+}
+
 /// A thumbnail of the photo at `path` (UTF-8, `path_len` bytes), `width`
 /// px wide as shown, as a JPEG into `*out`. Safe to call from many
 /// threads at once.
@@ -73,14 +87,31 @@ pub unsafe extern "C" fn je_thumbnail_file(path: *const u8, path_len: usize, wid
 
 fn thumbnail_file(path: &str, width: u32) -> Result<Vec<u8>, i32> {
     let lower = path.to_ascii_lowercase();
-    if !(lower.ends_with(".jpg") || lower.ends_with(".jpeg")) {
+    let jpeg = lower.ends_with(".jpg") || lower.ends_with(".jpeg");
+    let heic = lower.ends_with(".heic") || lower.ends_with(".heif");
+    if !jpeg && !(heic && cfg!(feature = "heif")) {
         return Err(JE_UNSUPPORTED);
     }
     let bytes = std::fs::read(path).map_err(|_| JE_IO)?;
-    thumb::jpeg_thumbnail(&bytes, width, 80.0).map_err(|e| match e {
+    let made = if jpeg {
+        thumb::jpeg_thumbnail(&bytes, width, 80.0)
+    } else {
+        heic_thumbnail(&bytes, width)
+    };
+    made.map_err(|e| match e {
         thumb::Error::Unsupported(_) => JE_UNSUPPORTED,
         thumb::Error::Bad(_) => JE_BAD,
     })
+}
+
+#[cfg(feature = "heif")]
+fn heic_thumbnail(bytes: &[u8], width: u32) -> Result<Vec<u8>, thumb::Error> {
+    heif::heic_thumbnail(bytes, width, 80.0)
+}
+
+#[cfg(not(feature = "heif"))]
+fn heic_thumbnail(_: &[u8], _: u32) -> Result<Vec<u8>, thumb::Error> {
+    Err(thumb::Error::Unsupported("HEIC".into()))
 }
 
 /// Gives back bytes the engine made
@@ -121,6 +152,19 @@ mod tests {
         std::fs::write(dir.join("junk.jpg"), b"junk").unwrap();
         assert_eq!(call(dir.join("junk.jpg").to_str().unwrap(), 300).0, JE_BAD);
         assert_eq!(call(jpg.to_str().unwrap(), 0).0, JE_ARG);
+        // A HEIC: made with the feature heif, else left to the page
+        let heic = dir.join("Ö photo.HEIC");
+        std::fs::copy(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/halves.heic"), &heic).unwrap();
+        let (code, bytes) = call(heic.to_str().unwrap(), 150);
+        if cfg!(feature = "heif") {
+            assert_eq!(code, JE_OK);
+            let t = thumb::decode_full(&bytes).unwrap();
+            assert_eq!((t.w, t.h), (150, 100));
+        } else {
+            assert_eq!(code, JE_UNSUPPORTED);
+        }
+        let formats = unsafe { std::ffi::CStr::from_ptr(je_formats()) }.to_str().unwrap();
+        assert_eq!(formats.contains("heic"), cfg!(feature = "heif"));
         std::fs::remove_dir_all(&dir).ok();
     }
 }

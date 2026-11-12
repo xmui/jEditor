@@ -89,7 +89,7 @@ async function openPage(browser, { origin = ORIGIN, webview = true, dev = false,
     page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
     if (webview) await page.addInitScript(FAKE_WEBVIEW);
     if (dev) await page.addInitScript('window.__jeditorDev = true;');
-    if (engine) await page.addInitScript('window.__jeditorEngine = true;');
+    if (engine) await page.addInitScript(engine === 'heic' ? 'window.__jeditorEngine = { heic: true };' : 'window.__jeditorEngine = true;');
     await page.addInitScript(BRIDGE);
     await page.addInitScript(QUIET_FIRST_OPEN);
     await page.goto(origin + '/index.html');
@@ -235,7 +235,47 @@ const waitForPost = (page, type) => page.waitForFunction(
         const one = asked.find(q => /photo1\.jpg$/.test(q.path));
         check('asks by the photo\'s path on disk, 320 wide', one && one.w === '320' && one.path === 'D:\\Orders\\Engine Order\\photo1.jpg', JSON.stringify(asked));
         check('engine: no JS errors', errors.length === 0, errors.join('; '));
+        check('an engine without libheif: HEICs not listed', await page.evaluate(() => !Host.has('engineHeic')));
         await context.close();
+
+        // With libheif: a HEIC's thumbnail from the engine too
+        {
+            const h = await openPage(browser, { engine: 'heic' });
+            await waitForPost(h.page, 'ready');
+            const heicAsked = [];
+            await h.page.route('https://engine.jeditor.example/**', (route) => {
+                heicAsked.push(new URL(route.request().url()).searchParams.get('path'));
+                route.fulfill({ status: 200, contentType: 'image/jpeg', headers: { 'Access-Control-Allow-Origin': ORIGIN }, body: magenta });
+            });
+            const heic = [...fs.readFileSync(path.join(__dirname, '..', 'engine', 'tests', 'fixtures', 'halves.heic'))];
+            await h.page.evaluate(async (bytes) => {
+                const root = await navigator.storage.getDirectory();
+                try { await root.removeEntry('Heic Order', { recursive: true }); } catch (e) { }
+                const dir = await root.getDirectoryHandle('Heic Order', { create: true });
+                const w = await (await dir.getFileHandle('IMG_0001.HEIC', { create: true })).createWritable();
+                await w.write(new Uint8Array(bytes));
+                await w.close();
+                window.__onPost = async (m) => {
+                    if (m.type === 'pickFolder') setTimeout(() => window.__deliver({ replyTo: m.id, path: 'D:\\Orders\\Heic Order' }, [dir]), 10);
+                    else if (m.type === 'dataDir') window.__deliver({ replyTo: m.id, path: 'C:\\data' }, [await (await navigator.storage.getDirectory()).getDirectoryHandle('appdata', { create: true })]);
+                };
+            }, heic);
+            await h.page.click('#btn-browse-folder');
+            await h.page.waitForSelector('#open-card:not(.hidden)');
+            await h.page.click('#oc-browse');
+            await h.page.waitForFunction(() => app.files.length === 1 && app.files[0].thumbnailUrl, null, { timeout: 20000 });
+            const hr = await h.page.evaluate(async () => {
+                const bmp = await createImageBitmap(await (await fetch(app.files[0].thumbnailUrl)).blob());
+                const c = new OffscreenCanvas(bmp.width, bmp.height);
+                c.getContext('2d').drawImage(bmp, 0, 0);
+                const [R, G, B] = c.getContext('2d').getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data;
+                return { has: Host.has('engineHeic'), engine: R > 200 && B > 200 && G < 60 };
+            });
+            check('an engine with libheif: HEICs listed', hr.has);
+            check('a HEIC\'s thumbnail comes from the engine', hr.engine && heicAsked.includes('D:\\Orders\\Heic Order\\IMG_0001.HEIC'), JSON.stringify({ hr, heicAsked }));
+            check('engine HEIC: no JS errors', h.errors.length === 0, h.errors.join('; '));
+            await h.context.close();
+        }
 
         // Without it (no DLL), the feature isn't listed and nothing is asked
         const plain = await openPage(browser);

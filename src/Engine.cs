@@ -9,7 +9,9 @@ namespace JEditor;
 // rather than in the page. The page asks for a result by URL:
 //
 //   https://engine.jeditor.example/thumb?w=320&path=<the photo on disk>
-//     → a JPEG thumbnail, w wide as shown (after its EXIF orientation)
+//     → a JPEG thumbnail, w wide as shown (after its EXIF orientation), of
+//       a JPEG, or of a HEIC when the engine was built with libheif
+//       (Formats; its DLLs beside it, scripts/engine-heif.ps1)
 //
 // so a full-size photo is never read into the page, and the page shows
 // the answer as it would any picture. Without the DLL (a build with no
@@ -33,10 +35,17 @@ static class Engine
     static extern IntPtr je_version();
 
     [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+    static extern IntPtr je_formats();
+
+    [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
     static extern int je_thumbnail_file(byte[] path, nuint pathLen, uint width, out JeBuf buf);
 
     [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
     static extern void je_free(JeBuf buf);
+
+    // What a page can ask for: photos the engine reads, by name (je_formats).
+    // Before Version: static fields start in order, and Load sets this
+    static string[] Reads = [".jpg", ".jpeg"];
 
     // The engine's version, or null when the DLL isn't there or won't load
     public static readonly string? Version = Load();
@@ -54,7 +63,8 @@ static class Engine
         try
         {
             var v = Marshal.PtrToStringUTF8(je_version());
-            Log.Write($"Engine: {v}");
+            Reads = (Marshal.PtrToStringUTF8(je_formats()) ?? "jpg jpeg").Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => "." + x).ToArray();
+            Log.Write($"Engine: {v} ({string.Join(' ', Reads)})");
             return v;
         }
         catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
@@ -64,8 +74,8 @@ static class Engine
         }
     }
 
-    // What a page can ask for: photos the engine reads, by name
-    static readonly string[] Reads = [".jpg", ".jpeg"];
+    // It reads HEICs (built with libheif): the page asks it for them too
+    public static bool Heic => Available && Reads.Contains(".heic");
 
     // A JPEG thumbnail of the photo at path, width wide; null if the engine
     // can't make it (code says why: 1 not supported, 2 unreadable, 3 bad)

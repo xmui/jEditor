@@ -98,16 +98,35 @@
        exe. Built with cargo when Rust is installed (and nasm, for libjpeg's
        SIMD); without them the app builds and works as before, the page making
        its own thumbnails. RequireEngine=true (CI: scripts/build.ps1) makes a
-       failed engine build an error -->
+       failed engine build an error.
+       HEIC (the engine's feature heif) when libheif is installed with vcpkg
+       (scripts/engine-heif.ps1): linked to its DLLs, which ship beside it
+       (LGPL: dynamically, so they can be replaced). RequireHeif=true (CI)
+       makes a missing libheif an error -->
   <PropertyGroup>
     <EngineDir>$(MSBuildThisFileDirectory)..\engine\</EngineDir>
     <EngineDll>$(EngineDir)target\release\jeditor_engine.dll</EngineDll>
+    <VcpkgRoot Condition="'$(VCPKG_ROOT)' != ''">$(VCPKG_ROOT)</VcpkgRoot>
+    <VcpkgRoot Condition="'$(VcpkgRoot)' == '' and '$(VCPKG_INSTALLATION_ROOT)' != ''">$(VCPKG_INSTALLATION_ROOT)</VcpkgRoot>
+    <HeifDir>$(VcpkgRoot)\installed\x64-windows\</HeifDir>
+    <EngineHeif Condition="'$(VcpkgRoot)' != '' and Exists('$(HeifDir)include\libheif\heif.h')">true</EngineHeif>
+    <EngineCargo>cargo build --release --locked --manifest-path &quot;$(EngineDir)Cargo.toml&quot; --lib</EngineCargo>
+    <EngineCargo Condition="'$(EngineHeif)' == 'true'">$(EngineCargo) --features heif</EngineCargo>
   </PropertyGroup>
   <Target Name="BuildEngine" BeforeTargets="AssignTargetPaths" Condition="'$(OS)' == 'Windows_NT'">
-    <Exec Condition="'$(RequireEngine)' == 'true'" Command="cargo build --release --locked --manifest-path &quot;$(EngineDir)Cargo.toml&quot; --lib" />
-    <Exec Condition="'$(RequireEngine)' != 'true'" Command="cargo build --release --locked --manifest-path &quot;$(EngineDir)Cargo.toml&quot; --lib" ContinueOnError="WarnAndContinue" />
+    <Error Condition="'$(RequireHeif)' == 'true' and '$(EngineHeif)' != 'true'" Text="No libheif in vcpkg ($(HeifDir)): run scripts/engine-heif.ps1" />
+    <Message Importance="high" Text="Engine: with HEIC (libheif from $(HeifDir))" Condition="'$(EngineHeif)' == 'true'" />
+    <Exec Condition="'$(RequireEngine)' == 'true'" Command="$(EngineCargo)" EnvironmentVariables="VCPKG_ROOT=$(VcpkgRoot);VCPKGRS_DYNAMIC=1" />
+    <Exec Condition="'$(RequireEngine)' != 'true'" Command="$(EngineCargo)" EnvironmentVariables="VCPKG_ROOT=$(VcpkgRoot);VCPKGRS_DYNAMIC=1" ContinueOnError="WarnAndContinue" />
     <ItemGroup Condition="Exists('$(EngineDll)')">
       <Content Include="$(EngineDll)" Link="jeditor_engine.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    </ItemGroup>
+    <!-- libheif and what it needs (libde265, ...): every DLL vcpkg built for it -->
+    <ItemGroup Condition="Exists('$(EngineDll)') and '$(EngineHeif)' == 'true'">
+      <EngineHeifDll Include="$(HeifDir)bin\*.dll" />
+      <Content Include="@(EngineHeifDll)" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+      <Content Include="$(HeifDir)share\libheif\copyright" Link="licenses\libheif-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" Condition="Exists('$(HeifDir)share\libheif\copyright')" />
+      <Content Include="$(HeifDir)share\libde265\copyright" Link="licenses\libde265-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" Condition="Exists('$(HeifDir)share\libde265\copyright')" />
     </ItemGroup>
   </Target>
 

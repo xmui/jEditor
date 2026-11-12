@@ -3649,10 +3649,12 @@ const app = {
 
     // The app's engine makes it (Host.has('engine'): src/Engine.cs) from
     // the file on disk, decoding only as much as the thumbnail needs:
-    // several times faster than a whole decode here. Null: the page makes
-    // it (not a JPEG, no path for the folder, or the engine couldn't)
+    // several times faster than a whole decode here. A HEIC too when the
+    // engine reads them (Host.has('engineHeic')). Null: the page makes it
+    // (another kind of file, no path for the folder, or the engine couldn't)
     async engineThumbnail(fileEntry) {
-        if (!Host.has('engine') || !/\.jpe?g$/i.test(fileEntry.name) || !this.dirHandle) return null;
+        if (!Host.has('engine') || !this.dirHandle) return null;
+        if (!/\.jpe?g$/i.test(fileEntry.name) && !(Host.has('engineHeic') && /\.hei[cf]$/i.test(fileEntry.name))) return null;
         const handle = this.dirHandle;
         if (!this._engineDir || this._engineDir.handle !== handle) {
             this._engineDir = { handle, path: Host.get().folderPath(handle).catch(() => null) };
