@@ -277,6 +277,21 @@ const waitForPost = (page, type) => page.waitForFunction(
             await h.context.close();
         }
 
+        // A folder the app hands over by path (Import, Places, the Speed
+        // run) is known by its path, as a picked one is: the engine asks by it
+        {
+            const f = await openPage(browser, { engine: true });
+            await waitForPost(f.page, 'ready');
+            const got = await f.page.evaluate(async () => {
+                const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('By Path', { create: true });
+                window.__onPost = (m) => { if (m.type === 'folderHandle') setTimeout(() => window.__deliver({ replyTo: m.id, path: m.path }, [dir]), 10); };
+                const h = await JEditorNative.folderHandle('E:\\Cards\\By Path');
+                return await JEditorNative.folderPath(h);
+            });
+            check('a folder handed over by path: its path is known (folderPath)', got === 'E:\\Cards\\By Path', String(got));
+            await f.context.close();
+        }
+
         // Without it (no DLL), the feature isn't listed and nothing is asked
         const plain = await openPage(browser);
         check('no engine: not listed', await plain.page.evaluate(() => !Host.has('engine')));

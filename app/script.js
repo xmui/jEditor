@@ -3661,6 +3661,7 @@ const app = {
         }
         const dir = await this._engineDir.path;
         if (!dir) return null;
+        this._engineAsked = (this._engineAsked || 0) + 1; // test/grid-speed.perf.js counts them
         try {
             const r = await fetch(Host.get().engineThumb(dir, fileEntry.relPath || fileEntry.name, this.THUMB_WIDTH));
             return r.status === 200 ? await r.blob() : null;

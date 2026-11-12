@@ -230,8 +230,11 @@
         },
         // A folder handle for a path, with permission to edit it
         async folderHandle(path) {
-            const { objects } = await answer('folderHandle', { path });
+            const { msg, objects } = await answer('folderHandle', { path });
             if (!objects[0]) throw new Error('That folder isn\'t there');
+            // Remembered with its path, as a picked folder is (folderPath:
+            // the engine asks by path)
+            remember(objects[0], msg.path || path);
             return objects[0];
         },
         // Files to the Recycle Bin, by path. Per file: { token } (Ctrl+Z:

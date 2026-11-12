@@ -369,7 +369,8 @@ async function main() {
             }).then(t => console.log('  ... ' + t), () => {}), 20000);
             const r = await measure(s.page, false).finally(() => clearInterval(beat));
             // The engine's answers as the page saw them: how many, how long
-            if (s.windows) console.log('  page saw: ' + await s.page.evaluate(() => {
+            if (s.windows) {
+                const seen = await s.page.evaluate(() => {
                 const by = {};
                 for (const e of performance.getEntriesByType('resource')) {
                     if (!e.name.startsWith('https://engine.jeditor.example/')) continue;
@@ -378,8 +379,12 @@ async function main() {
                     b.n++; b.ms += e.duration; b.most = Math.max(b.most, e.duration);
                     b.status[e.responseStatus] = (b.status[e.responseStatus] || 0) + 1;
                 }
-                return Object.entries(by).map(([k, b]) => `${k} ${b.n} asked, ${Math.round(b.ms / b.n)} ms each (longest ${Math.round(b.most)}), status ${JSON.stringify(b.status)}`).join('; ') || 'nothing asked of the engine';
-            }));
+                    return { engine: Host.has('engine'), asked: app._engineAsked || 0, text: Object.entries(by).map(([k, b]) => `${k} ${b.n} asked, ${Math.round(b.ms / b.n)} ms each (longest ${Math.round(b.most)}), status ${JSON.stringify(b.status)}`).join('; ') };
+                });
+                console.log(`  page asked the engine ${seen.asked} times; resource timing: ${seen.text || 'none'}`);
+                // A cold run with the engine that never asked it isn't an after
+                if (seen.engine && run === 'cold' && !seen.asked) throw new Error('The engine is on, but the page asked it for nothing');
+            }
             results[`${target} ${run}`] = r;
             print(`${target}, folder, ${run}`, r);
             if (target === 'mac' && run === 'warm' && N.lib) {
