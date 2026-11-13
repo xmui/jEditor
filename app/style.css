@@ -2881,7 +2881,9 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     width: min(440px, 100%);
 }
 
-.fpr-body input {
+/* Its text box fills the row; not the switch under it (New project's
+   "Save edits when done"), which this once stretched across the window */
+.fpr-body input:where(:not([type="checkbox"], [type="radio"])) {
     width: 100%;
     height: var(--ctl-lg);
 }
