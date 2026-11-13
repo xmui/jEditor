@@ -213,8 +213,10 @@ const Start = {
         if (b) b.title = this.update ? `Settings · jEditor ${Updates.label(this.update.tag)} is available` : 'Settings';
     },
 
-    // The second tile: Import while a card is in, else Scan or Capture
-    // where there's a scanner or camera to use, else New canvas
+    // The tiles are Open a folder, New project (a blank canvas: Paint's
+    // New canvas window) and Convert. The quiet row under them: Import
+    // while a card is in, else Scan or Capture where there's a scanner or
+    // camera to use, then Adjust a photo and Paint a photo
     tiles() {
         const cap = this.el('start-capture');
         const blank = this.el('start-blank');
@@ -237,13 +239,12 @@ const Start = {
         }
         cap.classList.toggle('card', !!this.card);
         cap.classList.toggle('hidden', !this.card && !hw);
-        blank.classList.toggle('hidden', !!this.card || hw || !modeOn('paint'));
+        blank.classList.toggle('hidden', !modeOn('paint'));
         const adjust = this.el('start-adjust');
         if (adjust) adjust.classList.toggle('hidden', !modeOn('adjust'));
         const paint = this.el('start-paint');
         if (paint) {
             paint.classList.toggle('hidden', !modeOn('paint'));
-            paint.querySelector('.home-tile-sub').textContent = blank.classList.contains('hidden') ? 'or a new canvas' : 'draw on a photo';
         }
     },
 

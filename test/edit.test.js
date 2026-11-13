@@ -1568,8 +1568,9 @@ const PROJECT = `
                 const $ = (id) => document.getElementById(id);
                 const shownEl = (id) => { const e = $(id); return !!e && !e.classList.contains('hidden') && e.getClientRects().length > 0; };
                 step = 'start';
-                // The home page's tiles: Open a folder, Convert, Adjust a photo, Paint a photo (and New canvas, with no scanner here)
+                // The home page: Open a folder, New project and Convert as tiles, in that order; Adjust a photo and Paint a photo in the quiet row (no scanner here)
                 out.startShown = ['btn-browse-folder', 'start-blank', 'start-convert', 'start-adjust', 'start-paint'].every(shownEl) && !shownEl('start-capture');
+                out.startShown = out.startShown && [...document.querySelectorAll('.home-tiles > .home-tile')].map(b => b.id).join() === 'btn-browse-folder,start-blank,start-convert' && $('start-blank').textContent.includes('New project') && !!$('start-adjust').closest('.home-more') && !!$('start-paint').closest('.home-more');
                 // A tile that says Adjust: the project lands in Adjust
                 step = 'start in';
                 Modes.next = 'adjust';

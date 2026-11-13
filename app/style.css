@@ -2881,7 +2881,9 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     width: min(440px, 100%);
 }
 
-.fpr-body input {
+/* Its text box fills the row; not the switch under it (New project's
+   "Save edits when done"), which this once stretched across the window */
+.fpr-body input:where(:not([type="checkbox"], [type="radio"])) {
     width: 100%;
     height: var(--ctl-lg);
 }
@@ -7305,6 +7307,79 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
     color: var(--accent);
 }
 
+/* Three tiles (Open a folder, New project, Convert), a little wider, and
+   the rest as a quiet row of words under them */
+.home-tiles {
+    padding-bottom: var(--sp-3);
+}
+
+.home-tiles .home-tile {
+    width: 176px;
+}
+
+.home-more {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--sp-1);
+    padding: 0 var(--sp-4) var(--sp-5);
+}
+
+.home-more .home-tile {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--sp-2);
+    width: auto;
+    height: var(--ctl-md);
+    padding: 0 var(--sp-3);
+    border-color: transparent;
+    border-radius: var(--r-md);
+    background: none;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    color: var(--text-2);
+    font-weight: var(--fw-medium);
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.home-more .home-tile:hover {
+    transform: none;
+    background: var(--bg-raised);
+    box-shadow: none;
+    color: var(--text-1);
+}
+
+.home-more .home-tile:focus-visible {
+    box-shadow: var(--focus-ring);
+}
+
+.home-more .home-tile .i {
+    width: 16px;
+    height: 16px;
+}
+
+/* (what a tile's second line says is in its tooltip here; a card that's
+   in keeps its name, in the accent) */
+.home-more .home-tile-sub {
+    display: none;
+}
+
+.home-more .home-tile.card {
+    color: var(--accent);
+}
+
+.home-more .home-tile.card .home-tile-sub {
+    display: inline;
+    margin: 0 0 0 var(--sp-1);
+}
+
+.home-more .home-tile.card .home-tile-text {
+    flex-direction: row;
+    align-items: baseline;
+}
+
 /* All projects: a sheet over the table */
 .home-places {
     position: absolute;
@@ -7352,12 +7427,12 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
     .recent-pile { width: 150px; }
     .recent-pile { height: 118px; }
     .home-tiles { gap: var(--sp-2); }
-    .home-tile { width: 112px; height: 84px; }
-    .home-tile-sub { display: none; }
+    .home-tiles .home-tile { width: 132px; height: 84px; }
+    .home-tiles .home-tile-sub { display: none; }
 }
 
 @media (max-width: 600px) {
-    .home-tile { width: calc(50% - var(--sp-1)); }
+    .home-tiles .home-tile { width: calc(33.3% - var(--sp-2)); min-width: 96px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -10218,8 +10293,8 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
 }
 
 /* (Scrolling the grid no longer fades and shrinks the photos at its top
-   and bottom edges: the photo is never dressed, and on the way back from
-   a photo the grid showed whole for a frame before the effect came in) */
+   and bottom edges: on the way back from a photo the grid showed whole
+   for a frame before the effect came in) */
 
 @keyframes turn-left {
     from { rotate: 90deg; }

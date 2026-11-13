@@ -2222,6 +2222,24 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.smoothAt80 = !document.getElementById('current-image').classList.contains('pixelated');
             window.dispatchEvent(new KeyboardEvent('keydown', { key: '0', bubbles: true }));
             out.keyFit = app.zoom === 1 && app.panX === 0 && !document.getElementById('current-image').classList.contains('pixelated');
+
+            // An edit not saved yet (Save edits when done): shown from a
+            // screen-sized copy, and zoomed in, from the photo's own pixels
+            // with the edit on them
+            const until = async (fn, ms) => { const t = Date.now(); while (!fn() && Date.now() - t < ms) await new Promise(r => setTimeout(r, 50)); };
+            const ef = app.currentFile;
+            ef._edit = Edits.turned(ef._edit, 1);
+            app.editChanged(ef);
+            await until(() => app._displayFile === ef && app.elements.currentImage._isPreview && ef._edited && app.elements.currentImage._url === ef._edited.url, 10000);
+            const shownEdge = Math.max(app.elements.currentImage.naturalWidth, app.elements.currentImage.naturalHeight);
+            app.zoomTo(app.maxZoom());
+            await until(() => !app.elements.currentImage._isPreview, 20000);
+            const ei = app.elements.currentImage;
+            app.updateImageTransform();
+            out.editedZoom = JSON.stringify({ preview: !!ei._isPreview, shownEdge, big: Math.max(ei.naturalWidth, ei.naturalHeight), sharp: ei.classList.contains('pixelated'), edit: !!ef._edit });
+            out.editedFull = !ei._isPreview && Math.max(ei.naturalWidth, ei.naturalHeight) > shownEdge * 1.5 && ei.classList.contains('pixelated');
+            delete ef._edit;
+            app.editChanged(ef);
             return { ...out, expectCrop: `${Math.round(edge * 1.5)}x${edge * 2}` };
         });
         check('big scan shows a screen-sized preview', r.isPreview);
@@ -2237,6 +2255,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('zoom goes up to 3200% of the photo\'s pixels, and no further', r.maxPct === 3200 && r.readout === '3200%', `${r.maxPct}% / ${r.readout}`);
         check('past 100% pixels are sharp squares (no smoothing); smoothed when shrunk', r.pixelatedAtMax && r.sharpAt150 && r.smoothAt80);
         check('0 zooms back to fit', r.keyFit);
+        check('a photo with an edit not saved yet zooms in to its own pixels, sharp', r.editedFull, r.editedZoom);
         check('preview suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
