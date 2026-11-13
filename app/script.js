@@ -2833,6 +2833,10 @@ const app = {
                     URL.revokeObjectURL(file._edited.url);
                     delete file._edited;
                 }
+                if (file._editedFull) {
+                    URL.revokeObjectURL(file._editedFull.url);
+                    delete file._editedFull;
+                }
                 if (file._preview) {
                     URL.revokeObjectURL(file._preview.url);
                     delete file._preview;
@@ -4089,6 +4093,49 @@ const app = {
         return p;
     },
 
+    // `blob` (the photo, or its preview) with `edit` on it, as a canvas:
+    // spots, the crop and turns, adjustments, then paint. w×h is the
+    // photo's own size; scale is how much smaller than that `blob` is
+    async drawEdited(blob, edit, w = 0, h = 0) {
+        const bmp = await createImageBitmap(blob);
+        // Its size in the photo's own pixels (the preview is smaller)
+        const scale = Math.max(w || bmp.width, h || bmp.height) / Math.max(bmp.width, bmp.height);
+        let canvas, map, ed;
+        try {
+            // Spots first (retouch.js): on the whole photo
+            const base = await Retouch.retouched(bmp, edit);
+            ed = CropEditor.fromSnapshot(bmp.width, bmp.height, edit);
+            canvas = ed.drawOutput(base);
+            map = Develop.cropMap(ed, bmp.width, bmp.height);
+            if (base !== bmp) base.width = base.height = 0;
+        } finally {
+            bmp.close();
+        }
+        if (edit.adj) Develop.applyCanvas(canvas, edit.adj, { scale: 1 / scale, map });
+        // And paint over it all (paint.js)
+        await Paint.onto(canvas, edit, ed);
+        return { canvas, scale };
+    },
+
+    // Zoomed in on a photo with an edit not saved yet: the edit on the
+    // photo's own pixels, as Save will write it, so 100% and past it show
+    // real pixels (the screen-sized one only got bigger and softer)
+    async editedFullSource(file) {
+        const gen = file._editGen || 0, edit = file._edit;
+        if (file._editedFull && file._editedFull.gen === gen) return file._editedFull;
+        while (file.isBusy) await new Promise(r => setTimeout(r, 30));
+        const savedAtRead = file._savedRotationTotal || 0;
+        const { canvas } = await this.drawEdited(await this.readImage(file), edit);
+        const alpha = /\.(png|webp|gif)$/i.test(file.name);
+        const out = await new Promise(r => canvas.toBlob(r, alpha ? 'image/png' : 'image/jpeg', 0.95));
+        canvas.width = canvas.height = 0;
+        if (!out) throw new Error('encoding failed');
+        if ((file._editGen || 0) !== gen || file._edit !== edit) throw new Error('edited meanwhile');
+        if (file._editedFull) URL.revokeObjectURL(file._editedFull.url);
+        file._editedFull = { gen, url: URL.createObjectURL(out), isPreview: false, edited: true, savedAtRead };
+        return file._editedFull;
+    },
+
     // The photo with its edit, at screen size: made from the photo's own
     // preview, so it's quick, and it's what Save will write (at full size)
     editedSource(file) {
@@ -4100,24 +4147,7 @@ const app = {
             const key = `${raw.url}|${gen}`;
             if (file._edited && file._edited.key === key) return file._edited;
             const blob = raw.blob || await (await fetch(raw.url)).blob();
-            const bmp = await createImageBitmap(blob);
-            // Its size in the photo's own pixels (the preview is smaller)
-            const scale = Math.max(raw.w || bmp.width, raw.h || bmp.height) / Math.max(bmp.width, bmp.height);
-            let canvas;
-            let map, ed;
-            try {
-                // Spots first (retouch.js): on the whole photo
-                const base = await Retouch.retouched(bmp, edit);
-                ed = CropEditor.fromSnapshot(bmp.width, bmp.height, edit);
-                canvas = ed.drawOutput(base);
-                map = Develop.cropMap(ed, bmp.width, bmp.height);
-                if (base !== bmp) base.width = base.height = 0;
-            } finally {
-                bmp.close();
-            }
-            if (edit.adj) Develop.applyCanvas(canvas, edit.adj, { scale: 1 / scale, map });
-            // And paint over it all (paint.js)
-            await Paint.onto(canvas, edit, ed);
+            const { canvas, scale } = await this.drawEdited(blob, edit, raw.w, raw.h);
             const alpha = /\.(png|webp|gif)$/i.test(file.name);
             const out = await new Promise(r => canvas.toBlob(r, alpha ? 'image/png' : 'image/jpeg', 0.92));
             const w = Math.round(canvas.width * scale), h = Math.round(canvas.height * scale);
@@ -4155,6 +4185,10 @@ const app = {
         if (f._edited) {
             URL.revokeObjectURL(f._edited.url);
             delete f._edited;
+        }
+        if (f._editedFull) {
+            URL.revokeObjectURL(f._editedFull.url);
+            delete f._editedFull;
         }
         f._editPromise = null;
     },
@@ -4258,10 +4292,10 @@ const app = {
         const el = this.elements.currentImage;
         const file = this._displayFile;
         if (!el || !el._isPreview || !file || file !== this.currentFile || this._upgrading === file) return;
-        if (file._edit) return; // shown edited: the original would show it without
         this._upgrading = file;
         try {
-            const src = await this.getOriginalSource(file);
+            // (with an edit not saved yet: the original with the edit on it)
+            const src = file._edit ? await this.editedFullSource(file) : await this.getOriginalSource(file);
             const full = await this.decodeInto(file, src);
             if (this.elements.currentImage !== el || !full._decoded) return;
             this.swapDisplay(full, 'full', file);
@@ -4460,6 +4494,13 @@ const app = {
             if (dist > windowSizeFull && f.fullImageUrl && !f._decodePromise) {
                 URL.revokeObjectURL(f.fullImageUrl);
                 delete f.fullImageUrl;
+                if (f._decodedEl && !f._decodedEl._isPreview) this.dropDecoded(f);
+            }
+            // A full-size edited photo (editedFullSource) is big, and made
+            // again in a moment: only the one on screen is kept
+            if (f._editedFull && this._upgrading !== f) {
+                URL.revokeObjectURL(f._editedFull.url);
+                delete f._editedFull;
                 if (f._decodedEl && !f._decodedEl._isPreview) this.dropDecoded(f);
             }
             // Previews are small, but not free; far ones come back from IndexedDB
