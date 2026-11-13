@@ -50,7 +50,7 @@ const Guide = {
         ['paint', 'brush', 'Brushes', 'Brush, pencil, spray and eraser. [ and ] size the brush.', ['paint.brush']],
         ['paint', 'layers', 'Layers', 'Kept with the project, so the painting can be changed later.', []],
         ['paint', 'image', 'Bring in an image', 'Drag to move it, a corner to size it, Enter puts it down.', []],
-        ['paint', 'canvas', 'A new canvas', 'New canvas on the home page: a size, a background and a folder.', []]
+        ['paint', 'canvas', 'A new canvas', 'New project on the home page: a size, a background and a folder.', []]
     ],
 
     esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); },
