@@ -10192,13 +10192,13 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
         box-shadow: none;
     }
 
-    /* A pill's button gives a little when pressed */
+    /* A pill's button darkens when pressed; it doesn't shrink */
     :root:not([data-skin]):not([data-motion="off"]) :is(.tb-btn, .sel-count, .mode-seg > button, .seg > button) {
-        transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), scale var(--dur-fast) var(--ease-out);
+        transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), filter var(--dur-fast) var(--ease-out);
     }
 
     :root:not([data-skin]):not([data-motion="off"]) :is(.tb-btn, .sel-count, .mode-seg > button, .seg > button):active {
-        scale: 0.94;
+        filter: brightness(0.85);
     }
 
     /* Rotate: the arrow turns the way the photo did */
@@ -10217,30 +10217,9 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
     }
 }
 
-/* Scrolling the grid: photos ease in as they come up from the bottom and
-   ease out as they go under the top, done by the browser as it scrolls
-   (nothing runs for it), and only at the edges: in the middle they're
-   still and whole. In a huge folder's grid, which builds its tiles as it
-   scrolls, not while it jumps (grid-jump, motion.js): it would cost a
-   frame there. Nor while a key is held (motion.js), when it lagged and
-   showed rows faded to the background mid-view. No fill: the tiles out of sight keep their real size,
-   where the grid measures them (gridY, revealInGrid) */
-@supports (animation-timeline: view()) {
-    @media (prefers-reduced-motion: no-preference) {
-        :root:not([data-skin]):not([data-motion="off"]) .grid-view:not(.grid-jump) .grid-item:not(.is-new) {
-            animation: tile-woosh linear;
-            animation-timeline: view();
-            animation-range: cover 0% cover 100%;
-        }
-    }
-}
-
-@keyframes tile-woosh {
-    0% { opacity: 0.1; scale: 0.8; }
-    20% { opacity: 1; scale: 1; }
-    84% { opacity: 1; scale: 1; }
-    100% { opacity: 0.2; scale: 0.88; }
-}
+/* (Scrolling the grid no longer fades and shrinks the photos at its top
+   and bottom edges: the photo is never dressed, and on the way back from
+   a photo the grid showed whole for a frame before the effect came in) */
 
 @keyframes turn-left {
     from { rotate: 90deg; }
@@ -10251,7 +10230,7 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
 }
 
 @keyframes count-tick {
-    from { opacity: 0.2; translate: 0 40%; }
+    from { opacity: 0.4; }
 }
 
 /* ---- The guide (guide.js): a sheet of cards with clips ---- */
