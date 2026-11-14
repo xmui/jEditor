@@ -920,7 +920,7 @@ const PROJECT = `
                 const choose = UI.choose;
                 UI.choose = async () => 'ok';
                 UI.prompt = async () => '';
-                await Edits.saveAll({ list: [f('a.dng'), f('b.cr3')] });
+                { const saving = Edits.saveAll({ list: [f('a.dng'), f('b.cr3')] }); document.getElementById('ex-go').click(); await saving; } // (the Export window, on Save into the photos)
                 UI.choose = choose;
                 UI.prompt = prompt0;
                 out.saveNotWritten = await same('a.dng', dngBlob) && await same('b.cr3', cr3Blob) && !!f('b.cr3')._edit;
@@ -1007,7 +1007,7 @@ const PROJECT = `
                 step = 'save';
                 const choose = UI.choose;
                 UI.choose = async () => 'ok';
-                await Edits.saveAll({ list: [f('IMG_1.heic')] });
+                { const saving = Edits.saveAll({ list: [f('IMG_1.heic')] }); document.getElementById('ex-go').click(); await saving; } // (the Export window, on Save into the photos)
                 UI.choose = choose;
                 UI.prompt = prompt0;
                 out.saveNotWritten = await same() && !!f('IMG_1.heic')._edit;
