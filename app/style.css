@@ -10846,7 +10846,7 @@ body.touring .controls.idle button { pointer-events: auto; }
 }
 
 /* ---- Section headings: small and grey, in sentence case ---- */
-:root:not([data-skin]) :is(.set-group, .sb-sec-title, .adj-sub, .palette-head, .paint-sec-head > span:first-child),
+:root:not([data-skin]) :is(.set-group, .sb-sec-title, .adj-sub, .palette-head, .paint-sec-head > span:first-child, .blank-group),
 :root:not([data-skin]) #context-menu .ctx-heading {
     color: var(--text-3);
     font-size: var(--fs-caption);
@@ -10972,15 +10972,36 @@ body.touring .controls.idle button { pointer-events: auto; }
     padding: 0 var(--sp-4);
 }
 
-:root:not([data-skin]) .dialog.settings-card .dialog-head {
+/* (and the New canvas window, which has two panes too: without the
+   rules its list's dividing line stopped in mid-air and the foot's
+   buttons sat against the bottom edge) */
+:root:not([data-skin]) .dialog:is(.settings-card, .blank-card) .dialog-head {
     padding-bottom: var(--sp-2);
     border-bottom: 1px solid var(--border-subtle);
 }
 
-:root:not([data-skin]) .dialog.settings-card .dialog-foot {
+:root:not([data-skin]) .dialog:is(.settings-card, .blank-card) .dialog-foot {
     padding-top: var(--sp-3);
     padding-bottom: var(--sp-3);
     border-top: 1px solid var(--border-subtle);
+}
+
+:root:not([data-skin]) .blank-presets {
+    border-right-color: var(--border-subtle);
+}
+
+/* A short window: the list of sizes scrolls in the room there is, and
+   the details beside it scroll too, so Create is never off the bottom */
+:root:not([data-skin]) .blank-card .blank-body {
+    flex: 1 1 auto;
+}
+
+:root:not([data-skin]) .blank-card .blank-presets {
+    max-height: none;
+}
+
+:root:not([data-skin]) .blank-card .blank-details {
+    overflow-y: auto;
 }
 
 /* ---- Menus: solid, in rows ---- */
