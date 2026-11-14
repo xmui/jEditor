@@ -1158,7 +1158,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
-    console.log('motion: a photo selected bounces (motion.js)');
+    console.log('motion: selection never animates (motion.js)');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
         await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -1170,30 +1170,23 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             app.setView('grid');
             app.renderGrid({ sync: true });
             await new Promise(r => setTimeout(r, 100));
-            let n = 0;
-            const real = Motion.bounce;
-            Motion.bounce = function (el) { n++; return real.call(this, el); };
-            const select = (list) => { app.selection = new Set(list); app.updateSelectionUI(); const got = n; n = 0; return got; };
+            // (a loading tile's spinner isn't motion)
+            const moving = (el) => el.getAnimations({ subtree: true }).filter(a => !['spin', 'thumb-spinner-in'].includes(a.animationName)).length;
+            const select = (list) => { app.selection = new Set(list); app.updateSelectionUI(); return list.reduce((n, f) => n + moving(f._gridEl), 0); };
             out.on = Motion.on();
             out.one = select([files[0]]);
-            out.added = select([files[0], files[1]]); // Ctrl-click: only the new one
-            out.moved = select([files[2]]); // the arrow keys
-            out.all = select(files); // Select all: calm
+            out.added = select([files[0], files[1]]);
+            out.all = select(files);
             select([]);
-            out.range = select(files.slice(0, 8)); // a long Shift range: calm
-            select([]);
-            document.documentElement.dataset.motion = 'off';
-            out.off = select([files[3]]);
-            document.documentElement.dataset.motion = 'on';
             const tile = files[4]._gridEl;
-            select([]);
             tile.click();
-            out.clickOnce = tile.getAnimations().length; // a click that selects it bounces it once, not twice
-            Motion.bounce = real;
+            out.click = moving(tile);
+            out.tick = getComputedStyle(tile, '::before').animationName;
+            out.edge = getComputedStyle(files[0]._gridEl).animationName;
             return out;
         });
-        check('a photo selected bounces, by click, keys or Ctrl-click: only the ones just selected', r.on && r.one === 1 && r.added === 1 && r.moved === 1 && r.clickOnce === 1, JSON.stringify(r));
-        check('Select all and a long Shift range stay calm; none with Animations off', r.all === 0 && r.range === 0 && r.off === 0, JSON.stringify(r));
+        check('a photo selected doesn\'t move: by keys, Ctrl-click, Select all or a click', r.on && r.one === 0 && r.added === 0 && r.all === 0 && r.click === 0, JSON.stringify(r));
+        check('its tick appears at once, and the grid\'s photos have no effect of their own as it scrolls', r.tick === 'none' && r.edge === 'none', JSON.stringify(r));
         check('motion: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

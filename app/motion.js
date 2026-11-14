@@ -3,12 +3,12 @@
 // icon the way they turn the photo, the selection count ticks when it
 // changes, and in the grid a folder's photos ripple in, deleted ones
 // shrink away while the rest slide into their places, and a new flag
-// pops. A photo opened from the grid zooms out of its tile into the
-// viewer, and going back zooms it down into its tile again (zoom). A tile clicked or selected gives a little bounce, and photos that turn up in
-// the folder while it's open fly into their places. They follow what happened and never hold anything up (the change
+// fades in. A photo opened from the grid zooms out of its tile into the
+// viewer, and going back zooms it down into its tile again (zoom). Selection never animates, and photos that turn up in
+// the folder while it's open fade into their places. Nothing bounces or overshoots. They follow what happened and never hold anything up (the change
 // is made first, then shown moving); the themes and Reduce motion have
 // none, nor with Settings → Animations off. A theme can still open a photo
-// from the grid its own way (--grid-zoom: zoomStyle). The tiles easing in and out as the grid scrolls are CSS only.
+// from the grid its own way (--grid-zoom: zoomStyle).
 const Motion = {
     init() {
         // The mode switch is made after this (modes.js), into the sidebar
@@ -32,11 +32,6 @@ const Motion = {
         addEventListener('keydown', (e) => { if (e.repeat) this.hold(); }, true);
         addEventListener('keyup', () => this.release(), true);
         addEventListener('blur', () => this.release());
-        // A tile clicked (chosen, or opened) bounces
-        document.addEventListener('click', (e) => {
-            const tile = e.target.closest('#grid-view .grid-item');
-            if (tile && this.on()) this.bounce(tile);
-        }, true);
         // Photos that arrive in the folder (watch.js marks them is-new) fly in
         const g = document.getElementById('grid-view');
         if (g) new MutationObserver((list) => {
@@ -46,11 +41,11 @@ const Motion = {
                 if (!el.classList || !el.classList.contains('is-new')) continue;
                 const r = el.getBoundingClientRect();
                 if (r.bottom < 0 || r.top > innerHeight) continue;
+                // (a fade and a short rise: nothing overshoots)
                 el.animate([
-                    { transform: 'translateY(48px) scale(0.5)', opacity: 0 },
-                    { transform: 'translateY(-4px) scale(1.04)', opacity: 1, offset: 0.7 },
+                    { transform: 'translateY(12px)', opacity: 0 },
                     { transform: 'none', opacity: 1 }
-                ], { duration: 460, delay: Math.min(n++ * 60, 600), easing: 'cubic-bezier(0.2, 0, 0, 1)', fill: 'backwards' });
+                ], { duration: 280, delay: Math.min(n++ * 60, 600), easing: 'cubic-bezier(0.2, 0, 0, 1)', fill: 'backwards' });
             }
         }).observe(g, { childList: true });
         const count = document.getElementById('selection-count');
@@ -183,19 +178,7 @@ const Motion = {
             self._gridY = y;
             return update.apply(this, args);
         };
-        // A photo that becomes selected bounces too, however it was (the
-        // arrow keys, Ctrl- or Shift-click, the selection moving), but not a
-        // crowd: Select all and a long Shift range stay calm
-        const selected = app.updateSelectionUI;
-        app.updateSelectionUI = function (...args) {
-            const was = self.on() && !self.held && new Set(this._shownSelected || []);
-            const out = selected.apply(this, args);
-            if (was) {
-                const fresh = [...this.selection].filter(f => !was.has(f) && f._gridEl && f._gridEl.isConnected);
-                if (fresh.length <= self.FEW) fresh.forEach(f => self.bounce(f._gridEl));
-            }
-            return out;
-        };
+        // (Selection never animates: its ring and tick appear at once)
         const remove = app.removeFilesFromApp;
         app.removeFilesFromApp = function (...args) {
             if (!self.on()) return remove.apply(this, args);
@@ -222,7 +205,7 @@ const Motion = {
             if (was && this.viewMode === 'grid') self.zoomIn(this.currentFile, was);
             return out;
         };
-        // A flag set on a tile in sight pops in (not each time tiles are drawn)
+        // A flag set on a tile in sight fades in (not each time tiles are drawn)
         if (typeof Flags !== 'undefined') {
             const decorate = Flags.decorate;
             Flags.decorate = function (el, f) {
@@ -230,7 +213,7 @@ const Motion = {
                 const had = live ? new Set([...el.querySelectorAll('.tile-flags > i')].map(i => i.className)) : null;
                 const out = decorate.call(this, el, f);
                 if (had) el.querySelectorAll('.tile-flags > i').forEach(i => {
-                    if (!had.has(i.className)) i.animate([{ scale: 0.3, opacity: 0 }, { scale: 1.25, offset: 0.6 }, { scale: 1, opacity: 1 }], { duration: 280, easing: 'ease-out' });
+                    if (!had.has(i.className)) i.animate([{ scale: 0.9, opacity: 0 }, { scale: 1, opacity: 1 }], { duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' });
                 });
                 return out;
             };
@@ -373,8 +356,6 @@ const Motion = {
         a.finished.then(done, done);
     },
 
-    FEW: 4, // at most this many photos selected at once bounce
-
     held: false, // a key is held down (app.goTo scrolls at once then)
 
     hold() {
@@ -392,14 +373,6 @@ const Motion = {
             const g = document.getElementById('grid-view');
             if (g) g.classList.remove('grid-jump');
         }, 250);
-    },
-
-    // A tile's little bounce, once (a click that selects it asks twice)
-    bounce(tile) {
-        const now = performance.now();
-        if (now - (tile._bounced || 0) < 300) return;
-        tile._bounced = now;
-        tile.animate([{ transform: 'scale(1)' }, { transform: 'scale(0.94)', offset: 0.3 }, { transform: 'scale(1.03)', offset: 0.7 }, { transform: 'scale(1)' }], { duration: 260, easing: 'ease-out' });
     },
 
     // Start a class's animation again, and take the class off when it ends

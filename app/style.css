@@ -10267,13 +10267,13 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
         box-shadow: none;
     }
 
-    /* A pill's button gives a little when pressed */
+    /* A pill's button darkens when pressed; it doesn't shrink */
     :root:not([data-skin]):not([data-motion="off"]) :is(.tb-btn, .sel-count, .mode-seg > button, .seg > button) {
-        transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), scale var(--dur-fast) var(--ease-out);
+        transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), filter var(--dur-fast) var(--ease-out);
     }
 
     :root:not([data-skin]):not([data-motion="off"]) :is(.tb-btn, .sel-count, .mode-seg > button, .seg > button):active {
-        scale: 0.94;
+        filter: brightness(0.85);
     }
 
     /* Rotate: the arrow turns the way the photo did */
@@ -10305,7 +10305,7 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
 }
 
 @keyframes count-tick {
-    from { opacity: 0.2; translate: 0 40%; }
+    from { opacity: 0.4; }
 }
 
 /* ---- The guide (guide.js): a sheet of cards with clips ---- */
