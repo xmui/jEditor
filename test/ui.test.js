@@ -5443,14 +5443,14 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.asIs = [aBytes.length === jpeg.length, gps(aBytes), has1234(aBytes)];
             // For the web: smaller, at 80%, numbered, still without it
             const b = await dir.getDirectoryHandle('B', { create: true });
-            await app.exportCopies([f], { maxEdge: 100, dir: b, where: 'B', format: 'jpeg', quality: 80, meta: 'nogps', colour: 'srgb', names: 'Trip' });
+            await app.exportCopies([f], { maxEdge: 100, dir: b, where: 'B', format: 'jpeg', quality: 80, meta: 'nogps', colour: 'srgb', pattern: 'Trip {n}' });
             const bBytes = await read(b, 'Trip 001.jpg');
             const bmp = await createImageBitmap(new Blob([bBytes]));
             out.web = [bmp.width, gps(bBytes), has1234(bBytes)];
             // At 60% it's smaller than at 100%
             const c = await dir.getDirectoryHandle('C', { create: true });
-            await app.exportCopies([f], { maxEdge: 300, dir: c, where: 'C', format: 'jpeg', quality: 100, names: 'Hi' });
-            await app.exportCopies([f], { maxEdge: 300, dir: c, where: 'C', format: 'jpeg', quality: 60, names: 'Lo' });
+            await app.exportCopies([f], { maxEdge: 300, dir: c, where: 'C', format: 'jpeg', quality: 100, pattern: 'Hi {n}' });
+            await app.exportCopies([f], { maxEdge: 300, dir: c, where: 'C', format: 'jpeg', quality: 60, pattern: 'Lo {n}' });
             out.quality = (await read(c, 'Lo 001.jpg')).length < (await read(c, 'Hi 001.jpg')).length;
             // No metadata at all
             const d = await dir.getDirectoryHandle('D', { create: true });
