@@ -3921,9 +3921,9 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     flex-direction: column;
 }
 
-/* Copies: what they're for as a row of glass pills, what it sets as chips
-   under it (Custom: the fields), a sentence, pills that open menus, and
-   the folder's name */
+/* Copies: your own presets as a row of pills (none: only Save as
+   preset…), sections that open and close, each saying what it's set to,
+   and an optional preview beside them */
 .ex-presets {
     display: flex;
     flex-wrap: wrap;
@@ -4049,6 +4049,191 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 @media (max-width: 520px) {
     .ex-custom {
         grid-template-columns: 1fr;
+    }
+}
+
+.ex-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+}
+
+.ex-top .ex-prev-btn {
+    margin-left: auto;
+}
+
+.ex-cols {
+    display: flex;
+    gap: var(--sp-4);
+    align-items: flex-start;
+}
+
+.ex-secs {
+    flex: 1 1 0;
+    min-width: 0;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.ex-sec {
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.ex-sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-2);
+    width: 100%;
+    padding: 9px 2px;
+    border: 0;
+    border-radius: var(--r-xs);
+    background: none;
+    color: var(--text-1);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.ex-sec-head:hover em {
+    color: var(--text-1);
+}
+
+.ex-sec-head:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+}
+
+.ex-sec-head .ex-chev {
+    flex: none;
+    align-self: center;
+    color: var(--text-3);
+    transition: rotate var(--dur-fast) var(--ease-out);
+}
+
+.ex-sec.open .ex-chev {
+    rotate: 90deg;
+}
+
+.ex-sec-head b {
+    flex: 0 0 104px;
+    font-weight: var(--fw-semibold);
+}
+
+.ex-sec-head em {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-2);
+    font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ex-sec-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: 2px 2px var(--sp-3) 26px;
+}
+
+.ex-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+}
+
+.ex-row > span {
+    flex: 0 0 104px;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.ex-row > .field {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.ex-tokens {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.ex-eg {
+    margin: 0;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.ex-eg code {
+    color: var(--text-1);
+    font-size: inherit;
+}
+
+.ex-quiet {
+    color: var(--text-2);
+}
+
+.ex-prev {
+    flex: 0 0 220px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.ex-prev-pic {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 4 / 3;
+    border-radius: var(--r-sm);
+    background: var(--bg-sunken);
+    overflow: hidden;
+}
+
+.ex-prev-pic img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.ex-prev-pic img:not([src]) {
+    display: none;
+}
+
+.ex-prev-name {
+    overflow: hidden;
+    font-size: var(--fs-small);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ex-prev small {
+    color: var(--text-2);
+    font-size: var(--fs-caption);
+}
+
+/* (the window is wider with the preview in it) */
+#export-panel.ex-wide .export-card {
+    width: min(820px, 100%);
+}
+
+#ex-note .ex-sum {
+    color: var(--text-1);
+}
+
+@media (max-width: 640px) {
+    .ex-cols {
+        flex-direction: column;
+    }
+
+    .ex-prev {
+        flex: none;
+        width: 100%;
+    }
+
+    .ex-sec-head b,
+    .ex-row > span {
+        flex-basis: 84px;
     }
 }
 

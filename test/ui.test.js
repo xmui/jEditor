@@ -4965,9 +4965,17 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // Export copies: every photo, the edited ones with their edits
             step = 'Export copies: every photo, the edited ones with their edits';
             await until(() => Edits.count() === 3);
-            UI.choose = async () => 'alt';
-            UI.prompt = async () => '';
-            await Edits.saveAll();
+            // (Save opens the Export window: its Copies tab, of the edited photos, into a folder named here)
+            {
+                const saving = Edits.saveAll();
+                out.saveWindow = document.getElementById('ex-title').textContent + ' / ' + [...document.querySelectorAll('#ex-tabs button')].map(b => b.textContent + (b.classList.contains('active') ? '*' : '')).join(', ') + ' / ' + document.getElementById('ex-go').textContent;
+                document.querySelector('#ex-tabs [data-tab="copies"]').click();
+                out.saveCopies = Export.which + ' / ' + document.getElementById('ex-go').textContent;
+                Export.folder = 'jEditor Export';
+                Export.render();
+                document.getElementById('ex-go').click();
+                await saving;
+            }
             const exp = await dir.getDirectoryHandle('jEditor Export');
             out.exported = [await dims(exp, 'scan1.jpg'), await dims(exp, 'scan2.jpg'), await dims(exp, 'plain.jpg')];
             out.exportLeavesEdits = Edits.count() === 3 && await untouched();
@@ -4975,8 +4983,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // Save into the photos
             step = 'Save into the photos';
             await until(() => Edits.count() === 3 && !app._savingEdits);
-            UI.choose = async () => 'ok';
-            await Edits.saveAll();
+            { const saving = Edits.saveAll(); document.getElementById('ex-go').click(); await saving; }
             out.saved = [await dims(dir, 'scan1.jpg'), await dims(dir, 'scan2.jpg'), await dims(dir, 'plain.jpg')];
             out.plainLossless = readOrientation(await bytes(dir, 'plain.jpg')) === 8;
             out.savedClears = Edits.count() === 0 && !f('scan1.jpg')._gridEl.querySelector('.tile-edit') && /kept until you save/.test(barText());
@@ -5016,6 +5023,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('kept edits: a batch Auto crop changed in the editor is an Auto crop test (corrected), with the photo as the scan', r.keptLabel && r.keptLabel.result === 'corrected' && r.keptLabel.auto && r.keptLabel.auto.found && r.keptLabel.W === 900 && r.keptScan, JSON.stringify(r.keptLabel && { result: r.keptLabel.result, W: r.keptLabel.W, scan: r.keptScan }));
         check('kept edits: a turn is kept too; Ctrl+Z takes it back', r.turned && r.turnUndone);
         check('kept edits: still there when the project is opened again', r.reloaded);
+        check('kept edits: Save opens the Export window on Save into the photos; its Copies are of the edited photos', r.saveWindow === 'Save 3 edits / Save into the photos*, Copies / Save into 3 photos' && r.saveCopies === 'edited / Export 3 copies', JSON.stringify([r.saveWindow, r.saveCopies]));
         check('kept edits: export copies all photos with their edits, photos untouched', r.exported[0].join('x') === '600x400' && inside(r.exported[1]) && r.exported[2].join('x') === '300x400' && r.exportLeavesEdits, JSON.stringify(r.exported));
         check('kept edits: save writes them into the photos (a turn losslessly), originals kept', r.saved[0].join('x') === '600x400' && inside(r.saved[1]) && r.saved[2].join('x') === '300x400' && r.plainLossless && r.savedClears && r.backups === 2, JSON.stringify(r.saved) + ' ' + r.backups);
         check('kept edits: Ctrl+Z after saving puts the photos back with the edits kept', r.undoSave);
@@ -5435,14 +5443,14 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.asIs = [aBytes.length === jpeg.length, gps(aBytes), has1234(aBytes)];
             // For the web: smaller, at 80%, numbered, still without it
             const b = await dir.getDirectoryHandle('B', { create: true });
-            await app.exportCopies([f], { maxEdge: 100, dir: b, where: 'B', format: 'jpeg', quality: 80, meta: 'nogps', colour: 'srgb', names: 'Trip' });
+            await app.exportCopies([f], { maxEdge: 100, dir: b, where: 'B', format: 'jpeg', quality: 80, meta: 'nogps', colour: 'srgb', pattern: 'Trip {n}' });
             const bBytes = await read(b, 'Trip 001.jpg');
             const bmp = await createImageBitmap(new Blob([bBytes]));
             out.web = [bmp.width, gps(bBytes), has1234(bBytes)];
             // At 60% it's smaller than at 100%
             const c = await dir.getDirectoryHandle('C', { create: true });
-            await app.exportCopies([f], { maxEdge: 300, dir: c, where: 'C', format: 'jpeg', quality: 100, names: 'Hi' });
-            await app.exportCopies([f], { maxEdge: 300, dir: c, where: 'C', format: 'jpeg', quality: 60, names: 'Lo' });
+            await app.exportCopies([f], { maxEdge: 300, dir: c, where: 'C', format: 'jpeg', quality: 100, pattern: 'Hi {n}' });
+            await app.exportCopies([f], { maxEdge: 300, dir: c, where: 'C', format: 'jpeg', quality: 60, pattern: 'Lo {n}' });
             out.quality = (await read(c, 'Lo 001.jpg')).length < (await read(c, 'Hi 001.jpg')).length;
             // No metadata at all
             const d = await dir.getDirectoryHandle('D', { create: true });
@@ -6186,7 +6194,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             step = 'save into photo';
             const choose = UI.choose;
             UI.choose = async () => 'ok';
-            await Edits.saveAll({ list: [f('b.jpg')] });
+            { const saving = Edits.saveAll({ list: [f('b.jpg')] }); document.getElementById('ex-go').click(); await saving; }
             UI.choose = choose;
             out.saved = !f('b.jpg')._edit && !(await same('b.jpg')) && !!f('a.jpg')._edit;
             return out;

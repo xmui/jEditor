@@ -10,9 +10,9 @@
 // as it will be saved, with a pencil on the edited ones, and a bar says
 // how many are waiting, with Save and Discard.
 //
-// Save writes them all: over the photos (the originals are kept for Ctrl+Z,
-// as batch Auto crop does), or as copies in "jEditor Export" with the
-// photos left alone. Edits are kept with the project (edits.json, beside
+// Save opens the Export window (export.js) on Save into the photos: over
+// the photos (the originals are kept for Ctrl+Z, as batch Auto crop does),
+// or, from its Copies tab, as copies with the photos left alone. Edits are kept with the project (edits.json, beside
 // flags.json; see folder-cache.js), so they're still there after closing
 // jEditor. Like flags they live on the photo objects while the project is
 // open, so a rename or a move inside jEditor carries them along.
@@ -475,8 +475,9 @@ const Edits = {
 
     // ---- Saving ----
 
-    // Over the photos, or as copies in "jEditor Export". overwrite: skip
-    // the question. True when it was done.
+    // Over the photos, or as copies (the Export window asks which, and
+    // where the copies go). overwrite: over the photos, without asking.
+    // True when it was done.
     async saveAll({ overwrite = false, list = null } = {}) {
         const app = this.app;
         list = list || this.edited();
@@ -485,26 +486,10 @@ const Edits = {
             return true;
         }
         if (!app.ensureWritable()) return false;
-        let how = overwrite ? 'ok' : null;
-        if (!how) {
-            const n = list.length, all = app.files.length;
-            how = await UI.choose({
-                title: `Save ${n === 1 ? 'the edit' : `${n.toLocaleString()} edits`}`,
-                message: 'Write the edits into the photos, or keep the photos as they are and export edited copies.',
-                items: [
-                    `Save into the photos: ${n.toLocaleString()} photo${n === 1 ? ' is' : 's are'} changed. The originals are kept by jEditor, so Ctrl+Z puts them back.`,
-                    `Export copies: all ${all.toLocaleString()} photo${all === 1 ? '' : 's'} go to "jEditor Export" in this folder, the edited ones with their edits. The edits stay, to change or save later.`
-                ],
-                ok: 'Save into photos',
-                alt: 'Export copies'
-            });
-        }
-        if (how === 'ok') return app.saveEdits(list);
-        if (how === 'alt') {
-            await app.exportCopies(app.files);
-            return true;
-        }
-        return false;
+        if (overwrite) return app.saveEdits(list);
+        // Asked in the Export window, on its Save into the photos tab
+        // (export.js): into the photos, or copies from its Copies tab
+        return Export.save(list);
     },
 
     // ---- On screen ----
