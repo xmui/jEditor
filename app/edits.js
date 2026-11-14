@@ -27,6 +27,7 @@ const Edits = {
     FILE: 'edits.json',
 
     defer: false,       // this project keeps edits until saved
+    chosen: false,      // ... and it was asked (first-open.js), so it's kept
     orphans: new Map(), // path → edit of photos not in the folder now
 
     ICON: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/></svg>',
@@ -100,10 +101,10 @@ const Edits = {
         return this.isNothing(out) ? null : out;
     },
 
-    // No turn, no tilt, the whole photo (adjustments or not)
+    // No turn, no flip, no tilt, the whole photo (adjustments or not)
     wholePhoto(e) {
         const n = e.n, eq = (a, b) => Math.abs(a - b) < 1e-6;
-        return !((e.q || 0) % 4) && !e.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5);
+        return !((e.q || 0) % 4) && !e.m && !e.angle && eq(n.x0, -0.5) && eq(n.y0, -0.5) && eq(n.x1, 0.5) && eq(n.y1, 0.5);
     },
 
     get(f) {
@@ -140,6 +141,7 @@ const Edits = {
         this._loadedFor = app.dirHandle;
         this.orphans = new Map();
         this.defer = false;
+        this.chosen = false;
         if (!app.dirHandle || app.readOnlyMode) {
             this.updateBar();
             return [];
@@ -154,7 +156,9 @@ const Edits = {
             data = fh && JSON.parse(await (await fh.getFile()).text());
         } catch (e) { /* nothing kept */ }
         if (this._loadedFor !== app.dirHandle) return [];
-        this.defer = !!(data && data.defer);
+        // A project that hasn't chosen: as Settings says for new ones (start.js)
+        this.defer = data && typeof data.defer === 'boolean' ? data.defer : !!(app.uiPrefs && app.uiPrefs.deferNew);
+        this.chosen = !!data && typeof data.defer === 'boolean';
         const saved = new Map(Object.entries((data && data.edits) || {}));
         for (const f of app.files) {
             const rel = f.relPath || f.name;
@@ -211,6 +215,8 @@ const Edits = {
             angle: num(v.angle) ? Math.max(-45, Math.min(45, v.angle)) : 0,
             n: { x0: n.x0, y0: n.y0, x1: n.x1, y1: n.y1 }
         };
+        // Flipped left to right, before the turn (CropGeom.flipped)
+        if (v.m === true) e.m = true;
         if (typeof v.aspectKey === 'string') e.aspectKey = v.aspectKey;
         if (typeof v.landscape === 'boolean') e.landscape = v.landscape;
         if (num(v.size)) e.size = v.size;
@@ -253,7 +259,9 @@ const Edits = {
 
     // Nothing to keep: no setting, no edits
     isEmpty(data) {
-        return !data.defer && !Object.keys(data.edits).length;
+        // (with new projects keeping edits, "off" is a choice to keep)
+        const deferNew = !!(this.app && this.app.uiPrefs && this.app.uiPrefs.deferNew);
+        return !data.defer && !deferNew && !this.chosen && !Object.keys(data.edits).length;
     },
 
     // The setting and every edit, as edits.json holds them
@@ -330,7 +338,7 @@ const Edits = {
         }
     },
 
-    // No turn, no tilt, the whole photo, no adjustments and no paint
+    // No turn, no flip, no tilt, the whole photo, no adjustments and no paint
     isNothing(e) {
         return this.wholePhoto(e) && !(e.adj && Develop.active(e.adj)) && !Paint.has(e);
     },
@@ -374,6 +382,25 @@ const Edits = {
             if (typeof t.landscape === 'boolean') t.landscape = !t.landscape;
         }
         return t;
+    },
+
+    // Flipped as they're seen ('h' left to right, 'v' upside down): the
+    // same box on the photo, mirrored with it. Twice is back as it was
+    flip(files, axis) {
+        if (!files.length) return true;
+        this.set(files.map(f => ({ file: f, edit: this.flipped(f._edit, axis) })), axis === 'v' ? 'flip upside down' : 'flip');
+        return true;
+    },
+
+    flipped(e, axis) {
+        const t = e ? { ...e, n: { ...e.n } } : { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } };
+        const f = CropGeom.flipped(t, axis);
+        const out = { ...t, q: f.q, angle: f.angle, n: f.n };
+        if (f.m) out.m = true;
+        else delete out.m;
+        // Batch Auto crop's record (crop-log.js) no longer describes it
+        delete out.auto;
+        return out;
     },
 
     // Back to the photos as they are on disk
@@ -437,6 +464,7 @@ const Edits = {
             }
         }
         this.defer = on;
+        this.chosen = true;
         this.saveSoon();
         await this.flush();
         this.updateBar();
@@ -523,6 +551,7 @@ const Edits = {
 
     // How many are waiting, with Save and Discard
     updateBar() {
+        if (typeof Places !== 'undefined' && Places.drawPending) Places.drawPending();
         const bar = document.getElementById('edits-bar');
         if (!bar) return;
         const on = this.on();

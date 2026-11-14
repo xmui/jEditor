@@ -12,9 +12,10 @@
 //     merely share a composition (sky over ground) differ in detail.
 // Groups use complete linkage — a photo joins a group only if it matches
 // every photo in it — so look-alikes can't chain unrelated photos together.
-// Review is one group at a time: the copy with the most pixels is
-// suggested as the keeper, the rest can be marked and moved to the trash
-// (Ctrl+Z restores them).
+// Review shows every group on one page that scrolls: the copy with the
+// most pixels is suggested as the keeper and the rest are marked, to be
+// moved to the trash together (Ctrl+Z restores them). Show in grid puts
+// the groups in the grid instead, with a Duplicates chip by the search.
 
 const Dupes = {
     // Minimum [layout, detail] correlation for a near-duplicate. Tuned on
@@ -32,11 +33,10 @@ const Dupes = {
         this._inited = true;
         this.app = app;
         this.el('dupes-close').addEventListener('click', () => this.close());
-        this.el('dupes-prev').addEventListener('click', () => this.step(-1));
-        this.el('dupes-next').addEventListener('click', () => this.step(1));
-        this.el('dupes-skip').addEventListener('click', () => this.skip());
         this.el('dupes-apply').addEventListener('click', () => this.apply());
-        this.el('dupes-keep-best').addEventListener('click', () => this.keepBest());
+        this.el('dupes-grid').addEventListener('click', () => this.showInGrid());
+        const chip = this.el('fb-dupes-chip');
+        if (chip) chip.addEventListener('click', () => this.leaveGrid());
         const sens = this.el('dupes-sensitivity');
         sens.addEventListener('change', () => { sens.blur(); this.scan(); });
     },
@@ -478,10 +478,17 @@ const Dupes = {
     },
 
     // ---- review UI ----
+    //
+    // Every group on one page that scrolls, a row of cards each. The
+    // suggested keeper is kept and the rest marked to start with; a click
+    // swaps a photo, Not duplicates drops a group, and one button trashes
+    // everything marked (one Ctrl+Z restores it). Show in grid hands the
+    // groups to the grid (gridFiles), with the marked photos selected.
 
     async open() {
         this.init(this.app || window.app);
         if (!this.app.files.length) return;
+        if (this.inGrid) this.leaveGrid(false);
         this.isOpen = true;
         this.el('dupes-panel').classList.remove('hidden');
         await this.scan();
@@ -499,7 +506,6 @@ const Dupes = {
         const token = (this._scanToken = (this._scanToken || 0) + 1);
         const threshold = this.SENSITIVITY[this.el('dupes-sensitivity').value] || this.SENSITIVITY.normal;
         this.groups = [];
-        this.index = 0;
         this.trashed = 0;
         this.renderMessage('Looking for duplicates…');
         this.app.beginTask('dupes', 'Finding duplicates…');
@@ -514,7 +520,10 @@ const Dupes = {
             if (token !== this._scanToken) return;
             const ignored = this.app._dupesIgnored || new Set();
             this.groups = groups.filter(g => !ignored.has(this.groupKey(g)));
-            for (const g of this.groups) await this.rankGroup(g);
+            for (const g of this.groups) {
+                await this.rankGroup(g);
+                g.marked = new Set(g.files.filter(f => f !== g.best));
+            }
             if (token !== this._scanToken) return;
             this.render();
         } catch (e) {
@@ -532,6 +541,7 @@ const Dupes = {
     renderMessage(text) {
         const stage = this.el('dupes-stage');
         stage.innerHTML = '';
+        stage.classList.remove('dupes-list');
         const p = document.createElement('div');
         p.className = 'dupes-message';
         p.textContent = text;
@@ -542,44 +552,71 @@ const Dupes = {
     },
 
     setButtons(on) {
-        ['dupes-prev', 'dupes-next', 'dupes-skip', 'dupes-apply', 'dupes-keep-best'].forEach(id => {
-            this.el(id).disabled = !on;
-        });
+        ['dupes-apply', 'dupes-grid'].forEach(id => { this.el(id).disabled = !on; });
     },
 
-    current() { return this.groups[this.index]; },
+    markedFiles() {
+        return this.groups.flatMap(g => g.files.filter(f => g.marked.has(f)));
+    },
 
     render() {
         const groups = this.groups;
-        const total = groups.reduce((n, g) => n + g.files.length, 0);
         if (!groups.length) {
             this.renderMessage(this.trashed
                 ? Host.say(`All done — ${this.trashed} duplicate${this.trashed === 1 ? '' : 's'} moved to the trash (Ctrl+Z restores).`)
                 : 'No duplicates found. Try “Loose” sensitivity to widen the search.');
             return;
         }
-        this.index = Math.max(0, Math.min(this.index, groups.length - 1));
-        const g = this.current();
-        this.el('dupes-summary').textContent = `${groups.length} group${groups.length === 1 ? '' : 's'} · ${total} photos`;
-        this.el('dupes-progress').textContent = `Group ${this.index + 1} of ${groups.length}`;
-        this.setButtons(true);
-        this.el('dupes-prev').disabled = this.index === 0;
-        this.el('dupes-next').disabled = this.index === groups.length - 1;
-        this.el('dupes-apply').textContent = g.marked.size
-            ? `Trash ${g.marked.size} & next` : 'Keep all & next';
-
         const stage = this.el('dupes-stage');
+        const top = stage.classList.contains('dupes-list') ? stage.scrollTop : 0;
         stage.innerHTML = '';
-        stage.style.setProperty('--dupe-cols', Math.min(g.files.length, 4));
-        g.files.forEach((f, i) => stage.appendChild(this.card(g, f, i)));
+        stage.classList.add('dupes-list');
+        groups.forEach((g, gi) => {
+            const sec = document.createElement('section');
+            sec.className = 'dupe-group';
+            const head = document.createElement('div');
+            head.className = 'dupe-ghead';
+            const name = document.createElement('b');
+            name.textContent = `Group ${gi + 1}`;
+            const count = document.createElement('span');
+            count.textContent = `${g.files.length} photos`;
+            const not = document.createElement('button');
+            not.className = 'btn ghost sm dupe-not';
+            not.textContent = 'Not duplicates';
+            not.title = 'These aren\'t duplicates: leave them all';
+            not.addEventListener('click', () => this.skip(g));
+            head.append(name, count, not);
+            const row = document.createElement('div');
+            row.className = 'dupe-row';
+            g.files.forEach(f => row.appendChild(this.card(g, f)));
+            sec.append(head, row);
+            stage.appendChild(sec);
+        });
+        stage.scrollTop = top;
+        this.setButtons(true);
+        this.updateFoot();
     },
 
-    card(g, f, i) {
+    updateFoot() {
+        const groups = this.groups;
+        const total = groups.reduce((n, g) => n + g.files.length, 0);
+        const n = this.markedFiles().length;
+        this.el('dupes-summary').textContent = `${groups.length} group${groups.length === 1 ? '' : 's'} · ${total} photos`;
+        this.el('dupes-progress').textContent = `${n} marked`;
+        const apply = this.el('dupes-apply');
+        apply.textContent = n ? `Trash ${n} photo${n === 1 ? '' : 's'}` : 'Nothing marked';
+        apply.disabled = !n;
+    },
+
+    card(g, f) {
         const card = document.createElement('div');
         card.className = 'dupe-card';
-        card.classList.toggle('marked', g.marked.has(f));
-        card.title = 'Click to mark for trash';
-        card.onclick = () => this.toggle(i);
+        card.tabIndex = 0;
+        card.setAttribute('role', 'button');
+        card.addEventListener('click', () => this.toggle(g, f));
+        card.addEventListener('keydown', (e) => {
+            if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); this.toggle(g, f); }
+        });
 
         const frame = document.createElement('div');
         frame.className = 'dupe-frame';
@@ -601,26 +638,9 @@ const Dupes = {
             rotate(src.savedAtRead);
         }).catch(() => { });
         frame.appendChild(img);
-
-        const badges = document.createElement('div');
-        badges.className = 'dupe-badges';
-        const badge = (text, cls) => {
-            const b = document.createElement('span');
-            b.className = 'dupe-badge ' + cls;
-            b.textContent = text;
-            badges.appendChild(b);
-        };
-        badge(String(i + 1), 'num');
-        if (f === g.best) badge('Suggested keep', 'keep');
-        if (g.exact.has(f)) badge('Exact copy', 'exact');
-        if (f !== g.best && g.score && g.score.get(f) != null) {
-            badge(`${Math.round(g.score.get(f) * 100)}% match`, 'score');
-        }
-        frame.appendChild(badges);
-        const mark = document.createElement('div');
-        mark.className = 'dupe-mark';
-        mark.textContent = 'Trash';
-        frame.appendChild(mark);
+        const pill = document.createElement('span');
+        pill.className = 'dupe-pill';
+        frame.appendChild(pill);
         card.appendChild(frame);
 
         const meta = document.createElement('div');
@@ -630,71 +650,187 @@ const Dupes = {
             d.className = cls;
             d.textContent = text;
             meta.appendChild(d);
+            return d;
         };
-        line(f.name, 'dupe-name');
+        line(f.name, 'dupe-name').title = f.relPath || f.name;
         const bits = [];
         if (f._dims) bits.push(`${f._dims.w} × ${f._dims.h}`);
         bits.push(this.app.formatBytes(f.size));
-        if (f.lastModified) bits.push(new Date(f.lastModified).toLocaleDateString());
-        line(bits.join(' · '));
+        line(bits.join(' · '), f === g.best ? 'dupe-big' : '');
+        const more = [];
+        if (f.lastModified) more.push(new Date(f.lastModified).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }));
+        if (f !== g.best) {
+            if (g.exact.has(f) && g.exact.has(g.best)) more.push('exact copy');
+            else if (g.score && g.score.get(f) != null) more.push(`${Math.round(g.score.get(f) * 100)}% alike`);
+        }
+        line(more.join(' · '));
         const folder = (f.relPath || '').split('/').slice(0, -1).join('/');
         if (folder) line(folder, 'dupe-folder');
         card.appendChild(meta);
+        card._paint = () => {
+            const marked = g.marked.has(f);
+            card.classList.toggle('marked', marked);
+            card.classList.toggle('kept', !marked);
+            pill.textContent = marked ? 'Trash' : 'Keep';
+            card.title = marked ? 'Marked for the trash: click to keep it' : 'Kept: click to mark it for the trash';
+        };
+        card._paint();
         return card;
     },
 
-    toggle(i) {
-        const g = this.current();
-        const f = g && g.files[i];
-        if (!f) return;
+    // Swap one photo between kept and marked (a group keeps at least one)
+    toggle(g, f) {
+        if (!g || !f) return;
         if (g.marked.has(f)) g.marked.delete(f);
         else g.marked.add(f);
         if (g.marked.size === g.files.length) {
             g.marked.delete(f);
             this.app.showToast('Keep at least one photo from each group', 2000);
         }
-        this.render();
+        this.repaint();
     },
 
+    repaint() {
+        this.el('dupes-stage').querySelectorAll('.dupe-card').forEach(c => c._paint && c._paint());
+        this.updateFoot();
+    },
+
+    // K: back to the suggestion in every group
     keepBest() {
-        const g = this.current();
-        if (!g) return;
-        g.marked = new Set(g.files.filter(f => f !== g.best));
-        this.render();
-    },
-
-    step(dir) {
         if (!this.groups.length) return;
-        this.index = Math.max(0, Math.min(this.groups.length - 1, this.index + dir));
-        this.render();
+        for (const g of this.groups) g.marked = new Set(g.files.filter(f => f !== g.best));
+        this.repaint();
     },
 
-    // "Not duplicates": hide this group for the rest of the session
-    skip() {
-        const g = this.current();
+    // "Not duplicates": leave this group alone for the rest of the session
+    skip(g) {
         if (!g) return;
         if (!this.app._dupesIgnored) this.app._dupesIgnored = new Set();
         this.app._dupesIgnored.add(this.groupKey(g));
-        this.groups.splice(this.index, 1);
+        this.groups = this.groups.filter(x => x !== g);
         this.render();
     },
 
-    // Trash the marked photos of this group (if any) and move on
+    // Trash everything marked, in every group, as one step
     async apply() {
-        const g = this.current();
-        if (!g || this._applying) return;
+        if (this._applying) return;
+        const marked = this.markedFiles();
+        if (!marked.length) return;
         this._applying = true;
         try {
-            const marked = g.files.filter(f => g.marked.has(f));
-            if (marked.length) {
-                const before = this.app.files.length;
-                await this.app.moveToTrash(marked);
-                this.trashed += before - this.app.files.length;
-            }
-            this.groups.splice(this.index, 1);
+            const before = this.app.files.length;
+            await this.app.moveToTrash(marked);
+            this.trashed += before - this.app.files.length;
+            this.groups = [];
             this.render();
         } finally {
             this._applying = false;
         }
+    },
+
+    // ---- In the grid ----
+    //
+    // The grid shows only the groups (Folders.viewFiles asks gridFiles),
+    // each from a new row under a one-line heading, the suggested keeper
+    // first with a Keep badge. The marked photos come selected, so the
+    // selection bar's Delete does what Trash would; anything else in the
+    // grid works as usual. The chip beside the search ends it.
+
+    showInGrid() {
+        const app = this.app;
+        if (!this.groups.length) return;
+        const marked = this.markedFiles();
+        this.inGrid = this.groups;
+        this.close();
+        if (Flags.active()) Flags.clearFilter(false);
+        if (app.viewMode !== 'grid') app.setView('grid');
+        this.syncChip();
+        app.selection.clear();
+        const view = app.viewFiles();
+        app.currentFile = view[0];
+        app.renderThumbnails();
+        app.renderGrid({ sync: true });
+        app.elements.gridView.scrollTop = 0;
+        app.setCurrent(app.currentFile);
+        marked.forEach(f => app.selection.add(f));
+        app.updateSelectionUI();
+    },
+
+    leaveGrid(render = true) {
+        if (!this.inGrid) return;
+        const app = this.app;
+        const was = app.currentFile;
+        this.inGrid = null;
+        this._gridSet = null;
+        this.syncChip();
+        if (!render || !app.files.length) return;
+        app.selection.clear();
+        if (!Folders.inView(was)) app.currentFile = app.viewFiles()[0] || app.currentFile;
+        app.renderThumbnails();
+        app.renderGrid({ sync: true });
+        app.setCurrent(app.currentFile);
+        const el = app.revealInGrid(app.currentFile);
+        if (el) el.scrollIntoView({ block: 'center' });
+        if (app.viewMode === 'grid') app.selection.add(app.currentFile);
+        app.updateSelectionUI();
+    },
+
+    // The groups' photos still in the folder, group by group (a group left
+    // with one photo is done); empty: the grid goes back to everything
+    gridFiles() {
+        const here = new Set(this.app.files);
+        const out = [];
+        this._starts = new Map();
+        this.inGrid = this.inGrid.filter(g => g.files.filter(f => here.has(f)).length > 1);
+        this.inGrid.forEach((g, i) => {
+            const left = g.files.filter(f => here.has(f));
+            this._starts.set(left[0], { n: i + 1, count: left.length });
+            out.push(...left);
+        });
+        this._gridSet = new Set(out);
+        if (!out.length) setTimeout(() => this.leaveGrid(), 0);
+        this.syncChip(out.length);
+        return out;
+    },
+
+    inGridView(file) {
+        if (!this._gridSet) this.gridFiles();
+        return this._gridSet.has(file);
+    },
+
+    // A group's heading, before its first photo's tile
+    gridHeading(file) {
+        const s = this._starts && this._starts.get(file);
+        if (!s) return null;
+        const h = document.createElement('div');
+        h.className = 'dupe-grid-head';
+        h.setAttribute('aria-hidden', 'true');
+        h.innerHTML = `<b>Group ${s.n}</b><span>${s.count} photos</span>`;
+        return h;
+    },
+
+    // The suggested keeper's Keep badge (and a new row for each group)
+    decorate(el, file) {
+        if (!this.inGrid) return;
+        const best = this.inGrid.some(g => g.best === file);
+        let b = el.querySelector(':scope > .dupe-tile-keep');
+        if (best && !b) {
+            b = document.createElement('span');
+            b.className = 'dupe-tile-keep';
+            b.textContent = 'Keep';
+            b.title = 'The suggested copy to keep: the most pixels';
+            el.appendChild(b);
+        } else if (!best && b) b.remove();
+        el.classList.toggle('dupe-start', !!(this._starts && this._starts.has(file)));
+    },
+
+    syncChip(n) {
+        const chip = this.el('fb-dupes-chip');
+        if (!chip) return;
+        chip.classList.toggle('hidden', !this.inGrid);
+        if (!this.inGrid) return;
+        if (n === undefined) n = this._gridSet ? this._gridSet.size : this.inGrid.reduce((s, g) => s + g.files.length, 0);
+        chip.innerHTML = `Duplicates (${n.toLocaleString()})<span class="fc-x">✕</span>`;
+        chip.title = 'Showing only the duplicates: click to show everything';
     }
 };

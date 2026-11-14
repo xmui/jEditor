@@ -13,7 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright-core');
 const { createServer } = require('../scripts/serve.js');
-const { launchOptions, PAGE_HELPERS, newPage } = require('./page-helpers.js');
+const { launchOptions, PAGE_HELPERS, newPage, floatingBoxes, overTopBar } = require('./page-helpers.js');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -417,14 +417,20 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const g = c.getContext('2d');
             g.fillStyle = '#7ab'; g.fillRect(0, 0, 120, 40);
             g.fillStyle = '#585'; g.fillRect(0, 40, 120, 40);
-            const ans = await Upright.guess(await new Promise(res => c.toBlob(res)));
+            const blob = await new Promise(res => c.toBlob(res));
+            const ans = await Upright.guess(blob);
             out.real = ans && [0, 1, 2, 3].includes(ans.turns) && ans.sure > 0.25 && ans.sure <= 1;
+            // ... looked at in a worker (the window keeps up), the same answer as here
+            out.inWorker = !!Upright.worker;
+            const here = await Upright.guessHere(blob);
+            out.same = !!here && here.turns === ans.turns && Math.abs(here.sure - ans.sure) < 1e-6;
             return out;
         });
         check('turn upright: the network is there', r.loaded);
         check('turn upright: each photo turned its own way; an unsure one left as it is', r.turned === 2 && r.orient === '6,8' && r.eWrites === 0, JSON.stringify(r));
         check('turn upright: one undo step for them all', r.oneStep);
         check('turn upright: the network answers for a photo', r.real, JSON.stringify(r));
+        check('turn upright: the network looks in a worker, with the same answer as on the window\'s thread', r.inWorker && r.same, JSON.stringify([r.inWorker, r.same]));
         await page.close();
     }
 
@@ -788,6 +794,32 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.menuActionRan = clicked;
             out.menuClosed = !document.getElementById('context-menu');
 
+            // A row with a menu of its own, and a command's key at its right
+            let turned = '';
+            app.openContextMenu([['Open', () => { }, false, undefined, 'view.open'], ['Turn and flip', [['Left', () => { turned = 'left'; }, false, undefined, 'edit.rotateLeft'], ['—'], ['Right', () => { turned = 'right'; }]]]], 20, 60);
+            const menu2 = document.getElementById('context-menu');
+            const more = menu2.querySelector('button.ctx-more');
+            const key = (el, k) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+            out.subKey = menu2.querySelector('button .ctx-key').textContent;
+            out.subShut = !document.getElementById('context-fly') && more.getAttribute('aria-expanded') === 'false';
+            more.focus();
+            key(more, 'ArrowRight');
+            const fly = document.getElementById('context-fly');
+            out.subOpen = !!fly && fly.querySelectorAll('button').length === 2 && document.activeElement === fly.querySelector('button') && more.getAttribute('aria-expanded') === 'true';
+            // Beside its row, in the window
+            const fr = fly.getBoundingClientRect(), mr = menu2.getBoundingClientRect();
+            out.subBeside = (fr.left >= mr.right - 4 || fr.right <= mr.left + 4) && fr.left >= 0 && fr.right <= innerWidth;
+            key(document.activeElement, 'ArrowLeft');
+            out.subBack = !document.getElementById('context-fly') && document.activeElement === more;
+            more.click();
+            document.getElementById('context-fly').querySelectorAll('button')[1].click();
+            out.subRan = turned === 'right' && !document.getElementById('context-menu') && !document.getElementById('context-fly');
+            // A photo's own menu: the six under one row
+            const tile = document.querySelector('#grid-view .grid-item:not(.folder-tile)');
+            const items = tile && tile.offsetParent ? app.contextItemsFor(tile, false) : app.contextItemsFor(null, true);
+            const sub = items.find(it => it[0] === 'Turn and flip');
+            out.subPhoto = !!sub && sub[1].filter(it => typeof it[1] === 'function').length === 6 && !items.some(it => it[0] === 'Rotate left');
+
             // --- Ctrl+wheel grid zoom ---
             const before = document.getElementById('grid-size-slider').value;
             document.getElementById('grid-view').dispatchEvent(
@@ -808,6 +840,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('capture-date sort orders by dateTaken', r.takenOrder === 'two.jpg,one.jpg', r.takenOrder);
         check('export writes a copy to jEditor Export', r.exported);
         check('context menu renders and runs actions', r.menuButtons === 2 && r.menuDividers === 1 && r.menuActionRan && r.menuClosed);
+        check('... a row\'s own menu opens beside it (right arrow, a click), goes back on the left arrow and runs its commands; a command shows its key',
+            r.subShut && r.subOpen && r.subBeside && r.subBack && r.subRan && r.subKey === 'Enter', JSON.stringify([r.subShut, r.subOpen, r.subBeside, r.subBack, r.subRan, r.subKey]));
+        check('... a photo\'s six turn and flip commands are under Turn and flip', r.subPhoto);
         check('ctrl+wheel zooms the grid', r.zoomChanged);
         await page.close();
     }
@@ -1037,8 +1072,89 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('only Liquid bends', !crystal.bends && !/url/.test(crystal.filter), JSON.stringify(crystal));
         check('Reduce transparency and Increase contrast: no bend, the glass solid', [reduced, contrast].every(x => !x.bends && x.filter === 'none' && /^rgb\(/.test(x.bg)), JSON.stringify([reduced, contrast]));
         check('a theme on: no bend', !skinned);
+        // The corners: the bend turns round them, with no crease. Read
+        // back from the maps (red: how far across, green: how far down)
+        const corners = await page.evaluate(async () => {
+            await new Promise(r => setTimeout(r, 300));
+            const read = async (w, h, r, bezel) => {
+                const im = new Image();
+                im.src = Liquid.map(w, h, r, bezel);
+                await im.decode();
+                const c = document.createElement('canvas');
+                c.width = w; c.height = h;
+                const g = c.getContext('2d');
+                g.drawImage(im, 0, 0);
+                return (x, y) => [...g.getImageData(x, y, 1, 1).data.slice(0, 2)].map(v => v - 128);
+            };
+            // A sidebar (16px corners, the band 24px): a step either side
+            // of the diagonal, 18px in from the corner, the bend about the
+            // same and both ways (it was across on one side, down on the other)
+            const rail = await read(290, 400, 16, 24);
+            const a = rail(18, 19), b = rail(19, 18);
+            // A pill (the probe, 44px high): its band and bend short of its
+            // middle, so the middle, where its words are, stays still
+            const key = Liquid.parts.get(document.getElementById('lg-probe')) || '';
+            const [, bezel, depth] = (key.match(/b(\d+)d(\d+)/) || []).map(Number);
+            const pill = await read(300, 44, 22, bezel);
+            return { a, b, bezel, depth, middle: pill(150, 22) };
+        });
+        const near = (p, q) => p.every((v, i) => Math.abs(v - q[i]) <= 12);
+        check('Liquid: the bend turns round a corner with no crease (sidebar, menu)', corners.a.every(v => v > 5) && near(corners.a, corners.b), JSON.stringify(corners));
+        check('Liquid: a pill\'s middle stays still, its ends bent no further than its middle', corners.bezel <= 17 && corners.depth <= 13 && corners.middle.every(v => v === 0), JSON.stringify(corners));
         await page.evaluate(() => document.getElementById('lg-probe').remove());
         check('liquid glass: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // The thumbnail size in each theme: the themes lay the grid out their
+    // own way, and once set their tiles' size without the slider's
+    console.log('themes: the thumbnail size changes the tiles');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        // Themes are the desktop apps': a stand-in app with them, which
+        // answers anything else with nothing (as design/themes/audit.js)
+        await page.addInitScript(() => {
+            const answers = { platform: 'windows', features: ['themes'], titleBar() {}, windowAction() {}, setState() {}, watchLog() {} };
+            window.JEditorNative = new Proxy(answers, { get: (t, k) => k in t ? t[k] : (typeof k === 'string' && !k.startsWith('on') ? async () => [] : undefined) });
+        });
+        await page.reload({ waitUntil: 'networkidle' });
+        await page.evaluate(PAGE_HELPERS);
+        await page.evaluate(async () => {
+            const dir = makeDir('Sizes');
+            for (let i = 1; i <= 12; i++) {
+                const h = makeHandle(`t${i}.jpg`, await makeRealJpeg(300, 200, { color: `hsl(${i * 30},60%,50%)` }), 'image/jpeg');
+                dir._files.set(h.name, h);
+            }
+            dir.values = async function* () { yield* dir._files.values(); };
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            Experiments.set('themes', true);
+        });
+        for (const theme of ['xp/royale', 'snow/finder', 'mac84/finder']) {
+            const r = await page.evaluate(async (theme) => {
+                const wait = (ms) => new Promise(res => setTimeout(res, ms));
+                Themes.choose(theme);
+                await wait(300);
+                const skin = document.documentElement.dataset.skin;
+                if (document.body.dataset.view === 'single') document.getElementById('btn-toggle-view').click();
+                await wait(300);
+                const slider = document.getElementById('grid-size-slider');
+                const tile = () => Math.round(document.querySelector('#grid-view .grid-item').getBoundingClientRect().width);
+                const set = async (v) => { slider.value = v; slider.dispatchEvent(new Event('input', { bubbles: true })); await wait(100); return tile(); };
+                const out = { skin, start: await set(150) };
+                out.big = await set(300);
+                out.small = await set(80);
+                // Ctrl+wheel (a mouse's notches), up: bigger
+                const grid = document.getElementById('grid-view');
+                for (let i = 0; i < 3; i++) grid.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, bubbles: true, cancelable: true }));
+                await wait(100);
+                out.wheel = tile();
+                await set(150);
+                return out;
+            }, theme);
+            check(`${theme}: the size slider and Ctrl+wheel change the thumbnails`, r.skin === theme.split('/')[0] && r.big > r.start + 40 && r.small < r.start - 30 && r.wheel > r.small + 20, JSON.stringify(r));
+        }
+        check('themes, thumbnail size: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
@@ -1079,6 +1195,52 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('a photo selected bounces, by click, keys or Ctrl-click: only the ones just selected', r.on && r.one === 1 && r.added === 1 && r.moved === 1 && r.clickOnce === 1, JSON.stringify(r));
         check('Select all and a long Shift range stay calm; none with Animations off', r.all === 0 && r.range === 0 && r.off === 0, JSON.stringify(r));
         check('motion: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    console.log('motion: a photo opened from the grid zooms out of its tile, and back (motion.js)');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const dir = makeDir('Zoom');
+            for (let i = 0; i < 6; i++) {
+                const h = makeHandle(`z${i}.jpg`, await makeRealJpeg(300, 200, { color: `hsl(${i * 50},60%,50%)` }), 'image/jpeg');
+                dir._files.set(h.name, h);
+            }
+            dir.values = async function* () { yield* dir._files.values(); };
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            app.setView('grid');
+            await new Promise(r => setTimeout(r, 600));
+            const box = app.elements.imageContainer;
+            const ghosts = () => [...document.body.children].filter(e => e.style.zIndex === '50' && e.style.position === 'fixed').length;
+            const hidden = () => document.querySelectorAll('#grid-view img[style*="hidden"]').length;
+            const f = app.viewFiles()[3];
+            app.openSingle(f);
+            out.opens = box.getAnimations().length;
+            await new Promise(r => setTimeout(r, 300));
+            out.openDone = box.getAnimations().length;
+            app.setView('grid');
+            out.back = ghosts() === 1 && hidden() === 1;
+            // Space pressed again and again: one zoom at a time, nothing left behind
+            for (let i = 0; i < 9; i++) app.toggleView();
+            out.mid = ghosts() + box.getAnimations().length;
+            await new Promise(r => setTimeout(r, 300));
+            out.after = ghosts() + hidden() + box.getAnimations().length;
+            app.setView('grid');
+            await new Promise(r => setTimeout(r, 300));
+            document.documentElement.dataset.motion = 'off';
+            app.openSingle(f);
+            app.setView('grid');
+            out.off = ghosts() + box.getAnimations().length;
+            document.documentElement.dataset.motion = 'on';
+            return out;
+        });
+        check('a photo opened from the grid zooms out of its tile, and back down into it', r.opens === 1 && r.openDone === 0 && r.back, JSON.stringify(r));
+        check('grid zoom: repeated presses never pile up, and leave nothing behind; none with Animations off', r.mid <= 1 && r.after === 0 && r.off === 0, JSON.stringify(r));
+        check('grid zoom: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
@@ -1792,6 +1954,100 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
     }
 
     // ---- 7d. Opening a folder, instant navigation, grid & read-only fixes ----
+    console.log('find anything: Ctrl+K (palette.js)');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            localStorage.removeItem('jeditor.palette');
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('palette', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('palette', { create: true });
+            const bytes = await makeRealJpeg(120, 80);
+            const put = async (d, name) => {
+                const w = await (await d.getFileHandle(name, { create: true })).createWritable();
+                await w.write(new Blob([bytes], { type: 'image/jpeg' }));
+                await w.close();
+            };
+            for (let i = 1; i <= 4; i++) await put(dir, `IMG_000${i}.jpg`);
+            await put(await dir.getDirectoryHandle('Ceremony', { create: true }), 'vows.jpg');
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            await sleep(100);
+            document.getElementById('fo-ok')?.click();
+            app.setView('grid');
+            const f = (n) => app.files.find(x => x.name === n);
+            app.selection = new Set([f('IMG_0001.jpg'), f('IMG_0002.jpg')]);
+            app.updateSelectionUI();
+            const input = document.getElementById('palette-input');
+            const type = (q) => { input.value = q; input.dispatchEvent(new Event('input')); };
+            const press = (key, opts = {}) => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...opts }));
+            const first = () => document.querySelector('#palette-list .palette-row.on .palette-name')?.textContent;
+            const heads = () => [...document.querySelectorAll('#palette-list .palette-head')].map(h => h.textContent);
+
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true }));
+            out.opens = Palette.isOpen() && document.activeElement === input;
+            out.selected = document.getElementById('palette-for').textContent;
+            out.suggests = heads()[0];
+            type('rtl'); out.letters = first();
+            type('delte'); out.typo = first();
+            type('remove'); out.also = first();
+            type('vows'); out.photo = first() + ' ' + heads().join(',');
+            type('cerem'); out.folder = heads().includes('Folders') && [...document.querySelectorAll('#palette-list .palette-row[data-kind=folder] .palette-name')].some(n => n.textContent === 'Ceremony');
+            type('rotate left'); out.says = document.querySelector('#palette-list .palette-row.on .palette-sub')?.textContent;
+            out.key = document.querySelector('#palette-list .palette-row.on .palette-key')?.textContent;
+            // Enter runs it on the selection, and closes
+            const calls = [];
+            const rotate = app.rotateBulk;
+            app.rotateBulk = function (deg) { calls.push(deg); };
+            press('Enter');
+            app.rotateBulk = rotate;
+            out.ran = JSON.stringify(calls) === '[-90]' && !Palette.isOpen();
+            // Picked: it comes first next time, under Recent
+            Palette.open();
+            out.recent = heads()[0] + ': ' + first();
+            press('ArrowDown');
+            out.moved = first() !== 'Rotate left';
+            press('Escape');
+            out.escape = !Palette.isOpen();
+            // Not over another dialog
+            UI.confirm({ title: 'Sure?', message: 'A test' });
+            await sleep(50);
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true }));
+            out.notOver = !Palette.isOpen();
+            document.querySelector('#ui-dialog .btn:not(.primary)')?.click();
+            await sleep(50);
+            // On the start page: projects and the commands that work there
+            out.menus = Themes.MENUS.Edit.some(m => m[1] === 'app.palette') && app.KEY_ACTIONS.some(a => a[0] === 'app.palette' && a[4][0] === 'Ctrl+K');
+            // In the guide and the tour; during the tour Esc closes it, not the tour
+            out.guide = Guide.CARDS.some(c => c[2] === 'Find anything' && c[4].includes('app.palette'));
+            await Tour.start();
+            await Tour.go(Tour.steps.findIndex(x => x.id === 'find'));
+            await sleep(200);
+            out.stop = Tour.steps[Tour.i].id === 'find' && /Ctrl/.test(document.querySelector('.tour-card').textContent);
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true }));
+            out.inTour = Palette.isOpen();
+            press('Escape');
+            out.tourStays = !Palette.isOpen() && Tour.running;
+            Tour.end();
+            return out;
+        });
+        check('Ctrl+K opens Find anything, its box ready to type in', r.opens, JSON.stringify(r));
+        check('find anything: says what is selected, and suggests what fits it', r.selected === '2 selected' && r.suggests === 'For the 2 selected', JSON.stringify(r));
+        check('find anything: letters in order, a typo and other words for it all match', r.letters === 'Rotate left' && r.typo === 'Move to trash' && r.also === 'Move to trash', JSON.stringify(r));
+        check('find anything: finds photos (in subfolders too) and folders', r.photo.startsWith('vows.jpg') && r.folder, JSON.stringify(r));
+        check('find anything: commands say what they act on, and show their key', r.says === '2 selected' && r.key === '[', JSON.stringify(r));
+        check('find anything: Enter runs the command on the selection and closes', r.ran, JSON.stringify(r));
+        check('find anything: what was picked comes first next time; arrows move; Esc closes', r.recent === 'Recent: Rotate left' && r.moved && r.escape, JSON.stringify(r));
+        check('find anything: never opens over another dialog', r.notOver, JSON.stringify(r));
+        check('find anything: in the menus and the shortcuts list', r.menus, JSON.stringify(r));
+        check('find anything: a card in the guide, and a stop in the tour where Ctrl+K works', r.guide && r.stop && r.inTour, JSON.stringify(r));
+        check('find anything: during the tour, Esc closes it and the tour carries on', r.tourStays, JSON.stringify(r));
+        check('find anything: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     console.log('viewer: open, instant navigation, grid, read-only');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
@@ -1822,7 +2078,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
 
             // Grid Up/Down follows the real column count
             app.setView('grid');
-            document.documentElement.style.setProperty('--grid-item-size', '300px');
+            document.getElementById('grid-view').style.setProperty('--grid-item-size', '300px');
             const cols = getComputedStyle(document.getElementById('grid-view')).gridTemplateColumns.split(' ').length;
             out.cols = app.getGridColumnCount() === cols;
 
@@ -1973,6 +2229,24 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.smoothAt80 = !document.getElementById('current-image').classList.contains('pixelated');
             window.dispatchEvent(new KeyboardEvent('keydown', { key: '0', bubbles: true }));
             out.keyFit = app.zoom === 1 && app.panX === 0 && !document.getElementById('current-image').classList.contains('pixelated');
+
+            // An edit not saved yet (Save edits when done): shown from a
+            // screen-sized copy, and zoomed in, from the photo's own pixels
+            // with the edit on them
+            const until = async (fn, ms) => { const t = Date.now(); while (!fn() && Date.now() - t < ms) await new Promise(r => setTimeout(r, 50)); };
+            const ef = app.currentFile;
+            ef._edit = Edits.turned(ef._edit, 1);
+            app.editChanged(ef);
+            await until(() => app._displayFile === ef && app.elements.currentImage._isPreview && ef._edited && app.elements.currentImage._url === ef._edited.url, 10000);
+            const shownEdge = Math.max(app.elements.currentImage.naturalWidth, app.elements.currentImage.naturalHeight);
+            app.zoomTo(app.maxZoom());
+            await until(() => !app.elements.currentImage._isPreview, 20000);
+            const ei = app.elements.currentImage;
+            app.updateImageTransform();
+            out.editedZoom = JSON.stringify({ preview: !!ei._isPreview, shownEdge, big: Math.max(ei.naturalWidth, ei.naturalHeight), sharp: ei.classList.contains('pixelated'), edit: !!ef._edit });
+            out.editedFull = !ei._isPreview && Math.max(ei.naturalWidth, ei.naturalHeight) > shownEdge * 1.5 && ei.classList.contains('pixelated');
+            delete ef._edit;
+            app.editChanged(ef);
             return { ...out, expectCrop: `${Math.round(edge * 1.5)}x${edge * 2}` };
         });
         check('big scan shows a screen-sized preview', r.isPreview);
@@ -1988,6 +2262,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('zoom goes up to 3200% of the photo\'s pixels, and no further', r.maxPct === 3200 && r.readout === '3200%', `${r.maxPct}% / ${r.readout}`);
         check('past 100% pixels are sharp squares (no smoothing); smoothed when shrunk', r.pixelatedAtMax && r.sharpAt150 && r.smoothAt80);
         check('0 zooms back to fit', r.keyFit);
+        check('a photo with an edit not saved yet zooms in to its own pixels, sharp', r.editedFull, r.editedZoom);
         check('preview suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -2034,7 +2309,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             }
             out.open = Dupes.isOpen;
             out.groups = Dupes.groups.map(g => g.files.map(f => f.name).sort().join('+'));
-            const g = Dupes.groups[0];
+            let g = Dupes.groups[0];
             out.best = g && g.best.name;
             out.exact = g && [...g.exact].map(f => f.name).sort().join('+');
             out.cards = document.querySelectorAll('.dupe-card').length;
@@ -2047,6 +2322,27 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.simOther = Dupes.similarity(fa, fb).map(v => v.toFixed(2)).join('/');
             out.rescanMatches = Dupes.isMatch(fa, fr, Dupes.SENSITIVITY.normal);
             out.otherRejected = !Dupes.isMatch(fa, fb, Dupes.SENSITIVITY.loose);
+
+            // Show in grid (G): only the group, its extras selected, a chip;
+            // the chip shows everything again
+            out.startMarked = Dupes.markedFiles().map(f => f.name).sort().join('+');
+            press('g');
+            out.grid = {
+                closed: !Dupes.isOpen,
+                view: app.viewFiles().map(f => f.name).join('+'),
+                heads: document.querySelectorAll('#grid-view .dupe-grid-head').length,
+                keep: [...document.querySelectorAll('#grid-view .dupe-tile-keep')].map(b => b.parentElement._file.name).join(),
+                selected: [...app.selection].map(f => f.name).sort().join('+'),
+                chip: document.getElementById('fb-dupes-chip').textContent
+            };
+            document.getElementById('fb-dupes-chip').click();
+            out.gridBack = app.viewFiles().length === 5 && !Dupes.inGrid &&
+                document.getElementById('fb-dupes-chip').classList.contains('hidden') && !document.querySelector('#grid-view .dupe-grid-head');
+            press('d');
+            for (let i = 0; i < 200 && !(Dupes.groups && Dupes.groups.length && document.querySelector('.dupe-card')); i++) {
+                await new Promise(res => setTimeout(res, 25));
+            }
+            g = Dupes.groups[0];
 
             // Cull: keep suggested (K), trash the rest (Enter)
             press('k');
@@ -2067,7 +2363,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('rotation-invariant match (re-scan matches, other photo does not)', r.rescanMatches && r.otherRejected, `${r.simRescan} / ${r.simOther}`);
         check('suggests the highest-resolution copy', r.best === 'a_rescan.jpg', String(r.best));
         check('exact copies flagged', r.exact === 'a.jpg+a_copy.jpg', String(r.exact));
-        check('side-by-side cards rendered', r.cards === 3, String(r.cards));
+        check('every group\'s cards rendered', r.cards === 3, String(r.cards));
+        check('every group starts with all but the suggested keeper marked', r.startMarked === 'a.jpg+a_copy.jpg', r.startMarked);
+        check('Show in grid: only the group, keeper first, under a heading with a Keep badge', r.grid.closed && /^a_rescan\.jpg\+(a\.jpg\+a_copy\.jpg|a_copy\.jpg\+a\.jpg)$/.test(r.grid.view) && r.grid.heads === 1 && r.grid.keep === 'a_rescan.jpg', JSON.stringify(r.grid));
+        check('Show in grid: the marked photos come selected, the chip counts them all', r.grid.selected === 'a.jpg+a_copy.jpg' && /^Duplicates \(3\)/.test(r.grid.chip), JSON.stringify(r.grid));
+        check('the Duplicates chip shows every photo again', r.gridBack);
         check('K marks all but the suggested keeper', r.marked === 2, String(r.marked));
         check('Enter trashes marked photos', r.left === 'a_rescan.jpg,b.jpg,c.jpg', r.left);
         check('finished state reported', /All done/.test(r.doneMessage), r.doneMessage);
@@ -2878,14 +3178,15 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.chipGrid = chipShown();
             // Grid rows never overlap, however wide the tiles stretch
             Folders.setScope(null);
-            document.documentElement.style.setProperty('--grid-item-size', '130px');
+            // (big enough for two rows of the seven, the grid as wide as it is beside the sidebar)
+            document.getElementById('grid-view').style.setProperty('--grid-item-size', `${Math.ceil(document.getElementById('grid-view').clientWidth / 5)}px`);
             await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
             const gridTiles = [...document.querySelectorAll('#grid-view .grid-item')];
             const cols = app.getGridColumnCount();
             const r1 = gridTiles[0].getBoundingClientRect(), r2 = gridTiles[cols].getBoundingClientRect();
             out.rowGap = Math.round(r2.top - r1.bottom);
             out.square = Math.abs(r1.width - r1.height) < 1;
-            document.documentElement.style.removeProperty('--grid-item-size');
+            document.getElementById('grid-view').style.removeProperty('--grid-item-size');
             return out;
         });
         check('folders: every folder found, empty ones too', r.folders === '|Wedding|Wedding/Ceremony|Wedding/Reception', r.folders);
@@ -3013,7 +3314,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const open = async (d) => { window.showDirectoryPicker = async () => d; await app.browseFolder(); await Recents.saving; };
             const names = async () => (await Recents.list()).map(x => x.name).join(',');
             const shown = () => [...document.querySelectorAll('#recent-list .recent-name')].map(x => x.textContent).join(',');
-            out.hiddenWhenEmpty = document.getElementById('recents').classList.contains('hidden');
+            await Recents.render();
+            out.hiddenWhenEmpty = document.getElementById('recents').classList.contains('hidden') && !document.getElementById('home-empty').classList.contains('hidden');
             const a = await make('rec A'), b = await make('rec B');
             await open(a);
             await open(b);
@@ -3035,10 +3337,23 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await Recents.saving;
             out.clicked = app.dirHandle.name === 'rec 3' && app.files.length === 1 && (await names()).startsWith('rec 3,');
             // × forgets it (the folder stays)
-            const li = [...document.querySelectorAll('#recent-list li')].find(x => x.querySelector('.recent-name').textContent === 'rec 1');
+            // The table shows four: rec 3 (just opened), rec 6, rec 5, rec 4; the list keeps six
+            out.onTable = shown() === 'rec 3,rec 6,rec 5,rec 4';
+            out.emptyGone = document.getElementById('home-empty').classList.contains('hidden');
+            const li = [...document.querySelectorAll('#recent-list li')].find(x => x.querySelector('.recent-name').textContent === 'rec 4');
             li.querySelector('.recent-remove').click();
-            for (let i = 0; i < 50 && shown().includes('rec 1'); i++) await new Promise(res => setTimeout(res, 20));
-            out.removed = !(await names()).includes('rec 1') && !shown().includes('rec 1') && !!(await opfs.getDirectoryHandle('rec 1'));
+            for (let i = 0; i < 50 && shown().includes('rec 4'); i++) await new Promise(res => setTimeout(res, 20));
+            out.removed = !(await names()).includes('rec 4') && !shown().includes('rec 4') && !!(await opfs.getDirectoryHandle('rec 4'));
+            // A photo opened on its own in Adjust or Paint: one print called Recent, first on the table
+            const before3 = await names();
+            await Recents.rememberPhoto(await (await opfs.getDirectoryHandle('rec 5')).getFileHandle('a.jpg'), 'adjust');
+            const first = document.querySelector('#recent-list li');
+            out.single = first.classList.contains('single') && first.querySelector('.recent-name').textContent === 'Recent' &&
+                /^a\.jpg · Today$/.test(first.querySelector('.recent-sub').textContent) && first.querySelectorAll('.recent-print').length === 1 &&
+                document.querySelectorAll('#recent-list li').length === 4 && (await names()) === before3;
+            // ... until a folder is opened after it
+            await open(await opfs.getDirectoryHandle('rec 6'));
+            out.singleGone = !document.querySelector('#recent-list li.single');
             // A folder that's gone says so and offers to remove it
             await opfs.removeEntry('rec 2', { recursive: true });
             const rec2 = (await Recents.list()).find(x => x.name === 'rec 2');
@@ -3048,16 +3363,254 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.when = [Recents.when(Date.now()), Recents.when(Date.now() - 86400000), Recents.when(new Date(2020, 2, 4).getTime())].join('|');
             return out;
         });
-        check('recent: hidden until a folder has been opened', r.hiddenWhenEmpty);
+        check('recent: an empty table shows ghost prints until a folder has been opened', r.hiddenWhenEmpty);
         check('recent: newest first', r.order === 'rec B,rec A', r.order);
         check('recent: opening one again moves it to the top, once', r.reopened === 'rec A,rec B', r.reopened);
-        check('recent: listed on the start screen with when', r.shown);
+        check('recent: on the home page\'s table, with when', r.shown);
         check('recent: keeps the newest six', r.capped === 'rec 6,rec 5,rec 4,rec 3,rec 2,rec 1', r.capped);
         check('recent: click reopens the folder', r.clicked);
+        check('recent: the table shows the newest four (and no ghost prints)', r.onTable && r.emptyGone, r.capped);
         check('recent: × removes it from the list only', r.removed);
+        check('recent: a photo opened on its own lies first, as one print called Recent', r.single, JSON.stringify(r));
+        check('... and comes off once a folder is opened after it', r.singleGone);
         check('recent: a folder that has gone says so', r.missing);
         check('recent: dates read Today / Yesterday / Mar 4, 2020', /^Today\|Yesterday\|Mar 4, 2020$/.test(r.when), r.when);
         check('recent suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7n2. The Open a folder card, moving the projects folder, Clear cache ----
+    console.log('open a folder card, moving folders');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const wait = async (fn) => { for (let i = 0; i < 150 && !fn(); i++) await new Promise(res => setTimeout(res, 20)); return fn(); };
+            const shown = (id) => !document.getElementById(id).classList.contains('hidden');
+            await Recents.tx('readwrite', s => s.clear());
+            const opfs = await navigator.storage.getDirectory();
+            const make = async (name) => {
+                try { await opfs.removeEntry(name, { recursive: true }); } catch (e) { /* fresh */ }
+                const d = await opfs.getDirectoryHandle(name, { create: true });
+                const w = await (await d.getFileHandle('a.jpg', { create: true })).createWritable();
+                await w.write(new Blob([await makeRealJpeg(200, 150)], { type: 'image/jpeg' }));
+                await w.close();
+                return d;
+            };
+            const pick = async (d) => { window.showDirectoryPicker = async () => d; await app.browseFolder(); await Recents.saving; };
+            await pick(await make('card Summer'));
+            await pick(await make('card Lake'));
+
+            // The tile opens the card: search, the drop place, Browse, recents
+            document.getElementById('btn-browse-folder').click();
+            await wait(() => document.querySelectorAll('#oc-recents .oc-recent').length === 2);
+            out.open = shown('open-card') && document.activeElement === document.getElementById('oc-search') &&
+                [...document.querySelectorAll('#oc-recents .oc-name')].map(x => x.textContent).join(',') === 'card Lake,card Summer' &&
+                !!document.getElementById('oc-drop') && !document.querySelector('#oc-list .oc-library');
+            // Search filters as you type; Enter opens the first
+            const s = document.getElementById('oc-search');
+            s.value = 'sum';
+            s.dispatchEvent(new Event('input'));
+            out.search = [...document.querySelectorAll('#oc-recents .oc-name')].map(x => x.textContent).join(',') === 'card Summer';
+            s.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            await wait(() => app.dirHandle && app.dirHandle.name === 'card Summer' && app.files.length);
+            out.enter = !shown('open-card') && app.dirHandle.name === 'card Summer';
+            // Escape closes it; Browse… is the folder picker
+            document.getElementById('btn-browse-folder').click();
+            document.getElementById('oc-search').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            out.escape = !shown('open-card');
+            let browsed = 0;
+            window.showDirectoryPicker = async () => { browsed++; throw new DOMException('no', 'AbortError'); };
+            document.getElementById('btn-browse-folder').click();
+            document.getElementById('oc-browse').click();
+            await wait(() => browsed);
+            out.browse = browsed === 1 && !shown('open-card');
+
+            // An app with the projects folder and the move (a stand-in)
+            const moves = [];
+            let room = 10e9, fail = null;
+            const store = await opfs.getDirectoryHandle('card-data', { create: true });
+            const thumbs = await (await (await store.getDirectoryHandle(FolderCache.storeName('D:\\Projects\\Hendersons'), { create: true }))
+                .getDirectoryHandle('cache', { create: true })).getDirectoryHandle('thumbs', { create: true });
+            const tw = await (await thumbs.getFileHandle('x.img', { create: true })).createWritable();
+            await tw.write(new Blob([await makeRealJpeg(40, 30)], { type: 'image/jpeg' }));
+            await tw.close();
+            let picked = 'E:\\New';
+            window.JEditorNative = {
+                features: ['places', 'folderMove'],
+                dataDir: async () => store,
+                places: async () => ({ drives: [], home: [] }),
+                listProjects: async (dir) => dir === 'D:\\Projects' ? [{ name: 'Hendersons', path: 'D:\\Projects\\Hendersons', modified: Date.now() }, { name: 'Okafor', path: 'D:\\Projects\\Okafor', modified: Date.now() - 86400000 }] : [],
+                countPhotos: async (paths) => ({ counts: paths.map(() => 7), limit: 1000 }),
+                pickPath: async () => picked,
+                folderSize: async (path, dest) => ({ folders: 2, files: 9, bytes: 48.2 * 2 ** 30, free: room, drive: 'E:', sameDrive: false, refused: null }),
+                moveFolder: (path, dest, progress) => { moves.push([path, dest]); progress(1, 2, 1); return Promise.resolve(fail || { moved: 2, left: [] }); },
+                cancelCopy: () => { },
+                reveal: () => { }
+            };
+            Places.set(Places.KEY_DIR, 'D:\\Projects');
+            const answer = async (id) => { await wait(() => shown('ui-dialog')); const text = document.getElementById('ui-dialog').textContent; document.getElementById(id).click(); return text; };
+
+            // The card lists the projects, with their pictures and counts
+            OpenCard.open();
+            await wait(() => document.querySelectorAll('#oc-list .oc-row').length === 2 && document.querySelector('#oc-list img.oc-pic'));
+            const rows = [...document.querySelectorAll('#oc-list .oc-row')];
+            out.projects = rows.map(x => x.querySelector('.oc-name').textContent).join(',') === 'Hendersons,Okafor' &&
+                rows[0].querySelectorAll('img.oc-pic').length === 1 && rows[1].querySelectorAll('.oc-pic.ghost').length === 3;
+            await wait(() => /7 photos/.test(rows[0].textContent) || /7 photos/.test(document.querySelector('#oc-list .oc-row').textContent));
+            out.counts = /7 photos · Today/.test(document.querySelector('#oc-list .oc-row').textContent);
+            // Its foot: where the projects are, and a small link to change it
+            const foot = document.getElementById('oc-foot');
+            out.foot = !foot.classList.contains('hidden') && /Projects folder:\s*D:\\Projects/.test(foot.textContent) && document.getElementById('oc-change').textContent === 'Change…';
+            OpenCard.close();
+
+            // Not enough room: the numbers, and nothing moved
+            room = 31.5 * 2 ** 30;
+            let flow = FolderMove.changeProjects();
+            out.ask = /2 projects/.test(await answer('uid-ok'));
+            out.noRoom = /48\.2 GB.*31\.5 GB free\. Nothing was moved.*16\.7 GB/s.test(await answer('uid-ok'));
+            await flow;
+            out.noRoomKept = !moves.length && Places.projectsDir() === 'D:\\Projects';
+            // Leave: the folder changes, nothing moves
+            room = 100 * 2 ** 30;
+            flow = FolderMove.changeProjects();
+            await answer('uid-alt');
+            await flow;
+            out.left = !moves.length && Places.projectsDir() === 'E:\\New';
+            // Move: asked, confirmed with how it's kept safe, then moved
+            picked = 'F:\\Moved';
+            flow = FolderMove.changeProjects();
+            await answer('uid-ok');
+            out.confirm = /checked file by file.*nothing is lost/s.test(await answer('uid-ok'));
+            await flow;
+            out.moved = moves.length === 1 && moves[0][0] === 'E:\\New' && moves[0][1] === 'F:\\Moved' && Places.projectsDir() === 'F:\\Moved';
+            // Failing before anything moved: the folder stays, and it says nothing was lost
+            fail = { moved: 0, left: [], error: 'Hendersons: the drive went away' };
+            picked = 'G:\\Other';
+            flow = FolderMove.changeProjects();
+            await answer('uid-ok');
+            await answer('uid-ok');
+            out.failed = /Nothing was moved.*Nothing was lost/s.test(await answer('uid-ok'));
+            await flow;
+            out.failedKept = Places.projectsDir() === 'F:\\Moved';
+
+            // Clear cache: the thumbnails go, and recents become ghost stacks
+            await Recents.tx('readwrite', s => s.getAll()).then(() => null);
+            const recs = await Recents.list();
+            await Recents.tx('readwrite', s => recs.forEach(x => s.put({ ...x, thumbs: [new Blob(['x'], { type: 'image/jpeg' })] })));
+            await Recents.render();
+            out.before = !document.querySelector('#recent-list li.ghosted');
+            flow = FolderMove.clearCache();
+            out.clearAsk = /Clear the cache/.test(await answer('uid-ok'));
+            await flow;
+            const gone = await store.getDirectoryHandle(FolderCache.storeName('D:\\Projects\\Hendersons')).then(h => h.getDirectoryHandle('cache')).then(() => false, () => true);
+            const li = document.querySelector('#recent-list li');
+            out.cleared = gone && li.classList.contains('ghosted') && getComputedStyle(li.querySelector('.recent-sub')).display === 'none' &&
+                getComputedStyle(li.querySelector('.recent-name')).display !== 'none';
+            delete window.JEditorNative;
+            Places.set(Places.KEY_DIR, null);
+            await opfs.removeEntry('card-data', { recursive: true });
+            return out;
+        });
+        check('open card: the tile opens it, with search, the drop place and recents', r.open, JSON.stringify(r));
+        check('open card: search filters as you type, and Enter opens the first', r.search && r.enter);
+        check('open card: Escape closes it, and Browse… is the folder picker', r.escape && r.browse);
+        check('open card: lists the projects folder\'s projects, with cached pictures or ghost frames', r.projects);
+        check('open card: each project says how many photos and when', r.counts);
+        check('open card: its foot says where the projects folder is, with a link to change it', r.foot);
+        check('move: asks to move or leave, with the count', r.ask);
+        check('move: not enough room shows the numbers and moves nothing', r.noRoom && r.noRoomKept);
+        check('move: Leave changes the folder and moves nothing', r.left);
+        check('move: Move confirms how it\'s kept safe, then moves', r.confirm && r.moved);
+        check('move: a failed move keeps the old folder and says nothing was lost', r.failed && r.failedKept);
+        check('clear cache: removes the thumbnails, and recents show as ghost stacks with only the name', r.before && r.clearAsk && r.cleared);
+
+        // The first-time questions (first-open.js)
+        const f = await page.evaluate(async () => {
+            const out = {};
+            const wait = async (fn) => { for (let i = 0; i < 150 && !fn(); i++) await new Promise(res => setTimeout(res, 20)); return fn(); };
+            const shown = (id) => !!document.getElementById(id) && !document.getElementById(id).classList.contains('hidden');
+            const opfs = await navigator.storage.getDirectory();
+            const make = async (name) => {
+                try { await opfs.removeEntry(name, { recursive: true }); } catch (e) { /* fresh */ }
+                const d = await opfs.getDirectoryHandle(name, { create: true });
+                const w = await (await d.getFileHandle('a.jpg', { create: true })).createWritable();
+                await w.write(new Blob([await makeRealJpeg(200, 150)], { type: 'image/jpeg' }));
+                await w.close();
+                return d;
+            };
+            const openIt = async (d) => { window.showDirectoryPicker = async () => d; await app.browseFolder(); await wait(() => app.dirHandle === d && !app.isLoading); };
+            localStorage.removeItem('jeditor.firstOpen');
+            Start.setDeferNew(false);
+            // The first Open a folder: one dialog, with Save edits when done
+            document.getElementById('btn-browse-folder').click();
+            await wait(() => document.getElementById('first-open'));
+            const fo = document.getElementById('first-open');
+            out.welcome = !!fo && fo.querySelectorAll('input[name="fo-defer"]').length === 2 && /Keep until I save/.test(fo.textContent) &&
+                !document.getElementById('fo-dir') && !shown('open-card');
+            fo.querySelector('input[value="on"]').click();
+            document.getElementById('fo-ok').click();
+            await wait(() => shown('open-card'));
+            out.remembered = !document.getElementById('first-open') && FirstOpen.asked() && app.uiPrefs.deferNew === true && shown('open-card');
+            OpenCard.close();
+            // ... and its answer is the folder opened then: not asked again
+            await openIt(await make('fo First'));
+            await new Promise(res => setTimeout(res, 300));
+            out.firstFolder = !shown('ui-dialog') && Edits.chosen && Edits.defer === true;
+            // Another folder's first time: asked (Settings can turn it on and off)
+            FirstOpen.set({ ask: true });
+            await openIt(await make('fo Second'));
+            await wait(() => shown('ui-dialog'));
+            out.asked = /Save edits to fo Second when done/.test(document.getElementById('uid-title').textContent);
+            document.getElementById('uid-alt').click();
+            await wait(() => Edits.chosen);
+            out.answered = Edits.defer === false && Edits.chosen;
+            await Edits.flush();
+            // Opened again: it chose already
+            await openIt(await make('fo Other'));
+            await wait(() => shown('ui-dialog'));
+            document.getElementById('uid-cancel').click();
+            await openIt(await opfs.getDirectoryHandle('fo Second'));
+            await new Promise(res => setTimeout(res, 300));
+            out.again = !shown('ui-dialog') && Edits.chosen && Edits.defer === false;
+            // Asking off: a new folder follows Save edits when done
+            FirstOpen.set({ ask: false });
+            await openIt(await make('fo Third'));
+            await new Promise(res => setTimeout(res, 300));
+            out.off = !shown('ui-dialog') && Edits.defer === true && !Edits.chosen;
+            app.toggleCustomizePanel(true);
+            out.setting = document.getElementById('cust-ask-defer').checked === false;
+            app.toggleCustomizePanel(false);
+            // A folder dragged in before anything was asked: the dialog, for it
+            localStorage.removeItem('jeditor.firstOpen');
+            await openIt(await make('fo Dropped'));
+            await wait(() => document.getElementById('first-open'));
+            out.dropped = /Opening fo Dropped/.test(document.getElementById('fo-title').textContent);
+            document.getElementById('first-open').querySelector('input[value="off"]').click();
+            document.getElementById('fo-ok').click();
+            await wait(() => Edits.chosen);
+            out.droppedKept = Edits.defer === false && app.uiPrefs.deferNew === false;
+            // A prompt with a switch (New project's name dialog) answers both
+            const p = UI.prompt({ title: 'New project', input: { label: 'Name' }, check: { label: 'Save edits when done', value: true } });
+            document.getElementById('uid-input').value = 'Smith';
+            const hasSwitch = shown('uid-check') && document.getElementById('uid-check-box').checked;
+            document.getElementById('uid-ok').click();
+            const got = await p;
+            out.prompt = got && got.value === 'Smith' && got.checked === true && hasSwitch;
+            const q = UI.prompt({ title: 'x' });
+            out.plainPrompt = !shown('uid-check');
+            UI.answer(false);
+            await q;
+            return out;
+        });
+        check('first open: the first Open a folder asks once, with both choices explained', f.welcome, JSON.stringify(f));
+        check('first open: the answer is remembered, and Save edits when done is set', f.remembered);
+        check('first open: the folder opened then isn\'t asked again', f.firstFolder);
+        check('first open: each other folder\'s first time asks, and keeps the answer', f.asked && f.answered && f.again);
+        check('first open: with asking off in Settings, a folder follows Save edits when done', f.off && f.setting);
+        check('first open: a folder dragged in first gets the dialog, for that folder', f.dropped && f.droppedKept);
+        check('new project: the name dialog has a Save edits when done switch', f.prompt && f.plainPrompt);
+        check('open card suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
@@ -3086,6 +3639,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             let out0;
             app.goTo(f);
             await frames();
+            // Where it sits, once the bounce of being selected (motion.js) is
+            // over (not the scroll-driven ease at the edges, which has no end)
+            const still = () => Promise.all(f._gridEl.getAnimations().filter(a => a.timeline === document.timeline).map(a => a.finished));
+            await still();
             const top = () => Math.round(f._gridEl.getBoundingClientRect().top);
             // Put it 400px down and wait for the layout to hold still there
             for (let i = 0; i < 20 && top() !== 400; i++) {
@@ -3117,6 +3674,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // Rescan (R) with new photos sorting in before it: the highlighted one stays put
             app.goTo(f);
             await frames();
+            await still();
             for (let i = 0; i < 20 && top() !== 300; i++) {
                 grid.scrollTop += f._gridEl.getBoundingClientRect().top - 300;
                 await frames();
@@ -4099,7 +4657,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             }
         }
         check('narrow windows: no pill over another or off screen, top or bottom, with or without the folder list', fit.every(f => f.bad.length === 0), JSON.stringify(fit.filter(f => f.bad.length)));
-        check('... wide, nothing given up; at 480 header buttons go into More, which shows; the file pill stays in single view', !fit[1].fit && fit[6].squeezed > 0 && fit[6].more && fit.every(f => f.name), JSON.stringify(fit.map(f => [f.w, f.rail, f.fit, f.squeezed, f.more])));
+        // (480 with the sidebar closed is the tightest: the mode's chip joins
+        // the folder pill. With it open, over the grid, the 40 px pills fit)
+        check('... wide, nothing given up; at 480 header buttons go into More, which shows; the file pill stays in single view', !fit[1].fit && fit[7].squeezed > 0 && fit.every(f => f.more && f.name), JSON.stringify(fit.map(f => [f.w, f.rail, f.fit, f.squeezed, f.more])));
         // The grid left alone: fitting the pills once, not every frame (its
         // own try at the folder pill's short labels used to wake it again)
         await page.setViewportSize({ width: 1300, height: 700 });
@@ -4240,6 +4800,24 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await frame();
             const arrived = app.files.find(f => f.name === 'P1200a.jpg');
             out.arrived = !!arrived && files().indexOf(arrived) === 1201 && grid.querySelectorAll('.grid-item').length < 400;
+
+            // The tiles' easing as it scrolls (style.css) runs on scrolling
+            // along, a wheel's step a frame, but not on a fast fling (more
+            // than half a screen a frame): it cost ~30 ms a frame there.
+            // It comes back once the grid settles
+            step = 'fling';
+            const wooshOff = () => grid.classList.contains('grid-jump');
+            const scrollBy = async (dy, n) => {
+                let off = 0;
+                for (let i = 0; i < n; i++) { grid.scrollTop += dy; await frame(); if (wooshOff()) off++; }
+                return off;
+            };
+            grid.scrollTop = 0;
+            await new Promise(res => setTimeout(res, 400));
+            const slow = await scrollBy(120, 12);
+            const fast = await scrollBy(Math.round(grid.clientHeight * 0.6), 6);
+            await new Promise(res => setTimeout(res, 400));
+            out.fling = [slow, fast, wooshOff()];
             return out;
             })(); } catch (e) { return { error: step + ': ' + e.message }; }
         });
@@ -4250,6 +4828,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('... the arrow keys to a photo far below build its tile', r.goTo);
         check('... the film strip holds a window too, the photo in it and in its place; Next moves the highlight', r.strip && r.stripPlace && r.stripNext);
         check('... back to the grid, the photo is on screen', r.back);
+        check('... the tiles ease in as it scrolls along, not on a fast fling, and again once it settles', r.fling && r.fling[0] === 0 && r.fling[1] >= 5 && r.fling[2] === false, JSON.stringify(r.fling));
         check('... a deleted photo, and a new one arriving, rebuild the window', r.removed && r.arrived, JSON.stringify(r));
         check('huge folder: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
@@ -4417,8 +4996,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             step = 'Turned off with edits waiting: discard them';
             UI.choose = async () => 'alt';
             await Edits.setDefer(false);
-            await until(async () => !(await kept()));
-            out.off = !Edits.on() && Edits.count() === 0 && bar().classList.contains('hidden') && !(await kept()) &&
+            // The choice stays (off, nothing waiting), so the folder isn't asked again (first-open.js)
+            const offKept = async () => { const k = await kept(); return !!k && k.defer === false && !Object.keys(k.edits || {}).length; };
+            await until(offKept);
+            out.off = !Edits.on() && Edits.count() === 0 && bar().classList.contains('hidden') && await offKept() &&
                 await same('scan1.jpg') && (await dims(dir, 'plain.jpg')).join('x') === '400x300';
             return out;
             })(); } catch (err) { return { crash: `${step}: ${err.message}`, toasts: [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | ') }; }
@@ -4809,6 +5390,260 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- Export → Copies: quality, metadata, colour, numbered names ----
+    console.log('export copies: without the location, quality, numbered');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('exportopts', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('exportopts', { create: true });
+            // A JPEG whose EXIF has a GPS IFD: N 51° 30' 12.34"
+            const t = new Uint8Array(80), v = new DataView(t.buffer);
+            t.set([0x49, 0x49, 42, 0]); v.setUint32(4, 8, true);
+            v.setUint16(8, 1, true); v.setUint16(10, 0x8825, true); v.setUint16(12, 4, true); v.setUint32(14, 1, true); v.setUint32(18, 26, true);
+            v.setUint16(26, 2, true);
+            v.setUint16(28, 1, true); v.setUint16(30, 2, true); v.setUint32(32, 2, true); t[36] = 0x4E;
+            v.setUint16(40, 2, true); v.setUint16(42, 5, true); v.setUint32(44, 3, true); v.setUint32(48, 56, true);
+            [[51, 1], [30, 1], [1234, 100]].forEach(([a, b], k) => { v.setUint32(56 + k * 8, a, true); v.setUint32(60 + k * 8, b, true); });
+            const jpeg = ImageMeta.withExifJpeg(await makeRealJpeg(400, 300), t);
+            const fh = await dir.getFileHandle('trip.jpg', { create: true });
+            const w = await fh.createWritable(); await w.write(new Blob([jpeg], { type: 'image/jpeg' })); await w.close();
+            await app.openDirectory(dir);
+            for (let i = 0; i < 100 && !app.files.length; i++) await new Promise(res => setTimeout(res, 30));
+            const f = app.files[0];
+            // The GPS IFD's entries in a file's EXIF, and whether 1234/100 is still in it
+            const gps = (bytes) => {
+                const x = ImageMeta.exifOf(bytes);
+                if (!x) return 'none';
+                const d = new DataView(x.buffer, x.byteOffset, x.byteLength);
+                const n0 = d.getUint16(d.getUint32(4, true), true);
+                for (let k = 0; k < n0; k++) {
+                    const e = d.getUint32(4, true) + 2 + k * 12;
+                    if (d.getUint16(e, true) === 0x8825) return d.getUint16(d.getUint32(e + 8, true), true);
+                }
+                return 'no gps ifd';
+            };
+            const has1234 = (bytes) => { for (let i = 0; i + 4 <= bytes.length; i++) if (bytes[i] === 0xD2 && bytes[i + 1] === 4 && bytes[i + 2] === 0 && bytes[i + 3] === 0) return true; return false; };
+            const read = async (d, name) => new Uint8Array(await (await (await d.getFileHandle(name)).getFile()).arrayBuffer());
+            out.before = [gps(jpeg), has1234(jpeg)];
+            // As it is, without the location: the same length, its GPS emptied
+            const a = await dir.getDirectoryHandle('A', { create: true });
+            await app.exportCopies([f], { maxEdge: 0, dir: a, where: 'A', meta: 'nogps' });
+            const aBytes = await read(a, 'trip.jpg');
+            out.asIs = [aBytes.length === jpeg.length, gps(aBytes), has1234(aBytes)];
+            // For the web: smaller, at 80%, numbered, still without it
+            const b = await dir.getDirectoryHandle('B', { create: true });
+            await app.exportCopies([f], { maxEdge: 100, dir: b, where: 'B', format: 'jpeg', quality: 80, meta: 'nogps', colour: 'srgb', names: 'Trip' });
+            const bBytes = await read(b, 'Trip 001.jpg');
+            const bmp = await createImageBitmap(new Blob([bBytes]));
+            out.web = [bmp.width, gps(bBytes), has1234(bBytes)];
+            // At 60% it's smaller than at 100%
+            const c = await dir.getDirectoryHandle('C', { create: true });
+            await app.exportCopies([f], { maxEdge: 300, dir: c, where: 'C', format: 'jpeg', quality: 100, names: 'Hi' });
+            await app.exportCopies([f], { maxEdge: 300, dir: c, where: 'C', format: 'jpeg', quality: 60, names: 'Lo' });
+            out.quality = (await read(c, 'Lo 001.jpg')).length < (await read(c, 'Hi 001.jpg')).length;
+            // No metadata at all
+            const d = await dir.getDirectoryHandle('D', { create: true });
+            await app.exportCopies([f], { maxEdge: 0, dir: d, where: 'D', meta: 'none' });
+            out.none = gps(await read(d, 'trip.jpg'));
+            // Left out of the project: not listed when it's rescanned
+            Export.setLeftOut('B', true);
+            out.leftOut = Watch.skipDir('B') && !Watch.skipDir('A');
+            Export.setLeftOut('B', false);
+            out.backIn = !Watch.skipDir('B');
+            return out;
+        });
+        check('export copies: as it is, without the location: same size, GPS emptied, its values gone', r.before[0] === 2 && r.before[1] && r.asIs[0] && r.asIs[1] === 0 && !r.asIs[2], JSON.stringify(r));
+        check('export copies: for the web: smaller, numbered, without the location', r.web[0] === 100 && r.web[1] === 0 && !r.web[2], JSON.stringify(r));
+        check('export copies: the quality chosen is used; None leaves no metadata', r.quality && r.none === 'none', JSON.stringify(r));
+        check('export copies: a folder left out isn\'t listed, and can be put back', r.leftOut && r.backIn, JSON.stringify(r));
+        check('export copies suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7v. The guide (guide.js): F1, topics, cards, search, keys as they're set ----
+    console.log('guide');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1200, height: 800 });
+        await page.waitForTimeout(300);
+        await page.keyboard.press('F1');
+        await page.waitForTimeout(100);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const box = () => document.getElementById('guide');
+            const titles = () => [...box().querySelectorAll('.guide-card h3')].map(h => h.textContent);
+            const keyRows = () => [...box().querySelectorAll('.guide-keyrow')];
+            const topic = (id) => box().querySelector(`[data-topic="${id}"]`).click();
+            out.opensOnHome = !!box() && Guide.isOpen && document.activeElement && document.activeElement.id === 'guide-search';
+            out.startHere = titles().join('|') === Guide.CARDS.filter(c => c[0].split(' ').includes('start')).map(c => c[2]).join('|')
+                && box().querySelectorAll('.guide-card .gclip').length === titles().length && keyRows().length === 0;
+            out.current = box().querySelector('[data-topic="start"]').getAttribute('aria-current') === 'true';
+            topic('paint');
+            out.paint = titles().includes('Layers') && !titles().includes('Crop and straighten');
+            // Scan and Camera only where the app has them (none here: a browser)
+            topic('files');
+            out.noScan = !titles().includes('Scan') && !titles().includes('Shoot from the camera') && titles().includes('Convert to save room');
+            topic('keys');
+            out.keys = titles().length === 0 && keyRows().length > 20 && box().querySelectorAll('.guide-keylist h4').length > 3;
+            const q = document.getElementById('guide-search');
+            q.value = 'crop';
+            q.dispatchEvent(new Event('input'));
+            out.search = titles().includes('Crop and straighten') && titles().includes('Crop many in a row') && !titles().includes('Layers')
+                && keyRows().length > 0
+                && keyRows().length === app.KEY_ACTIONS.filter(([id, , g, l]) => (app.keyBindings[id] || []).length && /crop/i.test(`${g} ${l}`)).length;
+            q.value = 'zzqx';
+            q.dispatchEvent(new Event('input'));
+            out.nothing = !!box().querySelector('.guide-none');
+            // A shortcut changed in Toolbar & keys shows as it's set now
+            app.removeKey('edit.crop', 'C');
+            app.assignKey('edit.crop', 'K');
+            topic('crop');
+            const crop = [...box().querySelectorAll('.guide-card')].find(c => c.querySelector('h3').textContent === 'Crop and straighten');
+            out.followsKeys = !!crop && [...crop.querySelectorAll('kbd')].map(k => k.textContent).join('') === 'K';
+            out.cleared = q.value === '';
+            return out;
+        });
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(50);
+        const closed = await page.evaluate(() => !document.getElementById('guide') && !Guide.isOpen);
+        await page.keyboard.press('F1');
+        await page.waitForTimeout(50);
+        const again = await page.evaluate(() => Guide.isOpen && document.getElementById('guide-search').value === '');
+        // Watch the tour again: the guide closes and the tour starts
+        const tour = await page.evaluate(() => {
+            document.querySelector('#guide [data-tour]').click();
+            const ok = !Guide.isOpen && Tour.running && !!document.querySelector('.tour-card');
+            Tour.end();
+            return ok;
+        });
+        check('guide: F1 opens it on the home page, at Start here, with a clip on every card', r.opensOnHome && r.startHere && r.current, JSON.stringify(r));
+        check('guide: each topic shows its cards; Scan and Camera only where the app has them', r.paint && r.noScan, JSON.stringify(r));
+        check('guide: Keyboard shortcuts lists every key, in groups', r.keys, JSON.stringify(r));
+        check('guide: the search finds cards and keys, and says when nothing matches', r.search && r.nothing, JSON.stringify(r));
+        check('guide: shows the keys as they\'re set now; a topic clears the search', r.followsKeys && r.cleared, JSON.stringify(r));
+        check('guide: Esc closes it, F1 opens it again, Watch the tour again starts the tour', closed && again && tour);
+        check('guide suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- 7w. The welcome tour (tour.js) ----
+    console.log('welcome tour');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1200, height: 800 });
+        await page.waitForTimeout(800);
+        const r = await page.evaluate(async () => {
+            const out = {};
+            const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+            const until = async (f, ms = 4000) => { for (let t = 0; t < ms / 50 && !f(); t++) await sleep(50); return f(); };
+            // First run: offered on the empty table; Not now puts it away for good
+            out.offered = !!document.querySelector('.tour-offer') && document.getElementById('home-empty').classList.contains('tour-offering');
+            document.querySelector('.tour-offer [data-later]').click();
+            out.later = !document.querySelector('.tour-offer') && JSON.parse(localStorage.getItem('jeditor.tour')).offered === true
+                && !document.getElementById('home-empty').classList.contains('tour-offering');
+            Tour.offer();
+            out.once = !document.querySelector('.tour-offer');
+            // From the home page, with nothing open: it starts with a folder
+            Tour.start();
+            await until(() => !Tour.busy);
+            out.firstOpen = Tour.steps[0].id === 'open' && /Start with a folder/.test(document.querySelector('.tour-card').textContent);
+            // In a browser there's no Scan or Camera stop
+            out.noScan = !Tour.steps.some(s => s.id === 'scan' || s.id === 'camera');
+            // Opening a folder carries it on
+            const dir = makeDir('Tour');
+            for (let i = 1; i <= 3; i++) {
+                const h = makeHandle(`t${i}.jpg`, await makeRealJpeg(300, 200), 'image/jpeg');
+                dir._files.set(h.name, h);
+            }
+            dir.values = async function* () { yield* dir._files.values(); };
+            window.showDirectoryPicker = async () => dir;
+            await app.browseFolder();
+            out.carriesOn = await until(() => Tour.steps[Tour.i].id === 'modes' && !Tour.busy);
+            out.lit = parseFloat(document.querySelector('.tour-hole').style.width) > 0;
+            out.count = document.querySelector('.tour-step').textContent === `2 of ${Tour.steps.length}`;
+            // Next: the sidebar, in the grid
+            document.querySelector('.tour-card [data-act="next"]').click();
+            out.sidebar = await until(() => Tour.steps[Tour.i].id === 'sidebar' && !Tour.busy) && document.body.dataset.view === 'grid';
+            // On to the turn buttons, in single view
+            while (Tour.steps[Tour.i].id !== 'turn') { document.querySelector('.tour-card [data-act="next"]').click(); await until(() => !Tour.busy); }
+            out.single = document.body.dataset.view === 'single' && parseFloat(document.querySelector('.tour-hole').style.width) > 0;
+            // Back goes back
+            document.querySelector('.tour-card [data-act="back"]').click();
+            out.back = await until(() => Tour.steps[Tour.i].id === 'strip' && !Tour.busy);
+            // The end, in a browser: what the apps also have, and the download
+            Tour.go(Tour.steps.length - 1);
+            await until(() => !Tour.busy && Tour.steps[Tour.i].end);
+            const card = document.querySelector('.tour-card');
+            const dl = [...card.querySelectorAll('a')].find(a => a.textContent === 'Download the full version');
+            out.webEnd = card.querySelectorAll('.tour-gaps li').length >= 2 && card.querySelectorAll('.tour-gaps li').length <= 5
+                && !!dl && /github\.com\/xmui\/jEditor\/releases/.test(dl.href);
+            return out;
+        });
+        // Esc ends it, back to Photos as it was
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(300);
+        const ended = await page.evaluate(() => !Tour.running && !document.querySelector('.tour-hole') && !document.querySelector('.tour-card') && !document.body.classList.contains('touring'));
+        check('tour: offered once on first run, and Not now keeps it away', r.offered && r.later && r.once, JSON.stringify(r));
+        check('tour: with nothing open it starts with a folder, and goes on once one is open', r.firstOpen && r.carriesOn && r.lit && r.count, JSON.stringify(r));
+        check('tour: takes the app to each stop\'s view (the grid, one photo), and Back goes back', r.sidebar && r.single && r.back, JSON.stringify(r));
+        check('tour: in a browser, no Scan or Camera stop, and it ends with what the apps also have and the download', r.noScan && r.webEnd, JSON.stringify(r));
+        check('tour: Esc ends it', ended);
+        check('tour suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // The Mac's top bar, kept clear (style.css: --top-safe): the page as the
+    // Mac app shows it, with macOS 26's own toolbar over its top, or the
+    // traffic lights in its top row. Everything that floats over the page
+    // (dialogs, the guide, Find anything, menus, a message, the tour's card
+    // at every stop) stays out of them, at the window's narrowest and
+    // shortest too. (Needs fixing, 2026-11-08: the tour went up under the
+    // toolbar, and it kept happening on the Mac, one overlay at a time.)
+    // The real windows are measured on a Mac too (mac.test.js).
+    console.log('the Mac\'s top bar, kept clear (simulated)');
+    {
+        const over = [];
+        let errors = [];
+        for (const chrome of ['toolbar', 'lights']) {
+            for (const [width, height] of [[1280, 800], [640, 480]]) {
+                const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+                await page.setViewportSize({ width, height });
+                await page.evaluate(async (chrome) => {
+                    localStorage.setItem('jeditor.tour', JSON.stringify({ offered: true }));
+                    document.documentElement.dataset.platform = 'mac';
+                    document.documentElement.classList.toggle('native-toolbar', chrome === 'toolbar');
+                    const dir = makeDir('Top bar');
+                    for (let i = 1; i <= 3; i++) {
+                        const h = makeHandle(`t${i}.jpg`, await makeRealJpeg(300, 200), 'image/jpeg');
+                        dir._files.set(h.name, h);
+                    }
+                    dir.values = async function* () { yield* dir._files.values(); };
+                    window.showDirectoryPicker = async () => dir;
+                    await app.browseFolder();
+                }, chrome);
+                await page.waitForFunction(() => !app.isLoading && app.files.length === 3, null, { timeout: 15000 });
+                // Where the Mac puts them: the toolbar, 52px (AppKit's); the
+                // lights, 14px tall and 54 wide, as bridge.js places them
+                const bars = await page.evaluate((chrome) => {
+                    if (chrome === 'toolbar') return [{ name: 'the toolbar', left: 0, top: 0, right: innerWidth, bottom: 52 }];
+                    const css = getComputedStyle(document.documentElement), px = (n) => parseFloat(css.getPropertyValue(n)) || 0;
+                    const gutter = px('--gutter'), x = Math.max(12, gutter), y = px('--mac-drag') + gutter + px('--ctl-lg') / 2 - 7;
+                    return [{ name: 'the traffic lights', left: x, top: y, right: x + 54, bottom: y + 14 }];
+                }, chrome);
+                const boxes = await floatingBoxes(page);
+                for (const o of overTopBar(boxes, bars)) over.push(`${chrome}, ${width}×${height}: ${o}`);
+                if (boxes.length < 15) over.push(`${chrome}, ${width}×${height}: only ${boxes.length} measured (${boxes.map(b => b.name).join(', ')})`);
+                errors = errors.concat(issues.errors);
+                await page.close();
+            }
+        }
+        check('Mac top bar: dialogs, the guide, Find anything, menus, messages and the tour\'s card stay clear of the toolbar and the traffic lights', over.length === 0, over.slice(0, 8).join('; '));
+        check('Mac top bar: no JS errors', errors.length === 0, errors.join('; '));
+    }
+
     // ---- 7. file:// — direct open and standalone build ----
     console.log('beta builds and experiments');
     {
@@ -5079,8 +5914,26 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const at = (cv, x, y) => cv.getContext('2d').getImageData(x, y, 1, 1).data[0];
             out.maskCrop = [at(whole, 100, 100), at(left, 100, 100), at(whole, 300, 100), at(left, 180, 100)];
             out.maskClean = JSON.stringify(Develop.cleanMasks([{ type: 'radial', radial: [0.5, 0.5, 0, 50, 0, 2], adj: { exposure: 9, nope: 3 } }, { type: 'linear', linear: [0.2, 0.2, 0.2, 0.2] }, { type: 'brush', brush: [] }, { type: 'what' }]));
+            // The colour table (~15 ms to make) is made once for its colour
+            // settings: not again as Exposure is dragged, nor for a tab of
+            // looks drawn again (a slider let go, a 250–450 ms pause before)
+            const made = () => { let n = 0; const mk = Develop.makeColourLut; Develop.makeColourLut = function (...a) { n++; return mk.apply(this, a); }; return { n: () => n, done: () => { Develop.makeColourLut = mk; } }; };
+            let lc = made();
+            const sat = Develop.tables({ saturation: 20, exposure: 0.3 }).lut;
+            const sat2 = Develop.tables({ saturation: 20, exposure: 0.7, contrast: 10 }).lut;
+            const sat3 = Develop.tables({ saturation: 25, exposure: 0.7 }).lut;
+            out.lutKept = [lc.n(), sat === sat2, sat3 !== sat2, Math.abs(sat3[400] - sat2[400]) > 0];
+            lc.done();
+            const tab = Develop.LOOKS.filter(l => l.process === 'C-41');
+            for (const l of tab) Develop.tables({ exposure: 0.2, look: l.id });
+            lc = made();
+            for (const l of tab) Develop.tables({ exposure: 0.4, look: l.id });
+            out.lutKept.push(tab.length, lc.n());
+            lc.done();
             return out;
         });
+        check('adjust: the colour table is made once for its colour settings (dragging Exposure, a tab of looks drawn again)',
+            String(m.lutKept) === `2,true,true,true,${m.lutKept[4]},0` && m.lutKept[4] >= 5, JSON.stringify(m.lutKept));
         check('adjust: settings kept compact, nothing left is none, out of range brought in',
             m.compact === '{"exposure":0.5,"levels":{"r":[0.1,1,0.9,0,1]}}' && m.none && m.clamped === '{"exposure":5,"tint":-100,"levels":{"rgb":[0.8,9.99,0.81,0,1]}}', JSON.stringify(m));
         check('adjust: no settings change nothing; +1 EV doubles the light; curves never turn back', m.identity && m.exposure && m.monotone, JSON.stringify(m));

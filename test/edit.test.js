@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // jEditor's editing tools, in headless Chromium: spot and dust removal
 // (retouch.js, adjust-spots.js), subject and sky masks, RAW previews, Paint,
-// a new blank image (blank.js), the modes (modes.js), crop's sliding sides,
+// zooming in Adjust (adjust.js), a new blank image (blank.js), the modes (modes.js), crop's sliding sides,
 // the wheel the way a Mac does it (wheel.js) and the themes (themes.js). Run by `npm test` after the UI suite; on its own:
 //   node test/edit.test.js [name …]     (only the sections named)
 
@@ -277,6 +277,176 @@ const PROJECT = `
     }
 
     // ---- Sync: one photo's settings onto the rest (adjust-sync.js) ----
+    // ---- Zoom in Adjust ----
+    if (wanted('zoom')) {
+        console.log('zoom in Adjust (adjust.js)');
+        const { page, issues } = await open();
+        const z = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                // Bigger than the working copy (EDGE), with fine detail: a
+                // one-pixel checker on the left, flat grey on the right
+                const W = 4000, H = 2600;
+                const c = document.createElement('canvas'); c.width = W; c.height = H;
+                const g = c.getContext('2d'), img = g.createImageData(W, H);
+                for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+                    const i = (y * W + x) * 4, v = x < W / 2 ? ((x + y) & 1 ? 200 : 60) : 128;
+                    img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
+                }
+                g.putImageData(img, 0, 0);
+                await openProject('zoomy', { 'big.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                step = 'open Adjust';
+                pressKey('e');
+                await until(() => Adjust.ready);
+                await sleep(100);
+                const chip = (id) => document.getElementById(id).getAttribute('aria-pressed') === 'true';
+                const level = document.getElementById('adj-zoom-level');
+                out.fit = [Adjust.fitted, chip('adj-zoom-fit'), chip('adj-zoom-100'), level.classList.contains('hidden'), Adjust.w < W];
+                step = 'Ctrl+1';
+                pressKey('1', { ctrlKey: true });
+                const cr = () => Adjust.canvas.getBoundingClientRect();
+                out.at100 = [Adjust.fitted, Math.round(Adjust.view.z * 1000) / 1000, Math.round(cr().width), chip('adj-zoom-100'), chip('adj-zoom-fit'), level.classList.contains('hidden')];
+                // Sharp: the part on screen from the full-size photo, one of
+                // its pixels to one screen pixel, the checker still there
+                step = 'sharp';
+                const sharp = document.getElementById('adj-sharp');
+                await until(() => !sharp.classList.contains('hidden') && Adjust._sharp);
+                const s = Adjust._sharp, sr = sharp.getBoundingClientRect();
+                out.sharpSize = [s.FW, s.FH, sharp.width === s.r.w, Math.abs(sr.width - s.r.w) < 1];
+                const grab = (cv, x, y, w, h) => {
+                    const t = document.createElement('canvas'); t.width = w; t.height = h;
+                    t.getContext('2d').drawImage(cv, x, y, w, h, 0, 0, w, h);
+                    return t.getContext('2d').getImageData(0, 0, w, h).data;
+                };
+                const contrast = (d) => { let m = 0; for (let i = 4; i < d.length; i += 4) m += Math.abs(d[i] - d[i - 4]); return m / (d.length / 4 - 1); };
+                const mean = (d) => { let m = 0; for (let i = 0; i < d.length; i += 4) m += d[i]; return m / (d.length / 4); };
+                // Where the checker is on screen, in the sharp part's pixels
+                // and the working copy's
+                const stage = document.getElementById('adj-stage').getBoundingClientRect();
+                const atX = stage.left + 40, atY = stage.top + 40;
+                const sx = Math.round((atX - sr.left) / sr.width * sharp.width), sy = Math.round((atY - sr.top) / sr.height * sharp.height);
+                const wx = Math.round((atX - cr().left) / cr().width * Adjust.canvas.width), wy = Math.round((atY - cr().top) / cr().height * Adjust.canvas.height);
+                Adjust.draw();
+                out.inChecker = (atX - cr().left) / cr().width < 0.5;
+                out.contrast = [contrast(grab(sharp, sx, sy, 32, 1)), contrast(grab(Adjust.canvas, wx, wy, 32, 1))].map(Math.round);
+                // Adjusted the same as the picture under it
+                step = 'adjusted';
+                Adjust.a.exposure = 1; Adjust.changed(); Adjust.draw();
+                const flatX = stage.left + stage.width - 60;
+                const toSharp = (x, y) => [Math.round((x - sr.left) / sr.width * sharp.width), Math.round((y - sr.top) / sr.height * sharp.height)];
+                const toWork = (x, y) => [Math.round((x - cr().left) / cr().width * Adjust.canvas.width), Math.round((y - cr().top) / cr().height * Adjust.canvas.height)];
+                const fx = (flatX - cr().left) / cr().width;
+                if (fx > 0.5) {
+                    out.same = [mean(grab(sharp, ...toSharp(flatX, atY), 8, 8)), mean(grab(Adjust.canvas, ...toWork(flatX, atY), 8, 8))].map(Math.round);
+                } else {
+                    out.same = [mean(grab(sharp, sx, sy, 32, 8)), mean(grab(Adjust.canvas, wx, wy, 32, 8))].map(Math.round);
+                }
+                // Before and after zooms too: the view stays, the sharp part
+                // shows the photo as it was
+                step = 'before';
+                const v0 = JSON.stringify(Adjust.view);
+                Adjust.toggleBefore(true);
+                Adjust.draw();
+                await sleep(250);
+                Adjust.draw();
+                out.before = [JSON.stringify(Adjust.view) === v0, !sharp.classList.contains('hidden'), Math.round(mean(grab(sharp, sx, sy, 32, 8)))];
+                Adjust.toggleBefore(false);
+                Adjust.a.exposure = 0; Adjust.changed();
+                // Overlays stay on the photo: a spot drawn where it is on the
+                // canvas, the overlay no bigger than the stage
+                step = 'overlays';
+                document.getElementById('adj-spots-sec').open = true;
+                await sleep(50);
+                const sv = document.getElementById('adj-spot-overlay').getBoundingClientRect();
+                const u = (stage.left + stage.width / 2 - cr().left) / cr().width, vv = (stage.top + stage.height / 2 - cr().top) / cr().height;
+                const p = AdjustSpots.fromPhoto(u, vv);
+                const mp = (AdjustMasks.place(), AdjustMasks.fromPhoto(u, vv));
+                const mv = document.getElementById('adj-overlay').getBoundingClientRect();
+                out.overlay = [
+                    Math.abs(sv.left + p.x - (cr().left + u * cr().width)) < 1 && Math.abs(sv.top + p.y - (cr().top + vv * cr().height)) < 1,
+                    sv.width <= stage.width + 1 && sv.height <= stage.height + 1,
+                    Math.abs(mv.left + mp.x - (cr().left + u * cr().width)) < 1,
+                    Math.abs(AdjustSpots.toPhoto(p.x, p.y).u - u) < 1e-6
+                ];
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('zoom: Adjust opens fitted, the chip says Fit (a big photo, a smaller working copy)', z.fit && String(z.fit) === 'true,true,false,true,true', JSON.stringify(z));
+        check('zoom: Ctrl+1 shows it at 100% (one photo pixel to a screen pixel), the chip says so', z.at100 && String(z.at100) === 'false,1,4000,true,false,true', JSON.stringify(z.at100));
+        check('zoom: at 100% the part on screen is drawn from the full-size photo, pixel for pixel', z.sharpSize && String(z.sharpSize) === '4000,2600,true,true', JSON.stringify(z.sharpSize));
+        check('zoom: sharp at 100%: fine detail the screen-sized copy loses is there', z.inChecker && z.contrast && z.contrast[0] > 100 && z.contrast[0] > z.contrast[1] * 2, JSON.stringify(z.contrast));
+        check('zoom: the sharp part is adjusted as the picture under it is', z.same && Math.abs(z.same[0] - z.same[1]) <= 6 && z.same[0] > 150, JSON.stringify(z.same));
+        check('zoom: Before stays zoomed, and shows the photo as it was there', z.before && z.before[0] && z.before[1] && Math.abs(z.before[2] - 130) <= 8, JSON.stringify(z.before));
+        check('zoom: masks and spots stay on the photo zoomed in, their overlays only the size of the stage', z.overlay && String(z.overlay) === 'true,true,true,true', JSON.stringify(z.overlay));
+
+        // With the real mouse and keys
+        const st = await page.evaluate(() => { document.getElementById('adj-spots-sec').open = false; Adjust.zoomFit(); const r = document.getElementById('adj-stage').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
+        const view = () => page.evaluate(() => ({ fitted: Adjust.fitted, ...Adjust.view }));
+        const under = (x, y) => page.evaluate(([x, y]) => { const r = Adjust.canvas.getBoundingClientRect(); return [(x - r.left) / r.width, (y - r.top) / r.height]; }, [x, y]);
+        const px = st.x + st.w * 0.3, py = st.y + st.h * 0.4;
+        const before = await under(px, py);
+        await page.mouse.move(px, py);
+        await page.keyboard.down('Control');
+        for (let i = 0; i < 4; i++) await page.mouse.wheel(0, -100);
+        await page.keyboard.up('Control');
+        await page.waitForTimeout(100);
+        const zoomed = await view(), after = await under(px, py);
+        check('zoom: Ctrl+wheel zooms in about the pointer', !zoomed.fitted && Math.abs(before[0] - after[0]) < 0.002 && Math.abs(before[1] - after[1]) < 0.002, JSON.stringify([zoomed, before, after]));
+        // A plain drag moves about, zoomed in
+        await page.mouse.move(st.x + st.w / 2, st.y + st.h / 2);
+        await page.mouse.down();
+        await page.mouse.move(st.x + st.w / 2 + 60, st.y + st.h / 2 + 30, { steps: 4 });
+        await page.mouse.up();
+        const dragged = await view();
+        check('zoom: zoomed in, a drag moves the photo about', Math.abs(dragged.x - zoomed.x - 60) < 1.5 && Math.abs(dragged.y - zoomed.y - 30) < 1.5 && Math.abs(dragged.z - zoomed.z) < 1e-9, JSON.stringify([zoomed, dragged]));
+        // The wheel alone moves it too (two fingers on a trackpad)
+        await page.mouse.wheel(40, 20);
+        await page.waitForTimeout(80);
+        const wheeled = await view();
+        check('zoom: zoomed in, the wheel (or two fingers) moves about', Math.abs(wheeled.x - dragged.x + 40) < 1.5 && Math.abs(wheeled.y - dragged.y + 20) < 1.5, JSON.stringify([dragged, wheeled]));
+        // With the spots tool out a drag is its own, Space+drag still moves
+        await page.evaluate(() => { document.getElementById('adj-spots-sec').open = true; });
+        await page.waitForTimeout(50);
+        const sp0 = await page.evaluate(() => (Adjust.a.spots || []).length);
+        await page.keyboard.down(' ');
+        await page.mouse.move(st.x + st.w / 2, st.y + st.h / 2);
+        await page.mouse.down();
+        await page.mouse.move(st.x + st.w / 2 - 50, st.y + st.h / 2, { steps: 4 });
+        await page.mouse.up();
+        await page.keyboard.up(' ');
+        const spaced = await view();
+        const sp1 = await page.evaluate(() => (Adjust.a.spots || []).length);
+        check('zoom: Space+drag moves about with a tool out, and the tool does nothing', Math.abs(spaced.x - wheeled.x + 50) < 1.5 && sp0 === sp1, JSON.stringify([wheeled, spaced, sp0, sp1]));
+        await page.evaluate(() => { document.getElementById('adj-spots-sec').open = false; });
+        // Keys: Ctrl+0 fits, Ctrl+= and Ctrl+- in and out
+        await page.keyboard.press('Control+0');
+        const fitted = await view();
+        await page.keyboard.press('Control+=');
+        const zin = await view();
+        await page.keyboard.press('Control+-');
+        const zout = await view();
+        check('zoom: Ctrl+0 fits; Ctrl+= zooms in, Ctrl+- out', fitted.fitted && !zin.fitted && zin.z > fitted.z * 1.2 && zout.z < zin.z, JSON.stringify([fitted, zin, zout]));
+        // Double-click: fit to 100% where it's clicked, and back
+        await page.keyboard.press('Control+0');
+        const dpt = [st.x + st.w * 0.6, st.y + st.h * 0.5];
+        const dBefore = await under(...dpt);
+        await page.mouse.dblclick(...dpt);
+        const d1 = await view(), dAfter = await under(...dpt);
+        await page.mouse.dblclick(...dpt);
+        const d2 = await view();
+        check('zoom: double-click goes to 100% on the spot clicked, and back to fit', !d1.fitted && Math.abs(d1.z - 1) < 1e-6 && Math.abs(dBefore[0] - dAfter[0]) < 0.002 && d2.fitted, JSON.stringify([d1, d2, dBefore, dAfter]));
+        // The chip: 100% and Fit
+        await page.click('#adj-zoom-100');
+        const c1 = await view();
+        await page.click('#adj-zoom-fit');
+        const c2 = await view();
+        check('zoom: the chip\'s 100% and Fit do as they say', !c1.fitted && Math.abs(c1.z - 1) < 1e-6 && c2.fitted, JSON.stringify([c1, c2]));
+        check('zoom: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     if (wanted('sync')) {
         console.log('sync (adjust-sync.js)');
         const { page, issues } = await open();
@@ -771,7 +941,14 @@ const PROJECT = `
         const { page, issues } = await open();
         // 64 × 64, from libheif's own test files (fuzzing/data/corpus/colors-no-alpha.heic)
         const HEIC = 'AAAAGGZ0eXBoZWljAAAAAG1pZjFoZWljAAABLm1ldGEAAAAAAAAAIWhkbHIAAAAAAAAAAHBpY3QAAAAAAAAAAAAAAAAAAAAADnBpdG0AAAAAAAEAAAAiaWxvYwAAAABEQAABAAEAAAAAAU4AAQAAAAAAAAClAAAAI2lpbmYAAAAAAAEAAAAVaW5mZQIAAAAAAQAAaHZjMQAAAACuaXBycAAAAJFpcGNvAAAAdWh2Y0MBA3AAAAAAAAAAAAAe8AD8/fj4AAAPAyAAAQAYQAEMAf//A3AAAAMAkAAAAwAAAwAeugJAIQABAChCAQEDcAAAAwCQAAADAAADAB6gIIEFlupJKa5sCAAAAwAIAAADAAhAIgABAAdEAcFysCJAAAAAFGlzcGUAAAAAAAAAQAAAAEAAAAAVaXBtYQAAAAAAAAABAAECgQIAAACtbWRhdAAAAKEmAa8TgIGSEXXAGM2sfMMD8HKXsBNBYjkEW6//QKl1HfLCc/SN/bWOG2ARaa8rk4JsxRuKJFz/vIlnrSBv0Pk7pYMv503LniUfVt0RGOMyTBZVcbnDhlXs0nsTVObq7679Fh7MfXPARYndCrwpKWSNTQcCjNVYWPVOenDxU81lLBnE070xnN107IoLiTNywdiNWzedf/q6zzV3iwZflrO94A==';
-        await page.evaluate((b) => { window.HEIC = new Blob([Uint8Array.from(atob(b), c => c.charCodeAt(0))], { type: 'image/heic' }); }, HEIC);
+        // 600 × 800 (a 800 × 600 photo turned by its EXIF, white top left: so
+        // white top right once turned), with a 240 × 320 thumbnail inside, as
+        // an iPhone's have (heif-enc -t 320)
+        const THUMBED = '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';
+        await page.evaluate(([b, t]) => {
+            window.HEIC = new Blob([Uint8Array.from(atob(b), c => c.charCodeAt(0))], { type: 'image/heic' });
+            window.THUMBED = new Blob([Uint8Array.from(atob(t), c => c.charCodeAt(0))], { type: 'image/heic' });
+        }, [HEIC, THUMBED]);
         const r = await page.evaluate(async () => {
             let step = 'names';
             try {
@@ -788,6 +965,27 @@ const PROJECT = `
                 const same = async () => { const a = new Uint8Array(await (await (await dir.getFileHandle('IMG_1.heic')).getFile()).arrayBuffer()), b = new Uint8Array(await HEIC.arrayBuffer()); return a.length === b.length && a.every((v, i) => v === b[i]); };
                 await until(() => f('IMG_1.heic').thumbnailUrl);
                 out.thumb = !!f('IMG_1.heic').thumbnailUrl;
+                // Grid thumbnails: the HEIC's own when it has one (240 wide, not
+                // the 320 a decode of the photo gives), turned as the photo is
+                step = 'own thumbnail';
+                const own = await pixels(await Codec.thumbnail(new File([THUMBED], 'IMG_2.heic', { type: 'image/heic' }), 320));
+                const at = (img, x, y) => img.data.slice((Math.floor(y) * img.width + Math.floor(x)) * 4, (Math.floor(y) * img.width + Math.floor(x)) * 4 + 3);
+                const white = (c) => c[0] > 200 && c[1] > 200 && c[2] > 200, red = (c) => c[0] > 150 && c[1] < 100 && c[2] < 100;
+                out.ownThumb = [own.width, own.height, white(at(own, own.width * 0.9, own.height * 0.05)), red(at(own, own.width * 0.1, own.height * 0.6))];
+                // ...and with none, from the photo (no bigger than it is)
+                const none = await pixels(await Codec.thumbnail(new File([HEIC], 'IMG_1.heic', { type: 'image/heic' }), 320));
+                out.noOwnThumb = [none.width, none.height];
+                // Opened again: its cached thumbnail, with nothing decoded
+                step = 'cached';
+                const ops = [], run = Codec.run;
+                Codec.run = function (msg) { ops.push(msg.op); return run.call(this, msg); };
+                Codec._shown.length = 0;
+                const fe = f('IMG_1.heic');
+                URL.revokeObjectURL(fe.thumbnailUrl);
+                fe.thumbnailUrl = null;
+                await app.makeThumbnail(fe);
+                Codec.run = run;
+                out.cached = [!!fe.thumbnailUrl, ops.join() || 'none'];
                 step = 'viewer';
                 app.openSingle(f('IMG_1.heic'));
                 const src = await app.getDisplaySource(f('IMG_1.heic'));
@@ -824,6 +1022,9 @@ const PROJECT = `
         check('heic: .heic, .heif and .hif are photos, decoded by the codecs', r.names === 'true,true,true,false,true', JSON.stringify(r));
         check('heic: decoded by the bundled libheif, 64 × 64, opaque, in colour', String(r.decoded) === '64,64,true,true', JSON.stringify(r));
         check('heic: listed with a thumbnail, and shown', r.thumb && String(r.viewer) === '64,64', JSON.stringify(r));
+        check('heic: a grid thumbnail is the HEIC\'s own when it has one, turned as the photo is', String(r.ownThumb) === '240,320,true,true', JSON.stringify(r));
+        check('heic: ...and made from the photo when it has none', String(r.noOwnThumb) === '64,64', JSON.stringify(r));
+        check('heic: a cached thumbnail is used without decoding the HEIC again', String(r.cached) === 'true,none', JSON.stringify(r));
         check('heic: a turn is kept as an edit, the HEIC never written; Save edits exports instead', r.turnKept && r.saveNotWritten, JSON.stringify(r));
         check('heic: Export writes a JPEG copy, IMG_1.jpg', r.exported && r.exported[1] === 64 && r.exported[2] === '255,216', JSON.stringify(r));
         check('heic: Convert encodes it (to WebP)', String(r.converted) === '64,64,true', JSON.stringify(r));
@@ -1367,11 +1568,13 @@ const PROJECT = `
                 const $ = (id) => document.getElementById(id);
                 const shownEl = (id) => { const e = $(id); return !!e && !e.classList.contains('hidden') && e.getClientRects().length > 0; };
                 step = 'start';
-                out.startShown = !$('start-in').classList.contains('hidden') && [...$('start-in').querySelectorAll('[data-mode]')].map(b => b.dataset.mode).join() === 'photos,adjust,paint';
-                // Start in Adjust: a project opened from the landing page lands in Adjust
+                // The home page: Open a folder, New project and Convert as tiles, in that order; Adjust a photo and Paint a photo in the quiet row (no scanner here)
+                out.startShown = ['btn-browse-folder', 'start-blank', 'start-convert', 'start-adjust', 'start-paint'].every(shownEl) && !shownEl('start-capture');
+                out.startShown = out.startShown && [...document.querySelectorAll('.home-tiles > .home-tile')].map(b => b.id).join() === 'btn-browse-folder,start-blank,start-convert' && $('start-blank').textContent.includes('New project') && !!$('start-adjust').closest('.home-more') && !!$('start-paint').closest('.home-more');
+                // A tile that says Adjust: the project lands in Adjust
                 step = 'start in';
-                $('start-in').querySelector('[data-mode="adjust"]').click();
-                out.startKept = app.uiPrefs.startIn === 'adjust' && JSON.parse(localStorage.getItem('jeditor.ui')).startIn === 'adjust';
+                Modes.next = 'adjust';
+                out.startKept = true;
                 const blob = async (color) => { const c = document.createElement('canvas'); c.width = 120; c.height = 90; const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, 120, 90); return canvasBlob(c); };
                 await openProject('modes', { 'a.png': await blob('#806040'), 'b.png': await blob('#406080'), 'c.png': await blob('#408060') });
                 await until(() => Adjust.ready && Modes.strip.parentElement);
@@ -1387,8 +1590,10 @@ const PROJECT = `
                 // To Paint from the chip's menu: Paint on the same photo
                 step = 'to paint';
                 $('mode-chip-float').click();
-                const items = [...document.querySelectorAll('.mode-menu .mode-mi')].map(b => b.textContent);
-                out.menu = items.length === 3 && /Paint/.test(items[2]) && document.querySelector('.mode-menu .mode-mi.on') && /Adjust/.test(document.querySelector('.mode-menu .mode-mi.on').textContent);
+                // The three modes, then Find anything (palette.js)
+                const items = [...document.querySelectorAll('.mode-menu .mode-mi:not(.mode-find)')].map(b => b.textContent);
+                out.menu = items.length === 3 && /Paint/.test(items[2]) && document.querySelector('.mode-menu .mode-mi.on') && /Adjust/.test(document.querySelector('.mode-menu .mode-mi.on').textContent) &&
+                    /Find anything/.test(document.querySelector('.mode-menu .mode-mi:last-child').textContent);
                 document.querySelectorAll('.mode-menu .mode-mi')[2].click();
                 await until(() => PaintEditor.ready && Modes.strip.parentElement === $('paint-editor'));
                 out.inPaint = Modes.current() === 'paint' && PaintEditor.file === app.viewFiles()[1] && Modes.strip.parentElement === $('paint-editor');
@@ -1457,8 +1662,8 @@ const PROJECT = `
                 return out;
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
-        check('modes: Start in offers Photos, Adjust and Paint', r.startShown, JSON.stringify(r));
-        check('modes: Start in is remembered; a project opened lands in that mode on its first photo', r.startKept && r.landedAdjust, JSON.stringify(r));
+        check('modes: the home page has the big tiles (New canvas where there\'s no scanner or camera)', r.startShown, JSON.stringify(r));
+        check('modes: a project opened for Adjust lands in Adjust on its first photo', r.startKept && r.landedAdjust, JSON.stringify(r));
         check('modes: in Adjust the chip names it, top left, and a strip runs along the bottom', r.chipOver && r.strip, JSON.stringify(r));
         check('modes: another photo from the strip opens in the same mode', r.stepped, JSON.stringify(r));
         check('modes: the chip\'s menu switches to Paint, on the same photo', r.menu && r.inPaint, JSON.stringify(r));
@@ -1479,7 +1684,7 @@ const PROJECT = `
             try {
                 const out = {};
                 const $ = (id) => document.getElementById(id);
-                $('start-in').querySelector('[data-mode="paint"]').click();
+                $('start-paint').click();
                 await until(() => !$('blank-panel').classList.contains('hidden'));
                 out.dialog = !$('blank-panel').querySelector('.blank-tabs').classList.contains('hidden') && $('blank-title').textContent === 'Paint' && $('blank-where').value === '\u0000pick';
                 // Open a file → An image…: opened on its own, in Paint
@@ -1560,6 +1765,161 @@ const PROJECT = `
         check('crop: ...and stops at the photo\'s edge facing it', r.atEdge >= 0 && r.atEdge < 60, JSON.stringify(r));
         check('crop: not turned, the side stops at the edge', Math.abs(r.flat[0] - 999) < 0.01 && Math.abs(r.flat[1] - 999) < 0.01, JSON.stringify(r));
         check('crop: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+    // ---- Flip ----
+    if (wanted('flip')) {
+        console.log('flip: left to right and upside down (script.js, crop.js, edits.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            const out = {};
+            // A photo whose halves differ: red left, blue right, a green
+            // band along the top
+            const make = async (type, w = 64, h = 32) => {
+                const c = document.createElement('canvas'); c.width = w; c.height = h;
+                const g = c.getContext('2d');
+                g.fillStyle = '#f00'; g.fillRect(0, 0, w / 2, h);
+                g.fillStyle = '#00f'; g.fillRect(w / 2, 0, w / 2, h);
+                g.fillStyle = '#0f0'; g.fillRect(0, 0, w, h / 4);
+                return canvasBlob(c, type, 0.95);
+            };
+            // What's at a spot (fractions across and down), as the photo shows
+            const at = async (blob, u, v) => {
+                const bmp = await createImageBitmap(blob);
+                const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+                const g = c.getContext('2d'); g.drawImage(bmp, 0, 0); bmp.close();
+                const d = g.getImageData(Math.floor(u * c.width), Math.floor(v * c.height), 1, 1).data;
+                return d[0] > 150 && d[1] < 100 && d[2] < 100 ? 'red' : d[2] > 150 && d[0] < 100 && d[1] < 100 ? 'blue' : d[1] > 150 && d[0] < 100 && d[2] < 100 ? 'green' : `${d[0]},${d[1]},${d[2]}`;
+            };
+            const look = async (blob) => [await at(blob, 0.1, 0.6), await at(blob, 0.9, 0.6), await at(blob, 0.25, 0.05), await at(blob, 0.25, 0.95)].join(' ');
+            const sides = async (blob) => [await at(blob, 0.1, 0.5), await at(blob, 0.9, 0.5)].join(' ');
+            const bytesOf = async (f) => new Uint8Array(await (await f.handle.getFile()).arrayBuffer());
+
+            // The orientation table: each flip twice is back where it was;
+            // left to right then upside down is half a turn
+            out.involution = [1, 2, 3, 4, 5, 6, 7, 8].every(o => app.flipOrientation(app.flipOrientation(o, 'h'), 'h') === o && app.flipOrientation(app.flipOrientation(o, 'v'), 'v') === o);
+            out.halfTurn = [1, 2, 3, 4, 5, 6, 7, 8].every(o => app.flipOrientation(app.flipOrientation(o, 'h'), 'v') === app.composeOrientation(o, 180));
+            out.turnedFlip = [1, 6, 3, 8].every(o => app.flipOrientation(app.flipOrientation(o, 'h', 90), 'h', 90) === o);
+
+            await openProject('Flip', { 'a.jpg': await make('image/jpeg'), 'b.png': await make('image/png'), 'c.jpg': await make('image/jpeg') });
+            const [a, b, c] = ['a.jpg', 'b.png', 'c.jpg'].map(n => app.files.find(f => f.name === n));
+            out.before = await look(await a.handle.getFile());
+
+            // A JPEG, left to right: only its orientation changes
+            const aBefore = await bytesOf(a);
+            await app.flipFiles([a], 'h');
+            const aAfter = await bytesOf(a);
+            out.jpegH = [await look(new Blob([aAfter])), readOrientation(aAfter)];
+            // (a scanner's JPEG has no EXIF: one is added, the picture data untouched)
+            out.jpegLossless = aAfter.length - aBefore.length < 100 && aAfter.subarray(aAfter.length - 200).every((x, i) => x === aBefore[aBefore.length - 200 + i]);
+            await app.undo();
+            out.jpegUndo = [await look(await a.handle.getFile()), readOrientation(await bytesOf(a)) || 1];
+            // Upside down
+            await app.flipFiles([a], 'v');
+            out.jpegV = [await look(await a.handle.getFile()), readOrientation(await bytesOf(a))];
+            await app.undo();
+
+            // A PNG is re-encoded; Ctrl+Z puts its bytes back exactly
+            const bBefore = await bytesOf(b);
+            await app.flipFiles([b], 'h');
+            out.png = await look(await b.handle.getFile());
+            await app.undo();
+            const bBack = await bytesOf(b);
+            out.pngUndo = bBack.length === bBefore.length && bBack.every((x, i) => x === bBefore[i]);
+
+            // A selection: one Ctrl+Z
+            const depth = (app._undoStack || []).length;
+            await app.flipFiles([a, c], 'h');
+            out.oneStep = (app._undoStack || []).length === depth + 1;
+            out.both = [readOrientation(await bytesOf(a)), readOrientation(await bytesOf(c))];
+            await app.undo();
+            out.bothBack = [readOrientation(await bytesOf(a)) || 1, readOrientation(await bytesOf(c)) || 1];
+
+            // Kept until saved (Save edits when done): an edit, the crop
+            // box mirrored with it; twice is no edit at all
+            await Edits.setDefer(true);
+            Edits.set([{ file: c, edit: { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0, y1: 0.5 } } }], 'crop');
+            await app.flipFiles([c], 'h');
+            const e = c._edit;
+            out.kept = e && e.m === true && e.n.x0 === 0 && e.n.x1 === 0.5;
+            // The left half kept, shown flipped: red, all of it
+            const shown = await CropEditor.renderSnapshot(await c.handle.getFile(), e, 'image/png');
+            out.keptLook = await look(await canvasBlob(shown));
+            out.diskUntouched = (readOrientation(await bytesOf(c)) || 1) === 1;
+            await app.flipFiles([c], 'h');
+            out.twice = c._edit && !c._edit.m && c._edit.n.x1 === 0;
+            Edits.set([{ file: c, edit: null }], 'edits');
+            await app.flipFiles([c], 'v');
+            await app.flipFiles([c], 'v');
+            out.twiceNothing = !c._edit;
+            // Flipped and turned: Save edits writes it losslessly, as one
+            await app.flipFiles([c], 'h');
+            await app.rotateBulk(90, new Map([[c, 90]]));
+            const cBefore = await bytesOf(c);
+            await app.saveEdits([c]);
+            const cSaved = await bytesOf(c);
+            out.saved = [readOrientation(cSaved), !c._edit, cSaved.length - cBefore.length < 100];
+            await app.undo();
+            out.savedUndo = [readOrientation(await bytesOf(c)) || 1, !!(c._edit && c._edit.m && c._edit.q === 1)];
+            Edits.set([{ file: c, edit: null }], 'edits');
+            await Edits.setDefer(false);
+
+            // The crop editor's geometry: the photo point under a spot, and
+            // back; Adjust's mask map (Develop.cropMap) agrees with it
+            const ed = CropEditor.fromSnapshot(400, 300, { q: 1, m: true, angle: 3, n: { x0: -0.4, y0: -0.3, x1: 0.2, y1: 0.4 } });
+            const p = { x: 37, y: -21 }, back = ed.fromImage(ed.toImage(p));
+            out.roundTrip = Math.hypot(back.x - p.x, back.y - p.y) < 1e-9;
+            const map = Develop.cropMap(ed, 400, 300).m, o = ed.outputRect();
+            const U = 0.25, V = 0.7, img = ed.toImage({ x: o.x0 + U * o.w, y: o.y0 + V * o.h });
+            out.maskMap = Math.abs(map[0] * U + map[1] * V + map[2] - (img.x / 400 + 0.5)) < 1e-9 && Math.abs(map[3] * U + map[4] * V + map[5] - (img.y / 300 + 0.5)) < 1e-9;
+            // Paint draws its layers through the same flip
+            const src = document.createElement('canvas'); src.width = 400; src.height = 300;
+            const sg = src.getContext('2d'); sg.fillStyle = '#f00'; sg.fillRect(0, 0, 200, 300); sg.fillStyle = '#00f'; sg.fillRect(200, 0, 200, 300);
+            const flat = CropEditor.fromSnapshot(400, 300, { q: 0, m: true, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } });
+            const canvas = document.createElement('canvas'); canvas.width = 400; canvas.height = 300;
+            Paint.drawThrough(canvas.getContext('2d'), flat, src, 400, 300);
+            out.paint = await sides(await canvasBlob(canvas));
+            const drawn = flat.drawOutput(src);
+            out.drawOutput = await sides(await canvasBlob(drawn));
+
+            // In the crop editor: Shift+H flips, its own Ctrl+Z takes it back
+            app.currentFile = a;
+            app.setView('single');
+            await sleep(300);
+            await app.enterCrop();
+            await until(() => CropEditor.ready);
+            CropEditor.flip('h');
+            out.editorFlip = CropEditor.m === true && CropEditor.snapshot().m === true;
+            CropEditor.flip('v');
+            out.editorBoth = !CropEditor.m && CropEditor.q === 2;
+            CropEditor.undo();
+            CropEditor.undo();
+            out.editorUndo = !CropEditor.m && CropEditor.q === 0;
+            CropEditor.flip('h');
+            await app.saveCrop();
+            for (let i = 0; i < 100 && readOrientation(await bytesOf(a)) !== 2; i++) await sleep(50);
+            out.editorSaved = [await look(await a.handle.getFile()), readOrientation(await bytesOf(a))];
+            return out;
+        });
+        check('flip: each flip twice is back as it was, and both together are half a turn', r.involution && r.halfTurn && r.turnedFlip, JSON.stringify(r));
+        check('flip: the test photo is red left, blue right, green along the top', r.before === 'red blue green red', r.before);
+        check('flip: a JPEG flipped left to right, by its orientation (2)', r.jpegH[0] === 'blue red green blue' && r.jpegH[1] === 2, JSON.stringify(r.jpegH));
+        check('flip: ...losslessly: the picture data is the same', r.jpegLossless);
+        check('flip: Ctrl+Z puts it back', r.jpegUndo[0] === 'red blue green red' && r.jpegUndo[1] === 1, JSON.stringify(r.jpegUndo));
+        check('flip: upside down (orientation 4)', r.jpegV[0] === 'red blue red green' && r.jpegV[1] === 4, JSON.stringify(r.jpegV));
+        check('flip: a PNG is re-encoded flipped, and Ctrl+Z puts its bytes back exactly', r.png === 'blue red green blue' && r.pngUndo, JSON.stringify([r.png, r.pngUndo]));
+        check('flip: a selection is one Ctrl+Z', r.oneStep && r.both.join() === '2,2' && r.bothBack.join() === '1,1', JSON.stringify([r.oneStep, r.both, r.bothBack]));
+        check('flip: with Save edits when done, kept as an edit with its crop mirrored, the file untouched', r.kept && r.diskUntouched, JSON.stringify([r.kept, r.diskUntouched]));
+        check('flip: the kept edit shows the left half, flipped', r.keptLook === 'red red green red', r.keptLook);
+        check('flip: flipped twice is the edit it was; upside down twice is no edit', r.twice && r.twiceNothing, JSON.stringify([r.twice, r.twiceNothing]));
+        check('flip: flipped and turned, Save edits writes it losslessly in one go (orientation 7), and Ctrl+Z keeps the edit again', r.saved[0] === 7 && r.saved[1] && r.saved[2] && r.savedUndo[0] === 1 && r.savedUndo[1], JSON.stringify([r.saved, r.savedUndo]));
+        check('flip: the crop editor\'s geometry goes there and back, flipped', r.roundTrip);
+        check('flip: Adjust\'s masks are placed through the flip (Develop.cropMap)', r.maskMap);
+        check('flip: Paint\'s layers and the crop are drawn flipped', r.paint === 'blue red' && r.drawOutput === 'blue red', JSON.stringify([r.paint, r.drawOutput]));
+        check('flip: in the crop editor, flip and its own undo', r.editorFlip && r.editorBoth && r.editorUndo, JSON.stringify([r.editorFlip, r.editorBoth, r.editorUndo]));
+        check('flip: Save in the crop editor writes a flip with no crop losslessly', r.editorSaved[0] === 'blue red green blue' && r.editorSaved[1] === 2, JSON.stringify(r.editorSaved));
+        check('flip: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
 
@@ -1690,7 +2050,27 @@ const PROJECT = `
                 step = 'app';
                 const calls = [];
                 window.JEditorNative = { platform: 'windows', features: ['themes'], titleBar: (on) => calls.push('titleBar:' + on), windowAction: (a) => calls.push(a) };
-                out.inApp = Themes.can() && !Experiments.shown().some(x => x.id === 'themes');
+                // Paused (2.0.0): an experiment, off to start with, in a beta too
+                // (a dev page has no APP_BUILD: a beta's, for now)
+                window.APP_BUILD = 'v2.0.0-beta.1';
+                out.offered = Experiments.betaBuild() && Experiments.shown().some(x => x.id === 'themes') && !Experiments.on('themes') && !Themes.can();
+                delete window.APP_BUILD;
+                app.renderCustomizePanel();
+                out.pickerHidden = [...document.querySelectorAll('.set-themes-part')].every(e => e.classList.contains('hidden'));
+                // A theme chosen before: not on while the experiment's off
+                app.uiPrefs.skin = 'xp/royale';
+                Themes.apply();
+                out.ownLook = !root.dataset.skin && !$('th-top');
+                // Turned on (Settings → Experimental): the theme's back at once
+                Experiments.set('themes', true);
+                await until(() => root.dataset.skin === 'xp' && !root.classList.contains('theme-loading'));
+                out.back = root.dataset.skin === 'xp' && !!$('th-top') && !$('set-themes').classList.contains('hidden');
+                // Off again: jEditor's own look, and the choice kept
+                Experiments.set('themes', false);
+                out.offAgain = !root.dataset.skin && !$('th-top') && app.uiPrefs.skin === 'xp/royale' && calls[calls.length - 1] === 'titleBar:false';
+                Experiments.set('themes', true);
+                Themes.choose('');
+                out.inApp = Themes.can();
                 app.renderCustomizePanel();
                 const cards = [...$('set-themes').querySelectorAll('.theme-card')];
                 out.gallery = cards.map(c => c.dataset.skin).join() === ',xp/royale,snow/finder,mac84/finder' && cards[0].classList.contains('active');
@@ -1771,7 +2151,8 @@ const PROJECT = `
                 return out;
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
-        check('themes: none in a browser; in the apps, not an experiment', r.browserNone && r.inApp, JSON.stringify(r));
+        check('themes: none in a browser; in the apps, an experiment, off to start with (betas too), the picker hidden', r.browserNone && r.offered && r.pickerHidden, JSON.stringify(r));
+        check('themes: a theme chosen isn\'t on while the experiment\'s off, comes back the moment it\'s turned on, and goes (kept) when it\'s off again', r.ownLook && r.back && r.offAgain && r.inApp, JSON.stringify(r));
         check('themes: Settings → Appearance shows them as a gallery, jEditor\'s own look first', r.gallery, JSON.stringify(r));
         check('themes: one chosen puts its stylesheets on, docked, in its own light or dark', r.on && r.styled && r.dark, JSON.stringify(r));
         check('themes: its own title bar and menu bar along the top; Windows\' title bar goes', r.ownBar, JSON.stringify(r));
@@ -1783,6 +2164,31 @@ const PROJECT = `
         check('themes: the theme chosen and its settings are there at the next start', r.kept, JSON.stringify(r));
         check('themes: 1984\'s Thumbnails setting: dithered to one bit, or in colour again', r.setting && r.dithered && r.colour, JSON.stringify(r));
         check('themes: back to jEditor\'s look takes all of it off', r.off, JSON.stringify(r));
+
+        // A narrow window, a photo selected: the selection bar and the size
+        // slider share the foot bar, and the slider stays out from under it
+        await page.setViewportSize({ width: 640, height: 600 });
+        const foot = {};
+        for (const skin of ['xp/royale', 'snow/finder', 'mac84/finder']) {
+            foot[skin] = await page.evaluate(async (skin) => {
+                window.JEditorNative = { platform: 'windows', features: ['themes'], titleBar: () => { }, windowAction: () => { } };
+                Themes.choose(skin);
+                await until(() => !document.documentElement.classList.contains('theme-loading'));
+                app.setView('grid');
+                app.goTo(app.files[1]);
+                await sleep(300);
+                const s = app.elements.gridSizeSlider, r = s.getBoundingClientRect();
+                // Its buttons as shown (a bar that scrolls clips the rest)
+                const box = document.getElementById('selection-bar').getBoundingClientRect();
+                const bar = [...document.querySelectorAll('#selection-bar > *')].map(b => b.getBoundingClientRect()).filter(b => b.width)
+                    .map(b => ({ left: Math.max(b.left, box.left), right: Math.min(b.right, box.right), top: b.top, bottom: b.bottom }));
+                const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+                return { w: Math.round(r.width), hit: hit === s, under: bar.some(b => b.right > r.left + 1 && b.left < r.right - 1 && b.bottom > r.top && b.top < r.bottom) };
+            }, skin);
+        }
+        await page.evaluate(() => { Themes.choose(''); delete window.JEditorNative; });
+        await page.setViewportSize({ width: 1280, height: 720 });
+        check('themes: in a narrow window the size slider stays clear of the selection bar, and takes a click', Object.values(foot).every(f => f.w >= 40 && f.hit && !f.under), JSON.stringify(foot));
         check('themes: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -2000,6 +2406,12 @@ const PROJECT = `
         const p2 = await open();
         const o = await p2.page.evaluate(async () => {
             let step = 'folder';
+            // The start page's Convert photos, then Photos… or A folder… from its menu
+            window.startConvert = async (item) => {
+                document.getElementById('start-convert').click();
+                await until(() => document.getElementById('context-menu'), 40);
+                [...document.querySelectorAll('#context-menu button')].find(b => b.textContent === item).click();
+            };
             try {
                 const out = {};
                 const opfs = await navigator.storage.getDirectory();
@@ -2022,7 +2434,7 @@ const PROJECT = `
                 window.showDirectoryPicker = async () => dir;
                 Convert.prefs.format = 'avif';
                 Convert.prefs.keep = false;
-                document.getElementById('start-convert').click();
+                await startConvert('A folder…');
                 await until(() => Convert.est && !Convert.est.working, 600);
                 out.chosen = [document.getElementById('cv-src-name').textContent, [...document.querySelectorAll('.cv-folder .n')].map(e => e.firstChild.textContent).sort().join()];
                 step = 'convert';
@@ -2043,7 +2455,7 @@ const PROJECT = `
                 step = 'tiff';
                 Convert.prefs.format = 'tiff';
                 Convert.est = null;
-                document.getElementById('start-convert').click();
+                await startConvert('A folder…');
                 await until(() => Convert.est && !Convert.est.working, 600);
                 out.tiffEstimate = [Convert.est.after > Convert.est.total, !document.getElementById('cv-lossless').classList.contains('hidden')];
                 Convert.go();
@@ -2060,6 +2472,132 @@ const PROJECT = `
         check('convert (a folder chosen): no JS errors', p2.issues.errors.length === 0, p2.issues.errors.join('; '));
         await p2.page.evaluate(async () => { Codec.stop(); await sleep(300); });
         await p2.page.close();
+
+        // Photos picked on the start page: converted there, its progress and
+        // what it did shown there; the folder they're in asked for first
+        const p3 = await open();
+        const q = await p3.page.evaluate(async () => {
+            let step = 'photos';
+            const drop = () => document.getElementById('drop-zone');
+            const box = () => document.getElementById('start-convert-run');
+            const shown = (el) => !!el && !el.classList.contains('hidden') && el.getBoundingClientRect().height > 0;
+            const pick = async (item) => {
+                document.getElementById('start-convert').click();
+                await until(() => document.getElementById('context-menu'), 40);
+                [...document.querySelectorAll('#context-menu button')].find(b => b.textContent === item).click();
+            };
+            try {
+                const out = {};
+                const opfs = await navigator.storage.getDirectory();
+                for (const n of ['Scans', 'Out']) { try { await opfs.removeEntry(n, { recursive: true }); } catch (e) { /* fresh */ } }
+                const dir = await opfs.getDirectoryHandle('Scans', { create: true });
+                const sub = await dir.getDirectoryHandle('1998', { create: true });
+                const outDir = await opfs.getDirectoryHandle('Out', { create: true });
+                const made = [];
+                for (let i = 0; i < 3; i++) {
+                    const c = document.createElement('canvas'); c.width = 600; c.height = 400;
+                    const g = c.getContext('2d'); g.fillStyle = ['#2050c0', '#c03020', '#20a050'][i]; g.fillRect(0, 0, 600, 400);
+                    g.fillStyle = '#fff'; g.beginPath(); g.arc(200 + i * 80, 200, 90, 0, Math.PI * 2); g.fill();
+                    const h = await (i ? sub : dir).getFileHandle(`scan${i}.jpg`, { create: true });
+                    const w = await h.createWritable(); await w.write(await canvasBlob(c, 'image/jpeg', 0.95)); await w.close();
+                    made.push(h);
+                }
+                // a photo that isn't a photo: left out
+                const txt = await dir.getFileHandle('notes.txt', { create: true });
+                const names = async (d = dir) => {
+                    const n = [];
+                    for await (const e of d.values()) {
+                        if (e.kind === 'file') n.push(e.name);
+                        else if (e.name !== '.jeditor') for await (const f of e.values()) n.push(e.name + '/' + f.name);
+                    }
+                    return n.sort().join();
+                };
+                const menu = [];
+                document.getElementById('start-convert').click();
+                await until(() => document.getElementById('context-menu'), 40);
+                menu.push(...[...document.querySelectorAll('#context-menu button')].map(b => b.textContent));
+                document.body.click();
+                out.menu = menu.join();
+                // Picked; the folder they're in is the next picker, opening where they are
+                let dirAsked = null;
+                // Fresh handles each time, as the picker gives (a run moves the ones it had)
+                const fresh = async () => [await dir.getFileHandle('scan0.jpg'), await sub.getFileHandle('scan1.jpg'), await sub.getFileHandle('scan2.jpg'), txt];
+                window.showOpenFilePicker = async (o) => { out.multiple = o.multiple; const h = await fresh(); made[0] = h[0]; return h; };
+                window.showDirectoryPicker = async (o) => { dirAsked = o; return dir; };
+                Convert.prefs.format = 'avif';
+                Convert.prefs.keep = false;
+                await pick('Photos…');
+                await until(() => Convert.est && !Convert.est.working, 600);
+                out.src = document.getElementById('cv-src-name').textContent;
+                out.note = document.getElementById('cv-note').textContent;
+                step = 'convert';
+                // What the panel says while it runs (it's quick: watched, not polled)
+                const seen = [];
+                const watch = new MutationObserver(() => {
+                    if (box().dataset.state === 'run') seen.push([shown(box()), !Convert.isOpen(), shown(drop()), box().querySelector('.scr-title').textContent,
+                        !!box().querySelector('[data-act="pause"]'), !!box().querySelector('[data-act="stop"]')]);
+                });
+                watch.observe(box(), { subtree: true, childList: true, characterData: true, attributes: true });
+                const going = Convert.go();
+                await until(() => dirAsked && (Convert.run || Convert.done), 200);
+                out.startIn = !!dirAsked && dirAsked.startIn === made[0];
+                await going;
+                watch.disconnect();
+                const last = seen.filter(x => /^Converting [1-3] of 3 photos to AVIF…$/.test(x[3])).pop();
+                out.running = last ? [...last.slice(0, 3), true, ...last.slice(4)] : seen.slice(-1);
+                await until(() => Convert.done, 800);
+                out.converted = await names();
+                const trash = [];
+                for await (const e of (await (await dir.getDirectoryHandle('.jeditor')).getDirectoryHandle('trash')).values()) trash.push(e.name);
+                out.trash = trash.sort().join();
+                out.done = [shown(box()), box().querySelector('.scr-title').textContent, box().querySelector('.scr-sub').textContent,
+                    [...box().querySelectorAll('.scr-actions button, .scr-back:not(.hidden) button')].map(b => b.textContent).join()];
+                out.notOpened = !app.dirHandle && !app.files.length && shown(drop());
+                step = 'put back';
+                box().querySelector('[data-act="back"]').click();
+                await until(async () => (await names()).includes('scan0.jpg'), 100);
+                await sleep(200);
+                out.back = [await names(), shown(box())];
+                // Keep both, into another folder: copies there, the photos as they were
+                step = 'keep';
+                window.showDirectoryPicker = async () => outDir;
+                Convert.prefs.keep = true;
+                Convert.est = null;
+                await pick('Photos…');
+                await until(() => Convert.est && !Convert.est.working, 600);
+                out.keepNote = document.getElementById('cv-note').textContent;
+                await Convert.go();
+                await until(() => Convert.done, 800);
+                out.kept = [await names(), await names(await outDir.getDirectoryHandle('jEditor Converted')), box().querySelector('.scr-sub').textContent];
+                box().querySelector('[data-act="done"]').click();
+                out.doneHides = !shown(box());
+                // Replacing, with a folder they aren't in: asked again, nothing changed
+                step = 'not in it';
+                Convert.prefs.keep = false;
+                Convert.est = null;
+                await pick('Photos…');
+                await until(() => Convert.est && !Convert.est.working, 600);
+                const tried = Convert.go();
+                await until(() => { const b = document.getElementById('uid-ok'); return b && b.getBoundingClientRect().height > 0; }, 100);
+                out.alert = document.getElementById('uid-ok').closest('[role="dialog"], [role="alertdialog"], .dialog').textContent;
+                document.getElementById('uid-ok').click();
+                await tried;
+                out.notIn = [await names(), !Convert.run && !Convert.done, Convert.isOpen()];
+                Convert.close();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('convert (start page): Convert photos offers Photos… and A folder…', q.menu === 'Photos…,A folder…', JSON.stringify(q));
+        check('convert (start page): photos picked, not a folder; the next picker opens where they are', q.multiple === true && q.src === 'Photos picked · 3 photos' && /^Next, choose the folder they're in/.test(q.note) && q.startIn, JSON.stringify([q.multiple, q.src, q.note, q.startIn]));
+        check('convert (start page): it runs on the start page, with how far it\'s got, Pause and Stop', q.running && q.running.every(Boolean), JSON.stringify(q.running));
+        check('convert (start page): converted where they are, originals in their folder\'s .jeditor/trash, nothing opened', q.converted === '1998/scan1.avif,1998/scan2.avif,notes.txt,scan0.avif' && q.trash === 'scan0.jpg,scan1.jpg,scan2.jpg' && q.notOpened, JSON.stringify([q.converted, q.trash, q.notOpened]));
+        check('convert (start page): what it did, shown there: Put them back, Convert more…, Done', q.done && q.done[0] && q.done[1] === 'Converted 3 photos to AVIF' && / → .*the originals are in \.jeditor\/trash in Scans/.test(q.done[2]) && q.done[3] === 'Put them back,Convert more…,Done', JSON.stringify(q.done));
+        check('convert (start page): Put them back puts the originals back and clears the panel', q.back && q.back[0] === '1998/scan1.jpg,1998/scan2.jpg,notes.txt,scan0.jpg' && !q.back[1], JSON.stringify(q.back));
+        check('convert (start page): Keep both, into a folder they aren\'t in: copies in its "jEditor Converted", the photos left', q.kept && q.kept[0] === '1998/scan1.jpg,1998/scan2.jpg,notes.txt,scan0.jpg' && q.kept[1] === 'scan0.avif,scan1.avif,scan2.avif' && /jEditor Converted/.test(q.kept[2]) && /^Next, choose where/.test(q.keepNote) && q.doneHides, JSON.stringify([q.kept, q.keepNote, q.doneHides]));
+        check('convert (start page): replacing needs the folder they\'re in; another one asks again and changes nothing', /Choose the folder they're in/.test(q.alert) && q.notIn && q.notIn[0] === '1998/scan1.jpg,1998/scan2.jpg,notes.txt,scan0.jpg' && q.notIn[1] && q.notIn[2], JSON.stringify([q.alert, q.notIn]));
+        check('convert (photos picked): no JS errors', p3.issues.errors.length === 0, p3.issues.errors.join('; '));
+        await p3.page.evaluate(async () => { Codec.stop(); await sleep(300); });
+        await p3.page.close();
     }
 
     await browser.close();

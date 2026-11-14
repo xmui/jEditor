@@ -146,6 +146,7 @@
     // → the folder's path, or null if it never came through here
     async function folderPath(handle) {
         if (!handle || handle.kind !== 'directory') return null;
+        if (typeof handle.photosLibrary === 'string') return LIBRARY + handle.photosLibrary;
         const name = String(handle.name || '').toLowerCase();
         const nameOf = (p) => (p.split('/').filter(Boolean).pop() || '').toLowerCase();
         const look = async (list) => {
@@ -178,9 +179,136 @@
         return r ? r.path : null;
     }
 
+    // ---- The Photos library (photos.js) ----
+    // An album (or the whole library: id '') as a folder handle the page can
+    // read like any other, with its photos as file handles: getFile() is the
+    // photo as it is now (from iCloud if need be), getThumbnail(w) the
+    // library's own thumbnail, peek() its size and date without reading it.
+    // A photo can be written (createWritable): what's written is saved back
+    // as a Photos edit on top of the photo as it is now, every edit before
+    // kept by Photos (photos.mm: save). Nothing can be added, renamed or
+    // removed: that's for Photos. Its path is "photos-library:<id>".
+    const LIBRARY = 'photos-library:';
+    const SHOWN = /\.(jpe?g|png|gif|webp)$/i; // served as they are; the rest come as JPEG (photos.mm)
+    const denied = (what) => new DOMException(`${what}: the Photos library can't be changed`, 'NotAllowedError');
+    const notFound = (name) => new DOMException(`${name} isn't in this album`, 'NotFoundError');
+    const photoUrl = (kind, id) => `/__photos/${kind}/${encodeURIComponent(id)}`;
+    async function fetched(url) {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error((await r.text().catch(() => '')) || 'That photo couldn\'t be read');
+        return r.blob();
+    }
+    // What a writable is given, as bytes
+    async function bytesOf(d) {
+        if (d instanceof Blob) return new Uint8Array(await d.arrayBuffer());
+        if (typeof d === 'string') return new TextEncoder().encode(d);
+        if (d instanceof ArrayBuffer) return new Uint8Array(d);
+        if (ArrayBuffer.isView(d)) return new Uint8Array(d.buffer, d.byteOffset, d.byteLength);
+        throw new TypeError('Can\'t write that');
+    }
+    // A FileSystemWritableFileStream's calls (write, seek, truncate, close,
+    // abort), kept in memory; close() hands the whole photo to save(bytes)
+    function memoryWritable(start, save) {
+        let buf = start, pos = 0, done = false;
+        const grow = (n) => { if (n > buf.length) { const b = new Uint8Array(n); b.set(buf); buf = b; } };
+        const open = () => { if (done) throw new DOMException('The writable is closed', 'InvalidStateError'); };
+        return {
+            async write(d) {
+                open();
+                if (d && typeof d === 'object' && !(d instanceof Blob) && !(d instanceof ArrayBuffer) && !ArrayBuffer.isView(d) && 'type' in d) {
+                    if (d.type === 'seek') { pos = d.position; return; }
+                    if (d.type === 'truncate') { this.truncate(d.size); return; }
+                    if (d.position != null) pos = d.position;
+                    d = d.data;
+                }
+                const b = await bytesOf(d);
+                grow(pos + b.length);
+                buf.set(b, pos);
+                pos += b.length;
+            },
+            async seek(p) { open(); pos = p; },
+            async truncate(n) { open(); if (n < buf.length) buf = buf.slice(0, n); else grow(n); if (pos > n) pos = n; },
+            async close() { open(); done = true; await save(buf); },
+            async abort() { done = true; }
+        };
+    }
+    function libraryFile(a, name) {
+        const created = a.created || 0;
+        const when = () => a.modified || created;
+        return {
+            kind: 'file',
+            name,
+            photosAsset: a.id,
+            async getFile() {
+                const blob = await fetched(photoUrl('full', a.id));
+                return new File([blob], name, { type: blob.type, lastModified: when() });
+            },
+            getThumbnail: (w) => fetched(photoUrl('thumb', a.id) + '?w=' + Math.round(w || 320) + '&v=' + when()),
+            peek: () => ({ size: a.fileSize || 0, lastModified: when(), width: a.w || 0, height: a.h || 0 }),
+            async isSameEntry(o) { return !!o && o.photosAsset === a.id; },
+            async queryPermission() { return 'granted'; },
+            async requestPermission() { return 'granted'; },
+            // Saved back as a Photos edit when it's closed (the photo as it is
+            // now, then what jEditor wrote over it)
+            async createWritable(o) {
+                const start = o && o.keepExistingData ? new Uint8Array(await (await this.getFile()).arrayBuffer()) : new Uint8Array(0);
+                return memoryWritable(start, async (bytes) => {
+                    const r = await answer('photosSave', { id: a.id, bytes });
+                    Object.assign(a, { modified: r.modified || Date.now(), fileSize: r.fileSize || bytes.length, w: r.w || a.w, h: r.h || a.h });
+                });
+            },
+            async move() { throw denied(name); },
+            async remove() { throw denied(name); }
+        };
+    }
+    async function photosAlbum(id = '', name = 'Photos library') {
+        id = String(id || '');
+        let files = null;
+        const list = async () => {
+            if (files) return files;
+            const { assets } = await answer('photosAssets', { id });
+            // Two photos of the same name (two cameras' IMG_0001): the second is "IMG_0001 (2)"
+            const used = new Map();
+            files = assets.map(a => {
+                let n = String(a.originalFilename || 'Photo.jpg');
+                if (!SHOWN.test(n)) n = n.replace(/\.[^.]*$/, '') + '.jpg';
+                const k = n.toLowerCase();
+                const count = (used.get(k) || 0) + 1;
+                used.set(k, count);
+                if (count > 1) n = n.replace(/(\.[^.]*)?$/, ` (${count})$1`);
+                return libraryFile(a, n);
+            });
+            return files;
+        };
+        return {
+            kind: 'directory',
+            name,
+            photosLibrary: id,
+            async *entries() { for (const f of await list()) yield [f.name, f]; },
+            async *values() { for (const f of await list()) yield f; },
+            async *keys() { for (const f of await list()) yield f.name; },
+            [Symbol.asyncIterator]() { return this.entries(); },
+            async getFileHandle(n, o) {
+                if (o && o.create) throw denied(n);
+                const f = (await list()).find(x => x.name === n);
+                if (!f) throw notFound(n);
+                return f;
+            },
+            async getDirectoryHandle(n, o) { throw o && o.create ? denied(n) : notFound(n); },
+            async removeEntry(n) { throw denied(n); },
+            async resolve() { return null; },
+            async isSameEntry(o) { return !!o && o.photosLibrary === id; },
+            // Its photos may be edited (not added to or removed: denied above)
+            async queryPermission() { return 'granted'; },
+            async requestPermission() { return 'granted'; }
+        };
+    }
+
     // ---- What the app does for jEditor ----
     let onUpdateProgress = null;
     let onClosing = null; // holdClose
+    // Settings → Projects: photo apps' libraries opened as folders (places.js)
+    const libraries = () => { const a = jeditor(); return !!(a && a.uiPrefs && a.uiPrefs.openLibraries); };
     let nextCopy = 1;
     const copying = new Map(); // folder copy id → progress(done, total)
 
@@ -236,15 +364,33 @@
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: mac.platform,
-        features: ['reveal', 'windows', 'places'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : [], ['themes']),
+        features: ['reveal', 'windows', 'places', 'folderMove'].concat(mac.updates ? ['updates'] : [], mac.platform === 'mac' ? ['permissions'] : [], ['themes'], mac.platform === 'mac' && mac.photos ? ['photosLibrary', 'photosAdd'] : []),
         // jEditor's storage on this Mac: one folder per project (see
         // app/folder-cache.js), in the app's own private storage
         async dataDir() {
             const root = await navigator.storage.getDirectory();
             return root.getDirectoryHandle('jeditor-data', { create: true });
         },
-        // Where a folder handle is on disk (null: not known)
+        // Where a folder handle is on disk (null: not known); a Photos
+        // library album's is "photos-library:<id>"
         folderPath,
+        // ---- The Photos library (photosLibrary) ----
+        // Whether jEditor may see it: 'granted', 'limited', 'denied',
+        // 'restricted' or 'ask'; ask: true has macOS ask first
+        async photosAccess(ask = false) {
+            return (await answer('photosAccess', { ask: !!ask })).status;
+        },
+        // What's in it → [{ id, kind: favourites | recent | album, name, count }]
+        async photosCollections() {
+            return (await answer('photosLibrary')).collections;
+        },
+        // An album ('' : the whole library) as a folder handle (its photos editable)
+        photosAlbum,
+        // Photos on this Mac (paths) put into the library, in the album
+        // called `album` (made if there's none) → { added, album: { id, name } }
+        async photosAdd(paths, album = '') {
+            return answer('photosAdd', { paths, album });
+        },
         // A folder handle for a path, with permission to edit it
         async folderHandle(path) {
             const ok = (await answer('exists', { paths: [path] })).exists[0];
@@ -275,7 +421,7 @@
         },
         // A folder's folders → { path, name, parent, folders: [{ name, path }], photos, more }
         async listDir(path) {
-            return answer('listDir', { path });
+            return answer('listDir', { path, libraries: libraries() });
         },
         // The projects (folders) in a folder, newest first → [{ name, path, modified (ms) }]
         async listProjects(path) {
@@ -294,7 +440,7 @@
         },
         // Photos in each folder and its subfolders → { counts: [n, -1 if gone], limit }
         async countPhotos(paths) {
-            return answer('countPhotos', { paths });
+            return answer('countPhotos', { paths, libraries: libraries() });
         },
         // Ejects a drive → { ok, error? }
         async eject(path) {
@@ -320,6 +466,24 @@
                     if (progress && typeof msg.done === 'number' && msg.done > last) progress(msg.done, msg.total);
                     return { to: msg.to };
                 })
+                .finally(() => copying.delete(id));
+            done.copyId = id;
+            return done;
+        },
+        // ---- Moving the projects folder (folderMove; app/folder-move.js) ----
+        // What's in a folder: { folders, files, bytes }, and with dest the
+        // room there: { free (-1: unknown), drive, sameDrive, refused }
+        async folderSize(path, dest) {
+            return answer('folderSize', { path, dest });
+        },
+        // Everything in path into dest, each item copied, checked and only
+        // then removed; progress(done, total, moved) → { moved, left:
+        // [{ name, why }], error, stopped }. Has a copyId, for cancelCopy.
+        moveFolder(path, dest, progress) {
+            const id = nextCopy++;
+            copying.set(id, progress || (() => { }));
+            const done = answer('moveFolder', { path, dest, copy: id })
+                .then(msg => ({ moved: msg.moved || 0, left: msg.left || [], error: msg.error || null, stopped: !!msg.stopped }))
                 .finally(() => copying.delete(id));
             done.copyId = id;
             return done;
@@ -460,7 +624,8 @@
     // The traffic lights: in line with the top row of pills (their centre:
     // the gutter plus half a pill, which the UI scale zooms), and at the
     // gutter's distance from the left edge; over Adjust and Paint, in line
-    // with the mode chip in their head. A light is 14px.
+    // with the mode chip in their head; on the home page, with jEditor in its
+    // top bar, which leaves room for them. A light is 14px.
     let lastLights = '';
     let themed = false; // a theme draws the title bar (titleBar above)
     const reportLights = () => {
@@ -469,7 +634,8 @@
         const scale = parseFloat(css.getPropertyValue('--ui-scale')) || 1;
         const gutter = px('--gutter');
         const chip = document.querySelector('.mode-float.over-mode:not(.hidden)');
-        const r = chip && chip.getBoundingClientRect();
+        const home = document.querySelector('.drop-zone:not(.hidden) .home-brand');
+        const r = chip ? chip.getBoundingClientRect() : home ? home.getBoundingClientRect() : null;
         const middle = r && r.height ? r.top + r.height / 2 : px('--mac-drag') + gutter + (px('--ctl-lg') * scale) / 2;
         const at = { x: Math.max(12, gutter), y: middle - 7 };
         const key = at.x + ',' + at.y;
@@ -500,8 +666,19 @@
         const a = jeditor();
         const open = !!(a && a.dirHandle) && shown(a.elements.mainInterface);
         if (!open) return { visible: false, title: 'jEditor', subtitle: '', items: [] };
-        // Over Adjust and Paint their head is the top row (style.css)
-        if (typeof Modes !== 'undefined' && Modes.current() !== 'photos') return { visible: false, title: $('file-name-text').textContent || a.dirHandle.name, subtitle: '', items: [] };
+        const modeItem = () => {
+            const mode = Modes.current();
+            const label = (m) => (Modes.LIST.find(x => x[0] === m) || [])[1] || m;
+            return {
+                id: 'mode', kind: 'menu', symbol: MODE_SYMBOLS[mode], label: label(mode), tooltip: ($('mode-chip-float') || {}).title || label(mode), navigational: true,
+                menu: Modes.shown().map(([m, l]) => ({ id: m, label: l, symbol: MODE_SYMBOLS[m], checked: m === mode }))
+            };
+        };
+        // Over Adjust and Paint the toolbar keeps just the mode, the same
+        // button as in Photos, and their head starts below it (style.css).
+        // (Stepped aside, the toolbar's title bar still took the press on
+        // the page's own chip there: hard to press, Needs fixing 2026-11-05)
+        if (typeof Modes !== 'undefined' && Modes.current() !== 'photos') return { visible: true, title: $('file-name-text').textContent || a.dirHandle.name, subtitle: '', items: [modeItem(), { kind: 'flexible' }] };
         const items = [];
         const bar = $('folder-bar');
         const browsing = shown(bar);
@@ -509,14 +686,7 @@
         // The mode chip, as in the folder pill (or on its own in the single
         // view): not while the sidebar shows its own switch
         const modeChip = [$('mode-chip-bar'), $('mode-float')].find(shown);
-        if (modeChip && typeof Modes !== 'undefined') {
-            const mode = Modes.current();
-            const label = (m) => (Modes.LIST.find(x => x[0] === m) || [])[1] || m;
-            items.push({
-                id: 'mode', kind: 'menu', symbol: MODE_SYMBOLS[mode], label: label(mode), tooltip: modeChip.title, navigational: true,
-                menu: Modes.shown().map(([m, l]) => ({ id: m, label: l, symbol: MODE_SYMBOLS[m], checked: m === mode }))
-            });
-        }
+        if (modeChip && typeof Modes !== 'undefined') items.push(modeItem());
         if (browsing) items.push({ id: 'scope', kind: 'segment', segments: ['All photos', 'Folders'], selected: $('fb-all').classList.contains('active') ? 0 : 1, navigational: true });
         items.push({ kind: 'flexible' });
         const chip = $('fb-filter-chip');
@@ -615,6 +785,8 @@
         if (!mac.nativeToolbar) addEventListener('resize', lightsSoon);
         // Into Adjust or Paint and out: the lights follow the mode chip
         if (!mac.nativeToolbar && $('mode-float')) new MutationObserver(reportLights).observe($('mode-float'), { attributes: true, attributeFilter: ['class'] });
+        // The home page shown or left: the lights go to its top bar, and back
+        if (!mac.nativeToolbar && $('drop-zone')) new MutationObserver(lightsSoon).observe($('drop-zone'), { attributes: true, attributeFilter: ['class'] });
         mac.request('ready', { version: typeof APP_VERSION !== 'undefined' ? APP_VERSION : null });
     });
 
@@ -640,7 +812,7 @@
         } else if (msg.type === 'drivesChanged') {
             dispatchEvent(new Event('jeditor-drives')); // places.js
         } else if (msg.type === 'copyProgress') {
-            if (copying.has(msg.copy)) copying.get(msg.copy)(msg.done, msg.total);
+            if (copying.has(msg.copy)) copying.get(msg.copy)(msg.done, msg.total, msg.moved);
         } else if (msg.type === 'filesChanged') {
             dispatchEvent(new Event('jeditor-files')); // another window moved photos
         } else if (msg.type === 'closing') {
@@ -655,6 +827,7 @@
             const a = await whenReady();
             if (msg.action === 'open') a.browseFolder();
             else if (msg.action === 'settings') a.toggleCustomizePanel(true);
+            else if (msg.action === 'reload') Modes.reload();
             else if (msg.action === 'permissions') Permissions.open();
             else if (String(msg.action).startsWith('theme:')) Themes.runMenu(msg.action.slice(6));
         }

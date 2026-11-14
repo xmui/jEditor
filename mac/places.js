@@ -19,6 +19,10 @@ const PHOTO = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.tif', '.tiff'
 const isPhoto = (name) => !name.startsWith('.') && PHOTO.has(path.extname(name).toLowerCase());
 // Folders that aren't shown: hidden ones, and jEditor's own
 const hidden = (name) => name.startsWith('.') || name.startsWith('$');
+// A photo app's library (a package: one item in Finder), unless Settings →
+// Projects opens them as folders (the page's Watch.isLibrary, the same list)
+const LIBRARY = /\.(photoslibrary|photolibrary|aplibrary|lrdata|lrlibrary)$/i;
+const skipped = (name, libraries) => hidden(name) || (!libraries && LIBRARY.test(name));
 const LIMIT = 1000; // counting stops here: "1,000+" is enough to tell
 
 const TEST_VOLUMES = process.env.JEDITOR_VOLUMES || null;
@@ -123,7 +127,7 @@ function home(app) {
 }
 
 // A folder's folders (not hidden ones), and how many photos are directly in it
-async function listDir(p, driveName) {
+async function listDir(p, driveName, libraries = false) {
     let entries;
     try { entries = await fs.promises.readdir(p, { withFileTypes: true }); } catch (e) {
         throw new Error(e.code === 'ENOENT' ? 'That folder isn\'t there any more' : e.message);
@@ -131,7 +135,7 @@ async function listDir(p, driveName) {
     const folders = [];
     let photos = 0, more = false;
     for (const e of entries) {
-        if (e.isDirectory() && !hidden(e.name)) folders.push({ name: e.name, path: path.join(p, e.name) });
+        if (e.isDirectory() && !skipped(e.name, libraries)) folders.push({ name: e.name, path: path.join(p, e.name) });
         else if (e.isFile() && isPhoto(e.name) && !more && ++photos >= LIMIT) more = true;
     }
     const parent = path.dirname(p);
@@ -157,10 +161,10 @@ async function listProjects(p) {
 // it's unchanged, for a minute at most (photos added in a subfolder don't
 // change the top folder's time)
 const counted = new Map(); // path → { mtime, n, at }
-async function count(p) {
+async function count(p, libraries = false) {
     let mtime;
     try { mtime = (await fs.promises.stat(p)).mtimeMs; } catch (e) { return -1; }
-    const c = counted.get(p);
+    const c = counted.get(p + (libraries ? '\0lib' : ''));
     if (c && c.mtime === mtime && Date.now() - c.at < 60000) return c.n;
     let n = 0;
     const walk = async (dir) => {
@@ -169,11 +173,11 @@ async function count(p) {
         for (const e of entries) {
             if (n >= LIMIT) return;
             if (e.isFile() && isPhoto(e.name)) n++;
-            else if (e.isDirectory() && !hidden(e.name)) await walk(path.join(dir, e.name));
+            else if (e.isDirectory() && !skipped(e.name, libraries)) await walk(path.join(dir, e.name));
         }
     };
     await walk(p);
-    counted.set(p, { mtime, n, at: Date.now() });
+    counted.set(p + (libraries ? '\0lib' : ''), { mtime, n, at: Date.now() });
     return n;
 }
 

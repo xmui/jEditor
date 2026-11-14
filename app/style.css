@@ -1,4 +1,4 @@
-/* ==========================================================================
+/* ===================================================================
    jEditor styles. Every value comes from tokens.css.
 
     1. Base
@@ -683,6 +683,8 @@ header {
     padding: 0;
     background-image: none;
     color: transparent;
+    /* (and no halo: it would draw the hidden words, --glass-halo) */
+    text-shadow: none !important;
 }
 
 .interface[data-fit~="sort-icon"] .sort-control select option {
@@ -1530,18 +1532,63 @@ body[data-view="single"] .edits-bar {
 }
 
 
+/* Save edits when done: a switch, and while edits wait, a pill to save them */
 .sb-card-defer {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: var(--sp-2);
     margin-top: var(--sp-2);
-    color: var(--text-2);
+    padding-top: var(--sp-2);
+    border-top: 1px solid var(--border-subtle);
+    color: var(--text-1);
     font-size: var(--fs-small);
     cursor: pointer;
 }
 
 .sb-card-defer input {
+    flex: none;
     margin: 0;
+}
+
+.sb-card-pending {
+    margin-top: var(--sp-2);
+}
+
+.sb-card-save {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    max-width: 100%;
+    height: 28px;
+    padding: 0 3px 0 var(--sp-3);
+    border: 0;
+    border-radius: var(--r-pill);
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font: inherit;
+    font-size: var(--fs-small);
+    cursor: pointer;
+}
+
+.sb-card-save b {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    padding: 0 var(--sp-3);
+    border-radius: var(--r-pill);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: var(--fw-semibold);
+}
+
+.sb-card-save:hover b {
+    filter: brightness(1.1);
+}
+
+.sb-card-save:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
 }
 
 /* ---- 7. Folder pill, folder list, flags, search ---- */
@@ -2257,17 +2304,22 @@ body[data-view="single"] .edits-bar {
 }
 
 /* Right-click menu */
-#context-menu {
+#context-menu,
+.ctx-fly {
     position: fixed;
     z-index: var(--z-menu);
     min-width: 220px;
+    /* Between the window's top (--top-safe, script.js) and its bottom */
+    max-height: calc(100vh - var(--top-safe) - 16px);
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     padding: var(--sp-1);
     border-radius: var(--r-lg);
 }
 
-#context-menu button {
+#context-menu button,
+.ctx-fly button {
     display: flex;
     align-items: center;
     min-height: var(--ctl-md);
@@ -2282,7 +2334,10 @@ body[data-view="single"] .edits-bar {
 }
 
 #context-menu button:hover,
-#context-menu button:focus-visible {
+#context-menu button:focus-visible,
+.ctx-fly button:hover,
+.ctx-fly button:focus-visible,
+#context-menu button[aria-expanded="true"] {
     background: var(--tb-hover);
     outline: none;
 }
@@ -2295,10 +2350,48 @@ body[data-view="single"] .edits-bar {
     background: var(--danger-soft);
 }
 
-#context-menu .ctx-divider {
+#context-menu .ctx-divider,
+.ctx-fly .ctx-divider {
     height: 1px;
     margin: var(--sp-1) var(--sp-2);
     background: var(--border);
+}
+
+/* A heading over the items after it (start.js: When jEditor opens) */
+#context-menu .ctx-heading {
+    padding: var(--sp-1) var(--sp-3) 2px;
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+}
+
+/* A setting in a menu: ticked when it's on */
+#context-menu button[aria-checked] {
+    padding-left: 30px;
+    position: relative;
+}
+
+#context-menu button[aria-checked="true"]::before {
+    content: '';
+    position: absolute;
+    left: 11px;
+    top: 50%;
+    width: 9px;
+    height: 5px;
+    margin-top: -4px;
+    border-left: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(-45deg);
+}
+
+/* Read out, not shown */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
 }
 
 /* The row of flag buttons at the top of the menu */
@@ -2341,34 +2434,34 @@ body[data-view="single"] .edits-bar {
 /* One stack in the bottom-left corner, clear of the photo in the middle.
    --toast-bottom / --toast-left follow the view (set below). */
 
-body {
+body :is(#toast-stack, .task-pill) {
     --toast-left: var(--gutter);
     /* Grid: above the selection bar's row */
     --toast-bottom: calc(var(--gutter) + var(--ctl-lg) + var(--sp-3));
 }
 
 /* Single view: just above the film strip, beside the centered controls */
-body[data-view="single"] {
+body[data-view="single"] :is(#toast-stack, .task-pill) {
     --toast-bottom: calc(var(--strip-height, 80px) + 28px + var(--gutter));
 }
 
 /* Grid with the folder list open: beside the list */
-body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) {
+body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-stack, .task-pill) {
     --toast-left: var(--rail-room);
 }
 
 /* Single view on a narrow window: above the prev / rotate / next pill
    rather than into it (fit.js) */
-body[data-view="single"]:has(#main-interface[data-fit~="toast-up"]:not(.hidden)) {
+body[data-view="single"]:has(#main-interface[data-fit~="toast-up"]:not(.hidden)) :is(#toast-stack, .task-pill) {
     --toast-bottom: calc(var(--strip-height, 80px) + 28px + var(--gutter) + var(--ctl-lg) + var(--sp-2));
 }
 
 /* Grid with the edits bar up above the slider (fit.js): above that too */
-body[data-view="grid"]:has(#main-interface.edits-on[data-fit~="edits-stacked"]:not(.hidden)) {
+body[data-view="grid"]:has(#main-interface.edits-on[data-fit~="edits-stacked"]:not(.hidden)) :is(#toast-stack, .task-pill) {
     --toast-bottom: calc(var(--gutter) + 2 * var(--ctl-lg) + var(--sp-2) + var(--sp-3));
 }
 
-body:has(#drop-zone:not(.hidden)) {
+body:has(#drop-zone:not(.hidden)) :is(#toast-stack, .task-pill) {
     --toast-bottom: var(--sp-6);
 }
 
@@ -2619,6 +2712,9 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     align-items: center;
     justify-content: center;
     padding: var(--sp-4);
+    /* Clear of the window's top (--top-safe): below a theme's bars the
+       overlay starts already (:root.th-top), so only what's more than them */
+    padding-top: calc(var(--top-safe) - var(--th-top, 0px) + var(--sp-4));
     background: var(--scrim);
     animation: fade-in var(--dur-base) var(--ease-out);
 }
@@ -2785,7 +2881,9 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     width: min(440px, 100%);
 }
 
-.fpr-body input {
+/* Its text box fills the row; not the switch under it (New project's
+   "Save edits when done"), which this once stretched across the window */
+.fpr-body input:where(:not([type="checkbox"], [type="radio"])) {
     width: 100%;
     height: var(--ctl-lg);
 }
@@ -2944,6 +3042,13 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     padding: var(--sp-2) 0;
 }
 
+/* A number in a setting's row (Ask before opening a huge folder) */
+.set-row .set-num {
+    flex: none;
+    width: 96px;
+    text-align: right;
+}
+
 .set-label {
     flex: 1;
     min-width: 0;
@@ -3093,9 +3198,10 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     padding-top: var(--th-top, 0px);
 }
 
-:root.th-top :is(.mode-screen, .drop-zone, .dialog-overlay) {
+:root.th-top :is(.mode-screen, .dialog-overlay) {
     top: var(--th-top, 0px);
 }
+/* The home page is in #app, which already starts under the bars */
 
 :root.th-top .scan-dock {
     max-height: var(--dock-max, calc(100vh - var(--th-top, 0px) - 2 * var(--gutter) - 64px));
@@ -3153,8 +3259,11 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     gap: var(--sp-5);
 }
 
-#context-menu .ctx-key {
+#context-menu .ctx-key,
+.ctx-fly .ctx-key {
     margin-left: auto;
+    padding-left: var(--sp-6);
+    font-variant-numeric: tabular-nums;
     color: var(--text-3);
     font-size: var(--fs-small);
 }
@@ -3812,6 +3921,137 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     flex-direction: column;
 }
 
+/* Copies: what they're for as a row of glass pills, what it sets as chips
+   under it (Custom: the fields), a sentence, pills that open menus, and
+   the folder's name */
+.ex-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+}
+
+.ex-presets > label {
+    position: relative;
+    cursor: pointer;
+}
+
+.ex-presets input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.ex-presets span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 var(--sp-3);
+    border-radius: var(--r-pill);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    color: var(--text-1);
+    font-size: var(--fs-small);
+}
+
+.ex-presets span .i {
+    color: var(--text-2);
+}
+
+.ex-presets label:hover span {
+    background: var(--bg-hover);
+}
+
+.ex-presets input:checked + span {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent, #fff);
+}
+
+.ex-presets input:checked + span .i {
+    color: inherit;
+}
+
+.ex-presets input:focus-visible + span {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.ex-under {
+    padding: var(--sp-3);
+    border-radius: var(--r-md);
+    background: var(--bg-sunken);
+    border: 1px solid var(--border-subtle);
+}
+
+.ex-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.ex-chip {
+    padding: 2px var(--sp-2);
+    border-radius: var(--r-pill);
+    background: var(--bg-hover);
+    color: var(--text-2);
+    font-size: var(--fs-caption);
+}
+
+.ex-custom {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--sp-2) var(--sp-3);
+}
+
+.ex-cf {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    color: var(--text-2);
+    font-size: var(--fs-caption);
+}
+
+.ex-cf .field {
+    width: 100%;
+}
+
+.ex-sum b {
+    color: var(--text-1);
+    font-weight: var(--fw-semibold);
+}
+
+.ex-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+}
+
+.btn.ex-pill {
+    gap: var(--sp-1);
+    padding: 0 var(--sp-2) 0 var(--sp-3);
+    border-radius: var(--r-pill);
+    background: var(--glass-bg);
+    border-color: var(--glass-border);
+    box-shadow: var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+}
+
+.btn.ex-pill .i {
+    color: var(--text-2);
+}
+
+@media (max-width: 520px) {
+    .ex-custom {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Convert (convert.js): the format, the quality with a close-up, and
    what it does to storage; then dots for the photos as they're converted */
 .cv-card {
@@ -4451,6 +4691,138 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     padding: 0 var(--sp-5) var(--sp-4);
 }
 
+/* Find anything, Ctrl+K (palette.js): a dialog near the top, its box
+   on top, then the results as a list, keys at the right as in menus */
+.palette-overlay {
+    z-index: calc(var(--z-toast) + 2); /* over the tour's card: Ctrl+K works during the tour */
+    align-items: flex-start;
+    padding-top: max(calc(var(--top-safe) - var(--th-top, 0px) + var(--sp-6)), 14vh);
+}
+
+.palette {
+    width: min(560px, 100%);
+    max-height: min(560px, calc(100% - var(--sp-6)));
+}
+
+.palette-field {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    flex: none;
+    min-height: 52px;
+    padding: 0 var(--sp-4);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.palette-field .i {
+    width: var(--icon-md);
+    height: var(--icon-md);
+    flex: none;
+    color: var(--text-2);
+}
+
+.palette-field input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-1);
+    font: inherit;
+    font-size: var(--fs-title);
+    outline: none;
+}
+
+.palette-field input::placeholder {
+    color: var(--text-3);
+}
+
+.palette-for {
+    flex: none;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    white-space: nowrap;
+}
+
+.palette-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--sp-1);
+    overscroll-behavior: contain;
+}
+
+.palette-head {
+    padding: var(--sp-2) var(--sp-3) 2px;
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+}
+
+.palette-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    min-height: var(--ctl-md);
+    padding: 0 var(--sp-3);
+    border-radius: var(--r-sm);
+    color: var(--text-1);
+    cursor: pointer;
+}
+
+.palette-row.on {
+    background: var(--bg-hover);
+}
+
+.palette-row .i {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+    flex: none;
+    color: var(--text-2);
+}
+
+.palette-thumb {
+    width: var(--icon-md);
+    height: var(--icon-md);
+    flex: none;
+    margin: 0 -2px;
+    object-fit: cover;
+    border-radius: var(--r-xs);
+}
+
+.palette-name {
+    min-width: 0;
+    flex: 0 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.palette-sub {
+    min-width: 0;
+    flex: 0 10 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.palette-key {
+    flex: none;
+    margin-left: auto;
+    padding-left: var(--sp-4);
+    color: var(--text-3);
+    font-size: var(--fs-small);
+    white-space: nowrap;
+}
+
+.palette-none {
+    padding: var(--sp-4) var(--sp-3);
+    color: var(--text-2);
+}
+
 /* ---- 12. Full-screen modes ---- */
 
 .mode-screen {
@@ -4496,6 +4868,10 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 }
 
 .mode-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     margin: 0;
     font-size: var(--fs-title);
     line-height: var(--lh-title);
@@ -4754,7 +5130,79 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 #adj-canvas {
     display: block;
+    position: absolute;
     box-shadow: var(--shadow-2);
+}
+
+/* At 100%: the part on screen from the full-size photo (adjust.js) */
+.adj-sharp {
+    position: absolute;
+    pointer-events: none;
+}
+
+/* Zoomed in, a drag moves about; Space held, whatever tool is out */
+.adjust-editor.adj-zoomed .adj-stage,
+.adjust-editor.adj-zoomed #adj-canvas,
+.adjust-editor.adj-space .adj-stage,
+.adjust-editor.adj-space #adj-canvas {
+    cursor: grab;
+}
+
+.adjust-editor.adj-space .adj-overlay {
+    pointer-events: none;
+}
+
+.adjust-editor.adj-grabbing .adj-stage,
+.adjust-editor.adj-grabbing #adj-canvas {
+    cursor: grabbing;
+}
+
+/* The zoom: a quiet chip in the corner, Fit · 100% (and the zoom between) */
+.adj-zoom {
+    position: absolute;
+    right: var(--sp-3);
+    bottom: var(--sp-3);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: var(--r-pill);
+    background: var(--on-photo-bg);
+    color: var(--on-photo-text);
+    font-size: var(--fs-small);
+    font-variant-numeric: tabular-nums;
+    opacity: 0.7;
+    transition: opacity var(--dur-base) var(--ease-out);
+}
+
+.adj-zoom:hover,
+.adj-zoom:focus-within,
+.adjust-editor.adj-zoomed .adj-zoom {
+    opacity: 1;
+}
+
+.adj-zoom-level {
+    padding: 0 var(--sp-2);
+}
+
+.adj-zoom-btn {
+    padding: 1px var(--sp-2);
+    border: 0;
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.adj-zoom-btn:hover {
+    background: rgb(255 255 255 / 0.12);
+}
+
+.adj-zoom-btn[aria-pressed="true"] {
+    background: rgb(255 255 255 / 0.22);
+    font-weight: var(--fw-semibold);
 }
 
 .adj-panel {
@@ -5582,7 +6030,8 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 @media (max-width: 760px) {
     .paint-head {
-        min-height: 0;
+        /* Still room for the mode chip in its corner (8px, the chip, 8px) */
+        min-height: calc(var(--ctl-lg) + 8px);
         padding: var(--sp-2) var(--sp-4);
     }
     .paint-options {
@@ -6217,6 +6666,126 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     overflow-y: auto;
 }
 
+/* Every group on one page that scrolls, a row of cards each */
+.dupes-stage.dupes-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-5);
+    padding: var(--sp-2) var(--sp-5) var(--sp-5);
+}
+
+.dupe-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+
+.dupe-ghead {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-3);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.dupe-ghead b {
+    color: var(--text-1);
+    font-size: var(--fs-body);
+    font-weight: var(--fw-semibold);
+}
+
+.dupe-ghead .dupe-not {
+    margin-left: auto;
+    color: var(--text-2);
+}
+
+.dupe-row {
+    display: flex;
+    gap: var(--sp-3);
+    overflow-x: auto;
+    padding-bottom: 2px;
+}
+
+.dupe-row .dupe-card {
+    flex: 0 1 auto;
+    width: min(360px, 32%);
+    min-width: 200px;
+}
+
+.dupe-row .dupe-frame {
+    flex: none;
+    height: var(--dupe-h, 220px);
+    min-height: 0;
+}
+
+.dupe-card.kept {
+    border-color: var(--success);
+}
+
+.dupe-card:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.dupe-pill {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    padding: 2px var(--sp-2);
+    border-radius: var(--r-pill);
+    background: var(--on-photo-keep);
+    color: var(--on-photo-text);
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    font-weight: var(--fw-semibold);
+}
+
+.dupe-card.marked .dupe-pill {
+    left: auto;
+    right: 10px;
+    background: var(--danger);
+    color: var(--on-danger);
+}
+
+.dupe-big {
+    color: var(--text-1);
+}
+
+/* Duplicates in the grid: a heading over each group, and its keeper's badge */
+.dupe-grid-head {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-3);
+    padding: var(--sp-3) 2px 0;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.dupe-grid-head:first-child {
+    padding-top: 0;
+}
+
+.dupe-grid-head b {
+    color: var(--text-1);
+    font-weight: var(--fw-semibold);
+}
+
+.dupe-tile-keep {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    z-index: 2;
+    padding: 2px var(--sp-2);
+    border-radius: var(--r-pill);
+    background: var(--on-photo-keep);
+    color: var(--on-photo-text);
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    font-weight: var(--fw-semibold);
+    pointer-events: none;
+}
+
 .dupes-message {
     grid-column: 1 / -1;
     align-self: center;
@@ -6269,54 +6838,6 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 
 .dupe-card.marked .dupe-frame img {
     opacity: 0.45;
-}
-
-.dupe-badges {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    display: flex;
-    gap: 6px;
-}
-
-.dupe-badge {
-    padding: 2px var(--sp-2);
-    border-radius: var(--r-pill);
-    background: var(--on-photo-bg);
-    color: var(--on-photo-text);
-    font-size: var(--fs-caption);
-    line-height: var(--lh-caption);
-    font-weight: var(--fw-semibold);
-}
-
-.dupe-badge.keep {
-    background: var(--on-photo-keep);
-}
-
-.dupe-badge.exact {
-    background: var(--accent);
-    color: var(--on-accent);
-}
-
-.dupe-badge.score {
-    font-variant-numeric: tabular-nums;
-}
-
-.dupe-mark {
-    display: none;
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    padding: 2px 10px;
-    border-radius: var(--r-pill);
-    background: var(--danger);
-    color: var(--on-danger);
-    font-size: var(--fs-small);
-    font-weight: 700;
-}
-
-.dupe-card.marked .dupe-mark {
-    display: block;
 }
 
 .dupe-meta {
@@ -6396,30 +6917,529 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
 }
 
 .drop-content {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
-    width: min(400px, 100%);
-    margin: auto;
+    width: 100%;
+    min-height: 100%;
     text-align: center;
 }
 
-.start-icon {
-    width: 72px;
-    height: 72px;
-    border-radius: var(--r-xl);
-    box-shadow: var(--shadow-3);
+/* ---- Home (start.js): prints on a table ---- */
+
+.drop-zone:has(.home) {
+    align-items: stretch;
+    padding: 0;
 }
 
-.start-title {
+.home-bar {
     display: flex;
     align-items: center;
     gap: var(--sp-2);
-    margin-top: var(--sp-5);
-    font-size: var(--fs-display);
-    line-height: var(--lh-display);
+    width: 100%;
+    padding: var(--sp-3) var(--sp-4) 0 var(--sp-5);
+}
+
+.home-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
     font-weight: var(--fw-semibold);
-    letter-spacing: -0.01em;
+}
+
+.home-brand img {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+}
+
+.home-gap {
+    flex: 1;
+}
+
+/* "Windows · 1.50.2": quiet, beside Settings */
+.home-ver {
+    margin: 0;
+    font: inherit;
+}
+
+.home-ver .app-version {
+    padding: 0;
+    border: 0;
+    color: var(--text-3);
+}
+
+.home-gear {
+    position: relative;
+}
+
+/* An update is ready (updates.js): a dot on Settings */
+.home-dot {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 2px var(--bg-window);
+}
+
+.home-dot.hidden {
+    display: none;
+}
+
+.home-table {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-5);
+    width: 100%;
+    padding: var(--sp-6) var(--sp-5);
+}
+
+.recents.hidden,
+.home-empty.hidden {
+    display: none;
+}
+
+.recent-list {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-start;
+    gap: var(--sp-6) clamp(32px, 7vw, 110px);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.recent-list li {
+    position: relative;
+    width: 190px;
+}
+
+.recent-open {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-4);
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text-1);
+    font: inherit;
+    cursor: pointer;
+}
+
+.recent-open:focus-visible {
+    outline: none;
+}
+
+.recent-open:focus-visible .recent-name {
+    border-radius: var(--r-xs);
+    box-shadow: var(--focus-ring);
+}
+
+.recent-pile {
+    position: relative;
+    display: block;
+    width: 190px;
+    height: 150px;
+}
+
+/* A print's white border: paper is white in every look, like the real thing */
+.recent-print {
+    position: absolute;
+    inset: 0;
+    padding: 7px;
+    border-radius: 2px;
+    background: #fff;
+    box-shadow: var(--shadow-2);
+    transform-origin: 50% 90%;
+    transition: transform 380ms var(--ease-out), box-shadow 380ms var(--ease-out);
+}
+
+.recent-print img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Ghost prints: where a stack will lie, or a stack whose pictures
+   aren't kept (not made yet, or the cache was cleared) */
+.recent-print.ghost {
+    display: grid;
+    place-items: center;
+    padding: var(--sp-3);
+    border: 1.5px dashed color-mix(in srgb, var(--text-3) 45%, transparent);
+    background: color-mix(in srgb, var(--text-1) 3%, transparent);
+    box-shadow: none;
+}
+
+.recent-print.ghost.first {
+    border: 2px dashed var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.recent-print.ghost.first .i {
+    width: 32px;
+    height: 32px;
+}
+
+/* The empty table: the first slot invites a folder, the others fade */
+.home-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-8);
+}
+
+.home-empty li:not(.ghost-first) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: none;
+}
+.home-empty li:nth-child(3) { opacity: .7; }
+.home-empty li:nth-child(4) { opacity: .45; }
+
+.recent-print:nth-child(1) { transform: rotate(-7deg) translate(-6px, 4px); }
+.recent-print:nth-child(2) { transform: rotate(5deg) translate(6px, 2px); }
+.recent-print:nth-child(3) { transform: rotate(-2deg); }
+.recent-print:nth-child(4) { transform: rotate(1.5deg) translate(1px, -2px); box-shadow: var(--shadow-3); }
+
+/* Pointed at: the prints fan out */
+.home-empty li.ghost-first:hover .recent-print.first,
+.home-empty .recent-open:focus-visible .recent-print.first { transform: translateY(-8px) scale(1.04); }
+
+.recent-list li:not(.ghosted):hover .recent-print:nth-child(1),
+.recent-open:focus-visible .recent-print:nth-child(1) { transform: rotate(-16deg) translate(-70px, -10px); }
+.recent-list li:not(.ghosted):hover .recent-print:nth-child(2),
+.recent-open:focus-visible .recent-print:nth-child(2) { transform: rotate(12deg) translate(70px, -12px); }
+.recent-list li:hover .recent-print:nth-child(3),
+.recent-open:focus-visible .recent-print:nth-child(3) { transform: rotate(-5deg) translate(-24px, -22px); }
+.recent-list li:hover .recent-print:nth-child(4),
+.recent-open:focus-visible .recent-print:nth-child(4) { transform: rotate(3deg) translate(22px, -26px) scale(1.05); box-shadow: var(--shadow-4); }
+
+/* One photo opened on its own: a single print that straightens and lifts */
+.recent-list li.single .recent-pile {
+    width: 170px;
+}
+
+.recent-list li.single .recent-print:nth-child(1) {
+    transform: rotate(-4deg);
+    box-shadow: var(--shadow-3);
+}
+
+.recent-list li.single:hover .recent-print:nth-child(1),
+.recent-list li.single .recent-open:focus-visible .recent-print:nth-child(1) {
+    transform: translateY(-14px) scale(1.07);
+    box-shadow: var(--shadow-4);
+}
+
+.recent-label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-width: 100%;
+}
+
+.recent-name {
+    overflow: hidden;
+    font-weight: var(--fw-medium);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.recent-sub {
+    overflow: hidden;
+    color: var(--text-2);
+    font-size: var(--fs-caption);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.recent-when,
+.recent-meta {
+    color: var(--text-2);
+    font-size: var(--fs-caption);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Take it off the table (the folder isn't touched) */
+.recent-remove {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: var(--bg-raised);
+    color: var(--text-2);
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity var(--dur-fast, 120ms);
+}
+
+.recent-list li:hover .recent-remove,
+.recent-list li:focus-within .recent-remove {
+    opacity: 1;
+}
+
+.recent-remove:hover {
+    color: var(--text-1);
+}
+
+.home-empty p {
+    margin: 0;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.drop-hint {
+    margin: 0 0 var(--sp-3);
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+}
+
+.drop-hint .link-btn {
+    display: inline;
+    padding: 0;
+    font-size: inherit;
+    text-decoration: underline;
+    text-decoration-color: var(--border);
+    text-underline-offset: 3px;
+}
+
+/* The main jobs, as big tiles along the bottom */
+.home-tiles {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--sp-3);
+    padding: 0 var(--sp-4) var(--sp-6);
+}
+
+.home-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: space-between;
+    width: 144px;
+    height: 104px;
+    padding: var(--sp-3) var(--sp-3) var(--sp-2);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--r-xl);
+    background: var(--glass-bg);
+    box-shadow: var(--shadow-3);
+    -webkit-backdrop-filter: var(--glass-filter);
+    backdrop-filter: var(--glass-filter);
+    color: var(--text-1);
+    font: var(--fw-semibold) var(--fs-body) var(--font-ui);
+    text-align: left;
+    cursor: pointer;
+    transition: transform 160ms var(--ease-out), box-shadow 160ms var(--ease-out);
+}
+
+.home-tile.hidden {
+    display: none;
+}
+
+.home-tile:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-4);
+}
+
+.home-tile:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-3), var(--focus-ring);
+}
+
+.home-tile .i {
+    width: 24px;
+    height: 24px;
+    stroke-width: 1.7;
+}
+
+.home-tile-text {
+    display: flex;
+    flex-direction: column;
+}
+
+.home-tile-sub {
+    margin-top: -2px;
+    color: var(--text-2);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-regular, 400);
+}
+
+.home-tile.primary {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent, #fff);
+}
+
+.home-tile.primary .home-tile-sub {
+    color: color-mix(in srgb, var(--on-accent, #fff) 80%, transparent);
+}
+
+/* A card's in: Import, in the accent */
+.home-tile.card {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.home-tile.card .home-tile-sub {
+    color: var(--accent);
+}
+
+/* Three tiles (Open a folder, New project, Convert), a little wider, and
+   the rest as a quiet row of words under them */
+.home-tiles {
+    padding-bottom: var(--sp-3);
+}
+
+.home-tiles .home-tile {
+    width: 176px;
+}
+
+.home-more {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--sp-1);
+    padding: 0 var(--sp-4) var(--sp-5);
+}
+
+.home-more .home-tile {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--sp-2);
+    width: auto;
+    height: var(--ctl-md);
+    padding: 0 var(--sp-3);
+    border-color: transparent;
+    border-radius: var(--r-md);
+    background: none;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    color: var(--text-2);
+    font-weight: var(--fw-medium);
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.home-more .home-tile:hover {
+    transform: none;
+    background: var(--bg-raised);
+    box-shadow: none;
+    color: var(--text-1);
+}
+
+.home-more .home-tile:focus-visible {
+    box-shadow: var(--focus-ring);
+}
+
+.home-more .home-tile .i {
+    width: 16px;
+    height: 16px;
+}
+
+/* (what a tile's second line says is in its tooltip here; a card that's
+   in keeps its name, in the accent) */
+.home-more .home-tile-sub {
+    display: none;
+}
+
+.home-more .home-tile.card {
+    color: var(--accent);
+}
+
+.home-more .home-tile.card .home-tile-sub {
+    display: inline;
+    margin: 0 0 0 var(--sp-1);
+}
+
+.home-more .home-tile.card .home-tile-text {
+    flex-direction: row;
+    align-items: baseline;
+}
+
+/* All projects: a sheet over the table */
+.home-places {
+    position: absolute;
+    top: 56px;
+    right: var(--sp-4);
+    bottom: var(--sp-4);
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    width: min(360px, calc(100% - 2 * var(--sp-4)));
+    border: 1px solid var(--glass-border);
+    border-radius: var(--r-xl);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-4);
+    text-align: left;
+}
+
+.home-places.hidden {
+    display: none;
+}
+
+.home-places-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4);
+    font-weight: var(--fw-semibold);
+}
+
+.start-places {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 var(--sp-2) var(--sp-2);
+}
+
+.start-places .sb-sec:first-child {
+    margin-top: 0;
+}
+
+/* Small windows: three on the table, and the tiles lose their second line */
+@media (max-width: 1000px) {
+    .recent-list li:nth-child(n+4) { display: none; }
+    .recent-list li,
+    .recent-pile { width: 150px; }
+    .recent-pile { height: 118px; }
+    .home-tiles { gap: var(--sp-2); }
+    .home-tiles .home-tile { width: 132px; height: 84px; }
+    .home-tiles .home-tile-sub { display: none; }
+}
+
+@media (max-width: 600px) {
+    .home-tiles .home-tile { width: calc(33.3% - var(--sp-2)); min-width: 96px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .recent-print,
+    .home-tile {
+        transition: none;
+    }
 }
 
 /* The version, as a quiet badge beside the name */
@@ -6435,55 +7455,54 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
     font-variant-numeric: tabular-nums;
 }
 
-.start-tagline {
-    margin: var(--sp-2) 0 var(--sp-6);
-    color: var(--text-2);
+/* Photos picked on the start page, converting here: how far, then what it did */
+.start-convert-run {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    width: min(400px, 100%);
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--r-lg);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-2), var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    color: var(--text-1);
+    text-align: left;
 }
 
-.start-open {
-    min-width: 200px;
+.start-convert-run.hidden {
+    display: none;
 }
 
-.drop-hint {
-    margin: var(--sp-3) 0 0;
+.scr-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.scr-sub {
     color: var(--text-2);
     font-size: var(--fs-small);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
 }
 
-.drop-hint .link-btn {
+.scr-sub .link-btn {
     display: inline;
     padding: 0;
+    font-size: inherit;
     text-decoration: underline;
     text-decoration-color: var(--border);
     text-underline-offset: 3px;
 }
 
-/* Start in (modes.js): where a project opened from here lands */
-.start-in {
+.scr-actions {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--sp-3);
-    margin-top: var(--sp-4);
-}
-
-.start-in-label {
-    color: var(--text-2);
-    font-size: var(--fs-small);
-}
-
-.start-in-seg > button {
-    gap: 6px;
-    font-size: var(--fs-small);
-}
-
-.start-in-seg > button .i {
-    width: 15px;
-    height: 15px;
-}
-
-.start-in-seg > button.hidden {
-    display: none;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    margin-top: var(--sp-1);
 }
 
 /* Settings → Experimental (experiments.js) */
@@ -6523,116 +7542,9 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
     white-space: nowrap;
 }
 
-/* Recent orders */
-.recents {
-    width: 100%;
-    margin-top: var(--sp-8);
-    text-align: left;
-}
-
-.recents-title {
-    margin: 0 0 var(--sp-1);
-    padding: 0 var(--sp-3);
-    font-size: var(--fs-caption);
-    line-height: var(--lh-caption);
-    font-weight: var(--fw-semibold);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--text-2);
-}
-
-.recent-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-}
-
-.recent-list li {
-    position: relative;
-    display: flex;
-    align-items: center;
-}
-
-.recent-open {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: var(--sp-3);
-    min-height: var(--ctl-lg);
-    padding: 0 48px 0 var(--sp-3);
-    border: none;
-    border-radius: var(--r-md);
-    background: transparent;
-    color: var(--text-1);
-    text-align: left;
-    transition: background-color var(--dur-fast) var(--ease-out);
-}
-
-.recent-open:hover {
-    background: var(--bg-hover);
-}
-
-.recent-open:focus-visible {
-    outline-offset: -2px;
-}
-
-.recent-open svg {
-    flex-shrink: 0;
-    color: var(--text-2);
-}
-
-.recent-name {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.recent-when {
-    flex-shrink: 0;
-    color: var(--text-2);
-    font-size: var(--fs-small);
-}
-
-/* × to forget one, on hover or keyboard focus */
-.recent-remove {
-    position: absolute;
-    right: 6px;
-    width: var(--ctl-md);
-    height: var(--ctl-md);
-    padding: 0;
-    border: none;
-    border-radius: 50%;
-    background: transparent;
-    color: var(--text-2);
-    font-size: var(--fs-title);
-    line-height: 1;
-    opacity: 0;
-    transition: opacity var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
-}
-
-.recent-list li:hover .recent-remove,
-.recent-list li:focus-within .recent-remove {
-    opacity: 1;
-}
-
-.recent-remove:hover {
-    background: var(--bg-pressed);
-    color: var(--text-1);
-}
-
-/* The date makes way for the × */
-.recent-list li:hover .recent-when,
-.recent-list li:focus-within .recent-when {
-    visibility: hidden;
-}
-
 /* The web version's "get the app" (start.js) */
 .start-get {
-    width: 100%;
-    margin-top: var(--sp-8);
+    width: min(520px, 100%);
     padding: var(--sp-4) var(--sp-5);
     border: 1px solid var(--border-subtle);
     border-radius: var(--r-lg);
@@ -6661,35 +7573,6 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
 
 .start-get-others a {
     color: var(--text-2);
-}
-
-/* A touch screen with no keyboard: no keyboard shortcuts to show */
-@media (hover: none) and (pointer: coarse) {
-    #btn-shortcuts-start,
-    #btn-shortcuts-start + .start-dot {
-        display: none;
-    }
-}
-
-.start-foot {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: var(--sp-1) var(--sp-3);
-    margin-top: var(--sp-8);
-}
-
-.start-foot kbd {
-    margin-left: 2px;
-    text-decoration: none;
-}
-
-.start-dot {
-    width: 3px;
-    height: 3px;
-    border-radius: 50%;
-    background: var(--text-3);
 }
 
 /* ---- 14. Drag and drop, rubber band ---- */
@@ -6829,7 +7712,7 @@ body.dragging-photos .folder-tile:hover {
         left: var(--gutter);
     }
     /* The folder list overlays the grid here: toasts stay at the edge */
-    body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) {
+    body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-stack, .task-pill) {
         --toast-left: var(--gutter);
     }
     .folder-rail {
@@ -8145,13 +9028,6 @@ button.sb-card-name:focus-visible .sb-card-edit {
     transform: none;
 }
 
-.sb-new {
-    display: flex;
-    gap: 6px;
-    width: 100%;
-    justify-content: center;
-    margin: 2px 0 var(--sp-2);
-}
 
 .sb-sec-link {
     margin-left: auto;
@@ -8172,9 +9048,49 @@ button.sb-card-name:focus-visible .sb-card-edit {
     text-decoration: underline;
 }
 
+/* Search and New project: icons in the Projects heading */
+.sb-sec-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: var(--r-sm, 6px);
+    background: none;
+    color: var(--text-2);
+    cursor: pointer;
+}
+
+.sb-sec-link + .sb-sec-icon,
+.sb-sec-btn + .sb-sec-icon {
+    margin-left: auto;
+}
+
+.sb-sec-link + .sb-sec-icon {
+    margin-left: 2px;
+}
+
+.sb-sec-icon .i {
+    width: 15px;
+    height: 15px;
+}
+
+.sb-sec-icon:hover,
+.sb-sec-icon.on {
+    color: var(--text-1);
+    background: var(--bg-hover);
+}
+
 .sb-search {
     width: 100%;
     margin: 2px 0 var(--sp-1);
+}
+
+.sb-search[hidden] {
+    display: none;
 }
 
 .sb-sub {
@@ -8434,19 +9350,13 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 
 .sb-more {
     margin: 2px var(--sp-2) var(--sp-1);
+    color: var(--accent-text);
     font-size: var(--fs-small);
+    text-decoration: none;
 }
 
-.start-places {
-    width: 100%;
-    max-height: 46vh;
-    margin-top: var(--sp-6);
-    overflow-y: auto;
-    text-align: left;
-}
-
-.start-places .sb-sec:first-child {
-    margin-top: 0;
+.sb-more.open .i {
+    transform: rotate(180deg);
 }
 
 /* ==========================================================================
@@ -8477,6 +9387,26 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     --mac-drag: 0px;
 }
 
+/* ---- The top of the window, kept clear (--top-safe) ----
+   What's drawn along the top of the window over the page: a theme's title
+   and menu bars (--th-top), or on the Mac the traffic lights in the top
+   row and, on macOS 26, the window's own toolbar (native-toolbar, below:
+   there in full screen too). Whatever floats over the page (dialogs, the
+   guide, Find anything, menus, the tour's card) keeps below it, here and
+   in UI.topSafe() for what's placed from script. Everywhere else it's 0. */
+:root {
+    --top-safe: var(--th-top, 0px);
+}
+
+:root[data-platform="mac"]:not([data-skin]) {
+    --top-safe: var(--top-row);
+}
+
+/* Full screen without the toolbar: no lights, nothing over the page */
+:root[data-platform="mac"]:not([data-skin]).fullscreen:not(.native-toolbar) {
+    --top-safe: 0px;
+}
+
 :root[data-platform="mac"]:not([data-skin]) header {
     top: var(--mac-drag);
 }
@@ -8485,6 +9415,14 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 :root[data-platform="mac"]:not([data-skin]) .mode-float {
     top: calc((var(--gutter) + var(--mac-drag)) / var(--ui-scale, 1));
     left: calc((var(--gutter) + var(--lights-w)) / var(--ui-scale, 1));
+}
+
+/* The home page's top bar (jEditor, and Settings at the right) makes room
+   for the lights, as the pills do, and they come up into line with it
+   (bridge.js: reportLights). With macOS 26's toolbar, which isn't shown
+   on the home page, AppKit puts them in the same corner. */
+:root[data-platform="mac"]:not([data-skin]) .home-bar {
+    padding-left: max(var(--sp-5), calc(var(--gutter) + var(--lights-w)));
 }
 
 /* Over Adjust and Paint the mode chip is in their head's row (unzoomed, as
@@ -8535,8 +9473,9 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    The window's toolbar, in Liquid Glass, is the top row: the page's own
    pills there go (the toolbar mirrors them, the mode chip too), it holds
    the traffic lights, and what was below the pills starts below it. Over
-   Adjust and Paint it steps aside (bridge.js) and their head is the top
-   row, with the mode chip in it, as before macOS 26. */
+   Adjust and Paint it stays with just the mode, the same button as in
+   Photos (bridge.js), and their head starts below it: the page's own chip
+   there sat in the toolbar's title bar, which took most presses on it. */
 /* (As particular as the Mac's own --top-row, above, to win over it: AppKit's
    toolbar doesn't grow with Toolbar size) */
 :root[data-platform="mac"].native-toolbar {
@@ -8546,8 +9485,12 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 
 :root.native-toolbar header,
 :root.native-toolbar .folder-bar,
-:root.native-toolbar .mode-float:not(.over-mode) {
+:root.native-toolbar .mode-float {
     display: none !important;
+}
+
+:root.native-toolbar :is(.adjust-editor, .paint-editor) {
+    padding-top: var(--top-row);
 }
 
 /* The page lies under the toolbar (Electron's hidden title bar), so it,
@@ -8601,8 +9544,14 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 
 /* One set of corners: the sidebar's, and inside it (8px in) each part's
    is the sidebar's less that. The mode switch is a pill, as the top bar */
-:root:not([data-skin]) .folder-rail {
-    border-radius: var(--r-xl);
+/* The same inside the right-click menu (4px in) and a message (8px in,
+   its Undo a pill): each corner is its part's less the room between */
+:root:not([data-skin]) #context-menu button {
+    border-radius: calc(var(--r-lg) - var(--sp-1));
+}
+
+:root:not([data-skin]) .toast {
+    border-radius: calc(var(--r-xl) + var(--sp-2));
 }
 
 :root:not([data-skin]) .mode-seg {
@@ -8623,10 +9572,6 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 
 :root:not([data-skin]) .sb-card-btns,
 :root:not([data-skin]) .sb-card-export,
-:root:not([data-skin]) .sb-card-defer {
-    display: none;
-}
-
 :root:not([data-skin]) .sb-card-name {
     font-size: var(--fs-title);
     line-height: var(--lh-title);
@@ -8725,47 +9670,567 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    readable on their own over a bright photo: a halo behind them does
    (--glass-halo, tokens.css; none on Opaque). Buttons and fields too,
    which the browser gives no shadow of their own */
-:root:not([data-skin]) :is(.toolbar, .file-info, .folder-rail, #context-menu, .task-pill, .toast, .picked-bar),
-:root:not([data-skin]) :is(.toolbar, .file-info, .folder-rail, #context-menu, .task-pill, .toast, .picked-bar) :is(button, input, select) {
+:root:not([data-skin]) :is(.toolbar, .file-info, #context-menu, .sb-picker, .task-pill, .toast, .picked-bar),
+:root:not([data-skin]) :is(.toolbar, .file-info, #context-menu, .sb-picker, .task-pill, .toast, .picked-bar) :is(button, input, select) {
     text-shadow: var(--glass-halo);
 }
 
 /* Liquid: the glass bends what's under its edges. liquid.js draws the bend
    for each part's size and shape (--lg-bend: an SVG filter); until it has,
    or where the browser can't draw it, the glass is the same, unbent */
-:root.liquid-bends :is(.toolbar, .file-info, .folder-rail, #context-menu, .task-pill, .toast, .picked-bar) {
+:root.liquid-bends :is(.toolbar, .file-info, #context-menu, .sb-picker, .popover, .task-pill, .toast, .picked-bar) {
     backdrop-filter: var(--lg-bend, ) var(--glass-filter);
     -webkit-backdrop-filter: var(--lg-bend, ) var(--glass-filter);
 }
 
-/* Lens: the sidebar is no panel, its folders on the window with a faint
-   glow from the left and a hairline down its edge; the chosen row is a
-   bubble of the glass, round like the pills */
-:root:not([data-skin])[data-glass="lens"] .folder-rail {
-    background: linear-gradient(90deg, rgb(255 255 255 / 0.05), rgb(255 255 255 / 0));
-    border-color: transparent;
-    box-shadow: inset -1px 0 0 rgb(255 255 255 / 0.08);
+/* ==========================================================================
+   The docked sidebar (jEditor's own look; each theme docks its own in
+   themes/docked.css). Against the window's left edge and the full height
+   of it, as Finder's and Preview's: a quiet tint (the Mac's own window
+   material through it, Mica on Windows), a hairline down its edge, small
+   grey headings, compact rows and one soft highlight. Its edge drags to
+   resize it (script.js: initSidebarResize) and Ctrl+B folds it away. In
+   the single view too, the photo beside it (folders.js: render).
+   ========================================================================== */
+
+:root:not([data-skin]) {
+    --rail-w: 232px;
+    /* What's beside it starts this far in: the sidebar, then the gutter */
+    --rail-room: calc(var(--rail-now) + var(--gutter));
+}
+
+:root:not([data-skin])[data-density="comfortable"] {
+    --rail-w: 256px;
+}
+
+:root:not([data-skin]) .folder-rail {
+    top: 0;
+    left: 0;
+    bottom: 0;
+    padding: var(--sp-3) var(--sp-2) var(--sp-2);
+    border: 0;
+    border-right: 1px solid var(--sidebar-line);
+    border-radius: 0;
+    background: var(--sidebar-bg);
+    box-shadow: none;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
 }
 
-:root:not([data-skin])[data-glass="lens"][data-theme="light"] .folder-rail {
-    background: linear-gradient(90deg, rgb(255 255 255 / 0.5), rgb(255 255 255 / 0));
-    box-shadow: inset -1px 0 0 rgb(0 0 0 / 0.08);
+:root:not([data-skin]) .folder-rail > .side-grip {
+    top: 0;
+    bottom: 0;
 }
 
-:root:not([data-skin])[data-glass="lens"] .fr-row {
-    border-radius: var(--r-pill);
+/* The pills start beside it, the file pill centred over what's beside it */
+:root:not([data-skin]) .interface.rail-open .folder-bar {
+    left: calc(var(--rail-room) / var(--ui-scale, 1));
 }
 
-:root:not([data-skin])[data-glass="lens"] .fr-row.active {
-    background: linear-gradient(180deg, rgb(255 255 255 / 0.18), rgb(255 255 255 / 0.07));
-    box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.22), inset 0 -1px 1px rgb(0 0 0 / 0.15);
+:root:not([data-skin]) .interface.rail-open header {
+    left: var(--rail-now);
+    width: auto;
+    right: 0;
 }
 
-:root:not([data-skin])[data-glass="lens"][data-theme="light"] .fr-row.active {
-    background: linear-gradient(180deg, #fff, rgb(255 255 255 / 0.6));
-    box-shadow: inset 0 -1px 1px rgb(0 0 0 / 0.08), 0 1px 2px rgb(0 0 0 / 0.08);
+/* The single view: the photo and the film strip beside it. Only where the
+   window's wide enough (folders.js: render): on a phone it would cover
+   the photo */
+:root:not([data-skin]) body[data-view="single"] .interface.rail-open {
+    padding-left: var(--rail-now);
+}
+
+body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-stack, .task-pill) {
+    --toast-left: var(--rail-room);
+}
+
+/* ---- The Mac: the traffic lights in the sidebar's top, as Finder's ----
+   They stay in line with the pills (bridge.js: reportLights), so what's in
+   the sidebar starts below that row, which moves the window as the rest of
+   the top row does. The window's own material shows through it (main.js:
+   vibrancy), tinted so its words read as anywhere else; never under the
+   photos or the grid. */
+:root[data-platform="mac"]:not([data-skin]) .folder-rail {
+    padding-top: calc(var(--top-row) + var(--sp-2));
+}
+
+:root[data-platform="mac"]:not([data-skin]) .folder-rail::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: var(--top-row);
+    -webkit-app-region: drag;
+}
+
+:root[data-platform="mac"]:not([data-skin]) {
+    --sidebar-bg: color-mix(in srgb, var(--sidebar-solid) 74%, transparent);
+}
+
+:root[data-platform="mac"]:not([data-skin]) .interface.rail-open {
+    background: linear-gradient(90deg, transparent var(--rail-now), var(--bg-canvas) var(--rail-now));
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+    :root[data-platform="mac"]:not([data-skin]) {
+        --sidebar-bg: var(--sidebar-solid);
+    }
+}
+
+/* ---- What's in it ---- */
+
+/* Photos · Adjust · Paint: quiet, no tray behind it; the mode you're in
+   a soft grey pill */
+:root:not([data-skin]) .folder-rail .mode-seg {
+    gap: 2px;
+    padding: 0;
+    margin-bottom: var(--sp-3);
+    background: none;
+}
+
+:root:not([data-skin]) .folder-rail .mode-seg > button {
+    height: calc(var(--ctl-md) - 6px);
+    color: var(--text-2);
+}
+
+:root:not([data-skin]) .folder-rail .mode-seg > button .i {
+    display: none;
+}
+
+:root:not([data-skin]) .folder-rail .mode-seg > button.on,
+:root:not([data-skin]) .folder-rail .mode-seg .seg-glide {
+    background: var(--sidebar-sel);
+    box-shadow: none;
+}
+
+:root:not([data-skin]) .folder-rail .mode-seg > button.on {
+    color: var(--text-1);
+}
+
+/* (the pill glides from one to the next: motion.js) */
+:root:not([data-skin]) .folder-rail .mode-seg.glides > button.on {
+    background: transparent;
+}
+
+/* Rows: compact, small icons in grey, one soft highlight */
+:root:not([data-skin]) .folder-rail .fr-row {
+    min-height: calc(var(--ctl-md) - 4px);
+    border: 0;
+    border-radius: var(--r-md);
+}
+
+:root:not([data-skin]) .folder-rail .fr-row:hover {
+    background: var(--sidebar-hover);
+}
+
+:root:not([data-skin]) .folder-rail .fr-row.active {
+    background: var(--sidebar-sel);
+    box-shadow: none;
+}
+
+/* The open project is the heading: where it's also a row (pinned, say),
+   it isn't highlighted again. One highlight: what the grid shows */
+:root:not([data-skin]) .folder-rail .sb-row.active:not(:hover) {
+    background: none;
+}
+
+:root:not([data-skin]) .folder-rail :is(.fr-row > svg, .fr-icon, .sb-icon, .fr-row.active .fr-icon, .sb-row.active .sb-icon, .sb-usb .sb-icon) {
+    color: var(--text-2);
+}
+
+:root:not([data-skin]) .folder-rail .fr-row :is(svg, .sb-icon svg) {
+    width: 15px;
+    height: 15px;
+}
+
+:root:not([data-skin]) .folder-rail .fr-caret svg {
+    width: 10px;
+    height: 10px;
+}
+
+:root:not([data-skin]) .folder-rail .fr-caret {
+    width: 12px;
+}
+
+:root:not([data-skin]) .folder-rail .fr-count {
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+}
+
+:root:not([data-skin]) .folder-rail .fr-all {
+    margin-bottom: 0;
+}
+
+/* The project is the heading above its folders: its own top folder is a
+   row only while it has photos of its own (the rows under it move up) */
+:root:not([data-skin]) .folder-rail .fr-root.empty {
+    display: none;
+}
+
+:root:not([data-skin]) .folder-rail #folder-tree:has(.fr-root.empty) .fr-row:not(.fr-all) {
+    padding-left: calc(var(--sp-1) + (var(--depth, 1) - 1) * 14px);
+}
+
+:root:not([data-skin]) .folder-rail .fr-root {
+    font-weight: inherit;
+}
+
+/* Headings: small and grey, the section's own words; the fold arrow and
+   the heading's buttons come when the pointer's on it */
+:root:not([data-skin]) .folder-rail .sb-sec {
+    margin: var(--sp-4) 0 2px;
+    padding-left: var(--sp-1);
+}
+
+:root:not([data-skin]) .folder-rail .sb-sec-btn {
+    font-size: var(--fs-caption);
+    padding-left: var(--sp-1);
+}
+
+:root:not([data-skin]) .folder-rail .sb-sec-caret {
+    order: 1;
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+
+:root:not([data-skin]) .folder-rail .sb-sec:hover .sb-sec-caret,
+:root:not([data-skin]) .folder-rail .sb-sec-btn:focus-visible .sb-sec-caret,
+:root:not([data-skin]) .folder-rail .sb-sec.closed .sb-sec-caret {
+    opacity: 1;
+}
+
+:root:not([data-skin]) .folder-rail .sb-sec-here,
+:root:not([data-skin]) .folder-rail .fr-foot {
+    display: none;
+}
+
+/* "Show all…" under Recents: quiet, a row like the others */
+:root:not([data-skin]) .folder-rail .sb-all {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: calc(var(--ctl-md) - 4px);
+    padding: 0 var(--sp-2) 0 calc(var(--sp-1) + 12px + 6px + 15px + 6px);
+    border: 0;
+    border-radius: var(--r-md);
+    background: none;
+    color: var(--text-3);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+:root:not([data-skin]) .folder-rail .sb-all:hover {
+    background: var(--sidebar-hover);
+    color: var(--text-1);
+}
+
+/* The project: its name, the heading over its folders. A click opens the
+   project picker (places.js: Picker); the rest of what its card had is in
+   its … and its right-click menu (cardItems) */
+:root:not([data-skin]) .folder-rail .sb-card {
+    margin: 0 0 var(--sp-1);
+    padding: 0;
+}
+
+:root:not([data-skin]) .folder-rail :is(.sb-card-btns, .sb-card-export, .sb-card-defer, .sb-card-path, .sb-card-meta, .sb-card-edit, .sb-card-name > svg) {
+    display: none;
+}
+
+:root:not([data-skin]) .folder-rail .sb-card-name {
+    width: 100%;
+    height: calc(var(--ctl-md) - 2px);
+    margin: 0;
+    padding: 0 calc(var(--ctl-sm) + var(--sp-1)) 0 var(--sp-2);
+    border-radius: var(--r-md);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    font-weight: var(--fw-semibold);
+    gap: 4px;
+}
+
+:root:not([data-skin]) .folder-rail .sb-card-name span {
+    flex: 0 1 auto;
+}
+
+:root:not([data-skin]) .folder-rail button.sb-card-name:hover,
+:root:not([data-skin]) .folder-rail button.sb-card-name[aria-expanded="true"] {
+    background: var(--sidebar-hover);
+}
+
+.sb-card-chev {
+    display: none;
+}
+
+:root:not([data-skin]) .folder-rail .sb-card-chev {
+    display: inline-flex;
+    flex: none;
+    color: var(--text-3);
+}
+
+:root:not([data-skin]) .folder-rail .sb-card-more {
+    top: 2px;
+    right: 2px;
+    width: calc(var(--ctl-md) - 6px);
+    height: calc(var(--ctl-md) - 6px);
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+:root:not([data-skin]) .folder-rail .sb-card:hover .sb-card-more,
+:root:not([data-skin]) .folder-rail .sb-card-more:focus-visible,
+:root:not([data-skin]) .folder-rail .sb-card-more[aria-expanded="true"] {
+    opacity: 1;
+}
+
+/* Drives: the room left on every one, a thin bar of how full it is and
+   "182 GB free" under its name; nearly full, in red */
+:root:not([data-skin]) .folder-rail .sb-free {
+    gap: var(--sp-2);
+    margin-top: 2px;
+}
+
+:root:not([data-skin]) .folder-rail .sb-free-bar {
+    flex: 1;
+    width: auto;
+    height: 3px;
+    background: var(--sidebar-sel);
+}
+
+:root:not([data-skin]) .folder-rail .sb-free-bar > span {
+    background: var(--text-3);
+}
+
+:root:not([data-skin]) .folder-rail .sb-free.low .sb-free-bar > span {
+    background: var(--danger-text);
+}
+
+:root:not([data-skin]) .folder-rail .sb-text {
+    padding: 4px 0;
+}
+
+/* A theme shows the room left on a USB drive only, as it was drawn for
+   (the themes are as they were; jEditor's own look shows it on every drive) */
+:root[data-skin] .sb-row:not(.sb-usb) .sb-free {
+    display: none;
+}
+
+/* Eject comes with the pointer, as the other row buttons do */
+:root:not([data-skin]) .folder-rail .sb-row:not(:hover, :focus-within) .sb-eject {
+    opacity: 0;
+}
+
+/* Renaming in place (places.js: renameInPlace): a field over the name,
+   in the row's own box */
+.sb-row,
+.sb-card,
+.sb-picker-list {
+    position: relative;
+}
+
+.sb-rename {
+    position: absolute;
+    z-index: 2;
+    transform: translateY(-50%);
+    min-width: 0;
+    max-width: calc(100% - 8px);
+    height: calc(var(--ctl-md) - 8px);
+    margin: 0 0 0 -4px;
+    padding: 0 4px;
+    border: 0;
+    border-radius: var(--r-sm);
+    outline: 2px solid var(--accent);
+    background: var(--bg-surface);
+    color: var(--text-1);
+    font: inherit;
+}
+
+/* ---- The project picker (places.js: Picker): a click on the project's
+   name. Find a project, your recent ones first, then All projects…, New
+   project… and Open a folder…. Floats as the right-click menu does, below
+   the window's top (--top-safe) ---- */
+.sb-picker {
+    position: fixed;
+    z-index: var(--z-menu);
+    width: 280px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - var(--top-safe) - 16px);
+    display: flex;
+    flex-direction: column;
+    padding: var(--sp-1);
+    border-radius: var(--r-lg);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-3), var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    color: var(--text-1);
+    font-size: var(--fs-body);
+    animation: popover-in var(--dur-base) var(--ease-out);
+}
+
+.sb-picker[hidden] {
+    display: none;
+}
+
+.sb-picker-find {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    height: var(--ctl-md);
+    margin: 2px 2px var(--sp-1);
+    padding: 0 var(--sp-2);
+    border-radius: var(--r-md);
+    background: var(--seg-bg);
+    color: var(--text-3);
+}
+
+.sb-picker-find .i {
+    width: 15px;
+    height: 15px;
+    flex: none;
+}
+
+.sb-picker-find input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: none;
+    color: var(--text-1);
+    font: inherit;
+}
+
+.sb-picker-list {
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.sb-picker-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.3em;
+    padding: var(--sp-2) var(--sp-2) var(--sp-1);
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+}
+
+.sb-picker-head button {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text-3);
+    font: inherit;
+    font-weight: var(--fw-regular);
+    cursor: pointer;
+}
+
+.sb-picker-head button:hover {
+    color: var(--text-1);
+    text-decoration: underline;
+}
+
+.sb-pick {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    width: 100%;
+    min-height: var(--ctl-md);
+    padding: 0 var(--sp-2);
+    border: 0;
+    border-radius: calc(var(--r-lg) - var(--sp-1));
+    background: none;
+    color: var(--text-1);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.sb-pick .sb-pick-tick {
+    flex: none;
+    width: 12px;
+    color: var(--accent-text);
+    font-size: var(--fs-small);
+}
+
+.sb-pick .i {
+    flex: none;
+    width: 15px;
+    height: 15px;
+    color: var(--text-2);
+}
+
+.sb-pick-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-pick-name b {
+    font-weight: var(--fw-semibold);
+}
+
+.sb-pick-count {
+    flex: none;
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+    font-variant-numeric: tabular-nums;
+}
+
+.sb-pick.on,
+.sb-pick:hover {
+    background: var(--accent);
+    color: var(--on-accent);
+}
+
+.sb-pick.on :is(.i, .sb-pick-count, .sb-pick-tick),
+.sb-pick:hover :is(.i, .sb-pick-count, .sb-pick-tick) {
+    color: inherit;
+}
+
+.sb-picker-sep {
+    flex: none;
+    height: 1px;
+    margin: var(--sp-1) var(--sp-2);
+    background: var(--border);
+}
+
+.sb-picker-none {
+    padding: var(--sp-2) var(--sp-2) var(--sp-3);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+/* Phones: the sidebar over the grid, with a shadow, as before */
+@media (max-width: 767px) {
+    :root:not([data-skin]) .folder-rail {
+        box-shadow: var(--shadow-4);
+    }
+    /* ...and from under the top row, whose pills keep the window's whole
+       width (beside the sidebar there's no room for them: fit.js) and the
+       button that closes it */
+    :root:not([data-skin]):not([data-platform="mac"]) .folder-rail {
+        top: calc(var(--top-row) + var(--sp-3));
+        border-top: 1px solid var(--sidebar-line);
+        border-top-right-radius: var(--r-lg);
+    }
+    :root:not([data-skin]) .interface.rail-open .folder-bar {
+        left: calc(var(--gutter) / var(--ui-scale, 1));
+    }
+    :root:not([data-skin]) .interface.rail-open header {
+        left: 0;
+        width: 100%;
+        right: auto;
+    }
 }
 
 /* ---- Motion (motion.js): short, after the fact, never in the way ---- */
@@ -8827,30 +10292,9 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     }
 }
 
-/* Scrolling the grid: photos ease in as they come up from the bottom and
-   ease out as they go under the top, done by the browser as it scrolls
-   (nothing runs for it), and only at the edges: in the middle they're
-   still and whole. In a huge folder's grid, which builds its tiles as it
-   scrolls, not while it jumps (grid-jump, motion.js): it would cost a
-   frame there. Nor while a key is held (motion.js), when it lagged and
-   showed rows faded to the background mid-view. No fill: the tiles out of sight keep their real size,
-   where the grid measures them (gridY, revealInGrid) */
-@supports (animation-timeline: view()) {
-    @media (prefers-reduced-motion: no-preference) {
-        :root:not([data-skin]):not([data-motion="off"]) .grid-view:not(.grid-jump) .grid-item:not(.is-new) {
-            animation: tile-woosh linear;
-            animation-timeline: view();
-            animation-range: cover 0% cover 100%;
-        }
-    }
-}
-
-@keyframes tile-woosh {
-    0% { opacity: 0.1; scale: 0.8; }
-    20% { opacity: 1; scale: 1; }
-    84% { opacity: 1; scale: 1; }
-    100% { opacity: 0.2; scale: 0.88; }
-}
+/* (Scrolling the grid no longer fades and shrinks the photos at its top
+   and bottom edges: on the way back from a photo the grid showed whole
+   for a frame before the effect came in) */
 
 @keyframes turn-left {
     from { rotate: 90deg; }
@@ -8862,4 +10306,888 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 
 @keyframes count-tick {
     from { opacity: 0.2; translate: 0 40%; }
+}
+
+/* ---- The guide (guide.js): a sheet of cards with clips ---- */
+.guide-scrim {
+    position: fixed; inset: 0; z-index: var(--z-modal); display: grid; place-items: center;
+    /* Under a theme's title and menu bar, or the Mac's toolbar (--top-safe) */
+    padding: calc(var(--top-safe) + var(--sp-4)) var(--sp-4) var(--sp-4);
+    background: var(--scrim); animation: guide-fade var(--dur-base) var(--ease-out) both;
+}
+.guide {
+    width: min(880px, 100%); height: min(580px, 100%); display: grid; grid-template-columns: 190px 1fr; overflow: hidden;
+    background: var(--bg-surface); color: var(--text-1); border: 1px solid var(--border-subtle); border-radius: var(--r-xl);
+    box-shadow: var(--shadow-4); font: var(--fs-body) var(--font-ui); animation: guide-rise var(--dur-slow) var(--ease-out) both;
+}
+.guide-nav { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-4) var(--sp-2); background: var(--bg-sunken); min-height: 0; }
+.guide-nav h2 { margin: 0 var(--sp-2) var(--sp-3); font-size: var(--fs-title); font-weight: var(--fw-semibold); }
+.guide-topics { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+.guide-topics button {
+    border: 0; background: transparent; color: var(--text-2); text-align: left; padding: 7px var(--sp-2); border-radius: var(--r-sm);
+    font: inherit; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.guide-topics button:hover { background: var(--bg-hover); color: var(--text-1); }
+.guide-topics button[aria-current="true"] { background: var(--bg-selected); color: var(--text-1); }
+.guide-tour {
+    margin-top: auto; display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border: 0; border-radius: var(--r-md);
+    background: var(--accent-soft); color: var(--accent-text); font: inherit; font-size: var(--fs-small); text-align: left; cursor: pointer;
+}
+.guide-tour:hover { filter: brightness(1.08); }
+.guide-tour .i { width: var(--icon-sm); height: var(--icon-sm); fill: currentColor; stroke: none; flex: none; }
+.guide-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.guide-top { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-4) var(--sp-4) var(--sp-3); }
+.guide-search {
+    flex: 1; display: flex; align-items: center; gap: var(--sp-2); height: var(--ctl-md); padding: 0 var(--sp-3);
+    border-radius: var(--r-pill); background: var(--bg-sunken); color: var(--text-3); cursor: text;
+}
+.guide-search:focus-within { box-shadow: inset 0 0 0 1px var(--accent); }
+.guide-search .i { width: var(--icon-sm); height: var(--icon-sm); flex: none; }
+.guide-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text-1); font: inherit; padding: 0; }
+.guide-x { flex: none; width: 32px; height: 32px; border: 0; border-radius: 16px; background: transparent; color: var(--text-2); font-size: 18px; line-height: 1; cursor: pointer; }
+.guide-x:hover { background: var(--bg-hover); color: var(--text-1); }
+.guide-list { flex: 1; overflow-y: auto; padding: 0 var(--sp-4) var(--sp-4); }
+.guide-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--sp-3); }
+.guide-card { display: flex; flex-direction: column; border-radius: var(--r-lg); background: var(--bg-raised); border: 1px solid var(--border-subtle); overflow: hidden; }
+.guide-card h3 { margin: var(--sp-3) var(--sp-3) 2px; font-size: var(--fs-body); font-weight: var(--fw-medium); }
+.guide-card p { margin: 0 var(--sp-3) var(--sp-3); color: var(--text-2); font-size: var(--fs-small); line-height: 1.45; }
+.guide-keys { display: flex; flex-wrap: wrap; gap: 6px; margin: auto var(--sp-3) var(--sp-3); }
+.guide-keys > span, .guide-keycaps { display: inline-flex; gap: 2px; }
+.guide-k {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px;
+    border-radius: var(--r-xs); border: 1px solid var(--border); background: var(--bg-sunken); color: var(--text-1);
+    box-shadow: 0 1px 0 var(--border); font: var(--fw-semibold) var(--fs-caption) var(--font-ui); white-space: nowrap;
+}
+.guide-keylist { margin-top: var(--sp-3); }
+.guide-keylist:first-child { margin-top: 0; }
+.guide-keylist h3 { margin: 0 0 var(--sp-2); font-size: var(--fs-body); font-weight: var(--fw-semibold); }
+.guide-keylist h4 { margin: var(--sp-3) 0 var(--sp-1); color: var(--text-3); font-size: var(--fs-caption); font-weight: var(--fw-semibold); }
+.guide-keyrow { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: 6px 0; border-top: 1px solid var(--border-subtle); color: var(--text-2); font-size: var(--fs-small); }
+.guide-none { color: var(--text-2); font-size: var(--fs-small); }
+@keyframes guide-fade { from { opacity: 0; } }
+@keyframes guide-rise { from { opacity: 0; transform: translateY(10px) scale(.98); } }
+/* A small window: the topics go along the top */
+@media (max-width: 680px) {
+    .guide { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    .guide-nav { flex-direction: row; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); overflow-x: auto; }
+    .guide-nav h2 { display: none; }
+    .guide-topics { flex-direction: row; overflow: visible; }
+    .guide-tour { margin: 0 0 0 auto; white-space: nowrap; }
+}
+
+/* The clips: little drawings of a photo, looping. They stand for a photo,
+   so their colours (a sky, a hill, a print) are the same in every look. */
+.gclip { position: relative; height: 104px; overflow: hidden; background: var(--bg-sunken); }
+.gclip i, .gclip b { position: absolute; display: block; font-style: normal; font-weight: normal; }
+.gc-scene { inset: 16px 26%; border-radius: 3px; box-shadow: var(--shadow-2);
+    background: radial-gradient(circle at 72% 30%, #ffe7a3 0 8%, transparent 9%), linear-gradient(170deg, transparent 58%, #3f6b3a 59%), linear-gradient(160deg, transparent 50%, #5e8f4c 51%), linear-gradient(#7fb3e0, #cfe4f2); }
+.gc-turn { animation: gc-turn 3.2s var(--ease-in-out) infinite; }
+.gc-turnback { animation: gc-turnback 3.2s var(--ease-in-out) infinite; }
+.gc-cropbox { inset: 16px 26%; border: 2px solid #fff; box-shadow: 0 0 0 999px rgba(0, 0, 0, .45); animation: gc-crop 3.2s var(--ease-in-out) infinite; }
+.gc-badge { right: calc(26% + 6px); top: 22px; width: 24px; height: 24px; border-radius: 12px; display: grid !important; place-items: center; font-size: 14px; color: var(--on-photo-star); background: var(--on-photo-bg); animation: gc-pop 3.2s var(--ease-out) infinite; }
+.gc-undo { color: var(--on-photo-text); animation-delay: 1.4s; }
+.gc-bright { animation: gc-bright 3.2s var(--ease-in-out) infinite; }
+.gc-stroke { position: absolute; inset: 16px 26%; width: 48%; height: calc(100% - 32px); }
+.gc-stroke path { fill: none; stroke: #e5484d; stroke-width: 6; stroke-linecap: round; stroke-dasharray: 300; animation: gc-draw 3.2s var(--ease-in-out) infinite; }
+.gc-tiles { inset: 18px 22%; display: grid !important; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.gc-tiles b { position: static !important; border-radius: 2px; background: linear-gradient(170deg, #cfe4f2 55%, #5e8f4c 56%); }
+.gc-tiles b:nth-child(2n) { background: linear-gradient(170deg, #f2d9b3 50%, #9b6b43 51%); }
+.gc-tiles b:nth-child(1) { animation: gc-hi 3.2s steps(1) infinite; }
+.gc-tiles b:nth-child(2) { animation: gc-hi 3.2s steps(1) infinite .53s; }
+.gc-tiles b:nth-child(3) { animation: gc-hi 3.2s steps(1) infinite 1.07s; }
+.gc-tiles b:nth-child(4) { animation: gc-hi 3.2s steps(1) infinite 1.6s; }
+.gc-tiles b:nth-child(5) { animation: gc-hi 3.2s steps(1) infinite 2.13s; }
+.gc-tiles b:nth-child(6) { animation: gc-hi 3.2s steps(1) infinite 2.67s; }
+.gc-filter b:nth-child(odd) { animation: gc-dim 3.2s var(--ease-in-out) infinite; }
+.gc-filter b:nth-child(even) { animation: none; box-shadow: 0 0 0 2px var(--flag-star); }
+.gc-name { left: 26%; right: 26%; bottom: 20px; height: 18px; }
+.gc-name b { left: 0; right: 0; text-align: center; font: var(--fw-semibold) 10px var(--font-ui); color: var(--on-photo-text); background: var(--on-photo-bg); border-radius: var(--r-pill); padding: 2px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gc-name b:first-child { animation: gc-out 3.2s var(--ease-in-out) infinite; }
+.gc-name b:last-child { animation: gc-in 3.2s var(--ease-in-out) infinite; }
+.gc-folder { right: 16%; top: 30px; width: 54px; height: 42px; border-radius: 6px; background: var(--accent-soft); border: 2px solid var(--accent); }
+.gc-fly { inset: 34px auto auto 14%; width: 48px; height: 34px; animation: gc-fly 3.2s var(--ease-in-out) infinite; }
+.gc-pair { inset: 0; }
+.gc-pair .gc-scene { inset: 22px 54% 22px 12%; }
+.gc-pair .gc-scene + .gc-scene { inset: 22px 12% 22px 54%; }
+.gc-gone { animation: gc-gone 3.2s var(--ease-in-out) infinite; }
+.gc-warm { filter: sepia(.4) saturate(1.4); }
+.gc-catch { animation: gc-catch 3.2s var(--ease-in-out) infinite; }
+.gc-strip { left: 0; right: 0; top: 30px; height: 44px; display: flex !important; gap: 6px; padding-left: 16px; animation: gc-slide 3.2s var(--ease-in-out) infinite; }
+.gc-strip b { position: static !important; flex: none; width: 60px; border-radius: 3px; background: linear-gradient(170deg, #cfe4f2 55%, #5e8f4c 56%); box-shadow: inset 0 0 0 2px transparent; }
+.gc-strip b:first-child { box-shadow: inset 0 0 0 2px #fff; }
+.gc-glass { inset: 14px 18%; border-radius: 4px; background: #e9edf0; }
+.gc-glass b { width: 34%; height: 56%; top: 14%; border-radius: 2px; background: linear-gradient(170deg, #cfe4f2 55%, #5e8f4c 56%); }
+.gc-glass b:first-child { left: 8%; transform: rotate(-4deg); }
+.gc-glass b:last-child { right: 8%; transform: rotate(3deg); background: linear-gradient(170deg, #f2d9b3 50%, #9b6b43 51%); }
+.gclip-auto .gc-glass b { animation: gc-boxed 3.2s steps(1) infinite; }
+.gclip-scan::after { content: ""; position: absolute; top: 14px; bottom: 14px; width: 6px; left: 18%; background: rgba(255, 255, 255, .9); box-shadow: 0 0 12px 4px rgba(160, 220, 255, .8); animation: gc-sweep 3.2s linear infinite; }
+.gc-dot { right: calc(26% + 8px); top: 22px; width: 14px; height: 14px; border-radius: 7px; background: #e5484d; box-shadow: 0 0 0 2px var(--on-photo-bg); animation: gc-colors 3.2s steps(1) infinite; }
+.gc-side { inset: 12px 30% 12px 20%; border-radius: 4px; background: var(--bg-raised); box-shadow: var(--shadow-2); }
+.gc-side b { left: 10%; right: 10%; height: 8px; border-radius: 4px; background: var(--border); }
+.gc-side b:nth-child(1) { top: 12%; } .gc-side b:nth-child(2) { top: 34%; left: 20%; } .gc-side b:nth-child(3) { top: 56%; left: 20%; } .gc-side b:nth-child(4) { top: 78%; }
+.gc-side b:nth-child(2) { animation: gc-pick 3.2s steps(1) infinite; } .gc-side b:nth-child(3) { animation: gc-pick 3.2s steps(1) infinite 1.6s; }
+.gc-pal { inset: 10px 24%; border-radius: 6px; background: var(--bg-raised); box-shadow: var(--shadow-2); }
+.gc-pal b { left: 8%; right: 8%; height: 9px; border-radius: 3px; background: var(--border); animation: gc-in 3.2s var(--ease-in-out) infinite; }
+.gc-pal .gc-q { top: 7px; left: 8%; right: auto; width: 3.4ch; height: 16px; border-radius: 0; background: none; font: 11px/16px var(--font-ui); color: var(--text-1); white-space: nowrap; overflow: hidden; animation: gc-type 3.2s steps(3) infinite; }
+.gc-pal b:nth-child(2) { top: 32px; animation: gc-in 3.2s var(--ease-in-out) infinite, gc-row 3.2s steps(1) infinite; }
+.gc-pal b:nth-child(3) { top: 48px; right: 22%; }
+.gc-pal b:nth-child(4) { top: 64px; right: 34%; }
+.gc-file { left: 18%; top: 22px; width: 46px; height: 58px; border-radius: 4px; background: var(--bg-raised); box-shadow: var(--shadow-2); }
+.gc-file b { left: 0; right: 0; bottom: 8px; text-align: center; font: var(--fw-semibold) 10px var(--font-ui); color: var(--text-1); }
+.gc-file b:first-child { animation: gc-out 3.2s var(--ease-in-out) infinite; }
+.gc-file b:last-child { color: var(--accent-text); animation: gc-in 3.2s var(--ease-in-out) infinite; }
+.gc-size { left: calc(18% + 60px); right: 16%; top: 46px; height: 10px; border-radius: 5px; background: var(--accent); animation: gc-size 3.2s var(--ease-in-out) infinite; transform-origin: left; }
+.gc-shrink { animation: gc-shrink 3.2s var(--ease-in-out) infinite; }
+.gc-cam { left: 14%; top: 30px; width: 46px; height: 34px; border-radius: 6px; background: var(--text-2); }
+.gc-cam::after { content: ""; position: absolute; left: 13px; top: 7px; width: 20px; height: 20px; border-radius: 10px; background: var(--bg-sunken); box-shadow: inset 0 0 0 3px var(--text-3); }
+.gc-drop { inset: 30px 14% auto auto; width: 50px; height: 34px; animation: gc-drop 3.2s var(--ease-out) infinite; }
+.gc-looks { animation: gc-looks 3.2s steps(1) infinite; }
+.gc-split { top: 16px; bottom: 16px; width: 2px; left: 50%; background: #fff; animation: gc-split 3.2s var(--ease-in-out) infinite; }
+.gclip-before .gc-scene { animation: gc-bright 3.2s var(--ease-in-out) infinite; }
+.gc-layers { inset: 0; }
+.gc-layers b { left: 30%; width: 40%; height: 46px; top: 30px; border-radius: 4px; box-shadow: var(--shadow-2); animation: gc-fan 3.2s var(--ease-in-out) infinite; }
+.gc-layers b:nth-child(1) { background: linear-gradient(170deg, #cfe4f2 55%, #5e8f4c 56%); --d: -14px; }
+.gc-layers b:nth-child(2) { background: rgba(229, 72, 77, .55); --d: 0px; }
+.gc-layers b:nth-child(3) { background: rgba(255, 197, 61, .55); --d: 14px; }
+.gc-pasted { right: 30%; top: 26px; width: 36px; height: 28px; border-radius: 2px; background: linear-gradient(170deg, #f2d9b3 50%, #9b6b43 51%); outline: 1px dashed #fff; outline-offset: 2px; animation: gc-paste 3.2s var(--ease-in-out) infinite; }
+.gc-blank { inset: 16px 30%; border-radius: 2px; background: #fff; box-shadow: var(--shadow-2); animation: gc-blank 3.2s var(--ease-out) infinite; }
+@keyframes gc-turn { 0%, 25% { transform: rotate(-90deg) scale(.66); } 50%, 100% { transform: none; } }
+@keyframes gc-turnback { 0%, 20% { transform: none; } 35%, 55% { transform: rotate(90deg) scale(.66); } 70%, 100% { transform: none; } }
+@keyframes gc-crop { 0%, 20% { inset: 16px 26%; } 50%, 80% { inset: 28px 34% 24px 30%; } 100% { inset: 16px 26%; } }
+@keyframes gc-pop { 0%, 30% { transform: scale(0); } 40% { transform: scale(1.2); } 50%, 100% { transform: scale(1); } }
+@keyframes gc-bright { 0%, 20% { filter: brightness(.65) saturate(.6); } 55%, 85% { filter: brightness(1.08) saturate(1.25); } 100% { filter: brightness(.65) saturate(.6); } }
+@keyframes gc-draw { 0%, 15% { stroke-dashoffset: 300; } 60%, 100% { stroke-dashoffset: 0; } }
+@keyframes gc-hi { 0%, 16% { box-shadow: 0 0 0 2px var(--accent); } 17%, 100% { box-shadow: none; } }
+@keyframes gc-dim { 0%, 30% { opacity: 1; } 50%, 85% { opacity: .15; } 100% { opacity: 1; } }
+@keyframes gc-out { 0%, 35% { opacity: 1; } 50%, 90% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes gc-in { 0%, 35% { opacity: 0; } 50%, 90% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes gc-fly { 0%, 20% { transform: none; opacity: 1; } 60% { transform: translateX(calc(100% + 80px)) scale(.5); opacity: 1; } 70%, 100% { transform: translateX(calc(100% + 80px)) scale(.5); opacity: 0; } }
+@keyframes gc-gone { 0%, 40% { opacity: 1; filter: none; } 60%, 90% { opacity: .25; filter: grayscale(1); } 100% { opacity: 1; } }
+@keyframes gc-catch { 0%, 40% { filter: none; } 60%, 90% { filter: sepia(.4) saturate(1.4); } 100% { filter: none; } }
+@keyframes gc-slide { 0%, 30% { transform: none; } 50%, 80% { transform: translateX(-66px); } 100% { transform: none; } }
+@keyframes gc-boxed { 0%, 40% { outline: 0 solid transparent; } 41%, 100% { outline: 2px solid var(--accent); outline-offset: 2px; } }
+@keyframes gc-sweep { from { left: 18%; } to { left: 82%; } }
+@keyframes gc-colors { 0% { background: #e5484d; } 25% { background: #ffc53d; } 50% { background: #46a758; } 75% { background: #0090ff; } }
+@keyframes gc-type { 0%, 8% { clip-path: inset(0 100% 0 0); } 40%, 100% { clip-path: inset(0 0 0 0); } }
+@keyframes gc-row { 0%, 49% { background: var(--border); } 50%, 92% { background: var(--accent); } 93%, 100% { background: var(--border); } }
+@keyframes gc-pick { 0%, 49% { background: var(--accent); } 50%, 100% { background: var(--border); } }
+@keyframes gc-size { 0%, 30% { transform: scaleX(1); } 60%, 90% { transform: scaleX(.4); } 100% { transform: scaleX(1); } }
+@keyframes gc-shrink { 0%, 25% { transform: none; } 55%, 85% { transform: scale(.6); } 100% { transform: none; } }
+@keyframes gc-drop { 0%, 15% { transform: translateX(-60px) scale(.4); opacity: 0; } 25% { opacity: 1; } 55%, 100% { transform: none; opacity: 1; } }
+@keyframes gc-looks { 0% { filter: none; } 25% { filter: sepia(.5) saturate(1.3); } 50% { filter: grayscale(1) contrast(1.2); } 75% { filter: saturate(1.6) hue-rotate(-10deg); } }
+@keyframes gc-split { 0%, 10% { left: 26%; } 50% { left: 74%; } 90%, 100% { left: 26%; } }
+@keyframes gc-fan { 0%, 25% { transform: none; } 55%, 85% { transform: translate(var(--d), var(--d)); } 100% { transform: none; } }
+@keyframes gc-paste { 0%, 20% { transform: translate(-30px, 20px); } 55%, 85% { transform: none; } 100% { transform: translate(-30px, 20px); } }
+@keyframes gc-blank { 0%, 10% { transform: scale(.4); opacity: 0; } 40%, 100% { transform: none; opacity: 1; } }
+/* Animations off, or reduced motion: the clips hold still, the sheet just appears */
+:root[data-motion="off"] .guide-scrim, :root[data-motion="off"] .guide, :root[data-motion="off"] .gclip * { animation: none !important; }
+:root[data-motion="off"] .gclip *::after { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .guide-scrim, .guide, .gclip *, .gclip *::after { animation: none !important; } }
+
+/* ---- The welcome tour (tour.js) ---- */
+/* What's lit up: a window in a dim that covers the rest. The dim is dark in
+   every look (as over a photo): a light one washes the photo out. It catches
+   no clicks, so the app keeps working under it. */
+.tour-hole {
+    position: fixed; z-index: calc(var(--z-mode) + 1); pointer-events: none; border-radius: var(--r-lg);
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, .5), 0 0 0 2px var(--accent), 0 0 24px 4px var(--accent-soft);
+    transition: left var(--dur-slow) var(--ease-out), top var(--dur-slow) var(--ease-out), width var(--dur-slow) var(--ease-out),
+        height var(--dur-slow) var(--ease-out), border-radius var(--dur-slow) var(--ease-out);
+}
+.tour-hole.pill { border-radius: var(--r-pill); }
+.tour-hole.square { border-radius: 0; }
+.tour-card {
+    position: fixed; z-index: calc(var(--z-toast) + 1); width: min(300px, calc(100vw - 32px)); box-sizing: border-box;
+    padding: var(--sp-4) var(--sp-4) var(--sp-3); border-radius: var(--r-lg); outline: none; overflow: hidden;
+    background: var(--bg-surface); color: var(--text-1); border: 1px solid var(--border-subtle); box-shadow: var(--shadow-4);
+    font: var(--fs-body) var(--font-ui);
+    transition: left var(--dur-slow) var(--ease-out), top var(--dur-slow) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
+}
+.tour-card.wide { width: min(360px, calc(100vw - 32px)); }
+.tour-card.moving { opacity: 0; }
+.tour-step { color: var(--accent-text); font-size: var(--fs-caption); font-weight: var(--fw-semibold); margin-bottom: 4px; }
+.tour-card h3 { margin: 0 0 4px; padding-right: 24px; font-size: var(--fs-title); font-weight: var(--fw-semibold); }
+.tour-card p { margin: 0 0 var(--sp-3); color: var(--text-2); line-height: 1.5; }
+.tour-keys { display: inline-flex; gap: 2px; vertical-align: 1px; }
+.tour-keys .guide-k { height: 20px; min-width: 20px; padding: 0 5px; }
+.tour-gaps-head { margin-bottom: var(--sp-1) !important; color: var(--text-1) !important; font-weight: var(--fw-medium); }
+.tour-gaps { margin: 0 0 var(--sp-3); padding-left: 1.2em; color: var(--text-2); font-size: var(--fs-small); line-height: 1.6; }
+.tour-foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-2); }
+.tour-progress { position: absolute; left: 0; right: 0; top: 0; height: 3px; overflow: hidden; border-radius: var(--r-lg) var(--r-lg) 0 0; }
+.tour-progress i { display: block; height: 100%; background: var(--accent); transition: width var(--dur-slow) var(--ease-out); }
+.tour-foot .btn { text-decoration: none; }
+.tour-x { position: absolute; top: var(--sp-2); right: var(--sp-2); width: 28px; height: 28px; border: 0; border-radius: 14px; background: transparent; color: var(--text-3); font-size: 16px; line-height: 1; cursor: pointer; }
+.tour-x:hover { background: var(--bg-hover); color: var(--text-1); }
+/* The buttons above the film strip stay while the tour shows them */
+body.touring .controls.idle { opacity: 1; transform: translateX(-50%); }
+body.touring .controls.idle button { pointer-events: auto; }
+/* The offer, on the empty table of the home page */
+/* The card and the hidden prints share one cell, so a card taller than the
+   table (a short window) makes room instead of covering what's around it */
+.home-empty.tour-offering { display: grid; place-items: center; }
+.home-empty.tour-offering > * { grid-area: 1 / 1; }
+.home-empty.tour-offering > :not(.tour-offer) { visibility: hidden; }
+.tour-offer {
+    position: relative; z-index: 1; width: min(440px, calc(100vw - 32px)); box-sizing: border-box;
+    padding: var(--sp-6) var(--sp-6) var(--sp-5); text-align: center; border-radius: var(--r-xl);
+    background: var(--bg-surface); color: var(--text-1); border: 1px solid var(--border-subtle); box-shadow: var(--shadow-4);
+    font: var(--fs-body) var(--font-ui); animation: tour-rise var(--dur-slow) var(--ease-out) both;
+}
+.tour-offer-modes { display: flex; justify-content: center; gap: var(--sp-2); margin-bottom: var(--sp-4); }
+.tour-offer-mode {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: var(--sp-3) var(--sp-2);
+    border-radius: var(--r-md); background: var(--accent-soft); color: var(--accent-text); font-size: var(--fs-small); font-weight: var(--fw-medium);
+}
+.tour-offer-mode .i { width: 24px; height: 24px; }
+.tour-offer h2 { margin: 0 0 6px; font-size: var(--fs-title); font-weight: var(--fw-semibold); }
+.tour-offer p { margin: 0 0 var(--sp-4); color: var(--text-2); }
+.tour-offer-row { display: flex; justify-content: center; gap: var(--sp-2); }
+.tour-offer small { display: block; margin-top: var(--sp-3); color: var(--text-3); font-size: var(--fs-caption); }
+@keyframes tour-rise { from { opacity: 0; transform: translateY(10px) scale(.98); } }
+:root[data-motion="off"] .tour-hole, :root[data-motion="off"] .tour-card { transition: none; }
+:root[data-motion="off"] .tour-offer { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+    .tour-hole, .tour-card { transition: opacity var(--dur-fast); }
+    .tour-offer { animation: none; }
+}
+/* ---- The Open a folder card (open-card.js) ---- */
+.dialog.open-card {
+    width: min(760px, 100%);
+    height: min(780px, 100%);
+}
+
+.oc-top {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gutter);
+    padding: 4px var(--gutter) var(--gutter);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.oc-search {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: var(--ctl-lg);
+    padding: 0 14px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    color: var(--text-3);
+}
+
+.oc-search:focus-within { border-color: var(--accent); }
+
+.oc-search input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    border: 0;
+    background: none;
+    color: var(--text-1);
+    font: inherit;
+    font-size: var(--fs-body);
+    outline: none;
+}
+
+.oc-drop {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border: 1.5px dashed var(--border);
+    border-radius: var(--r-md);
+    transition: border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+
+.oc-drop.over {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.oc-drop-icon { color: var(--accent); display: flex; }
+.oc-drop-icon .i { width: 24px; height: 24px; }
+
+.oc-drop-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.oc-drop-name { font-weight: var(--fw-medium); }
+.oc-drop-sub { color: var(--text-2); font-size: var(--fs-small); }
+
+.oc-sub {
+    margin: 0 0 8px;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    font-weight: var(--fw-medium);
+}
+
+.oc-recents {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.oc-recent {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 240px;
+    padding: 6px 12px 6px 6px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-md);
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.oc-recent:hover, .oc-row:hover { background: var(--bg-hover); }
+
+.oc-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.oc-name {
+    overflow: hidden;
+    font-weight: var(--fw-medium);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.oc-meta {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    white-space: nowrap;
+}
+
+.oc-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--gutter);
+    padding-top: 12px;
+}
+
+.oc-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: var(--r-md);
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.oc-row .oc-name { flex: 1; min-width: 0; }
+.oc-library { margin-bottom: 8px; }
+
+.oc-pics {
+    display: flex;
+    flex: none;
+    gap: 2px;
+}
+
+.oc-pic {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--r-xs);
+    object-fit: cover;
+}
+
+.oc-pics.one .oc-pic { width: 40px; height: 40px; }
+
+.oc-pic.ghost {
+    border: 1px dashed var(--border);
+}
+
+.oc-icon {
+    align-items: center;
+    justify-content: center;
+    width: 106px;
+    height: 34px;
+    color: var(--accent);
+}
+
+.oc-empty {
+    margin: 8px 10px;
+    color: var(--text-3);
+    font-size: var(--fs-small);
+}
+
+.oc-foot:empty { display: none; }
+
+@media (max-width: 560px) {
+    .oc-drop { flex-wrap: wrap; }
+    .oc-row .oc-pics { display: none; }
+}
+
+/* Settings → Projects: where a folder is */
+.set-label small.set-path {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    overflow-wrap: anywhere;
+}
+
+/* A recent whose pictures were cleared: a ghost stack, its name small
+   under it and nothing else */
+.recent-list li.ghosted .recent-sub { display: none; }
+.recent-list li.ghosted .recent-name { color: var(--text-2); font-size: var(--fs-small); }
+
+.oc-foot {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 10px var(--gutter);
+    border-top: 1px solid var(--border-subtle);
+    color: var(--text-3);
+    font-size: var(--fs-small);
+}
+
+.oc-foot-path {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-2);
+    font-family: var(--font-mono);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The first-time questions (first-open.js) */
+.dialog.first-open { width: min(520px, 100%); }
+
+.fo-body {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.fo-sub {
+    margin: 0 0 6px;
+    font-size: var(--fs-body);
+    font-weight: var(--fw-semibold);
+}
+
+.fo-help, .fo-note {
+    margin: 0 0 8px;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.fo-note { margin: 0; color: var(--text-3); }
+
+.fo-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.fo-dir {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-size: var(--fs-small);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fo-dir.none { color: var(--text-3); font-family: inherit; }
+
+.fo-choices {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.fo-choice {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    cursor: pointer;
+}
+
+.fo-choice:has(input:checked) {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.fo-choice input { margin-top: 3px; accent-color: var(--accent); }
+.fo-choice-name { display: block; font-weight: var(--fw-medium); }
+.fo-choice small { display: block; color: var(--text-2); font-size: var(--fs-small); }
+
+/* A switch under a prompt (ui.js: check) */
+.uid-check { margin-top: 12px; padding: 0; cursor: pointer; }
+
+/* ==========================================================================
+   The 2.0 refinement: the shared layer (jEditor's own look; tokens.css has
+   its values). One of each control, in every mode: one section heading
+   (the sidebar's small grey one), one switch between a few, one slider,
+   one button family; dialogs without their rules and bulk; menus solid,
+   in 28 px rows. Nothing moves: the parts agree.
+   ========================================================================== */
+
+:root:not([data-skin]) .i {
+    stroke-width: 1.5;
+}
+
+/* ---- Section headings: small and grey, in sentence case ---- */
+:root:not([data-skin]) :is(.set-group, .sb-sec-title, .adj-sub, .palette-head, .paint-sec-head > span:first-child),
+:root:not([data-skin]) #context-menu .ctx-heading {
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+:root:not([data-skin]) .set-group {
+    margin-top: var(--sp-5);
+    padding-top: 0;
+    border-top: 0;
+}
+
+/* ---- A switch between a few: a soft track, the chosen part raised ---- */
+:root:not([data-skin]) :is(.seg, .adj-tabs) {
+    padding: var(--sp-0);
+    border-radius: var(--r-md);
+    background: var(--seg-bg);
+}
+
+:root:not([data-skin]) :is(.seg > button, .seg > label > span, .adj-tab) {
+    border-radius: calc(var(--r-md) - var(--sp-0));
+}
+
+/* ---- The slider: Adjust's, everywhere. Those with a look of their own
+   (Adjust's coloured tracks, Crop's straighten, a colour's) keep it:
+   :where() leaves these rules as light as the browser's ---- */
+:where(:root:not([data-skin])) input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: var(--icon-sm);
+    background: transparent;
+}
+
+:where(:root:not([data-skin])) input[type="range"]::-webkit-slider-runnable-track {
+    height: 3px;
+    border-radius: var(--r-pill);
+    background: var(--slider-track);
+}
+
+:where(:root:not([data-skin])) input[type="range"]::-moz-range-track {
+    height: 3px;
+    border-radius: var(--r-pill);
+    background: var(--slider-track);
+}
+
+:where(:root:not([data-skin])) input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    margin-top: -4.5px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--slider-knob);
+    box-shadow: var(--slider-knob-edge);
+}
+
+:where(:root:not([data-skin])) input[type="range"]::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--slider-knob);
+    box-shadow: var(--slider-knob-edge);
+}
+
+:where(:root:not([data-skin])) input[type="range"]:focus-visible {
+    outline: none;
+}
+
+:where(:root:not([data-skin])) input[type="range"]:focus-visible::-webkit-slider-thumb {
+    box-shadow: var(--slider-knob-edge), var(--focus-ring);
+}
+
+/* ---- Buttons: the plain one looks pressable; a filled one catches light ---- */
+:root:not([data-skin]) .btn.secondary,
+:root:not([data-skin]) .dialog-foot .btn:not(.primary, .danger, .ghost) {
+    border-color: var(--border-subtle);
+    background: var(--bg-raised);
+    color: var(--text-1);
+}
+
+:root:not([data-skin]) .btn.secondary:hover,
+:root:not([data-skin]) .dialog-foot .btn:not(.primary, .danger, .ghost):hover {
+    border-color: var(--border);
+}
+
+:root:not([data-skin]) :is(.btn.primary, .btn.danger) {
+    box-shadow: var(--btn-sheen);
+}
+
+/* ---- Dialogs: no rules under the title or over the buttons, which are
+   a desktop's size and at the right. Settings keeps its two rules: its
+   middle scrolls under them ---- */
+:root:not([data-skin]) .dialog {
+    border-color: var(--border-subtle);
+    border-radius: var(--r-xl);
+}
+
+:root:not([data-skin]) .dialog-head {
+    min-height: var(--sp-12);
+    padding: var(--sp-3) var(--sp-3) var(--sp-1) var(--sp-5);
+    border-bottom: 0;
+}
+
+:root:not([data-skin]) .dialog-body {
+    padding: var(--sp-2) var(--sp-5) var(--sp-4);
+}
+
+:root:not([data-skin]) .dialog-foot {
+    padding: var(--sp-1) var(--sp-4) var(--sp-4) var(--sp-5);
+    border-top: 0;
+}
+
+:root:not([data-skin]) .dialog-foot > :only-child {
+    margin-left: auto;
+}
+
+:root:not([data-skin]) .dialog-foot .btn {
+    min-width: 76px;
+    height: var(--ctl-md);
+    padding: 0 var(--sp-4);
+}
+
+:root:not([data-skin]) .dialog.settings-card .dialog-head {
+    padding-bottom: var(--sp-2);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+:root:not([data-skin]) .dialog.settings-card .dialog-foot {
+    padding-top: var(--sp-3);
+    padding-bottom: var(--sp-3);
+    border-top: 1px solid var(--border-subtle);
+}
+
+/* ---- Menus: solid, in rows ---- */
+:root:not([data-skin]) :is(#context-menu, .ctx-fly) {
+    min-width: 232px;
+    padding: 5px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-lg);
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-3);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+:root:not([data-skin]) :is(#context-menu, .ctx-fly) button {
+    min-height: var(--row);
+    padding: 0 10px;
+}
+
+:root:not([data-skin]) #context-menu button[aria-checked] {
+    padding-left: 30px;
+}
+
+:root:not([data-skin]) :is(#context-menu, .ctx-fly) .ctx-divider {
+    margin: 5px 10px;
+    background: var(--border-subtle);
+}
+
+/* A row with a menu of its own (Turn and flip): an arrow at its right,
+   and that menu beside it */
+#context-menu button.ctx-more::after {
+    content: "";
+    width: 6px;
+    height: 6px;
+    margin-left: auto;
+    border: solid var(--text-3);
+    border-width: 1.5px 1.5px 0 0;
+    transform: rotate(45deg);
+}
+
+:root:not([data-skin]) .ctx-fly {
+    min-width: 200px;
+}
+
+/* On a touch screen a row stays a finger's height */
+@media (pointer: coarse) {
+    :root:not([data-skin]) {
+        --row: var(--ctl-md);
+        --ctl-lg: 44px;
+    }
+    :root:not([data-skin]) .dialog-foot .btn {
+        height: var(--ctl-lg);
+    }
+}
+
+/* ==========================================================================
+   The 2.0 refinement: motion (jEditor's own look). Three speeds, each for
+   one job, so parts stop choosing their own:
+     120 ms  pointing and pressing: a colour fade. A pressed button
+             darkens; nothing shrinks or bounces
+     180 ms  things that appear (menus, dialogs, messages, badges): a fade
+             while growing from 98%
+     280 ms  changes of place
+   The springy curve is retired (tokens.css), and selection never
+   animates: its mark appears at once, so a redrawn grid can't flicker.
+   ========================================================================== */
+
+@keyframes appear {
+    from { opacity: 0; transform: scale(0.98); }
+}
+
+@keyframes count-flash {
+    40% { color: var(--text-1); }
+}
+
+:root:not([data-skin]) .btn:active:not(:disabled),
+:root:not([data-skin]) .toast-action:active {
+    transform: none;
+    filter: brightness(0.9);
+}
+
+:root:not([data-skin]) .grid-item.selected::before {
+    animation: none;
+}
+
+:root:not([data-skin]) :is(.tile-flags, .tile-edit, .fb-filter-chip, .task-pill) {
+    animation: appear var(--dur-base) var(--ease-out);
+}
+
+:root:not([data-skin]) .toast.visible:not(.t-progress) .toast-icon svg {
+    animation: appear var(--dur-base) var(--ease-out) both;
+}
+
+:root:not([data-skin]) .toast.bump .toast-count {
+    animation: count-flash var(--dur-slow) var(--ease-out);
+}
+
+:root:not([data-skin]) .dialog {
+    animation-duration: var(--dur-base);
+}
+
+
+/* ==========================================================================
+   The 2.0 refinement: the grid and the viewer (jEditor's own look). Photos
+   lie straight on the canvas, with no plate behind them: a folder of mixed
+   shapes shows the photos' own shapes, not a wall of squares. The plate
+   comes back, faintly, under the pointer. What's chosen is shown one way:
+   a soft accent plate and a ring (the tick is flags.js's). The photo the
+   keys are on, when it isn't chosen, has a quiet ring of its own.
+   ========================================================================== */
+
+:root:not([data-skin]) {
+    --tile-bg: transparent;
+}
+
+:root:not([data-skin]) .grid-item:not(.folder-tile) img {
+    padding: 5px;
+    border-radius: calc(var(--r-photo) + 5px);
+    background: transparent;
+}
+
+:root:not([data-skin]) .grid-item:not(.folder-tile):hover {
+    background: var(--bg-hover);
+}
+
+:root:not([data-skin]) .grid-item.selected {
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+:root:not([data-skin]) .grid-item.active {
+    outline: none;
+}
+
+:root:not([data-skin]) .grid-item.active:not(.selected) {
+    box-shadow: inset 0 0 0 1.5px var(--text-3);
+}
+
+:root:not([data-skin]) :is(.thumb-item, .mode-thumb) {
+    border-radius: var(--r-photo);
+}
+
+/* ==========================================================================
+   The 2.0 refinement: Adjust and Paint (jEditor's own look). One frame for
+   both: a top bar, a panel at the right and the film strip, the panel and
+   the bars on the sidebar's tint (--chrome), so each reads as the same
+   window with another panel. A slider's number is plain until it's
+   pointed at or typed in. The chosen tool is a soft accent square, as a
+   chosen row is anywhere else.
+   ========================================================================== */
+
+:root:not([data-skin]) :is(.adj-panel, .paint-panel, .paint-options, .paint-tools) {
+    border-color: var(--chrome-line);
+    background: var(--chrome);
+}
+
+:root:not([data-skin]) .mode-head {
+    min-height: var(--sp-12);
+    padding-top: var(--sp-1);
+    padding-bottom: var(--sp-1);
+}
+
+:root:not([data-skin]) .paint-options {
+    min-height: 36px;
+    border-top-color: transparent;
+}
+
+:root:not([data-skin]) .adj-num:not(:hover, :focus) {
+    border-color: transparent;
+    background: transparent;
+    color: var(--text-2);
+}
+
+:root:not([data-skin]) .paint-tool {
+    width: var(--ctl-md);
+    height: var(--ctl-md);
+    border-radius: var(--r-md);
+}
+
+:root:not([data-skin]) .paint-tool[aria-pressed="true"] {
+    border-color: transparent;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+}
+
+:root:not([data-skin]) .paint-layer {
+    border-radius: var(--r-md);
+}
+
+:root:not([data-skin]) :is(.adj-look img, .adj-look canvas) {
+    border-radius: var(--r-photo);
+}
+
+/* Paint's Layers heading in a narrow window at the Comfortable size: its
+   six buttons gave nothing up, and the word was cut to "L…". The buttons
+   close up first now, and the word stays whole */
+:root:not([data-skin]) .paint-layers-sec .paint-sec-head > span:first-child {
+    flex: none;
+}
+
+:root:not([data-skin]) .paint-layer-acts {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+:root:not([data-skin]) .paint-layer-acts .btn {
+    flex: 0 1 auto;
+    min-width: 24px;
+    padding-inline: 0;
 }

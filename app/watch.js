@@ -54,7 +54,7 @@ const Watch = {
 
     enabled() {
         const app = this.app;
-        return !!(app && app.dirHandle && !app.readOnlyMode && app.uiPrefs && app.uiPrefs.autoCheck !== false);
+        return !!(app && app.dirHandle && !app.fixedFiles && app.uiPrefs && app.uiPrefs.autoCheck !== false);
     },
 
     // While one of these runs, the folder on disk and what's loaded can
@@ -275,8 +275,20 @@ const Watch = {
     // ---- Listing ----
 
     skipDir(name) {
-        // (Export's copies and Convert's are copies, not the project's photos)
-        return name === FolderCache.DIR || name === FolderCache.LEGACY_TRASH || name === 'jEditor Export' || name === 'jEditor Converted';
+        // (Export's copies and Convert's are copies, not the project's photos;
+        // Copies' folders named after the project, when left out: export.js)
+        return name === FolderCache.DIR || name === FolderCache.LEGACY_TRASH || name === 'jEditor Export' || name === 'jEditor Converted'
+            || (typeof Export !== 'undefined' && Export.isLeftOut(name))
+            || (this.isLibrary(name) && !(this.app && this.app.uiPrefs && this.app.uiPrefs.openLibraries));
+    },
+
+    // A photo app's library: one item in Finder (a package), its own
+    // thumbnails and previews inside, not photos of yours to list. Not gone
+    // into unless Settings → Projects says to (on every platform: a library
+    // copied to a Windows or Linux drive is a folder there)
+    LIBRARIES: /\.(photoslibrary|photolibrary|aplibrary|lrdata|lrlibrary)$/i,
+    isLibrary(name) {
+        return this.LIBRARIES.test(name);
     },
 
     // own: jEditor's folders found here (.jeditor, the old .jeditor-trash)

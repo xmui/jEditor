@@ -53,7 +53,7 @@ const Convert = {
         if (!this.prefs.quality || typeof this.prefs.quality !== 'object') this.prefs.quality = {};
         this.prefs.keep = !!this.prefs.keep;
         if (location.protocol === 'file:') {
-            for (const id of ['start-convert-wrap', 'btn-convert']) { const el = this.el(id); if (el) el.classList.add('hidden'); }
+            for (const id of ['start-convert', 'btn-convert']) { const el = this.el(id); if (el) el.classList.add('hidden'); }
         }
         this.el('cv-close').addEventListener('click', () => this.close());
         this.el('cv-cancel').addEventListener('click', () => this.cancelOrStop());
@@ -62,6 +62,13 @@ const Convert = {
         panel.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && !UI.isOpen()) { e.preventDefault(); this.close(); }
             e.stopPropagation();
+        });
+        const startRun = this.el('start-convert-run');
+        if (startRun) startRun.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-act]');
+            if (!b) return;
+            e.stopPropagation(); // Convert more…'s menu stays open
+            this.startAction(b.dataset.act, b);
         });
         this.el('cv-body').addEventListener('click', (e) => {
             const b = e.target.closest('[data-format],[data-keep]');
@@ -90,7 +97,7 @@ const Convert = {
             app.showToast('Converting can\'t run here: open jEditor from its app or its web page');
             return;
         }
-        if (choose || !app.dirHandle || app.readOnlyMode || !app.files.length) {
+        if (choose || !app.dirHandle || app.fixedFiles || !app.files.length) {
             await this.chooseFolder();
             return;
         }
@@ -167,6 +174,7 @@ const Convert = {
         this.el('cv-panel').classList.add('hidden');
         this._gen = (this._gen || 0) + 1; // estimates still coming are dropped
         if (!this.run) this.dropCloseUp();
+        this.paintStart();
     },
 
     cancelOrStop() {
@@ -183,6 +191,7 @@ const Convert = {
         if (i !== -1) { stack.splice(i, 1); History.changed(); }
         this.done = null;
         this.close();
+        this.paintStart();
         try { await this.undo(entry); } catch (e) { this.app.showToast('Couldn\'t put them all back: ' + e.message, 5000); }
     },
 
@@ -199,6 +208,166 @@ const Convert = {
 
     fmt(n) { return this.app.formatBytes(n); },
     esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); },
+
+    // ---- The start page: photos or a folder ----
+
+    // Convert photos, on the start page: photos (converted there, on the
+    // start page) or a folder (in this window, as from anywhere)
+    startMenu(btn) {
+        if (this.run) { if (!(this.run.start && this.onStart())) this.show(); return; }
+        if (typeof window.showOpenFilePicker !== 'function') { this.open({ choose: true }); return; }
+        const r = btn.getBoundingClientRect();
+        this.app.openContextMenu([
+            ['Photos…', () => this.choosePhotos()],
+            ['A folder…', () => this.open({ choose: true })]
+        ], r.left, r.bottom + 4);
+    },
+
+    onStart() {
+        const drop = this.app.elements.dropZone;
+        return !!drop && !drop.classList.contains('hidden');
+    },
+
+    // Photos, picked one by one: their folder is asked for when they're
+    // converted (pickedHome)
+    async choosePhotos() {
+        const app = this.app;
+        if (this.run) { this.show(); return; }
+        if (!(await Codec.ready())) {
+            app.showToast('Converting can\'t run here: open jEditor from its app or its web page');
+            return;
+        }
+        let handles;
+        try {
+            handles = await window.showOpenFilePicker({
+                id: 'jeditor-convert-photos',
+                multiple: true,
+                types: [{ description: 'Photos', accept: { 'image/*': ['.jpg', '.jpeg', '.png', '.webp', '.avif', '.jxl', '.heic', '.heif', '.tif', '.tiff'] } }]
+            });
+        } catch (e) {
+            return; // cancelled
+        }
+        const all = (handles || []).filter(h => app.isImage(h.name))
+            .map(h => ({ name: h.name, handle: h, relPath: h.name, outside: true, picked: true }));
+        if (!all.length) {
+            if (handles && handles.length) app.showToast('Those aren\'t photos jEditor can convert', 3000);
+            return;
+        }
+        this.done = null;
+        this.paintStart();
+        this.begin({ all, name: null, picked: true, start: this.onStart() });
+    },
+
+    // The folder photos picked are in (or, keeping both, where the copies
+    // go): each is found in it, to be written beside. Replacing needs them
+    // all in it; copies of any that aren't go in its "jEditor Converted"
+    async pickedHome(list) {
+        const keep = this.prefs.keep;
+        let handle, path = null;
+        try {
+            if (Host.has('places')) {
+                path = await FolderCache.native().pickPath(keep ? 'Save the converted photos in' : 'Choose the folder these photos are in', null);
+                if (!path) return false;
+                handle = await FolderCache.native().folderHandle(path);
+            } else {
+                handle = await window.showDirectoryPicker({ id: 'jeditor-convert', mode: 'readwrite', startIn: list[0].handle });
+            }
+        } catch (e) {
+            if (e && e.name !== 'AbortError') this.app.showToast(`Couldn't use that folder: ${e.message}`, 4000);
+            return false;
+        }
+        const lost = [];
+        for (const f of this.scope.all) {
+            let parts = null;
+            try { parts = typeof handle.resolve === 'function' ? await handle.resolve(f.handle) : null; } catch (e) { /* not in it */ }
+            if (!parts || !parts.length) { lost.push(f); continue; }
+            let d = handle;
+            try {
+                for (const part of parts.slice(0, -1)) d = await d.getDirectoryHandle(part);
+            } catch (e) { lost.push(f); continue; }
+            f.parentDir = d;
+            f.relPath = parts.join('/');
+        }
+        if (lost.length && !keep) {
+            await UI.alert({
+                title: 'Choose the folder they\'re in',
+                message: `To replace them, jEditor needs the folder they're in (or one around it). ${lost.length === this.scope.all.length ? 'They aren\'t' : `${lost.length.toLocaleString()} of them aren't`} in ${handle.name}. Choose their folder, or choose Keep both to put copies in ${handle.name}.`
+            });
+            return false;
+        }
+        this.scope.outside = { handle, path };
+        this.scope.name = handle.name;
+        return true;
+    },
+
+    // How far it's got, or what it did, on the start page (photos picked there)
+    paintStart() {
+        const box = this.el('start-convert-run');
+        if (!box) return;
+        const run = this.run || this.done;
+        if (!run || !run.start || !this.onStart()) {
+            box.classList.add('hidden');
+            box.dataset.state = '';
+            return;
+        }
+        const label = Codec.FORMATS[run.format].label, n = run.list.length;
+        const state = this.run ? 'run' : 'done';
+        if (box.dataset.state !== state) {
+            box.dataset.state = state;
+            const reveal = state === 'done' && Host.has('reveal') && run.outside && run.outside.path;
+            box.innerHTML = `<div class="scr-title"></div>` +
+                (state === 'run' ? '<div class="cv-mini"><i class="cv-after-bar"></i></div>' : '') +
+                '<div class="scr-sub"><span class="scr-text"></span>' +
+                (state === 'done' ? '<span class="scr-back"> · <button type="button" class="link-btn" data-act="back"></button></span>' : '') +
+                '</div><div class="scr-actions">' +
+                (state === 'run'
+                    ? '<button type="button" class="btn secondary sm" data-act="pause"></button><button type="button" class="btn secondary sm" data-act="stop">Stop</button>'
+                    : (reveal ? `<button type="button" class="btn primary sm" data-act="reveal">${Host.say('Show in {files}')}</button>` : '') +
+                      '<button type="button" class="btn secondary sm" data-act="more">Convert more…</button>' +
+                      `<button type="button" class="btn ${reveal ? 'secondary' : 'primary'} sm" data-act="done">Done</button>`) +
+                '</div>';
+        }
+        const title = box.querySelector('.scr-title'), sub = box.querySelector('.scr-text');
+        const saved = `${this.fmt(Math.abs(run.saved))} ${run.saved < 0 ? 'more' : 'less'} storage`;
+        if (this.run) {
+            title.textContent = `Converting ${run.done.toLocaleString()} of ${n.toLocaleString()} photo${n === 1 ? '' : 's'} to ${label}…`;
+            box.querySelector('.cv-mini > i').style.width = `${n ? run.done / n * 100 : 0}%`;
+            const left = n - run.done, rate = run.done ? run.busyMs / run.done / Codec.size() : 0;
+            const mins = rate && left ? Math.max(1, Math.round(left * rate / 60000)) : 0;
+            sub.textContent = run.paused ? 'Paused: it\'ll wait for you' : run.stopped ? 'Stopping…'
+                : `${run.done ? saved + ' so far' : 'Starting…'}${mins ? ` · about ${mins} min left` : ''}`;
+            const pause = box.querySelector('[data-act="pause"]');
+            pause.textContent = run.paused ? 'Go on' : 'Pause';
+            pause.disabled = run.stopped;
+            box.querySelector('[data-act="stop"]').disabled = run.stopped;
+        } else {
+            const made = run.done - run.same - run.taken - run.failed;
+            title.textContent = `Converted ${made.toLocaleString()} photo${made === 1 ? '' : 's'} to ${label}` +
+                (run.stopped ? ` (stopped at ${run.done.toLocaleString()} of ${n.toLocaleString()})` : '');
+            const notes = [];
+            if (run.same) notes.push(`${run.same.toLocaleString()} wouldn't get smaller, so ${run.same === 1 ? 'it was' : 'they were'} left`);
+            if (run.taken) notes.push(`${run.taken.toLocaleString()} left: a file with the new name was there`);
+            if (run.failed) notes.push(`${run.failed.toLocaleString()} failed`);
+            const where = run.keep ? `the copies are in “${this.COPIES}” in ${run.outside.handle.name}` : Host.say(`the originals are in ${this.binName(run.outside)}`);
+            sub.textContent = `${this.fmt(run.total)} → ${this.fmt(Math.max(0, run.total - run.saved))} · ${where}` + (notes.length ? ' · ' + notes.join(' · ') : '');
+            box.querySelector('[data-act="back"]').textContent = run.keep ? 'Remove them' : 'Put them back';
+            box.querySelector('.scr-back').classList.toggle('hidden', !this.lastEntry);
+        }
+        box.classList.remove('hidden');
+    },
+
+    startAction(act, btn) {
+        const run = this.done;
+        if (act === 'pause') this.togglePause();
+        else if (act === 'stop') this.stop();
+        else if (act === 'back') this.putBack();
+        else if (act === 'more') { this.done = null; this.paintStart(); this.startMenu(this.el('start-convert')); }
+        else if (act === 'done') { this.done = null; this.paintStart(); }
+        else if (act === 'reveal' && run && run.outside && run.outside.path) {
+            const p = run.outside.path, sep = p.includes('\\') ? '\\' : '/';
+            FolderCache.native().reveal(run.keep ? p.replace(/[\\/]$/, '') + sep + this.COPIES : p);
+        }
+    },
 
     // ---- Before: the estimate ----
 
@@ -505,10 +674,10 @@ const Convert = {
         const lead = this.el('cv-lead');
         if (!lead) return;
         const one = !this.scope.outside && !this.scope.name && this.scope.all.length === 1;
-        const src = this.scope.outside ? (this.scope.outside.path || this.scope.name) : this.scope.name ? `${this.scope.name}, in this project` : one ? this.scope.all[0].name : 'The photos selected';
+        const src = this.scope.outside ? (this.scope.outside.path || this.scope.name) : this.scope.name ? `${this.scope.name}, in this project` : one ? this.scope.all[0].name : this.scope.picked ? 'Photos picked' : 'The photos selected';
         this.el('cv-src-name').textContent = one ? src : `${src} · ${this.scope.all.length.toLocaleString()} photo${this.scope.all.length === 1 ? '' : 's'}`;
         this.el('cv-src-name').title = src;
-        this.el('cv-replace-sub').textContent = Host.say(`to ${this.binName(this.scope.outside)}, ${this.scope.outside ? 'and back if you like' : 'Ctrl+Z brings them back'}`);
+        this.el('cv-replace-sub').textContent = Host.say(`to ${this.binName(this.scope.outside)}, ${this.scope.outside || this.scope.picked ? 'and back if you like' : 'Ctrl+Z brings them back'}`);
         lead.innerHTML = (F.lossless ? `${F.label} keeps every pixel; see what it does to their storage.` : `Choose how good they look in ${F.label} and see what it does to their storage.`) + ' Their dates, camera details, flags and edits go with them.' +
             (left.length ? ` ${left.length.toLocaleString()} ${left.length === 1 ? 'is' : 'are'} left as ${left.length === 1 ? 'it is' : 'they are'} (RAW, GIF or ${F.label} already).` : '');
         const big = this.el('cv-big');
@@ -535,7 +704,13 @@ const Convert = {
             const pct = Math.round((r.after / r.now - 1) * 100), top = Math.max(r.now, r.after);
             return `<div class="cv-folder"><span class="n">${this.esc(this.dirName(d))}<small>${r.n.toLocaleString()} photo${r.n === 1 ? '' : 's'}</small></span><div class="cv-mini"><i style="width:${r.now / top * 100}%" class="cv-now"></i><i class="cv-after-bar" style="width:${r.after / top * 100}%"></i></div><span class="s">${this.fmt(r.now)} → <b class="${pct > 0 ? 'cv-more' : ''}">${pct > 0 ? '+' : '−'}${Math.abs(pct)}%</b></span></div>`;
         }).join('');
-        this.el('cv-note').textContent = this.prefs.keep
+        // Photos picked: the folder they're in is asked for next (a picked
+        // photo can't be written beside without it)
+        if (this.scope.picked && !this.scope.outside) {
+            this.el('cv-note').textContent = this.prefs.keep
+                ? `Next, choose where: the copies go in “${this.COPIES}” there; nothing's deleted`
+                : Host.say(`Next, choose the folder they're in · the originals go to ${this.binName(null)} until you're happy`);
+        } else this.el('cv-note').textContent = this.prefs.keep
             ? `The converted copies go in “${this.COPIES}” in the project; nothing's deleted`
             : Host.say(`The originals go to ${this.binName(this.scope.outside)} until you're happy · ${this.scope.outside ? 'you can put them back after' : 'Ctrl+Z puts them back'}`);
         const go = this.el('cv-go');
@@ -554,18 +729,21 @@ const Convert = {
         const format = this.prefs.format, quality = this.quality(format);
         const { ok } = this.candidates(format);
         if (!ok.length) return;
+        if (this.scope.picked && !(await this.pickedHome(ok))) return;
         this._gen = (this._gen || 0) + 1; // no more estimates
         const total = ok.reduce((n, f) => n + (f.size || 0), 0);
         const run = this.run = {
             format, quality, keep: this.prefs.keep, list: ok, total, outside: this.scope.outside || null, scopeName: this.scope.name || `${ok.length.toLocaleString()} photo${ok.length === 1 ? '' : 's'}`,
             at: 0, done: 0, before: 0, after: 0, saved: 0, same: 0, failed: 0, taken: 0,
             colours: new Array(ok.length).fill(null), paused: false, stopped: false,
-            items: [], copies: [], started: performance.now(), busyMs: 0
+            items: [], copies: [], started: performance.now(), busyMs: 0, start: !!this.scope.start
         };
         this.el('cv-title').textContent = `Converting to ${Codec.FORMATS[format].label}`;
         this.el('cv-body').innerHTML = `<div class="cv-dots" id="cv-dots">${'<i></i>'.repeat(this.dotCount())}</div>
             <div class="cv-run-row"><span><b id="cv-saved">0 B</b> <span id="cv-saved-word">less storage</span></span><span id="cv-count"></span></div>`;
         this.paintRun();
+        // Photos picked on the start page: it carries on there, not in this window
+        if (this.scope.start && this.onStart()) this.close();
         this.app.beginTask('convert', `Converting 0/${ok.length}`);
         const tasks = Array.from({ length: Codec.size() }, () => this.worker(run));
         await Promise.all(tasks);
@@ -728,6 +906,7 @@ const Convert = {
     // Where replaced originals go
     binName(outside) {
         if (Host.has('recycle') && (!outside || outside.path)) return Host.words().bin;
+        if (!outside && this.scope && this.scope.picked) return 'a .jeditor/trash folder beside them';
         return outside ? `.jeditor/trash in ${outside.handle.name}` : 'jEditor\'s trash';
     },
 
@@ -841,6 +1020,7 @@ const Convert = {
             back.textContent = run.keep ? 'Remove the copies' : 'Put the originals back';
             back.classList.toggle('hidden', !this.lastEntry);
         }
+        this.paintStart();
     },
 
     finish(run) {
@@ -860,7 +1040,7 @@ const Convert = {
         if (row) row.innerHTML = `<span><b id="cv-saved"></b> <span id="cv-saved-word">less storage</span></span><span id="cv-count"></span>`;
         if (!this.el('cv-total-line')) this.el('cv-body').insertAdjacentHTML('beforeend', '<div class="cv-total-line" id="cv-total-line"></div>');
         this.paintRun();
-        if (!this.isOpen()) {
+        if (!this.isOpen() && !(run.start && this.onStart())) {
             this.app.showToast(`Converted ${(run.done - run.same - run.taken - run.failed).toLocaleString()} photos to ${Codec.FORMATS[run.format].label}: ${this.fmt(Math.abs(run.saved))} ${run.saved < 0 ? 'more' : 'less'} storage`, 6000, null,
                 { label: 'Show', run: () => this.show() }, { type: 'success' });
         }

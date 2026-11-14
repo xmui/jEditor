@@ -119,6 +119,13 @@
     --seg-bg: rgb(255 255 255 / 0.06);       /* segmented control track */
     --seg-active: rgb(255 255 255 / 0.16);   /* its chosen segment */
     --switch-off: rgb(255 255 255 / 0.24);
+    /* The docked sidebar (style.css): a quiet tint against the window's
+       edge, a hairline down it, and one soft highlight on the chosen row */
+    --sidebar-solid: #121214;
+    --sidebar-bg: var(--sidebar-solid);
+    --sidebar-line: rgb(255 255 255 / 0.08);
+    --sidebar-hover: rgb(255 255 255 / 0.05);
+    --sidebar-sel: rgb(255 255 255 / 0.10);
     /* Labels and badges drawn on top of photos: always dark, any theme */
     --on-photo-bg: rgb(0 0 0 / 0.62);
     --on-photo-shade: rgb(0 0 0 / 0.8);      /* gradient under folder names */
@@ -184,6 +191,8 @@
 :root.backdrop {
     --bg-window: color-mix(in srgb, var(--bg-canvas) var(--backdrop-tint), transparent);
     --bg-window-glow: color-mix(in srgb, var(--bg-surface) var(--backdrop-tint), transparent);
+    /* Mica or Acrylic through the sidebar too, a little more than the grid */
+    --sidebar-bg: color-mix(in srgb, var(--sidebar-solid) calc(var(--backdrop-tint) * 0.85), transparent);
 }
 
 /* ---- Light theme ---- */
@@ -215,6 +224,10 @@
     --seg-bg: rgb(0 0 0 / 0.06);
     --seg-active: #ffffff;
     --switch-off: rgb(0 0 0 / 0.24);
+    --sidebar-solid: #efeff1;
+    --sidebar-line: rgb(0 0 0 / 0.09);
+    --sidebar-hover: rgb(0 0 0 / 0.04);
+    --sidebar-sel: rgb(0 0 0 / 0.075);
 
     --danger-text: #b91c1c;
     --danger-soft: rgb(220 38 38 / 0.10);
@@ -349,6 +362,7 @@
         --glass-border: var(--border);
         --glass-rim: var(--highlight);
         --backdrop-tint: 100%;
+        --sidebar-bg: var(--sidebar-solid);
     }
 }
 
@@ -378,4 +392,49 @@
         --dur-slow: 120ms;
         --ease-spring: var(--ease-out);
     }
+}
+
+/* ==========================================================================
+   The 2.0 refinement, in jEditor's own look (the themes keep the values
+   above until they're dressed to match). Three surfaces, by what they're
+   for: the canvas behind photos (--bg-canvas, unchanged), the docked
+   chrome (--chrome: the sidebar's tint, shared by panels and bars) and
+   what's raised over the page (--bg-surface: dialogs and menus), with
+   --bg-raised for the controls on them. Greys beside a photo stay pure.
+   ========================================================================== */
+:root:not([data-skin]) {
+    /* Calm: nothing overshoots (style.css: the 2.0 refinement, motion) */
+    --ease-spring: var(--ease-out);
+    --chrome: var(--sidebar-bg);
+    --chrome-line: var(--sidebar-line);
+    --bg-surface: #1b1b1d;
+    --bg-raised: #252528;
+    --border-subtle: rgb(255 255 255 / 0.07);
+    --border: rgb(255 255 255 / 0.11);
+    --scrim: rgb(0 0 0 / 0.42);
+
+    /* Corners: a photo, a control, a menu or card, a dialog */
+    --r-photo: 3px;
+    --r-md: 7px;
+    --r-lg: 10px;
+    --r-xl: 12px;
+
+    --row: 28px;         /* a row in a list or a menu */
+    --ctl-lg: 40px;      /* floating toolbars */
+
+    /* The one slider: a thin track and a white knob */
+    --slider-track: rgb(255 255 255 / 0.22);
+    --slider-knob: #fff;
+    --slider-knob-edge: 0 0 0 1px rgb(0 0 0 / 0.28), 0 1px 3px rgb(0 0 0 / 0.4);
+    /* The light along the top of a filled button */
+    --btn-sheen: inset 0 1px 0 rgb(255 255 255 / 0.14);
+}
+
+:root:not([data-skin])[data-theme="light"] {
+    --bg-surface: #ffffff;
+    --bg-raised: #f1f1f3;
+    --border-subtle: rgb(0 0 0 / 0.07);
+    --border: rgb(0 0 0 / 0.12);
+    --scrim: rgb(0 0 0 / 0.28);
+    --slider-track: rgb(0 0 0 / 0.2);
 }

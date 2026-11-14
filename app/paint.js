@@ -193,10 +193,10 @@ const Paint = {
             return;
         }
         const o = ed.outputRect();
-        const [c, s] = ed.cs();
+        const [a, b, c, d] = ed.mat(); // the turn, and any flip
         // The output canvas may be a different size from ed's (a preview)
         const k = w / o.w;
-        ctx.setTransform(c * k, s * k, -s * k, c * k, -o.x0 * k, -o.y0 * k);
+        ctx.setTransform(a * k, b * k, c * k, d * k, -o.x0 * k, -o.y0 * k);
         ctx.drawImage(src, -ed.W / 2, -ed.H / 2, ed.W, ed.H);
         ctx.setTransform(1, 0, 0, 1, 0, 0);
     },

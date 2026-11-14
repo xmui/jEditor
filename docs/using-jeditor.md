@@ -2,19 +2,19 @@
 
 jEditor is a photo viewer for rotating, cropping and straightening folders of photos, built for working through scan orders. It edits the files on your disk directly. Nothing is uploaded.
 
-To install it, see the [README](../README.md). The version number is shown on the start screen.
+To install it, see the [README](../README.md). The version number is shown at the top right of the home page.
 
 ## Using it
 
-1. Click **Open folder**, or drag a folder onto the window. Subfolders are included. The last six folders you opened are listed under **Recent** on the start screen; click one to open it again, or hover and click × to take it off the list. If you open a folder that's inside an order on the Recent list, jEditor offers to open the whole order at that folder instead, so the order keeps a single `.jeditor` folder. (For now this only works for orders on the Recent list; jEditor can't yet tell from a folder alone which order it's in.)
-2. Move through photos with `←` / `→`. In single view the buttons above the film strip fade away after a few seconds; move the pointer there to bring them back, or turn off **Buttons above the film strip** in Settings to hide them for good. `Space` switches between single view and grid. In the grid, the slider at the bottom right or `Ctrl` + mouse wheel makes the tiles bigger or smaller; the highlighted photo stays where it is on screen.
+1. On the home page, click **Open a folder**, or drag a folder onto the window. **Open a folder** opens a card: search your projects and recent folders as you type, drag a folder onto it or click **Browse…**, pick a recent folder, the Photos library (on a Mac), or any project in your projects folder (the Windows, Mac and Linux apps), with a few of its thumbnails. Its foot says where your projects folder is, with a small link to change it. The first time you click **Open a folder** (or drag a folder in), jEditor asks two things once: where your projects are kept (in the apps), and whether edits are saved straight away or kept until you save them (**Save edits when done**). After that, each folder you open for the first time asks whether to keep its edits until saved; turn that off in Settings → Projects (**Ask about saving edits when opening a folder**), and new folders follow Save edits when done. **New project** has the same switch in its name dialog, so a project made there isn't asked. Subfolders are included. The home page is a table: the last folders you opened lie on it as stacks of prints, newest first (four at most; three in a small window), each with when you opened it and how many photos it had. A photo you opened on its own in Adjust or Paint lies there too, as one print called **Recent**, while it's the last thing you opened. Point at a stack and its prints fan out; click it to open it again, straight in the grid, or click × to take it off the table (the folder isn't touched). **All projects…** (the Windows, Mac and Linux apps) lists your projects folder, pinned folders and drives. Under the table are the main jobs as big tiles: **Open a folder**, **Scan or Capture** (the Windows app; it's **Import** while a camera's card is plugged in, and **New canvas** where there's no scanner or camera), **Convert**, **Adjust a photo** and **Paint a photo**. At the top right are the version, with a dot on **Settings** when an update is ready, and **Settings**, whose menu has **Save edits when done** (for projects opened from then on; each project can still change it in its card), **When jEditor opens** (this page, the last project, or a project you pick; in a browser, a project that needs asking for permission again waits on the table), Settings, keyboard shortcuts and what's new. Both settings are in Settings → Projects too. If you open a folder that's inside an order you've opened before, jEditor offers to open the whole order at that folder instead, so the order keeps a single `.jeditor` folder. (For now this only works for orders on the Recent list; jEditor can't yet tell from a folder alone which order it's in.)
+2. Move through photos with `←` / `→`. In single view the buttons above the film strip fade away after a few seconds; move the pointer there to bring them back, or turn off **Buttons above the film strip** in Settings to hide them for good. `Space` switches between single view and grid: a photo opened from the grid zooms quickly out of its thumbnail, and shrinks back into it on the way back (not with Animations off, the system's Reduce motion, or a theme). In the grid, the slider at the bottom right or `Ctrl` + mouse wheel makes the tiles bigger or smaller; the highlighted photo stays where it is on screen.
 3. Rotate with `[` / `]`. In grid view this rotates every selected photo.
 4. Press `C` to crop and straighten. `Enter` saves, `Shift+Enter` saves and opens the next photo, `Esc` cancels.
 5. `Ctrl+Z` undoes the last rotation, crop, rename or delete.
 
 Changes are saved to the original files as you go.
 
-**Settings** (the gear in the toolbar's **More** section, the link on the start screen, or `Ctrl+,`) has a page for each kind of setting, chosen on the left; it opens on the last one you used.
+**Settings** (the gear in the toolbar's **More** section, the home page's gear menu, or `Ctrl+,`) has a page for each kind of setting, chosen on the left; it opens on the last one you used.
 
 - **Appearance**: in the Windows, Mac and Linux apps, a **theme** (see [Themes](#themes)); the theme (dark, light or match the system), the accent color and the color behind photos (black, gray or light, for judging color); on Windows 11 (22H2 or later), **Window background** puts Mica or Acrylic behind jEditor, like the Start menu, and **Transparency** sets how much of the desktop shows through (photos, Crop and Duplicates stay solid; it needs Windows' Transparency effects on, in Settings → Personalization → Colors); then glass (Crystal, the clearest, to start with; Liquid, like Apple's Liquid Glass, which bends what's under its edges; Clear; Opaque, which is faster on older computers; or Lens, a bubble of thick glass; the system's Reduce transparency or Increase contrast makes any of them solid) and its tint (none, your accent colour, warm, cool or rose: none is best for judging colour), animations (on, or off: things just change), density and toolbar size.
 - **Toolbar & keys**: keyboard shortcuts and their profiles, a vertical toolbar, the buttons above the film strip, and which buttons are in the toolbar.
@@ -54,6 +54,15 @@ Flags are kept with the order, in `.jeditor/flags.json`, so they follow renames 
 
 `Ctrl+F` or `/` (or the magnifier in the folder pill) searches the photos by name and folder as you type. Every word must match, in any order: `smith 004` finds `Smith_0042.jpg`, `ceremony` finds everything in the Ceremony folder. `is:star`, `is:rescan`, `is:flagged`, `is:unflagged` and `is:red` (or another colour) match flags. `Enter` goes back to the grid with the results; `Esc` clears the search. The arrow keys, film strip and `Ctrl+A` cover the results only.
 
+## Find anything
+
+`Ctrl+K` (`⌘K` on a Mac), or **Find anything…** in the mode menu (the **Photos ▾** chip, **Adjust ▾** or **Paint ▾** in those modes; Edit in a theme's menu bar), opens one box that finds jEditor's commands, the project's photos and folders, and your other projects as you type. `↑` `↓` choose, `Enter` runs it, `Esc` closes. It works in Photos, Adjust, Paint, Crop and Duplicates, and lists what works there: in Adjust, Auto color and Before and after; in Paint, the tools.
+
+- **Forgiving:** every word must match, in any order. `rot` finds Rotate left and right, `rtl` Rotate left, `delte` Move to trash, `delete` too (other words for the same thing count), and a photo by its name or its folder's.
+- **Says what it acts on:** with photos selected in the grid, the commands that act on them say "3 selected".
+- **Teaches the keys:** each command shows its key at the right, as you've set them in Keyboard shortcuts.
+- **Learns:** what you pick often and lately comes first. Opened with nothing typed, it shows the last few you picked, then what fits: for the selection (Move to…, Star, Rotate, Turn upright, Rename, Export…), or in Adjust and Paint, their usual ones.
+
 ## What it does to your files
 
 - **Rotation.** JPEGs are rotated by changing the EXIF orientation tag, so the image data isn't recompressed. This works on scanner files that have no orientation tag yet. PNG and WebP are re-encoded; PNG stays lossless. GIFs aren't rotated, because that would lose the animation.
@@ -61,7 +70,7 @@ Flags are kept with the order, in `.jeditor/flags.json`, so they follow renames 
 - **Rename.** Files are renamed in place. If the new names overlap the old ones (shifting a numbered sequence, say), they go through temporary names first. If a rename fails part-way, every file gets its original name back.
 - **Delete.** Photos are moved to `.jeditor/trash` inside the opened folder, not deleted. `Ctrl+Z` restores them.
 - **Move to a folder.** Photos are moved on disk, which is a rename and instant even for big scans; where a file can't be moved it's copied and the original removed. A copy is a byte-for-byte duplicate. Cached thumbnails and previews follow the photo, so moving doesn't make them again.
-- **Export.** Copies go to a `jEditor Export` folder (or onto a USB drive, or a folder you choose), optionally resized or in another format, with any adjustments and edits not saved yet.
+- **Export.** Copies go to a folder named after the project (`Summer 2024 export`; or onto a USB drive, or into a folder you choose), full quality, for the web, for print or as you set them, with any adjustments and edits not saved yet.
 - **Convert.** Each photo is written again as AVIF, JPEG XL or WebP, upright and in sRGB, with its EXIF (orientation reset, the old thumbnail dropped; the colour profile isn't kept, as the pixels are sRGB now). Replacing puts the original in the Recycle Bin or `.jeditor/trash`; `Ctrl+Z` puts it back under its old name.
 - **Adjust.** Never written into the photo in a project: the settings are kept in `.jeditor/edits.json`, and Export (or **Save edits…**) writes the result, re-encoded like a crop, with the metadata carried over. Without a project (photos picked on a phone, or dropped in), they're written into the photo when you leave Adjust.
 
@@ -99,7 +108,7 @@ It works like Lightroom or Apple Photos: the crop frame stays in the middle of t
 - **Zoom** for a closer look: scroll on the photo (or pinch on a trackpad) to zoom in and out where the pointer is, or use `+` and `-` and the buttons in the bottom corner. Hold `Space` and drag, or drag with the middle button, to look around. Zoomed in, the view stays put while you drag and straighten; **Fit** (`Z`) goes back to the whole crop, as do a new aspect, a quarter turn, **Auto**, **Previous** and **Reset**. Close-ups use the full-size photo, not the screen-sized copy, once it's loaded.
 - **Auto crop is an experiment for now**: turn it on in **Settings → Experimental → Auto crop**. While it's off (as it starts), Auto, Every photo, batch Auto crop (`Shift+A`), the scan window's Auto crop and the Auto crop settings page don't show, and no test scans are kept. Finding the prints on the glass in the scan window stays either way. Turned on, they're all back.
 - **Auto** (`Shift+A`) finds the print on a scan, straightens it and crops to its edges. It needs a plain scanner lid or background around the photo (or, when the scan cut the print off at two opposite sides, down the other two), and it leaves a few pixels' margin so none of the bed shows. Turn on **Every photo** to run Auto on each photo as it opens. With `Shift+Enter` (save and next), a scan order then becomes: check the crop, press `Shift+Enter`, repeat.
-- **Turn upright** (`Shift+U`, or Turn upright in the right-click menu) turns the photo, or every photo selected in the grid, the right way up. jEditor's own small network looks at each one (in `upright.js`; how it was trained is in `tools/upright`) and only turns a photo when it's sure, so some are left for you. Each is turned the way the rotate buttons turn them, and one `Ctrl+Z` undoes them all. **Turn upright** in the scan window does it to each photo as it's scanned (on to start with), and turns a photo's back with its front.
+- **Turn upright** (`Shift+U`, or Turn and flip → Turn upright in the right-click menu) turns the photo, or every photo selected in the grid, the right way up. jEditor's own small network looks at each one (in `upright.js`; how it was trained is in `tools/upright`) and only turns a photo when it's sure, so some are left for you. Each is turned the way the rotate buttons turn them, and one `Ctrl+Z` undoes them all. **Turn upright** in the scan window does it to each photo as it's scanned (on to start with), and turns a photo's back with its front.
 - **Batch Auto crop.** In the grid, select photos and press `Shift+A` (or **Auto crop** under ⋯ on the selection bar, or the right-click menu). Auto runs on each of them in the background, with the aspect ratio last chosen in the editor, and saves them. Photos with no print edge, or already cropped to it, are left alone. The originals are kept in `.jeditor/originals`, so one `Ctrl+Z` puts the whole batch back; flip through the results and fix the odd one in the editor.
 - `Ctrl+Z` inside the editor undoes the last adjustment; `Ctrl+Shift+Z` redoes it.
 - Aspect presets: 4×6, 5×7, 8×10, 11×14, square, 3:4, 16:9, original and free. `X` swaps portrait and landscape. A preset fits inside the current crop, so choosing one after Auto never takes in the bed.
@@ -132,9 +141,10 @@ Under the histogram, three tabs. **Edit** has the sliders, in Lightroom's order:
 - **Detail:** **Sharpening** (how much), **Radius** (how fine: 1 for crisp detail, 2–3 for a stronger look) and **Masking** (higher keeps it to edges, off skin and sky); **Noise reduction** smooths grainy or noisy areas while keeping edges, **Color noise** takes out the coloured blotches of a dark or high-ISO scan. These work on the photo's own pixels, so they show at 1:1: the view at the top of the section is the full photo at 1:1, where you click on it (the box on the photo shows where). Export and Save edits apply them at full size.
 - **Effects:** a **Vignette** (to the left darkens the corners, to the right lightens them) with its **Midpoint**, **Feather** and **Roundness**, film **Grain** with its size and **Grain color** (colour film's grain is clouds of dye in each colour), and **Halation**, the red glow round bright lights. The vignette is on the photo as cropped.
 - Double-click a slider's name to put it back to 0; each section has its own **Reset**.
+- **Zoom**, as in Lightroom: `Ctrl`+wheel (`Cmd` on a Mac) or a trackpad pinch zooms about the pointer; `Ctrl+=` and `Ctrl+-` zoom in and out, `Ctrl+0` fits the photo and `Ctrl+1` shows it at 100% (one of the photo's pixels to one of the screen's); double-click goes between Fit and 100% on the spot clicked. Zoomed in, drag the photo (or use the wheel, or two fingers) to move about; hold `Space` and drag to move about with a mask or spot tool out. The chip at the bottom right of the photo shows the zoom, with **Fit** and **100%** to click. Past the screen-sized copy's own pixels, the part on screen is drawn from the full-size photo, so 100% is sharp and shows sharpening and noise reduction as Export makes them; masks, spots and the before view zoom with it. The code is the Zoom section of `app/adjust.js`.
 - `\` shows the photo as it was (before and after). `Ctrl+Z` / `Ctrl+Shift+Z` undo and redo inside Adjust.
 - **Copy** and **Paste** (`Ctrl+Shift+C` / `Ctrl+Shift+V`) carry the adjustments to other photos. In the grid, `Ctrl+Shift+V` pastes onto every selected photo; the right-click menu has it too.
-- **Sync** (`Ctrl+Shift+S`, Edit → Sync adjustments…, or right-click a selection), as in Lightroom: select the photos, then click the one to sync from last (it has the outline; right-clicking one syncs from that one). A dialog ticks which groups go: crop (with bulk crop: the same as Crop like the last crop, a portrait frame turned to fit and each photo's own quarter turn kept; unticked when the source has no crop of its own), look, white balance, light, presence, levels, tone curve, color mixer, color grading, detail, effects, masks and spot removal. Masks and spot removal start unticked, since they're placed on one photo's own sky and specks; sky and subject masks are found in each photo, so they never move. A group the source hasn't changed is greyed: ticked, it's taken off the others. Each photo keeps what isn't ticked, and its crop; what's ticked is remembered. One `Ctrl+Z` undoes it on every photo. In Adjust, `Ctrl`+click (or `Shift`+click) photos in the strip to select them as well as the one open (a ring inside marks them); then Sync (`Ctrl+Shift+S`, or right-click the strip) puts the open photo's settings, as they are now, onto them. **Auto Sync** (`Ctrl+Alt+Shift+S`, Edit → Auto Sync, or right-click the strip), as in Lightroom: each setting you change goes onto the selected photos too, a moment after, and only that setting, so each keeps the rest of its own; masks and spots stay where they're drawn. An "Auto sync: N photos" chip at the top says it's on (its ✕ turns it off); it goes off when you leave Adjust or select a single photo, and `Ctrl+Z` in Adjust takes the step off the others too. The code is `app/adjust-sync.js`, its groups `Develop.SYNC` in `develop.js`.
+- **Sync** (`Ctrl+Shift+S`, Edit → Sync adjustments…, Sync… in the grid's selection bar once two or more are selected, or right-click a selection), as in Lightroom: select the photos, then click the one to sync from last (it has the outline; right-clicking one syncs from that one). A dialog ticks which groups go: crop (with bulk crop: the same as Crop like the last crop, a portrait frame turned to fit and each photo's own quarter turn kept; unticked when the source has no crop of its own), look, white balance, light, presence, levels, tone curve, color mixer, color grading, detail, effects, masks and spot removal. Masks and spot removal start unticked, since they're placed on one photo's own sky and specks; sky and subject masks are found in each photo, so they never move. A group the source hasn't changed is greyed: ticked, it's taken off the others. Each photo keeps what isn't ticked, and its crop; what's ticked is remembered. One `Ctrl+Z` undoes it on every photo. In Adjust, `Ctrl`+click (or `Shift`+click) photos in the strip to select them as well as the one open (a ring inside marks them); then Sync (`Ctrl+Shift+S`, or right-click the strip) puts the open photo's settings, as they are now, onto them. **Auto Sync** (`Ctrl+Alt+Shift+S`, Edit → Auto Sync, or right-click the strip), as in Lightroom: each setting you change goes onto the selected photos too, a moment after, and only that setting, so each keeps the rest of its own; masks and spots stay where they're drawn. An "Auto sync: N photos" chip at the top says it's on (its ✕ turns it off); it goes off when you leave Adjust or select a single photo, and `Ctrl+Z` in Adjust takes the step off the others too. The code is `app/adjust-sync.js`, its groups `Develop.SYNC` in `develop.js`.
 - There's no Done button: what you do is kept as you go. Leave with the mode switch, `Esc` or `Enter` (back to Photos), or click another photo in the strip; `Shift+Enter` goes on to the next photo. `Ctrl+Z` in Photos takes a whole visit's adjustments off again.
 
 Adjustments are non-destructive: the photo on disk isn't changed. They're kept with the project (`.jeditor/edits.json`), shown wherever the photo is, and can be changed again any time, from the original. A pencil on the photo says it has them. An adjusted photo keeps its turns and crops the same way, so everything is applied once, from the original. **Export…** writes copies with the adjustments; **Save edits…** (right-click the grid background) writes them into the photos, keeping the originals for `Ctrl+Z`. **Discard edit** takes them off.
@@ -155,7 +165,23 @@ Adjust and Paint have no Done bar: what you do is kept as you go, as in Lightroo
 
 Drag the inner edge of the sidebar, or of Adjust's or Paint's panel, to make it wider or narrower; jEditor remembers each width, in every theme. Double-click the edge to put it back.
 
-The start page's **Start in** (Photos, Adjust or Paint) is remembered: a project you open from there lands in that mode, on its first photo. **Paint** there (or **New blank canvas…**) asks what to paint on: a **New canvas** (below), or **Open a file**: **An image…** opens a single picture on its own (the painting goes into it when you leave Paint), **A folder…** opens a folder of photos as a project in Paint.
+## The sidebar
+
+The sidebar runs down the window's left edge, the full height of it, as Finder's and Preview's do: a quiet tint (on a Mac, the window's own see-through material; on Windows 11, Mica when the window's background is on), small grey headings, compact rows and one soft highlight, on what the grid is showing. `Ctrl+B` folds it away and back; drag its edge to make it wider. It stays beside the photo when you open one (not on a phone-sized window, where it would cover it). On a Mac the traffic lights sit in its top corner.
+
+From the top:
+
+- **Photos · Adjust · Paint**, the mode switch.
+- **The project's name** (the Windows, Mac and Linux apps). Click it for the **project picker**: type to find any project, your recent ones first, the open one ticked; **All projects…** lists every one by name, with your projects folder (click its name to choose another); **New project…** and **Open a folder…** are there too. `↑` `↓` and `Enter` open one, `Esc` closes it. Right-click the name (or its **…**) for **Rename…**, **Show in Explorer** (Finder, Files), **Scan…**, **Export…**, **Save edits when done**, **Split with another window** and **Pin to the sidebar**.
+- **The folders** in the project, with how many photos are in each, under **All photos**. The project's own top folder is a row only while it has photos of its own. Right-click the sidebar's empty space for **New folder…**.
+- **Recents**: the last four projects you opened (not the open one: it's the heading), with how many photos each has, then **Show all…** (the picker, every project). Right-click one for **Open**, **Open in a new window**, **Rename…**, **Show in Explorer** and **Remove from Recents** (it comes off this list and the home page's table; the folder isn't touched).
+- **Pinned** folders, and **This PC** (**Locations** on a Mac): each drive with a thin bar of how full it is and how much room is left (`182 GB free`; in red when less than a tenth is left). A drive opens out to its folders; a USB drive has **Eject** when you point at it.
+
+**Rename…** renames a project in place, as Finder does: its name becomes a field, chosen, ready to type over. `Enter` renames it, `Esc` or clicking away leaves it as it was. The folder is renamed on the disk; the open project is closed and opened again under its new name, and its flags, kept edits, thumbnails, pins, the projects folder and Recents all follow it. `Ctrl+Z` (or **Undo** on the message) puts the old name back.
+
+In a theme, the sidebar is the theme's own, as it was: its project card has Scan, Explorer, Export and the Save edits switch as buttons.
+
+The home page's **Adjust a photo** opens one photo on its own in Adjust (in a browser that can't open one file, a folder, in Adjust). The home page has three tiles, **Open a folder**, **New project** and **Convert**, and under them a quiet row: **Scan or Capture** (or **Import**, while a camera's card is in), **Adjust a photo** and **Paint a photo**. **New project** starts with a blank canvas; it and **Paint a photo** ask what to paint on: a **New canvas** (below), or **Open a file**: **An image…** opens a single picture on its own (the painting goes into it when you leave Paint), **A folder…** opens a folder of photos as a project in Paint.
 
 ## Paint
 
@@ -174,19 +200,28 @@ Painting goes on last, over the photo as it's cropped and adjusted, so it looks 
 
 ## Drives, cards and discs
 
-**Export…** under the **…** by the project's name at the top of the sidebar (or right-click it, or a project in the list, or **Export…** under ⋯ on the selection bar; in a theme, **Export** on the project's card) opens one window for taking photos off this computer. Each choice says what goes and whether it fits before anything starts, and drives and discs show up as they're put in:
+**Export…** under the **…** by the project's name at the top of the sidebar (or right-click it, or **Export…** under ⋯ on the selection bar; in a theme, **Export** on the project's card) opens one window for taking photos off this computer. Or right-click a USB drive or card in the sidebar for **Export [project] to [drive]…** (copies of the photos) or **Copy [project] to [drive]…** (the whole folder as it is), or a disc drive for **Burn [project] to a disc…**. Each choice says what goes and whether it fits before anything starts, and drives and discs show up as they're put in:
 
-- **USB drive or card** (Windows, Mac and Linux): the whole project, copied in one step, with how far it's got. Each drive is listed with the room left on it. The project's flags and edits go with it, so when it's opened in jEditor on another computer they're all there. **Eject it when it's done** ejects the drive after.
-- **CD or DVD** (Windows): the burner, whether there's a blank disc in it and whether the project fits, the disc's name, and (with edits not saved yet) whether to save them into the photos first, since the disc gets the photos as they are on disk. The disc comes out when it's done.
-- **Copies** (everywhere): copies of the selected photos, all of them or the starred ones, full size or smaller (the longest side: 4000, 3000, 2048, 1600, 1080 px or any other), as they are or as JPEG, PNG, TIFF, WebP, AVIF or JPEG XL (**Format**), with edits not saved yet in them, and RAWs as JPEGs. They go into `jEditor Export` in the project, into `jEditor Export` on a USB drive, or into a folder you choose.
+- **USB drive or card** (Windows, Mac and Linux): the whole project, copied in one step, with how far it's got. Each drive is listed with the room left on it. The photos are copied as they are on disk, with no `.jeditor` folder: the flags and edits stay on this computer. Tick **Take its flags and edits too** (off to start with) to put them in a `.jeditor` folder in the copy, so when it's opened in jEditor on another computer they're all there. **Eject when done** ejects the drive after.
+- **CD or DVD** (Windows): the burner, whether there's a blank disc in it and whether the project fits, the disc's name, and (with edits not saved yet) whether to save them into the photos first, since the disc gets the photos as they are on disk. **Eject when done** brings the disc out after.
+- **Copies** (everywhere): pick what they're for, from a row of pills: **Full quality** (as they are, full size, all their metadata), **Email** (JPEG at 80%, 2048 px, sRGB, without the location), **Web** (JPEG at 90%, 3000 px, sRGB, without the location), **Social** (JPEG at 85%, 1080 px, sRGB, without the location), **Print** (JPEG at 95%, full size, with its own colour profile, DPI and all its metadata) or **Archive** (lossless TIFF, full size, all its metadata; PNG where TIFF can't be written). What it sets shows under it. **Custom** shows the fields instead, and is remembered: the format and its quality (as they are, JPEG, PNG, TIFF, WebP, AVIF or JPEG XL; 60–100% for JPEG, WebP, AVIF and JPEG XL), the size (full, or the longest side: 4000, 3000, 2048, 1600, 1080 px or any other), the metadata (all of it, all but the location, or none) and the colour (as it is, with its own profile, or made sRGB for screens). The last preset used is picked next time. A sentence says what will happen, and pills set which photos (the selected ones, all of them or the starred), the names (their own, or numbered after the folder: `Summer 2024 – for print 001.jpg`) and where. They go into a folder named after the preset (**Folder name**, `Summer 2024 – for print`, or `Summer 2024 export` for Custom), in the project, on a USB drive (**Eject when done** ejects it after), or in a folder you choose. Edits not saved yet go in them, and RAWs come out as JPEGs. In the project, they're left out of it to start with, so Rescan doesn't list the copies as the project's photos (as `jEditor Export` never was): the Where pill's menu has **Leave them out of the project** to change that.
 
 In the Windows, Mac and Linux apps:
 
 - **Importing from a camera's card:** when a card with a DCIM folder is plugged in, jEditor offers to import it; or press `Ctrl+I` (in a browser, choose the card's folder). The photos go into the open project, a new project in your projects folder (named for the day and the card), or a folder you choose; into a folder per day if you like; only the ones not imported before; and the card is ejected after if you like. RAW files come too; videos stay on the card.
 
+## The Photos library (Mac)
+
+The Mac app has your Photos library in the sidebar, under Locations (`photosLibrary`). Open it out for Favourites, Recently added and your albums; click one to open it as the project, or **Open** for the whole library. macOS asks once whether jEditor may see it (and it's in jEditor → Permissions…).
+
+- **Editing a photo from it** works as for any photo: rotate, flip, crop and straighten, Adjust, Paint, Save edits. jEditor starts from the photo **as it is now**, with whatever was done to it before in Photos or another app, and the edit is saved back into Photos on top of that, as a Photos edit. So it shows in Photos and on your other devices, the earlier edits are kept in it, and Photos keeps the untouched original: **Revert to Original** in Photos goes back to it. `⌘Z` in jEditor puts the photo back as it was before (saved as one more edit, so nothing in Photos is lost). macOS may ask you to allow jEditor to change each photo.
+- Photos sees jEditor's edit as finished pixels: Photos' own sliders for the earlier edits can't be moved again after it (Revert to Original still undoes the lot). jEditor keeps its own edits re-editable until they're saved, as it does for any photo (Save edits when done).
+- **Renaming, moving and deleting** library photos are left to Photos, so those aren't in the menus. Flags and kept edits are kept on this Mac, for each album.
+- **Add to Photos library** (`photosAdd`), on a photo's right-click, under ⋯ on the selection bar, or **Add all to Photos library** on the grid's right-click, puts a folder project's photos into Photos as they are on disk, with their dates, DPI and the rest of their metadata, in an album named after the project (made the first time). A scan order becomes an album. If some have edits not saved yet, jEditor asks you to save them first (Save edits…), so Photos gets the photo as it looks here.
+
 ## Converting photos: format, quality and storage
 
-**Convert…** turns photos, one or many, into another format: **AVIF** (smallest), **JPEG XL** (newest), **WebP** (for the web), **JPEG** (opens anywhere), **PNG** (lossless) or **TIFF** (lossless, for print). Open it from the toolbar's **Convert** button (under ⋯ to start with; Settings can put it on the toolbar; in single view it converts the photo open), **Convert photos…** on the start page, right-clicking a photo, the selected photos, a folder or the project in the sidebar, or ⋯ on the selection bar.
+**Convert…** turns photos, one or many, into another format: **AVIF** (smallest), **JPEG XL** (newest), **WebP** (for the web), **JPEG** (opens anywhere), **PNG** (lossless) or **TIFF** (lossless, for print). Open it from the toolbar's **Convert** button (under ⋯ to start with; Settings can put it on the toolbar; in single view it converts the photo open), **Convert** on the home page, right-clicking a photo, the selected photos, a folder or the project in the sidebar, or ⋯ on the selection bar.
 
 - **Photos:** what's being converted: the project, a folder in it or the selected photos. **Choose a folder…** picks any folder on your computer instead, with the photos in its folders too, without opening it as the project (from the start page, it asks straight away). A folder chosen keeps its originals in the Recycle Bin, or in a `.jeditor/trash` of its own, and **Put the originals back** at the end takes the conversion back.
 
@@ -208,9 +243,9 @@ Some orders are collated: the photos go into labelled folders. Open the order fo
 - **All photos** (top of the list, or the switch in the folder pill at the top left) shows every photo in the order, whatever folder it's in, with each photo's folder named on its tile. It's what you see when an order is opened. `A` switches between All photos and the last folder.
 - **Moving.** Drag the selected photos onto a folder, in the list, a folder tile or the breadcrumb. Hold `Ctrl` (or `Alt`) when you let go to copy them instead. Or press `M` (`Shift+M` copies), or use **Move to…** on the selection bar or the right-click menu. That opens a list of folders: type to find one, or type a new name to make that folder and move the photos into it in one go. `Wedding/Speeches` makes a folder inside another.
 - **Name clashes.** If a photo with the same name is already in the folder, you're asked what to do: keep both (the moved photo gets a number, `IMG_0042 (2).jpg`), skip it, or replace the one that's there, which goes to the trash. You can apply the answer to the rest of the clashes. Cancel and nothing is moved.
-- **Folders.** **New folder** at the bottom of the folder list, `Shift+N`, or right-clicking the grid makes one inside the folder you're looking at. Right-click a folder to rename it, make a folder inside it, make a **New blank image…** in it (to paint on), or delete it once it's empty.
+- **Folders.** `Shift+N`, right-clicking the grid or the sidebar's empty space (**New folder…**), or in a theme **New folder** at the bottom of the folder list, makes one inside the folder you're looking at. Right-click a folder to rename it, make a folder inside it, make a **New blank image…** in it (to paint on), or delete it once it's empty.
 - In a folder, `←` `→`, the film strip, `Ctrl+A` and **Rename all…** cover that folder's photos only.
-- **Folder details.** The bottom of the folder list shows the total for what you're looking at (`1,240 photos · 4.80 GB`); click it, press `I` in the grid, or right-click a folder for **Folder info**. It lists how many photos there are (directly in the folder and with its subfolders), the total, average and largest size, file types, dates and flags. For the whole order it also shows how much room `.jeditor` takes: trash, cache and Auto crop originals. Select several photos to see the same for the selection.
+- **Folder details.** Press `I` in the grid, or right-click a folder for **Folder info** (in a theme, the bottom of the folder list shows the total for what you're looking at, `1,240 photos · 4.80 GB`, and a click on it opens it too). It lists how many photos there are (directly in the folder and with its subfolders), the total, average and largest size, file types, dates and flags. For the whole order it also shows how much room `.jeditor` takes: trash, cache and Auto crop originals. Select several photos to see the same for the selection.
 
 `Ctrl+Z` undoes a move or copy in one step, together with any photos it replaced and the folder made for it. Making, renaming and deleting folders can be undone too.
 
@@ -232,7 +267,9 @@ Press `D` in a folder. It looks for:
 - exact copies (identical file contents), and
 - the same print scanned more than once, including when it was turned, placed at a different angle, cropped slightly differently, exposed differently, or scanned in black and white.
 
-Scanner bed and film borders are ignored when comparing. Matches are shown in groups, side by side, with a match percentage. The copy with the most pixels is suggested as the one to keep. `K` marks the others and `Enter` moves them to the trash.
+Scanner bed and film borders are ignored when comparing. Every group is shown on one page that scrolls, a row of thumbnails each, with the size and date under each photo and how alike it is to the one kept. In each group the copy with the most pixels is kept and the others are marked **Trash**; click a photo to keep it or mark it. **Not duplicates** leaves a group alone. **Trash N photos** (`Enter`) moves every marked photo to the trash at once, and one `Ctrl+Z` brings them back. `K` goes back to the suggested keepers.
+
+**Show in grid** (`G`) shows the duplicates in the grid instead: each group on its own rows under a heading, the suggested keeper first with a **Keep** badge, and the marked photos already selected, so the selection bar's Delete trashes them. Everything else in the grid works as usual (open, rotate, flag, move). A **Duplicates (N)** chip beside the search says it's on; click it to see every photo again. When no group has two photos left, the grid shows everything again by itself.
 
 It can still miss some re-scans or group photos that look alike, so check each group before trashing. The **Sensitivity** setting trades one for the other.
 
@@ -244,6 +281,12 @@ It's built and tested for orders of 500–2000 photos. With 2000 scans at 1800×
 
 Undo keeps up to 50 steps. Rotating a selection in the grid is one step, however many photos it covers. Rotations are undone by rotating back, so they don't use memory. Crops keep a copy of the original file so they can be undone, up to 256 MB in total; older crop steps are dropped after that.
 
+## The tour and the guide
+
+**The tour** walks through the real app, one stop at a time: the three apps (Photos, Adjust and Paint), the sidebar, looking and flagging, turning, cropping, Scan and Camera (where the app has them), More, Find anything (`Ctrl+K`, which you can try there and then), Duplicates, Convert, Adjust and Paint. Each stop lights up the control it's about, with a card that says what it does and its keys; the rest of the window dims but keeps working, so you can try each one (press `]` and the photo turns, `Ctrl+Z` puts it back). The tour opens the view each stop needs and puts it back as it was at the end. **Next** and **Back** move through it, and `Esc` or × ends it. It's offered once, on the home page the first time jEditor opens (**Not now** puts it away), and it's always in the home page's gear menu (**Take the tour**), a theme's **Help** menu and the guide. In a browser it ends with a few things the apps also do, and **Download the full version**.
+
+**The guide** (`F1`, from anywhere: Photos, Crop, Adjust, Paint or the home page; also **Guide** in the gear menu and a theme's **Help** menu) is for looking things up later: topics down the side (Start here, Photos, Crop, Flags, Files and folders, Adjust, Paint, Keyboard shortcuts), each a set of cards with a little clip of what it does, a line of words and its keys as they're set now. **Search the guide** finds cards and keys. **Watch the tour again** is at the bottom of the topics. `Esc` or × closes it.
+
 ## Keyboard shortcuts
 
 Press `?` in the app to see all of them. Any shortcut can be changed there. The defaults:
@@ -253,6 +296,7 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `←` `→` | Previous / next photo (`↑` `↓` move by rows in the grid) |
 | `[` `]` or `,` `.` or `Shift+←` `Shift+→` | Rotate left / right |
 | `\` | Rotate 180° |
+| `Shift+H` / `Shift+V` | Flip left to right / upside down |
 | `Space`, `G`, `S` | Toggle view, grid view, single view |
 | `C` | Crop and straighten |
 | `E` | Adjust: light, color, curves |
@@ -273,10 +317,11 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `Shift+P` | Crop the selection like the last crop (grid view) |
 | `Shift+U` | Turn upright (the selection, or the photo) |
 | `Ctrl+F`, `/` | Search |
+| `Ctrl+K` | Find anything: photos, folders, projects and commands |
 | `Shift+N` | New folder |
 | `A` | Switch between All photos and folders (grid view) |
 | `Backspace` | Up a folder (grid view) |
-| `Ctrl+B` | Show or hide the folder list (grid view) |
+| `Ctrl+B` | Show or hide the sidebar |
 | `Delete` | Move to trash |
 | `Ctrl+Z` | Undo |
 | `Ctrl+A` | Select all (grid view) |
@@ -284,15 +329,16 @@ Press `?` in the app to see all of them. Any shortcut can be changed there. The 
 | `Ctrl+I` | Import from a camera or card |
 | `R` | Rescan the folder |
 | `?` | Show shortcuts |
+| `F1` | The guide: how-tos and shortcuts |
 | `Ctrl+,` | Settings |
 
-In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `\` rotate 180°, `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `M` loupe, `+` `-` zoom, `Z` fit, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
+In crop and straighten: `Enter` save, `Shift+Enter` save and next, `Esc` cancel, `Shift+A` auto, `[` `]` rotate 90°, `\` rotate 180°, `Shift+H` `Shift+V` flip (or right-click the photo), `,` `.` straighten ±0.1°, `<` `>` ±1°, `0` reset the angle, `L` level tool, `M` loupe, `+` `-` zoom, `Z` fit, `A` next aspect ratio, `X` swap orientation, `P` previous crop, `R` reset, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
 In Adjust: `Enter` done, `Shift+Enter` done and next, `Esc` cancel, `\` before and after, `Shift+A` auto, `Shift+C` auto color, `W` pick grey (white balance), `R` reset, `Ctrl+Shift+C` / `Ctrl+Shift+V` copy / paste the adjustments, `Ctrl+C` / `Ctrl+V` copy the photo as it looks / paste a picture from another app, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
 In Paint: `Enter` done (or put down what's being moved), `Esc` cancel, `V` move, `M` rectangle / ellipse select, `L` lasso, `W` magic wand, `B` brush, `N` pencil, `E` eraser, `G` fill / gradient, `U` line, `R` rectangle, `O` ellipse, `T` text, `I` colour picker, `H` hand, `[` `]` brush size (or a line's, or the text's), `Shift`-click a straight line from the last stroke, `X` swap colours, `D` black and white, `Ctrl+A` / `Ctrl+D` select all / nothing, `Delete` clear the selection, `Ctrl+C` / `Ctrl+V` copy / paste (an image copied in another app comes in as a layer), `Ctrl+Shift+O` bring in an image, `Ctrl+Shift+N` new layer, `Ctrl+J` duplicate the layer, `Ctrl+E` merge down, `0` fit, `1` 100%, `+` `-` zoom, `Ctrl+Z` / `Ctrl+Shift+Z` undo / redo.
 
-In find duplicates: `1`–`9` mark or unmark a photo, `K` keep the suggested photo and mark the rest, `Enter` trash marked and go to the next group, `N` not duplicates, `←` `→` previous / next group, `Esc` close.
+In find duplicates: click a photo to keep or mark it, `K` back to the suggested keepers, `Enter` trash every marked photo, `G` show in grid, `Esc` close.
 
 ## Where things are in the code
 
@@ -308,7 +354,7 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `import.js`: importing from a camera's card
 - `blank.js`: Paint's start: a new canvas (right-click a folder, or the start page's Paint), or an image or folder to open
 - `themes.js`, `themes/`: the themes (Settings → Appearance): the list, their stylesheets, the title bar and menu bar they draw, 1984's dithered thumbnails
-- `modes.js`: Photos, Adjust and Paint as modes: the switch (sidebar, chip), the strip in Adjust and Paint, Start in
+- `modes.js`: Photos, Adjust and Paint as modes: the switch (sidebar, chip), the strip in Adjust and Paint
 - `disc.js`: burning a CD or DVD (the Windows app's `src/Burn.cs`)
 - `export.js`: the Export window (a USB drive, a disc, or copies)
 - `convert.js`: Convert (photos to AVIF, JPEG XL or WebP: the quality and close-up, the storage now and after, the dots)
@@ -322,8 +368,21 @@ The UI is plain JavaScript with no dependencies, in `app/`:
 - `folders.js`: folders: the folder list, moving and copying photos, making, renaming and deleting folders
 - `flags.js`: flags (star, rescan, colour labels) and search
 - `watch.js`: watching the folder for changes, and rescanning
-- `recents.js`: recent orders on the start screen, and spotting a folder that's part of one
+- `start.js`: the home page: its tiles, the Settings menu (Save edits when done, When jEditor opens), the update dot, All projects, and on the web the app for this computer
+- `palette.js`: Find anything (`Ctrl+K`): the box, what it finds where you are (the shortcuts' commands, the theme menus' own, photos, folders, projects), matching and ranking, and running the one picked
+- `places.js`: the sidebar's places in the apps: the project's name and its picker (find a project), Recents, pinned folders and drives with the room on each, renaming a project in place (and its Undo), and All projects… on the home page
+- `recents.js`: the home page's stacks of prints (recent folders, with small pictures kept for each) and its Recent print (a photo opened on its own), and spotting a folder that's part of an order
 - `ui.js`: the app's own alert / confirm / prompt dialogs, and focus handling for every dialog
+- `guide.js`: the guide (`F1`): cards with clips by topic, the shortcuts as they're set, and a search
+- `tour.js`: the welcome tour: a walk through the real app, offered once on the home page
 - `tokens.css`: the design tokens (colours, type, spacing, radii, shadows, motion, layers) and the theme, density, glass, surround and window background switches; `style.css` builds every component from them
 
 Building, testing and releasing are in the [README](../README.md).
+
+## Where projects and the cache are kept
+
+Settings → Projects → Folders (the Windows, Mac and Linux apps):
+
+- **Projects folder**: choose the folder that holds your photo folders. Each folder inside it shows as a project. Change it later and jEditor asks whether to move the projects there or leave them, saying how many and how big. It checks the free space first: if there isn't enough, it says so with the numbers and moves nothing. On the same drive each project is moved whole, instantly. To another drive, each one is copied, then checked file by file against the original, and only then is the original removed. If anything fails, the move stops there: what's moved is in the new folder, the rest are where they were, and nothing is lost. A project whose name is already taken in the new folder is left where it is. A whole drive or your user folder is never moved, only left.
+- **Cache folder** (the Windows app): where jEditor keeps each project's thumbnails, flags and edits. Changing it moves them the same way, into a **jEditor cache** folder inside the one you choose.
+- **Cache** and **Clear cache…**: how much room the thumbnails take, and clearing them. Projects stay; on the home page they're ghost stacks with their names until their thumbnails are made again. Your photos, flags and edits aren't touched.

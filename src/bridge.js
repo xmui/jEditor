@@ -78,7 +78,7 @@
         } else if (msg.type === 'logLines' && onLogLines) {
             onLogLines(msg.lines || []);
         } else if (msg.type === 'copyProgress' && copying.has(msg.copy)) {
-            copying.get(msg.copy)(msg.done, msg.total);
+            copying.get(msg.copy)(msg.done, msg.total, msg.moved);
         } else if (msg.type === 'burnProgress' && burning.has(msg.burn)) {
             burning.get(msg.burn)(msg.done, msg.total);
         } else if (msg.type === 'scanned' && onScanned) {
@@ -210,7 +210,8 @@
         // Which app this is, and what it can do besides storage and paths
         // (app/host.js says what each feature covers)
         platform: 'windows',
-        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn', 'themes'],
+        // (engine: when jeditor_engine.dll loaded; the app says so, Engine.cs)
+        features: ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn', 'themes', 'folderMove', 'cacheFolder'].concat(window.__jeditorEngine ? ['engine'] : [], window.__jeditorEngine && window.__jeditorEngine.heic ? ['engineHeic'] : []),
         // jEditor's storage on this PC: a folder handle, one subfolder per
         // order (see app/folder-cache.js)
         async dataDir() {
@@ -220,10 +221,20 @@
         },
         // Where a folder handle is on disk (null: not known)
         folderPath,
+        // The engine's thumbnail of the photo at relPath ('a/b.jpg') in the
+        // folder at dir: a URL the app answers (Engine.cs), w px wide as
+        // shown; 204 (no content) when the engine can't make it
+        engineThumb(dir, relPath, w) {
+            const path = dir.replace(/[\\/]+$/, '') + '\\' + String(relPath).replace(/\//g, '\\');
+            return `https://engine.jeditor.example/thumb?w=${w}&path=${encodeURIComponent(path)}`;
+        },
         // A folder handle for a path, with permission to edit it
         async folderHandle(path) {
-            const { objects } = await answer('folderHandle', { path });
+            const { msg, objects } = await answer('folderHandle', { path });
             if (!objects[0]) throw new Error('That folder isn\'t there');
+            // Remembered with its path, as a picked folder is (folderPath:
+            // the engine asks by path)
+            remember(objects[0], msg.path || path);
             return objects[0];
         },
         // Files to the Recycle Bin, by path. Per file: { token } (Ctrl+Z:
@@ -434,6 +445,42 @@
                 return { bytes: msg.bytes };
             });
         },
+        // ---- Moving the projects folder or the cache (folderMove,
+        // cacheFolder; app/folder-move.js) ----
+        // What's in a folder: { folders, files, bytes }, and with dest the
+        // room there: { free (-1: unknown), drive, sameDrive, refused }
+        async folderSize(path, dest) {
+            const { msg } = await answer('folderSize', { path, dest });
+            if (msg.error) throw new Error(msg.error);
+            return msg;
+        },
+        // Everything in path into dest, each item copied, checked and only
+        // then removed; progress(done, total, moved) → { moved, left:
+        // [{ name, why }], error, stopped }. Has a copyId, for cancelCopy.
+        moveFolder(path, dest, progress) {
+            const id = nextId++;
+            copying.set(id, progress || (() => { }));
+            const done = new Promise((resolve) => {
+                pending.set(id, resolve);
+                post({ type: 'moveFolder', id, path, dest });
+            }).then(({ msg }) => {
+                copying.delete(id);
+                return { moved: msg.moved || 0, left: msg.left || [], error: msg.error || null, stopped: !!msg.stopped };
+            });
+            done.copyId = id;
+            return done;
+        },
+        // The cache's folder: { path, chosen }
+        async cacheDir() {
+            return (await answer('cacheDir')).msg;
+        },
+        // The cache kept in a folder of its own in path from now on (null:
+        // where it was at first) → its folder
+        async setCacheDir(path) {
+            const { msg } = await answer('setCacheDir', { path });
+            if (msg.error) throw new Error(msg.error);
+            return msg.path;
+        },
         cancelCopy(id) {
             post({ type: 'cancelCopy', copy: id });
         },
@@ -559,6 +606,30 @@
         let lastScanned = null; // the scan step's last photo, moved by the windows step
         const file = a.files[0];
         const rotated = file ? await a.rotateImage(file, 90) !== false : false;
+        // The engine: a thumbnail of the first photo, made by the app
+        // (Engine.cs) from the file on disk, 64 px wide
+        if (window.JEditorNative.features.includes('engine') && file) {
+            try {
+                const here = await window.JEditorNative.folderPath(a.dirHandle);
+                const r = await fetch(window.JEditorNative.engineThumb(here, file.relPath || file.name, 64));
+                const bmp = r.status === 200 ? await createImageBitmap(await r.blob()) : null;
+                steps.engine = !here ? 'no path for the folder' : !bmp ? `the app answered ${r.status}`
+                    : bmp.width === 64 ? true : `a thumbnail ${bmp.width} px wide, not 64`;
+            } catch (e) {
+                steps.engine = 'failed: ' + (e && e.message || e);
+            }
+        }
+        // And a HEIC's (scripts/smoke-test.ps1 puts one beside the order)
+        if (window.JEditorNative.features.includes('engineHeic')) {
+            try {
+                const here = await window.JEditorNative.folderPath(a.dirHandle);
+                const r = await fetch(window.JEditorNative.engineThumb(here + '\\..', 'engine-check.heic', 64));
+                const bmp = r.status === 200 ? await createImageBitmap(await r.blob()) : null;
+                steps.engineHeic = !bmp ? `the app answered ${r.status}` : bmp.width === 64 ? true : `a thumbnail ${bmp.width} px wide, not 64`;
+            } catch (e) {
+                steps.engineHeic = 'failed: ' + (e && e.message || e);
+            }
+        }
         try {
             Flags.apply('star', [file]);
             await Flags.save();

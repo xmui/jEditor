@@ -434,6 +434,9 @@
 :root[data-skin="snow"] .start-open { height: 21px; min-width: 110px; }
 :root[data-skin="snow"] .start-in-seg > button { font-size: 11px; height: 20px; }
 :root[data-skin="snow"] .start-in-seg > button > svg { display: none; }
+:root[data-skin="snow"] .start-convert-run { border: 1px solid #a5a5a5; border-radius: 4px; background: rgb(255 255 255 / 0.75); box-shadow: 0 1px 3px rgb(0 0 0 / 0.2); backdrop-filter: none; -webkit-backdrop-filter: none; color: #222; font: 12px var(--sl-font); }
+:root[data-skin="snow"] .start-convert-run .scr-title { font-weight: 700; }
+:root[data-skin="snow"] .start-convert-run .scr-sub { color: var(--sl-ink-2); font-size: 11px; }
 :root[data-skin="snow"] .recent-list button { border-radius: 0; }
 
 /* The task pill: a small HUD */
@@ -519,3 +522,108 @@
 :root[data-skin="snow"] .cv-folders { border-color: #a5a5a5; border-radius: 4px; background: var(--sl-list); }
 :root[data-skin="snow"] .cv-tile { border-color: #a5a5a5; border-radius: 4px; }
 :root[data-skin="snow"] .cv-seg > button[aria-checked="true"] small { color: rgb(255 255 255 / 0.85); opacity: 1; }
+
+/* ---- The home page (start.js): prints on a table, the big tiles as
+   Aqua's square bevel buttons with a glyph each ---- */
+:root[data-skin="snow"] .home-brand { color: var(--sl-ink); font: 700 13px var(--sl-font); text-shadow: var(--sl-emboss); }
+:root[data-skin="snow"] .home-ver .app-version { color: var(--sl-ink-2); font: 11px var(--sl-font); text-shadow: var(--sl-emboss); }
+:root[data-skin="snow"] .drop-zone .home-gear { width: 32px; padding: 0; }
+:root[data-skin="snow"] .home-gear::before { content: ""; position: absolute; inset: 0; margin: auto; width: 16px; height: 17px; background: url(../snow/glyphs/settings.svg) no-repeat center; }
+:root[data-skin="snow"] .home-dot { box-shadow: 0 0 0 1px #fff; }
+:root[data-skin="snow"] .recent-name { color: var(--sl-ink); font: 700 12px var(--sl-font); text-shadow: var(--sl-emboss); }
+:root[data-skin="snow"] :is(.recent-sub, .recent-when, .recent-meta, .home-empty p, .drop-hint) { color: var(--sl-ink-2); font: 11px var(--sl-font); text-shadow: var(--sl-emboss); }
+:root[data-skin="snow"] .recent-open:focus-visible .recent-name { box-shadow: var(--sl-focus); }
+:root[data-skin="snow"] .recent-print { border-radius: 0; box-shadow: 0 2px 5px rgb(0 0 0 / 0.4); }
+:root[data-skin="snow"] .recent-print.ghost { border: 1px dashed var(--sl-head); background: rgb(255 255 255 / 0.35); box-shadow: none; }
+:root[data-skin="snow"] .recent-print.ghost.first { border: 2px dashed #3875d7; background: rgb(56 117 215 / 0.12); color: #3875d7; }
+:root[data-skin="snow"] .recent-remove { width: 18px; height: 18px; border: 0; border-radius: 50%; background: #505050; box-shadow: 0 1px 2px rgb(0 0 0 / 0.5); color: #fff; font: 700 12px/1 var(--sl-font); }
+:root[data-skin="snow"] .home-tile {
+    border: 0;
+    border-radius: 6px;
+    background: var(--sl-btn);
+    box-shadow: var(--sl-btn-edge), 0 2px 5px rgb(0 0 0 / 0.18);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    color: var(--sl-ink);
+    font: 700 12px var(--sl-font);
+    text-shadow: var(--sl-emboss);
+    transition: none;
+}
+:root[data-skin="snow"] .home-tile > svg { display: none; }
+:root[data-skin="snow"] .home-tile::before { content: ""; width: 24px; height: 25px; background: var(--g) no-repeat center / 24px 25px; }
+:root[data-skin="snow"] #btn-browse-folder { --g: url(../snow/glyphs/folder.svg); }
+:root[data-skin="snow"] #start-capture { --g: url(../snow/glyphs/scan.svg); }
+:root[data-skin="snow"] #start-blank { --g: url(../snow/glyphs/photo.svg); }
+:root[data-skin="snow"] #start-convert { --g: url(../snow/glyphs/convert.svg); }
+:root[data-skin="snow"] #start-adjust { --g: url(../snow/glyphs/adjust.svg); }
+:root[data-skin="snow"] #start-paint { --g: url(../snow/glyphs/paint.svg); }
+:root[data-skin="snow"] .home-tile-sub { color: var(--sl-ink-2); font: 11px var(--sl-font); }
+:root[data-skin="snow"] .home-tile:hover { transform: none; box-shadow: var(--sl-btn-edge), 0 2px 5px rgb(0 0 0 / 0.18); }
+:root[data-skin="snow"] .home-tile:active { background: var(--sl-btn-down); }
+:root[data-skin="snow"] .home-tile:focus-visible { box-shadow: var(--sl-btn-edge), var(--sl-focus); }
+/* The one to start with: the default button's blue */
+:root[data-skin="snow"] .home-tile.primary { background: var(--sl-blue); box-shadow: var(--sl-blue-edge), 0 2px 5px rgb(0 0 0 / 0.18); color: #000; text-shadow: 0 1px 0 rgb(255 255 255 / 0.4); }
+:root[data-skin="snow"] .home-tile.primary .home-tile-sub { color: #1b2c47; }
+:root[data-skin="snow"] .home-tile.primary:active { filter: brightness(0.9); }
+:root[data-skin="snow"] .home-tile.card { box-shadow: var(--sl-blue-edge), 0 2px 5px rgb(0 0 0 / 0.18); }
+:root[data-skin="snow"] .home-places { border: 0; border-radius: 0 0 5px 5px; background: var(--sl-sheet); box-shadow: 0 8px 24px rgb(0 0 0 / 0.45); color: var(--sl-ink); }
+:root[data-skin="snow"] .home-places-head { font: 700 13px var(--sl-font); text-shadow: var(--sl-emboss); }
+
+/* ---- Open a folder (open-card.js) and the first-time questions (first-open.js) ---- */
+:root[data-skin="snow"] .oc-top { border-bottom-color: var(--sl-line); }
+/* Spotlight's search field: a rounded white field, the magnifier inside */
+:root[data-skin="snow"] .oc-search { height: 22px; padding: 0 8px; border: 0; border-radius: 11px; background: var(--sl-field); box-shadow: var(--sl-field-edge); color: var(--sl-ink-2); }
+:root[data-skin="snow"] .oc-search:focus-within { box-shadow: var(--sl-field-edge), var(--sl-focus); }
+:root[data-skin="snow"] .oc-search .i { width: 13px; height: 13px; }
+:root[data-skin="snow"] .dialog .oc-search input:is([type="search"], :focus, :hover) { height: auto; padding: 0; border: 0; outline: none; border-radius: 0; background: none; box-shadow: none; color: var(--sl-ink); font: 12px var(--sl-font); }
+
+:root[data-skin="snow"] .oc-drop { border: 2px dashed var(--sl-head); border-radius: 8px; background: rgb(255 255 255 / 0.25); }
+:root[data-skin="snow"] .oc-drop.over { border-color: #3875d7; background: rgb(56 117 215 / 0.15); }
+:root[data-skin="snow"] .oc-drop-icon > svg { display: none; }
+:root[data-skin="snow"] .oc-drop-icon::before { content: ""; width: 24px; height: 25px; background: url(../snow/glyphs/folder.svg) no-repeat center / 24px 25px; }
+:root[data-skin="snow"] :is(.oc-drop-name, .fo-sub, .fo-choice-name) { color: var(--sl-ink); font: 700 12px var(--sl-font); }
+/* The section heads: a source list's grey capitals */
+:root[data-skin="snow"] .oc-sub { color: var(--sl-head); font: 700 11px var(--sl-font); text-transform: uppercase; text-shadow: var(--sl-emboss); }
+:root[data-skin="snow"] :is(.oc-drop-sub, .oc-meta, .oc-empty, .oc-foot, .fo-help, .fo-note, .fo-choice small) { color: var(--sl-ink-2); font: 11px var(--sl-font); }
+:root[data-skin="snow"] .oc-name { color: var(--sl-ink); font: 12px var(--sl-font); }
+:root[data-skin="snow"] :is(.oc-recent, .oc-row) { border-radius: 4px; }
+:root[data-skin="snow"] .oc-recent { border: 0; background: var(--sl-list); box-shadow: inset 0 0 0 1px var(--sl-line); }
+:root[data-skin="snow"] :is(.oc-recent, .oc-row):hover { background: var(--sl-list-sel); color: #fff; }
+:root[data-skin="snow"] :is(.oc-recent, .oc-row):hover :is(.oc-name, .oc-meta) { color: #fff; }
+:root[data-skin="snow"] .oc-pic { border-radius: 0; box-shadow: 0 1px 2px rgb(0 0 0 / 0.4); }
+:root[data-skin="snow"] .oc-icon { color: #3875d7; }
+:root[data-skin="snow"] .oc-foot { border-top-color: var(--sl-line); }
+:root[data-skin="snow"] :is(.oc-foot-path, .fo-dir) { color: var(--sl-ink); font: 11px var(--sl-font); }
+:root[data-skin="snow"] .fo-choice { border: 0; border-radius: 6px; background: var(--sl-list); box-shadow: inset 0 0 0 1px var(--sl-line); }
+:root[data-skin="snow"] .fo-choice:has(input:checked) { background: rgb(56 117 215 / 0.15); box-shadow: inset 0 0 0 1px #3875d7; }
+
+/* ---- The guide (guide.js): Help Viewer, a source list down the side ---- */
+:root[data-skin="snow"] .guide-scrim { background: rgb(0 0 0 / 0.25); }
+:root[data-skin="snow"] .guide { border: 0; border-radius: 5px; background: var(--sl-sheet); box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35), 0 12px 32px rgb(0 0 0 / 0.5); color: var(--sl-ink); font: 12px var(--sl-font); }
+:root[data-skin="snow"] .guide-nav { background: #dee4ea; border-right: 1px solid #a5a5a5; border-radius: 5px 0 0 5px; }
+:root[data-skin="snow"] .guide-nav h2 { color: var(--sl-head); font: 700 11px var(--sl-font); text-transform: uppercase; text-shadow: var(--sl-emboss); }
+:root[data-skin="snow"] .guide-topics button { border-radius: 0; color: #000; font: 12px var(--sl-font); }
+:root[data-skin="snow"] .guide-topics button:hover { background: none; }
+:root[data-skin="snow"] .guide-topics button[aria-current="true"] { background: var(--sl-list-sel); color: #fff; font-weight: 700; text-shadow: 0 1px 0 rgb(0 0 0 / 0.3); }
+:root[data-skin="snow"] .guide-tour { min-height: 21px; padding: 2px 12px; white-space: nowrap; border-radius: 11px; background: var(--sl-btn); box-shadow: var(--sl-btn-edge); color: var(--sl-ink); font: 12px var(--sl-font); }
+:root[data-skin="snow"] .guide-tour:hover { filter: none; }
+:root[data-skin="snow"] .guide-tour > span { overflow: hidden; font-size: 11px; text-overflow: ellipsis; }
+:root[data-skin="snow"] .guide-tour:active { background: var(--sl-btn-down); }
+:root[data-skin="snow"] .guide-search { height: 22px; padding: 0 8px; border: 0; border-radius: 11px; background: var(--sl-field); box-shadow: var(--sl-field-edge); color: var(--sl-ink-2); }
+:root[data-skin="snow"] .guide-search:focus-within { box-shadow: var(--sl-field-edge), var(--sl-focus); }
+:root[data-skin="snow"] .guide-search input { color: var(--sl-ink); font: 12px var(--sl-font); }
+:root[data-skin="snow"] .guide-x { width: 18px; height: 18px; border-radius: 50%; background: #8e8e8e; color: #fff; font: 700 13px/1 var(--sl-font); }
+:root[data-skin="snow"] .guide-x:hover { background: #6e6e6e; color: #fff; }
+:root[data-skin="snow"] .guide-card { border: 0; border-radius: 4px; background: var(--sl-list); box-shadow: inset 0 0 0 1px var(--sl-line), 0 1px 2px rgb(0 0 0 / 0.12); overflow: hidden; }
+:root[data-skin="snow"] :is(.guide-card h3, .guide-keylist h3) { color: var(--sl-ink); font: 700 12px var(--sl-font); }
+:root[data-skin="snow"] :is(.guide-card p, .guide-none) { color: var(--sl-ink-2); font: 11px/1.45 var(--sl-font); }
+:root[data-skin="snow"] .guide-keylist h4 { color: var(--sl-head); font: 700 11px var(--sl-font); text-transform: uppercase; }
+:root[data-skin="snow"] .guide-keyrow { border-top-color: var(--sl-line); }
+:root[data-skin="snow"] .guide-k { border: 0; border-radius: 3px; background: var(--sl-btn); box-shadow: var(--sl-btn-edge); color: var(--sl-ink); font: 11px var(--sl-font); }
+/* Find anything (palette.js): rows as Snow Leopard's menus, blue when picked */
+:root[data-skin="snow"] .palette-field input { font: 14px var(--sl-font); }
+:root[data-skin="snow"] :is(.palette-for, .palette-head, .palette-row, .palette-sub, .palette-key, .palette-none) { font-family: var(--sl-font); }
+:root[data-skin="snow"] .palette-row { min-height: 24px; border-radius: 0; }
+:root[data-skin="snow"] .palette-row.on { background: linear-gradient(180deg, #6383f6, #2858ee); color: #fff; }
+:root[data-skin="snow"] .palette-row.on :is(.palette-sub, .palette-key, .i) { color: #fff; }
+:root[data-skin="snow"] .palette-thumb { border-radius: 2px; }

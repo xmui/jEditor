@@ -18,18 +18,31 @@
 // What a part is checked for (inside its own element):
 //   off screen   something you'd click or read is past the window's edge, or
 //                cut off by its box, with no scrolling to reach it
-//   covered      under the theme's title bar or menu bar
+//   covered      under the theme's title bar or menu bar; or, floating over
+//                the page (a dialog, a menu, the tour), under the Mac's
+//                toolbar or traffic lights (style.css: --top-safe)
 //   no icon      a button with neither words nor a picture
 //   spills       its words or icon reach outside its own button
 //   overlaps     two buttons over each other
 //   text cut     words cut off without "…"
 //   own font     words still in jEditor's own font, not the theme's
 //   missing file a picture or font of the theme that isn't there (404)
-const path = require('path'), fs = require('fs'), http = require('http');
+const path = require('path'), fs = require('fs'), http = require('http'), { execFileSync } = require('child_process');
 const REPO = path.resolve(__dirname, '../..');
 const { chromium } = require(REPO + '/node_modules/playwright-core');
 const { launchOptions } = require(REPO + '/test/page-helpers.js');
 const PH = path.join(__dirname, 'photos');
+// The photos it opens (Lorem Picsum's, free to use), fetched the first time
+// into photos/ (not kept in git)
+const PICSUM = [10, 15, 17, 28, 29, 37, 42, 54, 57, 64, 76, 82, 91, 102, 110, 129, 137, 152, 164, 177];
+function fetchPhotos() {
+    fs.mkdirSync(PH, { recursive: true });
+    for (const id of PICSUM) {
+        const to = path.join(PH, `p${id}.jpg`);
+        if (fs.existsSync(to) && fs.statSync(to).size) continue;
+        try { execFileSync('curl', ['-sSfL', '-o', to, `https://picsum.photos/id/${id}/1600/1067`]); } catch (e) { fs.rmSync(to, { force: true }); }
+    }
+}
 
 // [name for the command line, column, theme, platform, the font standing in]
 const WIN = ['recycle', 'reveal', 'places', 'quickAccess', 'windows', 'scan', 'camera', 'backdrop', 'log', 'updates', 'burn', 'themes'];
@@ -51,6 +64,17 @@ const single = (then = '') => `app.openSingle(app.files[3]); setTimeout(() => { 
 // Screens: [folder open?, what to do]
 const SCREENS = {
     start: [false, ''],
+    // The home page after a folder's been open: its stack of prints on the table
+    home: [true, `app.closeFolder()`, 2500],
+    // Open a folder: the card (open-card.js), and the first time, its questions (first-open.js)
+    opencard: [true, `app.closeFolder().then(() => setTimeout(() => OpenCard.open(), 300))`, 2500],
+    firstopen: [true, `FirstOpen.welcome({ folder: 'Summer 2024' })`],
+    // The guide (F1), on its first page and searched
+    guide: [true, H('app.guide')],
+    guide2: [true, `${H('app.guide')}; setTimeout(() => { const s = document.querySelector('#guide input[type=search], .guide-search input'); if (s) { s.value = 'crop'; s.dispatchEvent(new Event('input', { bubbles: true })); } }, 300)`],
+    // Photos picked on the start page, converting there (held part way), and done
+    startconvert: [false, `Convert.run = { start: true, format: 'avif', list: { length: 120 }, done: 34, saved: 31457280, busyMs: 34 * 1800, paused: false, stopped: false }; Convert.paintStart()`],
+    startconvert2: [false, `Convert.run = null; Convert.lastEntry = {}; Convert.done = { start: true, format: 'avif', list: { length: 120 }, done: 120, same: 0, taken: 0, failed: 0, total: 432013312, saved: 331350016, keep: false, outside: { handle: { name: 'Scans' }, path: 'C:\\\\Users\\\\you\\\\Pictures\\\\Scans' } }; Convert.paintStart()`],
     grid: [true, `if (document.body.dataset.view === 'single') document.getElementById('btn-toggle-view').click(); setTimeout(() => { if (document.getElementById('mode-seg')?.getClientRects().length && !document.documentElement.dataset.skin) ${H('folders.rail')}; }, 300)`],
     rail: [true, `if (document.body.dataset.view === 'single') document.getElementById('btn-toggle-view').click(); setTimeout(() => { if (!document.getElementById('folder-rail')?.getClientRects().length || (!document.documentElement.dataset.skin && !document.getElementById('mode-seg')?.getClientRects().length)) ${H('folders.rail')}; }, 300)`],
     photo: [true, single()],
@@ -78,6 +102,8 @@ const SCREENS = {
     convert3: [true, `Convert.open({}).then(() => Convert.setFormat('tiff'))`, 4000],
     convert4: [true, `Convert.open({}).then(() => setTimeout(() => { Convert.setFormat('png'); Convert.setKeep(true); setTimeout(() => { Convert.go(); setTimeout(() => Convert.togglePause(), 2500); }, 800); }, 1200))`, 6000],
     shortcuts: [true, H('app.shortcuts')],
+    // Find anything, Ctrl+K: two selected, "rot" typed
+    palette: [true, `document.getElementById('fo-ok')?.click(); if (document.body.dataset.view === 'single') document.getElementById('btn-toggle-view').click(); setTimeout(() => { app.selection = new Set([app.files[1], app.files[2]]); app.updateSelectionUI(); Palette.open(); const i = document.getElementById('palette-input'); i.value = 'rot'; i.dispatchEvent(new Event('input')); }, 300)`],
     whatsnew: [true, `app.toggleWhatsNew()`],
     dupes: [true, H('app.dupes')],
     crop: [true, single(H('edit.crop'))],
@@ -113,6 +139,11 @@ const PARTS = [
     ['Main window', 'Info', 'info', '#info-panel'],
     ['Main window', 'Undo history', 'history', '#history-panel'],
     ['Main window', 'Start page', 'start', '.drop-content'],
+    ['Main window', 'Home page: prints on the table', 'home', '.home-table'],
+    ['Main window', 'Home page: the big tiles', 'home', '.home-tiles'],
+    ['Main window', 'Home page: name, version, Settings', 'home', '.home-bar'],
+    ['Main window', 'Start page: converting photos', 'startconvert', '#start-convert-run'],
+    ['Main window', 'Start page: photos converted', 'startconvert2', '#start-convert-run'],
     ['Settings', 'Window and pages', 'settings', '.settings-card'],
     ['Settings', 'Theme gallery', 'settings', '#set-themes'],
     ['Settings', 'Rows, switches, lists', 'settings2', '.settings-body'],
@@ -128,8 +159,13 @@ const PARTS = [
     ['Dialogs', 'Move to…', 'moveto', '.folder-card'],
     ['Dialogs', 'New blank image', 'blank', '.blank-card'],
     ['Dialogs', 'Keyboard shortcuts', 'shortcuts', '.shortcuts-card'],
+    ['Dialogs', 'Find anything (Ctrl+K)', 'palette', '.palette'],
     ["Dialogs", "What's new", 'whatsnew', '.whatsnew-card'],
     ['Dialogs', 'Scan window', 'scan', '#scan-panel'],
+    ['Dialogs', 'Open a folder', 'opencard', '.open-card'],
+    ['Dialogs', 'First folder: where projects are, saving edits', 'firstopen', '.first-open'],
+    ['Dialogs', 'Guide (F1)', 'guide', '.guide'],
+    ['Dialogs', 'Guide, searched', 'guide2', '.guide'],
     ['Duplicates', 'Head', 'dupes', '.dupes-head'],
     ['Duplicates', 'Foot', 'dupes', '.dupes-foot'],
     ['Crop', 'Head', 'crop', '.crop-head'],
@@ -152,6 +188,7 @@ const BY_HAND = [
     'Windows: the title bar drags the window, double-click maximises, the top edge resizes, Snap still works',
     'Windows: minimise, maximise and close in the title bar; the maximised window keeps its edges on screen',
     'Menus from the keyboard (Alt, arrows, Enter, Esc)',
+    'Find anything (Ctrl+K, ⌘K on a Mac): opens in Photos, Adjust and Paint; the arrows move the highlight, Enter runs it, Esc closes',
     'Tooltips (drawn by Windows, not the theme)',
     'Import from a camera or card',
     'Let jEditor open your photos (permissions)',
@@ -160,6 +197,8 @@ const BY_HAND = [
     'Part of a project (order prompt)',
     'Camera window',
     'Drag and drop onto the window',
+    'A photo opened from the grid, and back (Snow Leopard zooms, 1984 draws zoom outlines, XP just shows it)',
+    'The home page\'s prints pointed at, and one taken off the table',
     'A real scan: preview, boxes, the photos coming in',
     'Photos picked one by one (the Save… bar)'
 ];
@@ -196,6 +235,24 @@ const pageAudit = ({ sel, font }) => {
     const ownText = (el) => [...el.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim());
     const LEAVES = 'button, input, select, textarea, label, a, img, canvas, h1, h2, h3, h4, [role="tab"], [role="option"], .tb-btn, .paint-tool';
     const seen = new Set();
+    // What the Mac window draws over the page's top, in jEditor's own look:
+    // macOS 26's toolbar (52px), or the traffic lights where bridge.js puts
+    // them (in line with the mode chip over Adjust and Paint, jEditor on the
+    // home page, or else the top row of pills). Only what floats over the
+    // page is checked against it: the grid is meant to pass under it.
+    const macTop = [];
+    const html = document.documentElement;
+    if (html.dataset.platform === 'mac' && !html.dataset.skin) {
+        if (html.classList.contains('native-toolbar')) macTop.push({ name: 'Mac\'s toolbar', left: 0, top: 0, right: innerWidth, bottom: 52 });
+        else if (!html.classList.contains('fullscreen')) {
+            const css = getComputedStyle(html), px = (n) => parseFloat(css.getPropertyValue(n)) || 0;
+            const gutter = px('--gutter'), at = document.querySelector('.mode-float.over-mode:not(.hidden), .drop-zone:not(.hidden) .home-brand');
+            const ar = at && at.getBoundingClientRect();
+            const y = (ar && ar.height ? ar.top + ar.height / 2 : px('--mac-drag') + gutter + px('--ctl-lg') / 2) - 7, x = Math.max(12, gutter);
+            macTop.push({ name: 'traffic lights', left: x, top: y, right: x + 54, bottom: y + 14 });
+        }
+    }
+    const FLOATING = '.dialog-overlay, .guide-scrim, #context-menu, .tour-card, .toast';
     for (const root of roots) {
         const els = [...root.querySelectorAll('*')].filter(el => el.matches(LEAVES) || ownText(el));
         for (const el of els) {
@@ -264,6 +321,12 @@ const pageAudit = ({ sel, font }) => {
                     if (at && top.contains(at)) out.push(['covered', `${what} is under the title bar`]);
                 }
             }
+            // Floating over the page, under the Mac window's own top
+            if (macTop.length && !scrolls && r.height > 4 && el.closest(FLOATING)) {
+                for (const b of macTop) {
+                    if (r.left < b.right - 1 && b.left < r.right - 1 && r.top < b.bottom - 1 && b.top < r.bottom - 1) out.push(['covered', `${what} is under the ${b.name}`]);
+                }
+            }
             // A button with neither words nor a picture
             if (el.matches('button, [role="button"], [role="tab"], .tb-btn, .paint-tool') && !el.closest('.paint-palette, .accent-swatches, .th-caps, .theme-dots')) {
                 const words = (el.innerText || '').trim() && getComputedStyle(el).fontSize !== '0px';
@@ -304,7 +367,10 @@ const srv = http.createServer((req, res) => {
 
 (async () => {
     const [onlyTheme, onlyScreen] = process.argv.slice(2);
-    if (!fs.existsSync(PH) || !fs.readdirSync(PH).some(f => f.endsWith('.jpg'))) { console.error('No photos: see design/themes/README.md (Try one) for fetching them'); process.exit(1); }
+    // A link left from somewhere else that goes nowhere: fetched afresh
+    try { if (fs.lstatSync(PH).isSymbolicLink() && !fs.existsSync(PH)) fs.unlinkSync(PH); } catch (e) { /* not there */ }
+    fetchPhotos();
+    if (!fs.readdirSync(PH).some(f => f.endsWith('.jpg'))) { console.error('No photos, and they couldn\'t be fetched from picsum.photos: see design/themes/README.md (Try one)'); process.exit(1); }
     const files = fs.readdirSync(PH).filter(f => f.endsWith('.jpg')).sort().slice(0, 20);
     const names = ['Coast road.jpg', 'Harbour at dusk.jpg', 'Old bridge.jpg', 'Morning fog.jpg', 'Pine forest.jpg', 'Lighthouse.jpg', 'Kitchen window.jpg', 'Market.jpg', 'Dunes.jpg', 'Grandad.jpg', 'Allotment.jpg', 'Lake.jpg', 'Snow line.jpg', 'Back garden.jpg', 'Station.jpg', 'Cliffs.jpg', 'Rain.jpg', 'Pier.jpg', 'Valley.jpg', 'Field.jpg'];
     await new Promise(r => srv.listen(0, r));
@@ -337,6 +403,10 @@ const srv = http.createServer((req, res) => {
                 });
                 try {
                     localStorage.setItem('jeditor.whatsNewSeen', '9.9.9');
+                    // The first-time questions and the tour's welcome answered, so they
+                    // don't cover the screens (each has a screen of its own)
+                    localStorage.setItem('jeditor.firstOpen', JSON.stringify({ asked: true, ask: false }));
+                    localStorage.setItem('jeditor.tour', JSON.stringify({ offered: true }));
                     const prefs = JSON.parse(localStorage.getItem('jeditor.ui') || '{}');
                     localStorage.setItem('jeditor.ui', JSON.stringify({ ...prefs, density }));
                 } catch (e) { /* none */ }
@@ -414,7 +484,7 @@ const srv = http.createServer((req, res) => {
     const cell = (r) => !r.shown ? '—' : r.issues.length ? `⚠ ${r.issues.length}` : '✓';
     const OWN = LOOKS.filter(l => !l[2]), THEMED = LOOKS.filter(l => l[2]);
     let md = '# Look checklist\n\n';
-    md += 'Every part of jEditor: in its own look on each platform (the Windows app, the Mac app with and without macOS 26\'s own toolbar, Linux, a browser) and in every theme (the Windows app). Written by `node design/themes/audit.js`, which opens each screen at 1280×800, 1024×640 and 800×600 with comfortable density, and checks each part for: words or buttons off screen or cut off; anything under a theme\'s title bar; buttons with neither words nor an icon; words or icons spilling out of their button; buttons over each other; words cut off without "…"; words in the wrong font; files that aren\'t there. Run it again after changing how anything looks.\n\n';
+    md += 'Every part of jEditor: in its own look on each platform (the Windows app, the Mac app with and without macOS 26\'s own toolbar, Linux, a browser) and in every theme (the Windows app). Written by `node design/themes/audit.js`, which opens each screen at 1280×800, 1024×640 and 800×600 with comfortable density, and checks each part for: words or buttons off screen or cut off; anything under a theme\'s title bar, or floating over the page under the Mac\'s toolbar or traffic lights; buttons with neither words nor an icon; words or icons spilling out of their button; buttons over each other; words cut off without "…"; words in the wrong font; files that aren\'t there. Run it again after changing how anything looks.\n\n';
     md += 'The platforms\' own fonts aren\'t on the machine it runs on: Inter stands in for Segoe UI and SF (a little wider, so what fits here fits there), DejaVu Sans for Linux and a browser.\n\n';
     md += '✓ nothing found · ⚠ n problems (listed below) · — not on screen there\n\n';
     md += `Checked ${new Date().toISOString().slice(0, 10)}.\n\n`;

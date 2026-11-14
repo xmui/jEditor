@@ -64,6 +64,51 @@ async function heif(blob) {
     }
 }
 
+// The thumbnail a HEIC carries (an iPhone's is 320 × 240 or bigger), upright,
+// as RGBA, when it's at least `need` wide and the photo's shape; else null.
+// ~40 ms where the photo itself takes ~1 s. libheif's own calls, as the
+// bundle has no wrapper for these: a struct heif_error comes back through
+// a hidden first pointer, and the handle's pointer is its $$.ptr.
+async function heifThumb(blob, need) {
+    const m = await codec('heif_dec');
+    const ctx = m.heif_context_alloc();
+    const mem = m._malloc(64);
+    let h = null, th = 0, img = 0;
+    try {
+        const read = m.heif_context_read_from_memory(ctx, new Uint8Array(await blob.arrayBuffer()));
+        if (read && read.code !== m.heif_error_code.heif_error_Ok) return null;
+        h = m.heif_js_context_get_primary_image_handle(ctx);
+        const hp = h && h.$$ && h.$$.ptr;
+        if (!hp || !m._heif_image_handle_get_number_of_thumbnails(hp)) return null;
+        m._heif_image_handle_get_list_of_thumbnail_IDs(hp, mem, 1);
+        m._heif_image_handle_get_thumbnail(mem + 16, hp, m.HEAPU32[mem >> 2], mem + 32);
+        if (m.HEAP32[(mem + 16) >> 2]) return null;
+        th = m.HEAPU32[(mem + 32) >> 2];
+        m._heif_decode_image(mem + 16, th, mem + 36, m.heif_colorspace.heif_colorspace_RGB.value, m.heif_chroma.heif_chroma_interleaved_RGBA.value, 0);
+        if (m.HEAP32[(mem + 16) >> 2]) return null;
+        img = m.HEAPU32[(mem + 36) >> 2];
+        const INTERLEAVED = 10;
+        const w = m._heif_image_get_width(img, INTERLEAVED), h2 = m._heif_image_get_height(img, INTERLEAVED);
+        const W = m.heif_image_handle_get_width(h), H = m.heif_image_handle_get_height(h);
+        // Too small, or not turned as the photo is: the photo itself
+        if (!(w >= need) || !W || !H || Math.abs(w / h2 - W / H) > 0.03 * (W / H)) return null;
+        const p = m._heif_image_get_plane_readonly(img, INTERLEAVED, mem + 40);
+        const stride = m.HEAP32[(mem + 40) >> 2];
+        if (!p || stride < w * 4) return null;
+        const out = new ImageData(w, h2);
+        for (let y = 0; y < h2; y++) out.data.set(m.HEAPU8.subarray(p + y * stride, p + y * stride + w * 4), y * w * 4);
+        return out;
+    } catch (e) {
+        return null;
+    } finally {
+        if (img) m._heif_image_release(img);
+        if (th) m._heif_image_handle_release(th);
+        if (h && h.$$) m.heif_image_handle_release(h);
+        m._free(mem);
+        m.heif_context_free(ctx);
+    }
+}
+
 // The picture, upright, as RGBA
 async function pixels(blob) {
     if (isTiff(blob)) return decodeTiff(await blob.arrayBuffer());
@@ -171,6 +216,17 @@ self.onmessage = async (e) => {
         } else if (op === 'decode') {
             const img = await pixels(e.data.file);
             self.postMessage({ id, png: await png(img), w: img.width, h: img.height });
+        } else if (op === 'thumb') {
+            // A grid thumbnail, `width` wide: no full-size PNG made and read
+            // again; a HEIC's own thumbnail when it has a big enough one
+            const want = e.data.width;
+            const img = (isHeif(e.data.file) && await heifThumb(e.data.file, Math.round(want * 0.7))) || await pixels(e.data.file);
+            const bmp = await createImageBitmap(img, { resizeWidth: Math.min(want, img.width), resizeQuality: 'medium' });
+            const c = new OffscreenCanvas(bmp.width, bmp.height);
+            c.getContext('2d').drawImage(bmp, 0, 0);
+            bmp.close();
+            const blob = await c.convertToBlob(e.data.alpha ? { type: 'image/png' } : { type: 'image/jpeg', quality: 0.8 });
+            self.postMessage({ id, blob, w: img.width, h: img.height });
         } else if (op === 'ping') {
             await codec(e.data.name);
             self.postMessage({ id, ok: true });

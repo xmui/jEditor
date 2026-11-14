@@ -19,7 +19,25 @@
 //   updates      looking for a new version and installing it
 //   permissions  the Mac's privacy settings jEditor needs, in one window
 //   burn         burning a project onto a CD or DVD (disc.js)
-//   themes       Settings → Appearance's themes, with their own title bar (themes.js)
+//   folderMove   a new projects folder can take the projects along: each
+//                copied, checked and only then removed (folder-move.js)
+//   cacheFolder  Settings → Projects: where the cache is kept (folder-move.js)
+//   themes       Settings → Appearance's themes, with their own title bar (themes.js);
+//                paused, under Settings → Experimental (experiments.js)
+//   photosLibrary  the Mac's Photos library in the sidebar (places.js): its albums
+//                open as the project (photosAlbum: a folder handle); an edit is
+//                saved back as a Photos edit on the photo as it is now, and
+//                nothing is added, renamed or removed (app.fixedFiles)
+//   photosAdd    Add to Photos library: a project's photos into Photos, in an
+//                album named after it (script.js: addToPhotos)
+//   engine       the app's own engine (engine/, Rust; docs/plans/fast-engine.md):
+//                JPEG grid thumbnails made from the file on disk, much faster
+//                than decoding the whole photo in the page (script.js:
+//                engineThumbnail; JEditorNative.engineThumb). Today's code is
+//                the fallback, for the web and for whatever the engine can't do
+//   engineHeic   the engine makes HEIC grid thumbnails too (libheif, with
+//                libde265; its DLLs beside the engine's), natively and many
+//                at once, rather than the page's decoder (the fallback)
 //
 // Wording that names the system's own things comes from here too: in a
 // text, {files} is Explorer, Finder or Files, {computer} this PC or this Mac, and

@@ -2,7 +2,7 @@
   "name": "jeditor-native",
   "version": "1.0.0",
   "private": true,
-  "description": "jEditor for Mac: the native toolbar (an NSToolbar, in Liquid Glass on macOS 26)",
+  "description": "jEditor for Mac: the native toolbar (an NSToolbar, in Liquid Glass on macOS 26) and the Photos library (PhotoKit)",
   "main": "index.js",
   "gypfile": true,
   "scripts": {

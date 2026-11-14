@@ -58,6 +58,9 @@ Source: "{#PublishDir}\app\*"; DestDir: "{app}\app"; Flags: ignoreversion recurs
 ; Scanning (NAPS2.Sdk, LGPL-2.1): its DLLs, its 32-bit TWAIN helper and license, beside the exe
 Source: "{#PublishDir}\NAPS2.*"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PublishDir}\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion
+; The engine (jeditor_engine.dll) and the libraries it loads (libheif, libde265:
+; LGPL, beside it so they can be replaced; their licenses are in licenses\)
+Source: "{#PublishDir}\*.dll"; Excludes: "NAPS2.*"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 ; The 32-bit TWAIN helper (the scanner's own auto-size)
 Source: "{#PublishDir}\twain32\*"; DestDir: "{app}\twain32"; Flags: ignoreversion
 

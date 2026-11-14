@@ -1,26 +1,43 @@
-// The sidebar's places (the Windows app): projects, pinned folders and the
+// The sidebar's places (the apps): projects, pinned folders and the
 // drives on this PC. In the sidebar under the open project's folders, and
-// on the start screen.
+// on the start screen (All projects…).
+//
+// The sidebar (docked, 2.0.0): the open project's name is the heading over
+// its folders, and a click on it opens the project picker (Picker, below):
+// find any project as you type, your recent ones first. Under the folders,
+// Recents (the last projects opened, the open one left out, as it's the
+// heading), then Pinned and the drives, each with the room left on it.
+// Right-click a project's name (the heading, or a row in Recents or the
+// picker) for Rename… in place, Show in Explorer and the rest.
+//
+// On the start screen's All projects… (start-places):
 //
 //   Projects   every project in your projects folder (chosen the first
-//              time, changed from the section's header), newest first,
-//              with how many photos and when it last changed, and a
-//              search box. Then recent projects opened from elsewhere.
-//   Pinned     folders pinned here, and those pinned in Explorer's Quick
-//              Access. They open out like Explorer's.
+//              time, changed from the section's header), the pinned ones
+//              first, then newest first, with how many photos and when it
+//              last changed. Three show; Show more lists the rest. Search
+//              and New project are icons in the heading. Then recent
+//              projects opened from elsewhere.
+//   Pinned     folders pinned here that aren't projects, and those pinned
+//              in Explorer's Quick Access. They open out like Explorer's.
 //   This PC    the drives. A USB drive plugged in while jEditor is open is
-//              marked New, and can be ejected from here.
+//              marked New, and can be ejected from here. On a Mac (Locations)
+//              the Photos library too (photosLibrary): it opens out like a
+//              drive to Favourites, Recently added and the albums, and each
+//              opens as the project, read-only.
 //
 // Clicking a folder opens it as the project, straight away; the caret opens
 // it out to show what's inside. A drive opens out when clicked.
 // Above it all in the sidebar, the open project's card: its name, where it
-// is, how many photos, Scan, and Show in Explorer.
+// is, how many photos, Scan, and Show in Explorer (in jEditor's own look,
+// just its name: the rest is in its … and its right-click menu).
 
 const Places = {
     KEY_DIR: 'jeditor.projectsFolder',
     KEY_PINS: 'jeditor.pins',
     KEY_CLOSED: 'jeditor.sidebarClosed',
-    SHOWN: 30, // projects listed before "Show all"
+    SHOWN: 3, // projects listed before "Show more"
+    RECENT: 4, // projects under Recents in the sidebar
 
     expanded: new Set(), // folders opened out (paths, lowercase)
     listings: new Map(), // path → its folders (listDir)
@@ -28,6 +45,7 @@ const Places = {
     fresh: new Set(),    // drives plugged in since jEditor started, not yet looked at
     query: '',
     showAll: false,
+    searching: false, // the search box shown (the icon in the heading)
     drives: null,
     quick: [],
     projects: null,      // the projects folder's folders
@@ -40,13 +58,20 @@ const Places = {
         disk: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M5.5 13 8 4h8l2.5 9"/><path d="M17 17h.01"/></svg>',
         network: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="7" rx="2"/><path d="M7 6.5h.01"/><path d="M12 10v5"/><path d="M4 19h16"/><circle cx="12" cy="17" r="2"/></svg>',
         export: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M20 15v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4"/></svg>',
+        photos: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7.5" r="3.5"/><circle cx="12" cy="16.5" r="3.5"/><circle cx="7.5" cy="12" r="3.5"/><circle cx="16.5" cy="12" r="3.5"/></svg>',
+        album: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 3h10"/><circle cx="9" cy="10" r="1.5"/><path d="m21 15-4-4-9 8"/></svg>',
+        heart: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/></svg>',
+        clock: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
         cd: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/></svg>',
         caret: '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1.5 6.5 5 3 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+        chev: '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
         eject: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15h14L12 7z"/><path d="M5 19h14"/></svg>',
         scan: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h16"/><path d="M6 13V5a1 1 0 0 1 1-1h7l4 4v5"/><path d="M5 17h14a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-1a1 1 0 0 1 1-1z"/></svg>',
         reveal: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7"/><path d="M10 14 21 3"/><path d="M21 14v7H3V3h7"/></svg>',
         split: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>',
         plus: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+        search: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+        down: '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
         rename: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg>',
         more: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.25" fill="currentColor"/><circle cx="12" cy="12" r="1.25" fill="currentColor"/><circle cx="19" cy="12" r="1.25" fill="currentColor"/></svg>'
     },
@@ -66,6 +91,10 @@ const Places = {
     newWindowClick(e) {
         return Host.has('windows') && (e.button === 1 || (Host.mac() ? e.metaKey : e.ctrlKey));
     },
+    // The Photos library (an album's path is "photos-library:<id>"; the
+    // whole library's is "photos-library:")
+    LIBRARY: 'photos-library:',
+    isLibrary(path) { return String(path || '').startsWith(this.LIBRARY); },
     esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); },
 
     init(app) {
@@ -84,10 +113,20 @@ const Places = {
             // Right-click a folder: open, rename, show in Explorer, pin
             box.addEventListener('contextmenu', (e) => {
                 const row = e.target.closest('.sb-row');
-                if (!row || !row.dataset.path) return;
+                if (!row || !row.dataset.path || row.querySelector('.sb-rename')) return;
                 e.preventDefault();
                 e.stopPropagation();
-                this.app.openContextMenu(this.rowItems(row), e.clientX, e.clientY);
+                const items = this.rowItems(row);
+                if (items.length) this.app.openContextMenu(items, e.clientX, e.clientY);
+            });
+            // Esc in the search box: emptied and hidden
+            box.addEventListener('keydown', (e) => {
+                if (e.key !== 'Escape' || !e.target.classList.contains('sb-search')) return;
+                e.preventDefault();
+                e.stopPropagation();
+                this.searching = false;
+                this.query = '';
+                this.draw();
             });
             box.addEventListener('input', (e) => {
                 if (!e.target.classList.contains('sb-search')) return;
@@ -98,20 +137,31 @@ const Places = {
         }
         this.el('sb-card').addEventListener('click', (e) => {
             const b = e.target.closest('button[data-act]');
-            if (!b) return;
+            if (!b || e.target.closest('.sb-rename')) return;
             if (b.dataset.act === 'more') {
                 e.stopPropagation();
                 const r = b.getBoundingClientRect();
                 this.app.openContextMenu(this.cardItems(), r.left, r.bottom + 4);
+            } else if (b.dataset.act === 'picker') {
+                e.stopPropagation();
+                Picker.toggle(b);
             } else this.cardAction(b.dataset.act);
         });
         // Right-click the project: everything its buttons do
         this.el('sb-card').addEventListener('contextmenu', (e) => {
-            if (!this.app.dirHandle) return;
+            if (!this.app.dirHandle || e.target.closest('.sb-rename')) return;
             e.preventDefault();
             e.stopPropagation();
+            Picker.close();
             this.app.openContextMenu(this.cardItems(), e.clientX, e.clientY);
         });
+        // Right-click the sidebar's empty space: a new folder in the project
+        this.el('folder-rail').addEventListener('contextmenu', (e) => {
+            if (e.defaultPrevented || !this.app.dirHandle || e.target.closest('.fr-row, .sb-row, .sb-card, .mode-seg, button, input')) return;
+            e.preventDefault();
+            this.app.openContextMenu([['New folder…', () => Folders.newFolder('')]], e.clientX, e.clientY);
+        });
+        Picker.init(this);
         // Save edits when done (edits.js), for this project
         this.el('sb-card').addEventListener('change', async (e) => {
             const box = e.target.closest('input[data-act="defer"]');
@@ -172,13 +222,17 @@ const Places = {
         if (!this.boxes || !this.boxes.length) return;
         // A slower draw started earlier doesn't overwrite a newer one
         const gen = this._drawGen = (this._drawGen || 0) + 1;
+        // The open project's path first: it heads the sidebar, not in Recents
+        if (this.app.dirHandle) this._currentPath = await FolderCache.orderPath(this.app).catch(() => this._currentPath);
         const html = await this.html();
         if (gen !== this._drawGen) return;
         for (const box of this.boxes) {
+            // (a name being renamed in place is kept until it's done)
+            if (box.querySelector('.sb-rename')) continue;
             const search = box.querySelector('.sb-search');
             const focused = search && document.activeElement === search;
             const pos = focused ? search.selectionStart : 0;
-            box.innerHTML = html;
+            box.innerHTML = box.id === 'sb-places' ? html.sidebar : html.start;
             if (focused) {
                 const s = box.querySelector('.sb-search');
                 s.focus();
@@ -208,21 +262,64 @@ const Places = {
 
         const dir = this.projectsDir();
         const dirName = dir ? (dir.split(/[\\/]/).filter(Boolean).pop() || dir) : '';
+        // The search box: shown by its icon in the heading, or while there's something in it
+        const searching = this.searching || !!this.query;
         const projects = dir
-            ? `<button class="btn secondary sm sb-new" data-act="newproject" title="Make a new folder in ${this.esc(dirName)} and open it">${this.icons.plus}New project</button>` +
-              `<input class="field sm sb-search" type="search" placeholder="Search projects" value="${this.esc(this.query)}" aria-label="Search projects" spellcheck="false" autocomplete="off">` +
+            ? `<input class="field sm sb-search" type="search" placeholder="Search projects" value="${this.esc(this.query)}" aria-label="Search projects" spellcheck="false" autocomplete="off"${searching ? '' : ' hidden'}>` +
               `<div class="sb-projects">${await this.projectRows()}</div>`
-            : `<button class="btn secondary sb-choose" data-act="choose" title="The folder your projects are in: each folder in it is listed here, newest first">Choose your projects folder…</button>`;
+            : `<button class="btn secondary sb-choose" data-act="choose" title="${FolderMove.ADVICE}">Choose your projects folder…</button>`;
         const elsewhere = await this.elsewhereRows();
 
-        const pins = await this.pinRows();
-        const drives = await this.driveRows();
-        return section('projects', 'Projects',
-            dir ? `<button class="sb-sec-link" data-act="choose" title="${this.esc(dir)} — click to choose another folder">${this.esc(dirName)}</button>` : '',
-            projects + (elsewhere ? `<div class="sb-sub">Opened from elsewhere</div>${elsewhere}` : '')) +
-            // Nothing pinned yet: no section (the pin by a folder's name adds one)
-            (pins ? section('pinned', 'Pinned', '', pins) : '') +
-            section('pc', Host.platform() === 'windows' ? 'This PC' : 'Locations', '', drives || '<p class="sb-help">No drives found</p>');
+        const pins = await this.pinRows(), pinsAll = await this.pinRows({ every: true });
+        const drives = await this.driveRows() + await this.libraryRows();
+        // Nothing pinned yet: no section (the pin by a folder's name adds one)
+        const pc = section('pc', Host.platform() === 'windows' ? 'This PC' : 'Locations', '', drives || '<p class="sb-help">No drives found</p>');
+        const rest = (pins ? section('pinned', 'Pinned', '', pins) : '') + pc;
+        const restAll = (pinsAll ? section('pinned', 'Pinned', '', pinsAll) : '') + pc;
+        // The sidebar: the last projects opened, then Show all… (the picker)
+        const recent = await this.recentRows();
+        return {
+            start: section('projects', 'Projects',
+                dir ? `<button class="sb-sec-link" data-act="choose" title="${this.esc(dir)} — click to choose another folder">${this.esc(dirName)}</button>` +
+                    `<button class="sb-sec-icon${searching ? ' on' : ''}" data-act="search" title="Search projects" aria-label="Search projects" aria-pressed="${searching}">${this.icons.search}</button>` +
+                    `<button class="sb-sec-icon" data-act="newproject" title="New project: a new folder in ${this.esc(dirName)}, opened" aria-label="New project">${this.icons.plus}</button>` : '',
+                projects + (elsewhere ? `<div class="sb-sub">Opened from elsewhere</div>${elsewhere}` : '')) + rest,
+            sidebar: (recent ? section('recents', 'Recents', '', recent +
+                `<button class="sb-all" data-act="picker" title="Every project, to find one by name">Show all…</button>`) : '') + restAll
+        };
+    },
+
+    // The last projects opened, newest first (the open one left out: it's
+    // the heading). withCurrent: it first. every: the projects folder's
+    // others after them (the picker's All projects… and search)
+    async recentProjects({ withCurrent = false, every = false } = {}) {
+        const cur = this.key(this.current());
+        const out = [], seen = new Set(cur && !withCurrent ? [cur] : []);
+        if (cur && withCurrent) {
+            seen.add(cur);
+            out.push({ path: this.current(), name: this.app.dirHandle.name, current: true });
+        }
+        const recents = await Recents.list().catch(() => []);
+        for (const r of recents) {
+            const path = await this.native().folderPath(r.handle).catch(() => null);
+            if (!path || seen.has(this.key(path))) continue;
+            seen.add(this.key(path));
+            out.push({ path, name: r.name, recent: r.id, at: r.openedAt });
+        }
+        for (const p of every ? this.projects || [] : []) {
+            if (seen.has(this.key(p.path))) continue;
+            seen.add(this.key(p.path));
+            out.push({ path: p.path, name: p.name, at: p.modified });
+        }
+        return out;
+    },
+
+    async recentRows() {
+        const list = (await this.recentProjects()).slice(0, this.RECENT);
+        return list.map(p => this.row({
+            path: p.path, name: p.name, icon: this.icons.project, count: true, cls: 'sb-recent',
+            title: `${p.path} — opened ${this.when(p.at).toLowerCase()}`, attrs: p.recent ? ` data-recent="${this.esc(p.recent)}"` : ''
+        })).join('');
     },
 
     // When: "Today", "Yesterday", "Mon", "Oct 3"
@@ -234,12 +331,12 @@ const Places = {
         return this.app.dirHandle ? this._currentPath : null;
     },
 
-    row({ path, name, icon, depth = 0, caret = false, open = false, meta = '', count = false, cls = '', title = '', act = 'open', pin = null, extra = '', drive = false, sub = '' }) {
+    row({ path, name, icon, depth = 0, caret = false, open = false, meta = '', count = false, cls = '', title = '', act = 'open', pin = null, extra = '', drive = false, sub = '', attrs = '' }) {
         const k = this.key(path);
         const cur = this.key(this.current()) === k;
         const countText = count ? this.countText(path) : '';
         // A folder drags (onto a drive copies it, onto the sidebar pins it); a drive doesn't
-        return `<div class="fr-row sb-row${cur ? ' active' : ''} ${cls}"${drive ? '' : ' draggable="true"'} style="--depth:${depth}" data-path="${this.esc(path)}">` +
+        return `<div class="fr-row sb-row${cur ? ' active' : ''} ${cls}"${drive ? '' : ' draggable="true"'} style="--depth:${depth}" data-path="${this.esc(path)}"${attrs}>` +
             (caret ? `<button class="fr-caret${open ? ' open' : ''}" data-act="toggle" tabindex="-1" title="${open ? 'Fold' : 'Show what\'s inside'}">${this.icons.caret}</button>` : '<span class="fr-caret fr-spacer"></span>') +
             `<button class="sb-main" data-act="${act}" title="${this.esc((title || path) + (act === 'open' && Host.has('windows') ? Host.say(' — Ctrl+click opens it in a new window') : ''))}"><span class="sb-icon">${icon}</span>${sub ? `<span class="sb-text"><span class="fr-name">${this.esc(name)}</span>${sub}</span>` : `<span class="fr-name">${this.esc(name)}</span>`}</button>` +
             extra +
@@ -275,14 +372,17 @@ const Places = {
             return this.projectsDir() ? '<p class="sb-help">The projects folder isn\'t there. Is the drive connected?</p>' : '';
         }
         const q = this.query.trim().toLowerCase();
-        const list = q ? this.projects.filter(p => p.name.toLowerCase().includes(q)) : this.projects;
+        // The pinned ones first (each lot newest first, as they come)
+        const all = this.projects.filter(p => this.isPinned(p.path)).concat(this.projects.filter(p => !this.isPinned(p.path)));
+        const list = q ? all.filter(p => p.name.toLowerCase().includes(q)) : all;
         const shown = q || this.showAll ? list : list.slice(0, this.SHOWN);
         let html = '';
         for (const p of shown) {
             html += await this.tree(p.path, p.name, 0, { project: true, icon: this.icons.project, row: { meta: this.when(p.modified), pin: this.isPinned(p.path) } });
         }
         if (!list.length) html += `<p class="sb-help">${q ? 'No project matches' : 'No projects in this folder yet'}</p>`;
-        if (!q && !this.showAll && list.length > shown.length) html += `<button class="link-btn sb-more" data-act="all">Show all ${list.length.toLocaleString()}</button>`;
+        // Show more, and Show less once it's open
+        if (!q && list.length > this.SHOWN) html += `<button class="link-btn sb-more${this.showAll ? ' open' : ''}" data-act="all" aria-expanded="${this.showAll}" title="${this.showAll ? `The first ${this.SHOWN}` : `All ${list.length.toLocaleString()} projects`}">${this.showAll ? 'Show less' : 'Show more'}${this.icons.down}</button>`;
         return html;
     },
 
@@ -305,11 +405,15 @@ const Places = {
         return this.pins().some(p => this.key(p.path) === this.key(path));
     },
 
-    async pinRows() {
+    async pinRows({ every = false } = {}) {
         const seen = new Set();
         let html = '';
+        // (a pinned project is first in Projects: not again here. The
+        // sidebar has no Projects list, so there it's here: every)
+        const projects = new Set(every ? [] : (this.projects || []).map(p => this.key(p.path)));
         for (const p of this.pins()) {
             seen.add(this.key(p.path));
+            if (projects.has(this.key(p.path))) continue;
             html += await this.tree(p.path, p.name, 0, { icon: this.icons.pin, row: { pin: true, cls: 'sb-pinned' } });
         }
         for (const q of this.quick) {
@@ -327,10 +431,10 @@ const Places = {
             const k = this.key(d.path);
             const usb = d.kind === 'usb';
             const fmt = (n) => this.app.formatBytes(n);
-            // A USB drive says how much room it has left, under its name, with
+            // Each drive says how much room it has left, under its name, with
             // a bar of how full it is (low, in red: under a tenth free)
             const used = d.total ? Math.min(100, Math.max(0, Math.round((1 - d.free / d.total) * 100))) : 0;
-            const sub = usb && d.total
+            const sub = d.total > 0 && d.kind !== 'cd'
                 ? `<span class="sb-free${d.free < d.total / 10 ? ' low' : ''}"><span class="sb-free-bar"><span style="width:${used}%"></span></span>${this.short(d.free)} free</span>`
                 : '';
             const extra = (this.fresh.has(k) ? '<span class="sb-new-badge">New</span>' : '') +
@@ -343,10 +447,59 @@ const Places = {
         return html;
     },
 
+    // The Photos library, under the drives: opened out, its albums. The
+    // first time it's opened out macOS asks whether jEditor may see it.
+    async libraryRows() {
+        if (!Host.has('photosLibrary')) return '';
+        const root = this.LIBRARY;
+        const open = this.expanded.has(this.key(root));
+        let html = this.row({
+            path: root, name: 'Photos library', icon: this.icons.photos, caret: true, open, act: 'toggle', drive: true,
+            title: 'The Photos library: its albums, to look through (read-only)',
+            extra: `<button class="sb-open" data-act="open" title="Open the whole Photos library (or double-click it)">Open</button>`
+        });
+        if (!open) return html;
+        const native = this.native();
+        let status = await native.photosAccess(false).catch(() => 'denied');
+        if (status === 'ask' && this._libraryAsked !== true) {
+            this._libraryAsked = true;
+            status = await native.photosAccess(true).catch(() => 'denied');
+        }
+        if (status !== 'granted' && status !== 'limited') {
+            return html + `<div class="sb-empty" style="--depth:1">${status === 'ask' ? 'macOS hasn\'t said yet whether jEditor may see it' : 'jEditor isn\'t allowed to see it'} · <button class="sb-sec-link" data-act="library-settings">${status === 'ask' ? 'Allow…' : 'Open Settings'}</button></div>`;
+        }
+        if (!this.libraryList) {
+            try { this.libraryList = await native.photosCollections(); } catch (e) { this.libraryList = []; }
+        }
+        const names = { favourites: 'Favourites', recent: 'Recently added' };
+        const icons = { favourites: this.icons.heart, recent: this.icons.clock };
+        for (const c of this.libraryList) {
+            html += this.row({
+                path: root + c.id, name: names[c.kind] || c.name, icon: icons[c.kind] || this.icons.album, depth: 1, drive: true,
+                meta: c.count ? c.count.toLocaleString() : '', title: `${names[c.kind] || c.name}: ${c.count.toLocaleString()} photo${c.count === 1 ? '' : 's'} (read-only)`
+            });
+        }
+        if (!this.libraryList.length) html += `<div class="sb-empty" style="--depth:1">No albums</div>`;
+        return html;
+    },
+
+    // An album of the Photos library (its path), opened as the project
+    async openLibrary(path) {
+        const id = path.slice(this.LIBRARY.length);
+        const c = (this.libraryList || []).find(x => x.id === id);
+        const name = !id ? 'Photos library' : c ? ({ favourites: 'Favourites', recent: 'Recently added' }[c.kind] || c.name) : 'Album';
+        try {
+            await this.app.openDirectory(await this.native().photosAlbum(id, name), { library: true });
+        } catch (e) {
+            UI.alert({ title: 'Couldn\'t open it', message: e.message });
+        }
+    },
+
     // "12 GB", "850 MB": short enough for a row
     short(n) {
         if (!(n >= 0)) return '';
         const gb = n / (1024 * 1024 * 1024);
+        if (gb >= 1000) return `${(gb / 1024).toFixed(1)} TB`;
         if (gb >= 10) return `${Math.round(gb)} GB`;
         if (gb >= 1) return `${gb.toFixed(1)} GB`;
         return `${Math.round(n / (1024 * 1024))} MB`;
@@ -400,25 +553,29 @@ const Places = {
     async drawCard() {
         const card = this.el('sb-card');
         const app = this.app;
-        if (!card) return;
+        if (!card || card.querySelector('.sb-rename')) return;
         if (!app.dirHandle) {
             card.innerHTML = '';
             return;
         }
-        const path = await FolderCache.orderPath(app).catch(() => null);
-        this._currentPath = path;
+        const where = await FolderCache.orderPath(app).catch(() => null);
+        this._currentPath = where;
+        // (renamed in place since: kept until it's done)
+        if (card.querySelector('.sb-rename') || !app.dirHandle) return;
+        // The Photos library: the album's name, nothing to rename, show or export
+        const path = this.isLibrary(where) ? null : where;
         let bytes = 0;
         for (const f of app.files) bytes += f.size || 0;
         const n = app.files.length;
         card.innerHTML =
-            // The name, as the file name in the top pill: click it to rename
-            (path
-                ? `<button class="sb-card-name" data-act="rename" title="${this.esc(app.dirHandle.name)} — click to rename">${this.icons.project}<span>${this.esc(app.dirHandle.name)}</span><span class="sb-card-edit" aria-hidden="true">${this.icons.rename}</span></button>`
-                : `<div class="sb-card-name" title="${this.esc(app.dirHandle.name)}">${this.icons.project}<span>${this.esc(app.dirHandle.name)}</span></div>`) +
+            // The name: a click opens the project picker (to switch project,
+            // or find one); a right-click renames it, and the rest
+            `<button class="sb-card-name" data-act="picker" aria-haspopup="dialog" aria-expanded="false" title="${this.esc(app.dirHandle.name)} — switch project, or find one (right-click to rename it)">${this.icons.project}<span>${this.esc(app.dirHandle.name)}</span><span class="sb-card-chev">${this.icons.chev}</span></button>` +
             // jEditor's own look keeps the card to its name: its buttons are
             // in this menu (cardItems). The themes show the buttons instead
             `<button class="btn ghost icon sm sb-card-more" data-act="more" title="More: ${Host.has('scan') ? 'scan, ' : ''}${path && Host.has('reveal') ? Host.words().files + ', ' : ''}export" aria-label="More" aria-haspopup="menu">${this.icons.more}</button>` +
             (path ? `<div class="sb-card-path" title="${this.esc(path)}">${this.esc(path)}</div>` : '') +
+            (app.library ? `<div class="sb-card-path">Photos library</div>` : '') +
             `<div class="sb-card-meta">${n.toLocaleString()} photo${n === 1 ? '' : 's'} · ${app.formatBytes(bytes)}</div>` +
             `<div class="sb-card-btns">` +
             (Host.has('scan') ? `<button class="btn primary sm" data-act="scan">${this.icons.scan}Scan</button>` : '') +
@@ -428,31 +585,50 @@ const Places = {
             `</div>` +
             // Taking it off this computer: a USB drive, a disc, copies (export.js)
             (path ? `<button class="btn secondary sm sb-card-export" data-act="export" title="Copy it to a USB drive or card${Host.has('burn') ? ', burn it to a disc' : ''}, or export copies of the photos">${this.icons.export}Export<span>${Host.has('places') ? 'USB drive' : ''}${Host.has('burn') ? ' · disc' : ''} · copies</span></button>` : '') +
-            (app.readOnlyMode ? '' : `<label class="sb-card-defer" title="Crops and turns are kept on the photos, to change as often as you like, and saved into them (or exported) when you're done"><input type="checkbox" data-act="defer"${Edits.defer ? ' checked' : ''}><span>Save edits when done</span></label>`);
+            // Save edits when done, a switch; while it's on and edits are
+            // waiting, a pill: "3 edits to save · Save now" (drawPending)
+            (app.readOnlyMode ? '' : `<label class="sb-card-defer" title="Crops and turns are kept on the photos, to change as often as you like, and saved into them (or exported) when you're done"><span>Save edits when done</span><input type="checkbox" class="switch" role="switch" data-act="defer"${Edits.defer ? ' checked' : ''}></label>` +
+                '<div class="sb-card-pending" hidden></div>');
+        this.drawPending();
         // The current project is marked in the lists
         for (const box of this.boxes) {
-            box.querySelectorAll('.sb-row').forEach(r => r.classList.toggle('active', this.key(r.dataset.path) === this.key(path)));
+            box.querySelectorAll('.sb-row').forEach(r => r.classList.toggle('active', this.key(r.dataset.path) === this.key(where)));
         }
     },
 
-    // The card's buttons as a menu: the "…" by its name, or a right-click
+    // The card's buttons as a menu: the "…" by its name, or a right-click.
+    // Rename… first, as Finder's, then taking it elsewhere, then the rest
     cardItems() {
-        const path = this._currentPath, items = [];
-        if (Host.has('scan')) items.push(['Scan…', () => this.cardAction('scan')]);
+        const path = this.isLibrary(this._currentPath) ? null : this._currentPath, items = [];
+        if (path) items.push(['Rename…', () => this.cardAction('rename')]);
         if (path && Host.has('reveal')) items.push([Host.say('Show in {files}'), () => this.cardAction('reveal')]);
+        if (items.length) items.push(['—']);
+        if (Host.has('scan')) items.push(['Scan…', () => this.cardAction('scan')]);
+        if (path) items.push(['Export…', () => this.cardAction('export')]);
+        items.push(['—']);
+        if (!this.app.readOnlyMode) items.push(['Save edits when done', () => this.cardAction('defer'), false, !!Edits.defer]);
         if (Host.has('windows')) items.push(['Split with another window', () => this.cardAction('split')]);
         if (path) items.push([this.isPinned(path) ? 'Unpin' : 'Pin to the sidebar', () => this.cardAction('pin')]);
-        if (path) items.push(['Rename…', () => this.cardAction('rename')]);
-        items.push(['—']);
-        if (path) items.push(['Export…', () => this.cardAction('export')]);
-        if (!this.app.readOnlyMode) items.push([(Edits.defer ? '✓ ' : '') + 'Save edits when done', async () => { await Edits.setDefer(!Edits.defer); this.drawCard(); }]);
+        if (items[items.length - 1][0] === '—') items.pop();
         return items;
     },
 
+    // The card's "3 edits to save · Save now", while Save edits when done is
+    // on and edits are waiting (Edits.updateBar asks again as they change)
+    drawPending() {
+        const box = this.el('sb-card') && this.el('sb-card').querySelector('.sb-card-pending');
+        if (!box) return;
+        const n = typeof Edits !== 'undefined' && Edits.on() ? Edits.count() : 0;
+        box.hidden = !n;
+        box.innerHTML = n ? `<button class="sb-card-save" data-act="savenow" title="Save the edits into the photos, or export edited copies">${n.toLocaleString()} edit${n === 1 ? '' : 's'} to save<b>Save now</b></button>` : '';
+    },
+
     cardAction(act) {
-        const path = this._currentPath;
-        if (act === 'scan') Scan.open();
-        else if (act === 'rename' && path) this.renameFolder(path);
+        const path = this.isLibrary(this._currentPath) ? null : this._currentPath;
+        if (act === 'savenow') Edits.saveAll();
+        else if (act === 'scan') Scan.open();
+        else if (act === 'rename' && path) this.renameInPlace(this.el('sb-card').querySelector('.sb-card-name'), path);
+        else if (act === 'defer') Edits.setDefer(!Edits.defer).then(() => this.drawCard());
         else if (act === 'split') Windows.split();
         else if (act === 'export' && path) Export.open({ path });
         else if (act === 'reveal' && path) this.native().reveal(path);
@@ -486,20 +662,36 @@ const Places = {
         if (act === 'section') return this.toggleSection(b.dataset.sec);
         if (act === 'choose') return this.chooseFolder();
         if (act === 'newproject') return this.newProject();
-        if (act === 'all') { this.showAll = true; return this.drawProjects(); }
+        if (act === 'library-settings') return this.librarySettings();
+        if (act === 'all') { this.showAll = !this.showAll; return this.drawProjects(); }
+        if (act === 'search') return this.toggleSearch(b);
+        if (act === 'picker') { e.stopPropagation(); return Picker.toggle(b, { all: true }); }
         if (!path) return;
         if (act === 'open' && this.newWindowClick(e)) return Windows.newWindow(path); // in a window of its own
         if (act === 'open') return this.open(path);
         if (act === 'toggle') {
             const k = this.key(path);
             if (this.expanded.has(k)) this.expanded.delete(k);
-            else { this.expanded.add(k); this.listings.delete(k); }
+            else { this.expanded.add(k); this.listings.delete(k); if (this.isLibrary(path)) this.libraryList = null; }
             this.fresh.delete(k);
             return this.draw();
         }
         if (act === 'pin') return this.pin(path, row.querySelector('.fr-name').textContent);
         if (act === 'unpin') return this.unpin(path);
         if (act === 'eject') return this.eject(path, row.querySelector('.fr-name').textContent);
+    },
+
+    // The search icon: the box shown and typed in, or hidden and emptied
+    async toggleSearch(b) {
+        this.searching = !(this.searching || this.query);
+        if (!this.searching) this.query = '';
+        // (the section opens if it's folded)
+        const closed = this.closed();
+        if (this.searching && closed.has('projects')) { closed.delete('projects'); this.set(this.KEY_CLOSED, [...closed]); }
+        await this.draw();
+        if (!this.searching) return;
+        const s = ([...this.boxes].find(x => x.contains(b)) || this.boxes[0]).querySelector('.sb-search');
+        if (s) s.focus();
     },
 
     toggleSection(id) {
@@ -509,9 +701,10 @@ const Places = {
         this.draw();
     },
 
-    async chooseFolder() {
-        const path = await this.native().pickPath('Choose your projects folder', this.projectsDir());
-        if (!path) return;
+    // A new projects folder, through the move flow (folder-move.js)
+    chooseFolder() { return FolderMove.changeProjects(); },
+
+    async setProjectsDir(path) {
         this.set(this.KEY_DIR, path);
         this.showAll = false;
         this.query = '';
@@ -521,45 +714,147 @@ const Places = {
         await this.refresh();
     },
 
+    // Not allowed to see the Photos library: macOS asks again, or (once
+    // it's said no) System Settings → Privacy & Security → Photos
+    async librarySettings() {
+        const native = this.native();
+        const status = await native.photosAccess(true).catch(() => 'denied');
+        if (status !== 'granted' && status !== 'limited') await native.openPermissionSettings('photos').catch(() => { });
+        this.libraryList = null;
+        this.draw();
+    },
+
     // A sidebar folder's right-click menu
     rowItems(row) {
         const path = row.dataset.path;
+        // The Photos library's: only opening it (it isn't a folder)
+        if (this.isLibrary(path)) return this.key(path) === this.key(this.current()) ? [] : [['Open as the project', () => this.open(path)]];
         const name = row.querySelector('.fr-name').textContent;
+        // A project under Recents: open it, rename it, show it, or take it off the list
+        if (row.classList.contains('sb-recent')) return this.projectItems(path, { recent: row.dataset.recent, rename: () => this.renameInPlace(row, path) });
         const drive = this.isDrive(path);
         const pinned = this.pins().some(p => this.key(p.path) === this.key(path));
         const items = [];
         if (this.key(path) !== this.key(this.current())) items.push(['Open as the project', () => this.open(path)]);
         if (Host.has('windows')) items.push(['Open in a new window', () => Windows.newWindow(path)]);
-        if (!drive) items.push(['—'], ['Rename…', () => this.renameFolder(path)]);
+        if (!drive) items.push(['—'], ['Rename…', () => this.renameInPlace(row, path)]);
         if (Host.has('reveal')) items.push(['—'], [Host.say('Show in {files}'), () => this.native().reveal(path)]);
         items.push([pinned ? 'Unpin' : 'Pin to the sidebar', () => pinned ? this.unpin(path) : this.pin(path, name)]);
-        // Onto a USB drive or card, burnt to a disc; a card's photos imported
-        const usb = (this.drives || []).find(d => this.key(d.path).replace(/[\\/]+$/, '') === this.key(path).replace(/[\\/]+$/, '') && d.kind === 'usb');
+        // The open project onto a USB drive or card (copies of its photos, or
+        // the whole folder as it is), or burnt to a disc; a card's photos imported
+        const here = (this.drives || []).find(d => this.key(d.path).replace(/[\\/]+$/, '') === this.key(path).replace(/[\\/]+$/, ''));
+        const usb = here && here.kind === 'usb' ? here : null;
+        const cur = this.current(), proj = this.app.dirHandle && this.app.dirHandle.name;
         if (usb) {
             items.push(['—']);
-            if (this.current() && !this.within(this.current(), usb.path)) items.push([`Copy ${this.app.dirHandle.name} here…`, () => Export.open({ path: this.current(), tab: 'usb', drive: usb.path })]);
+            if (cur && proj && !this.within(cur, usb.path)) {
+                items.push([`Export ${proj} to ${usb.name}…`, () => Export.open({ path: cur, tab: 'copies', where: 'drive:' + usb.path })]);
+                items.push([`Copy ${proj} to ${usb.name}…`, () => Export.open({ path: cur, tab: 'usb', drive: usb.path })]);
+            }
             items.push(['Import photos from here…', () => Import.open({ path: usb.path, name: usb.name })]);
         }
+        if (here && here.kind === 'cd' && cur && proj && Host.has('burn')) items.push(['—'], [`Burn ${proj} to a disc…`, () => Export.open({ path: cur, tab: 'disc', drive: here.path })]);
         if (!drive) items.push(['—'], ['Export: USB drive' + (Host.has('burn') ? ', disc' : '') + ', copies…', () => Export.open({ path })]);
         // The open project's photos in another format
         if (!drive && this.app.files.length && this.key(path) === this.key(this.current())) items.push(['Convert…', () => Convert.open({ folder: '' })]);
         return items;
     },
 
+    // A project's right-click menu, in Recents and the picker: short
+    projectItems(path, { recent = null, rename = null } = {}) {
+        const items = [];
+        if (this.key(path) !== this.key(this.current())) items.push(['Open', () => this.open(path)]);
+        if (Host.has('windows')) items.push(['Open in a new window', () => Windows.newWindow(path)]);
+        if (items.length) items.push(['—']);
+        items.push(['Rename…', rename || (() => this.renameFolder(path))]);
+        if (Host.has('reveal')) items.push([Host.say('Show in {files}'), () => this.native().reveal(path)]);
+        if (recent) items.push(['—'], ['Remove from Recents', () => this.forgetRecent(recent)]);
+        return items;
+    },
+
+    // Off the Recents list (and the home page's table); the folder isn't touched
+    async forgetRecent(id) {
+        await Recents.forget(id);
+        await this.draw();
+        Picker.redraw();
+    },
+
+    // Rename in place, as Finder does: the name becomes a field, chosen,
+    // ready to type over. Enter renames (renameFolder), Esc or a click away
+    // leaves it as it was. `el` is the row or the project's heading.
+    renameInPlace(el, path) {
+        const label = el && el.querySelector('.fr-name, .sb-pick-name, .sb-card-name > span');
+        if (!label) return;
+        // The field lies over the name, in the row's own box (never inside a button)
+        const host = el.matches('button') ? el.parentElement : el;
+        if (host.querySelector(':scope > .sb-rename')) return;
+        const old = this.baseName(path);
+        const input = document.createElement('input');
+        input.className = 'sb-rename';
+        input.value = old;
+        input.spellcheck = false;
+        input.setAttribute('aria-label', `Rename ${old}`);
+        const lr = label.getBoundingClientRect(), hr = host.getBoundingClientRect();
+        input.style.left = `${lr.left - hr.left + host.scrollLeft}px`;
+        input.style.top = `${lr.top - hr.top + host.scrollTop + lr.height / 2}px`;
+        input.style.width = `${Math.max(80, el.getBoundingClientRect().right - lr.left - 6)}px`;
+        const drag = el.getAttribute('draggable');
+        let done = false;
+        const finish = (name) => {
+            if (done) return;
+            done = true;
+            input.remove();
+            label.style.visibility = '';
+            if (drag !== null) el.setAttribute('draggable', drag);
+            if (name !== null && name.trim() !== old) this.renameFolder(path, name);
+            else this.draw();
+        };
+        input.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') { e.preventDefault(); finish(input.value); }
+            else if (e.key === 'Escape') { e.preventDefault(); finish(null); }
+        });
+        input.addEventListener('blur', () => finish(null));
+        // Clicks in it stay in it: the row under it isn't opened
+        for (const t of ['click', 'dblclick', 'mousedown', 'pointerdown', 'contextmenu']) input.addEventListener(t, (e) => e.stopPropagation());
+        el.setAttribute('draggable', 'false');
+        label.style.visibility = 'hidden';
+        host.appendChild(input);
+        input.focus();
+        input.select();
+    },
+
+    // What's wrong with a new name for a folder, or null
+    nameProblem(name, old) {
+        if (!name) return 'A name is needed';
+        if (/[\\/:*?"<>|]/.test(name)) return 'A name can\'t have \\ / : * ? " < > or | in it';
+        if (/^\.+$/.test(name) || /[. ]$/.test(name)) return 'A name can\'t end with a dot or a space';
+        return null;
+    },
+
     // Rename a project or folder. Its data (flags, kept edits, thumbnails)
     // goes with it (the app moves it); the open project, if it's this one
-    // or inside it, is closed first and opened again after, and pins and
-    // the projects folder follow too.
-    async renameFolder(path) {
+    // or inside it, is closed first and opened again after, and pins, the
+    // projects folder and Recents follow too. Undo puts the old name back.
+    // No name: it's asked for (a window).
+    async renameFolder(path, name = null, { undo = false } = {}) {
         const parts = path.split(/[\\/]/).filter(Boolean);
         const old = parts[parts.length - 1] || path;
-        const name = await UI.prompt({
-            title: 'Rename',
-            message: 'Its flags, kept edits and thumbnails stay with it.',
-            input: { label: 'New name', value: old },
-            ok: 'Rename'
-        });
-        if (name === null || !name.trim() || name.trim() === old) return;
+        if (name === null) {
+            name = await UI.prompt({
+                title: 'Rename',
+                message: 'Its flags, kept edits and thumbnails stay with it.',
+                input: { label: 'New name', value: old },
+                ok: 'Rename'
+            });
+        }
+        if (name === null || !name.trim() || name.trim() === old) return null;
+        name = name.trim();
+        const problem = this.nameProblem(name, old);
+        if (problem) {
+            UI.alert({ title: `Couldn't rename ${old}`, message: problem });
+            return null;
+        }
         const k = this.key(path).replace(/[\\/]+$/, '');
         const under = (p) => p && (this.key(p) === k || this.key(p).startsWith(k + this.sep(path)));
         const moved = (p, to) => to + p.slice(k.length);
@@ -568,21 +863,46 @@ const Places = {
         if (reopen) await this.app.closeFolder();
         let to;
         try {
-            to = await this.native().renameFolder(path, name.trim());
+            to = await this.native().renameFolder(path, name);
         } catch (e) {
             if (reopen) await this.native().openPath(reopen).catch(() => { });
             UI.alert({ title: `Couldn't rename ${old}`, message: e.message });
-            return;
+            return null;
         }
         // Everything that pointed at it, at its new name
-        this.set(this.KEY_PINS, this.pins().map(p => under(p.path) ? { ...p, path: moved(p.path, to), name: this.key(p.path) === k ? name.trim() : p.name } : p));
+        this.set(this.KEY_PINS, this.pins().map(p => under(p.path) ? { ...p, path: moved(p.path, to), name: this.key(p.path) === k ? name : p.name } : p));
         const dir = this.projectsDir();
         if (under(dir)) this.set(this.KEY_DIR, moved(dir, to));
         this.expanded = new Set([...this.expanded].map(e => under(e) ? this.key(moved(e, to)) : e));
         this.listings.clear();
+        await this.followRecents(under, (p) => moved(p, to));
         if (reopen) await this.native().openPath(moved(reopen, to)).catch(() => { });
         await this.refresh();
-        this.app.showToast(`Renamed ${old} to ${name.trim()}`, 2500, null, null, { kind: 'rename' });
+        if (undo) {
+            this.app.showToast(`Name put back: ${name}`, 3000, null, null, { kind: 'undo' });
+        } else {
+            this.app.pushUndo({ type: 'project-rename', path: to, name: old });
+            this.app.showToast(`Renamed ${old} to ${name}`, 4000, null, { label: 'Undo', run: () => this.app.undo() }, { kind: 'rename' });
+        }
+        return to;
+    },
+
+    // Recents (the sidebar's, the picker's, the home page's table) at the
+    // new name, a project inside the renamed folder too
+    async followRecents(under, moved) {
+        if (typeof Recents === 'undefined' || !Recents.supported()) return;
+        for (const r of await Recents.list().catch(() => [])) {
+            const was = await this.native().folderPath(r.handle).catch(() => null);
+            if (!was || !under(was)) continue;
+            const now = moved(was);
+            const handle = await this.native().folderHandle(now).catch(() => null);
+            if (handle) await Recents.replace(r.id, handle);
+        }
+    },
+
+    // Undo (script.js): the old name back
+    undoRename(entry) {
+        return this.renameFolder(entry.path, entry.name, { undo: true });
     },
 
     // A new folder in the projects folder, opened as the project
@@ -590,13 +910,16 @@ const Places = {
         const dir = this.projectsDir();
         if (!dir) return this.chooseFolder();
         const dirName = dir.split(/[\\/]/).filter(Boolean).pop() || dir;
-        const name = await UI.prompt({
+        const r = await UI.prompt({
             title: 'New project',
             message: `A new folder in ${dirName}, opened as the project, ready to scan or shoot into.`,
             input: { label: 'Name', placeholder: 'Smith Order' },
+            check: { label: 'Save edits when done', note: 'Edits wait until you save them. Off: they\'re written into the photos as you go.', value: !!this.app.uiPrefs.deferNew },
             ok: 'Create'
         });
-        if (name === null || !name.trim()) return;
+        const name = typeof r === 'string' ? r : r && r.value;
+        if (!name || !name.trim()) return;
+        FirstOpen.preset(name.trim(), r && typeof r === 'object' ? r.checked : !!this.app.uiPrefs.deferNew); // so it isn't asked when it opens
         try {
             const path = await this.native().makeFolder(dir, name.trim());
             this.listings.clear();
@@ -609,6 +932,7 @@ const Places = {
 
     async open(path) {
         if (this.key(path) === this.key(this.current())) return;
+        if (this.isLibrary(path)) return this.openLibrary(path);
         const ok = await this.native().openPath(path).catch(() => false);
         if (!ok) {
             this.app.showToast(`Couldn't open ${path}: it isn't there any more`, 4000);
@@ -648,7 +972,7 @@ const Places = {
         const start = (e) => {
             const row = e.target.closest && e.target.closest('.sb-row[data-path], #folder-tree .fr-row[data-folder-path]');
             // (not a drive itself)
-            if (!row || (this.drives || []).some(d => this.key(d.path) === this.key(row.dataset.path))) return;
+            if (!row || (this.drives || []).some(d => this.key(d.path) === this.key(row.dataset.path)) || this.isLibrary(row.dataset.path)) return;
             const path = row.dataset.path !== undefined ? row.dataset.path : this.projectPath(row.dataset.folderPath);
             if (!path) return;
             this.dragging = path;
@@ -714,6 +1038,7 @@ const Places = {
         const from = this.dragging;
         if (row) {
             const dest = row.dataset.path;
+            if (this.isLibrary(dest)) return null; // read-only
             if (from && (this.within(dest, from) || this.key(this.parentOf(from)) === this.key(dest.replace(/[\\/]+$/, '')))) return null;
             return { copy: dest, el: row };
         }
@@ -809,16 +1134,18 @@ const Places = {
     // ---- A project onto a USB drive or card, in one step ----
     //
     // The drive chosen (if there's more than one), room checked, the folder
-    // copied, its flags and edits put with it (a .jeditor folder in the
-    // copy: wherever it's opened next, jEditor takes them in), and the
-    // drive ejected after if you like.
+    // copied as it is on disk, and the drive ejected after if you like. Its
+    // flags and kept edits stay on this computer: they go with it (a
+    // .jeditor folder in the copy, taken in wherever it's opened next) only
+    // when that's asked for, in the Export window.
 
     usbDrives(except = null) {
         return (this.drives || []).filter(d => d.kind === 'usb' && !(except && this.within(except, d.path)));
     },
 
-    // `eject` (true or false): chosen already, in the Export window
-    async copyToDrive(src = this.current(), { drive = null, at = null, eject = null } = {}) {
+    // `eject` (true or false): chosen already, in the Export window;
+    // `withData`: its flags and edits too, in a .jeditor folder in the copy
+    async copyToDrive(src = this.current(), { drive = null, at = null, eject = null, withData = false } = {}) {
         const app = this.app;
         if (!src) return;
         if (!this.drives) await this.refresh().catch(() => { });
@@ -831,7 +1158,7 @@ const Places = {
             if (drives.length > 1) {
                 // Which one: a menu of them, with room on each
                 const p = at || { x: innerWidth / 2 - 120, y: innerHeight / 3 };
-                app.openContextMenu(drives.map(d => [`${d.name} — ${this.short(d.free)} free`, () => this.copyToDrive(src, { drive: d })]), p.x, p.y);
+                app.openContextMenu(drives.map(d => [`${d.name} — ${this.short(d.free)} free`, () => this.copyToDrive(src, { drive: d, eject, withData })]), p.x, p.y);
                 return;
             }
             drive = drives[0];
@@ -849,7 +1176,7 @@ const Places = {
         const how = eject !== null ? (eject ? 'ok' : 'alt') : await UI.choose({
             title: `Copy ${name} to ${drive.name}?`,
             message: (bytes ? `${app.formatBytes(bytes)} of photos; ${app.formatBytes(drive.free)} free on ${drive.name}. ` : '') +
-                'Its flags and edits go with it, for when it\'s opened in jEditor on another computer.',
+                'The photos are copied as they are on disk.',
             ok: 'Copy and eject',
             alt: 'Copy'
         });
@@ -859,13 +1186,14 @@ const Places = {
         await Promise.all([Edits.flush(), Flags.save()].map(p => p.catch(() => { })));
         const to = await this.copyInto(src, drive.path, { quiet: true });
         if (!to) return;
-        const carried = await this.carryData(src, to).catch((e) => { console.warn('Couldn\'t put the project\'s data with the copy:', e); return false; });
+        const carried = withData && await this.carryData(src, to).catch((e) => { console.warn('Couldn\'t put the project\'s data with the copy:', e); return false; });
         if (how === 'ok') {
             await this.eject(drive.path, drive.name);
-            return;
+            return to;
         }
         app.showToast(`Copied ${name} to ${drive.name}` + (carried ? ', flags and edits too' : ''), 6000, null,
             { label: 'Eject', run: () => this.eject(drive.path, drive.name) }, { type: 'success' });
+        return to;
     },
 
     // The project's data (flags, kept edits and their paint) into a .jeditor
@@ -964,6 +1292,9 @@ const Places = {
         this.drives = places.drives;
         this.listings.clear();
         await this.draw();
+        // A camera's card in: the home page's second tile is Import (start.js)
+        const found = await Promise.all(places.drives.filter(d => d.kind !== 'cd').map(async d => (await Import.isCard(d)) ? d : null));
+        if (typeof Start !== 'undefined' && Start.setCard) Start.setCard(found.find(Boolean) || null);
     },
 
     // A drive, opened out in the sidebar (or on the start screen)
@@ -983,6 +1314,232 @@ const Places = {
         for (const box of this.boxes) {
             const row = [...box.querySelectorAll('.sb-row')].find(r => this.key(r.dataset.path) === k);
             if (row && row.offsetParent) row.scrollIntoView({ block: 'nearest' });
+        }
+    }
+};
+
+// ---- The project picker ----
+//
+// A click on the project's name in the sidebar (or Show all… under
+// Recents). Find a project as you type, any of them: your recent ones and
+// the projects folder's. Before anything's typed, Recents with the open one
+// ticked, then All projects…, New project… and Open a folder…. ↑ ↓ and
+// Enter, Esc to close. Right-click a project: Rename… in place and the rest.
+const Picker = {
+    el: null,
+    anchor: null,
+    query: '',
+    all: false,     // All projects… (or Show all…): every project, by name
+    list: [],       // [{ path, name, recent, current, at }]
+
+    init(places) {
+        this.places = places;
+        const el = this.el = document.createElement('div');
+        el.className = 'sb-picker';
+        el.id = 'sb-picker';
+        el.hidden = true;
+        el.setAttribute('role', 'dialog');
+        el.setAttribute('aria-label', 'Projects');
+        el.innerHTML = `<label class="sb-picker-find">${places.icons.search}<input type="search" placeholder="Find a project" aria-label="Find a project" spellcheck="false" autocomplete="off"></label><div class="sb-picker-list" role="listbox"></div>`;
+        document.body.appendChild(el);
+        this.input = el.querySelector('input');
+        this.box = el.querySelector('.sb-picker-list');
+        this.input.addEventListener('input', () => { this.query = this.input.value; this.render(); });
+        el.addEventListener('keydown', (e) => this.key(e));
+        el.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-pick]');
+            if (b) this.choose(b);
+        });
+        el.addEventListener('mousemove', (e) => {
+            const b = e.target.closest('.sb-pick');
+            if (b && !b.classList.contains('on')) this.mark(b);
+        });
+        el.addEventListener('contextmenu', (e) => {
+            const b = e.target.closest('.sb-pick[data-path]');
+            if (!b || e.target.closest('.sb-rename')) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const p = this.list.find(x => places.key(x.path) === places.key(b.dataset.path));
+            places.app.openContextMenu(places.projectItems(b.dataset.path, {
+                recent: p && p.recent,
+                rename: () => places.renameInPlace(b, b.dataset.path)
+            }), e.clientX, e.clientY);
+        });
+        // A click anywhere else closes it (not on its own right-click menu)
+        document.addEventListener('mousedown', (e) => {
+            if (this.isOpen() && !el.contains(e.target) && !(this.anchor && this.anchor.contains(e.target)) && !e.target.closest('#context-menu')) this.close();
+        }, true);
+        window.addEventListener('resize', () => this.close());
+    },
+
+    isOpen() { return !!this.el && !this.el.hidden; },
+
+    toggle(anchor, { all = false } = {}) {
+        if (this.isOpen() && this.anchor === anchor) return this.close();
+        this.open(anchor, { all });
+    },
+
+    async open(anchor, { all = false } = {}) {
+        if (!this.el) return;
+        this.close();
+        this.anchor = anchor;
+        this.all = all;
+        this.query = '';
+        this.input.value = '';
+        if (anchor) anchor.setAttribute('aria-expanded', 'true');
+        this.el.hidden = false;
+        this.place();
+        this.input.focus({ preventScroll: true });
+        await this.load();
+    },
+
+    close() {
+        if (!this.isOpen()) return;
+        this.el.hidden = true;
+        this.box.innerHTML = '';
+        const a = this.anchor;
+        this.anchor = null;
+        if (a) a.setAttribute('aria-expanded', 'false');
+        if (a && a.isConnected && this.el.contains(document.activeElement)) a.focus({ preventScroll: true });
+    },
+
+    // Under what opened it, below the window's top and inside the window
+    place() {
+        const r = this.anchor ? this.anchor.getBoundingClientRect() : { left: 16, bottom: 80 };
+        const top = Math.max(UI.topSafe ? UI.topSafe() + 8 : 8, r.bottom + 4);
+        this.el.style.left = `${Math.max(8, Math.min(r.left, innerWidth - this.el.offsetWidth - 8))}px`;
+        this.el.style.top = `${top}px`;
+        this.el.style.maxHeight = `${Math.max(160, innerHeight - top - 12)}px`;
+    },
+
+    async load() {
+        const gen = this._gen = (this._gen || 0) + 1;
+        const list = await this.places.recentProjects({ withCurrent: true, every: true }).catch(() => []);
+        if (gen !== this._gen || !this.isOpen()) return;
+        this.list = list;
+        this.render();
+    },
+
+    // Drawn again after a change (renamed, taken off Recents)
+    async redraw() {
+        if (this.isOpen()) await this.load();
+    },
+
+    // What's typed, matched: names starting with it first, then words
+    // starting with it, then anywhere in the name
+    matches(q) {
+        const low = q.toLowerCase();
+        const score = (n) => {
+            const s = n.toLowerCase(), at = s.indexOf(low);
+            if (at < 0) return -1;
+            if (at === 0) return 3;
+            return /[\s_\-.(]/.test(s[at - 1]) ? 2 : 1;
+        };
+        return this.list.map(p => ({ p, s: score(p.name) })).filter(x => x.s > 0)
+            .sort((a, b) => b.s - a.s || a.p.name.localeCompare(b.p.name, undefined, { numeric: true, sensitivity: 'base' }))
+            .map(x => x.p);
+    },
+
+    render() {
+        const P = this.places, q = this.query.trim();
+        const esc = (t) => P.esc(t);
+        const bold = (name) => {
+            if (!q) return esc(name);
+            const at = name.toLowerCase().indexOf(q.toLowerCase());
+            return at < 0 ? esc(name) : esc(name.slice(0, at)) + '<b>' + esc(name.slice(at, at + q.length)) + '</b>' + esc(name.slice(at + q.length));
+        };
+        const row = (p) => `<button class="sb-pick" role="option" data-pick="open" data-path="${esc(p.path)}" title="${esc(p.path)}">` +
+            `<span class="sb-pick-tick">${p.current ? '✓' : ''}</span>${P.icons.project.replace('<svg ', '<svg class="i" ')}<span class="sb-pick-name">${bold(p.name)}</span>` +
+            `<span class="sb-pick-count" data-count="${esc(p.path)}">${P.countText(p.path)}</span></button>`;
+        const action = (id, label, title = '') => `<button class="sb-pick" data-pick="${id}"${title ? ` title="${esc(title)}"` : ''}><span class="sb-pick-tick"></span><span class="sb-pick-name">${esc(label)}</span></button>`;
+        const sep = '<div class="sb-picker-sep" role="separator"></div>';
+        const dir = P.projectsDir();
+        const dirName = dir ? (dir.split(/[\\/]/).filter(Boolean).pop() || dir) : '';
+        let html = '';
+        if (q) {
+            const found = this.matches(q).slice(0, 50);
+            html += found.length ? found.map(row).join('') : `<div class="sb-picker-none">No project called “${esc(q)}”</div>`;
+            html += sep + action('find', `Find “${q}” anywhere`, 'In Find anything: photos, folders and commands too');
+        } else if (this.all) {
+            const sorted = this.list.slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+            html += `<div class="sb-picker-head">All projects${dir ? ` in <button data-pick="choose" title="${esc(dir)} — click to choose another folder">${esc(dirName)}</button>` : ''}</div>`;
+            html += sorted.map(row).join('') || '<div class="sb-picker-none">No projects yet</div>';
+            html += sep + action('new', 'New project…') + action('folder', 'Open a folder…') +
+                (dir ? '' : action('choose', 'Choose your projects folder…', FolderMove.ADVICE));
+        } else {
+            const recent = this.list.filter(p => p.current || p.recent).slice(0, P.RECENT + 1);
+            html += '<div class="sb-picker-head">Recents</div>' + recent.map(row).join('');
+            html += sep + action('all', 'All projects…') + action('new', 'New project…') + action('folder', 'Open a folder…');
+        }
+        this.box.innerHTML = html;
+        // Marked for Enter: the first match, or the last project before this one
+        const first = [...this.box.querySelectorAll('.sb-pick')].find(b => !b.querySelector('.sb-pick-tick:not(:empty)')) || this.box.querySelector('.sb-pick');
+        if (first) this.mark(first);
+        this.place();
+        this.count();
+    },
+
+    // The photos in each, counted by the app as they come
+    async count() {
+        const P = this.places, gen = this._gen;
+        const want = [...this.box.querySelectorAll('[data-count]')].map(s => s.dataset.count).filter(p => !P.counts.has(P.key(p)));
+        for (let i = 0; i < want.length; i += 12) {
+            const chunk = want.slice(i, i + 12);
+            let r;
+            try { r = await P.native().countPhotos(chunk); } catch (e) { return; }
+            P.limit = r.limit;
+            chunk.forEach((p, j) => P.counts.set(P.key(p), r.counts[j]));
+            if (gen !== this._gen || !this.isOpen()) return;
+            this.box.querySelectorAll('[data-count]').forEach(s => { const t = P.countText(s.dataset.count); if (t) s.textContent = t; });
+        }
+    },
+
+    mark(b) {
+        this.box.querySelectorAll('.sb-pick.on').forEach(x => x.classList.remove('on'));
+        if (b) b.classList.add('on');
+    },
+
+    key(e) {
+        if (e.target.closest && e.target.closest('.sb-rename')) return;
+        const items = [...this.box.querySelectorAll('.sb-pick')];
+        const at = items.findIndex(b => b.classList.contains('on'));
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            this.close();
+        } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!items.length) return;
+            const next = items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length];
+            this.mark(next);
+            next.scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (items[at]) this.choose(items[at]);
+        } else {
+            // Typing goes to the search box, wherever the focus is in here
+            e.stopPropagation();
+        }
+    },
+
+    choose(b) {
+        const P = this.places, act = b.dataset.pick;
+        if (act === 'all') {
+            this.all = true;
+            this.input.focus({ preventScroll: true });
+            return this.render();
+        }
+        const q = this.query.trim();
+        this.close();
+        if (act === 'open') return P.open(b.dataset.path);
+        if (act === 'new') return P.newProject();
+        if (act === 'choose') return P.chooseFolder();
+        if (act === 'folder') return OpenCard.available() ? FirstOpen.before(() => OpenCard.open()) : P.app.browseFolder();
+        if (act === 'find' && typeof Palette !== 'undefined') {
+            Palette.open();
+            if (Palette.isOpen()) { Palette.input.value = q; Palette.search(); }
         }
     }
 };

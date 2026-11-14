@@ -80,22 +80,45 @@ const Fit = {
     fit() {
         const iface = this.el('main-interface');
         if (!iface || iface.classList.contains('hidden') || !iface.offsetWidth) return;
-        // A theme's docked bars (themes.js) have room for everything
+        // A theme's docked bars (themes.js) have room for everything, but
+        // for the foot bar in a narrow window (fitDocked)
         if (document.documentElement.dataset.layout === 'docked') {
             for (const b of document.querySelectorAll('[data-squeezed]')) delete b.dataset.squeezed;
             const fi = document.querySelector('.file-info');
             if (fi) fi.style.maxWidth = '';
             iface.dataset.fit = '';
+            this.fitDocked(iface);
             this.syncMore(this.el('header-controls'), this.el('btn-more'));
             return;
         }
         const tokens = new Set();
-        const set = () => { iface.dataset.fit = [...tokens].join(' '); };
+        const set = () => { const v = [...tokens].join(' '); if (iface.dataset.fit !== v) iface.dataset.fit = v; };
         this.fitTop(iface, tokens, set);
         this.fitBottom(iface, tokens, set);
         this.fitToasts(tokens);
         set();
         if (typeof Folders !== 'undefined' && Folders.fitBar) Folders.fitBar();
+    },
+
+    // A theme's foot bar: the selection bar and the size slider share it,
+    // and in a narrow window the bar ran under the slider. A shorter
+    // slider first, then the bar scrolls sideways in the room left
+    fitDocked(iface) {
+        const sel = this.el('selection-bar'), size = this.el('grid-controls');
+        if (!sel || !size) return;
+        sel.style.maxWidth = '';
+        if (!this.shown(sel) || !this.shown(size)) return;
+        // Its buttons, not its box: a theme's bar can be wider than they are
+        const clear = () => {
+            const r = size.getBoundingClientRect();
+            return [...sel.children].every(b => { const c = b.getBoundingClientRect(); return !c.width || c.right <= r.left + 1 || c.left >= r.right - 1 || c.bottom <= r.top || c.top >= r.bottom; });
+        };
+        if (clear()) return;
+        iface.dataset.fit = 'size-short';
+        if (clear()) return;
+        iface.dataset.fit = 'size-short sel-scroll';
+        const room = size.getBoundingClientRect().left - sel.getBoundingClientRect().left - 8;
+        sel.style.maxWidth = `${Math.max(0, Math.floor(room / this.zoom()))}px`;
     },
 
     // ---- Top: file pill between the folder pill and the header buttons ----
@@ -130,7 +153,9 @@ const Fit = {
             bar.style.setProperty('--bar-room', 'none');
         }
         set();
-        const leftEdge = () => left ? left.getBoundingClientRect().right : box.left + gutter;
+        // (the single view with the sidebar docked beside it: from its edge)
+        const rail = !left && !grid && this.shown(this.el('folder-rail')) ? this.el('folder-rail') : null;
+        const leftEdge = () => left ? left.getBoundingClientRect().right : rail ? rail.getBoundingClientRect().right + gutter : box.left + gutter;
         const rightEdge = () => this.shown(hc) && !hc.classList.contains('vertical') ? hc.getBoundingClientRect().left : box.right - gutter;
         const room = () => rightEdge() - leftEdge() - 2 * this.GAP;
         const need = () => {
@@ -202,9 +227,13 @@ const Fit = {
         const startOf = () => box.left + (parseFloat(getComputedStyle(sel).left) || gutter) * this.zoom();
         const measure = () => {
             // The selection bar makes room for the edits bar and the slider
+            // (on the two bars that use them, and only when they change: set
+            // on the whole interface, each one styled every photo in the
+            // grid again, three times over on the way back from a photo)
             const ew = edits && this.shown(edits) ? edits.offsetWidth : 0;
-            iface.style.setProperty('--edits-room', ew + 'px');
-            iface.style.setProperty('--size-room', (this.shown(size) ? size.offsetWidth : 0) + 'px');
+            const put = (k, v) => { for (const b of [sel, edits]) if (b && b.style.getPropertyValue(k) !== v) b.style.setProperty(k, v); };
+            put('--edits-room', ew + 'px');
+            put('--size-room', (this.shown(size) ? size.offsetWidth : 0) + 'px');
         };
         const fits = () => {
             measure();

@@ -155,6 +155,13 @@ sealed class MainForm : Form
             Configure();
             await PrepareCacheAsync();
             if (options.Dev) await Core.AddScriptToExecuteOnDocumentCreatedAsync("window.__jeditorDev = true;");
+            // The engine (Engine.cs): the bridge lists `engine` (and `engineHeic`
+            // when it reads HEICs), the page asks it
+            if (Engine.Available)
+            {
+                await Core.AddScriptToExecuteOnDocumentCreatedAsync(Engine.Heic ? "window.__jeditorEngine = { heic: true };" : "window.__jeditorEngine = true;");
+                Engine.Serve(Core, "https://" + HostName);
+            }
             await Core.AddScriptToExecuteOnDocumentCreatedAsync(ReadBridge());
             Core.SetVirtualHostNameToFolderMapping(HostName, options.UiDir!, CoreWebView2HostResourceAccessKind.Allow);
             if (options.Dev) WatchUi();
@@ -475,6 +482,10 @@ sealed class MainForm : Form
             case "undoTransfer":
             case "burn":
             case "copyFolder":
+            case "folderSize":
+            case "moveFolder":
+            case "cacheDir":
+            case "setCacheDir":
                 var files = FilesOf(e);
                 BeginInvoke(async () => await HandleRequestAsync(msg, files));
                 break;
@@ -838,6 +849,70 @@ sealed class MainForm : Form
                         Reply(id, new { error = ex.Message });
                     }
                     finally { copies.Remove(id); }
+                    break;
+                }
+                case "folderSize":
+                {
+                    // What's in a folder that a move would take, and the
+                    // room where it would go (folderMove)
+                    var path = Str(msg, "path") ?? "";
+                    var dest = Str(msg, "dest");
+                    if (!Path.IsPathFullyQualified(path)) { Reply(id, new { error = "Not a folder" }); break; }
+                    var size = await Task.Run(() => FolderMove.Size(path));
+                    var room = dest is not null && Path.IsPathFullyQualified(dest) ? FolderMove.Space(dest, path) : null;
+                    var refused = dest is not null && Path.IsPathFullyQualified(dest) ? FolderMove.Refuse(path, dest) : null;
+                    Reply(id, new
+                    {
+                        folders = size.Folders, files = size.Files, bytes = size.Bytes,
+                        free = room?.Free, drive = room?.Drive, sameDrive = room?.SameDrive, refused
+                    });
+                    break;
+                }
+                case "moveFolder":
+                {
+                    // Everything in a folder into another: copied, checked
+                    // and only then removed ('moveProgress' as it goes)
+                    var from = Str(msg, "path") ?? "";
+                    var dest = Str(msg, "dest") ?? "";
+                    if (!Path.IsPathFullyQualified(from) || !Path.IsPathFullyQualified(dest)) { Reply(id, new { error = "Not a folder" }); break; }
+                    using var cancel = new CancellationTokenSource();
+                    copies[id] = cancel;
+                    try
+                    {
+                        var r = await Task.Run(() => FolderMove.Run(from, dest, (done, total, moved) =>
+                            BeginInvoke(() => Post(new { type = "copyProgress", copy = id, done, total, moved })), cancel.Token));
+                        Log.Write($"Moved {r.Moved} from {from} to {dest}{(r.Error is null ? "" : ": " + r.Error)}");
+                        Reply(id, new { moved = r.Moved, left = r.Left, error = r.Error, stopped = r.Stopped });
+                        AppWindows.PostAll(new { type = "drivesChanged" }); // free space
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Write($"Couldn't move {from} to {dest}: {ex.Message}");
+                        Reply(id, new { moved = 0, error = ex.Message });
+                    }
+                    finally { copies.Remove(id); }
+                    break;
+                }
+                case "cacheDir":
+                    Reply(id, new { path = Shell.OrdersDir, chosen = Shell.CacheDir is not null });
+                    break;
+                case "setCacheDir":
+                {
+                    // The cache folder chosen in Settings → Projects: its
+                    // own "jEditor cache" folder inside it, from now on
+                    var chosen = Str(msg, "path");
+                    if (chosen is not null)
+                    {
+                        if (!Path.IsPathFullyQualified(chosen) || !Directory.Exists(chosen)) { Reply(id, new { error = "That folder isn't there" }); break; }
+                        // WebView2 won't let the page write there (Shell.StoreDir)
+                        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData).TrimEnd('\\');
+                        if (Path.GetFullPath(chosen).StartsWith(local, StringComparison.OrdinalIgnoreCase)) { Reply(id, new { error = "jEditor can't keep its cache in AppData\\Local. Choose another folder." }); break; }
+                    }
+                    Shell.CacheDir = chosen is null ? null : Shell.CacheIn(chosen);
+                    Shell.MakeOrdersDir();
+                    if (smoke is null) Settings.Update(s => s.CacheDir = Shell.CacheDir);
+                    Log.Write($"The cache folder is now {Shell.OrdersDir}");
+                    Reply(id, new { path = Shell.OrdersDir });
                     break;
                 }
                 case "undoTransfer":

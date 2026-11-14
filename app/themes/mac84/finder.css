@@ -9,6 +9,8 @@
 @font-face { font-family: "jE Chicago"; src: url(fonts/ChicagoFLF.ttf) format("truetype"); }
 
 :root[data-skin="mac84"] {
+    /* A photo opened from the grid (motion.js): the zoom outlines */
+    --grid-zoom: rects;
     color-scheme: light;
     --m-font: "jE Chicago", monospace;
     --m-grey: repeating-conic-gradient(#000 0 25%, #fff 0 50%) 0 0 / 2px 2px;
@@ -279,7 +281,9 @@
 :root[data-skin="mac84"] .grid-view {
     background: #fff;
     gap: 8px 12px;
-    grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(calc(var(--grid-item-size, 150px) * 124 / 150), 1fr));
+    /* The thumbnail-size slider (and Ctrl+wheel, a pinch) sizes the tiles:
+       124px at its default, 150 */
 }
 :root[data-skin="mac84"] .grid-item {
     aspect-ratio: auto;
