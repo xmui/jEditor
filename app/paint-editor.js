@@ -134,6 +134,16 @@ const PaintEditor = {
         const bind = (id, fn) => this.el(id).addEventListener('click', (e) => { e.currentTarget.blur(); if (!this.busy) fn(); });
         bind('paint-undo', () => this.undo());
         bind('paint-redo', () => this.redo());
+        // ⋯: Select and Layer (the plan: every new command lands in a menu,
+        // so the bar never grows)
+        this.el('paint-more').addEventListener('click', (e) => {
+            const b = e.currentTarget;
+            e.stopPropagation(); // not to the window, which closes menus
+            b.blur();
+            if (this.busy || !this.ready) return;
+            const r = b.getBoundingClientRect();
+            this.app.openContextMenu(this.moreItems(), r.left, r.bottom + 6);
+        });
         bind('paint-zoom-fit', () => this.fit());
         bind('paint-zoom-1', () => this.zoomTo(1));
         bind('paint-swap', () => this.swapColours());
@@ -1380,6 +1390,138 @@ const PaintEditor = {
         const m = this.newCanvas();
         m.getContext('2d').fillRect(0, 0, this.W, this.H);
         this.combineSelection(m, 'new');
+    },
+
+    // Select all, but what was selected: nothing selected stays nothing
+    invertSelection() {
+        if (!this.ready || !this.sel) return;
+        const m = this.newCanvas();
+        const g = m.getContext('2d');
+        g.fillRect(0, 0, this.W, this.H);
+        g.globalCompositeOperation = 'destination-out';
+        g.drawImage(this.sel.mask, 0, 0);
+        this.combineSelection(m, 'new');
+    },
+
+    // Feather, grow and shrink: the mask's alpha worked on and put back
+    reshapeSelection(fn) {
+        if (!this.ready || !this.sel) return;
+        if (this.float) this.commitFloat();
+        const g = this.sel.mask.getContext('2d', { willReadFrequently: true });
+        const img = g.getImageData(0, 0, this.W, this.H);
+        const a = new Uint8ClampedArray(this.W * this.H);
+        for (let i = 0; i < a.length; i++) a[i] = img.data[i * 4 + 3];
+        const out = fn(a, this.W, this.H);
+        for (let i = 0; i < out.length; i++) { img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = 0; img.data[i * 4 + 3] = out[i]; }
+        g.putImageData(img, 0, 0);
+        this.selectionChanged();
+    },
+
+    // How many pixels, asked for (Feather, Grow, Shrink)
+    async askPixels(title, key, def) {
+        if (!this.sel) return null;
+        const v = await UI.prompt({ title, input: { label: 'Pixels', value: String(this._selPx && this._selPx[key] || def), inputMode: 'numeric' }, ok: title.replace(/…$/, '') });
+        const n = Math.round(Number(v));
+        if (v === null || !(n >= 1)) return null;
+        (this._selPx || (this._selPx = {}))[key] = Math.min(n, 500);
+        return Math.min(n, 500);
+    },
+
+    async featherSelection(r) {
+        r = r || await this.askPixels('Feather…', 'feather', 8);
+        if (r) this.reshapeSelection((a, W, H) => PaintEditor.blurAlpha(a, W, H, r));
+    },
+
+    async growSelection(r) {
+        r = r || await this.askPixels('Grow…', 'grow', 4);
+        if (r) this.reshapeSelection((a, W, H) => PaintEditor.spread(a, W, H, r, true));
+    },
+
+    async shrinkSelection(r) {
+        r = r || await this.askPixels('Shrink…', 'shrink', 4);
+        if (r) this.reshapeSelection((a, W, H) => PaintEditor.spread(a, W, H, r, false));
+    },
+
+    // A soft edge r pixels wide: three box blurs, across then down, which
+    // come close to a Gaussian (no canvas filter: not in every web view)
+    blurAlpha(a, W, H, r) {
+        let src = Float32Array.from(a), tmp = new Float32Array(a.length);
+        const k = Math.max(1, Math.round(r / 2));
+        const pass = (from, to, n, len, step, line) => {
+            for (let j = 0; j < n; j++) {
+                const o = j * line;
+                let sum = 0;
+                for (let i = -k; i <= k; i++) sum += from[o + Math.min(len - 1, Math.max(0, i)) * step];
+                for (let i = 0; i < len; i++) {
+                    to[o + i * step] = sum / (2 * k + 1);
+                    sum += from[o + Math.min(len - 1, i + k + 1) * step] - from[o + Math.max(0, i - k) * step];
+                }
+            }
+        };
+        for (let n = 0; n < 3; n++) {
+            pass(src, tmp, H, W, 1, W);
+            pass(tmp, src, W, H, W, 1);
+        }
+        return Uint8ClampedArray.from(src, v => Math.round(v));
+    },
+
+    // Grow (out) or shrink (in) by r pixels, round at the corners: how far
+    // each pixel is from the nearest selected one (or unselected one, to
+    // shrink), by the 3-4 chamfer (within a few per cent of a circle)
+    spread(a, W, H, r, out) {
+        const INF = 1e9, d = new Float64Array(W * H);
+        for (let i = 0; i < d.length; i++) d[i] = (a[i] > 127) === out ? 0 : INF;
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+            const i = y * W + x;
+            let v = d[i];
+            if (x > 0) v = Math.min(v, d[i - 1] + 3);
+            if (y > 0) {
+                v = Math.min(v, d[i - W] + 3);
+                if (x > 0) v = Math.min(v, d[i - W - 1] + 4);
+                if (x < W - 1) v = Math.min(v, d[i - W + 1] + 4);
+            }
+            d[i] = v;
+        }
+        for (let y = H - 1; y >= 0; y--) for (let x = W - 1; x >= 0; x--) {
+            const i = y * W + x;
+            let v = d[i];
+            if (x < W - 1) v = Math.min(v, d[i + 1] + 3);
+            if (y < H - 1) {
+                v = Math.min(v, d[i + W] + 3);
+                if (x < W - 1) v = Math.min(v, d[i + W + 1] + 4);
+                if (x > 0) v = Math.min(v, d[i + W - 1] + 4);
+            }
+            d[i] = v;
+        }
+        const lim = r * 3, res = new Uint8ClampedArray(W * H);
+        for (let i = 0; i < res.length; i++) res[i] = out ? (d[i] <= lim ? 255 : 0) : (d[i] > lim ? 255 : 0);
+        return res;
+    },
+
+    // The ⋯ menu: Select and Layer, each with its keys; what can't be
+    // done now isn't shown
+    moreItems() {
+        const sel = !!this.sel, n = this.layers.length, room = n < Paint.MAX_LAYERS;
+        const when = (ok, item) => (ok ? [item] : []);
+        return [
+            ['Select', [
+                ['Select all', () => this.selectAll(), false, undefined, 'paint.selectAll'],
+                ...when(sel, ['Select nothing', () => this.deselect(), false, undefined, 'paint.deselect']),
+                ...when(sel, ['Invert', () => this.invertSelection(), false, undefined, 'paint.invert']),
+                ...(sel ? [['—'],
+                    ['Feather…', () => this.featherSelection()],
+                    ['Grow…', () => this.growSelection()],
+                    ['Shrink…', () => this.shrinkSelection()]] : [])
+            ]],
+            ['Layer', [
+                ...when(room, ['New layer', () => this.addLayer(), false, undefined, 'paint.newLayer']),
+                ...when(room, ['Duplicate', () => this.duplicateLayer(), false, undefined, 'paint.duplicate']),
+                ...when(this.cur > 0, ['Merge down', () => this.mergeDown(), false, undefined, 'paint.merge']),
+                ['—'],
+                ['Bring in an image…', () => this.pickImage(), false, undefined, 'paint.import'],
+                ...(n > 1 ? [['—'], ['Delete layer', () => this.deleteLayer(), true]] : [])
+            ]]
+        ];
     },
 
     deselect() {

@@ -1072,8 +1072,21 @@ const PROJECT = `
             out.clean = JSON.stringify(Paint.clean({ id: 'abc', w: 100, h: 50, layers: [{ id: 'l1', rev: 'r1', name: '  Sky  ', opacity: 3, blend: 'nope', hidden: 1 }, { id: 'BAD', rev: 'x' }] }));
             out.none = Paint.clean({ id: 'abc', w: 100, h: 50, layers: [] }) === null && Paint.clean({ id: '../x', w: 1, h: 1, layers: [{ id: 'a', rev: 'b' }] }) === null;
             out.size = JSON.stringify([Paint.sizeFor(6000, 4000), Paint.sizeFor(800, 600)]);
+            // Grow, shrink and feather a selection: a 20 x 20 square in 60 x 60
+            const W = 60, H = 60, sq = new Uint8ClampedArray(W * H);
+            for (let y = 20; y < 40; y++) for (let x = 20; x < 40; x++) sq[y * W + x] = 255;
+            const at = (a, x, y) => a[y * W + x];
+            const grown = PaintEditor.spread(sq, W, H, 5, true), shrunk = PaintEditor.spread(sq, W, H, 5, false);
+            // 5 out at the sides, and round at the corners (16,16 is 5.7 from the
+            // square's corner); 5 in at the sides
+            out.grow = [at(grown, 15, 30), at(grown, 14, 30), at(grown, 17, 17), at(grown, 16, 16)];
+            out.shrink = [at(shrunk, 25, 30), at(shrunk, 24, 30), at(shrunk, 30, 30)];
+            const soft = PaintEditor.blurAlpha(sq, W, H, 8);
+            out.feather = [at(soft, 30, 30), at(soft, 20, 30), at(soft, 10, 30), at(soft, 2, 30)];
             return out;
         });
+        check('paint: Grow and Shrink move a selection\'s edge by the pixels asked, rounding its corners', JSON.stringify(m.grow) === '[255,0,255,0]' && JSON.stringify(m.shrink) === '[255,0,255]', JSON.stringify([m.grow, m.shrink]));
+        check('paint: Feather softens the edge (half-way at it, nothing far off), the middle still selected', m.feather[0] >= 240 && m.feather[1] > 90 && m.feather[1] < 165 && m.feather[2] < m.feather[1] && m.feather[3] === 0, JSON.stringify(m.feather));
         check('paint: the record is checked (names, opacity, blend; bad ids dropped)', m.clean === '{"id":"abc","w":100,"h":50,"layers":[{"id":"l1","rev":"r1","name":"Sky","opacity":1,"blend":"source-over","hidden":true}]}' && m.none, JSON.stringify(m));
         check('paint: layers at the photo\'s size, a very big one smaller', m.size === '[{"w":3000,"h":2000},{"w":800,"h":600}]', m.size);
 
@@ -1266,6 +1279,17 @@ const PROJECT = `
                 P.setTool('rect-select');
                 pe('pointerdown', 250, 50); pe('pointermove', 290, 150); pe('pointerup', 290, 150);
                 out.selected = !!P.sel && P.sel.box.w >= 39 && P.sel.box.w <= 41;
+                // The ⋯ menu's Select: invert (twice, back again), grow, shrink
+                const more = P.moreItems();
+                out.menu = more.map(i => i[0]).join() === 'Select,Layer' && more[0][1].some(i => i[0] === 'Invert');
+                const w0 = P.sel.box.w;
+                P.invertSelection();
+                out.inverted = !!P.sel && P.sel.box.w === P.W;
+                P.invertSelection();
+                await P.growSelection(3);
+                const grownW = P.sel.box.w;
+                await P.shrinkSelection(3);
+                out.reshaped = [grownW - w0, P.sel.box.w - w0];
                 pressKey('Delete');
                 out.cleared = [px(1, 270, 100)[3], px(1, 320, 100)[3]];
                 // The wand picks the rest of the yellow; Move drags it
@@ -1347,6 +1371,7 @@ const PROJECT = `
         check('paint: the fill takes the photo\'s blue square, not beyond it; text is drawn', r.fill && r.fill[0][0] === 255 && r.fill[0][1] === 255 && r.fill[1] === 0 && r.text > 50, JSON.stringify(r));
         check('paint: the fill can fill the whole layer (only what\'s selected, with a selection), without the colour options; Ctrl+Z undoes it', r.wholeOpts && r.wholeSel && String(r.wholeSel[0]) === '255,0,255,255' && r.wholeSel[1] === 0 && String(r.whole) === '255,0,255,255,255,0,255,255' && r.wholeUndone, JSON.stringify([r.wholeOpts, r.wholeSel, r.whole, r.wholeUndone]));
         check('paint: a selection; Delete clears only inside it', r.selected && r.cleared[0] === 0 && r.cleared[1] === 255, JSON.stringify(r));
+        check('paint: the ⋯ menu has Select and Layer; Invert, Grow and Shrink change the selection', r.menu && r.inverted && JSON.stringify(r.reshaped) === '[6,0]', JSON.stringify([r.menu, r.inverted, r.reshaped]));
         check('paint: the wand selects by colour; Move drags it, Enter puts it down', r.wand && r.moved[0] === 0 && r.moved[1][3] === 255 && r.notDone, JSON.stringify(r));
         check('paint: Done keeps it with the photo (layers in the project\'s folder), the file untouched', r.kept && r.files === 2 && r.fileSame, JSON.stringify(r));
         check('paint: shown painted; opened again, the layers come back', r.shown && r.shown[0][0] > 200 && r.shown[1][1] > 200 && r.shown[2][0] > 200 && r.reopened, JSON.stringify(r));
