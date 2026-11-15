@@ -1337,6 +1337,42 @@ const PROJECT = `
                 pe('pointerup', 140, 196);
                 pressKey('z', { ctrlKey: true });
                 P.opts.quickShape = true;
+                // The history: each step named; ⋯ → History lists them, and a
+                // click (or a drag) on one goes there
+                step = 'history';
+                const h0 = P.history.length;
+                pe('pointerdown', 40, 230); pe('pointermove', 140, 230); pe('pointerup', 140, 230);
+                P.setTool('fill'); P.setTool('brush');
+                const histMenu = P.moreItems().find(i => i[0] === 'History');
+                histMenu[1]();
+                const steps = () => [...document.querySelectorAll('#paint-history .paint-step')];
+                const histShown = !document.getElementById('paint-history-sec').classList.contains('hidden');
+                const lastStep = steps()[steps().length - 1];
+                const rowAt = (row, type) => { const b = row.getBoundingClientRect(); row.dispatchEvent(new PointerEvent(type, { clientX: b.left + 5, clientY: b.top + b.height / 2, pointerId: 7, bubbles: true, button: 0 })); };
+                const named = lastStep && lastStep.textContent;
+                const firstRow = steps()[h0];
+                rowAt(firstRow, 'pointerdown'); rowAt(firstRow, 'pointerup');
+                const wentBack = [P.history.length === h0, px(0, 90, 230)[3], steps()[h0].getAttribute('aria-selected'), steps()[h0 + 1].classList.contains('paint-step-undone')];
+                rowAt(steps()[h0 + 1], 'pointerdown'); rowAt(steps()[h0 + 1], 'pointerup');
+                out.history = [histShown, histMenu[3], named, ...wentBack, px(0, 90, 230)[3]];
+                histMenu[1]();
+                out.historyHidden = document.getElementById('paint-history-sec').classList.contains('hidden');
+                // Two fingers tapped undo; three redo. A second finger later on
+                // leaves the first painting
+                step = 'taps';
+                const tp = (type, x, y, id) => st.dispatchEvent(new PointerEvent(type, { ...at(x, y), pointerId: id, pointerType: 'touch', isPrimary: id === 21, bubbles: true, button: 0 }));
+                tp('pointerdown', 100, 230, 21); tp('pointerdown', 120, 230, 22);
+                tp('pointerup', 100, 230, 21); tp('pointerup', 120, 230, 22);
+                const undone = [P.history.length === h0, px(0, 90, 230)[3], px(0, 100, 230)[3]];
+                tp('pointerdown', 100, 230, 21); tp('pointerdown', 120, 230, 22); tp('pointerdown', 140, 230, 23);
+                tp('pointerup', 100, 230, 21); tp('pointerup', 120, 230, 22); tp('pointerup', 140, 230, 23);
+                const redone = [P.history.length === h0 + 1, px(0, 90, 230)[3]];
+                tp('pointerdown', 40, 250, 21);
+                await new Promise(res => setTimeout(res, P.TAP_JOIN_MS + 50));
+                tp('pointerdown', 200, 250, 22);
+                tp('pointermove', 140, 250, 21); tp('pointerup', 140, 250, 21); tp('pointerup', 200, 250, 22);
+                out.taps = [...undone, ...redone, px(0, 90, 250)[3], P.history.length === h0 + 2];
+                pressKey('z', { ctrlKey: true }); pressKey('z', { ctrlKey: true });
                 P.opts.size = 20;
                 // A rectangle, filled, on a new layer
                 step = 'rect';
@@ -1390,7 +1426,7 @@ const PROJECT = `
                 // The ⋯ menu's Select: invert (twice, back again), grow, shrink
                 const more = P.moreItems();
                 const sub = (n) => (more.find(i => i[0] === n) || [, []])[1];
-                out.menu = more.map(i => i[0]).join().startsWith('Image,Select,Layer,—,QuickShape') && typeof more[more.length - 1][3] === 'boolean' && sub('Select').some(i => i[0] === 'Invert');
+                out.menu = more.map(i => i[0]).join().startsWith('Image,Select,Layer,—,History,QuickShape') && typeof more[more.length - 1][3] === 'boolean' && sub('Select').some(i => i[0] === 'Invert');
                 const w0 = P.sel.box.w;
                 P.invertSelection();
                 out.inverted = !!P.sel && P.sel.box.w === P.W;
@@ -1481,12 +1517,14 @@ const PROJECT = `
         check('paint: Shift-click paints straight on from where the last stroke ended', String(r.shiftLine) === '0,255,0', String(r.shiftLine));
         check('paint: QuickShape: a stroke held at its end snaps to a straight line, its end following the pointer while held', JSON.stringify(r.quickLine) === '["Line",255,0,255]', JSON.stringify(r.quickLine));
         check('paint: QuickShape: a rough circle becomes a circle; off in ⋯, a held stroke stays as drawn', JSON.stringify(r.quickCircle) === '["Circle",true,true,0]' && r.quickOff, JSON.stringify([r.quickCircle, r.quickOff]));
+        check('paint: History (⋯) lists each step by name; a click on one goes back to it, the later ones greyed, and on again; off again', JSON.stringify(r.history) === '[true,false,"Brush",true,0,"true",true,255]' && r.historyHidden, JSON.stringify([r.history, r.historyHidden]));
+        check('paint: on a touch screen two fingers tapped undo, three redo; a finger put down later leaves the first painting', JSON.stringify(r.taps) === '[true,0,0,true,255,255,true]', JSON.stringify(r.taps));
         check('paint: a pen\'s pressure sizes the brush', r.pressure && r.pressure[0] > 200 && r.pressure[1] === 0, String(r.pressure));
         check('paint: a new layer; a filled rectangle on it', r.layers && r.rect && r.rect[0][1] === 255 && r.rect[1] === 0, JSON.stringify(r));
         check('paint: the fill takes the photo\'s blue square, not beyond it; text is drawn', r.fill && r.fill[0][0] === 255 && r.fill[0][1] === 255 && r.fill[1] === 0 && r.text > 50, JSON.stringify(r));
         check('paint: the fill can fill the whole layer (only what\'s selected, with a selection), without the colour options; Ctrl+Z undoes it', r.wholeOpts && r.wholeSel && String(r.wholeSel[0]) === '255,0,255,255' && r.wholeSel[1] === 0 && String(r.whole) === '255,0,255,255,255,0,255,255' && r.wholeUndone, JSON.stringify([r.wholeOpts, r.wholeSel, r.whole, r.wholeUndone]));
         check('paint: a selection; Delete clears only inside it', r.selected && r.cleared[0] === 0 && r.cleared[1] === 255, JSON.stringify(r));
-        check('paint: the ⋯ menu has Image, Select and Layer (and QuickShape, ticked when on); Invert, Grow and Shrink change the selection', r.menu && r.inverted && JSON.stringify(r.reshaped) === '[6,0]', JSON.stringify([r.menu, r.inverted, r.reshaped]));
+        check('paint: the ⋯ menu has Image, Select and Layer (and History and QuickShape, ticked when on); Invert, Grow and Shrink change the selection', r.menu && r.inverted && JSON.stringify(r.reshaped) === '[6,0]', JSON.stringify([r.menu, r.inverted, r.reshaped]));
         check('paint: the wand selects by colour; Move drags it, Enter puts it down', r.wand && r.moved[0] === 0 && r.moved[1][3] === 255 && r.notDone, JSON.stringify(r));
         check('paint: Done keeps it with the photo (layers in the project\'s folder), the file untouched', r.kept && r.files === 2 && r.fileSame, JSON.stringify(r));
         check('paint: shown painted; opened again, the layers come back', r.shown && r.shown[0][0] > 200 && r.shown[1][1] > 200 && r.shown[2][0] > 200 && r.reopened, JSON.stringify(r));
