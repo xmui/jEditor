@@ -1165,6 +1165,18 @@ const PROJECT = `
                 out.undo = px(0, 100, 100)[3];
                 pressKey('Z', { ctrlKey: true, shiftKey: true });
                 out.redo = px(0, 100, 100)[3];
+                // Copy merged takes the photo too; paste in place puts it back
+                // where it was, on a new layer
+                step = 'copy merged';
+                P.copy();
+                out.plainClip = P._clip.getContext('2d').getImageData(100, 130, 1, 1).data[3];
+                P.copy({ merged: true });
+                P.addLayer();
+                P.paste({ inPlace: true });
+                pressKey('Enter');
+                out.inPlace = [px(1, 100, 100).slice(0, 2).join(), px(1, 100, 130)[3], px(1, 100, 130).slice(0, 3).join() === [...P.photo.getContext('2d').getImageData(100, 130, 1, 1).data.slice(0, 3)].join()];
+                P.deleteLayer();
+                P.setTool('brush'); // (a paste takes Move)
                 // Lock transparency: green goes over the red stroke, not past it
                 step = 'lock';
                 P.toggleLock(0);
@@ -1406,6 +1418,7 @@ const PROJECT = `
         check('paint: starts with the photo locked as the bottom layer and a new layer on it', r.start, JSON.stringify(r));
         check('paint: the photo is drawn at screen size once for a view, again when it zooms', r.shownKept && r.shownRedrawn, JSON.stringify([r.shownKept, r.shownRedrawn]));
         check('paint: a brush stroke paints the layer (hard-edged), Ctrl+Z / Ctrl+Shift+Z inside', r.brush && r.brush[0] === 255 && r.brush[3] === 255 && r.brushEdge === 0 && r.undo === 0 && r.redo === 255, JSON.stringify(r));
+        check('paint: copy merged takes the photo and the layers; paste in place puts it back where it came from', r.plainClip === 0 && JSON.stringify(r.inPlace) === '["255,0",255,true]', JSON.stringify([r.plainClip, r.inPlace]));
         check('paint: lock transparency paints only over what\'s on the layer', JSON.stringify(r.locked) === '[[0,255,0,255],0,true]', JSON.stringify(r.locked));
         check('paint: Ctrl-click a layer selects its paint; Alt-click an eye shows that layer alone, and again all; a layer\'s right-click menu', r.layerSel && JSON.stringify(r.solo) === '[true,false,false,false]' && r.layerMenu === 'Lock transparency|Show this layer alone|Select its pixels', JSON.stringify([r.layerSel, r.solo, r.layerMenu]));
         check('paint: Alt with the brush picks the colour under it, with the loupe, and paints nothing', JSON.stringify(r.altPick) === '["#ff0000",true,0]', JSON.stringify(r.altPick));
