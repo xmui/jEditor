@@ -1656,8 +1656,15 @@ const PROJECT = `
                 await openProject('modes', { 'a.png': await blob('#806040'), 'b.png': await blob('#406080'), 'c.png': await blob('#408060') });
                 await until(() => Adjust.ready && Modes.strip.parentElement);
                 out.landedAdjust = Modes.current() === 'adjust' && Adjust.file === app.viewFiles()[0];
-                // The chip over Adjust, and the strip along the bottom
-                out.chipOver = shownEl('mode-float') && /Adjust/.test($('mode-chip-float').textContent);
+                // The row with Adjust chosen (beside it in the sidebar, or over its head's corner), and the strip along the bottom
+                out.chipOver = shownEl('mode-row') && shownEl('mode-seg') && $('mode-seg').querySelector('.on').dataset.mode === 'adjust' && !shownEl('mode-float')
+                    && ($('mode-row').parentElement === $('folder-rail') ? $('adjust-editor').getBoundingClientRect().left >= $('folder-rail').getBoundingClientRect().right - 1 : $('mode-row').classList.contains('over-mode'));
+                // Its panel dragged away hides, a line left at the right edge; shown again from there
+                app.showPanel('adjust', false);
+                out.panelHides = getComputedStyle($('adj-panel')).display === 'none' || $('adj-panel').classList.contains('side-out');
+                out.panelEdge = !$('adjust-editor').querySelector('.side-edge-right').classList.contains('hidden');
+                app.showPanel('adjust', true);
+                out.panelBack = getComputedStyle($('adj-panel')).display !== 'none' && $('adjust-editor').querySelector('.side-edge-right').classList.contains('hidden') && !app.uiPrefs.panelsHidden.adjust;
                 out.strip = Modes.strip.parentElement === $('adjust-editor') && Modes.strip.children.length === 3 && Modes.strip.children[0].classList.contains('active');
                 // Another photo from the strip: still in Adjust, on that one
                 step = 'strip';
@@ -1742,7 +1749,8 @@ const PROJECT = `
         });
         check('modes: the home page has the big tiles (New canvas where there\'s no scanner or camera)', r.startShown, JSON.stringify(r));
         check('modes: a project opened for Adjust lands in Adjust on its first photo', r.startKept && r.landedAdjust, JSON.stringify(r));
-        check('modes: in Adjust the chip names it, top left, and a strip runs along the bottom', r.chipOver && r.strip, JSON.stringify(r));
+        check('modes: in Adjust the row has Adjust chosen (the sidebar beside it, or the row over its corner), and a strip runs along the bottom', r.chipOver && r.strip, JSON.stringify(r));
+        check('modes: Adjust\'s panel hides, leaving a line at the right edge, and comes back, remembered', r.panelHides && r.panelEdge && r.panelBack, JSON.stringify(r));
         check('modes: another photo from the strip opens in the same mode', r.stepped, JSON.stringify(r));
         check('modes: the chip\'s menu switches to Paint, on the same photo', r.menu && r.inPaint, JSON.stringify(r));
         check('modes: what was painted is kept when another photo is chosen', r.kept, JSON.stringify(r));

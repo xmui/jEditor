@@ -502,6 +502,7 @@ const app = {
             scale: 1,
             stripHeight: 80,
             sides: {}, // each sidebar's width as dragged (SIDEBARS); none: its own
+            panelsHidden: {}, // Adjust's and Paint's panel, dragged away (SIDE_HIDES): { adjust: true }
             thumbContain: true, // fit whole image in tiles by default
             folderCache: true, // keep thumbnails / duplicate data with the order's data (folder-cache.js)
             autoUpdate: true, // the Windows app looks for a new version once a day
@@ -570,6 +571,9 @@ const app = {
                     for (const [k, [lo, hi]] of Object.entries(this.SIDEBARS)) {
                         if (saved.sides[k] >= lo && saved.sides[k] <= hi) this.uiPrefs.sides[k] = saved.sides[k];
                     }
+                }
+                if (saved.panelsHidden && typeof saved.panelsHidden === 'object') {
+                    for (const k of ['adjust', 'paint']) if (saved.panelsHidden[k] === true) this.uiPrefs.panelsHidden[k] = true;
                 }
                 if (typeof saved.thumbContain === 'boolean') this.uiPrefs.thumbContain = saved.thumbContain;
                 if (typeof saved.folderCache === 'boolean') this.uiPrefs.folderCache = saved.folderCache;
@@ -669,6 +673,7 @@ const app = {
         document.documentElement.style.setProperty('--ui-scale', p.scale);
         document.documentElement.style.setProperty('--strip-height', `${p.stripHeight}px`);
         for (const k of Object.keys(this.SIDEBARS)) this.setSideWidth(k, p.sides[k]);
+        for (const k of ['adjust', 'paint']) this.showPanel(k, !(p.panelsHidden && p.panelsHidden[k]), { quiet: true });
 
         this.elements.gridView.classList.toggle('thumb-contain', !!p.thumbContain);
         this.elements.thumbnailStrip.classList.toggle('thumb-contain', !!p.thumbContain);
@@ -1127,6 +1132,26 @@ const app = {
     // to show or hide it; its width stays as it was before the drag.
     SIDE_HIDES: {
         rail: { open: () => Folders.railOpen(), set: (on) => Folders.setRail(on) },
+        // Adjust's and Paint's panel, at the right: each mode remembers its own
+        adjust: { open: () => !app.uiPrefs.panelsHidden.adjust, set: (on) => app.showPanel('adjust', on) },
+        paint: { open: () => !app.uiPrefs.panelsHidden.paint, set: (on) => app.showPanel('paint', on) },
+    },
+
+    // Adjust's or Paint's panel shown or hidden (dragged away, or Tab), and
+    // remembered for that mode. Hidden, a line at the window's right edge
+    // drags it back out (index.html: .side-edge[data-for])
+    showPanel(side, on, { quiet = false } = {}) {
+        const editor = document.getElementById(side === 'adjust' ? 'adjust-editor' : 'paint-editor');
+        const panel = document.getElementById(side === 'adjust' ? 'adj-panel' : 'paint-panel');
+        if (!editor || !panel) return;
+        const was = !editor.classList.contains('panel-hidden');
+        if (on) delete this.uiPrefs.panelsHidden[side];
+        else this.uiPrefs.panelsHidden[side] = true;
+        editor.classList.toggle('panel-hidden', !on);
+        for (const e of editor.querySelectorAll(`.side-edge[data-for="${panel.id}"]`)) e.classList.toggle('hidden', on);
+        if (quiet) return;
+        this.saveUiPrefs();
+        if (was !== on) this.slideSide(panel, on);
     },
 
     initSidebarResize() {

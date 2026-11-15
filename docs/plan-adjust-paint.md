@@ -68,11 +68,11 @@ gives both modes something.
 | Phase | Adjust | Paint |
 |---|---|---|
 | **1. The 2.0 look and the quick wins** | The panel in the 2.0 look (below). Restoring scans, part 1: **Restore colour** (auto, with a strength; below), **Backlight**, **Red-eye**. Clipping warnings. In Photos: **Restore colour** on one photo or a batch (below). | The screen in the 2.0 look (below): grouped tools, the ⋯ menu, saved colours. Selections: feather, invert, grow and shrink, select all. Image: flip, rotate, image size, canvas size, crop. |
-| **2. Restoring and retouching** | Restoring scans, part 2: **colour restoration in full** (fade types, the neutral picker; below), **descreen**, **scratch and crease removal**. Clarity, texture, dehaze. | **Spot heal, heal and clone brushes** (sharing Adjust's heal maths). Dodge, burn, sponge; blur, sharpen, smudge brushes. A history panel. |
-| **3. Shape and layers** | Straighten by drawing a line; perspective and keystone (auto, vertical, horizontal); lens fixes. | **Layer masks**, clipping masks, **editable text**, groups and locks, merge and flatten. Free transform with perspective and skew. |
+| **2. Restoring and retouching** | Restoring scans, part 2: **colour restoration in full** (fade types, the neutral picker; below), **descreen**, **scratch and crease removal**. Clarity, texture, dehaze. | **Spot heal, heal and clone brushes** (sharing Adjust's heal maths). Dodge, burn, sponge; blur, sharpen, smudge brushes. **More brushes, part 1:** pencil, ink, marker, airbrush, soft and hard round, eraser variants; smoothing; pressure for opacity. A history panel. |
+| **3. Shape and layers** | Straighten by drawing a line; perspective and keystone (auto, vertical, horizontal); lens fixes. | **Layer masks**, clipping masks, **editable text**, groups and locks, merge and flatten. **Free transform** (scale, rotate, skew, distort, perspective) of a layer, a selection or text, text staying editable where it can, and re-editable afterwards (the original kept, as a smart layer). |
 | **4. Colour and filters** | Masks by colour and brightness; add, subtract and intersect masks. B&W mix, point colour, `.cube` LUTs. | Adjustment layers. Filters: Gaussian and motion blur, unsharp mask, noise, median, high pass. More shapes (arrow, polygon, rounded rectangle); text alignment and outlines. |
-| **5. Workflow** | Snapshots and virtual copies, split before/after, Lightroom preset import, output sharpening, colour profiles. | Brush presets, smoothing, symmetry, pressure for opacity. Rulers, guides, snapping. Layered TIFF/PSD export. |
-| **Later** | AI subject and sky masks (if a model can ship), full RAW editing. | Remove an object (content-aware), liquify, lens blur, warp, a pen tool, recorded actions. |
+| **5. Workflow** | Snapshots and virtual copies, split before/after, Lightroom preset import, output sharpening, colour profiles. | **More brushes, part 2:** charcoal, watercolour, texture, smudge and mixer brushes; tilt; brush presets. Symmetry. **Warp** with a mesh, on layers, selections and text. Rulers, guides, snapping. Layered TIFF/PSD export. |
+| **Later** | AI subject and sky masks (if a model can ship), full RAW editing. | Remove an object (content-aware), lens blur, puppet warp, a pen tool, recorded actions. (Liquify moves to phase 5: the owner's pick, below.) |
 
 Phase 1 is about a week of work per mode; the others about two weeks each.
 
@@ -110,6 +110,57 @@ can be changed or taken off later wherever it was made.
   `W`, does for white balance) to set the cast from it.
 - Per-channel fine-tuning (the black and white points of each channel)
   under the group's disclosure.
+
+### Adjust: film looks you dial in, and your own (the owner, 2026-11-15)
+
+"For the film looks I want to be able to create your own, and it's also a
+series of sliders to dial it in with all the necessary adjustments." All of
+it stays non-destructive, as the rest of Adjust.
+
+- **Phase 1:** the Look group's picker and its **Amount** slider (as the
+  mockup draws it).
+- **Phase 2, dialable looks:** picking a look opens its sliders under the
+  picker, so a look is never fixed: Amount; Contrast (its tone curve);
+  Fade (lifted blacks); Shadow tint and Highlight tint; Saturation and
+  Vibrance; Colour response (a small mixer: each hue's shift, saturation
+  and brightness); Grain (amount, size, roughness); Halation; Vignette;
+  Warmth. Changing one shows the look as modified, with Reset to go back.
+- **Phase 2, your own looks:** **Save as a look…** keeps the current
+  settings under a name, with a thumbnail made from the photo; your looks
+  sit beside the built-in ones (under their own heading). Rename,
+  duplicate and delete them from the look's right-click menu.
+- **Phase 5:** looks exported and imported as a file, beside Lightroom
+  preset import.
+
+### Paint: the owner's picks (2026-11-15)
+
+"Let's start with all those everyday features you listed plus recolor,
+vector and pixel layers, non-destructive everything, liquify, and I want
+some brushes to be inspired by MS Paint and Mario Paint." Each lands as
+early as it sensibly can. Keys are written here as on Windows; on a Mac
+the app shows them through `Host.keys` (⌘J, ⌥-click and so on).
+
+| Phase | What |
+|---|---|
+| **1** (with the screen in the 2.0 look) | **Alt** for the colour picker, with a loupe round the pointer. **Alt + right-drag** sizes the brush (sideways) and sets its hardness (up and down), with the circle shown live. **Copy merged** and **paste in place**; **pasting a screenshot** makes a new layer. Layer keys: **Ctrl+J** duplicate, **Ctrl+E** merge down, **Alt-click** an eye to show that layer alone, **Ctrl-click** a thumbnail to select its pixels. **Lock transparency**. **Fill** with a tolerance and **gap closing** (a line drawing with small gaps still fills one area). **Crop that extends the canvas** when dragged past its edge. |
+| **2** (retouching) | **QuickShape**: hold at the end of a stroke and it snaps to a clean line, circle, rectangle or arc, then adjusts while still held. **Two-finger tap** undoes, **three-finger tap** redoes (touch screens and trackpads that report them), and the **history panel** can be scrubbed. **Recolor**: swap one colour for another everywhere, keeping its shading (a hue and saturation shift on the pixels near that colour, with a tolerance). **Retro brushes, part 1** (below). |
+| **3** (shape and layers) | **Vector layers** beside pixel layers in one document: shapes and paths stay sharp and editable, and can be turned into pixels. **Non-destructive transforms** (the smart layers already in phase 3). **Snapping** to layer edges and the canvas's centre and edges. **Rotating the view** (hold R and drag; R tapped twice puts it straight), the picture itself untouched. |
+| **4** (colour and filters) | **Non-destructive filters and adjustments**: filters on a layer stay editable and can be switched off or removed, as adjustment layers are. **Retro brushes, part 2** (below). A **reference window**: a small floating picture to paint from, kept with the document, that can be zoomed and moved. |
+| **5** (workflow) | **Liquify** (push, twirl, pucker, bloat, and restore), desktop only on the GPU engine as (d) says. Guides to snap to. |
+
+**Retro brushes: a set of our own** (inspired by MS Paint and Mario Paint;
+inspiration only). Grouped as one **Retro** set in the brush menu. Every
+picture, stamp, icon and sound is drawn or made for jEditor; nothing is
+copied from either app.
+
+- *Part 1 (phase 2):* a chunky **pixel pencil** (hard square pixels at
+  any zoom, no smoothing); a **spray can** that scatters dots as it's held;
+  a **stamp brush** with our own stamps (shapes, stars, little drawings),
+  each click a stamp.
+- *Part 2 (phase 4):* the classic **oval, rectangle and polygon** tools
+  with fill styles (outline, filled, both); and a playful **undo** that
+  gives a short wipe or puff, off with Settings → Animations and with
+  reduced motion, as any motion is.
 
 ## (c) How each mode lines up with 2.0
 
@@ -279,6 +330,16 @@ sets how the panel is organised:
   sidebar or panel slides out over the photo when the pointer reaches its
   edge, works as usual while it's out, and slides away again when the
   pointer leaves. Not in phase 1.
+- **Paint, towards Photoshop** (the owner, 2026-11-15: "more essential stuff
+  first but definitely want better transform and warp to layers selections
+  and text. want more brushes for sure"). The essentials stay first, as the
+  phases have them. Transform comes in phase 3 and Warp in phase 5, both on
+  layers, selections and text and re-editable; puppet warp is later. The
+  brush set comes in two parts (phases 2 and 5), with smoothing and pressure
+  brought forward to phase 2. **For the owner to pick, later:** Select
+  Subject, content-aware fill, layer styles, Quick Mask, Select and Mask,
+  select by colour range, recorded actions (clipping masks and groups are
+  already in phase 3; symmetry in phase 5).
 - **Paint needs another design pass** (the owner, 2026-11-15: "paint still
   needs a work in the future"): this plan settles Paint's frame, its tools
   pill, options and panel; a later pass looks at Paint on its own, against
