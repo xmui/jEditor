@@ -3244,6 +3244,104 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
+    // ---- 7m2. The sidebar hides: its edge dragged in snaps it hidden, and a line at the window's edge drags it back ----
+    console.log('sidebar hides');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1300, height: 800 });
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        await page.evaluate(async () => {
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('hides', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('hides', { create: true });
+            const put = async (d, name, color) => {
+                const fh = await d.getFileHandle(name, { create: true });
+                const w = await fh.createWritable();
+                await w.write(new Blob([await makeRealJpeg(300, 200, { color })], { type: 'image/jpeg' }));
+                await w.close();
+            };
+            await put(dir, 'a.jpg', '#c33');
+            await put(dir, 'b.jpg', '#3c3');
+            await put(await dir.getDirectoryHandle('Wedding', { create: true }), 'w1.jpg', '#c3c');
+            window.showDirectoryPicker = async () => dir;
+            try { localStorage.removeItem('jeditor.ui'); } catch (e) { /* private */ }
+            app.loadUiPrefs();
+            await app.browseFolder();
+            app.setView('grid');
+        });
+        const st = () => page.evaluate(() => {
+            const rail = document.getElementById('folder-rail'), edge = document.getElementById('rail-edge');
+            const ui = JSON.parse(localStorage.getItem('jeditor.ui')) || {};
+            return {
+                open: !rail.classList.contains('hidden'),
+                drawn: getComputedStyle(rail).display !== 'none', // still sliding out
+                w: Math.round(rail.getBoundingClientRect().width),
+                edge: !edge.classList.contains('hidden'),
+                edgeBox: (({ left, width, height }) => [left, width, height].join(' '))(edge.getBoundingClientRect()),
+                cursor: getComputedStyle(edge).cursor,
+                pref: ui.folderRail, width: (ui.sides || {}).rail,
+            };
+        });
+        const settle = () => page.waitForTimeout(350);
+        const s0 = await st();
+        const x0 = s0.w; // the sidebar's edge
+        // Wider, as before
+        await page.mouse.move(x0, 400); await page.mouse.down();
+        await page.mouse.move(300, 400, { steps: 4 }); await page.mouse.up();
+        const wide = await st();
+        // In: it stops at its narrowest (180), then past half of that it's gone
+        await page.mouse.move(300, 400); await page.mouse.down();
+        await page.mouse.move(120, 400, { steps: 4 });
+        const narrow = await st();
+        await page.mouse.move(80, 400, { steps: 2 });
+        const snapped = await st();
+        // ...and out again without letting go brings it back
+        await page.mouse.move(150, 400, { steps: 2 });
+        const backOut = await st();
+        await page.mouse.move(40, 400, { steps: 2 }); await page.mouse.up();
+        await settle();
+        const hidden = await st();
+        // The line at the window's edge: a short drag isn't enough, a longer one shows it
+        await page.mouse.move(2, 400); await page.mouse.down();
+        await page.mouse.move(60, 400, { steps: 3 });
+        const short = await st();
+        await page.mouse.move(260, 400, { steps: 3 }); await page.mouse.up();
+        await settle();
+        const dragged = await st();
+        // Ctrl+B and the button still do it, at the width it had
+        await page.keyboard.press('Control+b'); await settle();
+        const keyHid = await st();
+        await page.click('#fb-rail'); await settle();
+        const btnShown = await st();
+        // Hidden is remembered, and the line is there in the single view too
+        await page.keyboard.press('Control+b'); await settle();
+        const kept = await page.evaluate(() => { app.loadUiPrefs(); Folders.render(); return Folders.railOpen(); });
+        await page.evaluate(() => app.setView('single'));
+        const single = await st();
+        await page.evaluate(() => app.setView('grid'));
+        // Animations off: it just hides, with nothing left sliding
+        await page.keyboard.press('Control+b'); await settle();
+        await page.evaluate(() => { app.uiPrefs.motion = 'off'; app.applyUiPrefs(); });
+        await page.mouse.move((await st()).w, 400); await page.mouse.down();
+        await page.mouse.move(40, 400, { steps: 4 });
+        const still = await st();
+        await page.mouse.up();
+
+        check('sidebar hides: its edge still drags it wider', s0.open && !s0.edge && wide.w === 300 && wide.width === 300, JSON.stringify([s0, wide]));
+        check('sidebar hides: dragged in, it stops at its narrowest', narrow.open && narrow.w === 180, JSON.stringify(narrow));
+        check('sidebar hides: past half its narrowest it snaps hidden, sliding out', !snapped.open && snapped.drawn && snapped.pref === false, JSON.stringify(snapped));
+        check('sidebar hides: dragged back out in the same drag, it\'s back', backOut.open && backOut.w === 180 && backOut.pref === true, JSON.stringify(backOut));
+        check('sidebar hides: hidden, it keeps the width it had before the drag', !hidden.open && !hidden.drawn && hidden.pref === false && hidden.width === 300, JSON.stringify(hidden));
+        check('sidebar hides: a thin line at the window\'s edge, with a resize pointer', hidden.edge && hidden.edgeBox === '0 6 800' && hidden.cursor === 'ew-resize', JSON.stringify(hidden));
+        check('sidebar hides: dragging from the line brings it out, as wide as dragged', !short.open && dragged.open && !dragged.edge && Math.abs(dragged.w - 258) <= 2 && dragged.pref === true, JSON.stringify([short, dragged]));
+        check('sidebar hides: Ctrl+B and the button still hide and show it', !keyHid.open && keyHid.edge && btnShown.open && btnShown.w === dragged.w, JSON.stringify([keyHid, btnShown]));
+        check('sidebar hides: hidden is remembered, and the line is in the single view too', kept === false && !single.open && single.edge, JSON.stringify([kept, single]));
+        check('sidebar hides: with Animations off it just hides', !still.open && !still.drawn && still.edge, JSON.stringify(still));
+        check('sidebar hides: no page errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
+
     console.log('folders: any folder, in a browser');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);

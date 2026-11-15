@@ -168,7 +168,7 @@ Drag the inner edge of the sidebar, or of Adjust's or Paint's panel, to make it 
 
 ## The sidebar
 
-The sidebar runs down the window's left edge, the full height of it, as Finder's and Preview's do: a quiet tint (on a Mac, the window's own see-through material; on Windows 11, Mica when the window's background is on), small grey headings, compact rows and one soft highlight, on what the grid is showing. `Ctrl+B` folds it away and back; drag its edge to make it wider. It stays beside the photo when you open one (not on a phone-sized window, where it would cover it). On a Mac the traffic lights sit in its top corner.
+The sidebar runs down the window's left edge, the full height of it, as Finder's and Preview's do: a quiet tint (on a Mac, the window's own see-through material; on Windows 11, Mica when the window's background is on), small grey headings, compact rows and one soft highlight, on what the grid is showing. `Ctrl+B` folds it away and back; drag its edge to make it wider. Drag the edge in past half the sidebar's narrowest width and it snaps hidden, leaving a thin line at the window's left edge: drag from the line to bring it back out. It comes back as wide as it was, and jEditor remembers that it's hidden. It stays beside the photo when you open one (not on a phone-sized window, where it would cover it). On a Mac the traffic lights sit in its top corner.
 
 From the top:
 

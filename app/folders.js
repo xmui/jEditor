@@ -237,9 +237,19 @@ const Folders = {
     },
 
     toggleRail() {
-        this.app.uiPrefs.folderRail = !this.railOpen();
+        this.setRail(!this.railOpen());
+    },
+
+    // Shown or hidden, and remembered: by Ctrl+B, the button, or its edge
+    // dragged in until it snaps hidden (script.js: SIDE_HIDES)
+    setRail(on) {
+        if (on === this.railOpen()) return;
+        this.app.uiPrefs.folderRail = on;
         this.app.saveUiPrefs();
+        const was = !this.el('folder-rail').classList.contains('hidden');
         this.render();
+        const now = !this.el('folder-rail').classList.contains('hidden');
+        if (was !== now) this.app.slideSide(this.el('folder-rail'), now);
     },
 
     render() {
@@ -254,6 +264,9 @@ const Folders = {
         ui.classList.toggle('rail-open', rail);
         this.el('folder-bar').classList.toggle('hidden', !on);
         this.el('folder-rail').classList.toggle('hidden', !rail);
+        // Hidden where it would show: the line at the window's edge that
+        // drags it back out (script.js: initSidebarResize)
+        this.el('rail-edge').classList.toggle('hidden', !(on || beside) || rail);
         // What this window shows, for the others' Move to: in any view, not
         // just the grid's (a project left in single view was missing there)
         if (typeof Windows !== 'undefined') Windows.publish();

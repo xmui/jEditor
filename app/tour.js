@@ -56,7 +56,7 @@ const Tour = {
             text: () => 'The folders in this project, with how many photos are in each' +
                 (Host.has('places') ? ', your recent projects, pinned folders and drives, with the room left on each' : '') +
                 (Host.has('photosLibrary') ? ', and your Photos library' : '') +
-                '. It stays beside the photo when you open one. {key:folders.rail} shows or hides it, and its edge drags wider.'
+                '. It stays beside the photo when you open one. {key:folders.rail} shows or hides it, and its edge drags wider, or right in to hide it.'
         },
         {
             id: 'projects', needs: 'places', view: 'grid', target: ['#sb-card .sb-card-name'], side: 'right',
