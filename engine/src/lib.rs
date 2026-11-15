@@ -2,13 +2,14 @@
 // Rust, inside the desktop apps. The page asks for results (a thumbnail of
 // this file, this wide), never pixels it has to move itself.
 //
-// Phase 1: JPEG thumbnails (thumb.rs) and, with the feature `heif`, HEIC
-// thumbnails (heif.rs), called by the Windows app through the C interface
+// Phase 1: JPEG thumbnails (thumb.rs), RAW thumbnails from the JPEG inside
+// them (raw.rs) and, with the feature `heif`, HEIC thumbnails (heif.rs), called by the Windows app through the C interface
 // below (src/Engine.cs).
 
 pub mod exif;
 #[cfg(feature = "heif")]
 pub mod heif;
+pub mod raw;
 pub mod thumb;
 
 use std::os::raw::c_char;
@@ -53,9 +54,9 @@ pub extern "C" fn je_version() -> *const c_char {
 #[no_mangle]
 pub extern "C" fn je_formats() -> *const c_char {
     #[cfg(feature = "heif")]
-    let f = "jpg jpeg heic heif\0";
+    let f = "jpg jpeg heic heif dng cr2 cr3 nef nrw arw sr2 srf orf rw2 rwl pef srw 3fr iiq erf kdc dcr mos mef raf\0";
     #[cfg(not(feature = "heif"))]
-    let f = "jpg jpeg\0";
+    let f = "jpg jpeg dng cr2 cr3 nef nrw arw sr2 srf orf rw2 rwl pef srw 3fr iiq erf kdc dcr mos mef raf\0";
     f.as_ptr() as *const c_char
 }
 
@@ -89,6 +90,9 @@ fn thumbnail_file(path: &str, width: u32) -> Result<Vec<u8>, i32> {
     let lower = path.to_ascii_lowercase();
     let jpeg = lower.ends_with(".jpg") || lower.ends_with(".jpeg");
     let heic = lower.ends_with(".heic") || lower.ends_with(".heif");
+    if raw::is_raw(&lower) {
+        return raw_thumbnail(path, width);
+    }
     if !jpeg && !(heic && cfg!(feature = "heif")) {
         return Err(JE_UNSUPPORTED);
     }
@@ -102,6 +106,16 @@ fn thumbnail_file(path: &str, width: u32) -> Result<Vec<u8>, i32> {
         thumb::Error::Unsupported(_) => JE_UNSUPPORTED,
         thumb::Error::Bad(_) => JE_BAD,
     })
+}
+
+// A RAW's: from the JPEG inside it (raw.rs), only that part of the file
+// read, turned as the RAW says (or as the JPEG's own EXIF does)
+fn raw_thumbnail(path: &str, width: u32) -> Result<Vec<u8>, i32> {
+    let mut src = raw::FileSource::open(path).map_err(|_| JE_IO)?;
+    let (jpeg, o) = raw::preview(&mut src).ok_or(JE_BAD)?;
+    let o = if (1..=8).contains(&o) { o } else { exif::orientation(&jpeg) };
+    let small = thumb::oriented_thumbnail_rgb(&jpeg, width, o).map_err(|_| JE_BAD)?;
+    thumb::encode_jpeg(&small, 80.0).map_err(|_| JE_BAD)
 }
 
 #[cfg(feature = "heif")]
@@ -165,6 +179,8 @@ mod tests {
         }
         let formats = unsafe { std::ffi::CStr::from_ptr(je_formats()) }.to_str().unwrap();
         assert_eq!(formats.contains("heic"), cfg!(feature = "heif"));
+        let listed: Vec<&str> = formats.split(' ').collect();
+        assert!(raw::EXTENSIONS.iter().all(|e| listed.contains(e)), "every RAW in je_formats");
         std::fs::remove_dir_all(&dir).ok();
     }
 }
