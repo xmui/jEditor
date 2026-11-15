@@ -141,8 +141,9 @@ can be changed or taken off later wherever it was made.
    unfaded roll 3.5 → 1.2. Uneven fade: measured, it can't be found
    automatically (the scene's content swamps it; every case got worse);
    a manual **Edges** strength would help when set right (uneven cyan
-   5.0 → 4.1) but needs a new first step in the render path, so it's
-   waiting on the owner.
+   5.0 → 4.1) but makes an evenly faded photo worse (cyan loss 3.7 → 5.4)
+   and needs a new first step in the render path. Skipped (the owner,
+   via the Wrangler, 2026-11-15: "skip it").
 5. Later: an optional AI recolour, as a desktop download.
 
 ### Adjust: film looks you dial in, and your own (the owner, 2026-11-15)
