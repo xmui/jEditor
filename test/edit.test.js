@@ -1068,7 +1068,7 @@ const PROJECT = `
                 const before = new Uint8Array(await (await (await dir.getFileHandle('p.png')).getFile()).arrayBuffer());
                 app.openSingle(f);
                 step = 'open';
-                out.button = Modes.shown().some(m => m[0] === 'paint') && !document.getElementById('mode-float').classList.contains('hidden');
+                out.button = Modes.shown().some(m => m[0] === 'paint') && !!document.querySelector('#mode-row:not(.hidden) [data-mode="paint"]');
                 pressKey('b');
                 await until(() => PaintEditor.ready);
                 const P = PaintEditor;
@@ -1622,15 +1622,16 @@ const PROJECT = `
                 step = 'photos';
                 await Modes.go('photos');
                 out.back = Modes.current() === 'photos' && !PaintEditor.isOpen && !Modes.strip.parentElement;
-                // The grid: with the sidebar open the switch is along its top; closed, a chip in the folder pill
+                // The grid: with the sidebar open the row is along its top; closed, the same row floats as a pill
                 step = 'grid';
                 app.setView('grid');
                 app.uiPrefs.folderRail = true;
                 Folders.render();
-                out.seg = shownEl('mode-seg') && [...$('mode-seg').children].map(b => b.dataset.mode).join() === 'photos,adjust,paint' && $('mode-seg').querySelector('.on').dataset.mode === 'photos' && !shownEl('mode-chip-bar') && !shownEl('mode-float');
+                out.seg = shownEl('mode-seg') && [...$('mode-seg').children].map(b => b.dataset.mode).join() === 'photos,adjust,paint' && $('mode-seg').querySelector('.on').dataset.mode === 'photos' && $('mode-row').parentElement === $('folder-rail') && !shownEl('mode-chip-bar') && !shownEl('mode-float');
                 app.uiPrefs.folderRail = false;
                 Folders.render();
-                out.chipBar = shownEl('mode-chip-bar') && !shownEl('mode-seg') && !shownEl('mode-float');
+                out.chipBar = shownEl('mode-row') && $('mode-row').classList.contains('float') && shownEl('mode-seg') && shownEl('mode-row-side') && shownEl('mode-row-find') && !shownEl('mode-chip-bar') && !shownEl('mode-float')
+                    && $('folder-bar').getBoundingClientRect().left >= $('mode-row').getBoundingClientRect().right;
                 // The sidebar's Adjust: on the photo selected
                 app.uiPrefs.folderRail = true;
                 Folders.render();
@@ -1678,7 +1679,7 @@ const PROJECT = `
         check('modes: the chip\'s menu switches to Paint, on the same photo', r.menu && r.inPaint, JSON.stringify(r));
         check('modes: what was painted is kept when another photo is chosen', r.kept, JSON.stringify(r));
         check('modes: back to Photos closes it', r.back, JSON.stringify(r));
-        check('modes: the sidebar open, the switch is along its top; closed, a chip in the folder pill', r.seg && r.chipBar && r.segGo, JSON.stringify(r));
+        check('modes: the sidebar open, the row is along its top; closed, the same row floats as a pill, the folder pill after it', r.seg && r.chipBar && r.segGo, JSON.stringify(r));
         check('modes: Adjust and Paint are off the toolbar\'s main row', r.toolbar, JSON.stringify(r));
         check('modes: closing the window in Adjust or Paint is held for the page', r.holds && r.closeAtOnce, JSON.stringify(r));
         check('modes: closing with changes asks "Keep your changes?"; Cancel stays, Keep keeps them', r.askText && r.cancelStays && r.keepKeeps, JSON.stringify(r));
