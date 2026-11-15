@@ -6128,6 +6128,51 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             Adjust.lookItems()[0][1]();
             await sleep(30);
             out.lookOff = !Adjust.result().look && document.getElementById('adj-look-name').textContent === 'None';
+            // A look's own sliders: picking one opens them; a change shows it
+            // as modified, kept with the photo, and Reset puts it back
+            step = 'look dial';
+            Adjust.lookItems().find(i => i[0] === 'B&W')[1].find(i => /Tri-X/.test(i[0]))[1]();
+            await sleep(40);
+            const dial = document.getElementById('adj-look-dial');
+            out.dialOpen = !dial.classList.contains('hidden') && dial.open;
+            const lc = document.getElementById('adj-look-contrast');
+            lc.value = '40'; lc.dispatchEvent(new Event('input')); lc.dispatchEvent(new Event('change'));
+            await sleep(40);
+            out.dialled = Adjust.result().lookAdj && Adjust.result().lookAdj.contrast === 40 && /modified/.test(document.getElementById('adj-look-name').textContent)
+                && Adjust.result().look === 'trix';
+            const fadeIn = document.getElementById('adj-look-fade');
+            fadeIn.value = '12'; fadeIn.dispatchEvent(new Event('input')); fadeIn.dispatchEvent(new Event('change'));
+            out.faded = Adjust.result().lookAdj.curve.rgb[0][0] === 0 && Math.abs(Adjust.result().lookAdj.curve.rgb[0][1] - 0.12) < 1e-6;
+            const resetIt = Adjust.lookItems().find(i => /^Reset .*Tri-X/.test(i[0]));
+            if (resetIt) resetIt[1]();
+            out.dialReset = !!resetIt && !Adjust.result().lookAdj && !/modified/.test(document.getElementById('adj-look-name').textContent);
+            // Your own looks: saved under a name, listed under Your looks,
+            // put on with their settings; right-click renames, duplicates
+            // or deletes, and a photo done with one keeps it
+            step = 'own looks';
+            try { localStorage.removeItem('jeditor.looks'); } catch (e) { /* none */ }
+            lc.value = '25'; lc.dispatchEvent(new Event('input')); lc.dispatchEvent(new Event('change'));
+            const promptL = UI.prompt;
+            UI.prompt = async () => 'My Tri-X';
+            await Adjust.saveLook();
+            UI.prompt = promptL;
+            const mine = Adjust.ownLooks();
+            out.saved = mine.length === 1 && mine[0].name === 'My Tri-X' && mine[0].adj.contrast === 25;
+            const items = Adjust.lookItems();
+            const heading = items.findIndex(i => i[0] === 'Your looks' && i[1] === null);
+            const row = items.find(i => i[0] === 'My Tri-X');
+            out.listed = heading > 0 && !!row && Array.isArray(row[5]) && row[5].map(i => i[0]).join('|') === 'Rename…|Duplicate|Delete';
+            Adjust.lookItems()[0][1]();
+            row[1]();
+            await sleep(40);
+            const ra = Adjust.result();
+            out.ownOn = ra.look === 'own:' + mine[0].id && ra.lookName === 'My Tri-X' && ra.lookAdj.contrast === 25 && document.getElementById('adj-look-name').textContent === 'My Tri-X';
+            row[5][1][1]();
+            out.duplicated = Adjust.ownLooks().length === 2;
+            for (const o of Adjust.ownLooks()) Adjust.ownLookItems(o)[2][1]();
+            out.deleted = Adjust.ownLooks().length === 0 && Adjust.result().look === 'own:' + mine[0].id && !Adjust.lookItems().some(i => i[0] === 'Your looks');
+            Adjust.lookItems()[0][1]();
+            await sleep(30);
             // A grading wheel: dragged out to the right is red, strong
             step = 'wheel';
             const grading = [...document.querySelectorAll('details.adj-sec')].find(d => /Color grading/.test(d.querySelector('summary').textContent));
@@ -6287,6 +6332,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('adjust: E opens it on the GPU, with a histogram', r.open, JSON.stringify(r));
         check('adjust: sliders change the photo and its histogram live; Ctrl+Z / Ctrl+Shift+Z inside; \\ shows before', r.live && r.undoInside && r.redoInside && r.beforeShown, JSON.stringify(r));
         check('adjust: Look is one line whose menu has the films by process; one chosen goes on (with Amount), None takes it off', r.lookMenu && r.lookOn && r.lookOff, JSON.stringify(r));
+        check('adjust: picking a look opens its sliders; Contrast and Fade change the look, shown as modified, and Reset puts it back', r.dialOpen && r.dialled && r.faded && r.dialReset, JSON.stringify(r));
+        check('adjust: Save as a look keeps the look as dialled in under Your looks, with rename, duplicate and delete on its right-click; a photo done with it keeps it', r.saved && r.listed && r.ownOn && r.duplicated && r.deleted, JSON.stringify(r));
         check('adjust: a grading wheel takes a hue and strength; presets save and put settings back', r.wheel && r.preset, JSON.stringify(r));
         check('adjust: Detail shows the full photo at 1:1, where you click', r.loupe, JSON.stringify(r));
         check('adjust: Pick grey (W) sets the white balance from a click on the photo, one Ctrl+Z; Esc stops picking', r.pickOn && r.pickEsc && r.picked && r.pickUndone, JSON.stringify(r));

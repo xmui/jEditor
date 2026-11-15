@@ -5773,6 +5773,44 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     background: var(--bg-hover);
 }
 
+/* A look's own sliders, under its Amount: a small disclosure, so a look
+   is never fixed but its sliders aren't in the way */
+.adj-look-dial {
+    margin: 0 0 var(--sp-1);
+}
+
+.adj-look-dial > summary {
+    display: flex;
+    align-items: center;
+    min-height: 24px;
+    cursor: pointer;
+    color: var(--text-2);
+    list-style: none;
+}
+
+.adj-look-dial > summary::-webkit-details-marker {
+    display: none;
+}
+
+.adj-look-dial > summary > span::before {
+    content: "";
+    display: inline-block;
+    margin: 0 var(--sp-2) 2px 2px;
+    border-left: 5px solid currentColor;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.adj-look-dial[open] > summary > span::before {
+    transform: rotate(90deg);
+}
+
+.adj-look-dial > summary:hover,
+.adj-look-dial[open] > summary {
+    color: var(--text-1);
+}
+
 /* Color grading: three wheels in a row, brightness under each */
 .adj-wheels {
     display: grid;

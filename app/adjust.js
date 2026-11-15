@@ -117,6 +117,7 @@ const Adjust = {
         const effects = this.el('adj-effects');
         for (const [k, label] of this.EFFECTS) effects.appendChild(this.slider(k, label));
         this.el('adj-look-amount').appendChild(this.slider('lookAmount', 'Amount'));
+        this.initLookDial();
         const grade = this.el('adj-grade-more');
         grade.appendChild(this.slider('gradeBlend', 'Blending'));
         grade.appendChild(this.slider('gradeBalance', 'Balance'));
@@ -523,7 +524,7 @@ const Adjust = {
         if (which === 'detail') for (const [k] of this.DETAIL) delete a[k];
         if (which === 'masks') delete a.masks;
         if (which === 'spots') delete a.spots;
-        if (which === 'look' || which === 'basic') { delete a.look; delete a.lookAmount; }
+        if (which === 'look' || which === 'basic') { delete a.look; delete a.lookAmount; delete a.lookAdj; delete a.lookName; }
         if (which === 'basic') for (const [k] of [...this.LIGHT, ...this.COLOR]) delete a[k];
         this.setAll(a);
     },
@@ -1256,23 +1257,229 @@ const Adjust = {
         return l ? [l.maker, l.name].filter(Boolean).join(' ') : 'None';
     },
 
+    // The look's name as shown: its own, and if it's been dialled in, so
+    shownLookName() {
+        const l = Develop.lookOf(this.a);
+        return !l ? 'None' : l.modified ? `${l.name} (modified)` : l.name;
+    },
+
     setLook(id) {
         if (!this.ready || (id || null) === (this.a.look || null)) return;
         this.pushHistory();
         this.a.look = id || null;
+        this.a.lookAdj = null;
+        this.a.lookName = null;
         if (!id) this.a.lookAmount = 100;
+        this.openDial();
         this.changed();
     },
 
-    // None, then each process with its films beside it
+    // One of your own looks (its settings come with it)
+    setOwnLook(o) {
+        if (!this.ready) return;
+        this.pushHistory();
+        this.a.look = 'own:' + o.id;
+        this.a.lookName = o.name;
+        this.a.lookAdj = JSON.parse(JSON.stringify(o.adj));
+        this.openDial();
+        this.changed();
+    },
+
+    // The film look as it was made again, its sliders as they came
+    resetLook() {
+        if (!this.ready || !this.a.lookAdj || String(this.a.look).startsWith('own:')) return;
+        this.pushHistory();
+        this.a.lookAdj = null;
+        this.changed();
+    },
+
+    // None, then each process with its films beside it, your own looks,
+    // and saving the settings as one of yours
     lookItems() {
         const on = this.a.look || null;
+        const l = Develop.lookOf(this.a);
+        const own = this.ownLooks();
         return [
             ['None', () => this.setLook(null), false, !on],
             ['—'],
-            ...Develop.PROCESSES.map(([id, label]) => [label, Develop.LOOKS.filter(l => l.process === id)
-                .map(l => [this.lookName(l), () => this.setLook(l.id), false, on === l.id])])
+            ...Develop.PROCESSES.map(([id, label]) => [label, Develop.LOOKS.filter(lk => lk.process === id)
+                .map(lk => [this.lookName(lk), () => this.setLook(lk.id), false, on === lk.id])]),
+            ...(own.length ? [['—'], ['Your looks', null],
+                // Right-click one of yours: rename, duplicate or delete it
+                ...own.map(o => [o.name, () => this.setOwnLook(o), false, on === 'own:' + o.id, undefined, this.ownLookItems(o)]),
+                ['Change your looks', own.map(o => [o.name, this.ownLookItems(o)])]] : []),
+            ['—'],
+            ['Save as a look…', () => this.saveLook()],
+            ...(l && l.modified ? [[`Reset ${l.name} to as made`, () => this.resetLook()]] : [])
         ];
+    },
+
+    // ---- A look's own sliders ----
+    //
+    // Picking a look opens them under its Amount, so a look is never fixed
+    // (the plan): each changes the look's own settings (lookAdj, kept with
+    // the photo's), and the look shows as modified, with Reset in its menu
+
+    initLookDial() {
+        this.lookMixer = 'hue';
+        const rows = [];
+        const add = (box, key, label, range, get, set) => {
+            const row = this.slider('look-' + key, label, { range, get: () => get(this.lookFull()), set: (v) => this.editLook(la => set(la, v)) });
+            this.el(box).appendChild(row);
+            rows.push(row);
+            return row;
+        };
+        const pct = { min: -100, max: 100, step: 1 }, up = { min: 0, max: 100, step: 1 };
+        add('adj-look-tone', 'contrast', 'Contrast', pct, f => f.contrast, (la, v) => { la.contrast = v; });
+        // Lifted blacks: where the tone curve starts
+        add('adj-look-tone', 'fade', 'Fade', { min: 0, max: 30, step: 1 }, f => Math.round(f.curve.rgb[0][1] * 100), (la, v) => {
+            const c = la.curve = la.curve || {};
+            const rgb = (c.rgb || [[0, 0], [1, 1]]).map(p => p.slice());
+            if (rgb[0][0] === 0) rgb[0][1] = v / 100; else rgb.unshift([0, v / 100]);
+            c.rgb = rgb;
+        });
+        add('adj-look-tone', 'warmth', 'Warmth', pct, f => f.temp, (la, v) => { la.temp = v; });
+        const zone = (z, name) => {
+            const g = (f) => f.grade[z];
+            const put = (la, k, v) => { la.grade = la.grade || {}; const t = (la.grade[z] || [0, 0, 0]).slice(); t[k] = v; la.grade[z] = t; };
+            add('adj-look-tint', z + 'hue', `${name} hue`, { min: 0, max: 360, step: 1 }, f => g(f)[0], (la, v) => put(la, 0, v));
+            add('adj-look-tint', z + 'tint', `${name} tint`, up, f => g(f)[1], (la, v) => put(la, 1, v));
+        };
+        zone('s', 'Shadow');
+        zone('h', 'Highlight');
+        add('adj-look-colour', 'saturation', 'Saturation', pct, f => f.saturation, (la, v) => { la.saturation = v; });
+        add('adj-look-colour', 'vibrance', 'Vibrance', pct, f => f.vibrance, (la, v) => { la.vibrance = v; });
+        // Colour response: a small mixer of the look's own
+        Develop.HUES.forEach((h, i) => {
+            const row = add('adj-look-mixer', 'mix-' + h.id, h.name, pct, f => f.hsl[this.lookMixer][i], (la, v) => {
+                la.hsl = la.hsl || {};
+                const t = (la.hsl[this.lookMixer] || new Array(8).fill(0)).slice();
+                t[i] = v;
+                la.hsl[this.lookMixer] = t;
+            });
+            row.style.setProperty('--swatch', h.color);
+            row.classList.add('adj-mix-row');
+        });
+        for (const b of this.root.querySelectorAll('.adj-look-mix-tabs .adj-tab')) {
+            b.addEventListener('click', () => { b.blur(); this.lookMixer = b.dataset.mix; this.sync(); });
+        }
+        add('adj-look-film', 'grain', 'Grain', up, f => f.grain, (la, v) => { la.grain = v; });
+        add('adj-look-film', 'grainSize', 'Grain size', up, f => f.grainSize, (la, v) => { la.grainSize = v; });
+        add('adj-look-film', 'grainColor', 'Grain colour', up, f => f.grainColor, (la, v) => { la.grainColor = v; });
+        add('adj-look-film', 'halation', 'Halation', up, f => f.halation, (la, v) => { la.halation = v; });
+        add('adj-look-film', 'vignette', 'Vignette', pct, f => f.vignette, (la, v) => { la.vignette = v; });
+        this.lookRows = rows;
+        (this.extraRows || (this.extraRows = [])).push(...rows);
+    },
+
+    // The look's settings as dialled in, every one filled in
+    lookFull() {
+        const l = this.a && Develop.lookOf(this.a);
+        return Develop.full(l ? l.adj : {});
+    },
+
+    // A change to the look's own settings: from then on the photo keeps
+    // them (lookAdj), made from the look as it came
+    editLook(fn) {
+        const l = Develop.lookOf(this.a);
+        if (!l) return;
+        const la = JSON.parse(JSON.stringify(l.adj || {}));
+        fn(la);
+        this.a.lookAdj = Develop.cleanLookAdj(la);
+    },
+
+    // Picking a look opens its sliders (they stay as left after that)
+    openDial() {
+        const d = this.el('adj-look-dial');
+        if (d && this.a.look) d.open = true;
+    },
+
+    syncLookDial() {
+        const d = this.el('adj-look-dial');
+        if (!d) return;
+        d.classList.toggle('hidden', !Develop.lookOf(this.a));
+        for (const b of this.root.querySelectorAll('.adj-look-mix-tabs .adj-tab')) b.setAttribute('aria-selected', String(b.dataset.mix === this.lookMixer));
+    },
+
+    // ---- Your own looks ----
+    //
+    // Kept on this computer (as presets are), each { id, name, adj }; a
+    // photo using one keeps a copy of its settings, so it looks the same
+    // wherever its settings go, and changing or deleting the look later
+    // doesn't change photos already done with it
+
+    ownLooks() {
+        try {
+            const list = JSON.parse(localStorage.getItem('jeditor.looks') || '[]');
+            return Array.isArray(list) ? list.filter(o => o && typeof o.id === 'string' && typeof o.name === 'string' && o.adj && typeof o.adj === 'object') : [];
+        } catch (e) { return []; }
+    },
+
+    saveOwnLooks(list) {
+        try { localStorage.setItem('jeditor.looks', JSON.stringify(list)); } catch (e) { /* private mode */ }
+    },
+
+    // Rename, duplicate or delete one (its right-click menu)
+    ownLookItems(o) {
+        return [
+            ['Rename…', () => this.renameLook(o)],
+            ['Duplicate', () => {
+                const list = this.ownLooks();
+                list.push({ id: this.newLookId(), name: this.freeLookName(o.name + ' copy'), adj: JSON.parse(JSON.stringify(o.adj)) });
+                this.saveOwnLooks(list);
+                this.app.showToast(`Duplicated “${o.name}”`, 1600, null, null, { kind: 'adjust' });
+            }],
+            ['Delete', () => {
+                this.saveOwnLooks(this.ownLooks().filter(q => q.id !== o.id));
+                this.app.showToast(`Deleted the look “${o.name}”; photos done with it keep it`, 2400, null, null, { kind: 'adjust' });
+            }, true]
+        ];
+    },
+
+    newLookId() {
+        return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    },
+
+    // A name not already used by one of yours
+    freeLookName(name) {
+        const used = new Set(this.ownLooks().map(o => o.name.toLowerCase()));
+        let n = name, i = 2;
+        while (used.has(n.toLowerCase())) n = `${name} ${i++}`;
+        return n;
+    },
+
+    async renameLook(o) {
+        const name = await UI.prompt({ title: 'Rename the look', message: 'Photos already done with it keep their name for it.', ok: 'Rename', input: { label: 'Name', value: o.name } });
+        if (!name || !name.trim() || name.trim() === o.name) return;
+        const list = this.ownLooks();
+        const it = list.find(q => q.id === o.id);
+        if (!it) return;
+        it.name = this.freeLookName(name.trim().slice(0, 60));
+        this.saveOwnLooks(list);
+    },
+
+    // Save as a look: the look as dialled in, if one's on; otherwise the
+    // photo's own settings (not its masks, spots or Restore colour, which
+    // are this photo's)
+    async saveLook() {
+        if (!this.ready) return;
+        const l = Develop.lookOf(this.a);
+        const adj = l ? Develop.cleanLookAdj(l.adj) : Develop.cleanLookAdj(this.result() || {});
+        if (!Object.keys(adj).length) {
+            this.app.showToast('Adjust the photo or dial in a look first: a look keeps the settings', 2400, null, null, { kind: 'adjust' });
+            return;
+        }
+        const name = await UI.prompt({
+            title: 'Save as a look',
+            message: l ? `${l.name} as you've dialled it in, to put on other photos from the Look menu.` : 'These settings, to put on other photos from the Look menu.',
+            ok: 'Save', input: { label: 'Name', value: l ? this.freeLookName(l.own ? l.name : `My ${l.name}`) : '' }
+        });
+        if (!name || !name.trim()) return;
+        const list = this.ownLooks();
+        const o = { id: this.newLookId(), name: this.freeLookName(name.trim().slice(0, 60)), adj };
+        list.push(o);
+        this.saveOwnLooks(list);
+        this.app.showToast(`Saved the look “${o.name}”: it's under Your looks in the Look menu`, 2400, null, null, { kind: 'adjust' });
     },
 
     // The four tools: Edit, Restore, Heal and Masks. Restore, Heal and
@@ -1459,8 +1666,9 @@ const Adjust = {
         for (const row of this.mixerSliders.concat(this.extraRows || [])) row._sync();
         for (const b of this.root.querySelectorAll('.adj-chan .adj-tab')) b.setAttribute('aria-selected', String(b.dataset.chan === this.channel));
         for (const b of this.root.querySelectorAll('.adj-mix-tabs .adj-tab')) b.setAttribute('aria-selected', String(b.dataset.mix === this.mixer));
-        this.el('adj-look-name').textContent = this.lookName(Develop.look(this.a.look));
-        this.el('adj-look-amount').classList.toggle('hidden', !this.a.look);
+        this.el('adj-look-name').textContent = this.shownLookName();
+        this.el('adj-look-amount').classList.toggle('hidden', !Develop.lookOf(this.a));
+        this.syncLookDial();
         this.drawWheels();
         const l = this.a.levels[this.channel];
         this.el('adj-levels-read').textContent = `${Math.round(l[0] * 255)} · ${l[1].toFixed(2)} · ${Math.round(l[2] * 255)}` +
