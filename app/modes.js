@@ -389,7 +389,10 @@ const Modes = {
             for (const head of document.querySelectorAll('.adj-head, .paint-head')) {
                 const h = head.getBoundingClientRect();
                 const acts = head.querySelector('.mode-head-acts');
-                const a = on && acts && acts.getBoundingClientRect();
+                // In jEditor's own look the buttons are a pill at the
+                // right, over the photo: the file's pill keeps clear of them
+                const own = !document.documentElement.dataset.skin;
+                const a = (on || own) && acts && acts.getBoundingClientRect();
                 head.style.paddingLeft = right && h.width ? `${Math.ceil(right - h.left) + 12}px` : '';
                 head.style.paddingRight = a && a.width ? `${Math.ceil(h.right - a.left) + 12}px` : '';
             }
