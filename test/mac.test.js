@@ -334,6 +334,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         // New project: a folder in the projects folder, opened
         await page.evaluate(async () => {
             UI.prompt = async () => 'Gamma';
+            UI.choose = async () => 'ok'; // (which kind: a folder for photos)
             await Places.newProject();
             const until = Date.now() + 10000;
             while ((!app.dirHandle || app.dirHandle.name !== 'Gamma') && Date.now() < until) await new Promise(res => setTimeout(res, 50));

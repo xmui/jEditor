@@ -905,8 +905,34 @@ const Places = {
         return this.renameFolder(entry.path, entry.name, { undo: true });
     },
 
-    // A new folder in the projects folder, opened as the project
+    // New project, from the home page's tile, the sidebar and the project
+    // picker alike: which kind, in one small question. A folder for photos
+    // (newFolder) or a blank canvas (Paint's New canvas window). Only one
+    // of them here (Paint off; or no projects folder to make one in, as in
+    // a browser): that one, without asking
     async newProject() {
+        const canvas = typeof Modes !== 'undefined' && typeof Blank !== 'undefined' && (!Modes.app || Modes.on('paint'));
+        const folder = Host.has('places');
+        if (canvas && folder) {
+            const how = await UI.choose({
+                title: 'New project',
+                message: 'What do you want to start with?',
+                items: [
+                    'A folder for photos: an empty project, ready to scan, shoot or copy photos into.',
+                    'A blank canvas: a size and a background, opened in Paint.'
+                ],
+                ok: 'A folder for photos',
+                alt: 'A blank canvas'
+            });
+            if (how === 'alt') return Modes.paintStart();
+            if (how !== 'ok') return;
+            return this.newFolder();
+        }
+        return canvas ? Modes.paintStart() : this.newFolder();
+    },
+
+    // A new folder in the projects folder, opened as the project
+    async newFolder() {
         const dir = this.projectsDir();
         if (!dir) return this.chooseFolder();
         const dirName = dir.split(/[\\/]/).filter(Boolean).pop() || dir;

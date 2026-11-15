@@ -1783,6 +1783,10 @@ async function newPage(context, baseUrl, host = null) {
             // New project: named, made in the projects folder, opened, listed
             window.__opened = null;
             UI.prompt = async () => 'Gamma';
+            // (which kind is asked first: a folder for photos)
+            const chooseKind = UI.choose;
+            let askedKind = null;
+            UI.choose = async (o) => { askedKind = `${o.title}: ${o.ok} / ${o.alt}`; return 'ok'; };
             start.querySelector('[data-act="newproject"]').click();
             await wait(() => window.__opened);
             out.made = window.__opened;
@@ -1794,6 +1798,8 @@ async function newPage(context, baseUrl, host = null) {
             start.querySelector('[data-act="newproject"]').click();
             await wait(() => said);
             out.twice = said;
+            out.askedKind = askedKind;
+            UI.choose = chooseKind;
             // Rename (right-click): a pinned one's pin follows it
             Places.pin(window.__orderRoot + String.fromCharCode(92) + 'Gamma', 'Gamma');
             await wait(() => rowOf(start, 'Gamma'));
@@ -2044,6 +2050,7 @@ async function newPage(context, baseUrl, host = null) {
         check('search finds a project', r.search === 'Beta', r.search);
         check('clicking a project opens it', r.opened === 'D:\\Orders\\Beta', r.opened);
         check('Rename on a project\'s right-click menu, in place; its pin follows it', /Rename…/.test(r.menu) && /Show in Explorer/.test(r.menu) && r.startInPlace && r.renamed && r.renamed[1] === 'Gamma Smith' && r.pinMoved === 'D:\\Orders\\Gamma Smith', JSON.stringify([r.menu, r.startInPlace, r.renamed, r.pinMoved]));
+        check('New project asks which kind first: a folder for photos, or a blank canvas', r.askedKind === 'New project: A folder for photos / A blank canvas', r.askedKind);
         check('New project: makes the folder in the projects folder, opens it and lists it; a name taken says so', r.made === 'D:\\Orders\\Gamma' && r.listed && /already a Gamma/.test(r.twice || ''), JSON.stringify([r.made, r.listed, r.twice]));
         check('the project card: name, path, photos', /Alpha/.test(r.card) && /D:\\Orders\\Alpha/.test(r.card) && /\d photos/.test(r.card), r.card);
         check('the sidebar: the open project heads it, Recents lists the others (one highlight at a time)', r.oneActive && r.recents.includes('Beta') && !r.recents.includes('Alpha'), JSON.stringify([r.oneActive, r.recents]));
