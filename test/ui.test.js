@@ -2230,7 +2230,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             window.dispatchEvent(new KeyboardEvent('keydown', { key: '0', bubbles: true }));
             out.keyFit = app.zoom === 1 && app.panX === 0 && !document.getElementById('current-image').classList.contains('pixelated');
 
-            // An edit not saved yet (Save edits when done): shown from a
+            // An edit not saved yet (Keep edits in jEditor): shown from a
             // screen-sized copy, and zoomed in, from the photo's own pixels
             // with the edit on them
             const until = async (fn, ms) => { const t = Date.now(); while (!fn() && Date.now() - t < ms) await new Promise(r => setTimeout(r, 50)); };
@@ -3542,11 +3542,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const openIt = async (d) => { window.showDirectoryPicker = async () => d; await app.browseFolder(); await wait(() => app.dirHandle === d && !app.isLoading); };
             localStorage.removeItem('jeditor.firstOpen');
             Start.setDeferNew(false);
-            // The first Open a folder: one dialog, with Save edits when done
+            // The first Open a folder: one dialog, with Keep edits in jEditor
             document.getElementById('btn-browse-folder').click();
             await wait(() => document.getElementById('first-open'));
             const fo = document.getElementById('first-open');
-            out.welcome = !!fo && fo.querySelectorAll('input[name="fo-defer"]').length === 2 && /Keep until I save/.test(fo.textContent) &&
+            out.welcome = !!fo && fo.querySelectorAll('input[name="fo-defer"]').length === 2 && /Keep edits in jEditor, export copies/.test(fo.textContent) &&
                 !document.getElementById('fo-dir') && !shown('open-card');
             fo.querySelector('input[value="on"]').click();
             document.getElementById('fo-ok').click();
@@ -3573,7 +3573,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await openIt(await opfs.getDirectoryHandle('fo Second'));
             await new Promise(res => setTimeout(res, 300));
             out.again = !shown('ui-dialog') && Edits.chosen && Edits.defer === false;
-            // Asking off: a new folder follows Save edits when done
+            // Asking off: a new folder follows Keep edits in jEditor
             FirstOpen.set({ ask: false });
             await openIt(await make('fo Third'));
             await new Promise(res => setTimeout(res, 300));
@@ -3604,12 +3604,12 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             return out;
         });
         check('first open: the first Open a folder asks once, with both choices explained', f.welcome, JSON.stringify(f));
-        check('first open: the answer is remembered, and Save edits when done is set', f.remembered);
+        check('first open: the answer is remembered, and Keep edits in jEditor is set', f.remembered);
         check('first open: the folder opened then isn\'t asked again', f.firstFolder);
         check('first open: each other folder\'s first time asks, and keeps the answer', f.asked && f.answered && f.again);
-        check('first open: with asking off in Settings, a folder follows Save edits when done', f.off && f.setting);
+        check('first open: with asking off in Settings, a folder follows Keep edits in jEditor', f.off && f.setting);
         check('first open: a folder dragged in first gets the dialog, for that folder', f.dropped && f.droppedKept);
-        check('new project: the name dialog has a Save edits when done switch', f.prompt && f.plainPrompt);
+        check('new project: the name dialog has a Keep edits in jEditor switch', f.prompt && f.plainPrompt);
         check('open card suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -4573,29 +4573,6 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.kept = a._edit && a._edit.q === 2;
             return out;
         });
-        // The edits bar: grid only, left of the size slider in the bottom row,
-        // never over the selection bar (above the slider when the row is full)
-        const lay = [];
-        for (const w of [1400, 1100]) {
-            await page.setViewportSize({ width: w, height: 700 });
-            lay.push(await page.evaluate(async () => {
-                app.setView('grid');
-                app.selection = new Set([app.files[0]]);
-                app.updateSelectionUI();
-                await new Promise(res => setTimeout(res, 400));
-                const box = (id) => document.getElementById(id).getBoundingClientRect();
-                const e = box('edits-bar'), s = box('selection-bar'), g = box('grid-controls');
-                const apart = (a, b) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
-                const out = { clear: apart(e, s) && apart(e, g) && apart(s, g), leftOfSlider: e.right <= g.left + 1 && Math.abs(e.bottom - g.bottom) < 2, aboveSlider: e.bottom <= g.top };
-                app.openSingle(app.files[0]);
-                await new Promise(res => setTimeout(res, 200));
-                out.hiddenInSingle = getComputedStyle(document.getElementById('edits-bar')).display === 'none';
-                app.setView('grid');
-                return out;
-            }));
-        }
-        check('edits bar: grid only, left of the size slider; above it when the row is full; never over the selection bar',
-            lay[0].clear && lay[0].leftOfSlider && lay[1].clear && (lay[1].leftOfSlider || lay[1].aboveSlider) && lay[0].hiddenInSingle, JSON.stringify(lay));
         // A narrow window, with and without the folder list: every pill in
         // the window, none over another (fit.js gives up parts in turn)
         const fit = [];
@@ -4625,7 +4602,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                     const out = { w, rail, fit: document.getElementById('main-interface').dataset.fit };
                     // The folder list beside the grid (wide windows): the selection bar keeps to the grid
                     const railBox = rail && innerWidth >= 768 ? document.getElementById('folder-rail').getBoundingClientRect() : null;
-                    out.bad = [...check(['folder-bar', '.file-info', 'header-controls']), ...check(['selection-bar', 'edits-bar', 'grid-controls'])];
+                    out.bad = [...check(['folder-bar', '.file-info', 'header-controls']), ...check(['selection-bar', 'grid-controls'])];
                     if (railBox && document.getElementById('selection-bar').getBoundingClientRect().left < railBox.right) out.bad.push('selection bar over the folder list');
                     // Short of room the folder pill doesn't cut its buttons off
                     const fb = document.getElementById('folder-bar');
@@ -4834,8 +4811,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
-    // ---- 7s2. Save edits when done ----
-    console.log('save edits when done');
+    // ---- 7s2. Keep edits in jEditor, export copies ----
+    console.log('keep edits in jEditor');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
         await page.evaluate(() => Experiments.set('auto-crop', true)); // an experiment, off to start with
@@ -4879,20 +4856,22 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 try { return JSON.parse(await (await (await (await dir.getDirectoryHandle('.jeditor')).getFileHandle('edits.json')).getFile()).text()); } catch (e) { return null; }
             };
             const f = (n) => app.files.find(x => x.name === n);
-            const bar = () => document.getElementById('edits-bar');
-            const barText = () => document.getElementById('edits-text').textContent;
+            // No bar counting what's waiting (Lightroom's way): the pencils show it
+            const noNag = () => !document.getElementById('edits-bar') && !document.querySelector('.sb-card-pending, .sb-card-save');
 
             window.showDirectoryPicker = async () => dir;
             await app.browseFolder();
             app.setView('grid');
-            out.barOffAtFirst = bar().classList.contains('hidden');
+            out.barOffAtFirst = noNag();
 
             // Turned on for this project (the grid's menu)
             step = "Turned on for this project (the grid's menu)";
-            const bg = app.buildContextItems(null, false).find(it => it[0] === 'Save edits when done');
+            const bg = app.buildContextItems(null, false).find(it => it[0] === 'Keep edits in jEditor, export copies');
+            out.menuUnticked = bg && !bg[3];
             bg[1]();
             await until(async () => (await kept()) && (await kept()).defer);
-            out.on = Edits.on() && !bar().classList.contains('hidden') && /kept until you save/.test(barText()) && (await kept()).defer === true;
+            out.on = Edits.on() && noNag() && (await kept()).defer === true &&
+                !!app.buildContextItems(null, false).find(it => it[0] === 'Keep edits in jEditor, export copies' && it[3]);
 
             // Batch Auto crop: kept as edits, nothing written
             step = 'Batch Auto crop: kept as edits, nothing written';
@@ -4905,7 +4884,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.autoKept = !!f('scan1.jpg')._edit && !!f('scan2.jpg')._edit && !f('plain.jpg')._edit && await untouched();
             out.autoToast = [...document.querySelectorAll('.toast')].map(t => t.textContent).find(t => /Auto-cropped/.test(t)) || '';
             out.badges = !!f('scan1.jpg')._gridEl.querySelector('.tile-edit') && !f('plain.jpg')._gridEl.querySelector('.tile-edit');
-            out.barCount = barText();
+            out.barCount = Edits.count();
+            out.noNagEdited = noNag();
+            out.saveInMenu = !!app.buildContextItems(null, false).find(it => it[0] === 'Save edits…');
             // Shown as it will be saved: the thumbnail and preview are of the print
             step = 'Shown as it will be saved: the thumbnail and preview are of the print';
             await until(() => f('scan1.jpg').thumbnailUrl && !f('scan1.jpg')._thumbStale);
@@ -4960,7 +4941,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await app.openDirectory(dir);
             // (kept edits can come a moment after the photos)
             await until(() => app.files.length === 3 && Edits.count() === 3);
-            out.reloaded = Edits.on() && !!f('scan1.jpg')._edit && f('scan1.jpg')._edit.angle === 0 && !!f('plain.jpg')._edit && f('plain.jpg')._edit.q === 3 && /3 edits/.test(barText());
+            out.reloaded = Edits.on() && !!f('scan1.jpg')._edit && f('scan1.jpg')._edit.angle === 0 && !!f('plain.jpg')._edit && f('plain.jpg')._edit.q === 3 && noNag();
 
             // Export copies: every photo, the edited ones with their edits
             step = 'Export copies: every photo, the edited ones with their edits';
@@ -4986,7 +4967,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             { const saving = Edits.saveAll(); document.getElementById('ex-go').click(); await saving; }
             out.saved = [await dims(dir, 'scan1.jpg'), await dims(dir, 'scan2.jpg'), await dims(dir, 'plain.jpg')];
             out.plainLossless = readOrientation(await bytes(dir, 'plain.jpg')) === 8;
-            out.savedClears = Edits.count() === 0 && !f('scan1.jpg')._gridEl.querySelector('.tile-edit') && /kept until you save/.test(barText());
+            out.savedClears = Edits.count() === 0 && !f('scan1.jpg')._gridEl.querySelector('.tile-edit') && noNag();
             const backups = await (await dir.getDirectoryHandle('.jeditor')).getDirectoryHandle('originals');
             out.backups = 0;
             for await (const e of backups.values()) out.backups++;
@@ -5006,7 +4987,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // The choice stays (off, nothing waiting), so the folder isn't asked again (first-open.js)
             const offKept = async () => { const k = await kept(); return !!k && k.defer === false && !Object.keys(k.edits || {}).length; };
             await until(offKept);
-            out.off = !Edits.on() && Edits.count() === 0 && bar().classList.contains('hidden') && await offKept() &&
+            out.off = !Edits.on() && Edits.count() === 0 && noNag() && await offKept() &&
                 await same('scan1.jpg') && (await dims(dir, 'plain.jpg')).join('x') === '400x300';
             return out;
             })(); } catch (err) { return { crash: `${step}: ${err.message}`, toasts: [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | ') }; }
@@ -5014,9 +4995,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('kept edits: the steps all ran', !r.crash, `${r.crash} — toasts: ${r.toasts}`);
         if (r.crash) { await page.close(); } else {
         const inside = (d) => d[0] < 900 && d[1] < 700 && d[0] > 450 && d[1] > 300;
-        check('kept edits: on for the project; the bar shows; saved in edits.json', r.barOffAtFirst && r.on, JSON.stringify(r));
-        check('kept edits: batch Auto crop keeps crops as edits, nothing written', r.autoKept && /check them, then Save/.test(r.autoToast), r.autoToast);
-        check('kept edits: pencil on edited photos; the bar counts them', r.badges && r.barCount === '2 edits not saved yet', r.barCount);
+        check('kept edits: on for the project (the menu ticks it), no bar counting edits, saved in edits.json', r.barOffAtFirst && r.menuUnticked && r.on, JSON.stringify(r));
+        check('kept edits: batch Auto crop keeps crops as edits, nothing written', r.autoKept && /check them, then Export/.test(r.autoToast), r.autoToast);
+        check('kept edits: pencil on edited photos, nothing nagging; Save edits… on the grid\'s right-click', r.badges && r.barCount === 2 && r.noNagEdited && r.saveInMenu, JSON.stringify([r.barCount, r.noNagEdited, r.saveInMenu]));
         check('kept edits: thumbnail and viewer show the photo as it will be saved', r.thumbAspect > 1.33 && r.tileShows && inside(r.shown), `${r.thumbAspect} ${r.tileShows} ${r.shown}`);
         check('kept edits: recrop opens on the whole photo at the kept crop', r.editorWhole && r.editorAtKept && r.doneLabel === 'Done');
         check('kept edits: a new crop replaces the kept one, still nothing written', r.recropped && r.recropShown.join('x') === '600x400', String(r.recropShown));
@@ -6137,7 +6118,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await until(async () => (await kept()) && (await kept()).edits['a.jpg']);
             const k1 = await kept();
             out.kept = !Adjust.isOpen && f('a.jpg')._edit && f('a.jpg')._edit.adj.exposure === 1 && k1.defer === false && k1.edits['a.jpg'].adj.exposure === 1 && await same('a.jpg');
-            out.noBar = document.getElementById('edits-bar').classList.contains('hidden');
+            out.noBar = !document.getElementById('edits-bar');
             const shown = await app.getDisplaySource(f('a.jpg'));
             out.shownBrighter = (await brightness(await blobOf(shown))) > before + 25;
             await until(() => f('a.jpg').thumbnailUrl && !f('a.jpg')._thumbStale);

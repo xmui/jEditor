@@ -237,15 +237,6 @@
                 </div>
             </header>
 
-            <!-- Save edits when done (edits.js): what's waiting -->
-            <div id="edits-bar" class="edits-bar toolbar hidden" role="toolbar" aria-label="Edits not saved yet">
-                <span class="edits-icon" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></svg></span>
-                <span id="edits-text" class="edits-text" aria-live="polite"></span>
-                <button id="edits-off" class="btn ghost sm" title="Save each edit straight away again">Turn off</button>
-                <button id="edits-discard" class="btn ghost sm" title="Put the photos back as they are on disk">Discard</button>
-                <button id="edits-save" class="btn primary sm" title="Save the edits into the photos, or export edited copies">Save…</button>
-            </div>
-
             <!-- Main image area -->
             <main id="main-view">
                 <div id="image-container" class="image-contain hidden">
@@ -927,13 +918,13 @@
                             <select id="cust-on-open" class="field"></select>
                         </div>
                         <div class="set-row">
-                            <label class="set-label" for="cust-defer-new">Save edits when done
-                                <small>Projects opened from now on keep crops and turns until you save them. Each project can change it in its card.</small></label>
+                            <label class="set-label" for="cust-defer-new">Keep edits in jEditor, export copies
+                                <small>Projects opened from now on keep crops and turns in jEditor and leave the photos as they are; Export makes edited copies. Each project can change it in its card.</small></label>
                             <input type="checkbox" id="cust-defer-new" class="switch">
                         </div>
                         <div class="set-row">
-                            <label class="set-label" for="cust-ask-defer">Ask about saving edits when opening a folder
-                                <small>The first time each folder is opened. Off: it follows Save edits when done</small></label>
+                            <label class="set-label" for="cust-ask-defer">Ask about keeping edits when opening a folder
+                                <small>The first time each folder is opened. Off: it follows Keep edits in jEditor</small></label>
                             <input type="checkbox" id="cust-ask-defer" class="switch">
                         </div>
                         <div class="set-row">

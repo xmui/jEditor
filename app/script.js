@@ -6629,7 +6629,6 @@ const app = {
     // Take photos out of the folder view in one pass
     removeFilesFromApp(gone) {
         if (!gone.length) return;
-        if (gone.some(f => f._edit)) setTimeout(() => Edits.updateBar(), 0);
         const set = new Set(gone);
         const cur = this.currentFile;
         const wasCurrent = set.has(cur);
@@ -7501,7 +7500,7 @@ const app = {
             ['Full screen', () => this.toggleFullscreen()],
             ['—'],
             ...(this.dirHandle && !this.readOnlyMode ? [
-                [Edits.defer ? 'Save edits straight away' : 'Save edits when done', () => Edits.setDefer(!Edits.defer)],
+                ['Keep edits in jEditor, export copies', () => Edits.setDefer(!Edits.defer), false, !!Edits.defer],
                 ...(Edits.count() ? [['Save edits…', () => Edits.saveAll()]] : [])
             ] : []),
             ...(this.canAddToPhotos() && this.files.length ? [['Add all to Photos library', () => this.addToPhotos(this.viewFiles())]] : []),
@@ -8480,7 +8479,7 @@ const app = {
         if (noEdge) notes.push(`no print found on ${noEdge}`);
         if (items.length - cropped) notes.push(`${items.length - cropped} already cropped`);
         if (failed) notes.push(`${failed} failed`);
-        const msg = (cropped ? `Auto-cropped ${cropped} photo${cropped === 1 ? '' : 's'} — check them, then Save` : 'Nothing was cropped') +
+        const msg = (cropped ? `Auto-cropped ${cropped} photo${cropped === 1 ? '' : 's'} — check them, then Export` : 'Nothing was cropped') +
             (notes.length ? ` — ${notes.join(', ')}` : '');
         const entry = (this._undoStack || [])[(this._undoStack || []).length - 1];
         this.showToast(msg, cropped ? 6000 : 4000, null, items.length ? {
@@ -8722,7 +8721,7 @@ const app = {
         if (edits.length) Edits.set(edits, 'crop');
         if (entry.items.length) this.pushUndo(entry);
         const msg = (cropped ? `Cropped ${cropped} photo${cropped === 1 ? '' : 's'} the same way` : 'Nothing was cropped') +
-            (failed ? ` — ${failed} failed` : '') + (cropped && kept.length && !written.length ? ' — check them, then Save' : '');
+            (failed ? ` — ${failed} failed` : '') + (cropped && kept.length && !written.length ? ' — check them, then Export' : '');
         const last = (this._undoStack || [])[(this._undoStack || []).length - 1];
         this.showToast(msg, cropped ? 5000 : 3000, null, cropped ? {
             label: 'Undo',
