@@ -1,12 +1,22 @@
-# A fast engine for jEditor (plan; nothing built yet)
+# A fast engine for jEditor (plan; Phase 0 and part of Phase 1 built)
 
 Asked for 2026-11-11 (through the Wrangler): make jEditor as fast as possible by
 moving the heavy image work into a native engine, area by area: decoding and
 thumbnails first, then Adjust, then Paint. The desktop apps come first; the web
 keeps today's code (or, later, a lighter WebAssembly build of the same core).
 
-**Waiting for the owner's OK before anything is built.** Decisions for the owner
-are at the end.
+**Status (2026-11-15):** the owner's go came through the Wrangler. Built, on
+Windows, behind the feature `engine`:
+
+- **Phase 0:** the Speed workflow (`.github/workflows/perf.yml`) measures the
+  grid, Adjust, Export and Paint on CI; #190 adds where a cold grid's CPU goes.
+- **Phase 1, so far:** JPEG grid thumbnails from the engine (#168), HEIC
+  thumbnails with libheif (#170, `engineHeic`), and RAW thumbnails from the JPEG
+  inside them (#194; cold DNGs 25% faster, a cold grid of every kind 19%).
+- **Next:** the viewer: opening a photo (JPEG, HEIC, RAW) from the engine at
+  the screen's size. Then the rest of Phase 1 on the Mac and Linux.
+
+The decisions asked of the owner are at the end, as they were put.
 
 ## In one paragraph
 

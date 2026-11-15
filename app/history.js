@@ -112,6 +112,7 @@ const History = {
             case 'folder-out': return { what: e.copy ? 'Copy' : 'Move', detail: e.where ? `${photos(e.items.length)} to ${e.where}` : photos(e.items.length) };
             case 'folder-create': return { what: 'New folder', detail: (e.paths || []).map(base).join(', ') };
             case 'folder-rename': return { what: 'Rename folder', detail: `${e.name} → ${base(e.path)}` };
+            case 'project-rename': return { what: 'Rename project', detail: `${e.name} → ${String(e.path).split(/[\\/]/).filter(Boolean).pop()}` };
             case 'folder-delete': return { what: 'Delete folder', detail: base(e.path) };
             default: return { what: label(e.label || e.type), detail: '' };
         }

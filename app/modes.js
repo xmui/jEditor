@@ -1,11 +1,15 @@
 // Photos, Adjust and Paint as modes, like Lightroom's modules: a place you
 // stay in, not a dialog. Where the switch is:
 //
-//   the sidebar open     Photos | Adjust | Paint along its top (#mode-seg)
-//   the sidebar closed   a chip naming the mode in the folder pill, with a
-//                        menu to switch (#mode-chip-bar)
-//   single view, Adjust  the same chip on its own, top left (#mode-float)
-//   and Paint
+//   the sidebar open     one row along its top (#mode-row): Photos ·
+//                        Adjust · Paint as icons at the left (#mode-seg),
+//                        the sidebar button and Find anything at the right
+//   the sidebar closed   the same row, in the same place, as a glass pill
+//                        (jEditor's own look; a theme keeps its switch in
+//                        the sidebar, and the chip below in the folder pill)
+//   Adjust and Paint     the sidebar beside them, as in Photos, and the row
+//                        with it; hidden, the row in their head's corner
+//                        (a theme: a chip naming the mode, #mode-float)
 //
 // Adjust and Paint have no Done bar: what's done is kept as you go, as in
 // Lightroom. The switch, Esc or Enter go back to Photos keeping it (and
@@ -41,7 +45,22 @@ const Modes = {
             seg.className = 'mode-seg';
             seg.setAttribute('role', 'radiogroup');
             seg.setAttribute('aria-label', 'Mode');
-            rail.prepend(seg);
+            // The one row: the modes, then the sidebar button and Find
+            const row = document.createElement('div');
+            row.id = 'mode-row';
+            row.className = 'mode-row';
+            row.setAttribute('role', 'toolbar');
+            row.setAttribute('aria-label', 'Modes');
+            const gap = document.createElement('span');
+            gap.className = 'mode-row-gap';
+            gap.setAttribute('aria-hidden', 'true');
+            const side = this.rowButton('mode-row-side', '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/>');
+            side.setAttribute('aria-controls', 'folder-rail');
+            side.addEventListener('click', () => { if (typeof Folders !== 'undefined') Folders.toggleRail(); });
+            const find = this.rowButton('mode-row-find', '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>');
+            find.addEventListener('click', () => { if (typeof Palette !== 'undefined') Palette.open(); });
+            row.append(seg, gap, side, find);
+            rail.prepend(row);
         }
         // In a browser, leaving the page with something not kept asks too
         // (the apps ask in closing(); a held beforeunload there would just
@@ -83,7 +102,8 @@ const Modes = {
         }, { passive: false });
         this.strip = strip;
         const blank = this.el('start-blank');
-        if (blank) blank.addEventListener('click', () => this.paintStart());
+        // New project: a folder for photos or a blank canvas (places.js asks which)
+        if (blank) blank.addEventListener('click', () => typeof Places !== 'undefined' ? Places.newProject() : this.paintStart());
         // Convert photos: photos (converted on this page) or any folder,
         // without opening it (convert.js)
         const convert = this.el('start-convert');
@@ -107,6 +127,15 @@ const Modes = {
         // A theme on or off, full screen (the Mac's lights): the chip moves
         new MutationObserver(() => this.chipRoom()).observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-skin', 'style'] });
         this.render();
+    },
+
+    rowButton(id, svg) {
+        const b = document.createElement('button');
+        b.id = id;
+        b.type = 'button';
+        b.className = 'tb-btn mode-row-btn';
+        b.innerHTML = this.icon(svg);
+        return b;
     },
 
     makeChip(id) {
@@ -271,6 +300,7 @@ const Modes = {
                 b.setAttribute('aria-checked', String(m === mode));
                 b.className = m === mode ? 'on' : '';
                 b.title = key ? `${label} (${key})` : label;
+                b.setAttribute('aria-label', label);
                 b.innerHTML = `${this.icon(svg)}<span>${label}</span>`;
                 b.addEventListener('click', () => this.go(m));
                 seg.appendChild(b);
@@ -278,18 +308,22 @@ const Modes = {
         }
         const railShown = this.visible('folder-rail');
         const barShown = this.visible('folder-bar');
-        // The chip in the folder pill: while the sidebar's closed
+        const own = !document.documentElement.dataset.skin;
+        // (Adjust and Paint are open inside the crop state: only Photos' crop counts)
+        const crop = app.cropState && app.cropState.active && mode === 'photos';
+        this.renderRow(own, railShown, any && open && !crop, mode !== 'photos');
+        // The chip in the folder pill: while the sidebar's closed, in a
+        // theme (in jEditor's own look the row stays, as a pill)
         const chipBar = this.el('mode-chip-bar');
         if (chipBar) {
-            chipBar.classList.toggle('hidden', !any || railShown);
+            chipBar.classList.toggle('hidden', !any || railShown || own);
             this.drawChip(chipBar, mode);
         }
         // The chip on its own: single view (no folder pill), Adjust, Paint
         const float = this.el('mode-float');
         if (float) {
             const editing = mode !== 'photos';
-            const crop = app.cropState && app.cropState.active && !editing;
-            const want = any && open && !crop && (editing || (!barShown && !railShown));
+            const want = any && open && !crop && (editing || (!own && !barShown && !railShown));
             float.classList.toggle('hidden', !want);
             float.classList.toggle('over-mode', editing);
             this.drawChip(float.firstElementChild, mode);
@@ -301,6 +335,46 @@ const Modes = {
         this.holdClose(mode !== 'photos');
     },
 
+    // The row: along the sidebar's top while it's open; closed, the same
+    // row floats where it was, as a pill, and the folder pill moves over
+    // for it (--mode-row-w). In a theme it's only the switch, in the sidebar
+    renderRow(own, docked, want, editing) {
+        const row = this.el('mode-row');
+        const rail = this.el('folder-rail');
+        if (!row || !rail) return;
+        const float = own && !docked;
+        if (float ? row.parentElement !== document.body : row.parentElement !== rail) {
+            if (float) document.body.appendChild(row); else rail.prepend(row);
+        }
+        row.classList.toggle('float', float);
+        row.classList.toggle('toolbar', float);
+        row.classList.toggle('hidden', float && !want);
+        const over = float && editing;
+        if (row.classList.contains('over-mode') !== over) {
+            row.classList.toggle('over-mode', over);
+            // Their head moves as the sidebar goes (style.css: .mode-screen's
+            // left): its room for the row is measured again once it's there
+            clearTimeout(this.roomLater);
+            this.roomLater = setTimeout(() => this.chipRoom(), 320);
+        }
+        const side = this.el('mode-row-side');
+        const app = this.app;
+        const can = typeof Folders !== 'undefined' && Folders.enabled() && (app.viewMode === 'grid' || Folders.besideSingle());
+        side.classList.toggle('hidden', !can);
+        side.title = Host.keys(docked ? 'Hide the sidebar (Ctrl+B)' : 'Show the sidebar (Ctrl+B)');
+        side.setAttribute('aria-label', docked ? 'Hide the sidebar' : 'Show the sidebar');
+        side.setAttribute('aria-expanded', String(docked));
+        const keys = (app.keyBindings && app.keyBindings['app.palette']) || [];
+        const find = this.el('mode-row-find');
+        find.title = keys.length ? Host.keys(`Find anything (${keys[0]})`) : 'Find anything';
+        find.setAttribute('aria-label', 'Find anything');
+        find.classList.toggle('hidden', typeof Palette === 'undefined');
+        // At once, so the folder pill is never under it for a frame
+        const shown = float && !editing && !row.classList.contains('hidden');
+        document.documentElement.style.setProperty('--mode-row-w', shown ? `${Math.ceil(row.getBoundingClientRect().width)}px` : '0px');
+        if (shown && typeof Folders !== 'undefined' && Folders.fitBar) Folders.fitBar();
+    },
+
     // Over Adjust and Paint the chip floats in their head's left corner, and
     // their buttons on its right: the head keeps that much room each side,
     // so its title (centred) never slides under them in a narrow window (on
@@ -308,8 +382,9 @@ const Modes = {
     chipRoom() {
         cancelAnimationFrame(this.roomFrame);
         this.roomFrame = requestAnimationFrame(() => {
-            const float = this.el('mode-float');
-            const on = float && float.classList.contains('over-mode') && !float.classList.contains('hidden');
+            const row = this.el('mode-row');
+            const float = row && row.classList.contains('over-mode') ? row : this.el('mode-float');
+            const on = float && float.classList.contains('over-mode') && !float.classList.contains('hidden') && float.getClientRects().length > 0;
             const right = on ? float.getBoundingClientRect().right : 0;
             for (const head of document.querySelectorAll('.adj-head, .paint-head')) {
                 const h = head.getBoundingClientRect();

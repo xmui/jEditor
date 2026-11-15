@@ -42,6 +42,12 @@ const Folders = {
         const center = document.querySelector('.file-info');
         if (center && typeof ResizeObserver === 'function') new ResizeObserver(() => this.fitBar()).observe(center);
         window.addEventListener('resize', () => this.fitBar());
+        // Narrow enough that the sidebar would cover the photo, or wide again
+        if (window.matchMedia) {
+            const narrow = matchMedia('(max-width: 767px)');
+            const again = () => { if (this.app && this.app.viewMode === 'single') this.render(); };
+            if (narrow.addEventListener) narrow.addEventListener('change', again);
+        }
     },
 
     // A new folder was opened: forget the old one's folders
@@ -219,37 +225,61 @@ const Folders = {
 
     // ---- Layout: rail, top bar, folder tiles, folder chips ----
 
+    // The single view keeps the sidebar: in jEditor's own look (a theme lays
+    // out its own), on a window wide enough for it and the photo
+    besideSingle() {
+        return !document.documentElement.dataset.skin && !(window.matchMedia && matchMedia('(max-width: 767px)').matches);
+    },
+
     railOpen() {
         const pref = this.app.uiPrefs && this.app.uiPrefs.folderRail;
         return typeof pref === 'boolean' ? pref : this.hasSubfolders();
     },
 
     toggleRail() {
-        this.app.uiPrefs.folderRail = !this.railOpen();
+        this.setRail(!this.railOpen());
+    },
+
+    // Shown or hidden, and remembered: by Ctrl+B, the button, or its edge
+    // dragged in until it snaps hidden (script.js: SIDE_HIDES)
+    setRail(on) {
+        if (on === this.railOpen()) return;
+        this.app.uiPrefs.folderRail = on;
         this.app.saveUiPrefs();
+        const was = !this.el('folder-rail').classList.contains('hidden');
         this.render();
+        const now = !this.el('folder-rail').classList.contains('hidden');
+        if (was !== now) this.app.slideSide(this.el('folder-rail'), now);
     },
 
     render() {
         if (!this.app) return;
         const ui = this.app.elements.mainInterface;
         const on = this.enabled() && this.app.viewMode === 'grid';
-        const rail = on && this.railOpen();
+        // The sidebar stays open in the single view too, the photo beside it
+        // (jEditor's own look, docked: style.css), where there's room for both
+        const beside = !on && this.enabled() && this.app.viewMode === 'single' && this.besideSingle();
+        const rail = (on || beside) && this.railOpen();
         ui.classList.toggle('folders-on', on);
         ui.classList.toggle('rail-open', rail);
         this.el('folder-bar').classList.toggle('hidden', !on);
         this.el('folder-rail').classList.toggle('hidden', !rail);
+        // Hidden where it would show: the line at the window's edge that
+        // drags it back out (script.js: initSidebarResize)
+        // (Adjust and Paint have their own, over them)
+        for (const e of document.querySelectorAll('.side-edge[data-side="rail"]')) e.classList.toggle('hidden', !(on || beside) || rail);
         // What this window shows, for the others' Move to: in any view, not
         // just the grid's (a project left in single view was missing there)
         if (typeof Windows !== 'undefined') Windows.publish();
         if (typeof Modes !== 'undefined') Modes.render();
-        if (!on) return;
+        if (!on && !rail) return;
         const counts = this.counts();
         if (rail) {
             this.renderRail(counts);
             Flags.renderList();
             if (typeof Places !== 'undefined') Places.apply();
         }
+        if (!on) return;
         this.renderBar(counts);
         Flags.syncSearchUI();
         this.fitBar();
@@ -333,14 +363,20 @@ const Folders = {
             if (open) kids.forEach(k => walk(k, depth + 1));
         };
         if (this.map.has('')) walk('', 0);
-        tree.innerHTML = rows.join('');
+        // Only when it's changed: this runs on every change of view, and
+        // building the same rows again was most of the wait going back to the grid
+        const html = rows.join('');
+        const same = tree._html === html && tree.childElementCount > 0;
+        if (!same) tree.innerHTML = tree._html = html;
         // The total at the bottom: what's being shown (the whole order in All photos)
         const scopeFiles = this.scope === null ? this.app.files : this.app.files.filter(f => this.within(this.dirOf(f), this.scope));
         let bytes = 0;
         for (const f of scopeFiles) bytes += f.size || 0;
         const totalEl = this.el('fr-total');
-        totalEl.textContent = `${scopeFiles.length.toLocaleString()} photo${scopeFiles.length === 1 ? '' : 's'} · ${fmt(bytes)}`;
+        const totalText = `${scopeFiles.length.toLocaleString()} photo${scopeFiles.length === 1 ? '' : 's'} · ${fmt(bytes)}`;
+        if (totalEl.textContent !== totalText) totalEl.textContent = totalText;
         totalEl.title = (this.scope === null ? 'The whole project' : `${this.label(this.scope)}, including subfolders`) + ' — click for details';
+        if (same) return; // and the list stays where it was scrolled to
         const active = tree.querySelector('.fr-row.active');
         if (active && (active.offsetTop < tree.scrollTop || active.offsetTop > tree.scrollTop + tree.clientHeight - 30)) {
             tree.scrollTop = active.offsetTop - tree.clientHeight / 2;

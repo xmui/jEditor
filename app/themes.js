@@ -136,15 +136,20 @@ const Themes = {
 
     init(app) {
         this.app = app;
+        // Settings → Experimental: turned on, the chosen theme is back at
+        // once; off, jEditor's own look (the choice is kept)
+        addEventListener('jeditor-experiments', () => { this.apply(); this.render(); });
         addEventListener('jeditor-window', (e) => {
             const bar = document.getElementById('th-titlebar');
             if (bar) bar.classList.toggle('maximized', !!(e.detail && e.detail.maximized));
         });
     },
 
-    // Themes are offered: an app that has them
+    // Themes are offered: an app that has them, with the experiment on
+    // (Settings → Experimental: paused, off to start with)
     can() {
-        return typeof Host !== 'undefined' && Host.has('themes');
+        return typeof Host !== 'undefined' && Host.has('themes')
+            && typeof Experiments !== 'undefined' && Experiments.on('themes');
     },
 
     // The chosen { theme, variant }, or null for jEditor's own look

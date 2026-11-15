@@ -78,6 +78,9 @@ async function launch(profile, args = [], env = {}) {
     page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
     await page.waitForFunction(() => typeof app !== 'undefined' && app.elements && window.JEditorNative);
     await page.evaluate(QUIET_FIRST_OPEN);
+    // Themes are paused, under Settings → Experimental (off to start with):
+    // on here, for the tests that use one (a test of it being off sets it)
+    await page.evaluate(() => { if (!Experiments.on('themes')) Experiments.set('themes', true); });
     return { app, page, errors };
 }
 
@@ -331,6 +334,7 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         // New project: a folder in the projects folder, opened
         await page.evaluate(async () => {
             UI.prompt = async () => 'Gamma';
+            UI.choose = async () => 'ok'; // (which kind: a folder for photos)
             await Places.newProject();
             const until = Date.now() + 10000;
             while ((!app.dirHandle || app.dirHandle.name !== 'Gamma') && Date.now() < until) await new Promise(res => setTimeout(res, 50));
@@ -355,6 +359,39 @@ setTimeout(() => { console.log('  FAIL  timed out (a permission prompt, or a fol
         const alphaTo = path.join(projectsDir, 'Alpha Smith');
         check('Rename renames the folder on disk', renamed.to === alphaTo && fs.existsSync(alphaTo) && !fs.existsSync(alpha), renamed.to);
         check('... and its flags go with it', renamed.star && renamed.orderPath === alphaTo && !renamed.oldStore, JSON.stringify(renamed));
+
+        // The sidebar's rename (in place: Places.renameFolder), on the disk:
+        // Recents follow it, and Undo puts the old name back
+        const beta = makeOrder(projectsDir, 'Beta', 1);
+        const follow = await page.evaluate(async (p) => {
+            const until = (ok) => new Promise(async (res) => { const end = Date.now() + 10000; while (!ok() && Date.now() < end) await new Promise(r => setTimeout(r, 50)); res(); });
+            await JEditorNative.openPath(p.beta);
+            await until(() => app.dirHandle && app.dirHandle.name === 'Beta');
+            await JEditorNative.openPath(p.alphaTo);
+            await until(() => app.dirHandle && app.dirHandle.name === 'Alpha Smith');
+            await Recents.saving;
+            const to = await Places.renameFolder(p.beta, 'Beta Jones');
+            const list = await Recents.list();
+            const paths = await Promise.all(list.map(r => JEditorNative.folderPath(r.handle)));
+            const step = (app._undoStack || []).slice(-1)[0];
+            // The docked sidebar: against the window's left edge, full height; the folder pill beside it
+            app.setView('grid');
+            if (!Folders.railOpen()) Folders.toggleRail();
+            await new Promise(r => setTimeout(r, 300));
+            const rail = document.getElementById('folder-rail').getBoundingClientRect();
+            const bar = document.getElementById('folder-bar').getBoundingClientRect();
+            const docked = { left: rail.left, top: rail.top, full: Math.round(rail.bottom) === innerHeight, beside: bar.left >= rail.right };
+            // Recents in the sidebar: Beta Jones, not the open one
+            await Places.draw();
+            const recents = [...document.querySelectorAll('#sb-places .sb-recent .fr-name')].map(n => n.textContent);
+            await app.undo();
+            return { to, names: list.map(r => r.name), paths, step: step && step.type, docked, recents };
+        }, { beta, alphaTo });
+        const betaTo = path.join(projectsDir, 'Beta Jones');
+        check('the sidebar\'s Rename: Recents follow it to its new name', follow.to === betaTo && follow.names.includes('Beta Jones') && !follow.names.includes('Beta') && follow.paths.includes(betaTo), JSON.stringify(follow));
+        check('... and Undo puts the old name back on the disk', follow.step === 'project-rename' && fs.existsSync(beta) && !fs.existsSync(betaTo), JSON.stringify([follow.step, fs.existsSync(beta)]));
+        check('the sidebar is docked: the window\'s left edge, its full height, the folder pill beside it', follow.docked.left === 0 && follow.docked.top === 0 && follow.docked.full && follow.docked.beside, JSON.stringify(follow.docked));
+        check('Recents lists the others opened, not the open project', follow.recents.includes('Beta Jones') && !follow.recents.includes('Alpha Smith'), JSON.stringify(follow.recents));
 
         // A whole folder onto the drive; again: a free name
         const copied = await page.evaluate(async (p) => {

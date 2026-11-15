@@ -794,6 +794,32 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.menuActionRan = clicked;
             out.menuClosed = !document.getElementById('context-menu');
 
+            // A row with a menu of its own, and a command's key at its right
+            let turned = '';
+            app.openContextMenu([['Open', () => { }, false, undefined, 'view.open'], ['Turn and flip', [['Left', () => { turned = 'left'; }, false, undefined, 'edit.rotateLeft'], ['—'], ['Right', () => { turned = 'right'; }]]]], 20, 60);
+            const menu2 = document.getElementById('context-menu');
+            const more = menu2.querySelector('button.ctx-more');
+            const key = (el, k) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+            out.subKey = menu2.querySelector('button .ctx-key').textContent;
+            out.subShut = !document.getElementById('context-fly') && more.getAttribute('aria-expanded') === 'false';
+            more.focus();
+            key(more, 'ArrowRight');
+            const fly = document.getElementById('context-fly');
+            out.subOpen = !!fly && fly.querySelectorAll('button').length === 2 && document.activeElement === fly.querySelector('button') && more.getAttribute('aria-expanded') === 'true';
+            // Beside its row, in the window
+            const fr = fly.getBoundingClientRect(), mr = menu2.getBoundingClientRect();
+            out.subBeside = (fr.left >= mr.right - 4 || fr.right <= mr.left + 4) && fr.left >= 0 && fr.right <= innerWidth;
+            key(document.activeElement, 'ArrowLeft');
+            out.subBack = !document.getElementById('context-fly') && document.activeElement === more;
+            more.click();
+            document.getElementById('context-fly').querySelectorAll('button')[1].click();
+            out.subRan = turned === 'right' && !document.getElementById('context-menu') && !document.getElementById('context-fly');
+            // A photo's own menu: the six under one row
+            const tile = document.querySelector('#grid-view .grid-item:not(.folder-tile)');
+            const items = tile && tile.offsetParent ? app.contextItemsFor(tile, false) : app.contextItemsFor(null, true);
+            const sub = items.find(it => it[0] === 'Turn and flip');
+            out.subPhoto = !!sub && sub[1].filter(it => typeof it[1] === 'function').length === 6 && !items.some(it => it[0] === 'Rotate left');
+
             // --- Ctrl+wheel grid zoom ---
             const before = document.getElementById('grid-size-slider').value;
             document.getElementById('grid-view').dispatchEvent(
@@ -814,6 +840,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('capture-date sort orders by dateTaken', r.takenOrder === 'two.jpg,one.jpg', r.takenOrder);
         check('export writes a copy to jEditor Export', r.exported);
         check('context menu renders and runs actions', r.menuButtons === 2 && r.menuDividers === 1 && r.menuActionRan && r.menuClosed);
+        check('... a row\'s own menu opens beside it (right arrow, a click), goes back on the left arrow and runs its commands; a command shows its key',
+            r.subShut && r.subOpen && r.subBeside && r.subBack && r.subRan && r.subKey === 'Enter', JSON.stringify([r.subShut, r.subOpen, r.subBeside, r.subBack, r.subRan, r.subKey]));
+        check('... a photo\'s six turn and flip commands are under Turn and flip', r.subPhoto);
         check('ctrl+wheel zooms the grid', r.zoomChanged);
         await page.close();
     }
@@ -2049,7 +2078,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
 
             // Grid Up/Down follows the real column count
             app.setView('grid');
-            document.documentElement.style.setProperty('--grid-item-size', '300px');
+            document.getElementById('grid-view').style.setProperty('--grid-item-size', '300px');
             const cols = getComputedStyle(document.getElementById('grid-view')).gridTemplateColumns.split(' ').length;
             out.cols = app.getGridColumnCount() === cols;
 
@@ -2200,6 +2229,24 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.smoothAt80 = !document.getElementById('current-image').classList.contains('pixelated');
             window.dispatchEvent(new KeyboardEvent('keydown', { key: '0', bubbles: true }));
             out.keyFit = app.zoom === 1 && app.panX === 0 && !document.getElementById('current-image').classList.contains('pixelated');
+
+            // An edit not saved yet (Keep edits in jEditor): shown from a
+            // screen-sized copy, and zoomed in, from the photo's own pixels
+            // with the edit on them
+            const until = async (fn, ms) => { const t = Date.now(); while (!fn() && Date.now() - t < ms) await new Promise(r => setTimeout(r, 50)); };
+            const ef = app.currentFile;
+            ef._edit = Edits.turned(ef._edit, 1);
+            app.editChanged(ef);
+            await until(() => app._displayFile === ef && app.elements.currentImage._isPreview && ef._edited && app.elements.currentImage._url === ef._edited.url, 10000);
+            const shownEdge = Math.max(app.elements.currentImage.naturalWidth, app.elements.currentImage.naturalHeight);
+            app.zoomTo(app.maxZoom());
+            await until(() => !app.elements.currentImage._isPreview, 20000);
+            const ei = app.elements.currentImage;
+            app.updateImageTransform();
+            out.editedZoom = JSON.stringify({ preview: !!ei._isPreview, shownEdge, big: Math.max(ei.naturalWidth, ei.naturalHeight), sharp: ei.classList.contains('pixelated'), edit: !!ef._edit });
+            out.editedFull = !ei._isPreview && Math.max(ei.naturalWidth, ei.naturalHeight) > shownEdge * 1.5 && ei.classList.contains('pixelated');
+            delete ef._edit;
+            app.editChanged(ef);
             return { ...out, expectCrop: `${Math.round(edge * 1.5)}x${edge * 2}` };
         });
         check('big scan shows a screen-sized preview', r.isPreview);
@@ -2215,6 +2262,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('zoom goes up to 3200% of the photo\'s pixels, and no further', r.maxPct === 3200 && r.readout === '3200%', `${r.maxPct}% / ${r.readout}`);
         check('past 100% pixels are sharp squares (no smoothing); smoothed when shrunk', r.pixelatedAtMax && r.sharpAt150 && r.smoothAt80);
         check('0 zooms back to fit', r.keyFit);
+        check('a photo with an edit not saved yet zooms in to its own pixels, sharp', r.editedFull, r.editedZoom);
         check('preview suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -3130,14 +3178,15 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.chipGrid = chipShown();
             // Grid rows never overlap, however wide the tiles stretch
             Folders.setScope(null);
-            document.documentElement.style.setProperty('--grid-item-size', '130px');
+            // (big enough for two rows of the seven, the grid as wide as it is beside the sidebar)
+            document.getElementById('grid-view').style.setProperty('--grid-item-size', `${Math.ceil(document.getElementById('grid-view').clientWidth / 5)}px`);
             await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
             const gridTiles = [...document.querySelectorAll('#grid-view .grid-item')];
             const cols = app.getGridColumnCount();
             const r1 = gridTiles[0].getBoundingClientRect(), r2 = gridTiles[cols].getBoundingClientRect();
             out.rowGap = Math.round(r2.top - r1.bottom);
             out.square = Math.abs(r1.width - r1.height) < 1;
-            document.documentElement.style.removeProperty('--grid-item-size');
+            document.getElementById('grid-view').style.removeProperty('--grid-item-size');
             return out;
         });
         check('folders: every folder found, empty ones too', r.folders === '|Wedding|Wedding/Ceremony|Wedding/Reception', r.folders);
@@ -3194,6 +3243,104 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('folders suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
+
+    // ---- 7m2. The sidebar hides: its edge dragged in snaps it hidden, and a line at the window's edge drags it back ----
+    console.log('sidebar hides');
+    {
+        const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
+        await page.setViewportSize({ width: 1300, height: 800 });
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        await page.evaluate(async () => {
+            const opfs = await navigator.storage.getDirectory();
+            try { await opfs.removeEntry('hides', { recursive: true }); } catch (e) { /* fresh */ }
+            const dir = await opfs.getDirectoryHandle('hides', { create: true });
+            const put = async (d, name, color) => {
+                const fh = await d.getFileHandle(name, { create: true });
+                const w = await fh.createWritable();
+                await w.write(new Blob([await makeRealJpeg(300, 200, { color })], { type: 'image/jpeg' }));
+                await w.close();
+            };
+            await put(dir, 'a.jpg', '#c33');
+            await put(dir, 'b.jpg', '#3c3');
+            await put(await dir.getDirectoryHandle('Wedding', { create: true }), 'w1.jpg', '#c3c');
+            window.showDirectoryPicker = async () => dir;
+            try { localStorage.removeItem('jeditor.ui'); } catch (e) { /* private */ }
+            app.loadUiPrefs();
+            await app.browseFolder();
+            app.setView('grid');
+        });
+        const st = () => page.evaluate(() => {
+            const rail = document.getElementById('folder-rail'), edge = document.getElementById('rail-edge');
+            const ui = JSON.parse(localStorage.getItem('jeditor.ui')) || {};
+            return {
+                open: !rail.classList.contains('hidden'),
+                drawn: getComputedStyle(rail).display !== 'none', // still sliding out
+                w: Math.round(rail.getBoundingClientRect().width),
+                edge: !edge.classList.contains('hidden'),
+                edgeBox: (({ left, width, height }) => [left, width, height].join(' '))(edge.getBoundingClientRect()),
+                cursor: getComputedStyle(edge).cursor,
+                pref: ui.folderRail, width: (ui.sides || {}).rail,
+            };
+        });
+        const settle = () => page.waitForTimeout(350);
+        const s0 = await st();
+        const x0 = s0.w; // the sidebar's edge
+        // Wider, as before
+        await page.mouse.move(x0, 400); await page.mouse.down();
+        await page.mouse.move(300, 400, { steps: 4 }); await page.mouse.up();
+        const wide = await st();
+        // In: it stops at its narrowest (180), then past half of that it's gone
+        await page.mouse.move(300, 400); await page.mouse.down();
+        await page.mouse.move(120, 400, { steps: 4 });
+        const narrow = await st();
+        await page.mouse.move(80, 400, { steps: 2 });
+        const snapped = await st();
+        // ...and out again without letting go brings it back
+        await page.mouse.move(150, 400, { steps: 2 });
+        const backOut = await st();
+        await page.mouse.move(40, 400, { steps: 2 }); await page.mouse.up();
+        await settle();
+        const hidden = await st();
+        // The line at the window's edge: a short drag isn't enough, a longer one shows it
+        await page.mouse.move(2, 400); await page.mouse.down();
+        await page.mouse.move(60, 400, { steps: 3 });
+        const short = await st();
+        await page.mouse.move(260, 400, { steps: 3 }); await page.mouse.up();
+        await settle();
+        const dragged = await st();
+        // Ctrl+B and the button still do it, at the width it had
+        await page.keyboard.press('Control+b'); await settle();
+        const keyHid = await st();
+        await page.click('#mode-row-side'); await settle();
+        const btnShown = await st();
+        // Hidden is remembered, and the line is there in the single view too
+        await page.keyboard.press('Control+b'); await settle();
+        const kept = await page.evaluate(() => { app.loadUiPrefs(); Folders.render(); return Folders.railOpen(); });
+        await page.evaluate(() => app.setView('single'));
+        const single = await st();
+        await page.evaluate(() => app.setView('grid'));
+        // Animations off: it just hides, with nothing left sliding
+        await page.keyboard.press('Control+b'); await settle();
+        await page.evaluate(() => { app.uiPrefs.motion = 'off'; app.applyUiPrefs(); });
+        await page.mouse.move((await st()).w, 400); await page.mouse.down();
+        await page.mouse.move(40, 400, { steps: 4 });
+        const still = await st();
+        await page.mouse.up();
+
+        check('sidebar hides: its edge still drags it wider', s0.open && !s0.edge && wide.w === 300 && wide.width === 300, JSON.stringify([s0, wide]));
+        check('sidebar hides: dragged in, it stops at its narrowest', narrow.open && narrow.w === 180, JSON.stringify(narrow));
+        check('sidebar hides: past half its narrowest it snaps hidden, sliding out', !snapped.open && snapped.drawn && snapped.pref === false, JSON.stringify(snapped));
+        check('sidebar hides: dragged back out in the same drag, it\'s back', backOut.open && backOut.w === 180 && backOut.pref === true, JSON.stringify(backOut));
+        check('sidebar hides: hidden, it keeps the width it had before the drag', !hidden.open && !hidden.drawn && hidden.pref === false && hidden.width === 300, JSON.stringify(hidden));
+        check('sidebar hides: a thin line at the window\'s edge, with a resize pointer', hidden.edge && hidden.edgeBox === '0 6 800' && hidden.cursor === 'ew-resize', JSON.stringify(hidden));
+        check('sidebar hides: dragging from the line brings it out, as wide as dragged', !short.open && dragged.open && !dragged.edge && Math.abs(dragged.w - 258) <= 2 && dragged.pref === true, JSON.stringify([short, dragged]));
+        check('sidebar hides: Ctrl+B and the button still hide and show it', !keyHid.open && keyHid.edge && btnShown.open && btnShown.w === dragged.w, JSON.stringify([keyHid, btnShown]));
+        check('sidebar hides: hidden is remembered, and the line is in the single view too', kept === false && !single.open && single.edge, JSON.stringify([kept, single]));
+        check('sidebar hides: with Animations off it just hides', !still.open && !still.drawn && still.edge, JSON.stringify(still));
+        check('sidebar hides: no page errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
 
     console.log('folders: any folder, in a browser');
     {
@@ -3493,11 +3640,11 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             const openIt = async (d) => { window.showDirectoryPicker = async () => d; await app.browseFolder(); await wait(() => app.dirHandle === d && !app.isLoading); };
             localStorage.removeItem('jeditor.firstOpen');
             Start.setDeferNew(false);
-            // The first Open a folder: one dialog, with Save edits when done
+            // The first Open a folder: one dialog, with Keep edits in jEditor
             document.getElementById('btn-browse-folder').click();
             await wait(() => document.getElementById('first-open'));
             const fo = document.getElementById('first-open');
-            out.welcome = !!fo && fo.querySelectorAll('input[name="fo-defer"]').length === 2 && /Keep until I save/.test(fo.textContent) &&
+            out.welcome = !!fo && fo.querySelectorAll('input[name="fo-defer"]').length === 2 && /Keep edits in jEditor, export copies/.test(fo.textContent) &&
                 !document.getElementById('fo-dir') && !shown('open-card');
             fo.querySelector('input[value="on"]').click();
             document.getElementById('fo-ok').click();
@@ -3524,7 +3671,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await openIt(await opfs.getDirectoryHandle('fo Second'));
             await new Promise(res => setTimeout(res, 300));
             out.again = !shown('ui-dialog') && Edits.chosen && Edits.defer === false;
-            // Asking off: a new folder follows Save edits when done
+            // Asking off: a new folder follows Keep edits in jEditor
             FirstOpen.set({ ask: false });
             await openIt(await make('fo Third'));
             await new Promise(res => setTimeout(res, 300));
@@ -3555,12 +3702,12 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             return out;
         });
         check('first open: the first Open a folder asks once, with both choices explained', f.welcome, JSON.stringify(f));
-        check('first open: the answer is remembered, and Save edits when done is set', f.remembered);
+        check('first open: the answer is remembered, and Keep edits in jEditor is set', f.remembered);
         check('first open: the folder opened then isn\'t asked again', f.firstFolder);
         check('first open: each other folder\'s first time asks, and keeps the answer', f.asked && f.answered && f.again);
-        check('first open: with asking off in Settings, a folder follows Save edits when done', f.off && f.setting);
+        check('first open: with asking off in Settings, a folder follows Keep edits in jEditor', f.off && f.setting);
         check('first open: a folder dragged in first gets the dialog, for that folder', f.dropped && f.droppedKept);
-        check('new project: the name dialog has a Save edits when done switch', f.prompt && f.plainPrompt);
+        check('new project: the name dialog has a Keep edits in jEditor switch', f.prompt && f.plainPrompt);
         check('open card suite: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }
@@ -4524,29 +4671,6 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.kept = a._edit && a._edit.q === 2;
             return out;
         });
-        // The edits bar: grid only, left of the size slider in the bottom row,
-        // never over the selection bar (above the slider when the row is full)
-        const lay = [];
-        for (const w of [1400, 1100]) {
-            await page.setViewportSize({ width: w, height: 700 });
-            lay.push(await page.evaluate(async () => {
-                app.setView('grid');
-                app.selection = new Set([app.files[0]]);
-                app.updateSelectionUI();
-                await new Promise(res => setTimeout(res, 400));
-                const box = (id) => document.getElementById(id).getBoundingClientRect();
-                const e = box('edits-bar'), s = box('selection-bar'), g = box('grid-controls');
-                const apart = (a, b) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
-                const out = { clear: apart(e, s) && apart(e, g) && apart(s, g), leftOfSlider: e.right <= g.left + 1 && Math.abs(e.bottom - g.bottom) < 2, aboveSlider: e.bottom <= g.top };
-                app.openSingle(app.files[0]);
-                await new Promise(res => setTimeout(res, 200));
-                out.hiddenInSingle = getComputedStyle(document.getElementById('edits-bar')).display === 'none';
-                app.setView('grid');
-                return out;
-            }));
-        }
-        check('edits bar: grid only, left of the size slider; above it when the row is full; never over the selection bar',
-            lay[0].clear && lay[0].leftOfSlider && lay[1].clear && (lay[1].leftOfSlider || lay[1].aboveSlider) && lay[0].hiddenInSingle, JSON.stringify(lay));
         // A narrow window, with and without the folder list: every pill in
         // the window, none over another (fit.js gives up parts in turn)
         const fit = [];
@@ -4576,7 +4700,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                     const out = { w, rail, fit: document.getElementById('main-interface').dataset.fit };
                     // The folder list beside the grid (wide windows): the selection bar keeps to the grid
                     const railBox = rail && innerWidth >= 768 ? document.getElementById('folder-rail').getBoundingClientRect() : null;
-                    out.bad = [...check(['folder-bar', '.file-info', 'header-controls']), ...check(['selection-bar', 'edits-bar', 'grid-controls'])];
+                    out.bad = [...check(['folder-bar', '.file-info', 'header-controls']), ...check(['selection-bar', 'grid-controls'])];
                     if (railBox && document.getElementById('selection-bar').getBoundingClientRect().left < railBox.right) out.bad.push('selection bar over the folder list');
                     // Short of room the folder pill doesn't cut its buttons off
                     const fb = document.getElementById('folder-bar');
@@ -4608,7 +4732,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             }
         }
         check('narrow windows: no pill over another or off screen, top or bottom, with or without the folder list', fit.every(f => f.bad.length === 0), JSON.stringify(fit.filter(f => f.bad.length)));
-        check('... wide, nothing given up; at 480 header buttons go into More, which shows; the file pill stays in single view', !fit[1].fit && fit[6].squeezed > 0 && fit[6].more && fit.every(f => f.name), JSON.stringify(fit.map(f => [f.w, f.rail, f.fit, f.squeezed, f.more])));
+        // (480 with the sidebar closed is the tightest: the mode's chip joins
+        // the folder pill. With it open, over the grid, the 40 px pills fit)
+        check('... wide, nothing given up; at 480 header buttons go into More, which shows; the file pill stays in single view', !fit[1].fit && fit[7].squeezed > 0 && fit.every(f => f.more && f.name), JSON.stringify(fit.map(f => [f.w, f.rail, f.fit, f.squeezed, f.more])));
         // The grid left alone: fitting the pills once, not every frame (its
         // own try at the folder pill's short labels used to wake it again)
         await page.setViewportSize({ width: 1300, height: 700 });
@@ -4783,8 +4909,8 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         await page.close();
     }
 
-    // ---- 7s2. Save edits when done ----
-    console.log('save edits when done');
+    // ---- 7s2. Keep edits in jEditor, export copies ----
+    console.log('keep edits in jEditor');
     {
         const { page, issues } = await newPage(browser, `${baseUrl}/index.html`);
         await page.evaluate(() => Experiments.set('auto-crop', true)); // an experiment, off to start with
@@ -4828,20 +4954,22 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
                 try { return JSON.parse(await (await (await (await dir.getDirectoryHandle('.jeditor')).getFileHandle('edits.json')).getFile()).text()); } catch (e) { return null; }
             };
             const f = (n) => app.files.find(x => x.name === n);
-            const bar = () => document.getElementById('edits-bar');
-            const barText = () => document.getElementById('edits-text').textContent;
+            // No bar counting what's waiting (Lightroom's way): the pencils show it
+            const noNag = () => !document.getElementById('edits-bar') && !document.querySelector('.sb-card-pending, .sb-card-save');
 
             window.showDirectoryPicker = async () => dir;
             await app.browseFolder();
             app.setView('grid');
-            out.barOffAtFirst = bar().classList.contains('hidden');
+            out.barOffAtFirst = noNag();
 
             // Turned on for this project (the grid's menu)
             step = "Turned on for this project (the grid's menu)";
-            const bg = app.buildContextItems(null, false).find(it => it[0] === 'Save edits when done');
+            const bg = app.buildContextItems(null, false).find(it => it[0] === 'Keep edits in jEditor, export copies');
+            out.menuUnticked = bg && !bg[3];
             bg[1]();
             await until(async () => (await kept()) && (await kept()).defer);
-            out.on = Edits.on() && !bar().classList.contains('hidden') && /kept until you save/.test(barText()) && (await kept()).defer === true;
+            out.on = Edits.on() && noNag() && (await kept()).defer === true &&
+                !!app.buildContextItems(null, false).find(it => it[0] === 'Keep edits in jEditor, export copies' && it[3]);
 
             // Batch Auto crop: kept as edits, nothing written
             step = 'Batch Auto crop: kept as edits, nothing written';
@@ -4854,7 +4982,9 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.autoKept = !!f('scan1.jpg')._edit && !!f('scan2.jpg')._edit && !f('plain.jpg')._edit && await untouched();
             out.autoToast = [...document.querySelectorAll('.toast')].map(t => t.textContent).find(t => /Auto-cropped/.test(t)) || '';
             out.badges = !!f('scan1.jpg')._gridEl.querySelector('.tile-edit') && !f('plain.jpg')._gridEl.querySelector('.tile-edit');
-            out.barCount = barText();
+            out.barCount = Edits.count();
+            out.noNagEdited = noNag();
+            out.saveInMenu = !!app.buildContextItems(null, false).find(it => it[0] === 'Save edits…');
             // Shown as it will be saved: the thumbnail and preview are of the print
             step = 'Shown as it will be saved: the thumbnail and preview are of the print';
             await until(() => f('scan1.jpg').thumbnailUrl && !f('scan1.jpg')._thumbStale);
@@ -4909,14 +5039,22 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await app.openDirectory(dir);
             // (kept edits can come a moment after the photos)
             await until(() => app.files.length === 3 && Edits.count() === 3);
-            out.reloaded = Edits.on() && !!f('scan1.jpg')._edit && f('scan1.jpg')._edit.angle === 0 && !!f('plain.jpg')._edit && f('plain.jpg')._edit.q === 3 && /3 edits/.test(barText());
+            out.reloaded = Edits.on() && !!f('scan1.jpg')._edit && f('scan1.jpg')._edit.angle === 0 && !!f('plain.jpg')._edit && f('plain.jpg')._edit.q === 3 && noNag();
 
             // Export copies: every photo, the edited ones with their edits
             step = 'Export copies: every photo, the edited ones with their edits';
             await until(() => Edits.count() === 3);
-            UI.choose = async () => 'alt';
-            UI.prompt = async () => '';
-            await Edits.saveAll();
+            // (Save opens the Export window: its Copies tab, of the edited photos, into a folder named here)
+            {
+                const saving = Edits.saveAll();
+                out.saveWindow = document.getElementById('ex-title').textContent + ' / ' + [...document.querySelectorAll('#ex-tabs button')].map(b => b.textContent + (b.classList.contains('active') ? '*' : '')).join(', ') + ' / ' + document.getElementById('ex-go').textContent;
+                document.querySelector('#ex-tabs [data-tab="copies"]').click();
+                out.saveCopies = Export.which + ' / ' + document.getElementById('ex-go').textContent;
+                Export.folder = 'jEditor Export';
+                Export.render();
+                document.getElementById('ex-go').click();
+                await saving;
+            }
             const exp = await dir.getDirectoryHandle('jEditor Export');
             out.exported = [await dims(exp, 'scan1.jpg'), await dims(exp, 'scan2.jpg'), await dims(exp, 'plain.jpg')];
             out.exportLeavesEdits = Edits.count() === 3 && await untouched();
@@ -4924,11 +5062,10 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // Save into the photos
             step = 'Save into the photos';
             await until(() => Edits.count() === 3 && !app._savingEdits);
-            UI.choose = async () => 'ok';
-            await Edits.saveAll();
+            { const saving = Edits.saveAll(); document.getElementById('ex-go').click(); await saving; }
             out.saved = [await dims(dir, 'scan1.jpg'), await dims(dir, 'scan2.jpg'), await dims(dir, 'plain.jpg')];
             out.plainLossless = readOrientation(await bytes(dir, 'plain.jpg')) === 8;
-            out.savedClears = Edits.count() === 0 && !f('scan1.jpg')._gridEl.querySelector('.tile-edit') && /kept until you save/.test(barText());
+            out.savedClears = Edits.count() === 0 && !f('scan1.jpg')._gridEl.querySelector('.tile-edit') && noNag();
             const backups = await (await dir.getDirectoryHandle('.jeditor')).getDirectoryHandle('originals');
             out.backups = 0;
             for await (const e of backups.values()) out.backups++;
@@ -4948,7 +5085,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // The choice stays (off, nothing waiting), so the folder isn't asked again (first-open.js)
             const offKept = async () => { const k = await kept(); return !!k && k.defer === false && !Object.keys(k.edits || {}).length; };
             await until(offKept);
-            out.off = !Edits.on() && Edits.count() === 0 && bar().classList.contains('hidden') && await offKept() &&
+            out.off = !Edits.on() && Edits.count() === 0 && noNag() && await offKept() &&
                 await same('scan1.jpg') && (await dims(dir, 'plain.jpg')).join('x') === '400x300';
             return out;
             })(); } catch (err) { return { crash: `${step}: ${err.message}`, toasts: [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | ') }; }
@@ -4956,15 +5093,16 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('kept edits: the steps all ran', !r.crash, `${r.crash} — toasts: ${r.toasts}`);
         if (r.crash) { await page.close(); } else {
         const inside = (d) => d[0] < 900 && d[1] < 700 && d[0] > 450 && d[1] > 300;
-        check('kept edits: on for the project; the bar shows; saved in edits.json', r.barOffAtFirst && r.on, JSON.stringify(r));
-        check('kept edits: batch Auto crop keeps crops as edits, nothing written', r.autoKept && /check them, then Save/.test(r.autoToast), r.autoToast);
-        check('kept edits: pencil on edited photos; the bar counts them', r.badges && r.barCount === '2 edits not saved yet', r.barCount);
+        check('kept edits: on for the project (the menu ticks it), no bar counting edits, saved in edits.json', r.barOffAtFirst && r.menuUnticked && r.on, JSON.stringify(r));
+        check('kept edits: batch Auto crop keeps crops as edits, nothing written', r.autoKept && /check them, then Export/.test(r.autoToast), r.autoToast);
+        check('kept edits: pencil on edited photos, nothing nagging; Save edits… on the grid\'s right-click', r.badges && r.barCount === 2 && r.noNagEdited && r.saveInMenu, JSON.stringify([r.barCount, r.noNagEdited, r.saveInMenu]));
         check('kept edits: thumbnail and viewer show the photo as it will be saved', r.thumbAspect > 1.33 && r.tileShows && inside(r.shown), `${r.thumbAspect} ${r.tileShows} ${r.shown}`);
         check('kept edits: recrop opens on the whole photo at the kept crop', r.editorWhole && r.editorAtKept && r.doneLabel === 'Done');
         check('kept edits: a new crop replaces the kept one, still nothing written', r.recropped && r.recropShown.join('x') === '600x400', String(r.recropShown));
         check('kept edits: a batch Auto crop changed in the editor is an Auto crop test (corrected), with the photo as the scan', r.keptLabel && r.keptLabel.result === 'corrected' && r.keptLabel.auto && r.keptLabel.auto.found && r.keptLabel.W === 900 && r.keptScan, JSON.stringify(r.keptLabel && { result: r.keptLabel.result, W: r.keptLabel.W, scan: r.keptScan }));
         check('kept edits: a turn is kept too; Ctrl+Z takes it back', r.turned && r.turnUndone);
         check('kept edits: still there when the project is opened again', r.reloaded);
+        check('kept edits: Save opens the Export window on Save into the photos; its Copies are of the edited photos', r.saveWindow === 'Save 3 edits / Save into the photos*, Copies / Save into 3 photos' && r.saveCopies === 'edited / Export 3 photos', JSON.stringify([r.saveWindow, r.saveCopies]));
         check('kept edits: export copies all photos with their edits, photos untouched', r.exported[0].join('x') === '600x400' && inside(r.exported[1]) && r.exported[2].join('x') === '300x400' && r.exportLeavesEdits, JSON.stringify(r.exported));
         check('kept edits: save writes them into the photos (a turn losslessly), originals kept', r.saved[0].join('x') === '600x400' && inside(r.saved[1]) && r.saved[2].join('x') === '300x400' && r.plainLossless && r.savedClears && r.backups === 2, JSON.stringify(r.saved) + ' ' + r.backups);
         check('kept edits: Ctrl+Z after saving puts the photos back with the edits kept', r.undoSave);
@@ -5384,14 +5522,14 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.asIs = [aBytes.length === jpeg.length, gps(aBytes), has1234(aBytes)];
             // For the web: smaller, at 80%, numbered, still without it
             const b = await dir.getDirectoryHandle('B', { create: true });
-            await app.exportCopies([f], { maxEdge: 100, dir: b, where: 'B', format: 'jpeg', quality: 80, meta: 'nogps', colour: 'srgb', names: 'Trip' });
+            await app.exportCopies([f], { maxEdge: 100, dir: b, where: 'B', format: 'jpeg', quality: 80, meta: 'nogps', colour: 'srgb', pattern: 'Trip {n}' });
             const bBytes = await read(b, 'Trip 001.jpg');
             const bmp = await createImageBitmap(new Blob([bBytes]));
             out.web = [bmp.width, gps(bBytes), has1234(bBytes)];
             // At 60% it's smaller than at 100%
             const c = await dir.getDirectoryHandle('C', { create: true });
-            await app.exportCopies([f], { maxEdge: 300, dir: c, where: 'C', format: 'jpeg', quality: 100, names: 'Hi' });
-            await app.exportCopies([f], { maxEdge: 300, dir: c, where: 'C', format: 'jpeg', quality: 60, names: 'Lo' });
+            await app.exportCopies([f], { maxEdge: 300, dir: c, where: 'C', format: 'jpeg', quality: 100, pattern: 'Hi {n}' });
+            await app.exportCopies([f], { maxEdge: 300, dir: c, where: 'C', format: 'jpeg', quality: 60, pattern: 'Lo {n}' });
             out.quality = (await read(c, 'Lo 001.jpg')).length < (await read(c, 'Hi 001.jpg')).length;
             // No metadata at all
             const d = await dir.getDirectoryHandle('D', { create: true });
@@ -5953,7 +6091,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // switch (modes.js) offers it, top left in single view, and the
             // right-click menu
             step = 'shown';
-            out.onShown = Modes.shown().some(m => m[0] === 'adjust') && !document.getElementById('mode-float').classList.contains('hidden') && app.buildContextItems(null, true).some(it => it[0] === 'Adjust…');
+            out.onShown = Modes.shown().some(m => m[0] === 'adjust') && !!document.querySelector('#mode-row:not(.hidden) [data-mode="adjust"]') && app.buildContextItems(null, true).some(it => it[0] === 'Adjust…');
 
             // E opens Adjust on the photo
             step = 'E opens Adjust';
@@ -6078,7 +6216,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             await until(async () => (await kept()) && (await kept()).edits['a.jpg']);
             const k1 = await kept();
             out.kept = !Adjust.isOpen && f('a.jpg')._edit && f('a.jpg')._edit.adj.exposure === 1 && k1.defer === false && k1.edits['a.jpg'].adj.exposure === 1 && await same('a.jpg');
-            out.noBar = document.getElementById('edits-bar').classList.contains('hidden');
+            out.noBar = !document.getElementById('edits-bar');
             const shown = await app.getDisplaySource(f('a.jpg'));
             out.shownBrighter = (await brightness(await blobOf(shown))) > before + 25;
             await until(() => f('a.jpg').thumbnailUrl && !f('a.jpg')._thumbStale);
@@ -6135,7 +6273,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             step = 'save into photo';
             const choose = UI.choose;
             UI.choose = async () => 'ok';
-            await Edits.saveAll({ list: [f('b.jpg')] });
+            { const saving = Edits.saveAll({ list: [f('b.jpg')] }); document.getElementById('ex-go').click(); await saving; }
             UI.choose = choose;
             out.saved = !f('b.jpg')._edit && !(await same('b.jpg')) && !!f('a.jpg')._edit;
             return out;

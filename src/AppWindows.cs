@@ -13,7 +13,17 @@ static class AppWindows
     static ApplicationContext? context;
 
     public static Task<CoreWebView2Environment> Environment(string userData) =>
-        environment ??= CoreWebView2Environment.CreateAsync(null, userData);
+        environment ??= CoreWebView2Environment.CreateAsync(null, userData, Options());
+
+    // JEDITOR_DEVTOOLS=1: DevTools on a free port (written to the profile's
+    // EBWebView\DevToolsActivePort), for test/grid-speed.perf.js to drive
+    // the app. Given to WebView2 directly as well as by its own variable
+    static CoreWebView2EnvironmentOptions? Options()
+    {
+        if (System.Environment.GetEnvironmentVariable("JEDITOR_DEVTOOLS") != "1") return null;
+        Log.Write("DevTools: on (JEDITOR_DEVTOOLS)");
+        return new CoreWebView2EnvironmentOptions("--remote-debugging-port=0");
+    }
 
     // The first window, and the message loop that ends with the last one
     public static void Run(MainForm first)

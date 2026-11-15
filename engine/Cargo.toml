@@ -1,0 +1,32 @@
+# jEditor's engine: the heavy image work, in Rust, for the desktop apps
+# (docs/plans/fast-engine.md; how it's built: docs/developing.md, Engine).
+[package]
+name = "jeditor-engine"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+
+[lib]
+name = "jeditor_engine"
+# cdylib: jeditor_engine.dll for the Windows app (and later the Mac and
+# Linux hosts); rlib: the bench and the tests
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+mozjpeg = "0.10.13"
+fast_image_resize = "6.1.0"
+# HEIC/HEIF (feature heif): libheif, with libde265 for HEVC. Linked
+# dynamically (LGPL): on Windows from vcpkg's x64-windows DLLs, shipped
+# beside jeditor_engine.dll; elsewhere the system's (pkg-config)
+libheif-rs = { version = "3", optional = true, default-features = false, features = ["v1_17"] }
+
+[features]
+heif = ["dep:libheif-rs"]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+# Panics are caught at the C boundary (a bad file is an error, not a crash)
+panic = "unwind"

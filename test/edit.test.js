@@ -308,6 +308,14 @@ const PROJECT = `
                 pressKey('1', { ctrlKey: true });
                 const cr = () => Adjust.canvas.getBoundingClientRect();
                 out.at100 = [Adjust.fitted, Math.round(Adjust.view.z * 1000) / 1000, Math.round(cr().width), chip('adj-zoom-100'), chip('adj-zoom-fit'), level.classList.contains('hidden')];
+                // Past 100% the photo's pixels are sharp squares; smooth at 100%
+                step = 'pixels';
+                const squares = () => [Adjust.root.classList.contains('adj-pixels'), getComputedStyle(document.getElementById('adj-sharp')).imageRendering, getComputedStyle(Adjust.canvas).imageRendering].join();
+                out.pixels = [squares()];
+                Adjust.zoomAt(4);
+                out.pixels.push(squares());
+                Adjust.zoomAt(1);
+                out.pixels.push(squares());
                 // Sharp: the part on screen from the full-size photo, one of
                 // its pixels to one screen pixel, the checker still there
                 step = 'sharp';
@@ -375,6 +383,7 @@ const PROJECT = `
         });
         check('zoom: Adjust opens fitted, the chip says Fit (a big photo, a smaller working copy)', z.fit && String(z.fit) === 'true,true,false,true,true', JSON.stringify(z));
         check('zoom: Ctrl+1 shows it at 100% (one photo pixel to a screen pixel), the chip says so', z.at100 && String(z.at100) === 'false,1,4000,true,false,true', JSON.stringify(z.at100));
+        check('zoom: past 100% the photo\'s pixels are sharp squares (on the full-size part, not the smaller working copy); smooth at 100%', z.pixels && z.pixels.join(' | ') === 'false,auto,auto | true,pixelated,auto | false,auto,auto', JSON.stringify(z.pixels));
         check('zoom: at 100% the part on screen is drawn from the full-size photo, pixel for pixel', z.sharpSize && String(z.sharpSize) === '4000,2600,true,true', JSON.stringify(z.sharpSize));
         check('zoom: sharp at 100%: fine detail the screen-sized copy loses is there', z.inChecker && z.contrast && z.contrast[0] > 100 && z.contrast[0] > z.contrast[1] * 2, JSON.stringify(z.contrast));
         check('zoom: the sharp part is adjusted as the picture under it is', z.same && Math.abs(z.same[0] - z.same[1]) <= 6 && z.same[0] > 150, JSON.stringify(z.same));
@@ -920,7 +929,7 @@ const PROJECT = `
                 const choose = UI.choose;
                 UI.choose = async () => 'ok';
                 UI.prompt = async () => '';
-                await Edits.saveAll({ list: [f('a.dng'), f('b.cr3')] });
+                { const saving = Edits.saveAll({ list: [f('a.dng'), f('b.cr3')] }); document.getElementById('ex-go').click(); await saving; } // (the Export window, on Save into the photos)
                 UI.choose = choose;
                 UI.prompt = prompt0;
                 out.saveNotWritten = await same('a.dng', dngBlob) && await same('b.cr3', cr3Blob) && !!f('b.cr3')._edit;
@@ -1007,7 +1016,7 @@ const PROJECT = `
                 step = 'save';
                 const choose = UI.choose;
                 UI.choose = async () => 'ok';
-                await Edits.saveAll({ list: [f('IMG_1.heic')] });
+                { const saving = Edits.saveAll({ list: [f('IMG_1.heic')] }); document.getElementById('ex-go').click(); await saving; } // (the Export window, on Save into the photos)
                 UI.choose = choose;
                 UI.prompt = prompt0;
                 out.saveNotWritten = await same() && !!f('IMG_1.heic')._edit;
@@ -1059,7 +1068,7 @@ const PROJECT = `
                 const before = new Uint8Array(await (await (await dir.getFileHandle('p.png')).getFile()).arrayBuffer());
                 app.openSingle(f);
                 step = 'open';
-                out.button = Modes.shown().some(m => m[0] === 'paint') && !document.getElementById('mode-float').classList.contains('hidden');
+                out.button = Modes.shown().some(m => m[0] === 'paint') && !!document.querySelector('#mode-row:not(.hidden) [data-mode="paint"]');
                 pressKey('b');
                 await until(() => PaintEditor.ready);
                 const P = PaintEditor;
@@ -1568,8 +1577,9 @@ const PROJECT = `
                 const $ = (id) => document.getElementById(id);
                 const shownEl = (id) => { const e = $(id); return !!e && !e.classList.contains('hidden') && e.getClientRects().length > 0; };
                 step = 'start';
-                // The home page's tiles: Open a folder, Convert, Adjust a photo, Paint a photo (and New canvas, with no scanner here)
+                // The home page: Open a folder, New project and Convert as tiles, in that order; Adjust a photo and Paint a photo in the quiet row (no scanner here)
                 out.startShown = ['btn-browse-folder', 'start-blank', 'start-convert', 'start-adjust', 'start-paint'].every(shownEl) && !shownEl('start-capture');
+                out.startShown = out.startShown && [...document.querySelectorAll('.home-tiles > .home-tile')].map(b => b.id).join() === 'btn-browse-folder,start-blank,start-convert' && $('start-blank').textContent.includes('New project') && !!$('start-adjust').closest('.home-more') && !!$('start-paint').closest('.home-more');
                 // A tile that says Adjust: the project lands in Adjust
                 step = 'start in';
                 Modes.next = 'adjust';
@@ -1578,8 +1588,15 @@ const PROJECT = `
                 await openProject('modes', { 'a.png': await blob('#806040'), 'b.png': await blob('#406080'), 'c.png': await blob('#408060') });
                 await until(() => Adjust.ready && Modes.strip.parentElement);
                 out.landedAdjust = Modes.current() === 'adjust' && Adjust.file === app.viewFiles()[0];
-                // The chip over Adjust, and the strip along the bottom
-                out.chipOver = shownEl('mode-float') && /Adjust/.test($('mode-chip-float').textContent);
+                // The row with Adjust chosen (beside it in the sidebar, or over its head's corner), and the strip along the bottom
+                out.chipOver = shownEl('mode-row') && shownEl('mode-seg') && $('mode-seg').querySelector('.on').dataset.mode === 'adjust' && !shownEl('mode-float')
+                    && ($('mode-row').parentElement === $('folder-rail') ? $('adjust-editor').getBoundingClientRect().left >= $('folder-rail').getBoundingClientRect().right - 1 : $('mode-row').classList.contains('over-mode'));
+                // Its panel dragged away hides, a line left at the right edge; shown again from there
+                app.showPanel('adjust', false);
+                out.panelHides = getComputedStyle($('adj-panel')).display === 'none' || $('adj-panel').classList.contains('side-out');
+                out.panelEdge = !$('adjust-editor').querySelector('.side-edge-right').classList.contains('hidden');
+                app.showPanel('adjust', true);
+                out.panelBack = getComputedStyle($('adj-panel')).display !== 'none' && $('adjust-editor').querySelector('.side-edge-right').classList.contains('hidden') && !app.uiPrefs.panelsHidden.adjust;
                 out.strip = Modes.strip.parentElement === $('adjust-editor') && Modes.strip.children.length === 3 && Modes.strip.children[0].classList.contains('active');
                 // Another photo from the strip: still in Adjust, on that one
                 step = 'strip';
@@ -1612,15 +1629,16 @@ const PROJECT = `
                 step = 'photos';
                 await Modes.go('photos');
                 out.back = Modes.current() === 'photos' && !PaintEditor.isOpen && !Modes.strip.parentElement;
-                // The grid: with the sidebar open the switch is along its top; closed, a chip in the folder pill
+                // The grid: with the sidebar open the row is along its top; closed, the same row floats as a pill
                 step = 'grid';
                 app.setView('grid');
                 app.uiPrefs.folderRail = true;
                 Folders.render();
-                out.seg = shownEl('mode-seg') && [...$('mode-seg').children].map(b => b.dataset.mode).join() === 'photos,adjust,paint' && $('mode-seg').querySelector('.on').dataset.mode === 'photos' && !shownEl('mode-chip-bar') && !shownEl('mode-float');
+                out.seg = shownEl('mode-seg') && [...$('mode-seg').children].map(b => b.dataset.mode).join() === 'photos,adjust,paint' && $('mode-seg').querySelector('.on').dataset.mode === 'photos' && $('mode-row').parentElement === $('folder-rail') && !shownEl('mode-chip-bar') && !shownEl('mode-float');
                 app.uiPrefs.folderRail = false;
                 Folders.render();
-                out.chipBar = shownEl('mode-chip-bar') && !shownEl('mode-seg') && !shownEl('mode-float');
+                out.chipBar = shownEl('mode-row') && $('mode-row').classList.contains('float') && shownEl('mode-seg') && shownEl('mode-row-side') && shownEl('mode-row-find') && !shownEl('mode-chip-bar') && !shownEl('mode-float')
+                    && $('folder-bar').getBoundingClientRect().left >= $('mode-row').getBoundingClientRect().right;
                 // The sidebar's Adjust: on the photo selected
                 app.uiPrefs.folderRail = true;
                 Folders.render();
@@ -1663,12 +1681,13 @@ const PROJECT = `
         });
         check('modes: the home page has the big tiles (New canvas where there\'s no scanner or camera)', r.startShown, JSON.stringify(r));
         check('modes: a project opened for Adjust lands in Adjust on its first photo', r.startKept && r.landedAdjust, JSON.stringify(r));
-        check('modes: in Adjust the chip names it, top left, and a strip runs along the bottom', r.chipOver && r.strip, JSON.stringify(r));
+        check('modes: in Adjust the row has Adjust chosen (the sidebar beside it, or the row over its corner), and a strip runs along the bottom', r.chipOver && r.strip, JSON.stringify(r));
+        check('modes: Adjust\'s panel hides, leaving a line at the right edge, and comes back, remembered', r.panelHides && r.panelEdge && r.panelBack, JSON.stringify(r));
         check('modes: another photo from the strip opens in the same mode', r.stepped, JSON.stringify(r));
         check('modes: the chip\'s menu switches to Paint, on the same photo', r.menu && r.inPaint, JSON.stringify(r));
         check('modes: what was painted is kept when another photo is chosen', r.kept, JSON.stringify(r));
         check('modes: back to Photos closes it', r.back, JSON.stringify(r));
-        check('modes: the sidebar open, the switch is along its top; closed, a chip in the folder pill', r.seg && r.chipBar && r.segGo, JSON.stringify(r));
+        check('modes: the sidebar open, the row is along its top; closed, the same row floats as a pill, the folder pill after it', r.seg && r.chipBar && r.segGo, JSON.stringify(r));
         check('modes: Adjust and Paint are off the toolbar\'s main row', r.toolbar, JSON.stringify(r));
         check('modes: closing the window in Adjust or Paint is held for the page', r.holds && r.closeAtOnce, JSON.stringify(r));
         check('modes: closing with changes asks "Keep your changes?"; Cancel stays, Keep keeps them', r.askText && r.cancelStays && r.keepKeeps, JSON.stringify(r));
@@ -1835,7 +1854,7 @@ const PROJECT = `
             await app.undo();
             out.bothBack = [readOrientation(await bytesOf(a)) || 1, readOrientation(await bytesOf(c)) || 1];
 
-            // Kept until saved (Save edits when done): an edit, the crop
+            // Kept until saved (Keep edits in jEditor): an edit, the crop
             // box mirrored with it; twice is no edit at all
             await Edits.setDefer(true);
             Edits.set([{ file: c, edit: { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0, y1: 0.5 } } }], 'crop');
@@ -1909,7 +1928,7 @@ const PROJECT = `
         check('flip: upside down (orientation 4)', r.jpegV[0] === 'red blue red green' && r.jpegV[1] === 4, JSON.stringify(r.jpegV));
         check('flip: a PNG is re-encoded flipped, and Ctrl+Z puts its bytes back exactly', r.png === 'blue red green blue' && r.pngUndo, JSON.stringify([r.png, r.pngUndo]));
         check('flip: a selection is one Ctrl+Z', r.oneStep && r.both.join() === '2,2' && r.bothBack.join() === '1,1', JSON.stringify([r.oneStep, r.both, r.bothBack]));
-        check('flip: with Save edits when done, kept as an edit with its crop mirrored, the file untouched', r.kept && r.diskUntouched, JSON.stringify([r.kept, r.diskUntouched]));
+        check('flip: with Keep edits in jEditor, kept as an edit with its crop mirrored, the file untouched', r.kept && r.diskUntouched, JSON.stringify([r.kept, r.diskUntouched]));
         check('flip: the kept edit shows the left half, flipped', r.keptLook === 'red red green red', r.keptLook);
         check('flip: flipped twice is the edit it was; upside down twice is no edit', r.twice && r.twiceNothing, JSON.stringify([r.twice, r.twiceNothing]));
         check('flip: flipped and turned, Save edits writes it losslessly in one go (orientation 7), and Ctrl+Z keeps the edit again', r.saved[0] === 7 && r.saved[1] && r.saved[2] && r.savedUndo[0] === 1 && r.savedUndo[1], JSON.stringify([r.saved, r.savedUndo]));
@@ -2049,7 +2068,27 @@ const PROJECT = `
                 step = 'app';
                 const calls = [];
                 window.JEditorNative = { platform: 'windows', features: ['themes'], titleBar: (on) => calls.push('titleBar:' + on), windowAction: (a) => calls.push(a) };
-                out.inApp = Themes.can() && !Experiments.shown().some(x => x.id === 'themes');
+                // Paused (2.0.0): an experiment, off to start with, in a beta too
+                // (a dev page has no APP_BUILD: a beta's, for now)
+                window.APP_BUILD = 'v2.0.0-beta.1';
+                out.offered = Experiments.betaBuild() && Experiments.shown().some(x => x.id === 'themes') && !Experiments.on('themes') && !Themes.can();
+                delete window.APP_BUILD;
+                app.renderCustomizePanel();
+                out.pickerHidden = [...document.querySelectorAll('.set-themes-part')].every(e => e.classList.contains('hidden'));
+                // A theme chosen before: not on while the experiment's off
+                app.uiPrefs.skin = 'xp/royale';
+                Themes.apply();
+                out.ownLook = !root.dataset.skin && !$('th-top');
+                // Turned on (Settings → Experimental): the theme's back at once
+                Experiments.set('themes', true);
+                await until(() => root.dataset.skin === 'xp' && !root.classList.contains('theme-loading'));
+                out.back = root.dataset.skin === 'xp' && !!$('th-top') && !$('set-themes').classList.contains('hidden');
+                // Off again: jEditor's own look, and the choice kept
+                Experiments.set('themes', false);
+                out.offAgain = !root.dataset.skin && !$('th-top') && app.uiPrefs.skin === 'xp/royale' && calls[calls.length - 1] === 'titleBar:false';
+                Experiments.set('themes', true);
+                Themes.choose('');
+                out.inApp = Themes.can();
                 app.renderCustomizePanel();
                 const cards = [...$('set-themes').querySelectorAll('.theme-card')];
                 out.gallery = cards.map(c => c.dataset.skin).join() === ',xp/royale,snow/finder,mac84/finder' && cards[0].classList.contains('active');
@@ -2130,7 +2169,8 @@ const PROJECT = `
                 return out;
             } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
         });
-        check('themes: none in a browser; in the apps, not an experiment', r.browserNone && r.inApp, JSON.stringify(r));
+        check('themes: none in a browser; in the apps, an experiment, off to start with (betas too), the picker hidden', r.browserNone && r.offered && r.pickerHidden, JSON.stringify(r));
+        check('themes: a theme chosen isn\'t on while the experiment\'s off, comes back the moment it\'s turned on, and goes (kept) when it\'s off again', r.ownLook && r.back && r.offAgain && r.inApp, JSON.stringify(r));
         check('themes: Settings → Appearance shows them as a gallery, jEditor\'s own look first', r.gallery, JSON.stringify(r));
         check('themes: one chosen puts its stylesheets on, docked, in its own light or dark', r.on && r.styled && r.dark, JSON.stringify(r));
         check('themes: its own title bar and menu bar along the top; Windows\' title bar goes', r.ownBar, JSON.stringify(r));

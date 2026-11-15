@@ -7,8 +7,8 @@
 //   top left); then header buttons go into More, least used first. The
 //   file pill moves off center when it has to, and the name gives way.
 //
-//   Bottom (grid): "not saved yet" (the count stays), the selection bar
-//   off center beside the slider, then its labels, the edits bar up above the size slider, a shorter slider, the
+//   Bottom (grid): the selection bar off center beside the slider, then
+//   its labels, a shorter slider, the
 //   separators, then the slider (Ctrl+wheel still sizes); last, the
 //   selection bar scrolls sideways.
 //
@@ -17,7 +17,7 @@
 
 const Fit = {
     TOP: ['sort-short', 'sort-icon', 'count-off'],
-    BOTTOM: ['edits-short', 'sel-aside', 'sel-icons', 'edits-stacked', 'size-short', 'sel-tight', 'size-off'],
+    BOTTOM: ['sel-aside', 'sel-icons', 'size-short', 'sel-tight', 'size-off'],
     // Into More first: the least used
     SQUEEZE: ['whatsnew', 'keys', 'convert', 'dupes', 'fullscreen', 'strip', 'fit', 'customize', 'refresh', 'history', 'camera', 'info', 'scan', 'crop', 'view'],
     GAP: 12,       // between pills, screen pixels
@@ -33,14 +33,14 @@ const Fit = {
         const soon = () => this.soon();
         if (typeof ResizeObserver === 'function') {
             const ro = this._ro = new ResizeObserver(soon);
-            for (const id of ['main-interface', 'folder-bar', 'header-controls', 'selection-bar', 'edits-bar', 'grid-controls', 'file-name-text', 'file-count', 'sort-mode', 'selection-count', 'edits-text', 'fb-crumbs', 'toast-stack'])
+            for (const id of ['main-interface', 'folder-bar', 'header-controls', 'selection-bar', 'grid-controls', 'file-name-text', 'file-count', 'sort-mode', 'selection-count', 'fb-crumbs', 'toast-stack'])
                 if (this.el(id)) ro.observe(this.el(id));
         }
         // Shown and hidden, the view, the folder list, More opened
         const mo = this._mo = new MutationObserver(soon);
         mo.observe(iface, { attributes: true, attributeFilter: ['class'] });
         mo.observe(document.body, { attributes: true, attributeFilter: ['data-view'] });
-        for (const id of ['folder-bar', 'header-controls', 'selection-bar', 'edits-bar', 'grid-controls'])
+        for (const id of ['folder-bar', 'header-controls', 'selection-bar', 'grid-controls'])
             if (this.el(id)) mo.observe(this.el(id), { attributes: true, attributeFilter: ['class'] });
         window.addEventListener('resize', soon);
         this.run();
@@ -92,7 +92,7 @@ const Fit = {
             return;
         }
         const tokens = new Set();
-        const set = () => { iface.dataset.fit = [...tokens].join(' '); };
+        const set = () => { const v = [...tokens].join(' '); if (iface.dataset.fit !== v) iface.dataset.fit = v; };
         this.fitTop(iface, tokens, set);
         this.fitBottom(iface, tokens, set);
         this.fitToasts(tokens);
@@ -153,7 +153,9 @@ const Fit = {
             bar.style.setProperty('--bar-room', 'none');
         }
         set();
-        const leftEdge = () => left ? left.getBoundingClientRect().right : box.left + gutter;
+        // (the single view with the sidebar docked beside it: from its edge)
+        const rail = !left && !grid && this.shown(this.el('folder-rail')) ? this.el('folder-rail') : null;
+        const leftEdge = () => left ? left.getBoundingClientRect().right : rail ? rail.getBoundingClientRect().right + gutter : box.left + gutter;
         const rightEdge = () => this.shown(hc) && !hc.classList.contains('vertical') ? hc.getBoundingClientRect().left : box.right - gutter;
         const room = () => rightEdge() - leftEdge() - 2 * this.GAP;
         const need = () => {
@@ -211,11 +213,10 @@ const Fit = {
         if (stack.getBoundingClientRect().right + this.GAP > controls.getBoundingClientRect().left) tokens.add('toast-up');
     },
 
-    // ---- Bottom: selection bar, edits bar and size slider in the grid ----
+    // ---- Bottom: selection bar and size slider in the grid ----
 
     fitBottom(iface, tokens, set) {
         const sel = this.el('selection-bar');
-        const edits = this.el('edits-bar');
         const size = this.el('grid-controls');
         if (!sel || !size) return;
         const box = iface.getBoundingClientRect();
@@ -224,14 +225,16 @@ const Fit = {
         // grid (the bar's own offsets are scaled with it by the UI size)
         const startOf = () => box.left + (parseFloat(getComputedStyle(sel).left) || gutter) * this.zoom();
         const measure = () => {
-            // The selection bar makes room for the edits bar and the slider
-            const ew = edits && this.shown(edits) ? edits.offsetWidth : 0;
-            iface.style.setProperty('--edits-room', ew + 'px');
-            iface.style.setProperty('--size-room', (this.shown(size) ? size.offsetWidth : 0) + 'px');
+            // The selection bar makes room for the slider (on the bar, and
+            // only when it changes: set on the whole interface, it styled
+            // every photo in the grid again, three times over on the way
+            // back from a photo)
+            const v = (this.shown(size) ? size.offsetWidth : 0) + 'px';
+            if (sel.style.getPropertyValue('--size-room') !== v) sel.style.setProperty('--size-room', v);
         };
         const fits = () => {
             measure();
-            const bars = [sel, edits, size].filter(b => this.shown(b));
+            const bars = [sel, size].filter(b => this.shown(b));
             if (!bars.length) return true;
             const start = startOf();
             const rects = bars.map(b => b.getBoundingClientRect());
@@ -246,8 +249,6 @@ const Fit = {
         set();
         for (const t of this.BOTTOM) {
             if (fits()) break;
-            // Stacking only helps with the selection bar beside it
-            if (t === 'edits-stacked' && !(this.shown(sel) && edits && this.shown(edits))) continue;
             tokens.add(t);
             set();
         }

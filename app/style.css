@@ -683,6 +683,8 @@ header {
     padding: 0;
     background-image: none;
     color: transparent;
+    /* (and no halo: it would draw the hidden words, --glass-halo) */
+    text-shadow: none !important;
 }
 
 .interface[data-fit~="sort-icon"] .sort-control select option {
@@ -707,12 +709,8 @@ body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
     display: inline-flex;
 }
 
-.interface[data-fit~="edits-short"] .edits-more {
-    display: none;
-}
-
 /* Off center, beside the size slider, rather than give up its labels */
-.interface[data-fit~="sel-aside"]:not(.edits-on) .selection-bar {
+.interface[data-fit~="sel-aside"] .selection-bar {
     right: calc(var(--gutter) + var(--size-room, 220px) + var(--sp-2));
 }
 
@@ -1466,71 +1464,7 @@ header:has(.header-controls.expanded) {
     color: var(--accent-text);
 }
 
-/* What's waiting to be saved: a pill under the header */
-.edits-bar {
-    /* Grid only, bottom right, left of the size slider, in the selection
-       bar's row (which makes room for it: --edits-room and --size-room,
-       measured by Edits.updateBar) */
-    position: absolute;
-    right: calc(var(--gutter) + var(--size-room, 220px) + var(--sp-2));
-    bottom: var(--gutter);
-    z-index: calc(var(--z-floating) + 1);
-    display: flex;
-    align-items: center;
-    gap: var(--sp-1);
-    max-width: calc(100% - 2 * var(--gutter));
-    padding: 0 5px 0 var(--sp-3);
-    white-space: nowrap;
-    animation: bar-in var(--dur-slow) var(--ease-out);
-}
-
-body[data-view="single"] .edits-bar {
-    display: none;
-}
-
-/* Buttons the pill's own shape, inset evenly all round */
-.edits-bar .btn {
-    height: calc(var(--ctl-lg) - 10px);
-    padding: 0 var(--sp-3);
-    border-radius: var(--r-pill);
-}
-
-.interface.edits-on .selection-bar {
-    right: calc(var(--gutter) + var(--size-room, 220px) + var(--edits-room, 0px) + 2 * var(--sp-2));
-    max-width: none;
-}
-
-/* Not enough room beside the selection bar: above the size slider */
-.interface[data-fit~="edits-stacked"] .edits-bar {
-    right: var(--gutter);
-    bottom: calc(var(--gutter) + var(--ctl-lg) + var(--sp-2));
-}
-
-.interface.edits-on[data-fit~="edits-stacked"] .selection-bar {
-    right: calc(var(--gutter) + var(--size-room, 220px) + var(--sp-2));
-}
-
-
-.edits-icon {
-    display: inline-flex;
-    color: var(--accent-text);
-}
-
-.edits-icon .i {
-    width: 16px;
-    height: 16px;
-}
-
-.edits-text {
-    margin-right: var(--sp-1);
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: var(--fs-small);
-}
-
-
-/* Save edits when done: a switch, and while edits wait, a pill to save them */
+/* Keep edits in jEditor, export copies: the project card's switch */
 .sb-card-defer {
     display: flex;
     align-items: center;
@@ -1547,46 +1481,6 @@ body[data-view="single"] .edits-bar {
 .sb-card-defer input {
     flex: none;
     margin: 0;
-}
-
-.sb-card-pending {
-    margin-top: var(--sp-2);
-}
-
-.sb-card-save {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--sp-2);
-    max-width: 100%;
-    height: 28px;
-    padding: 0 3px 0 var(--sp-3);
-    border: 0;
-    border-radius: var(--r-pill);
-    background: var(--accent-soft);
-    color: var(--accent-text);
-    font: inherit;
-    font-size: var(--fs-small);
-    cursor: pointer;
-}
-
-.sb-card-save b {
-    display: inline-flex;
-    align-items: center;
-    height: 22px;
-    padding: 0 var(--sp-3);
-    border-radius: var(--r-pill);
-    background: var(--accent);
-    color: var(--on-accent);
-    font-weight: var(--fw-semibold);
-}
-
-.sb-card-save:hover b {
-    filter: brightness(1.1);
-}
-
-.sb-card-save:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
 }
 
 /* ---- 7. Folder pill, folder list, flags, search ---- */
@@ -1848,6 +1742,99 @@ body[data-view="single"] .edits-bar {
     bottom: var(--r-lg);
     right: -3px;
     margin: 0;
+}
+
+/* A sidebar that's hidden leaves a thin line at the window's edge: drag
+   from it to bring the sidebar back out (script.js: initSidebarResize).
+   The line is narrow; what takes the pointer is a little wider. */
+.side-edge {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: var(--z-chrome);
+    width: 6px;
+    cursor: ew-resize;
+    touch-action: none;
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+}
+
+.side-edge::after {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 2px;
+    background: var(--border);
+    transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.side-edge:hover::after,
+.side-edge.dragging::after {
+    background: var(--accent);
+}
+
+/* A sidebar shown or hidden slides in from its edge, or out to it
+   (script.js: slideSide). What was beside it is already in its new place,
+   so only the sidebar moves. Hidden, it stays drawn until it's slid out. */
+@keyframes side-in {
+    from { transform: translateX(var(--side-from, -100%)); }
+}
+
+@keyframes side-out {
+    to { transform: translateX(var(--side-from, -100%)); }
+}
+
+:root:not([data-skin]):not([data-motion="off"]) .side-in {
+    animation: side-in var(--dur-base) var(--ease-out);
+}
+
+:root:not([data-skin]):not([data-motion="off"]) .folder-rail.hidden.side-out {
+    display: flex !important;
+    pointer-events: none;
+    animation: side-out var(--dur-base) var(--ease-out) both;
+}
+
+/* Adjust's and Paint's panel: dragged away it hides, as the sidebar does,
+   and a line at the window's right edge drags it back (script.js:
+   showPanel). Each mode remembers its own */
+.adj-body,
+.paint-body {
+    position: relative;
+}
+
+.side-edge.side-edge-right {
+    left: auto;
+    right: 0;
+}
+
+.side-edge.side-edge-right::after {
+    inset: 0 0 0 auto;
+}
+
+:is(.adj-panel, .paint-panel) {
+    --side-from: 100%;
+}
+
+.adjust-editor.panel-hidden :is(.adj-panel:not(.side-out), .adj-body > .side-grip),
+.paint-editor.panel-hidden :is(.paint-panel:not(.side-out), .paint-body > .side-grip) {
+    display: none;
+}
+
+:root:not([data-skin]):not([data-motion="off"]) :is(.adj-panel, .paint-panel).side-out {
+    pointer-events: none;
+    animation: side-out var(--dur-base) var(--ease-out) both;
+}
+
+/* The sidebar stays beside Adjust and Paint, as beside the grid and the
+   photo: they start after it (jEditor's own look; a theme's modes keep the
+   whole window) */
+:root:not([data-skin]) .mode-screen {
+    transition: left var(--dur-slow) var(--ease-out);
+}
+
+:root:not([data-skin]) body:has(#main-interface.rail-open:not(.hidden)) .mode-screen {
+    left: var(--rail-now);
 }
 
 .folder-tree {
@@ -2302,7 +2289,8 @@ body[data-view="single"] .edits-bar {
 }
 
 /* Right-click menu */
-#context-menu {
+#context-menu,
+.ctx-fly {
     position: fixed;
     z-index: var(--z-menu);
     min-width: 220px;
@@ -2315,7 +2303,8 @@ body[data-view="single"] .edits-bar {
     border-radius: var(--r-lg);
 }
 
-#context-menu button {
+#context-menu button,
+.ctx-fly button {
     display: flex;
     align-items: center;
     min-height: var(--ctl-md);
@@ -2330,7 +2319,10 @@ body[data-view="single"] .edits-bar {
 }
 
 #context-menu button:hover,
-#context-menu button:focus-visible {
+#context-menu button:focus-visible,
+.ctx-fly button:hover,
+.ctx-fly button:focus-visible,
+#context-menu button[aria-expanded="true"] {
     background: var(--tb-hover);
     outline: none;
 }
@@ -2343,7 +2335,8 @@ body[data-view="single"] .edits-bar {
     background: var(--danger-soft);
 }
 
-#context-menu .ctx-divider {
+#context-menu .ctx-divider,
+.ctx-fly .ctx-divider {
     height: 1px;
     margin: var(--sp-1) var(--sp-2);
     background: var(--border);
@@ -2426,34 +2419,29 @@ body[data-view="single"] .edits-bar {
 /* One stack in the bottom-left corner, clear of the photo in the middle.
    --toast-bottom / --toast-left follow the view (set below). */
 
-body {
+body :is(#toast-stack, .task-pill) {
     --toast-left: var(--gutter);
     /* Grid: above the selection bar's row */
     --toast-bottom: calc(var(--gutter) + var(--ctl-lg) + var(--sp-3));
 }
 
 /* Single view: just above the film strip, beside the centered controls */
-body[data-view="single"] {
+body[data-view="single"] :is(#toast-stack, .task-pill) {
     --toast-bottom: calc(var(--strip-height, 80px) + 28px + var(--gutter));
 }
 
 /* Grid with the folder list open: beside the list */
-body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) {
+body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-stack, .task-pill) {
     --toast-left: var(--rail-room);
 }
 
 /* Single view on a narrow window: above the prev / rotate / next pill
    rather than into it (fit.js) */
-body[data-view="single"]:has(#main-interface[data-fit~="toast-up"]:not(.hidden)) {
+body[data-view="single"]:has(#main-interface[data-fit~="toast-up"]:not(.hidden)) :is(#toast-stack, .task-pill) {
     --toast-bottom: calc(var(--strip-height, 80px) + 28px + var(--gutter) + var(--ctl-lg) + var(--sp-2));
 }
 
-/* Grid with the edits bar up above the slider (fit.js): above that too */
-body[data-view="grid"]:has(#main-interface.edits-on[data-fit~="edits-stacked"]:not(.hidden)) {
-    --toast-bottom: calc(var(--gutter) + 2 * var(--ctl-lg) + var(--sp-2) + var(--sp-3));
-}
-
-body:has(#drop-zone:not(.hidden)) {
+body:has(#drop-zone:not(.hidden)) :is(#toast-stack, .task-pill) {
     --toast-bottom: var(--sp-6);
 }
 
@@ -2873,7 +2861,9 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     width: min(440px, 100%);
 }
 
-.fpr-body input {
+/* Its text box fills the row; not the switch under it (New project's
+   "Save edits when done"), which this once stretched across the window */
+.fpr-body input:where(:not([type="checkbox"], [type="radio"])) {
     width: 100%;
     height: var(--ctl-lg);
 }
@@ -3249,8 +3239,11 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     gap: var(--sp-5);
 }
 
-#context-menu .ctx-key {
+#context-menu .ctx-key,
+.ctx-fly .ctx-key {
     margin-left: auto;
+    padding-left: var(--sp-6);
+    font-variant-numeric: tabular-nums;
     color: var(--text-3);
     font-size: var(--fs-small);
 }
@@ -3908,9 +3901,9 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     flex-direction: column;
 }
 
-/* Copies: what they're for as a row of glass pills, what it sets as chips
-   under it (Custom: the fields), a sentence, pills that open menus, and
-   the folder's name */
+/* Copies: your own presets as a row of pills (none: only Save as
+   preset…), sections that open and close, each saying what it's set to,
+   and an optional preview beside them */
 .ex-presets {
     display: flex;
     flex-wrap: wrap;
@@ -4036,6 +4029,191 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 @media (max-width: 520px) {
     .ex-custom {
         grid-template-columns: 1fr;
+    }
+}
+
+.ex-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-2);
+}
+
+.ex-top .ex-prev-btn {
+    margin-left: auto;
+}
+
+.ex-cols {
+    display: flex;
+    gap: var(--sp-4);
+    align-items: flex-start;
+}
+
+.ex-secs {
+    flex: 1 1 0;
+    min-width: 0;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.ex-sec {
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.ex-sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-2);
+    width: 100%;
+    padding: 9px 2px;
+    border: 0;
+    border-radius: var(--r-xs);
+    background: none;
+    color: var(--text-1);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.ex-sec-head:hover em {
+    color: var(--text-1);
+}
+
+.ex-sec-head:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+}
+
+.ex-sec-head .ex-chev {
+    flex: none;
+    align-self: center;
+    color: var(--text-3);
+    transition: rotate var(--dur-fast) var(--ease-out);
+}
+
+.ex-sec.open .ex-chev {
+    rotate: 90deg;
+}
+
+.ex-sec-head b {
+    flex: 0 0 104px;
+    font-weight: var(--fw-semibold);
+}
+
+.ex-sec-head em {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-2);
+    font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ex-sec-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: 2px 2px var(--sp-3) 26px;
+}
+
+.ex-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+}
+
+.ex-row > span {
+    flex: 0 0 104px;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.ex-row > .field {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.ex-tokens {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.ex-eg {
+    margin: 0;
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+.ex-eg code {
+    color: var(--text-1);
+    font-size: inherit;
+}
+
+.ex-quiet {
+    color: var(--text-2);
+}
+
+.ex-prev {
+    flex: 0 0 220px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.ex-prev-pic {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 4 / 3;
+    border-radius: var(--r-sm);
+    background: var(--bg-sunken);
+    overflow: hidden;
+}
+
+.ex-prev-pic img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.ex-prev-pic img:not([src]) {
+    display: none;
+}
+
+.ex-prev-name {
+    overflow: hidden;
+    font-size: var(--fs-small);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ex-prev small {
+    color: var(--text-2);
+    font-size: var(--fs-caption);
+}
+
+/* (the window is wider with the preview in it) */
+#export-panel.ex-wide .export-card {
+    width: min(820px, 100%);
+}
+
+#ex-note .ex-sum {
+    color: var(--text-1);
+}
+
+@media (max-width: 640px) {
+    .ex-cols {
+        flex-direction: column;
+    }
+
+    .ex-prev {
+        flex: none;
+        width: 100%;
+    }
+
+    .ex-sec-head b,
+    .ex-row > span {
+        flex-basis: 84px;
     }
 }
 
@@ -5125,6 +5303,14 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
 .adj-sharp {
     position: absolute;
     pointer-events: none;
+}
+
+/* Past 100%: the photo's pixels as sharp squares, as in Photos' viewer
+   (adjust.js layout: adj-pixels; adj-whole when the picture is the whole
+   photo's own pixels) */
+.adjust-editor.adj-pixels .adj-sharp,
+.adjust-editor.adj-pixels.adj-whole #adj-canvas {
+    image-rendering: pixelated;
 }
 
 /* Zoomed in, a drag moves about; Space held, whatever tool is out */
@@ -7294,6 +7480,79 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
     color: var(--accent);
 }
 
+/* Three tiles (Open a folder, New project, Convert), a little wider, and
+   the rest as a quiet row of words under them */
+.home-tiles {
+    padding-bottom: var(--sp-3);
+}
+
+.home-tiles .home-tile {
+    width: 176px;
+}
+
+.home-more {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--sp-1);
+    padding: 0 var(--sp-4) var(--sp-5);
+}
+
+.home-more .home-tile {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--sp-2);
+    width: auto;
+    height: var(--ctl-md);
+    padding: 0 var(--sp-3);
+    border-color: transparent;
+    border-radius: var(--r-md);
+    background: none;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    color: var(--text-2);
+    font-weight: var(--fw-medium);
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.home-more .home-tile:hover {
+    transform: none;
+    background: var(--bg-raised);
+    box-shadow: none;
+    color: var(--text-1);
+}
+
+.home-more .home-tile:focus-visible {
+    box-shadow: var(--focus-ring);
+}
+
+.home-more .home-tile .i {
+    width: 16px;
+    height: 16px;
+}
+
+/* (what a tile's second line says is in its tooltip here; a card that's
+   in keeps its name, in the accent) */
+.home-more .home-tile-sub {
+    display: none;
+}
+
+.home-more .home-tile.card {
+    color: var(--accent);
+}
+
+.home-more .home-tile.card .home-tile-sub {
+    display: inline;
+    margin: 0 0 0 var(--sp-1);
+}
+
+.home-more .home-tile.card .home-tile-text {
+    flex-direction: row;
+    align-items: baseline;
+}
+
 /* All projects: a sheet over the table */
 .home-places {
     position: absolute;
@@ -7341,12 +7600,12 @@ html.backdrop .drop-zone:not(.hidden) ~ .interface {
     .recent-pile { width: 150px; }
     .recent-pile { height: 118px; }
     .home-tiles { gap: var(--sp-2); }
-    .home-tile { width: 112px; height: 84px; }
-    .home-tile-sub { display: none; }
+    .home-tiles .home-tile { width: 132px; height: 84px; }
+    .home-tiles .home-tile-sub { display: none; }
 }
 
 @media (max-width: 600px) {
-    .home-tile { width: calc(50% - var(--sp-1)); }
+    .home-tiles .home-tile { width: calc(33.3% - var(--sp-2)); min-width: 96px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -7626,7 +7885,7 @@ body.dragging-photos .folder-tile:hover {
         left: var(--gutter);
     }
     /* The folder list overlays the grid here: toasts stay at the edge */
-    body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) {
+    body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-stack, .task-pill) {
         --toast-left: var(--gutter);
     }
     .folder-rail {
@@ -9458,13 +9717,6 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
 
 /* One set of corners: the sidebar's, and inside it (8px in) each part's
    is the sidebar's less that. The mode switch is a pill, as the top bar */
-/* The sidebar's corner is round about the mode switch in it, a pill
-   (the switch's half height + the 8px in + the border), so the two curves
-   follow each other */
-:root:not([data-skin]) .folder-rail {
-    border-radius: calc(var(--ctl-md) / 2 + var(--sp-1) + var(--sp-2) + 1px);
-}
-
 /* The same inside the right-click menu (4px in) and a message (8px in,
    its Undo a pill): each corner is its part's less the room between */
 :root:not([data-skin]) #context-menu button {
@@ -9591,47 +9843,719 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    readable on their own over a bright photo: a halo behind them does
    (--glass-halo, tokens.css; none on Opaque). Buttons and fields too,
    which the browser gives no shadow of their own */
-:root:not([data-skin]) :is(.toolbar, .file-info, .folder-rail, #context-menu, .task-pill, .toast, .picked-bar),
-:root:not([data-skin]) :is(.toolbar, .file-info, .folder-rail, #context-menu, .task-pill, .toast, .picked-bar) :is(button, input, select) {
+:root:not([data-skin]) :is(.toolbar, .file-info, #context-menu, .sb-picker, .task-pill, .toast, .picked-bar),
+:root:not([data-skin]) :is(.toolbar, .file-info, #context-menu, .sb-picker, .task-pill, .toast, .picked-bar) :is(button, input, select) {
     text-shadow: var(--glass-halo);
 }
 
 /* Liquid: the glass bends what's under its edges. liquid.js draws the bend
    for each part's size and shape (--lg-bend: an SVG filter); until it has,
    or where the browser can't draw it, the glass is the same, unbent */
-:root.liquid-bends :is(.toolbar, .file-info, .folder-rail, #context-menu, .popover, .task-pill, .toast, .picked-bar) {
+:root.liquid-bends :is(.toolbar, .file-info, #context-menu, .sb-picker, .popover, .task-pill, .toast, .picked-bar) {
     backdrop-filter: var(--lg-bend, ) var(--glass-filter);
     -webkit-backdrop-filter: var(--lg-bend, ) var(--glass-filter);
 }
 
-/* Lens: the sidebar is no panel, its folders on the window with a faint
-   glow from the left and a hairline down its edge; the chosen row is a
-   bubble of the glass, round like the pills */
-:root:not([data-skin])[data-glass="lens"] .folder-rail {
-    background: linear-gradient(90deg, rgb(255 255 255 / 0.05), rgb(255 255 255 / 0));
-    border-color: transparent;
-    box-shadow: inset -1px 0 0 rgb(255 255 255 / 0.08);
+/* ==========================================================================
+   The docked sidebar (jEditor's own look; each theme docks its own in
+   themes/docked.css). Against the window's left edge and the full height
+   of it, as Finder's and Preview's: a quiet tint (the Mac's own window
+   material through it, Mica on Windows), a hairline down its edge, small
+   grey headings, compact rows and one soft highlight. Its edge drags to
+   resize it (script.js: initSidebarResize) and Ctrl+B folds it away. In
+   the single view too, the photo beside it (folders.js: render).
+   ========================================================================== */
+
+:root:not([data-skin]) {
+    --rail-w: 232px;
+    /* What's beside it starts this far in: the sidebar, then the gutter */
+    --rail-room: calc(var(--rail-now) + var(--gutter));
+}
+
+:root:not([data-skin])[data-density="comfortable"] {
+    --rail-w: 256px;
+}
+
+:root:not([data-skin]) .folder-rail {
+    top: 0;
+    left: 0;
+    bottom: 0;
+    padding: var(--sp-3) var(--sp-2) var(--sp-2);
+    border: 0;
+    border-right: 1px solid var(--sidebar-line);
+    border-radius: 0;
+    background: var(--sidebar-bg);
+    box-shadow: none;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
 }
 
-:root:not([data-skin])[data-glass="lens"][data-theme="light"] .folder-rail {
-    background: linear-gradient(90deg, rgb(255 255 255 / 0.5), rgb(255 255 255 / 0));
-    box-shadow: inset -1px 0 0 rgb(0 0 0 / 0.08);
+:root:not([data-skin]) .folder-rail > .side-grip {
+    top: 0;
+    bottom: 0;
 }
 
-:root:not([data-skin])[data-glass="lens"] .fr-row {
+/* The pills start beside it, the file pill centred over what's beside it */
+:root:not([data-skin]) .interface.rail-open .folder-bar {
+    left: calc(var(--rail-room) / var(--ui-scale, 1));
+}
+
+:root:not([data-skin]) .interface.rail-open header {
+    left: var(--rail-now);
+    width: auto;
+    right: 0;
+}
+
+/* The single view: the photo and the film strip beside it. Only where the
+   window's wide enough (folders.js: render): on a phone it would cover
+   the photo */
+:root:not([data-skin]) body[data-view="single"] .interface.rail-open {
+    padding-left: var(--rail-now);
+}
+
+body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-stack, .task-pill) {
+    --toast-left: var(--rail-room);
+}
+
+/* ---- The Mac: the traffic lights in the sidebar's top, as Finder's ----
+   They stay in line with the pills (bridge.js: reportLights), so what's in
+   the sidebar starts below that row, which moves the window as the rest of
+   the top row does. The window's own material shows through it (main.js:
+   vibrancy), tinted so its words read as anywhere else; never under the
+   photos or the grid. */
+:root[data-platform="mac"]:not([data-skin]) .folder-rail {
+    padding-top: calc(var(--top-row) + var(--sp-2));
+}
+
+:root[data-platform="mac"]:not([data-skin]) .folder-rail::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: var(--top-row);
+    -webkit-app-region: drag;
+}
+
+:root[data-platform="mac"]:not([data-skin]) {
+    --sidebar-bg: color-mix(in srgb, var(--sidebar-solid) 74%, transparent);
+}
+
+:root[data-platform="mac"]:not([data-skin]) .interface.rail-open {
+    background: linear-gradient(90deg, transparent var(--rail-now), var(--bg-canvas) var(--rail-now));
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+    :root[data-platform="mac"]:not([data-skin]) {
+        --sidebar-bg: var(--sidebar-solid);
+    }
+}
+
+/* ---- What's in it ---- */
+
+/* Photos · Adjust · Paint: quiet, no tray behind it; the mode you're in
+   a soft grey pill */
+:root:not([data-skin]) .folder-rail .mode-seg {
+    gap: 2px;
+    padding: 0;
+    margin-bottom: var(--sp-3);
+    background: none;
+}
+
+:root:not([data-skin]) .folder-rail .mode-seg > button {
+    height: calc(var(--ctl-md) - 6px);
+    color: var(--text-2);
+}
+
+:root:not([data-skin]) .folder-rail .mode-seg > button .i {
+    display: none;
+}
+
+:root:not([data-skin]) .folder-rail .mode-seg > button.on,
+:root:not([data-skin]) .folder-rail .mode-seg .seg-glide {
+    background: var(--sidebar-sel);
+    box-shadow: none;
+}
+
+:root:not([data-skin]) .folder-rail .mode-seg > button.on {
+    color: var(--text-1);
+}
+
+/* (the pill glides from one to the next: motion.js) */
+:root:not([data-skin]) .folder-rail .mode-seg.glides > button.on {
+    background: transparent;
+}
+
+/* The top of the sidebar: one row that stays put (the owner's pick, A).
+   Photos · Adjust · Paint as icons at the left; the sidebar button and
+   Find anything at the right, plain. Closed, the same row floats where it
+   was, as a glass pill, and the folder pill moves over for it (modes.js:
+   renderRow, --mode-row-w). A theme keeps only its switch (below) */
+.mode-row {
+    display: contents;
+}
+
+.mode-row-gap,
+.mode-row-btn {
+    display: none;
+}
+
+:root:not([data-skin]) .mode-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: none;
+    height: var(--ctl-lg);
+    padding: 0 var(--sp-1);
+    margin: var(--sp-2) 0 var(--sp-2);
+}
+
+:root:not([data-skin]) .mode-row.hidden {
+    display: none;
+}
+
+:root:not([data-skin]) .mode-row .mode-row-gap {
+    display: block;
+    flex: 1;
+    min-width: var(--sp-2);
+}
+
+:root:not([data-skin]) .mode-row .mode-row-btn {
+    display: inline-flex;
+    color: var(--text-2);
+}
+
+:root:not([data-skin]) .mode-row .mode-row-btn.hidden {
+    display: none;
+}
+
+/* The sidebar button is never lit: it isn't a mode */
+:root:not([data-skin]) .mode-row .mode-row-btn:not(:hover, :active) {
+    background: transparent;
+}
+
+:root:not([data-skin]) .mode-row .mode-row-btn:hover {
+    color: var(--text-1);
+}
+
+:root:not([data-skin]) .mode-row .mode-seg {
+    /* Its own width, not the sidebar's (no container query here) */
+    container-type: normal;
+    width: calc(3 * (var(--ctl-lg) - 8px) + 4px);
+    flex: none;
+    display: grid;
+    grid-template-columns: repeat(3, calc(var(--ctl-lg) - 8px));
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    background: none;
+}
+
+:root:not([data-skin]) .mode-row .mode-seg > button {
+    width: calc(var(--ctl-lg) - 8px);
+    height: calc(var(--ctl-lg) - 8px);
+    padding: 0;
     border-radius: var(--r-pill);
+    color: var(--text-2);
 }
 
-:root:not([data-skin])[data-glass="lens"] .fr-row.active {
-    background: linear-gradient(180deg, rgb(255 255 255 / 0.18), rgb(255 255 255 / 0.07));
-    box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.22), inset 0 -1px 1px rgb(0 0 0 / 0.15);
+:root:not([data-skin]) .mode-row .mode-seg > button .i {
+    display: block;
 }
 
-:root:not([data-skin])[data-glass="lens"][data-theme="light"] .fr-row.active {
-    background: linear-gradient(180deg, #fff, rgb(255 255 255 / 0.6));
-    box-shadow: inset 0 -1px 1px rgb(0 0 0 / 0.08), 0 1px 2px rgb(0 0 0 / 0.08);
+:root:not([data-skin]) .mode-row .mode-seg > button span {
+    display: none;
+}
+
+/* The mode you're in: its icon in the accent, on the soft chosen pill */
+:root:not([data-skin]) .mode-row .mode-seg > button.on,
+:root:not([data-skin]) .mode-row .mode-seg > button.on:hover {
+    color: var(--accent-text);
+}
+
+/* Closed: the same row, floating in the same place */
+:root:not([data-skin]) .mode-row.float {
+    position: fixed;
+    top: calc(var(--gutter) / var(--ui-scale, 1));
+    left: calc(var(--sp-2) / var(--ui-scale, 1));
+    z-index: calc(var(--z-floating) + 1);
+    margin: 0;
+}
+
+:root:not([data-skin]) .mode-row.float .mode-row-gap {
+    flex: 0 0 1px;
+    min-width: 1px;
+    height: 20px;
+    margin: 0 var(--sp-1);
+    background: var(--border);
+}
+
+:root:not([data-skin]) .mode-row.float .mode-row-btn {
+    color: var(--text-1);
+}
+
+:root:not([data-skin]) .mode-row.float .mode-seg > button.on,
+:root:not([data-skin]) .mode-row.float .mode-seg .seg-glide {
+    background: var(--tb-pressed);
+}
+
+:root[data-platform="mac"]:not([data-skin]) .mode-row.float {
+    top: calc((var(--gutter) + var(--mac-drag)) / var(--ui-scale, 1));
+    left: calc((var(--gutter) + var(--lights-w)) / var(--ui-scale, 1));
+}
+
+:root.native-toolbar .mode-row.float {
+    display: none;
+}
+
+/* Over Adjust and Paint, the sidebar hidden: the row in their head's
+   corner, where their chip was (unzoomed, as their head is) */
+:root:not([data-skin]) .mode-row.float.over-mode {
+    top: 8px;
+    left: var(--sp-2);
+    z-index: calc(var(--z-mode) + 1);
+    zoom: 1;
+}
+
+:root[data-platform="mac"]:not([data-skin]) .mode-row.float.over-mode {
+    top: 8px;
+    left: calc(var(--gutter) + var(--lights-w));
+}
+
+/* The folder pill starts after the row, while it floats */
+:root:not([data-skin]) .interface:not(.rail-open) .folder-bar {
+    left: calc((var(--sp-2) + var(--mode-row-w, 0px) + var(--sp-2)) / var(--ui-scale, 1));
+}
+
+:root[data-platform="mac"]:not([data-skin]) .interface:not(.rail-open) .folder-bar {
+    left: calc((var(--gutter) + var(--lights-w) + var(--mode-row-w, 0px) + var(--sp-2)) / var(--ui-scale, 1));
+}
+
+/* Its sidebar button and the mode chips were the row's before it */
+:root:not([data-skin]) #fb-rail,
+:root:not([data-skin]) #mode-chip-bar,
+:root:not([data-skin]) #mode-float {
+    display: none;
+}
+
+/* Rows: compact, small icons in grey, one soft highlight */
+:root:not([data-skin]) .folder-rail .fr-row {
+    min-height: calc(var(--ctl-md) - 4px);
+    border: 0;
+    border-radius: var(--r-md);
+}
+
+:root:not([data-skin]) .folder-rail .fr-row:hover {
+    background: var(--sidebar-hover);
+}
+
+:root:not([data-skin]) .folder-rail .fr-row.active {
+    background: var(--sidebar-sel);
+    box-shadow: none;
+}
+
+/* The open project is the heading: where it's also a row (pinned, say),
+   it isn't highlighted again. One highlight: what the grid shows */
+:root:not([data-skin]) .folder-rail .sb-row.active:not(:hover) {
+    background: none;
+}
+
+:root:not([data-skin]) .folder-rail :is(.fr-row > svg, .fr-icon, .sb-icon, .fr-row.active .fr-icon, .sb-row.active .sb-icon, .sb-usb .sb-icon) {
+    color: var(--text-2);
+}
+
+:root:not([data-skin]) .folder-rail .fr-row :is(svg, .sb-icon svg) {
+    width: 15px;
+    height: 15px;
+}
+
+:root:not([data-skin]) .folder-rail .fr-caret svg {
+    width: 10px;
+    height: 10px;
+}
+
+:root:not([data-skin]) .folder-rail .fr-caret {
+    width: 12px;
+}
+
+:root:not([data-skin]) .folder-rail .fr-count {
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+}
+
+:root:not([data-skin]) .folder-rail .fr-all {
+    margin-bottom: 0;
+}
+
+/* The project is the heading above its folders: its own top folder is a
+   row only while it has photos of its own (the rows under it move up) */
+:root:not([data-skin]) .folder-rail .fr-root.empty {
+    display: none;
+}
+
+:root:not([data-skin]) .folder-rail #folder-tree:has(.fr-root.empty) .fr-row:not(.fr-all) {
+    padding-left: calc(var(--sp-1) + (var(--depth, 1) - 1) * 14px);
+}
+
+:root:not([data-skin]) .folder-rail .fr-root {
+    font-weight: inherit;
+}
+
+/* Headings: small and grey, the section's own words; the fold arrow and
+   the heading's buttons come when the pointer's on it */
+:root:not([data-skin]) .folder-rail .sb-sec {
+    margin: var(--sp-4) 0 2px;
+    padding-left: var(--sp-1);
+}
+
+:root:not([data-skin]) .folder-rail .sb-sec-btn {
+    font-size: var(--fs-caption);
+    padding-left: var(--sp-1);
+}
+
+:root:not([data-skin]) .folder-rail .sb-sec-caret {
+    order: 1;
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+
+:root:not([data-skin]) .folder-rail .sb-sec:hover .sb-sec-caret,
+:root:not([data-skin]) .folder-rail .sb-sec-btn:focus-visible .sb-sec-caret,
+:root:not([data-skin]) .folder-rail .sb-sec.closed .sb-sec-caret {
+    opacity: 1;
+}
+
+:root:not([data-skin]) .folder-rail .sb-sec-here,
+:root:not([data-skin]) .folder-rail .fr-foot {
+    display: none;
+}
+
+/* "Show all…" under Recents: quiet, a row like the others */
+:root:not([data-skin]) .folder-rail .sb-all {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: calc(var(--ctl-md) - 4px);
+    padding: 0 var(--sp-2) 0 calc(var(--sp-1) + 12px + 6px + 15px + 6px);
+    border: 0;
+    border-radius: var(--r-md);
+    background: none;
+    color: var(--text-3);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+:root:not([data-skin]) .folder-rail .sb-all:hover {
+    background: var(--sidebar-hover);
+    color: var(--text-1);
+}
+
+/* The project: its name, the heading over its folders. A click opens the
+   project picker (places.js: Picker); the rest of what its card had is in
+   its … and its right-click menu (cardItems) */
+:root:not([data-skin]) .folder-rail .sb-card {
+    margin: 0 0 var(--sp-1);
+    padding: 0;
+}
+
+:root:not([data-skin]) .folder-rail :is(.sb-card-btns, .sb-card-export, .sb-card-defer, .sb-card-path, .sb-card-meta, .sb-card-edit, .sb-card-name > svg) {
+    display: none;
+}
+
+:root:not([data-skin]) .folder-rail .sb-card-name {
+    width: 100%;
+    height: calc(var(--ctl-md) - 2px);
+    margin: 0;
+    padding: 0 calc(var(--ctl-sm) + var(--sp-1)) 0 var(--sp-2);
+    border-radius: var(--r-md);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    font-weight: var(--fw-semibold);
+    gap: 4px;
+}
+
+:root:not([data-skin]) .folder-rail .sb-card-name span {
+    flex: 0 1 auto;
+}
+
+:root:not([data-skin]) .folder-rail button.sb-card-name:hover,
+:root:not([data-skin]) .folder-rail button.sb-card-name[aria-expanded="true"] {
+    background: var(--sidebar-hover);
+}
+
+.sb-card-chev {
+    display: none;
+}
+
+:root:not([data-skin]) .folder-rail .sb-card-chev {
+    display: inline-flex;
+    flex: none;
+    color: var(--text-3);
+}
+
+:root:not([data-skin]) .folder-rail .sb-card-more {
+    top: 2px;
+    right: 2px;
+    width: calc(var(--ctl-md) - 6px);
+    height: calc(var(--ctl-md) - 6px);
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+:root:not([data-skin]) .folder-rail .sb-card:hover .sb-card-more,
+:root:not([data-skin]) .folder-rail .sb-card-more:focus-visible,
+:root:not([data-skin]) .folder-rail .sb-card-more[aria-expanded="true"] {
+    opacity: 1;
+}
+
+/* Drives: the room left on every one, a thin bar of how full it is and
+   "182 GB free" under its name; nearly full, in red */
+:root:not([data-skin]) .folder-rail .sb-free {
+    gap: var(--sp-2);
+    margin-top: 2px;
+}
+
+:root:not([data-skin]) .folder-rail .sb-free-bar {
+    flex: 1;
+    width: auto;
+    height: 3px;
+    background: var(--sidebar-sel);
+}
+
+:root:not([data-skin]) .folder-rail .sb-free-bar > span {
+    background: var(--text-3);
+}
+
+:root:not([data-skin]) .folder-rail .sb-free.low .sb-free-bar > span {
+    background: var(--danger-text);
+}
+
+:root:not([data-skin]) .folder-rail .sb-text {
+    padding: 4px 0;
+}
+
+/* A theme shows the room left on a USB drive only, as it was drawn for
+   (the themes are as they were; jEditor's own look shows it on every drive) */
+:root[data-skin] .sb-row:not(.sb-usb) .sb-free {
+    display: none;
+}
+
+/* Eject comes with the pointer, as the other row buttons do */
+:root:not([data-skin]) .folder-rail .sb-row:not(:hover, :focus-within) .sb-eject {
+    opacity: 0;
+}
+
+/* Renaming in place (places.js: renameInPlace): a field over the name,
+   in the row's own box */
+.sb-row,
+.sb-card,
+.sb-picker-list {
+    position: relative;
+}
+
+.sb-rename {
+    position: absolute;
+    z-index: 2;
+    transform: translateY(-50%);
+    min-width: 0;
+    max-width: calc(100% - 8px);
+    height: calc(var(--ctl-md) - 8px);
+    margin: 0 0 0 -4px;
+    padding: 0 4px;
+    border: 0;
+    border-radius: var(--r-sm);
+    outline: 2px solid var(--accent);
+    background: var(--bg-surface);
+    color: var(--text-1);
+    font: inherit;
+}
+
+/* ---- The project picker (places.js: Picker): a click on the project's
+   name. Find a project, your recent ones first, then All projects…, New
+   project… and Open a folder…. Floats as the right-click menu does, below
+   the window's top (--top-safe) ---- */
+.sb-picker {
+    position: fixed;
+    z-index: var(--z-menu);
+    width: 280px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - var(--top-safe) - 16px);
+    display: flex;
+    flex-direction: column;
+    padding: var(--sp-1);
+    border-radius: var(--r-lg);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-3), var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    color: var(--text-1);
+    font-size: var(--fs-body);
+    animation: popover-in var(--dur-base) var(--ease-out);
+}
+
+.sb-picker[hidden] {
+    display: none;
+}
+
+.sb-picker-find {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    height: var(--ctl-md);
+    margin: 2px 2px var(--sp-1);
+    padding: 0 var(--sp-2);
+    border-radius: var(--r-md);
+    background: var(--seg-bg);
+    color: var(--text-3);
+}
+
+.sb-picker-find .i {
+    width: 15px;
+    height: 15px;
+    flex: none;
+}
+
+.sb-picker-find input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: none;
+    color: var(--text-1);
+    font: inherit;
+}
+
+.sb-picker-list {
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.sb-picker-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.3em;
+    padding: var(--sp-2) var(--sp-2) var(--sp-1);
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+}
+
+.sb-picker-head button {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text-3);
+    font: inherit;
+    font-weight: var(--fw-regular);
+    cursor: pointer;
+}
+
+.sb-picker-head button:hover {
+    color: var(--text-1);
+    text-decoration: underline;
+}
+
+.sb-pick {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    width: 100%;
+    min-height: var(--ctl-md);
+    padding: 0 var(--sp-2);
+    border: 0;
+    border-radius: calc(var(--r-lg) - var(--sp-1));
+    background: none;
+    color: var(--text-1);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.sb-pick .sb-pick-tick {
+    flex: none;
+    width: 12px;
+    color: var(--accent-text);
+    font-size: var(--fs-small);
+}
+
+.sb-pick .i {
+    flex: none;
+    width: 15px;
+    height: 15px;
+    color: var(--text-2);
+}
+
+.sb-pick-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-pick-name b {
+    font-weight: var(--fw-semibold);
+}
+
+.sb-pick-count {
+    flex: none;
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+    font-variant-numeric: tabular-nums;
+}
+
+.sb-pick.on,
+.sb-pick:hover {
+    background: var(--accent);
+    color: var(--on-accent);
+}
+
+.sb-pick.on :is(.i, .sb-pick-count, .sb-pick-tick),
+.sb-pick:hover :is(.i, .sb-pick-count, .sb-pick-tick) {
+    color: inherit;
+}
+
+.sb-picker-sep {
+    flex: none;
+    height: 1px;
+    margin: var(--sp-1) var(--sp-2);
+    background: var(--border);
+}
+
+.sb-picker-none {
+    padding: var(--sp-2) var(--sp-2) var(--sp-3);
+    color: var(--text-2);
+    font-size: var(--fs-small);
+}
+
+/* Phones: the sidebar over the grid, with a shadow, as before */
+@media (max-width: 767px) {
+    :root:not([data-skin]) .folder-rail {
+        box-shadow: var(--shadow-4);
+    }
+    /* ...and from under the top row, whose pills keep the window's whole
+       width (beside the sidebar there's no room for them: fit.js) and the
+       button that closes it */
+    :root:not([data-skin]):not([data-platform="mac"]) .folder-rail {
+        top: calc(var(--top-row) + var(--sp-3));
+        border-top: 1px solid var(--sidebar-line);
+        border-top-right-radius: var(--r-lg);
+    }
+    :root:not([data-skin]) .interface.rail-open .folder-bar {
+        left: calc(var(--gutter) / var(--ui-scale, 1));
+    }
+    :root:not([data-skin]) .interface.rail-open header {
+        left: 0;
+        width: 100%;
+        right: auto;
+    }
 }
 
 /* ---- Motion (motion.js): short, after the fact, never in the way ---- */
@@ -9693,30 +10617,9 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
     }
 }
 
-/* Scrolling the grid: photos ease in as they come up from the bottom and
-   ease out as they go under the top, done by the browser as it scrolls
-   (nothing runs for it), and only at the edges: in the middle they're
-   still and whole. In a huge folder's grid, which builds its tiles as it
-   scrolls, not while it jumps (grid-jump, motion.js): it would cost a
-   frame there. Nor while a key is held (motion.js), when it lagged and
-   showed rows faded to the background mid-view. No fill: the tiles out of sight keep their real size,
-   where the grid measures them (gridY, revealInGrid) */
-@supports (animation-timeline: view()) {
-    @media (prefers-reduced-motion: no-preference) {
-        :root:not([data-skin]):not([data-motion="off"]) .grid-view:not(.grid-jump) .grid-item:not(.is-new) {
-            animation: tile-woosh linear;
-            animation-timeline: view();
-            animation-range: cover 0% cover 100%;
-        }
-    }
-}
-
-@keyframes tile-woosh {
-    0% { opacity: 0.1; scale: 0.8; }
-    20% { opacity: 1; scale: 1; }
-    84% { opacity: 1; scale: 1; }
-    100% { opacity: 0.2; scale: 0.88; }
-}
+/* (Scrolling the grid no longer fades and shrinks the photos at its top
+   and bottom edges: on the way back from a photo the grid showed whole
+   for a frame before the effect came in) */
 
 @keyframes turn-left {
     from { rotate: 90deg; }
@@ -10254,3 +11157,511 @@ body.touring .controls.idle button { pointer-events: auto; }
 
 /* A switch under a prompt (ui.js: check) */
 .uid-check { margin-top: 12px; padding: 0; cursor: pointer; }
+
+/* ==========================================================================
+   The 2.0 refinement: the shared layer (jEditor's own look; tokens.css has
+   its values). One of each control, in every mode: one section heading
+   (the sidebar's small grey one), one switch between a few, one slider,
+   one button family; dialogs without their rules and bulk; menus solid,
+   in 28 px rows. Nothing moves: the parts agree.
+   ========================================================================== */
+
+:root:not([data-skin]) .i {
+    stroke-width: 1.5;
+}
+
+/* ---- Section headings: small and grey, in sentence case ---- */
+:root:not([data-skin]) :is(.set-group, .sb-sec-title, .adj-sub, .palette-head, .paint-sec-head > span:first-child),
+:root:not([data-skin]) #context-menu .ctx-heading {
+    color: var(--text-3);
+    font-size: var(--fs-caption);
+    font-weight: var(--fw-semibold);
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+:root:not([data-skin]) .set-group {
+    margin-top: var(--sp-5);
+    padding-top: 0;
+    border-top: 0;
+}
+
+/* ---- A switch between a few: a soft track, the chosen part raised ---- */
+:root:not([data-skin]) :is(.seg, .adj-tabs) {
+    padding: var(--sp-0);
+    border-radius: var(--r-md);
+    background: var(--seg-bg);
+}
+
+:root:not([data-skin]) :is(.seg > button, .seg > label > span, .adj-tab) {
+    border-radius: calc(var(--r-md) - var(--sp-0));
+}
+
+/* ---- The slider: Adjust's, everywhere. Those with a look of their own
+   (Adjust's coloured tracks, Crop's straighten, a colour's) keep it:
+   :where() leaves these rules as light as the browser's ---- */
+:where(:root:not([data-skin])) input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: var(--icon-sm);
+    background: transparent;
+}
+
+:where(:root:not([data-skin])) input[type="range"]::-webkit-slider-runnable-track {
+    height: 3px;
+    border-radius: var(--r-pill);
+    background: var(--slider-track);
+}
+
+:where(:root:not([data-skin])) input[type="range"]::-moz-range-track {
+    height: 3px;
+    border-radius: var(--r-pill);
+    background: var(--slider-track);
+}
+
+:where(:root:not([data-skin])) input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    margin-top: -4.5px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--slider-knob);
+    box-shadow: var(--slider-knob-edge);
+}
+
+:where(:root:not([data-skin])) input[type="range"]::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--slider-knob);
+    box-shadow: var(--slider-knob-edge);
+}
+
+:where(:root:not([data-skin])) input[type="range"]:focus-visible {
+    outline: none;
+}
+
+:where(:root:not([data-skin])) input[type="range"]:focus-visible::-webkit-slider-thumb {
+    box-shadow: var(--slider-knob-edge), var(--focus-ring);
+}
+
+/* ---- Buttons: the plain one looks pressable; a filled one catches light ---- */
+:root:not([data-skin]) .btn.secondary,
+:root:not([data-skin]) .dialog-foot .btn:not(.primary, .danger, .ghost) {
+    border-color: var(--border-subtle);
+    background: var(--bg-raised);
+    color: var(--text-1);
+}
+
+:root:not([data-skin]) .btn.secondary:hover,
+:root:not([data-skin]) .dialog-foot .btn:not(.primary, .danger, .ghost):hover {
+    border-color: var(--border);
+}
+
+:root:not([data-skin]) :is(.btn.primary, .btn.danger) {
+    box-shadow: var(--btn-sheen);
+}
+
+/* ---- Dialogs: no rules under the title or over the buttons, which are
+   a desktop's size and at the right. Settings keeps its two rules: its
+   middle scrolls under them ---- */
+:root:not([data-skin]) .dialog {
+    border-color: var(--border-subtle);
+    border-radius: var(--r-xl);
+}
+
+:root:not([data-skin]) .dialog-head {
+    min-height: var(--sp-12);
+    padding: var(--sp-3) var(--sp-3) var(--sp-1) var(--sp-5);
+    border-bottom: 0;
+}
+
+:root:not([data-skin]) .dialog-body {
+    padding: var(--sp-2) var(--sp-5) var(--sp-4);
+}
+
+:root:not([data-skin]) .dialog-foot {
+    padding: var(--sp-1) var(--sp-4) var(--sp-4) var(--sp-5);
+    border-top: 0;
+}
+
+:root:not([data-skin]) .dialog-foot > :only-child {
+    margin-left: auto;
+}
+
+:root:not([data-skin]) .dialog-foot .btn {
+    min-width: 76px;
+    height: var(--ctl-md);
+    padding: 0 var(--sp-4);
+}
+
+:root:not([data-skin]) .dialog.settings-card .dialog-head {
+    padding-bottom: var(--sp-2);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+:root:not([data-skin]) .dialog.settings-card .dialog-foot {
+    padding-top: var(--sp-3);
+    padding-bottom: var(--sp-3);
+    border-top: 1px solid var(--border-subtle);
+}
+
+/* ---- Menus: solid, in rows ---- */
+:root:not([data-skin]) :is(#context-menu, .ctx-fly) {
+    min-width: 232px;
+    padding: 5px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-lg);
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-3);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+:root:not([data-skin]) :is(#context-menu, .ctx-fly) button {
+    min-height: var(--row);
+    padding: 0 10px;
+}
+
+:root:not([data-skin]) #context-menu button[aria-checked] {
+    padding-left: 30px;
+}
+
+:root:not([data-skin]) :is(#context-menu, .ctx-fly) .ctx-divider {
+    margin: 5px 10px;
+    background: var(--border-subtle);
+}
+
+/* A row with a menu of its own (Turn and flip): an arrow at its right,
+   and that menu beside it */
+#context-menu button.ctx-more::after {
+    content: "";
+    width: 6px;
+    height: 6px;
+    margin-left: auto;
+    border: solid var(--text-3);
+    border-width: 1.5px 1.5px 0 0;
+    transform: rotate(45deg);
+}
+
+:root:not([data-skin]) .ctx-fly {
+    min-width: 200px;
+}
+
+/* On a touch screen a row stays a finger's height */
+@media (pointer: coarse) {
+    :root:not([data-skin]) {
+        --row: var(--ctl-md);
+        --ctl-lg: 44px;
+    }
+    :root:not([data-skin]) .dialog-foot .btn {
+        height: var(--ctl-lg);
+    }
+}
+
+/* ==========================================================================
+   The 2.0 refinement: motion (jEditor's own look). Three speeds, each for
+   one job, so parts stop choosing their own:
+     120 ms  pointing and pressing: a colour fade, and what's pressed gives
+             a little
+     180 ms  things that appear (menus, dialogs, messages, badges): a fade
+             while growing from 98%
+     280 ms  changes of place
+   Two kinds of motion, kept apart. What you press or select answers with
+   a small, quick bounce (--ease-press): a button or a pill pressed, a
+   photo selected (motion.js) and its tick. What only appears stays calm:
+   menus, dialogs, messages and badges fade in and never overshoot (the
+   old springy curve, --ease-spring, is retired for them in tokens.css).
+   Reduced motion, or Animations off: a plain fade or nothing.
+   ========================================================================== */
+
+@keyframes appear {
+    from { opacity: 0; transform: scale(0.98); }
+}
+
+@keyframes count-flash {
+    40% { color: var(--text-1); }
+}
+
+/* Pressed: it gives a little, and comes back just past its place */
+:root:not([data-skin]) .btn {
+    transition:
+        background-color var(--dur-fast) var(--ease-out),
+        border-color var(--dur-fast) var(--ease-out),
+        color var(--dur-fast) var(--ease-out),
+        filter var(--dur-fast) var(--ease-out),
+        transform var(--dur-base) var(--ease-press);
+}
+
+:root:not([data-skin]) .btn:active:not(:disabled),
+:root:not([data-skin]) .toast-action:active {
+    transform: scale(0.96);
+    filter: brightness(0.94);
+    transition-duration: var(--dur-fast);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    :root:not([data-skin]):not([data-motion="off"]) :is(.tb-btn, .sel-count, .mode-seg > button, .seg > button) {
+        transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), scale var(--dur-base) var(--ease-press);
+    }
+}
+
+/* Selected: its tick pops in (the photo's own little bounce is motion.js's) */
+:root:not([data-skin]) .grid-item.selected::before {
+    animation: pop-in var(--dur-base) var(--ease-press);
+}
+
+:root:not([data-skin])[data-motion="off"] .grid-item.selected::before {
+    animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root:not([data-skin]) .btn:active:not(:disabled),
+    :root:not([data-skin]) .toast-action:active {
+        transform: none;
+    }
+
+    :root:not([data-skin]) .grid-item.selected::before {
+        animation: none;
+    }
+}
+
+:root:not([data-skin]) :is(.tile-flags, .tile-edit, .fb-filter-chip, .task-pill) {
+    animation: appear var(--dur-base) var(--ease-out);
+}
+
+:root:not([data-skin]) .toast.visible:not(.t-progress) .toast-icon svg {
+    animation: appear var(--dur-base) var(--ease-out) both;
+}
+
+:root:not([data-skin]) .toast.bump .toast-count {
+    animation: count-flash var(--dur-slow) var(--ease-out);
+}
+
+:root:not([data-skin]) .dialog {
+    animation-duration: var(--dur-base);
+}
+
+
+/* ==========================================================================
+   The 2.0 refinement: the grid and the viewer (jEditor's own look). Photos
+   lie straight on the canvas, with no plate behind them: a folder of mixed
+   shapes shows the photos' own shapes, not a wall of squares. The plate
+   comes back, faintly, under the pointer. What's chosen is shown one way:
+   a soft accent plate and a ring (the tick is flags.js's). The photo the
+   keys are on, when it isn't chosen, has a quiet ring of its own.
+   ========================================================================== */
+
+:root:not([data-skin]) {
+    --tile-bg: transparent;
+}
+
+:root:not([data-skin]) .grid-item:not(.folder-tile) img {
+    padding: 5px;
+    border-radius: calc(var(--r-photo) + 5px);
+    background: transparent;
+}
+
+:root:not([data-skin]) .grid-item:not(.folder-tile):hover {
+    background: var(--bg-hover);
+}
+
+:root:not([data-skin]) .grid-item.selected {
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+:root:not([data-skin]) .grid-item.active {
+    outline: none;
+}
+
+:root:not([data-skin]) .grid-item.active:not(.selected) {
+    box-shadow: inset 0 0 0 1.5px var(--text-3);
+}
+
+:root:not([data-skin]) :is(.thumb-item, .mode-thumb) {
+    border-radius: var(--r-photo);
+}
+
+/* ==========================================================================
+   The 2.0 refinement: Adjust and Paint (jEditor's own look). One frame for
+   both: a top bar, a panel at the right and the film strip, the panel and
+   the bars on the sidebar's tint (--chrome), so each reads as the same
+   window with another panel. A slider's number is plain until it's
+   pointed at or typed in. The chosen tool is a soft accent square, as a
+   chosen row is anywhere else.
+   ========================================================================== */
+
+:root:not([data-skin]) :is(.adj-panel, .paint-panel, .paint-options, .paint-tools) {
+    border-color: var(--chrome-line);
+    background: var(--chrome);
+}
+
+:root:not([data-skin]) .mode-head {
+    min-height: var(--sp-12);
+    padding-top: var(--sp-1);
+    padding-bottom: var(--sp-1);
+}
+
+:root:not([data-skin]) .paint-options {
+    min-height: 36px;
+    border-top-color: transparent;
+}
+
+:root:not([data-skin]) .adj-num:not(:hover, :focus) {
+    border-color: transparent;
+    background: transparent;
+    color: var(--text-2);
+}
+
+:root:not([data-skin]) .paint-tool {
+    width: var(--ctl-md);
+    height: var(--ctl-md);
+    border-radius: var(--r-md);
+}
+
+:root:not([data-skin]) .paint-tool[aria-pressed="true"] {
+    border-color: transparent;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+}
+
+:root:not([data-skin]) .paint-layer {
+    border-radius: var(--r-md);
+}
+
+:root:not([data-skin]) :is(.adj-look img, .adj-look canvas) {
+    border-radius: var(--r-photo);
+}
+
+/* Paint's Layers heading in a narrow window at the Comfortable size: its
+   six buttons gave nothing up, and the word was cut to "L…". The buttons
+   close up first now, and the word stays whole */
+:root:not([data-skin]) .paint-layers-sec .paint-sec-head > span:first-child {
+    flex: none;
+}
+
+:root:not([data-skin]) .paint-layer-acts {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+:root:not([data-skin]) .paint-layer-acts .btn {
+    flex: 0 1 auto;
+    min-width: 24px;
+    padding-inline: 0;
+}
+
+/* ---- The home page's stacks, in jEditor's own look: a deck of the photos
+   themselves. No paper border and no tilt: the front photo lies straight,
+   and the ones behind show as dimmed edges above it. Pointed at (or with
+   the keys on it), the deck opens upward a little; nothing reaches the
+   stack beside it. A theme keeps its prints. ---- */
+:root:not([data-skin]) .recent-pile .recent-print {
+    transform: translateY(-15px) scale(0.84);
+    transform-origin: 50% 0;
+    opacity: 0;
+    transition: transform var(--dur-base, 180ms) var(--ease-out), filter var(--dur-base, 180ms) var(--ease-out), box-shadow var(--dur-base, 180ms) var(--ease-out);
+}
+
+:root:not([data-skin]) .recent-pile .recent-print:not(.ghost) {
+    padding: 0;
+    overflow: hidden;
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-1) 10%, transparent), var(--shadow-2);
+}
+
+:root:not([data-skin]) .recent-pile .recent-print.ghost {
+    border-radius: var(--r-sm);
+}
+
+:root:not([data-skin]) .recent-pile .recent-print:nth-last-child(3) {
+    opacity: 1;
+    filter: brightness(0.45);
+}
+
+:root:not([data-skin]) .recent-pile .recent-print:nth-last-child(2) {
+    transform: translateY(-8px) scale(0.92);
+    opacity: 1;
+    filter: brightness(0.65);
+}
+
+:root:not([data-skin]) .recent-pile .recent-print:nth-last-child(1) {
+    transform: none;
+    opacity: 1;
+}
+
+/* A ghost stack is one dashed outline: the ones behind would show
+   through it */
+:root:not([data-skin]) .recent-pile .recent-print.ghost {
+    filter: none;
+}
+
+:root:not([data-skin]) .recent-pile .recent-print.ghost:not(:last-child) {
+    opacity: 0;
+}
+
+:root:not([data-skin]) :is(.recent-list li:hover, .recent-open:focus-visible) .recent-print:nth-last-child(3) {
+    transform: translateY(-25px) scale(0.84);
+    filter: brightness(0.62);
+}
+
+:root:not([data-skin]) :is(.recent-list li:hover, .recent-open:focus-visible) .recent-print:nth-last-child(2) {
+    transform: translateY(-13px) scale(0.92);
+    filter: brightness(0.82);
+}
+
+:root:not([data-skin]) :is(.recent-list li:hover, .recent-open:focus-visible) .recent-print:nth-last-child(1) {
+    transform: translateY(3px);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-1) 16%, transparent), var(--shadow-3);
+}
+
+:root:not([data-skin]) :is(.recent-list li:hover, .recent-open:focus-visible) .recent-print.ghost {
+    filter: none;
+}
+
+/* The wave: pointed at, the photos lift one after another, the front one
+   first, and settle back into the opened deck. Once each time the pointer
+   (or the keys) comes onto the stack; not with reduced motion or
+   Animations off */
+@keyframes stack-wave {
+    45% { translate: 0 -12px; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    :root:not([data-skin]):not([data-motion="off"]) :is(.recent-list li:hover, .recent-open:focus-visible) .recent-print:not(.ghost) {
+        animation: stack-wave 480ms var(--ease-in-out, ease-in-out) both;
+    }
+
+    :root:not([data-skin]):not([data-motion="off"]) :is(.recent-list li:hover, .recent-open:focus-visible) .recent-print:nth-last-child(2) {
+        animation-delay: 80ms;
+    }
+
+    :root:not([data-skin]):not([data-motion="off"]) :is(.recent-list li:hover, .recent-open:focus-visible) .recent-print:nth-last-child(3) {
+        animation-delay: 160ms;
+    }
+}
+
+/* The keys on a stack: a ring round the stack, not only its name */
+:root:not([data-skin]) .recent-open:focus-visible .recent-name {
+    box-shadow: none;
+}
+
+:root:not([data-skin]) .recent-open:focus-visible .recent-pile {
+    border-radius: var(--r-sm);
+    outline: 2px solid var(--accent);
+    outline-offset: 6px;
+}
+
+:root:not([data-skin]) .recent-name {
+    font-weight: var(--fw-semibold, 600);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root:not([data-skin]) .recent-pile .recent-print {
+        transition: none;
+    }
+}

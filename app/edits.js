@@ -1,5 +1,6 @@
-// Save edits when done: a project setting that holds crops and turns back
-// instead of writing each one into the photo straight away.
+// Keep edits in jEditor, export copies (once "Save edits when done"): a
+// project setting that holds crops and turns back instead of writing each
+// one into the photo straight away, Lightroom's way.
 //
 // Normally an edit is saved the moment it's made (that's the point). With
 // this on, a crop, a straighten, a turn or a batch Auto crop is kept as an
@@ -7,12 +8,16 @@
 // the turn, the tilt and the box, relative to the photo's size). The photo
 // on disk isn't touched, so the crop can be changed again and again, always
 // from the whole photo. The grid, film strip and viewer show each photo
-// as it will be saved, with a pencil on the edited ones, and a bar says
-// how many are waiting, with Save and Discard.
+// as it will be saved, with a pencil on the edited ones. Nothing nags
+// about how many are waiting: they're kept, not at risk. Export makes
+// edited copies and leaves the photos and their edits as they are, so a
+// crop can be changed and exported again.
 //
-// Save writes them all: over the photos (the originals are kept for Ctrl+Z,
-// as batch Auto crop does), or as copies in "jEditor Export" with the
-// photos left alone. Edits are kept with the project (edits.json, beside
+// Saving into the photos is still there, quietly: Save edits… on the
+// grid's right-click menu and Export's Save tab. Either opens the Export
+// window (export.js) on Save into the photos: over
+// the photos (the originals are kept for Ctrl+Z, as batch Auto crop does),
+// or, from its Copies tab, as copies with the photos left alone. Edits are kept with the project (edits.json, beside
 // flags.json; see folder-cache.js), so they're still there after closing
 // jEditor. Like flags they live on the photo objects while the project is
 // open, so a rename or a move inside jEditor carries them along.
@@ -36,26 +41,13 @@ const Edits = {
         if (this._inited) return;
         this._inited = true;
         this.app = app;
-        const bind = (id, fn) => {
-            const b = document.getElementById(id);
-            if (b) b.addEventListener('click', (e) => { e.currentTarget.blur(); fn(); });
-        };
-        bind('edits-save', () => this.saveAll());
-        bind('edits-discard', () => this.discardAll());
-        bind('edits-off', () => this.setDefer(false));
     },
 
-    // Another folder is being opened (or none): a reminder of what's
-    // waiting in the one being left, which keeps its edits for next time
+    // Another folder is being opened (or none). The one being left keeps
+    // its edits for next time, so there's nothing to warn about
     reset() {
         const app = this.app;
-        const n = app && app.files && this.defer ? app.files.filter(f => f._edit).length : 0;
         const left = this._loadedFor;
-        // (once the next one is set: not when the same one is opened again)
-        if (n && left) setTimeout(() => {
-            if (app.dirHandle === left) return;
-            app.showToast(`${left.name}: ${n.toLocaleString()} edit${n === 1 ? '' : 's'} not saved yet — still there when you open it again`, 6000, null, null, { type: 'info' });
-        }, 0);
         // What hasn't been written yet goes to the project being left,
         // after any write still under way (its folder is taken now)
         if (left && (this._dirty || this._saving) && !app.readOnlyMode) {
@@ -68,7 +60,6 @@ const Edits = {
         this.defer = false;
         this.orphans = new Map();
         this._loadedFor = null;
-        this.updateBar();
     },
 
     // Edits wait for Save in the open project
@@ -143,8 +134,7 @@ const Edits = {
         this.defer = false;
         this.chosen = false;
         if (!app.dirHandle || app.readOnlyMode) {
-            this.updateBar();
-            return [];
+                return [];
         }
         // (the last project's last write first: it may be this one)
         if (this._final) await this._final.catch(() => { });
@@ -174,7 +164,6 @@ const Edits = {
         }
         // Paint layers nothing in edits.json uses any more (paint.js)
         Paint.tidy(Object.values((data && data.edits) || {}).map(v => this.clean(v)).filter(Boolean)).catch(() => { });
-        this.updateBar();
         if (typeof Places !== 'undefined' && Places.boxes) Places.drawCard();
         return app.files.filter(f => f._edit);
     },
@@ -250,7 +239,6 @@ const Edits = {
 
     async save() {
         const app = this.app;
-        this.updateBar();
         if (!this._dirty || !app.dirHandle || app.readOnlyMode) return;
         this._dirty = false;
         const data = this.collect();
@@ -291,13 +279,11 @@ const Edits = {
         if (had.length) this.changed(had);
         this._dirty = true;
         this.saveSoon();
-        this.updateBar();
     },
 
     // Photos that left the folder keep their edits in case they come back
     forgetFiles(files) {
         for (const f of files) if (f._edit) this.orphans.set(f.relPath || f.name, f._edit);
-        if (files.some(f => f._edit)) this.updateBar();
     },
 
     adopt(files) {
@@ -411,18 +397,6 @@ const Edits = {
         this.app.showToast(`Discarded the edit${files.length === 1 ? ` on ${files[0].name}` : `s on ${files.length} photos`} — Ctrl+Z brings ${files.length === 1 ? 'it' : 'them'} back`, 3000);
     },
 
-    async discardAll() {
-        const list = this.edited();
-        if (!list.length) return;
-        const ok = await UI.confirm({
-            title: `Discard ${list.length === 1 ? 'the edit' : `all ${list.length.toLocaleString()} edits`}?`,
-            message: 'The photos go back to how they are on disk. Ctrl+Z brings the edits back.',
-            ok: 'Discard',
-            danger: true
-        });
-        if (ok) this.discard(list);
-    },
-
     // Thumbnails, viewer, badges, the bar and the file
     changed(files, { save = true } = {}) {
         const app = this.app;
@@ -432,7 +406,6 @@ const Edits = {
             if (f._stripEl) this.decorate(f._stripEl, f);
         }
         this.updateHeader();
-        this.updateBar();
         if (save) this.saveSoon();
     },
 
@@ -467,16 +440,16 @@ const Edits = {
         this.chosen = true;
         this.saveSoon();
         await this.flush();
-        this.updateBar();
         if (typeof Places !== 'undefined' && Places.boxes) Places.drawCard();
-        app.showToast(on ? 'Edits are kept until you save them' : 'Edits are saved straight away', 2500);
+        app.showToast(on ? 'Edits are kept in jEditor — Export makes edited copies' : 'Edits are saved into the photos straight away', 2500);
         return true;
     },
 
     // ---- Saving ----
 
-    // Over the photos, or as copies in "jEditor Export". overwrite: skip
-    // the question. True when it was done.
+    // Over the photos, or as copies (the Export window asks which, and
+    // where the copies go). overwrite: over the photos, without asking.
+    // True when it was done.
     async saveAll({ overwrite = false, list = null } = {}) {
         const app = this.app;
         list = list || this.edited();
@@ -485,26 +458,10 @@ const Edits = {
             return true;
         }
         if (!app.ensureWritable()) return false;
-        let how = overwrite ? 'ok' : null;
-        if (!how) {
-            const n = list.length, all = app.files.length;
-            how = await UI.choose({
-                title: `Save ${n === 1 ? 'the edit' : `${n.toLocaleString()} edits`}`,
-                message: 'Write the edits into the photos, or keep the photos as they are and export edited copies.',
-                items: [
-                    `Save into the photos: ${n.toLocaleString()} photo${n === 1 ? ' is' : 's are'} changed. The originals are kept by jEditor, so Ctrl+Z puts them back.`,
-                    `Export copies: all ${all.toLocaleString()} photo${all === 1 ? '' : 's'} go to "jEditor Export" in this folder, the edited ones with their edits. The edits stay, to change or save later.`
-                ],
-                ok: 'Save into photos',
-                alt: 'Export copies'
-            });
-        }
-        if (how === 'ok') return app.saveEdits(list);
-        if (how === 'alt') {
-            await app.exportCopies(app.files);
-            return true;
-        }
-        return false;
+        if (overwrite) return app.saveEdits(list);
+        // Asked in the Export window, on its Save into the photos tab
+        // (export.js): into the photos, or copies from its Copies tab
+        return Export.save(list);
     },
 
     // ---- On screen ----
@@ -546,38 +503,6 @@ const Edits = {
     describe(e) {
         if (e.paint && !this.on()) return 'Painted — the photo on disk is unchanged; Export (or Save edits) writes the result';
         if (e.adj && !this.on()) return 'Adjusted — the photo on disk is unchanged; Export (or Save edits) writes the result';
-        return 'Edited — not saved into the photo yet';
-    },
-
-    // How many are waiting, with Save and Discard
-    updateBar() {
-        if (typeof Places !== 'undefined' && Places.drawPending) Places.drawPending();
-        const bar = document.getElementById('edits-bar');
-        if (!bar) return;
-        const on = this.on();
-        bar.classList.toggle('hidden', !on);
-        const iface = this.app && this.app.elements && this.app.elements.mainInterface;
-        if (iface) iface.classList.toggle('edits-on', on);
-        if (!on) return;
-        const n = this.count();
-        const text = document.getElementById('edits-text');
-        const full = n ? `${n.toLocaleString()} edit${n === 1 ? '' : 's'} not saved yet` : 'Edits are kept until you save';
-        // Short of room, only the count shows (style.css): the rest is its tooltip
-        text.textContent = '';
-        if (n) {
-            text.append(`${n.toLocaleString()} edit${n === 1 ? '' : 's'}`);
-            const more = document.createElement('span');
-            more.className = 'edits-more';
-            more.textContent = ' not saved yet';
-            text.append(more);
-        } else {
-            text.append(full);
-        }
-        text.title = full;
-        document.getElementById('edits-save').disabled = !n;
-        document.getElementById('edits-discard').classList.toggle('hidden', !n);
-        document.getElementById('edits-off').classList.toggle('hidden', !!n);
-        // The bottom row makes room for it (fit.js)
-        if (typeof Fit !== 'undefined') Fit.run();
+        return 'Edited — kept in jEditor; Export makes edited copies, the photo on disk is unchanged';
     }
 };
