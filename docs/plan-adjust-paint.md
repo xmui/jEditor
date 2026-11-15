@@ -176,15 +176,16 @@ to flow into each other better"). The rules:
    sidebar button, Photos · Adjust · Paint as icons, and Find anything. The
    sidebar folds away in every mode (the button, Ctrl+B, or dragged past its
    edge): it slides out in 280 ms, the photo, strip and pills glide into
-   the room. Folded (F1, the owner's pick, 2026-11-15), the row becomes
-   three floating parts in the same corner and the same order: the sidebar
-   button in its own glass circle, the mode chip (its menu switches modes),
-   and Find anything in a glass circle. The button you pressed to fold stays
-   under the pointer to unfold. It stays Photos' own docked sidebar, solid
+   the room, and the row stays exactly where it was as one glass pill
+   (the owner, 2026-11-15: "go with a folded but with accent on selected
+   mode"), so nothing you reach for moves. The mode you're in has its icon
+   in the accent colour, open and folded (`--accent-text`, on the soft
+   chosen pill). It stays Photos' own docked sidebar, solid
    on its tint, in every mode (the owner: "look like the sidebar on the
    left / the main one"); only what floats is glass. Today the button sits
    elsewhere, and Fable's #197 (drag to hide) leaves it there, so **phase 1
-   moves it into this row** and the folded mode chip moves beside it.
+   moves it into this row**, and the mode chip that stands in for the switch
+   while the sidebar is folded is retired: the row itself stays.
 7. **Both docked parts resize** (the owner, 2026-11-15: "and resizable"):
    drag the inner edge of the sidebar or the panel; double-click it for its
    own width again, as today's `.side-grip` does. The sidebar runs from
