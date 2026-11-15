@@ -16,7 +16,7 @@
 // contrast (the glass is solid then, tokens.css).
 
 const Liquid = {
-    SELECTOR: '.toolbar, .file-info, #context-menu, .sb-picker, .popover, .task-pill, .toast, .picked-bar, .paint-tools',
+    SELECTOR: '.toolbar, .file-info, #context-menu, .sb-picker, .popover, .task-pill, .toast, .picked-bar, .paint-tools, .paint-options',
     KEEP: 24, // maps kept for sizes no part has now (a message that comes back)
 
     on: false,

@@ -9907,15 +9907,15 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    readable on their own over a bright photo: a halo behind them does
    (--glass-halo, tokens.css; none on Opaque). Buttons and fields too,
    which the browser gives no shadow of their own */
-:root:not([data-skin]) :is(.toolbar, .file-info, #context-menu, .sb-picker, .task-pill, .toast, .picked-bar, .paint-tools),
-:root:not([data-skin]) :is(.toolbar, .file-info, #context-menu, .sb-picker, .task-pill, .toast, .picked-bar, .paint-tools) :is(button, input, select) {
+:root:not([data-skin]) :is(.toolbar, .file-info, #context-menu, .sb-picker, .task-pill, .toast, .picked-bar, .paint-tools, .paint-options),
+:root:not([data-skin]) :is(.toolbar, .file-info, #context-menu, .sb-picker, .task-pill, .toast, .picked-bar, .paint-tools, .paint-options) :is(button, input, select) {
     text-shadow: var(--glass-halo);
 }
 
 /* Liquid: the glass bends what's under its edges. liquid.js draws the bend
    for each part's size and shape (--lg-bend: an SVG filter); until it has,
    or where the browser can't draw it, the glass is the same, unbent */
-:root.liquid-bends :is(.toolbar, .file-info, #context-menu, .sb-picker, .popover, .task-pill, .toast, .picked-bar, .paint-tools) {
+:root.liquid-bends :is(.toolbar, .file-info, #context-menu, .sb-picker, .popover, .task-pill, .toast, .picked-bar, .paint-tools, .paint-options) {
     backdrop-filter: var(--lg-bend, ) var(--glass-filter);
     -webkit-backdrop-filter: var(--lg-bend, ) var(--glass-filter);
 }
@@ -11770,6 +11770,39 @@ body.touring .controls.idle button { pointer-events: auto; }
     border-left: 4px solid transparent;
     border-bottom: 4px solid currentColor;
     opacity: 0.6;
+}
+
+/* The chosen tool's options: a second glass pill, under the top one and in
+   the middle (the plan), one line; it scrolls sideways rather than wrap */
+:root:not([data-skin]) .paint-options {
+    flex-wrap: nowrap;
+    width: max-content;
+    max-width: calc(100% - 2 * var(--gutter));
+    min-height: var(--ctl-lg);
+    margin: var(--sp-2) auto var(--sp-2);
+    padding: 0 var(--sp-4);
+    overflow-x: auto;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--r-pill);
+    background: var(--glass-bg);
+    box-shadow: var(--shadow-2), var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    scrollbar-width: none;
+}
+
+/* In the middle of the photo's part of the window, not of the window: half
+   the panel to the left while it's shown */
+:root:not([data-skin]) .paint-editor:not(.panel-hidden) .paint-options {
+    position: relative;
+    left: calc(min(var(--side-paint, 260px), 45vw) / -2);
+    max-width: calc(100% - 2 * var(--gutter) - min(var(--side-paint, 260px), 45vw));
+}
+
+/* Its hint: short, the rest on hover */
+:root:not([data-skin]) .paint-options .paint-hint {
+    flex: 0 1 auto;
+    max-width: 320px;
 }
 
 @media (max-width: 760px) {
