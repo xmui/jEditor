@@ -605,8 +605,9 @@ const Adjust = {
         this.el('adj-restore-fix').setAttribute('aria-pressed', String(!keep));
         this.el('adj-restore-keep').setAttribute('aria-pressed', String(keep));
         const kind = Develop.RESTORE_TYPES[r.type];
+        const roll = r.roll ? `, with the roll of ${r.roll} photos` : '';
         this.el('adj-restore-found').textContent = r.grey ? 'Set from the grey you picked'
-            : keep ? (r.auto ? 'No colour fade found' : '') : `Found: ${kind.name.toLowerCase()}`;
+            : keep ? (r.auto ? 'No colour fade found' + roll : '') : `Found: ${kind.name.toLowerCase()}${roll}`;
     },
 
     // White balance from the photo (W): click something that should be

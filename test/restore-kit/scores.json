@@ -10,6 +10,11 @@
     "grass/printCyan": 1.558,
     "interior/yellowStain": 3.477,
     "family/none": 0.785,
-    "grass/none": 1.138
+    "grass/none": 1.138,
+    "roll/printCyan": 2.672,
+    "roll/slideRed": 3.704,
+    "roll/yellowStain": 2.119,
+    "roll/fadedPrint": 2.648,
+    "roll/none": 1.16
   }
 }

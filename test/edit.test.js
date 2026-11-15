@@ -1760,9 +1760,16 @@ const PROJECT = `
                 out.batch = [a, b, c].every(f => f._edit && f._edit.adj && f._edit.adj.restore);
                 await app.undo();
                 out.batchUndo = [a, b, c].every(f => !f._edit);
+                // As one roll: restored the same way, each marked with its roll
+                step = 'roll';
+                await app.restoreColour([a, b, c], { roll: true });
+                out.roll = [a, b, c].every(f => f._edit && f._edit.adj && f._edit.adj.restore && f._edit.adj.restore.roll === 3);
+                await app.undo();
+                out.rollUndo = [a, b, c].every(f => !f._edit);
                 // In the menus: the photo's right-click and the selection bar's ⋯
                 app.selection = new Set([a, b]);
-                out.menus = app.selectionMoreItems().some(it => it[0] === 'Restore colour of 2');
+                const rc = app.selectionMoreItems().find(it => it[0] === 'Restore colour of 2');
+                out.menus = !!rc && Array.isArray(rc[1]) && rc[1].map(it => it[0]).join('|') === 'Restore each on its own|Restore as one roll (faded together)';
                 step = 'adjust';
                 await app.restoreColour([a]);
                 app.openSingle(a);
@@ -1800,7 +1807,8 @@ const PROJECT = `
         check('restore: one photo\'s colour restored, kept as an Adjust setting, the others untouched', r.one, JSON.stringify(r));
         check('restore: the red cast is taken off (the channels come out close together)', r.cast, JSON.stringify(r.means || r));
         check('restore: Ctrl+Z takes it off; a selection is restored together and undone in one step', r.undone && r.batch && r.batchUndo, JSON.stringify(r));
-        check('restore: on the selection bar\'s ⋯ menu', r.menus, JSON.stringify(r));
+        check('restore: on the selection bar\'s ⋯ menu, each on its own or as one roll', r.menus, JSON.stringify(r));
+        check('restore: as one roll, every photo restored the same way and marked with its roll; one undo', r.roll && r.rollUndo, JSON.stringify(r));
         check('restore: in Adjust its strength is a slider under the histogram, at 100, and half is kept', r.row && r.half, JSON.stringify(r));
         check('restore: the Restore tool says what kind of fade it found; Keep the colours and Fix the colours switch, the strength kept', r.found && r.keep && r.fix, JSON.stringify(r));
         check('restore: Pick grey sets it from a grey, and Ctrl+Z takes that off', r.picking && r.grey && r.greyUndo, JSON.stringify(r));

@@ -133,8 +133,16 @@ can be changed or taken off later wherever it was made.
    settings (every kind of fade does best with all three dyes stretched),
    and extra saturation in the faded dye (the colour already comes back;
    what's left is mostly lightness).
-4. Uneven fade (an optional low-frequency fix), and one roll-wide
-   correction with per-photo tweaks in Photos' one click.
+4. *Done:* **as one roll** in Photos (Restore colour of a selection): the
+   kind of fade, how much each dye faded and the shared stain are the
+   middle of the photos' own; each keeps its own light and paper, and can
+   be tweaked in Adjust. The kit's rolls (five scenes, one a sunset with no
+   black or grey): 4.2 → 2.7 and better on every kind of fade, and an
+   unfaded roll 3.5 → 1.2. Uneven fade: measured, it can't be found
+   automatically (the scene's content swamps it; every case got worse);
+   a manual **Edges** strength would help when set right (uneven cyan
+   5.0 → 4.1) but needs a new first step in the render path, so it's
+   waiting on the owner.
 5. Later: an optional AI recolour, as a desktop download.
 
 ### Adjust: film looks you dial in, and your own (the owner, 2026-11-15)
