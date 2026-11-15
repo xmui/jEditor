@@ -111,6 +111,26 @@ can be changed or taken off later wherever it was made.
 - Per-channel fine-tuning (the black and white points of each channel)
   under the group's disclosure.
 
+**Phase 2, how it's built and measured (the owner, via the Wrangler,
+2026-11-15).** In small PRs into beta, in this order:
+
+1. *Done:* the test kit (`test/restore-kit`): self-made scenes faded in
+   density, the way dye layers fade (per-layer loss, a little cross-layer
+   coupling, after Ando et al. 1997; stains; uneven fade to the edges),
+   scored by ΔE2000 against the clean scene. `npm test` fails if a case
+   gets worse.
+2. *Done:* the auto in density (Kodak's density-difference idea): each
+   dye's density range, from the paper's white to the darkest shadow, is
+   brought up to the strongest one's, the whites to the cleanest one (a
+   stain comes off), and all stretched together to a print's black when
+   every dye has faded. No grey-world, so a field of grass stays green.
+   Edits made with phase 1's auto keep it.
+3. The fade types and Auto's pick, the neutral picker (gray-edge to find
+   neutral, a click to set it), and saturation back in the faded dye only.
+4. Uneven fade (an optional low-frequency fix), and one roll-wide
+   correction with per-photo tweaks in Photos' one click.
+5. Later: an optional AI recolour, as a desktop download.
+
 ### Adjust: film looks you dial in, and your own (the owner, 2026-11-15)
 
 "For the film looks I want to be able to create your own, and it's also a

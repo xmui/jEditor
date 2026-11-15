@@ -1,15 +1,15 @@
 {
-  "mean": 9.678,
+  "mean": 3.008,
   "cases": {
-    "family/slideRed": 7.387,
-    "family/printCyan": 5.449,
-    "family/yellowStain": 4.198,
-    "family/fadedPrint": 6.262,
-    "family/unevenCyan": 4.955,
-    "beach/slideRed": 6.652,
-    "grass/printCyan": 22.345,
-    "interior/yellowStain": 11.062,
-    "family/none": 4.433,
-    "grass/none": 24.04
+    "family/slideRed": 3.954,
+    "family/printCyan": 3.713,
+    "family/yellowStain": 2.909,
+    "family/fadedPrint": 3.03,
+    "family/unevenCyan": 4.995,
+    "beach/slideRed": 2.444,
+    "grass/printCyan": 1.558,
+    "interior/yellowStain": 3.477,
+    "family/none": 0.606,
+    "grass/none": 3.394
   }
 }

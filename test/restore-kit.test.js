@@ -44,6 +44,18 @@ console.log('  case                     faded  restored');
 for (const r of rows) console.log('  ' + r.id.padEnd(24) + String(r.faded).padStart(6) + String(r.restored).padStart(10));
 console.log('  ' + 'mean'.padEnd(24) + ''.padStart(6) + String(mean).padStart(10));
 
+// An edit made with the first Restore colour (levels per channel) keeps it
+{
+    const v1 = { amount: 100, r: [0.2, 1.2, 0.9], g: [0.05, 0.9, 0.7], b: [0.1, 1, 0.8] };
+    const kept = Develop.cleanRestore(v1);
+    const T = Develop.channelTables(Develop.full({ restore: v1 }));
+    const want = Develop.levels([0.2, 1.2, 0.9, 0, 1], 128 / 255);
+    if (!kept || kept.d || Math.abs(T[128 * 4] - want) > 0.002) {
+        console.log('  FAIL: an edit made with the first Restore colour is drawn differently', JSON.stringify(kept), T[128 * 4], want);
+        process.exit(1);
+    }
+}
+
 const file = path.join(__dirname, 'restore-kit', 'scores.json');
 if (process.argv.includes('--update')) {
     const out = { mean, cases: Object.fromEntries(rows.map(r => [r.id, r.restored])) };
