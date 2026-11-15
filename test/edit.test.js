@@ -1743,7 +1743,7 @@ const PROJECT = `
                 step = 'one';
                 await app.restoreColour([a]);
                 const ra = a._edit && a._edit.adj && a._edit.adj.restore;
-                out.one = !!ra && ra.amount === 100 && ra.r[0] > ra.g[0] && !b._edit;
+                out.one = !!ra && ra.amount === 100 && ra.d === 1 && ra.r[0] < ra.g[0] && !b._edit;
                 // The cast is taken off: the restored photo's channels come out close together
                 const px = await app.restoreSample(a);
                 const T = { channels: Develop.channelTables(Develop.full(a._edit.adj)), lut: null, N: Develop.LUT_SIZE };

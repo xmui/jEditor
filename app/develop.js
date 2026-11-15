@@ -203,47 +203,74 @@ const Develop = {
         return out;
     },
 
-    // Restore colour: each channel's own black, white and middle, worked out
-    // from the photo once (restoreAuto) and kept, and how much of it is used
-    // (amount, 0–100). It's the first step, on the scan as it is, before
-    // everything else. → { r, g, b: [black, gamma, white], amount } or null
+    // Restore colour: worked out from the photo once (restoreAuto) and kept,
+    // with how much of it is used (amount, 0–100). It's the first step, on
+    // the scan as it is, before everything else.
+    //   d: 1 (v2, density): each channel's dye density stretched from the
+    //     paper's white: { d: 1, r, g, b: [white, scale, base], amount },
+    //     density' = base + scale × (density − white)
+    //   v1 (kept for edits made with it): { r, g, b: [black, gamma, white], amount }
+    // → the settings, checked, or null
     cleanRestore(r) {
         if (!r || typeof r !== 'object') return null;
         const num = (x) => typeof x === 'number' && isFinite(x);
         const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
         const amount = Math.round(clamp(num(r.amount) ? r.amount : 100, 0, 100));
         if (!amount) return null;
-        const out = { amount };
+        const out = r.d === 1 ? { d: 1, amount } : { amount };
         for (const c of ['r', 'g', 'b']) {
             const l = r[c];
             if (!Array.isArray(l) || l.length !== 3 || !l.every(num)) return null;
+            if (out.d) {
+                out[c] = [+clamp(l[0], 0, 1.5).toFixed(4), +clamp(l[1], 0.3, 4).toFixed(4), +clamp(l[2], 0, 0.5).toFixed(4)];
+                continue;
+            }
             const i0 = clamp(l[0], 0, 0.9);
             out[c] = [+i0.toFixed(4), +clamp(l[1], 0.3, 3).toFixed(4), +clamp(l[2], i0 + 0.05, 1).toFixed(4)];
         }
         return out;
     },
 
-    // Restore colour from the photo (RGBA pixels of a small copy, as it is):
-    // each channel stretched from its own darkest to its brightest (a little
-    // clipped at each end), which undoes most of the fade of a print's dyes,
-    // then each channel's middle brought to the same grey, which takes off
-    // the cast (a red slide, a yellowed print). → the settings with it on
+    // Density of a value (0–1): how much dye there is. Fading takes some of
+    // each dye layer away, which scales that layer's density down.
+    density(v) {
+        return -Math.log10(Math.max(0.001, this.toLinear(v)));
+    },
+
+    // One channel's value (0–1) through Restore colour
+    restoreValue(rs, d, v) {
+        if (!d) return this.levels([rs[0], rs[1], rs[2], 0, 1], v);
+        const D = Math.max(0, rs[2] + rs[1] * (this.density(v) - rs[0]));
+        return this.toGamma(Math.pow(10, -D));
+    },
+
+    // Restore colour from the photo (RGBA pixels of a small copy, as it is),
+    // in density, the way the dyes fade (after Kodak's density-difference
+    // method). A photo's black is nearly always neutral, so each dye's
+    // density range, from the paper's white to the darkest shadow, is
+    // brought up to the strongest one's, which gives back what each layer
+    // lost without assuming the scene is grey on average (a field of grass
+    // stays green). The whites go to the cleanest one, which takes off a
+    // stain, and if every dye has faded, all are stretched together.
+    // → the settings with it on
     restoreAuto(px, adj, amount = 100) {
         const h = this.histogram(px);
         const base = this.clean(adj) || {};
         if (!h.n) return base;
         const ch = ['r', 'g', 'b'].map(c => {
-            const i0 = this.percentile(h[c], h.n, 0.005);
-            const i1 = Math.max(i0 + 0.05, this.percentile(h[c], h.n, 0.995));
-            const mid = this.percentile(h[c], h.n, 0.5);
-            return { c, i0, i1, t: Math.min(0.95, Math.max(0.05, (mid - i0) / (i1 - i0))) };
+            const white = this.density(this.percentile(h[c], h.n, 0.995));
+            const dark = this.density(this.percentile(h[c], h.n, 0.005));
+            return { c, white, range: Math.max(0.05, dark - white) };
         });
-        // The grey they meet at: their average, so the brightness stays
-        const T = ch.reduce((s, x) => s + x.t, 0) / 3;
-        const r = { amount };
-        for (const { c, i0, i1, t } of ch) r[c] = [i0, Math.log(t) / Math.log(T), i1];
+        const top = Math.max(...ch.map(x => x.range));
+        const all = Math.min(3, Math.max(1, this.RESTORE_RANGE / top));
+        const paper = Math.min(...ch.map(x => x.white));
+        const r = { d: 1, amount };
+        for (const { c, white, range } of ch) r[c] = [white, (top / range) * all, paper];
         return this.clean({ ...base, restore: r }) || {};
     },
+    // The density range a print's dyes should reach, black to white
+    RESTORE_RANGE: 2.0,
 
     // Black-and-white weights, adding up to 1, or null
     monoOf(m) {
@@ -687,7 +714,7 @@ const Develop = {
                 let x0 = lin[i];
                 if (rs) {
                     const v = i / 255;
-                    x0 = this.toLinear(v + (this.levels([rs[0], rs[1], rs[2], 0, 1], v) - v) * k);
+                    x0 = this.toLinear(v + (this.restoreValue(rs, a.restore.d, v) - v) * k);
                 }
                 let x = this.toGamma(Math.min(1, x0 * wb[c] * ex));
                 if (tone) x = tone(x);
