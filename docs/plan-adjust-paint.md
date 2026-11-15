@@ -78,23 +78,28 @@ Phase 1 is about a week of work per mode; the others about two weeks each.
 
 ## (c) How each mode lines up with 2.0
 
-**Glass, as in Photos** (the owner, 2026-11-15: "it needs glass to be
-cohesive"). In Photos the viewer's controls float over the photo as glass
-pills. Adjust and Paint do the same: their bars, tools, panel and film strip
-float as glass cards over the photo's space, with the photo fitted between
-them and a dark, blurred copy of it behind. Only the sidebar stays docked on
+**Glass pills, as in Photos** (the owner, 2026-11-15: "it needs glass to
+be cohesive", then "yes but we need pills"). In Photos the viewer's controls
+float over the photo as glass pills. Adjust and Paint use the same pills,
+built from the same recipe (`app/style.css`, "Every pill that floats over
+the photo or grid shares this recipe": `.toolbar` and `.tb-btn`, 44 px high,
+fully round, the same glass and edge light). The bars, the zoom and Paint's
+tool strip are pills; the panel and film strip are glass cards made of the
+same glass, since a panel of sliders can't be a pill. The photo is fitted
+between them, with a dark, blurred copy of it behind. Only the sidebar stays docked on
 its tint. The other 2.0 rules stay: one of each control (the same slider,
 switch, heading and button everywhere), the photo itself is never dressed or
 covered, menus stay solid so they're easy to read, and **extras go in
 menus, not on bars.**
 
 This changes one of the 2.0 rules ("docked is solid" covered Adjust's and
-Paint's panels, and Fable's #174 put them on the sidebar's tint), so Fable
-and `.claude/agents/theming.md` need the owner's go on it (decision 1).
+Paint's panels, and Fable's #174 put them on the sidebar's tint). The owner
+said yes on 2026-11-15, so Fable and `.claude/agents/theming.md` follow
+it; the bars reuse Photos' pill classes rather than new ones.
 
 **Adjust** (mockup, first board)
 
-- **The bar** becomes two glass pills over the top of the photo: the file
+- **The bar** becomes two pills over the top of the photo: the file
   name (with 5 / 12, as in Photos), and **Before** with a **⋯ menu**.
   Reset, Copy, Paste, Sync, Presets, Snapshots and Show clipping go in that
   menu, each with its key.
@@ -115,12 +120,13 @@ and `.claude/agents/theming.md` need the owner's go on it (decision 1).
 
 **Paint** (mockup, second board)
 
-- **The bar** is a glass pill over the top: the file name, then four quiet menus, **Image, Layer,
+- **The bar** is one pill over the top: the file name, then four quiet menus, **Image, Layer,
   Select, Filter**, then Undo and Redo. Every new command in this plan
   lands in one of those menus, so the bar never grows.
-- **Tool options** are a smaller glass pill under it, using the 2.0
+- **Tool options** are a second pill under it, using the 2.0
   slider, showing only the chosen tool's options.
-- **The tools** are a glass strip down the left, and go from twenty
+- **The tools** are an upright pill down the left (round buttons, as in
+  Photos), and go from twenty
   buttons to **nine**: tools of a kind share a
   slot (Select: rectangle, ellipse, lasso, wand; Brush: brush, pencil,
   spray; Fill: fill, gradient; Shapes: line, rectangle, ellipse), with a
@@ -169,11 +175,9 @@ checks with the Wrangler before starting.
 
 ## (e) Decisions for the owner
 
-1. **Glass in Adjust and Paint** (your note): bars, tools, panel and strip
-   float as glass over a blurred copy of the photo, as in the mockup. This
-   overrides the 2.0 rule that docked panels are solid, so Fable would
-   change #174 to match. OK? And should menus stay solid (easier to read),
-   or be glass too?
+1. **Glass in Adjust and Paint:** yes, with pills (your word,
+   2026-11-15). Still open: should menus stay solid (easier to read), or
+   be glass too?
 2. **Adjust's panel:** four tool icons at the top (Edit, Restore, Heal,
    Masks) as in the mockup, or keep today's tabs?
 3. **Adjust's bar:** only Before on it, the rest in the ⋯ menu?
