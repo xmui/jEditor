@@ -62,14 +62,10 @@ const Adjust = {
         bind('adj-copy', () => this.copy());
         bind('adj-paste', () => this.paste());
         bind('adj-auto', () => this.auto());
-        bind('adj-auto-color', () => this.auto({ color: true }));
-        this.el('adj-backlight').addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            e.currentTarget.blur();
-            if (!this.busy) this.backlight();
-        });
+        bind('adj-backlight', () => this.backlight());
+        // Restore color is a quick fix in Edit and the first tool in Restore
         bind('adj-restore', () => this.restore());
+        bind('adj-restore-fade', () => this.restore());
         // Restore color's strength, under the histogram while it's on
         const restoreRow = this.slider('restoreAmount', 'Restore color', {
             range: { min: 0, max: 100, step: 1, def: 0 },
@@ -152,13 +148,16 @@ const Adjust = {
         for (const b of this.root.querySelectorAll('.adj-mix-tabs .adj-tab')) {
             b.addEventListener('click', () => { b.blur(); this.mixer = b.dataset.mix; this.sync(); });
         }
-        // A section's Reset puts just that section back
-        for (const b of this.root.querySelectorAll('[data-reset]')) {
-            b.addEventListener('click', (e) => {
+        // A section's Reset is in the right-click menu on its heading (on
+        // the histogram, for the levels): one Reset per section, not a
+        // button on each
+        for (const sec of this.root.querySelectorAll('[data-reset]')) {
+            const head = sec.querySelector(':scope > summary') || sec;
+            head.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                b.blur();
-                this.resetSection(b.dataset.reset);
+                if (this.busy) return;
+                this.app.openContextMenu([[`Reset ${sec.dataset.resetName}`, () => this.resetSection(sec.dataset.reset)]], e.clientX, e.clientY);
             });
         }
 
@@ -543,6 +542,8 @@ const Adjust = {
     moreItems() {
         const sel = this.app.selection && [...this.app.selection].filter(f => f !== this.file);
         return [
+            ['Auto color', () => this.auto({ color: true }), !this.ready, undefined, 'adjust.autoColor'],
+            ['—'],
             ['Reset all', () => this.reset(), false, undefined, 'adjust.reset'],
             ['Copy settings', () => this.copy(), false, undefined, 'adjust.copy'],
             ...(Adjust.clipboard() ? [['Paste settings', () => this.paste(), false, undefined, 'adjust.paste']] : []),
@@ -1238,22 +1239,26 @@ const Adjust = {
         this.showLookTab(this.lookTab);
     },
 
-    // Edit, Retouch and Masks. Retouch and Masks each hold one section
-    // (spots, masks) that's open while its tab is shown, so the tools there
-    // work only then; opening one of those sections shows its tab
+    // The four tools: Edit, Restore, Heal and Masks. Restore, Heal and
+    // Masks each hold one section that's open while it's shown, so the
+    // tools there work on the photo only then. Restore and Heal share the
+    // spot tool (Restore uses it for red-eye and shows the dust it finds),
+    // so its section is open for both
     initPanes() {
-        const tool = { retouch: this.el('adj-spots-sec'), masks: this.el('adj-masks-sec') };
-        for (const b of this.root.querySelectorAll('.adj-pane-tabs .adj-tab')) {
+        const spots = this.el('adj-spots-sec'), masks = this.el('adj-masks-sec'), restore = this.el('adj-restore-sec');
+        for (const b of this.root.querySelectorAll('.adj-pane-tabs .adj-tool')) {
             b.addEventListener('click', () => { b.blur(); this.showPane(b.dataset.pane); });
         }
-        for (const [pane, sec] of Object.entries(tool)) {
-            sec.querySelector('summary').addEventListener('click', (e) => e.preventDefault());
-            sec.addEventListener('toggle', () => {
-                if (sec.open) this.showPane(pane);
-                else if (this.pane === pane) this.showPane('edit');
-            });
-        }
-        // Edit's sections: opening one shows the tab and folds the one open before
+        for (const sec of [spots, masks, restore]) sec.querySelector('summary').addEventListener('click', (e) => e.preventDefault());
+        spots.addEventListener('toggle', () => {
+            if (spots.open) { if (this.pane !== 'restore') this.showPane('heal'); }
+            else if (this.pane === 'heal' || this.pane === 'restore') this.showPane('edit');
+        });
+        masks.addEventListener('toggle', () => {
+            if (masks.open) this.showPane('masks');
+            else if (this.pane === 'masks') this.showPane('edit');
+        });
+        // Edit's sections: opening one shows Edit and folds the one open before
         const edit = [...this.root.querySelectorAll('.adj-pane[data-pane="edit"] > details.adj-sec')];
         for (const sec of edit) {
             sec.addEventListener('toggle', () => {
@@ -1268,9 +1273,10 @@ const Adjust = {
     showPane(id) {
         if (this.pane === id) return;
         this.pane = id;
-        for (const b of this.root.querySelectorAll('.adj-pane-tabs .adj-tab')) b.setAttribute('aria-selected', String(b.dataset.pane === id));
+        for (const b of this.root.querySelectorAll('.adj-pane-tabs .adj-tool')) b.setAttribute('aria-selected', String(b.dataset.pane === id));
         for (const p of this.root.querySelectorAll('.adj-pane')) p.classList.toggle('hidden', p.dataset.pane !== id);
-        this.el('adj-spots-sec').open = id === 'retouch';
+        AdjustSpots.usePane(id);
+        this.el('adj-spots-sec').open = id === 'heal' || id === 'restore';
         this.el('adj-masks-sec').open = id === 'masks';
         this.drawPanels();
         this.drawWheels();

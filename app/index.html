@@ -496,49 +496,50 @@
             <div class="side-edge hidden" data-side="rail" data-edge="right" data-for="folder-rail" title="Drag to show the sidebar" aria-hidden="true"></div>
             <div class="side-grip" data-side="adjust" data-edge="left" title="Drag to resize; double-click for its own width" aria-hidden="true"></div>
             <aside id="adj-panel" class="adj-panel" aria-label="Adjustments">
-                <section class="adj-sec adj-hist-box" aria-label="Histogram and levels">
+                <section class="adj-sec adj-hist-box" aria-label="Histogram and levels" data-reset="levels" data-reset-name="levels">
                     <div class="adj-sec-head">
                         <span class="adj-chan adj-tabs" role="tablist" aria-label="Channel"></span>
-                        <span class="adj-sec-acts">
-                            <button id="adj-auto" class="btn ghost sm" title="Auto: set the levels from the photo (Shift+A)">Auto</button>
-                            <button id="adj-auto-color" class="btn ghost sm" title="Auto color: each channel on its own too, which takes the cast off a faded print (Shift+C)">Auto color</button>
-                            <button id="adj-restore" class="btn ghost sm" title="Restore color: brings back a faded print's or slide's colours and takes off its cast (red, yellow, blue), with a strength">Restore color</button>
-                        </span>
                     </div>
                     <canvas id="adj-hist" class="adj-hist"></canvas>
                     <canvas id="adj-levels" class="adj-levels" title="Levels: drag the black, grey and white handles; the lower two set the output (double-click to reset)"></canvas>
-                    <div class="adj-levels-foot"><span id="adj-levels-read" class="adj-read"></span><button class="btn ghost sm adj-sec-reset" data-reset="levels">Reset</button></div>
+                    <div class="adj-levels-foot"><span id="adj-levels-read" class="adj-read"></span></div>
                 </section>
-                <!-- Edit: the sliders, in Lightroom's order; Retouch and Masks: tools used on the photo -->
-                <div id="adj-panes" class="adj-tabs adj-pane-tabs" role="tablist" aria-label="Adjust">
-                    <button class="adj-tab" role="tab" data-pane="edit" aria-selected="true">Edit</button>
-                    <button class="adj-tab" role="tab" data-pane="retouch" aria-selected="false" title="Heal and clone spots, and dust on scans">Retouch</button>
-                    <button class="adj-tab" role="tab" data-pane="masks" aria-selected="false" title="Adjust part of the photo">Masks</button>
+                <!-- The four tools: Edit (the sliders, in Lightroom's order),
+                     Restore (scans: faded colour, red-eye, dust), Heal (spots)
+                     and Masks (part of the photo) -->
+                <div id="adj-panes" class="adj-pane-tabs" role="tablist" aria-label="Adjust">
+                    <button class="adj-tool" role="tab" data-pane="edit" aria-selected="true" aria-label="Edit" title="Edit: light, colour, curve and the rest"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg></button>
+                    <button class="adj-tool" role="tab" data-pane="restore" aria-selected="false" aria-label="Restore" title="Restore: a faded scan's colour, red-eye and dust"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/><path d="M4 16l4.5-4.5 4 4 2-2L20 18"/><path d="M19 2.5v5M16.5 5h5"/></svg></button>
+                    <button class="adj-tool" role="tab" data-pane="heal" aria-selected="false" aria-label="Heal" title="Heal: take spots off, or clone over them"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="8.5" width="19" height="7" rx="3.5" transform="rotate(-45 12 12)"/><path d="M10.6 10.6h.01M13.4 13.4h.01M13.4 10.6h.01M10.6 13.4h.01"/></svg></button>
+                    <button class="adj-tool" role="tab" data-pane="masks" aria-selected="false" aria-label="Masks" title="Masks: adjust part of the photo"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg></button>
                 </div>
                 <div class="adj-pane" data-pane="edit">
-                    <details id="adj-basic-sec" class="adj-sec" open>
+                    <details id="adj-basic-sec" class="adj-sec" open data-reset="basic" data-reset-name="Basic">
                         <summary><span>Basic</span><span class="adj-sec-acts">
-                            <button id="adj-presets" class="btn ghost sm" title="Your presets: settings saved under a name">Presets</button>
-                            <button class="btn ghost sm adj-sec-reset" data-reset="basic">Reset</button></span></summary>
+                            <button id="adj-presets" class="btn ghost sm" title="Your presets: settings saved under a name">Presets</button></span></summary>
+                        <div class="adj-fixes" role="group" aria-label="Quick fixes">
+                            <button id="adj-auto" class="btn secondary sm" title="Auto: set the levels from the photo (Shift+A). Auto color is in the ⋯ menu">Auto</button>
+                            <button id="adj-restore" class="btn secondary sm" title="Restore color: brings back a faded print's or slide's colours and takes off its cast (red, yellow, blue), with a strength">Restore color</button>
+                            <button id="adj-backlight" class="btn secondary sm" title="Backlight: lifts what's in front of a bright sky or window and holds the bright part back, worked out from the photo">Backlight</button>
+                        </div>
                         <div class="adj-sec-head"><span id="adj-look-tabs" class="adj-tabs adj-look-tabs" role="tablist" aria-label="Process"></span></div>
                         <div id="adj-looks" class="adj-looks" role="group" aria-label="Film looks"></div>
                         <div id="adj-look-amount" class="adj-rows hidden"></div>
                         <div class="adj-sub adj-sub-acts"><span>White balance</span>
                             <button id="adj-wb-pick" class="btn ghost sm" aria-pressed="false" title="White balance: click something in the photo that should be white or grey (W)">Pick grey</button></div>
                         <div id="adj-wb" class="adj-rows"></div>
-                        <div class="adj-sub adj-sub-acts"><span>Light</span>
-                            <button id="adj-backlight" class="btn ghost sm" title="Backlight: lifts what's in front of a bright sky or window and holds the bright part back, worked out from the photo">Backlight</button></div>
+                        <div class="adj-sub">Light</div>
                         <div id="adj-light" class="adj-rows"></div>
                         <div class="adj-sub">Presence</div>
                         <div id="adj-color" class="adj-rows"></div>
                     </details>
-                    <details class="adj-sec">
-                        <summary><span>Tone curve</span><button class="btn ghost sm adj-sec-reset" data-reset="curve">Reset</button></summary>
+                    <details class="adj-sec" data-reset="curve" data-reset-name="Tone curve">
+                        <summary><span>Tone curve</span></summary>
                         <div class="adj-sec-head"><span class="adj-chan adj-tabs" role="tablist" aria-label="Channel"></span></div>
                         <canvas id="adj-curve" class="adj-curve" title="Click to add a point and drag it; drag a point off the side, or double-click it, to take it away"></canvas>
                     </details>
-                    <details class="adj-sec">
-                        <summary><span>Color mixer</span><button class="btn ghost sm adj-sec-reset" data-reset="mixer">Reset</button></summary>
+                    <details class="adj-sec" data-reset="mixer" data-reset-name="Color mixer">
+                        <summary><span>Color mixer</span></summary>
                         <div class="adj-sec-head">
                             <span class="adj-mix-tabs adj-tabs" role="tablist" aria-label="Change">
                                 <button class="adj-tab" role="tab" data-mix="hue">Hue</button>
@@ -548,36 +549,32 @@
                         </div>
                         <div id="adj-mixer" class="adj-rows"></div>
                     </details>
-                    <details class="adj-sec">
-                        <summary><span>Color grading</span><button class="btn ghost sm adj-sec-reset" data-reset="grading">Reset</button></summary>
+                    <details class="adj-sec" data-reset="grading" data-reset-name="Color grading">
+                        <summary><span>Color grading</span></summary>
                         <div id="adj-wheels" class="adj-wheels"></div>
                         <div id="adj-grade-more" class="adj-rows"></div>
                     </details>
-                    <details id="adj-detail-sec" class="adj-sec">
-                        <summary><span>Detail</span><button class="btn ghost sm adj-sec-reset" data-reset="detail">Reset</button></summary>
+                    <details id="adj-detail-sec" class="adj-sec" data-reset="detail" data-reset-name="Detail">
+                        <summary><span>Detail</span></summary>
                         <canvas id="adj-loupe" class="adj-loupe" title="1:1, from the full photo: click the photo to look somewhere else"></canvas>
                         <p class="adj-hint">1:1 — click the photo to look elsewhere</p>
                         <div id="adj-detail" class="adj-rows"></div>
                     </details>
-                    <details class="adj-sec">
-                        <summary><span>Effects</span><button class="btn ghost sm adj-sec-reset" data-reset="effects">Reset</button></summary>
+                    <details class="adj-sec" data-reset="effects" data-reset-name="Effects">
+                        <summary><span>Effects</span></summary>
                         <div id="adj-effects" class="adj-rows"></div>
                     </details>
                 </div>
-                <div class="adj-pane hidden" data-pane="retouch">
-                    <details id="adj-spots-sec" class="adj-sec">
-                        <summary><span>Spot removal</span><button class="btn ghost sm adj-sec-reset" data-reset="spots">Reset</button></summary>
-                        <div class="adj-tabs adj-brush-mode" role="group" aria-label="Spot tool">
-                            <button id="adj-spot-heal" class="adj-tab" aria-pressed="true" title="Heal: texture from nearby, blended into the colour and brightness round the spot">Heal</button>
-                            <button id="adj-spot-clone" class="adj-tab" aria-pressed="false" title="Clone: copied from nearby exactly">Clone</button>
-                            <button id="adj-spot-eye" class="adj-tab" aria-pressed="false" title="Red-eye: click an eye that's red from a flash; the red goes to the eye's own dark">Red-eye</button>
+                <div class="adj-pane hidden" data-pane="restore">
+                    <details id="adj-restore-sec" class="adj-sec" open>
+                        <summary><span>Restore</span></summary>
+                        <div class="adj-sub">Faded colour</div>
+                        <div class="adj-fixes">
+                            <button id="adj-restore-fade" class="btn secondary sm" title="Restore color: brings back a faded print's or slide's colours and takes off its cast (red, yellow, blue); its strength is under the histogram">Restore color</button>
                         </div>
-                        <p id="adj-spot-hint" class="adj-hint"></p>
-                        <div id="adj-spot-tools" class="adj-rows"></div>
-                        <div class="adj-mask-opts">
-                            <label class="adj-check"><input type="checkbox" id="adj-spot-show" checked> Show spots</label>
-                            <button id="adj-spot-delete" class="btn ghost sm danger-text" disabled>Delete</button>
-                        </div>
+                        <div class="adj-sub">Red-eye</div>
+                        <p class="adj-hint">Click an eye that's red from a flash. Drag a spot to move it; right-click takes it off</p>
+                        <div id="adj-eye-tools" class="adj-rows"></div>
                         <div class="adj-sub">Dust on scans</div>
                         <div id="adj-dust-tools" class="adj-rows"></div>
                         <div class="adj-mask-add">
@@ -585,11 +582,27 @@
                             <button id="adj-dust-clear" class="btn ghost sm" title="Take off the spots Find dust put on" disabled>Clear found</button>
                         </div>
                         <p id="adj-spot-count" class="adj-hint"></p>
+                        <p class="adj-hint adj-next">Descreen and scratch removal come next.</p>
+                    </details>
+                </div>
+                <div class="adj-pane hidden" data-pane="heal">
+                    <details id="adj-spots-sec" class="adj-sec" data-reset="spots" data-reset-name="spots">
+                        <summary><span>Spot removal</span></summary>
+                        <div class="adj-tabs adj-brush-mode" role="group" aria-label="Spot tool">
+                            <button id="adj-spot-heal" class="adj-tab" aria-pressed="true" title="Heal: texture from nearby, blended into the colour and brightness round the spot">Heal</button>
+                            <button id="adj-spot-clone" class="adj-tab" aria-pressed="false" title="Clone: copied from nearby exactly">Clone</button>
+                        </div>
+                        <p id="adj-spot-hint" class="adj-hint"></p>
+                        <div id="adj-spot-tools" class="adj-rows"></div>
+                        <div class="adj-mask-opts">
+                            <label class="adj-switch">Show spots<input type="checkbox" id="adj-spot-show" class="switch" checked></label>
+                            <button id="adj-spot-delete" class="btn ghost sm danger-text" disabled>Delete</button>
+                        </div>
                     </details>
                 </div>
                 <div class="adj-pane hidden" data-pane="masks">
-                    <details id="adj-masks-sec" class="adj-sec">
-                        <summary><span>Masks</span><button class="btn ghost sm adj-sec-reset" data-reset="masks">Reset</button></summary>
+                    <details id="adj-masks-sec" class="adj-sec" data-reset="masks" data-reset-name="masks">
+                        <summary><span>Masks</span></summary>
                         <div class="adj-mask-add">
                             <button class="btn secondary sm" data-add-mask="linear" title="A gradient across the photo: full where you start dragging, none where you stop">Linear</button>
                             <button class="btn secondary sm" data-add-mask="radial" title="An oval, feathered at its edge: drag out from its middle">Radial</button>
@@ -603,8 +616,8 @@
                         <div id="adj-mask-list" class="adj-mask-list"></div>
                         <div id="adj-mask-edit" class="hidden">
                             <div class="adj-mask-opts">
-                                <label class="adj-check"><input type="checkbox" id="adj-mask-show"> Show mask</label>
-                                <label class="adj-check"><input type="checkbox" id="adj-mask-invert"> Invert</label>
+                                <label class="adj-switch">Show mask<input type="checkbox" id="adj-mask-show" class="switch"></label>
+                                <label class="adj-switch">Invert<input type="checkbox" id="adj-mask-invert" class="switch"></label>
                                 <button id="adj-mask-delete" class="btn ghost sm danger-text">Delete</button>
                             </div>
                             <div id="adj-brush-tools-box" class="hidden">

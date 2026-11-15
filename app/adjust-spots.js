@@ -61,7 +61,13 @@ const AdjustSpots = {
         }));
         this.el('adj-dust-tools').appendChild(tool('dust-sens', 'Sensitivity', 0, 100, 1, () => this.dust, (v) => { this.dust = v; this.remember(); }));
 
-        for (const t of ['heal', 'clone', 'eye']) {
+        // Red-eye is the spot tool in Restore (usePane); Heal has Heal and Clone
+        this.el('adj-eye-tools').appendChild(tool('eye-size', 'Size', 0.2, 20, 0.1, () => this.size, (v) => {
+            this.size = v;
+            spot(s => { s.r = v / 200; });
+            this.remember();
+        }));
+        for (const t of ['heal', 'clone']) {
             this.el(`adj-spot-${t}`).addEventListener('click', (e) => {
                 e.currentTarget.blur();
                 this.tool = t;
@@ -107,8 +113,19 @@ const AdjustSpots = {
         }, true);
     },
 
+    // Restore's tool is Red-eye, Heal's is Heal or Clone (whichever was
+    // used last): a spot chosen in one isn't carried to the other
+    usePane(id) {
+        const eye = id === 'restore';
+        if (eye === (this.tool === 'eye')) return;
+        this.sel = -1;
+        this.drag = null;
+        if (eye) { this.healTool = this.tool; this.tool = 'eye'; } else this.tool = this.healTool || 'heal';
+        this.sync();
+    },
+
     remember() {
-        try { localStorage.setItem('jeditor.spotTool', JSON.stringify({ tool: this.tool, size: this.size, feather: this.feather, opacity: this.opacity, dust: this.dust })); } catch (e) { /* private mode */ }
+        try { localStorage.setItem('jeditor.spotTool', JSON.stringify({ tool: this.tool === 'eye' ? (this.healTool || 'heal') : this.tool, size: this.size, feather: this.feather, opacity: this.opacity, dust: this.dust })); } catch (e) { /* private mode */ }
     },
 
     // Opened on a photo
@@ -207,12 +224,14 @@ const AdjustSpots = {
         if (!this.sec) return;
         const s = this.current();
         if (s) {
-            this.tool = s.t;
+            // a spot chosen takes the tool over, within its own tool: Heal
+            // and Clone in Heal, Red-eye in Restore
+            if ((s.t === 'eye') === (this.tool === 'eye')) this.tool = s.t;
             this.size = Math.round(s.r * 200 * 10) / 10;
             this.feather = Math.round(s.f * 100);
             this.opacity = Math.round(s.o * 100);
         }
-        for (const t of ['heal', 'clone', 'eye']) this.el(`adj-spot-${t}`).setAttribute('aria-pressed', String(this.tool === t));
+        for (const t of ['heal', 'clone']) this.el(`adj-spot-${t}`).setAttribute('aria-pressed', String(this.tool === t));
         this.el('adj-spot-delete').disabled = !s;
         const list = this.spots(), found = list.filter(x => x.d).length;
         this.el('adj-dust-clear').disabled = !found;
