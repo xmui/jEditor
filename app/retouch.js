@@ -41,7 +41,7 @@ const Retouch = {
             if (out.length >= this.MAX_SPOTS) break;
             if (!s || typeof s !== 'object' || ![s.x, s.y, s.r, s.sx, s.sy].every(num)) continue;
             const c = {
-                t: s.t === 'clone' ? 'clone' : 'heal',
+                t: s.t === 'clone' ? 'clone' : s.t === 'eye' ? 'eye' : 'heal',
                 x: r5(clamp(s.x, -0.5, 1.5)), y: r5(clamp(s.y, -0.5, 1.5)),
                 r: r5(clamp(s.r, this.MIN_R, this.MAX_R)),
                 sx: r5(clamp(s.sx, -0.5, 1.5)), sy: r5(clamp(s.sy, -0.5, 1.5)),
@@ -50,7 +50,7 @@ const Retouch = {
             };
             if (s.d) c.d = 1;
             // Copied from itself: nothing to do
-            if (Math.abs(c.x - c.sx) < 1e-5 && Math.abs(c.y - c.sy) < 1e-5) continue;
+            if (c.t !== 'eye' && Math.abs(c.x - c.sx) < 1e-5 && Math.abs(c.y - c.sy) < 1e-5) continue;
             out.push(c);
         }
         return out.length ? out : null;
@@ -138,6 +138,26 @@ const Retouch = {
         };
         // Heal: the difference (photo − source) round the edge, spread
         // smoothly over the inside
+        // Red-eye: in the circle, a pixel as red as a flash makes it takes
+        // the eye's own dark (its green and blue), the more the redder
+        if (s.t === 'eye') {
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const k = weight(bx0 + x, by0 + y) * s.o;
+                    if (k <= 0) continue;
+                    const i = (y * w + x) * 4;
+                    const r = D[i], g = D[i + 1], bl = D[i + 2], gb = (g + bl) / 2;
+                    // (a brown iris or skin is under 1.9 times as red)
+                    if (r < 50 || r < gb * 1.9) continue;
+                    const red = Math.min(1, (r / Math.max(1, gb) - 1.9) / 1.1);
+                    const to = Math.min(g, bl) * 0.9;
+                    D[i] = Math.round(r + (to - r) * k * red);
+                    D[i + 1] = Math.round(g + (g * 0.9 - g) * k * red);
+                    D[i + 2] = Math.round(bl + (bl * 0.9 - bl) * k * red);
+                }
+            }
+            return;
+        }
         let field = null;
         if (s.t === 'heal') field = this.membrane(dst, bx0, by0, S, sAt, b);
         for (let y = 0; y < h; y++) {

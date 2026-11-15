@@ -56,6 +56,12 @@ const Adjust = {
         bind('adj-paste', () => this.paste());
         bind('adj-auto', () => this.auto());
         bind('adj-auto-color', () => this.auto({ color: true }));
+        this.el('adj-backlight').addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.currentTarget.blur();
+            if (!this.busy) this.backlight();
+        });
         this.el('adj-wb-pick').addEventListener('click', (e) => {
             e.preventDefault(); // in the section's head: not to fold it
             e.stopPropagation();
@@ -504,6 +510,13 @@ const Adjust = {
         if (which === 'look' || which === 'basic') { delete a.look; delete a.lookAmount; }
         if (which === 'basic') for (const [k] of [...this.LIGHT, ...this.COLOR]) delete a[k];
         this.setAll(a);
+    },
+
+    // Backlight: Shadows up and Highlights down, from the photo
+    backlight() {
+        if (!this.ready) return;
+        this.setAll(Develop.backlight(this.sample, this.result()));
+        this.app.showToast('Backlight: the dark part lifted and the bright part held back', 1800, null, null, { kind: 'adjust' });
     },
 
     toggleBefore(on = !this.before) {

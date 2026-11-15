@@ -61,12 +61,13 @@ const AdjustSpots = {
         }));
         this.el('adj-dust-tools').appendChild(tool('dust-sens', 'Sensitivity', 0, 100, 1, () => this.dust, (v) => { this.dust = v; this.remember(); }));
 
-        for (const t of ['heal', 'clone']) {
+        for (const t of ['heal', 'clone', 'eye']) {
             this.el(`adj-spot-${t}`).addEventListener('click', (e) => {
                 e.currentTarget.blur();
                 this.tool = t;
                 const s = this.current();
-                if (s && s.t !== t) { ed.pushHistory(); s.t = t; ed.changed(); }
+                // a red-eye spot has no source, so it stays one
+                if (s && s.t !== t && (s.t === 'eye') === (t === 'eye')) { ed.pushHistory(); s.t = t; ed.changed(); }
                 this.remember();
                 this.sync();
             });
@@ -211,7 +212,7 @@ const AdjustSpots = {
             this.feather = Math.round(s.f * 100);
             this.opacity = Math.round(s.o * 100);
         }
-        for (const t of ['heal', 'clone']) this.el(`adj-spot-${t}`).setAttribute('aria-pressed', String(this.tool === t));
+        for (const t of ['heal', 'clone', 'eye']) this.el(`adj-spot-${t}`).setAttribute('aria-pressed', String(this.tool === t));
         this.el('adj-spot-delete').disabled = !s;
         const list = this.spots(), found = list.filter(x => x.d).length;
         this.el('adj-dust-clear').disabled = !found;
@@ -279,7 +280,7 @@ const AdjustSpots = {
             const dd = Math.hypot(p.x - d.x, p.y - d.y);
             if (Math.abs(dd - R) <= 5 && R > 10) return { i, part: 'edge' };
             if (dd <= R) return { i, part: 'spot' };
-            if ((i === this.sel || this.show) && Math.hypot(p.x - src.x, p.y - src.y) <= R) return { i, part: 'source' };
+            if (s.t !== 'eye' && (i === this.sel || this.show) && Math.hypot(p.x - src.x, p.y - src.y) <= R) return { i, part: 'source' };
         }
         return null;
     },
@@ -328,15 +329,18 @@ const AdjustSpots = {
                 this.sel = this.spots().length - 1;
             }
             const s = this.current();
-            s.sx = p.u;
-            s.sy = p.v;
+            // a red-eye spot stays where it was put, with no source
+            if (s.t !== 'eye') {
+                s.sx = p.u;
+                s.sy = p.v;
+            }
             this.ed.changed();
             return;
         }
         const s = this.current();
         if (!s) return;
         const du = p.u - d.start.u, dv = p.v - d.start.v;
-        if (d.kind === 'spot') { s.x = d.orig.x + du; s.y = d.orig.y + dv; }
+        if (d.kind === 'spot') { s.x = d.orig.x + du; s.y = d.orig.y + dv; if (s.t === 'eye') { s.sx = s.x; s.sy = s.y; } }
         if (d.kind === 'source') { s.sx = d.orig.sx + du; s.sy = d.orig.sy + dv; }
         if (d.kind === 'edge') {
             const c = this.fromPhoto(s.x, s.y);
@@ -358,7 +362,7 @@ const AdjustSpots = {
         }
         // Dragged onto itself: nothing to copy, so gone
         const s = this.current();
-        if (s && Math.hypot((s.sx - s.x) * this.ed.map.asp, s.sy - s.y) < s.r * 0.5) {
+        if (s && s.t !== 'eye' && Math.hypot((s.sx - s.x) * this.ed.map.asp, s.sy - s.y) < s.r * 0.5) {
             this.spots().splice(this.sel, 1);
             this.sel = -1;
         }
@@ -370,6 +374,8 @@ const AdjustSpots = {
     // A spot at p, copied from q (null: the best place nearby). On a
     // speck bigger than the tool, as big as the speck (up to 4 times)
     make(p, q) {
+        // Red-eye: the circle where it's clicked, nothing copied
+        if (this.tool === 'eye') return { t: 'eye', x: p.u, y: p.v, r: this.size / 200, sx: p.u, sy: p.v, f: this.feather / 100, o: this.opacity / 100 };
         const L = this.luma();
         let r = this.size / 200;
         const fit = Retouch.fitSpeck(L.Y, L.W, L.H, p.u, p.v, r * 4);
@@ -407,7 +413,7 @@ const AdjustSpots = {
             const d = this.fromPhoto(s.x, s.y);
             const color = selected ? '#fff' : s.d ? '#ffd166' : 'rgba(255,255,255,0.8)';
             circle(d, R, [], color, selected ? 2 : 1.25);
-            if (selected || (this.show && R > 6)) {
+            if (s.t !== 'eye' && (selected || (this.show && R > 6))) {
                 const src = this.fromPhoto(s.sx, s.sy);
                 circle(src, R, [4, 3], color, selected ? 1.5 : 1);
                 if (selected) {
