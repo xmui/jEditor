@@ -1795,6 +1795,48 @@ header:has(.header-controls.expanded) {
     animation: side-out var(--dur-base) var(--ease-out) both;
 }
 
+/* Adjust's and Paint's panel: dragged away it hides, as the sidebar does,
+   and a line at the window's right edge drags it back (script.js:
+   showPanel). Each mode remembers its own */
+.adj-body,
+.paint-body {
+    position: relative;
+}
+
+.side-edge.side-edge-right {
+    left: auto;
+    right: 0;
+}
+
+.side-edge.side-edge-right::after {
+    inset: 0 0 0 auto;
+}
+
+:is(.adj-panel, .paint-panel) {
+    --side-from: 100%;
+}
+
+.adjust-editor.panel-hidden :is(.adj-panel:not(.side-out), .adj-body > .side-grip),
+.paint-editor.panel-hidden :is(.paint-panel:not(.side-out), .paint-body > .side-grip) {
+    display: none;
+}
+
+:root:not([data-skin]):not([data-motion="off"]) :is(.adj-panel, .paint-panel).side-out {
+    pointer-events: none;
+    animation: side-out var(--dur-base) var(--ease-out) both;
+}
+
+/* The sidebar stays beside Adjust and Paint, as beside the grid and the
+   photo: they start after it (jEditor's own look; a theme's modes keep the
+   whole window) */
+:root:not([data-skin]) .mode-screen {
+    transition: left var(--dur-slow) var(--ease-out);
+}
+
+:root:not([data-skin]) body:has(#main-interface.rail-open:not(.hidden)) .mode-screen {
+    left: var(--rail-now);
+}
+
 .folder-tree {
     flex: 1;
     min-height: 0;
@@ -10064,6 +10106,20 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
     display: none;
 }
 
+/* Over Adjust and Paint, the sidebar hidden: the row in their head's
+   corner, where their chip was (unzoomed, as their head is) */
+:root:not([data-skin]) .mode-row.float.over-mode {
+    top: 8px;
+    left: var(--sp-2);
+    z-index: calc(var(--z-mode) + 1);
+    zoom: 1;
+}
+
+:root[data-platform="mac"]:not([data-skin]) .mode-row.float.over-mode {
+    top: 8px;
+    left: calc(var(--gutter) + var(--lights-w));
+}
+
 /* The folder pill starts after the row, while it floats */
 :root:not([data-skin]) .interface:not(.rail-open) .folder-bar {
     left: calc((var(--sp-2) + var(--mode-row-w, 0px) + var(--sp-2)) / var(--ui-scale, 1));
@@ -10073,9 +10129,10 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
     left: calc((var(--gutter) + var(--lights-w) + var(--mode-row-w, 0px) + var(--sp-2)) / var(--ui-scale, 1));
 }
 
-/* Its sidebar button and the mode chip were the row's before it */
+/* Its sidebar button and the mode chips were the row's before it */
 :root:not([data-skin]) #fb-rail,
-:root:not([data-skin]) #mode-chip-bar {
+:root:not([data-skin]) #mode-chip-bar,
+:root:not([data-skin]) #mode-float {
     display: none;
 }
 
