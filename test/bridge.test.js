@@ -208,6 +208,10 @@ const waitForPost = (page, type) => page.waitForFunction(
                 await w.write(blob);
                 await w.close();
             }
+            // And a RAW (only its name matters here: the engine answers)
+            const w = await (await dir.getFileHandle('photo5.dng', { create: true })).createWritable();
+            await w.write(new Uint8Array([0x49, 0x49, 0x2A, 0, 8, 0, 0, 0, 0, 0]));
+            await w.close();
             window.__onPost = async (m) => {
                 if (m.type === 'pickFolder') setTimeout(() => window.__deliver({ replyTo: m.id, path: 'D:\\Orders\\Engine Order' }, [dir]), 10);
                 else if (m.type === 'dataDir') window.__deliver({ replyTo: m.id, path: 'C:\\data' }, [await (await navigator.storage.getDirectory()).getDirectoryHandle('appdata', { create: true })]);
@@ -216,7 +220,7 @@ const waitForPost = (page, type) => page.waitForFunction(
         await page.click('#btn-browse-folder');
         await page.waitForSelector('#open-card:not(.hidden)');
         await page.click('#oc-browse');
-        await page.waitForFunction(() => app.files.length === 4 && !app.isLoading, null, { timeout: 15000 });
+        await page.waitForFunction(() => app.files.length === 5 && !app.isLoading, null, { timeout: 15000 });
         await page.waitForFunction(() => app.files.every(f => f.thumbnailUrl), null, { timeout: 20000 });
         const r = await page.evaluate(async () => {
             const out = { has: Host.has('engine'), colour: {} };
@@ -231,6 +235,7 @@ const waitForPost = (page, type) => page.waitForFunction(
         });
         check('lists the engine when the app has it', r.has, JSON.stringify(r));
         check('JPEG thumbnails come from the engine', ['photo1.jpg', 'photo2.jpg', 'photo3.jpg'].every(n => r.colour[n] === 'engine'), JSON.stringify(r.colour));
+        check('a RAW\'s thumbnail comes from the engine too', r.colour['photo5.dng'] === 'engine', JSON.stringify(r.colour));
         check('one the engine can\'t make, the page makes itself', r.colour['photo4.jpg'] === 'page', JSON.stringify(r.colour));
         const one = asked.find(q => /photo1\.jpg$/.test(q.path));
         check('asks by the photo\'s path on disk, 320 wide', one && one.w === '320' && one.path === 'D:\\Orders\\Engine Order\\photo1.jpg', JSON.stringify(asked));
