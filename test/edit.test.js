@@ -1072,6 +1072,17 @@ const PROJECT = `
             out.clean = JSON.stringify(Paint.clean({ id: 'abc', w: 100, h: 50, layers: [{ id: 'l1', rev: 'r1', name: '  Sky  ', opacity: 3, blend: 'nope', hidden: 1 }, { id: 'BAD', rev: 'x' }] }));
             out.none = Paint.clean({ id: 'abc', w: 100, h: 50, layers: [] }) === null && Paint.clean({ id: '../x', w: 1, h: 1, layers: [{ id: 'a', rev: 'b' }] }) === null;
             out.size = JSON.stringify([Paint.sizeFor(6000, 4000), Paint.sizeFor(800, 600)]);
+            // Nine slots; a slot shows its group's tool used last; a
+            // right-click on a slot of several lists them
+            PaintEditor.init(app);
+            PaintEditor.setTool('lasso');
+            PaintEditor.setTool('pencil');
+            const slots = [...document.querySelectorAll('.paint-tool')];
+            const sel = slots.find(b => b.dataset.group === '1');
+            sel.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+            const menu = document.getElementById('context-menu');
+            out.slots = [slots.length, slots.map(b => b.dataset.tool).join(), slots.filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.dataset.tool).join(), menu ? menu.querySelectorAll('[role^="menuitem"]').length : 0];
+            app.closeContextMenu();
             out.lock = JSON.stringify(Paint.clean({ id: 'abc', w: 10, h: 10, layers: [{ id: 'l1', rev: 'r1', lock: 1 }, { id: 'l2', rev: 'r2', lock: false }] }).layers.map(l => l.lock));
             // Saved colours: + saves the brush colour once, kept between
             // sessions; taken off again
@@ -1111,6 +1122,7 @@ const PROJECT = `
         check('paint: Feather softens the edge (half-way at it, nothing far off), the middle still selected', m.feather[0] >= 240 && m.feather[1] > 90 && m.feather[1] < 165 && m.feather[2] < m.feather[1] && m.feather[3] === 0, JSON.stringify(m.feather));
         check('paint: the record is checked (names, opacity, blend; bad ids dropped)', m.clean === '{"id":"abc","w":100,"h":50,"layers":[{"id":"l1","rev":"r1","name":"Sky","opacity":1,"blend":"source-over","hidden":true}]}' && m.none, JSON.stringify(m));
         check('paint: layers at the photo\'s size, a very big one smaller', m.size === '[{"w":3000,"h":2000},{"w":800,"h":600}]', m.size);
+        check('paint: nine tool slots, each showing its group\'s tool used last; a right-click lists the others', JSON.stringify(m.slots) === '[9,"move,lasso,pencil,eraser,fill,line,text,picker,hand","pencil",4]', JSON.stringify(m.slots));
         check('paint: a layer\'s locked transparency is kept (only when on)', m.lock === '[true,null]', m.lock);
         check('paint: saved colours: + saves the brush colour (once), kept; right-click takes one off; Choose a colour…', JSON.stringify(m.saved) === '[1,true,0,true]', JSON.stringify(m.saved));
 
@@ -1174,6 +1186,18 @@ const PROJECT = `
                 out.turned = [P.OW === oh, P.OH === ow, P.edit.q === 1, px(0, 100, 100)[3]];
                 pressKey('z', { ctrlKey: true });
                 out.turnUndone = P.OW === ow && P.OH === oh && !((P.edit && P.edit.q) || 0);
+                // Copy merged takes the photo too; paste in place puts it back
+                // where it was, on a new layer
+                step = 'copy merged';
+                P.copy();
+                out.plainClip = P._clip.getContext('2d').getImageData(100, 130, 1, 1).data[3];
+                P.copy({ merged: true });
+                P.addLayer();
+                P.paste({ inPlace: true });
+                pressKey('Enter');
+                out.inPlace = [px(1, 100, 100).slice(0, 2).join(), px(1, 100, 130)[3], px(1, 100, 130).slice(0, 3).join() === [...P.photo.getContext('2d').getImageData(100, 130, 1, 1).data.slice(0, 3)].join()];
+                P.deleteLayer();
+                P.setTool('brush'); // (a paste takes Move)
                 // Lock transparency: green goes over the red stroke, not past it
                 step = 'lock';
                 P.toggleLock(0);
@@ -1416,6 +1440,7 @@ const PROJECT = `
         check('paint: the photo is drawn at screen size once for a view, again when it zooms', r.shownKept && r.shownRedrawn, JSON.stringify([r.shownKept, r.shownRedrawn]));
         check('paint: a brush stroke paints the layer (hard-edged), Ctrl+Z / Ctrl+Shift+Z inside', r.brush && r.brush[0] === 255 && r.brush[3] === 255 && r.brushEdge === 0 && r.undo === 0 && r.redo === 255, JSON.stringify(r));
         check('paint: Image ▸ Rotate right turns the photo (its own edit), the layers with it; Ctrl+Z turns it back', r.imageMenu && JSON.stringify(r.turned) === '[true,true,true,255]' && r.turnUndone, JSON.stringify([r.imageMenu, r.turned, r.turnUndone]));
+        check('paint: copy merged takes the photo and the layers; paste in place puts it back where it came from', r.plainClip === 0 && JSON.stringify(r.inPlace) === '["255,0",255,true]', JSON.stringify([r.plainClip, r.inPlace]));
         check('paint: lock transparency paints only over what\'s on the layer', JSON.stringify(r.locked) === '[[0,255,0,255],0,true]', JSON.stringify(r.locked));
         check('paint: Ctrl-click a layer selects its paint; Alt-click an eye shows that layer alone, and again all; a layer\'s right-click menu', r.layerSel && JSON.stringify(r.solo) === '[true,false,false,false]' && r.layerMenu === 'Lock transparency|Show this layer alone|Select its pixels', JSON.stringify([r.layerSel, r.solo, r.layerMenu]));
         check('paint: Alt with the brush picks the colour under it, with the loupe, and paints nothing', JSON.stringify(r.altPick) === '["#ff0000",true,0]', JSON.stringify(r.altPick));
