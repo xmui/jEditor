@@ -9884,15 +9884,15 @@ body.sb-drop.drag-over #main-interface:not(.hidden)::after {
    readable on their own over a bright photo: a halo behind them does
    (--glass-halo, tokens.css; none on Opaque). Buttons and fields too,
    which the browser gives no shadow of their own */
-:root:not([data-skin]) :is(.toolbar, .file-info, #context-menu, .sb-picker, .task-pill, .toast, .picked-bar),
-:root:not([data-skin]) :is(.toolbar, .file-info, #context-menu, .sb-picker, .task-pill, .toast, .picked-bar) :is(button, input, select) {
+:root:not([data-skin]) :is(.toolbar, .file-info, #context-menu, .sb-picker, .task-pill, .toast, .picked-bar, .paint-tools),
+:root:not([data-skin]) :is(.toolbar, .file-info, #context-menu, .sb-picker, .task-pill, .toast, .picked-bar, .paint-tools) :is(button, input, select) {
     text-shadow: var(--glass-halo);
 }
 
 /* Liquid: the glass bends what's under its edges. liquid.js draws the bend
    for each part's size and shape (--lg-bend: an SVG filter); until it has,
    or where the browser can't draw it, the glass is the same, unbent */
-:root.liquid-bends :is(.toolbar, .file-info, #context-menu, .sb-picker, .popover, .task-pill, .toast, .picked-bar) {
+:root.liquid-bends :is(.toolbar, .file-info, #context-menu, .sb-picker, .popover, .task-pill, .toast, .picked-bar, .paint-tools) {
     backdrop-filter: var(--lg-bend, ) var(--glass-filter);
     -webkit-backdrop-filter: var(--lg-bend, ) var(--glass-filter);
 }
@@ -11698,6 +11698,66 @@ body.touring .controls.idle button { pointer-events: auto; }
     border-color: transparent;
     background: var(--accent-soft);
     color: var(--accent-text);
+}
+
+/* The tools: an upright glass pill over the photo at the left (the plan:
+   round buttons, as in Photos), 20px in, in the middle. Glass follows
+   Settings, as Photos' pills do */
+:root:not([data-skin]) .paint-body {
+    position: relative;
+}
+
+:root:not([data-skin]) .paint-tools {
+    position: absolute;
+    z-index: 4;
+    left: var(--gutter);
+    top: 50%;
+    transform: translateY(-50%);
+    max-height: calc(100% - 2 * var(--gutter));
+    padding: var(--sp-1);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--r-pill);
+    background: var(--glass-bg);
+    box-shadow: var(--shadow-2), var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    scrollbar-width: none;
+}
+
+:root:not([data-skin]) .paint-tool {
+    position: relative;
+    border-radius: var(--r-pill);
+    color: var(--text-1);
+}
+
+:root:not([data-skin]) .paint-tool:hover {
+    background: var(--tb-hover);
+}
+
+/* A slot holding more tools: a small mark in its corner */
+.paint-tool-group {
+    position: relative;
+}
+
+.paint-tool-group::after {
+    content: "";
+    position: absolute;
+    right: 5px;
+    bottom: 5px;
+    border-left: 4px solid transparent;
+    border-bottom: 4px solid currentColor;
+    opacity: 0.6;
+}
+
+@media (max-width: 760px) {
+    :root:not([data-skin]) .paint-tools {
+        position: static;
+        transform: none;
+        max-height: none;
+        border-width: 0 0 1px;
+        border-radius: 0;
+        box-shadow: none;
+    }
 }
 
 :root:not([data-skin]) .paint-layer {
