@@ -172,15 +172,15 @@ to flow into each other better"). The rules:
    plain fade or nothing.
 6. **The top of the sidebar is one row that stays put** (option A, the
    owner's pick "for now", 2026-11-15; it can change once they've tried
-   it; the other four are on the mockup's last board). The row holds the
-   sidebar button on its own at the left, then, leaning right, Photos ·
-   Adjust · Paint as icons and Find anything (the owner, 2026-11-15). The
+   it; the other four are on the mockup's last board). The row holds Photos ·
+   Adjust · Paint as icons, leaning left, and the sidebar button with Find
+   anything to its right, leaning right (the owner, 2026-11-15). The
    sidebar folds away in every mode (the button, Ctrl+B, or dragged past its
    edge): it slides out in 280 ms, the photo, strip and pills glide into
    the room, and the row stays exactly where it was as one glass pill
    (the owner, 2026-11-15: "go with a folded but with accent on selected
-   mode"), so nothing you reach for moves. The sidebar button stays plain (the
-   owner: it should not be highlighted). The mode you're in has its icon in
+   mode"), so nothing you reach for moves. The sidebar button stays plain, never
+   highlighted, open or folded (the owner). The mode you're in has its icon in
    the accent colour (`--accent-text`) on the soft chosen pill, open and
    folded. It stays Photos' own docked sidebar, solid
    on its tint, in every mode (the owner: "look like the sidebar on the
