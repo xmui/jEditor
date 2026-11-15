@@ -16,7 +16,8 @@
 //   Line (U), rectangle (R), ellipse (O): stroked, filled or both; Shift
 //     keeps lines to 45° and shapes square
 //   Text (T): click, type, Ctrl+Enter (or a click elsewhere) puts it down
-//   Picker (I): the colour under it (Alt-click with any brush does too)
+//   Picker (I): the colour under it, with a loupe (Alt held with any brush
+//   does too). Alt + right-drag sizes a brush and sets its hardness
 //   Hand (H, or hold Space): move about; the wheel zooms (with a brush,
 //     Ctrl+wheel; on a Mac's trackpad, two fingers move about and a pinch
 //     zooms)
@@ -188,6 +189,20 @@ const PaintEditor = {
         st.addEventListener('pointerup', (e) => this.up(e));
         st.addEventListener('pointercancel', (e) => this.up(e));
         st.addEventListener('pointerleave', () => { this.hover = null; this.renderSoon(); });
+        // Alt + right-drag sizes the brush: no menu when it lets go
+        st.addEventListener('contextmenu', (e) => { if (e.altKey || this._sized) { e.preventDefault(); e.stopPropagation(); this._sized = false; } });
+        // Alt held: the colour picker, with its loupe, for the tools that
+        // paint a colour
+        for (const type of ['keydown', 'keyup']) window.addEventListener(type, (e) => {
+            if (e.key !== 'Alt' || !this.isOpen) return;
+            const on = type === 'keydown';
+            if (on === !!this.alt) return;
+            this.alt = on;
+            if (on) e.preventDefault(); // not the window's menu bar
+            this.cursor();
+            this.renderSoon();
+        }, true);
+        window.addEventListener('blur', () => { if (this.alt) { this.alt = false; this.cursor(); this.renderSoon(); } });
         st.addEventListener('wheel', (e) => {
             if (!this.ready) return;
             e.preventDefault();
@@ -480,6 +495,7 @@ const PaintEditor = {
     cursor() {
         const t = this.space || this.tool === 'hand' ? (this.drag && this.drag.kind === 'pan' ? 'grabbing' : 'grab')
             : this.tool === 'move' ? 'move'
+            : this.picking() ? 'crosshair'
             : this.tool === 'text' ? 'text'
             : this.isBrush() ? 'none' : 'crosshair';
         this.stage.style.cursor = t;
@@ -564,7 +580,7 @@ const PaintEditor = {
             'ellipse-select': 'Drag an ellipse. Shift adds, Alt takes away',
             lasso: 'Draw round what to select. Shift adds, Alt takes away',
             wand: 'Click a colour to select it. Shift adds, Alt takes away',
-            picker: 'Click for the foreground colour, Alt-click for the background',
+            picker: 'Click or drag for the foreground colour, Alt for the background. With a brush, hold Alt to pick',
             hand: 'Drag to move about; the wheel zooms; double-click fits',
             text: 'Click where the text goes; Ctrl+Enter puts it down',
             fill: wholeFill ? 'Click to fill the whole layer (or what\'s selected) with the foreground colour' : 'Click to fill with the foreground colour',
@@ -693,8 +709,69 @@ const PaintEditor = {
             ctx.restore();
         });
         ctx.restore();
+        const loupe = this.picking() && this.hover ? this.sampleLoupe(ctx) : null;
         this.drawSelection(ctx, VD, LD);
         this.drawGuides(ctx, VD, LD);
+        if (loupe) this.drawLoupe(ctx, loupe);
+    },
+
+    // The picture round the pointer, before anything's drawn over it
+    // (9 by 9 of the screen's pixels)
+    LOUPE_N: 9,
+
+    sampleLoupe(ctx) {
+        const dpr = this.dpr || 1, n = this.LOUPE_N, h = n >> 1;
+        const x = Math.round(this.hover.sx * dpr) - h, y = Math.round(this.hover.sy * dpr) - h;
+        try { return { x: this.hover.sx, y: this.hover.sy, img: ctx.getImageData(x, y, n, n) }; } catch (e) { return null; }
+    },
+
+    // The loupe: those pixels big, the middle one outlined, in a ring that's
+    // the colour picked (above) and the brush colour (below), up and to the
+    // right of the pointer, kept in the view
+    drawLoupe(ctx, { x, y, img }) {
+        const dpr = this.dpr || 1, n = this.LOUPE_N, R = 52, ring = 7, gap = 64;
+        let cx = x + gap, cy = y - gap;
+        if (cx + R + ring > this.cssW) cx = x - gap;
+        if (cy - R - ring < 0) cy = y + gap;
+        const c = this._loupeCv || (this._loupeCv = document.createElement('canvas'));
+        c.width = c.height = n;
+        c.getContext('2d').putImageData(img, 0, 0);
+        const mid = ((n >> 1) * n + (n >> 1)) * 4, d = img.data;
+        const picked = `rgb(${d[mid]},${d[mid + 1]},${d[mid + 2]})`;
+        ctx.save();
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.shadowColor = 'rgba(0,0,0,0.35)';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(cx, cy, R + ring, Math.PI, 0);
+        ctx.fillStyle = picked;
+        ctx.fill();
+        ctx.shadowColor = 'transparent';
+        ctx.beginPath();
+        ctx.arc(cx, cy, R + ring, 0, Math.PI);
+        ctx.fillStyle = this.drag && this.drag.toBg ? this.bg : this.fg;
+        ctx.fill();
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(c, cx - R, cy - R, R * 2, R * 2);
+        ctx.restore();
+        const cell = (R * 2) / n;
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+        ctx.strokeRect(cx - cell / 2 - 0.5, cy - cell / 2 - 0.5, cell + 1, cell + 1);
+        ctx.strokeStyle = '#fff';
+        ctx.strokeRect(cx - cell / 2 + 0.5, cy - cell / 2 + 0.5, cell - 1, cell - 1);
+        for (const [r, col, w] of [[R + ring, 'rgba(0,0,0,0.45)', 1], [R, 'rgba(255,255,255,0.85)', 1.5]]) {
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.strokeStyle = col;
+            ctx.lineWidth = w;
+            ctx.stroke();
+        }
+        ctx.restore();
     },
 
     // The photo with its shadow, at screen size for the view VD: kept
@@ -758,6 +835,16 @@ const PaintEditor = {
 
     down(e) {
         if (!this.ready || this.busy) return;
+        this.alt = e.altKey;
+        // Alt + right-drag: the brush's size sideways, its hardness up and down
+        if (e.button === 2 && e.altKey && this.isBrush()) {
+            e.preventDefault();
+            try { this.stage.setPointerCapture(e.pointerId); } catch (err) { /* not a live pointer */ }
+            const p = this.point(e);
+            this.drag = { kind: 'size', sx: p.sx, sy: p.sy, at: p, size: this.opts.size, hard: this.opts.hardness };
+            this._sized = true;
+            return;
+        }
         if (e.button === 1 || e.button === 2) {
             if (e.button === 1) this.startPan(e);
             return;
@@ -768,11 +855,15 @@ const PaintEditor = {
         if (this.space || this.tool === 'hand') { this.startPan(e); return; }
         if (this.text && e.target !== this.el('paint-text')) { this.endText(true); return; }
         const t = this.tool;
-        if (e.altKey && ['brush', 'pencil', 'spray', 'fill', 'line', 'rect', 'ellipse', 'gradient', 'text'].includes(t)) {
-            this.pick(p, false);
+        // The picker (I), or Alt with a tool that paints a colour: picks as
+        // it's dragged, with the loupe showing what's under it
+        if (this.picking()) {
+            const toBg = t === 'picker' && e.altKey;
+            this.drag = { kind: 'pick', toBg };
+            this.pick(p, toBg);
+            this.renderSoon();
             return;
         }
-        if (t === 'picker') { this.pick(p, e.altKey); return; }
         if (!this.layer()) return;
         if (this.layer().hidden && !['rect-select', 'ellipse-select', 'lasso', 'wand', 'move'].includes(t)) {
             this.app.showToast('That layer is hidden: show it to paint on it', 2000);
@@ -796,9 +887,12 @@ const PaintEditor = {
     move(e) {
         if (!this.ready) return;
         const p = this.point(e);
-        this.hover = p;
         const d = this.drag;
+        if (!d && e.altKey !== !!this.alt) { this.alt = e.altKey; this.cursor(); }
+        this.hover = d && d.kind === 'size' ? d.at : p;
         if (!d) { this.renderSoon(); return; }
+        if (d.kind === 'size') { this.sizeBy(p.sx - d.sx, p.sy - d.sy); return; }
+        if (d.kind === 'pick') { this.pick(p, d.toBg); this.renderSoon(); return; }
         if (d.kind === 'pan') {
             this.fitted = false;
             this.view.x = d.vx + (p.sx - d.sx);
@@ -840,7 +934,29 @@ const PaintEditor = {
         this.cursor();
     },
 
+    // The tools Alt turns into the colour picker
+    PICKS: ['brush', 'pencil', 'spray', 'fill', 'line', 'rect', 'ellipse', 'gradient', 'text'],
+
+    picking() {
+        if (this.space || (this.drag && this.drag.kind === 'size')) return false;
+        return this.tool === 'picker' || (!!this.alt && this.PICKS.includes(this.tool));
+    },
+
+    // Alt + right-drag: 1 px of size for each pixel sideways (more on a big
+    // brush), and 1% of hardness for each pixel up; shown as it'll paint
+    sizeBy(dx, dy) {
+        const d = this.drag, o = this.opts;
+        o.size = Math.min(this.sizeMax(), Math.max(1, d.size * Math.exp(dx / 150)));
+        if (this.tool === 'brush' || this.tool === 'eraser') o.hardness = Math.round(Math.min(100, Math.max(0, d.hard - dy / 2)));
+        for (const k of ['size', 'hardness']) { const row = this.optRows && this.optRows[k]; if (row) row._sync(); }
+        this.remember();
+        this.flashSize();
+    },
+
     pick(p, toBg) {
+        // What's on screen now, not a frame behind (the loupe is off to the
+        // side, so it's never what's picked)
+        this.render();
         const ctx = this.canvas.getContext('2d', { willReadFrequently: true });
         const dpr = this.dpr || 1;
         const px = ctx.getImageData(Math.round(p.sx * dpr), Math.round(p.sy * dpr), 1, 1).data;
@@ -1874,7 +1990,7 @@ const PaintEditor = {
         // The brush under the pointer; as its size changes, how it'll paint
         // and the size (in the middle when it's changed along the top)
         const sizing = performance.now() < (this._sizeUntil || 0);
-        const brush = this.isBrush() && !this.space && !(d && d.kind === 'pan');
+        const brush = this.isBrush() && !this.space && !(d && d.kind === 'pan') && !this.picking();
         const at = this.hover || (sizing ? this.V().inverse().transformPoint({ x: this.cssW / 2, y: this.cssH / 2 }) : null);
         const ox = at && (at.ox !== undefined ? at.ox : at.x), oy = at && (at.oy !== undefined ? at.oy : at.y);
         const r = this.radius();
