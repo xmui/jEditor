@@ -142,11 +142,13 @@ static class Engine
     {
         var q = System.Web.HttpUtility.ParseQueryString(uri.Query)["path"] ?? "";
         var slow = Path.GetExtension(q).ToLowerInvariant() is ".heic" or ".heif";
+        var queued = System.Diagnostics.Stopwatch.StartNew();
         if (slow) await heavy.WaitAsync();
         try
         {
             await cores.WaitAsync();
-            try { return await Task.Run(() => Answer(uri)); }
+            var waited = queued.Elapsed.TotalMilliseconds;
+            try { return await Task.Run(() => Answer(uri, waited)); }
             finally { cores.Release(); }
         }
         finally
@@ -156,24 +158,34 @@ static class Engine
     }
 
     // How the answers went, for the log every 50 (test/grid-speed.perf.js
-    // shows it): how many, how long, by kind
+    // shows it): how many, how long, by kind. Of each: the time it waited
+    // for a core, and the CPU time of the thread that asked (a JPEG that
+    // takes much longer than that is losing the CPU to something else; a
+    // HEIC's HEVC is decoded on libde265's own threads, so it shows little
+    // here: the Speed test's CPU per process counts all of it)
     static readonly object statsLock = new();
-    static readonly Dictionary<string, (int n, int made, double ms, double most)> stats = [];
+    static readonly Dictionary<string, (int n, int made, double ms, double most, double cpu, double wait)> stats = [];
     static int answered;
 
-    static void Count(string ext, bool made, double ms)
+    static void Count(string ext, bool made, double ms, double cpu, double wait)
     {
         lock (statsLock)
         {
             stats.TryGetValue(ext, out var s);
-            stats[ext] = (s.n + 1, s.made + (made ? 1 : 0), s.ms + ms, Math.Max(s.most, ms));
+            stats[ext] = (s.n + 1, s.made + (made ? 1 : 0), s.ms + ms, Math.Max(s.most, ms), s.cpu + cpu, s.wait + wait);
             if (++answered % 50 != 0) return;
             Log.Write($"Engine: {answered} answered; " + string.Join("; ", stats.Select(kv =>
-                $"{kv.Key} {kv.Value.made}/{kv.Value.n} made, {kv.Value.ms / kv.Value.n:F0} ms each (longest {kv.Value.most:F0})")));
+                $"{kv.Key} {kv.Value.made}/{kv.Value.n} made, {kv.Value.ms / kv.Value.n:F0} ms each (CPU {kv.Value.cpu / kv.Value.n:F0}, waited {kv.Value.wait / kv.Value.n:F0} first; longest {kv.Value.most:F0})")));
         }
     }
 
-    static (int, byte[]?) Answer(Uri uri)
+    [DllImport("kernel32.dll")] static extern IntPtr GetCurrentThread();
+    [DllImport("kernel32.dll")] static extern bool GetThreadTimes(IntPtr thread, out long created, out long exited, out long kernel, out long user);
+
+    // This thread's CPU time so far, in ms
+    static double ThreadCpu() => GetThreadTimes(GetCurrentThread(), out _, out _, out var k, out var u) ? (k + u) / 1e4 : 0;
+
+    static (int, byte[]?) Answer(Uri uri, double waited)
     {
         var q = System.Web.HttpUtility.ParseQueryString(uri.Query);
         if (uri.AbsolutePath != "/thumb") return (404, null);
@@ -181,8 +193,9 @@ static class Engine
         if (string.IsNullOrEmpty(path) || !int.TryParse(q["w"], out var w) || w < 1 || w > 4096) return (404, null);
         if (!Path.IsPathFullyQualified(path) || !Reads.Contains(Path.GetExtension(path).ToLowerInvariant())) return (204, null);
         var t = System.Diagnostics.Stopwatch.StartNew();
+        var cpu = ThreadCpu();
         var bytes = Thumbnail(path, w, out var code);
-        Count(Path.GetExtension(path).ToLowerInvariant(), bytes is not null, t.Elapsed.TotalMilliseconds);
+        Count(Path.GetExtension(path).ToLowerInvariant(), bytes is not null, t.Elapsed.TotalMilliseconds, ThreadCpu() - cpu, waited);
         if (bytes is null && code != 1) Log.Write($"Engine: no thumbnail for {path} (code {code})");
         return bytes is null ? (204, null) : (200, bytes);
     }

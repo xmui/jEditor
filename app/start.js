@@ -213,8 +213,8 @@ const Start = {
         if (b) b.title = this.update ? `Settings · jEditor ${Updates.label(this.update.tag)} is available` : 'Settings';
     },
 
-    // The tiles are Open a folder, New project (a blank canvas: Paint's
-    // New canvas window) and Convert. The quiet row under them: Import
+    // The tiles are Open a folder, New project (a folder for photos or a
+    // blank canvas: places.js newProject asks which) and Convert. The quiet row under them: Import
     // while a card is in, else Scan or Capture where there's a scanner or
     // camera to use, then Adjust a photo and Paint a photo
     tiles() {
@@ -239,7 +239,12 @@ const Start = {
         }
         cap.classList.toggle('card', !!this.card);
         cap.classList.toggle('hidden', !this.card && !hw);
-        blank.classList.toggle('hidden', !modeOn('paint'));
+        // New project: with a projects folder to make one in, or Paint for a canvas
+        const folder = Host.has('places'), canvas = modeOn('paint');
+        blank.classList.toggle('hidden', !folder && !canvas);
+        const sub = blank.querySelector('.home-tile-sub');
+        if (sub) sub.textContent = folder && canvas ? 'photos or a canvas' : canvas ? 'a blank canvas' : 'a folder for photos';
+        blank.title = folder && canvas ? 'A new project: a folder for photos, or a blank canvas' : canvas ? 'A new project that starts with a blank canvas, in Paint' : 'A new project: an empty folder, ready for photos';
         const adjust = this.el('start-adjust');
         if (adjust) adjust.classList.toggle('hidden', !modeOn('adjust'));
         const paint = this.el('start-paint');

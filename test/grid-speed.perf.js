@@ -130,7 +130,7 @@ async function launchWindows(profile) {
     const engine = await page.evaluate(() => Host.has('engine'));
     console.log(`  (the Windows app, ${engine ? 'with' : 'without'} its engine)`);
     return {
-        page, cdp: null, windows: true,
+        page, cdp: null, windows: true, cpu: windowsCpu,
         // The app and its WebView2 processes, all of them
         close: async () => {
             // What the engine said it did (Engine.cs, every 50 answers)
@@ -345,6 +345,29 @@ const fmt = (v) => (v && typeof v === 'object'
         : `${v.long} long tasks, longest ${v.longest} ms, ${v.busy} ms busy`)
     : v);
 
+// CPU seconds so far of jEditor.exe and its WebView2 processes, by kind
+// (the app; WebView2's browser, renderer, GPU, utility...): where a cold
+// grid's CPU goes, beside the cores there were
+function windowsCpu() {
+    const ps = "Get-CimInstance Win32_Process -Filter \"Name='jEditor.exe' or Name='msedgewebview2.exe'\" | ForEach-Object { '{0}|{1}|{2}' -f $_.Name, ($_.UserModeTime + $_.KernelModeTime), $_.CommandLine }";
+    const out = execFileSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8' });
+    const by = {};
+    for (const line of out.split(/\r?\n/)) {
+        const [name, t, cmd = ''] = line.split('|');
+        if (!t) continue;
+        const kind = /^jeditor/i.test(name) ? 'app' : 'webview2 ' + ((cmd.match(/--type=([\w-]+)/) || [, 'browser'])[1]);
+        by[kind] = (by[kind] || 0) + Number(t) / 1e7;
+    }
+    return by;
+}
+
+function printCpu(before, after, seconds) {
+    const used = Object.keys(after).map(k => [k, after[k] - (before[k] || 0)]).filter(([, s]) => s > 0.05).sort((a, b) => b[1] - a[1]);
+    const total = used.reduce((t, [, s]) => t + s, 0), cores = os.cpus().length;
+    console.log(`  CPU: ${total.toFixed(1)} s of ${(seconds * cores).toFixed(1)} available (${cores} cores × ${seconds.toFixed(1)} s, ${Math.round(100 * total / seconds / cores)}% busy): ` +
+        used.map(([k, s]) => `${k} ${s.toFixed(1)} s`).join(', '));
+}
+
 async function main() {
     makePhotos();
     const targets = process.env.ONLY ? [process.env.ONLY] : ['mac', 'web'];
@@ -367,7 +390,9 @@ async function main() {
                 const log = [...document.querySelectorAll('#debug-log > div')].slice(-4).map(d => d.textContent).join(' / ');
                 return `files ${(app.files || []).length}, loading ${!!app.isLoading}, view ${app.viewMode}, tiles ${tiles}, thumbnails ${thumbs}, folder ${app.dirHandle ? app.dirHandle.name : 'none'} (asked ${window.__folder ? window.__folder.name : 'none'})` + (open.length ? `; on screen: ${open.join(' | ')}` : '') + (log ? `; log: ${log}` : '');
             }).then(t => console.log('  ... ' + t), () => {}), 20000);
+            const cpu0 = s.cpu && s.cpu(), t0 = Date.now();
             const r = await measure(s.page, false).finally(() => clearInterval(beat));
+            if (s.cpu) printCpu(cpu0, s.cpu(), (Date.now() - t0) / 1000);
             // The engine's answers as the page saw them: how many, how long
             if (s.windows) {
                 const seen = await s.page.evaluate(() => {

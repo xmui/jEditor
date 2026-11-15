@@ -33,7 +33,12 @@ pub fn jpeg_thumbnail(jpeg: &[u8], width: u32, quality: f32) -> Result<Vec<u8>, 
 
 /// The same, as RGB pixels
 pub fn jpeg_thumbnail_rgb(jpeg: &[u8], width: u32) -> Result<Rgb, Error> {
-    let o = exif::orientation(jpeg);
+    oriented_thumbnail_rgb(jpeg, width, exif::orientation(jpeg))
+}
+
+/// The same, turned by `o` (1–8) rather than the JPEG's own EXIF: a RAW's
+/// preview, which the RAW says how to turn (raw.rs)
+pub fn oriented_thumbnail_rgb(jpeg: &[u8], width: u32, o: u16) -> Result<Rgb, Error> {
     let swap = o >= 5;
     let decoded = decode_scaled(jpeg, width as usize, swap)?;
     // The size it's shown at, then that on the photo's own axes

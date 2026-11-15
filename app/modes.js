@@ -83,7 +83,8 @@ const Modes = {
         }, { passive: false });
         this.strip = strip;
         const blank = this.el('start-blank');
-        if (blank) blank.addEventListener('click', () => this.paintStart());
+        // New project: a folder for photos or a blank canvas (places.js asks which)
+        if (blank) blank.addEventListener('click', () => typeof Places !== 'undefined' ? Places.newProject() : this.paintStart());
         // Convert photos: photos (converted on this page) or any folder,
         // without opening it (convert.js)
         const convert = this.el('start-convert');
