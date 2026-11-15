@@ -161,8 +161,10 @@ to flow into each other better"). The rules:
    button at the left of the file pill, or Ctrl+B. It slides out to the
    left in 280 ms and the photo, strip and pills glide into the room;
    nothing jumps. Folded, a chip in the file pill names the mode, with a
-   menu to switch (today's `.mode-chip`). Whether the sidebar becomes glass
-   like the panel is the owner's call (asked 2026-11-15).
+   menu to switch (today's `.mode-chip`). It stays Photos' own docked
+   sidebar, solid on its tint, in every mode (the owner, 2026-11-15: "look
+   like the sidebar on the left / the main one"); only the right panel is
+   glass.
 7. **Leaving keeps your place.** The same photo, zoom and strip position in
    every mode; edits made in Adjust show in Paint and in the strip.
 
