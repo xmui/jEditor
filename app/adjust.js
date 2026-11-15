@@ -519,13 +519,13 @@ const Adjust = {
         this.setAll(a);
     },
 
-<<<<<<< HEAD
     // Backlight: Shadows up and Highlights down, from the photo
     backlight() {
         if (!this.ready) return;
         this.setAll(Develop.backlight(this.sample, this.result()));
         this.app.showToast('Backlight: the dark part lifted and the bright part held back', 1800, null, null, { kind: 'adjust' });
-=======
+    },
+
     // Adjust's ⋯ menu, by its keys as they're set now
     moreItems() {
         const sel = this.app.selection && [...this.app.selection].filter(f => f !== this.file);
@@ -545,7 +545,6 @@ const Adjust = {
         this.clip = on;
         this.app.showToast(on ? 'Clipping shown: lost highlights red, lost shadows blue (J)' : 'Clipping hidden (J)', 1600, 'adj-clip', null, { kind: 'adjust' });
         this.schedule();
->>>>>>> origin/beta
     },
 
     toggleBefore(on = !this.before) {
