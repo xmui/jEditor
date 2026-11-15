@@ -11232,13 +11232,17 @@ body.touring .controls.idle button { pointer-events: auto; }
 /* ==========================================================================
    The 2.0 refinement: motion (jEditor's own look). Three speeds, each for
    one job, so parts stop choosing their own:
-     120 ms  pointing and pressing: a colour fade. A pressed button
-             darkens; nothing shrinks or bounces
+     120 ms  pointing and pressing: a colour fade, and what's pressed gives
+             a little
      180 ms  things that appear (menus, dialogs, messages, badges): a fade
              while growing from 98%
      280 ms  changes of place
-   The springy curve is retired (tokens.css), and selection never
-   animates: its mark appears at once, so a redrawn grid can't flicker.
+   Two kinds of motion, kept apart. What you press or select answers with
+   a small, quick bounce (--ease-press): a button or a pill pressed, a
+   photo selected (motion.js) and its tick. What only appears stays calm:
+   menus, dialogs, messages and badges fade in and never overshoot (the
+   old springy curve, --ease-spring, is retired for them in tokens.css).
+   Reduced motion, or Animations off: a plain fade or nothing.
    ========================================================================== */
 
 @keyframes appear {
@@ -11249,14 +11253,47 @@ body.touring .controls.idle button { pointer-events: auto; }
     40% { color: var(--text-1); }
 }
 
-:root:not([data-skin]) .btn:active:not(:disabled),
-:root:not([data-skin]) .toast-action:active {
-    transform: none;
-    filter: brightness(0.9);
+/* Pressed: it gives a little, and comes back just past its place */
+:root:not([data-skin]) .btn {
+    transition:
+        background-color var(--dur-fast) var(--ease-out),
+        border-color var(--dur-fast) var(--ease-out),
+        color var(--dur-fast) var(--ease-out),
+        filter var(--dur-fast) var(--ease-out),
+        transform var(--dur-base) var(--ease-press);
 }
 
+:root:not([data-skin]) .btn:active:not(:disabled),
+:root:not([data-skin]) .toast-action:active {
+    transform: scale(0.96);
+    filter: brightness(0.94);
+    transition-duration: var(--dur-fast);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    :root:not([data-skin]):not([data-motion="off"]) :is(.tb-btn, .sel-count, .mode-seg > button, .seg > button) {
+        transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), scale var(--dur-base) var(--ease-press);
+    }
+}
+
+/* Selected: its tick pops in (the photo's own little bounce is motion.js's) */
 :root:not([data-skin]) .grid-item.selected::before {
+    animation: pop-in var(--dur-base) var(--ease-press);
+}
+
+:root:not([data-skin])[data-motion="off"] .grid-item.selected::before {
     animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root:not([data-skin]) .btn:active:not(:disabled),
+    :root:not([data-skin]) .toast-action:active {
+        transform: none;
+    }
+
+    :root:not([data-skin]) .grid-item.selected::before {
+        animation: none;
+    }
 }
 
 :root:not([data-skin]) :is(.tile-flags, .tile-edit, .fb-filter-chip, .task-pill) {
@@ -11452,6 +11489,28 @@ body.touring .controls.idle button { pointer-events: auto; }
 
 :root:not([data-skin]) :is(.recent-list li:hover, .recent-open:focus-visible) .recent-print.ghost {
     filter: none;
+}
+
+/* The wave: pointed at, the photos lift one after another, the front one
+   first, and settle back into the opened deck. Once each time the pointer
+   (or the keys) comes onto the stack; not with reduced motion or
+   Animations off */
+@keyframes stack-wave {
+    45% { translate: 0 -12px; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    :root:not([data-skin]):not([data-motion="off"]) :is(.recent-list li:hover, .recent-open:focus-visible) .recent-print:not(.ghost) {
+        animation: stack-wave 480ms var(--ease-in-out, ease-in-out) both;
+    }
+
+    :root:not([data-skin]):not([data-motion="off"]) :is(.recent-list li:hover, .recent-open:focus-visible) .recent-print:nth-last-child(2) {
+        animation-delay: 80ms;
+    }
+
+    :root:not([data-skin]):not([data-motion="off"]) :is(.recent-list li:hover, .recent-open:focus-visible) .recent-print:nth-last-child(3) {
+        animation-delay: 160ms;
+    }
 }
 
 /* The keys on a stack: a ring round the stack, not only its name */

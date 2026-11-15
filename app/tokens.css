@@ -74,6 +74,10 @@
     --ease-out: cubic-bezier(0.2, 0, 0, 1);
     --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
     --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+    /* What you press or select gives a little and comes back just past its
+       place (style.css: the 2.0 refinement, motion). Never for things that
+       only appear */
+    --ease-press: cubic-bezier(0.34, 1.4, 0.64, 1);
 
     /* ---- Layers ---- */
     --z-chrome: 10;      /* folder list, grid chrome */
@@ -391,6 +395,7 @@
         --dur-base: 120ms;
         --dur-slow: 120ms;
         --ease-spring: var(--ease-out);
+        --ease-press: var(--ease-out);
     }
 }
 
@@ -403,7 +408,8 @@
    --bg-raised for the controls on them. Greys beside a photo stay pure.
    ========================================================================== */
 :root:not([data-skin]) {
-    /* Calm: nothing overshoots (style.css: the 2.0 refinement, motion) */
+    /* Calm: what appears never overshoots; only a press or a selection
+       does, with --ease-press (style.css: the 2.0 refinement, motion) */
     --ease-spring: var(--ease-out);
     --chrome: var(--sidebar-bg);
     --chrome-line: var(--sidebar-line);

@@ -51,8 +51,13 @@ something new.
   and group related commands under one row with its own menu beside it
   (Turn and flip). The accent is for what's chosen, the one main button
   and keyboard focus, nothing else. Find anything keeps its dialog look.
-- **Calm.** Short, quiet transitions (`--dur-*`, `--ease-*`), nothing that
-  bounces for show. Reduced motion means a plain fade or nothing.
+- **Calm, with a bounce where you touch it.** Short, quiet transitions
+  (`--dur-*`, `--ease-*`). What you press or select answers with a small,
+  quick bounce (`--ease-press`): a button or a pill pressed, a photo
+  selected and its tick, a stack picked on the home page. What only
+  appears stays calm: menus, dialogs, messages and badges fade in and
+  never overshoot. Nothing bounces for show. Reduced motion means a
+  plain fade or nothing.
 - **It fits any window.** 800×600 with Comfortable density is the worst
   case. When room runs out: tighten, then drop icons and keep the words.
   Long words end in "…". A full toolbar wraps. Nothing goes off screen or
