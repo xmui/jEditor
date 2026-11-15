@@ -179,9 +179,10 @@ to flow into each other better"). The rules:
    edge): it slides out in 280 ms, the photo, strip and pills glide into
    the room, and the row stays exactly where it was as one glass pill
    (the owner, 2026-11-15: "go with a folded but with accent on selected
-   mode"), so nothing you reach for moves. The mode you're in is highlighted,
-   open and folded: a soft accent chip behind its icon (`--accent-soft`, a
-   hairline of the accent round it) and the icon in `--accent-text`. It stays Photos' own docked sidebar, solid
+   mode"), so nothing you reach for moves. The sidebar button stays plain (the
+   owner: it should not be highlighted). The mode you're in has its icon in
+   the accent colour (`--accent-text`) on the soft chosen pill, open and
+   folded. It stays Photos' own docked sidebar, solid
    on its tint, in every mode (the owner: "look like the sidebar on the
    left / the main one"); only what floats is glass. Today the button sits
    elsewhere, and Fable's #197 (drag to hide) leaves it there, so **phase 1
