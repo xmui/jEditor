@@ -67,7 +67,7 @@ gives both modes something.
 
 | Phase | Adjust | Paint |
 |---|---|---|
-| **1. The 2.0 look and the quick wins** | The panel in the 2.0 look (below). Restoring scans, part 1: **Restore fade** (one click), **Backlight**, **Red-eye**. Clipping warnings. | The screen in the 2.0 look (below): grouped tools, menus, jEditor's own colour picker. Selections: feather, invert, grow and shrink, select all. Image: flip, rotate, image size, canvas size, crop. |
+| **1. The 2.0 look and the quick wins** | The panel in the 2.0 look (below). Restoring scans, part 1: **Restore fade** (one click), **Backlight**, **Red-eye**. Clipping warnings. | The screen in the 2.0 look (below): grouped tools, the ⋯ menu, saved colours. Selections: feather, invert, grow and shrink, select all. Image: flip, rotate, image size, canvas size, crop. |
 | **2. Restoring and retouching** | Restoring scans, part 2: **descreen**, **scratch and crease removal**. Clarity, texture, dehaze. | **Spot heal, heal and clone brushes** (sharing Adjust's heal maths). Dodge, burn, sponge; blur, sharpen, smudge brushes. A history panel. |
 | **3. Shape and layers** | Straighten by drawing a line; perspective and keystone (auto, vertical, horizontal); lens fixes. | **Layer masks**, clipping masks, **editable text**, groups and locks, merge and flatten. Free transform with perspective and skew. |
 | **4. Colour and filters** | Masks by colour and brightness; add, subtract and intersect masks. B&W mix, point colour, `.cube` LUTs. | Adjustment layers. Filters: Gaussian and motion blur, unsharp mask, noise, median, high pass. More shapes (arrow, polygon, rounded rectangle); text alignment and outlines. |
@@ -124,9 +124,10 @@ it; the bars reuse Photos' pill classes rather than new ones.
 
 **Paint** (mockup, second board)
 
-- **The bar** is one pill over the top: the file name, then four quiet menus, **Image, Layer,
-  Select, Filter**, then Undo and Redo. Every new command in this plan
-  lands in one of those menus, so the bar never grows.
+- **The bar** is one pill over the top: the file name, Undo and Redo, and
+  a **⋯ menu** holding **Image, Layer, Select and Filter** (decision 4).
+  Every new command in this plan lands in one of those, so the bar never
+  grows.
 - **Tool options** are a second pill under it, using the 2.0
   slider, showing only the chosen tool's options.
 - **The tools** are an upright pill down the left (round buttons, as in
@@ -137,9 +138,10 @@ it; the bars reuse Photos' pill classes rather than new ones.
   small corner mark; hold or right-click for the others. Hand stays on
   Space. Heal joins in phase 2.
 - **The panel** is a glass card on the right, like Adjust's.
-- **Colour**: jEditor's own picker in the panel (shade square, hue bar,
-  hex) instead of the system's colour window, which looks different on
-  each platform; recent colours under it.
+- **Colour** (decision 6): the brush and background squares, a
+  **Choose a colour…** button that opens the system's colour picker, and
+  a row of **saved colours** under it, with a + to save the brush colour.
+  Saved colours stay between sessions.
 - **Layers**: blend and opacity above the list; the row of six small
   buttons goes; New layer, Add an image and Delete stay at the foot, and
   the rest is the **Layer menu**, also on a right-click on a layer
@@ -164,7 +166,7 @@ web unless it's truly too heavy):
 |---|---|
 | Descreen and scratch removal at full size | Heavy maths on a 24 MP scan; the web gets a preview-size version |
 | Liquify, lens blur, remove an object | Need the GPU engine to stay live |
-| AI subject and sky masks | A model too big to download in a browser |
+| AI subject and sky masks | A model too big to download in a browser; an optional download in the desktop apps, off until asked for |
 | Full RAW editing | Engine-only decoding |
 | Layered PSD export | Possible on the web, but large files; desktop first |
 
@@ -177,25 +179,33 @@ parts are written once, in the engine.
 touches it only for Restore fade, Backlight and Red-eye; the Adjust agent
 checks with the Wrangler before starting.
 
-## (e) Decisions for the owner
+## (e) Decisions
 
-1. **Glass in Adjust and Paint:** settled (2026-11-15): glass pills and
-   glass menus, matching the grid and viewer exactly.
+The owner answered on 2026-11-15. Where they said "idk", the plan picked,
+following "show less"; those are marked **plan's pick**, and the owner can
+change any of them after trying the beta.
+
+1. **Glass:** glass pills and glass menus, matching the grid and viewer
+   exactly. (Owner.)
 2. **Adjust's panel:** four tool icons at the top (Edit, Restore, Heal,
-   Masks) as in the mockup, or keep today's tabs?
-3. **Adjust's bar:** only Before on it, the rest in the ⋯ menu?
-4. **Paint's menus:** four menus on the bar (Image, Layer, Select, Filter)
-   as in the mockup, or one ⋯ menu with them inside?
-5. **Paint's tools:** nine grouped slots, or keep all twenty showing?
-6. **Colour picker:** jEditor's own in the panel, or keep the system's?
-7. **Healing in two places:** Adjust's Heal stays non-destructive (for
-   scans); Paint gets brushes that paint on a layer. Both, sharing the
-   maths?
-8. **Order:** both modes in each beta as planned, or Adjust first (the
-   orders need the restore tools)?
-9. **Desktop-only list** above: OK, or anything you want on the web too?
-10. **AI masks:** worth a 30–80 MB download in the desktop apps, or leave
-   them out?
+   Masks), replacing today's tabs. **Plan's pick:** one row of icons is
+   less than tabs that each hide a single section.
+3. **Adjust's bar:** only Before on it; the rest in the ⋯ menu. **Plan's
+   pick.**
+4. **Paint's menus:** one ⋯ menu on the bar, holding Image, Layer, Select
+   and Filter, the same as Adjust's ⋯. **Plan's pick:** one button instead
+   of four words, and the same shape in both modes. The Layer menu still
+   opens on a right-click on a layer.
+5. **Paint's tools:** nine grouped slots. (Owner.)
+6. **Colour:** the system's colour picker, plus a row of saved colours in
+   jEditor, with a + to save the brush colour. (Owner.)
+7. **Healing in both modes, sharing the maths:** yes. (Owner.)
+8. **Order:** both modes in each beta, as in (b), with Adjust's restore
+   tools first within phase 1. **Plan's pick:** one beta builds instead of
+   two, and the orders still get Restore fade in the first one.
+9. **Desktop-only list:** yes, as in (d). (Owner.)
+10. **AI masks:** an optional download in the desktop apps, off until the
+    user asks for it. (Owner.)
 
 ## Who does what
 
