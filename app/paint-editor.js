@@ -7,6 +7,9 @@
 //   Select: rectangle (M), ellipse, lasso (L), magic wand (W, by colour);
 //     Shift adds to the selection, Alt takes away; Ctrl+A all, Ctrl+D none
 //   Brush (B), pencil (N), spray, eraser (E): size, hardness, opacity, flow.
+//     Retro, in the brush slot's menu: the pixel pencil (square pixels on a
+//     grid the brush's size), the spray can (hard dots as it's held) and
+//     the stamp (our own little pictures, one a click)
 //     The wheel sizes them, [ and ] too (Ctrl+wheel zooms), showing the
 //     brush as it'll paint and its size; Shift-click paints straight on
 //     from where the last stroke ended; a pen's pressure sizes them.
@@ -51,11 +54,122 @@ const PaintEditor = {
         tolerance: 32, contiguous: true, sampleAll: true, fillWhat: 'match', gaps: 0,
         lineWidth: 8, shapeFill: 'none', arrow: false,
         gradient: 'linear', gradTo: 'bg',
-        density: 40, range: 30, quickShape: true, history: false,
+        density: 40, range: 30, stamp: 'star', quickShape: true, history: false,
         font: 'system-ui, sans-serif', fontSize: 72, bold: false, italic: false,
         sizeFor: 1500   // the long side of the layers the sizes were for
     },
-    BRUSHES: ['brush', 'pencil', 'spray', 'eraser'],
+    BRUSHES: ['brush', 'pencil', 'spray', 'eraser', 'pixel', 'can', 'stamp'],
+    // The Retro set (inspired by MS Paint and Mario Paint; every picture
+    // drawn for jEditor), listed under its own heading in the brush slot
+    RETRO: ['pixel', 'can', 'stamp'],
+    // The stamps: 12 by 12, # painted
+    STAMPS: {
+        star: [
+        ".....##.....",
+        ".....##.....",
+        "....####....",
+        "############",
+        ".##########.",
+        "..########..",
+        "...######...",
+        "..########..",
+        "..###..###..",
+        ".###....###.",
+        ".##......##.",
+        "............"],
+        heart: [
+        "............",
+        ".###....###.",
+        "#####..#####",
+        "############",
+        "############",
+        "############",
+        ".##########.",
+        "..########..",
+        "...######...",
+        "....####....",
+        ".....##.....",
+        "............"],
+        house: [
+        ".....##.....",
+        "....####....",
+        "...######...",
+        "..########..",
+        ".##########.",
+        "############",
+        ".##########.",
+        ".#..####..#.",
+        ".#..####..#.",
+        ".######..##.",
+        ".######..##.",
+        ".######..##."],
+        note: [
+        "......####..",
+        "......#####.",
+        "......#..##.",
+        "......#...#.",
+        "......#.....",
+        "......#.....",
+        "......#.....",
+        "..#####.....",
+        ".######.....",
+        ".######.....",
+        "..####......",
+        "............"],
+        sun: [
+        "#....##....#",
+        ".#...##...#.",
+        "..#......#..",
+        "....####....",
+        "...######...",
+        "##.######.##",
+        "##.######.##",
+        "...######...",
+        "....####....",
+        "..#......#..",
+        ".#...##...#.",
+        "#....##....#"],
+        leaf: [
+        "..........##",
+        "........####",
+        "......#####.",
+        "....######..",
+        "...######...",
+        "..#####.#...",
+        "..####.##...",
+        ".####.###...",
+        ".###.###....",
+        ".#.####.....",
+        "#...........",
+        "#..........."],
+        cat: [
+        ".#........#.",
+        ".##......##.",
+        ".###....###.",
+        ".##########.",
+        "############",
+        "###.####.###",
+        "############",
+        "#####..#####",
+        "####.##.####",
+        ".##########.",
+        "..########..",
+        "............"],
+        bolt: [
+        "......####..",
+        ".....####...",
+        "....####....",
+        "...####.....",
+        "..#######...",
+        "....####....",
+        "...####.....",
+        "..####......",
+        ".###........",
+        "##..........",
+        "#...........",
+        "............"]
+    },
+    STAMP_NAMES: { star: 'Star', heart: 'Heart', house: 'House', note: 'Note', sun: 'Sun', leaf: 'Leaf', cat: 'Cat', bolt: 'Bolt' },
     PALETTE: ['#000000', '#ffffff', '#e5484d', '#f76b15', '#ffc53d', '#46a758', '#12a594', '#0090ff', '#8e4ec6', '#d6409f', '#8d6e63', '#9e9e9e', '#ffd6a5', '#caffbf', '#a0c4ff', '#ffadad'],
     FONTS: [['system-ui, sans-serif', 'Sans'], ['Georgia, serif', 'Serif'], ['"Courier New", monospace', 'Mono'], ['"Comic Sans MS", "Comic Neue", cursive', 'Comic'], ['Impact, "Arial Black", sans-serif', 'Impact']],
 
@@ -70,6 +184,9 @@ const PaintEditor = {
         ['brush', 'Brush (B)', '<path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L12 14.8 9.2 12z"/><path d="M9.2 12c-2.5 0-4.2 1.6-4.2 4 0 1.5-.8 2.6-2.4 3.4C4.4 21 6.3 21.5 8 21.5c3 0 5-1.9 4.9-4.6z"/>'],
         ['pencil', 'Pencil: hard edges (N)', '<path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/>'],
         ['spray', 'Spray', '<path d="M9 3h3v4H9zM8 7h5v14H8z"/><path d="M16 6h.01M19 4h.01M19 8h.01M17 10h.01M21 6h.01"/>'],
+        ['pixel', 'Pixel pencil: square pixels on a grid', '<path d="M3 3h6v6H3zM9 9h6v6H9zM15 15h6v6h-6z"/>'],
+        ['can', 'Spray can: dots as it\'s held', '<path d="M6 9h6v12H6zM7 6h4v3H7zM12 7h2"/><path d="M17 5h.01M20 4h.01M19 8h.01M22 7h.01M18 11h.01M21 10h.01"/>'],
+        ['stamp', 'Stamp: a little picture with each click', '<path d="M12 3l1.8 3.7 4 .6-2.9 2.8.7 4L12 12.2 8.4 14.1l.7-4-2.9-2.8 4-.6z"/><path d="M5 18h14v3H5z"/>'],
         ['eraser', 'Eraser (E)', '<path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L13 19"/><path d="M22 21H7M5 11l9 9"/>'],
         ['sep'],
         ['fill', 'Fill (G)', '<path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2a2 2 0 0 0 2.8 0z"/><path d="m5 2 5 5M2 13h15M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4z"/>'],
@@ -90,7 +207,7 @@ const PaintEditor = {
     GROUPS: [
         ['move'],
         ['rect-select', 'ellipse-select', 'lasso', 'wand'],
-        ['brush', 'pencil', 'spray'],
+        ['brush', 'pencil', 'spray', 'pixel', 'can', 'stamp'],
         ['eraser'],
         ['fill', 'gradient', 'recolor'],
         ['line', 'rect', 'ellipse'],
@@ -103,6 +220,9 @@ const PaintEditor = {
         brush: ['size', 'hardness', 'opacity', 'flow'],
         pencil: ['size', 'opacity'],
         spray: ['size', 'density', 'opacity'],
+        pixel: ['size', 'opacity'],
+        can: ['size', 'density', 'opacity'],
+        stamp: ['stamp', 'size', 'opacity'],
         eraser: ['size', 'hardness', 'opacity'],
         fill: ['fillWhat', 'tolerance', 'gaps', 'contiguous', 'sampleAll', 'opacity'],
         gradient: ['gradient', 'gradTo', 'opacity'],
@@ -304,7 +424,12 @@ const PaintEditor = {
             const others = (e) => {
                 e.preventDefault();
                 const r = b.getBoundingClientRect();
-                this.app.openContextMenu(group.map(id => [byId[id][1].replace(/ \(.*\)$/, ''), () => this.setTool(id), false, id === this.tool, `paint.${this.KEY_OF[id] || id}`]), r.right + 6, r.top);
+                const items = [];
+                for (const id of group) {
+                    if (id === this.RETRO[0]) items.push(['Retro', null]);
+                    items.push([byId[id][1].replace(/ \(.*\)$/, '').replace(/:.*$/, ''), () => this.setTool(id), false, id === this.tool, `paint.${this.KEY_OF[id] || id}`]);
+                }
+                this.app.openContextMenu(items, r.right + 6, r.top);
             };
             if (group.length > 1) {
                 b.addEventListener('contextmenu', (e) => { e.stopPropagation(); others(e); });
@@ -695,6 +820,7 @@ const PaintEditor = {
             if (k === 'gradient') choose('Shape', 'gradient', [['linear', 'Linear'], ['radial', 'Radial']]);
             if (k === 'gradTo') choose('To', 'gradTo', [['bg', 'Background colour'], ['clear', 'Nothing']]);
             if (k === 'font') choose('Font', 'font', this.FONTS);
+            if (k === 'stamp') choose('Stamp', 'stamp', Object.entries(this.STAMP_NAMES));
         }
         const hint = document.createElement('span');
         hint.className = 'paint-opt paint-hint';
@@ -709,7 +835,10 @@ const PaintEditor = {
             text: 'Click where the text goes; Ctrl+Enter puts it down',
             fill: wholeFill ? 'Click to fill the whole layer (or what\'s selected) with the foreground colour' : 'Click to fill with the foreground colour',
             gradient: 'Drag from where it starts to where it ends',
-            recolor: 'Click a colour: it becomes the foreground colour everywhere, its shading kept'
+            recolor: 'Click a colour: it becomes the foreground colour everywhere, its shading kept',
+            pixel: 'Square pixels on a grid the brush\'s size, crisp at any zoom',
+            can: 'Hold to spray: the longer it\'s held, the more dots',
+            stamp: 'Click for a stamp; drag for a row of them'
         }[this.tool] || '';
         if (hint.textContent) {
             hint.title = hint.textContent;
@@ -1130,7 +1259,7 @@ const PaintEditor = {
     },
 
     // The tools Alt turns into the colour picker
-    PICKS: ['brush', 'pencil', 'spray', 'fill', 'recolor', 'line', 'rect', 'ellipse', 'gradient', 'text'],
+    PICKS: ['brush', 'pencil', 'spray', 'pixel', 'can', 'stamp', 'fill', 'recolor', 'line', 'rect', 'ellipse', 'gradient', 'text'],
 
     picking() {
         if (this.space || (this.drag && this.drag.kind === 'size')) return false;
@@ -1426,10 +1555,10 @@ const PaintEditor = {
         this.drag = { kind: 'paint', stroke: true, last: from || p, dirty: null, tool: this.tool, carry: 0 };
         if (from) this.strokeTo(p);
         else this.dab(p);
-        if (this.tool === 'spray') this.sprayLoop();
+        if (this.tool === 'spray' || this.tool === 'can') this.sprayLoop();
         // QuickShape: the stroke's points as shown, to fit a shape to when
-        // the pointer's held still
-        else if (this.opts.quickShape) {
+        // the pointer's held still (not for stamps)
+        else if (this.opts.quickShape && this.tool !== 'stamp') {
             const first = from ? this.C.transformPoint(from) : { x: p.ox, y: p.oy };
             this.drag.pts = [{ x: first.x, y: first.y }, { x: p.ox, y: p.oy }];
             this.drag.still = p;
@@ -1467,6 +1596,32 @@ const PaintEditor = {
             this.grow({ x: p.x - s, y: p.y - s, w: 2 * s, h: 2 * s });
             return;
         }
+        if (t === 'pixel') {
+            const s = this.pixelCell(), x = Math.floor(p.x / s) * s, y = Math.floor(p.y / s) * s;
+            g.fillStyle = colour;
+            g.fillRect(x, y, s, s);
+            this.grow({ x: x - 1, y: y - 1, w: s + 2, h: s + 2 });
+            return;
+        }
+        if (t === 'can') {
+            // Hard dots, each a whole pixel (bigger on a big can), anywhere
+            // in the round: fewer than the spray's, as a can's are
+            const R = this.radius(), dot = Math.max(1, Math.round(R / 16));
+            const n = Math.max(1, Math.round(this.opts.density * R / 40));
+            g.fillStyle = colour;
+            for (let i = 0; i < n; i++) {
+                const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * R;
+                g.fillRect(Math.round(p.x + Math.cos(a) * d), Math.round(p.y + Math.sin(a) * d), dot, dot);
+            }
+            this.grow({ x: p.x - R - dot - 1, y: p.y - R - dot - 1, w: 2 * (R + dot + 1), h: 2 * (R + dot + 1) });
+            return;
+        }
+        if (t === 'stamp') {
+            const s = Math.max(4, this.opts.size);
+            this.drawStamp(g, p.x, p.y, s, colour);
+            this.grow({ x: p.x - s / 2 - 1, y: p.y - s / 2 - 1, w: s + 2, h: s + 2 });
+            return;
+        }
         if (t === 'spray') {
             const n = Math.max(1, Math.round(this.opts.density * r * r / 400));
             const dot = Math.max(0.6, r / 24);
@@ -1497,12 +1652,35 @@ const PaintEditor = {
         this.grow({ x: p.x - r - 1, y: p.y - r - 1, w: 2 * r + 2, h: 2 * r + 2 });
     },
 
+    // The pixel pencil's square: the brush's size, whole pixels
+    pixelCell() {
+        return Math.max(1, Math.round(this.opts.size));
+    },
+
+    // A stamp s across, centred on (x, y): its cells drawn square, whole
+    // pixels where they can be (no smoothing at any size)
+    drawStamp(g, x, y, s, colour, name = this.opts.stamp) {
+        const rows = this.STAMPS[name] || this.STAMPS.star, n = rows.length, c = s / n;
+        const x0 = x - s / 2, y0 = y - s / 2;
+        g.fillStyle = colour;
+        rows.forEach((row, j) => {
+            for (let i = 0; i < row.length; i++) {
+                if (row[i] !== '#') continue;
+                const ax = Math.round(x0 + i * c), ay = Math.round(y0 + j * c);
+                g.fillRect(ax, ay, Math.max(1, Math.round(x0 + (i + 1) * c) - ax), Math.max(1, Math.round(y0 + (j + 1) * c) - ay));
+            }
+        });
+    },
+
     strokeTo(p) {
         const d = this.drag, a = d.last;
-        if (d.tool === 'spray') { d.last = p; return; }
+        if (d.tool === 'spray' || d.tool === 'can') { d.last = p; return; }
         const len = Math.hypot(p.x - a.x, p.y - a.y);
         const pa = a.pr || 1, pb = p.pr || 1;
-        const step = d.tool === 'pencil' ? 1 : Math.max(0.5, this.radius() * Math.min(pa, pb) * 0.18);
+        const step = d.tool === 'pencil' ? 1
+            : d.tool === 'pixel' ? Math.max(1, this.pixelCell() / 2)
+            : d.tool === 'stamp' ? Math.max(2, this.opts.size * 1.15)
+            : Math.max(0.5, this.radius() * Math.min(pa, pb) * 0.18);
         let t = step - d.carry;
         while (t <= len) {
             const k = t / len;
@@ -1680,7 +1858,7 @@ const PaintEditor = {
 
     sprayLoop() {
         const d = this.drag;
-        if (!d || d.kind !== 'paint' || d.tool !== 'spray') return;
+        if (!d || d.kind !== 'paint' || (d.tool !== 'spray' && d.tool !== 'can')) return;
         this.dab(d.last);
         this.renderSoon();
         setTimeout(() => this.sprayLoop(), 30);
@@ -2817,11 +2995,19 @@ const PaintEditor = {
                 line.lineTo(ox, oy);
                 outline(line);
             }
-            if (sizing) this.drawGhost(ctx, ox, oy, r);
+            if (sizing || this.tool === 'stamp') this.drawGhost(ctx, ox, oy, r);
             const p = new Path2D();
             if (this.tool === 'pencil') {
                 const s = Math.max(1, Math.round(this.opts.size));
                 p.rect(Math.round(ox - s / 2), Math.round(oy - s / 2), s, s);
+            } else if (this.tool === 'pixel' && at.x !== undefined && at.ox !== undefined) {
+                // The square of the grid it'll paint
+                const s = this.pixelCell(), x = Math.floor(at.x / s) * s, y = Math.floor(at.y / s) * s;
+                const c = [[x, y], [x + s, y], [x + s, y + s], [x, y + s]].map(([a, b]) => this.C.transformPoint({ x: a, y: b }));
+                p.moveTo(c[0].x, c[0].y); c.slice(1).forEach(q => p.lineTo(q.x, q.y)); p.closePath();
+            } else if (this.tool === 'stamp') {
+                const s = Math.max(4, this.opts.size);
+                p.rect(ox - s / 2, oy - s / 2, s, s);
             } else p.arc(ox, oy, Math.max(r, 1 / z), 0, Math.PI * 2);
             // Too small to see: a cross round it, to show where it'll paint
             if (r * z < 4) {
@@ -2859,7 +3045,13 @@ const PaintEditor = {
             ctx.fillStyle = g;
         }
         ctx.beginPath();
-        if (t === 'pencil') {
+        if (t === 'stamp') {
+            ctx.globalAlpha = 0.6;
+            this.drawStamp(ctx, x, y, Math.max(4, o.size), ctx.fillStyle);
+            ctx.restore();
+            return;
+        }
+        if (t === 'pencil' || t === 'pixel') {
             const s = Math.max(1, Math.round(o.size));
             ctx.rect(Math.round(x - s / 2), Math.round(y - s / 2), s, s);
         } else ctx.arc(x, y, r, 0, Math.PI * 2);
