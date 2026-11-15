@@ -469,8 +469,9 @@
     <!-- Adjust: light, color, levels, curves (adjust.js; the maths in develop.js) -->
     <div id="adjust-editor" class="adjust-editor mode-screen hidden">
         <div class="mode-head adj-head">
-            <span id="adj-file" class="mode-title"></span>
-            <span id="adj-dims" class="crop-dims"></span>
+            <!-- The file, as Photos' file pill (jEditor's own look: style.css) -->
+            <span class="mode-file"><span id="adj-file" class="mode-title"></span>
+            <span id="adj-dims" class="crop-dims"></span></span>
             <span id="adj-before-tag" class="adj-tag hidden">Before</span>
             <!-- Auto Sync on (adjust-sync.js): what's changed goes onto the others selected in the strip -->
             <span id="adj-sync-chip" class="adj-sync-chip hidden" role="status">Auto sync: <span id="adj-sync-n"></span><button id="adj-sync-off" class="adj-sync-x" title="Turn Auto Sync off (Ctrl+Alt+Shift+S)" aria-label="Turn Auto Sync off">✕</button></span>
@@ -622,8 +623,8 @@
     <!-- Paint (paint-editor.js; layers kept by paint.js) -->
     <div id="paint-editor" class="paint-editor mode-screen hidden">
         <div class="mode-head paint-head">
-            <span id="paint-file" class="mode-title"></span>
-            <span id="paint-dims" class="crop-dims"></span>
+            <span class="mode-file"><span id="paint-file" class="mode-title"></span>
+            <span id="paint-dims" class="crop-dims"></span></span>
             <span class="mode-head-acts" role="toolbar" aria-label="Paint">
                 <button id="paint-undo" class="btn ghost sm" title="Undo (Ctrl+Z)">Undo</button>
                 <button id="paint-redo" class="btn ghost sm" title="Redo (Ctrl+Shift+Z)">Redo</button>
