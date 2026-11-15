@@ -1303,6 +1303,27 @@ const PROJECT = `
                 pe('pointerdown', 150, 270, { shiftKey: true }); pe('pointerup', 150, 270, { shiftKey: true });
                 out.shiftLine = [between, px(0, 100, 270)[3], px(0, 100, 285)[3]];
                 pressKey('z', { ctrlKey: true }); pressKey('z', { ctrlKey: true });
+                // Recolor: red (light and dark) becomes blue, its shading kept;
+                // other colours left alone; one undo
+                step = 'recolor';
+                const lg = P.layers[0].canvas.getContext('2d');
+                lg.fillStyle = '#c82020'; lg.fillRect(300, 200, 40, 40);
+                lg.fillStyle = '#701010'; lg.fillRect(340, 200, 40, 40);
+                lg.fillStyle = '#20a040'; lg.fillRect(300, 250, 40, 20);
+                P.setTool('recolor');
+                const recolorOpts = ['Range', 'All layers', 'Opacity'].every(t => document.getElementById('paint-options').textContent.includes(t)) && !document.getElementById('paint-options').textContent.includes('Tolerance');
+                P.opts.sampleAll = false; P.opts.range = 30; P.opts.opacity = 100;
+                P.fg = '#2060e0';
+                const h1 = P.history.length;
+                pe('pointerdown', 310, 210); pe('pointerup', 310, 210);
+                const lit = px(0, 310, 210), dark = px(0, 350, 210), green = px(0, 310, 260);
+                out.recolor = [recolorOpts, lit[2] > 180 && lit[0] < 80, dark[2] > dark[0] + 40 && dark[2] < lit[2], green.join(), px(0, 290, 210)[3], P.history.length === h1 + 1 && P.history[h1].name];
+                pressKey('z', { ctrlKey: true });
+                out.recolor.push(px(0, 310, 210).join());
+                lg.clearRect(300, 200, 80, 70);
+                P.setTool('fill'); pressKey('g'); const afterG = P.tool; pressKey('g');
+                out.recolor.push(afterG + ',' + P.tool);
+                P.setTool('brush');
                 // A pen's pressure sizes the brush
                 step = 'pressure';
                 const pen = { pointerType: 'pen', pressure: 0.2 };
@@ -1519,6 +1540,7 @@ const PROJECT = `
         check('paint: QuickShape: a rough circle becomes a circle; off in ⋯, a held stroke stays as drawn', JSON.stringify(r.quickCircle) === '["Circle",true,true,0]' && r.quickOff, JSON.stringify([r.quickCircle, r.quickOff]));
         check('paint: History (⋯) lists each step by name; a click on one goes back to it, the later ones greyed, and on again; off again', JSON.stringify(r.history) === '[true,false,"Brush",true,0,"true",true,255]' && r.historyHidden, JSON.stringify([r.history, r.historyHidden]));
         check('paint: on a touch screen two fingers tapped undo, three redo; a finger put down later leaves the first painting', JSON.stringify(r.taps) === '[true,0,0,true,255,255,true]', JSON.stringify(r.taps));
+        check('paint: Recolor turns the colour clicked into the brush colour, light and dark shades alike, nothing else; one undo step; G goes fill, gradient, recolor', JSON.stringify(r.recolor) === '[true,true,true,"32,160,64,255",0,"Recolor","200,32,32,255","gradient,recolor"]', JSON.stringify(r.recolor));
         check('paint: a pen\'s pressure sizes the brush', r.pressure && r.pressure[0] > 200 && r.pressure[1] === 0, String(r.pressure));
         check('paint: a new layer; a filled rectangle on it', r.layers && r.rect && r.rect[0][1] === 255 && r.rect[1] === 0, JSON.stringify(r));
         check('paint: the fill takes the photo\'s blue square, not beyond it; text is drawn', r.fill && r.fill[0][0] === 255 && r.fill[0][1] === 255 && r.fill[1] === 0 && r.text > 50, JSON.stringify(r));

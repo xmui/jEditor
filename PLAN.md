@@ -93,7 +93,7 @@ Bugs the owner has seen and wants fixed, newest first. A fix takes its line out.
    - **Adjust, geometry:** straighten by drawing a line; perspective and keystone (auto, vertical, horizontal, guided); lens distortion, chromatic aberration and lens vignetting removal.
    - **Adjust, masks:** colour range and brightness range masks; masks added, subtracted and intersected; AI subject and sky masks if a model can ship.
    - **Adjust, workflow:** user presets and Lightroom (XMP) preset import; snapshots and virtual copies; a split before/after; a per-channel histogram; output sharpening for the export size; colour profiles (ICC) kept and converted.
-   - **Paint, retouching:** clone stamp, healing and spot-healing brushes; content-aware remove and patch; dodge, burn and sponge; blur, sharpen and smudge brushes.
+   - **Paint, retouching:** clone stamp, healing and spot-healing brushes; content-aware remove and patch; dodge, burn and sponge; blur, sharpen and smudge brushes. Recolor (built: the Fill slot's third tool, the colour clicked becomes the brush colour everywhere, its shading kept).
    - **Paint, layers:** layer masks and clipping masks; adjustment layers (levels, curves, hue/saturation, black and white); groups and locks; layer effects (stroke, shadow, glow); text layers that stay editable; merge and flatten.
    - **Paint, selections:** feather, grow and shrink, smooth, invert; select by colour range; quick mask (paint a selection); save and load a selection; transform a selection.
    - **Paint, transform:** free transform with perspective, skew and warp; flip; rotate the canvas; image and canvas size; crop inside Paint.

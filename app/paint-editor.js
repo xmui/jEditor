@@ -18,7 +18,8 @@
 //     go back and forth
 //   Fill (G), gradient: fill a colour (where it matches the colour
 //     clicked, or the whole layer), or a gradient to the background colour
-//     (or to nothing)
+//     (or to nothing). Recolor: the colour clicked becomes the brush colour
+//     everywhere (or in what's selected), its shading kept
 //   Line (U), rectangle (R), ellipse (O): stroked, filled or both; Shift
 //     keeps lines to 45° and shapes square
 //   Text (T): click, type, Ctrl+Enter (or a click elsewhere) puts it down
@@ -50,7 +51,7 @@ const PaintEditor = {
         tolerance: 32, contiguous: true, sampleAll: true, fillWhat: 'match', gaps: 0,
         lineWidth: 8, shapeFill: 'none', arrow: false,
         gradient: 'linear', gradTo: 'bg',
-        density: 40, quickShape: true, history: false,
+        density: 40, range: 30, quickShape: true, history: false,
         font: 'system-ui, sans-serif', fontSize: 72, bold: false, italic: false,
         sizeFor: 1500   // the long side of the layers the sizes were for
     },
@@ -73,6 +74,7 @@ const PaintEditor = {
         ['sep'],
         ['fill', 'Fill (G)', '<path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2a2 2 0 0 0 2.8 0z"/><path d="m5 2 5 5M2 13h15M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4z"/>'],
         ['gradient', 'Gradient', '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18" opacity=".5"/>'],
+        ['recolor', 'Recolor: click a colour to change it to the brush colour', '<path d="M7 3c2.5 3 4 5.2 4 7a4 4 0 0 1-8 0c0-1.8 1.5-4 4-7z"/><path d="M14 14h6M17 11l3 3-3 3"/><path d="M17 21c-1.5 0-2.5-1-2.5-2.3"/>'],
         ['sep'],
         ['line', 'Line (U)', '<path d="M5 19 19 5"/>'],
         ['rect', 'Rectangle (R)', '<rect x="4" y="6" width="16" height="12" rx="1"/>'],
@@ -90,7 +92,7 @@ const PaintEditor = {
         ['rect-select', 'ellipse-select', 'lasso', 'wand'],
         ['brush', 'pencil', 'spray'],
         ['eraser'],
-        ['fill', 'gradient'],
+        ['fill', 'gradient', 'recolor'],
         ['line', 'rect', 'ellipse'],
         ['text'],
         ['picker'],
@@ -104,6 +106,7 @@ const PaintEditor = {
         eraser: ['size', 'hardness', 'opacity'],
         fill: ['fillWhat', 'tolerance', 'gaps', 'contiguous', 'sampleAll', 'opacity'],
         gradient: ['gradient', 'gradTo', 'opacity'],
+        recolor: ['range', 'sampleAll', 'opacity'],
         line: ['lineWidth', 'arrow', 'opacity'],
         rect: ['lineWidth', 'shapeFill', 'opacity'],
         ellipse: ['lineWidth', 'shapeFill', 'opacity'],
@@ -679,6 +682,7 @@ const PaintEditor = {
             if (k === 'flow') num('Flow', 'flow', 1, 100);
             if (k === 'density') num('Density', 'density', 1, 100);
             if (k === 'tolerance') num('Tolerance', 'tolerance', 0, 255);
+            if (k === 'range') num('Range', 'range', 1, 100).title = 'How far from the colour clicked a colour can be and still change (its lighter and darker shades are caught first)';
             if (k === 'lineWidth') num('Line', 'lineWidth', 0, 200);
             if (k === 'fontSize') num('Size', 'fontSize', 6, 600, 1, true);
             if (k === 'gaps') choose('Close gaps', 'gaps', [[0, 'Off'], [2, 'Small'], [5, 'Medium'], [10, 'Large']]).title = 'A line drawing with small gaps in its lines still fills one area, not the whole picture';
@@ -704,7 +708,8 @@ const PaintEditor = {
             hand: 'Drag to move about; the wheel zooms; double-click fits',
             text: 'Click where the text goes; Ctrl+Enter puts it down',
             fill: wholeFill ? 'Click to fill the whole layer (or what\'s selected) with the foreground colour' : 'Click to fill with the foreground colour',
-            gradient: 'Drag from where it starts to where it ends'
+            gradient: 'Drag from where it starts to where it ends',
+            recolor: 'Click a colour: it becomes the foreground colour everywhere, its shading kept'
         }[this.tool] || '';
         if (hint.textContent) {
             hint.title = hint.textContent;
@@ -1058,6 +1063,7 @@ const PaintEditor = {
         }
         if (t === 'wand') { this.wand(p, e.altKey ? 'sub' : e.shiftKey ? 'add' : 'new'); return; }
         if (t === 'fill') { this.fillAt(p); return; }
+        if (t === 'recolor') { this.recolorAt(p); return; }
         if (t === 'text') { this.startText(p); return; }
         if (t === 'move') { this.startMove(p); return; }
     },
@@ -1124,7 +1130,7 @@ const PaintEditor = {
     },
 
     // The tools Alt turns into the colour picker
-    PICKS: ['brush', 'pencil', 'spray', 'fill', 'line', 'rect', 'ellipse', 'gradient', 'text'],
+    PICKS: ['brush', 'pencil', 'spray', 'fill', 'recolor', 'line', 'rect', 'ellipse', 'gradient', 'text'],
 
     picking() {
         if (this.space || (this.drag && this.drag.kind === 'size')) return false;
@@ -2205,6 +2211,101 @@ const PaintEditor = {
         g.clearRect(0, 0, this.W, this.H);
         const b = whole ? (this.sel ? this.sel.box : { x: 0, y: 0, w: this.W, h: this.H }) : reg.box;
         this.endPixels(l, { x: b.x - 1, y: b.y - 1, w: b.w + 2, h: b.h + 2 });
+        this.renderSoon();
+    },
+
+    // ---- Recolor ----
+    //
+    // The colour clicked becomes the foreground colour wherever it's found
+    // (in what's selected, with a selection), its shading kept: each pixel
+    // near it in colour is moved in hue, saturation and lightness by as much
+    // as the colour clicked is moved, fading out at the edge of the range.
+    // Near is measured in Oklab with lightness counting for little, so the
+    // colour's own shadows and highlights are caught. The result goes on
+    // the layer (over the photo and the layers, with All layers)
+
+    // sRGB 0-255 → Oklab
+    oklab(r, g, b) {
+        const f = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+        const R = f(r), G = f(g), B = f(b);
+        const l = Math.cbrt(0.4122214708 * R + 0.5363325363 * G + 0.0514459929 * B);
+        const m = Math.cbrt(0.2119034982 * R + 0.6806995451 * G + 0.1073969566 * B);
+        const s = Math.cbrt(0.0883024619 * R + 0.2817188376 * G + 0.6299787005 * B);
+        return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s, 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
+    },
+
+    // RGB 0-255 ↔ HSL (h 0-1, s and l 0-1)
+    toHsl(r, g, b) {
+        r /= 255; g /= 255; b /= 255;
+        const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+        if (!d) return [0, 0, l];
+        const s = d / (1 - Math.abs(2 * l - 1));
+        const h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+        return [h / 6, s, l];
+    },
+
+    fromHsl(h, s, l) {
+        const c = (1 - Math.abs(2 * l - 1)) * s, hp = ((h % 1) + 1) % 1 * 6, x = c * (1 - Math.abs(hp % 2 - 1)), m = l - c / 2;
+        const [r, g, b] = hp < 1 ? [c, x, 0] : hp < 2 ? [x, c, 0] : hp < 3 ? [0, c, x] : hp < 4 ? [0, x, c] : hp < 5 ? [x, 0, c] : [c, 0, x];
+        return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+    },
+
+    // px: RGBA pixels; from: the colour clicked, to: the one it becomes
+    // (RGB); range 1-100. → RGBA pixels: each changed one, with how much
+    // as its alpha (none where nothing changes), and how many changed
+    recolorPixels(px, from, to, range) {
+        const n = px.length >> 2, out = new Uint8ClampedArray(px.length);
+        const [fl, fa, fb] = this.oklab(...from);
+        const [h0, s0, l0] = this.toHsl(...from), [h1, s1, l1] = this.toHsl(...to);
+        const grey = s0 < 0.04;
+        const dh = h1 - h0, ks = s1 / Math.max(s0, 0.04), dl = l1 - l0;
+        const r = 0.03 + range / 100 * 0.37, inner = r * 0.6;
+        let changed = 0;
+        // The same colours come up again and again: worked out once each
+        const memo = new Map();
+        for (let i = 0; i < n; i++) {
+            const o = i * 4;
+            if (!px[o + 3]) continue;
+            const key = (px[o] << 16) | (px[o + 1] << 8) | px[o + 2];
+            let hit = memo.get(key);
+            if (hit === undefined) {
+                const [L, A, B] = this.oklab(px[o], px[o + 1], px[o + 2]);
+                const d = Math.hypot(A - fa, B - fb, (L - fl) * 0.3);
+                const w = d >= r ? 0 : d <= inner ? 1 : 1 - (d - inner) / (r - inner);
+                if (!w) hit = null;
+                else {
+                    const [h, s, l] = this.toHsl(px[o], px[o + 1], px[o + 2]);
+                    const c = this.fromHsl(grey ? h1 : h + dh, Math.min(1, grey ? s1 : s * ks), Math.min(1, Math.max(0, l + dl)));
+                    hit = [c[0], c[1], c[2], Math.round(w * 255)];
+                }
+                if (memo.size < 1 << 18) memo.set(key, hit);
+            }
+            if (!hit) continue;
+            out[o] = hit[0]; out[o + 1] = hit[1]; out[o + 2] = hit[2];
+            out[o + 3] = Math.round(hit[3] * px[o + 3] / 255);
+            changed++;
+        }
+        return { px: out, changed };
+    },
+
+    recolorAt(p) {
+        const l = this.layer();
+        const x = Math.floor(p.x), y = Math.floor(p.y);
+        if (!l || x < 0 || y < 0 || x >= this.W || y >= this.H) return;
+        const px = this.sample(), o = (y * this.W + x) * 4;
+        if (!px[o + 3]) { this.app.showToast('Nothing there to recolor', 1600); return; }
+        const res = this.recolorPixels(px, [px[o], px[o + 1], px[o + 2]], this.rgb(this.fg), this.opts.range);
+        if (!res.changed) return;
+        this.beginPixels(l);
+        const g = this.stroke.getContext('2d');
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, this.W, this.H);
+        g.putImageData(new ImageData(res.px, this.W, this.H), 0, 0);
+        this.drag = { tool: 'recolor' };
+        this.putStroke(l.canvas.getContext('2d'));
+        this.drag = null;
+        g.clearRect(0, 0, this.W, this.H);
+        this.endPixels(l, this.sel ? this.sel.box : { x: 0, y: 0, w: this.W, h: this.H });
         this.renderSoon();
     },
 
