@@ -66,6 +66,12 @@ const Adjust = {
         // Restore color is a quick fix in Edit and the first tool in Restore
         bind('adj-restore', () => this.restore());
         bind('adj-restore-fade', () => this.restore());
+        bind('adj-restore-fix', () => this.restore(this.foundKind()));
+        bind('adj-restore-keep', () => this.restore('keep'));
+        this.el('adj-restore-pick').addEventListener('click', (e) => {
+            e.currentTarget.blur();
+            if (!this.busy) this.pickWhite(this.picking !== 'restore', 'restore');
+        });
         // Restore color's strength, under the histogram while it's on
         const restoreRow = this.slider('restoreAmount', 'Restore color', {
             range: { min: 0, max: 100, step: 1, def: 0 },
@@ -74,7 +80,7 @@ const Adjust = {
         });
         restoreRow.classList.add('adj-restore-row');
         const sync = restoreRow._sync;
-        restoreRow._sync = () => { sync(); restoreRow.classList.toggle('hidden', !this.a.restore); };
+        restoreRow._sync = () => { sync(); restoreRow.classList.toggle('hidden', !this.a.restore); this.syncRestore(); };
         const histBox = this.el('adj-hist').closest('section');
         histBox.insertBefore(restoreRow, histBox.querySelector('.adj-levels-foot'));
         (this.extraRows || (this.extraRows = [])).push(restoreRow);
@@ -82,7 +88,7 @@ const Adjust = {
             e.preventDefault(); // in the section's head: not to fold it
             e.stopPropagation();
             e.currentTarget.blur();
-            if (!this.busy) this.pickWhite();
+            if (!this.busy) this.pickWhite(this.picking !== 'wb');
         });
         // Picking white balance: a click on the photo is the grey, before
         // masks, spots or the 1:1 view see it
@@ -565,24 +571,56 @@ const Adjust = {
         this.app.showToast(color ? 'Auto color: levels set for each channel' : 'Auto: levels set from the photo', 1600, null, null, { kind: 'adjust' });
     },
 
-    // Restore color: each channel stretched and the cast taken off, from the
-    // photo (develop.js: restoreAuto), at full strength to start with
-    restore() {
+    // Restore color, from the photo (develop.js: restoreAuto): Auto finds
+    // how it faded, or type says (keep: the colours kept). The strength
+    // stays where it was set, at full to start with
+    restore(type = 'auto') {
         if (!this.ready) return;
-        this.setAll(Develop.restoreAuto(this.sample, this.result()));
-        this.app.showToast('Restore color: the fade and the cast taken off; Restore color\'s slider sets how much', 2400, null, null, { kind: 'adjust' });
+        const now = this.a.restore;
+        const adj = Develop.restoreAuto(this.sample, this.result(), now ? now.amount : 100, type);
+        this.setAll(adj);
+        const r = adj.restore;
+        const kind = r && Develop.RESTORE_TYPES[r.type];
+        const msg = !r ? 'Restore color: nothing to restore'
+            : r.type === 'keep' ? (type === 'keep' ? 'Restore color: the colours kept, the light and any stain fixed' : 'Restore color: no colour fade found, so the colours are kept; the light and any stain are fixed')
+            : `Restore color: ${kind.name.toLowerCase()} found, its colours brought back`;
+        this.app.showToast(msg + '. Restore color\'s slider sets how much', 2600, null, null, { kind: 'adjust' });
+    },
+
+    // The kind of fade Auto finds in this photo (not keep)
+    foundKind() {
+        const m = Develop.restoreMeasure(this.sample);
+        const t = m ? Develop.restoreType(m) : 'keep';
+        return t === 'keep' ? 'print' : t;
+    },
+
+    // The Restore tool's colour options, while Restore color is on
+    syncRestore() {
+        const r = this.a && this.a.restore;
+        const box = this.el('adj-restore-opts');
+        if (!box) return;
+        box.classList.toggle('hidden', !(r && r.d));
+        if (!(r && r.d)) return;
+        const keep = r.type === 'keep';
+        this.el('adj-restore-fix').setAttribute('aria-pressed', String(!keep));
+        this.el('adj-restore-keep').setAttribute('aria-pressed', String(keep));
+        const kind = Develop.RESTORE_TYPES[r.type];
+        this.el('adj-restore-found').textContent = r.grey ? 'Set from the grey you picked'
+            : keep ? (r.auto ? 'No colour fade found' : '') : `Found: ${kind.name.toLowerCase()}`;
     },
 
     // White balance from the photo (W): click something that should be
     // white or grey, and Temperature and Tint make it so
-    pickWhite(on = !this.picking) {
+    // kind 'restore': the grey sets Restore color instead (the Restore tool)
+    pickWhite(on = !this.picking, kind = 'wb') {
         if (on && !this.ready) return;
-        this.picking = on;
+        this.picking = on ? kind : false;
         // W shows the button it presses: Edit, with Basic open
-        if (on) { this.showPane('edit'); this.el('adj-basic-sec').open = true; }
-        this.root.classList.toggle('adj-picking', on);
-        this.el('adj-wb-pick').setAttribute('aria-pressed', String(on));
-        if (on) this.app.showToast('Click something that should be white or grey (Esc to stop)', 2400, null, null, { kind: 'adjust' });
+        if (on && kind === 'wb') { this.showPane('edit'); this.el('adj-basic-sec').open = true; }
+        this.root.classList.toggle('adj-picking', !!on);
+        this.el('adj-wb-pick').setAttribute('aria-pressed', String(this.picking === 'wb'));
+        this.el('adj-restore-pick').setAttribute('aria-pressed', String(this.picking === 'restore'));
+        if (on) this.app.showToast(kind === 'restore' ? 'Click something that should be grey (Esc to stop)' : 'Click something that should be white or grey (Esc to stop)', 2400, null, null, { kind: 'adjust' });
     },
 
     pickAt(e) {
@@ -599,6 +637,7 @@ const Adjust = {
         const x1 = Math.min(W, x + k + 1), y1 = Math.min(H, y + k + 1);
         if (x1 <= x0 || y1 <= y0) return;
         const px = pic.getContext('2d', { willReadFrequently: true }).getImageData(x0, y0, x1 - x0, y1 - y0).data;
+        if (this.picking === 'restore') return this.pickRestore(px);
         const wb = Develop.neutralWB(px);
         if (!wb) {
             this.app.showToast('That\'s too bright or too dark to tell: click a light grey', 2400, null, null, { kind: 'adjust' });
@@ -610,6 +649,20 @@ const Adjust = {
         this.a.tint = wb.tint;
         this.changed();
         this.app.showToast(`White balance: Temperature ${wb.temp}, Tint ${wb.tint}`, 1600, null, null, { kind: 'adjust' });
+    },
+
+    // Restore color from a grey the user clicked (px: the pixels round it):
+    // Restore color is worked out first if it's off
+    pickRestore(px) {
+        const base = this.a.restore && this.a.restore.d ? this.result() : Develop.restoreAuto(this.sample, this.result());
+        const r = Develop.restoreNeutral(base.restore, px);
+        if (!r) {
+            this.app.showToast('That\'s too light or too dark to tell: click a mid grey', 2400, null, null, { kind: 'adjust' });
+            return;
+        }
+        this.pickWhite(false);
+        this.setAll({ ...base, restore: r });
+        this.app.showToast('Restore color: set from that grey', 1600, null, null, { kind: 'adjust' });
     },
 
     // Settings to put on another photo: its spots are its own
