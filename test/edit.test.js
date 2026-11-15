@@ -1177,6 +1177,15 @@ const PROJECT = `
                 out.undo = px(0, 100, 100)[3];
                 pressKey('Z', { ctrlKey: true, shiftKey: true });
                 out.redo = px(0, 100, 100)[3];
+                // Image ▸ Rotate right: the photo's own turn, the layers with it
+                // (their pixels unchanged); Ctrl+Z turns it back
+                step = 'rotate';
+                const ow = P.OW, oh = P.OH;
+                out.imageMenu = P.moreItems()[0][0] === 'Image';
+                P.turnImage(1);
+                out.turned = [P.OW === oh, P.OH === ow, P.edit.q === 1, px(0, 100, 100)[3]];
+                pressKey('z', { ctrlKey: true });
+                out.turnUndone = P.OW === ow && P.OH === oh && !((P.edit && P.edit.q) || 0);
                 // Copy merged takes the photo too; paste in place puts it back
                 // where it was, on a new layer
                 step = 'copy merged';
@@ -1352,7 +1361,8 @@ const PROJECT = `
                 out.selected = !!P.sel && P.sel.box.w >= 39 && P.sel.box.w <= 41;
                 // The ⋯ menu's Select: invert (twice, back again), grow, shrink
                 const more = P.moreItems();
-                out.menu = more.map(i => i[0]).join() === 'Select,Layer' && more[0][1].some(i => i[0] === 'Invert');
+                const sub = (n) => (more.find(i => i[0] === n) || [, []])[1];
+                out.menu = more.map(i => i[0]).join() === 'Image,Select,Layer' && sub('Select').some(i => i[0] === 'Invert');
                 const w0 = P.sel.box.w;
                 P.invertSelection();
                 out.inverted = !!P.sel && P.sel.box.w === P.W;
@@ -1430,6 +1440,7 @@ const PROJECT = `
         check('paint: starts with the photo locked as the bottom layer and a new layer on it', r.start, JSON.stringify(r));
         check('paint: the photo is drawn at screen size once for a view, again when it zooms', r.shownKept && r.shownRedrawn, JSON.stringify([r.shownKept, r.shownRedrawn]));
         check('paint: a brush stroke paints the layer (hard-edged), Ctrl+Z / Ctrl+Shift+Z inside', r.brush && r.brush[0] === 255 && r.brush[3] === 255 && r.brushEdge === 0 && r.undo === 0 && r.redo === 255, JSON.stringify(r));
+        check('paint: Image ▸ Rotate right turns the photo (its own edit), the layers with it; Ctrl+Z turns it back', r.imageMenu && JSON.stringify(r.turned) === '[true,true,true,255]' && r.turnUndone, JSON.stringify([r.imageMenu, r.turned, r.turnUndone]));
         check('paint: copy merged takes the photo and the layers; paste in place puts it back where it came from', r.plainClip === 0 && JSON.stringify(r.inPlace) === '["255,0",255,true]', JSON.stringify([r.plainClip, r.inPlace]));
         check('paint: lock transparency paints only over what\'s on the layer', JSON.stringify(r.locked) === '[[0,255,0,255],0,true]', JSON.stringify(r.locked));
         check('paint: Ctrl-click a layer selects its paint; Alt-click an eye shows that layer alone, and again all; a layer\'s right-click menu', r.layerSel && JSON.stringify(r.solo) === '[true,false,false,false]' && r.layerMenu === 'Lock transparency|Show this layer alone|Select its pixels', JSON.stringify([r.layerSel, r.solo, r.layerMenu]));
@@ -1445,7 +1456,7 @@ const PROJECT = `
         check('paint: the fill takes the photo\'s blue square, not beyond it; text is drawn', r.fill && r.fill[0][0] === 255 && r.fill[0][1] === 255 && r.fill[1] === 0 && r.text > 50, JSON.stringify(r));
         check('paint: the fill can fill the whole layer (only what\'s selected, with a selection), without the colour options; Ctrl+Z undoes it', r.wholeOpts && r.wholeSel && String(r.wholeSel[0]) === '255,0,255,255' && r.wholeSel[1] === 0 && String(r.whole) === '255,0,255,255,255,0,255,255' && r.wholeUndone, JSON.stringify([r.wholeOpts, r.wholeSel, r.whole, r.wholeUndone]));
         check('paint: a selection; Delete clears only inside it', r.selected && r.cleared[0] === 0 && r.cleared[1] === 255, JSON.stringify(r));
-        check('paint: the ⋯ menu has Select and Layer; Invert, Grow and Shrink change the selection', r.menu && r.inverted && JSON.stringify(r.reshaped) === '[6,0]', JSON.stringify([r.menu, r.inverted, r.reshaped]));
+        check('paint: the ⋯ menu has Image, Select and Layer; Invert, Grow and Shrink change the selection', r.menu && r.inverted && JSON.stringify(r.reshaped) === '[6,0]', JSON.stringify([r.menu, r.inverted, r.reshaped]));
         check('paint: the wand selects by colour; Move drags it, Enter puts it down', r.wand && r.moved[0] === 0 && r.moved[1][3] === 255 && r.notDone, JSON.stringify(r));
         check('paint: Done keeps it with the photo (layers in the project\'s folder), the file untouched', r.kept && r.files === 2 && r.fileSame, JSON.stringify(r));
         check('paint: shown painted; opened again, the layers come back', r.shown && r.shown[0][0] > 200 && r.shown[1][1] > 200 && r.shown[2][0] > 200 && r.reopened, JSON.stringify(r));

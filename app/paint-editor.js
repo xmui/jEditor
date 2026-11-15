@@ -376,6 +376,53 @@ const PaintEditor = {
 
     // ---- Opening and closing ----
 
+    // The photo as it's shown behind the layers, for its edit (turn, flip,
+    // crop and adjustments): the layers stay on the photo as it is on disk,
+    // so turning or flipping it only changes how they're shown (C: layer
+    // space to the picture shown)
+    setView(edit) {
+        this.edit = edit || null;
+        const base = this.photo;
+        this.ed = edit && !Edits.wholePhoto(edit) ? CropEditor.fromSnapshot(this.W, this.H, edit) : null;
+        const shown = this.ed ? this.ed.drawOutput(base) : (() => { const c = document.createElement('canvas'); c.width = this.W; c.height = this.H; c.getContext('2d').drawImage(base, 0, 0); return c; })();
+        if (edit && edit.adj) Develop.applyCanvas(shown, edit.adj, { scale: this.W / this.fullW, map: Develop.cropMap(this.ed, this.W, this.H) });
+        if (this.backdrop && this.backdrop !== shown) this.backdrop.width = this.backdrop.height = 0;
+        this.backdrop = shown;
+        this.OW = shown.width;
+        this.OH = shown.height;
+        // Layer space (the photo as on disk) to the picture shown, and back
+        if (this.ed) {
+            const o = this.ed.outputRect();
+            const [a, b, c, d] = this.ed.mat(); // the turn, and any flip
+            this.C = new DOMMatrix([a, b, c, d, -o.x0, -o.y0]).translate(-this.W / 2, -this.H / 2);
+        } else {
+            this.C = new DOMMatrix();
+        }
+        this.Ci = this.C.inverse();
+    },
+
+    // Image ▸ Rotate and Flip: the photo's own turn and flip (an edit, kept
+    // with it, never written into the original), the layers going with it.
+    // Done keeps it; one step of Undo here
+    turnImage(how) {
+        if (!this.ready || !Edits.canKeep()) return;
+        if (this.text) this.endText(true);
+        if (this.float) this.commitFloat();
+        const before = this.edit;
+        const after = how === 'h' || how === 'v' ? Edits.flipped(before, how) : Edits.turned(before, how);
+        this.applyView(after);
+        this.record({ kind: 'view', before, after });
+    },
+
+    applyView(edit) {
+        this.dropSelection();
+        this.setView(edit);
+        this.fit();
+        this.drawLayers();
+        this.buildOptions();
+        this.renderSoon();
+    },
+
     async open(app, file) {
         this.init(app);
         this.file = file;
@@ -415,21 +462,9 @@ const PaintEditor = {
         const base = await Retouch.retouched(photo, kept);
         if (base !== photo) photo.width = photo.height = 0;
         this.photo = base;
-        this.ed = kept && !Edits.wholePhoto(kept) ? CropEditor.fromSnapshot(this.W, this.H, kept) : null;
-        const shown = this.ed ? this.ed.drawOutput(base) : (() => { const c = document.createElement('canvas'); c.width = this.W; c.height = this.H; c.getContext('2d').drawImage(base, 0, 0); return c; })();
-        if (kept && kept.adj) Develop.applyCanvas(shown, kept.adj, { scale: this.W / fullW, map: Develop.cropMap(this.ed, this.W, this.H) });
-        this.backdrop = shown;
-        this.OW = shown.width;
-        this.OH = shown.height;
-        // Layer space (the photo as on disk) to the picture shown, and back
-        if (this.ed) {
-            const o = this.ed.outputRect();
-            const [a, b, c, d] = this.ed.mat(); // the turn, and any flip
-            this.C = new DOMMatrix([a, b, c, d, -o.x0, -o.y0]).translate(-this.W / 2, -this.H / 2);
-        } else {
-            this.C = new DOMMatrix();
-        }
-        this.Ci = this.C.inverse();
+        this.fullW = fullW;
+        this.fullH = fullH;
+        this.setView(kept);
         // The layers
         this.layers = [];
         if (kept && kept.paint) {
@@ -1168,6 +1203,7 @@ const PaintEditor = {
     },
 
     apply(entry, undo) {
+        if (entry.kind === 'view') { this.applyView(undo ? entry.before : entry.after); return; }
         if (entry.kind === 'px') {
             entry.layer.canvas.getContext('2d').putImageData(undo ? entry.before : entry.after, entry.r.x, entry.r.y);
             entry.layer.changed = true;
@@ -1637,7 +1673,16 @@ const PaintEditor = {
     moreItems() {
         const sel = !!this.sel, n = this.layers.length, room = n < Paint.MAX_LAYERS;
         const when = (ok, item) => (ok ? [item] : []);
+        const turn = Edits.canKeep() ? [['Image', [
+            ['Rotate right', () => this.turnImage(1)],
+            ['Rotate left', () => this.turnImage(3)],
+            ['Rotate 180°', () => this.turnImage(2)],
+            ['—'],
+            ['Flip left to right', () => this.turnImage('h')],
+            ['Flip upside down', () => this.turnImage('v')]
+        ]]] : [];
         return [
+            ...turn,
             ['Select', [
                 ['Select all', () => this.selectAll(), false, undefined, 'paint.selectAll'],
                 ...when(sel, ['Select nothing', () => this.deselect(), false, undefined, 'paint.deselect']),

@@ -8107,7 +8107,8 @@ const app = {
         try {
             if (Edits.canKeep()) {
                 const paint = await ed.keep();
-                const base = file._edit || { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } };
+                // (Paint's Image ▸ Rotate and Flip turn the photo's own edit)
+                const base = ed.edit || file._edit || { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } };
                 const edit = { ...base, n: { ...base.n } };
                 if (paint) edit.paint = paint;
                 else delete edit.paint;

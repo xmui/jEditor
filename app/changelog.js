@@ -51,6 +51,7 @@ const CHANGELOG = [
             'Paint: the fill can Close gaps (Small, Medium or Large), so a line drawing with small gaps in its lines fills as one area instead of leaking out.',
             'Paint: your saved colours, kept between sessions: + saves the brush colour, right-click one to take it off. Choose a colour… opens the system\'s colour picker.',
             'Paint: the tools are nine slots in a glass pill down the left: tools of a kind share one (Select, Brush, Fill, Shapes), showing the one used last; hold it or right-click it for the others. The chosen tool\'s options are a glass pill under the top one.',
+            'Paint: Image in the ⋯ menu turns and flips the photo (Rotate right, left or 180°, Flip left to right or upside down), with the layers going with it. It\'s the photo\'s own turn, kept as its edit as in Photos, never written into the original.',
         ]
     },
     {
