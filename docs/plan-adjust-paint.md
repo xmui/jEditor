@@ -78,18 +78,22 @@ Phase 1 is about a week of work per mode; the others about two weeks each.
 
 ## (c) How each mode lines up with 2.0
 
-**Glass pills, as in Photos** (the owner, 2026-11-15: "it needs glass to
-be cohesive", then "yes but we need pills"). In Photos the viewer's controls
-float over the photo as glass pills. Adjust and Paint use the same pills,
-built from the same recipe (`app/style.css`, "Every pill that floats over
+**Glass pills that match the grid and the viewer** (the owner, 2026-11-15:
+"it needs glass to be cohesive", "yes but we need pills", "to match grid
+and photos"). In Photos the grid's and viewer's controls float as glass
+pills. Adjust and Paint use exactly the same pills, built from the same recipe (`app/style.css`, "Every pill that floats over
 the photo or grid shares this recipe": `.toolbar` and `.tb-btn`, 44 px high,
 fully round, the same glass and edge light). The bars, the zoom and Paint's
 tool strip are pills; the panel and film strip are glass cards made of the
-same glass, since a panel of sliders can't be a pill. The photo is fitted
-between them, with a dark, blurred copy of it behind. Only the sidebar stays docked on
+same glass, since a panel of sliders can't be a pill. They sit where Photos
+puts its pills: 20 px from the window's edges (`--gutter`), 8 px apart, a
+second row 12 px under the first (`--top-row`), the zoom at the bottom
+centre like the viewer's controls. The photo is fitted between them, with a
+dark, blurred copy of it behind. Only the sidebar stays docked on
 its tint. The other 2.0 rules stay: one of each control (the same slider,
 switch, heading and button everywhere), the photo itself is never dressed or
-covered, menus stay solid so they're easy to read, and **extras go in
+covered, menus are glass like the viewer's right-click menu
+(`#context-menu`: the same glass, 32 px rows, 12 px corners), and **extras go in
 menus, not on bars.**
 
 This changes one of the 2.0 rules ("docked is solid" covered Adjust's and
@@ -175,9 +179,8 @@ checks with the Wrangler before starting.
 
 ## (e) Decisions for the owner
 
-1. **Glass in Adjust and Paint:** yes, with pills (your word,
-   2026-11-15). Still open: should menus stay solid (easier to read), or
-   be glass too?
+1. **Glass in Adjust and Paint:** settled (2026-11-15): glass pills and
+   glass menus, matching the grid and viewer exactly.
 2. **Adjust's panel:** four tool icons at the top (Edit, Restore, Heal,
    Masks) as in the mockup, or keep today's tabs?
 3. **Adjust's bar:** only Before on it, the rest in the ⋯ menu?
