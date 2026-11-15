@@ -1072,6 +1072,17 @@ const PROJECT = `
             out.clean = JSON.stringify(Paint.clean({ id: 'abc', w: 100, h: 50, layers: [{ id: 'l1', rev: 'r1', name: '  Sky  ', opacity: 3, blend: 'nope', hidden: 1 }, { id: 'BAD', rev: 'x' }] }));
             out.none = Paint.clean({ id: 'abc', w: 100, h: 50, layers: [] }) === null && Paint.clean({ id: '../x', w: 1, h: 1, layers: [{ id: 'a', rev: 'b' }] }) === null;
             out.size = JSON.stringify([Paint.sizeFor(6000, 4000), Paint.sizeFor(800, 600)]);
+            // Nine slots; a slot shows its group's tool used last; a
+            // right-click on a slot of several lists them
+            PaintEditor.init(app);
+            PaintEditor.setTool('lasso');
+            PaintEditor.setTool('pencil');
+            const slots = [...document.querySelectorAll('.paint-tool')];
+            const sel = slots.find(b => b.dataset.group === '1');
+            sel.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+            const menu = document.getElementById('context-menu');
+            out.slots = [slots.length, slots.map(b => b.dataset.tool).join(), slots.filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.dataset.tool).join(), menu ? menu.querySelectorAll('[role^="menuitem"]').length : 0];
+            app.closeContextMenu();
             out.lock = JSON.stringify(Paint.clean({ id: 'abc', w: 10, h: 10, layers: [{ id: 'l1', rev: 'r1', lock: 1 }, { id: 'l2', rev: 'r2', lock: false }] }).layers.map(l => l.lock));
             // Saved colours: + saves the brush colour once, kept between
             // sessions; taken off again
@@ -1111,6 +1122,7 @@ const PROJECT = `
         check('paint: Feather softens the edge (half-way at it, nothing far off), the middle still selected', m.feather[0] >= 240 && m.feather[1] > 90 && m.feather[1] < 165 && m.feather[2] < m.feather[1] && m.feather[3] === 0, JSON.stringify(m.feather));
         check('paint: the record is checked (names, opacity, blend; bad ids dropped)', m.clean === '{"id":"abc","w":100,"h":50,"layers":[{"id":"l1","rev":"r1","name":"Sky","opacity":1,"blend":"source-over","hidden":true}]}' && m.none, JSON.stringify(m));
         check('paint: layers at the photo\'s size, a very big one smaller', m.size === '[{"w":3000,"h":2000},{"w":800,"h":600}]', m.size);
+        check('paint: nine tool slots, each showing its group\'s tool used last; a right-click lists the others', JSON.stringify(m.slots) === '[9,"move,lasso,pencil,eraser,fill,line,text,picker,hand","pencil",4]', JSON.stringify(m.slots));
         check('paint: a layer\'s locked transparency is kept (only when on)', m.lock === '[true,null]', m.lock);
         check('paint: saved colours: + saves the brush colour (once), kept; right-click takes one off; Choose a colour…', JSON.stringify(m.saved) === '[1,true,0,true]', JSON.stringify(m.saved));
 

@@ -76,6 +76,20 @@ const PaintEditor = {
         ['picker', 'Colour picker (I)', '<path d="m2 22 1-1h3l9-9M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3z"/>'],
         ['hand', 'Hand: move about (H, or hold Space)', '<path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/>']
     ],
+    // The nine slots down the left (the plan): tools of a kind share one,
+    // which shows the one used last; hold it or right-click it for the
+    // others. Hand stays on Space too
+    GROUPS: [
+        ['move'],
+        ['rect-select', 'ellipse-select', 'lasso', 'wand'],
+        ['brush', 'pencil', 'spray'],
+        ['eraser'],
+        ['fill', 'gradient'],
+        ['line', 'rect', 'ellipse'],
+        ['text'],
+        ['picker'],
+        ['hand']
+    ],
     // What each tool's options are
     OPTIONS: {
         brush: ['size', 'hardness', 'opacity', 'flow'],
@@ -114,23 +128,7 @@ const PaintEditor = {
             }
         } catch (e) { /* private mode */ }
 
-        const tools = this.el('paint-tools');
-        for (const [id, title, svg] of this.TOOLS) {
-            if (id === 'sep') {
-                const s = document.createElement('span');
-                s.className = 'paint-tool-sep';
-                tools.appendChild(s);
-                continue;
-            }
-            const b = document.createElement('button');
-            b.className = 'paint-tool';
-            b.dataset.tool = id;
-            b.title = title;
-            b.setAttribute('aria-label', title.replace(/ \(.*\)$/, ''));
-            b.innerHTML = `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${svg}</svg>`;
-            b.addEventListener('click', () => { b.blur(); this.setTool(id); });
-            tools.appendChild(b);
-        }
+        this.buildTools();
         const bind = (id, fn) => this.el(id).addEventListener('click', (e) => { e.currentTarget.blur(); if (!this.busy) fn(); });
         bind('paint-undo', () => this.undo());
         bind('paint-redo', () => this.redo());
@@ -270,7 +268,77 @@ const PaintEditor = {
     },
 
     remember() {
-        try { localStorage.setItem('jeditor.paint', JSON.stringify({ ...this.opts, fg: this.fg, bg: this.bg, tool: this.tool })); } catch (e) { /* private mode */ }
+        try { localStorage.setItem('jeditor.paint', JSON.stringify({ ...this.opts, fg: this.fg, bg: this.bg, tool: this.tool, slots: this.slots })); } catch (e) { /* private mode */ }
+    },
+
+    // The slots: each a button showing its group's tool used last, with a
+    // small mark in its corner when it holds others. A click takes that
+    // tool; holding it (or a right-click) shows the others, with their keys
+    buildTools() {
+        const tools = this.el('paint-tools');
+        tools.textContent = '';
+        const byId = Object.fromEntries(this.TOOLS.filter(t => t[0] !== 'sep').map(t => [t[0], t]));
+        if (!this.slots) {
+            this.slots = {};
+            try {
+                const kept = JSON.parse(localStorage.getItem('jeditor.paint') || 'null');
+                if (kept && kept.slots && typeof kept.slots === 'object') this.slots = kept.slots;
+            } catch (e) { /* private mode */ }
+        }
+        this.GROUPS.forEach((group, g) => {
+            if (!group.includes(this.slots[g])) this.slots[g] = group[0];
+            const b = document.createElement('button');
+            b.className = 'paint-tool' + (group.length > 1 ? ' paint-tool-group' : '');
+            b.dataset.group = String(g);
+            if (group.length > 1) b.setAttribute('aria-haspopup', 'menu');
+            const others = (e) => {
+                e.preventDefault();
+                const r = b.getBoundingClientRect();
+                this.app.openContextMenu(group.map(id => [byId[id][1].replace(/ \(.*\)$/, ''), () => this.setTool(id), false, id === this.tool, `paint.${this.KEY_OF[id] || id}`]), r.right + 6, r.top);
+            };
+            if (group.length > 1) {
+                b.addEventListener('contextmenu', (e) => { e.stopPropagation(); others(e); });
+                let held = null;
+                b.addEventListener('pointerdown', (e) => {
+                    if (e.button !== 0) return;
+                    held = setTimeout(() => { held = 'shown'; others(e); }, 400);
+                });
+                const stop = () => { if (held && held !== 'shown') clearTimeout(held); };
+                b.addEventListener('pointerup', stop);
+                b.addEventListener('pointerleave', stop);
+                b.addEventListener('click', (e) => {
+                    e.stopPropagation(); // not to the window, which closes menus
+                    b.blur();
+                    if (held === 'shown') { held = null; return; }
+                    held = null;
+                    this.setTool(b.dataset.tool);
+                });
+            } else b.addEventListener('click', () => { b.blur(); this.setTool(group[0]); });
+            tools.appendChild(b);
+        });
+        this.syncTools();
+    },
+
+    // The key each tool has, as script.js names it
+    KEY_OF: { 'rect-select': 'rectSelect', 'ellipse-select': 'ellipseSelect' },
+
+    syncTools() {
+        const byId = Object.fromEntries(this.TOOLS.filter(t => t[0] !== 'sep').map(t => [t[0], t]));
+        for (const b of this.root.querySelectorAll('.paint-tool')) {
+            const group = this.GROUPS[+b.dataset.group];
+            if (!group) continue;
+            if (group.includes(this.tool)) this.slots[+b.dataset.group] = this.tool;
+            const id = this.slots[+b.dataset.group] || group[0];
+            if (b.dataset.tool !== id) {
+                const [, title, svg] = byId[id];
+                b.dataset.tool = id;
+                b.innerHTML = `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${svg}</svg>`;
+                const more = group.length > 1 ? ' (hold or right-click for the others)' : '';
+                b.title = title + more;
+                b.setAttribute('aria-label', title.replace(/ \(.*\)$/, ''));
+            }
+            b.setAttribute('aria-pressed', String(group.includes(this.tool)));
+        }
     },
 
     // A slider with its number, for the options bar and the layer panel.
@@ -493,8 +561,8 @@ const PaintEditor = {
         if (this.text) this.endText(true);
         if (this.float && id !== 'move') this.commitFloat();
         this.tool = id;
+        this.syncTools();
         this.remember();
-        for (const b of this.root.querySelectorAll('.paint-tool')) b.setAttribute('aria-pressed', String(b.dataset.tool === id));
         this.buildOptions();
         this.cursor();
         this.renderSoon();
