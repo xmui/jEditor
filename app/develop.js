@@ -218,6 +218,7 @@ const Develop = {
         const amount = Math.round(clamp(num(r.amount) ? r.amount : 100, 0, 100));
         if (!amount) return null;
         const out = r.d === 1 ? { d: 1, amount } : { amount };
+        if (out.d && typeof r.type === 'string' && this.RESTORE_TYPES[r.type]) { out.type = r.type; if (r.auto) out.auto = true; if (r.grey) out.grey = true; }
         for (const c of ['r', 'g', 'b']) {
             const l = r[c];
             if (!Array.isArray(l) || l.length !== 3 || !l.every(num)) return null;
@@ -253,21 +254,85 @@ const Develop = {
     // stays green). The whites go to the cleanest one, which takes off a
     // stain, and if every dye has faded, all are stretched together.
     // → the settings with it on
-    restoreAuto(px, adj, amount = 100) {
-        const h = this.histogram(px);
+    restoreAuto(px, adj, amount = 100, type = 'auto') {
         const base = this.clean(adj) || {};
-        if (!h.n) return base;
+        const m = this.restoreMeasure(px);
+        if (!m) return base;
+        const picked = this.RESTORE_TYPES[type] ? type : this.restoreType(m);
+        const t = this.RESTORE_TYPES[picked];
+        const { ch, top } = m;
+        const all = Math.min(3, Math.max(1, this.RESTORE_RANGE / top));
+        const paper = Math.min(...ch.map(x => x.white));
+        const r = { d: 1, amount, type: picked, auto: type === 'auto' };
+        // How much of each dye's own stretch is used: all of it (each dye
+        // faded by its own amount), or none (all faded together)
+        for (const { c, white, range } of ch) {
+            const own = top / range;
+            const k = Math.pow(own, t.dyes.includes(c) ? 1 : 0) * all;
+            r[c] = [white, k, t.stain ? paper : white];
+        }
+        return this.clean({ ...base, restore: r }) || {};
+    },
+
+    // Restore colour made neutral at a grey (RGBA pixels round a click):
+    // each dye's stretch changed so that, there, all three come out the
+    // same. → the restore settings, or null if it's too light or too dark
+    // to tell
+    restoreNeutral(rs, px) {
+        if (!rs || !rs.d) return null;
+        const D = [0, 0, 0];
+        let n = 0;
+        for (let i = 0; i < px.length; i += 4, n++) for (let c = 0; c < 3; c++) D[c] += this.density(px[i + c] / 255);
+        if (!n) return null;
+        const ch = ['r', 'g', 'b'].map((c, k) => ({ c, l: rs[c], d: D[k] / n - rs[c][0] }));
+        if (ch.some(x => x.d < 0.04) || ch.some(x => x.d > 1.6)) return null;
+        const now = ch.map(x => x.l[2] + x.l[1] * x.d);
+        const want = (now[0] + now[1] + now[2]) / 3;
+        const out = { ...rs, type: rs.type, auto: false, grey: true };
+        for (const x of ch) out[x.c] = [x.l[0], Math.min(4, Math.max(0.3, (want - x.l[2]) / x.d)), x.l[2]];
+        return this.cleanRestore(out);
+    },
+
+    // What Restore colour sees in a photo: for each dye, the paper's white
+    // and its density range (white to the darkest shadow)
+    restoreMeasure(px) {
+        const h = this.histogram(px);
+        if (!h.n) return null;
         const ch = ['r', 'g', 'b'].map(c => {
             const white = this.density(this.percentile(h[c], h.n, 0.995));
             const dark = this.density(this.percentile(h[c], h.n, 0.005));
             return { c, white, range: Math.max(0.05, dark - white) };
         });
-        const top = Math.max(...ch.map(x => x.range));
-        const all = Math.min(3, Math.max(1, this.RESTORE_RANGE / top));
-        const paper = Math.min(...ch.map(x => x.white));
-        const r = { d: 1, amount };
-        for (const { c, white, range } of ch) r[c] = [white, (top / range) * all, paper];
-        return this.clean({ ...base, restore: r }) || {};
+        return { ch, top: Math.max(...ch.map(x => x.range)) };
+    },
+
+    // Which way a photo has faded, from its dyes' ranges and whites
+    restoreType(m) {
+        const [r, g, b] = m.ch;
+        const lo = Math.min(r.range, g.range, b.range);
+        const stain = b.white - Math.min(r.white, g.white);
+        // A yellow stain darkens only blue's white (a cast tints them all)
+        if (stain > 0.08 && Math.abs(r.white - g.white) < 0.5 * stain && b.range > 0.75 * m.top) return 'yellow';
+        if (r.range < 0.8 * g.range && b.range < 0.8 * g.range) return 'slide';
+        if (r.range === lo && r.range < 0.8 * Math.min(g.range, b.range)) return 'cyan';
+        if (m.top < this.RESTORE_RANGE * 0.85 && lo > 0.8 * m.top) return 'print';
+        return 'keep';
+    },
+
+    // The kinds of fade Auto tells apart (restoreType), and what it does for
+    // each. dyes: the channels each stretched by itself up to the strongest
+    // one's range; stain: the whites brought to the cleanest one. Measured
+    // on test/restore-kit, every kind of fade does best with all three dyes
+    // (fading spills a little into the other layers), so the kinds differ in
+    // what Auto says it found. When it finds none, the colours are kept as
+    // they are and only the light and any stain are fixed, so a scene with
+    // one strong colour (grass, a sunset) isn't spoilt; you can choose that.
+    RESTORE_TYPES: {
+        keep: { name: 'Keep the colours', dyes: '', stain: true },
+        print: { name: 'Faded print', dyes: 'rgb', stain: true },
+        slide: { name: 'Red or magenta slide', dyes: 'rgb', stain: true },
+        cyan: { name: 'Red or orange cast', dyes: 'rgb', stain: true },
+        yellow: { name: 'Yellowed print', dyes: 'rgb', stain: true }
     },
     // The density range a print's dyes should reach, black to white
     RESTORE_RANGE: 2.0,

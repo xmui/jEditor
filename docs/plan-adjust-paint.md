@@ -125,8 +125,14 @@ can be changed or taken off later wherever it was made.
    stain comes off), and all stretched together to a print's black when
    every dye has faded. No grey-world, so a field of grass stays green.
    Edits made with phase 1's auto keep it.
-3. The fade types and Auto's pick, the neutral picker (gray-edge to find
-   neutral, a click to set it), and saturation back in the faded dye only.
+3. *Done:* the fade types and Auto's pick (from each dye's range and
+   white; the kit checks the pick), **Keep the colours** (what Auto does
+   when it finds no fade), and **Pick grey** in the Restore tool. Measured
+   on the kit and left out: gray-edge in Auto (worse: 3.0 → 3.6 at a 15%
+   blend; matching the dyes' ranges finds neutral better), per-type
+   settings (every kind of fade does best with all three dyes stretched),
+   and extra saturation in the faded dye (the colour already comes back;
+   what's left is mostly lightness).
 4. Uneven fade (an optional low-frequency fix), and one roll-wide
    correction with per-photo tweaks in Photos' one click.
 5. Later: an optional AI recolour, as a desktop download.

@@ -574,6 +574,14 @@
                         <div class="adj-sub">Faded colour</div>
                         <div class="adj-fixes">
                             <button id="adj-restore-fade" class="btn secondary sm" title="Restore color: brings back a faded print's or slide's colours and takes off its cast (red, yellow, blue); its strength is under the histogram">Restore color</button>
+                            <button id="adj-restore-pick" class="btn ghost sm" aria-pressed="false" title="Restore color from a grey: click something in the photo that should be grey">Pick grey</button>
+                        </div>
+                        <div id="adj-restore-opts" class="hidden">
+                            <div class="adj-tabs" role="group" aria-label="Restore color">
+                                <button id="adj-restore-fix" class="adj-tab" aria-pressed="true" title="Each dye brought back by itself, which takes off the cast">Fix the colours</button>
+                                <button id="adj-restore-keep" class="adj-tab" aria-pressed="false" title="The colours kept as they are (a sunset, a field of grass): only the light and any stain are fixed">Keep the colours</button>
+                            </div>
+                            <p id="adj-restore-found" class="adj-hint"></p>
                         </div>
                         <div class="adj-sub">Red-eye</div>
                         <p class="adj-hint">Click an eye that's red from a flash. Drag a spot to move it; right-click takes it off</p>

@@ -5154,7 +5154,7 @@ const app = {
             'adjust.before': () => Adjust.toggleBefore(),
             'adjust.auto': () => Adjust.auto(),
             'adjust.autoColor': () => Adjust.auto({ color: true }),
-            'adjust.whiteBalance': () => Adjust.pickWhite(),
+            'adjust.whiteBalance': () => Adjust.pickWhite(Adjust.picking !== 'wb'),
             'adjust.reset': () => Adjust.reset(),
             'adjust.clip': () => Adjust.toggleClip(),
             'adjust.copy': () => Adjust.copy(),

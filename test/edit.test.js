@@ -1774,6 +1774,26 @@ const PROJECT = `
                 const range = row.querySelector('.adj-range');
                 range.value = '50'; range.dispatchEvent(new Event('input')); range.dispatchEvent(new Event('change'));
                 out.half = Adjust.result() && Adjust.result().restore && Adjust.result().restore.amount === 50;
+                // The Restore tool: what Auto found, Keep the colours, Pick grey
+                step = 'kinds';
+                Adjust.showPane('restore');
+                const found = document.getElementById('adj-restore-found').textContent;
+                out.found = !document.getElementById('adj-restore-opts').classList.contains('hidden') && /slide|cast|print/.test(found);
+                document.getElementById('adj-restore-keep').click();
+                const kept = Adjust.result().restore;
+                out.keep = kept.type === 'keep' && kept.amount === 50 && document.getElementById('adj-restore-keep').getAttribute('aria-pressed') === 'true';
+                document.getElementById('adj-restore-fix').click();
+                out.fix = Adjust.result().restore.type !== 'keep';
+                step = 'grey';
+                document.getElementById('adj-restore-pick').click();
+                out.picking = Adjust.picking === 'restore';
+                // A patch of the scan that should be grey: its own pixels
+                const s = await app.restoreSample(a);
+                Adjust.pickRestore(s.slice(0, 4 * 64));
+                const rg = Adjust.result().restore;
+                out.grey = !Adjust.picking && !!rg && rg.grey === true && document.getElementById('adj-restore-found').textContent.includes('grey');
+                await Adjust.undo();
+                out.greyUndo = !Adjust.result().restore.grey;
                 return out;
             } catch (e) { return { error: step + ': ' + e.message }; }
         });
@@ -1782,6 +1802,8 @@ const PROJECT = `
         check('restore: Ctrl+Z takes it off; a selection is restored together and undone in one step', r.undone && r.batch && r.batchUndo, JSON.stringify(r));
         check('restore: on the selection bar\'s ⋯ menu', r.menus, JSON.stringify(r));
         check('restore: in Adjust its strength is a slider under the histogram, at 100, and half is kept', r.row && r.half, JSON.stringify(r));
+        check('restore: the Restore tool says what kind of fade it found; Keep the colours and Fix the colours switch, the strength kept', r.found && r.keep && r.fix, JSON.stringify(r));
+        check('restore: Pick grey sets it from a grey, and Ctrl+Z takes that off', r.picking && r.grey && r.greyUndo, JSON.stringify(r));
         check('restore: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
         await page.close();
     }

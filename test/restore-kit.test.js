@@ -23,25 +23,30 @@ const CASES = [
 const CASE_SLACK = 0.3;   // ΔE a single case may get worse by
 const MEAN_SLACK = 0.1;   // ΔE the mean may get worse by
 
+// The kind of fade Auto should say it found, for each
+const KIND = { slideRed: 'slide', printCyan: 'cyan', yellowStain: 'yellow', fadedPrint: 'print', unevenCyan: 'cyan', none: 'keep' };
+
 function restore(px) {
     const adj = Develop.restoreAuto(px, {});
-    return Develop.applyCPU(px, Develop.tables(adj), new Uint8ClampedArray(px.length));
+    return { kind: adj.restore && adj.restore.type, px: Develop.applyCPU(px, Develop.tables(adj), new Uint8ClampedArray(px.length)) };
 }
 
 const rows = CASES.map(([scene, profile]) => {
     const clean = scenes[scene]();
     const faded = profile === 'none' ? clean : fade(clean, PROFILES[profile]);
+    const out = restore(faded.px);
     return {
         id: scene + '/' + profile,
         faded: +meanDE(clean.px, faded.px).toFixed(3),
-        restored: +meanDE(clean.px, restore(faded.px)).toFixed(3)
+        restored: +meanDE(clean.px, out.px).toFixed(3),
+        kind: out.kind, want: KIND[profile]
     };
 });
 const mean = +(rows.reduce((s, r) => s + r.restored, 0) / rows.length).toFixed(3);
 
 console.log('restore kit (ΔE2000 against the clean scene; lower is better)');
-console.log('  case                     faded  restored');
-for (const r of rows) console.log('  ' + r.id.padEnd(24) + String(r.faded).padStart(6) + String(r.restored).padStart(10));
+console.log('  case                     faded  restored  found');
+for (const r of rows) console.log('  ' + r.id.padEnd(24) + String(r.faded).padStart(6) + String(r.restored).padStart(10) + '  ' + r.kind + (r.kind === r.want ? '' : ' (should be ' + r.want + ')'));
 console.log('  ' + 'mean'.padEnd(24) + ''.padStart(6) + String(mean).padStart(10));
 
 // An edit made with the first Restore colour (levels per channel) keeps it
@@ -65,7 +70,7 @@ if (process.argv.includes('--update')) {
 }
 
 const base = JSON.parse(fs.readFileSync(file, 'utf8'));
-const fails = [];
+const fails = rows.filter(r => r.kind !== r.want).map(r => r.id + ': Auto found ' + r.kind + ', not ' + r.want);
 for (const r of rows) {
     const was = base.cases[r.id];
     if (was === undefined) fails.push(r.id + ': no score kept (run with --update)');
