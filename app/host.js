@@ -31,7 +31,8 @@
 //   photosAdd    Add to Photos library: a project's photos into Photos, in an
 //                album named after it (script.js: addToPhotos)
 //   engine       the app's own engine (engine/, Rust; docs/plans/fast-engine.md):
-//                JPEG grid thumbnails made from the file on disk, much faster
+//                JPEG and RAW grid thumbnails (a RAW's from the JPEG inside
+//                it) made from the file on disk, much faster
 //                than decoding the whole photo in the page (script.js:
 //                engineThumbnail; JEditorNative.engineThumb). Today's code is
 //                the fallback, for the web and for whatever the engine can't do

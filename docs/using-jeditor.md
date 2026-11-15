@@ -181,7 +181,7 @@ From the top:
 
 In a theme, the sidebar is the theme's own, as it was: its project card has Scan, Explorer, Export and the Save edits switch as buttons.
 
-The home page's **Adjust a photo** opens one photo on its own in Adjust (in a browser that can't open one file, a folder, in Adjust). The home page has three tiles, **Open a folder**, **New project** and **Convert**, and under them a quiet row: **Scan or Capture** (or **Import**, while a camera's card is in), **Adjust a photo** and **Paint a photo**. **New project** starts with a blank canvas; it and **Paint a photo** ask what to paint on: a **New canvas** (below), or **Open a file**: **An image…** opens a single picture on its own (the painting goes into it when you leave Paint), **A folder…** opens a folder of photos as a project in Paint.
+The home page's **Adjust a photo** opens one photo on its own in Adjust (in a browser that can't open one file, a folder, in Adjust). The home page has three tiles, **Open a folder**, **New project** and **Convert**, and under them a quiet row: **Scan or Capture** (or **Import**, while a camera's card is in), **Adjust a photo** and **Paint a photo**. **New project** asks which kind, in the apps: **A folder for photos** (an empty project in your projects folder: its name, and whether edits are saved when done) or **A blank canvas**; the sidebar's and the project picker's **New project…** ask the same. In a browser, where there's no projects folder, it goes straight to the canvas. The canvas and **Paint a photo** ask what to paint on: a **New canvas** (below), or **Open a file**: **An image…** opens a single picture on its own (the painting goes into it when you leave Paint), **A folder…** opens a folder of photos as a project in Paint.
 
 ## Paint
 

@@ -40,7 +40,8 @@ const Guide = {
         ['flags', 'filter', 'Show only the flagged', 'Click a flag in the sidebar\'s Flags list; Ctrl+A then selects just those.', []],
         ['files', 'sidebar', 'The sidebar', 'The project\'s folders, your projects, pinned folders and drives.', ['folders.rail']],
         ['files', 'convert', 'Convert to save room', 'AVIF, WebP or JPEG XL, for some photos or a whole folder.', []],
-        ['files', 'export', 'Export copies', 'At a size and in a format, with the edits.', []],
+        ['files', 'export', 'Export copies', 'Where they go, what they\'re called, the format and the size, with the edits in them.', []],
+        ['files adjust', 'export', 'Save your edits', 'Edits wait until you Save: into the photos, or as copies with the photos left alone.', []],
         ['files', 'scan', 'Scan', 'Straight into the project; each print on the glass becomes a photo.', [], 'scan'],
         ['files', 'camera', 'Shoot from the camera', 'Photos taken on a cable come straight into the project.', [], 'camera'],
         ['adjust', 'light', 'Open Adjust', 'Esc goes back to Photos, keeping what you did.', ['edit.adjust']],
@@ -50,7 +51,7 @@ const Guide = {
         ['paint', 'brush', 'Brushes', 'Brush, pencil, spray and eraser. [ and ] size the brush.', ['paint.brush']],
         ['paint', 'layers', 'Layers', 'Kept with the project, so the painting can be changed later.', []],
         ['paint', 'image', 'Bring in an image', 'Drag to move it, a corner to size it, Enter puts it down.', []],
-        ['paint', 'canvas', 'A new canvas', 'New project on the home page: a size, a background and a folder.', []]
+        ['paint', 'canvas', 'A new canvas', 'New project, then A blank canvas: a size, a background and a folder.', []]
     ],
 
     esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); },

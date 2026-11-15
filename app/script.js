@@ -3658,12 +3658,13 @@ const app = {
 
     // The app's engine makes it (Host.has('engine'): src/Engine.cs) from
     // the file on disk, decoding only as much as the thumbnail needs:
-    // several times faster than a whole decode here. A HEIC too when the
+    // several times faster than a whole decode here. A RAW from the JPEG
+    // inside it (engine/src/raw.rs, as raw.js finds it), and a HEIC when the
     // engine reads them (Host.has('engineHeic')). Null: the page makes it
     // (another kind of file, no path for the folder, or the engine couldn't)
     async engineThumbnail(fileEntry) {
         if (!Host.has('engine') || !this.dirHandle) return null;
-        if (!/\.jpe?g$/i.test(fileEntry.name) && !(Host.has('engineHeic') && /\.hei[cf]$/i.test(fileEntry.name))) return null;
+        if (!/\.jpe?g$/i.test(fileEntry.name) && !Raw.is(fileEntry.name) && !(Host.has('engineHeic') && /\.hei[cf]$/i.test(fileEntry.name))) return null;
         const handle = this.dirHandle;
         if (!this._engineDir || this._engineDir.handle !== handle) {
             this._engineDir = { handle, path: Host.get().folderPath(handle).catch(() => null) };
