@@ -7,7 +7,9 @@
 //   the sidebar closed   the same row, in the same place, as a glass pill
 //                        (jEditor's own look; a theme keeps its switch in
 //                        the sidebar, and the chip below in the folder pill)
-//   Adjust and Paint     a chip naming the mode, top left (#mode-float)
+//   Adjust and Paint     the sidebar beside them, as in Photos, and the row
+//                        with it; hidden, the row in their head's corner
+//                        (a theme: a chip naming the mode, #mode-float)
 //
 // Adjust and Paint have no Done bar: what's done is kept as you go, as in
 // Lightroom. The switch, Esc or Enter go back to Photos keeping it (and
@@ -309,7 +311,7 @@ const Modes = {
         const own = !document.documentElement.dataset.skin;
         // (Adjust and Paint are open inside the crop state: only Photos' crop counts)
         const crop = app.cropState && app.cropState.active && mode === 'photos';
-        this.renderRow(own, railShown, any && open && mode === 'photos' && !crop);
+        this.renderRow(own, railShown, any && open && !crop, mode !== 'photos');
         // The chip in the folder pill: while the sidebar's closed, in a
         // theme (in jEditor's own look the row stays, as a pill)
         const chipBar = this.el('mode-chip-bar');
@@ -336,7 +338,7 @@ const Modes = {
     // The row: along the sidebar's top while it's open; closed, the same
     // row floats where it was, as a pill, and the folder pill moves over
     // for it (--mode-row-w). In a theme it's only the switch, in the sidebar
-    renderRow(own, docked, want) {
+    renderRow(own, docked, want, editing) {
         const row = this.el('mode-row');
         const rail = this.el('folder-rail');
         if (!row || !rail) return;
@@ -347,6 +349,14 @@ const Modes = {
         row.classList.toggle('float', float);
         row.classList.toggle('toolbar', float);
         row.classList.toggle('hidden', float && !want);
+        const over = float && editing;
+        if (row.classList.contains('over-mode') !== over) {
+            row.classList.toggle('over-mode', over);
+            // Their head moves as the sidebar goes (style.css: .mode-screen's
+            // left): its room for the row is measured again once it's there
+            clearTimeout(this.roomLater);
+            this.roomLater = setTimeout(() => this.chipRoom(), 320);
+        }
         const side = this.el('mode-row-side');
         const app = this.app;
         const can = typeof Folders !== 'undefined' && Folders.enabled() && (app.viewMode === 'grid' || Folders.besideSingle());
@@ -360,7 +370,7 @@ const Modes = {
         find.setAttribute('aria-label', 'Find anything');
         find.classList.toggle('hidden', typeof Palette === 'undefined');
         // At once, so the folder pill is never under it for a frame
-        const shown = float && !row.classList.contains('hidden');
+        const shown = float && !editing && !row.classList.contains('hidden');
         document.documentElement.style.setProperty('--mode-row-w', shown ? `${Math.ceil(row.getBoundingClientRect().width)}px` : '0px');
         if (shown && typeof Folders !== 'undefined' && Folders.fitBar) Folders.fitBar();
     },
@@ -372,8 +382,9 @@ const Modes = {
     chipRoom() {
         cancelAnimationFrame(this.roomFrame);
         this.roomFrame = requestAnimationFrame(() => {
-            const float = this.el('mode-float');
-            const on = float && float.classList.contains('over-mode') && !float.classList.contains('hidden');
+            const row = this.el('mode-row');
+            const float = row && row.classList.contains('over-mode') ? row : this.el('mode-float');
+            const on = float && float.classList.contains('over-mode') && !float.classList.contains('hidden') && float.getClientRects().length > 0;
             const right = on ? float.getBoundingClientRect().right : 0;
             for (const head of document.querySelectorAll('.adj-head, .paint-head')) {
                 const h = head.getBoundingClientRect();

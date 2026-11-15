@@ -266,7 +266,8 @@ const Folders = {
         this.el('folder-rail').classList.toggle('hidden', !rail);
         // Hidden where it would show: the line at the window's edge that
         // drags it back out (script.js: initSidebarResize)
-        this.el('rail-edge').classList.toggle('hidden', !(on || beside) || rail);
+        // (Adjust and Paint have their own, over them)
+        for (const e of document.querySelectorAll('.side-edge[data-side="rail"]')) e.classList.toggle('hidden', !(on || beside) || rail);
         // What this window shows, for the others' Move to: in any view, not
         // just the grid's (a project left in single view was missing there)
         if (typeof Windows !== 'undefined') Windows.publish();

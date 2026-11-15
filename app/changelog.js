@@ -37,6 +37,7 @@ const CHANGELOG = [
             'Going back to the grid from a photo, and showing or hiding the folder list, is smoother: the window is no longer drawn again from scratch several times each time.',
             'The sidebar hides when you drag its edge in: past half its narrowest width it snaps away, and drag back out without letting go to keep it. Hidden, it leaves a thin line at the window\'s left edge; drag from the line to bring the sidebar back. `Ctrl+B` and the button work as before, it comes back as wide as it was, and jEditor remembers that it\'s hidden.',
             'The top of the sidebar is one row: Photos, Adjust and Paint as icons at the left (the one you\'re in in your accent colour), and the sidebar button and Find anything at the right. Hide the sidebar and the same row stays where it was as a small pill, with the folder pill beside it, so the button to bring the sidebar back is right where you left it. It replaces the mode chip and the folder-list button in the folder pill.',
+            'Adjust and Paint keep the sidebar beside them, as Photos does: the same row at its top, with the mode you\'re in chosen, and hiding it (the button, `Ctrl+B` or dragging its edge in) gives the photo the room. Their panel at the right hides the same way: drag its edge in until it snaps away, and drag the thin line it leaves at the window\'s edge to bring it back. Adjust and Paint each remember theirs.',
         ]
     },
     {
