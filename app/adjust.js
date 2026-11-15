@@ -626,6 +626,7 @@ const Adjust = {
     // 1:1 box) follows the canvas, as it did when it only fitted. Past the
     // working copy's own pixels (a photo bigger than EDGE), what's on
     // screen is drawn again from the full-size photo, so 100% is sharp.
+    // Past 100% the photo's pixels are sharp squares, not smoothed (layout).
 
     MAX_ZOOM: 16,       // 1600%, as Lightroom
     PAD: 16,            // round the photo when it's fitted
@@ -659,6 +660,15 @@ const Adjust = {
         const v = this.view;
         Object.assign(this.canvas.style, { width: `${Math.max(1, this.PW * v.z)}px`, height: `${Math.max(1, this.PH * v.z)}px`, left: `${v.x}px`, top: `${v.y}px` });
         this.root.classList.toggle('adj-zoomed', !this.fitted);
+        // Past 100% (a pixel of the photo bigger than one of the screen's):
+        // its pixels as sharp squares, as in Photos' viewer; smooth at or
+        // below it. On the sharp part, which is the photo's own pixels,
+        // and on the picture itself only when it is (a photo no bigger
+        // than the working copy): blown up, the working copy of a bigger
+        // one would show blocks that aren't the photo's
+        const dpr = window.devicePixelRatio || 1;
+        this.root.classList.toggle('adj-pixels', v.z * dpr > 1 + 1e-6);
+        this.root.classList.toggle('adj-whole', this.PW <= this.w * 1.01);
         this.placePaint();
         this.placeSharp();
         this.showZoom();
