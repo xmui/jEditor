@@ -2286,13 +2286,32 @@ async function newPage(context, baseUrl, host = null) {
             out.leftOut = Watch.skipDir('Beta export') && !Watch.skipDir('Beta');
             // Remembered: the settings and their size, not the drive
             out.kept = JSON.parse(localStorage.getItem('jeditor.export'));
-            // Again into the same folder: both kept, the copy numbered; or the photo skipped
+            // Again into the same folder: asked, as the system's file copy does. Keep both: the copy numbered
+            const chooseWas = UI.choose;
+            let asked = null, say = 'ok';
+            UI.choose = async (o) => { asked = o; return say; };
             Export.open({ files: [f('photo1.jpg')] });
+            out.asksFirst = Export.clash;
             $('ex-go').click();
             await wait(() => /Exported 1 to "Beta export"/.test(toasts()) && !$('export-panel').classList.contains('hidden') === false);
             const inExport = async () => { const a = []; for await (const k of (await dir.getDirectoryHandle('Beta export')).keys()) a.push(k); return a.sort().join(); };
             await wait(async () => /\(2\)/.test(await inExport()));
             out.both = await inExport();
+            out.asked = asked && `${asked.title} | ${asked.ok} | ${asked.alt} | ${!!asked.check}`;
+            // Replace: written over, nothing new. Cancel: nothing written
+            say = 'alt';
+            asked = null;
+            Export.open({ files: [f('photo1.jpg')] });
+            $('ex-go').click();
+            await wait(() => asked);
+            await new Promise(r => setTimeout(r, 500));
+            out.replaced = await inExport();
+            say = null;
+            Export.open({ files: [f('photo1.jpg')] });
+            $('ex-go').click();
+            await wait(() => /Export canceled/.test(toasts()));
+            out.canceled = await inExport();
+            UI.choose = chooseWas;
             Export.open({ files: [f('photo1.jpg')] });
             sec('where');
             set('ex-clash', 'skip');
@@ -2393,7 +2412,9 @@ async function newPage(context, baseUrl, host = null) {
             r.secs === 'Photos: 1 selected | Export location: Beta export, in this project | File naming: Original names · photo1.jpg | File settings: Original format | Image sizing: Full size | Metadata: All metadata | After export: Do nothing' &&
             /^1 photo, about .+, into Beta export in this project\.$/.test(r.sum) && r.folder === 'Beta export', JSON.stringify([r.noPresets, r.secs, r.sum, r.folder]));
         check('... the photo selected, a size typed, into "Beta export", left out of the project', /The photo selected\*/.test(r.which) && /2 starred/.test(r.which) && r.copiesGo === 'Export 1 photo' && r.size === 100 && r.leftOut, JSON.stringify(r));
-        check('... a name already there: both kept (the copy numbered), or the photo skipped', r.both === 'photo1 (2).jpg,photo1.jpg' && r.skipped === r.both, JSON.stringify([r.both, r.skipped]));
+        check('... a name already there is asked about: keep both (the copy numbered), replace, or cancel', r.asksFirst === 'ask' && r.asked === '“photo1.jpg” is already there | Keep both | Replace | false'
+            && r.both === 'photo1 (2).jpg,photo1.jpg' && r.replaced === r.both && r.canceled === r.both, JSON.stringify([r.asksFirst, r.asked, r.both, r.replaced, r.canceled]));
+        check('... or, set to skip, the photo is skipped', r.skipped === r.both, r.skipped);
         check('... the settings saved as a preset of your own: in the folder\'s name, off when a setting changes, back when picked, removed', r.preset === 'Small / Beta – Small' && r.presetOff && r.presetBack && r.presetGone, JSON.stringify([r.preset, r.presetOff, r.presetBack, r.presetGone]));
         check('... the preview is off to start with, shown when asked and remembered', /^\S+\.jpg true$/.test(String(r.preview)), String(r.preview)); // (the first of the photos it would export)
         check('... the starred onto the USB drive, named in pieces with an example, in their own folder', r.starGo === 'Export 2 photos' && /on USB drive/.test(r.starSum) && /Beta 001\.jpg, Beta 002\.jpg/.test(r.eg) && r.onUsb === 'Beta 001.jpg,Beta 002.jpg', JSON.stringify([r.starGo, r.starSum, r.eg, r.onUsb]));
