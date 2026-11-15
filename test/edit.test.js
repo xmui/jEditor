@@ -1309,6 +1309,34 @@ const PROJECT = `
                 pe('pointerdown', 50, 270, pen); pe('pointermove', 100, 270, pen); pe('pointermove', 150, 270, pen); pe('pointerup', 150, 270, pen);
                 out.pressure = [px(0, 100, 270)[3], px(0, 100, 273)[3]];
                 pressKey('z', { ctrlKey: true });
+                // QuickShape: a wobbly line held still at its end becomes a
+                // straight one; still held, dragging on takes its end there
+                step = 'quickshape';
+                P.opts.size = 6; P.opts.quickShape = true;
+                pe('pointerdown', 40, 200);
+                for (let x = 50; x <= 140; x += 10) pe('pointermove', x, 200 + (x % 20 ? 3 : -3));
+                await new Promise(res => setTimeout(res, P.HOLD_MS + 150));
+                const snapped = P.drag && P.drag.snap && P.drag.snap.name;
+                pe('pointermove', 180, 200);
+                pe('pointerup', 180, 200);
+                out.quickLine = [snapped, px(0, 110, 200)[3], px(0, 110, 204)[3], px(0, 175, 200)[3]];
+                pressKey('z', { ctrlKey: true });
+                // A rough circle held becomes a circle (painted on it, not on the wobble)
+                pe('pointerdown', 260, 150);
+                for (let i = 1; i <= 40; i++) { const a = i / 40 * Math.PI * 2.05; pe('pointermove', 200 + (60 + (i % 3) * 2) * Math.cos(a), 150 + (60 + (i % 3) * 2) * Math.sin(a)); }
+                await new Promise(res => setTimeout(res, P.HOLD_MS + 150));
+                out.quickCircle = [P.drag && P.drag.snap && P.drag.snap.name];
+                pe('pointerup', 200 + 61 * Math.cos(0.1 * Math.PI), 150 + 61 * Math.sin(0.1 * Math.PI));
+                out.quickCircle.push(px(0, 200, 89)[3] > 0, px(0, 139, 150)[3] > 0, px(0, 200, 150)[3]);
+                pressKey('z', { ctrlKey: true });
+                // Off (⋯), a held stroke stays as drawn
+                P.opts.quickShape = false;
+                pe('pointerdown', 40, 200); pe('pointermove', 90, 204); pe('pointermove', 140, 196);
+                await new Promise(res => setTimeout(res, P.HOLD_MS + 150));
+                out.quickOff = !(P.drag && P.drag.snap);
+                pe('pointerup', 140, 196);
+                pressKey('z', { ctrlKey: true });
+                P.opts.quickShape = true;
                 P.opts.size = 20;
                 // A rectangle, filled, on a new layer
                 step = 'rect';
@@ -1362,7 +1390,7 @@ const PROJECT = `
                 // The ⋯ menu's Select: invert (twice, back again), grow, shrink
                 const more = P.moreItems();
                 const sub = (n) => (more.find(i => i[0] === n) || [, []])[1];
-                out.menu = more.map(i => i[0]).join() === 'Image,Select,Layer' && sub('Select').some(i => i[0] === 'Invert');
+                out.menu = more.map(i => i[0]).join().startsWith('Image,Select,Layer,—,QuickShape') && typeof more[more.length - 1][3] === 'boolean' && sub('Select').some(i => i[0] === 'Invert');
                 const w0 = P.sel.box.w;
                 P.invertSelection();
                 out.inverted = !!P.sel && P.sel.box.w === P.W;
@@ -1451,12 +1479,14 @@ const PROJECT = `
         check('paint: sizes are the photo\'s own pixels, the same part of each photo (small on a small photo); the size slider spreads small sizes out', JSON.stringify(r.sizes) === '[10,400,200]' && JSON.stringify(r.slider) === '[5,"5"]', JSON.stringify([r.sizes, r.slider]));
         check('paint: the wheel sizes the brush (shown on the photo as it changes), Ctrl+wheel zooms, ] is bigger', String(r.wheel) === 'true,true,true,true' && String(r.ctrlWheel) === 'true,true' && r.bracket, JSON.stringify([r.wheel, r.ctrlWheel, r.bracket]));
         check('paint: Shift-click paints straight on from where the last stroke ended', String(r.shiftLine) === '0,255,0', String(r.shiftLine));
+        check('paint: QuickShape: a stroke held at its end snaps to a straight line, its end following the pointer while held', JSON.stringify(r.quickLine) === '["Line",255,0,255]', JSON.stringify(r.quickLine));
+        check('paint: QuickShape: a rough circle becomes a circle; off in ⋯, a held stroke stays as drawn', JSON.stringify(r.quickCircle) === '["Circle",true,true,0]' && r.quickOff, JSON.stringify([r.quickCircle, r.quickOff]));
         check('paint: a pen\'s pressure sizes the brush', r.pressure && r.pressure[0] > 200 && r.pressure[1] === 0, String(r.pressure));
         check('paint: a new layer; a filled rectangle on it', r.layers && r.rect && r.rect[0][1] === 255 && r.rect[1] === 0, JSON.stringify(r));
         check('paint: the fill takes the photo\'s blue square, not beyond it; text is drawn', r.fill && r.fill[0][0] === 255 && r.fill[0][1] === 255 && r.fill[1] === 0 && r.text > 50, JSON.stringify(r));
         check('paint: the fill can fill the whole layer (only what\'s selected, with a selection), without the colour options; Ctrl+Z undoes it', r.wholeOpts && r.wholeSel && String(r.wholeSel[0]) === '255,0,255,255' && r.wholeSel[1] === 0 && String(r.whole) === '255,0,255,255,255,0,255,255' && r.wholeUndone, JSON.stringify([r.wholeOpts, r.wholeSel, r.whole, r.wholeUndone]));
         check('paint: a selection; Delete clears only inside it', r.selected && r.cleared[0] === 0 && r.cleared[1] === 255, JSON.stringify(r));
-        check('paint: the ⋯ menu has Image, Select and Layer; Invert, Grow and Shrink change the selection', r.menu && r.inverted && JSON.stringify(r.reshaped) === '[6,0]', JSON.stringify([r.menu, r.inverted, r.reshaped]));
+        check('paint: the ⋯ menu has Image, Select and Layer (and QuickShape, ticked when on); Invert, Grow and Shrink change the selection', r.menu && r.inverted && JSON.stringify(r.reshaped) === '[6,0]', JSON.stringify([r.menu, r.inverted, r.reshaped]));
         check('paint: the wand selects by colour; Move drags it, Enter puts it down', r.wand && r.moved[0] === 0 && r.moved[1][3] === 255 && r.notDone, JSON.stringify(r));
         check('paint: Done keeps it with the photo (layers in the project\'s folder), the file untouched', r.kept && r.files === 2 && r.fileSame, JSON.stringify(r));
         check('paint: shown painted; opened again, the layers come back', r.shown && r.shown[0][0] > 200 && r.shown[1][1] > 200 && r.shown[2][0] > 200 && r.reopened, JSON.stringify(r));

@@ -9,7 +9,10 @@
 //   Brush (B), pencil (N), spray, eraser (E): size, hardness, opacity, flow.
 //     The wheel sizes them, [ and ] too (Ctrl+wheel zooms), showing the
 //     brush as it'll paint and its size; Shift-click paints straight on
-//     from where the last stroke ended; a pen's pressure sizes them
+//     from where the last stroke ended; a pen's pressure sizes them.
+//     QuickShape: hold still at the end of a stroke (not the spray) and it
+//     becomes a clean line, arc, circle or ellipse, rectangle or square;
+//     still held, dragging turns and sizes it (⋯ turns it off)
 //   Fill (G), gradient: fill a colour (where it matches the colour
 //     clicked, or the whole layer), or a gradient to the background colour
 //     (or to nothing)
@@ -44,7 +47,7 @@ const PaintEditor = {
         tolerance: 32, contiguous: true, sampleAll: true, fillWhat: 'match', gaps: 0,
         lineWidth: 8, shapeFill: 'none', arrow: false,
         gradient: 'linear', gradTo: 'bg',
-        density: 40,
+        density: 40, quickShape: true,
         font: 'system-ui, sans-serif', fontSize: 72, bold: false, italic: false,
         sizeFor: 1500   // the long side of the layers the sizes were for
     },
@@ -1067,12 +1070,19 @@ const PaintEditor = {
             this.view.x = d.vx + (p.sx - d.sx);
             this.view.y = d.vy + (p.sy - d.sy);
             this.positionText();
+        } else if (d.kind === 'paint' && d.snap) {
+            this.moveShape(p);
         } else if (d.kind === 'paint') {
             // Every point the pointer went through since the last event (a
             // fast stroke, a pen), not only the last
             const all = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
             if (all.length > 1) for (const c of all) this.strokeTo(this.point(c));
             else this.strokeTo(p);
+            if (d.pts) {
+                d.pts.push({ x: p.ox, y: p.oy });
+                // Held still means within a few pixels on screen
+                if (Math.hypot(p.sx - d.still.sx, p.sy - d.still.sy) > 5) { d.still = p; this.holdSoon(); }
+            }
         } else if (d.kind === 'shape') {
             d.end = p;
             d.shift = e.shiftKey;
@@ -1088,7 +1098,9 @@ const PaintEditor = {
     up(e) {
         const d = this.drag;
         if (this.stage.hasPointerCapture && this.stage.hasPointerCapture(e.pointerId)) this.stage.releasePointerCapture(e.pointerId);
+        clearTimeout(this._hold);
         if (!d) return;
+        if (d.kind === 'paint' && d.snap && d.snap.due) this.drawSnap();
         if (d.kind === 'paint') this.endStroke();
         else if (d.kind === 'shape') this.endShape(d);
         else if (d.kind === 'lasso') this.endLasso(d);
@@ -1255,6 +1267,14 @@ const PaintEditor = {
         if (from) this.strokeTo(p);
         else this.dab(p);
         if (this.tool === 'spray') this.sprayLoop();
+        // QuickShape: the stroke's points as shown, to fit a shape to when
+        // the pointer's held still
+        else if (this.opts.quickShape) {
+            const first = from ? this.C.transformPoint(from) : { x: p.ox, y: p.oy };
+            this.drag.pts = [{ x: first.x, y: first.y }, { x: p.ox, y: p.oy }];
+            this.drag.still = p;
+            this.holdSoon();
+        }
         this.renderSoon();
     },
 
@@ -1331,6 +1351,171 @@ const PaintEditor = {
         }
         d.carry = len - (t - step);
         d.last = p;
+    },
+
+    // ---- QuickShape ----
+
+    HOLD_MS: 550,
+
+    holdSoon() {
+        clearTimeout(this._hold);
+        const d = this.drag;
+        this._hold = setTimeout(() => { if (this.drag === d) this.snapShape(); }, this.HOLD_MS);
+    },
+
+    // Held still: the stroke becomes the shape it looks like (if any), and
+    // dragging on turns and sizes it about its pivot
+    snapShape() {
+        const d = this.drag;
+        if (!d || d.kind !== 'paint' || d.snap || !d.pts) return;
+        const fit = this.fitShape(d.pts, this.view.z);
+        if (!fit) return;
+        const at = { x: d.still.ox, y: d.still.oy };
+        d.snap = { ...fit, base: fit.pts, at, pr: d.still.pr || 1, rot: 0, k: 1 };
+        this.drawSnap();
+        this.renderSoon();
+    },
+
+    moveShape(p) {
+        const s = this.drag.snap;
+        const a = { x: s.at.x - s.pivot.x, y: s.at.y - s.pivot.y }, q = { x: p.ox - s.pivot.x, y: p.oy - s.pivot.y };
+        const la = Math.hypot(a.x, a.y), lq = Math.hypot(q.x, q.y);
+        if (la < 1e-6 || lq < 1e-6) return;
+        s.k = lq / la;
+        s.rot = Math.atan2(q.y, q.x) - Math.atan2(a.y, a.x);
+        // A closed shape that's barely turned stays as it was (straight)
+        const near = Math.abs(Math.atan2(Math.sin(s.rot), Math.cos(s.rot)));
+        if (s.closed && near < 4 * Math.PI / 180) s.rot = 0;
+        // Redrawn once a frame, however fast the pointer
+        if (!s.due) {
+            s.due = true;
+            requestAnimationFrame(() => { if (this.drag && this.drag.snap === s && s.due) { this.drawSnap(); this.renderSoon(); } });
+        }
+    },
+
+    // The shape (turned and sized) painted with the brush, in place of the
+    // stroke so far
+    drawSnap() {
+        const d = this.drag, s = d.snap;
+        s.due = false;
+        const c = Math.cos(s.rot) * s.k, n = Math.sin(s.rot) * s.k;
+        const pts = s.base.map(q => {
+            const x = q.x - s.pivot.x, y = q.y - s.pivot.y;
+            const o = { x: s.pivot.x + x * c - y * n, y: s.pivot.y + x * n + y * c };
+            const l = this.Ci.transformPoint(o);
+            return { x: l.x, y: l.y, pr: s.pr };
+        });
+        const g = this.stroke.getContext('2d');
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, this.W, this.H);
+        d.carry = 0;
+        d.last = pts[0];
+        this.dab(pts[0]);
+        for (let i = 1; i < pts.length; i++) this.strokeTo(pts[i]);
+        // The whole stroke shown again (the freehand one's gone)
+        d.fresh = d.dirty && { ...d.dirty };
+    },
+
+    // The shape a stroke (points in the picture as shown) looks like:
+    // { name, pts, pivot, closed }, or null for none. z: the zoom, so a
+    // scribble too small to see isn't a shape
+    fitShape(raw, z = 1) {
+        const N = 96;
+        // Evenly along the stroke
+        let L = 0;
+        for (let i = 1; i < raw.length; i++) L += Math.hypot(raw[i].x - raw[i - 1].x, raw[i].y - raw[i - 1].y);
+        if (L * z < 24) return null;
+        const P = [{ x: raw[0].x, y: raw[0].y }];
+        let need = L / (N - 1), acc = 0;
+        for (let i = 1; i < raw.length && P.length < N; i++) {
+            const a = raw[i - 1], b = raw[i], seg = Math.hypot(b.x - a.x, b.y - a.y);
+            let t = 0;
+            while (acc + (seg - t) >= need && P.length < N) {
+                t += need - acc;
+                acc = 0;
+                P.push({ x: a.x + (b.x - a.x) * t / seg, y: a.y + (b.y - a.y) * t / seg });
+            }
+            acc += seg - t;
+        }
+        const last = raw[raw.length - 1];
+        if (P.length < N) P.push({ x: last.x, y: last.y }); else P[N - 1] = { x: last.x, y: last.y };
+        const A = P[0], B = P[P.length - 1], chord = Math.hypot(B.x - A.x, B.y - A.y);
+        const mean = (f) => P.reduce((t, q) => t + f(q), 0) / P.length;
+        const deg = Math.PI / 180;
+        // A line: nothing far off the one from start to end
+        if (chord > 0.5 * L) {
+            const ux = (B.x - A.x) / chord, uy = (B.y - A.y) / chord;
+            const off = Math.max(...P.map(q => Math.abs((q.x - A.x) * uy - (q.y - A.y) * ux)));
+            if (off < 0.07 * L) return { name: 'Line', pts: [A, B], pivot: A, closed: false };
+        }
+        // Closed: it ends near where it started, for its size
+        const xs = P.map(q => q.x), ys = P.map(q => q.y);
+        const D = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+        if (chord < 0.3 * D && L > 2 * D) {
+            // An ellipse (circle) or a rectangle (square), whichever's nearer
+            const cx = mean(q => q.x), cy = mean(q => q.y);
+            const sxx = mean(q => (q.x - cx) ** 2), syy = mean(q => (q.y - cy) ** 2), sxy = mean(q => (q.x - cx) * (q.y - cy));
+            const frame = (ang) => {
+                const co = Math.cos(ang), si = Math.sin(ang);
+                const uv = P.map(q => ({ u: (q.x - cx) * co + (q.y - cy) * si, v: -(q.x - cx) * si + (q.y - cy) * co }));
+                const u0 = Math.min(...uv.map(q => q.u)), u1 = Math.max(...uv.map(q => q.u));
+                const v0 = Math.min(...uv.map(q => q.v)), v1 = Math.max(...uv.map(q => q.v));
+                const mu = (u0 + u1) / 2, mv = (v0 + v1) / 2;
+                return { co, si, uv: uv.map(q => ({ u: q.u - mu, v: q.v - mv })), rx: (u1 - u0) / 2, ry: (v1 - v0) / 2, mx: cx + mu * co - mv * si, my: cy + mu * si + mv * co };
+            };
+            const out = (f, u, v) => ({ x: f.mx + u * f.co - v * f.si, y: f.my + u * f.si + v * f.co });
+            const straight = (ang) => {
+                // Near straight (as shown) is straight
+                const k = Math.round(ang / (Math.PI / 2)) * (Math.PI / 2);
+                return Math.abs(ang - k) < 10 * deg ? k : ang;
+            };
+            // The ellipse: along its long axis
+            const fe = frame(straight(0.5 * Math.atan2(2 * sxy, sxx - syy)));
+            if (fe.rx < 1e-3 || fe.ry < 1e-3) return null;
+            const errE = fe.uv.reduce((t, q) => t + Math.abs(Math.hypot(q.u / fe.rx, q.v / fe.ry) - 1), 0) / P.length;
+            // The rectangle: along its sides (the stroke's main direction, in quarter turns)
+            let s4 = 0, c4 = 0;
+            for (let i = 1; i < P.length; i++) {
+                const a = Math.atan2(P[i].y - P[i - 1].y, P[i].x - P[i - 1].x);
+                s4 += Math.sin(4 * a); c4 += Math.cos(4 * a);
+            }
+            const fr = frame(straight(Math.atan2(s4, c4) / 4));
+            const half = (fr.rx + fr.ry) / 2;
+            const errR = fr.uv.reduce((t, q) => t + Math.min(Math.abs(Math.abs(q.u) - fr.rx), Math.abs(Math.abs(q.v) - fr.ry)), 0) / P.length / half;
+            if (Math.min(errE, errR) > 0.14) return null;
+            if (errE <= errR) {
+                let { rx, ry } = fe;
+                const round = Math.abs(rx - ry) / Math.max(rx, ry) < 0.15;
+                if (round) rx = ry = (rx + ry) / 2;
+                const pts = [];
+                for (let i = 0; i <= 128; i++) { const a = i / 128 * Math.PI * 2; pts.push(out(fe, Math.cos(a) * rx, Math.sin(a) * ry)); }
+                return { name: round ? 'Circle' : 'Ellipse', pts, pivot: { x: fe.mx, y: fe.my }, closed: true };
+            }
+            let { rx, ry } = fr;
+            const square = Math.abs(rx - ry) / Math.max(rx, ry) < 0.12;
+            if (square) rx = ry = (rx + ry) / 2;
+            const pts = [[-rx, -ry], [rx, -ry], [rx, ry], [-rx, ry], [-rx, -ry]].map(([u, v]) => out(fr, u, v));
+            return { name: square ? 'Square' : 'Rectangle', pts, pivot: { x: fr.mx, y: fr.my }, closed: true };
+        }
+        // An arc: the circle through its start, middle and end
+        const M = P[P.length >> 1];
+        const d2 = 2 * (A.x * (M.y - B.y) + M.x * (B.y - A.y) + B.x * (A.y - M.y));
+        if (Math.abs(d2) < 1e-9) return null;
+        const a2 = A.x * A.x + A.y * A.y, m2 = M.x * M.x + M.y * M.y, b2 = B.x * B.x + B.y * B.y;
+        const ox = (a2 * (M.y - B.y) + m2 * (B.y - A.y) + b2 * (A.y - M.y)) / d2;
+        const oy = (a2 * (B.x - M.x) + m2 * (A.x - B.x) + b2 * (M.x - A.x)) / d2;
+        const R = Math.hypot(A.x - ox, A.y - oy);
+        // (off by how much, for the size of the arc: a huge circle fits anything)
+        if (mean(q => Math.abs(Math.hypot(q.x - ox, q.y - oy) - R)) / Math.min(R, chord) > 0.04) return null;
+        // From the start's angle to the end's, the way round the middle is
+        const ang = (q) => Math.atan2(q.y - oy, q.x - ox);
+        const a0 = ang(A), am = ang(M), turn = (x) => ((x % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+        const ccw = turn(am - a0) < turn(ang(B) - a0);
+        const sweep = ccw ? turn(ang(B) - a0) : -turn(a0 - ang(B));
+        const pts = [];
+        const n = Math.max(8, Math.ceil(Math.abs(sweep) / (2 * deg)));
+        for (let i = 0; i <= n; i++) { const a = a0 + sweep * i / n; pts.push({ x: ox + Math.cos(a) * R, y: oy + Math.sin(a) * R }); }
+        return { name: 'Arc', pts, pivot: A, closed: false };
     },
 
     sprayLoop() {
@@ -1699,7 +1884,9 @@ const PaintEditor = {
                 ['—'],
                 ['Bring in an image…', () => this.pickImage(), false, undefined, 'paint.import'],
                 ...(n > 1 ? [['—'], ['Delete layer', () => this.deleteLayer(), true]] : [])
-            ]]
+            ]],
+            ['—'],
+            ['QuickShape: hold at a stroke\'s end', () => { this.opts.quickShape = !this.opts.quickShape; this.remember(); }, false, this.opts.quickShape]
         ];
     },
 
@@ -2389,6 +2576,10 @@ const PaintEditor = {
                 }
             }
             outline(p, []);
+        }
+        // QuickShape: what the stroke became, while it's held
+        if (d && d.kind === 'paint' && d.snap && at) {
+            this.drawLabel(ctx, d.snap.name, this.V().transformPoint({ x: ox, y: oy }), r * z);
         }
         if (sizing && at) {
             const v = this.opts[this.sizeKey()];
