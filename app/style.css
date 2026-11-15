@@ -5409,14 +5409,23 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     border-bottom: 1px solid var(--border-subtle);
 }
 
+/* A group's heading: small, grey, semibold, in sentence case (the plan,
+   after Photomator), with hairlines between groups */
 .adj-sec > summary {
     display: flex;
     align-items: center;
     justify-content: space-between;
     min-height: var(--ctl-md);
     cursor: pointer;
+    color: var(--text-2);
+    font-size: var(--fs-caption);
     font-weight: var(--fw-semibold);
     list-style: none;
+}
+
+.adj-sec > summary:hover,
+.adj-sec[open] > summary {
+    color: var(--text-1);
 }
 
 .adj-sec > summary::-webkit-details-marker {
@@ -5677,16 +5686,6 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     display: none;
 }
 
-/* The looks in Basic: one row of cards, scrolled sideways */
-#adj-basic-sec .adj-looks {
-    grid-template-columns: none;
-    grid-auto-flow: column;
-    grid-auto-columns: 76px;
-    overflow-x: auto;
-    padding-bottom: var(--sp-1);
-    scrollbar-width: thin;
-}
-
 #adj-spot-overlay {
     cursor: crosshair;
 }
@@ -5727,62 +5726,51 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     pointer-events: none;
 }
 
-/* Looks: a strip of the photo with each */
-.adj-look-tabs {
-    display: flex;
-    width: 100%;
-}
-
-.adj-look-tabs .adj-tab {
-    flex: 1;
-    min-width: 0;
-    padding: 0 var(--sp-1);
-}
-
-.adj-looks {
+/* Look: one line in Basic, the look's name opening a menu of the films */
+.adj-look-row {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
-    gap: var(--sp-2);
-    margin-bottom: var(--sp-2);
+    grid-template-columns: auto 1fr;
+    column-gap: var(--sp-3);
+    align-items: center;
+    min-height: 24px;
+    margin: var(--sp-1) 0;
 }
 
-.adj-look {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-1);
-    padding: 3px;
-    border: 1px solid transparent;
-    border-radius: var(--r-md);
-    background: transparent;
+.adj-look-label {
     color: var(--text-2);
-    font: inherit;
-    font-size: var(--fs-caption);
-    cursor: pointer;
-    text-align: center;
 }
 
-.adj-look canvas {
-    width: 100%;
-    aspect-ratio: 4 / 3;
-    object-fit: cover;
+.adj-look-pick {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-1);
+    min-width: 0;
+    height: 24px;
+    padding: 0 var(--sp-1) 0 var(--sp-2);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--r-sm);
-    background: var(--surround);
+    background: transparent;
+    color: var(--text-1);
+    font: inherit;
+    cursor: pointer;
 }
 
-.adj-look span {
-    white-space: nowrap;
+.adj-look-pick span {
     overflow: hidden;
+    white-space: nowrap;
     text-overflow: ellipsis;
 }
 
-.adj-look:hover {
-    background: var(--bg-hover);
+.adj-look-pick .i {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+    stroke-width: 1.5;
+    color: var(--text-2);
 }
 
-.adj-look[aria-pressed="true"] {
-    border-color: var(--accent);
-    background: var(--accent-soft);
-    color: var(--text-1);
+.adj-look-pick:hover {
+    background: var(--bg-hover);
 }
 
 /* Color grading: three wheels in a row, brightness under each */
@@ -11730,10 +11718,6 @@ body.touring .controls.idle button { pointer-events: auto; }
 
 :root:not([data-skin]) .paint-layer {
     border-radius: var(--r-md);
-}
-
-:root:not([data-skin]) :is(.adj-look img, .adj-look canvas) {
-    border-radius: var(--r-photo);
 }
 
 /* Paint's Layers heading in a narrow window at the Comfortable size: its
