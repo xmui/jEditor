@@ -6218,6 +6218,13 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     white-space: nowrap;
 }
 
+/* Transparency locked: a small lock at the row's end */
+.paint-layer-lock {
+    display: inline-flex;
+    flex: none;
+    color: var(--text-2);
+}
+
 .paint-layer.hidden-layer .paint-layer-name,
 .paint-layer.hidden-layer canvas {
     opacity: 0.45;

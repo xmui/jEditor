@@ -1083,6 +1083,7 @@ const PROJECT = `
             const menu = document.getElementById('context-menu');
             out.slots = [slots.length, slots.map(b => b.dataset.tool).join(), slots.filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.dataset.tool).join(), menu ? menu.querySelectorAll('[role^="menuitem"]').length : 0];
             app.closeContextMenu();
+            out.lock = JSON.stringify(Paint.clean({ id: 'abc', w: 10, h: 10, layers: [{ id: 'l1', rev: 'r1', lock: 1 }, { id: 'l2', rev: 'r2', lock: false }] }).layers.map(l => l.lock));
             // Saved colours: + saves the brush colour once, kept between
             // sessions; taken off again
             PaintEditor.init(app);
@@ -1103,15 +1104,26 @@ const PROJECT = `
             // square's corner); 5 in at the sides
             out.grow = [at(grown, 15, 30), at(grown, 14, 30), at(grown, 17, 17), at(grown, 16, 16)];
             out.shrink = [at(shrunk, 25, 30), at(shrunk, 24, 30), at(shrunk, 30, 30)];
+            // Fill with gaps closed: a square drawn in a 2 px line, with a
+            // 3 px gap in its top, fills inside (to the line) but not out
+            const ring = new Uint8Array(W * H).fill(1);
+            for (let y = 15; y < 45; y++) for (let x = 15; x < 45; x++) {
+                if ((x < 17 || x > 42 || y < 17 || y > 42) && !(y < 17 && x >= 29 && x < 32)) ring[y * W + x] = 0;
+            }
+            const plain = PaintEditor.flood(ring, W, H, 30, 30), closed = PaintEditor.closedFlood(ring, W, H, 30, 30, 2);
+            const n = (mk) => mk.reduce((t, v) => t + (v ? 1 : 0), 0);
+            out.gaps = [!!plain[5 * W + 5], !!closed[5 * W + 5], !!closed[17 * W + 17], n(closed) >= 676 && n(closed) <= 700];
             const soft = PaintEditor.blurAlpha(sq, W, H, 8);
             out.feather = [at(soft, 30, 30), at(soft, 20, 30), at(soft, 10, 30), at(soft, 2, 30)];
             return out;
         });
         check('paint: Grow and Shrink move a selection\'s edge by the pixels asked, rounding its corners', JSON.stringify(m.grow) === '[255,0,255,0]' && JSON.stringify(m.shrink) === '[255,0,255]', JSON.stringify([m.grow, m.shrink]));
+        check('paint: Close gaps fills a line drawing with a small gap inside, up to its lines, not out through the gap', JSON.stringify(m.gaps) === '[true,false,true,true]', JSON.stringify(m.gaps));
         check('paint: Feather softens the edge (half-way at it, nothing far off), the middle still selected', m.feather[0] >= 240 && m.feather[1] > 90 && m.feather[1] < 165 && m.feather[2] < m.feather[1] && m.feather[3] === 0, JSON.stringify(m.feather));
         check('paint: the record is checked (names, opacity, blend; bad ids dropped)', m.clean === '{"id":"abc","w":100,"h":50,"layers":[{"id":"l1","rev":"r1","name":"Sky","opacity":1,"blend":"source-over","hidden":true}]}' && m.none, JSON.stringify(m));
         check('paint: layers at the photo\'s size, a very big one smaller', m.size === '[{"w":3000,"h":2000},{"w":800,"h":600}]', m.size);
         check('paint: nine tool slots, each showing its group\'s tool used last; a right-click lists the others', JSON.stringify(m.slots) === '[9,"move,lasso,pencil,eraser,fill,line,text,picker,hand","pencil",4]', JSON.stringify(m.slots));
+        check('paint: a layer\'s locked transparency is kept (only when on)', m.lock === '[true,null]', m.lock);
         check('paint: saved colours: + saves the brush colour (once), kept; right-click takes one off; Choose a colour…', JSON.stringify(m.saved) === '[1,true,0,true]', JSON.stringify(m.saved));
 
         const r = await page.evaluate(async () => {
@@ -1165,6 +1177,29 @@ const PROJECT = `
                 out.undo = px(0, 100, 100)[3];
                 pressKey('Z', { ctrlKey: true, shiftKey: true });
                 out.redo = px(0, 100, 100)[3];
+                // Lock transparency: green goes over the red stroke, not past it
+                step = 'lock';
+                P.toggleLock(0);
+                P.fg = '#00ff00';
+                pe('pointerdown', 120, 100); pe('pointermove', 160, 100); pe('pointermove', 200, 100); pe('pointerup', 200, 100);
+                out.locked = [px(0, 130, 100), px(0, 185, 100)[3], P.layers[0].lock];
+                pressKey('z', { ctrlKey: true });
+                P.toggleLock(0);
+                P.fg = '#ff0000';
+                // Ctrl-click a thumbnail: the layer's paint selected
+                step = 'layer pixels';
+                P.selectLayerPixels(0);
+                out.layerSel = !!P.sel && P.sel.box.x >= 38 && P.sel.box.x <= 42 && P.sel.box.w >= 118 && P.sel.box.w <= 122;
+                P.deselect();
+                // Alt-click an eye: that layer alone, again all back
+                step = 'solo';
+                P.addLayer();
+                P.soloLayer(1);
+                const alone = [P.layers[0].hidden, P.layers[1].hidden];
+                P.soloLayer(1);
+                out.solo = [...alone, P.layers[0].hidden, P.layers[1].hidden];
+                P.deleteLayer();
+                out.layerMenu = P.layerItems(0).map(i => i[0]).slice(0, 3).join('|');
                 // Alt with the brush: the colour picker, its loupe drawn; the
                 // brush paints nothing
                 step = 'alt pick';
@@ -1383,6 +1418,8 @@ const PROJECT = `
         check('paint: starts with the photo locked as the bottom layer and a new layer on it', r.start, JSON.stringify(r));
         check('paint: the photo is drawn at screen size once for a view, again when it zooms', r.shownKept && r.shownRedrawn, JSON.stringify([r.shownKept, r.shownRedrawn]));
         check('paint: a brush stroke paints the layer (hard-edged), Ctrl+Z / Ctrl+Shift+Z inside', r.brush && r.brush[0] === 255 && r.brush[3] === 255 && r.brushEdge === 0 && r.undo === 0 && r.redo === 255, JSON.stringify(r));
+        check('paint: lock transparency paints only over what\'s on the layer', JSON.stringify(r.locked) === '[[0,255,0,255],0,true]', JSON.stringify(r.locked));
+        check('paint: Ctrl-click a layer selects its paint; Alt-click an eye shows that layer alone, and again all; a layer\'s right-click menu', r.layerSel && JSON.stringify(r.solo) === '[true,false,false,false]' && r.layerMenu === 'Lock transparency|Show this layer alone|Select its pixels', JSON.stringify([r.layerSel, r.solo, r.layerMenu]));
         check('paint: Alt with the brush picks the colour under it, with the loupe, and paints nothing', JSON.stringify(r.altPick) === '["#ff0000",true,0]', JSON.stringify(r.altPick));
         check('paint: Alt + right-drag makes the brush bigger (sideways) and softer (down), painting nothing', JSON.stringify(r.altSize) === '[true,true,0,null]', JSON.stringify(r.altSize));
         check('paint: a stroke at 50% opacity covers half, however it overlaps itself', r.half >= 120 && r.half <= 135, JSON.stringify(r));
