@@ -10106,18 +10106,10 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
     display: none;
 }
 
-/* Over Adjust and Paint, the sidebar hidden: the row in their head's
-   corner, where their chip was (unzoomed, as their head is) */
+/* Over Adjust and Paint, the sidebar hidden: the row where it is over
+   Photos, in line with their pills */
 :root:not([data-skin]) .mode-row.float.over-mode {
-    top: 8px;
-    left: var(--sp-2);
     z-index: calc(var(--z-mode) + 1);
-    zoom: 1;
-}
-
-:root[data-platform="mac"]:not([data-skin]) .mode-row.float.over-mode {
-    top: 8px;
-    left: calc(var(--gutter) + var(--lights-w));
 }
 
 /* The folder pill starts after the row, while it floats */
@@ -11503,6 +11495,145 @@ body.touring .controls.idle button { pointer-events: auto; }
     min-height: var(--sp-12);
     padding-top: var(--sp-1);
     padding-bottom: var(--sp-1);
+}
+
+/* Their heads: Photos' pills (the plan, "Glass pills that match the grid
+   and the viewer"). The file in a pill at the middle, as the viewer's
+   file pill, and their buttons in a glass pill at the right, 20px in, over
+   the photo, which Adjust's runs up under (Paint keeps its tool options
+   under them, for now). A theme keeps its bar: .mode-file is only a
+   wrapper there */
+.mode-file {
+    display: contents;
+}
+
+:root:not([data-skin]) :is(.adj-head, .paint-head) {
+    min-height: calc(var(--gutter) + var(--ctl-lg) * var(--ui-scale, 1));
+    padding: var(--gutter) var(--gutter) 0;
+    border: 0;
+    background: none;
+    pointer-events: none;
+}
+
+:root:not([data-skin]) .adj-head {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: min(var(--side-adjust, 300px), 45vw);
+    z-index: 3;
+}
+
+:root:not([data-skin]) .adjust-editor.panel-hidden .adj-head {
+    right: 0;
+}
+
+:root:not([data-skin]) .mode-file {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    min-width: 0;
+    max-width: 100%;
+    height: var(--ctl-lg);
+    padding: 0 var(--sp-4);
+    border-radius: var(--r-pill);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-2), var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    text-shadow: var(--glass-halo);
+    zoom: var(--ui-scale, 1);
+    pointer-events: auto;
+}
+
+:root:not([data-skin]) .mode-file .mode-title {
+    font-size: var(--fs-body);
+    font-weight: var(--fw-semibold);
+}
+
+:root:not([data-skin]) .mode-file .crop-dims {
+    color: var(--text-2);
+    font-size: var(--fs-small);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+:root:not([data-skin]) .mode-head .mode-head-acts {
+    top: var(--gutter);
+    right: var(--gutter);
+    transform: none;
+    gap: var(--sp-0);
+    height: var(--ctl-lg);
+    padding: 0 var(--sp-1);
+    border-radius: var(--r-pill);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-2), var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    text-shadow: var(--glass-halo);
+    zoom: var(--ui-scale, 1);
+    pointer-events: auto;
+}
+
+/* Their buttons: the pill's own (.tb-btn's size and round ends) */
+:root:not([data-skin]) .mode-head .mode-head-acts .btn {
+    height: calc(var(--ctl-lg) - 8px);
+    padding: 0 var(--sp-3);
+    border: 0;
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: var(--text-1);
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+}
+
+:root:not([data-skin]) .mode-head .mode-head-acts .btn:hover:not(:disabled) {
+    background: var(--tb-hover);
+}
+
+:root:not([data-skin]) .mode-head .mode-head-acts .btn[aria-pressed="true"] {
+    background: var(--tb-pressed);
+    color: var(--text-1);
+}
+
+:root:not([data-skin]) .mode-head .mode-head-sep {
+    height: 20px;
+    background: var(--border);
+}
+
+/* Adjust's zoom: the viewer's controls pill, at the bottom in the middle */
+:root:not([data-skin]) .adj-zoom {
+    right: auto;
+    left: 50%;
+    bottom: var(--gutter);
+    transform: translateX(-50%);
+    height: var(--ctl-lg);
+    padding: 0 var(--sp-1);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-2), var(--glass-rim);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    color: var(--text-1);
+    text-shadow: var(--glass-halo);
+    opacity: 1;
+}
+
+:root:not([data-skin]) .adj-zoom-btn {
+    height: calc(var(--ctl-lg) - 8px);
+    padding: 0 var(--sp-3);
+    font-size: var(--fs-body);
+    font-weight: var(--fw-medium);
+}
+
+:root:not([data-skin]) .adj-zoom-btn:hover {
+    background: var(--tb-hover);
+}
+
+:root:not([data-skin]) .adj-zoom-btn[aria-pressed="true"] {
+    background: var(--tb-pressed);
+    font-weight: var(--fw-medium);
 }
 
 :root:not([data-skin]) .paint-options {
