@@ -41,7 +41,7 @@ const PaintEditor = {
     bg: '#ffffff',
     opts: {
         size: 24, hardness: 80, opacity: 100, flow: 100,
-        tolerance: 32, contiguous: true, sampleAll: true, fillWhat: 'match',
+        tolerance: 32, contiguous: true, sampleAll: true, fillWhat: 'match', gaps: 0,
         lineWidth: 8, shapeFill: 'none', arrow: false,
         gradient: 'linear', gradTo: 'bg',
         density: 40,
@@ -82,7 +82,7 @@ const PaintEditor = {
         pencil: ['size', 'opacity'],
         spray: ['size', 'density', 'opacity'],
         eraser: ['size', 'hardness', 'opacity'],
-        fill: ['fillWhat', 'tolerance', 'contiguous', 'sampleAll', 'opacity'],
+        fill: ['fillWhat', 'tolerance', 'gaps', 'contiguous', 'sampleAll', 'opacity'],
         gradient: ['gradient', 'gradTo', 'opacity'],
         line: ['lineWidth', 'arrow', 'opacity'],
         rect: ['lineWidth', 'shapeFill', 'opacity'],
@@ -369,7 +369,7 @@ const PaintEditor = {
                 const c = this.newCanvas();
                 const src = await Paint.layerBitmap(kept.paint, l);
                 if (src) c.getContext('2d').drawImage(src, 0, 0, this.W, this.H);
-                this.layers.push({ id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, canvas: c, changed: false });
+                this.layers.push({ id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: !!l.lock, canvas: c, changed: false });
             }
         }
         if (!this.layers.length) this.layers.push(this.makeLayer('Layer 1'));
@@ -555,7 +555,7 @@ const PaintEditor = {
         // Filling the whole layer: no colour to match, so none of its options
         const wholeFill = this.tool === 'fill' && o.fillWhat === 'layer';
         for (const k of this.OPTIONS[this.tool]) {
-            if (wholeFill && ['tolerance', 'contiguous', 'sampleAll'].includes(k)) continue;
+            if (wholeFill && ['tolerance', 'gaps', 'contiguous', 'sampleAll'].includes(k)) continue;
             if (k === 'fillWhat') choose('Fill', 'fillWhat', [['match', 'Matching colour'], ['layer', 'Whole layer']]).querySelector('select').addEventListener('change', () => this.buildOptions());
             if (k === 'size') {
                 // (Said on hover, not along the top: the bar stays one line)
@@ -570,6 +570,7 @@ const PaintEditor = {
             if (k === 'tolerance') num('Tolerance', 'tolerance', 0, 255);
             if (k === 'lineWidth') num('Line', 'lineWidth', 0, 200);
             if (k === 'fontSize') num('Size', 'fontSize', 6, 600, 1, true);
+            if (k === 'gaps') choose('Close gaps', 'gaps', [[0, 'Off'], [2, 'Small'], [5, 'Medium'], [10, 'Large']]).title = 'A line drawing with small gaps in its lines still fills one area, not the whole picture';
             if (k === 'contiguous') check('Joined only', 'contiguous');
             if (k === 'sampleAll') check('All layers', 'sampleAll');
             if (k === 'arrow') check('Arrow', 'arrow');
@@ -933,6 +934,7 @@ const PaintEditor = {
             this.app.showToast('That layer is hidden: show it to paint on it', 2000);
             return;
         }
+        if (t === 'eraser' && this.layer().lock) { this.lockedToast(); return; }
         if (this.isBrush(t)) return this.startStroke(p, e.shiftKey ? this.lastDab : null);
         if (['line', 'rect', 'ellipse', 'gradient', 'rect-select', 'ellipse-select'].includes(t)) {
             this.drag = { kind: 'shape', start: p, end: p, mode: e.altKey ? 'sub' : e.shiftKey && t.endsWith('select') ? 'add' : 'new' };
@@ -1042,11 +1044,21 @@ const PaintEditor = {
     },
 
     // After it: the part that changed (r), before and after
-    endPixels(l, r) {
+    endPixels(l, r, { free = false } = {}) {
         r = this.clampRect(r);
         if (!r || this._beforeOf !== l) return;
         const before = this.before.getContext('2d', { willReadFrequently: true }).getImageData(r.x, r.y, r.w, r.h);
         const after = l.canvas.getContext('2d', { willReadFrequently: true }).getImageData(r.x, r.y, r.w, r.h);
+        // Transparency locked: each pixel keeps how see-through it was (a
+        // move, free, takes its pixels with it)
+        if (l.lock && !free) {
+            const b = before.data, a = after.data;
+            for (let i = 0; i < a.length; i += 4) {
+                if (b[i + 3] === 0) { a[i] = b[i]; a[i + 1] = b[i + 1]; a[i + 2] = b[i + 2]; }
+                a[i + 3] = b[i + 3];
+            }
+            l.canvas.getContext('2d').putImageData(after, r.x, r.y);
+        }
         l.changed = true;
         this.record({ kind: 'px', layer: l, r, before, after, bytes: r.w * r.h * 8 });
     },
@@ -1240,7 +1252,7 @@ const PaintEditor = {
         g.save();
         if (r) { g.beginPath(); g.rect(r.x, r.y, r.w, r.h); g.clip(); }
         g.globalAlpha = this.opts.opacity / 100;
-        g.globalCompositeOperation = d && d.tool === 'eraser' ? 'destination-out' : 'source-over';
+        g.globalCompositeOperation = d && d.tool === 'eraser' ? 'destination-out' : this.layer() && this.layer().lock ? 'source-atop' : 'source-over';
         g.drawImage(this.stroke, 0, 0);
         g.restore();
     },
@@ -1618,49 +1630,76 @@ const PaintEditor = {
     },
 
     // The pixels like the one at (x, y): a mask (1 each), and its bounds
-    region(px, x, y) {
+    region(px, x, y, { gaps = 0 } = {}) {
         const W = this.W, H = this.H;
         x = Math.floor(x); y = Math.floor(y);
         if (x < 0 || y < 0 || x >= W || y >= H) return null;
         const tol = this.opts.tolerance;
         const i0 = (y * W + x) * 4;
         const c = [px[i0], px[i0 + 1], px[i0 + 2], px[i0 + 3]];
-        const like = (i) => Math.abs(px[i] - c[0]) <= tol && Math.abs(px[i + 1] - c[1]) <= tol && Math.abs(px[i + 2] - c[2]) <= tol && Math.abs(px[i + 3] - c[3]) <= tol;
+        const like = new Uint8Array(W * H);
+        for (let k = 0, i = 0; k < like.length; k++, i += 4) {
+            like[k] = Math.abs(px[i] - c[0]) <= tol && Math.abs(px[i + 1] - c[1]) <= tol && Math.abs(px[i + 2] - c[2]) <= tol && Math.abs(px[i + 3] - c[3]) <= tol ? 1 : 0;
+        }
+        let mask;
+        if (!this.opts.contiguous) mask = like;
+        else if (gaps > 0) mask = PaintEditor.closedFlood(like, W, H, x, y, gaps);
+        else mask = PaintEditor.flood(like, W, H, x, y);
+        let x0 = W, x1 = -1, y0 = H, y1 = -1;
+        for (let yy = 0; yy < H; yy++) for (let xx = 0; xx < W; xx++) {
+            if (!mask[yy * W + xx]) continue;
+            if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (yy < y0) y0 = yy; if (yy > y1) y1 = yy;
+        }
+        if (x1 < 0) return null;
+        return { mask, box: { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 } };
+    },
+
+    // The pixels joined to (x, y) where ok is 1, by scanlines
+    flood(ok, W, H, x, y) {
         const mask = new Uint8Array(W * H);
-        let x0 = x, x1 = x, y0 = y, y1 = y;
-        if (!this.opts.contiguous) {
-            for (let k = 0; k < W * H; k++) if (like(k * 4)) {
-                mask[k] = 1;
-                const xx = k % W, yy = (k - xx) / W;
-                if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (yy < y0) y0 = yy; if (yy > y1) y1 = yy;
-            }
-        } else {
-            // Scanlines
-            const stack = [[x, y]];
-            while (stack.length) {
-                const [sx, sy] = stack.pop();
-                let lx = sx;
-                while (lx >= 0 && !mask[sy * W + lx] && like((sy * W + lx) * 4)) lx--;
-                lx++;
-                let rx = lx;
-                let up = false, down = false;
-                while (rx < W && !mask[sy * W + rx] && like((sy * W + rx) * 4)) {
-                    mask[sy * W + rx] = 1;
-                    if (sy > 0) {
-                        const u = like(((sy - 1) * W + rx) * 4) && !mask[(sy - 1) * W + rx];
-                        if (u && !up) { stack.push([rx, sy - 1]); up = true; } else if (!u) up = false;
-                    }
-                    if (sy < H - 1) {
-                        const dn = like(((sy + 1) * W + rx) * 4) && !mask[(sy + 1) * W + rx];
-                        if (dn && !down) { stack.push([rx, sy + 1]); down = true; } else if (!dn) down = false;
-                    }
-                    rx++;
+        if (!ok[y * W + x]) return mask;
+        const can = (i) => ok[i] && !mask[i];
+        const stack = [[x, y]];
+        while (stack.length) {
+            const [sx, sy] = stack.pop();
+            let lx = sx;
+            while (lx >= 0 && can(sy * W + lx)) lx--;
+            lx++;
+            let rx = lx, up = false, down = false;
+            while (rx < W && can(sy * W + rx)) {
+                mask[sy * W + rx] = 1;
+                if (sy > 0) {
+                    const u = can((sy - 1) * W + rx);
+                    if (u && !up) { stack.push([rx, sy - 1]); up = true; } else if (!u) up = false;
                 }
-                if (lx < x0) x0 = lx; if (rx - 1 > x1) x1 = rx - 1;
-                if (sy < y0) y0 = sy; if (sy > y1) y1 = sy;
+                if (sy < H - 1) {
+                    const dn = can((sy + 1) * W + rx);
+                    if (dn && !down) { stack.push([rx, sy + 1]); down = true; } else if (!dn) down = false;
+                }
+                rx++;
             }
         }
-        return { mask, box: { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 } };
+        return mask;
+    },
+
+    // Fill with gaps closed: the lines made g pixels thicker, so a gap
+    // narrower than twice that is shut; the area filled inside them; then
+    // grown back out to the lines (only over pixels like the one clicked).
+    // A click too near a line to be inside the thickened ones fills as usual
+    closedFlood(like, W, H, x, y, g) {
+        const walls = new Uint8ClampedArray(W * H);
+        for (let i = 0; i < walls.length; i++) walls[i] = like[i] ? 0 : 255;
+        const thick = PaintEditor.spread(walls, W, H, g, true);
+        const open = new Uint8Array(W * H);
+        for (let i = 0; i < open.length; i++) open[i] = like[i] && !thick[i] ? 1 : 0;
+        if (!open[y * W + x]) return PaintEditor.flood(like, W, H, x, y);
+        const inside = PaintEditor.flood(open, W, H, x, y);
+        const a = new Uint8ClampedArray(W * H);
+        for (let i = 0; i < a.length; i++) a[i] = inside[i] ? 255 : 0;
+        const back = PaintEditor.spread(a, W, H, g + 1, true);
+        const mask = new Uint8Array(W * H);
+        for (let i = 0; i < mask.length; i++) mask[i] = back[i] && like[i] ? 1 : 0;
+        return mask;
     },
 
     // A region as a canvas (white where it is), a pixel's anti-aliasing
@@ -1691,7 +1730,7 @@ const PaintEditor = {
     fillAt(p) {
         const l = this.layer();
         const whole = this.opts.fillWhat === 'layer';
-        const reg = whole ? null : this.region(this.sample(), p.x, p.y);
+        const reg = whole ? null : this.region(this.sample(), p.x, p.y, { gaps: this.opts.gaps });
         if (!whole && !reg) return;
         this.beginPixels(l);
         const g = this.stroke.getContext('2d');
@@ -1719,6 +1758,7 @@ const PaintEditor = {
         if (this.float) { this.discardFloat(); return; }
         const l = this.layer();
         if (!l) return;
+        if (l.lock) { this.lockedToast(); return; }
         this.beginPixels(l);
         const g = l.canvas.getContext('2d');
         let r = { x: 0, y: 0, w: this.W, h: this.H };
@@ -1947,7 +1987,7 @@ const PaintEditor = {
             this.sel = { mask: m };
             this.selectionChanged();
         }
-        this.endPixels(l, { x: 0, y: 0, w: this.W, h: this.H });
+        this.endPixels(l, { x: 0, y: 0, w: this.W, h: this.H }, { free: true });
         this.buildOptions();
         this.renderSoon();
     },
@@ -1974,7 +2014,7 @@ const PaintEditor = {
         if (!f) return;
         this.float = null;
         f.canvas.width = f.canvas.height = 0;
-        this.endPixels(f.layer, { x: 0, y: 0, w: this.W, h: this.H });
+        this.endPixels(f.layer, { x: 0, y: 0, w: this.W, h: this.H }, { free: true });
         this.buildOptions();
         this.renderSoon();
     },
@@ -2311,8 +2351,15 @@ const PaintEditor = {
             row.setAttribute('role', 'option');
             row.setAttribute('aria-selected', String(i === this.cur));
             row.innerHTML = '<button class="paint-eye"></button><canvas></canvas><span class="paint-layer-name"></span>';
+            if (l.lock) {
+                const m = document.createElement('span');
+                m.className = 'paint-layer-lock';
+                m.title = 'Transparency locked (/): painting stays on what\'s there';
+                m.innerHTML = '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+                row.appendChild(m);
+            }
             const eye = row.querySelector('.paint-eye');
-            eye.title = l.hidden ? 'Show' : 'Hide';
+            eye.title = (l.hidden ? 'Show' : 'Hide') + ' (Alt-click: this layer alone)';
             eye.setAttribute('aria-label', `${l.hidden ? 'Show' : 'Hide'} ${l.name}`);
             eye.innerHTML = l.hidden
                 ? '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 2l20 20M10.6 6.1A10 10 0 0 1 22 12a14 14 0 0 1-2.4 3.4M6.6 6.6A14 14 0 0 0 2 12s4 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/></svg>'
@@ -2320,6 +2367,7 @@ const PaintEditor = {
             eye.addEventListener('click', (e) => {
                 e.stopPropagation();
                 eye.blur();
+                if (e.altKey) { this.soloLayer(i); return; }
                 this.pushState();
                 l.hidden = !l.hidden;
                 l.changed = true;
@@ -2332,6 +2380,20 @@ const PaintEditor = {
             const w = asp > 96 / 72 ? 96 : 72 * asp, h = asp > 96 / 72 ? 96 / asp : 72;
             g.drawImage(l.canvas, (96 - w) / 2, (72 - h) / 2, w, h);
             row.querySelector('.paint-layer-name').textContent = l.name;
+            cv.title = Host.keys('Ctrl+click: select its pixels (Shift adds, Alt takes away)');
+            cv.addEventListener('click', (e) => {
+                if (!(e.ctrlKey || e.metaKey)) return;
+                e.stopPropagation();
+                this.selectLayerPixels(i, e.altKey ? 'sub' : e.shiftKey ? 'add' : 'new');
+            });
+            row.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (this.busy) return;
+                if (this.float) this.commitFloat();
+                if (this.cur !== i) { this.cur = i; this.drawLayers(); }
+                this.app.openContextMenu(this.layerItems(i), e.clientX, e.clientY);
+            });
             row.addEventListener('click', () => {
                 if (this.float) this.commitFloat();
                 this.cur = i;
@@ -2376,6 +2438,54 @@ const PaintEditor = {
         this.el('paint-redo').disabled = !this.future.length;
     },
 
+    lockedToast() {
+        this.app.showToast('This layer\'s transparency is locked (/ unlocks it)', 2200);
+    },
+
+    // Lock transparency (/): painting, fills, shapes and text go only where
+    // the layer already has paint, and keep how see-through it is
+    toggleLock(i = this.cur) {
+        const l = this.layers[i];
+        if (!l) return;
+        this.pushState();
+        l.lock = !l.lock;
+        this.afterState();
+        this.app.showToast(l.lock ? `${l.name}: transparency locked` : `${l.name}: transparency unlocked`, 1600);
+    },
+
+    // Alt-click an eye: that layer alone; again, all of them back
+    soloLayer(i) {
+        const alone = this.layers.every((l, j) => (j === i) !== !!l.hidden);
+        this.pushState();
+        this.layers.forEach((l, j) => { l.hidden = alone ? false : j !== i; l.changed = true; });
+        this.afterState();
+    },
+
+    // Ctrl-click a thumbnail: what's painted on that layer, selected
+    selectLayerPixels(i, mode = 'new') {
+        const l = this.layers[i];
+        if (!l || !this.ready) return;
+        const m = this.newCanvas();
+        m.getContext('2d').drawImage(l.canvas, 0, 0);
+        this.combineSelection(m, mode);
+        if (!this.sel) this.app.showToast('Nothing on that layer to select', 1600);
+    },
+
+    // A layer's right-click menu
+    layerItems(i) {
+        const l = this.layers[i], n = this.layers.length, room = n < Paint.MAX_LAYERS;
+        return [
+            ['Lock transparency', () => this.toggleLock(i), false, !!l.lock, 'paint.lockAlpha'],
+            ['Show this layer alone', () => this.soloLayer(i)],
+            ['Select its pixels', () => this.selectLayerPixels(i)],
+            ['—'],
+            ...(room ? [['Duplicate', () => this.duplicateLayer(), false, undefined, 'paint.duplicate']] : []),
+            ...(i > 0 ? [['Merge down', () => this.mergeDown(), false, undefined, 'paint.merge']] : []),
+            ['Rename…', () => this.renameLayer(i)],
+            ...(n > 1 ? [['—'], ['Delete layer', () => this.deleteLayer(), true]] : [])
+        ];
+    },
+
     addLayer() {
         if (!this.ready) return;
         if (this.layers.length >= Paint.MAX_LAYERS) { this.app.showToast(`Up to ${Paint.MAX_LAYERS} layers`); return; }
@@ -2393,7 +2503,7 @@ const PaintEditor = {
         if (this.float) this.commitFloat();
         this.pushState();
         const copy = this.makeLayer(`${l.name} copy`);
-        Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden });
+        Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: l.lock });
         copy.canvas.getContext('2d').drawImage(l.canvas, 0, 0);
         this.layers.splice(this.cur + 1, 0, copy);
         this.cur++;
@@ -2468,7 +2578,7 @@ const PaintEditor = {
         const paint = { id: this.paintId, w: this.W, h: this.H, layers: [] };
         for (const l of this.layers) {
             if ((l.changed || !l.rev) && this.empty(l)) continue;
-            const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden };
+            const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, ...(l.lock ? { lock: true } : {}) };
             if (l.changed || !l.rev) {
                 rec.rev = Paint.newId().slice(-10);
                 await Paint.writeLayer(paint, rec, l.canvas);
