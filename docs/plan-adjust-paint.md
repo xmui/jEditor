@@ -170,15 +170,19 @@ to flow into each other better"). The rules:
    mode switch's pill glides with `--ease-press`, since you pressed it.
 5. **Reduced motion, or Settings → Animations off:** nothing slides; a
    plain fade or nothing.
-6. **The sidebar folds away in every mode** (the owner, 2026-11-15): its
-   button sits in the window's top-left corner, as in other apps (Claude
-   Code, Finder, Photomator), or Ctrl+B. It slides out to the
-   left in 280 ms and the photo, strip and pills glide into the room;
-   nothing jumps. Folded, a chip in the file pill names the mode, with a
-   menu to switch (today's `.mode-chip`). It stays Photos' own docked
-   sidebar, solid on its tint, in every mode (the owner, 2026-11-15: "look
-   like the sidebar on the left / the main one"); only the right panel is
-   glass.
+6. **The top of the sidebar is one row that stays put** (option A, the
+   owner's pick "for now", 2026-11-15; it can change once they've tried
+   it; the other four are on the mockup's last board). The row holds the
+   sidebar button, Photos · Adjust · Paint as icons, and Find anything. The
+   sidebar folds away in every mode (the button, Ctrl+B, or dragged past its
+   edge): it slides out in 280 ms, the photo, strip and pills glide into
+   the room, and the row stays exactly where it was as a glass pill, so
+   nothing you reach for moves. It stays Photos' own docked sidebar, solid
+   on its tint, in every mode (the owner: "look like the sidebar on the
+   left / the main one"); only what floats is glass. Today the button sits
+   elsewhere, and Fable's #197 (drag to hide) leaves it there, so **phase 1
+   moves it into this row** and retires the mode chip that stood in for the
+   switch while the sidebar was folded.
 7. **Both docked parts resize** (the owner, 2026-11-15: "and resizable"):
    drag the inner edge of the sidebar or the panel; double-click it for its
    own width again, as today's `.side-grip` does. The sidebar runs from
@@ -193,9 +197,8 @@ to flow into each other better"). The rules:
    it in 280 ms; while you drag, nothing animates, so the edge follows the
    pointer.
 8. **Find anything (Ctrl+K, `palette.js`) sits with the modes** (the owner,
-   2026-11-15): its magnifier is the last button of the sidebar's mode
-   switcher, and when the sidebar is folded it sits beside the mode chip.
-   It opens the same Find anything dialog in every mode.
+   2026-11-15): its magnifier ends the row above, open or folded, and opens
+   the same Find anything dialog in every mode.
 9. **Leaving keeps your place.** The same photo, zoom and strip position in
    every mode; edits made in Adjust show in Paint and in the strip.
 
