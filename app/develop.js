@@ -199,7 +199,50 @@ const Develop = {
         out.mono = this.monoOf(a.mono);
         out.masks = (this.cleanMasks(a.masks) || []).map(m => JSON.parse(JSON.stringify(m)));
         out.spots = ((typeof Retouch !== 'undefined' && Retouch.cleanSpots(a.spots)) || []).map(s => ({ ...s }));
+        out.restore = this.cleanRestore(a.restore);
         return out;
+    },
+
+    // Restore colour: each channel's own black, white and middle, worked out
+    // from the photo once (restoreAuto) and kept, and how much of it is used
+    // (amount, 0–100). It's the first step, on the scan as it is, before
+    // everything else. → { r, g, b: [black, gamma, white], amount } or null
+    cleanRestore(r) {
+        if (!r || typeof r !== 'object') return null;
+        const num = (x) => typeof x === 'number' && isFinite(x);
+        const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+        const amount = Math.round(clamp(num(r.amount) ? r.amount : 100, 0, 100));
+        if (!amount) return null;
+        const out = { amount };
+        for (const c of ['r', 'g', 'b']) {
+            const l = r[c];
+            if (!Array.isArray(l) || l.length !== 3 || !l.every(num)) return null;
+            const i0 = clamp(l[0], 0, 0.9);
+            out[c] = [+i0.toFixed(4), +clamp(l[1], 0.3, 3).toFixed(4), +clamp(l[2], i0 + 0.05, 1).toFixed(4)];
+        }
+        return out;
+    },
+
+    // Restore colour from the photo (RGBA pixels of a small copy, as it is):
+    // each channel stretched from its own darkest to its brightest (a little
+    // clipped at each end), which undoes most of the fade of a print's dyes,
+    // then each channel's middle brought to the same grey, which takes off
+    // the cast (a red slide, a yellowed print). → the settings with it on
+    restoreAuto(px, adj, amount = 100) {
+        const h = this.histogram(px);
+        const base = this.clean(adj) || {};
+        if (!h.n) return base;
+        const ch = ['r', 'g', 'b'].map(c => {
+            const i0 = this.percentile(h[c], h.n, 0.005);
+            const i1 = Math.max(i0 + 0.05, this.percentile(h[c], h.n, 0.995));
+            const mid = this.percentile(h[c], h.n, 0.5);
+            return { c, i0, i1, t: Math.min(0.95, Math.max(0.05, (mid - i0) / (i1 - i0))) };
+        });
+        // The grey they meet at: their average, so the brightness stays
+        const T = ch.reduce((s, x) => s + x.t, 0) / 3;
+        const r = { amount };
+        for (const { c, i0, i1, t } of ch) r[c] = [i0, Math.log(t) / Math.log(T), i1];
+        return this.clean({ ...base, restore: r }) || {};
     },
 
     // Black-and-white weights, adding up to 1, or null
@@ -265,6 +308,8 @@ const Develop = {
         if (masks) out.masks = masks;
         const spots = typeof Retouch !== 'undefined' ? Retouch.cleanSpots(v.spots) : null;
         if (spots) out.spots = spots;
+        const restore = this.cleanRestore(v.restore);
+        if (restore) out.restore = restore;
         if (this.look(v.look)) out.look = v.look;
         else delete out.lookAmount;
         return Object.keys(out).length ? out : null;
@@ -300,7 +345,8 @@ const Develop = {
         { id: 'detail', name: 'Detail', keys: ['sharpen', 'sharpRadius', 'sharpMask', 'noise', 'colorNoise'] },
         { id: 'effects', name: 'Effects', keys: ['vignette', 'vigMid', 'vigFeather', 'vigRound', 'grain', 'grainSize', 'grainColor', 'halation'] },
         { id: 'masks', name: 'Masks', keys: ['masks'], off: true, note: 'Sky and subject masks are found in each photo, so each keeps its own' },
-        { id: 'spots', name: 'Spot removal', keys: ['spots'], off: true }
+        { id: 'spots', name: 'Spot removal', keys: ['spots'], off: true },
+        { id: 'restore', name: 'Color restoration', keys: ['restore'], off: true, note: 'Worked out from each photo: Restore colour on the others finds their own' }
     ],
 
     // target's settings with source's for these groups (ids from SYNC): a
@@ -635,8 +681,15 @@ const Develop = {
         for (let i = 0; i < 256; i++) lin[i] = this.toLinear(i / 255);
         ['r', 'g', 'b'].forEach((ch, c) => {
             const curve = this.spline(a.curve[ch]);
+            const rs = a.restore && a.restore[ch], k = a.restore ? a.restore.amount / 100 : 0;
             for (let i = 0; i < 256; i++) {
-                let x = this.toGamma(Math.min(1, lin[i] * wb[c] * ex));
+                // Restore colour first, on the scan as it is
+                let x0 = lin[i];
+                if (rs) {
+                    const v = i / 255;
+                    x0 = this.toLinear(v + (this.levels([rs[0], rs[1], rs[2], 0, 1], v) - v) * k);
+                }
+                let x = this.toGamma(Math.min(1, x0 * wb[c] * ex));
                 if (tone) x = tone(x);
                 if (upto !== 'levels') {
                     x = this.levels(a.levels.rgb, this.levels(a.levels[ch], x));

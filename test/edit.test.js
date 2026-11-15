@@ -1566,6 +1566,74 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
+    if (wanted('restore')) {
+        console.log('restore colour (develop.js, script.js, adjust.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                // A faded red slide: red lifted and squashed high, green and blue low and flat
+                const slide = async (seed) => {
+                    const c = document.createElement('canvas'); c.width = 160; c.height = 120;
+                    const g = c.getContext('2d'); const img = g.createImageData(160, 120);
+                    for (let i = 0; i < 160 * 120; i++) {
+                        const v = ((Math.imul(i + seed, 2654435761) >>> 0) % 1000) / 1000, x = (i % 160) / 160;
+                        img.data[i * 4] = 140 + 90 * (0.5 * v + 0.5 * x); img.data[i * 4 + 1] = 40 + 80 * (0.5 * v + 0.5 * x);
+                        img.data[i * 4 + 2] = 45 + 60 * (0.5 * v + 0.5 * x); img.data[i * 4 + 3] = 255;
+                    }
+                    g.putImageData(img, 0, 0);
+                    return canvasBlob(c);
+                };
+                await openProject('restore', { 'a.png': await slide(1), 'b.png': await slide(2), 'c.png': await slide(3) });
+                const [a, b, c] = app.viewFiles();
+                step = 'one';
+                await app.restoreColour([a]);
+                const ra = a._edit && a._edit.adj && a._edit.adj.restore;
+                out.one = !!ra && ra.amount === 100 && ra.r[0] > ra.g[0] && !b._edit;
+                // The cast is taken off: the restored photo's channels come out close together
+                const px = await app.restoreSample(a);
+                const T = { channels: Develop.channelTables(Develop.full(a._edit.adj)), lut: null, N: Develop.LUT_SIZE };
+                const o = Develop.applyCPU(px, T, new Uint8ClampedArray(px.length));
+                const mean = [0, 1, 2].map(k => { let m = 0; for (let i = k; i < o.length; i += 4) m += o[i]; return m / (o.length / 4); });
+                const mean0 = [0, 1, 2].map(k => { let m = 0; for (let i = k; i < px.length; i += 4) m += px[i]; return m / (px.length / 4); });
+                out.means = [mean0.map(Math.round), mean.map(Math.round)];
+                out.cast = Math.max(...mean) - Math.min(...mean) < 0.4 * (Math.max(...mean0) - Math.min(...mean0));
+                step = 'undo one';
+                await app.undo();
+                out.undone = !a._edit;
+                step = 'batch';
+                await app.restoreColour([a, b, c]);
+                out.batch = [a, b, c].every(f => f._edit && f._edit.adj && f._edit.adj.restore);
+                await app.undo();
+                out.batchUndo = [a, b, c].every(f => !f._edit);
+                // In the menus: the photo's right-click and the selection bar's ⋯
+                app.selection = new Set([a, b]);
+                out.menus = app.selectionMoreItems().some(it => it[0] === 'Restore colour of 2');
+                step = 'adjust';
+                await app.restoreColour([a]);
+                app.openSingle(a);
+                pressKey('e');
+                await until(() => Adjust.ready);
+                const row = document.querySelector('.adj-restore-row');
+                out.row = !!row && !row.classList.contains('hidden') && row.querySelector('.adj-range').value === '100';
+                // Its strength: half, and it's kept so
+                const range = row.querySelector('.adj-range');
+                range.value = '50'; range.dispatchEvent(new Event('input')); range.dispatchEvent(new Event('change'));
+                out.half = Adjust.result() && Adjust.result().restore && Adjust.result().restore.amount === 50;
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message }; }
+        });
+        check('restore: one photo\'s colour restored, kept as an Adjust setting, the others untouched', r.one, JSON.stringify(r));
+        check('restore: the red cast is taken off (the channels come out close together)', r.cast, JSON.stringify(r.means || r));
+        check('restore: Ctrl+Z takes it off; a selection is restored together and undone in one step', r.undone && r.batch && r.batchUndo, JSON.stringify(r));
+        check('restore: on the selection bar\'s ⋯ menu', r.menus, JSON.stringify(r));
+        check('restore: in Adjust its strength is a slider under the histogram, at 100, and half is kept', r.row && r.half, JSON.stringify(r));
+        check('restore: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Photos, Adjust and Paint as modes ----
     if (wanted('modes')) {
         console.log('modes: Photos, Adjust and Paint (modes.js), Start in, Paint\'s start (blank.js)');
