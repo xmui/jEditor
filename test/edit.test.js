@@ -1165,6 +1165,15 @@ const PROJECT = `
                 out.undo = px(0, 100, 100)[3];
                 pressKey('Z', { ctrlKey: true, shiftKey: true });
                 out.redo = px(0, 100, 100)[3];
+                // Image ▸ Rotate right: the photo's own turn, the layers with it
+                // (their pixels unchanged); Ctrl+Z turns it back
+                step = 'rotate';
+                const ow = P.OW, oh = P.OH;
+                out.imageMenu = P.moreItems()[0][0] === 'Image';
+                P.turnImage(1);
+                out.turned = [P.OW === oh, P.OH === ow, P.edit.q === 1, px(0, 100, 100)[3]];
+                pressKey('z', { ctrlKey: true });
+                out.turnUndone = P.OW === ow && P.OH === oh && !((P.edit && P.edit.q) || 0);
                 // Lock transparency: green goes over the red stroke, not past it
                 step = 'lock';
                 P.toggleLock(0);
@@ -1406,6 +1415,7 @@ const PROJECT = `
         check('paint: starts with the photo locked as the bottom layer and a new layer on it', r.start, JSON.stringify(r));
         check('paint: the photo is drawn at screen size once for a view, again when it zooms', r.shownKept && r.shownRedrawn, JSON.stringify([r.shownKept, r.shownRedrawn]));
         check('paint: a brush stroke paints the layer (hard-edged), Ctrl+Z / Ctrl+Shift+Z inside', r.brush && r.brush[0] === 255 && r.brush[3] === 255 && r.brushEdge === 0 && r.undo === 0 && r.redo === 255, JSON.stringify(r));
+        check('paint: Image ▸ Rotate right turns the photo (its own edit), the layers with it; Ctrl+Z turns it back', r.imageMenu && JSON.stringify(r.turned) === '[true,true,true,255]' && r.turnUndone, JSON.stringify([r.imageMenu, r.turned, r.turnUndone]));
         check('paint: lock transparency paints only over what\'s on the layer', JSON.stringify(r.locked) === '[[0,255,0,255],0,true]', JSON.stringify(r.locked));
         check('paint: Ctrl-click a layer selects its paint; Alt-click an eye shows that layer alone, and again all; a layer\'s right-click menu', r.layerSel && JSON.stringify(r.solo) === '[true,false,false,false]' && r.layerMenu === 'Lock transparency|Show this layer alone|Select its pixels', JSON.stringify([r.layerSel, r.solo, r.layerMenu]));
         check('paint: Alt with the brush picks the colour under it, with the loupe, and paints nothing', JSON.stringify(r.altPick) === '["#ff0000",true,0]', JSON.stringify(r.altPick));

@@ -41,6 +41,7 @@ const CHANGELOG = [
             'Restore colour, for faded prints and slides with a colour cast (an expired red slide, a yellowed print): right-click a photo, or choose several and use the selection bar\'s ⋯, and each one\'s faded dyes are stretched back and its cast taken off, worked out from that photo. One `Ctrl+Z` undoes the lot, and Adjust it… opens the photo in Adjust, where Restore color has a strength slider under the histogram. Nothing in the file changes: it\'s an Adjust setting, kept with the photo.',
             'Adjust\'s bar has Before and a ⋯ menu, where Reset, Copy settings, Paste settings and Sync went, each with its key. In it, Show clipping (`J`) marks what\'s lost: pure white red and pure black blue, on the photo, until you press `J` again.',
             'Adjust and Paint have the viewer\'s pills at the top: the photo\'s name and size in one in the middle, and their buttons in a glass one at the right. In Adjust the photo runs up under them and the zoom is a pill at the bottom in the middle, as the viewer\'s controls are. Glass follows Settings → Glass and Glass tint, as everywhere else.',
+            'Paint: Image in the ⋯ menu turns and flips the photo (Rotate right, left or 180°, Flip left to right or upside down), with the layers going with it. It\'s the photo\'s own turn, kept as its edit as in Photos, never written into the original.',
         ]
     },
     {
