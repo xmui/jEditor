@@ -44,10 +44,29 @@ const rows = CASES.map(([scene, profile]) => {
 });
 const mean = +(rows.reduce((s, r) => s + r.restored, 0) / rows.length).toFixed(3);
 
+// Rolls: every scene faded the same way, restored together (Photos'
+// Restore colour of a roll: Develop.restoreRoll). The sunset has no black
+// or grey, so on its own it can't be told from a fade; in a roll it can
+const ROLL = ['family', 'beach', 'grass', 'interior', 'sunset'];
+const rolls = ['printCyan', 'slideRed', 'yellowStain', 'fadedPrint', 'none'].map(profile => {
+    const clean = ROLL.map(s => scenes[s]());
+    const faded = clean.map(c => profile === 'none' ? c : fade(c, PROFILES[profile]));
+    const roll = Develop.restoreRoll(faded.map(f => f.px));
+    const de = faded.map((f, i) => {
+        const adj = Develop.restoreAuto(f.px, {}, 100, 'auto', roll);
+        return meanDE(clean[i].px, Develop.applyCPU(f.px, Develop.tables(adj), new Uint8ClampedArray(f.px.length)));
+    });
+    const alone = faded.map((f, i) => meanDE(clean[i].px, restore(f.px).px));
+    const avg = (a) => +(a.reduce((x, y) => x + y, 0) / a.length).toFixed(3);
+    return { id: 'roll/' + profile, alone: avg(alone), restored: avg(de), kind: roll.type, want: KIND[profile] };
+});
+
 console.log('restore kit (ΔE2000 against the clean scene; lower is better)');
 console.log('  case                     faded  restored  found');
 for (const r of rows) console.log('  ' + r.id.padEnd(24) + String(r.faded).padStart(6) + String(r.restored).padStart(10) + '  ' + r.kind + (r.kind === r.want ? '' : ' (should be ' + r.want + ')'));
 console.log('  ' + 'mean'.padEnd(24) + ''.padStart(6) + String(mean).padStart(10));
+console.log('  roll (' + ROLL.join(', ') + ')    one by one  as a roll  found');
+for (const r of rolls) console.log('  ' + r.id.padEnd(24) + String(r.alone).padStart(6) + String(r.restored).padStart(10) + '  ' + r.kind + (r.kind === r.want ? '' : ' (should be ' + r.want + ')'));
 
 // An edit made with the first Restore colour (levels per channel) keeps it
 {
@@ -63,15 +82,15 @@ console.log('  ' + 'mean'.padEnd(24) + ''.padStart(6) + String(mean).padStart(10
 
 const file = path.join(__dirname, 'restore-kit', 'scores.json');
 if (process.argv.includes('--update')) {
-    const out = { mean, cases: Object.fromEntries(rows.map(r => [r.id, r.restored])) };
+    const out = { mean, cases: Object.fromEntries(rows.concat(rolls).map(r => [r.id, r.restored])) };
     fs.writeFileSync(file, JSON.stringify(out, null, 2) + '\n');
     console.log('  scores written to test/restore-kit/scores.json');
     process.exit(0);
 }
 
 const base = JSON.parse(fs.readFileSync(file, 'utf8'));
-const fails = rows.filter(r => r.kind !== r.want).map(r => r.id + ': Auto found ' + r.kind + ', not ' + r.want);
-for (const r of rows) {
+const fails = rows.concat(rolls).filter(r => r.kind !== r.want).map(r => r.id + ': Auto found ' + r.kind + ', not ' + r.want);
+for (const r of rows.concat(rolls)) {
     const was = base.cases[r.id];
     if (was === undefined) fails.push(r.id + ': no score kept (run with --update)');
     else if (r.restored > was + CASE_SLACK) fails.push(r.id + ': ' + was + ' → ' + r.restored);

@@ -7687,9 +7687,12 @@ const app = {
     },
 
     // Restore colour (develop.js: restoreAuto), one photo or many: each is
-    // looked at on its own, from a small copy as it is, and kept as an
-    // Adjust setting (editable there, its strength too). One undo step.
-    async restoreColour(files) {
+    // looked at on its own, from a small copy as it is, or with roll, the
+    // photos are taken as faded together (restoreRoll: what they share, so
+    // a frame with no black or a strong colour of its own comes out as the
+    // others do). Kept as an Adjust setting (editable there, its strength
+    // too). One undo step.
+    async restoreColour(files, { roll = false } = {}) {
         files = files.filter(f => f && !/\.gif$/i.test(f.name));
         if (!files.length) return;
         if (files.length > 1 && !Edits.canKeep()) {
@@ -7699,17 +7702,21 @@ const app = {
         if (this.editsSaving && this.editsSaving()) return;
         const one = files.length === 1;
         if (one && !Edits.canKeep()) { this.enterAdjust(files[0]).then(() => Adjust.restore && Adjust.restore()); return; }
-        const items = [];
+        const read = [];
         for (const f of files) {
-            try {
-                const px = await this.restoreSample(f);
-                const now = (f._edit && f._edit.adj) || null;
-                items.push({ file: f, edit: Edits.withAdj(f._edit || null, Develop.restoreAuto(px, now), f._edit || null) });
-            } catch (e) { /* not readable: left as it is */ }
+            try { read.push({ f, px: await this.restoreSample(f) }); } catch (e) { /* not readable: left as it is */ }
         }
-        if (!items.length) { this.showToast('Couldn\'t read those photos to restore them', 3000, null, null, { type: 'error' }); return; }
+        if (!read.length) { this.showToast('Couldn\'t read those photos to restore them', 3000, null, null, { type: 'error' }); return; }
+        const shared = roll ? Develop.restoreRoll(read.map(r => r.px)) : null;
+        const items = read.map(({ f, px }) => {
+            const now = (f._edit && f._edit.adj) || null;
+            return { file: f, edit: Edits.withAdj(f._edit || null, Develop.restoreAuto(px, now, 100, 'auto', shared), f._edit || null) };
+        });
         Edits.set(items, 'restore colour');
-        const msg = one ? `Colour restored: ${files[0].name}` : `Colour restored on ${items.length.toLocaleString()} photos`;
+        const kind = shared && Develop.RESTORE_TYPES[shared.type];
+        const msg = one ? `Colour restored: ${files[0].name}`
+            : shared ? `Colour restored on ${items.length.toLocaleString()} photos as one roll` + (shared.type === 'keep' ? '' : ` (${kind.name.toLowerCase()})`)
+            : `Colour restored on ${items.length.toLocaleString()} photos`;
         this.showToast(msg, 4000, null, one ? { label: 'Adjust it…', run: () => this.enterAdjust(files[0]) } : null, { kind: 'adjust' });
     },
 
@@ -7738,7 +7745,12 @@ const app = {
             [`Rotate ${n} left`, () => this.rotateBulk(-90)],
             [`Rotate ${n} right`, () => this.rotateBulk(90)],
             [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
-            [`Restore colour of ${n}`, () => this.restoreColour(sel)],
+            // Each on its own, or as a roll: photos faded together (a film,
+            // a box of prints) restored the same way
+            [`Restore colour of ${n}`, [
+                ['Restore each on its own', () => this.restoreColour(sel)],
+                ['Restore as one roll (faded together)', () => this.restoreColour(sel, { roll: true })]
+            ]],
             [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy')],
             [`Export ${n}…`, () => Export.open({ files: sel })],
             [`Convert ${n}…`, () => Convert.open({ files: sel })],

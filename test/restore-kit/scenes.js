@@ -95,6 +95,15 @@ const scenes = {
         g.blob(60, 58, 14, 9, [128, 126, 122]); // a grey cat
         g.rect(80, 20, 104, 44, [60, 90, 120]); // a picture on the wall
         patches(g, 108);
+    }),
+    // A sunset: warm all over, with warm shadows and no true black or grey,
+    // so one frame alone can't tell its colour from a fade
+    sunset: () => picture(67, g => {
+        g.vgrad(0, 70, [250, 168, 92], [196, 92, 104]);
+        g.blob(110, 52, 12, 12, [255, 232, 176], 0.05); // the sun
+        g.vgrad(70, 120, [120, 62, 78], [70, 36, 48]); // the sea
+        g.rect(0, 84, 160, 120, [48, 24, 22]); // the shore, in silhouette
+        g.blob(36, 70, 10, 26, [40, 20, 20], 0.05); // a person on it
     })
 };
 

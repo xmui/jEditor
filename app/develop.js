@@ -219,6 +219,7 @@ const Develop = {
         if (!amount) return null;
         const out = r.d === 1 ? { d: 1, amount } : { amount };
         if (out.d && typeof r.type === 'string' && this.RESTORE_TYPES[r.type]) { out.type = r.type; if (r.auto) out.auto = true; if (r.grey) out.grey = true; }
+        if (out.d && Number.isInteger(r.roll) && r.roll > 1) out.roll = r.roll;
         for (const c of ['r', 'g', 'b']) {
             const l = r[c];
             if (!Array.isArray(l) || l.length !== 3 || !l.every(num)) return null;
@@ -254,24 +255,52 @@ const Develop = {
     // stays green). The whites go to the cleanest one, which takes off a
     // stain, and if every dye has faded, all are stretched together.
     // → the settings with it on
-    restoreAuto(px, adj, amount = 100, type = 'auto') {
+    // roll: what a roll of photos shares (restoreRoll), used in place of
+    // what this photo alone shows: how much each dye faded, and its stain
+    restoreAuto(px, adj, amount = 100, type = 'auto', roll = null) {
         const base = this.clean(adj) || {};
         const m = this.restoreMeasure(px);
         if (!m) return base;
-        const picked = this.RESTORE_TYPES[type] ? type : this.restoreType(m);
+        const picked = this.RESTORE_TYPES[type] ? type : roll ? roll.type : this.restoreType(m);
         const t = this.RESTORE_TYPES[picked];
-        const { ch, top } = m;
-        const all = Math.min(3, Math.max(1, this.RESTORE_RANGE / top));
+        const { ch } = m;
         const paper = Math.min(...ch.map(x => x.white));
+        // Each dye's own stretch (to the strongest one's range), from this
+        // photo or the roll's; none for the dyes this kind leaves alone
+        const own = ch.map((x, k) => !t.dyes.includes(x.c) ? 1 : roll ? roll.own[k] : m.top / x.range);
+        const top = Math.max(...ch.map((x, k) => x.range * own[k]));
+        const all = Math.min(3, Math.max(1, this.RESTORE_RANGE / top));
         const r = { d: 1, amount, type: picked, auto: type === 'auto' };
-        // How much of each dye's own stretch is used: all of it (each dye
-        // faded by its own amount), or none (all faded together)
-        for (const { c, white, range } of ch) {
-            const own = top / range;
-            const k = Math.pow(own, t.dyes.includes(c) ? 1 : 0) * all;
-            r[c] = [white, k, t.stain ? paper : white];
-        }
+        if (roll) r.roll = roll.n;
+        ch.forEach((x, k) => {
+            // The whites go to the cleanest one, which takes off a stain; in
+            // a roll only the stain they share, so a frame's own colour (a
+            // sunset's sky) stays
+            const tint = x.white - paper;
+            const white = !t.stain ? x.white : roll ? paper + tint - Math.min(tint, roll.stain[k]) : paper;
+            r[x.c] = [x.white, own[k] * all, white];
+        });
         return this.clean({ ...base, restore: r }) || {};
+    },
+
+    // What a roll of photos faded together shares (RGBA pixels of each,
+    // as it is): the kind of fade most of them show, how much each dye
+    // faded and the stain, each the middle of the photos' own, so a frame
+    // with no black or a strong colour of its own (a sunset) is restored
+    // as the others are. → for restoreAuto, or null for fewer than two
+    restoreRoll(pxs) {
+        const ms = pxs.map(px => this.restoreMeasure(px)).filter(Boolean);
+        if (ms.length < 2) return null;
+        const mid = (a) => { const s = [...a].sort((x, y) => x - y), n = s.length; return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2; };
+        const votes = {};
+        for (const m of ms) { const t = this.restoreType(m); votes[t] = (votes[t] || 0) + 1; }
+        const type = Object.keys(votes).sort((a, b) => votes[b] - votes[a])[0];
+        return {
+            n: ms.length,
+            type,
+            own: [0, 1, 2].map(k => Math.exp(mid(ms.map(m => Math.log(m.top / m.ch[k].range))))),
+            stain: [0, 1, 2].map(k => mid(ms.map(m => m.ch[k].white - Math.min(...m.ch.map(x => x.white)))))
+        };
     },
 
     // Restore colour made neutral at a grey (RGBA pixels round a click):
