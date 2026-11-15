@@ -709,12 +709,8 @@ body[data-view="grid"] .interface[data-fit~="name-off"] .file-info {
     display: inline-flex;
 }
 
-.interface[data-fit~="edits-short"] .edits-more {
-    display: none;
-}
-
 /* Off center, beside the size slider, rather than give up its labels */
-.interface[data-fit~="sel-aside"]:not(.edits-on) .selection-bar {
+.interface[data-fit~="sel-aside"] .selection-bar {
     right: calc(var(--gutter) + var(--size-room, 220px) + var(--sp-2));
 }
 
@@ -1468,71 +1464,7 @@ header:has(.header-controls.expanded) {
     color: var(--accent-text);
 }
 
-/* What's waiting to be saved: a pill under the header */
-.edits-bar {
-    /* Grid only, bottom right, left of the size slider, in the selection
-       bar's row (which makes room for it: --edits-room and --size-room,
-       measured by Edits.updateBar) */
-    position: absolute;
-    right: calc(var(--gutter) + var(--size-room, 220px) + var(--sp-2));
-    bottom: var(--gutter);
-    z-index: calc(var(--z-floating) + 1);
-    display: flex;
-    align-items: center;
-    gap: var(--sp-1);
-    max-width: calc(100% - 2 * var(--gutter));
-    padding: 0 5px 0 var(--sp-3);
-    white-space: nowrap;
-    animation: bar-in var(--dur-slow) var(--ease-out);
-}
-
-body[data-view="single"] .edits-bar {
-    display: none;
-}
-
-/* Buttons the pill's own shape, inset evenly all round */
-.edits-bar .btn {
-    height: calc(var(--ctl-lg) - 10px);
-    padding: 0 var(--sp-3);
-    border-radius: var(--r-pill);
-}
-
-.interface.edits-on .selection-bar {
-    right: calc(var(--gutter) + var(--size-room, 220px) + var(--edits-room, 0px) + 2 * var(--sp-2));
-    max-width: none;
-}
-
-/* Not enough room beside the selection bar: above the size slider */
-.interface[data-fit~="edits-stacked"] .edits-bar {
-    right: var(--gutter);
-    bottom: calc(var(--gutter) + var(--ctl-lg) + var(--sp-2));
-}
-
-.interface.edits-on[data-fit~="edits-stacked"] .selection-bar {
-    right: calc(var(--gutter) + var(--size-room, 220px) + var(--sp-2));
-}
-
-
-.edits-icon {
-    display: inline-flex;
-    color: var(--accent-text);
-}
-
-.edits-icon .i {
-    width: 16px;
-    height: 16px;
-}
-
-.edits-text {
-    margin-right: var(--sp-1);
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: var(--fs-small);
-}
-
-
-/* Save edits when done: a switch, and while edits wait, a pill to save them */
+/* Keep edits in jEditor, export copies: the project card's switch */
 .sb-card-defer {
     display: flex;
     align-items: center;
@@ -1549,46 +1481,6 @@ body[data-view="single"] .edits-bar {
 .sb-card-defer input {
     flex: none;
     margin: 0;
-}
-
-.sb-card-pending {
-    margin-top: var(--sp-2);
-}
-
-.sb-card-save {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--sp-2);
-    max-width: 100%;
-    height: 28px;
-    padding: 0 3px 0 var(--sp-3);
-    border: 0;
-    border-radius: var(--r-pill);
-    background: var(--accent-soft);
-    color: var(--accent-text);
-    font: inherit;
-    font-size: var(--fs-small);
-    cursor: pointer;
-}
-
-.sb-card-save b {
-    display: inline-flex;
-    align-items: center;
-    height: 22px;
-    padding: 0 var(--sp-3);
-    border-radius: var(--r-pill);
-    background: var(--accent);
-    color: var(--on-accent);
-    font-weight: var(--fw-semibold);
-}
-
-.sb-card-save:hover b {
-    filter: brightness(1.1);
-}
-
-.sb-card-save:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
 }
 
 /* ---- 7. Folder pill, folder list, flags, search ---- */
@@ -2454,11 +2346,6 @@ body[data-view="grid"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-st
    rather than into it (fit.js) */
 body[data-view="single"]:has(#main-interface[data-fit~="toast-up"]:not(.hidden)) :is(#toast-stack, .task-pill) {
     --toast-bottom: calc(var(--strip-height, 80px) + 28px + var(--gutter) + var(--ctl-lg) + var(--sp-2));
-}
-
-/* Grid with the edits bar up above the slider (fit.js): above that too */
-body[data-view="grid"]:has(#main-interface.edits-on[data-fit~="edits-stacked"]:not(.hidden)) :is(#toast-stack, .task-pill) {
-    --toast-bottom: calc(var(--gutter) + 2 * var(--ctl-lg) + var(--sp-2) + var(--sp-3));
 }
 
 body:has(#drop-zone:not(.hidden)) :is(#toast-stack, .task-pill) {

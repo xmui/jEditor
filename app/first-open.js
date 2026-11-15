@@ -5,13 +5,13 @@
 // { asked, ask }):
 //   - where your projects are kept (the apps with places; Settings →
 //     Projects and the Open a folder card's foot change it later)
-//   - Save edits when done, on or off (uiPrefs.deferNew; the ⚙ menu and
+//   - Keep edits in jEditor, export copies, on or off (uiPrefs.deferNew; the ⚙ menu and
 //     Settings change it later). It's for the folder being opened too.
 //
 // After that, a folder opened for the first time (one that hasn't chosen:
 // edits.js, Edits.chosen) is asked whether it keeps its edits until saved,
 // unless Settings → Projects → "Ask about saving edits when opening a
-// folder" is off (ask: false): then it follows Save edits when done.
+// folder" is off (ask: false): then it follows Keep edits in jEditor.
 // A project made with New project chose in its name dialog (places.js), so
 // it isn't asked.
 
@@ -20,7 +20,7 @@ const FirstOpen = {
 
     CHOICES: {
         off: ['Save straight away', 'Turns and crops are written into the photos as you go.'],
-        on: ['Keep until I save', 'Edits wait in jEditor, and Save writes them into the photos when you\'re done.']
+        on: ['Keep edits in jEditor, export copies', 'The photos stay as they are, Lightroom\'s way: Export makes edited copies, and the edits can still be changed.']
     },
 
     init(app) {
@@ -62,7 +62,7 @@ const FirstOpen = {
             (places ? `<section class="fo-part"><h3 class="fo-sub">Where your projects are</h3><p class="fo-help">${FolderMove.ADVICE}</p>` +
                 `<div class="fo-row"><span id="fo-dir" class="fo-dir"></span><button id="fo-choose" class="btn secondary">Choose…</button></div></section>` : '') +
             `<section class="fo-part"><h3 class="fo-sub">When you edit a photo</h3>` +
-            `<div class="fo-choices" role="radiogroup" aria-label="Save edits when done">${radio('off')}${radio('on')}</div></section>` +
+            `<div class="fo-choices" role="radiogroup" aria-label="Keep edits in jEditor, export copies">${radio('off')}${radio('on')}</div></section>` +
             `<p class="fo-note">You can change both later in Settings → Projects${places ? ', and the folder from the foot of Open a folder' : ''}.</p>` +
             `</div>` +
             `<div class="dialog-foot"><span></span><span class="dialog-actions"><button id="fo-ok" class="btn primary">Continue</button></span></div>` +

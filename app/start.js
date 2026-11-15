@@ -5,7 +5,7 @@
 // camera's card is in, New canvas where there's no scanner or camera),
 // Convert, Adjust a photo and Paint a photo. Top right, which jEditor
 // this is ("Mac · 1.41.0") and Settings, with a dot when an update is
-// ready, and a menu: Save edits when done, When jEditor opens.
+// ready, and a menu: Keep edits in jEditor, When jEditor opens.
 //
 // The web version also offers the app for the computer it's on:
 // Windows, Mac or Linux get that download first (the others below it),
@@ -303,7 +303,7 @@ const Start = {
         const opens = p.onOpen || 'home';
         const items = [];
         if (this.update) items.push([`Update to jEditor ${Updates.label(this.update.tag)}…`, () => Updates.offer(this.update)], ['—']);
-        items.push(['Save edits when done', () => this.setDeferNew(!p.deferNew), false, !!p.deferNew]);
+        items.push(['Keep edits in jEditor, export copies', () => this.setDeferNew(!p.deferNew), false, !!p.deferNew]);
         items.push(['—'], ['When jEditor opens', null]);
         items.push(['This page', () => this.setOnOpen('home'), false, opens === 'home']);
         items.push(['The last project', () => this.setOnOpen('last'), false, opens === 'last']);
@@ -325,7 +325,7 @@ const Start = {
         app.saveUiPrefs();
         const box = this.el('cust-defer-new');
         if (box) box.checked = !!on;
-        app.showToast(on ? 'Projects opened from now on keep edits until you save them' : 'Projects opened from now on save edits straight away', 3000);
+        app.showToast(on ? 'Projects opened from now on keep edits in jEditor; Export makes copies' : 'Projects opened from now on save edits straight away', 3000);
     },
 
     setOnOpen(how, rec = null) {

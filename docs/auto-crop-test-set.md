@@ -66,7 +66,7 @@ The saved crop is what the person wanted, not the print's exact edge. It include
 
 Batch Auto crop saves with no one checking, so a photo counts once it's opened in the crop editor and saved, changed or not.
 
-- **Save edits when done** on: Auto's crop is kept with the photo's edit, and the photo on disk is still the scan. Saving it in the editor gives a label like any other.
+- **Keep edits in jEditor, export copies** on: Auto's crop is kept with the photo's edit, and the photo on disk is still the scan. Saving it in the editor gives a label like any other.
 - Otherwise the photo on disk is already cropped, and the scan is its original in the project's `originals/`. The saved crop is mapped back onto that scan, `W`/`H` are the scan's, and `saved.angle` adds the batch's straightening. Batch Auto crop's crop is found again by running Auto on the original, the way the batch did. The newest original of that name whose Auto crop matches the photo's size is used. If none matches, it stays a log line.
 
 **Recover** (Settings → Auto crop) does the same for crops saved before this was done. It applies to log lines with no scan in the open project. The scan comes from `originals/`, or, when the photo's edit is still waiting, from the project itself. Auto is run again on it now, and the line in `log.jsonl` is replaced by the full label with `"recovered": true`. Lines it can't match to a scan stay as they are.

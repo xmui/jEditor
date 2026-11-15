@@ -1845,7 +1845,7 @@ const PROJECT = `
             await app.undo();
             out.bothBack = [readOrientation(await bytesOf(a)) || 1, readOrientation(await bytesOf(c)) || 1];
 
-            // Kept until saved (Save edits when done): an edit, the crop
+            // Kept until saved (Keep edits in jEditor): an edit, the crop
             // box mirrored with it; twice is no edit at all
             await Edits.setDefer(true);
             Edits.set([{ file: c, edit: { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0, y1: 0.5 } } }], 'crop');
@@ -1919,7 +1919,7 @@ const PROJECT = `
         check('flip: upside down (orientation 4)', r.jpegV[0] === 'red blue red green' && r.jpegV[1] === 4, JSON.stringify(r.jpegV));
         check('flip: a PNG is re-encoded flipped, and Ctrl+Z puts its bytes back exactly', r.png === 'blue red green blue' && r.pngUndo, JSON.stringify([r.png, r.pngUndo]));
         check('flip: a selection is one Ctrl+Z', r.oneStep && r.both.join() === '2,2' && r.bothBack.join() === '1,1', JSON.stringify([r.oneStep, r.both, r.bothBack]));
-        check('flip: with Save edits when done, kept as an edit with its crop mirrored, the file untouched', r.kept && r.diskUntouched, JSON.stringify([r.kept, r.diskUntouched]));
+        check('flip: with Keep edits in jEditor, kept as an edit with its crop mirrored, the file untouched', r.kept && r.diskUntouched, JSON.stringify([r.kept, r.diskUntouched]));
         check('flip: the kept edit shows the left half, flipped', r.keptLook === 'red red green red', r.keptLook);
         check('flip: flipped twice is the edit it was; upside down twice is no edit', r.twice && r.twiceNothing, JSON.stringify([r.twice, r.twiceNothing]));
         check('flip: flipped and turned, Save edits writes it losslessly in one go (orientation 7), and Ctrl+Z keeps the edit again', r.saved[0] === 7 && r.saved[1] && r.saved[2] && r.savedUndo[0] === 1 && r.savedUndo[1], JSON.stringify([r.saved, r.savedUndo]));

@@ -162,7 +162,7 @@ const Places = {
             this.app.openContextMenu([['New folder…', () => Folders.newFolder('')]], e.clientX, e.clientY);
         });
         Picker.init(this);
-        // Save edits when done (edits.js), for this project
+        // Keep edits in jEditor, export copies (edits.js), for this project
         this.el('sb-card').addEventListener('change', async (e) => {
             const box = e.target.closest('input[data-act="defer"]');
             if (!box) return;
@@ -585,11 +585,9 @@ const Places = {
             `</div>` +
             // Taking it off this computer: a USB drive, a disc, copies (export.js)
             (path ? `<button class="btn secondary sm sb-card-export" data-act="export" title="Copy it to a USB drive or card${Host.has('burn') ? ', burn it to a disc' : ''}, or export copies of the photos">${this.icons.export}Export<span>${Host.has('places') ? 'USB drive' : ''}${Host.has('burn') ? ' · disc' : ''} · copies</span></button>` : '') +
-            // Save edits when done, a switch; while it's on and edits are
-            // waiting, a pill: "3 edits to save · Save now" (drawPending)
-            (app.readOnlyMode ? '' : `<label class="sb-card-defer" title="Crops and turns are kept on the photos, to change as often as you like, and saved into them (or exported) when you're done"><span>Save edits when done</span><input type="checkbox" class="switch" role="switch" data-act="defer"${Edits.defer ? ' checked' : ''}></label>` +
-                '<div class="sb-card-pending" hidden></div>');
-        this.drawPending();
+            // Keep edits in jEditor, export copies: a switch. No count of
+            // what's waiting: the pencils show which photos have edits
+            (app.readOnlyMode ? '' : `<label class="sb-card-defer" title="Crops and turns are kept in jEditor, to change as often as you like; Export makes edited copies and leaves the photos as they are"><span>Keep edits in jEditor, export copies</span><input type="checkbox" class="switch" role="switch" data-act="defer"${Edits.defer ? ' checked' : ''}></label>`);
         // The current project is marked in the lists
         for (const box of this.boxes) {
             box.querySelectorAll('.sb-row').forEach(r => r.classList.toggle('active', this.key(r.dataset.path) === this.key(where)));
@@ -606,27 +604,16 @@ const Places = {
         if (Host.has('scan')) items.push(['Scan…', () => this.cardAction('scan')]);
         if (path) items.push(['Export…', () => this.cardAction('export')]);
         items.push(['—']);
-        if (!this.app.readOnlyMode) items.push(['Save edits when done', () => this.cardAction('defer'), false, !!Edits.defer]);
+        if (!this.app.readOnlyMode) items.push(['Keep edits in jEditor, export copies', () => this.cardAction('defer'), false, !!Edits.defer]);
         if (Host.has('windows')) items.push(['Split with another window', () => this.cardAction('split')]);
         if (path) items.push([this.isPinned(path) ? 'Unpin' : 'Pin to the sidebar', () => this.cardAction('pin')]);
         if (items[items.length - 1][0] === '—') items.pop();
         return items;
     },
 
-    // The card's "3 edits to save · Save now", while Save edits when done is
-    // on and edits are waiting (Edits.updateBar asks again as they change)
-    drawPending() {
-        const box = this.el('sb-card') && this.el('sb-card').querySelector('.sb-card-pending');
-        if (!box) return;
-        const n = typeof Edits !== 'undefined' && Edits.on() ? Edits.count() : 0;
-        box.hidden = !n;
-        box.innerHTML = n ? `<button class="sb-card-save" data-act="savenow" title="Save the edits into the photos, or export edited copies">${n.toLocaleString()} edit${n === 1 ? '' : 's'} to save<b>Save now</b></button>` : '';
-    },
-
     cardAction(act) {
         const path = this.isLibrary(this._currentPath) ? null : this._currentPath;
-        if (act === 'savenow') Edits.saveAll();
-        else if (act === 'scan') Scan.open();
+        if (act === 'scan') Scan.open();
         else if (act === 'rename' && path) this.renameInPlace(this.el('sb-card').querySelector('.sb-card-name'), path);
         else if (act === 'defer') Edits.setDefer(!Edits.defer).then(() => this.drawCard());
         else if (act === 'split') Windows.split();
@@ -940,7 +927,7 @@ const Places = {
             title: 'New project',
             message: `A new folder in ${dirName}, opened as the project, ready to scan or shoot into.`,
             input: { label: 'Name', placeholder: 'Smith Order' },
-            check: { label: 'Save edits when done', note: 'Edits wait until you save them. Off: they\'re written into the photos as you go.', value: !!this.app.uiPrefs.deferNew },
+            check: { label: 'Keep edits in jEditor, export copies', note: 'The photos stay as they are; Export makes edited copies. Off: edits are written into the photos as you go.', value: !!this.app.uiPrefs.deferNew },
             ok: 'Create'
         });
         const name = typeof r === 'string' ? r : r && r.value;

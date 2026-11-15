@@ -41,7 +41,7 @@ const Guide = {
         ['files', 'sidebar', 'The sidebar', 'The project\'s folders, your projects, pinned folders and drives.', ['folders.rail']],
         ['files', 'convert', 'Convert to save room', 'AVIF, WebP or JPEG XL, for some photos or a whole folder.', []],
         ['files', 'export', 'Export copies', 'Where they go, what they\'re called, the format and the size, with the edits in them.', []],
-        ['files adjust', 'export', 'Save your edits', 'Edits wait until you Save: into the photos, or as copies with the photos left alone.', []],
+        ['files adjust', 'export', 'Keep edits, export copies', 'With Keep edits in jEditor on, edits stay on the photos (the pencil). Export makes edited copies; Save edits… (right-click the grid) writes them into the photos.', []],
         ['files', 'scan', 'Scan', 'Straight into the project; each print on the glass becomes a photo.', [], 'scan'],
         ['files', 'camera', 'Shoot from the camera', 'Photos taken on a cable come straight into the project.', [], 'camera'],
         ['adjust', 'light', 'Open Adjust', 'Esc goes back to Photos, keeping what you did.', ['edit.adjust']],
