@@ -7111,7 +7111,8 @@ const app = {
     // `pattern` (what they're called, in pieces: exportName; their own
     // names when it's '{name}' or not given), with `project` for its
     // {project}; `clash` (a name already there: 'replace' it, 'skip' the
-    // photo, or keep 'both', the copy numbered). Else asked here, into
+    // photo, keep 'both', the copy numbered, or 'ask': askExisting, whose
+    // Cancel stops the export there). Else asked here, into
     // "jEditor Export" in the project
     async exportCopies(files, { maxEdge = null, dir = null, where = '"jEditor Export"', format = 'same', quality = 95, meta = 'all', colour = 'keep', pattern = null, project = '', clash = 'replace' } = {}) {
         const list = files.filter(Boolean);
@@ -7136,7 +7137,7 @@ const app = {
         try {
             dir = dir || await this.dirHandle.getDirectoryHandle('jEditor Export', { create: true });
             this.beginTask('export', `Exporting 0/${list.length}`);
-            let done = 0, failed = 0, skipped = 0;
+            let done = 0, failed = 0, skipped = 0, stopped = false;
             const written = new Set(); // names used by this export (lower case)
             const there = (name) => written.has(name.toLowerCase()) ? true : dir.getFileHandle(name).then(() => true, () => false);
             for (const [i, f] of list.entries()) {
@@ -7191,7 +7192,15 @@ const app = {
                     // A name already there: skipped, kept beside it ("name (2).jpg"),
                     // or written over. Two of this export's own never share one
                     if (clash === 'skip' && await there(name)) { skipped++; continue; }
-                    if (clash === 'both' || written.has(name.toLowerCase())) {
+                    // (asked about one that was there before this export; "for all" answers the rest)
+                    let both = clash === 'both';
+                    if (clash === 'ask' && !written.has(name.toLowerCase()) && await there(name)) {
+                        const a = await this.askExisting(name, where, list.length - i - 1);
+                        if (!a) { stopped = true; break; }
+                        both = a.answer === 'both';
+                        if (a.all) clash = a.answer;
+                    }
+                    if (both || written.has(name.toLowerCase())) {
                         const stem = name.replace(/\.[^.]+$/, ''), ext2 = (name.match(/\.[^.]+$/) || [''])[0];
                         for (let k = 2; await there(name) && k < 10000; k++) name = `${stem} (${k})${ext2}`;
                     }
@@ -7209,14 +7218,32 @@ const app = {
             }
             this.endTask('export');
             const left = skipped ? `, ${skipped} skipped (already there)` : '';
+            const rest = list.length - done - failed - skipped;
             this.showToast(
-                failed ? `Exported ${done}, ${failed} failed${left}` : `Exported ${done} to ${where}${left}`
-            , 4000, null, null, failed ? {} : { type: 'success' });
-            return { done, failed, skipped };
+                stopped ? (done ? `Export stopped: ${done} exported to ${where}, ${rest} not` : 'Export canceled: nothing was exported')
+                    : failed ? `Exported ${done}, ${failed} failed${left}` : `Exported ${done} to ${where}${left}`
+            , 4000, null, null, failed || stopped ? {} : { type: 'success' });
+            return { done, failed, skipped, stopped };
         } catch (e) {
             this.endTask('export');
             this.showToast('Export failed: ' + e.message);
         }
+    },
+
+    // A copy's name is already in the folder: replace it, keep both (the
+    // copy numbered), or cancel, as the system's own file copy asks. With
+    // more photos to come (`rest`), the answer can be for all of them.
+    // { answer: 'replace' | 'both', all }, or null (cancel: the export stops)
+    async askExisting(name, where, rest) {
+        const a = await UI.choose({
+            title: `“${name}” is already there`,
+            message: `${where} already has a file with this name.`,
+            ok: 'Keep both', alt: 'Replace',
+            check: rest > 0 ? { label: 'Do this for all', note: 'Any other names that are already there', value: false } : null
+        });
+        if (!a) return null;
+        const answer = (a.answer || a) === 'alt' ? 'replace' : 'both';
+        return { answer, all: !!a.checked };
     },
 
     // What a copy is called: `pattern` with its pieces filled in, and the

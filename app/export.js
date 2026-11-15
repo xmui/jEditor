@@ -366,7 +366,7 @@ const Export = {
     QUALITIES: [100, 95, 90, 85, 80, 70, 60],
     METAS: [['all', 'All metadata'], ['nogps', 'All except location'], ['none', 'None']],
     COLOURS: [['keep', 'Same as the photo (its own profile)'], ['srgb', 'sRGB (screens and the web)']],
-    CLASHES: [['both', 'Choose a new name (keep both)'], ['replace', 'Overwrite'], ['skip', 'Skip']],
+    CLASHES: [['ask', 'Ask what to do'], ['both', 'Choose a new name (keep both)'], ['replace', 'Overwrite'], ['skip', 'Skip']],
     // The pieces a name is made of (script.js exportName fills them in)
     TOKENS: [['name', 'Name'], ['project', 'Project'], ['date', 'Date'], ['n', 'Number']],
     // Named and ordered as in the export windows people know (Lightroom's,
@@ -375,12 +375,14 @@ const Export = {
     SECS: [['which', 'Photos'], ['where', 'Export location'], ['naming', 'File naming'], ['format', 'File settings'], ['size', 'Image sizing'], ['meta', 'Metadata'], ['after', 'After export']],
     // The settings a preset keeps
     SET: ['format', 'quality', 'size', 'meta', 'colour', 'pattern', 'clash'],
-    DEFAULTS: { format: 'same', quality: 90, size: 0, meta: 'all', colour: 'keep', pattern: '{name}', clash: 'both' },
+    DEFAULTS: { format: 'same', quality: 90, size: 0, meta: 'all', colour: 'keep', pattern: '{name}', clash: 'ask' },
 
     // Copies' settings, from what was saved (open)
     loadCopies(saved) {
         const old = this.OLD_PRESETS[saved.preset];
         this.custom = { ...this.DEFAULTS, ...(saved.custom || {}), ...(old || {}) };
+        // (before it could ask, a new name was what it started with: now it asks, once carried over)
+        if (!saved.asks) { this.custom.clash = 'ask'; this.remember({ asks: true }); }
         // (before presets: the size and format chosen)
         if (!saved.preset && !saved.custom && (saved.size || (saved.format && saved.format !== 'same'))) Object.assign(this.custom, { size: saved.size || 0, format: saved.format || 'same' });
         // (names were kept or numbered after the folder)
