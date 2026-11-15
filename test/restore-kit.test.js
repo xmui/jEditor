@@ -16,7 +16,9 @@ const Develop = new Function(src + ';return Develop;')();
 const CASES = [
     ['family', 'slideRed'], ['family', 'printCyan'], ['family', 'yellowStain'],
     ['family', 'fadedPrint'], ['family', 'unevenCyan'],
-    ['beach', 'slideRed'], ['grass', 'printCyan'], ['interior', 'yellowStain']
+    ['beach', 'slideRed'], ['grass', 'printCyan'], ['interior', 'yellowStain'],
+    // Not faded: Restore colour shouldn't spoil a photo that's fine
+    ['family', 'none'], ['grass', 'none']
 ];
 const CASE_SLACK = 0.3;   // ΔE a single case may get worse by
 const MEAN_SLACK = 0.1;   // ΔE the mean may get worse by
@@ -28,7 +30,7 @@ function restore(px) {
 
 const rows = CASES.map(([scene, profile]) => {
     const clean = scenes[scene]();
-    const faded = fade(clean, PROFILES[profile]);
+    const faded = profile === 'none' ? clean : fade(clean, PROFILES[profile]);
     return {
         id: scene + '/' + profile,
         faded: +meanDE(clean.px, faded.px).toFixed(3),
