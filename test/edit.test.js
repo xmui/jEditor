@@ -144,6 +144,26 @@ const PROJECT = `
             out.keep = Retouch.findDust(dusty.getContext('2d').getImageData(0, 0, W, H), { sensitivity: 50, keep: found }).length === 0;
             // Low sensitivity finds fewer
             out.sens = Retouch.findDust(dusty.getContext('2d').getImageData(0, 0, W, H), { sensitivity: 0 }).length <= found.length;
+
+            // Red-eye: a red pupil goes to its own dark; a red jumper
+            // outside the circle, and a brown iris in it, stay as they were
+            const eyes = document.createElement('canvas');
+            eyes.width = W; eyes.height = H;
+            const ex = eyes.getContext('2d', { willReadFrequently: true });
+            ex.fillStyle = '#c03028'; ex.fillRect(0, 0, W, H);
+            ex.fillStyle = '#6a4a30'; ex.beginPath(); ex.arc(200, 150, 20, 0, Math.PI * 2); ex.fill();
+            ex.fillStyle = '#d82820'; ex.beginPath(); ex.arc(200, 150, 9, 0, Math.PI * 2); ex.fill();
+            const px = (x, y) => [...ex.getImageData(x, y, 1, 1).data.slice(0, 3)];
+            const eye = Retouch.cleanSpots([{ t: 'eye', x: 200 / W, y: 0.5, r: 24 / H, sx: 200 / W, sy: 0.5, f: 0.2, o: 1 }]);
+            out.eyeKept = eye.length === 1 && eye[0].t === 'eye';
+            Retouch.applySpots(ex, W, H, eye);
+            out.eye = { pupil: px(200, 150), iris: px(200, 165), jumper: px(40, 40) };
+
+            // Backlight: a dark subject against a bright sky → Shadows up,
+            // Highlights down; the other settings kept
+            const sky = new Uint8ClampedArray(100 * 100 * 4);
+            for (let i = 0; i < 10000; i++) { const v = i < 6000 ? 245 : 35; sky.set([v, v, v, 255], i * 4); }
+            out.backlight = Develop.backlight(sky, { contrast: 10 });
             return out;
         });
         check('spots: kept compact and in range, a spot copied from itself dropped', m.clean === '[{"t":"heal","x":0.5,"y":0.5,"r":0.25,"sx":0.6,"sy":0.5,"f":1,"o":0.05}]', m.clean);
@@ -153,6 +173,8 @@ const PROJECT = `
         check('spots: a source is picked nearby, off the spot, inside the photo', m.source, JSON.stringify(m));
         check('dust: specks on a scan are found (dark and light), not a real edge', m.foundSpecks >= 10 && m.falseFinds <= 1 && m.markedFound, JSON.stringify(m));
         check('dust: healed, the specks are gone; found ones aren\'t found again; less sensitive finds less', m.residual <= 12 && m.keep && m.sens, JSON.stringify(m));
+        check('red-eye: kept as a spot with no source; the red pupil goes dark, the iris and a red jumper outside it stay', m.eyeKept && m.eye.pupil[0] < 60 && JSON.stringify(m.eye.iris) === '[106,74,48]' && JSON.stringify(m.eye.jumper) === '[192,48,40]', JSON.stringify(m.eye));
+        check('backlight: Shadows up and Highlights down, worked out from the photo; other settings kept', m.backlight.shadows >= 50 && m.backlight.highlights <= -40 && m.backlight.contrast === 10, JSON.stringify(m.backlight));
 
         // In a project: kept with the photo, shown and exported healed; a
         // crop afterwards doesn't move them

@@ -1154,6 +1154,28 @@ const Develop = {
         return this.clean({ ...base, levels: { ...(base.levels || {}), ...levels } });
     },
 
+    // Backlight: what's in front of a bright sky or window lifted, and the
+    // bright part held back, by how much of the photo is bright and how dark
+    // its middle is. → the settings with Shadows, Highlights and a little
+    // Exposure set (the rest kept)
+    backlight(px, adj) {
+        const h = this.histogram(px);
+        const base = this.clean(adj) || {};
+        if (!h.n) return base;
+        let bright = 0, dark = 0;
+        for (let i = 0; i < 256; i++) {
+            if (i > 217) bright += h.l[i];
+            else if (i < 64) dark += h.l[i];
+        }
+        bright /= h.n;
+        dark /= h.n;
+        const mid = this.percentile(h.l, h.n, 0.5);
+        const shadows = Math.round(Math.min(80, 25 + 100 * dark));
+        const highlights = -Math.round(Math.min(70, Math.max(20, 20 + 160 * bright)));
+        const exposure = mid < 0.3 ? +Math.min(0.5, (0.3 - mid) * 2).toFixed(2) : 0;
+        return this.clean({ ...base, shadows, highlights, ...(exposure ? { exposure: +((base.exposure || 0) + exposure).toFixed(2) } : {}) }) || {};
+    },
+
     // ---- On the GPU ----
 
     VERT: `#version 300 es
