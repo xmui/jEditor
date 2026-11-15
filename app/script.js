@@ -7555,6 +7555,7 @@ const app = {
                 ['Crop and straighten', () => { this.openSingle(file); this.enterCrop(); }, false, undefined, 'edit.crop'],
                 ...(this.getLastCrop() ? [['Crop like the last crop', () => this.cropLike([file])]] : []),
                 ['Adjust…', () => this.enterAdjust(file), false, undefined, 'edit.adjust'],
+                ['Restore colour', () => this.restoreColour([file])],
                 ...(file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
                 ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : []),
                 ['Paint…', () => this.enterPaint(file), false, undefined, 'edit.paint'],
@@ -7580,6 +7581,7 @@ const app = {
                 ['Turn and flip', this.turnItems(file)],
                 ['Crop and straighten', () => this.enterCrop(), false, undefined, 'edit.crop'],
                 ['Adjust…', () => this.enterAdjust(), false, undefined, 'edit.adjust'],
+                ...(file ? [['Restore colour', () => this.restoreColour([file])]] : []),
                 ...(file && file._edit && file._edit.adj ? [['Copy adjustments', () => this.copyAdjust(file)]] : []),
                 ...(Adjust.clipboard() ? [['Paste adjustments', () => this.pasteAdjust([file])]] : []),
                 ['Paint…', () => this.enterPaint(), false, undefined, 'edit.paint'],
@@ -7676,6 +7678,47 @@ const app = {
         }
     },
 
+    // Restore colour (develop.js: restoreAuto), one photo or many: each is
+    // looked at on its own, from a small copy as it is, and kept as an
+    // Adjust setting (editable there, its strength too). One undo step.
+    async restoreColour(files) {
+        files = files.filter(f => f && !/\.gif$/i.test(f.name));
+        if (!files.length) return;
+        if (files.length > 1 && !Edits.canKeep()) {
+            this.showToast('Restoring several photos needs a folder opened with Open folder', 3000);
+            return;
+        }
+        if (this.editsSaving && this.editsSaving()) return;
+        const one = files.length === 1;
+        if (one && !Edits.canKeep()) { this.enterAdjust(files[0]).then(() => Adjust.restore && Adjust.restore()); return; }
+        const items = [];
+        for (const f of files) {
+            try {
+                const px = await this.restoreSample(f);
+                const now = (f._edit && f._edit.adj) || null;
+                items.push({ file: f, edit: Edits.withAdj(f._edit || null, Develop.restoreAuto(px, now), f._edit || null) });
+            } catch (e) { /* not readable: left as it is */ }
+        }
+        if (!items.length) { this.showToast('Couldn\'t read those photos to restore them', 3000, null, null, { type: 'error' }); return; }
+        Edits.set(items, 'restore colour');
+        const msg = one ? `Colour restored: ${files[0].name}` : `Colour restored on ${items.length.toLocaleString()} photos`;
+        this.showToast(msg, 4000, null, one ? { label: 'Adjust it…', run: () => this.enterAdjust(files[0]) } : null, { kind: 'adjust' });
+    },
+
+    // A small copy of the photo as it is, before any edit (Adjust's sample size)
+    async restoreSample(f) {
+        const src = await this.getDisplaySource(f, { raw: true });
+        const bmp = await createImageBitmap(src.blob || await (await fetch(src.url)).blob());
+        const edge = (typeof Adjust !== 'undefined' && Adjust.SAMPLE) || 320;
+        const s = Math.min(1, edge / Math.max(bmp.width, bmp.height));
+        const w = Math.max(1, Math.round(bmp.width * s)), h = Math.max(1, Math.round(bmp.height * s));
+        const c = new OffscreenCanvas(w, h);
+        const g = c.getContext('2d', { willReadFrequently: true });
+        g.drawImage(bmp, 0, 0, w, h);
+        if (bmp.close) bmp.close();
+        return g.getImageData(0, 0, w, h).data;
+    },
+
     // The selection bar's ⋯ menu: what doesn't earn a place on the bar
     selectionMoreItems() {
         const sel = [...this.selection];
@@ -7687,6 +7730,7 @@ const app = {
             [`Rotate ${n} left`, () => this.rotateBulk(-90)],
             [`Rotate ${n} right`, () => this.rotateBulk(90)],
             [`Rotate ${n} 180°`, () => this.rotateBulk(180)],
+            [`Restore colour of ${n}`, () => this.restoreColour(sel)],
             [`Copy ${n} to…`, () => Folders.openPicker(sel, 'copy')],
             [`Export ${n}…`, () => Export.open({ files: sel })],
             [`Convert ${n}…`, () => Convert.open({ files: sel })],

@@ -69,6 +69,19 @@ const Adjust = {
             e.currentTarget.blur();
             if (!this.busy) this.backlight();
         });
+        bind('adj-restore', () => this.restore());
+        // Restore color's strength, under the histogram while it's on
+        const restoreRow = this.slider('restoreAmount', 'Restore color', {
+            range: { min: 0, max: 100, step: 1, def: 0 },
+            get: () => (this.a.restore ? this.a.restore.amount : 0),
+            set: (v) => { if (this.a.restore) this.a.restore.amount = v; }
+        });
+        restoreRow.classList.add('adj-restore-row');
+        const sync = restoreRow._sync;
+        restoreRow._sync = () => { sync(); restoreRow.classList.toggle('hidden', !this.a.restore); };
+        const histBox = this.el('adj-hist').closest('section');
+        histBox.insertBefore(restoreRow, histBox.querySelector('.adj-levels-foot'));
+        (this.extraRows || (this.extraRows = [])).push(restoreRow);
         this.el('adj-wb-pick').addEventListener('click', (e) => {
             e.preventDefault(); // in the section's head: not to fold it
             e.stopPropagation();
@@ -558,6 +571,14 @@ const Adjust = {
         if (!this.ready) return;
         this.setAll(Develop.auto(this.sample, this.result(), { colour: color }));
         this.app.showToast(color ? 'Auto color: levels set for each channel' : 'Auto: levels set from the photo', 1600, null, null, { kind: 'adjust' });
+    },
+
+    // Restore color: each channel stretched and the cast taken off, from the
+    // photo (develop.js: restoreAuto), at full strength to start with
+    restore() {
+        if (!this.ready) return;
+        this.setAll(Develop.restoreAuto(this.sample, this.result()));
+        this.app.showToast('Restore color: the fade and the cast taken off; Restore color\'s slider sets how much', 2400, null, null, { kind: 'adjust' });
     },
 
     // White balance from the photo (W): click something that should be
