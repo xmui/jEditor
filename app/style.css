@@ -11191,3 +11191,93 @@ body.touring .controls.idle button { pointer-events: auto; }
     min-width: 24px;
     padding-inline: 0;
 }
+
+/* ---- The home page's stacks, in jEditor's own look: a deck of the photos
+   themselves. No paper border and no tilt: the front photo lies straight,
+   and the ones behind show as dimmed edges above it. Pointed at (or with
+   the keys on it), the deck opens upward a little; nothing reaches the
+   stack beside it. A theme keeps its prints. ---- */
+:root:not([data-skin]) .recent-pile .recent-print {
+    transform: translateY(-15px) scale(0.84);
+    transform-origin: 50% 0;
+    opacity: 0;
+    transition: transform var(--dur-base, 180ms) var(--ease-out), filter var(--dur-base, 180ms) var(--ease-out), box-shadow var(--dur-base, 180ms) var(--ease-out);
+}
+
+:root:not([data-skin]) .recent-pile .recent-print:not(.ghost) {
+    padding: 0;
+    overflow: hidden;
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-1) 10%, transparent), var(--shadow-2);
+}
+
+:root:not([data-skin]) .recent-pile .recent-print.ghost {
+    border-radius: var(--r-sm);
+}
+
+:root:not([data-skin]) .recent-pile .recent-print:nth-last-child(3) {
+    opacity: 1;
+    filter: brightness(0.45);
+}
+
+:root:not([data-skin]) .recent-pile .recent-print:nth-last-child(2) {
+    transform: translateY(-8px) scale(0.92);
+    opacity: 1;
+    filter: brightness(0.65);
+}
+
+:root:not([data-skin]) .recent-pile .recent-print:nth-last-child(1) {
+    transform: none;
+    opacity: 1;
+}
+
+/* A ghost stack is one dashed outline: the ones behind would show
+   through it */
+:root:not([data-skin]) .recent-pile .recent-print.ghost {
+    filter: none;
+}
+
+:root:not([data-skin]) .recent-pile .recent-print.ghost:not(:last-child) {
+    opacity: 0;
+}
+
+:root:not([data-skin]) :is(.recent-list li:hover, .recent-open:focus-visible) .recent-print:nth-last-child(3) {
+    transform: translateY(-25px) scale(0.84);
+    filter: brightness(0.62);
+}
+
+:root:not([data-skin]) :is(.recent-list li:hover, .recent-open:focus-visible) .recent-print:nth-last-child(2) {
+    transform: translateY(-13px) scale(0.92);
+    filter: brightness(0.82);
+}
+
+:root:not([data-skin]) :is(.recent-list li:hover, .recent-open:focus-visible) .recent-print:nth-last-child(1) {
+    transform: translateY(3px);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-1) 16%, transparent), var(--shadow-3);
+}
+
+:root:not([data-skin]) :is(.recent-list li:hover, .recent-open:focus-visible) .recent-print.ghost {
+    filter: none;
+}
+
+/* The keys on a stack: a ring round the stack, not only its name */
+:root:not([data-skin]) .recent-open:focus-visible .recent-name {
+    box-shadow: none;
+}
+
+:root:not([data-skin]) .recent-open:focus-visible .recent-pile {
+    border-radius: var(--r-sm);
+    outline: 2px solid var(--accent);
+    outline-offset: 6px;
+}
+
+:root:not([data-skin]) .recent-name {
+    font-weight: var(--fw-semibold, 600);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root:not([data-skin]) .recent-pile .recent-print {
+        transition: none;
+    }
+}
