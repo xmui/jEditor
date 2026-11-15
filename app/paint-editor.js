@@ -1668,24 +1668,41 @@ const PaintEditor = {
     },
 
     // Copy and paste, inside Paint: what's selected on this layer
-    copy() {
+    // Ctrl+C: what's selected on this layer. Copy merged (Ctrl+Shift+C):
+    // the photo and every layer shown, as they look together
+    copy({ merged = false } = {}) {
         const l = this.layer();
         if (!l) return;
         const b = this.sel ? this.sel.box : { x: 0, y: 0, w: this.W, h: this.H };
         const c = this.newCanvas(b.w, b.h);
         const g = c.getContext('2d');
-        g.drawImage(l.canvas, -b.x, -b.y);
+        if (merged) {
+            g.drawImage(this.photo, -b.x, -b.y, this.W, this.H);
+            for (const k of this.layers) {
+                if (k.hidden) continue;
+                g.save();
+                g.globalAlpha = k.opacity;
+                g.globalCompositeOperation = k.blend;
+                g.drawImage(k.canvas, -b.x, -b.y);
+                g.restore();
+            }
+        } else g.drawImage(l.canvas, -b.x, -b.y);
         if (this.sel) {
             g.globalCompositeOperation = 'destination-in';
             g.drawImage(this.sel.mask, -b.x, -b.y);
         }
         if (this._clip) this._clip.width = this._clip.height = 0;
         this._clip = c;
+        this._clipAt = { x: b.x, y: b.y };
         this._clipStale = false;
-        this.app.showToast('Copied', 1000);
+        this.app.showToast(merged ? 'Copied, merged' : 'Copied', 1000);
     },
 
-    paste() {
+    // Ctrl+V: in the middle of what's on screen. Paste in place
+    // (Ctrl+Shift+V): where it was copied from
+    paste({ inPlace = false } = {}) {
+        // By the key: the paste event the key also sends isn't a second paste
+        if (inPlace) this._pastedAt = performance.now();
         const c = this._clip;
         if (!c) { this.app.showToast('Nothing copied yet: select something and copy it (Ctrl+C)', 2000); return; }
         if (this.float) this.commitFloat();
@@ -1693,9 +1710,15 @@ const PaintEditor = {
         this.beginPixels(l);
         const fc = this.newCanvas(c.width, c.height);
         fc.getContext('2d').drawImage(c, 0, 0);
-        // In the middle of what's on screen
+        // In the middle of what's on screen (as shown), or in place (in the layer)
         const mid = this.V().inverse().transformPoint({ x: this.cssW / 2, y: this.cssH / 2 });
-        this.float = { canvas: fc, x0: mid.x - c.width / 2, y0: mid.y - c.height / 2, w: c.width, h: c.height, t: { tx: 0, ty: 0, sx: 1, sy: 1, rot: 0 }, layer: l, sel: null };
+        const here = inPlace && this._clipAt;
+        const at = here ? this.C.transformPoint({ x: this._clipAt.x + c.width / 2, y: this._clipAt.y + c.height / 2 }) : mid;
+        // In place, turned and flipped as the photo is shown, so it lands
+        // on the very pixels it came from
+        const C = this.C, flip = C.a * C.d - C.b * C.c < 0;
+        const t = here ? { tx: 0, ty: 0, sx: 1, sy: flip ? -1 : 1, rot: Math.atan2(C.b, C.a) } : { tx: 0, ty: 0, sx: 1, sy: 1, rot: 0 };
+        this.float = { canvas: fc, x0: at.x - c.width / 2, y0: at.y - c.height / 2, w: c.width, h: c.height, t, layer: l, sel: null };
         this.dropSelection();
         this.setTool('move');
         this.renderSoon();

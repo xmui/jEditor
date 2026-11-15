@@ -1128,6 +1128,17 @@ const PROJECT = `
                 out.undo = px(0, 100, 100)[3];
                 pressKey('Z', { ctrlKey: true, shiftKey: true });
                 out.redo = px(0, 100, 100)[3];
+                // Copy merged takes the photo too; paste in place puts it back
+                // where it was, on a new layer
+                step = 'copy merged';
+                P.copy();
+                out.plainClip = P._clip.getContext('2d').getImageData(100, 130, 1, 1).data[3];
+                P.copy({ merged: true });
+                P.addLayer();
+                P.paste({ inPlace: true });
+                pressKey('Enter');
+                out.inPlace = [px(1, 100, 100).slice(0, 2).join(), px(1, 100, 130)[3], px(1, 100, 130).slice(0, 3).join() === [...P.photo.getContext('2d').getImageData(100, 130, 1, 1).data.slice(0, 3)].join()];
+                P.deleteLayer();
                 // Half opacity: half covered
                 step = 'opacity';
                 P.opts.opacity = 50;
@@ -1317,6 +1328,7 @@ const PROJECT = `
         check('paint: starts with the photo locked as the bottom layer and a new layer on it', r.start, JSON.stringify(r));
         check('paint: the photo is drawn at screen size once for a view, again when it zooms', r.shownKept && r.shownRedrawn, JSON.stringify([r.shownKept, r.shownRedrawn]));
         check('paint: a brush stroke paints the layer (hard-edged), Ctrl+Z / Ctrl+Shift+Z inside', r.brush && r.brush[0] === 255 && r.brush[3] === 255 && r.brushEdge === 0 && r.undo === 0 && r.redo === 255, JSON.stringify(r));
+        check('paint: copy merged takes the photo and the layers; paste in place puts it back where it came from', r.plainClip === 0 && JSON.stringify(r.inPlace) === '["255,0",255,true]', JSON.stringify([r.plainClip, r.inPlace]));
         check('paint: a stroke at 50% opacity covers half, however it overlaps itself', r.half >= 120 && r.half <= 135, JSON.stringify(r));
         check('paint: a stroke shows as it\'s drawn exactly as it goes on (redone only where it reached), and the eraser too', String(r.previewOff) === '0,0', String(r.previewOff));
         check('paint: sizes are the photo\'s own pixels, the same part of each photo (small on a small photo); the size slider spreads small sizes out', JSON.stringify(r.sizes) === '[10,400,200]' && JSON.stringify(r.slider) === '[5,"5"]', JSON.stringify([r.sizes, r.slider]));
