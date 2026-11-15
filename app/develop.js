@@ -1121,6 +1121,7 @@ uniform sampler2D tone;
 uniform sampler3D lut;
 uniform bool useLut;
 uniform bool before;
+uniform bool clip;    // Show clipping: lost highlights red, lost shadows blue
 uniform bool flip;
 uniform float lutN;
 uniform vec4 vig;    // amount, middle, width, roundness
@@ -1240,7 +1241,12 @@ void main() {
             t += n * k;
         }
     }
-    o = vec4(clamp(t, 0.0, 1.0), c.a);
+    t = clamp(t, 0.0, 1.0);
+    if (clip) {
+        if (max(t.r, max(t.g, t.b)) >= 0.998) t = vec3(1.0, 0.16, 0.16);
+        else if (min(t.r, min(t.g, t.b)) <= 0.002) t = vec3(0.2, 0.45, 1.0);
+    }
+    o = vec4(t, c.a);
 }`,
 
     // A WebGL2 renderer on `canvas`, or null where there's none
@@ -1393,11 +1399,12 @@ void main() {
             // The image, at w × h on the canvas. flip: rows top first, as
             // readPixels gives them back
             // frame: where it is in the whole picture (the effects need it)
-            draw(w, h, { before = false, flip = false, frame = null } = {}) {
+            draw(w, h, { before = false, flip = false, frame = null, clip = false } = {}) {
                 if (canvas.width !== w) canvas.width = w;
                 if (canvas.height !== h) canvas.height = h;
                 gl.viewport(0, 0, w, h);
                 gl.uniform1i(u('before'), before ? 1 : 0);
+                gl.uniform1i(u('clip'), clip ? 1 : 0);
                 gl.uniform1i(u('flip'), flip ? 1 : 0);
                 const f = frame || { x: 0, y: 0, W: w, H: h };
                 gl.uniform4f(u('frame'), f.x, f.y, f.W, f.H);

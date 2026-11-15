@@ -5025,6 +5025,21 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     gap: 2px;
 }
 
+/* Adjust's ⋯ (jEditor's own look): Reset, Copy and Paste are in its menu */
+.adj-more {
+    display: none;
+}
+
+:root:not([data-skin]) .adj-head .adj-more {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 6px;
+}
+
+:root:not([data-skin]) .adj-head :is(#adj-reset, #adj-copy, #adj-paste, .mode-head-sep) {
+    display: none;
+}
+
 .mode-head-sep {
     width: 1px;
     height: 18px;
