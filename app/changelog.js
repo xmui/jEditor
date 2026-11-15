@@ -35,6 +35,7 @@ const CHANGELOG = [
             'A refined look, first steps: photos in the grid lie straight on the background, without a dark square behind each one, and what\'s selected has one soft ring. Sliders, headings, switches and buttons are the same in Photos, Adjust, Paint and Settings; dialogs are lighter, with smaller buttons; and the right-click menu is solid, shows each command\'s key, and keeps the six turn and flip commands under one row, Turn and flip.',
             'Themes are paused for now: they\'re under Settings → Experimental again, off to start with, while the rest of jEditor changes. Turn them on there and the theme you chose comes straight back.',
             'Going back to the grid from a photo, and showing or hiding the folder list, is smoother: the window is no longer drawn again from scratch several times each time.',
+            'The sidebar hides when you drag its edge in: past half its narrowest width it snaps away, and drag back out without letting go to keep it. Hidden, it leaves a thin line at the window\'s left edge; drag from the line to bring the sidebar back. `Ctrl+B` and the button work as before, it comes back as wide as it was, and jEditor remembers that it\'s hidden.',
         ]
     },
     {

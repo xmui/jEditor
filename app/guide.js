@@ -38,7 +38,7 @@ const Guide = {
         ['crop', 'undo', 'Undo a crop', 'Any time, even after you\'ve moved on.', ['edit.undo']],
         ['flags', 'label', 'Colour labels', 'Red, yellow, green, blue and purple. The same key again takes it off.', ['flag.red']],
         ['flags', 'filter', 'Show only the flagged', 'Click a flag in the sidebar\'s Flags list; Ctrl+A then selects just those.', []],
-        ['files', 'sidebar', 'The sidebar', 'The project\'s folders, your projects, pinned folders and drives.', ['folders.rail']],
+        ['files', 'sidebar', 'The sidebar', 'The project\'s folders, your projects, pinned folders and drives. Drag its edge to resize it; drag it right in to hide it, and from the line at the window\'s edge to bring it back.', ['folders.rail']],
         ['files', 'convert', 'Convert to save room', 'AVIF, WebP or JPEG XL, for some photos or a whole folder.', []],
         ['files', 'export', 'Export copies', 'Where they go, what they\'re called, the format and the size, with the edits in them.', []],
         ['files adjust', 'export', 'Keep edits, export copies', 'With Keep edits in jEditor on, edits stay on the photos (the pencil). Export makes edited copies; Save edits… (right-click the grid) writes them into the photos.', []],

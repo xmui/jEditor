@@ -1744,6 +1744,57 @@ header:has(.header-controls.expanded) {
     margin: 0;
 }
 
+/* A sidebar that's hidden leaves a thin line at the window's edge: drag
+   from it to bring the sidebar back out (script.js: initSidebarResize).
+   The line is narrow; what takes the pointer is a little wider. */
+.side-edge {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: var(--z-chrome);
+    width: 6px;
+    cursor: ew-resize;
+    touch-action: none;
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+}
+
+.side-edge::after {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 2px;
+    background: var(--border);
+    transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.side-edge:hover::after,
+.side-edge.dragging::after {
+    background: var(--accent);
+}
+
+/* A sidebar shown or hidden slides in from its edge, or out to it
+   (script.js: slideSide). What was beside it is already in its new place,
+   so only the sidebar moves. Hidden, it stays drawn until it's slid out. */
+@keyframes side-in {
+    from { transform: translateX(var(--side-from, -100%)); }
+}
+
+@keyframes side-out {
+    to { transform: translateX(var(--side-from, -100%)); }
+}
+
+:root:not([data-skin]):not([data-motion="off"]) .side-in {
+    animation: side-in var(--dur-base) var(--ease-out);
+}
+
+:root:not([data-skin]):not([data-motion="off"]) .folder-rail.hidden.side-out {
+    display: flex !important;
+    pointer-events: none;
+    animation: side-out var(--dur-base) var(--ease-out) both;
+}
+
 .folder-tree {
     flex: 1;
     min-height: 0;

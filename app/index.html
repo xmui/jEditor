@@ -304,6 +304,9 @@
                 </div>
                 <div class="side-grip" data-side="rail" data-edge="right" title="Drag to resize; double-click for its own width" aria-hidden="true"></div>
             </aside>
+            <!-- The sidebar hidden: a thin line at the window's edge, to
+                 drag it back out from (script.js: initSidebarResize) -->
+            <div id="rail-edge" class="side-edge hidden" data-side="rail" data-edge="right" data-for="folder-rail" title="Drag to show the sidebar" aria-hidden="true"></div>
 
             <!-- Grid view -->
             <div id="grid-view" class="grid-view hidden" tabindex="-1" aria-label="Photos">

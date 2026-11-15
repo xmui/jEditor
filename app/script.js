@@ -1120,35 +1120,77 @@ const app = {
 
     SIDEBARS: { rail: [180, 520], adjust: [260, 560], paint: [220, 560] },
 
+    // The sidebars that hide: dragged in past half its narrowest, one snaps
+    // hidden, and a thin line is left at the window's edge (.side-edge,
+    // data-for: its sidebar) to drag it back out from. Dragged out again
+    // without letting go, it's back. Each says whether it's showing and how
+    // to show or hide it; its width stays as it was before the drag.
+    SIDE_HIDES: {
+        rail: { open: () => Folders.railOpen(), set: (on) => Folders.setRail(on) },
+    },
+
     initSidebarResize() {
-        for (const grip of document.querySelectorAll('.side-grip')) {
+        for (const grip of document.querySelectorAll('.side-grip, .side-edge')) {
             const side = grip.dataset.side;
-            const panel = side === 'rail' ? grip.parentElement : grip.nextElementSibling;
+            const edge = grip.classList.contains('side-edge'); // the line a hidden sidebar leaves
+            const panel = edge ? document.getElementById(grip.dataset.for)
+                : side === 'rail' ? grip.parentElement : grip.nextElementSibling;
             const dir = grip.dataset.edge === 'left' ? -1 : 1;
-            let startX = 0, startW = 0, zoom = 1;
+            const [lo] = this.SIDEBARS[side];
+            const hides = this.SIDE_HIDES[side];
+            let startX = 0, startW = 0, zoom = 1, widthWas, dragging = false;
+            const move = (e) => {
+                if (!dragging) return;
+                const w = startW + dir * (e.clientX - startX) / zoom;
+                if (hides) {
+                    // Past half its narrowest it's gone; a little further
+                    // out than that brings it back, so it can't flicker
+                    const open = hides.open();
+                    if (open && w < lo / 2) {
+                        // Its width is remembered as it was before the drag,
+                        // but it slides out as narrow as it was dragged
+                        if (widthWas === undefined) delete this.uiPrefs.sides[side];
+                        else this.uiPrefs.sides[side] = widthWas;
+                        hides.set(false);
+                        const slid = panel.getAnimations ? panel.getAnimations().map(a => a.finished.catch(() => { })) : [];
+                        const back = () => { if (!hides.open()) this.setSideWidth(side, widthWas); };
+                        if (slid.length) Promise.all(slid).then(back);
+                        else back();
+                        return;
+                    }
+                    if (!open && w >= lo / 2 + 12) hides.set(true);
+                    else if (!open) return;
+                }
+                this.setSideWidth(side, w);
+            };
+            const end = () => {
+                if (!dragging) return;
+                dragging = false;
+                grip.classList.remove('dragging');
+                document.body.style.cursor = '';
+                window.removeEventListener('pointermove', move);
+                window.removeEventListener('pointerup', end);
+                window.removeEventListener('pointercancel', end);
+                this.saveUiPrefs();
+            };
             grip.addEventListener('pointerdown', (e) => {
                 if (e.button !== 0) return;
                 zoom = parseFloat(getComputedStyle(panel).zoom) || 1;
                 startX = e.clientX;
-                startW = panel.getBoundingClientRect().width / zoom;
-                grip.setPointerCapture(e.pointerId);
+                startW = edge ? 0 : panel.getBoundingClientRect().width / zoom;
+                widthWas = this.uiPrefs.sides[side];
+                dragging = true;
+                // On the window, not the grip: the grip goes with its sidebar
+                // when that snaps hidden, and the drag carries on
+                try { document.documentElement.setPointerCapture(e.pointerId); } catch (err) { /* not a live pointer */ }
+                window.addEventListener('pointermove', move);
+                window.addEventListener('pointerup', end);
+                window.addEventListener('pointercancel', end);
                 grip.classList.add('dragging');
                 document.body.style.cursor = 'ew-resize';
                 e.preventDefault();
             });
-            grip.addEventListener('pointermove', (e) => {
-                if (!grip.classList.contains('dragging')) return;
-                this.setSideWidth(side, startW + dir * (e.clientX - startX) / zoom);
-            });
-            const end = () => {
-                if (!grip.classList.contains('dragging')) return;
-                grip.classList.remove('dragging');
-                document.body.style.cursor = '';
-                this.saveUiPrefs();
-            };
-            grip.addEventListener('pointerup', end);
-            grip.addEventListener('pointercancel', end);
-            grip.addEventListener('dblclick', () => {
+            if (!edge) grip.addEventListener('dblclick', () => {
                 this.setSideWidth(side, null);
                 this.saveUiPrefs();
             });
@@ -1166,6 +1208,27 @@ const app = {
         }
         this.uiPrefs.sides[side] = Math.max(lo, Math.min(hi, Math.round(px)));
         root.setProperty(`--side-${side}`, `${this.uiPrefs.sides[side]}px`);
+    },
+
+    // A sidebar just shown or hidden slides in from its edge of the window,
+    // or out to it (style.css: side-in, side-out). In jEditor's own look
+    // only, and not with Settings → Animations off or Reduce motion: then
+    // it's simply there or gone.
+    slideSide(panel, shown) {
+        const root = document.documentElement;
+        panel.classList.remove('side-in', 'side-out');
+        if (root.dataset.skin || root.dataset.motion === 'off' || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        const cls = shown ? 'side-in' : 'side-out';
+        void panel.offsetWidth; // a slide straight after another starts afresh
+        panel.classList.add(cls);
+        const done = (e) => {
+            if (e.target !== panel) return;
+            panel.classList.remove(cls);
+            panel.removeEventListener('animationend', done);
+            panel.removeEventListener('animationcancel', done);
+        };
+        panel.addEventListener('animationend', done);
+        panel.addEventListener('animationcancel', done);
     },
 
     toggleThumbnailFit() {
