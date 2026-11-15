@@ -3311,7 +3311,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         // Ctrl+B and the button still do it, at the width it had
         await page.keyboard.press('Control+b'); await settle();
         const keyHid = await st();
-        await page.click('#fb-rail'); await settle();
+        await page.click('#mode-row-side'); await settle();
         const btnShown = await st();
         // Hidden is remembered, and the line is there in the single view too
         await page.keyboard.press('Control+b'); await settle();
@@ -6091,7 +6091,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             // switch (modes.js) offers it, top left in single view, and the
             // right-click menu
             step = 'shown';
-            out.onShown = Modes.shown().some(m => m[0] === 'adjust') && !document.getElementById('mode-float').classList.contains('hidden') && app.buildContextItems(null, true).some(it => it[0] === 'Adjust…');
+            out.onShown = Modes.shown().some(m => m[0] === 'adjust') && !!document.querySelector('#mode-row:not(.hidden) [data-mode="adjust"]') && app.buildContextItems(null, true).some(it => it[0] === 'Adjust…');
 
             // E opens Adjust on the photo
             step = 'E opens Adjust';

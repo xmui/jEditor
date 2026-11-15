@@ -9942,6 +9942,143 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
     background: transparent;
 }
 
+/* The top of the sidebar: one row that stays put (the owner's pick, A).
+   Photos · Adjust · Paint as icons at the left; the sidebar button and
+   Find anything at the right, plain. Closed, the same row floats where it
+   was, as a glass pill, and the folder pill moves over for it (modes.js:
+   renderRow, --mode-row-w). A theme keeps only its switch (below) */
+.mode-row {
+    display: contents;
+}
+
+.mode-row-gap,
+.mode-row-btn {
+    display: none;
+}
+
+:root:not([data-skin]) .mode-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: none;
+    height: var(--ctl-lg);
+    padding: 0 var(--sp-1);
+    margin: var(--sp-2) 0 var(--sp-2);
+}
+
+:root:not([data-skin]) .mode-row.hidden {
+    display: none;
+}
+
+:root:not([data-skin]) .mode-row .mode-row-gap {
+    display: block;
+    flex: 1;
+    min-width: var(--sp-2);
+}
+
+:root:not([data-skin]) .mode-row .mode-row-btn {
+    display: inline-flex;
+    color: var(--text-2);
+}
+
+:root:not([data-skin]) .mode-row .mode-row-btn.hidden {
+    display: none;
+}
+
+/* The sidebar button is never lit: it isn't a mode */
+:root:not([data-skin]) .mode-row .mode-row-btn:not(:hover, :active) {
+    background: transparent;
+}
+
+:root:not([data-skin]) .mode-row .mode-row-btn:hover {
+    color: var(--text-1);
+}
+
+:root:not([data-skin]) .mode-row .mode-seg {
+    /* Its own width, not the sidebar's (no container query here) */
+    container-type: normal;
+    width: calc(3 * (var(--ctl-lg) - 8px) + 4px);
+    flex: none;
+    display: grid;
+    grid-template-columns: repeat(3, calc(var(--ctl-lg) - 8px));
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    background: none;
+}
+
+:root:not([data-skin]) .mode-row .mode-seg > button {
+    width: calc(var(--ctl-lg) - 8px);
+    height: calc(var(--ctl-lg) - 8px);
+    padding: 0;
+    border-radius: var(--r-pill);
+    color: var(--text-2);
+}
+
+:root:not([data-skin]) .mode-row .mode-seg > button .i {
+    display: block;
+}
+
+:root:not([data-skin]) .mode-row .mode-seg > button span {
+    display: none;
+}
+
+/* The mode you're in: its icon in the accent, on the soft chosen pill */
+:root:not([data-skin]) .mode-row .mode-seg > button.on,
+:root:not([data-skin]) .mode-row .mode-seg > button.on:hover {
+    color: var(--accent-text);
+}
+
+/* Closed: the same row, floating in the same place */
+:root:not([data-skin]) .mode-row.float {
+    position: fixed;
+    top: calc(var(--gutter) / var(--ui-scale, 1));
+    left: calc(var(--sp-2) / var(--ui-scale, 1));
+    z-index: calc(var(--z-floating) + 1);
+    margin: 0;
+}
+
+:root:not([data-skin]) .mode-row.float .mode-row-gap {
+    flex: 0 0 1px;
+    min-width: 1px;
+    height: 20px;
+    margin: 0 var(--sp-1);
+    background: var(--border);
+}
+
+:root:not([data-skin]) .mode-row.float .mode-row-btn {
+    color: var(--text-1);
+}
+
+:root:not([data-skin]) .mode-row.float .mode-seg > button.on,
+:root:not([data-skin]) .mode-row.float .mode-seg .seg-glide {
+    background: var(--tb-pressed);
+}
+
+:root[data-platform="mac"]:not([data-skin]) .mode-row.float {
+    top: calc((var(--gutter) + var(--mac-drag)) / var(--ui-scale, 1));
+    left: calc((var(--gutter) + var(--lights-w)) / var(--ui-scale, 1));
+}
+
+:root.native-toolbar .mode-row.float {
+    display: none;
+}
+
+/* The folder pill starts after the row, while it floats */
+:root:not([data-skin]) .interface:not(.rail-open) .folder-bar {
+    left: calc((var(--sp-2) + var(--mode-row-w, 0px) + var(--sp-2)) / var(--ui-scale, 1));
+}
+
+:root[data-platform="mac"]:not([data-skin]) .interface:not(.rail-open) .folder-bar {
+    left: calc((var(--gutter) + var(--lights-w) + var(--mode-row-w, 0px) + var(--sp-2)) / var(--ui-scale, 1));
+}
+
+/* Its sidebar button and the mode chip were the row's before it */
+:root:not([data-skin]) #fb-rail,
+:root:not([data-skin]) #mode-chip-bar {
+    display: none;
+}
+
 /* Rows: compact, small icons in grey, one soft highlight */
 :root:not([data-skin]) .folder-rail .fr-row {
     min-height: calc(var(--ctl-md) - 4px);
