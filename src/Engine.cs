@@ -159,8 +159,10 @@ static class Engine
 
     // How the answers went, for the log every 50 (test/grid-speed.perf.js
     // shows it): how many, how long, by kind. Of each: the time it waited
-    // for a core, and its thread's own CPU time (a decode that takes much
-    // longer than its CPU time is losing the CPU to something else)
+    // for a core, and the CPU time of the thread that asked (a JPEG that
+    // takes much longer than that is losing the CPU to something else; a
+    // HEIC's HEVC is decoded on libde265's own threads, so it shows little
+    // here: the Speed test's CPU per process counts all of it)
     static readonly object statsLock = new();
     static readonly Dictionary<string, (int n, int made, double ms, double most, double cpu, double wait)> stats = [];
     static int answered;
