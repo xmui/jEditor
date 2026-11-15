@@ -67,14 +67,49 @@ gives both modes something.
 
 | Phase | Adjust | Paint |
 |---|---|---|
-| **1. The 2.0 look and the quick wins** | The panel in the 2.0 look (below). Restoring scans, part 1: **Restore fade** (one click), **Backlight**, **Red-eye**. Clipping warnings. | The screen in the 2.0 look (below): grouped tools, the ⋯ menu, saved colours. Selections: feather, invert, grow and shrink, select all. Image: flip, rotate, image size, canvas size, crop. |
-| **2. Restoring and retouching** | Restoring scans, part 2: **descreen**, **scratch and crease removal**. Clarity, texture, dehaze. | **Spot heal, heal and clone brushes** (sharing Adjust's heal maths). Dodge, burn, sponge; blur, sharpen, smudge brushes. A history panel. |
+| **1. The 2.0 look and the quick wins** | The panel in the 2.0 look (below). Restoring scans, part 1: **Restore colour** (auto, with a strength; below), **Backlight**, **Red-eye**. Clipping warnings. In Photos: **Restore colour** on one photo or a batch (below). | The screen in the 2.0 look (below): grouped tools, the ⋯ menu, saved colours. Selections: feather, invert, grow and shrink, select all. Image: flip, rotate, image size, canvas size, crop. |
+| **2. Restoring and retouching** | Restoring scans, part 2: **colour restoration in full** (fade types, the neutral picker; below), **descreen**, **scratch and crease removal**. Clarity, texture, dehaze. | **Spot heal, heal and clone brushes** (sharing Adjust's heal maths). Dodge, burn, sponge; blur, sharpen, smudge brushes. A history panel. |
 | **3. Shape and layers** | Straighten by drawing a line; perspective and keystone (auto, vertical, horizontal); lens fixes. | **Layer masks**, clipping masks, **editable text**, groups and locks, merge and flatten. Free transform with perspective and skew. |
 | **4. Colour and filters** | Masks by colour and brightness; add, subtract and intersect masks. B&W mix, point colour, `.cube` LUTs. | Adjustment layers. Filters: Gaussian and motion blur, unsharp mask, noise, median, high pass. More shapes (arrow, polygon, rounded rectangle); text alignment and outlines. |
 | **5. Workflow** | Snapshots and virtual copies, split before/after, Lightroom preset import, output sharpening, colour profiles. | Brush presets, smoothing, symmetry, pressure for opacity. Rulers, guides, snapping. Layered TIFF/PSD export. |
 | **Later** | AI subject and sky masks (if a model can ship), full RAW editing. | Remove an object (content-aware), liquify, lens blur, warp, a pen tool, recorded actions. |
 
 Phase 1 is about a week of work per mode; the others about two weeks each.
+
+### Colour restoration (the owner, 2026-11-15)
+
+"More expansive color restoration (also needs easy way to do in photos
+mode) for faded prints or color cast slides like expired red ones." One
+edit, kept non-destructively in Adjust's settings for the photo, so it
+can be changed or taken off later wherever it was made.
+
+**Phase 1: the one click and the basic auto**
+
+- **In Photos:** **Restore colour** on a photo's right-click menu and on
+  the selection bar (under its ⋯ if the bar has no room). It works on one
+  photo or a whole selection, with one Undo (Ctrl+Z) for the batch, and a
+  message with **Adjust it…**, which opens the photo in Adjust's Restore
+  tool. Each photo is analysed for itself.
+- **In Adjust, Restore tool:** **Restore colour** with **Auto** and a
+  **Strength** slider (0 to 100, starting at 100). Auto is per-channel
+  levels with a stretch: each of red, green and blue is set from its own
+  darkest and brightest (a small clip at each end), which undoes most dye
+  fade, then a cast removal that pulls the midtones' average to neutral.
+  Before (the bar's button) compares as for any edit.
+- In `app/develop.js` this is one new stage with its own few numbers (the
+  levels and the cast), worked out once when Auto is pressed and stored;
+  drawing it is cheap, so the engine chat's work there isn't disturbed.
+
+**Phase 2: in full**
+
+- **Fade types**, each a starting point for Auto: faded print; red or
+  magenta slide (expired Ektachrome, Kodachrome); cyan or blue cast;
+  yellowed print. Auto picks one from the histogram and says which; you
+  can choose another.
+- **Neutral picker:** click something that should be grey (as Pick grey,
+  `W`, does for white balance) to set the cast from it.
+- Per-channel fine-tuning (the black and white points of each channel)
+  under the group's disclosure.
 
 ## (c) How each mode lines up with 2.0
 
