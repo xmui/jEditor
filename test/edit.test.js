@@ -1361,7 +1361,8 @@ const PROJECT = `
                 out.selected = !!P.sel && P.sel.box.w >= 39 && P.sel.box.w <= 41;
                 // The ⋯ menu's Select: invert (twice, back again), grow, shrink
                 const more = P.moreItems();
-                out.menu = more.map(i => i[0]).join() === 'Select,Layer' && more[0][1].some(i => i[0] === 'Invert');
+                const sub = (n) => (more.find(i => i[0] === n) || [, []])[1];
+                out.menu = more.map(i => i[0]).join() === 'Image,Select,Layer' && sub('Select').some(i => i[0] === 'Invert');
                 const w0 = P.sel.box.w;
                 P.invertSelection();
                 out.inverted = !!P.sel && P.sel.box.w === P.W;
@@ -1455,7 +1456,7 @@ const PROJECT = `
         check('paint: the fill takes the photo\'s blue square, not beyond it; text is drawn', r.fill && r.fill[0][0] === 255 && r.fill[0][1] === 255 && r.fill[1] === 0 && r.text > 50, JSON.stringify(r));
         check('paint: the fill can fill the whole layer (only what\'s selected, with a selection), without the colour options; Ctrl+Z undoes it', r.wholeOpts && r.wholeSel && String(r.wholeSel[0]) === '255,0,255,255' && r.wholeSel[1] === 0 && String(r.whole) === '255,0,255,255,255,0,255,255' && r.wholeUndone, JSON.stringify([r.wholeOpts, r.wholeSel, r.whole, r.wholeUndone]));
         check('paint: a selection; Delete clears only inside it', r.selected && r.cleared[0] === 0 && r.cleared[1] === 255, JSON.stringify(r));
-        check('paint: the ⋯ menu has Select and Layer; Invert, Grow and Shrink change the selection', r.menu && r.inverted && JSON.stringify(r.reshaped) === '[6,0]', JSON.stringify([r.menu, r.inverted, r.reshaped]));
+        check('paint: the ⋯ menu has Image, Select and Layer; Invert, Grow and Shrink change the selection', r.menu && r.inverted && JSON.stringify(r.reshaped) === '[6,0]', JSON.stringify([r.menu, r.inverted, r.reshaped]));
         check('paint: the wand selects by colour; Move drags it, Enter puts it down', r.wand && r.moved[0] === 0 && r.moved[1][3] === 255 && r.notDone, JSON.stringify(r));
         check('paint: Done keeps it with the photo (layers in the project\'s folder), the file untouched', r.kept && r.files === 2 && r.fileSame, JSON.stringify(r));
         check('paint: shown painted; opened again, the layers come back', r.shown && r.shown[0][0] > 200 && r.shown[1][1] > 200 && r.shown[2][0] > 200 && r.reopened, JSON.stringify(r));
