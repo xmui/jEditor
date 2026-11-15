@@ -369,7 +369,7 @@ const PaintEditor = {
                 const c = this.newCanvas();
                 const src = await Paint.layerBitmap(kept.paint, l);
                 if (src) c.getContext('2d').drawImage(src, 0, 0, this.W, this.H);
-                this.layers.push({ id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, canvas: c, changed: false });
+                this.layers.push({ id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: !!l.lock, canvas: c, changed: false });
             }
         }
         if (!this.layers.length) this.layers.push(this.makeLayer('Layer 1'));
@@ -934,6 +934,7 @@ const PaintEditor = {
             this.app.showToast('That layer is hidden: show it to paint on it', 2000);
             return;
         }
+        if (t === 'eraser' && this.layer().lock) { this.lockedToast(); return; }
         if (this.isBrush(t)) return this.startStroke(p, e.shiftKey ? this.lastDab : null);
         if (['line', 'rect', 'ellipse', 'gradient', 'rect-select', 'ellipse-select'].includes(t)) {
             this.drag = { kind: 'shape', start: p, end: p, mode: e.altKey ? 'sub' : e.shiftKey && t.endsWith('select') ? 'add' : 'new' };
@@ -1043,11 +1044,21 @@ const PaintEditor = {
     },
 
     // After it: the part that changed (r), before and after
-    endPixels(l, r) {
+    endPixels(l, r, { free = false } = {}) {
         r = this.clampRect(r);
         if (!r || this._beforeOf !== l) return;
         const before = this.before.getContext('2d', { willReadFrequently: true }).getImageData(r.x, r.y, r.w, r.h);
         const after = l.canvas.getContext('2d', { willReadFrequently: true }).getImageData(r.x, r.y, r.w, r.h);
+        // Transparency locked: each pixel keeps how see-through it was (a
+        // move, free, takes its pixels with it)
+        if (l.lock && !free) {
+            const b = before.data, a = after.data;
+            for (let i = 0; i < a.length; i += 4) {
+                if (b[i + 3] === 0) { a[i] = b[i]; a[i + 1] = b[i + 1]; a[i + 2] = b[i + 2]; }
+                a[i + 3] = b[i + 3];
+            }
+            l.canvas.getContext('2d').putImageData(after, r.x, r.y);
+        }
         l.changed = true;
         this.record({ kind: 'px', layer: l, r, before, after, bytes: r.w * r.h * 8 });
     },
@@ -1241,7 +1252,7 @@ const PaintEditor = {
         g.save();
         if (r) { g.beginPath(); g.rect(r.x, r.y, r.w, r.h); g.clip(); }
         g.globalAlpha = this.opts.opacity / 100;
-        g.globalCompositeOperation = d && d.tool === 'eraser' ? 'destination-out' : 'source-over';
+        g.globalCompositeOperation = d && d.tool === 'eraser' ? 'destination-out' : this.layer() && this.layer().lock ? 'source-atop' : 'source-over';
         g.drawImage(this.stroke, 0, 0);
         g.restore();
     },
@@ -1747,6 +1758,7 @@ const PaintEditor = {
         if (this.float) { this.discardFloat(); return; }
         const l = this.layer();
         if (!l) return;
+        if (l.lock) { this.lockedToast(); return; }
         this.beginPixels(l);
         const g = l.canvas.getContext('2d');
         let r = { x: 0, y: 0, w: this.W, h: this.H };
@@ -1975,7 +1987,7 @@ const PaintEditor = {
             this.sel = { mask: m };
             this.selectionChanged();
         }
-        this.endPixels(l, { x: 0, y: 0, w: this.W, h: this.H });
+        this.endPixels(l, { x: 0, y: 0, w: this.W, h: this.H }, { free: true });
         this.buildOptions();
         this.renderSoon();
     },
@@ -2002,7 +2014,7 @@ const PaintEditor = {
         if (!f) return;
         this.float = null;
         f.canvas.width = f.canvas.height = 0;
-        this.endPixels(f.layer, { x: 0, y: 0, w: this.W, h: this.H });
+        this.endPixels(f.layer, { x: 0, y: 0, w: this.W, h: this.H }, { free: true });
         this.buildOptions();
         this.renderSoon();
     },
@@ -2316,8 +2328,15 @@ const PaintEditor = {
             row.setAttribute('role', 'option');
             row.setAttribute('aria-selected', String(i === this.cur));
             row.innerHTML = '<button class="paint-eye"></button><canvas></canvas><span class="paint-layer-name"></span>';
+            if (l.lock) {
+                const m = document.createElement('span');
+                m.className = 'paint-layer-lock';
+                m.title = 'Transparency locked (/): painting stays on what\'s there';
+                m.innerHTML = '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+                row.appendChild(m);
+            }
             const eye = row.querySelector('.paint-eye');
-            eye.title = l.hidden ? 'Show' : 'Hide';
+            eye.title = (l.hidden ? 'Show' : 'Hide') + ' (Alt-click: this layer alone)';
             eye.setAttribute('aria-label', `${l.hidden ? 'Show' : 'Hide'} ${l.name}`);
             eye.innerHTML = l.hidden
                 ? '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 2l20 20M10.6 6.1A10 10 0 0 1 22 12a14 14 0 0 1-2.4 3.4M6.6 6.6A14 14 0 0 0 2 12s4 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/></svg>'
@@ -2325,6 +2344,7 @@ const PaintEditor = {
             eye.addEventListener('click', (e) => {
                 e.stopPropagation();
                 eye.blur();
+                if (e.altKey) { this.soloLayer(i); return; }
                 this.pushState();
                 l.hidden = !l.hidden;
                 l.changed = true;
@@ -2337,6 +2357,20 @@ const PaintEditor = {
             const w = asp > 96 / 72 ? 96 : 72 * asp, h = asp > 96 / 72 ? 96 / asp : 72;
             g.drawImage(l.canvas, (96 - w) / 2, (72 - h) / 2, w, h);
             row.querySelector('.paint-layer-name').textContent = l.name;
+            cv.title = Host.keys('Ctrl+click: select its pixels (Shift adds, Alt takes away)');
+            cv.addEventListener('click', (e) => {
+                if (!(e.ctrlKey || e.metaKey)) return;
+                e.stopPropagation();
+                this.selectLayerPixels(i, e.altKey ? 'sub' : e.shiftKey ? 'add' : 'new');
+            });
+            row.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (this.busy) return;
+                if (this.float) this.commitFloat();
+                if (this.cur !== i) { this.cur = i; this.drawLayers(); }
+                this.app.openContextMenu(this.layerItems(i), e.clientX, e.clientY);
+            });
             row.addEventListener('click', () => {
                 if (this.float) this.commitFloat();
                 this.cur = i;
@@ -2381,6 +2415,54 @@ const PaintEditor = {
         this.el('paint-redo').disabled = !this.future.length;
     },
 
+    lockedToast() {
+        this.app.showToast('This layer\'s transparency is locked (/ unlocks it)', 2200);
+    },
+
+    // Lock transparency (/): painting, fills, shapes and text go only where
+    // the layer already has paint, and keep how see-through it is
+    toggleLock(i = this.cur) {
+        const l = this.layers[i];
+        if (!l) return;
+        this.pushState();
+        l.lock = !l.lock;
+        this.afterState();
+        this.app.showToast(l.lock ? `${l.name}: transparency locked` : `${l.name}: transparency unlocked`, 1600);
+    },
+
+    // Alt-click an eye: that layer alone; again, all of them back
+    soloLayer(i) {
+        const alone = this.layers.every((l, j) => (j === i) !== !!l.hidden);
+        this.pushState();
+        this.layers.forEach((l, j) => { l.hidden = alone ? false : j !== i; l.changed = true; });
+        this.afterState();
+    },
+
+    // Ctrl-click a thumbnail: what's painted on that layer, selected
+    selectLayerPixels(i, mode = 'new') {
+        const l = this.layers[i];
+        if (!l || !this.ready) return;
+        const m = this.newCanvas();
+        m.getContext('2d').drawImage(l.canvas, 0, 0);
+        this.combineSelection(m, mode);
+        if (!this.sel) this.app.showToast('Nothing on that layer to select', 1600);
+    },
+
+    // A layer's right-click menu
+    layerItems(i) {
+        const l = this.layers[i], n = this.layers.length, room = n < Paint.MAX_LAYERS;
+        return [
+            ['Lock transparency', () => this.toggleLock(i), false, !!l.lock, 'paint.lockAlpha'],
+            ['Show this layer alone', () => this.soloLayer(i)],
+            ['Select its pixels', () => this.selectLayerPixels(i)],
+            ['—'],
+            ...(room ? [['Duplicate', () => this.duplicateLayer(), false, undefined, 'paint.duplicate']] : []),
+            ...(i > 0 ? [['Merge down', () => this.mergeDown(), false, undefined, 'paint.merge']] : []),
+            ['Rename…', () => this.renameLayer(i)],
+            ...(n > 1 ? [['—'], ['Delete layer', () => this.deleteLayer(), true]] : [])
+        ];
+    },
+
     addLayer() {
         if (!this.ready) return;
         if (this.layers.length >= Paint.MAX_LAYERS) { this.app.showToast(`Up to ${Paint.MAX_LAYERS} layers`); return; }
@@ -2398,7 +2480,7 @@ const PaintEditor = {
         if (this.float) this.commitFloat();
         this.pushState();
         const copy = this.makeLayer(`${l.name} copy`);
-        Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden });
+        Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: l.lock });
         copy.canvas.getContext('2d').drawImage(l.canvas, 0, 0);
         this.layers.splice(this.cur + 1, 0, copy);
         this.cur++;
@@ -2473,7 +2555,7 @@ const PaintEditor = {
         const paint = { id: this.paintId, w: this.W, h: this.H, layers: [] };
         for (const l of this.layers) {
             if ((l.changed || !l.rev) && this.empty(l)) continue;
-            const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden };
+            const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, ...(l.lock ? { lock: true } : {}) };
             if (l.changed || !l.rev) {
                 rec.rev = Paint.newId().slice(-10);
                 await Paint.writeLayer(paint, rec, l.canvas);
