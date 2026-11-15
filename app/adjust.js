@@ -52,6 +52,13 @@ const Adjust = {
         });
         bind('adj-before', () => this.toggleBefore());
         bind('adj-reset', () => this.reset());
+        // ⋯: what isn't Before (the plan: extras go in menus, not on bars)
+        this.el('adj-more').addEventListener('click', (e) => {
+            const b = e.currentTarget;
+            if (this.busy) return;
+            const r = b.getBoundingClientRect();
+            this.app.openContextMenu(this.moreItems(), r.left, r.bottom + 6);
+        });
         bind('adj-copy', () => this.copy());
         bind('adj-paste', () => this.paste());
         bind('adj-auto', () => this.auto());
@@ -519,6 +526,27 @@ const Adjust = {
         this.setAll(a);
     },
 
+    // Adjust's ⋯ menu, by its keys as they're set now
+    moreItems() {
+        const sel = this.app.selection && [...this.app.selection].filter(f => f !== this.file);
+        return [
+            ['Reset all', () => this.reset(), false, undefined, 'adjust.reset'],
+            ['Copy settings', () => this.copy(), false, undefined, 'adjust.copy'],
+            ...(Adjust.clipboard() ? [['Paste settings', () => this.paste(), false, undefined, 'adjust.paste']] : []),
+            ...(sel && sel.length ? [['Sync to selected…', () => AdjustSync.fromAdjust(), false, undefined, 'adjust.sync']] : []),
+            ['—'],
+            ['Show clipping', () => this.toggleClip(), false, !!this.clip, 'adjust.clip'],
+            ['Before and after', () => this.toggleBefore(), false, !!this.before, 'adjust.before']
+        ];
+    },
+
+    // Show clipping (J): what's lost at white red, at black blue, on the photo
+    toggleClip(on = !this.clip) {
+        this.clip = on;
+        this.app.showToast(on ? 'Clipping shown: lost highlights red, lost shadows blue (J)' : 'Clipping hidden (J)', 1600, 'adj-clip', null, { kind: 'adjust' });
+        this.schedule();
+    },
+
     toggleBefore(on = !this.before) {
         this.before = on;
         this.el('adj-before').setAttribute('aria-pressed', String(on));
@@ -929,7 +957,7 @@ const Adjust = {
                 const brush = Develop.brushFor(T.masks, this.map.asp);
                 if (brush) R.setBrush(brush);
                 R.setTables(T);
-                R.draw(r.w, r.h, { before: this.before, frame });
+                R.draw(r.w, r.h, { before: this.before, frame, clip: this.clip && !this.before });
             } catch (e) {
                 console.warn('Adjust: GPU failed (100%):', e);
                 this.hideSharp();
@@ -984,7 +1012,7 @@ const Adjust = {
                 if (glow) this.gl.setGlow(glow);
                 if (brush) this.gl.setBrush(brush);
                 this.gl.setTables(T);
-                this.gl.draw(this.w, this.h, { before: this.before, frame: { x: 0, y: 0, W: this.w, H: this.h, map: this.map } });
+                this.gl.draw(this.w, this.h, { before: this.before, clip: this.clip && !this.before, frame: { x: 0, y: 0, W: this.w, H: this.h, map: this.map } });
             } catch (e) {
                 console.warn('Adjust: GPU failed:', e);
             }

@@ -1656,6 +1656,12 @@ const PROJECT = `
                 await openProject('modes', { 'a.png': await blob('#806040'), 'b.png': await blob('#406080'), 'c.png': await blob('#408060') });
                 await until(() => Adjust.ready && Modes.strip.parentElement);
                 out.landedAdjust = Modes.current() === 'adjust' && Adjust.file === app.viewFiles()[0];
+                // Adjust's ⋯: Reset, Copy, Show clipping, Before; J shows clipping
+                out.more = ['Reset all', 'Copy settings', 'Show clipping', 'Before and after'].every(n => Adjust.moreItems().some(i => i[0] === n));
+                pressKey('j');
+                out.clip = Adjust.clip === true && Adjust.moreItems().find(i => i[0] === 'Show clipping')[3] === true;
+                pressKey('j');
+                out.clip = out.clip && Adjust.clip === false;
                 // The row with Adjust chosen (beside it in the sidebar, or over its head's corner), and the strip along the bottom
                 out.chipOver = shownEl('mode-row') && shownEl('mode-seg') && $('mode-seg').querySelector('.on').dataset.mode === 'adjust' && !shownEl('mode-float')
                     && ($('mode-row').parentElement === $('folder-rail') ? $('adjust-editor').getBoundingClientRect().left >= $('folder-rail').getBoundingClientRect().right - 1 : $('mode-row').classList.contains('over-mode'));
@@ -1749,6 +1755,7 @@ const PROJECT = `
         });
         check('modes: the home page has the big tiles (New canvas where there\'s no scanner or camera)', r.startShown, JSON.stringify(r));
         check('modes: a project opened for Adjust lands in Adjust on its first photo', r.startKept && r.landedAdjust, JSON.stringify(r));
+        check('modes: Adjust\'s ⋯ has Reset, Copy, Show clipping and Before; J shows clipping and hides it', r.more && r.clip, JSON.stringify(r));
         check('modes: in Adjust the row has Adjust chosen (the sidebar beside it, or the row over its corner), and a strip runs along the bottom', r.chipOver && r.strip, JSON.stringify(r));
         check('modes: Adjust\'s panel hides, leaving a line at the right edge, and comes back, remembered', r.panelHides && r.panelEdge && r.panelBack, JSON.stringify(r));
         check('modes: another photo from the strip opens in the same mode', r.stepped, JSON.stringify(r));
