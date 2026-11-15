@@ -5,7 +5,7 @@
 // (.jeditor/paint/<id>-<layer>-<rev>.png; a new rev each time a layer
 // changes, so Ctrl+Z on the edit finds the old one still there).
 //
-//   paint: { id, w, h, layers: [{ id, rev, name, opacity, blend, hidden }] }
+//   paint: { id, w, h, layers: [{ id, rev, name, opacity, blend, hidden, lock? }] }
 //
 // Layers cover the whole photo as it is on disk (before any crop or turn,
 // w × h: the photo's own size, or less for a very big one), so cropping
@@ -49,7 +49,9 @@ const Paint = {
                 name: typeof l.name === 'string' && l.name.trim() ? l.name.trim().slice(0, 60) : 'Layer',
                 opacity: typeof l.opacity === 'number' && isFinite(l.opacity) ? +Math.min(1, Math.max(0, l.opacity)).toFixed(3) : 1,
                 blend: blends.includes(l.blend) ? l.blend : 'source-over',
-                hidden: !!l.hidden
+                hidden: !!l.hidden,
+                // Transparency locked (kept only when on)
+                ...(l.lock ? { lock: true } : {})
             });
         }
         return layers.length ? { id: v.id, w: v.w, h: v.h, layers } : null;
