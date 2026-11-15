@@ -7706,7 +7706,7 @@ const app = {
     // A small copy of the photo as it is, before any edit (Adjust's sample size)
     async restoreSample(f) {
         const src = await this.getDisplaySource(f, { raw: true });
-        const bmp = await createImageBitmap(src.blob);
+        const bmp = await createImageBitmap(src.blob || await (await fetch(src.url)).blob());
         const edge = (typeof Adjust !== 'undefined' && Adjust.SAMPLE) || 320;
         const s = Math.min(1, edge / Math.max(bmp.width, bmp.height));
         const w = Math.max(1, Math.round(bmp.width * s)), h = Math.max(1, Math.round(bmp.height * s));
