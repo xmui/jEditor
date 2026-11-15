@@ -80,34 +80,107 @@ Phase 1 is about a week of work per mode; the others about two weeks each.
 
 **Glass pills that match the grid and the viewer** (the owner, 2026-11-15:
 "it needs glass to be cohesive", "yes but we need pills", "to match grid
-and photos"). In Photos the grid's and viewer's controls float as glass
-pills. Adjust and Paint use exactly the same pills, built from the same recipe (`app/style.css`, "Every pill that floats over
-the photo or grid shares this recipe": `.toolbar` and `.tb-btn`, 44 px high,
-fully round, the same glass and edge light). The bars, the zoom and Paint's
-tool strip are pills; the panel and film strip are glass cards made of the
-same glass, since a panel of sliders can't be a pill. They sit where Photos
-puts its pills: 20 px from the window's edges (`--gutter`), 8 px apart, a
-second row 12 px under the first (`--top-row`), the zoom at the bottom
-centre like the viewer's controls. The photo is fitted between them, with a
-dark, blurred copy of it behind. Only the sidebar stays docked on
-its tint. The other 2.0 rules stay: one of each control (the same slider,
-switch, heading and button everywhere), the photo itself is never dressed or
-covered, menus are glass like the viewer's right-click menu
-(`#context-menu`: the same glass, 32 px rows, 12 px corners), and **extras go in
-menus, not on bars.**
+and photos"). Adjust and Paint use Photos' own parts, not copies:
 
-This changes one of the 2.0 rules ("docked is solid" covered Adjust's and
-Paint's panels, and Fable's #174 put them on the sidebar's tint). The owner
-said yes on 2026-11-15, so Fable and `.claude/agents/theming.md` follow
-it; the bars reuse Photos' pill classes rather than new ones.
+- **Pills:** `.toolbar` with `.tb-btn` inside (`app/style.css` §4, "Every
+  pill that floats over the photo or grid shares this recipe"): 40 px high
+  (`--ctl-lg` in the 2.0 look, 44 on a touch screen), fully round, 32 px
+  round buttons, the halo behind the words (`--glass-halo`).
+- **Where:** 20 px from the window's edges (`--gutter`), the second row
+  8 px under the first (`--top-row` + `--sp-2`, as Info and Undo history
+  drop down), the controls at the bottom centre over the photo.
+- **The panel** (Adjust's and Paint's) is a glass card in the same glass,
+  10 px corners (`--r-lg`, a card), under the top row at the right. A
+  panel of sliders can't be a pill.
+- **The film strip** is the viewer's own: black (`--strip-bg`), docked at
+  the bottom, 80 px.
+- **Menus are solid**, as the grid's and viewer's right-click menu is
+  (`#context-menu`, `.ctx-fly` in the 2.0 look: `--bg-surface`, 28 px rows,
+  10 px corners, keys at the right, a row with its own menu beside it).
+  Popovers and messages (Info, More options, toasts) are glass, as in
+  Photos.
+- **The photo** lies on the solid surround, as in the viewer: no blurred
+  copy behind it (that was the mockup's, not the app's).
+- Only the sidebar is docked on its tint. One of each control (the slider,
+  switch, heading, button), and **extras go in menus, not on bars.**
 
-**Adjust** (mockup, first board)
+This changes one 2.0 rule ("docked is solid" covered Adjust's and Paint's
+panels, and Fable's #174 put them on the sidebar's tint). The owner said yes
+on 2026-11-15, so #174's `--chrome` rule for `.adj-panel`, `.paint-panel`,
+`.paint-options` and `.paint-tools` gives way to the glass, and
+`.claude/agents/theming.md` gets the new line when phase 1 is built.
 
-- **The bar** becomes two pills over the top of the photo: the file
-  name (with 5 / 12, as in Photos), and **Before** with a **⋯ menu**.
+**Glass follows Settings.** Adjust and Paint add no glass of their own.
+Every glass part takes the same tokens as Photos' pills, so Settings → Glass
+(Crystal, Liquid, Clear, Opaque, Lens) and Glass tint change all three
+modes at once, and Reduce transparency or Increase contrast make them solid:
+
+| Token (`app/tokens.css`) | What it does | Set by |
+|---|---|---|
+| `--glass-bg` | the glass itself, with `--glass-tint` washed over it | `data-glass`, `data-tint` |
+| `--glass-filter` | the blur behind it | `data-glass` |
+| `--glass-border`, `--glass-rim` | its edge and the light along it | `data-glass` |
+| `--glass-halo` | the halo behind words on clear glass | `data-glass` |
+| `--shadow-2` (pills, cards), `--shadow-3` (popovers) | its shadow | `data-glass` |
+| `--lg-bend` | Liquid's bend (`liquid.js`) | Liquid only |
+
+The panel, the tools and the options join the list of parts in
+`style.css` that take the halo (`:is(.toolbar, .file-info, …)`) and
+Liquid's bend (`:root.liquid-bends :is(…)`), so they behave as the pills do.
+
+### Modes that flow into each other
+
+Going Photos → Adjust → Paint and back should feel like one window with
+another panel, not three screens (the owner, 2026-11-15: "i want the modes
+to flow into each other better"). The rules:
+
+1. **What's shared stays put.** The sidebar, its mode switch, the file
+   pill (name, 5 / 12, sort), the film strip and the pill at the top right
+   are the same elements in every mode and never move. The top-right pill
+   keeps its place and changes its buttons: Info, view, refresh, crop and ⋯
+   in Photos; Before and ⋯ in Adjust; Undo, Redo and ⋯ in Paint. The
+   bottom pill does the same: ‹ rotate › in Photos, ‹ Fit 100% › in Adjust
+   and Paint.
+2. **The photo is one element.** It never reloads, blanks or flashes. Its
+   middle stays at the same height; when a panel comes in it glides
+   sideways and shrinks only as much as it must, in the same 280 ms as the
+   panel. The panel never covers the photo you're editing.
+3. **Panels come and go once.** Photos → Adjust: the panel slides in 16 px
+   from the right and fades. Adjust → Paint: the panel stays where it is
+   and only its contents cross-fade; Paint's tools and options slide in
+   8 px from the left and from above.
+4. **Three speeds** (the 2.0 motion block): 120 ms for pointing and
+   pressing (a colour fade; what's pressed gives a little with
+   `--ease-press`, #187); 180 ms for what appears (menus, popovers and
+   messages fade in from 98%, never overshooting); 280 ms, calm
+   (`--ease-out`), for changes of place: panels, pills and the photo. The
+   mode switch's pill glides with `--ease-press`, since you pressed it.
+5. **Reduced motion, or Settings → Animations off:** nothing slides; a
+   plain fade or nothing.
+6. **Leaving keeps your place.** The same photo, zoom and strip position in
+   every mode; edits made in Adjust show in Paint and in the strip.
+
+### Polish: what every part needs before it merges
+
+- **States:** rest, hover (`--tb-hover`), pressed (`--tb-pressed`, gives a
+  little), on or chosen (a soft accent for a tool, as a chosen row), and
+  can't be used (40%, with a tooltip saying why: "A picture keeps at least
+  one layer"). Mockup, the States board.
+- **Empty states** say what goes there and give the one way to start: "No
+  masks yet", "Nothing healed yet", "No snapshots yet", "No photos match".
+- **Small windows:** checked at 1440 × 900, 1280 × 800 and 1024 × 700 (and
+  800 × 600 when built). As room runs out the photo shrinks first, then
+  Paint's tool options go into a ⋯ on their pill; words stay whole.
+- **Every control works** in the mockup, so what's built can be checked
+  against it.
+
+**Adjust** (mockup, first board: choose Adjust in the sidebar)
+
+- **The bar** is Photos' two pills: the file pill (name, 5 / 12, sort)
+  and, at the right, **Before** with a **⋯ menu**.
   Reset, Copy, Paste, Sync, Presets, Snapshots and Show clipping go in that
   menu, each with its key.
-- **The panel** is a glass card on the right: the histogram at the top, then **four tools as icons**:
+- **The panel** is the glass card on the right: the histogram at the top, then **four tools as icons**:
   Edit, Restore, Heal, Masks. This replaces today's Edit / Retouch / Masks
   tabs, where Retouch and Masks each hold a single folded section.
 - **Edit** shows Quick fixes (Auto, Restore fade, Backlight), Look (a
@@ -119,10 +192,10 @@ it; the bars reuse Photos' pill classes rather than new ones.
 - Headings small and grey, in sentence case; the 2.0 slider; one Reset per
   section in its right-click menu rather than a button on every section.
 - Checkboxes (Show mask, Invert, Show spots) become the 2.0 switch.
-- The zoom (Fit, 100%) and the film strip float as glass at the bottom,
-  the same as Paint's zoom and Photos' strip.
+- The zoom (Fit, 100%) is the viewer's bottom pill, and the film strip
+  is the viewer's, the same in all three modes.
 
-**Paint** (mockup, second board)
+**Paint** (mockup, first board: choose Paint)
 
 - **The bar** is one pill over the top: the file name, Undo and Redo, and
   a **⋯ menu** holding **Image, Layer, Select and Filter** (decision 4).
@@ -137,7 +210,7 @@ it; the bars reuse Photos' pill classes rather than new ones.
   spray; Fill: fill, gradient; Shapes: line, rectangle, ellipse), with a
   small corner mark; hold or right-click for the others. Hand stays on
   Space. Heal joins in phase 2.
-- **The panel** is a glass card on the right, like Adjust's.
+- **The panel** is the same glass card as Adjust's, in the same place: going from Adjust to Paint only its contents change.
 - **Colour** (decision 6): the brush and background squares, a
   **Choose a colour…** button that opens the system's colour picker, and
   a row of **saved colours** under it, with a + to save the brush colour.
@@ -145,7 +218,7 @@ it; the bars reuse Photos' pill classes rather than new ones.
 - **Layers**: blend and opacity above the list; the row of six small
   buttons goes; New layer, Add an image and Delete stay at the foot, and
   the rest is the **Layer menu**, also on a right-click on a layer
-  (mockup, third board).
+  (mockup: right-click a layer, or the Menus board).
 
 ## (d) Desktop only, and the web
 
@@ -175,7 +248,9 @@ the engine's last steps. Phases 1 and 2 don't need the engine at all.
 Phases 3 onward should start after the engine's Adjust step, so the heavy
 parts are written once, in the engine.
 
-**Files:** `app/develop.js` is shared with the engine's open PRs. Phase 1
+**Files:** the look and the flow live in `app/style.css` (the 2.0 Adjust
+and Paint block, next to #174's) and in `app/index.html`, both shared, so
+each phase 1 PR keeps that change small and says so. `app/develop.js` is shared with the engine's open PRs. Phase 1
 touches it only for Restore fade, Backlight and Red-eye; the Adjust agent
 checks with the Wrangler before starting.
 
@@ -185,8 +260,9 @@ The owner answered on 2026-11-15. Where they said "idk", the plan picked,
 following "show less"; those are marked **plan's pick**, and the owner can
 change any of them after trying the beta.
 
-1. **Glass:** glass pills and glass menus, matching the grid and viewer
-   exactly. (Owner.)
+1. **Glass:** glass pills, matching the grid and viewer exactly, and
+   menus doing what theirs do, which is solid. Glass follows Settings →
+   Glass and Glass tint. (Owner.)
 2. **Adjust's panel:** four tool icons at the top (Edit, Restore, Heal,
    Masks), replacing today's tabs. **Plan's pick:** one row of icons is
    less than tabs that each hide a single section.
