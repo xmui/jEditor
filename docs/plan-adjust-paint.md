@@ -89,9 +89,12 @@ and photos"). Adjust and Paint use Photos' own parts, not copies:
 - **Where:** 20 px from the window's edges (`--gutter`), the second row
   8 px under the first (`--top-row` + `--sp-2`, as Info and Undo history
   drop down), the controls at the bottom centre over the photo.
-- **The panel** (Adjust's and Paint's) is a glass card in the same glass,
-  10 px corners (`--r-lg`, a card), under the top row at the right. A
-  panel of sliders can't be a pill.
+- **The panel** (Adjust's and Paint's) is **docked** to the window's right
+  edge, full height, and made like the left sidebar: the same tint
+  (`--chrome`, which is `--sidebar-bg`), a hairline on its inner edge
+  (`--chrome-line`), square corners, no shadow, no blur. It folds away and
+  comes back as the sidebar does (the panel button in the top-right pill,
+  or Tab).
 - **The film strip** is the viewer's own: black (`--strip-bg`), docked at
   the bottom, 80 px.
 - **Menus are solid**, as the grid's and viewer's right-click menu is
@@ -101,14 +104,22 @@ and photos"). Adjust and Paint use Photos' own parts, not copies:
   Photos.
 - **The photo** lies on the solid surround, as in the viewer: no blurred
   copy behind it (that was the mockup's, not the app's).
-- Only the sidebar is docked on its tint. One of each control (the slider,
+- Docked parts (the sidebar and the panel) are solid on that tint; only
+  what floats over the photo is glass. One of each control (the slider,
   switch, heading, button), and **extras go in menus, not on bars.**
 
-This changes one 2.0 rule ("docked is solid" covered Adjust's and Paint's
-panels, and Fable's #174 put them on the sidebar's tint). The owner said yes
-on 2026-11-15, so #174's `--chrome` rule for `.adj-panel`, `.paint-panel`,
-`.paint-options` and `.paint-tools` gives way to the glass, and
-`.claude/agents/theming.md` gets the new line when phase 1 is built.
+**Why the panel is docked and solid** (the owner, 2026-11-15: the right
+panels "should be more in line with the left sidebar docked and look like
+it materially"). This brings back the 2.0 rule *docked is solid, floating
+is glass*: the two sidebars frame the photo as the same material, and glass
+is kept for the small things that float over it (the pills, popovers and
+messages). It also means a panel full of sliders sits on a steady
+background instead of whatever photo is under it, which is easier to read
+and to judge colour beside. #174 already puts `.adj-panel` and
+`.paint-panel` on `--chrome`, so that rule stays; what changes is that they
+dock full height at the right edge and fold away. Paint's tools and options
+(`.paint-tools`, `.paint-options`) float as pills, so they move from
+`--chrome` to the glass.
 
 **Glass follows Settings.** Adjust and Paint add no glass of their own.
 Every glass part takes the same tokens as Photos' pills, so Settings → Glass
@@ -121,10 +132,10 @@ modes at once, and Reduce transparency or Increase contrast make them solid:
 | `--glass-filter` | the blur behind it | `data-glass` |
 | `--glass-border`, `--glass-rim` | its edge and the light along it | `data-glass` |
 | `--glass-halo` | the halo behind words on clear glass | `data-glass` |
-| `--shadow-2` (pills, cards), `--shadow-3` (popovers) | its shadow | `data-glass` |
+| `--shadow-2` (pills), `--shadow-3` (popovers) | its shadow | `data-glass` |
 | `--lg-bend` | Liquid's bend (`liquid.js`) | Liquid only |
 
-The panel, the tools and the options join the list of parts in
+Paint's tools and options join the list of parts in
 `style.css` that take the halo (`:is(.toolbar, .file-info, …)`) and
 Liquid's bend (`:root.liquid-bends :is(…)`), so they behave as the pills do.
 
@@ -136,17 +147,20 @@ to flow into each other better"). The rules:
 
 1. **What's shared stays put.** The sidebar, its mode switch, the file
    pill (name, 5 / 12, sort), the film strip and the pill at the top right
-   are the same elements in every mode and never move. The top-right pill
-   keeps its place and changes its buttons: Info, view, refresh, crop and ⋯
-   in Photos; Before and ⋯ in Adjust; Undo, Redo and ⋯ in Paint. The
+   are the same elements in every mode. The top-right pill keeps its row
+   and changes its buttons; when the panel docks it glides left with the
+   panel's edge, in the same 280 ms, so it never sits over the panel: Info, view, refresh, crop and ⋯
+   in Photos; the panel button, Before and ⋯ in Adjust; the panel
+   button, Undo, Redo and ⋯ in Paint. The
    bottom pill does the same: ‹ rotate › in Photos, ‹ Fit 100% › in Adjust
    and Paint.
 2. **The photo is one element.** It never reloads, blanks or flashes. Its
    middle stays at the same height; when a panel comes in it glides
    sideways and shrinks only as much as it must, in the same 280 ms as the
    panel. The panel never covers the photo you're editing.
-3. **Panels come and go once.** Photos → Adjust: the panel slides in 16 px
-   from the right and fades. Adjust → Paint: the panel stays where it is
+3. **Panels come and go once.** Photos → Adjust: the docked panel slides
+   in from the right edge, and the photo, strip and pill glide aside.
+   Folding it (Tab) slides it back out and they glide into the room. Adjust → Paint: the panel stays where it is
    and only its contents cross-fade; Paint's tools and options slide in
    8 px from the left and from above.
 4. **Three speeds** (the 2.0 motion block): 120 ms for pointing and
@@ -192,7 +206,7 @@ to flow into each other better"). The rules:
   and, at the right, **Before** with a **⋯ menu**.
   Reset, Copy, Paste, Sync, Presets, Snapshots and Show clipping go in that
   menu, each with its key.
-- **The panel** is the glass card on the right: the histogram at the top, then **four tools as icons**:
+- **The panel** is docked at the right, like the sidebar: the histogram at the top, then **four tools as icons**:
   Edit, Restore, Heal, Masks. This replaces today's Edit / Retouch / Masks
   tabs, where Retouch and Masks each hold a single folded section.
 - **Edit** shows Quick fixes (Auto, Restore fade, Backlight), Look (a
@@ -222,7 +236,7 @@ to flow into each other better"). The rules:
   spray; Fill: fill, gradient; Shapes: line, rectangle, ellipse), with a
   small corner mark; hold or right-click for the others. Hand stays on
   Space. Heal joins in phase 2.
-- **The panel** is the same glass card as Adjust's, in the same place: going from Adjust to Paint only its contents change.
+- **The panel** is the same docked panel as Adjust's, in the same place: going from Adjust to Paint only its contents change.
 - **Colour** (decision 6): the brush and background squares, a
   **Choose a colour…** button that opens the system's colour picker, and
   a row of **saved colours** under it, with a + to save the brush colour.
@@ -274,7 +288,8 @@ change any of them after trying the beta.
 
 1. **Glass:** glass pills, matching the grid and viewer exactly, and
    menus doing what theirs do, which is solid. Glass follows Settings →
-   Glass and Glass tint. (Owner.)
+   Glass and Glass tint. The panels are docked and solid like the left
+   sidebar (2026-11-15). (Owner.)
 2. **Adjust's panel:** four tool icons at the top (Edit, Restore, Heal,
    Masks), replacing today's tabs. **Plan's pick:** one row of icons is
    less than tabs that each hide a single section.
