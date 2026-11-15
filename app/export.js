@@ -24,7 +24,7 @@
 const Export = {
     KEY: 'jeditor.export', // the last choices: { tab, size, where }
     // As they are, or another format (AVIF and JPEG XL where the codecs load: codec.js)
-    FORMATS: [['same', 'As they are'], ['jpeg', 'JPEG'], ['png', 'PNG (lossless)'], ['tiff', 'TIFF (lossless, for print)'], ['webp', 'WebP'], ['avif', 'AVIF (smallest)'], ['jxl', 'JPEG XL']],
+    FORMATS: [['same', 'Original format'], ['jpeg', 'JPEG'], ['png', 'PNG (lossless)'], ['tiff', 'TIFF (lossless, for print)'], ['webp', 'WebP'], ['avif', 'AVIF (smallest)'], ['jxl', 'JPEG XL']],
     SIZES: [[0, 'Full size'], [4000, '4000 px'], [3000, '3000 px'], [2048, '2048 px (for the web)'], [1600, '1600 px'], [1080, '1080 px (social media)']],
     TABS: [['save', 'Save into the photos'], ['copies', 'Copies'], ['usb', 'USB drive or card'], ['disc', 'CD or DVD']],
 
@@ -364,15 +364,18 @@ const Export = {
         archive: { format: 'tiff', quality: 92, size: 0, meta: 'all', colour: 'keep' }
     },
     QUALITIES: [100, 95, 90, 85, 80, 70, 60],
-    METAS: [['all', 'All of it'], ['nogps', 'All but the location'], ['none', 'None']],
-    COLOURS: [['keep', 'As it is (its own colour profile)'], ['srgb', 'sRGB, for screens and the web']],
-    CLASHES: [['both', 'Keep both'], ['replace', 'Replace it'], ['skip', 'Skip the photo']],
+    METAS: [['all', 'All metadata'], ['nogps', 'All except location'], ['none', 'None']],
+    COLOURS: [['keep', 'Same as the photo (its own profile)'], ['srgb', 'sRGB (screens and the web)']],
+    CLASHES: [['both', 'Choose a new name (keep both)'], ['replace', 'Overwrite'], ['skip', 'Skip']],
     // The pieces a name is made of (script.js exportName fills them in)
     TOKENS: [['name', 'Name'], ['project', 'Project'], ['date', 'Date'], ['n', 'Number']],
-    SECS: [['which', 'Photos'], ['where', 'Where'], ['naming', 'File naming'], ['format', 'Format'], ['size', 'Size'], ['meta', 'Metadata'], ['colour', 'Colour'], ['after', 'After export']],
+    // Named and ordered as in the export windows people know (Lightroom's,
+    // Capture One's, Photoshop's Export As): where, the name, the file, its
+    // size, its metadata, what happens after
+    SECS: [['which', 'Photos'], ['where', 'Export location'], ['naming', 'File naming'], ['format', 'File settings'], ['size', 'Image sizing'], ['meta', 'Metadata'], ['after', 'After export']],
     // The settings a preset keeps
     SET: ['format', 'quality', 'size', 'meta', 'colour', 'pattern', 'clash'],
-    DEFAULTS: { format: 'same', quality: 92, size: 0, meta: 'all', colour: 'keep', pattern: '{name}', clash: 'both' },
+    DEFAULTS: { format: 'same', quality: 90, size: 0, meta: 'all', colour: 'keep', pattern: '{name}', clash: 'both' },
 
     // Copies' settings, from what was saved (open)
     loadCopies(saved) {
@@ -384,6 +387,8 @@ const Export = {
         if (saved.names === 'number' && !(saved.custom && saved.custom.pattern)) this.custom.pattern = '{project} {n}';
         this.presets = Array.isArray(saved.presets) ? saved.presets.filter(p => p && typeof p.name === 'string' && p.set) : [];
         this.preset = this.presets.some(p => p.name === saved.mine) ? saved.mine : null;
+        // (a quality the list has: 92, the old Full quality's, is shown as 90)
+        if (!this.QUALITIES.includes(this.custom.quality)) this.custom.quality = this.QUALITIES.reduce((a, b) => Math.abs(b - this.custom.quality) < Math.abs(a - this.custom.quality) ? b : a);
         for (const k of this.SET) this[k] = this.custom[k];
         if (this.codecs === false && Codec.of('x.' + this.format)) this.format = 'png';
         this.leaveOut = saved.leaveOut !== false;
@@ -490,21 +495,21 @@ const Export = {
         if (k === 'naming') {
             const first = this.copies()[0];
             const eg = first && !this.patternProblem() ? this.exampleName(first, 0, n) : '';
-            return (this.pattern === '{name}' ? 'Their own names' : 'Renamed') + (eg ? ` · ${eg}` : '');
+            return (this.pattern === '{name}' ? 'Original names' : 'Renamed') + (eg ? ` · ${eg}` : '');
         }
         if (k === 'format') {
             const f = this.FORMATS.find(([x]) => x === this.format);
             const label = (f ? f[1] : this.format).replace(/ \(.*\)$/, '');
-            return this.format === 'same' ? 'As they are' : this.lossy() ? `${label}, ${this.quality}%` : `${label}, lossless`;
+            const srgb = this.colour === 'srgb' ? ', sRGB' : '';
+            return (this.format === 'same' ? 'Original format' : this.lossy() ? `${label}, ${this.quality}%` : `${label}, lossless`) + srgb;
         }
-        if (k === 'size') return this.size ? `${this.size.toLocaleString()} px on the long side, never enlarged` : 'Full size';
-        if (k === 'meta') return this.meta === 'all' ? 'All of it' : this.meta === 'nogps' ? 'All but the location' : 'None';
-        if (k === 'colour') return this.colour === 'srgb' ? 'sRGB, for screens' : 'As it is';
+        if (k === 'size') return this.size ? `Long edge ${this.size.toLocaleString()} px, not enlarged` : 'Full size';
+        if (k === 'meta') return this.meta === 'all' ? 'All metadata' : this.meta === 'nogps' ? 'All except location' : 'None';
         if (k === 'after') {
             const a = [];
             if (this.reveal && this.canReveal()) a.push(Host.say('Show the folder in {files}'));
             if (this.where.startsWith('drive:') && this.eject) a.push('Eject the drive');
-            return a.join(', ') || 'Nothing';
+            return a.join(', ') || 'Do nothing';
         }
         return '';
     },
@@ -526,9 +531,9 @@ const Export = {
                 (edited ? opt('edited', `The ${edited.toLocaleString()} with edits not saved yet`) : '') + '</div>';
         }
         if (k === 'where') {
-            return `<div class="ex-row"><span>Put them</span>${pill('where', this.whereLabel(), 'Where, and whether the project lists them')}</div>` +
-                `<label class="ex-row"><span>Folder</span><input id="ex-folder" class="field" type="text" spellcheck="false" maxlength="200" value="${this.esc(this.folderName())}"></label>` +
-                sel('ex-clash', 'If a name\'s there', this.CLASHES, this.clash);
+            return `<div class="ex-row"><span>Export to</span>${pill('where', this.whereLabel(), 'Where, and whether the project lists them')}</div>` +
+                `<label class="ex-row"><span>Subfolder</span><input id="ex-folder" class="field" type="text" spellcheck="false" maxlength="200" value="${this.esc(this.folderName())}"></label>` +
+                sel('ex-clash', 'Existing files', this.CLASHES, this.clash);
         }
         if (k === 'naming') {
             const list = this.copies();
@@ -537,13 +542,13 @@ const Export = {
                 '<div class="ex-tokens">' + this.TOKENS.map(([t, l]) => `<button type="button" class="btn secondary sm" data-act="token" data-token="${t}" title="Add {${t}} to the name">+ ${l}</button>`).join('') + '</div>' +
                 `<p class="ex-eg">${this.patternProblem() ? this.esc(this.patternProblem()) : `For example ${eg}${list.length > 2 ? ' …' : ''}`}</p>`;
         }
-        if (k === 'format') return sel('ex-format', 'Format', formats, this.format) + (this.lossy() ? sel('ex-quality', 'Quality', this.QUALITIES.map(q => [q, `${q}%`]), this.quality) : '');
+        if (k === 'format') return sel('ex-format', 'Image format', formats, this.format) + (this.lossy() ? sel('ex-quality', 'Quality', this.QUALITIES.map(q => [q, `${q}%`]), this.quality) : '') +
+            sel('ex-colour', 'Colour space', this.COLOURS, this.colour);
         if (k === 'size') {
             const sizes = this.SIZES.some(([v]) => v === this.size) ? this.SIZES : this.SIZES.concat([[this.size, `${this.size.toLocaleString()} px`]]);
-            return sel('ex-size', 'Longest side', sizes.concat([['other', 'Other…']]), this.size) + '<p class="ex-eg">A photo smaller than this is left at its own size.</p>';
+            return sel('ex-size', 'Resize to fit', sizes.map(([v, l]) => [v, v ? `Long edge: ${l}` : l]).concat([['other', 'Long edge: other…']]), this.size) + '<p class="ex-eg">Not enlarged: a photo smaller than this is left at its own size.</p>';
         }
-        if (k === 'meta') return sel('ex-meta', 'Keep', this.METAS, this.meta);
-        if (k === 'colour') return sel('ex-colour', 'Colour', this.COLOURS, this.colour);
+        if (k === 'meta') return sel('ex-meta', 'Include', this.METAS, this.meta);
         if (k === 'after') {
             return (this.canReveal() ? `<label class="ex-check"><input type="checkbox" id="ex-reveal"${this.reveal ? ' checked' : ''}> ${Host.say('Show the folder in {files}')}</label>` : '') +
                 (this.where.startsWith('drive:') ? this.ejectBox() : '') +
@@ -600,7 +605,7 @@ const Export = {
             this.esc((notes.length ? notes.join(' · ') + '. ' : '') + 'The originals aren\'t changed.');
         return {
             html, ready: n > 0 && !problem,
-            go: `Export ${n.toLocaleString()} cop${n === 1 ? 'y' : 'ies'}`,
+            go: `Export ${n.toLocaleString()} photo${n === 1 ? '' : 's'}`,
             note: problem ? this.esc(problem) : this.copiesNote
         };
     },
