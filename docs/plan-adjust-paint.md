@@ -157,7 +157,13 @@ to flow into each other better"). The rules:
    mode switch's pill glides with `--ease-press`, since you pressed it.
 5. **Reduced motion, or Settings → Animations off:** nothing slides; a
    plain fade or nothing.
-6. **Leaving keeps your place.** The same photo, zoom and strip position in
+6. **The sidebar folds away in every mode** (the owner, 2026-11-15): the
+   button at the left of the file pill, or Ctrl+B. It slides out to the
+   left in 280 ms and the photo, strip and pills glide into the room;
+   nothing jumps. Folded, a chip in the file pill names the mode, with a
+   menu to switch (today's `.mode-chip`). Whether the sidebar becomes glass
+   like the panel is the owner's call (asked 2026-11-15).
+7. **Leaving keeps your place.** The same photo, zoom and strip position in
    every mode; edits made in Adjust show in Paint and in the strip.
 
 ### Polish: what every part needs before it merges
