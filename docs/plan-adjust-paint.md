@@ -68,11 +68,11 @@ gives both modes something.
 | Phase | Adjust | Paint |
 |---|---|---|
 | **1. The 2.0 look and the quick wins** | The panel in the 2.0 look (below). Restoring scans, part 1: **Restore colour** (auto, with a strength; below), **Backlight**, **Red-eye**. Clipping warnings. In Photos: **Restore colour** on one photo or a batch (below). | The screen in the 2.0 look (below): grouped tools, the ⋯ menu, saved colours. Selections: feather, invert, grow and shrink, select all. Image: flip, rotate, image size, canvas size, crop. |
-| **2. Restoring and retouching** | Restoring scans, part 2: **colour restoration in full** (fade types, the neutral picker; below), **descreen**, **scratch and crease removal**. Clarity, texture, dehaze. | **Spot heal, heal and clone brushes** (sharing Adjust's heal maths). Dodge, burn, sponge; blur, sharpen, smudge brushes. A history panel. |
-| **3. Shape and layers** | Straighten by drawing a line; perspective and keystone (auto, vertical, horizontal); lens fixes. | **Layer masks**, clipping masks, **editable text**, groups and locks, merge and flatten. Free transform with perspective and skew. |
+| **2. Restoring and retouching** | Restoring scans, part 2: **colour restoration in full** (fade types, the neutral picker; below), **descreen**, **scratch and crease removal**. Clarity, texture, dehaze. | **Spot heal, heal and clone brushes** (sharing Adjust's heal maths). Dodge, burn, sponge; blur, sharpen, smudge brushes. **More brushes, part 1:** pencil, ink, marker, airbrush, soft and hard round, eraser variants; smoothing; pressure for opacity. A history panel. |
+| **3. Shape and layers** | Straighten by drawing a line; perspective and keystone (auto, vertical, horizontal); lens fixes. | **Layer masks**, clipping masks, **editable text**, groups and locks, merge and flatten. **Free transform** (scale, rotate, skew, distort, perspective) of a layer, a selection or text, text staying editable where it can, and re-editable afterwards (the original kept, as a smart layer). |
 | **4. Colour and filters** | Masks by colour and brightness; add, subtract and intersect masks. B&W mix, point colour, `.cube` LUTs. | Adjustment layers. Filters: Gaussian and motion blur, unsharp mask, noise, median, high pass. More shapes (arrow, polygon, rounded rectangle); text alignment and outlines. |
-| **5. Workflow** | Snapshots and virtual copies, split before/after, Lightroom preset import, output sharpening, colour profiles. | Brush presets, smoothing, symmetry, pressure for opacity. Rulers, guides, snapping. Layered TIFF/PSD export. |
-| **Later** | AI subject and sky masks (if a model can ship), full RAW editing. | Remove an object (content-aware), liquify, lens blur, warp, a pen tool, recorded actions. |
+| **5. Workflow** | Snapshots and virtual copies, split before/after, Lightroom preset import, output sharpening, colour profiles. | **More brushes, part 2:** charcoal, watercolour, texture, smudge and mixer brushes; tilt; brush presets. Symmetry. **Warp** with a mesh, on layers, selections and text. Rulers, guides, snapping. Layered TIFF/PSD export. |
+| **Later** | AI subject and sky masks (if a model can ship), full RAW editing. | Remove an object (content-aware), liquify, lens blur, puppet warp, a pen tool, recorded actions. |
 
 Phase 1 is about a week of work per mode; the others about two weeks each.
 
@@ -279,6 +279,16 @@ sets how the panel is organised:
   sidebar or panel slides out over the photo when the pointer reaches its
   edge, works as usual while it's out, and slides away again when the
   pointer leaves. Not in phase 1.
+- **Paint, towards Photoshop** (the owner, 2026-11-15: "more essential stuff
+  first but definitely want better transform and warp to layers selections
+  and text. want more brushes for sure"). The essentials stay first, as the
+  phases have them. Transform comes in phase 3 and Warp in phase 5, both on
+  layers, selections and text and re-editable; puppet warp is later. The
+  brush set comes in two parts (phases 2 and 5), with smoothing and pressure
+  brought forward to phase 2. **For the owner to pick, later:** Select
+  Subject, content-aware fill, layer styles, Quick Mask, Select and Mask,
+  select by colour range, recorded actions (clipping masks and groups are
+  already in phase 3; symmetry in phase 5).
 - **Paint needs another design pass** (the owner, 2026-11-15: "paint still
   needs a work in the future"): this plan settles Paint's frame, its tools
   pill, options and panel; a later pass looks at Paint on its own, against
