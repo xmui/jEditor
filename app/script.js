@@ -7108,9 +7108,12 @@ const app = {
     // they go into, called `where`; the `quality` (%) of a JPEG, WebP, AVIF
     // or JPEG XL written; `meta` ('all', 'nogps': without the location,
     // 'none'); `colour` ('keep', or 'srgb': made sRGB, without a profile);
-    // `names` (a name to number them with, or null: their own). Else asked
-    // here, into "jEditor Export" in the project
-    async exportCopies(files, { maxEdge = null, dir = null, where = '"jEditor Export"', format = 'same', quality = 95, meta = 'all', colour = 'keep', names = null } = {}) {
+    // `pattern` (what they're called, in pieces: exportName; their own
+    // names when it's '{name}' or not given), with `project` for its
+    // {project}; `clash` (a name already there: 'replace' it, 'skip' the
+    // photo, or keep 'both', the copy numbered). Else asked here, into
+    // "jEditor Export" in the project
+    async exportCopies(files, { maxEdge = null, dir = null, where = '"jEditor Export"', format = 'same', quality = 95, meta = 'all', colour = 'keep', pattern = null, project = '', clash = 'replace' } = {}) {
         const list = files.filter(Boolean);
         if (!list.length) return;
         if (!this.dirHandle) {
@@ -7133,8 +7136,9 @@ const app = {
         try {
             dir = dir || await this.dirHandle.getDirectoryHandle('jEditor Export', { create: true });
             this.beginTask('export', `Exporting 0/${list.length}`);
-            let done = 0, failed = 0;
-            const digits = Math.max(3, String(list.length).length);
+            let done = 0, failed = 0, skipped = 0;
+            const written = new Set(); // names used by this export (lower case)
+            const there = (name) => written.has(name.toLowerCase()) ? true : dir.getFileHandle(name).then(() => true, () => false);
             for (const [i, f] of list.entries()) {
                 try {
                     // A RAW: from its own JPEG, written as a JPEG (or the
@@ -7183,7 +7187,15 @@ const app = {
                     const ext = to === 'gif' && again ? 'jpg' : to === from && !raw ? null : Codec.ext(to === 'gif' ? 'jpeg' : to);
                     const own = raw && to === 'jpeg' ? Raw.jpegName(f.name)
                         : !ext ? f.name : f.name.replace(/\.[^.]+$/, '') + '.' + ext;
-                    const name = names ? `${names} ${String(i + 1).padStart(digits, '0')}${(own.match(/\.[^.]+$/) || [''])[0].toLowerCase()}` : own;
+                    let name = this.exportName(pattern, { own, i, total: list.length, project, date: file.lastModified });
+                    // A name already there: skipped, kept beside it ("name (2).jpg"),
+                    // or written over. Two of this export's own never share one
+                    if (clash === 'skip' && await there(name)) { skipped++; continue; }
+                    if (clash === 'both' || written.has(name.toLowerCase())) {
+                        const stem = name.replace(/\.[^.]+$/, ''), ext2 = (name.match(/\.[^.]+$/) || [''])[0];
+                        for (let k = 2; await there(name) && k < 10000; k++) name = `${stem} (${k})${ext2}`;
+                    }
+                    written.add(name.toLowerCase());
                     const h = await dir.getFileHandle(name, { create: true });
                     const w = await h.createWritable();
                     await w.write(out);
@@ -7193,17 +7205,36 @@ const app = {
                     failed++;
                     console.error('Export failed:', f.name, e);
                 }
-                this.updateTask('export', `Exporting ${done + failed}/${list.length}`);
+                this.updateTask('export', `Exporting ${done + failed + skipped}/${list.length}`);
             }
             this.endTask('export');
+            const left = skipped ? `, ${skipped} skipped (already there)` : '';
             this.showToast(
-                failed ? `Exported ${done}, ${failed} failed` : `Exported ${done} to ${where}`
+                failed ? `Exported ${done}, ${failed} failed${left}` : `Exported ${done} to ${where}${left}`
             , 4000, null, null, failed ? {} : { type: 'success' });
-            return { done, failed };
+            return { done, failed, skipped };
         } catch (e) {
             this.endTask('export');
             this.showToast('Export failed: ' + e.message);
         }
+    },
+
+    // What a copy is called: `pattern` with its pieces filled in, and the
+    // extension of `own` (the photo's name as the copy would have it).
+    // {name} its own name, {project} the project's, {date} the file's
+    // date (2026-11-14), {n} its number in the export (001…). No pattern,
+    // or only {name}: its own name as it is
+    exportName(pattern, { own, i = 0, total = 1, project = '', date = 0 }) {
+        if (!pattern || pattern.trim() === '{name}') return own;
+        const stem = own.replace(/\.[^.]+$/, ''), ext = (own.match(/\.[^.]+$/) || [''])[0].toLowerCase();
+        const d = new Date(date || Date.now());
+        const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const digits = Math.max(3, String(total).length);
+        const filled = pattern.replace(/\{(name|project|date|n)\}/g, (m, k) =>
+            k === 'name' ? stem : k === 'project' ? project : k === 'date' ? day : String(i + 1).padStart(digits, '0'));
+        // (never a path, nor a name the system refuses)
+        const clean = filled.replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\.+/, '').slice(0, 180);
+        return (clean || stem) + ext;
     },
 
     // What a photo's file is, by its name: 'jpeg', 'png', 'webp', 'gif',
