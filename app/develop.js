@@ -195,7 +195,10 @@ const Develop = {
         for (const k of ['hue', 'sat', 'lum']) out.hsl[k] = (a.hsl && a.hsl[k]) ? a.hsl[k].slice() : new Array(8).fill(0);
         out.grade = {};
         for (const [z] of this.ZONES) out.grade[z] = (a.grade && a.grade[z]) ? a.grade[z].slice() : [0, 0, 0];
-        out.look = this.look(a.look) ? a.look : null;
+        const lk = this.lookOf(a);
+        out.look = lk ? a.look : null;
+        out.lookAdj = lk && a.lookAdj ? this.cleanLookAdj(a.lookAdj) : null;
+        out.lookName = lk && lk.own ? lk.name : null;
         out.mono = this.monoOf(a.mono);
         out.masks = (this.cleanMasks(a.masks) || []).map(m => JSON.parse(JSON.stringify(m)));
         out.spots = ((typeof Retouch !== 'undefined' && Retouch.cleanSpots(a.spots)) || []).map(s => ({ ...s }));
@@ -377,6 +380,33 @@ const Develop = {
         return (typeof id === 'string' && this.LOOKS.find(l => l.id === id)) || null;
     },
 
+    // The look a photo's settings use, with its settings as dialled in:
+    // a film look as made (adj), changed (lookAdj, "modified"), or one of
+    // your own ("own:…", whose settings always come with it, so they go
+    // wherever the photo's settings go). → { id, name, adj, own, modified }
+    // or null
+    lookOf(a) {
+        if (!a || typeof a.look !== 'string') return null;
+        const own = a.look.startsWith('own:');
+        if (own) {
+            if (!a.lookAdj || typeof a.lookAdj !== 'object') return null;
+            const name = typeof a.lookName === 'string' && a.lookName.trim() ? a.lookName.trim().slice(0, 60) : 'Your look';
+            return { id: a.look, name, adj: a.lookAdj, own: true, modified: false };
+        }
+        const l = this.look(a.look);
+        if (!l) return null;
+        const mine = a.lookAdj && typeof a.lookAdj === 'object';
+        return { id: l.id, name: [l.maker, l.name].filter(Boolean).join(' '), adj: mine ? a.lookAdj : l.adj, own: false, modified: !!mine };
+    },
+
+    // A look's own settings, checked: what a look can hold (not another
+    // look, masks, spots or Restore colour, which belong to one photo)
+    cleanLookAdj(x) {
+        if (!x || typeof x !== 'object') return {};
+        const { look, lookAmount, lookAdj, lookName, masks, spots, restore, ...rest } = x;
+        return this.clean(rest) || {};
+    },
+
     // Checked and made compact (only what's changed), or null for none.
     // Anything out of range is brought into it.
     clean(v) {
@@ -431,8 +461,12 @@ const Develop = {
         if (spots) out.spots = spots;
         const restore = this.cleanRestore(v.restore);
         if (restore) out.restore = restore;
-        if (this.look(v.look)) out.look = v.look;
-        else delete out.lookAmount;
+        const lk = this.lookOf(v);
+        if (lk) {
+            out.look = v.look;
+            if (v.lookAdj) out.lookAdj = this.cleanLookAdj(v.lookAdj);
+            if (lk.own) out.lookName = lk.name;
+        } else delete out.lookAmount;
         return Object.keys(out).length ? out : null;
     },
 
@@ -826,15 +860,19 @@ const Develop = {
     // The colour mixer, vibrance and saturation, on one colour (0–1)
     colourFn(a) {
         const own = this.ownColourFn(a);
-        const look = this.look(a.look);
+        const look = this.lookOf(a);
         if (!look) return own;
-        // The look, over the photo's own settings, by its amount
-        // (a look's own tables never change: made once)
-        this._looks = this._looks || {};
-        const made = this._looks[look.id] || (this._looks[look.id] = (() => {
+        // The look, over the photo's own settings, by its amount (a look's
+        // tables, as dialled in, are made once and kept)
+        this._looks = this._looks || new Map();
+        const lkey = look.id + JSON.stringify(look.adj);
+        let made = this._looks.get(lkey);
+        if (!made) {
             const la = this.full(look.adj);
-            return { lt: this.channelTables(la), lc: this.ownColourFn(la) };
-        })());
+            made = { lt: this.channelTables(la), lc: this.ownColourFn(la) };
+            this._looks.set(lkey, made);
+            if (this._looks.size > 40) this._looks.delete(this._looks.keys().next().value);
+        }
         const { lt, lc } = made;
         const k = a.lookAmount / 100;
         const at = (c, x) => {
@@ -944,7 +982,7 @@ const Develop = {
     LUTS_KEPT: 12,
 
     colourLut(a, N = this.LUT_SIZE) {
-        const key = N + JSON.stringify([a.hsl, a.saturation, a.vibrance, a.grade, a.gradeBlend, a.gradeBalance, a.mono, a.look, a.lookAmount]);
+        const key = N + JSON.stringify([a.hsl, a.saturation, a.vibrance, a.grade, a.gradeBlend, a.gradeBalance, a.mono, a.look, a.lookAmount, a.lookAdj]);
         const luts = this._luts || (this._luts = new Map());
         if (luts.has(key)) {
             const kept = luts.get(key);
@@ -996,7 +1034,7 @@ const Develop = {
     // null for none: { vig: [amount, middle, width, roundness], grain:
     // [amount, cells across the long side] }
     effects(a) {
-        const look = this.look(a.look);
+        const look = this.lookOf(a);
         const la = look ? this.full(look.adj) : null, k = look ? a.lookAmount / 100 : 0;
         const vig = Math.max(-100, Math.min(100, a.vignette + (la ? la.vignette * k : 0)));
         const grain = Math.min(100, a.grain + (la ? la.grain * k : 0));

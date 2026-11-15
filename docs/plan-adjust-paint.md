@@ -154,6 +154,11 @@ it stays non-destructive, as the rest of Adjust.
 
 - **Phase 1:** the Look group's picker and its **Amount** slider (as the
   mockup draws it).
+- *Done in phase 2 (the dialable looks and your own):* as below, with
+  two changes. The look's grain has Amount, Size and Colour (the engine
+  has no roughness). Your looks have no thumbnail, because the Look picker
+  is a text menu (phase 1's choice, a picker and not a wall of
+  thumbnails); a thumbnail would come with a picture picker.
 - **Phase 2, dialable looks:** picking a look opens its sliders under the
   picker, so a look is never fixed: Amount; Contrast (its tone curve);
   Fade (lifted blacks); Shadow tint and Highlight tint; Saturation and

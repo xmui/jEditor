@@ -7793,7 +7793,7 @@ const app = {
 
     // A menu's rows (the right-click menu's, and a menu opened beside one)
     fillMenu(menu, items) {
-        items.forEach(([label, action, danger, checked, key]) => {
+        items.forEach(([label, action, danger, checked, key, more]) => {
             // A heading over the items after it
             if (action === null) {
                 const h = document.createElement('div');
@@ -7847,6 +7847,16 @@ const app = {
                 };
                 // Another row pointed at: the menu beside the last one goes
                 if (menu.id === 'context-menu') btn.onmouseenter = () => this.closeFly();
+                // A row with its own right-click menu (a look of yours: rename,
+                // duplicate, delete), opened beside it
+                if (Array.isArray(more) && more.length) {
+                    btn.oncontextmenu = (ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        btn._items = more;
+                        this.openFly(btn, true);
+                    };
+                }
             }
             menu.appendChild(btn);
         });
