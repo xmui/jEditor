@@ -6239,6 +6239,39 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     background: var(--accent-soft);
 }
 
+/* ⋯ → History: the steps, the one now chosen; a click or a drag goes there */
+.paint-history {
+    display: flex;
+    flex-direction: column;
+    max-height: 220px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: none;
+    user-select: none;
+}
+
+.paint-step {
+    padding: 4px var(--sp-2);
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.paint-step:hover {
+    background: var(--bg-raised);
+}
+
+.paint-step[aria-selected="true"] {
+    background: var(--accent-soft);
+    color: var(--text-1);
+}
+
+.paint-step-undone {
+    color: var(--text-3);
+}
+
 .paint-layer canvas {
     flex: none;
     width: 48px;

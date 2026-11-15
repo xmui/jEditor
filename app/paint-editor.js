@@ -13,6 +13,9 @@
 //     QuickShape: hold still at the end of a stroke (not the spray) and it
 //     becomes a clean line, arc, circle or ellipse, rectangle or square;
 //     still held, dragging turns and sizes it (⋯ turns it off)
+//   On a touch screen: two fingers tapped undo, three redo. ⋯ → History
+//     lists the steps under the layers: click one, or drag along them, to
+//     go back and forth
 //   Fill (G), gradient: fill a colour (where it matches the colour
 //     clicked, or the whole layer), or a gradient to the background colour
 //     (or to nothing)
@@ -47,7 +50,7 @@ const PaintEditor = {
         tolerance: 32, contiguous: true, sampleAll: true, fillWhat: 'match', gaps: 0,
         lineWidth: 8, shapeFill: 'none', arrow: false,
         gradient: 'linear', gradTo: 'bg',
-        density: 40, quickShape: true,
+        density: 40, quickShape: true, history: false,
         font: 'system-ui, sans-serif', fontSize: 72, bold: false, italic: false,
         sizeFor: 1500   // the long side of the layers the sizes were for
     },
@@ -152,6 +155,7 @@ const PaintEditor = {
         bind('paint-layer-add', () => this.addLayer());
         bind('paint-import', () => this.pickImage());
         this.initImport();
+        this.initHistory();
         bind('paint-layer-dup', () => this.duplicateLayer());
         bind('paint-layer-up', () => this.moveLayer(1));
         bind('paint-layer-down', () => this.moveLayer(-1));
@@ -176,7 +180,7 @@ const PaintEditor = {
         blend.addEventListener('change', () => {
             const l = this.layer();
             if (!l) return;
-            this.pushState();
+            this.pushState('Blend');
             l.blend = blend.value;
             l.changed = true;
             this.afterState();
@@ -184,7 +188,7 @@ const PaintEditor = {
         this.opacityRow = this.slider('Opacity', 0, 100, 1, () => Math.round((this.layer() ? this.layer().opacity : 1) * 100), (v, start) => {
             const l = this.layer();
             if (!l) return;
-            if (start) this.pushState();
+            if (start) this.pushState('Layer opacity');
             l.opacity = v / 100;
             l.changed = true;
             this.renderSoon();
@@ -414,7 +418,7 @@ const PaintEditor = {
         const before = this.edit;
         const after = how === 'h' || how === 'v' ? Edits.flipped(before, how) : Edits.turned(before, how);
         this.applyView(after);
-        this.record({ kind: 'view', before, after });
+        this.record({ kind: 'view', name: { 1: 'Rotate right', 3: 'Rotate left', 2: 'Rotate 180°', h: 'Flip left to right', v: 'Flip upside down' }[how] || 'Turn', before, after });
     },
 
     applyView(edit) {
@@ -434,6 +438,7 @@ const PaintEditor = {
         this.history = [];
         this.future = [];
         this.historyBytes = 0;
+        this.trimmed = false;
         this.sel = null;
         this.float = null;
         this.drag = null;
@@ -1006,6 +1011,7 @@ const PaintEditor = {
 
     down(e) {
         if (!this.ready || this.busy) return;
+        if (e.pointerType === 'touch' && this.touchDown(e)) return;
         this.alt = e.altKey;
         // Alt + right-drag: the brush's size sideways, its hardness up and down
         if (e.button === 2 && e.altKey && this.isBrush()) {
@@ -1058,6 +1064,7 @@ const PaintEditor = {
 
     move(e) {
         if (!this.ready) return;
+        if (e.pointerType === 'touch' && this.touchMove(e)) return;
         const p = this.point(e);
         const d = this.drag;
         if (!d && e.altKey !== !!this.alt) { this.alt = e.altKey; this.cursor(); }
@@ -1096,6 +1103,7 @@ const PaintEditor = {
     },
 
     up(e) {
+        if (e.pointerType === 'touch' && this.touchUp(e)) return;
         const d = this.drag;
         if (this.stage.hasPointerCapture && this.stage.hasPointerCapture(e.pointerId)) this.stage.releasePointerCapture(e.pointerId);
         clearTimeout(this._hold);
@@ -1159,7 +1167,7 @@ const PaintEditor = {
     },
 
     // After it: the part that changed (r), before and after
-    endPixels(l, r, { free = false } = {}) {
+    endPixels(l, r, { free = false, name = this.toolName() } = {}) {
         r = this.clampRect(r);
         if (!r || this._beforeOf !== l) return;
         const before = this.before.getContext('2d', { willReadFrequently: true }).getImageData(r.x, r.y, r.w, r.h);
@@ -1175,7 +1183,7 @@ const PaintEditor = {
             l.canvas.getContext('2d').putImageData(after, r.x, r.y);
         }
         l.changed = true;
-        this.record({ kind: 'px', layer: l, r, before, after, bytes: r.w * r.h * 8 });
+        this.record({ kind: 'px', name, layer: l, r, before, after, bytes: r.w * r.h * 8 });
     },
 
     clampRect(r) {
@@ -1191,6 +1199,7 @@ const PaintEditor = {
         this.future = [];
         while (this.history.length > 1 && (this.history.length > 60 || this.historyBytes > this.HISTORY_BYTES)) {
             this.historyBytes -= this.history.shift().bytes || 0;
+            this.trimmed = true;
         }
         this.drawLayersSoon();
     },
@@ -1200,15 +1209,17 @@ const PaintEditor = {
         return { layers: this.layers.map(l => ({ ...l })), cur: this.cur };
     },
 
-    pushState() {
+    // name: the step, as the history lists it
+    pushState(name = 'Layers') {
         this._state = this.snapshot();
+        this._state.name = name;
     },
 
     afterState(extra = null) {
         const before = this._state;
         this._state = null;
         if (!before) return;
-        const entry = { kind: 'state', before, after: this.snapshot(), extra, bytes: extra ? extra.bytes : 0 };
+        const entry = { kind: 'state', name: before.name, before, after: this.snapshot(), extra, bytes: extra ? extra.bytes : 0 };
         this.record(entry);
         this.drawLayers();
         this.renderSoon();
@@ -1250,6 +1261,149 @@ const PaintEditor = {
         this.drawLayers();
         this.renderSoon();
         return true;
+    },
+
+    // A tool's name, as the history lists it
+    toolName(t = this.tool) {
+        const row = this.TOOLS.find(x => x[0] === t);
+        return row ? row[1].replace(/[:(].*$/, '').trim() : 'Paint';
+    },
+
+    // ---- History ----
+    //
+    // ⋯ → History: the steps under the layers, the one now chosen; a click
+    // or a drag along them goes there (each step undone or redone in turn)
+
+    toggleHistory() {
+        this.opts.history = !this.opts.history;
+        this.remember();
+        this.drawHistory();
+    },
+
+    // To n steps done (0: as opened, or as far back as is kept)
+    goTo(n) {
+        n = Math.max(0, Math.min(n, this.history.length + this.future.length));
+        let moved = false;
+        this._batch = true;
+        try {
+            while (this.history.length > n && this.undo()) moved = true;
+            while (this.history.length < n && this.redo()) moved = true;
+        } finally { this._batch = false; }
+        this.drawLayers();
+        return moved;
+    },
+
+    drawHistory() {
+        const sec = this.el('paint-history-sec'), list = this.el('paint-history');
+        if (!sec || !list) return;
+        sec.classList.toggle('hidden', !this.opts.history);
+        if (!this.opts.history || !this.ready) return;
+        const done = this.history.length;
+        const steps = [this.trimmed ? 'Earlier steps' : 'Opened', ...this.history.map(e => e.name || 'Paint'), ...this.future.slice().reverse().map(e => e.name || 'Paint')];
+        list.textContent = '';
+        steps.forEach((name, i) => {
+            const row = document.createElement('div');
+            row.className = 'paint-step' + (i > done ? ' paint-step-undone' : '');
+            row.setAttribute('role', 'option');
+            row.setAttribute('aria-selected', String(i === done));
+            row.dataset.step = String(i);
+            row.textContent = name;
+            list.appendChild(row);
+        });
+        const now = list.children[done];
+        if (now && now.scrollIntoView) now.scrollIntoView({ block: 'nearest' });
+    },
+
+    initHistory() {
+        const list = this.el('paint-history');
+        if (!list) return;
+        const at = (e) => {
+            const row = document.elementFromPoint(e.clientX, e.clientY);
+            const step = row && row.closest && row.closest('.paint-step');
+            return step && list.contains(step) ? +step.dataset.step : null;
+        };
+        let scrubbing = false;
+        list.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0 || this.busy || !this.ready) return;
+            const n = at(e);
+            if (n === null) return;
+            e.preventDefault();
+            scrubbing = true;
+            try { list.setPointerCapture(e.pointerId); } catch (err) { /* not a live pointer */ }
+            this.goTo(n);
+        });
+        list.addEventListener('pointermove', (e) => {
+            if (!scrubbing) return;
+            const n = at(e);
+            if (n !== null && n !== this.history.length) this.goTo(n);
+        });
+        const stop = () => { scrubbing = false; };
+        list.addEventListener('pointerup', stop);
+        list.addEventListener('pointercancel', stop);
+    },
+
+    // ---- Taps on a touch screen ----
+    //
+    // Two fingers tapped: undo; three: redo. A second finger within a
+    // moment of the first makes it a tap (what the first began is dropped);
+    // later, other fingers are ignored and the first keeps painting
+
+    TAP_JOIN_MS: 250,
+    TAP_MS: 500,
+
+    touchDown(e) {
+        const T = this.touches || (this.touches = { ids: new Map(), main: null, tap: null });
+        T.ids.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (T.ids.size === 1) {
+            T.main = e.pointerId;
+            T.t0 = performance.now();
+            T.h0 = this.history.length;
+            T.tap = null;
+            return false;
+        }
+        e.preventDefault();
+        if (!T.tap && T.main !== null && performance.now() - T.t0 < this.TAP_JOIN_MS) {
+            this.dropDrag();
+            T.tap = { n: 0, moved: false };
+            T.main = null;
+        }
+        if (T.tap) T.tap.n = Math.max(T.tap.n, T.ids.size);
+        return true;
+    },
+
+    touchMove(e) {
+        const T = this.touches;
+        if (!T || e.pointerId === T.main) return false;
+        const s = T.ids.get(e.pointerId);
+        if (T.tap && s && Math.hypot(e.clientX - s.x, e.clientY - s.y) > 12) T.tap.moved = true;
+        return true;
+    },
+
+    touchUp(e) {
+        const T = this.touches;
+        if (!T) return false;
+        T.ids.delete(e.pointerId);
+        if (e.pointerId === T.main) { T.main = null; return false; }
+        if (!T.tap || T.ids.size) return true;
+        const tap = T.tap;
+        T.tap = null;
+        if (tap.moved || performance.now() - T.t0 > this.TAP_MS) return true;
+        // What the first finger did at once (a fill, say) is part of the tap
+        while (this.history.length > T.h0 && this.undo()) this.future.pop();
+        if (tap.n === 2) { if (!this.undo()) this.app.showToast('Nothing to undo', 1200); }
+        else if (tap.n === 3) { if (!this.redo()) this.app.showToast('Nothing to redo', 1200); }
+        return true;
+    },
+
+    // What's being drawn, dropped (nothing goes on the layer)
+    dropDrag() {
+        clearTimeout(this._hold);
+        const d = this.drag;
+        if (!d) return;
+        if (d.kind === 'paint') this.stroke.getContext('2d').clearRect(0, 0, this.W, this.H);
+        this.drag = null;
+        this.cursor();
+        this.renderSoon();
     },
 
     // ---- Brushes ----
@@ -1554,7 +1708,7 @@ const PaintEditor = {
         const r = { x: d.dirty.x0, y: d.dirty.y0, w: d.dirty.x1 - d.dirty.x0, h: d.dirty.y1 - d.dirty.y0 };
         this.stroke.getContext('2d').clearRect(0, 0, this.W, this.H);
         this.drag = null;
-        this.endPixels(l, r);
+        this.endPixels(l, r, { name: d.snap ? `${this.toolName(d.tool)}: ${d.snap.name}` : this.toolName(d.tool) });
     },
 
     rgb(hex) {
@@ -1886,6 +2040,7 @@ const PaintEditor = {
                 ...(n > 1 ? [['—'], ['Delete layer', () => this.deleteLayer(), true]] : [])
             ]],
             ['—'],
+            ['History', () => this.toggleHistory(), false, this.opts.history],
             ['QuickShape: hold at a stroke\'s end', () => { this.opts.quickShape = !this.opts.quickShape; this.remember(); }, false, this.opts.quickShape]
         ];
     },
@@ -2070,7 +2225,7 @@ const PaintEditor = {
         } else {
             g.clearRect(0, 0, this.W, this.H);
         }
-        this.endPixels(l, r);
+        this.endPixels(l, r, { name: 'Delete' });
         this.renderSoon();
     },
 
@@ -2287,7 +2442,7 @@ const PaintEditor = {
             this.sel = { mask: m };
             this.selectionChanged();
         }
-        this.endPixels(l, { x: 0, y: 0, w: this.W, h: this.H }, { free: true });
+        this.endPixels(l, { x: 0, y: 0, w: this.W, h: this.H }, { free: true, name: 'Move' });
         this.buildOptions();
         this.renderSoon();
     },
@@ -2314,7 +2469,7 @@ const PaintEditor = {
         if (!f) return;
         this.float = null;
         f.canvas.width = f.canvas.height = 0;
-        this.endPixels(f.layer, { x: 0, y: 0, w: this.W, h: this.H }, { free: true });
+        this.endPixels(f.layer, { x: 0, y: 0, w: this.W, h: this.H }, { free: true, name: 'Delete' });
         this.buildOptions();
         this.renderSoon();
     },
@@ -2430,7 +2585,7 @@ const PaintEditor = {
         fg.drawImage(bmp, 0, 0, w, h);
         bmp.close();
         // A layer of its own, above this one
-        this.pushState();
+        this.pushState('Bring in an image');
         this.layers.splice(this.cur + 1, 0, this.makeLayer(String(name).replace(/\.[^.]+$/, '').slice(0, 40) || 'Image'));
         this.cur++;
         this.afterState();
@@ -2644,6 +2799,8 @@ const PaintEditor = {
     },
 
     drawLayers() {
+        if (this._batch) return;
+        this.drawHistory();
         const list = this.el('paint-layer-list');
         if (!list || !this.ready) return;
         list.textContent = '';
@@ -2672,7 +2829,7 @@ const PaintEditor = {
                 e.stopPropagation();
                 eye.blur();
                 if (e.altKey) { this.soloLayer(i); return; }
-                this.pushState();
+                this.pushState(l.hidden ? 'Show layer' : 'Hide layer');
                 l.hidden = !l.hidden;
                 l.changed = true;
                 this.afterState();
@@ -2751,7 +2908,7 @@ const PaintEditor = {
     toggleLock(i = this.cur) {
         const l = this.layers[i];
         if (!l) return;
-        this.pushState();
+        this.pushState('Lock transparency');
         l.lock = !l.lock;
         this.afterState();
         this.app.showToast(l.lock ? `${l.name}: transparency locked` : `${l.name}: transparency unlocked`, 1600);
@@ -2760,7 +2917,7 @@ const PaintEditor = {
     // Alt-click an eye: that layer alone; again, all of them back
     soloLayer(i) {
         const alone = this.layers.every((l, j) => (j === i) !== !!l.hidden);
-        this.pushState();
+        this.pushState('Show one layer');
         this.layers.forEach((l, j) => { l.hidden = alone ? false : j !== i; l.changed = true; });
         this.afterState();
     },
@@ -2794,7 +2951,7 @@ const PaintEditor = {
         if (!this.ready) return;
         if (this.layers.length >= Paint.MAX_LAYERS) { this.app.showToast(`Up to ${Paint.MAX_LAYERS} layers`); return; }
         if (this.float) this.commitFloat();
-        this.pushState();
+        this.pushState('New layer');
         const n = this.layers.length + 1;
         this.layers.splice(this.cur + 1, 0, this.makeLayer(`Layer ${n}`));
         this.cur++;
@@ -2805,7 +2962,7 @@ const PaintEditor = {
         const l = this.layer();
         if (!l || this.layers.length >= Paint.MAX_LAYERS) return;
         if (this.float) this.commitFloat();
-        this.pushState();
+        this.pushState('Duplicate layer');
         const copy = this.makeLayer(`${l.name} copy`);
         Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: l.lock });
         copy.canvas.getContext('2d').drawImage(l.canvas, 0, 0);
@@ -2817,7 +2974,7 @@ const PaintEditor = {
     deleteLayer() {
         if (this.layers.length <= 1) return;
         if (this.float) this.commitFloat();
-        this.pushState();
+        this.pushState('Delete layer');
         this.layers.splice(this.cur, 1);
         this.cur = Math.max(0, this.cur - 1);
         this.afterState();
@@ -2827,7 +2984,7 @@ const PaintEditor = {
         const j = this.cur + dir;
         if (j < 0 || j >= this.layers.length) return;
         if (this.float) this.commitFloat();
-        this.pushState();
+        this.pushState('Move layer');
         [this.layers[this.cur], this.layers[j]] = [this.layers[j], this.layers[this.cur]];
         this.cur = j;
         this.afterState();
@@ -2837,7 +2994,7 @@ const PaintEditor = {
         if (this.cur <= 0) return;
         if (this.float) this.commitFloat();
         const top = this.layer(), below = this.layers[this.cur - 1];
-        this.pushState();
+        this.pushState('Merge down');
         this.beginPixels(below);
         const g = below.canvas.getContext('2d');
         if (!top.hidden) {
@@ -2860,7 +3017,7 @@ const PaintEditor = {
         if (!l) return;
         const name = await UI.prompt({ title: 'Rename the layer', input: { label: 'Name', value: l.name }, ok: 'Rename' });
         if (name === null || !name.trim()) return;
-        this.pushState();
+        this.pushState('Rename layer');
         l.name = name.trim().slice(0, 60);
         this.afterState();
     },
