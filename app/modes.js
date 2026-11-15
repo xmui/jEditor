@@ -307,7 +307,8 @@ const Modes = {
         const railShown = this.visible('folder-rail');
         const barShown = this.visible('folder-bar');
         const own = !document.documentElement.dataset.skin;
-        const crop = app.cropState && app.cropState.active;
+        // (Adjust and Paint are open inside the crop state: only Photos' crop counts)
+        const crop = app.cropState && app.cropState.active && mode === 'photos';
         this.renderRow(own, railShown, any && open && mode === 'photos' && !crop);
         // The chip in the folder pill: while the sidebar's closed, in a
         // theme (in jEditor's own look the row stays, as a pill)
@@ -358,12 +359,10 @@ const Modes = {
         find.title = keys.length ? Host.keys(`Find anything (${keys[0]})`) : 'Find anything';
         find.setAttribute('aria-label', 'Find anything');
         find.classList.toggle('hidden', typeof Palette === 'undefined');
-        cancelAnimationFrame(this.rowFrame);
-        this.rowFrame = requestAnimationFrame(() => {
-            const shown = float && !row.classList.contains('hidden');
-            document.documentElement.style.setProperty('--mode-row-w', shown ? `${Math.ceil(row.getBoundingClientRect().width)}px` : '0px');
-            if (shown && typeof Folders !== 'undefined' && Folders.fitBar) Folders.fitBar();
-        });
+        // At once, so the folder pill is never under it for a frame
+        const shown = float && !row.classList.contains('hidden');
+        document.documentElement.style.setProperty('--mode-row-w', shown ? `${Math.ceil(row.getBoundingClientRect().width)}px` : '0px');
+        if (shown && typeof Folders !== 'undefined' && Folders.fitBar) Folders.fitBar();
     },
 
     // Over Adjust and Paint the chip floats in their head's left corner, and
