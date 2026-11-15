@@ -6111,19 +6111,23 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.undoInside = Adjust.a.exposure === 0;
             key('Z', { ctrlKey: true, shiftKey: true });
             out.redoInside = Adjust.a.exposure === 1;
-            // A look: its picture made from this photo, a click puts it on, with an amount
+            // A look: one line in Basic, its menu the films by process; one
+            // chosen goes on, with an amount, and None takes it off
             step = 'looks';
-            document.querySelector('.adj-look-tabs [data-tab="B&W"]').click();
-            await until(() => document.querySelectorAll('.adj-look canvas').length === Develop.LOOKS.length + 1 && document.querySelector('.adj-look[data-look="trix"] canvas').width > 0);
-            out.tabShowsItsFilms = document.querySelector('.adj-look[data-look="portra400"]').classList.contains('hidden') && !document.querySelector('.adj-look[data-look="trix"]').classList.contains('hidden');
-            const bwThumb = document.querySelector('.adj-look[data-look="trix"] canvas').getContext('2d').getImageData(10, 10, 1, 1).data;
-            out.lookThumbGrey = out.tabShowsItsFilms && Math.abs(bwThumb[0] - bwThumb[1]) <= 3 && Math.abs(bwThumb[1] - bwThumb[2]) <= 3;
-            document.querySelector('.adj-look[data-look="trix"]').click();
+            document.getElementById('adj-look-pick').click();
+            await sleep(30);
+            const menu = document.getElementById('context-menu');
+            out.lookMenu = !!menu && /None/.test(menu.textContent) && Develop.PROCESSES.every(([, label]) => menu.textContent.includes(label));
+            app.closeContextMenu();
+            const bw = Adjust.lookItems().find(i => i[0] === 'B&W');
+            const trix = bw && bw[1].find(i => /Tri-X/.test(i[0]));
+            if (trix) trix[1]();
             await sleep(60);
-            out.lookOn = Adjust.result().look === 'trix' && !document.getElementById('adj-look-amount').classList.contains('hidden') && document.querySelector('.adj-look[data-look="trix"]').getAttribute('aria-pressed') === 'true';
-            document.querySelector('.adj-look[data-look=""]').click();
-            document.querySelector('.adj-look-tabs [data-tab="C-41"]').click();
-            out.lookOff = !Adjust.result().look;
+            out.lookOn = Adjust.result().look === 'trix' && !document.getElementById('adj-look-amount').classList.contains('hidden') && /Tri-X/.test(document.getElementById('adj-look-name').textContent)
+                && Adjust.lookItems().find(i => i[0] === 'B&W')[1].find(i => /Tri-X/.test(i[0]))[3] === true;
+            Adjust.lookItems()[0][1]();
+            await sleep(30);
+            out.lookOff = !Adjust.result().look && document.getElementById('adj-look-name').textContent === 'None';
             // A grading wheel: dragged out to the right is red, strong
             step = 'wheel';
             const grading = [...document.querySelectorAll('details.adj-sec')].find(d => /Color grading/.test(d.querySelector('summary').textContent));
@@ -6282,7 +6286,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('adjust: part of jEditor in a release, nothing to turn on (the mode switch and the menu offer it)', r.onShown, JSON.stringify(r));
         check('adjust: E opens it on the GPU, with a histogram', r.open, JSON.stringify(r));
         check('adjust: sliders change the photo and its histogram live; Ctrl+Z / Ctrl+Shift+Z inside; \\ shows before', r.live && r.undoInside && r.redoInside && r.beforeShown, JSON.stringify(r));
-        check('adjust: films shown on the photo by process, a click puts one on (with Amount) or takes it off', r.lookThumbGrey && r.lookOn && r.lookOff, JSON.stringify(r));
+        check('adjust: Look is one line whose menu has the films by process; one chosen goes on (with Amount), None takes it off', r.lookMenu && r.lookOn && r.lookOff, JSON.stringify(r));
         check('adjust: a grading wheel takes a hue and strength; presets save and put settings back', r.wheel && r.preset, JSON.stringify(r));
         check('adjust: Detail shows the full photo at 1:1, where you click', r.loupe, JSON.stringify(r));
         check('adjust: Pick grey (W) sets the white balance from a click on the photo, one Ctrl+Z; Esc stops picking', r.pickOn && r.pickEsc && r.picked && r.pickUndone, JSON.stringify(r));
