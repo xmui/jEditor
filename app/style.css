@@ -5325,6 +5325,14 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     pointer-events: none;
 }
 
+/* Past 100%: the photo's pixels as sharp squares, as in Photos' viewer
+   (adjust.js layout: adj-pixels; adj-whole when the picture is the whole
+   photo's own pixels) */
+.adjust-editor.adj-pixels .adj-sharp,
+.adjust-editor.adj-pixels.adj-whole #adj-canvas {
+    image-rendering: pixelated;
+}
+
 /* Zoomed in, a drag moves about; Space held, whatever tool is out */
 .adjust-editor.adj-zoomed .adj-stage,
 .adjust-editor.adj-zoomed #adj-canvas,

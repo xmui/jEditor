@@ -308,6 +308,14 @@ const PROJECT = `
                 pressKey('1', { ctrlKey: true });
                 const cr = () => Adjust.canvas.getBoundingClientRect();
                 out.at100 = [Adjust.fitted, Math.round(Adjust.view.z * 1000) / 1000, Math.round(cr().width), chip('adj-zoom-100'), chip('adj-zoom-fit'), level.classList.contains('hidden')];
+                // Past 100% the photo's pixels are sharp squares; smooth at 100%
+                step = 'pixels';
+                const squares = () => [Adjust.root.classList.contains('adj-pixels'), getComputedStyle(document.getElementById('adj-sharp')).imageRendering, getComputedStyle(Adjust.canvas).imageRendering].join();
+                out.pixels = [squares()];
+                Adjust.zoomAt(4);
+                out.pixels.push(squares());
+                Adjust.zoomAt(1);
+                out.pixels.push(squares());
                 // Sharp: the part on screen from the full-size photo, one of
                 // its pixels to one screen pixel, the checker still there
                 step = 'sharp';
@@ -375,6 +383,7 @@ const PROJECT = `
         });
         check('zoom: Adjust opens fitted, the chip says Fit (a big photo, a smaller working copy)', z.fit && String(z.fit) === 'true,true,false,true,true', JSON.stringify(z));
         check('zoom: Ctrl+1 shows it at 100% (one photo pixel to a screen pixel), the chip says so', z.at100 && String(z.at100) === 'false,1,4000,true,false,true', JSON.stringify(z.at100));
+        check('zoom: past 100% the photo\'s pixels are sharp squares (on the full-size part, not the smaller working copy); smooth at 100%', z.pixels && z.pixels.join(' | ') === 'false,auto,auto | true,pixelated,auto | false,auto,auto', JSON.stringify(z.pixels));
         check('zoom: at 100% the part on screen is drawn from the full-size photo, pixel for pixel', z.sharpSize && String(z.sharpSize) === '4000,2600,true,true', JSON.stringify(z.sharpSize));
         check('zoom: sharp at 100%: fine detail the screen-sized copy loses is there', z.inChecker && z.contrast && z.contrast[0] > 100 && z.contrast[0] > z.contrast[1] * 2, JSON.stringify(z.contrast));
         check('zoom: the sharp part is adjusted as the picture under it is', z.same && Math.abs(z.same[0] - z.same[1]) <= 6 && z.same[0] > 150, JSON.stringify(z.same));
