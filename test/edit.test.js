@@ -1083,6 +1083,17 @@ const PROJECT = `
             const menu = document.getElementById('context-menu');
             out.slots = [slots.length, slots.map(b => b.dataset.tool).join(), slots.filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.dataset.tool).join(), menu ? menu.querySelectorAll('[role^="menuitem"]').length : 0];
             app.closeContextMenu();
+            // Saved colours: + saves the brush colour once, kept between
+            // sessions; taken off again
+            PaintEditor.init(app);
+            const sw = () => document.querySelectorAll('#paint-palette button:not(.paint-palette-add)').length;
+            const n0 = sw();
+            PaintEditor.fg = '#123456';
+            PaintEditor.saveColour();
+            PaintEditor.saveColour();
+            const n1 = sw(), kept = JSON.parse(localStorage.getItem('jeditor.paintColours') || '[]').includes('#123456');
+            PaintEditor.removeColour('#123456');
+            out.saved = [n1 - n0, kept, sw() - n0, !!document.getElementById('paint-choose')];
             // Grow, shrink and feather a selection: a 20 x 20 square in 60 x 60
             const W = 60, H = 60, sq = new Uint8ClampedArray(W * H);
             for (let y = 20; y < 40; y++) for (let x = 20; x < 40; x++) sq[y * W + x] = 255;
@@ -1101,6 +1112,7 @@ const PROJECT = `
         check('paint: the record is checked (names, opacity, blend; bad ids dropped)', m.clean === '{"id":"abc","w":100,"h":50,"layers":[{"id":"l1","rev":"r1","name":"Sky","opacity":1,"blend":"source-over","hidden":true}]}' && m.none, JSON.stringify(m));
         check('paint: layers at the photo\'s size, a very big one smaller', m.size === '[{"w":3000,"h":2000},{"w":800,"h":600}]', m.size);
         check('paint: nine tool slots, each showing its group\'s tool used last; a right-click lists the others', JSON.stringify(m.slots) === '[9,"move,lasso,pencil,eraser,fill,line,text,picker,hand","pencil",4]', JSON.stringify(m.slots));
+        check('paint: saved colours: + saves the brush colour (once), kept; right-click takes one off; Choose a colour…', JSON.stringify(m.saved) === '[1,true,0,true]', JSON.stringify(m.saved));
 
         const r = await page.evaluate(async () => {
             let step = 'start';
@@ -1153,6 +1165,24 @@ const PROJECT = `
                 out.undo = px(0, 100, 100)[3];
                 pressKey('Z', { ctrlKey: true, shiftKey: true });
                 out.redo = px(0, 100, 100)[3];
+                // Alt with the brush: the colour picker, its loupe drawn; the
+                // brush paints nothing
+                step = 'alt pick';
+                P.fg = '#0000ff';
+                pe('pointerdown', 100, 100, { altKey: true });
+                P.render();
+                pe('pointerup', 100, 100, { altKey: true });
+                out.altPick = [P.fg, !!P._loupeCv && P._loupeCv.width === P.LOUPE_N, px(0, 100, 130)[3]];
+                P.alt = false;
+                P.fg = '#ff0000';
+                // Alt + right-drag: bigger to the right, softer down; no paint
+                step = 'alt size';
+                P.opts.size = 20; P.opts.hardness = 100;
+                pe('pointerdown', 250, 300, { altKey: true, button: 2 });
+                pe('pointermove', 330, 340, { altKey: true, button: 2 });
+                pe('pointerup', 330, 340, { altKey: true, button: 2 });
+                out.altSize = [P.opts.size > 20, P.opts.hardness < 100, px(0, 290, 320)[3], P.drag];
+                P.opts.size = 20; P.opts.hardness = 100;
                 // Half opacity: half covered
                 step = 'opacity';
                 P.opts.opacity = 50;
@@ -1353,6 +1383,8 @@ const PROJECT = `
         check('paint: starts with the photo locked as the bottom layer and a new layer on it', r.start, JSON.stringify(r));
         check('paint: the photo is drawn at screen size once for a view, again when it zooms', r.shownKept && r.shownRedrawn, JSON.stringify([r.shownKept, r.shownRedrawn]));
         check('paint: a brush stroke paints the layer (hard-edged), Ctrl+Z / Ctrl+Shift+Z inside', r.brush && r.brush[0] === 255 && r.brush[3] === 255 && r.brushEdge === 0 && r.undo === 0 && r.redo === 255, JSON.stringify(r));
+        check('paint: Alt with the brush picks the colour under it, with the loupe, and paints nothing', JSON.stringify(r.altPick) === '["#ff0000",true,0]', JSON.stringify(r.altPick));
+        check('paint: Alt + right-drag makes the brush bigger (sideways) and softer (down), painting nothing', JSON.stringify(r.altSize) === '[true,true,0,null]', JSON.stringify(r.altSize));
         check('paint: a stroke at 50% opacity covers half, however it overlaps itself', r.half >= 120 && r.half <= 135, JSON.stringify(r));
         check('paint: a stroke shows as it\'s drawn exactly as it goes on (redone only where it reached), and the eraser too', String(r.previewOff) === '0,0', String(r.previewOff));
         check('paint: sizes are the photo\'s own pixels, the same part of each photo (small on a small photo); the size slider spreads small sizes out', JSON.stringify(r.sizes) === '[10,400,200]' && JSON.stringify(r.slider) === '[5,"5"]', JSON.stringify([r.sizes, r.slider]));
