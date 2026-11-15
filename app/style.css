@@ -5453,11 +5453,6 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     gap: var(--sp-1);
 }
 
-.adj-sec-reset {
-    color: var(--text-2);
-    font-weight: var(--fw-regular);
-}
-
 .adj-tabs {
     display: inline-flex;
     padding: 2px;
@@ -5618,19 +5613,62 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     justify-content: space-between;
 }
 
-/* Edit · Retouch · Masks, under the histogram */
+/* The four tools under the histogram: Edit, Restore, Heal, Masks, as
+   icons; the one shown in the accent on the soft chosen pill */
 .adj-pane-tabs {
     display: flex;
+    gap: var(--sp-1);
     margin: var(--sp-2) 0 var(--sp-1);
 }
 
-.adj-pane-tabs .adj-tab {
+.adj-tool {
     flex: 1;
+    display: grid;
+    place-items: center;
     height: var(--ctl-md);
-    font-size: var(--fs-body);
+    padding: 0;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-2);
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 
-/* Retouch and Masks hold one section each, always open: its head is a title */
+.adj-tool .i {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+    stroke-width: 1.5;
+}
+
+.adj-tool:hover {
+    background: var(--bg-hover);
+    color: var(--text-1);
+}
+
+.adj-tool[aria-selected="true"] {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+}
+
+/* Quick fixes: one row of buttons, at the top of Edit and in Restore */
+.adj-fixes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-1);
+    margin: var(--sp-1) 0 var(--sp-2);
+}
+
+/* A switch with its label before it (Show spots, Show mask, Invert) */
+.adj-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    color: var(--text-2);
+    cursor: pointer;
+}
+
+/* Restore, Heal and Masks hold one section each, always open: its head is a title */
 .adj-pane:not([data-pane="edit"]) > .adj-sec > summary {
     cursor: default;
 }
