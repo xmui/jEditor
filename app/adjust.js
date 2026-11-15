@@ -232,8 +232,6 @@ const Adjust = {
         this.future = [];
         const kept = Edits.get(file);
         this.a = Develop.full(kept && kept.adj);
-        const look = Develop.look(this.a.look);
-        if (look && this._inited && look.process !== this.lookTab) this.showLookTab(look.process);
         this.start = JSON.stringify(Develop.clean(this.a));
         this.root.classList.remove('hidden');
         this.el('adj-file').textContent = file.name;
@@ -385,7 +383,6 @@ const Adjust = {
         this.w = bmp.width;
         this.h = bmp.height;
         this._detailKey = null;
-        this._looksKey = null;
 
         // What the histogram and Auto look at
         const s = Math.min(1, this.SAMPLE / Math.max(bmp.width, bmp.height));
@@ -397,12 +394,6 @@ const Adjust = {
         this.sample = sctx.getImageData(0, 0, sc.width, sc.height).data;
         this.sampleW = sc.width;
         this.sampleH = sc.height;
-        // And the looks' pictures
-        const ts = Math.min(1, 84 / Math.max(bmp.width, bmp.height));
-        sc.width = Math.max(1, Math.round(bmp.width * ts));
-        sc.height = Math.max(1, Math.round(bmp.height * ts));
-        sctx.drawImage(bmp, 0, 0, sc.width, sc.height);
-        this.thumb = sctx.getImageData(0, 0, sc.width, sc.height);
         this.sampleOut = new Uint8ClampedArray(this.sample.length);
 
         if (this.gl) {
@@ -1046,7 +1037,6 @@ const Adjust = {
         this.drawPanels();
         AdjustMasks.draw();
         AdjustSpots.draw();
-        this.looksSoon();
     },
 
     // ---- Detail: sharpening and noise reduction ----
@@ -1196,47 +1186,39 @@ const Adjust = {
     // Film looks (develop.js LOOKS), each shown on this photo as it now is
 
     initLooks() {
-        const tabs = this.el('adj-look-tabs');
-        try { this.lookTab = localStorage.getItem('jeditor.lookTab'); } catch (e) { /* private mode */ }
-        if (!Develop.PROCESSES.some(p => p[0] === this.lookTab)) this.lookTab = 'C-41';
-        for (const [id, label, title] of Develop.PROCESSES) {
-            const b = document.createElement('button');
-            b.className = 'adj-tab';
-            b.dataset.tab = id;
-            b.textContent = label;
-            b.title = title;
-            b.setAttribute('role', 'tab');
-            b.addEventListener('click', () => { b.blur(); this.showLookTab(id); });
-            tabs.appendChild(b);
-        }
-        const box = this.el('adj-looks');
-        // One row in Basic: a mouse wheel moves along it, not down the panel
-        box.addEventListener('wheel', (e) => {
-            if (e.deltaX || e.ctrlKey || box.scrollWidth <= box.clientWidth) return;
-            e.preventDefault();
-            box.scrollLeft += e.deltaY;
-        }, { passive: false });
-        const tile = (look) => {
-            const b = document.createElement('button');
-            b.className = 'adj-look';
-            b.dataset.look = look ? look.id : '';
-            b.dataset.tab = look ? look.process : '';
-            b.title = look ? `${look.maker} ${look.name} · ${look.code || look.process}\n${look.note}` : 'No look';
-            b.innerHTML = '<canvas></canvas><span></span>';
-            b.querySelector('span').textContent = look ? look.name : 'None';
-            b.addEventListener('click', () => {
-                b.blur();
-                if (!this.ready) return;
-                this.pushHistory();
-                this.a.look = look ? look.id : null;
-                if (!look) this.a.lookAmount = 100;
-                this.changed();
-            });
-            box.appendChild(b);
-        };
-        tile(null);
-        for (const l of Develop.LOOKS) tile(l);
-        this.showLookTab(this.lookTab);
+        // One line in Basic: the look's name, opening a menu of the films
+        // by process (the plan: a picker, not a wall of thumbnails)
+        this.el('adj-look-pick').addEventListener('click', (e) => {
+            const b = e.currentTarget;
+            e.stopPropagation(); // not to the window, which closes menus
+            b.blur();
+            if (this.busy || !this.ready) return;
+            const r = b.getBoundingClientRect();
+            this.app.openContextMenu(this.lookItems(), r.left, r.bottom + 4);
+        });
+    },
+
+    lookName(l) {
+        return l ? [l.maker, l.name].filter(Boolean).join(' ') : 'None';
+    },
+
+    setLook(id) {
+        if (!this.ready || (id || null) === (this.a.look || null)) return;
+        this.pushHistory();
+        this.a.look = id || null;
+        if (!id) this.a.lookAmount = 100;
+        this.changed();
+    },
+
+    // None, then each process with its films beside it
+    lookItems() {
+        const on = this.a.look || null;
+        return [
+            ['None', () => this.setLook(null), false, !on],
+            ['—'],
+            ...Develop.PROCESSES.map(([id, label]) => [label, Develop.LOOKS.filter(l => l.process === id)
+                .map(l => [this.lookName(l), () => this.setLook(l.id), false, on === l.id])])
+        ];
     },
 
     // The four tools: Edit, Restore, Heal and Masks. Restore, Heal and
@@ -1282,43 +1264,6 @@ const Adjust = {
         this.drawWheels();
         this.placeLoupeBox();
         if (this.detailOpen()) this.renderLoupe();
-    },
-
-    // One process's films (None is always there)
-    showLookTab(id) {
-        this.lookTab = id;
-        try { localStorage.setItem('jeditor.lookTab', id); } catch (e) { /* private mode */ }
-        for (const b of this.root.querySelectorAll('.adj-look-tabs .adj-tab')) b.setAttribute('aria-selected', String(b.dataset.tab === id));
-        for (const b of this.root.querySelectorAll('.adj-look')) b.classList.toggle('hidden', !!b.dataset.tab && b.dataset.tab !== id);
-        this._looksKey = null;
-        if (this.ready) this.renderLooks();
-    },
-
-    // The pictures, once the sliders have rested
-    looksSoon() {
-        clearTimeout(this._looksTimer);
-        this._looksTimer = setTimeout(() => this.renderLooks(), this._looksKey ? 350 : 0);
-    },
-
-    renderLooks() {
-        if (!this.ready || !this.thumb) return;
-        // Each look over the settings without one
-        const base = { ...(this.result() || {}) };
-        delete base.look;
-        delete base.lookAmount;
-        const key = JSON.stringify(base) + this.lookTab;
-        if (key === this._looksKey) return;
-        this._looksKey = key;
-        const { width: w, height: h } = this.thumb;
-        const out = new ImageData(w, h);
-        for (const b of this.root.querySelectorAll('.adj-look:not(.hidden)')) {
-            const cv = b.querySelector('canvas');
-            cv.width = w;
-            cv.height = h;
-            const T = Develop.tables(b.dataset.look ? { ...base, look: b.dataset.look } : base);
-            Develop.applyCPU(this.thumb.data, T, out.data, { x: 0, y: 0, w, W: w, H: h });
-            cv.getContext('2d').putImageData(out, 0, 0);
-        }
     },
 
     // ---- Presets: settings saved under a name, for any photo ----
@@ -1460,7 +1405,7 @@ const Adjust = {
         for (const row of this.mixerSliders.concat(this.extraRows || [])) row._sync();
         for (const b of this.root.querySelectorAll('.adj-chan .adj-tab')) b.setAttribute('aria-selected', String(b.dataset.chan === this.channel));
         for (const b of this.root.querySelectorAll('.adj-mix-tabs .adj-tab')) b.setAttribute('aria-selected', String(b.dataset.mix === this.mixer));
-        for (const b of this.root.querySelectorAll('.adj-look')) b.setAttribute('aria-pressed', String((b.dataset.look || null) === this.a.look));
+        this.el('adj-look-name').textContent = this.lookName(Develop.look(this.a.look));
         this.el('adj-look-amount').classList.toggle('hidden', !this.a.look);
         this.drawWheels();
         const l = this.a.levels[this.channel];
