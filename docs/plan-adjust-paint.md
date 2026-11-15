@@ -179,11 +179,20 @@ to flow into each other better"). The rules:
    sidebar, solid on its tint, in every mode (the owner, 2026-11-15: "look
    like the sidebar on the left / the main one"); only the right panel is
    glass.
-7. **Find anything (Ctrl+K, `palette.js`) sits with the modes** (the owner,
+7. **Both docked parts resize** (the owner, 2026-11-15: "and resizable"):
+   drag the inner edge of the sidebar or the panel; double-click it for its
+   own width again, as today's `.side-grip` does. The sidebar runs from
+   180 to 360 px (never more than 40% of the window), the panel from 260 to
+   440 px (always leaving 360 px for the photo). Each mode keeps its own
+   widths, saved with the other settings: Adjust can have a wide panel and
+   Paint a narrow one. Changing mode, a sidebar of another width glides to
+   it in 280 ms; while you drag, nothing animates, so the edge follows the
+   pointer.
+8. **Find anything (Ctrl+K, `palette.js`) sits with the modes** (the owner,
    2026-11-15): its magnifier is the last button of the sidebar's mode
    switcher, and when the sidebar is folded it sits beside the mode chip.
    It opens the same Find anything dialog in every mode.
-8. **Leaving keeps your place.** The same photo, zoom and strip position in
+9. **Leaving keeps your place.** The same photo, zoom and strip position in
    every mode; edits made in Adjust show in Paint and in the strip.
 
 ### Polish: what every part needs before it merges
