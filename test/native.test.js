@@ -2257,23 +2257,27 @@ async function newPage(context, baseUrl, host = null) {
             const pill = (k) => $('ex-body').querySelector(`[data-pill="${k}"]`);
             const menu = (k) => { pill(k).click(); return [...document.querySelectorAll('#context-menu button')]; };
             const choose = (k, re) => menu(k).find(b => re.test(b.textContent)).click();
+            const exBody = () => $('ex-body');
+            const sec = (k) => { const h = exBody().querySelector(`[data-sec="${k}"]`); if (h.getAttribute('aria-expanded') !== 'true') h.click(); };
+            const type = (id, v) => { $(id).value = v; $(id).dispatchEvent(new Event('input', { bubbles: true })); };
+            const set = (id, v) => { $(id).value = v; $(id).dispatchEvent(new Event('change', { bubbles: true })); };
             Export.open({ files: [f('photo1.jpg')] });
             out.copiesTab = [...$('ex-tabs').querySelectorAll('button.active')].map(b => b.textContent).join();
-            out.presets = [...$('ex-body').querySelectorAll('input[name="ex-preset"]')].map(i => i.parentElement.textContent.trim() + (i.checked ? '*' : '')).join(' | ');
-            out.pills = [...$('ex-body').querySelectorAll('.ex-pill')].map(b => b.textContent.trim()).join(' | ');
-            out.sum = $('ex-body').querySelector('.ex-sum').textContent;
+            // No presets come with it: only the way to save one. Sections, closed, each saying what it's set to
+            out.noPresets = !exBody().querySelector('input[name="ex-preset"]') && !!exBody().querySelector('[data-act="save-preset"]') && !exBody().querySelector('.ex-prev');
+            out.secs = [...exBody().querySelectorAll('.ex-sec-head')].map(b => `${b.querySelector('b').textContent}: ${b.querySelector('em').textContent}` + (b.getAttribute('aria-expanded') === 'true' ? '*' : '')).join(' | ');
+            out.sum = $('ex-note').querySelector('.ex-sum').textContent;
+            sec('where');
             out.folder = $('ex-folder').value;
-            out.which = menu('which').map(b => b.textContent).join(' | ');
-            app.closeContextMenu();
+            sec('which');
+            out.which = [...exBody().querySelectorAll('input[name="ex-which"]')].map(i => i.parentElement.textContent.trim() + (i.checked ? '*' : '')).join(' | ');
             // (Other…: a size typed)
             const prompt0 = UI.prompt;
             UI.prompt = async () => '100';
-            [...$('ex-body').querySelectorAll('input[name="ex-preset"]')].find(i => i.value === 'custom').click();
-            $('ex-size').value = 'other';
-            $('ex-size').dispatchEvent(new Event('change', { bubbles: true }));
+            sec('size');
+            set('ex-size', 'other');
             await wait(() => $('ex-size') && $('ex-size').value === '100');
             UI.prompt = prompt0;
-            out.custom = $('ex-body').querySelector('input[name="ex-preset"]:checked').value;
             out.copiesGo = $('ex-go').textContent;
             $('ex-go').click();
             await wait(() => /Exported 1 to "Beta export"/.test(toasts()));
@@ -2282,31 +2286,64 @@ async function newPage(context, baseUrl, host = null) {
             out.size = Math.max(bmp.width, bmp.height);
             // Left out of the project: Rescan doesn't list them
             out.leftOut = Watch.skipDir('Beta export') && !Watch.skipDir('Beta');
-            // Remembered: Custom and its size, not the drive
+            // Remembered: the settings and their size, not the drive
             out.kept = JSON.parse(localStorage.getItem('jeditor.export'));
-            // Email: JPEG at 80%, 2048 px, sRGB, without the location; the folder named after it
+            // Again into the same folder: both kept, the copy numbered; or the photo skipped
+            Export.open({ files: [f('photo1.jpg')] });
+            $('ex-go').click();
+            await wait(() => /Exported 1 to "Beta export"/.test(toasts()) && !$('export-panel').classList.contains('hidden') === false);
+            const inExport = async () => { const a = []; for await (const k of (await dir.getDirectoryHandle('Beta export')).keys()) a.push(k); return a.sort().join(); };
+            await wait(async () => /\(2\)/.test(await inExport()));
+            out.both = await inExport();
+            Export.open({ files: [f('photo1.jpg')] });
+            sec('where');
+            set('ex-clash', 'skip');
+            $('ex-go').click();
+            await wait(() => /1 skipped/.test(toasts()));
+            out.skipped = await inExport();
+            // The settings saved as a preset of your own: picked, its name in the folder's; a setting changed and it's no longer picked; picked again, its settings are back; removed
             Export.open({ tab: 'copies' });
-            [...$('ex-body').querySelectorAll('input[name="ex-preset"]')].find(i => i.value === 'email').click();
-            out.web = [...$('ex-body').querySelectorAll('.ex-chip')].map(b => b.textContent).join(' | ');
-            out.webMore = Export.meta + ' ' + Export.colour + ' ' + $('ex-folder').value + ' ' + menu('where').some(b => /Leave them out/.test(b.textContent));
+            UI.prompt = async () => 'Small';
+            exBody().querySelector('[data-act="save-preset"]').click();
+            await wait(() => exBody().querySelector('input[name="ex-preset"]:checked'));
+            UI.prompt = prompt0;
+            sec('where');
+            out.preset = exBody().querySelector('input[name="ex-preset"]:checked').value + ' / ' + $('ex-folder').value;
+            sec('meta');
+            set('ex-meta', 'nogps');
+            out.presetOff = !exBody().querySelector('input[name="ex-preset"]:checked') && Export.meta === 'nogps';
+            exBody().querySelector('input[name="ex-preset"]').click();
+            out.presetBack = Export.meta === 'all' && Export.size === 100 && Export.clash === 'skip' && !!exBody().querySelector('input[name="ex-preset"]:checked');
+            out.whereMenu = menu('where').some(b => /Leave them out/.test(b.textContent));
             app.closeContextMenu();
-            $('ex-folder').value = 'a/b';
-            $('ex-folder').dispatchEvent(new Event('input', { bubbles: true }));
+            // The preview: off to start with, shown when asked, remembered
+            exBody().querySelector('[data-act="preview"]').click();
+            out.preview = !!exBody().querySelector('.ex-prev') && $('ex-prev-name').textContent + ' ' + JSON.parse(localStorage.getItem('jeditor.export')).preview;
+            exBody().querySelector('[data-act="preview"]').click();
+            type('ex-folder', 'a/b');
             out.badName = $('ex-go').disabled && /can't contain/.test($('ex-note').textContent);
             $('ex-cancel').click();
-            // The starred, onto the USB drive, numbered
+            // The starred, onto the USB drive, named in pieces
             Export.open({ tab: 'copies' });
-            choose('which', /starred/);
+            exBody().querySelector('[data-act="drop-preset"]').click();
+            out.presetGone = !exBody().querySelector('input[name="ex-preset"]') && !JSON.parse(localStorage.getItem('jeditor.export')).presets.length;
+            sec('which');
+            exBody().querySelector('input[name="ex-which"][value="star"]').click();
+            sec('where');
+            set('ex-clash', 'both');
             choose('where', /USB drive/);
-            choose('names', /^Numbered/);
+            sec('naming');
+            type('ex-pattern', '{project} {n}');
+            out.eg = exBody().querySelector('.ex-eg').textContent;
             out.starGo = $('ex-go').textContent;
-            out.starSum = $('ex-body').querySelector('.ex-sum').textContent;
+            out.starSum = $('ex-note').querySelector('.ex-sum').textContent;
             // Eject when done, for copies onto a drive too (off, remembered from the copy above: on again)
+            sec('after');
             out.copiesEjectOff = !!$('ex-eject') && !$('ex-eject').checked;
             $('ex-eject').click();
             $('ex-go').click();
             await wait(() => /Exported 2 to USB drive/.test(toasts()));
-            const onUsb = await (await opfs('usb-E')).getDirectoryHandle('Beta – to email');
+            const onUsb = await (await opfs('usb-E')).getDirectoryHandle('Beta export');
             const names = [];
             for await (const k of onUsb.keys()) names.push(k);
             out.onUsb = names.sort().join();
@@ -2350,16 +2387,21 @@ async function newPage(context, baseUrl, host = null) {
             $('ex-cancel').click();
             return out;
         });
-        check('export: the project card opens one window: USB drive or card, CD or DVD, Copies', r.tabs === 'USB drive or card*, CD or DVD, Copies', r.tabs);
+        check('export: the project card opens one window: Copies, USB drive or card, CD or DVD (no Save tab without edits)', r.tabs === 'Copies, USB drive or card*, CD or DVD', r.tabs);
         check('... USB: the drive, its room and whether it fits; Eject after offered', /USB drive \(E:\)/.test(r.usb) && /free of/.test(r.usb) && /Fits/.test(r.usb) && /Eject when done/.test(r.usb) && r.usbGo === 'Copy to USB drive (E:)', JSON.stringify([r.usb, r.usbGo]));
         check('... its flags and edits: an option, off to start with; no .jeditor folder on the drive', r.withDataOff && r.noJeditor, JSON.stringify([r.withDataOff, r.noJeditor]));
         check('... copied in one step (no more questions), not ejected when that\'s off', r.copied && !r.askedAgain && !r.ejected, JSON.stringify(r));
-        check('... Copies: presets, a sentence, pills, the folder named after the preset', r.copiesTab === 'Copies' && r.presets === 'Full quality* | Email | Web | Social | Print | Archive | Custom' && r.pills === '1 selected | Keep names | In this project' && /^1 photo, about .+, into Beta – full quality in this project\.$/.test(r.sum) && r.folder === 'Beta – full quality', JSON.stringify([r.presets, r.pills, r.sum, r.folder]));
-        check('... the photos selected, a size typed (Custom), into "Beta export", left out of the project', /✓ The photo selected/.test(r.which) && /2 starred/.test(r.which) && r.custom === 'custom' && r.copiesGo === 'Export 1 copy' && r.size === 100 && r.leftOut, JSON.stringify(r));
-        check('... the starred onto the USB drive, numbered, in their own folder', r.starGo === 'Export 2 copies' && /on USB drive/.test(r.starSum) && r.onUsb === 'Beta – to email 001.jpg,Beta – to email 002.jpg', JSON.stringify([r.starGo, r.starSum, r.onUsb]));
+        check('... Copies: no presets of its own, sections closed and saying their settings, the line by the buttons, the folder named after the project', r.copiesTab === 'Copies' && r.noPresets &&
+            r.secs === 'Photos: 1 selected | Where: Beta export, in this project | File naming: Their own names · photo1.jpg | Format: As they are | Size: Full size | Metadata: All of it | Colour: As it is | After export: Nothing' &&
+            /^1 photo, about .+, into Beta export in this project\.$/.test(r.sum) && r.folder === 'Beta export', JSON.stringify([r.noPresets, r.secs, r.sum, r.folder]));
+        check('... the photo selected, a size typed, into "Beta export", left out of the project', /The photo selected\*/.test(r.which) && /2 starred/.test(r.which) && r.copiesGo === 'Export 1 copy' && r.size === 100 && r.leftOut, JSON.stringify(r));
+        check('... a name already there: both kept (the copy numbered), or the photo skipped', r.both === 'photo1 (2).jpg,photo1.jpg' && r.skipped === r.both, JSON.stringify([r.both, r.skipped]));
+        check('... the settings saved as a preset of your own: in the folder\'s name, off when a setting changes, back when picked, removed', r.preset === 'Small / Beta – Small' && r.presetOff && r.presetBack && r.presetGone, JSON.stringify([r.preset, r.presetOff, r.presetBack, r.presetGone]));
+        check('... the preview is off to start with, shown when asked and remembered', /^\S+\.jpg true$/.test(String(r.preview)), String(r.preview)); // (the first of the photos it would export)
+        check('... the starred onto the USB drive, named in pieces with an example, in their own folder', r.starGo === 'Export 2 copies' && /on USB drive/.test(r.starSum) && /Beta 001\.jpg, Beta 002\.jpg/.test(r.eg) && r.onUsb === 'Beta 001.jpg,Beta 002.jpg', JSON.stringify([r.starGo, r.starSum, r.eg, r.onUsb]));
         check('... Eject when done for copies onto a drive (remembered), and it ejects', r.copiesEjectOff && r.copiesEjected === 'E:\\', JSON.stringify([r.copiesEjectOff, r.copiesEjected]));
-        check('... Email: JPEG at 80%, 2048 px, sRGB, no location, its own folder; Leave out is in Where; a bad folder name stops it', r.web === 'JPEG 80% | 2,048 px | sRGB | No location' && r.webMore === 'nogps srgb Beta – to email true' && r.badName, JSON.stringify([r.web, r.webMore, r.badName]));
-        check('... Custom is remembered, a drive isn\'t', r.kept.preset === 'custom' && r.kept.custom.size === 100 && r.keptWhere === 'project', JSON.stringify(r.kept));
+        check('... Leave out is in Where; a bad folder name stops it', r.whereMenu && r.badName, JSON.stringify([r.whereMenu, r.badName]));
+        check('... the settings are remembered, a drive isn\'t', !r.kept.preset && r.kept.custom.size === 100 && r.keptWhere === 'project', JSON.stringify(r.kept));
         check('... ⋯ on the selection bar opens it, on the selection', r.menu === 'Export 2…' && r.fromMenu === 'Export 2 photos / Export 2 copies' && r.closed, JSON.stringify([r.menu, r.fromMenu]));
         check('right-click a USB drive: Export or Copy the project to it, each opening Export there', r.usbMenu === 'Export Beta to USB drive (E:)… | Copy Beta to USB drive (E:)…' && r.fromDrive === 'Copies / drive:E:\\' && r.copyFromDrive === 'USB drive or card / Copy to USB drive (E:)', JSON.stringify([r.usbMenu, r.fromDrive, r.copyFromDrive]));
         check('right-click a disc drive: Burn the project, with that drive\'s burner', r.discMenu === 'Burn Beta to a disc…' && r.burnerPicked === 'b1', JSON.stringify([r.discMenu, r.burnerPicked]));
