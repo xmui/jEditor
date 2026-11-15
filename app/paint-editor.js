@@ -158,15 +158,13 @@ const PaintEditor = {
         bind('paint-layer-delete', () => this.deleteLayer());
         this.el('paint-fg').addEventListener('input', (e) => { this.fg = e.target.value; this.remember(); });
         this.el('paint-bg').addEventListener('input', (e) => { this.bg = e.target.value; this.remember(); });
-        const pal = this.el('paint-palette');
-        for (const c of this.PALETTE) {
-            const b = document.createElement('button');
-            b.style.background = c;
-            b.title = `${c} (Alt-click: background)`;
-            b.setAttribute('aria-label', c);
-            b.addEventListener('click', (e) => { b.blur(); if (e.altKey) this.bg = c; else this.fg = c; this.syncColours(); this.remember(); });
-            pal.appendChild(b);
-        }
+        // Choose a colour…: the system's own picker, for the brush colour
+        bind('paint-choose', () => {
+            const i = this.el('paint-fg');
+            try { if (i.showPicker) { i.showPicker(); return; } } catch (e) { /* not from this gesture */ }
+            i.click();
+        });
+        this.drawPalette();
         const blend = this.el('paint-layer-blend');
         for (const [v, label] of Paint.BLENDS) {
             const o = document.createElement('option');
@@ -604,6 +602,62 @@ const PaintEditor = {
     },
 
     // ---- Colours ----
+
+    // Saved colours: kept between sessions (the plan's starting row until
+    // the first is saved or taken off)
+    PALETTE_MAX: 32,
+
+    savedColours() {
+        try {
+            const v = JSON.parse(localStorage.getItem('jeditor.paintColours') || 'null');
+            if (Array.isArray(v)) return v.filter(c => /^#[0-9a-f]{6}$/i.test(c)).slice(0, this.PALETTE_MAX);
+        } catch (e) { /* private mode */ }
+        return this.PALETTE.slice();
+    },
+
+    setSavedColours(list) {
+        try { localStorage.setItem('jeditor.paintColours', JSON.stringify(list)); } catch (e) { /* private mode */ }
+        this.drawPalette();
+    },
+
+    // + saves the brush colour (at the end; one already saved isn't saved twice)
+    saveColour(c = this.fg) {
+        const list = this.savedColours();
+        c = c.toLowerCase();
+        if (list.includes(c)) { this.app.showToast('That colour is saved already', 1400); return; }
+        if (list.length >= this.PALETTE_MAX) { this.app.showToast(`Up to ${this.PALETTE_MAX} saved colours: right-click one to take it off`, 2200); return; }
+        this.setSavedColours([...list, c]);
+    },
+
+    removeColour(c) {
+        this.setSavedColours(this.savedColours().filter(x => x !== c));
+    },
+
+    drawPalette() {
+        const pal = this.el('paint-palette');
+        if (!pal) return;
+        pal.textContent = '';
+        for (const c of this.savedColours()) {
+            const b = document.createElement('button');
+            b.style.background = c;
+            b.title = `${c} (Alt-click: background; right-click to take it off)`;
+            b.setAttribute('aria-label', c);
+            b.addEventListener('click', (e) => { b.blur(); if (e.altKey) this.bg = c; else this.fg = c; this.syncColours(); this.remember(); });
+            b.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.app.openContextMenu([['Use for the brush', () => { this.fg = c; this.syncColours(); this.remember(); }], ['Use for the background', () => { this.bg = c; this.syncColours(); this.remember(); }], ['—'], ['Take it off', () => this.removeColour(c), true]], e.clientX, e.clientY);
+            });
+            pal.appendChild(b);
+        }
+        const add = document.createElement('button');
+        add.className = 'paint-palette-add';
+        add.title = 'Save the brush colour';
+        add.setAttribute('aria-label', 'Save the brush colour');
+        add.innerHTML = '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg>';
+        add.addEventListener('click', () => { add.blur(); this.saveColour(); });
+        pal.appendChild(add);
+    },
 
     syncColours() {
         this.el('paint-fg').value = this.fg;

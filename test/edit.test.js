@@ -1072,6 +1072,17 @@ const PROJECT = `
             out.clean = JSON.stringify(Paint.clean({ id: 'abc', w: 100, h: 50, layers: [{ id: 'l1', rev: 'r1', name: '  Sky  ', opacity: 3, blend: 'nope', hidden: 1 }, { id: 'BAD', rev: 'x' }] }));
             out.none = Paint.clean({ id: 'abc', w: 100, h: 50, layers: [] }) === null && Paint.clean({ id: '../x', w: 1, h: 1, layers: [{ id: 'a', rev: 'b' }] }) === null;
             out.size = JSON.stringify([Paint.sizeFor(6000, 4000), Paint.sizeFor(800, 600)]);
+            // Saved colours: + saves the brush colour once, kept between
+            // sessions; taken off again
+            PaintEditor.init(app);
+            const sw = () => document.querySelectorAll('#paint-palette button:not(.paint-palette-add)').length;
+            const n0 = sw();
+            PaintEditor.fg = '#123456';
+            PaintEditor.saveColour();
+            PaintEditor.saveColour();
+            const n1 = sw(), kept = JSON.parse(localStorage.getItem('jeditor.paintColours') || '[]').includes('#123456');
+            PaintEditor.removeColour('#123456');
+            out.saved = [n1 - n0, kept, sw() - n0, !!document.getElementById('paint-choose')];
             // Grow, shrink and feather a selection: a 20 x 20 square in 60 x 60
             const W = 60, H = 60, sq = new Uint8ClampedArray(W * H);
             for (let y = 20; y < 40; y++) for (let x = 20; x < 40; x++) sq[y * W + x] = 255;
@@ -1089,6 +1100,7 @@ const PROJECT = `
         check('paint: Feather softens the edge (half-way at it, nothing far off), the middle still selected', m.feather[0] >= 240 && m.feather[1] > 90 && m.feather[1] < 165 && m.feather[2] < m.feather[1] && m.feather[3] === 0, JSON.stringify(m.feather));
         check('paint: the record is checked (names, opacity, blend; bad ids dropped)', m.clean === '{"id":"abc","w":100,"h":50,"layers":[{"id":"l1","rev":"r1","name":"Sky","opacity":1,"blend":"source-over","hidden":true}]}' && m.none, JSON.stringify(m));
         check('paint: layers at the photo\'s size, a very big one smaller', m.size === '[{"w":3000,"h":2000},{"w":800,"h":600}]', m.size);
+        check('paint: saved colours: + saves the brush colour (once), kept; right-click takes one off; Choose a colour…', JSON.stringify(m.saved) === '[1,true,0,true]', JSON.stringify(m.saved));
 
         const r = await page.evaluate(async () => {
             let step = 'start';
