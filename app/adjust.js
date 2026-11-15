@@ -542,7 +542,7 @@ const Adjust = {
     moreItems() {
         const sel = this.app.selection && [...this.app.selection].filter(f => f !== this.file);
         return [
-            ['Auto color', () => this.auto({ color: true }), !this.ready, undefined, 'adjust.autoColor'],
+            ['Auto color', () => this.auto({ color: true }), false, undefined, 'adjust.autoColor'],
             ['—'],
             ['Reset all', () => this.reset(), false, undefined, 'adjust.reset'],
             ['Copy settings', () => this.copy(), false, undefined, 'adjust.copy'],
