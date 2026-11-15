@@ -92,9 +92,9 @@ and photos"). Adjust and Paint use Photos' own parts, not copies:
 - **The panel** (Adjust's and Paint's) is **docked** to the window's right
   edge, full height, and made like the left sidebar: the same tint
   (`--chrome`, which is `--sidebar-bg`), a hairline on its inner edge
-  (`--chrome-line`), square corners, no shadow, no blur. It folds away and
-  comes back as the sidebar does (the panel button in the top-right pill,
-  or Tab).
+  (`--chrome-line`), square corners, no shadow, no blur. It has no button
+  of its own: Tab hides and shows it, and it can be dragged away and back
+  (below).
 - **The film strip** is the viewer's own: black (`--strip-bg`), docked at
   the bottom, 80 px.
 - **Menus are solid**, as the grid's and viewer's right-click menu is
@@ -150,8 +150,7 @@ to flow into each other better"). The rules:
    are the same elements in every mode. The top-right pill keeps its row
    and changes its buttons; when the panel docks it glides left with the
    panel's edge, in the same 280 ms, so it never sits over the panel: Info, view, refresh, crop and ⋯
-   in Photos; the panel button, Before and ⋯ in Adjust; the panel
-   button, Undo, Redo and ⋯ in Paint. The
+   in Photos; Before and ⋯ in Adjust; Undo, Redo and ⋯ in Paint. The
    bottom pill does the same: ‹ rotate › in Photos, ‹ Fit 100% › in Adjust
    and Paint.
 2. **The photo is one element.** It never reloads, blanks or flashes. Its
@@ -171,8 +170,9 @@ to flow into each other better"). The rules:
    mode switch's pill glides with `--ease-press`, since you pressed it.
 5. **Reduced motion, or Settings → Animations off:** nothing slides; a
    plain fade or nothing.
-6. **The sidebar folds away in every mode** (the owner, 2026-11-15): the
-   button at the left of the file pill, or Ctrl+B. It slides out to the
+6. **The sidebar folds away in every mode** (the owner, 2026-11-15): its
+   button sits in the window's top-left corner, as in other apps (Claude
+   Code, Finder, Photomator), or Ctrl+B. It slides out to the
    left in 280 ms and the photo, strip and pills glide into the room;
    nothing jumps. Folded, a chip in the file pill names the mode, with a
    menu to switch (today's `.mode-chip`). It stays Photos' own docked
@@ -185,7 +185,11 @@ to flow into each other better"). The rules:
    180 to 360 px (never more than 40% of the window), the panel from 260 to
    440 px (always leaving 360 px for the photo). Each mode keeps its own
    widths, saved with the other settings: Adjust can have a wide panel and
-   Paint a narrow one. Changing mode, a sidebar of another width glides to
+   Paint a narrow one. **Dragged past its edge it hides** (the sidebar below
+   120 px, the panel below 180 px): a thin line stays at the window's edge,
+   brighter under the pointer, and dragging from that line brings it back
+   out at the width you drag to (a click brings it back at its last
+   width). Changing mode, a sidebar of another width glides to
    it in 280 ms; while you drag, nothing animates, so the edge follows the
    pointer.
 8. **Find anything (Ctrl+K, `palette.js`) sits with the modes** (the owner,
@@ -225,6 +229,17 @@ sets how the panel is organised:
   that are on, focus and the one main button.
 - **Restraint:** no decorative icons in empty states, no extra rules or
   plates, no "coming soon" rows; one quiet line says what phase 2 adds.
+
+### Later
+
+- **Sidebars that fly out, like Zen's** (the owner, 2026-11-15): a hidden
+  sidebar or panel slides out over the photo when the pointer reaches its
+  edge, works as usual while it's out, and slides away again when the
+  pointer leaves. Not in phase 1.
+- **Paint needs another design pass** (the owner, 2026-11-15: "paint still
+  needs a work in the future"): this plan settles Paint's frame, its tools
+  pill, options and panel; a later pass looks at Paint on its own, against
+  Pixelmator and Photoshop, before phase 3.
 
 ### Polish: what every part needs before it merges
 
