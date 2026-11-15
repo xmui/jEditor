@@ -1152,6 +1152,7 @@ const PROJECT = `
                 pressKey('Enter');
                 out.inPlace = [px(1, 100, 100).slice(0, 2).join(), px(1, 100, 130)[3], px(1, 100, 130).slice(0, 3).join() === [...P.photo.getContext('2d').getImageData(100, 130, 1, 1).data.slice(0, 3)].join()];
                 P.deleteLayer();
+                P.setTool('brush'); // (a paste takes Move)
                 // Half opacity: half covered
                 step = 'opacity';
                 P.opts.opacity = 50;
