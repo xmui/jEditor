@@ -195,6 +195,37 @@ to flow into each other better"). The rules:
 9. **Leaving keeps your place.** The same photo, zoom and strip position in
    every mode; edits made in Adjust show in Paint and in the strip.
 
+### The craft: jEditor's look, organised like Photomator
+
+The owner (2026-11-15): more pro, "if anything we can be inspired by most
+is photomator", "but jeditor style!". So the controls, type and colours stay
+jEditor's own (`tokens.css`, the 2.0 rules in `theming.md`), and Photomator
+sets how the panel is organised:
+
+- **The histogram first**, drawn from the photo's own red, green and blue,
+  with the clipping corners, and under it what the photo is (size, depth,
+  colour space) in caption grey with lined-up figures.
+- **Groups, not boxes.** Light, Color, Look, Curve, Color mixer, Color
+  grading, Detail, Effects, each a heading row: a crisp disclosure arrow,
+  the name (small, grey, semibold, sentence case), **Auto** where it means
+  something, and a small switch that turns the whole group off for a moment
+  to compare. Hairlines between groups; no cards inside the panel. Light,
+  Color and Look start open; the panel remembers what you opened.
+- **The one slider, in rows of 24 px** on the 4/8 px grid: the label in a
+  fixed column, the thin track with the white knob, a tick at the middle of
+  a slider that goes both ways, and the value in a lined-up column that can
+  be typed into. Double-click a row to reset it; right-click a heading to
+  reset the group.
+- **Type:** 11 px for headings and captions, 12 px for labels and values,
+  13 px on the pills; three weights; figures tabular.
+- **One icon set:** one stroke (1.5) everywhere, 20 px on the pills and
+  16 px in panels and menus, drawn as one family (Paint's tools redrawn to
+  match).
+- **Colour:** neutral greys; the accent only for what's chosen, the switches
+  that are on, focus and the one main button.
+- **Restraint:** no decorative icons in empty states, no extra rules or
+  plates, no "coming soon" rows; one quiet line says what phase 2 adds.
+
 ### Polish: what every part needs before it merges
 
 - **States:** rest, hover (`--tb-hover`), pressed (`--tb-pressed`, gives a
