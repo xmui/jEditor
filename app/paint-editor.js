@@ -40,7 +40,7 @@ const PaintEditor = {
     bg: '#ffffff',
     opts: {
         size: 24, hardness: 80, opacity: 100, flow: 100,
-        tolerance: 32, contiguous: true, sampleAll: true, fillWhat: 'match',
+        tolerance: 32, contiguous: true, sampleAll: true, fillWhat: 'match', gaps: 0,
         lineWidth: 8, shapeFill: 'none', arrow: false,
         gradient: 'linear', gradTo: 'bg',
         density: 40,
@@ -81,7 +81,7 @@ const PaintEditor = {
         pencil: ['size', 'opacity'],
         spray: ['size', 'density', 'opacity'],
         eraser: ['size', 'hardness', 'opacity'],
-        fill: ['fillWhat', 'tolerance', 'contiguous', 'sampleAll', 'opacity'],
+        fill: ['fillWhat', 'tolerance', 'gaps', 'contiguous', 'sampleAll', 'opacity'],
         gradient: ['gradient', 'gradTo', 'opacity'],
         line: ['lineWidth', 'arrow', 'opacity'],
         rect: ['lineWidth', 'shapeFill', 'opacity'],
@@ -541,7 +541,7 @@ const PaintEditor = {
         // Filling the whole layer: no colour to match, so none of its options
         const wholeFill = this.tool === 'fill' && o.fillWhat === 'layer';
         for (const k of this.OPTIONS[this.tool]) {
-            if (wholeFill && ['tolerance', 'contiguous', 'sampleAll'].includes(k)) continue;
+            if (wholeFill && ['tolerance', 'gaps', 'contiguous', 'sampleAll'].includes(k)) continue;
             if (k === 'fillWhat') choose('Fill', 'fillWhat', [['match', 'Matching colour'], ['layer', 'Whole layer']]).querySelector('select').addEventListener('change', () => this.buildOptions());
             if (k === 'size') {
                 // (Said on hover, not along the top: the bar stays one line)
@@ -556,6 +556,7 @@ const PaintEditor = {
             if (k === 'tolerance') num('Tolerance', 'tolerance', 0, 255);
             if (k === 'lineWidth') num('Line', 'lineWidth', 0, 200);
             if (k === 'fontSize') num('Size', 'fontSize', 6, 600, 1, true);
+            if (k === 'gaps') choose('Close gaps', 'gaps', [[0, 'Off'], [2, 'Small'], [5, 'Medium'], [10, 'Large']]).title = 'A line drawing with small gaps in its lines still fills one area, not the whole picture';
             if (k === 'contiguous') check('Joined only', 'contiguous');
             if (k === 'sampleAll') check('All layers', 'sampleAll');
             if (k === 'arrow') check('Arrow', 'arrow');
@@ -1448,49 +1449,76 @@ const PaintEditor = {
     },
 
     // The pixels like the one at (x, y): a mask (1 each), and its bounds
-    region(px, x, y) {
+    region(px, x, y, { gaps = 0 } = {}) {
         const W = this.W, H = this.H;
         x = Math.floor(x); y = Math.floor(y);
         if (x < 0 || y < 0 || x >= W || y >= H) return null;
         const tol = this.opts.tolerance;
         const i0 = (y * W + x) * 4;
         const c = [px[i0], px[i0 + 1], px[i0 + 2], px[i0 + 3]];
-        const like = (i) => Math.abs(px[i] - c[0]) <= tol && Math.abs(px[i + 1] - c[1]) <= tol && Math.abs(px[i + 2] - c[2]) <= tol && Math.abs(px[i + 3] - c[3]) <= tol;
+        const like = new Uint8Array(W * H);
+        for (let k = 0, i = 0; k < like.length; k++, i += 4) {
+            like[k] = Math.abs(px[i] - c[0]) <= tol && Math.abs(px[i + 1] - c[1]) <= tol && Math.abs(px[i + 2] - c[2]) <= tol && Math.abs(px[i + 3] - c[3]) <= tol ? 1 : 0;
+        }
+        let mask;
+        if (!this.opts.contiguous) mask = like;
+        else if (gaps > 0) mask = PaintEditor.closedFlood(like, W, H, x, y, gaps);
+        else mask = PaintEditor.flood(like, W, H, x, y);
+        let x0 = W, x1 = -1, y0 = H, y1 = -1;
+        for (let yy = 0; yy < H; yy++) for (let xx = 0; xx < W; xx++) {
+            if (!mask[yy * W + xx]) continue;
+            if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (yy < y0) y0 = yy; if (yy > y1) y1 = yy;
+        }
+        if (x1 < 0) return null;
+        return { mask, box: { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 } };
+    },
+
+    // The pixels joined to (x, y) where ok is 1, by scanlines
+    flood(ok, W, H, x, y) {
         const mask = new Uint8Array(W * H);
-        let x0 = x, x1 = x, y0 = y, y1 = y;
-        if (!this.opts.contiguous) {
-            for (let k = 0; k < W * H; k++) if (like(k * 4)) {
-                mask[k] = 1;
-                const xx = k % W, yy = (k - xx) / W;
-                if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (yy < y0) y0 = yy; if (yy > y1) y1 = yy;
-            }
-        } else {
-            // Scanlines
-            const stack = [[x, y]];
-            while (stack.length) {
-                const [sx, sy] = stack.pop();
-                let lx = sx;
-                while (lx >= 0 && !mask[sy * W + lx] && like((sy * W + lx) * 4)) lx--;
-                lx++;
-                let rx = lx;
-                let up = false, down = false;
-                while (rx < W && !mask[sy * W + rx] && like((sy * W + rx) * 4)) {
-                    mask[sy * W + rx] = 1;
-                    if (sy > 0) {
-                        const u = like(((sy - 1) * W + rx) * 4) && !mask[(sy - 1) * W + rx];
-                        if (u && !up) { stack.push([rx, sy - 1]); up = true; } else if (!u) up = false;
-                    }
-                    if (sy < H - 1) {
-                        const dn = like(((sy + 1) * W + rx) * 4) && !mask[(sy + 1) * W + rx];
-                        if (dn && !down) { stack.push([rx, sy + 1]); down = true; } else if (!dn) down = false;
-                    }
-                    rx++;
+        if (!ok[y * W + x]) return mask;
+        const can = (i) => ok[i] && !mask[i];
+        const stack = [[x, y]];
+        while (stack.length) {
+            const [sx, sy] = stack.pop();
+            let lx = sx;
+            while (lx >= 0 && can(sy * W + lx)) lx--;
+            lx++;
+            let rx = lx, up = false, down = false;
+            while (rx < W && can(sy * W + rx)) {
+                mask[sy * W + rx] = 1;
+                if (sy > 0) {
+                    const u = can((sy - 1) * W + rx);
+                    if (u && !up) { stack.push([rx, sy - 1]); up = true; } else if (!u) up = false;
                 }
-                if (lx < x0) x0 = lx; if (rx - 1 > x1) x1 = rx - 1;
-                if (sy < y0) y0 = sy; if (sy > y1) y1 = sy;
+                if (sy < H - 1) {
+                    const dn = can((sy + 1) * W + rx);
+                    if (dn && !down) { stack.push([rx, sy + 1]); down = true; } else if (!dn) down = false;
+                }
+                rx++;
             }
         }
-        return { mask, box: { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 } };
+        return mask;
+    },
+
+    // Fill with gaps closed: the lines made g pixels thicker, so a gap
+    // narrower than twice that is shut; the area filled inside them; then
+    // grown back out to the lines (only over pixels like the one clicked).
+    // A click too near a line to be inside the thickened ones fills as usual
+    closedFlood(like, W, H, x, y, g) {
+        const walls = new Uint8ClampedArray(W * H);
+        for (let i = 0; i < walls.length; i++) walls[i] = like[i] ? 0 : 255;
+        const thick = PaintEditor.spread(walls, W, H, g, true);
+        const open = new Uint8Array(W * H);
+        for (let i = 0; i < open.length; i++) open[i] = like[i] && !thick[i] ? 1 : 0;
+        if (!open[y * W + x]) return PaintEditor.flood(like, W, H, x, y);
+        const inside = PaintEditor.flood(open, W, H, x, y);
+        const a = new Uint8ClampedArray(W * H);
+        for (let i = 0; i < a.length; i++) a[i] = inside[i] ? 255 : 0;
+        const back = PaintEditor.spread(a, W, H, g + 1, true);
+        const mask = new Uint8Array(W * H);
+        for (let i = 0; i < mask.length; i++) mask[i] = back[i] && like[i] ? 1 : 0;
+        return mask;
     },
 
     // A region as a canvas (white where it is), a pixel's anti-aliasing
@@ -1521,7 +1549,7 @@ const PaintEditor = {
     fillAt(p) {
         const l = this.layer();
         const whole = this.opts.fillWhat === 'layer';
-        const reg = whole ? null : this.region(this.sample(), p.x, p.y);
+        const reg = whole ? null : this.region(this.sample(), p.x, p.y, { gaps: this.opts.gaps });
         if (!whole && !reg) return;
         this.beginPixels(l);
         const g = this.stroke.getContext('2d');

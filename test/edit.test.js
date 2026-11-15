@@ -1081,11 +1081,21 @@ const PROJECT = `
             // square's corner); 5 in at the sides
             out.grow = [at(grown, 15, 30), at(grown, 14, 30), at(grown, 17, 17), at(grown, 16, 16)];
             out.shrink = [at(shrunk, 25, 30), at(shrunk, 24, 30), at(shrunk, 30, 30)];
+            // Fill with gaps closed: a square drawn in a 2 px line, with a
+            // 3 px gap in its top, fills inside (to the line) but not out
+            const ring = new Uint8Array(W * H).fill(1);
+            for (let y = 15; y < 45; y++) for (let x = 15; x < 45; x++) {
+                if ((x < 17 || x > 42 || y < 17 || y > 42) && !(y < 17 && x >= 29 && x < 32)) ring[y * W + x] = 0;
+            }
+            const plain = PaintEditor.flood(ring, W, H, 30, 30), closed = PaintEditor.closedFlood(ring, W, H, 30, 30, 2);
+            const n = (mk) => mk.reduce((t, v) => t + (v ? 1 : 0), 0);
+            out.gaps = [!!plain[5 * W + 5], !!closed[5 * W + 5], !!closed[17 * W + 17], n(closed) >= 676 && n(closed) <= 700];
             const soft = PaintEditor.blurAlpha(sq, W, H, 8);
             out.feather = [at(soft, 30, 30), at(soft, 20, 30), at(soft, 10, 30), at(soft, 2, 30)];
             return out;
         });
         check('paint: Grow and Shrink move a selection\'s edge by the pixels asked, rounding its corners', JSON.stringify(m.grow) === '[255,0,255,0]' && JSON.stringify(m.shrink) === '[255,0,255]', JSON.stringify([m.grow, m.shrink]));
+        check('paint: Close gaps fills a line drawing with a small gap inside, up to its lines, not out through the gap', JSON.stringify(m.gaps) === '[true,false,true,true]', JSON.stringify(m.gaps));
         check('paint: Feather softens the edge (half-way at it, nothing far off), the middle still selected', m.feather[0] >= 240 && m.feather[1] > 90 && m.feather[1] < 165 && m.feather[2] < m.feather[1] && m.feather[3] === 0, JSON.stringify(m.feather));
         check('paint: the record is checked (names, opacity, blend; bad ids dropped)', m.clean === '{"id":"abc","w":100,"h":50,"layers":[{"id":"l1","rev":"r1","name":"Sky","opacity":1,"blend":"source-over","hidden":true}]}' && m.none, JSON.stringify(m));
         check('paint: layers at the photo\'s size, a very big one smaller', m.size === '[{"w":3000,"h":2000},{"w":800,"h":600}]', m.size);
