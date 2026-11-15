@@ -350,12 +350,12 @@ const Modes = {
         const app = this.app;
         const can = typeof Folders !== 'undefined' && Folders.enabled() && (app.viewMode === 'grid' || Folders.besideSingle());
         side.classList.toggle('hidden', !can);
-        side.title = docked ? 'Hide the sidebar (Ctrl+B)' : 'Show the sidebar (Ctrl+B)';
+        side.title = Host.keys(docked ? 'Hide the sidebar (Ctrl+B)' : 'Show the sidebar (Ctrl+B)');
         side.setAttribute('aria-label', docked ? 'Hide the sidebar' : 'Show the sidebar');
         side.setAttribute('aria-expanded', String(docked));
         const keys = (app.keyBindings && app.keyBindings['app.palette']) || [];
         const find = this.el('mode-row-find');
-        find.title = keys.length ? `Find anything (${app.formatCombo(keys[0]).replace(/ \+ /g, '+')})` : 'Find anything';
+        find.title = keys.length ? Host.keys(`Find anything (${keys[0]})`) : 'Find anything';
         find.setAttribute('aria-label', 'Find anything');
         find.classList.toggle('hidden', typeof Palette === 'undefined');
         cancelAnimationFrame(this.rowFrame);
