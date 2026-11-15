@@ -111,6 +111,27 @@ can be changed or taken off later wherever it was made.
 - Per-channel fine-tuning (the black and white points of each channel)
   under the group's disclosure.
 
+### Adjust: film looks you dial in, and your own (the owner, 2026-11-15)
+
+"For the film looks I want to be able to create your own, and it's also a
+series of sliders to dial it in with all the necessary adjustments." All of
+it stays non-destructive, as the rest of Adjust.
+
+- **Phase 1:** the Look group's picker and its **Amount** slider (as the
+  mockup draws it).
+- **Phase 2, dialable looks:** picking a look opens its sliders under the
+  picker, so a look is never fixed: Amount; Contrast (its tone curve);
+  Fade (lifted blacks); Shadow tint and Highlight tint; Saturation and
+  Vibrance; Colour response (a small mixer: each hue's shift, saturation
+  and brightness); Grain (amount, size, roughness); Halation; Vignette;
+  Warmth. Changing one shows the look as modified, with Reset to go back.
+- **Phase 2, your own looks:** **Save as a look…** keeps the current
+  settings under a name, with a thumbnail made from the photo; your looks
+  sit beside the built-in ones (under their own heading). Rename,
+  duplicate and delete them from the look's right-click menu.
+- **Phase 5:** looks exported and imported as a file, beside Lightroom
+  preset import.
+
 ### Paint: the owner's picks (2026-11-15)
 
 "Let's start with all those everyday features you listed plus recolor,
