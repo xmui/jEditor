@@ -10,6 +10,9 @@
 //   Right-click a spot, or Delete, to take it away.
 //   Find dust puts a heal spot on every speck it finds (Sensitivity: how
 //     faint a speck it looks for); Clear found takes those off again.
+//   In Restore, a click is red-eye and a drag along a scratch or crease
+//     takes it off (a line, its width fitted to the scratch: Size sets it
+//     when it's chosen); Find scratches puts a line on every one it finds.
 //
 // Places are on the photo as it is on disk (Develop.cropMap), as masks'
 // are, so a crop later doesn't move them.
@@ -81,6 +84,7 @@ const AdjustSpots = {
         this.el('adj-spot-show').addEventListener('change', (e) => { this.show = e.target.checked; this.draw(); });
         this.el('adj-spot-delete').addEventListener('click', (e) => { e.currentTarget.blur(); this.remove(this.sel); });
         this.el('adj-dust-find').addEventListener('click', (e) => { e.currentTarget.blur(); this.findDust(); });
+        this.el('adj-scratch-find').addEventListener('click', (e) => { e.currentTarget.blur(); this.findScratches(); });
         this.el('adj-dust-clear').addEventListener('click', (e) => { e.currentTarget.blur(); this.clearFound(); });
 
         // One section drawing on the photo at a time: masks or spots
@@ -160,15 +164,21 @@ const AdjustSpots = {
         this.ed.changed();
     },
 
+    // What the finders put on: n dust spots and m scratches, in words
+    foundWords(n, m) {
+        return [n ? `${n} dust spot${n === 1 ? '' : 's'}` : '', m ? `${m} scratch${m === 1 ? '' : 'es'}` : ''].filter(Boolean).join(' and ');
+    },
+
     clearFound() {
-        const n = this.spots().filter(s => s.d).length;
-        if (!n) { this.ed.app.showToast('No dust spots to clear'); return; }
+        const found = this.spots().filter(s => s.d);
+        if (!found.length) { this.ed.app.showToast('Nothing found to clear'); return; }
+        const m = found.filter(s => s.t === 'line').length;
         this.ed.pushHistory();
         this.ed.a.spots = this.spots().filter(s => !s.d);
         this.sel = -1;
         this.sync();
         this.ed.changed();
-        this.ed.app.showToast(`Cleared ${n} dust spot${n === 1 ? '' : 's'}`, 1600, null, null, { kind: 'adjust' });
+        this.ed.app.showToast(`Cleared ${this.foundWords(found.length - m, m)}`, 1600, null, null, { kind: 'adjust' });
     },
 
     // The working copy's brightness, small (picking sources)
@@ -220,6 +230,41 @@ const AdjustSpots = {
         }
     },
 
+    // Scratches and creases on the working copy (the whole photo, as on
+    // disk): a line on each (Retouch.findScratches)
+    async findScratches() {
+        const ed = this.ed, app = ed.app;
+        if (!ed.ready || this._finding) return;
+        this._finding = true;
+        app.beginTask('scratches', 'Finding scratches…');
+        try {
+            await new Promise(r => setTimeout(r, 30));
+            const base = ed.base;
+            const img = base.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, base.width, base.height);
+            const keep = this.spots().filter(s => !(s.d && s.t === 'line'));
+            const room = Retouch.MAX_SPOTS - keep.length;
+            const found = room > 0 ? Retouch.findScratches(img, { keep, max: Math.min(60, room) }) : [];
+            if (!ed.ready) return;
+            const had = this.spots().length - keep.length;
+            if (!found.length && !had) {
+                app.showToast('No scratches found. Drag along one to take it off', 2600);
+                return;
+            }
+            ed.pushHistory();
+            ed.a.spots = keep.concat(found);
+            this.sel = -1;
+            this.sync();
+            ed.changed();
+            app.showToast(found.length ? `Found ${found.length} scratch${found.length === 1 ? '' : 'es'}: check them, right-click any that aren't` : 'No scratches found this time', 3000, null, null, { kind: 'adjust' });
+        } catch (e) {
+            console.error('Finding scratches failed:', e);
+            app.showToast('Couldn\'t look for scratches: ' + e.message, 3000);
+        } finally {
+            this._finding = false;
+            app.endTask('scratches');
+        }
+    },
+
     sync() {
         if (!this.sec) return;
         const s = this.current();
@@ -233,9 +278,9 @@ const AdjustSpots = {
         }
         for (const t of ['heal', 'clone']) this.el(`adj-spot-${t}`).setAttribute('aria-pressed', String(this.tool === t));
         this.el('adj-spot-delete').disabled = !s;
-        const list = this.spots(), found = list.filter(x => x.d).length;
-        this.el('adj-dust-clear').disabled = !found;
-        this.el('adj-spot-count').textContent = !list.length ? '' : `${list.length} spot${list.length === 1 ? '' : 's'}` + (found ? `, ${found} found as dust` : '');
+        const list = this.spots(), found = list.filter(x => x.d), m = found.filter(x => x.t === 'line').length;
+        this.el('adj-dust-clear').disabled = !found.length;
+        this.el('adj-spot-count').textContent = !list.length ? '' : `${list.length} spot${list.length === 1 ? '' : 's'}` + (found.length ? `, ${this.foundWords(found.length - m, m)} found` : '');
         this.el('adj-spot-hint').textContent = s ? 'Drag the spot, its source (dashed) or its edge; right-click or Delete takes it off'
             : 'Click a speck to heal it, or drag from it to where to copy from';
         this.cv.classList.toggle('hidden', !this.active());
@@ -295,6 +340,10 @@ const AdjustSpots = {
         const order = list.map((s, i) => i).sort((a, b) => (b === this.sel) - (a === this.sel) || b - a);
         for (const i of order) {
             const s = list[i], R = Math.max(5, s.r * hp);
+            if (s.t === 'line') {
+                if (this.lineDist(s, p) <= R) return { i, part: 'spot' };
+                continue;
+            }
             const d = this.fromPhoto(s.x, s.y), src = this.fromPhoto(s.sx, s.sy);
             const dd = Math.hypot(p.x - d.x, p.y - d.y);
             if (Math.abs(dd - R) <= 5 && R > 10) return { i, part: 'edge' };
@@ -302,6 +351,37 @@ const AdjustSpots = {
             if (s.t !== 'eye' && (i === this.sel || this.show) && Math.hypot(p.x - src.x, p.y - src.y) <= R) return { i, part: 'source' };
         }
         return null;
+    },
+
+    // A line's points on the overlay
+    linePts(s) {
+        const out = [];
+        for (let k = 0; k + 1 < s.pts.length; k += 2) out.push(this.fromPhoto(s.pts[k], s.pts[k + 1]));
+        return out;
+    },
+
+    // How far p (overlay px) is from a line
+    lineDist(s, p) {
+        const P = this.linePts(s);
+        let best = Infinity;
+        for (let k = 0; k + 1 < P.length; k++) {
+            const a = P[k], b = P[k + 1], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
+            const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2));
+            best = Math.min(best, Math.hypot(p.x - a.x - dx * t, p.y - a.y - dy * t));
+        }
+        return best;
+    },
+
+    // A drag along a scratch (the overlay points it went through): a line
+    // there, as wide as the scratch under it
+    makeLine(path) {
+        // (simplified in heights of the photo, so across and down count alike)
+        const asp = this.ed.map.asp;
+        const pts = Retouch.simplify(path.map(q => [q.u * asp, q.v]), 0.0006, Retouch.LINE_POINTS)
+            .flatMap(([u, v]) => [u / asp, v]);
+        const L = this.luma();
+        const r = Retouch.fitLine(L.Y, L.W, L.H, pts) || Math.max(Retouch.MIN_R, 2 / L.H);
+        return { t: 'line', x: pts[0], y: pts[1], sx: pts[0], sy: pts[1], r, f: 0.3, o: 1, pts };
     },
 
     // ---- Placing and dragging ----
@@ -320,7 +400,7 @@ const AdjustSpots = {
             const [s] = list.splice(hit.i, 1);
             list.push(s);
             this.sel = list.length - 1;
-            this.drag = { kind: hit.part, start: p, orig: { ...s } };
+            this.drag = { kind: hit.part, start: p, orig: { ...s, pts: s.pts && s.pts.slice() } };
             this.sync();
             ed.changed();
             return;
@@ -339,6 +419,16 @@ const AdjustSpots = {
         this.hover = p;
         const d = this.drag;
         if (!d) { this.draw(); return; }
+        if (d.kind === 'new' && this.tool === 'eye') {
+            // In Restore, a drag is along a scratch
+            if (!d.moved && Math.hypot(p.x - d.start.x, p.y - d.start.y) < 5) return;
+            d.moved = true;
+            d.path = d.path || [d.start];
+            const last = d.path[d.path.length - 1];
+            if (Math.hypot(p.x - last.x, p.y - last.y) >= 3) d.path.push(p);
+            this.draw();
+            return;
+        }
         if (d.kind === 'new') {
             if (!d.moved && Math.hypot(p.x - d.start.x, p.y - d.start.y) < 5) return;
             if (!d.moved) {
@@ -359,7 +449,11 @@ const AdjustSpots = {
         const s = this.current();
         if (!s) return;
         const du = p.u - d.start.u, dv = p.v - d.start.v;
-        if (d.kind === 'spot') { s.x = d.orig.x + du; s.y = d.orig.y + dv; if (s.t === 'eye') { s.sx = s.x; s.sy = s.y; } }
+        if (d.kind === 'spot' && s.t === 'line') {
+            s.pts = d.orig.pts.map((v, k) => v + (k % 2 ? dv : du));
+            s.x = s.sx = s.pts[0];
+            s.y = s.sy = s.pts[1];
+        } else if (d.kind === 'spot') { s.x = d.orig.x + du; s.y = d.orig.y + dv; if (s.t === 'eye') { s.sx = s.x; s.sy = s.y; } }
         if (d.kind === 'source') { s.sx = d.orig.sx + du; s.sy = d.orig.sy + dv; }
         if (d.kind === 'edge') {
             const c = this.fromPhoto(s.x, s.y);
@@ -372,7 +466,14 @@ const AdjustSpots = {
         const d = this.drag;
         this.drag = null;
         if (this.cv.hasPointerCapture && this.cv.hasPointerCapture(e.pointerId)) this.cv.releasePointerCapture(e.pointerId);
-        if (d && d.kind === 'new' && !d.moved) {
+        if (d && d.kind === 'new' && d.path) {
+            const path = d.path.concat(this.point(e));
+            if (path.length >= 2) {
+                this.ed.pushHistory();
+                this.spots().push(this.makeLine(path));
+                this.sel = this.spots().length - 1;
+            }
+        } else if (d && d.kind === 'new' && !d.moved) {
             // A click: the source picked for it
             this.ed.pushHistory();
             const s = this.make(d.start, null);
@@ -381,7 +482,7 @@ const AdjustSpots = {
         }
         // Dragged onto itself: nothing to copy, so gone
         const s = this.current();
-        if (s && s.t !== 'eye' && Math.hypot((s.sx - s.x) * this.ed.map.asp, s.sy - s.y) < s.r * 0.5) {
+        if (s && s.t !== 'eye' && s.t !== 'line' && Math.hypot((s.sx - s.x) * this.ed.map.asp, s.sy - s.y) < s.r * 0.5) {
             this.spots().splice(this.sel, 1);
             this.sel = -1;
         }
@@ -425,10 +526,28 @@ const AdjustSpots = {
             }
             ctx.setLineDash([]);
         };
+        const stroke = (P, width, color, dash = []) => {
+            ctx.setLineDash(dash);
+            ctx.lineCap = ctx.lineJoin = 'round';
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.beginPath();
+            P.forEach((q, k) => (k ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+            ctx.stroke();
+            ctx.setLineDash([]);
+        };
         this.spots().forEach((s, i) => {
             const selected = i === this.sel;
             if (!this.show && !selected) return;
             const R = Math.max(3, s.r * hp);
+            if (s.t === 'line') {
+                // its width, faintly, and its middle
+                const P = this.linePts(s), color = selected ? '#fff' : s.d ? '#ffd166' : 'rgba(255,255,255,0.8)';
+                stroke(P, 2 * R + 2, 'rgba(0,0,0,0.35)');
+                stroke(P, 2 * R, selected ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.14)');
+                stroke(P, selected ? 2 : 1.25, color);
+                return;
+            }
             const d = this.fromPhoto(s.x, s.y);
             const color = selected ? '#fff' : s.d ? '#ffd166' : 'rgba(255,255,255,0.8)';
             circle(d, R, [], color, selected ? 2 : 1.25);
@@ -451,6 +570,12 @@ const AdjustSpots = {
                 }
             }
         });
+        // A scratch being dragged along
+        if (this.drag && this.drag.path) {
+            const P = this.drag.path.concat(this.hover ? [this.hover] : []);
+            stroke(P, 3, 'rgba(0,0,0,0.6)');
+            stroke(P, 1.5, '#fff', [4, 3]);
+        }
         // Where a click would put one
         if (this.hover && !this.drag && !this.hit(this.hover)) {
             circle(this.hover, Math.max(3, this.size / 200 * hp), [], 'rgba(255,255,255,0.6)', 1);

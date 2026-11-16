@@ -510,7 +510,7 @@
                      and Masks (part of the photo) -->
                 <div id="adj-panes" class="adj-pane-tabs" role="tablist" aria-label="Adjust">
                     <button class="adj-tool" role="tab" data-pane="edit" aria-selected="true" aria-label="Edit" title="Edit: light, colour, curve and the rest"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg></button>
-                    <button class="adj-tool" role="tab" data-pane="restore" aria-selected="false" aria-label="Restore" title="Restore: a faded scan's colour, red-eye and dust"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/><path d="M4 16l4.5-4.5 4 4 2-2L20 18"/><path d="M19 2.5v5M16.5 5h5"/></svg></button>
+                    <button class="adj-tool" role="tab" data-pane="restore" aria-selected="false" aria-label="Restore" title="Restore: a faded scan's colour, red-eye, dust, scratches and a print's dots"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/><path d="M4 16l4.5-4.5 4 4 2-2L20 18"/><path d="M19 2.5v5M16.5 5h5"/></svg></button>
                     <button class="adj-tool" role="tab" data-pane="heal" aria-selected="false" aria-label="Heal" title="Heal: take spots off, or clone over them"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="8.5" width="19" height="7" rx="3.5" transform="rotate(-45 12 12)"/><path d="M10.6 10.6h.01M13.4 13.4h.01M13.4 10.6h.01M10.6 13.4h.01"/></svg></button>
                     <button class="adj-tool" role="tab" data-pane="masks" aria-selected="false" aria-label="Masks" title="Masks: adjust part of the photo"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg></button>
                 </div>
@@ -608,7 +608,12 @@
                         <div id="adj-dust-tools" class="adj-rows"></div>
                         <div class="adj-mask-add">
                             <button id="adj-dust-find" class="btn secondary sm" title="Put a heal spot on every speck of dust found">Find dust</button>
-                            <button id="adj-dust-clear" class="btn ghost sm" title="Take off the spots Find dust put on" disabled>Clear found</button>
+                            <button id="adj-dust-clear" class="btn ghost sm" title="Take off the dust spots and scratches Find dust and Find scratches put on" disabled>Clear found</button>
+                        </div>
+                        <div class="adj-sub">Scratches and creases</div>
+                        <p class="adj-hint">Drag along a scratch or crease to take it off</p>
+                        <div class="adj-mask-add">
+                            <button id="adj-scratch-find" class="btn secondary sm" title="Put a line on every scratch and crease found: check them, and right-click any that aren't">Find scratches</button>
                         </div>
                         <p id="adj-spot-count" class="adj-hint"></p>
                         <div class="adj-sub">Printed photos</div>
@@ -616,7 +621,6 @@
                         <div class="adj-mask-add">
                             <button id="adj-descreen" class="btn secondary sm" title="Descreen: finds the dot pattern of a photo printed in a magazine, newspaper or book, and takes it off (zoom to 100% to see it)">Descreen</button>
                         </div>
-                        <p class="adj-hint adj-next">Scratch removal comes next.</p>
                     </details>
                 </div>
                 <div class="adj-pane hidden" data-pane="heal">

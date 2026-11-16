@@ -45,7 +45,7 @@
 //           doesn't move them; sizes are in heights of the photo)
 //   look:   a film look (LOOKS), with lookAmount (0–200%): applied over
 //           everything else, inside the colour table
-//   spots:  spot and dust removal (retouch.js): done on the photo itself,
+//   spots:  spot, dust and scratch removal (retouch.js): done on the photo itself,
 //           before it's cropped, so not part of the tables at all
 
 const Develop = {
