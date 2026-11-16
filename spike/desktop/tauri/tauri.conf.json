@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "jEditor spike",
+  "version": "0.0.0",
+  "identifier": "com.xmui.jeditor.spike",
+  "build": { "frontendDist": "../../../app" },
+  "app": {
+    "windows": [{ "title": "jEditor", "width": 1280, "height": 800 }],
+    "security": { "csp": null }
+  },
+  "bundle": { "active": true, "targets": ["deb", "appimage"], "icon": ["icons/icon.png"] }
+}
