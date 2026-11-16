@@ -1066,6 +1066,7 @@ const PaintEditor = {
         const box = this.el('paint-options');
         box.textContent = '';
         if (this.crop) { this.cropOptions(box); return; }
+        if (this.float) { this.transformOptions(box); return; }
         const o = this.opts;
         const save = () => this.remember();
         const add = (el) => { box.appendChild(el); return el; };
@@ -3046,6 +3047,7 @@ const PaintEditor = {
                 ...when(room, ['New layer', () => this.addLayer(), false, undefined, 'paint.newLayer']),
                 ...when(room, ['Duplicate', () => this.duplicateLayer(), false, undefined, 'paint.duplicate']),
                 ...when(this.cur > 0, ['Merge down', () => this.mergeDown(), false, undefined, 'paint.merge']),
+                ['Free transform', () => this.freeTransform(), false, undefined, 'paint.transform'],
                 ['—'],
                 ['Bring in an image…', () => this.pickImage(), false, undefined, 'paint.import'],
                 ['Mask', this.maskItems()],
@@ -3504,6 +3506,8 @@ const PaintEditor = {
         const dx = top.x - mid.x, dy = top.y - mid.y, len = Math.hypot(dx, dy) || 1;
         return {
             corners: [['nw', at(0, 0)], ['ne', at(f.w, 0)], ['sw', at(0, f.h)], ['se', at(f.w, f.h)]],
+            // The middles of the sides: stretch one way only
+            edges: [['n', at(f.w / 2, 0)], ['s', at(f.w / 2, f.h)], ['w', at(0, f.h / 2)], ['e', at(f.w, f.h / 2)]],
             knob: { x: top.x + dx / len * knobLen * Math.sign(this.float.t.sy || 1), y: top.y + dy / len * knobLen * Math.sign(this.float.t.sy || 1) },
             M
         };
@@ -3512,7 +3516,7 @@ const PaintEditor = {
     floatHit(p) {
         const h = this.floatHandles(), r = 9 / this.view.z;
         if (Math.hypot(p.ox - h.knob.x, p.oy - h.knob.y) <= r) return 'rotate';
-        for (const [id, q] of h.corners) if (Math.hypot(p.ox - q.x, p.oy - q.y) <= r) return id;
+        for (const [id, q] of [...h.corners, ...h.edges]) if (Math.hypot(p.ox - q.x, p.oy - q.y) <= r) return id;
         const l = h.M.inverse().transformPoint({ x: p.ox, y: p.oy });
         if (l.x >= 0 && l.y >= 0 && l.x <= this.float.w && l.y <= this.float.h) return 'move';
         return null;
@@ -3535,10 +3539,80 @@ const PaintEditor = {
             const c = Math.cos(-o.rot), s = Math.sin(-o.rot);
             const lx = c * (p.ox - cx) - s * (p.oy - cy), ly = s * (p.ox - cx) + c * (p.oy - cy);
             let sx = Math.max(0.02, Math.abs(lx) / (f.w / 2)), sy = Math.max(0.02, Math.abs(ly) / (f.h / 2));
-            if (keepShape) sx = sy = Math.max(sx, sy);
+            // A side: that way only (Shift: both, its shape kept)
+            if (d.part === 'e' || d.part === 'w') sy = keepShape ? sx : Math.abs(o.sy);
+            else if (d.part === 'n' || d.part === 's') sx = keepShape ? sy : Math.abs(o.sx);
+            else if (keepShape) sx = sy = Math.max(sx, sy);
             t.sx = sx * Math.sign(o.sx || 1);
             t.sy = sy * Math.sign(o.sy || 1);
         }
+        this.syncTransform();
+    },
+
+    // ---- Free transform (Ctrl+T): the layer, or what's selected, lifted to
+    // move, size, stretch, turn and flip, its numbers along the top ----
+
+    freeTransform() {
+        if (!this.ready || this.busy) return;
+        if (this.text) this.endText(true);
+        if (this.crop) return;
+        if (this.float) return; // already
+        const l = this.layer();
+        if (!l) return;
+        if (this.empty(l) && !this.sel) { this.app.showToast('Nothing on this layer to transform', 1800); return; }
+        if (this.tool !== 'move') this.setTool('move');
+        if (this.liftFloat()) this.renderSoon();
+    },
+
+    // W and H (% of what was lifted) and the angle, typed
+    transformOptions(box) {
+        const f = this.float, t = f.t;
+        const num = (label, get, set, unit, min, max) => {
+            const l = document.createElement('label');
+            l.className = 'paint-opt';
+            l.innerHTML = '<span></span><input type="number" class="field paint-tf-num"><span class="paint-tf-unit"></span>';
+            l.querySelector('span').textContent = label;
+            l.querySelector('.paint-tf-unit').textContent = unit;
+            const i = l.querySelector('input');
+            Object.assign(i, { min, max, step: 1 });
+            i.value = get();
+            i.addEventListener('change', () => {
+                const v = parseFloat(i.value);
+                if (isFinite(v)) { set(Math.min(max, Math.max(min, v))); this.renderSoon(); }
+                i.value = get();
+            });
+            i.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); i.dispatchEvent(new Event('change')); i.blur(); } });
+            l._sync = () => { if (document.activeElement !== i) i.value = get(); };
+            box.appendChild(l);
+            return l;
+        };
+        this.tfRows = [
+            num('W', () => Math.round(Math.abs(t.sx) * 100), (v) => { t.sx = Math.sign(t.sx || 1) * v / 100; }, '%', 1, 2000),
+            num('H', () => Math.round(Math.abs(t.sy) * 100), (v) => { t.sy = Math.sign(t.sy || 1) * v / 100; }, '%', 1, 2000),
+            num('Angle', () => Math.round(((t.rot * 180 / Math.PI) % 360 + 540) % 360 - 180), (v) => { t.rot = v * Math.PI / 180; }, '°', -180, 180)
+        ];
+        const button = (label, title, fn, cls = 'btn ghost sm') => {
+            const b = document.createElement('button');
+            b.className = cls;
+            b.textContent = label;
+            b.title = title;
+            b.addEventListener('click', () => { b.blur(); fn(); });
+            box.appendChild(b);
+            return b;
+        };
+        button('Flip ↔', 'Flip left to right', () => { t.sx = -t.sx; this.renderSoon(); });
+        button('Flip ↕', 'Flip upside down', () => { t.sy = -t.sy; this.renderSoon(); });
+        const hint = document.createElement('span');
+        hint.className = 'paint-opt paint-hint';
+        hint.textContent = 'Drag a corner to size it, a side to stretch it (Shift keeps its shape), the knob to turn it';
+        hint.title = hint.textContent;
+        box.appendChild(hint);
+        button('Cancel', 'Put it back as it was (Esc)', () => this.cancelFloat(), 'btn secondary paint-tf-cancel');
+        button('Done', 'Put it down (Enter)', () => this.commitFloat(), 'btn primary paint-tf-ok');
+    },
+
+    syncTransform() {
+        for (const r of this.tfRows || []) if (r.isConnected) r._sync();
     },
 
     drawFloat(ctx, VD) {
@@ -3833,9 +3907,9 @@ const PaintEditor = {
             const knob = new Path2D();
             knob.moveTo(top.x, top.y); knob.lineTo(h.knob.x, h.knob.y);
             outline(knob, []);
-            for (const q of [...c, h.knob]) {
+            for (const q of [...c, ...h.edges.map(x => x[1]), h.knob]) {
                 ctx.beginPath();
-                ctx.arc(q.x, q.y, 5 / z, 0, Math.PI * 2);
+                ctx.arc(q.x, q.y, (h.edges.some(x => x[1] === q) ? 4 : 5) / z, 0, Math.PI * 2);
                 ctx.fillStyle = '#fff';
                 ctx.fill();
                 ctx.lineWidth = 1.5 / z;
