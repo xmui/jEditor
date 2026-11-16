@@ -2418,6 +2418,81 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- Paint: free transform ----
+    if (wanted('painttransform')) {
+        console.log('paint: free transform (paint-editor.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 200; c.height = 200;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 200, 200);
+                await openProject('tf', { 't.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                P.opts.snap = false;
+                const g = P.layers[0].canvas.getContext('2d', { willReadFrequently: true });
+                g.fillStyle = '#ff0000'; g.fillRect(80, 80, 40, 40);
+                const a = (x, y) => g.getImageData(x, y, 1, 1).data[3];
+                // Nothing there: said so
+                step = 'empty';
+                P.addLayer();
+                pressKey('t', { ctrlKey: true });
+                out.empty = !P.float;
+                P.cur = 0; P.drawLayers();
+                // Ctrl+T: lifted, Move picked, its numbers along the top
+                step = 'lift';
+                P.setTool('brush');
+                pressKey('t', { ctrlKey: true });
+                const box = document.getElementById('paint-options');
+                out.lifted = [!!P.float, P.tool, ['W', 'H', 'Angle', 'Flip ↔', 'Flip ↕', 'Cancel', 'Done'].every(t => box.textContent.includes(t))];
+                out.menu = P.moreItems().find(i => i[0] === 'Layer')[1].some(i => i[0] === 'Free transform');
+                // A side stretches one way only; the numbers follow
+                step = 'edge';
+                const st = document.getElementById('paint-stage');
+                const sc = (q) => { const sp = P.V().transformPoint(q); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const h = P.floatHandles();
+                const e = h.edges.find(x => x[0] === 'e')[1], mid = { x: (h.corners[0][1].x + h.corners[3][1].x) / 2, y: (h.corners[0][1].y + h.corners[3][1].y) / 2 };
+                const far = { x: mid.x + (e.x - mid.x) * 1.5, y: e.y };
+                st.dispatchEvent(new PointerEvent('pointerdown', { ...sc(e), pointerId: 1, bubbles: true, button: 0 }));
+                st.dispatchEvent(new PointerEvent('pointermove', { ...sc(far), pointerId: 1, bubbles: true }));
+                st.dispatchEvent(new PointerEvent('pointerup', { ...sc(far), pointerId: 1, bubbles: true }));
+                const nums = () => [...box.querySelectorAll('input.paint-tf-num')].map(i => +i.value);
+                out.stretched = [Math.round(P.float.t.sx * 100), Math.round(P.float.t.sy * 100), nums().join()];
+                // Typed: the angle; Flip ↔ mirrors
+                step = 'typed';
+                const ang = box.querySelectorAll('input.paint-tf-num')[2];
+                ang.value = '90'; ang.dispatchEvent(new Event('change'));
+                out.turned = Math.round(P.float.t.rot * 180 / Math.PI);
+                [...box.querySelectorAll('button')].find(b => b.textContent === 'Flip ↔').click();
+                out.flipped = P.float.t.sx < 0;
+                // Cancel puts it back; Done puts it down, one step to undo
+                step = 'cancel';
+                [...box.querySelectorAll('button')].find(b => b.textContent === 'Cancel').click();
+                out.cancelled = [!P.float, a(100, 100), a(130, 100)];
+                pressKey('t', { ctrlKey: true });
+                P.float.t.sx = 2;
+                const n0 = P.history.length;
+                [...box.querySelectorAll('button')].find(b => b.textContent === 'Done').click();
+                out.done = [!P.float, a(100, 100), a(65, 100), P.history.length - n0];
+                pressKey('z', { ctrlKey: true });
+                out.undone = [a(65, 100), a(100, 100)];
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint transform: nothing on the layer, nothing lifted', r.empty, JSON.stringify(r));
+        check('paint transform: Ctrl+T lifts it with Move, W, H, Angle, flips, Cancel and Done along the top; in ⋯ → Layer', r.lifted && r.lifted[0] && r.lifted[1] === 'move' && r.lifted[2] && r.menu, JSON.stringify(r));
+        check('paint transform: a side stretches it one way, the numbers following', r.stretched && r.stretched[0] > 120 && r.stretched[1] === 100 && r.stretched[2] === `${r.stretched[0]},100,0`, JSON.stringify(r));
+        check('paint transform: the angle typed turns it; Flip ↔ mirrors it', r.turned === 90 && r.flipped, JSON.stringify(r));
+        check('paint transform: Cancel puts it back; Done puts it down, one step to undo', JSON.stringify(r.cancelled) === '[true,255,0]' && r.done && r.done[0] && r.done[1] === 255 && r.done[2] === 255 && r.done[3] === 1 && JSON.stringify(r.undone) === '[0,255]', JSON.stringify(r));
+        check('paint transform: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
         console.log('restore colour (develop.js, script.js, adjust.js)');
