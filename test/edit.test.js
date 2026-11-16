@@ -2331,6 +2331,92 @@ const PROJECT = `
         await page.close();
     }
 
+    // ---- Paint: layer masks ----
+    if (wanted('paintmask')) {
+        console.log('paint: layer masks (paint-editor.js, paint.js)');
+        const { page, issues } = await open();
+        const r = await page.evaluate(async () => {
+            let step = 'start';
+            try {
+                const out = {};
+                const c = document.createElement('canvas'); c.width = 200; c.height = 100;
+                c.getContext('2d').fillStyle = '#808080'; c.getContext('2d').fillRect(0, 0, 200, 100);
+                await openProject('masks', { 'm.png': await canvasBlob(c) });
+                app.openSingle(app.files[0]);
+                await app.enterPaint();
+                await until(() => PaintEditor.ready);
+                const P = PaintEditor;
+                const l = P.layers[0];
+                l.canvas.getContext('2d').fillStyle = '#ff0000';
+                l.canvas.getContext('2d').fillRect(0, 0, P.W, P.H);
+                l.changed = true;
+                const shown = (x, y) => P.shownOf(P.layers[0]).getContext('2d').getImageData(x, y, 1, 1).data[3];
+                const st = document.getElementById('paint-stage');
+                const at = (x, y) => { const sp = P.V().transformPoint(P.C.transformPoint({ x, y })); const rr = P.canvas.getBoundingClientRect(); return { clientX: rr.left + sp.x, clientY: rr.top + sp.y }; };
+                const pe = (type, x, y) => st.dispatchEvent(new PointerEvent(type, { ...at(x, y), pointerId: 1, bubbles: true, button: 0 }));
+                // ⋯ → Layer → Mask → Add a mask: the mask's thumbnail, being painted on
+                step = 'add';
+                const sub = (name) => P.moreItems().find(i => i[0] === 'Layer')[1].find(i => i[0] === 'Mask')[1].map(i => i[0]).join('|');
+                out.menu0 = sub();
+                P.addMask('all');
+                out.added = [!!P.layers[0].mask, P.onMask, !!document.querySelector('.paint-mask-thumb.on'), P.fg, sub()];
+                // Black on the mask hides; the layer's own pixels are untouched
+                step = 'paint';
+                P.setTool('pencil'); P.opts.size = 10; P.opts.opacity = 100;
+                pe('pointerdown', 50, 50); pe('pointerup', 50, 50);
+                out.hidden = [shown(50, 50), shown(150, 50), P.layers[0].canvas.getContext('2d').getImageData(50, 50, 1, 1).data[3]];
+                // White shows it again (X swaps); Undo takes the stroke off the mask
+                P.swapColours();
+                pe('pointerdown', 50, 50); pe('pointerup', 50, 50);
+                out.shownAgain = shown(50, 50);
+                pressKey('z', { ctrlKey: true });
+                out.undone = shown(50, 50);
+                // Invert: what showed is hidden
+                P.invertMask();
+                out.inverted = [shown(50, 50), shown(150, 50)];
+                P.invertMask();
+                // Saved: the mask a file of its own; drawn over the photo with it
+                step = 'keep';
+                const rec = await P.keep();
+                out.kept = !!rec.layers[0].mask && rec.layers[0].mask !== rec.layers[0].rev;
+                const prep = await Paint.prepare({ paint: rec });
+                const src = prep.layers[0].src;
+                const sc = document.createElement('canvas'); sc.width = src.width; sc.height = src.height;
+                sc.getContext('2d').drawImage(src, 0, 0);
+                out.prepared = [sc.getContext('2d').getImageData(50, 50, 1, 1).data[3], sc.getContext('2d').getImageData(150, 50, 1, 1).data[3]];
+                // Clicking the layer's thumbnail paints on the layer again
+                step = 'thumb';
+                document.querySelector('.paint-layer canvas:not(.paint-mask-thumb)').click();
+                out.onLayer = P.onMask === false && P.target() === P.layers[0];
+                // Apply: put into the pixels, the mask gone; Delete on another
+                step = 'apply';
+                P.applyMask();
+                out.applied = [!P.layers[0].mask, P.layers[0].canvas.getContext('2d').getImageData(50, 50, 1, 1).data[3], P.layers[0].canvas.getContext('2d').getImageData(150, 50, 1, 1).data[3]];
+                // From the selection: only what's selected shows
+                step = 'sel';
+                P.addLayer();
+                P.layers[1].canvas.getContext('2d').fillRect(0, 0, P.W, P.H);
+                const m = P.newCanvas(); m.getContext('2d').fillRect(100, 0, 100, 100);
+                P.combineSelection(m, 'new');
+                P.addMask('sel');
+                const s1 = (x, y) => P.shownOf(P.layers[1]).getContext('2d').getImageData(x, y, 1, 1).data[3];
+                out.fromSel = [s1(50, 50), s1(150, 50), !P.sel];
+                pressKey('z', { ctrlKey: true });
+                out.undoAdd = !P.layers[1].mask;
+                app.cancelPaint();
+                return out;
+            } catch (e) { return { error: step + ': ' + e.message + ' ' + e.stack }; }
+        });
+        check('paint masks: ⋯ → Layer → Mask adds one; its thumbnail shows, painted on, in black and white', r.menu0 === 'Add a mask|Add a mask that hides it all' && r.added && r.added[0] && r.added[1] && r.added[2] && r.added[3] === '#000000' && /Paint on the layer\|Invert the mask\|Apply the mask\|Delete the mask/.test(r.added[4]), JSON.stringify(r));
+        check('paint masks: black on the mask hides the layer there, its pixels kept; white shows it again; Undo', JSON.stringify(r.hidden) === '[0,255,255]' && r.shownAgain === 255 && r.undone === 0, JSON.stringify(r));
+        check('paint masks: Invert swaps what shows', JSON.stringify(r.inverted) === '[255,0]', JSON.stringify(r));
+        check('paint masks: kept as a file of its own, and drawn with it', r.kept && JSON.stringify(r.prepared) === '[0,255]', JSON.stringify(r));
+        check('paint masks: the layer\'s thumbnail paints on the layer; Apply puts it into the pixels', r.onLayer && JSON.stringify(r.applied) === '[true,0,255]', JSON.stringify(r));
+        check('paint masks: from the selection, only what\'s selected shows; Undo takes it off', JSON.stringify(r.fromSel) === '[0,255,true]' && r.undoAdd, JSON.stringify(r));
+        check('paint masks: no JS errors', issues.errors.length === 0, issues.errors.join('; '));
+        await page.close();
+    }
+
     // ---- Restore colour (develop.js: restoreAuto; script.js: restoreColour) ----
     if (wanted('restore')) {
         console.log('restore colour (develop.js, script.js, adjust.js)');

@@ -880,7 +880,14 @@ const PaintEditor = {
                 const c = this.newCanvas();
                 const src = await Paint.layerBitmap(kept.paint, l);
                 if (src) c.getContext('2d').drawImage(src, 0, 0, this.W, this.H);
-                this.layers.push({ id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: !!l.lock, canvas: c, changed: false });
+                const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: !!l.lock, canvas: c, changed: false };
+                if (l.mask) {
+                    const m = this.newCanvas(), mb = await Paint.layerBitmap(kept.paint, Paint.maskOf(l));
+                    if (mb) m.getContext('2d').drawImage(mb, 0, 0, this.W, this.H);
+                    else m.getContext('2d').fillRect(0, 0, this.W, this.H);
+                    Object.assign(rec, { mask: m, maskRev: l.mask, maskChanged: false });
+                }
+                this.layers.push(rec);
             }
         }
         if (!this.layers.length) this.layers.push(this.makeLayer('Layer 1'));
@@ -1180,6 +1187,8 @@ const PaintEditor = {
             smudge: 'Drag: the colours under the brush go with it',
             clone: this.healSrc ? 'Paint: copied from the + mark. Alt-click to copy from elsewhere' : 'Alt-click where to copy from, then paint'
         }[this.tool] || '';
+        // On a mask: what the colours do there
+        if (this.onMask && this.layer() && this.layer().mask && this.isBrush()) hint.textContent = 'On the mask: black hides the layer, white shows it again (X swaps them)';
         hint.textContent = Host.keys(hint.textContent);
         if (hint.textContent) {
             hint.title = hint.textContent;
@@ -1389,8 +1398,12 @@ const PaintEditor = {
             ctx.globalCompositeOperation = l.blend;
             ctx.setTransform(LD);
             let src = l.canvas;
-            // The stroke being made, shown as it'll go on
-            if (i === this.cur && this.drag && this.drag.stroke) src = this.preview(l);
+            // The stroke being made, shown as it'll go on (on the mask: the
+            // mask as it'll be)
+            const stroking = i === this.cur && this.drag && this.drag.stroke;
+            const onMask = stroking && this.drag.target && this.drag.target.isMask;
+            if (stroking && !onMask) src = this.preview(l);
+            if (l.mask) src = this.maskedNow(src, onMask ? this.preview(this.drag.target) : l.mask);
             ctx.drawImage(src, 0, 0);
             if (i === this.cur && this.float) this.drawFloat(ctx, VD);
             ctx.restore();
@@ -1962,13 +1975,13 @@ const PaintEditor = {
         }
         // (ink starts thin)
         if (this.tool === 'ink' && !from) p = { ...p, pr: (p.pr || 1) * 0.45 };
-        const l = this.layer();
+        const l = this.target();
         this.beginPixels(l);
         const g = this.stroke.getContext('2d');
         g.setTransform(1, 0, 0, 1, 0, 0);
         g.globalCompositeOperation = 'source-over';
         g.clearRect(0, 0, this.W, this.H);
-        this.drag = { kind: 'paint', stroke: true, last: from || p, dirty: null, tool: this.tool, carry: 0, off, tone: this.TONE.includes(this.tool) };
+        this.drag = { kind: 'paint', stroke: true, last: from || p, dirty: null, tool: this.tool, carry: 0, off, tone: this.TONE.includes(this.tool), target: l };
         if (off || this.drag.tone) this.drag.base = this.healBase();
         if (this.drag.tone) this.drag.rad = PaintHeal.blurOf(this.tool, this.radius());
         if (from) this.strokeTo(p);
@@ -2212,7 +2225,7 @@ const PaintEditor = {
             if (l.hidden) continue;
             g.globalAlpha = l.opacity;
             g.globalCompositeOperation = l.blend;
-            g.drawImage(l.canvas, 0, 0);
+            g.drawImage(this.shownOf(l), 0, 0);
         }
         g.globalAlpha = 1;
         g.globalCompositeOperation = 'destination-in';
@@ -2543,14 +2556,18 @@ const PaintEditor = {
         if (r) { g.beginPath(); g.rect(r.x, r.y, r.w, r.h); g.clip(); }
         // (spot heal, until it's let go: where it'll heal, darkened)
         g.globalAlpha = this.opts.opacity / 100 * (d && d.tool === 'spot-heal' && !d.healed ? 0.45 : 1);
-        g.globalCompositeOperation = d && this.ERASERS.includes(d.tool) ? 'destination-out' : this.layer() && this.layer().lock ? 'source-atop'
+        const t = (d && d.target) || this.layer();
+        g.globalCompositeOperation = d && this.ERASERS.includes(d.tool) ? 'destination-out'
+            // On a mask: dark hides (takes it off), light shows
+            : t && t.isMask ? (this.lum(this.fg) < 0.5 ? 'destination-out' : 'source-over')
+            : t && t.lock ? 'source-atop'
             : d && d.tool === 'marker' ? 'multiply' : 'source-over';
         g.drawImage(this.stroke, 0, 0);
         g.restore();
     },
 
     endStroke() {
-        const d = this.drag, l = this.layer();
+        const d = this.drag, l = d.target || this.layer();
         if (d.raw && !d.snap) this.strokeTo(d.raw);
         this.lastDab = { x: d.last.x, y: d.last.y, pr: d.last.pr };
         if (!d.dirty) return;
@@ -3031,6 +3048,7 @@ const PaintEditor = {
                 ...when(this.cur > 0, ['Merge down', () => this.mergeDown(), false, undefined, 'paint.merge']),
                 ['—'],
                 ['Bring in an image…', () => this.pickImage(), false, undefined, 'paint.import'],
+                ['Mask', this.maskItems()],
                 ...(n > 1 ? [['—'], ['Delete layer', () => this.deleteLayer(), true]] : [])
             ]],
             ['Brushes', this.brushItems()],
@@ -3089,7 +3107,7 @@ const PaintEditor = {
                 if (l.hidden) continue;
                 g.globalAlpha = l.opacity;
                 g.globalCompositeOperation = l.blend;
-                g.drawImage(l.canvas, 0, 0);
+                g.drawImage(this.shownOf(l), 0, 0);
             }
             g.globalAlpha = 1;
         } else {
@@ -3602,7 +3620,7 @@ const PaintEditor = {
                 g.save();
                 g.globalAlpha = k.opacity;
                 g.globalCompositeOperation = k.blend;
-                g.drawImage(k.canvas, -b.x, -b.y);
+                g.drawImage(this.shownOf(k), -b.x, -b.y);
                 g.restore();
             }
         } else g.drawImage(l.canvas, -b.x, -b.y);
@@ -3991,10 +4009,36 @@ const PaintEditor = {
             row.querySelector('.paint-layer-name').textContent = l.name;
             cv.title = Host.keys('Ctrl+click: select its pixels (Shift adds, Alt takes away)');
             cv.addEventListener('click', (e) => {
-                if (!(e.ctrlKey || e.metaKey)) return;
+                if (!(e.ctrlKey || e.metaKey)) { this.onMask = false; return; }
                 e.stopPropagation();
                 this.selectLayerPixels(i, e.altKey ? 'sub' : e.shiftKey ? 'add' : 'new');
             });
+            // Its mask: white shows, black hides; click it to paint on it
+            if (l.mask) {
+                const mc = document.createElement('canvas');
+                mc.width = 96;
+                mc.height = 72;
+                mc.className = 'paint-mask-thumb';
+                const mg = mc.getContext('2d');
+                mg.fillStyle = '#fff';
+                mg.fillRect(0, 0, 96, 72);
+                mg.globalCompositeOperation = 'destination-in';
+                mg.drawImage(l.mask, (96 - w) / 2, (72 - h) / 2, w, h);
+                mg.globalCompositeOperation = 'destination-over';
+                mg.fillStyle = '#000';
+                mg.fillRect(0, 0, 96, 72);
+                mc.title = 'The mask: white shows the layer, black hides it. Click to paint on it';
+                const editing = i === this.cur && this.onMask;
+                mc.classList.toggle('on', editing);
+                cv.classList.toggle('on', i === this.cur && !editing);
+                mc.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (this.float) this.commitFloat();
+                    this.cur = i;
+                    this.editMask(true);
+                });
+                cv.after(mc);
+            }
             row.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -4005,8 +4049,10 @@ const PaintEditor = {
             });
             row.addEventListener('click', () => {
                 if (this.float) this.commitFloat();
+                if (this.cur !== i) this.onMask = false;
                 this.cur = i;
                 this.drawLayers();
+                this.buildOptions();
             });
             row.addEventListener('dblclick', () => this.renameLayer(i));
             list.appendChild(row);
@@ -4090,8 +4136,142 @@ const PaintEditor = {
             ['—'],
             ...(room ? [['Duplicate', () => this.duplicateLayer(), false, undefined, 'paint.duplicate']] : []),
             ...(i > 0 ? [['Merge down', () => this.mergeDown(), false, undefined, 'paint.merge']] : []),
+            ['Mask', this.maskItems()],
             ['Rename…', () => this.renameLayer(i)],
             ...(n > 1 ? [['—'], ['Delete layer', () => this.deleteLayer(), true]] : [])
+        ];
+    },
+
+    // ---- Layer masks ----
+    // A layer's mask: a canvas its size whose alpha is how much of the
+    // layer shows. Painting on it (its thumbnail chosen) with a dark colour
+    // hides, a light one shows again; the eraser hides. Kept as a file of
+    // its own beside the layer's (paint.js: maskOf)
+
+    // What painting goes on: the layer, or its mask
+    target() {
+        const l = this.layer();
+        return l && l.mask && this.onMask ? this.maskTarget(l) : l;
+    },
+
+    // The mask, as a layer for the strokes and Undo (its changes mark the
+    // mask changed)
+    maskTarget(l) {
+        if (l._mt && l._mt.owner === l) return l._mt;
+        const owner = l;
+        l._mt = {
+            isMask: true, owner, lock: false, hidden: false, opacity: 1, blend: 'source-over',
+            get name() { return `${owner.name} mask`; },
+            get canvas() { return owner.mask; },
+            get changed() { return !!owner.maskChanged; },
+            set changed(v) { if (v) owner.maskChanged = true; }
+        };
+        return l._mt;
+    },
+
+    // The layer as it shows: its pixels through its mask (a new canvas)
+    shownOf(l) {
+        return l.mask ? Paint.masked(l.canvas, l.mask) : l.canvas;
+    },
+
+    // The same, each frame, into one canvas kept for it
+    maskedNow(src, mask) {
+        let c = this._maskedC;
+        if (!c || c.width !== this.W || c.height !== this.H) c = this._maskedC = this.newCanvas();
+        const g = c.getContext('2d');
+        g.globalCompositeOperation = 'copy';
+        g.drawImage(src, 0, 0);
+        g.globalCompositeOperation = 'destination-in';
+        g.drawImage(mask, 0, 0);
+        g.globalCompositeOperation = 'source-over';
+        return c;
+    },
+
+    lum(hex) {
+        const [r, g, b] = this.rgb(hex);
+        return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    },
+
+    // how: 'all' (all of it shows), 'sel' (what's selected shows), 'none'
+    addMask(how = 'all') {
+        const l = this.layer();
+        if (!l || l.mask || !this.ready) return;
+        if (this.float) this.commitFloat();
+        const m = this.newCanvas(), g = m.getContext('2d');
+        if (how === 'sel' && this.sel) g.drawImage(this.sel.mask, 0, 0);
+        else if (how !== 'none') g.fillRect(0, 0, this.W, this.H);
+        this.pushState(how === 'sel' ? 'Mask from the selection' : 'Add a mask');
+        Object.assign(l, { mask: m, maskRev: null, maskChanged: true });
+        this.afterState();
+        if (how === 'sel') this.deselect();
+        this.editMask(true);
+    },
+
+    // Painting on the mask (true) or the layer; on the mask the colours are
+    // black and white, as Photoshop has them
+    editMask(on) {
+        const l = this.layer();
+        this.onMask = !!(on && l && l.mask);
+        if (this.onMask) { this.fg = '#000000'; this.bg = '#ffffff'; this.syncColours(); }
+        this.drawLayers();
+        this.buildOptions();
+    },
+
+    deleteMask() {
+        const l = this.layer();
+        if (!l || !l.mask) return;
+        this.pushState('Delete the mask');
+        l.mask = null;
+        this.onMask = false;
+        this.afterState();
+        this.buildOptions();
+    },
+
+    // The mask put into the layer's pixels (what it hid is gone), then off
+    applyMask() {
+        const l = this.layer();
+        if (!l || !l.mask) return;
+        if (this.float) this.commitFloat();
+        this.beginPixels(l);
+        const g = l.canvas.getContext('2d');
+        g.globalCompositeOperation = 'destination-in';
+        g.drawImage(l.mask, 0, 0);
+        g.globalCompositeOperation = 'source-over';
+        this.endPixels(l, { x: 0, y: 0, w: this.W, h: this.H }, { free: true, name: 'Apply the mask' });
+        this.deleteMask();
+    },
+
+    // Black and white swapped: what showed is hidden, and the other way
+    invertMask() {
+        const t = this.layer() && this.layer().mask ? this.maskTarget(this.layer()) : null;
+        if (!t) return;
+        this.beginPixels(t);
+        const m = t.canvas, g = m.getContext('2d');
+        const inv = this.newCanvas(), ig = inv.getContext('2d');
+        ig.fillRect(0, 0, this.W, this.H);
+        ig.globalCompositeOperation = 'destination-out';
+        ig.drawImage(m, 0, 0);
+        g.globalCompositeOperation = 'copy';
+        g.drawImage(inv, 0, 0);
+        g.globalCompositeOperation = 'source-over';
+        inv.width = inv.height = 0;
+        this.endPixels(t, { x: 0, y: 0, w: this.W, h: this.H }, { free: true, name: 'Invert the mask' });
+        this.renderSoon();
+    },
+
+    maskItems() {
+        const l = this.layer();
+        if (!l) return [];
+        if (!l.mask) return [
+            ['Add a mask', () => this.addMask('all')],
+            ...(this.sel ? [['Add a mask from the selection', () => this.addMask('sel')]] : []),
+            ['Add a mask that hides it all', () => this.addMask('none')]
+        ];
+        return [
+            [this.onMask ? 'Paint on the layer' : 'Paint on the mask', () => this.editMask(!this.onMask)],
+            ['Invert the mask', () => this.invertMask()],
+            ['Apply the mask', () => this.applyMask()],
+            ['Delete the mask', () => this.deleteMask(), true]
         ];
     },
 
@@ -4113,6 +4293,11 @@ const PaintEditor = {
         this.pushState('Duplicate layer');
         const copy = this.makeLayer(`${l.name} copy`);
         Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: l.lock });
+        if (l.mask) {
+            copy.mask = this.newCanvas();
+            copy.mask.getContext('2d').drawImage(l.mask, 0, 0);
+            copy.maskChanged = true;
+        }
         copy.canvas.getContext('2d').drawImage(l.canvas, 0, 0);
         this.layers.splice(this.cur + 1, 0, copy);
         this.cur++;
@@ -4224,7 +4409,7 @@ const PaintEditor = {
             g.save();
             g.globalAlpha = top.opacity;
             g.globalCompositeOperation = top.blend;
-            g.drawImage(top.canvas, 0, 0);
+            g.drawImage(this.shownOf(top), 0, 0);
             g.restore();
         }
         const before = this.before.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, this.W, this.H);
@@ -4277,7 +4462,7 @@ const PaintEditor = {
     },
 
     canvasState() {
-        return { ext: { ...this.ext }, pad: this.pad && { ...this.pad }, fill: this.fill, canvases: new Map(this.layers.map(l => [l.id, l.canvas])) };
+        return { ext: { ...this.ext }, pad: this.pad && { ...this.pad }, fill: this.fill, canvases: new Map(this.layers.flatMap(l => [[l.id, l.canvas], ...(l.mask ? [[l.id + 'm', l.mask]] : [])])) };
     },
 
     // The canvas padded so (null: the photo's own), one step of Undo; what's
@@ -4298,6 +4483,14 @@ const PaintEditor = {
             const c = this.newCanvas(W, H);
             c.getContext('2d').drawImage(l.canvas, dx, dy);
             canvases.set(l.id, c);
+            // A mask: what's added shows
+            if (l.mask) {
+                const m = this.newCanvas(W, H), mg = m.getContext('2d');
+                mg.fillRect(0, 0, W, H);
+                mg.clearRect(dx, dy, l.mask.width, l.mask.height);
+                mg.drawImage(l.mask, dx, dy);
+                canvases.set(l.id + 'm', m);
+            }
         }
         const fill = pad ? (this.fill || this.bg) : null;
         const after = { ext, pad, fill, canvases };
@@ -4322,6 +4515,12 @@ const PaintEditor = {
             if (c) l.canvas = c;
             else if (l.canvas.width !== this.W || l.canvas.height !== this.H) l.canvas = this.newCanvas();
             l.changed = true;
+            if (l.mask) {
+                const m = s.canvases.get(l.id + 'm');
+                if (m) l.mask = m;
+                else if (l.mask.width !== this.W || l.mask.height !== this.H) { l.mask = this.newCanvas(); l.mask.getContext('2d').fillRect(0, 0, this.W, this.H); }
+                l.maskChanged = true;
+            }
         }
         for (const k of ['stroke', 'before']) { this[k].width = this[k].height = 0; this[k] = this.newCanvas(); }
         if (this._scratch) this._scratch.width = this._scratch.height = 0;
@@ -4527,6 +4726,13 @@ const PaintEditor = {
                 rec.rev = Paint.newId().slice(-10);
                 await Paint.writeLayer(paint, rec, l.canvas);
             }
+            if (l.mask) {
+                rec.mask = l.maskRev;
+                if (l.maskChanged || !l.maskRev) {
+                    rec.mask = Paint.newId().slice(-10);
+                    await Paint.writeLayer(paint, Paint.maskOf(rec), l.mask);
+                }
+            }
             paint.layers.push(rec);
         }
         return Paint.clean(paint);
@@ -4536,6 +4742,6 @@ const PaintEditor = {
     layersNow() {
         if (this.text) this.endText(true);
         if (this.float) this.commitFloat();
-        return { w: this.PW, h: this.PH, ext: this.ext, pad: Paint.padOf(this), fill: this.fill, layers: this.layers.filter(l => !l.hidden && l.opacity > 0).map(l => ({ src: l.canvas, opacity: l.opacity, blend: l.blend })) };
+        return { w: this.PW, h: this.PH, ext: this.ext, pad: Paint.padOf(this), fill: this.fill, layers: this.layers.filter(l => !l.hidden && l.opacity > 0).map(l => ({ src: this.shownOf(l), opacity: l.opacity, blend: l.blend })) };
     }
 };

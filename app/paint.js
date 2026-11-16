@@ -62,7 +62,9 @@ const Paint = {
                 blend: blends.includes(l.blend) ? l.blend : 'source-over',
                 hidden: !!l.hidden,
                 // Transparency locked (kept only when on)
-                ...(l.lock ? { lock: true } : {})
+                ...(l.lock ? { lock: true } : {}),
+                // Its mask's rev (a file of its own, maskFile): what shows
+                ...(id(l.mask) ? { mask: l.mask } : {})
             });
         }
         const side = (o, min) => {
@@ -101,6 +103,23 @@ const Paint = {
         return `${paint.id}-${layer.id}-${layer.rev}.png`;
     },
 
+    // A layer's mask, as a layer of its own: its alpha is what shows
+    maskOf(layer) {
+        return { id: layer.id + 'm', rev: layer.mask };
+    },
+
+    // The layer's pixels with its mask on (a new canvas)
+    masked(src, mask) {
+        const c = document.createElement('canvas');
+        c.width = src.width;
+        c.height = src.height;
+        const g = c.getContext('2d');
+        g.drawImage(src, 0, 0);
+        g.globalCompositeOperation = 'destination-in';
+        g.drawImage(mask, 0, 0, c.width, c.height);
+        return c;
+    },
+
     // ---- Kept in the project ----
 
     async dir(create) {
@@ -135,7 +154,10 @@ const Paint = {
         const dir = await this.dir(false);
         if (!dir) return 0;
         const used = new Set();
-        for (const e of edits) if (this.has(e)) for (const l of e.paint.layers) used.add(this.fileName(e.paint, l));
+        for (const e of edits) if (this.has(e)) for (const l of e.paint.layers) {
+            used.add(this.fileName(e.paint, l));
+            if (l.mask) used.add(this.fileName(e.paint, this.maskOf(l)));
+        }
         const gone = [];
         for await (const [name, h] of dir.entries()) {
             if (h.kind !== 'file' || used.has(name) || !/\.png$/.test(name)) continue;
@@ -192,7 +214,9 @@ const Paint = {
         const layers = [];
         for (const l of p.layers) {
             if (l.hidden || !l.opacity) continue;
-            const src = await this.layerBitmap(p, l);
+            let src = await this.layerBitmap(p, l);
+            const mask = src && l.mask ? await this.layerBitmap(p, this.maskOf(l)) : null;
+            if (mask) src = this.masked(src, mask);
             if (src) layers.push({ src, opacity: l.opacity, blend: l.blend });
         }
         const pad = this.padOf(p);
