@@ -5,8 +5,8 @@
 // it's being changed (on the GPU, so the sliders keep up on a big scan),
 // with its histogram, and Done keeps the settings with the photo: in a
 // project, as an edit (edits.js), never in the file, so they can be
-// changed again later from the photo as it was; Export, or Save edits,
-// writes the result. Without a project (photos picked on a phone,
+// changed again later from the photo as it was; Export, or Save over the
+// original, writes the result. Without a project (photos picked on a phone,
 // dropped photos) Done writes them into the photo, as a crop does.
 //
 // The photo is adjusted as it's cropped (an edit's crop is applied
@@ -553,7 +553,8 @@ const Adjust = {
             ...(sel && sel.length ? [['Sync to selected…', () => AdjustSync.fromAdjust(), false, undefined, 'adjust.sync']] : []),
             ['—'],
             ['Show clipping', () => this.toggleClip(), false, !!this.clip, 'adjust.clip'],
-            ['Before and after', () => this.toggleBefore(), false, !!this.before, 'adjust.before']
+            ['Before and after', () => this.toggleBefore(), false, !!this.before, 'adjust.before'],
+            ...(Edits.canKeep() ? [['—'], ['Save over the original', () => this.app.saveOverOriginal([this.file]), false, undefined, 'adjust.saveOver']] : [])
         ];
     },
 
