@@ -22,7 +22,7 @@ const Adjust = {
     before: false,
 
     LIGHT: [['exposure', 'Exposure'], ['contrast', 'Contrast'], ['highlights', 'Highlights'], ['shadows', 'Shadows'], ['whites', 'Whites'], ['blacks', 'Blacks']],
-    COLOR: [['temp', 'Temperature'], ['tint', 'Tint'], ['vibrance', 'Vibrance'], ['saturation', 'Saturation']],
+    COLOR: [['temp', 'Temperature'], ['tint', 'Tint'], ['texture', 'Texture'], ['clarity', 'Clarity'], ['dehaze', 'Dehaze'], ['vibrance', 'Vibrance'], ['saturation', 'Saturation']],
     DETAIL: [['sharpen', 'Sharpening'], ['sharpRadius', 'Radius'], ['sharpMask', 'Masking'], ['noise', 'Noise reduction'], ['colorNoise', 'Color noise']],
     EFFECTS: [['vignette', 'Vignette'], ['vigMid', 'Midpoint'], ['vigFeather', 'Feather'], ['vigRound', 'Roundness'], ['grain', 'Grain'], ['grainSize', 'Grain size'], ['grainColor', 'Grain color'], ['halation', 'Halation']],
     TRACKS: {
@@ -1018,7 +1018,7 @@ const Adjust = {
         if (this._sharpGl === undefined) this._sharpGl = Develop.renderer(cv);
         const R = this._sharpGl && !this._sharpGl.lost ? this._sharpGl : null;
         if (R && (r.w > R.max || r.h > R.max)) { this.hideSharp(); return; }
-        const d = this.before ? null : Develop.detail(this.a);
+        const d = this.before ? null : Develop.detail(this.a, 1, FW, FH);
         const key = JSON.stringify([r, this._fullKey, d, this.before]);
         if (!this._sharp || this._sharp.key !== key) {
             const img = d ? Develop.detailBlock((a, b, c, e) => this.fullCtx.getImageData(a, b, c, e), r.x, r.y, r.w, r.h, FW, FH, d, 1)
@@ -1160,7 +1160,7 @@ const Adjust = {
     // The working copy with detail done (debounced: it's on the CPU)
     detailSoon() {
         if (!this.gl || !this.srcData) return;
-        const d = Develop.detail(this.a, this.pxScale);
+        const d = Develop.detail(this.a, this.pxScale, this.srcData.width, this.srcData.height);
         const key = JSON.stringify(d);
         if (key === this._detailKey) return;
         clearTimeout(this._detailTimer);
@@ -1241,7 +1241,7 @@ const Adjust = {
         if (this.before) {
             img = this.fullCtx.getImageData(x, y, lw, lh);
         } else {
-            const d = Develop.detail(this.a);
+            const d = Develop.detail(this.a, 1, FW, FH);
             img = d ? Develop.detailBlock((a, b, c, e) => this.fullCtx.getImageData(a, b, c, e), x, y, lw, lh, FW, FH, d, 1)
                 : this.fullCtx.getImageData(x, y, lw, lh);
             Develop.applyCPU(img.data, Develop.tables(this.a), img.data, { x, y, w: lw, W: FW, H: FH, glow: this.glow, map: this.map });

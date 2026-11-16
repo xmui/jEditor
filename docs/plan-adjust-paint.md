@@ -183,6 +183,22 @@ texture and dehaze; one PR each, into beta.
    other, isn't). Measured and left out: joining a line's pixels into
    shapes and fitting each, which broke every scratch into short pieces
    where its contrast dipped (19.9 against 2.3).
+3. *Done:* **Texture, Clarity and Dehaze**, in Presence above Vibrance,
+   as in Lightroom (±100 each). They look at what's round each pixel, so
+   they run with Detail on the CPU, after descreen; their sizes are a
+   share of the picture's long side (not pixels), so they run at every
+   size and every size matches (made then made smaller against made
+   smaller: 0.07–0.24 ΔE). Clarity is the band from three times texture's
+   size to 1.2% of the picture, in the midtones, softly limited (a halo of
+   19 levels at a hard edge at 100); Texture the band below it, with
+   strong edges held back. Each raises its own band more than the other's
+   (Clarity at 60: big shapes ×1.19, fine detail ×1.11; Texture at 60:
+   fine ×1.18, big ×1.02). Dehaze is the dark channel (He, Sun and Tang),
+   taken off towards white light: on the kit's scenes hazed with distance,
+   11.5 ΔE hazy → 4.2 at the best amount, and no amount worse than the
+   haze. Measured and left out: Clarity from the whole detail above its
+   blur (it raised fine detail more than big shapes), and a stronger
+   Dehaze (at 100 it overshot past the haze, 16 ΔE).
 
 ### Adjust: film looks you dial in, and your own (the owner, 2026-11-15)
 

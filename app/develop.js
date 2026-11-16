@@ -30,6 +30,10 @@
 //   sharpen (0–150), sharpRadius (px), sharpMask; noise, colorNoise
 //           (Detail: they look at the pixels round each one, so they're
 //           done first, on the photo itself, on the CPU: see applyDetail)
+//   texture, clarity, dehaze (±100): Presence, as in Lightroom; they look
+//           at what's round each pixel (sizes a share of the picture, so
+//           every size of it gets the same), so they're done with Detail,
+//           on the CPU, after descreen: see localPx
 //   descreen (0–100), screen (the printed dots' spacing, in the photo's
 //           pixels: findScreen measures it): the dot pattern of a printed
 //           photo (a magazine, a newspaper) taken off; the first step of
@@ -60,6 +64,9 @@ const Develop = {
         tint: { min: -100, max: 100, step: 1 },
         vibrance: { min: -100, max: 100, step: 1 },
         saturation: { min: -100, max: 100, step: 1 },
+        texture: { min: -100, max: 100, step: 1 },
+        clarity: { min: -100, max: 100, step: 1 },
+        dehaze: { min: -100, max: 100, step: 1 },
         gradeBlend: { min: 0, max: 100, step: 1, def: 50 },
         gradeBalance: { min: -100, max: 100, step: 1 },
         vignette: { min: -100, max: 100, step: 1 },
@@ -498,7 +505,7 @@ const Develop = {
         { id: 'look', name: 'Look', keys: ['look', 'lookAmount', 'mono'] },
         { id: 'wb', name: 'White balance', keys: ['temp', 'tint'] },
         { id: 'light', name: 'Light', keys: ['exposure', 'contrast', 'highlights', 'shadows', 'whites', 'blacks'] },
-        { id: 'presence', name: 'Presence', keys: ['vibrance', 'saturation'] },
+        { id: 'presence', name: 'Presence', keys: ['texture', 'clarity', 'dehaze', 'vibrance', 'saturation'] },
         { id: 'levels', name: 'Levels', keys: ['levels'] },
         { id: 'curve', name: 'Tone curve', keys: ['curve'] },
         { id: 'mixer', name: 'Color mixer', keys: ['hsl'] },
@@ -1691,7 +1698,7 @@ void main() {
         map = map || this.cropMap(null, canvas.width, canvas.height);
         const brush = this.brushFor(T.masks, map.asp);
         if (brush && R && !R.lost) R.setBrush(brush);
-        const d = this.detail(this.full(adj), scale);
+        const d = this.detail(this.full(adj), scale, canvas.width, canvas.height);
         // Detail reads round each block: from the picture as it was
         let source = null;
         if (d) {
@@ -1756,14 +1763,29 @@ void main() {
     // off, so every size of the photo looks the same
     DESCREEN: { y: 0.5, c: 0.8, back: 0.3, backR: 0.8, linear: false },
 
-    detail(a, scale = 1) {
+    // W, H: the whole picture's size at this scale (texture, clarity and
+    // dehaze are sized to it; left out without it)
+    detail(a, scale = 1, W = 0, H = 0) {
         const near = scale >= 0.5;
         const ds = a.descreen && a.screen * scale >= 2 ? a.descreen / 100 : 0;
-        if (!ds && !(near && (a.sharpen || a.noise || a.colorNoise))) return null;
+        const long = Math.max(W, H);
+        const local = long > 0 && (a.texture || a.clarity || a.dehaze);
+        if (!ds && !local && !(near && (a.sharpen || a.noise || a.colorNoise))) return null;
         const d = near ? { amount: a.sharpen / 100 * 1.5, radius: a.sharpRadius, mask: a.sharpMask / 100, noise: a.noise / 100, color: a.colorNoise / 100 }
             : { amount: 0, radius: 1, mask: 0, noise: 0, color: 0 };
         if (ds) { d.descreen = ds; d.screen = a.screen; }
+        if (local) { d.texture = (a.texture || 0) / 100; d.clarity = (a.clarity || 0) / 100; d.dehaze = (a.dehaze || 0) / 100; d.long = long; }
         return d;
+    },
+
+    // Texture, clarity and dehaze's sizes, in shares of the picture's long
+    // side, and how much (measured: test/presence.test.js)
+    LOCAL: { clarity: 0.012, texture: 0.0015, dehaze: 0.01, clarityGain: 1.3, textureGain: 1.2, haze: 0.85, tMin: 0.4 },
+
+    // Three box blurs' radius for a Gaussian of `sigma` (their sigma is
+    // √(r(r+1)) or so)
+    boxFor(sigma) {
+        return sigma < 0.6 ? 0 : Math.max(1, Math.round(Math.sqrt(sigma * sigma + 0.25) - 0.5));
     },
 
     detailSizes(d, s) {
@@ -1777,7 +1799,15 @@ void main() {
         const rcs = d.descreen ? Math.min(64, Math.ceil(2.5 * dc)) : 0;
         const rbs = d.descreen && D.back ? Math.min(48, Math.ceil(2.5 * db)) : 0;
         const md = Math.max(ry + rbs, rcs);
-        return { sn, sc, sb, rn, rc, rb, dy, dc, db, ry, rcs, rbs, margin: md + Math.max(rn, rc) + rb + (d.amount ? 1 : 0) };
+        // Texture, clarity, dehaze: box blurs (three passes reach 3 × r)
+        const L = this.LOCAL, long = d.long || 0;
+        const bc = d.clarity ? this.boxFor(L.clarity * long) : 0;
+        const bt = d.texture ? this.boxFor(L.texture * long) : 0;
+        const bc0 = d.clarity ? this.boxFor(3 * L.texture * long) : 0;
+        const bt0 = d.texture ? this.boxFor(L.texture * long / 3) : 0;
+        const bd = d.dehaze ? this.boxFor(L.dehaze * long) : 0;
+        const ml = 3 * bd + 3 * Math.max(bc, bt);
+        return { sn, sc, sb, rn, rc, rb, dy, dc, db, ry, rcs, rbs, bc, bc0, bt, bt0, bd, margin: md + ml + Math.max(rn, rc) + rb + (d.amount ? 1 : 0) };
     },
 
     // A Gaussian blur of a w × h plane (sigma, out to r), edges repeated
@@ -1828,11 +1858,101 @@ void main() {
         }
     },
 
+    // Three box blurs of a w × h plane (about a Gaussian), radius r, edges
+    // repeated; r 0 gives it back as it is
+    box3(src, w, h, r) {
+        if (!r) return src;
+        let a = Float32Array.from(src);
+        const b = new Float32Array(src.length), k = 2 * r + 1;
+        const pass = (from, to, horiz) => {
+            const len = horiz ? w : h, lines = horiz ? h : w, step = horiz ? 1 : w, next = horiz ? w : 1;
+            for (let l = 0; l < lines; l++) {
+                const o = l * next;
+                let sum = 0;
+                for (let i = -r; i <= r; i++) sum += from[o + Math.min(len - 1, Math.max(0, i)) * step];
+                for (let i = 0; i < len; i++) {
+                    to[o + i * step] = sum / k;
+                    sum += from[o + Math.min(len - 1, i + r + 1) * step] - from[o + Math.max(0, i - r) * step];
+                }
+            }
+        };
+        for (let i = 0; i < 3; i++) { pass(a, b, true); pass(b, a, false); }
+        return a;
+    },
+
+    // Texture, clarity and dehaze (RGBA bytes, in place), in this order:
+    //   dehaze: the haze worked out from each place's darkest channel (in
+    //     clear air something there is dark; haze lifts it: He, Sun and
+    //     Tang's dark channel), taken off towards white light, never more
+    //     than tMin lets; below 0, haze put on
+    //   clarity: the band of the brightness between a blur three times
+    //     texture's and a wide one (big shapes' contrast, leaving the fine detail to
+    //     texture), more in the midtones, softly limited so edges don't
+    //     halo; below 0, softer
+    //   texture: the band of detail between a fine blur and a small one
+    //     (skin, leaves, fabric: not the finest noise, not edges, which
+    //     are held back by the same soft limit); below 0, smoother
+    // The brightness changes are put on the three channels alike.
+    localPx(px, w, h, d, z) {
+        const n = w * h, L = this.LOCAL;
+        if (d.dehaze) {
+            const dark = new Float32Array(n);
+            for (let i = 0; i < n; i++) dark[i] = Math.min(px[i * 4], px[i * 4 + 1], px[i * 4 + 2]) / 255;
+            const db = this.box3(dark, w, h, z.bd);
+            const k = d.dehaze;
+            for (let i = 0; i < n; i++) {
+                // a dark thing next to bright haze keeps its own (no dark halo)
+                const dk = Math.min(dark[i], db[i]);
+                for (let c = 0; c < 3; c++) {
+                    const v = px[i * 4 + c] / 255;
+                    let o;
+                    if (k > 0) {
+                        const t = Math.max(L.tMin, 1 - 0.6 * k * dk);
+                        o = (v - 1) / t + 1;
+                    } else {
+                        o = v + -k * 0.6 * (L.haze - v);
+                    }
+                    px[i * 4 + c] = Math.round(255 * (o < 0 ? 0 : o > 1 ? 1 : o));
+                }
+            }
+        }
+        if (!d.clarity && !d.texture) return;
+        const Y = new Float32Array(n);
+        for (let i = 0; i < n; i++) Y[i] = (0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2]) / 255;
+        const add = new Float32Array(n);
+        const soft = (x, lim) => x / (1 + Math.abs(x) / lim);
+        if (d.clarity && z.bc) {
+            // from three times texture's size up (the fine detail is texture's)
+            const T = this.box3(Y, w, h, z.bc0), B = this.box3(Y, w, h, z.bc), k = d.clarity * L.clarityGain;
+            for (let i = 0; i < n; i++) {
+                const y = T[i], m = Math.min(1, 4 * y * (1 - y) * 1.25);
+                const det = y - B[i];
+                add[i] += k > 0 ? k * soft(det, 0.12) * m : k * det;
+            }
+        }
+        if (d.texture && z.bt) {
+            const fine = this.box3(Y, w, h, z.bt0), B = this.box3(Y, w, h, z.bt), k = d.texture * L.textureGain;
+            for (let i = 0; i < n; i++) {
+                const band = fine[i] - B[i];
+                add[i] += k > 0 ? k * soft(band, 0.04) : k * band;
+            }
+        }
+        for (let i = 0; i < n; i++) {
+            const a = add[i] * 255;
+            if (!a) continue;
+            for (let c = 0; c < 3; c++) {
+                const v = px[i * 4 + c] + a;
+                px[i * 4 + c] = v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
+            }
+        }
+    },
+
     // RGBA bytes (w × h), in place
     applyDetail(px, w, h, d, s = 1) {
         const z = this.detailSizes(d, s);
         const n = w * h;
         if (z.ry) this.descreenPx(px, w, h, d, z);
+        if (d.long && (d.texture || d.clarity || d.dehaze)) this.localPx(px, w, h, d, z);
         if (!z.rn && !z.rc && !z.rb) return px;
         let Y = new Float32Array(n), Cb = new Float32Array(n), Cr = new Float32Array(n);
         for (let i = 0; i < n; i++) {
