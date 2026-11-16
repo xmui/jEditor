@@ -640,6 +640,7 @@ const PaintEditor = {
 
     remember() {
         try { localStorage.setItem('jeditor.paint', JSON.stringify({ ...this.opts, fg: this.fg, bg: this.bg, tool: this.tool, slots: this.slots })); } catch (e) { /* private mode */ }
+        if (this.text) this.positionText();
     },
 
     // The slots: each a button showing its group's tool used last, with a
@@ -880,7 +881,7 @@ const PaintEditor = {
                 const c = this.newCanvas();
                 const src = await Paint.layerBitmap(kept.paint, l);
                 if (src) c.getContext('2d').drawImage(src, 0, 0, this.W, this.H);
-                const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: !!l.lock, canvas: c, changed: false };
+                const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: !!l.lock, canvas: c, changed: false, text: l.text || null };
                 if (l.mask) {
                     const m = this.newCanvas(), mb = await Paint.layerBitmap(kept.paint, Paint.maskOf(l));
                     if (mb) m.getContext('2d').drawImage(mb, 0, 0, this.W, this.H);
@@ -1393,7 +1394,7 @@ const PaintEditor = {
         ctx.clip();
         const LD = VD.multiply(this.C);
         this.layers.forEach((l, i) => {
-            if (l.hidden) return;
+            if (l.hidden || (this.text && this.text.layer === l)) return;
             ctx.save();
             ctx.globalAlpha = l.opacity;
             ctx.globalCompositeOperation = l.blend;
@@ -1713,9 +1714,10 @@ const PaintEditor = {
     },
 
     // After it: the part that changed (r), before and after
-    endPixels(l, r, { free = false, name = this.toolName() } = {}) {
+    endPixels(l, r, { free = false, name = this.toolName(), text = null } = {}) {
         r = this.clampRect(r);
         if (!r || this._beforeOf !== l) return;
+        const t0 = l.text || null;
         const before = this.before.getContext('2d', { willReadFrequently: true }).getImageData(r.x, r.y, r.w, r.h);
         const after = l.canvas.getContext('2d', { willReadFrequently: true }).getImageData(r.x, r.y, r.w, r.h);
         // Transparency locked: each pixel keeps how see-through it was (a
@@ -1729,7 +1731,13 @@ const PaintEditor = {
             l.canvas.getContext('2d').putImageData(after, r.x, r.y);
         }
         l.changed = true;
-        this.record({ kind: 'px', name, layer: l, r, before, after, bytes: r.w * r.h * 8 });
+        const entry = { kind: 'px', name, layer: l, r, before, after, bytes: r.w * r.h * 8 };
+        if (t0 || text) {
+            Object.assign(entry, { text0: t0, text1: text });
+            l.text = text;
+            if (t0 && !text) this.drawLayers();
+        }
+        this.record(entry);
     },
 
     clampRect(r) {
@@ -1777,6 +1785,10 @@ const PaintEditor = {
         if (entry.kind === 'px') {
             entry.layer.canvas.getContext('2d').putImageData(undo ? entry.before : entry.after, entry.r.x, entry.r.y);
             entry.layer.changed = true;
+            if (entry.text0 || entry.text1) {
+                const k = this.layers.find(x => x.canvas === entry.layer.canvas);
+                if (k) k.text = undo ? entry.text0 : entry.text1;
+            }
         } else if (entry.kind === 'state') {
             if (undo && entry.extra) this.apply(entry.extra, true);
             const s = undo ? entry.before : entry.after;
@@ -3366,39 +3378,140 @@ const PaintEditor = {
         return `${o.italic ? 'italic ' : ''}${o.bold ? 'bold ' : ''}${Math.max(1, o.fontSize * scale)}px ${o.font}`;
     },
 
+    // Text goes on a layer of its own that keeps its words, font, colour
+    // and where it is (l.text: { v, font, size, bold, italic, color, alpha,
+    // m }, m from its own space, its top left at 0,0, to the photo's,
+    // as paint.js keeps it), so the Text tool clicked on it opens it again.
+    // Painting on it makes it pixels; moving or transforming it doesn't
+
     startText(p) {
-        this.text = { ox: p.ox, oy: p.oy };
+        const i = this.textAt(p);
+        if (i >= 0) { this.editText(i); return; }
+        this.text = { ox: p.ox, oy: p.oy, rot: 0, k: 1 };
+        this.openTextBox('');
+    },
+
+    openTextBox(value) {
         const ta = this.el('paint-text');
-        ta.value = '';
+        ta.value = value;
         ta.classList.remove('hidden');
-        ta.style.color = this.fg;
-        ta.style.opacity = String(this.opts.opacity / 100);
         this.positionText();
-        setTimeout(() => ta.focus(), 0);
+        setTimeout(() => { ta.focus(); ta.select(); }, 0);
+    },
+
+    // Its text layer opened again to type in (the Text tool's options
+    // taken from it)
+    editText(i) {
+        const l = this.layers[i];
+        if (!l || !l.text || !this.ready) return;
+        if (this.float) this.commitFloat();
+        if (this.text) this.endText(true);
+        if (this.tool !== 'text') this.setTool('text');
+        const t = l.text;
+        this.cur = i;
+        this.onMask = false;
+        Object.assign(this.opts, { font: t.font, fontSize: t.size, bold: t.bold, italic: t.italic, opacity: Math.round(t.alpha * 100) });
+        this.fg = t.color;
+        this.syncColours();
+        const M = this.C.multiply(this.textM(t)), o = M.transformPoint({ x: 0, y: 0 });
+        this.text = { ox: o.x, oy: o.y, rot: Math.atan2(M.b, M.a), k: Math.hypot(M.a, M.b) || 1, layer: l };
+        this.drawLayers();
+        this.buildOptions();
+        this.openTextBox(t.v);
+        this.renderSoon();
     },
 
     positionText() {
         if (!this.text) return;
-        const ta = this.el('paint-text');
-        const s = this.V().transformPoint({ x: this.text.ox, y: this.text.oy });
+        const ta = this.el('paint-text'), t = this.text;
+        const s = this.V().transformPoint({ x: t.ox, y: t.oy });
         ta.style.left = `${s.x}px`;
         ta.style.top = `${s.y}px`;
         ta.style.transformOrigin = '0 0';
-        ta.style.transform = this.view.r ? `rotate(${this.view.r}rad)` : '';
-        ta.style.font = this.font(this.view.z);
+        const r = this.view.r + t.rot;
+        ta.style.transform = r ? `rotate(${r}rad)` : '';
+        ta.style.font = this.font(this.view.z * t.k);
+        ta.style.color = this.fg;
+        ta.style.opacity = String(this.opts.opacity / 100);
         this.sizeText();
     },
 
     sizeText() {
-        const ta = this.el('paint-text');
+        const ta = this.el('paint-text'), k = this.text ? this.text.k : 1;
         const g = this.canvas.getContext('2d');
         g.save();
-        g.font = this.font(this.view.z);
+        g.font = this.font(this.view.z * k);
         const lines = (ta.value || ' ').split('\n');
         const w = Math.max(...lines.map(t => g.measureText(t || ' ').width));
         g.restore();
         ta.style.width = `${Math.ceil(w) + 8}px`;
-        ta.style.height = `${Math.ceil(lines.length * this.opts.fontSize * this.view.z * 1.2) + 4}px`;
+        ta.style.height = `${Math.ceil(lines.length * this.opts.fontSize * this.view.z * k * 1.2) + 4}px`;
+    },
+
+    // Photo space to layer space (the canvas made bigger: the layers reach past it)
+    extM() {
+        return new DOMMatrix().translate(this.ext.l, this.ext.t);
+    },
+
+    textM(t) {
+        return this.extM().multiply(new DOMMatrix(t.m));
+    },
+
+    textArr(M) {
+        return [M.a, M.b, M.c, M.d, M.e, M.f].map(v => +v.toFixed(5));
+    },
+
+    textFont(t) {
+        return `${t.italic ? 'italic ' : ''}${t.bold ? 'bold ' : ''}${Math.max(1, t.size)}px ${t.font}`;
+    },
+
+    // Its box in its own space
+    textSize(t) {
+        const g = this.canvas.getContext('2d');
+        g.save();
+        g.font = this.textFont(t);
+        const lines = t.v.split('\n');
+        const w = Math.max(...lines.map(x => g.measureText(x).width));
+        g.restore();
+        return { w, h: lines.length * t.size * 1.2 };
+    },
+
+    // The layer's pixels drawn from its text (all else on it cleared)
+    drawText(t, canvas) {
+        const g = canvas.getContext('2d');
+        g.save();
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, canvas.width, canvas.height);
+        g.setTransform(this.textM(t));
+        g.font = this.textFont(t);
+        g.fillStyle = t.color;
+        g.globalAlpha = t.alpha;
+        g.textBaseline = 'top';
+        t.v.split('\n').forEach((line, i) => g.fillText(line, 0, i * t.size * 1.2 + t.size * 0.1));
+        g.restore();
+    },
+
+    // The top shown text layer under p, or -1
+    textAt(p) {
+        for (let i = this.layers.length - 1; i >= 0; i--) {
+            const l = this.layers[i];
+            if (!l.text || l.hidden) continue;
+            const q = this.textM(l.text).inverse().transformPoint(this.Ci.transformPoint({ x: p.ox, y: p.oy }));
+            const b = this.textSize(l.text), m = 4;
+            if (q.x >= -m && q.y >= -m && q.x <= b.w + m && q.y <= b.h + m) return i;
+        }
+        return -1;
+    },
+
+    // The text as typed, with the Text tool's options now
+    textRec(v, m) {
+        const o = this.opts;
+        return { v, font: o.font, size: o.fontSize, bold: !!o.bold, italic: !!o.italic, color: this.fg, alpha: +(o.opacity / 100).toFixed(3), m };
+    },
+
+    textName(v) {
+        const line = v.trim().split('\n')[0].trim();
+        return line.length > 30 ? line.slice(0, 29) + '…' : line || 'Text';
     },
 
     endText(keep) {
@@ -3409,7 +3522,42 @@ const PaintEditor = {
         const value = ta.value;
         ta.classList.add('hidden');
         ta.blur();
+        // A text layer opened again: changed, or gone when emptied
+        if (t.layer) {
+            const l = t.layer, i = this.layers.indexOf(l);
+            this.renderSoon();
+            if (!keep || i < 0) return;
+            if (!value.trim()) {
+                this.cur = i;
+                if (this.layers.length > 1) { this.deleteLayer(); return; }
+                this.pushState('Delete text');
+                Object.assign(l, { text: null, canvas: this.newCanvas(), changed: true });
+                this.afterState();
+                return;
+            }
+            const rec = this.textRec(value, l.text.m);
+            if (JSON.stringify(rec) === JSON.stringify(l.text)) return;
+            this.pushState('Edit text');
+            if (l.name === this.textName(l.text.v)) l.name = this.textName(value);
+            Object.assign(l, { text: rec, canvas: this.newCanvas(), changed: true });
+            this.drawText(rec, l.canvas);
+            this.afterState();
+            return;
+        }
         if (!keep || !value.trim()) return;
+        // New: a text layer of its own above this one (with room for it)
+        if (this.layers.length < Paint.MAX_LAYERS) {
+            const rec = this.textRec(value, this.textArr(this.extM().inverse().multiply(this.Ci).translate(t.ox, t.oy)));
+            this.pushState('Text');
+            const l = this.makeLayer(this.textName(value));
+            l.text = rec;
+            this.drawText(rec, l.canvas);
+            this.layers.splice(this.cur + 1, 0, l);
+            this.cur++;
+            this.onMask = false;
+            this.afterState();
+            return;
+        }
         const l = this.layer();
         this.beginPixels(l);
         const g = this.stroke.getContext('2d');
@@ -3630,12 +3778,20 @@ const PaintEditor = {
         this.float = null;
         const l = f.layer;
         const g = l.canvas.getContext('2d');
-        g.save();
-        g.setTransform(this.Ci.multiply(this.floatM.call({ float: f, view: this.view })));
-        g.imageSmoothingEnabled = true;
-        g.imageSmoothingQuality = 'high';
-        g.drawImage(f.canvas, 0, 0);
-        g.restore();
+        let text = null;
+        if (l.text && !f.sel) {
+            // Its matrix taken through the move: drawn again, not resampled
+            const K = this.Ci.multiply(this.floatM.call({ float: f, view: this.view })).multiply(new DOMMatrix().translate(-f.x0, -f.y0)).multiply(this.C);
+            text = { ...l.text, m: this.textArr(this.extM().inverse().multiply(K).multiply(this.textM(l.text))) };
+            this.drawText(text, l.canvas);
+        } else {
+            g.save();
+            g.setTransform(this.Ci.multiply(this.floatM.call({ float: f, view: this.view })));
+            g.imageSmoothingEnabled = true;
+            g.imageSmoothingQuality = 'high';
+            g.drawImage(f.canvas, 0, 0);
+            g.restore();
+        }
         f.canvas.width = f.canvas.height = 0;
         // The selection moves with it
         if (this.sel) {
@@ -3647,7 +3803,7 @@ const PaintEditor = {
             this.sel = { mask: m };
             this.selectionChanged();
         }
-        this.endPixels(l, { x: 0, y: 0, w: this.W, h: this.H }, { free: true, name: 'Move' });
+        this.endPixels(l, { x: 0, y: 0, w: this.W, h: this.H }, { free: true, name: 'Move', text });
         this.buildOptions();
         this.renderSoon();
     },
@@ -4053,6 +4209,14 @@ const PaintEditor = {
             row.setAttribute('role', 'option');
             row.setAttribute('aria-selected', String(i === this.cur));
             row.innerHTML = '<button class="paint-eye"></button><canvas></canvas><span class="paint-layer-name"></span>';
+            if (l.text) {
+                const m = document.createElement('span');
+                m.className = 'paint-layer-kind';
+                m.textContent = 'T';
+                m.title = 'Text: double-click, or click it with the Text tool, to change it';
+                row.appendChild(m);
+                row.addEventListener('dblclick', (e) => { e.preventDefault(); this.editText(i); });
+            }
             if (l.lock) {
                 const m = document.createElement('span');
                 m.className = 'paint-layer-lock';
@@ -4208,6 +4372,7 @@ const PaintEditor = {
             ['Lock transparency', () => this.toggleLock(i), false, !!l.lock, 'paint.lockAlpha'],
             ['Show this layer alone', () => this.soloLayer(i)],
             ['Select its pixels', () => this.selectLayerPixels(i)],
+            ...(l.text ? [['—'], ['Edit the text', () => this.editText(i)], ['Make it pixels', () => this.rasterize(i)]] : []),
             ['—'],
             ...(room ? [['Duplicate', () => this.duplicateLayer(), false, undefined, 'paint.duplicate']] : []),
             ...(i > 0 ? [['Merge down', () => this.mergeDown(), false, undefined, 'paint.merge']] : []),
@@ -4367,7 +4532,7 @@ const PaintEditor = {
         if (this.float) this.commitFloat();
         this.pushState('Duplicate layer');
         const copy = this.makeLayer(`${l.name} copy`);
-        Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: l.lock });
+        Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: l.lock, text: l.text || null });
         if (l.mask) {
             copy.mask = this.newCanvas();
             copy.mask.getContext('2d').drawImage(l.mask, 0, 0);
@@ -4478,6 +4643,7 @@ const PaintEditor = {
         if (this.float) this.commitFloat();
         const top = this.layer(), below = this.layers[this.cur - 1];
         this.pushState('Merge down');
+        below.text = null;
         this.beginPixels(below);
         const g = below.canvas.getContext('2d');
         if (!top.hidden) {
@@ -4493,6 +4659,15 @@ const PaintEditor = {
         this.layers.splice(this.cur, 1);
         this.cur--;
         this.afterState({ kind: 'px', layer: below, r: { x: 0, y: 0, w: this.W, h: this.H }, before, after, bytes: this.W * this.H * 8 });
+    },
+
+    // A text layer as pixels: painted on like any other, no longer text
+    rasterize(i) {
+        const l = this.layers[i];
+        if (!l || !l.text) return;
+        this.pushState('Make it pixels');
+        l.text = null;
+        this.afterState();
     },
 
     async renameLayer(i) {
@@ -4796,7 +4971,7 @@ const PaintEditor = {
         const paint = { id: this.paintId, w: this.PW, h: this.PH, layers: [], ext: this.ext, pad: this.pad, fill: this.fill };
         for (const l of this.layers) {
             if ((l.changed || !l.rev) && this.empty(l)) continue;
-            const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, ...(l.lock ? { lock: true } : {}) };
+            const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, ...(l.lock ? { lock: true } : {}), ...(l.text ? { text: l.text } : {}) };
             if (l.changed || !l.rev) {
                 rec.rev = Paint.newId().slice(-10);
                 await Paint.writeLayer(paint, rec, l.canvas);

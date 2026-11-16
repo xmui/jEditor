@@ -5,7 +5,7 @@
 // (.jeditor/paint/<id>-<layer>-<rev>.png; a new rev each time a layer
 // changes, so Ctrl+Z on the edit finds the old one still there).
 //
-//   paint: { id, w, h, layers: [{ id, rev, name, opacity, blend, hidden, lock? }],
+//   paint: { id, w, h, layers: [{ id, rev, name, opacity, blend, hidden, lock?, mask?, text? }],
 //            ext?, pad?, fill? }
 //
 // Layers cover the whole photo as it is on disk (before any crop or turn,
@@ -46,6 +46,20 @@ const Paint = {
         return !!(e && e.paint && Array.isArray(e.paint.layers) && (e.paint.layers.length || this.padOf(e.paint)));
     },
 
+    cleanText(t) {
+        if (!t || typeof t !== 'object' || typeof t.v !== 'string' || !t.v.trim() || t.v.length > 5000) return null;
+        const num = (x, lo, hi) => typeof x === 'number' && isFinite(x) && x >= lo && x <= hi;
+        if (!num(t.size, 1, 2000) || !Array.isArray(t.m) || t.m.length !== 6 || !t.m.every(x => num(x, -1e6, 1e6))) return null;
+        return {
+            v: t.v,
+            font: typeof t.font === 'string' && /^[\w\s,'"-]{1,80}$/.test(t.font) ? t.font : 'sans-serif',
+            size: t.size, bold: !!t.bold, italic: !!t.italic,
+            color: typeof t.color === 'string' && /^#[0-9a-f]{6}$/i.test(t.color) ? t.color : '#000000',
+            alpha: num(t.alpha, 0, 1) ? t.alpha : 1,
+            m: t.m.slice()
+        };
+    },
+
     clean(v) {
         if (!v || typeof v !== 'object') return null;
         const id = (x) => typeof x === 'string' && /^[a-z0-9]{1,24}$/.test(x);
@@ -64,7 +78,10 @@ const Paint = {
                 // Transparency locked (kept only when on)
                 ...(l.lock ? { lock: true } : {}),
                 // Its mask's rev (a file of its own, maskFile): what shows
-                ...(id(l.mask) ? { mask: l.mask } : {})
+                ...(id(l.mask) ? { mask: l.mask } : {}),
+                // A text layer: its words and how they're set, to change
+                // later (its pixels are in its file as for any layer)
+                ...(this.cleanText(l.text) ? { text: this.cleanText(l.text) } : {})
             });
         }
         const side = (o, min) => {
