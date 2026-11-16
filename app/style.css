@@ -6262,6 +6262,20 @@ body:has(#loading-indicator:not(.hidden)) #toast-stack {
     object-fit: contain;
 }
 
+/* A layer with a mask: its thumbnail beside the layer's (white shows,
+   black hides), and a ring round the one being painted on */
+.paint-layer canvas.paint-mask-thumb {
+    width: 36px;
+    margin-left: calc(var(--sp-1) * -1);
+    background: #000;
+    cursor: pointer;
+}
+
+.paint-layer canvas.on {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
 .paint-layer-name {
     flex: 1;
     min-width: 0;
