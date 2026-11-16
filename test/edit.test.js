@@ -1323,7 +1323,41 @@ const PROJECT = `
                 lg.clearRect(300, 200, 80, 70);
                 P.setTool('fill'); pressKey('g'); const afterG = P.tool; pressKey('g');
                 out.recolor.push(afterG + ',' + P.tool);
-                P.setTool('brush');
+                // Retro: the pixel pencil paints whole squares of a grid the
+                // brush's size; the stamp our own picture; the spray can hard
+                // dots as it's held, only inside its round
+                step = 'retro';
+                const clear = () => lg.clearRect(80, 180, 320, 100);
+                P.fg = '#ff0000'; P.opts.opacity = 100;
+                P.setTool('pixel'); P.opts.size = 10;
+                pe('pointerdown', 103, 204); pe('pointerup', 103, 204);
+                const cell = [px(0, 100, 200)[3], px(0, 109, 209)[3], px(0, 110, 205)[3], px(0, 99, 205)[3], px(0, 105, 210)[3]];
+                clear();
+                P.setTool('stamp'); P.opts.stamp = 'star'; P.opts.size = 24;
+                pe('pointerdown', 200, 220); pe('pointerup', 200, 220);
+                const stamped = [px(0, 200, 220)[3], px(0, 189, 209)[3], px(0, 200, 209)[3], px(0, 200, 231)[3], P.history[P.history.length - 1].name];
+                clear();
+                P.setTool('can'); P.opts.size = 40; P.opts.density = 60;
+                pe('pointerdown', 300, 230);
+                await new Promise(res => setTimeout(res, 300));
+                pe('pointerup', 300, 230);
+                const sprayed = P.layers[0].canvas.getContext('2d').getImageData(270, 200, 60, 60).data;
+                let dots = 0, soft = 0, outside = 0;
+                for (let i = 0; i < sprayed.length; i += 4) {
+                    if (!sprayed[i + 3]) continue;
+                    dots++;
+                    if (sprayed[i + 3] !== 255) soft++;
+                    const q = i / 4, dx = 270 + q % 60 - 300, dy = 200 + Math.floor(q / 60) - 230;
+                    if (Math.hypot(dx, dy) > 23) outside++;
+                }
+                clear();
+                const slot = [...document.querySelectorAll('.paint-tool')].find(b => b.dataset.group === '2');
+                slot.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+                const menuNow = document.getElementById('context-menu');
+                const retroMenu = menuNow ? [...menuNow.children].map(e => e.textContent.replace(/\s+$/, '')).join('|') : '';
+                app.closeContextMenu();
+                out.retro = [cell.join(), stamped.join(), dots > 20 && soft === 0 && outside === 0, retroMenu.replace(/(Brush|Pencil)[A-Z]\|/g, "$1|") === "Brush|Pencil|Spray|Retro|Pixel pencil|Spray can|Stamp" ? 'menu' : retroMenu];
+                P.setTool('brush'); P.opts.size = 10; P.opts.density = 40;
                 // A pen's pressure sizes the brush
                 step = 'pressure';
                 const pen = { pointerType: 'pen', pressure: 0.2 };
@@ -1541,6 +1575,7 @@ const PROJECT = `
         check('paint: History (⋯) lists each step by name; a click on one goes back to it, the later ones greyed, and on again; off again', JSON.stringify(r.history) === '[true,false,"Brush",true,0,"true",true,255]' && r.historyHidden, JSON.stringify([r.history, r.historyHidden]));
         check('paint: on a touch screen two fingers tapped undo, three redo; a finger put down later leaves the first painting', JSON.stringify(r.taps) === '[true,0,0,true,255,255,true]', JSON.stringify(r.taps));
         check('paint: Recolor turns the colour clicked into the brush colour, light and dark shades alike, nothing else; one undo step; G goes fill, gradient, recolor', JSON.stringify(r.recolor) === '[true,true,true,"32,160,64,255",0,"Recolor","200,32,32,255","gradient,recolor"]', JSON.stringify(r.recolor));
+        check('paint: Retro: the pixel pencil fills one square of its grid; the stamp paints our star (not its corners); the spray can sprays hard dots inside its round; listed under Retro in the brush slot', JSON.stringify(r.retro) === '["255,255,0,0,0","255,0,255,0,Stamp",true,"menu"]', JSON.stringify(r.retro));
         check('paint: a pen\'s pressure sizes the brush', r.pressure && r.pressure[0] > 200 && r.pressure[1] === 0, String(r.pressure));
         check('paint: a new layer; a filled rectangle on it', r.layers && r.rect && r.rect[0][1] === 255 && r.rect[1] === 0, JSON.stringify(r));
         check('paint: the fill takes the photo\'s blue square, not beyond it; text is drawn', r.fill && r.fill[0][0] === 255 && r.fill[0][1] === 255 && r.fill[1] === 0 && r.text > 50, JSON.stringify(r));
