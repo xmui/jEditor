@@ -888,6 +888,14 @@ const PaintEditor = {
                     else m.getContext('2d').fillRect(0, 0, this.W, this.H);
                     Object.assign(rec, { mask: m, maskRev: l.mask, maskChanged: false });
                 }
+                if (l.src) {
+                    const sb = await Paint.layerBitmap(kept.paint, Paint.srcOf(l));
+                    if (sb && sb.width === l.src.w && sb.height === l.src.h0) {
+                        const o = this.newCanvas(sb.width, sb.height);
+                        o.getContext('2d').drawImage(sb, 0, 0);
+                        rec.src = { canvas: o, h: l.src.h, rev: l.src.rev };
+                    }
+                }
                 this.layers.push(rec);
             }
         }
@@ -1600,7 +1608,7 @@ const PaintEditor = {
         if (t === 'fill') { this.fillAt(p); return; }
         if (t === 'recolor') { this.recolorAt(p); return; }
         if (t === 'text') { this.startText(p); return; }
-        if (t === 'move') { this.startMove(p); return; }
+        if (t === 'move') { this.startMove(p, e); return; }
     },
 
     move(e) {
@@ -1733,7 +1741,7 @@ const PaintEditor = {
             this.renderSoon();
             return;
         }
-        const v0 = l.text || l.shape ? { text: l.text || null, shape: l.shape || null } : null;
+        const v0 = l.text || l.shape || l.src ? { text: l.text || null, shape: l.shape || null, src: l.src || null } : null;
         const before = this.before.getContext('2d', { willReadFrequently: true }).getImageData(r.x, r.y, r.w, r.h);
         const after = l.canvas.getContext('2d', { willReadFrequently: true }).getImageData(r.x, r.y, r.w, r.h);
         // Transparency locked: each pixel keeps how see-through it was (a
@@ -1754,6 +1762,7 @@ const PaintEditor = {
             Object.assign(entry, { vec0: v0, vec1: vec });
             l.text = vec ? vec.text : null;
             l.shape = vec ? vec.shape : null;
+            l.src = vec ? vec.src || null : null;
             if (v0 && !vec) this.drawLayers();
         }
         this.record(entry);
@@ -1806,7 +1815,7 @@ const PaintEditor = {
             entry.layer.changed = true;
             if (entry.vec0 || entry.vec1) {
                 const k = this.layers.find(x => x.canvas === entry.layer.canvas), v = undo ? entry.vec0 : entry.vec1;
-                if (k) { k.text = v ? v.text : null; k.shape = v ? v.shape : null; }
+                if (k) { k.text = v ? v.text : null; k.shape = v ? v.shape : null; k.src = v ? v.src || null : null; }
             }
         } else if (entry.kind === 'state') {
             if (undo && entry.extra) this.apply(entry.extra, true);
@@ -3695,11 +3704,19 @@ const PaintEditor = {
     // there), moved, scaled and turned about its middle, and put back down
     // through Ci when it's done
 
-    startMove(p) {
+    startMove(p, e = {}) {
         if (this.float) {
-            const hit = this.floatHit(p);
+            const f = this.float, hit = this.floatHit(p);
             if (hit) {
-                this.drag = { kind: 'float', part: hit, start: p, orig: { ...this.float.t } };
+                this.drag = { kind: 'float', part: hit, start: p, orig: { ...f.t } };
+                // A corner or side with Ctrl (Ctrl+Alt+Shift: perspective),
+                // or in Skew, Distort or Perspective: the corners go free
+                const how = e.ctrlKey || e.metaKey ? (e.altKey && e.shiftKey ? 'perspective' : 'distort') : f.mode;
+                if (hit !== 'rotate' && (f.quad || (how !== 'free' && hit !== 'move'))) {
+                    if (!f.quad) f.quad = this.quadOf(f);
+                    Object.assign(this.drag, { quad: f.quad.map(q => ({ ...q })), how });
+                    this.buildOptions();
+                }
                 return;
             }
             this.commitFloat();
@@ -3740,7 +3757,7 @@ const PaintEditor = {
         fg.setTransform(new DOMMatrix().translate(-x0, -y0).multiply(this.C));
         fg.drawImage(lifted, 0, 0);
         lifted.width = lifted.height = 0;
-        this.float = { canvas: fc, x0, y0, w: x1 - x0, h: y1 - y0, t: { tx: 0, ty: 0, sx: 1, sy: 1, rot: 0 }, layer: l, sel: this.sel ? this.sel.box : null };
+        this.float = { canvas: fc, x0, y0, w: x1 - x0, h: y1 - y0, t: { tx: 0, ty: 0, sx: 1, sy: 1, rot: 0 }, layer: l, sel: this.sel ? this.sel.box : null, mode: 'free', quad: null };
         this.buildOptions();
         return true;
     },
@@ -3754,7 +3771,16 @@ const PaintEditor = {
 
     // Its corners and the turning knob, in output px
     floatHandles() {
-        const f = this.float, M = this.floatM();
+        const f = this.float;
+        if (f.quad) {
+            const q = f.quad, mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+            return {
+                corners: [['nw', q[0]], ['ne', q[1]], ['sw', q[3]], ['se', q[2]]],
+                edges: [['n', mid(q[0], q[1])], ['s', mid(q[3], q[2])], ['w', mid(q[0], q[3])], ['e', mid(q[1], q[2])]],
+                knob: null, quad: q
+            };
+        }
+        const M = this.floatM();
         const at = (x, y) => M.transformPoint({ x, y });
         const knobLen = 28 / this.view.z;
         const top = at(f.w / 2, 0), mid = at(f.w / 2, f.h / 2);
@@ -3770,8 +3796,9 @@ const PaintEditor = {
 
     floatHit(p) {
         const h = this.floatHandles(), r = 9 / this.view.z;
-        if (Math.hypot(p.ox - h.knob.x, p.oy - h.knob.y) <= r) return 'rotate';
+        if (h.knob && Math.hypot(p.ox - h.knob.x, p.oy - h.knob.y) <= r) return 'rotate';
         for (const [id, q] of [...h.corners, ...h.edges]) if (Math.hypot(p.ox - q.x, p.oy - q.y) <= r) return id;
+        if (h.quad) return this.inQuad(h.quad, p.ox, p.oy) ? 'move' : null;
         const l = h.M.inverse().transformPoint({ x: p.ox, y: p.oy });
         if (l.x >= 0 && l.y >= 0 && l.x <= this.float.w && l.y <= this.float.h) return 'move';
         return null;
@@ -3779,6 +3806,7 @@ const PaintEditor = {
 
     dragFloat(p, keepShape) {
         const d = this.drag, f = this.float, t = f.t, o = d.orig;
+        if (f.quad && d.quad) { this.dragQuad(p); return; }
         const cx = f.x0 + f.w / 2 + o.tx, cy = f.y0 + f.h / 2 + o.ty;
         if (d.part === 'move') {
             t.tx = o.tx + (p.ox - d.start.ox);
@@ -3841,6 +3869,28 @@ const PaintEditor = {
             box.appendChild(l);
             return l;
         };
+        // How the corners and sides drag
+        const mode = document.createElement('label');
+        mode.className = 'paint-opt';
+        mode.innerHTML = '<span>Mode</span><select class="field paint-tf-mode"></select>';
+        const ms = mode.querySelector('select');
+        for (const [v, t] of [['free', 'Size and turn'], ['skew', 'Skew'], ['distort', 'Distort'], ['perspective', 'Perspective']]) ms.add(new Option(t, v));
+        ms.value = f.mode || 'free';
+        ms.title = 'How the corners and sides drag. Ctrl-drag a corner to distort it whatever this is';
+        ms.addEventListener('change', () => { f.mode = ms.value; ms.blur(); });
+        box.appendChild(mode);
+        if (f.quad) {
+            // The corners free: W, H and the angle no longer say it all
+            const flip = (order) => { f.quad = order.map(i => f.quad[i]); this.renderSoon(); };
+            const b = (label, title, fn) => { const x = document.createElement('button'); x.className = 'btn ghost sm'; x.textContent = label; x.title = title; x.addEventListener('click', () => { x.blur(); fn(); }); box.appendChild(x); };
+            b('Flip ↔', 'Flip left to right', () => flip([1, 0, 3, 2]));
+            b('Flip ↕', 'Flip upside down', () => flip([3, 2, 1, 0]));
+            const fin = (label, title, fn, cls) => { const x = document.createElement('button'); x.className = cls; x.textContent = label; x.title = title; x.addEventListener('click', () => { x.blur(); fn(); }); box.appendChild(x); };
+            fin('Cancel', 'Put it back as it was (Esc)', () => this.cancelFloat(), 'btn secondary paint-tf-cancel');
+            fin('Done', 'Put it down (Enter)', () => this.commitFloat(), 'btn primary paint-tf-ok');
+            this.tfRows = [];
+            return;
+        }
         this.tfRows = [
             num('W', () => Math.round(Math.abs(t.sx) * 100), (v) => { t.sx = Math.sign(t.sx || 1) * v / 100; }, '%', 1, 2000),
             num('H', () => Math.round(Math.abs(t.sy) * 100), (v) => { t.sy = Math.sign(t.sy || 1) * v / 100; }, '%', 1, 2000),
@@ -3859,7 +3909,7 @@ const PaintEditor = {
         button('Flip ↕', 'Flip upside down', () => { t.sy = -t.sy; this.renderSoon(); });
         const hint = document.createElement('span');
         hint.className = 'paint-opt paint-hint';
-        hint.textContent = 'Drag a corner to size it, a side to stretch it (Shift keeps its shape), the knob to turn it';
+        hint.textContent = 'Drag a corner to size it, a side to stretch it (Shift keeps its shape), the knob to turn it; Ctrl-drag a corner to distort it';
         hint.title = hint.textContent;
         box.appendChild(hint);
         button('Cancel', 'Put it back as it was (Esc)', () => this.cancelFloat(), 'btn secondary paint-tf-cancel');
@@ -3871,11 +3921,133 @@ const PaintEditor = {
     },
 
     drawFloat(ctx, VD) {
+        const f = this.float;
         ctx.save();
-        ctx.setTransform(VD.multiply(this.floatM()));
         ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(this.float.canvas, 0, 0);
+        if (f.quad) {
+            ctx.setTransform(VD);
+            this.drawHom(ctx, f.canvas, this.homRectToQuad(f.w, f.h, f.quad), f.w, f.h, 10);
+        } else {
+            ctx.setTransform(VD.multiply(this.floatM()));
+            ctx.drawImage(f.canvas, 0, 0);
+        }
         ctx.restore();
+    },
+
+    // ---- Skew, distort and perspective ----
+    // The float's corners set free (f.quad: nw, ne, se, sw, in the picture
+    // as shown), it drawn through the homography from its own px to them,
+    // as small triangles each drawn straight
+
+    quadOf(f) {
+        const M = this.floatM.call({ float: f, view: this.view });
+        return [[0, 0], [f.w, 0], [f.w, f.h], [0, f.h]].map(([x, y]) => { const q = M.transformPoint({ x, y }); return { x: q.x, y: q.y }; });
+    },
+
+    inQuad(q, x, y) {
+        let inside = false;
+        for (let i = 0, j = 3; i < 4; j = i++) {
+            if ((q[i].y > y) !== (q[j].y > y) && x < (q[j].x - q[i].x) * (y - q[i].y) / (q[j].y - q[i].y) + q[i].x) inside = !inside;
+        }
+        return inside;
+    },
+
+    // 3×3 matrices, row by row: [a b c; d e f; g h i] takes (x, y, 1)
+    hom(M) { return [M.a, M.c, M.e, M.b, M.d, M.f, 0, 0, 1]; },
+
+    homMul(A, B) {
+        const r = [];
+        for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) r.push(A[i * 3] * B[j] + A[i * 3 + 1] * B[3 + j] + A[i * 3 + 2] * B[6 + j]);
+        return r;
+    },
+
+    homAt(H, x, y) {
+        const w = H[6] * x + H[7] * y + H[8];
+        return { x: (H[0] * x + H[1] * y + H[2]) / w, y: (H[3] * x + H[4] * y + H[5]) / w };
+    },
+
+    // The rectangle 0,0 to w,h onto the four corners q (nw, ne, se, sw)
+    homRectToQuad(w, h, q) {
+        const [p0, p1, p2, p3] = q;
+        const sx = p0.x - p1.x + p2.x - p3.x, sy = p0.y - p1.y + p2.y - p3.y;
+        let g = 0, k = 0;
+        if (Math.abs(sx) > 1e-9 || Math.abs(sy) > 1e-9) {
+            const dx1 = p1.x - p2.x, dx2 = p3.x - p2.x, dy1 = p1.y - p2.y, dy2 = p3.y - p2.y;
+            const den = dx1 * dy2 - dx2 * dy1 || 1e-9;
+            g = (sx * dy2 - dx2 * sy) / den;
+            k = (dx1 * sy - sx * dy1) / den;
+        }
+        const a = p1.x - p0.x + g * p1.x, b = p3.x - p0.x + k * p3.x, d = p1.y - p0.y + g * p1.y, e = p3.y - p0.y + k * p3.y;
+        return [a / w, b / h, p0.x, d / w, e / h, p0.y, g / w, k / h, 1];
+    },
+
+    // src (sw by sh) drawn onto g through H, on top of g's transform
+    drawHom(g, src, H, sw, sh, n = 24) {
+        if (Math.abs(H[6]) < 1e-12 && Math.abs(H[7]) < 1e-12) {
+            g.save();
+            g.transform(H[0] / H[8], H[3] / H[8], H[1] / H[8], H[4] / H[8], H[2] / H[8], H[5] / H[8]);
+            g.drawImage(src, 0, 0);
+            g.restore();
+            return;
+        }
+        const tri = (s0, s1, s2, d0, d1, d2, cx, cy, cw, ch) => {
+            const det = (s1.x - s0.x) * (s2.y - s0.y) - (s2.x - s0.x) * (s1.y - s0.y);
+            if (!det) return;
+            const a = ((d1.x - d0.x) * (s2.y - s0.y) - (d2.x - d0.x) * (s1.y - s0.y)) / det;
+            const c = ((d2.x - d0.x) * (s1.x - s0.x) - (d1.x - d0.x) * (s2.x - s0.x)) / det;
+            const b = ((d1.y - d0.y) * (s2.y - s0.y) - (d2.y - d0.y) * (s1.y - s0.y)) / det;
+            const dd = ((d2.y - d0.y) * (s1.x - s0.x) - (d1.y - d0.y) * (s2.x - s0.x)) / det;
+            const e = d0.x - a * s0.x - c * s0.y, f = d0.y - b * s0.x - dd * s0.y;
+            // Grown a little round its middle, so no seams show
+            const mx = (d0.x + d1.x + d2.x) / 3, my = (d0.y + d1.y + d2.y) / 3;
+            const out = (q) => { const l = Math.hypot(q.x - mx, q.y - my) || 1; return { x: q.x + (q.x - mx) / l * 1.2, y: q.y + (q.y - my) / l * 1.2 }; };
+            const [e0, e1, e2] = [out(d0), out(d1), out(d2)];
+            g.save();
+            g.beginPath();
+            g.moveTo(e0.x, e0.y); g.lineTo(e1.x, e1.y); g.lineTo(e2.x, e2.y); g.closePath();
+            g.clip();
+            g.transform(a, b, c, dd, e, f);
+            g.drawImage(src, cx, cy, cw, ch, cx, cy, cw, ch);
+            g.restore();
+        };
+        for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+            const u0 = sw * i / n, u1 = sw * (i + 1) / n, v0 = sh * j / n, v1 = sh * (j + 1) / n;
+            const s00 = { x: u0, y: v0 }, s10 = { x: u1, y: v0 }, s11 = { x: u1, y: v1 }, s01 = { x: u0, y: v1 };
+            const [d00, d10, d11, d01] = [s00, s10, s11, s01].map(q => this.homAt(H, q.x, q.y));
+            const cx = Math.max(0, Math.floor(u0) - 2), cy = Math.max(0, Math.floor(v0) - 2);
+            const cw = Math.min(sw, Math.ceil(u1) + 2) - cx, ch = Math.min(sh, Math.ceil(v1) + 2) - cy;
+            if (cw <= 0 || ch <= 0) continue;
+            tri(s00, s10, s11, d00, d10, d11, cx, cy, cw, ch);
+            tri(s00, s11, s01, d00, d11, d01, cx, cy, cw, ch);
+        }
+    },
+
+    // A corner or side dragged with the corners free
+    dragQuad(p) {
+        const d = this.drag, f = this.float, o = d.quad, q = o.map(x => ({ ...x }));
+        const dx = p.ox - d.start.ox, dy = p.oy - d.start.oy;
+        const C = { nw: 0, ne: 1, se: 2, sw: 3 }, E = { n: [0, 1], e: [1, 2], s: [3, 2], w: [0, 3] };
+        const add = (i, x, y) => { q[i] = { x: o[i].x + x, y: o[i].y + y }; };
+        if (d.part === 'move') {
+            for (let i = 0; i < 4; i++) add(i, dx, dy);
+        } else if (d.part in C) {
+            const i = C[d.part], across = dx * dx >= dy * dy;
+            if (d.how === 'perspective') {
+                // Its neighbour along that side goes the other way
+                if (across) { const j = [1, 0, 3, 2][i]; add(i, dx, 0); add(j, -dx, 0); } else { const j = [3, 2, 1, 0][i]; add(i, 0, dy); add(j, 0, -dy); }
+            } else if (d.how === 'skew') {
+                if (across) add(i, dx, 0); else add(i, 0, dy);
+            } else add(i, dx, dy);
+        } else if (d.part in E) {
+            const [i, j] = E[d.part];
+            if (d.how === 'distort') { add(i, dx, dy); add(j, dx, dy); } else {
+                // Skew (and perspective): the side slides along itself
+                const ux = o[j].x - o[i].x, uy = o[j].y - o[i].y, l = Math.hypot(ux, uy) || 1;
+                const t = (dx * ux + dy * uy) / l;
+                add(i, ux / l * t, uy / l * t); add(j, ux / l * t, uy / l * t);
+            }
+        }
+        f.quad = q;
     },
 
     // Put down where it is
@@ -3886,7 +4058,34 @@ const PaintEditor = {
         const l = f.layer;
         const g = l.canvas.getContext('2d');
         let text = null;
-        if ((l.text || l.shape) && !f.sel) {
+        // Its own px to layer px, as a 3×3: through the quad, or the move
+        const A = this.hom(new DOMMatrix().translate(-f.x0, -f.y0).multiply(this.C));
+        const out = f.quad ? this.homRectToQuad(f.w, f.h, f.quad) : this.hom(this.floatM.call({ float: f, view: this.view }));
+        const K = this.homMul(this.hom(this.Ci), this.homMul(out, A));
+        const slid = !f.quad && !l.src && f.t.rot === 0 && f.t.sx === 1 && f.t.sy === 1;
+        if (!f.sel && !l.text && !l.shape && !slid) {
+            // A smart layer: kept as it was before its first transform, so
+            // each transform after is drawn from that, not resampled again
+            // (the first time, what was lifted, from its own px)
+            const orig = l.src ? l.src.canvas : f.canvas;
+            const h = l.src ? this.homMul(K, l.src.h) : this.homMul(this.hom(this.Ci), out);
+            if (orig === f.canvas) f.kept = true;
+            text = { text: null, shape: null, src: { canvas: orig, h: h.map(v => +v.toPrecision(12)) } };
+            g.save();
+            g.setTransform(1, 0, 0, 1, 0, 0);
+            g.clearRect(0, 0, this.W, this.H);
+            g.imageSmoothingEnabled = true;
+            g.imageSmoothingQuality = 'high';
+            this.drawHom(g, orig, h, orig.width, orig.height);
+            g.restore();
+        } else if (f.quad) {
+            g.save();
+            g.setTransform(this.Ci);
+            g.imageSmoothingEnabled = true;
+            g.imageSmoothingQuality = 'high';
+            this.drawHom(g, f.canvas, out, f.w, f.h);
+            g.restore();
+        } else if ((l.text || l.shape) && !f.sel) {
             // Its matrix taken through the move: drawn again, not resampled
             const K = this.Ci.multiply(this.floatM.call({ float: f, view: this.view })).multiply(new DOMMatrix().translate(-f.x0, -f.y0)).multiply(this.C);
             const moved = (r) => r && { ...r, m: this.textArr(this.extM().inverse().multiply(K).multiply(this.textM(r))) };
@@ -3900,13 +4099,13 @@ const PaintEditor = {
             g.drawImage(f.canvas, 0, 0);
             g.restore();
         }
-        f.canvas.width = f.canvas.height = 0;
+        if (!f.kept) f.canvas.width = f.canvas.height = 0;
         // The selection moves with it
         if (this.sel) {
             const m = this.newCanvas();
             const mg = m.getContext('2d');
-            mg.setTransform(this.Ci.multiply(this.floatM.call({ float: f, view: this.view })).multiply(new DOMMatrix().translate(-f.x0, -f.y0)).multiply(this.C));
-            mg.drawImage(this.sel.mask, 0, 0);
+            mg.imageSmoothingEnabled = true;
+            this.drawHom(mg, this.sel.mask, K, this.W, this.H);
             this.dropSelection();
             this.sel = { mask: m };
             this.selectionChanged();
@@ -4167,11 +4366,13 @@ const PaintEditor = {
             const c = h.corners.map(x => x[1]);
             box.moveTo(c[0].x, c[0].y); box.lineTo(c[1].x, c[1].y); box.lineTo(c[3].x, c[3].y); box.lineTo(c[2].x, c[2].y); box.closePath();
             outline(box, [4 / z, 3 / z]);
-            const top = h.M.transformPoint({ x: f.w / 2, y: 0 });
-            const knob = new Path2D();
-            knob.moveTo(top.x, top.y); knob.lineTo(h.knob.x, h.knob.y);
-            outline(knob, []);
-            for (const q of [...c, ...h.edges.map(x => x[1]), h.knob]) {
+            if (h.knob) {
+                const top = h.M.transformPoint({ x: f.w / 2, y: 0 });
+                const knob = new Path2D();
+                knob.moveTo(top.x, top.y); knob.lineTo(h.knob.x, h.knob.y);
+                outline(knob, []);
+            }
+            for (const q of [...c, ...h.edges.map(x => x[1]), ...(h.knob ? [h.knob] : [])]) {
                 ctx.beginPath();
                 ctx.arc(q.x, q.y, (h.edges.some(x => x[1] === q) ? 4 : 5) / z, 0, Math.PI * 2);
                 ctx.fillStyle = '#fff';
@@ -4324,6 +4525,13 @@ const PaintEditor = {
                 m.title = 'Text: double-click, or click it with the Text tool, to change it';
                 row.appendChild(m);
                 row.addEventListener('dblclick', (e) => { e.preventDefault(); this.editText(i); });
+            }
+            if (l.src) {
+                const m = document.createElement('span');
+                m.className = 'paint-layer-kind';
+                m.textContent = '⧉';
+                m.title = 'Transformed: kept as it was, so transforming it again stays sharp. Painting on it makes it plain pixels';
+                row.appendChild(m);
             }
             if (l.shape) {
                 const m = document.createElement('span');
@@ -4505,7 +4713,7 @@ const PaintEditor = {
             ['Show this layer alone', () => this.soloLayer(i)],
             ['Select its pixels', () => this.selectLayerPixels(i)],
             ...(l.text ? [['—'], ['Edit the text', () => this.editText(i)], ['Make it pixels', () => this.rasterize(i)]] : []),
-            ...(l.shape ? [['—'], ['Make it pixels', () => this.rasterize(i)]] : []),
+            ...(l.shape || l.src ? [['—'], ['Make it pixels', () => this.rasterize(i)]] : []),
             ['—'],
             ...(room ? [['Duplicate', () => this.duplicateLayer(), false, undefined, 'paint.duplicate']] : []),
             ...(i > 0 ? [['Merge down', () => this.mergeDown(), false, undefined, 'paint.merge']] : []),
@@ -4763,7 +4971,7 @@ const PaintEditor = {
         if (this.float) this.commitFloat();
         this.pushState('Duplicate layer');
         const copy = this.makeLayer(`${l.name} copy`);
-        Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: l.lock, text: l.text || null, shape: l.shape || null, clip: !!l.clip });
+        Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: l.lock, text: l.text || null, shape: l.shape || null, src: l.src || null, clip: !!l.clip });
         if (l.mask) {
             copy.mask = this.newCanvas();
             copy.mask.getContext('2d').drawImage(l.mask, 0, 0);
@@ -4875,7 +5083,7 @@ const PaintEditor = {
         const top = this.layer(), below = this.layers[this.cur - 1];
         if (below.fixed || top.fixed) { this.fixedToast(); return; }
         this.pushState('Merge down');
-        below.text = below.shape = null;
+        below.text = below.shape = below.src = null;
         this.beginPixels(below);
         const g = below.canvas.getContext('2d');
         if (!top.hidden) {
@@ -4896,9 +5104,9 @@ const PaintEditor = {
     // A text layer as pixels: painted on like any other, no longer text
     rasterize(i) {
         const l = this.layers[i];
-        if (!l || !(l.text || l.shape)) return;
+        if (!l || !(l.text || l.shape || l.src)) return;
         this.pushState('Make it pixels');
-        l.text = l.shape = null;
+        l.text = l.shape = l.src = null;
         this.afterState();
     },
 
@@ -4994,6 +5202,7 @@ const PaintEditor = {
         this.H = this.PH + this.ext.t + this.ext.b;
         for (const l of this.layers) {
             const c = s.canvases.get(l.id);
+            l.src = null;
             if (c) l.canvas = c;
             else if (l.canvas.width !== this.W || l.canvas.height !== this.H) l.canvas = this.newCanvas();
             l.changed = true;
@@ -5214,6 +5423,13 @@ const PaintEditor = {
                     rec.mask = Paint.newId().slice(-10);
                     await Paint.writeLayer(paint, Paint.maskOf(rec), l.mask);
                 }
+            }
+            if (l.src) {
+                if (!l.src.rev) {
+                    l.src.rev = Paint.newId().slice(-10);
+                    await Paint.writeLayer(paint, Paint.srcOf({ id: l.id, src: l.src }), l.src.canvas);
+                }
+                rec.src = { rev: l.src.rev, h: l.src.h, w: l.src.canvas.width, h0: l.src.canvas.height };
             }
             paint.layers.push(rec);
         }

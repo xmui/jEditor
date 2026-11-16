@@ -95,6 +95,10 @@ const Paint = {
                 hidden: !!l.hidden,
                 // Transparency locked (kept only when on)
                 ...(l.lock ? { lock: true } : {}),
+                // Transformed: its original's rev (a file of its own), its
+                // size, and the 3×3 from it to the layer
+                ...(l.src && id(l.src.rev) && int(l.src.w) && int(l.src.h0) && Array.isArray(l.src.h) && l.src.h.length === 9 && l.src.h.every(x => typeof x === 'number' && isFinite(x))
+                    ? { src: { rev: l.src.rev, w: l.src.w, h0: l.src.h0, h: l.src.h.slice() } } : {}),
                 // Clipped to the layer below; the whole layer locked
                 ...(l.clip ? { clip: true } : {}),
                 ...(l.fixed ? { fixed: true } : {}),
@@ -144,6 +148,11 @@ const Paint = {
     },
 
     // A layer's mask, as a layer of its own: its alpha is what shows
+    // A transformed layer's original (smart layers): a file of its own
+    srcOf(layer) {
+        return { id: layer.id + 's', rev: layer.src.rev };
+    },
+
     maskOf(layer) {
         return { id: layer.id + 'm', rev: layer.mask };
     },
@@ -197,6 +206,7 @@ const Paint = {
         for (const e of edits) if (this.has(e)) for (const l of e.paint.layers) {
             used.add(this.fileName(e.paint, l));
             if (l.mask) used.add(this.fileName(e.paint, this.maskOf(l)));
+            if (l.src) used.add(this.fileName(e.paint, this.srcOf(l)));
         }
         const gone = [];
         for await (const [name, h] of dir.entries()) {
