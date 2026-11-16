@@ -6232,6 +6232,22 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.loupe = Adjust.fullCanvas.width === 640 && Adjust._loupeRect.x < lr0.x && !document.getElementById('adj-loupe-box').classList.contains('hidden');
             document.getElementById('adj-detail-sec').open = false;
             document.getElementById('adj-detail-sec').dispatchEvent(new Event('toggle'));
+            // Descreen, in Restore: a photo that isn't printed has no dots
+            // to find, so it stays off (and its sliders hidden)
+            step = 'descreen';
+            Adjust.showPane('restore');
+            const dsTools = document.getElementById('adj-descreen-tools');
+            const dsHidden0 = dsTools.classList.contains('hidden');
+            document.getElementById('adj-descreen').click();
+            await until(() => !Adjust._descreening);
+            await new Promise(r => setTimeout(r, 50));
+            out.descreenOff = dsHidden0 && !Adjust.a.descreen && dsTools.classList.contains('hidden');
+            // Turned on (as a found screen does): its sliders show
+            Adjust.setAll({ ...Adjust.result(), descreen: 100, screen: 6 });
+            out.descreenOn = !dsTools.classList.contains('hidden') && Adjust.result().descreen === 100 && Adjust.result().screen === 6;
+            Adjust.undo();
+            out.descreenUndone = !Adjust.a.descreen && dsTools.classList.contains('hidden');
+            Adjust.showPane('edit');
             // White balance picked from the photo: W (or Pick grey), a click on
             // something grey; Esc stops picking without leaving Adjust
             step = 'white balance';
@@ -6336,6 +6352,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('adjust: Save as a look keeps the look as dialled in under Your looks, with rename, duplicate and delete on its right-click; a photo done with it keeps it', r.saved && r.listed && r.ownOn && r.duplicated && r.deleted, JSON.stringify(r));
         check('adjust: a grading wheel takes a hue and strength; presets save and put settings back', r.wheel && r.preset, JSON.stringify(r));
         check('adjust: Detail shows the full photo at 1:1, where you click', r.loupe, JSON.stringify(r));
+        check('adjust: Descreen finds no dots in a photo that isn\'t printed; on, its sliders show; undo takes it off', r.descreenOff && r.descreenOn && r.descreenUndone, JSON.stringify([r.descreenOff, r.descreenOn, r.descreenUndone]));
         check('adjust: Pick grey (W) sets the white balance from a click on the photo, one Ctrl+Z; Esc stops picking', r.pickOn && r.pickEsc && r.picked && r.pickUndone, JSON.stringify(r));
         check('adjust: masks drawn and painted on the photo, with their own sliders', r.linearDrawn && r.brushPainted && r.maskList && r.masksReset, JSON.stringify(r));
         check('adjust: Done keeps it with the photo (edits.json), the file untouched, no Save bar', r.kept && r.noBar, JSON.stringify(r));
