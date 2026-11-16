@@ -2208,7 +2208,7 @@ async function newPage(context, baseUrl, host = null) {
         check('drives: opened from the drive, the project\'s flags and edits are taken in', r.carried && r.jeditorGone, JSON.stringify(r));
         check('import: a camera\'s card plugged in is offered to import', r.offered, JSON.stringify(r));
         check('import: its photos (not its videos) copied into the project; nothing new the second time', r.imported && r.importToast && /Import 3 photos/.test(r.goLabel || '') && /3 photos/.test(r.summary || '') && r.nothingNew, JSON.stringify(r));
-        check('burn: in Export, the burner and its blank disc, edits offered to save first, the disc named, burnt, and said', /Save the edits into 1 photo first/.test(r.burnAsked || '') && /Blank DVD-R/.test(r.burnAsked || '') && r.burnPrompt === 'Export Alpha / Alpha / Burn to the DVD-R' && r.burnt && r.burnt.label === 'Alpha 2026' && r.burnt.path === 'D:\\Orders\\Alpha' && r.burnt.eject === true && r.burnEjectBox && r.burnToast, JSON.stringify(r));
+        check('burn: in Export, the burner and its blank disc, edits offered to save first, the disc named, burnt, and said', /Save over the original of the 1 edited photo first/.test(r.burnAsked || '') && /Blank DVD-R/.test(r.burnAsked || '') && r.burnPrompt === 'Export Alpha / Alpha / Burn to the DVD-R' && r.burnt && r.burnt.label === 'Alpha 2026' && r.burnt.path === 'D:\\Orders\\Alpha' && r.burnt.eject === true && r.burnEjectBox && r.burnToast, JSON.stringify(r));
         check('burn: no blank disc in the drive says so, and Burn waits', /^true Put a blank disc in/.test(r.noDisc || ''), JSON.stringify(r));
         check('drives suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();
