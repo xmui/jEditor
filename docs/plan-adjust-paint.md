@@ -166,6 +166,23 @@ texture and dehaze; one PR each, into beta.
    values (5.5 apart), so it would break "every size looks the same". It
    could come back if previews of a descreened photo were made from the
    full photo (`Develop.DESCREEN.linear`).
+2. *Done:* **scratch and crease removal**, in Restore: a drag along a
+   scratch or crease (a click is still red-eye), or **Find scratches**.
+   Each is a line kept with the photo's spots (`t: 'line'`, its points and
+   width), done before the crop as spots are, so every size matches; it's
+   filled from either side of it straight across, so what it crosses
+   carries on through. Measured on its own kit (`test/scratch.test.js`):
+   the restore kit's scenes made bigger with light and dark scratches,
+   crossing ones and a ragged, bending crease, scored by ΔE2000 on the
+   damaged pixels: 13–25 damaged → 1.0–2.5 by a drag along each (mean
+   1.8), 1.0–3.7 with the lines Find scratches puts on (mean 2.3, 95% or
+   more of the damage covered), and nothing found on a scene with none,
+   at the kit's size or a working copy's. The finder traces each line from
+   its strongest pixel along its own direction, over short gaps, and keeps
+   it if it's long, thin and a ridge (an edge, lighter one side than the
+   other, isn't). Measured and left out: joining a line's pixels into
+   shapes and fitting each, which broke every scratch into short pieces
+   where its contrast dipped (19.9 against 2.3).
 
 ### Adjust: film looks you dial in, and your own (the owner, 2026-11-15)
 

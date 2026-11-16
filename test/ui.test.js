@@ -6247,6 +6247,21 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
             out.descreenOn = !dsTools.classList.contains('hidden') && Adjust.result().descreen === 100 && Adjust.result().screen === 6;
             Adjust.undo();
             out.descreenUndone = !Adjust.a.descreen && dsTools.classList.contains('hidden');
+            // Scratches, in Restore: a drag along one is a line there (a
+            // click is still red-eye); undo takes it off
+            step = 'scratch';
+            const scratchOv = document.getElementById('adj-spot-overlay');
+            const scratchBox = scratchOv.getBoundingClientRect();
+            const spotsBefore = (Adjust.a.spots || []).length;
+            const scratchPtr = (type, fx, fy) => scratchOv.dispatchEvent(new PointerEvent(type, { clientX: scratchBox.left + scratchBox.width * fx, clientY: scratchBox.top + scratchBox.height * fy, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 7, bubbles: true }));
+            scratchPtr('pointerdown', 0.2, 0.3);
+            for (let k = 1; k <= 10; k++) scratchPtr('pointermove', 0.2 + 0.05 * k, 0.3 + 0.02 * k);
+            scratchPtr('pointerup', 0.7, 0.5);
+            const scratchSpot = (Adjust.a.spots || [])[spotsBefore];
+            out.scratchLine = !scratchOv.classList.contains('hidden') && (Adjust.a.spots || []).length === spotsBefore + 1 && !!scratchSpot && scratchSpot.t === 'line' && scratchSpot.pts.length >= 4
+                && !!(Adjust.result().spots || []).find(x => x.t === 'line');
+            Adjust.undo();
+            out.scratchUndone = (Adjust.a.spots || []).length === spotsBefore;
             Adjust.showPane('edit');
             // White balance picked from the photo: W (or Pick grey), a click on
             // something grey; Esc stops picking without leaving Adjust
@@ -6352,6 +6367,7 @@ const PHOTO_SCENES = fs.readFileSync(path.join(__dirname, 'scenes.js'), 'utf8');
         check('adjust: Save as a look keeps the look as dialled in under Your looks, with rename, duplicate and delete on its right-click; a photo done with it keeps it', r.saved && r.listed && r.ownOn && r.duplicated && r.deleted, JSON.stringify(r));
         check('adjust: a grading wheel takes a hue and strength; presets save and put settings back', r.wheel && r.preset, JSON.stringify(r));
         check('adjust: Detail shows the full photo at 1:1, where you click', r.loupe, JSON.stringify(r));
+        check('adjust: in Restore, a drag along a scratch puts a line there; undo takes it off', r.scratchLine && r.scratchUndone, JSON.stringify([r.scratchLine, r.scratchUndone]));
         check('adjust: Descreen finds no dots in a photo that isn\'t printed; on, its sliders show; undo takes it off', r.descreenOff && r.descreenOn && r.descreenUndone, JSON.stringify([r.descreenOff, r.descreenOn, r.descreenUndone]));
         check('adjust: Pick grey (W) sets the white balance from a click on the photo, one Ctrl+Z; Esc stops picking', r.pickOn && r.pickEsc && r.picked && r.pickUndone, JSON.stringify(r));
         check('adjust: masks drawn and painted on the photo, with their own sliders', r.linearDrawn && r.brushPainted && r.maskList && r.masksReset, JSON.stringify(r));

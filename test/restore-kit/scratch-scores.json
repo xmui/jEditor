@@ -1,0 +1,22 @@
+{
+  "hand": 1.814,
+  "auto": 2.304,
+  "cases": {
+    "family/scratches": {
+      "hand": 2.023,
+      "auto": 2.555
+    },
+    "beach/crease": {
+      "hand": 2.469,
+      "auto": 3.732
+    },
+    "grass/scratches": {
+      "hand": 1.796,
+      "auto": 1.908
+    },
+    "interior/dark": {
+      "hand": 0.967,
+      "auto": 1.023
+    }
+  }
+}

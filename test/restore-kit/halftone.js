@@ -129,4 +129,4 @@ function halftone(scene, { period = 5, mono = false, scale = 3, sub = 4 } = {}) 
     return { w: W, h: H, print, ideal, light };
 }
 
-module.exports = { halftone };
+module.exports = { halftone, enlarge };
