@@ -4201,9 +4201,11 @@ const app = {
             bmp.close();
         }
         if (edit.adj) Develop.applyCanvas(canvas, edit.adj, { scale: 1 / scale, map });
-        // And paint over it all (paint.js)
-        await Paint.onto(canvas, edit, ed);
-        return { canvas, scale };
+        // And paint over it all (paint.js; a new canvas when Paint's canvas
+        // is bigger or smaller)
+        const out = await Paint.onto(canvas, edit, ed);
+        if (out !== canvas) canvas.width = canvas.height = 0;
+        return { canvas: out, scale };
     },
 
     // Zoomed in on a photo with an edit not saved yet: the edit on the
@@ -4946,7 +4948,7 @@ const app = {
         ['adjust.zoom100', 'adjust', 'Adjust', 'Show at 100% (zoomed in, drag or Space+drag moves about)', ['Ctrl+1']],
         ['adjust.undo', 'adjust', 'Adjust', 'Undo', ['Ctrl+Z']],
         ['adjust.redo', 'adjust', 'Adjust', 'Redo', ['Ctrl+Shift+Z', 'Ctrl+Y']],
-        ['paint.done', 'paint', 'Paint', 'Put down what\'s being moved, or back to Photos (what you did is kept)', ['Enter']],
+        ['paint.done', 'paint', 'Paint', 'Crop, put down what\'s being moved, or back to Photos (what you did is kept)', ['Enter']],
         ['paint.cancel', 'paint', 'Paint', 'Put back what\'s being moved, or back to Photos (what you did is kept)', ['Escape']],
         ['paint.undo', 'paint', 'Paint', 'Undo', ['Ctrl+Z']],
         ['paint.redo', 'paint', 'Paint', 'Redo', ['Ctrl+Shift+Z', 'Ctrl+Y']],
@@ -4964,6 +4966,7 @@ const app = {
         ['paint.text', 'paint', 'Paint', 'Text', ['T']],
         ['paint.picker', 'paint', 'Paint', 'Colour picker', ['I']],
         ['paint.hand', 'paint', 'Paint', 'Hand', ['H']],
+        ['paint.crop', 'paint', 'Paint', 'Crop: drag past the picture for more canvas', ['C']],
         ['paint.smaller', 'paint', 'Paint', 'Brush (or line, or text) smaller', ['[']],
         ['paint.bigger', 'paint', 'Paint', 'Brush (or line, or text) bigger', [']']],
         ['paint.swap', 'paint', 'Paint', 'Swap the colours', ['X']],
@@ -5169,9 +5172,10 @@ const app = {
             'adjust.zoom100': () => Adjust.zoom100(),
             'adjust.undo': () => { if (!Adjust.undo()) this.showToast('Nothing to undo', 1200); },
             'adjust.redo': () => { if (!Adjust.redo()) this.showToast('Nothing to redo', 1200); },
-            'paint.done': () => { if (PaintEditor.float) PaintEditor.commitFloat(); else Modes.go('photos'); },
+            'paint.done': () => { if (PaintEditor.crop) PaintEditor.endCrop(true); else if (PaintEditor.float) PaintEditor.commitFloat(); else Modes.go('photos'); },
             'paint.cancel': () => {
-                if (PaintEditor.float) PaintEditor.cancelFloat();
+                if (PaintEditor.crop) PaintEditor.endCrop(false);
+                else if (PaintEditor.float) PaintEditor.cancelFloat();
                 else if (PaintEditor.ready) Modes.go('photos');
                 else this.cancelPaint();
             },
@@ -5191,6 +5195,7 @@ const app = {
             'paint.text': () => PaintEditor.setTool('text'),
             'paint.picker': () => PaintEditor.setTool('picker'),
             'paint.hand': () => PaintEditor.setTool('hand'),
+            'paint.crop': () => { if (PaintEditor.crop) PaintEditor.endCrop(true); else PaintEditor.startCrop(); },
             'paint.smaller': () => PaintEditor.nudgeSize(1 / 1.2, true),
             'paint.bigger': () => PaintEditor.nudgeSize(1.2, true),
             'paint.swap': () => PaintEditor.swapColours(),
@@ -8146,12 +8151,14 @@ const app = {
             const fileData = await file.handle.getFile();
             const original = new Uint8Array(await fileData.arrayBuffer());
             const bmp = await createImageBitmap(fileData);
-            const canvas = document.createElement('canvas');
-            canvas.width = bmp.width;
-            canvas.height = bmp.height;
-            canvas.getContext('2d').drawImage(bmp, 0, 0);
+            const photo = document.createElement('canvas');
+            photo.width = bmp.width;
+            photo.height = bmp.height;
+            photo.getContext('2d').drawImage(bmp, 0, 0);
             bmp.close();
-            Paint.composite(canvas, layers, null);
+            // (a new canvas when Paint's canvas is bigger or smaller)
+            const canvas = Paint.padded(photo, layers, null);
+            if (canvas !== photo) photo.width = photo.height = 0;
             const w = canvas.width, h = canvas.height;
             let blob = await new Promise(r => canvas.toBlob(r, type, quality));
             canvas.width = canvas.height = 0;

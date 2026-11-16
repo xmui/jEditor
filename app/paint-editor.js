@@ -28,6 +28,9 @@
 //   Text (T): click, type, Ctrl+Enter (or a click elsewhere) puts it down
 //   Picker (I): the colour under it, with a loupe (Alt held with any brush
 //   does too). Alt + right-drag sizes a brush and sets its hardness
+//   Crop (C, or ⋯ → Image): drag the frame's edges in to crop, or out past
+//     the picture to make the canvas bigger (what's added is the background
+//     colour); Enter crops. Image ▸ Canvas size… adds round all sides
 //   Hand (H, or hold Space): move about; the wheel zooms (with a brush,
 //     Ctrl+wheel; on a Mac's trackpad, two fingers move about and a pinch
 //     zooms)
@@ -517,23 +520,38 @@ const PaintEditor = {
     // space to the picture shown)
     setView(edit) {
         this.edit = edit || null;
-        const base = this.photo;
-        this.ed = edit && !Edits.wholePhoto(edit) ? CropEditor.fromSnapshot(this.W, this.H, edit) : null;
-        const shown = this.ed ? this.ed.drawOutput(base) : (() => { const c = document.createElement('canvas'); c.width = this.W; c.height = this.H; c.getContext('2d').drawImage(base, 0, 0); return c; })();
-        if (edit && edit.adj) Develop.applyCanvas(shown, edit.adj, { scale: this.W / this.fullW, map: Develop.cropMap(this.ed, this.W, this.H) });
+        const base = this.photo0;
+        this.ed = edit && !Edits.wholePhoto(edit) ? CropEditor.fromSnapshot(this.PW, this.PH, edit) : null;
+        let shown = this.ed ? this.ed.drawOutput(base) : (() => { const c = document.createElement('canvas'); c.width = this.PW; c.height = this.PH; c.getContext('2d').drawImage(base, 0, 0); return c; })();
+        if (edit && edit.adj) Develop.applyCanvas(shown, edit.adj, { scale: this.PW / this.fullW, map: Develop.cropMap(this.ed, this.PW, this.PH) });
+        // The picture as shown, before the canvas pads it
+        this.PO = { w: shown.width, h: shown.height };
+        const pad = this.pad || Paint.ZERO, ext = this.ext;
+        if (this.pad) {
+            const out = this.newCanvas(Math.max(1, shown.width + pad.l + pad.r), Math.max(1, shown.height + pad.t + pad.b));
+            const g = out.getContext('2d');
+            if (this.fill) { g.fillStyle = this.fill; g.fillRect(0, 0, out.width, out.height); }
+            g.drawImage(shown, pad.l, pad.t);
+            shown.width = shown.height = 0;
+            shown = out;
+        }
         if (this.backdrop && this.backdrop !== shown) this.backdrop.width = this.backdrop.height = 0;
         this.backdrop = shown;
         this.OW = shown.width;
         this.OH = shown.height;
-        // Layer space (the photo as on disk) to the picture shown, and back
+        // The photo as on disk to the picture shown (Cc), and layer space
+        // (the photo, and past it as far as the layers reach) to the
+        // canvas shown (C), and back
         if (this.ed) {
             const o = this.ed.outputRect();
             const [a, b, c, d] = this.ed.mat(); // the turn, and any flip
-            this.C = new DOMMatrix([a, b, c, d, -o.x0, -o.y0]).translate(-this.W / 2, -this.H / 2);
+            this.Cc = new DOMMatrix([a, b, c, d, -o.x0, -o.y0]).translate(-this.PW / 2, -this.PH / 2);
         } else {
-            this.C = new DOMMatrix();
+            this.Cc = new DOMMatrix();
         }
+        this.C = new DOMMatrix().translate(pad.l, pad.t).multiply(this.Cc).translate(-ext.l, -ext.t);
         this.Ci = this.C.inverse();
+        this.showDims();
     },
 
     // Image ▸ Rotate and Flip: the photo's own turn and flip (an edit, kept
@@ -545,11 +563,16 @@ const PaintEditor = {
         if (this.float) this.commitFloat();
         const before = this.edit;
         const after = how === 'h' || how === 'v' ? Edits.flipped(before, how) : Edits.turned(before, how);
-        this.applyView(after);
-        this.record({ kind: 'view', name: { 1: 'Rotate right', 3: 'Rotate left', 2: 'Rotate 180°', h: 'Flip left to right', v: 'Flip upside down' }[how] || 'Turn', before, after });
+        // The canvas's margins turn with the picture (the layers reach the
+        // same places on the photo)
+        const p = this.pad, pad0 = p && { ...p };
+        const pad1 = p && ({ 1: { l: p.b, t: p.l, r: p.t, b: p.r }, 3: { l: p.t, t: p.r, r: p.b, b: p.l }, 2: { l: p.r, t: p.b, r: p.l, b: p.t }, h: { l: p.r, t: p.t, r: p.l, b: p.b }, v: { l: p.l, t: p.b, r: p.r, b: p.t } }[how] || p);
+        this.applyView(after, pad1);
+        this.record({ kind: 'view', name: { 1: 'Rotate right', 3: 'Rotate left', 2: 'Rotate 180°', h: 'Flip left to right', v: 'Flip upside down' }[how] || 'Turn', before, after, pad0, pad1 });
     },
 
-    applyView(edit) {
+    applyView(edit, pad = this.pad) {
+        this.pad = pad ? { ...pad } : null;
         this.dropSelection();
         this.setView(edit);
         this.fit();
@@ -580,24 +603,33 @@ const PaintEditor = {
         const data = await app.readImage(file);
         const bmp = await createImageBitmap(data);
         const fullW = bmp.width, fullH = bmp.height;
-        const size = kept && kept.paint ? { w: kept.paint.w, h: kept.paint.h } : Paint.sizeFor(fullW, fullH);
-        this.W = size.w;
-        this.H = size.h;
+        const kp = kept && kept.paint;
+        const size = kp ? { w: kp.w, h: kp.h } : Paint.sizeFor(fullW, fullH);
+        // The photo at the layers' size; the canvas past it (paint.js)
+        this.PW = size.w;
+        this.PH = size.h;
+        this.ext = { ...Paint.ZERO, ...(kp && kp.ext) };
+        this.pad = kp && kp.pad ? { ...kp.pad } : null;
+        this.fill = (kp && kp.fill) || null;
+        this.crop = null;
+        this.W = this.PW + this.ext.l + this.ext.r;
+        this.H = this.PH + this.ext.t + this.ext.b;
         this.fitSizes();
         this.lastDab = null;
         this.paintId = kept && kept.paint ? kept.paint.id : Paint.newId();
         // The photo at the layers' size, its spots done (for the fill and
         // the wand), and as shown: cropped and adjusted (behind the layers)
         const photo = document.createElement('canvas');
-        photo.width = this.W;
-        photo.height = this.H;
+        photo.width = this.PW;
+        photo.height = this.PH;
         const pg = photo.getContext('2d', { willReadFrequently: true });
         pg.imageSmoothingQuality = 'high';
-        pg.drawImage(bmp, 0, 0, this.W, this.H);
+        pg.drawImage(bmp, 0, 0, this.PW, this.PH);
         bmp.close();
         const base = await Retouch.retouched(photo, kept);
         if (base !== photo) photo.width = photo.height = 0;
-        this.photo = base;
+        this.photo0 = base;
+        this.extendPhoto();
         this.fullW = fullW;
         this.fullH = fullH;
         this.setView(kept);
@@ -616,7 +648,7 @@ const PaintEditor = {
         if (!current()) { this.dropCanvases(); return; }
         this.stroke = this.newCanvas();
         this.before = this.newCanvas();
-        this.el('paint-dims').textContent = `${fullW} × ${fullH}`;
+        this.showDims();
         this.ready = true;
         this.syncColours();
         this.setTool(this.tool);
@@ -640,12 +672,30 @@ const PaintEditor = {
     },
 
     dropCanvases() {
-        const all = [this.photo, this.backdrop, this.stroke, this.before, this.sel && this.sel.mask, this.sel && this.sel.edge, this.float && this.float.canvas, this._scratch, this._shown && this._shown.canvas];
+        const all = [this.photo, this.photo0, this.backdrop, this.stroke, this.before, this.sel && this.sel.mask, this.sel && this.sel.edge, this.float && this.float.canvas, this._scratch, this._shown && this._shown.canvas];
         for (const l of this.layers || []) all.push(l.canvas);
         for (const c of all) if (c) c.width = c.height = 0;
-        this.photo = this.backdrop = this.stroke = this.before = this._scratch = this._shown = this._photoThumb = null;
+        this.photo = this.photo0 = this.backdrop = this.stroke = this.before = this._scratch = this._shown = this._photoThumb = null;
         this.layers = [];
         this.sel = this.float = null;
+    },
+
+    // The photo in layer space: where the layers reach past it, clear
+    extendPhoto() {
+        const e = this.ext;
+        if (this.photo && this.photo !== this.photo0) this.photo.width = this.photo.height = 0;
+        if (!(e.l || e.t || e.r || e.b)) { this.photo = this.photo0; return; }
+        this.photo = this.newCanvas();
+        this.photo.getContext('2d').drawImage(this.photo0, e.l, e.t);
+    },
+
+    // The size along the top: the photo's own, or the canvas's when it's
+    // bigger or smaller (as Export writes it)
+    showDims() {
+        const el = this.el('paint-dims');
+        if (!el || !this.fullW) return;
+        const k = this.fullW / this.PW;
+        el.textContent = this.pad ? `${Math.round(this.OW * k)} × ${Math.round(this.OH * k)} (canvas)` : `${this.fullW} × ${this.fullH}`;
     },
 
     newCanvas(w = this.W, h = this.H) {
@@ -729,6 +779,7 @@ const PaintEditor = {
 
     setTool(id) {
         if (!this.OPTIONS[id]) return;
+        if (this.crop) this.endCrop(false);
         if (this.text) this.endText(true);
         if (this.float && id !== 'move') this.commitFloat();
         this.tool = id;
@@ -741,6 +792,7 @@ const PaintEditor = {
 
     cursor() {
         const t = this.space || this.tool === 'hand' ? (this.drag && this.drag.kind === 'pan' ? 'grabbing' : 'grab')
+            : this.crop ? (this._cropCursor || 'crosshair')
             : this.tool === 'move' ? 'move'
             : this.picking() ? 'crosshair'
             : this.tool === 'text' ? 'text'
@@ -751,6 +803,7 @@ const PaintEditor = {
     buildOptions() {
         const box = this.el('paint-options');
         box.textContent = '';
+        if (this.crop) { this.cropOptions(box); return; }
         const o = this.opts;
         const save = () => this.remember();
         const add = (el) => { box.appendChild(el); return el; };
@@ -1020,6 +1073,7 @@ const PaintEditor = {
         });
         ctx.restore();
         const loupe = this.picking() && this.hover ? this.sampleLoupe(ctx) : null;
+        if (this.crop) { this.drawCrop(ctx, VD); return; }
         this.drawSelection(ctx, VD, LD);
         this.drawGuides(ctx, VD, LD);
         if (loupe) this.drawLoupe(ctx, loupe);
@@ -1164,6 +1218,7 @@ const PaintEditor = {
         try { this.stage.setPointerCapture(e.pointerId); } catch (err) { /* not a live pointer */ }
         const p = this.point(e);
         if (this.space || this.tool === 'hand') { this.startPan(e); return; }
+        if (this.crop) { this.startCropDrag(p); return; }
         if (this.text && e.target !== this.el('paint-text')) { this.endText(true); return; }
         const t = this.tool;
         // The picker (I), or Alt with a tool that paints a colour: picks as
@@ -1204,7 +1259,7 @@ const PaintEditor = {
         const d = this.drag;
         if (!d && e.altKey !== !!this.alt) { this.alt = e.altKey; this.cursor(); }
         this.hover = d && d.kind === 'size' ? d.at : p;
-        if (!d) { this.renderSoon(); return; }
+        if (!d) { if (this.crop) this.cropCursor(p); this.renderSoon(); return; }
         if (d.kind === 'size') { this.sizeBy(p.sx - d.sx, p.sy - d.sy); return; }
         if (d.kind === 'pick') { this.pick(p, d.toBg); this.renderSoon(); return; }
         if (d.kind === 'pan') {
@@ -1233,6 +1288,8 @@ const PaintEditor = {
             if (Math.hypot(p.sx - last.sx, p.sy - last.sy) >= 2) d.pts.push(p);
         } else if (d.kind === 'float') {
             this.dragFloat(p, e.shiftKey);
+        } else if (d.kind === 'crop') {
+            this.dragCrop(p);
         }
         this.renderSoon();
     },
@@ -1361,7 +1418,8 @@ const PaintEditor = {
     },
 
     apply(entry, undo) {
-        if (entry.kind === 'view') { this.applyView(undo ? entry.before : entry.after); return; }
+        if (entry.kind === 'view') { this.applyView(undo ? entry.before : entry.after, undo ? entry.pad0 : entry.pad1); return; }
+        if (entry.kind === 'canvas') { this.applyCanvas(undo ? entry.before : entry.after); return; }
         if (entry.kind === 'px') {
             entry.layer.canvas.getContext('2d').putImageData(undo ? entry.before : entry.after, entry.r.x, entry.r.y);
             entry.layer.changed = true;
@@ -1375,6 +1433,7 @@ const PaintEditor = {
     },
 
     undo() {
+        if (this.crop) { this.endCrop(false); return true; }
         if (this.float) { this.cancelFloat(); return true; }
         if (this.text) { this.endText(false); return true; }
         const e = this.history.pop();
@@ -2196,14 +2255,18 @@ const PaintEditor = {
     moreItems() {
         const sel = !!this.sel, n = this.layers.length, room = n < Paint.MAX_LAYERS;
         const when = (ok, item) => (ok ? [item] : []);
-        const turn = Edits.canKeep() ? [['Image', [
-            ['Rotate right', () => this.turnImage(1)],
-            ['Rotate left', () => this.turnImage(3)],
-            ['Rotate 180°', () => this.turnImage(2)],
-            ['—'],
-            ['Flip left to right', () => this.turnImage('h')],
-            ['Flip upside down', () => this.turnImage('v')]
-        ]]] : [];
+        const turn = [['Image', [
+            ['Crop…', () => this.startCrop(), false, undefined, 'paint.crop'],
+            ['Canvas size…', () => this.canvasSize()],
+            ...when(!!this.pad, ['Canvas back to the photo', () => this.setCanvas(null, 'Canvas back to the photo')]),
+            ...(Edits.canKeep() ? [['—'],
+                ['Rotate right', () => this.turnImage(1)],
+                ['Rotate left', () => this.turnImage(3)],
+                ['Rotate 180°', () => this.turnImage(2)],
+                ['—'],
+                ['Flip left to right', () => this.turnImage('h')],
+                ['Flip upside down', () => this.turnImage('v')]] : [])
+        ]]];
         return [
             ...turn,
             ['Select', [
@@ -3322,6 +3385,265 @@ const PaintEditor = {
         return true;
     },
 
+    // ---- The canvas: Crop (C) and Image ▸ Canvas size ----
+    //
+    // The canvas is the picture as shown with a margin round it (pad: in
+    // layer px, less than 0 cropping in; paint.js). The layers reach as far
+    // past the photo as the canvas does (ext, on the photo as on disk), so
+    // what's painted out there is kept and Export writes it.
+
+    // The layers' reach past the photo that a canvas padded so needs
+    extFor(pad) {
+        const p = pad || Paint.ZERO, Ci = this.Cc.inverse();
+        const pts = [[-p.l, -p.t], [this.PO.w + p.r, -p.t], [-p.l, this.PO.h + p.b], [this.PO.w + p.r, this.PO.h + p.b]].map(([x, y]) => Ci.transformPoint({ x, y }));
+        const xs = pts.map(q => q.x), ys = pts.map(q => q.y);
+        const out = (v) => Math.max(0, Math.ceil(v - 1e-6));
+        return { l: out(-Math.min(...xs)), t: out(-Math.min(...ys)), r: out(Math.max(...xs) - this.PW), b: out(Math.max(...ys) - this.PH) };
+    },
+
+    // The biggest a canvas may be (in layer px): its sides up to three
+    // times the photo's, and no more pixels than that many layers can hold
+    canvasFits(pad) {
+        const e = this.extFor(pad), w = this.PW + e.l + e.r, h = this.PH + e.t + e.b;
+        const ow = this.PO.w + (pad ? pad.l + pad.r : 0), oh = this.PO.h + (pad ? pad.t + pad.b : 0);
+        return ow >= 1 && oh >= 1 && w <= 16384 && h <= 16384 && w * h <= Math.max(36e6, 4 * this.PW * this.PH) && Math.max(w, h) <= 3 * Math.max(this.PW, this.PH);
+    },
+
+    canvasState() {
+        return { ext: { ...this.ext }, pad: this.pad && { ...this.pad }, fill: this.fill, canvases: new Map(this.layers.map(l => [l.id, l.canvas])) };
+    },
+
+    // The canvas padded so (null: the photo's own), one step of Undo; what's
+    // added is the background colour
+    setCanvas(pad, name = 'Canvas size') {
+        if (!this.ready) return false;
+        if (this.text) this.endText(true);
+        if (this.float) this.commitFloat();
+        pad = pad && (pad.l || pad.t || pad.r || pad.b) ? { l: pad.l | 0, t: pad.t | 0, r: pad.r | 0, b: pad.b | 0 } : null;
+        const same = (a, b) => JSON.stringify(a || null) === JSON.stringify(b || null);
+        if (same(pad, this.pad)) return false;
+        if (!this.canvasFits(pad)) { this.app.showToast('That canvas is too big: up to three times the photo\'s size', 2400); return false; }
+        const before = this.canvasState();
+        const ext = this.extFor(pad), W = this.PW + ext.l + ext.r, H = this.PH + ext.t + ext.b;
+        const dx = ext.l - this.ext.l, dy = ext.t - this.ext.t;
+        const canvases = new Map();
+        for (const l of this.layers) {
+            const c = this.newCanvas(W, H);
+            c.getContext('2d').drawImage(l.canvas, dx, dy);
+            canvases.set(l.id, c);
+        }
+        const fill = pad ? (this.fill || this.bg) : null;
+        const after = { ext, pad, fill, canvases };
+        this.applyCanvas(after);
+        this.record({ kind: 'canvas', name, before, after, bytes: W * H * 4 * this.layers.length });
+        return true;
+    },
+
+    // A canvas state put on (setCanvas, Undo and Redo): the layers' pictures
+    // swapped for that state's, the photo and the view made again
+    applyCanvas(s) {
+        this.dropSelection();
+        if (this.float) this.commitFloat();
+        this.ext = { ...s.ext };
+        this.pad = s.pad ? { ...s.pad } : null;
+        this.fill = s.fill || null;
+        this.W = this.PW + this.ext.l + this.ext.r;
+        this.H = this.PH + this.ext.t + this.ext.b;
+        for (const l of this.layers) {
+            const c = s.canvases.get(l.id);
+            if (c) l.canvas = c;
+            else if (l.canvas.width !== this.W || l.canvas.height !== this.H) l.canvas = this.newCanvas();
+            l.changed = true;
+        }
+        for (const k of ['stroke', 'before']) { this[k].width = this[k].height = 0; this[k] = this.newCanvas(); }
+        if (this._scratch) this._scratch.width = this._scratch.height = 0;
+        this._scratch = null;
+        this.lastDab = null;
+        this.extendPhoto();
+        this.setView(this.edit);
+        this.fit();
+        this.drawLayers();
+        this.buildOptions();
+        this.renderSoon();
+    },
+
+    // Image ▸ Canvas size…: the new size in the picture's own pixels (as
+    // Export writes it), what's added shared round all four sides
+    async canvasSize() {
+        if (!this.ready) return;
+        const k = this.fullW / this.PW;
+        const v = await UI.prompt({
+            title: 'Canvas size',
+            message: 'The picture stays in the middle; what\'s added is the background colour, and can be painted on. Crop (C) adds on one side only.',
+            input: { label: 'Width × height, in pixels', value: `${Math.round(this.OW * k)} × ${Math.round(this.OH * k)}` },
+            ok: 'Set'
+        });
+        if (v === null || !this.ready) return;
+        const m = /^\s*(\d+)\s*[x×*,]?\s*(\d+)\s*(px)?\s*$/i.exec(v);
+        if (!m || +m[1] < 1 || +m[2] < 1) { this.app.showToast('Two numbers, like 2000 × 1500', 2000); return; }
+        const dw = Math.round(+m[1] / k) - this.OW, dh = Math.round(+m[2] / k) - this.OH;
+        const p = this.pad || Paint.ZERO, hw = Math.floor(dw / 2), hh = Math.floor(dh / 2);
+        this.setCanvas({ l: p.l + hw, r: p.r + dw - hw, t: p.t + hh, b: p.b + dh - hh }, 'Canvas size');
+    },
+
+    // Crop (C): a frame on the canvas, as shown. Its edges and corners drag
+    // in to crop, or out past the picture to add to it; dragging inside it
+    // moves it, and outside draws a new one. Enter crops, Esc doesn't
+    startCrop() {
+        if (!this.ready) return;
+        if (this.text) this.endText(true);
+        if (this.float) this.commitFloat();
+        this.dropSelection();
+        this.crop = { x0: 0, y0: 0, x1: this.OW, y1: this.OH };
+        // Room round it to drag out into
+        this.fit();
+        this.zoomTo(this.view.z * 0.7);
+        this.buildOptions();
+        this.cursor();
+        this.renderSoon();
+    },
+
+    endCrop(apply) {
+        const c = this.crop;
+        if (!c) return false;
+        this.crop = null;
+        this._cropCursor = null;
+        if (this.drag && this.drag.kind === 'crop') this.drag = null;
+        let done = false;
+        if (apply) {
+            const r = this.cropRect(c), p = this.pad || Paint.ZERO;
+            done = this.setCanvas({ l: p.l - r.x0, t: p.t - r.y0, r: r.x1 - p.l - this.PO.w, b: r.y1 - p.t - this.PO.h }, 'Crop');
+        }
+        if (!done) { this.fit(); this.buildOptions(); }
+        this.cursor();
+        this.renderSoon();
+        return true;
+    },
+
+    // The frame in whole pixels, ends in order
+    cropRect(c) {
+        const x0 = Math.round(Math.min(c.x0, c.x1)), x1 = Math.round(Math.max(c.x0, c.x1));
+        const y0 = Math.round(Math.min(c.y0, c.y1)), y1 = Math.round(Math.max(c.y0, c.y1));
+        return { x0, y0, x1: Math.max(x0 + 1, x1), y1: Math.max(y0 + 1, y1) };
+    },
+
+    cropOptions(box) {
+        const hint = document.createElement('span');
+        hint.className = 'paint-opt paint-hint';
+        hint.textContent = 'Drag the edges in to crop, or out past the picture for more canvas. Enter crops, Esc doesn\'t';
+        hint.title = hint.textContent;
+        hint.style.color = 'var(--text-3, var(--text-2))';
+        box.appendChild(hint);
+        const r = this.crop ? this.cropRect(this.crop) : null, k = this.fullW / this.PW;
+        if (r) {
+            const size = document.createElement('span');
+            size.className = 'paint-opt paint-num';
+            size.id = 'paint-crop-size';
+            size.textContent = `${Math.round((r.x1 - r.x0) * k)} × ${Math.round((r.y1 - r.y0) * k)}`;
+            box.appendChild(size);
+        }
+        for (const [label, yes, cls] of [['Cancel', false, 'btn secondary'], ['Crop', true, 'btn primary']]) {
+            const b = document.createElement('button');
+            b.className = cls + ' paint-crop-' + (yes ? 'ok' : 'cancel');
+            b.textContent = label;
+            b.addEventListener('click', () => { b.blur(); this.endCrop(yes); });
+            box.appendChild(b);
+        }
+    },
+
+    // What a point on the screen (css px) is over: an edge or corner of the
+    // frame ('l', 'tr', …), inside it ('in') or outside
+    cropHit(p) {
+        const c = this.cropRect(this.crop), V = this.V();
+        const a = V.transformPoint({ x: c.x0, y: c.y0 }), b = V.transformPoint({ x: c.x1, y: c.y1 });
+        const near = 9, x = p.sx, y = p.sy;
+        const inX = x > a.x - near && x < b.x + near, inY = y > a.y - near && y < b.y + near;
+        let h = '';
+        if (inX && Math.abs(y - a.y) < near) h += 't'; else if (inX && Math.abs(y - b.y) < near) h += 'b';
+        if (inY && Math.abs(x - a.x) < near) h += 'l'; else if (inY && Math.abs(x - b.x) < near) h += 'r';
+        if (h) return h;
+        return x > a.x && x < b.x && y > a.y && y < b.y ? 'in' : 'out';
+    },
+
+    cropCursor(p) {
+        const h = this.cropHit(p);
+        const c = { t: 'ns-resize', b: 'ns-resize', l: 'ew-resize', r: 'ew-resize', tl: 'nwse-resize', br: 'nwse-resize', tr: 'nesw-resize', bl: 'nesw-resize', in: 'move', out: 'crosshair' }[h];
+        if (c !== this._cropCursor) { this._cropCursor = c; this.cursor(); }
+    },
+
+    startCropDrag(p) {
+        const h = this.cropHit(p);
+        const r = this.cropRect(this.crop);
+        if (h === 'out') this.crop = { x0: p.ox, y0: p.oy, x1: p.ox, y1: p.oy };
+        this.drag = { kind: 'crop', h: h === 'out' ? 'br' : h, from: p, r: h === 'out' ? null : r };
+    },
+
+    dragCrop(p) {
+        const d = this.drag, c = this.crop;
+        if (!c) return;
+        if (!d.r) { c.x1 = p.ox; c.y1 = p.oy; }
+        else if (d.h === 'in') {
+            const dx = p.ox - d.from.ox, dy = p.oy - d.from.oy;
+            Object.assign(c, { x0: d.r.x0 + dx, x1: d.r.x1 + dx, y0: d.r.y0 + dy, y1: d.r.y1 + dy });
+        } else {
+            const min = 4 / this.view.z;
+            if (d.h.includes('l')) c.x0 = Math.min(p.ox, d.r.x1 - min);
+            if (d.h.includes('r')) c.x1 = Math.max(p.ox, d.r.x0 + min);
+            if (d.h.includes('t')) c.y0 = Math.min(p.oy, d.r.y1 - min);
+            if (d.h.includes('b')) c.y1 = Math.max(p.oy, d.r.y0 + min);
+        }
+        const size = this.el('paint-crop-size'), r = this.cropRect(c), k = this.fullW / this.PW;
+        if (size) size.textContent = `${Math.round((r.x1 - r.x0) * k)} × ${Math.round((r.y1 - r.y0) * k)}`;
+    },
+
+    // The frame: outside it dimmed, what it adds past the canvas in the
+    // background colour, its edges and corners
+    drawCrop(ctx, VD) {
+        const r = this.cropRect(this.crop), z = this.view.z;
+        ctx.save();
+        ctx.setTransform(VD);
+        const w = r.x1 - r.x0, h = r.y1 - r.y0;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(r.x0, r.y0, w, h);
+        ctx.clip();
+        const added = new Path2D();
+        added.rect(r.x0, r.y0, w, h);
+        added.rect(0, 0, this.OW, this.OH);
+        ctx.fillStyle = this.fill || this.bg;
+        ctx.fill(added, 'evenodd');
+        ctx.restore();
+        const big = 1e5 / Math.max(z, 1e-3);
+        const dim = new Path2D();
+        dim.rect(-big, -big, 2 * big, 2 * big);
+        dim.rect(r.x0, r.y0, w, h);
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fill(dim, 'evenodd');
+        ctx.lineWidth = 1.5 / z;
+        ctx.strokeStyle = '#fff';
+        ctx.strokeRect(r.x0, r.y0, w, h);
+        // Thirds, faintly
+        ctx.lineWidth = 1 / z;
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        ctx.beginPath();
+        for (const t of [1 / 3, 2 / 3]) {
+            ctx.moveTo(r.x0 + w * t, r.y0); ctx.lineTo(r.x0 + w * t, r.y1);
+            ctx.moveTo(r.x0, r.y0 + h * t); ctx.lineTo(r.x1, r.y0 + h * t);
+        }
+        ctx.stroke();
+        // The handles: the corners and the middle of each edge
+        const s = 7 / z;
+        for (const x of [r.x0, (r.x0 + r.x1) / 2, r.x1]) for (const y of [r.y0, (r.y0 + r.y1) / 2, r.y1]) {
+            if (x === (r.x0 + r.x1) / 2 && y === (r.y0 + r.y1) / 2) continue;
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(x - s / 2, y - s / 2, s, s);
+            ctx.lineWidth = 1 / z;
+            ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+            ctx.strokeRect(x - s / 2, y - s / 2, s, s);
+        }
+        ctx.restore();
+    },
+
     // ---- Done ----
 
     // The paint record to keep (layers written to the project), or null:
@@ -3329,7 +3651,7 @@ const PaintEditor = {
     async keep() {
         if (this.text) this.endText(true);
         if (this.float) this.commitFloat();
-        const paint = { id: this.paintId, w: this.W, h: this.H, layers: [] };
+        const paint = { id: this.paintId, w: this.PW, h: this.PH, layers: [], ext: this.ext, pad: this.pad, fill: this.fill };
         for (const l of this.layers) {
             if ((l.changed || !l.rev) && this.empty(l)) continue;
             const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, ...(l.lock ? { lock: true } : {}) };
@@ -3346,6 +3668,6 @@ const PaintEditor = {
     layersNow() {
         if (this.text) this.endText(true);
         if (this.float) this.commitFloat();
-        return { w: this.W, h: this.H, layers: this.layers.filter(l => !l.hidden && l.opacity > 0).map(l => ({ src: l.canvas, opacity: l.opacity, blend: l.blend })) };
+        return { w: this.PW, h: this.PH, ext: this.ext, pad: Paint.padOf(this), fill: this.fill, layers: this.layers.filter(l => !l.hidden && l.opacity > 0).map(l => ({ src: l.canvas, opacity: l.opacity, blend: l.blend })) };
     }
 };
