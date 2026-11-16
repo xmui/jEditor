@@ -1,7 +1,7 @@
 // Develop: Lightroom-style adjustments, non-destructive. An adjustment is
 // a small set of settings kept with the photo's edit (edits.js, `adj`),
 // never in the photo: it's applied whenever the photo is shown, and Export
-// (or Save edits) writes the finished file.
+// (or Save over the original) writes the finished file.
 //
 // Every adjustment here works on each pixel's colour alone, so the whole
 // look is two lookup tables, made in JavaScript from the settings:

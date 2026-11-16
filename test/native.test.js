@@ -1948,22 +1948,20 @@ async function newPage(context, baseUrl, host = null) {
             field2.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
             await new Promise(r => setTimeout(r, 100));
             out.escKept = !window.__renamed && !$('sb-card').querySelector('.sb-rename');
-            // Keep edits in jEditor, export copies, for this project: kept with its data on the PC
-            const deferBox = $('sb-card').querySelector('input[data-act="defer"]');
-            out.deferOff = !!deferBox && !deferBox.checked;
-            out.deferName = deferBox ? deferBox.closest('label').textContent.trim() : '';
-            deferBox.click();
-            await wait(() => Edits.on());
+            // No setting on the card: edits are kept in jEditor (edits.js),
+            // with the project's data on the PC
+            out.deferOff = !$('sb-card').querySelector('input[data-act="defer"], .sb-card-defer');
+            const pf = app.files[0];
+            Edits.set([{ file: pf, edit: { q: 1, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } } }], 'rotation');
             await Edits.flush();
             const kept = await store();
-            out.deferKept = JSON.parse(await (await (await kept.getFileHandle('edits.json')).getFile()).text()).defer === true;
-            // While it's on, edits waiting: no count and no Save now anywhere
-            // (Lightroom's way: the pencils show them, Export makes copies)
-            const pf = app.files[0];
-            pf._edit = { q: 1, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 } };
+            out.deferKept = !!JSON.parse(await (await (await kept.getFileHandle('edits.json')).getFile()).text()).edits[pf.relPath || pf.name];
+            // Edits kept: no count and no Save now anywhere (Lightroom's
+            // way: the pencils show them, Export makes copies)
             Places.drawCard();
             out.noNag = !$('edits-bar') && !$('sb-card').querySelector('.sb-card-pending, [data-act="savenow"]');
-            delete pf._edit;
+            Edits.set([{ file: pf, edit: null }], 'edits');
+            await Edits.flush();
 
             // A drive opens out; a folder in it opens as the project
             rowOf(side, 'USB drive (E:)').querySelector('.sb-main').click();
@@ -2050,13 +2048,13 @@ async function newPage(context, baseUrl, host = null) {
         check('... typing finds any project, the match in bold; Enter opens it; Esc closes it', r.pickerFound === 'Beta|Bet' && r.pickerOpened === 'D:\\Orders\\Beta' && r.pickerClosed && r.pickerEsc, JSON.stringify([r.pickerFound, r.pickerOpened, r.pickerEsc]));
         check('Recents: the last four opened, newest first, then Show all… (every project, by name, in the picker)', r.recentFour === '4 Show all…' && r.newestFirst === 'Gamma,Epsilon,Delta,Beta' && /^All projects in Orders/.test(r.showAll.split('|')[1]) && r.showAll.split('|')[0].split(',').length >= 5, JSON.stringify([r.recentFour, r.showAll]));
         check('a project in Recents: Open, Rename…, Show in Explorer, Remove from Recents', /^Open, Open in a new window, Rename…, Show in Explorer, Remove from Recents$/.test(r.recentMenu), r.recentMenu);
-        check('the name\'s right-click menu: Rename… first, then Show in Explorer, Scan, Export', /^Rename…, Show in Explorer, Scan…, Export…, Keep edits in jEditor, export copies/.test(r.cardMenu), r.cardMenu);
+        check('the name\'s right-click menu: Rename… first, then Show in Explorer, Scan, Export', /^Rename…, Show in Explorer, Scan…, Export…(, |$)/.test(r.cardMenu) && !/Keep edits/.test(r.cardMenu), r.cardMenu);
         check('Rename… renames in place: the name chosen in a field, Enter renames; Recents follow it', r.inPlace && r.recentsFollow && r.reopened === 'D:\\Orders\\Alpha Smith' && r.pinRenamed.split(',').includes('Alpha Smith') && !r.pinRenamed.split(',').includes('Alpha'), JSON.stringify([r.inPlace, r.recentsFollowWhy, r.reopened, r.pinRenamed]));
         check('... a step to undo (Rename project), and Undo puts the old name back; Esc leaves it as it was', r.undoStep && r.undoStep.type === 'project-rename' && /Rename project/.test(r.undoLabel) && r.undone === 'D:\\Orders\\Alpha Smith → Alpha' && r.escKept, JSON.stringify([r.undoStep, r.undoLabel, r.undone, r.escKept]));
         check('projects (All projects…): a pinned one is first (not again under Pinned); three shown, Show more and Show less', r.pinnedFirst && r.three === '3 Show more' && r.more === '5 Show less' && r.less === '3 Show more', JSON.stringify([r.pinnedFirst, r.three, r.more, r.less]));
         check('projects: Search and New project are icons in the heading; the search box shows when asked, Esc hides it', r.searchHidden && r.searchShown && r.searched === 'Epsilon' && r.searchEsc, JSON.stringify([r.searchHidden, r.searchShown, r.searched, r.searchEsc]));
         check('card buttons: Explorer, Scan, Pin', r.revealed === 'D:\\Orders\\Alpha' && r.scanOpen && r.pinned.split(',').includes('Alpha'), JSON.stringify([r.revealed, r.scanOpen, r.pinned]));
-        check('card: Keep edits in jEditor, export copies turns on for the project, kept on the PC', r.deferOff && r.deferKept && r.deferName === 'Keep edits in jEditor, export copies', JSON.stringify([r.deferOff, r.deferKept, r.deferName]));
+        check('card: no saving switch; edits are kept with the project\'s data on the PC', r.deferOff && r.deferKept, JSON.stringify([r.deferOff, r.deferKept]));
         check('card: with edits waiting, nothing counts them or nags to save', r.noNag);
         check('a drive opens out to its folders, in number order', r.inside === 'Order 9,Order 10', r.inside);
         check('browsing: clicking a folder only opens it out, it isn\'t loaded', r.browseOnly);
@@ -2210,7 +2208,7 @@ async function newPage(context, baseUrl, host = null) {
         check('drives: opened from the drive, the project\'s flags and edits are taken in', r.carried && r.jeditorGone, JSON.stringify(r));
         check('import: a camera\'s card plugged in is offered to import', r.offered, JSON.stringify(r));
         check('import: its photos (not its videos) copied into the project; nothing new the second time', r.imported && r.importToast && /Import 3 photos/.test(r.goLabel || '') && /3 photos/.test(r.summary || '') && r.nothingNew, JSON.stringify(r));
-        check('burn: in Export, the burner and its blank disc, edits offered to save first, the disc named, burnt, and said', /Save the edits into 1 photo first/.test(r.burnAsked || '') && /Blank DVD-R/.test(r.burnAsked || '') && r.burnPrompt === 'Export Alpha / Alpha / Burn to the DVD-R' && r.burnt && r.burnt.label === 'Alpha 2026' && r.burnt.path === 'D:\\Orders\\Alpha' && r.burnt.eject === true && r.burnEjectBox && r.burnToast, JSON.stringify(r));
+        check('burn: in Export, the burner and its blank disc, edits offered to save first, the disc named, burnt, and said', /Save over the original of the 1 edited photo first/.test(r.burnAsked || '') && /Blank DVD-R/.test(r.burnAsked || '') && r.burnPrompt === 'Export Alpha / Alpha / Burn to the DVD-R' && r.burnt && r.burnt.label === 'Alpha 2026' && r.burnt.path === 'D:\\Orders\\Alpha' && r.burnt.eject === true && r.burnEjectBox && r.burnToast, JSON.stringify(r));
         check('burn: no blank disc in the drive says so, and Burn waits', /^true Put a blank disc in/.test(r.noDisc || ''), JSON.stringify(r));
         check('drives suite: no JS errors', errors.length === 0, errors.join('; '));
         await context.close();

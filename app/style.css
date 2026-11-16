@@ -1464,25 +1464,6 @@ header:has(.header-controls.expanded) {
     color: var(--accent-text);
 }
 
-/* Keep edits in jEditor, export copies: the project card's switch */
-.sb-card-defer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--sp-2);
-    margin-top: var(--sp-2);
-    padding-top: var(--sp-2);
-    border-top: 1px solid var(--border-subtle);
-    color: var(--text-1);
-    font-size: var(--fs-small);
-    cursor: pointer;
-}
-
-.sb-card-defer input {
-    flex: none;
-    margin: 0;
-}
-
 /* ---- 7. Folder pill, folder list, flags, search ---- */
 
 /* Folder pill in grid view, top left, level with the header pills. Kept
@@ -10395,7 +10376,7 @@ body[data-view="single"]:has(#main-interface.rail-open:not(.hidden)) :is(#toast-
     padding: 0;
 }
 
-:root:not([data-skin]) .folder-rail :is(.sb-card-btns, .sb-card-export, .sb-card-defer, .sb-card-path, .sb-card-meta, .sb-card-edit, .sb-card-name > svg) {
+:root:not([data-skin]) .folder-rail :is(.sb-card-btns, .sb-card-export, .sb-card-path, .sb-card-meta, .sb-card-edit, .sb-card-name > svg) {
     display: none;
 }
 
@@ -11267,31 +11248,6 @@ body.touring .controls.idle button { pointer-events: auto; }
 }
 
 .fo-dir.none { color: var(--text-3); font-family: inherit; }
-
-.fo-choices {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.fo-choice {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 10px 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
-    cursor: pointer;
-}
-
-.fo-choice:has(input:checked) {
-    border-color: var(--accent);
-    background: var(--accent-soft);
-}
-
-.fo-choice input { margin-top: 3px; accent-color: var(--accent); }
-.fo-choice-name { display: block; font-weight: var(--fw-medium); }
-.fo-choice small { display: block; color: var(--text-2); font-size: var(--fs-small); }
 
 /* A switch under a prompt (ui.js: check) */
 .uid-check { margin-top: 12px; padding: 0; cursor: pointer; }

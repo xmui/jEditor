@@ -334,7 +334,7 @@ const CropLog = {
     },
 
     // A crop saved in the editor on a photo whose crop was kept as an edit
-    // (Save edits when done, edits.js), before Auto's crop was kept with
+    // (edits kept in jEditor, edits.js), before Auto's crop was kept with
     // it: the scan is the photo as it was, still in the project while its
     // edit waits, or in originals/ once the edits were saved.
     // → { entry, data } or null

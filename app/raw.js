@@ -2,7 +2,7 @@
 // inside them (every RAW format carries one, for the camera's own screen
 // and for viewers like this). The RAW file itself is never written: its
 // crops, turns and adjustments are always kept as an edit (edits.js), and
-// Export (or Save edits) writes JPEG copies.
+// Export (or Save over the original) writes JPEG copies.
 //
 // Formats:
 //   TIFF-based: DNG, CR2, NEF, NRW, ARW, SR2, SRF, ORF, RW2, RWL, PEF, SRW,
