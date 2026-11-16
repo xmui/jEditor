@@ -238,7 +238,7 @@ static class Engine
         if (!Path.IsPathFullyQualified(path) || !Reads.Contains(Path.GetExtension(path).ToLowerInvariant())) return (204, null, null);
         var t = System.Diagnostics.Stopwatch.StartNew();
         var bytes = Preview(path, edge, out var code, out var w, out var h);
-        Log.Write($"Engine: preview {Path.GetExtension(path).ToLowerInvariant()} {(bytes is null ? $"not made (code {code})" : $"{w}x{h}, {bytes.Length / 1024} KB")} in {t.Elapsed.TotalMilliseconds:F0} ms");
+        Log.Write($"Engine: preview {Path.GetFileName(path)} {(bytes is null ? $"not made (code {code})" : $"{w}x{h}, {bytes.Length / 1024} KB")} in {t.Elapsed.TotalMilliseconds:F0} ms");
         return bytes is null ? (204, null, null) : (200, bytes, (w, h));
     }
 }

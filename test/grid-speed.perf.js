@@ -137,6 +137,9 @@ async function launchWindows(profile) {
             if (fs.existsSync(log)) {
                 const said = fs.readFileSync(log, 'utf8').split(/\r?\n/).filter(l => / Engine: \d+ answered/.test(l));
                 if (said.length) console.log('  engine: ' + said[said.length - 1].replace(/^.*?Engine: /, ''));
+                // And each viewer picture it made, how big and how long
+                const previews = fs.readFileSync(log, 'utf8').split(/\r?\n/).filter(l => / Engine: preview /.test(l));
+                for (const l of previews) console.log('  engine: ' + l.replace(/^.*?Engine: /, ''));
             }
             await browser.close().catch(() => {});
             try { execFileSync('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore' }); } catch (e) { /* gone */ }
