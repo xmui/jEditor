@@ -1358,6 +1358,39 @@ const PROJECT = `
                 app.closeContextMenu();
                 out.retro = [cell.join(), stamped.join(), dots > 20 && soft === 0 && outside === 0, retroMenu.replace(/(Brush|Pencil)[A-Z]\|/g, "$1|") === "Brush|Pencil|Spray|Retro|Pixel pencil|Spray can|Stamp" ? 'menu' : retroMenu];
                 P.setTool('brush'); P.opts.size = 10; P.opts.density = 40;
+                // Canvas size: the canvas bigger than the photo, the layers
+                // reaching past it; what's painted out there kept, and
+                // written (padded) by Export; Crop past the edge adds more;
+                // each one step of Undo
+                step = 'canvas';
+                const lg0 = P.layers[0].canvas;
+                const grew = P.setCanvas({ l: 40, t: 0, r: 0, b: 20 }, 'Canvas size');
+                const big = [grew, P.W, P.H, P.OW, P.OH, P.ext.l, P.ext.b, P.layers[0].canvas.width, P.fill === P.bg];
+                P.fg = '#00ff00'; P.opts.opacity = 100;
+                pe('pointerdown', 10, 100); pe('pointerup', 10, 100);
+                const painted = px(0, 10, 100)[3];
+                P.turnImage(1);
+                const at10 = P.C.transformPoint({ x: 10, y: 100 });
+                const turned = [JSON.stringify(P.pad), P.OW, P.OH, at10.x > 0 && at10.x < P.OW && at10.y > 0 && at10.y < 40];
+                pressKey('z', { ctrlKey: true });
+                turned.push(JSON.stringify(P.pad));
+                const canvasRec = await P.keep();
+                const written = await CropEditor.renderSnapshot(await f.handle.getFile(), { q: 0, angle: 0, n: { x0: -0.5, y0: -0.5, x1: 0.5, y1: 0.5 }, paint: canvasRec }, 'image/png');
+                // (the layer file written just for this taken off again)
+                const pdir = await Paint.dir(false);
+                for (const l of canvasRec.layers) await pdir.removeEntry(Paint.fileName(canvasRec, l));
+                const wpx = (x, y) => [...written.getContext('2d').getImageData(x, y, 1, 1).data.slice(0, 3)].join();
+                const exported = [written.width, written.height, wpx(10, 100), wpx(20, 315), wpx(200, 100)];
+                const onlyPhoto = Paint.padded(c, P.layersNow(), null);
+                P.startCrop();
+                const cropping = !!P.crop && document.getElementById('paint-options').textContent.includes('Enter crops');
+                P.crop = { x0: 0, y0: 0, x1: P.OW + 60, y1: P.OH };
+                P.endCrop(true);
+                const cropped = [P.OW, P.OH, P.pad.r, P.history[P.history.length - 1].name];
+                pressKey('z', { ctrlKey: true });
+                const undone1 = P.OW;
+                pressKey('z', { ctrlKey: true }); pressKey('z', { ctrlKey: true });
+                out.canvas = { big, painted, turned, record: [canvasRec.w, canvasRec.h, JSON.stringify(canvasRec.ext), JSON.stringify(canvasRec.pad), canvasRec.fill], exported, onlyPhoto: [onlyPhoto.width, onlyPhoto.height], cropping, cropped, undone: [undone1, P.W, P.OW, !P.pad, P.layers[0].canvas === lg0] };
                 // A pen's pressure sizes the brush
                 step = 'pressure';
                 const pen = { pointerType: 'pen', pressure: 0.2 };
@@ -1575,6 +1608,8 @@ const PROJECT = `
         check('paint: History (⋯) lists each step by name; a click on one goes back to it, the later ones greyed, and on again; off again', JSON.stringify(r.history) === '[true,false,"Brush",true,0,"true",true,255]' && r.historyHidden, JSON.stringify([r.history, r.historyHidden]));
         check('paint: on a touch screen two fingers tapped undo, three redo; a finger put down later leaves the first painting', JSON.stringify(r.taps) === '[true,0,0,true,255,255,true]', JSON.stringify(r.taps));
         check('paint: Recolor turns the colour clicked into the brush colour, light and dark shades alike, nothing else; one undo step; G goes fill, gradient, recolor', JSON.stringify(r.recolor) === '[true,true,true,"32,160,64,255",0,"Recolor","200,32,32,255","gradient,recolor"]', JSON.stringify(r.recolor));
+        check('paint: Canvas size makes the canvas bigger than the photo (the layers too, what\'s added the background colour); what\'s painted past the photo is kept, and Export writes the bigger canvas; Crop dragged past the edge adds more; each one step of Undo',
+            JSON.stringify(r.canvas) === JSON.stringify({ big: [true, 440, 320, 440, 320, 40, 20, 440, true], painted: 255, turned: ['{"l":20,"t":40,"r":0,"b":0}', 320, 440, true, '{"l":40,"t":0,"r":0,"b":20}'], record: [400, 300, '{"l":40,"t":0,"r":0,"b":20}', '{"l":40,"t":0,"r":0,"b":20}', '#ffffff'], exported: [440, 320, '0,255,0', '255,255,255', '128,128,128'], onlyPhoto: [440, 320], cropping: true, cropped: [500, 320, 60, 'Crop'], undone: [440, 400, 400, true, true] }), JSON.stringify(r.canvas));
         check('paint: Retro: the pixel pencil fills one square of its grid; the stamp paints our star (not its corners); the spray can sprays hard dots inside its round; listed under Retro in the brush slot', JSON.stringify(r.retro) === '["255,255,0,0,0","255,0,255,0,Stamp",true,"menu"]', JSON.stringify(r.retro));
         check('paint: a pen\'s pressure sizes the brush', r.pressure && r.pressure[0] > 200 && r.pressure[1] === 0, String(r.pressure));
         check('paint: a new layer; a filled rectangle on it', r.layers && r.rect && r.rect[0][1] === 255 && r.rect[1] === 0, JSON.stringify(r));

@@ -5,7 +5,8 @@
 // (.jeditor/paint/<id>-<layer>-<rev>.png; a new rev each time a layer
 // changes, so Ctrl+Z on the edit finds the old one still there).
 //
-//   paint: { id, w, h, layers: [{ id, rev, name, opacity, blend, hidden, lock? }] }
+//   paint: { id, w, h, layers: [{ id, rev, name, opacity, blend, hidden, lock? }],
+//            ext?, pad?, fill? }
 //
 // Layers cover the whole photo as it is on disk (before any crop or turn,
 // w × h: the photo's own size, or less for a very big one), so cropping
@@ -13,6 +14,16 @@
 // cropped and adjusted, so what's painted looks as it was painted (a film
 // look or a slider doesn't change it); they're scaled to whatever size the
 // photo is shown or saved at.
+//
+// The canvas can be bigger (or smaller) than the photo: Paint's Canvas
+// size and its crop. pad { l, t, r, b } is how far the canvas's edges are
+// out from the picture's as it's shown (cropped and turned), in layer px
+// (less than 0: in from it); fill is the colour of what's added (none:
+// clear). The layers then reach past the photo: ext { l, t, r, b } is how
+// far, on the photo as on disk, so the layer pictures are
+// (w + l + r) × (h + t + b), the photo at (l, t). Only what's drawn as
+// shown is padded (onto with a crop editor): a photo-sized picture (the
+// Crop tool, Adjust) shows just the photo's part of the layers.
 
 const Paint = {
     DIR: 'paint',
@@ -32,7 +43,7 @@ const Paint = {
     // ---- The record ----
 
     has(e) {
-        return !!(e && e.paint && Array.isArray(e.paint.layers) && e.paint.layers.length);
+        return !!(e && e.paint && Array.isArray(e.paint.layers) && (e.paint.layers.length || this.padOf(e.paint)));
     },
 
     clean(v) {
@@ -54,7 +65,26 @@ const Paint = {
                 ...(l.lock ? { lock: true } : {})
             });
         }
-        return layers.length ? { id: v.id, w: v.w, h: v.h, layers } : null;
+        const side = (o, min) => {
+            if (!o || typeof o !== 'object') return null;
+            const r = {};
+            for (const k of ['l', 't', 'r', 'b']) r[k] = Number.isInteger(o[k]) ? Math.max(min, Math.min(16384, o[k])) : 0;
+            return r.l || r.t || r.r || r.b ? r : null;
+        };
+        const ext = side(v.ext, 0), pad = side(v.pad, -16384);
+        const fill = typeof v.fill === 'string' && /^#[0-9a-f]{6}$/i.test(v.fill) ? v.fill.toLowerCase() : null;
+        // (a canvas that's smaller can't be smaller than nothing)
+        const ok = !pad || (v.w + pad.l + pad.r >= 1 && v.h + pad.t + pad.b >= 1);
+        if (!layers.length && !(pad && ok)) return null;
+        return { id: v.id, w: v.w, h: v.h, layers, ...(ext ? { ext } : {}), ...(pad && ok ? { pad } : {}), ...(pad && ok && fill ? { fill } : {}) };
+    },
+
+    ZERO: { l: 0, t: 0, r: 0, b: 0 },
+
+    // The canvas's edges out from the picture's, or null: the picture's own
+    padOf(p) {
+        const d = p && p.pad;
+        return d && (d.l || d.t || d.r || d.b) ? d : null;
     },
 
     // The size layers are painted at for a photo W × H
@@ -153,8 +183,9 @@ const Paint = {
         }
     },
 
-    // The visible layers' pictures, ready to draw: { w, h, layers: [{ src,
-    // opacity, blend }] } (src: an ImageBitmap or canvas), or null
+    // The visible layers' pictures, ready to draw: { w, h, ext, pad, fill,
+    // layers: [{ src, opacity, blend }] } (src: an ImageBitmap or canvas),
+    // or null
     async prepare(e) {
         if (!this.has(e)) return null;
         const p = e.paint;
@@ -164,49 +195,85 @@ const Paint = {
             const src = await this.layerBitmap(p, l);
             if (src) layers.push({ src, opacity: l.opacity, blend: l.blend });
         }
-        return layers.length ? { w: p.w, h: p.h, layers } : null;
+        const pad = this.padOf(p);
+        return layers.length || pad ? { w: p.w, h: p.h, ext: p.ext || this.ZERO, pad, fill: p.fill || null, layers } : null;
     },
 
     // ---- Drawn over a photo ----
 
     // The layers onto `canvas`: the photo as cropped by `ed` (a crop
     // editor on the W × H photo, CropEditor.fromSnapshot), or the whole
-    // photo filling the canvas when there's no crop
-    composite(canvas, prepared, ed = null) {
+    // photo filling the canvas when there's no crop. at: where the picture
+    // is on the canvas, and how wide (a padded canvas has it inside)
+    composite(canvas, prepared, ed = null, at = null) {
         if (!prepared) return;
+        at = at || { x: 0, y: 0, w: canvas.width, h: canvas.height };
         const ctx = canvas.getContext('2d');
         ctx.save();
         for (const l of prepared.layers) {
             ctx.globalAlpha = l.opacity;
             ctx.globalCompositeOperation = l.blend;
-            this.drawThrough(ctx, ed, l.src, canvas.width, canvas.height);
+            this.drawThrough(ctx, ed, l.src, canvas.width, canvas.height, prepared, at);
         }
         ctx.restore();
     },
 
-    // A picture of the whole photo drawn as `ed` crops it (as
-    // CropEditor.drawOutput does), or stretched over w × h without one
-    drawThrough(ctx, ed, src, w, h) {
+    // A layer's picture drawn as `ed` crops the photo (as
+    // CropEditor.drawOutput does), or stretched over w × h without one;
+    // p: the layers' w, h and ext (none: the photo's size); at: where the
+    // picture is (all of w × h)
+    drawThrough(ctx, ed, src, w, h, p = null, at = null) {
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
+        const e = (p && p.ext) || this.ZERO;
+        at = at || { x: 0, y: 0, w, h };
         if (!ed) {
+            const pw = p ? p.w : w, ph = p ? p.h : h;
+            ctx.setTransform(at.w / pw, 0, 0, at.h / ph, at.x, at.y);
+            ctx.drawImage(src, -e.l, -e.t, pw + e.l + e.r, ph + e.t + e.b);
             ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.drawImage(src, 0, 0, w, h);
             return;
         }
         const o = ed.outputRect();
         const [a, b, c, d] = ed.mat(); // the turn, and any flip
         // The output canvas may be a different size from ed's (a preview)
-        const k = w / o.w;
-        ctx.setTransform(a * k, b * k, c * k, d * k, -o.x0 * k, -o.y0 * k);
-        ctx.drawImage(src, -ed.W / 2, -ed.H / 2, ed.W, ed.H);
+        const k = at.w / o.w;
+        const sx = p ? ed.W / p.w : 1, sy = p ? ed.H / p.h : 1;
+        ctx.setTransform(a * k, b * k, c * k, d * k, -o.x0 * k + at.x, -o.y0 * k + at.y);
+        ctx.drawImage(src, -ed.W / 2 - e.l * sx, -ed.H / 2 - e.t * sy, ed.W + (e.l + e.r) * sx, ed.H + (e.t + e.b) * sy);
         ctx.setTransform(1, 0, 0, 1, 0, 0);
     },
 
-    // The edit's paint onto a canvas of the photo as shown (see composite)
+    // The layers onto a picture, on a canvas padded as the paint says: a
+    // new canvas when it's padded (the picture inside it, what's added
+    // filled), else the same one. ed as for composite
+    padded(canvas, prepared, ed = null) {
+        const pad = prepared && prepared.pad;
+        if (!pad) { this.composite(canvas, prepared, ed); return canvas; }
+        // Canvas px per layer px, as shown
+        const k = ed ? canvas.width / ed.outputRect().w * (ed.W / prepared.w) : canvas.width / prepared.w;
+        const x = Math.round(pad.l * k), y = Math.round(pad.t * k);
+        const out = document.createElement('canvas');
+        out.width = Math.max(1, Math.round(canvas.width + (pad.l + pad.r) * k));
+        out.height = Math.max(1, Math.round(canvas.height + (pad.t + pad.b) * k));
+        const g = out.getContext('2d');
+        if (prepared.fill) {
+            g.fillStyle = prepared.fill;
+            g.fillRect(0, 0, out.width, out.height);
+        }
+        g.drawImage(canvas, x, y);
+        this.composite(out, prepared, ed, { x, y, w: canvas.width, h: canvas.height });
+        return out;
+    },
+
+    // The edit's paint onto a canvas of the photo as shown (see composite):
+    // the canvas to use, a bigger (or smaller) one when the paint pads it.
+    // Without `ed` it's the photo's own part only (Crop shows the whole
+    // photo; the canvas is the crop's)
     async onto(canvas, e, ed = null) {
-        if (!this.has(e)) return;
+        if (!this.has(e)) return canvas;
         const prepared = await this.prepare(e);
-        this.composite(canvas, prepared, ed);
+        if (!ed) { this.composite(canvas, prepared, null); return canvas; }
+        return this.padded(canvas, prepared, ed);
     }
 };
