@@ -32,7 +32,7 @@
 //                album named after it (script.js: addToPhotos)
 //   engine       the app's own engine (engine/, Rust; docs/plans/fast-engine.md):
 //                JPEG and RAW grid thumbnails (a RAW's from the JPEG inside
-//                it), and the viewer's screen-sized picture of them, made
+//                it), and the viewer's screen-sized picture of a RAW, made
 //                from the file on disk, much faster than decoding the whole
 //                photo in the page (script.js: engineThumbnail and
 //                enginePreview; JEditorNative.engineThumb and enginePreview).

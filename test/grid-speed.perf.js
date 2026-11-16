@@ -337,7 +337,7 @@ async function measure(page, lib) {
         out['open a photo: shown (avg)'] = avg(opens);
         out['open a photo: worst'] = ms(Math.max(...opens));
         for (const [k, a] of Object.entries(full)) out[`open a ${k}: the photo itself (avg)`] = avg(a) + ` (${a.map(ms).join(', ')})`;
-        out['viewer pictures from the engine'] = app._enginePreviews || 0;
+        out['viewer pictures from the engine'] = `${app._enginePreviews || 0} made`;
         out['open a photo: dropped frames'] = sum(openF, 'dropped') + ' of ' + sum(openF, 'frames') + `, long tasks ${sum(openF, 'long')} (longest ${Math.max(...openF.map(x => x.longest))} ms)`;
         out['back to grid: frame (avg)'] = avg(backs);
         out['back to grid: dropped frames'] = sum(backF, 'dropped') + ' of ' + sum(backF, 'frames') + `, long tasks ${sum(backF, 'long')} (longest ${Math.max(...backF.map(x => x.longest))} ms)`;

@@ -4184,7 +4184,6 @@ const app = {
             }
 
             if (!converted) rec = await this.idbGet('previews', key);
-            if (!rec && !converted) rec = await this.enginePreview(file, edge);
             if (!rec) {
                 rec = await this.generatePreview(data, edge);
                 if (rec && rec.blob) this.idbPutPreview(key, rec);
@@ -4324,13 +4323,14 @@ const app = {
     },
 
     // The viewer's picture from the app's engine (Host.has('engine'):
-    // src/Engine.cs), straight from the file on disk: a JPEG or RAW decoded
+    // src/Engine.cs), straight from the file on disk: a RAW's JPEG decoded
     // only as much as the screen needs, a HEIC (Host.has('engineHeic')) on
-    // every core rather than in WebAssembly. { blob, w, h } as
-    // generatePreview's, or null: the page makes it
+    // every core rather than in WebAssembly. Not a JPEG: the page's worker
+    // already decodes those scaled, and was as quick (the Speed run, #241).
+    // { blob, w, h } as generatePreview's, or null: the page makes it
     async enginePreview(file, edge) {
         if (!Host.has('engine') || !Host.get().enginePreview || !this.dirHandle) return null;
-        if (!/\.jpe?g$/i.test(file.name) && !Raw.is(file.name) && !(Host.has('engineHeic') && /\.hei[cf]$/i.test(file.name))) return null;
+        if (!Raw.is(file.name) && !(Host.has('engineHeic') && /\.hei[cf]$/i.test(file.name))) return null;
         const handle = this.dirHandle;
         if (!this._engineDir || this._engineDir.handle !== handle) {
             this._engineDir = { handle, path: Host.get().folderPath(handle).catch(() => null) };

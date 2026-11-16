@@ -296,8 +296,8 @@ const waitForPost = (page, type) => page.waitForFunction(
             });
             check('an engine with libheif: HEICs listed', hr.has);
             check('a HEIC\'s thumbnail comes from the engine', hr.engine && heicAsked.includes('D:\\Orders\\Heic Order\\IMG_0001.HEIC'), JSON.stringify({ hr, heicAsked }));
-            // Opened in the viewer: the engine's picture, at the screen's
-            // size, shown as the photo's own size (for zoom and Info)
+            // Opened in the viewer: a HEIC's picture from the engine, at the
+            // screen's size, shown as the photo's own size (for zoom and Info)
             for (const name of ['IMG_0001.HEIC', 'IMG_0002.jpg']) {
                 const v = await h.page.evaluate(async (name) => {
                     const f = app.files.find(x => x.name === name);
@@ -306,10 +306,10 @@ const waitForPost = (page, type) => page.waitForFunction(
                     let el;
                     while (Date.now() - t0 < 15000) {
                         el = app.elements.currentImage;
-                        if (el && el._decoded && app._displayFile === f) break;
+                        if (el && el._decoded && app._displayFile === f && app._displayKind === 'full') break;
                         await new Promise(r => setTimeout(r, 50));
                     }
-                    if (!el || !el._decoded) return { shown: false };
+                    if (!el || !el._decoded || app._displayKind !== 'full') return { shown: false, kind: app._displayKind };
                     const c = new OffscreenCanvas(el.naturalWidth, el.naturalHeight);
                     c.getContext('2d').drawImage(el, 0, 0);
                     const [R, G, B] = c.getContext('2d').getImageData(el.naturalWidth >> 1, el.naturalHeight >> 1, 1, 1).data;
@@ -318,8 +318,13 @@ const waitForPost = (page, type) => page.waitForFunction(
                     return out;
                 }, name);
                 const asked = previews.find(p => p.path === 'D:\\Orders\\Heic Order\\' + name);
-                check(`the viewer shows a ${name.split('.')[1]} from the engine`, v.shown && v.engine && v.preview && v.w === 4000 && v.h === 3000, JSON.stringify(v));
-                check(`  asked at the screen's size`, asked && +asked.edge === v.edge, JSON.stringify({ previews, v }));
+                if (/heic$/i.test(name)) {
+                    check('the viewer shows a HEIC from the engine', v.shown && v.engine && v.preview && v.w === 4000 && v.h === 3000, JSON.stringify(v));
+                    check('  asked at the screen\'s size', asked && +asked.edge === v.edge, JSON.stringify({ previews, v }));
+                } else {
+                    // A JPEG: the page's own scaled decode, as quick
+                    check('the viewer makes a JPEG\'s picture itself', v.shown && !v.engine && !asked && v.w === 4000 && v.h === 3000, JSON.stringify({ previews, v }));
+                }
             }
             check('engine HEIC: no JS errors', h.errors.length === 0, h.errors.join('; '));
             await h.context.close();
