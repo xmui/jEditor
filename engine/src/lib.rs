@@ -3,8 +3,9 @@
 // this file, this wide), never pixels it has to move itself.
 //
 // Phase 1: JPEG thumbnails (thumb.rs), RAW thumbnails from the JPEG inside
-// them (raw.rs) and, with the feature `heif`, HEIC thumbnails (heif.rs), called by the Windows app through the C interface
-// below (src/Engine.cs).
+// them (raw.rs) and, with the feature `heif`, HEIC thumbnails (heif.rs);
+// and the same three at the screen's size for the viewer (je_preview_file).
+// Called by the Windows app through the C interface below (src/Engine.cs).
 
 pub mod exif;
 #[cfg(feature = "heif")]
@@ -108,6 +109,71 @@ fn thumbnail_file(path: &str, width: u32) -> Result<Vec<u8>, i32> {
     })
 }
 
+/// The viewer's picture of the photo at `path`: its long side at most
+/// `edge` px (never bigger than the photo), turned as shown, as a JPEG
+/// into `*out`; `*w` × `*h`, the whole photo's size as shown (a RAW's: its
+/// JPEG's). The same kinds as je_thumbnail_file. Safe from many threads.
+///
+/// # Safety
+/// `path` must point to `path_len` readable bytes; `out`, `w` and `h` to
+/// a JeBuf and two u32s.
+#[no_mangle]
+pub unsafe extern "C" fn je_preview_file(path: *const u8, path_len: usize, edge: u32, out: *mut JeBuf, w: *mut u32, h: *mut u32) -> i32 {
+    if path.is_null() || out.is_null() || w.is_null() || h.is_null() || edge == 0 || edge > 8192 {
+        return JE_ARG;
+    }
+    *out = JeBuf::empty();
+    let Ok(path) = std::str::from_utf8(std::slice::from_raw_parts(path, path_len)) else {
+        return JE_ARG;
+    };
+    match std::panic::catch_unwind(|| preview_file(path, edge)) {
+        Ok(Ok((v, pw, ph))) => {
+            *out = JeBuf::from(v);
+            *w = pw as u32;
+            *h = ph as u32;
+            JE_OK
+        }
+        Ok(Err(code)) => code,
+        Err(_) => JE_BAD,
+    }
+}
+
+fn preview_file(path: &str, edge: u32) -> Result<(Vec<u8>, usize, usize), i32> {
+    let lower = path.to_ascii_lowercase();
+    let jpeg = lower.ends_with(".jpg") || lower.ends_with(".jpeg");
+    let heic = lower.ends_with(".heic") || lower.ends_with(".heif");
+    let bad = |e: thumb::Error| match e {
+        thumb::Error::Unsupported(_) => JE_UNSUPPORTED,
+        thumb::Error::Bad(_) => JE_BAD,
+    };
+    let (img, w, h) = if raw::is_raw(&lower) {
+        let mut src = raw::FileSource::open(path).map_err(|_| JE_IO)?;
+        let (jpeg, o) = raw::preview(&mut src).ok_or(JE_BAD)?;
+        let o = if (1..=8).contains(&o) { o } else { exif::orientation(&jpeg) };
+        thumb::oriented_preview_rgb(&jpeg, edge, o).map_err(bad)?
+    } else if jpeg {
+        let bytes = std::fs::read(path).map_err(|_| JE_IO)?;
+        thumb::oriented_preview_rgb(&bytes, edge, exif::orientation(&bytes)).map_err(bad)?
+    } else if heic && cfg!(feature = "heif") {
+        let bytes = std::fs::read(path).map_err(|_| JE_IO)?;
+        heic_preview(&bytes, edge).map_err(bad)?
+    } else {
+        return Err(JE_UNSUPPORTED);
+    };
+    // 90, as the page's own previews (app/script.js, getImageWorker)
+    Ok((thumb::encode_jpeg(&img, 90.0).map_err(bad)?, w, h))
+}
+
+#[cfg(feature = "heif")]
+fn heic_preview(bytes: &[u8], edge: u32) -> Result<(thumb::Rgb, usize, usize), thumb::Error> {
+    heif::heic_preview_rgb(bytes, edge)
+}
+
+#[cfg(not(feature = "heif"))]
+fn heic_preview(_: &[u8], _: u32) -> Result<(thumb::Rgb, usize, usize), thumb::Error> {
+    Err(thumb::Error::Unsupported("HEIC".into()))
+}
+
 // A RAW's: from the JPEG inside it (raw.rs), only that part of the file
 // read, turned as the RAW says (or as the JPEG's own EXIF does)
 fn raw_thumbnail(path: &str, width: u32) -> Result<Vec<u8>, i32> {
@@ -174,6 +240,26 @@ mod tests {
             assert_eq!(code, JE_OK);
             let t = thumb::decode_full(&bytes).unwrap();
             assert_eq!((t.w, t.h), (150, 100));
+        } else {
+            assert_eq!(code, JE_UNSUPPORTED);
+        }
+        // The viewer's: fitted inside the edge, with the photo's own size
+        let preview = |p: &str, e: u32| unsafe {
+            let (mut out, mut w, mut h) = (JeBuf::empty(), 0u32, 0u32);
+            let code = je_preview_file(p.as_ptr(), p.len(), e, &mut out, &mut w, &mut h);
+            let bytes = if out.ptr.is_null() { vec![] } else { std::slice::from_raw_parts(out.ptr, out.len).to_vec() };
+            je_free(out);
+            (code, bytes, w, h)
+        };
+        let (code, bytes, w, h) = preview(jpg.to_str().unwrap(), 450);
+        assert_eq!((code, w, h), (JE_OK, 900, 600));
+        let p = thumb::decode_full(&bytes).unwrap();
+        assert_eq!((p.w, p.h), (450, 300));
+        assert_eq!(preview(dir.join("a.png").to_str().unwrap(), 450).0, JE_UNSUPPORTED);
+        assert_eq!(preview(dir.join("junk.jpg").to_str().unwrap(), 450).0, JE_BAD);
+        let (code, _, w, h) = preview(heic.to_str().unwrap(), 300);
+        if cfg!(feature = "heif") {
+            assert_eq!((code, w, h), (JE_OK, 600, 400));
         } else {
             assert_eq!(code, JE_UNSUPPORTED);
         }

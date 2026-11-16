@@ -304,7 +304,7 @@ async function measure(page, lib) {
         // Opening a photo from the grid and going back (the zoom), 6 times:
         // JPEG, HEIC and DNG
         const pick = ['jpeg', 'heic', 'dng', 'jpeg', 'heic', 'dng'].map((k, i) => app.viewFiles().filter(f => type(f) === k)[20 + i]).filter(Boolean);
-        const opens = [], backs = [], openF = [], backF = [];
+        const opens = [], backs = [], openF = [], backF = [], full = {};
         for (const f of pick) {
             const tile = app.revealInGrid(f);
             tile.scrollIntoView({ block: 'center' });
@@ -316,6 +316,10 @@ async function measure(page, lib) {
                 tile.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
                 await until(() => app.viewMode === 'single' && app._displayFile === f && app.elements.currentImage.complete && app.elements.currentImage.naturalWidth > 0, 30000);
                 opens.push(performance.now() - t);
+                // Then the photo itself, not its thumbnail standing in
+                // (the viewer's picture: the engine's, or the page's own)
+                await until(() => app._displayFile !== f || (app._displayKind === 'full' && app.elements.currentImage.complete), 30000);
+                (full[type(f)] = full[type(f)] || []).push(performance.now() - t);
                 await sleep(250); // the zoom
             }));
             await sleep(300);
@@ -332,6 +336,8 @@ async function measure(page, lib) {
         const sum = (a, k) => a.reduce((x, y) => x + y[k], 0);
         out['open a photo: shown (avg)'] = avg(opens);
         out['open a photo: worst'] = ms(Math.max(...opens));
+        for (const [k, a] of Object.entries(full)) out[`open a ${k}: the photo itself (avg)`] = avg(a) + ` (${a.map(ms).join(', ')})`;
+        out['viewer pictures from the engine'] = app._enginePreviews || 0;
         out['open a photo: dropped frames'] = sum(openF, 'dropped') + ' of ' + sum(openF, 'frames') + `, long tasks ${sum(openF, 'long')} (longest ${Math.max(...openF.map(x => x.longest))} ms)`;
         out['back to grid: frame (avg)'] = avg(backs);
         out['back to grid: dropped frames'] = sum(backF, 'dropped') + ' of ' + sum(backF, 'frames') + `, long tasks ${sum(backF, 'long')} (longest ${Math.max(...backF.map(x => x.longest))} ms)`;
