@@ -926,12 +926,14 @@ const PaintEditor = {
         this.setView(kept);
         // The layers
         this.layers = [];
+        this.groups = {};
         if (kept && kept.paint) {
+            for (const gr of kept.paint.groups || []) this.groups[gr.id] = { name: gr.name, hidden: !!gr.hidden, open: gr.open !== false };
             for (const l of kept.paint.layers) {
                 const c = this.newCanvas();
                 const src = await Paint.layerBitmap(kept.paint, l);
                 if (src) c.getContext('2d').drawImage(src, 0, 0, this.W, this.H);
-                const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: !!l.lock, canvas: c, changed: false, text: l.text || null, shape: l.shape || null, clip: !!l.clip, fixed: !!l.fixed };
+                const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: !!l.lock, canvas: c, changed: false, text: l.text || null, shape: l.shape || null, clip: !!l.clip, fixed: !!l.fixed, group: l.group || null };
                 if (l.mask) {
                     const m = this.newCanvas(), mb = await Paint.layerBitmap(kept.paint, Paint.maskOf(l));
                     if (mb) m.getContext('2d').drawImage(mb, 0, 0, this.W, this.H);
@@ -1840,7 +1842,7 @@ const PaintEditor = {
 
     // The layer list as it is (for undoing a change to it)
     snapshot() {
-        return { layers: this.layers.map(l => ({ ...l })), cur: this.cur };
+        return { layers: this.layers.map(l => ({ ...l })), cur: this.cur, groups: JSON.parse(JSON.stringify(this.groups || {})) };
     },
 
     // name: the step, as the history lists it
@@ -1873,6 +1875,7 @@ const PaintEditor = {
             if (undo && entry.extra) this.apply(entry.extra, true);
             const s = undo ? entry.before : entry.after;
             this.layers = s.layers.map(l => ({ ...l, changed: true }));
+            this.groups = JSON.parse(JSON.stringify(s.groups || {}));
             this.cur = Math.min(s.cur, this.layers.length - 1);
             if (!undo && entry.extra) this.apply(entry.extra, false);
         }
@@ -3161,6 +3164,7 @@ const PaintEditor = {
                 ...when(this.cur > 0, ['Merge down', () => this.mergeDown(), false, undefined, 'paint.merge']),
                 ...when(n > 1, ['Merge visible', () => this.mergeVisible(), false, undefined, 'paint.mergeVisible']),
                 ...when(n > 1, ['Flatten', () => this.mergeVisible(true)]),
+                ...(this.layer() && this.layer().group ? [['Take it out of the group', () => this.ungroupLayer(), false, undefined, 'paint.ungroup']] : [['Group it', () => this.groupLayer(), false, undefined, 'paint.group']]),
                 ...when(this.cur > 0, ['Clip to the layer below', () => this.toggleClip(), false, !!(this.layer() && this.layer().clip), 'paint.clip']),
                 ['Free transform', () => this.freeTransform(), false, undefined, 'paint.transform'],
                 ['—'],
@@ -4565,8 +4569,11 @@ const PaintEditor = {
         const asp = this.W / this.H;
         for (let i = this.layers.length - 1; i >= 0; i--) {
             const l = this.layers[i];
+            const gr = l.group && this.groups[l.group];
+            if (gr && (i === this.layers.length - 1 || this.layers[i + 1].group !== l.group)) list.appendChild(this.groupRow(l.group));
+            if (gr && !gr.open) continue;
             const row = document.createElement('div');
-            row.className = 'paint-layer' + (l.hidden ? ' hidden-layer' : '') + (this.baseOf(i) >= 0 ? ' clipped' : '');
+            row.className = 'paint-layer' + (l.hidden ? ' hidden-layer' : '') + (this.baseOf(i) >= 0 ? ' clipped' : '') + (gr ? ' in-group' : '');
             row.setAttribute('role', 'option');
             row.setAttribute('aria-selected', String(i === this.cur));
             row.innerHTML = '<button class="paint-eye"></button><canvas></canvas><span class="paint-layer-name"></span>';
@@ -4722,6 +4729,46 @@ const PaintEditor = {
         this.el('paint-redo').disabled = !this.future.length;
     },
 
+    // A group's row: its eye, open or closed, its name
+    groupRow(g) {
+        const gr = this.groups[g];
+        const row = document.createElement('div');
+        row.className = 'paint-layer paint-group-row' + (gr.hidden ? ' hidden-layer' : '');
+        row.setAttribute('role', 'option');
+        row.setAttribute('aria-selected', 'false');
+        row.setAttribute('aria-expanded', String(gr.open !== false));
+        row.innerHTML = '<button class="paint-eye"></button><button class="paint-group-open btn ghost sm"></button><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="paint-layer-name"></span>';
+        row.querySelector('.paint-layer-name').textContent = gr.name;
+        const eye = row.querySelector('.paint-eye');
+        eye.title = gr.hidden ? 'Show the group' : 'Hide the group';
+        eye.setAttribute('aria-label', `${gr.hidden ? 'Show' : 'Hide'} ${gr.name}`);
+        eye.innerHTML = gr.hidden
+            ? '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 2l20 20M10.6 6.1A10 10 0 0 1 22 12a14 14 0 0 1-2.4 3.4M6.6 6.6A14 14 0 0 0 2 12s4 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/></svg>'
+            : '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+        eye.addEventListener('click', (e) => { e.stopPropagation(); eye.blur(); this.toggleGroupShown(g); });
+        const open = row.querySelector('.paint-group-open');
+        open.textContent = gr.open !== false ? '▾' : '▸';
+        open.title = gr.open !== false ? 'Close the group' : 'Open the group';
+        open.addEventListener('click', (e) => { e.stopPropagation(); open.blur(); this.toggleGroupOpen(g); });
+        row.addEventListener('click', () => {
+            // (its top layer chosen)
+            const m = this.groupMembers(g);
+            if (this.float) this.commitFloat();
+            this.onMask = false;
+            this.cur = m[m.length - 1];
+            this.drawLayers();
+            this.buildOptions();
+        });
+        row.addEventListener('dblclick', () => this.renameGroup(g));
+        row.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (this.busy) return;
+            this.app.openContextMenu(this.groupItems(g), e.clientX, e.clientY);
+        });
+        return row;
+    },
+
     lockedToast() {
         this.app.showToast('This layer\'s transparency is locked (/ unlocks it)', 2200);
     },
@@ -4764,6 +4811,8 @@ const PaintEditor = {
             ...(i > 0 ? [['Clip to the layer below', () => this.toggleClip(i), false, !!l.clip, 'paint.clip']] : []),
             ['Show this layer alone', () => this.soloLayer(i)],
             ['Select its pixels', () => this.selectLayerPixels(i)],
+            ...(l.group ? [['Take it out of the group', () => this.ungroupLayer(i), false, undefined, 'paint.ungroup']]
+                : [['Group it', () => this.groupLayer(i), false, undefined, 'paint.group'], ...(i > 0 ? [['Group with the layer below', () => this.groupWithBelow(i)]] : [])]),
             ...(l.text ? [['—'], ['Edit the text', () => this.editText(i)], ['Make it pixels', () => this.rasterize(i)]] : []),
             ...(l.shape || l.src ? [['—'], ['Make it pixels', () => this.rasterize(i)]] : []),
             ['—'],
@@ -4825,6 +4874,7 @@ const PaintEditor = {
 
     isShown(l) {
         if (!l || l.hidden) return false;
+        if (l.group && this.groups[l.group] && this.groups[l.group].hidden) return false;
         const b = this.baseOf(this.layers.indexOf(l));
         return b < 0 || !this.layers[b].hidden;
     },
@@ -4893,6 +4943,7 @@ const PaintEditor = {
         m.canvas = c;
         if (flatten) {
             this.layers = [m];
+            this.groups = {};
             this.cur = 0;
         } else {
             const kept = this.layers.filter(l => !shown.includes(l));
@@ -5011,8 +5062,9 @@ const PaintEditor = {
         if (this.layers.length >= Paint.MAX_LAYERS) { this.app.showToast(`Up to ${Paint.MAX_LAYERS} layers`); return; }
         if (this.float) this.commitFloat();
         this.pushState('New layer');
-        const n = this.layers.length + 1;
-        this.layers.splice(this.cur + 1, 0, this.makeLayer(`Layer ${n}`));
+        const n = this.layers.length + 1, made = this.makeLayer(`Layer ${n}`);
+        made.group = (this.layer() && this.layer().group) || null;
+        this.layers.splice(this.cur + 1, 0, made);
         this.cur++;
         this.afterState();
     },
@@ -5023,7 +5075,7 @@ const PaintEditor = {
         if (this.float) this.commitFloat();
         this.pushState('Duplicate layer');
         const copy = this.makeLayer(`${l.name} copy`);
-        Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: l.lock, text: l.text || null, shape: l.shape || null, src: l.src || null, clip: !!l.clip });
+        Object.assign(copy, { opacity: l.opacity, blend: l.blend, hidden: l.hidden, lock: l.lock, text: l.text || null, shape: l.shape || null, src: l.src || null, clip: !!l.clip, group: l.group || null });
         if (l.mask) {
             copy.mask = this.newCanvas();
             copy.mask.getContext('2d').drawImage(l.mask, 0, 0);
@@ -5045,13 +5097,168 @@ const PaintEditor = {
     },
 
     moveLayer(dir) {
-        const j = this.cur + dir;
-        if (j < 0 || j >= this.layers.length) return;
+        const j = this.cur + dir, l = this.layer();
+        if (!l) return;
         if (this.float) this.commitFloat();
+        const nb = this.layers[j];
+        // At a group's edge: out of it, or into the one next to it, before
+        // going past
+        if (l.group && (!nb || nb.group !== l.group)) {
+            this.pushState('Out of the group');
+            l.group = null;
+            this.afterState();
+            return;
+        }
+        if (!nb) return;
+        if (!l.group && nb.group) {
+            this.pushState('Into the group');
+            l.group = nb.group;
+            this.afterState();
+            return;
+        }
         this.pushState('Move layer');
         [this.layers[this.cur], this.layers[j]] = [this.layers[j], this.layers[this.cur]];
         this.cur = j;
         this.afterState();
+    },
+
+    // ---- Groups ----
+    // One level: a group is the run of layers (next to each other) with
+    // its id (l.group); this.groups has each one's name, whether it's
+    // hidden and whether it's open in the list
+
+    // Ctrl+G: the layer into a group of its own
+    groupLayer(i = this.cur) {
+        const l = this.layers[i];
+        if (!l || !this.ready) return;
+        if (l.group) { this.app.showToast('That layer\'s in a group already', 1600); return; }
+        if (this.float) this.commitFloat();
+        this.pushState('Group');
+        const id = Paint.newId().slice(-8), n = Object.keys(this.groups).length + 1;
+        this.groups[id] = { name: `Group ${n}`, hidden: false, open: true };
+        l.group = id;
+        this.afterState();
+    },
+
+    // Into a group with the layer below it (its group, or a new one)
+    groupWithBelow(i = this.cur) {
+        const l = this.layers[i], b = this.layers[i - 1];
+        if (!l || !b) return;
+        if (this.float) this.commitFloat();
+        this.pushState('Group');
+        if (!b.group) {
+            const id = Paint.newId().slice(-8), n = Object.keys(this.groups).length + 1;
+            this.groups[id] = { name: `Group ${n}`, hidden: false, open: true };
+            b.group = id;
+        }
+        l.group = b.group;
+        this.afterState();
+    },
+
+    // Ctrl+Shift+G: out of its group, put just above it
+    ungroupLayer(i = this.cur) {
+        const l = this.layers[i];
+        if (!l || !l.group) return;
+        if (this.float) this.commitFloat();
+        this.pushState('Out of the group');
+        const g = l.group;
+        let top = i;
+        while (top + 1 < this.layers.length && this.layers[top + 1].group === g) top++;
+        l.group = null;
+        this.layers.splice(i, 1);
+        this.layers.splice(top, 0, l);
+        this.cur = top;
+        this.afterState();
+    },
+
+    groupMembers(g) {
+        return this.layers.map((l, i) => l.group === g ? i : -1).filter(i => i >= 0);
+    },
+
+    ungroup(g) {
+        if (!this.groups[g]) return;
+        this.pushState('Ungroup');
+        for (const l of this.layers) if (l.group === g) {
+            // (hidden with the group: hidden on its own now)
+            if (this.groups[g].hidden) l.hidden = true;
+            l.group = null;
+        }
+        delete this.groups[g];
+        this.afterState();
+    },
+
+    toggleGroupShown(g) {
+        if (!this.groups[g]) return;
+        this.pushState(this.groups[g].hidden ? 'Show group' : 'Hide group');
+        this.groups[g].hidden = !this.groups[g].hidden;
+        for (const l of this.layers) if (l.group === g) l.changed = true;
+        this.afterState();
+    },
+
+    toggleGroupOpen(g) {
+        if (!this.groups[g]) return;
+        this.groups[g].open = !this.groups[g].open;
+        const m = this.groupMembers(g);
+        if (!this.groups[g].open && m.includes(this.cur)) this.cur = m[m.length - 1];
+        this.drawLayers();
+    },
+
+    async renameGroup(g) {
+        if (!this.groups[g]) return;
+        const name = await UI.prompt({ title: 'Rename the group', input: { label: 'Name', value: this.groups[g].name }, ok: 'Rename' });
+        if (name === null || !name.trim()) return;
+        this.pushState('Rename group');
+        this.groups[g].name = name.trim().slice(0, 60);
+        this.afterState();
+    },
+
+    // Its layers shown, as they look together, into one in its place
+    mergeGroup(g) {
+        const m = this.groupMembers(g);
+        if (!m.length) return;
+        if (this.float) this.commitFloat();
+        if (m.some(i => this.layers[i].fixed)) { this.fixedToast(); return; }
+        const c = this.newCanvas(), gc = c.getContext('2d');
+        for (const i of m) {
+            const l = this.layers[i];
+            if (!this.isShown(l)) continue;
+            gc.globalAlpha = l.opacity;
+            gc.globalCompositeOperation = l.blend;
+            gc.drawImage(this.shownOf(l), 0, 0);
+        }
+        gc.globalAlpha = 1;
+        gc.globalCompositeOperation = 'source-over';
+        this.pushState('Merge group');
+        const merged = this.makeLayer(this.groups[g].name);
+        merged.canvas = c;
+        if (this.groups[g].hidden) merged.hidden = true;
+        this.layers.splice(m[0], m.length, merged);
+        delete this.groups[g];
+        this.cur = m[0];
+        this.afterState();
+    },
+
+    deleteGroup(g) {
+        const m = this.groupMembers(g);
+        if (!m.length || m.length >= this.layers.length) { this.app.showToast('A group can\'t be every layer there is to delete it; ungroup it instead', 2400); return; }
+        if (this.float) this.commitFloat();
+        this.pushState('Delete group');
+        this.layers.splice(m[0], m.length);
+        delete this.groups[g];
+        this.cur = Math.max(0, Math.min(m[0] - 1, this.layers.length - 1));
+        this.afterState();
+    },
+
+    groupItems(g) {
+        const gr = this.groups[g];
+        return [
+            [gr.hidden ? 'Show the group' : 'Hide the group', () => this.toggleGroupShown(g)],
+            ['Rename group…', () => this.renameGroup(g)],
+            ['Merge group', () => this.mergeGroup(g)],
+            ['Ungroup', () => this.ungroup(g)],
+            ['—'],
+            ['Delete group and its layers', () => this.deleteGroup(g), true]
+        ];
     },
 
     // Alt+[ and Alt+]: the layer below or above
@@ -5464,7 +5671,7 @@ const PaintEditor = {
         const paint = { id: this.paintId, w: this.PW, h: this.PH, layers: [], ext: this.ext, pad: this.pad, fill: this.fill };
         for (const l of this.layers) {
             if ((l.changed || !l.rev) && this.empty(l)) continue;
-            const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, ...(l.lock ? { lock: true } : {}), ...(l.text ? { text: l.text } : {}), ...(l.shape ? { shape: l.shape } : {}), ...(l.clip ? { clip: true } : {}), ...(l.fixed ? { fixed: true } : {}) };
+            const rec = { id: l.id, rev: l.rev, name: l.name, opacity: l.opacity, blend: l.blend, hidden: l.hidden, ...(l.lock ? { lock: true } : {}), ...(l.text ? { text: l.text } : {}), ...(l.shape ? { shape: l.shape } : {}), ...(l.clip ? { clip: true } : {}), ...(l.fixed ? { fixed: true } : {}), ...(l.group && this.groups[l.group] ? { group: l.group } : {}) };
             if (l.changed || !l.rev) {
                 rec.rev = Paint.newId().slice(-10);
                 await Paint.writeLayer(paint, rec, l.canvas);
@@ -5485,6 +5692,8 @@ const PaintEditor = {
             }
             paint.layers.push(rec);
         }
+        const used = [...new Set(paint.layers.map(l => l.group).filter(Boolean))];
+        if (used.length) paint.groups = used.map(id => ({ id, name: this.groups[id].name, hidden: !!this.groups[id].hidden, open: this.groups[id].open !== false }));
         return Paint.clean(paint);
     },
 
